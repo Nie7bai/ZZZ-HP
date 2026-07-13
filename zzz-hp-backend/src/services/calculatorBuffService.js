@@ -1,0 +1,476 @@
+import pool from '../config/db.js'
+
+const WENGINE_TABLE = '`W-Engine`'
+
+const EMPTY_AGENT_BASE_PANEL = {
+  hp: 0,
+  atk: 0,
+  def: 0,
+  critRate: 0,
+  critDmg: 0,
+  mastery: 0,
+  penRate: 0,
+  dmgBonus: 0,
+  pen: 0,
+  anomalyCritRate: 0,
+  anomalyCritDmg: 0,
+  anomalyDmgBonus: 0,
+  directDmgMult: 100,
+  anomalyMult: 0,
+  disorderBaseMult: 0,
+  anomalyDuration: 0,
+  disorderCompMult: 0,
+  turbulenceBaseMult: 0,
+  turbulenceCompMult: 0,
+  disorderDmgBonus: 0,
+  turbulenceDmgBonus: 0,
+}
+
+const EMPTY_WENGINE_ADVANCED_STATS = {
+  critRate: 0,
+  critDmg: 0,
+  energyRegen: 0,
+  mastery: 0,
+  externalAtkPercent: 0,
+  externalHpPercent: 0,
+  penRate: 0,
+}
+
+const BUFF_STAT_KEYS = [
+  'inCombatHpPercent',
+  'inCombatAtkPercent',
+  'externalHpPercent',
+  'externalAtkPercent',
+  'atk',
+  'dmgBonus',
+  'critRate',
+  'critDmg',
+  'penRate',
+  'reduceDefense',
+  'resPen',
+  'mastery',
+  'pierce',
+  'vulnerable',
+  'staggerVulnerable',
+  'special',
+  'anomalyCritRate',
+  'anomalyCritDmg',
+  'anomalyDmgBonus',
+  'directDmgMult',
+  'anomalyMult',
+  'disorderBaseMult',
+  'anomalyDuration',
+  'disorderCompMult',
+  'turbulenceBaseMult',
+  'turbulenceCompMult',
+  'disorderDmgBonus',
+  'turbulenceDmgBonus',
+]
+
+function readNumber(value) {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : 0
+}
+
+function normalizeAgentBasePanel(value) {
+  const empty = { ...EMPTY_AGENT_BASE_PANEL }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return empty
+  return {
+    hp: readNumber(value.hp),
+    atk: readNumber(value.atk),
+    def: readNumber(value.def),
+    critRate: readNumber(value.critRate),
+    critDmg: readNumber(value.critDmg),
+    mastery: readNumber(value.mastery),
+    penRate: readNumber(value.penRate),
+    dmgBonus: readNumber(value.dmgBonus),
+    pen: readNumber(value.pen),
+    anomalyCritRate: readNumber(value.anomalyCritRate),
+    anomalyCritDmg: readNumber(value.anomalyCritDmg),
+    anomalyDmgBonus: readNumber(value.anomalyDmgBonus),
+    directDmgMult: value.directDmgMult == null ? 100 : readNumber(value.directDmgMult),
+    anomalyMult: readNumber(value.anomalyMult),
+    disorderBaseMult: readNumber(value.disorderBaseMult),
+    anomalyDuration: readNumber(value.anomalyDuration),
+    disorderCompMult: readNumber(value.disorderCompMult),
+    turbulenceBaseMult: readNumber(value.turbulenceBaseMult),
+    turbulenceCompMult: readNumber(value.turbulenceCompMult),
+    disorderDmgBonus: readNumber(value.disorderDmgBonus),
+    turbulenceDmgBonus: readNumber(value.turbulenceDmgBonus),
+  }
+}
+
+function normalizeWengineAdvancedStats(value) {
+  const empty = { ...EMPTY_WENGINE_ADVANCED_STATS }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return empty
+  return {
+    critRate: readNumber(value.critRate),
+    critDmg: readNumber(value.critDmg),
+    energyRegen: readNumber(value.energyRegen),
+    mastery: readNumber(value.mastery),
+    externalAtkPercent: readNumber(value.externalAtkPercent),
+    externalHpPercent: readNumber(value.externalHpPercent),
+    penRate: readNumber(value.penRate),
+  }
+}
+
+function createEmptyBuffStatModifiers() {
+  return Object.fromEntries(BUFF_STAT_KEYS.map((key) => [key, 0]))
+}
+
+function normalizeBuffStatModifiers(value) {
+  const result = createEmptyBuffStatModifiers()
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return result
+  for (const key of BUFF_STAT_KEYS) {
+    result[key] = readNumber(value[key])
+  }
+  if (readNumber(value.externalAtkPercent) && !result.inCombatAtkPercent) {
+    result.inCombatAtkPercent = readNumber(value.externalAtkPercent)
+  }
+  return result
+}
+
+function normalizeTwoPieceMods(value) {
+  const mods = normalizeBuffStatModifiers(value)
+  if (!mods.externalHpPercent && mods.inCombatHpPercent) {
+    mods.externalHpPercent = mods.inCombatHpPercent
+  }
+  if (!mods.externalAtkPercent && mods.inCombatAtkPercent) {
+    mods.externalAtkPercent = mods.inCombatAtkPercent
+  }
+  mods.inCombatHpPercent = 0
+  mods.inCombatAtkPercent = 0
+  return mods
+}
+
+function parseJson(value, fallback) {
+  if (value == null) return fallback
+  if (typeof value === 'object') return value
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value)
+    } catch {
+      return fallback
+    }
+  }
+  return fallback
+}
+
+function rowToAgent(row) {
+  const raw = parseJson(row.raw_json, {})
+  return {
+    ...raw,
+    id: row.id,
+    name: row.name,
+    profession: row.profession ?? '',
+    element: row.element ?? '',
+    supportNeeds: parseJson(row.support_needs, raw.supportNeeds ?? []),
+    avatar_image: row.avatar_image ?? raw.avatar_image ?? null,
+    note: row.note ?? raw.note ?? '',
+    basePanel: normalizeAgentBasePanel(parseJson(row.base_panel, raw.basePanel)),
+    mindscapeNotes: parseJson(
+      row.mindscape_notes,
+      normalizeMindscapeNotesArray(raw.mindscapeNotes),
+    ),
+    mindscapeBuffs: parseJson(row.mindscape_buffs, raw.mindscapeBuffs ?? []),
+  }
+}
+
+function normalizeMindscapeNotesArray(value) {
+  if (!Array.isArray(value)) return ['', '', '', '', '', '', '']
+  return [0, 1, 2, 3, 4, 5, 6].map((index) =>
+    typeof value[index] === 'string' ? value[index] : '',
+  )
+}
+
+function rowToBangboo(row) {
+  const raw = parseJson(row.raw_json, {})
+  return {
+    id: row.id,
+    name: row.name,
+    avatar_image: row.avatar_image ?? null,
+    fixedMods: parseJson(row.fixed_mods, raw.fixedMods ?? {}),
+    refinementMods: parseJson(row.refinement_mods, raw.refinementMods ?? []),
+  }
+}
+
+function rowToDriveDisc(row) {
+  const raw = parseJson(row.raw_json, {})
+  return {
+    id: row.id,
+    name: row.name,
+    avatar_image: row.avatar_image ?? null,
+    twoPieceNote: row.two_piece_note ?? raw.twoPieceNote ?? '',
+    fourPieceNote: row.four_piece_note ?? raw.fourPieceNote ?? '',
+    twoPieceMods: normalizeTwoPieceMods(
+      parseJson(row.two_piece_mods, raw.twoPieceMods ?? {}),
+    ),
+    fourPieceBuffs: parseJson(row.four_piece_buffs, raw.fourPieceBuffs ?? {}),
+  }
+}
+
+function rowToWengine(row) {
+  const raw = parseJson(row.raw_json, {})
+  return {
+    id: row.id,
+    name: row.name,
+    profession: row.profession ?? '',
+    rarity: row.rarity ?? 'A',
+    avatar_image: row.avatar_image ?? null,
+    note: row.note ?? raw.note ?? '',
+    baseAtk: readNumber(row.base_atk ?? raw.baseAtk),
+    advancedStats: normalizeWengineAdvancedStats(
+      parseJson(row.advanced_stats, raw.advancedStats),
+    ),
+    fixedBuffs: parseJson(row.fixed_buffs, raw.fixedBuffs ?? {}),
+    refinementBuffs: parseJson(row.refinement_buffs, raw.refinementBuffs ?? []),
+  }
+}
+
+function toJson(value) {
+  return JSON.stringify(value ?? null)
+}
+
+export async function listCalculatorBuffs() {
+  const [agents] = await pool.query(
+    'SELECT * FROM `character` ORDER BY name ASC, id ASC',
+  )
+  const [bangboos] = await pool.query('SELECT * FROM `bangboo` ORDER BY name ASC, id ASC')
+  const [driveDiscs] = await pool.query(
+    'SELECT * FROM `drive_disc` ORDER BY name ASC, id ASC',
+  )
+  const [wengines] = await pool.query(
+    `SELECT * FROM ${WENGINE_TABLE} ORDER BY name ASC, id ASC`,
+  )
+
+  return {
+    agents: agents.map(rowToAgent),
+    bangboos: bangboos.map(rowToBangboo),
+    driveDiscs: driveDiscs.map(rowToDriveDisc),
+    wengines: wengines.map(rowToWengine),
+  }
+}
+
+export async function upsertAgent(doc) {
+  const id = String(doc.id ?? '').trim()
+  const name = String(doc.name ?? '').trim()
+  if (!id || !name) {
+    throw new Error('角色 ID 与名称为必填项')
+  }
+
+  const payload = {
+    id,
+    name,
+    profession: String(doc.profession ?? ''),
+    element: String(doc.element ?? ''),
+    supportNeeds: Array.isArray(doc.supportNeeds) ? doc.supportNeeds : [],
+    avatar_image: doc.avatar_image ?? null,
+    note: typeof doc.note === 'string' ? doc.note : '',
+    basePanel: normalizeAgentBasePanel(doc.basePanel),
+    mindscapeNotes: normalizeMindscapeNotesArray(doc.mindscapeNotes),
+    mindscapeBuffs: Array.isArray(doc.mindscapeBuffs) ? doc.mindscapeBuffs : [],
+  }
+
+  await pool.execute(
+    `INSERT INTO \`character\`
+      (id, name, profession, element, support_needs, avatar_image, note, base_panel, mindscape_notes, mindscape_buffs, raw_json)
+     VALUES (?, ?, ?, ?, CAST(? AS JSON), ?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON))
+     ON DUPLICATE KEY UPDATE
+       name = VALUES(name),
+       profession = VALUES(profession),
+       element = VALUES(element),
+       support_needs = VALUES(support_needs),
+       avatar_image = VALUES(avatar_image),
+       note = VALUES(note),
+       base_panel = VALUES(base_panel),
+       mindscape_notes = VALUES(mindscape_notes),
+       mindscape_buffs = VALUES(mindscape_buffs),
+       raw_json = VALUES(raw_json)`,
+    [
+      payload.id,
+      payload.name,
+      payload.profession,
+      payload.element,
+      toJson(payload.supportNeeds),
+      payload.avatar_image,
+      payload.note,
+      toJson(payload.basePanel),
+      toJson(payload.mindscapeNotes),
+      toJson(payload.mindscapeBuffs),
+      toJson(payload),
+    ],
+  )
+
+  const [[row]] = await pool.query('SELECT * FROM `character` WHERE id = ?', [id])
+  return rowToAgent(row)
+}
+
+export async function deleteAgent(id) {
+  const [result] = await pool.execute('DELETE FROM `character` WHERE id = ?', [id])
+  if (result.affectedRows === 0) {
+    throw new Error('角色不存在')
+  }
+  return { id }
+}
+
+export async function upsertBangboo(doc) {
+  const id = String(doc.id ?? '').trim()
+  const name = String(doc.name ?? '').trim()
+  if (!id || !name) {
+    throw new Error('邦布 ID 与名称为必填项')
+  }
+
+  const payload = {
+    id,
+    name,
+    avatar_image: doc.avatar_image ?? null,
+    fixedMods: doc.fixedMods ?? {},
+    refinementMods: Array.isArray(doc.refinementMods) ? doc.refinementMods : [],
+  }
+
+  await pool.execute(
+    `INSERT INTO \`bangboo\`
+      (id, name, avatar_image, fixed_mods, refinement_mods, raw_json)
+     VALUES (?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON))
+     ON DUPLICATE KEY UPDATE
+       name = VALUES(name),
+       avatar_image = VALUES(avatar_image),
+       fixed_mods = VALUES(fixed_mods),
+       refinement_mods = VALUES(refinement_mods),
+       raw_json = VALUES(raw_json)`,
+    [
+      payload.id,
+      payload.name,
+      payload.avatar_image,
+      toJson(payload.fixedMods),
+      toJson(payload.refinementMods),
+      toJson(payload),
+    ],
+  )
+
+  const [[row]] = await pool.query('SELECT * FROM `bangboo` WHERE id = ?', [id])
+  return rowToBangboo(row)
+}
+
+export async function deleteBangboo(id) {
+  const [result] = await pool.execute('DELETE FROM `bangboo` WHERE id = ?', [id])
+  if (result.affectedRows === 0) {
+    throw new Error('邦布不存在')
+  }
+  return { id }
+}
+
+export async function upsertDriveDisc(doc) {
+  const id = String(doc.id ?? '').trim()
+  const name = String(doc.name ?? '').trim()
+  if (!id || !name) {
+    throw new Error('驱动盘 ID 与名称为必填项')
+  }
+
+  const payload = {
+    id,
+    name,
+    avatar_image: doc.avatar_image ?? null,
+    twoPieceNote: typeof doc.twoPieceNote === 'string' ? doc.twoPieceNote : '',
+    fourPieceNote: typeof doc.fourPieceNote === 'string' ? doc.fourPieceNote : '',
+    twoPieceMods: normalizeTwoPieceMods(doc.twoPieceMods ?? {}),
+    fourPieceBuffs: doc.fourPieceBuffs ?? {},
+  }
+
+  await pool.execute(
+    `INSERT INTO \`drive_disc\`
+      (id, name, avatar_image, two_piece_note, four_piece_note, two_piece_mods, four_piece_buffs, raw_json)
+     VALUES (?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON))
+     ON DUPLICATE KEY UPDATE
+       name = VALUES(name),
+       avatar_image = VALUES(avatar_image),
+       two_piece_note = VALUES(two_piece_note),
+       four_piece_note = VALUES(four_piece_note),
+       two_piece_mods = VALUES(two_piece_mods),
+       four_piece_buffs = VALUES(four_piece_buffs),
+       raw_json = VALUES(raw_json)`,
+    [
+      payload.id,
+      payload.name,
+      payload.avatar_image,
+      payload.twoPieceNote,
+      payload.fourPieceNote,
+      toJson(payload.twoPieceMods),
+      toJson(payload.fourPieceBuffs),
+      toJson(payload),
+    ],
+  )
+
+  const [[row]] = await pool.query('SELECT * FROM `drive_disc` WHERE id = ?', [id])
+  return rowToDriveDisc(row)
+}
+
+export async function deleteDriveDisc(id) {
+  const [result] = await pool.execute('DELETE FROM `drive_disc` WHERE id = ?', [id])
+  if (result.affectedRows === 0) {
+    throw new Error('驱动盘不存在')
+  }
+  return { id }
+}
+
+export async function upsertWengine(doc) {
+  const id = String(doc.id ?? '').trim()
+  const name = String(doc.name ?? '').trim()
+  if (!id || !name) {
+    throw new Error('音擎 ID 与名称为必填项')
+  }
+
+  const payload = {
+    id,
+    name,
+    profession: String(doc.profession ?? ''),
+    rarity: String(doc.rarity ?? 'A'),
+    avatar_image: doc.avatar_image ?? null,
+    note: typeof doc.note === 'string' ? doc.note : '',
+    baseAtk: readNumber(doc.baseAtk),
+    advancedStats: normalizeWengineAdvancedStats(doc.advancedStats),
+    fixedBuffs: doc.fixedBuffs ?? {},
+    refinementBuffs: Array.isArray(doc.refinementBuffs) ? doc.refinementBuffs : [],
+  }
+
+  await pool.execute(
+    `INSERT INTO ${WENGINE_TABLE}
+      (id, name, profession, rarity, avatar_image, note, base_atk, advanced_stats, fixed_buffs, refinement_buffs, raw_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON))
+     ON DUPLICATE KEY UPDATE
+       name = VALUES(name),
+       profession = VALUES(profession),
+       rarity = VALUES(rarity),
+       avatar_image = VALUES(avatar_image),
+       note = VALUES(note),
+       base_atk = VALUES(base_atk),
+       advanced_stats = VALUES(advanced_stats),
+       fixed_buffs = VALUES(fixed_buffs),
+       refinement_buffs = VALUES(refinement_buffs),
+       raw_json = VALUES(raw_json)`,
+    [
+      payload.id,
+      payload.name,
+      payload.profession,
+      payload.rarity,
+      payload.avatar_image,
+      payload.note,
+      payload.baseAtk,
+      toJson(payload.advancedStats),
+      toJson(payload.fixedBuffs),
+      toJson(payload.refinementBuffs),
+      toJson(payload),
+    ],
+  )
+
+  const [[row]] = await pool.query(`SELECT * FROM ${WENGINE_TABLE} WHERE id = ?`, [id])
+  return rowToWengine(row)
+}
+
+export async function deleteWengine(id) {
+  const [result] = await pool.execute(`DELETE FROM ${WENGINE_TABLE} WHERE id = ?`, [id])
+  if (result.affectedRows === 0) {
+    throw new Error('音擎不存在')
+  }
+  return { id }
+}

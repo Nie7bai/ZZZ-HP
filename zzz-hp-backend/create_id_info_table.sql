@@ -1,0 +1,9 @@
+USE zzz;
+
+CREATE TABLE IF NOT EXISTS id_info (
+  id INT UNSIGNED NOT NULL COMMENT '房间ID（版本+期数+房间）',
+  version VARCHAR(50) NOT NULL COMMENT '版本',
+  phase VARCHAR(50) NOT NULL COMMENT '阶段',
+  room VARCHAR(10) NOT NULL COMMENT '房间',
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='房间ID信息表';
