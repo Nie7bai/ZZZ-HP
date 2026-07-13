@@ -31,7 +31,20 @@ cd zzz-hp-backend
 copy .env.example .env
 ```
 
-编辑 `.env`，填入你的 MySQL 连接信息，然后按需执行仓库内 SQL（如 `init_tables.sql`、`create_*.sql`）初始化表结构，并用 `scripts/` 下的导入脚本补充数据。
+编辑 `.env`，填入你的 MySQL 连接信息，然后**执行一次**结构初始化脚本：
+
+```sh
+# 在 zzz-hp-backend 目录，按你的账号密码调整 -u / -p
+mysql -u root -p < init_schema.sql
+```
+
+`init_schema.sql` 已整合原先分散的 `init_tables.sql`、`create_*.sql`、`alter_*.sql` 中的**建表逻辑**，会创建 `zzz` 库及全部业务表。
+
+导入业务数据（可选，按需执行）：
+
+- `insert_*.sql` — 防卫战 Buff / Boss / 期数等静态数据
+- `scripts/import-calculator-buffs.mjs` — 计算器角色/音擎/驱动盘/邦布
+- `scripts/seed-admin.mjs` — 管理员账号
 
 ### 3. 安装依赖
 
@@ -96,5 +109,6 @@ npm run build
 ## 说明
 
 - **不要提交** `.env`、`node_modules`、`dist`、运行时 `uploads`
-- 数据库内容不在 Git 中；请用 SQL / 迁移脚本在目标环境重建
+- 数据库内容不在 Git 中；clone 后先跑 `init_schema.sql` 建表，再用 SQL / 导入脚本写入数据
+- 旧的 `init_tables.sql`、`create_*.sql`、`alter_*.sql` 仍保留作参考，新环境请优先使用 `init_schema.sql`
 - 图片等静态资源位于后端各资源目录，以及前端 `public` / `boss_image` 等目录
