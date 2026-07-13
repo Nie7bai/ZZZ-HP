@@ -33,33 +33,58 @@ copy .env.example .env
 
 编辑 `.env`，填入你的 MySQL 连接信息，然后按需执行仓库内 SQL（如 `init_tables.sql`、`create_*.sql`）初始化表结构，并用 `scripts/` 下的导入脚本补充数据。
 
-### 3. 启动后端
+### 3. 安装依赖
+
+前后端各执行一次（首次克隆后必做）：
 
 ```sh
 cd zzz-hp-backend
 npm install
-npm run dev
-```
 
-默认端口：`3010`
-
-### 4. 启动前端
-
-另开终端：
-
-```sh
-cd zzz-hp
+cd ../zzz-hp
 npm install
-npm run dev
 ```
 
-前端开发服务器默认由 Vite 启动；也可在 `zzz-hp` 目录使用：
+### 4. 启动开发环境
+
+#### 方式 A：一键启动（推荐，Windows）
+
+在 **`zzz-hp`** 目录下任选其一：
 
 ```sh
+# 双击或在资源管理器中运行
+start-dev.bat
+```
+
+```sh
+# 或在终端中
 npm run dev:all
 ```
 
-同时拉起前后端（Windows PowerShell 脚本）。
+脚本会打开两个新终端窗口，分别启动：
+
+| 服务 | 地址 |
+|------|------|
+| 后端 API | http://localhost:3010 |
+| 前端页面 | http://localhost:5173 |
+
+前提：已配置 `zzz-hp-backend/.env`，且前后端均已 `npm install`。脚本通过相对路径查找同级目录 `zzz-hp-backend`，与仓库当前结构一致。
+
+#### 方式 B：手动分别启动
+
+后端：
+
+```sh
+cd zzz-hp-backend
+npm run dev
+```
+
+前端（另开终端）：
+
+```sh
+cd zzz-hp
+npm run dev
+```
 
 ### 5. 生产构建
 
