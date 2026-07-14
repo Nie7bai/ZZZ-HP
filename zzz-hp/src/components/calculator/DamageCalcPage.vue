@@ -9,6 +9,7 @@ import TeamBuilderSection from '@/components/calculator/TeamBuilderSection.vue'
 import type { DamageCalcSectionId } from '@/constants/damageCalcNav'
 import type { DamageCalcHistoryEntry } from '@/types/damageCalcHistory'
 import type { PanelCalcMode } from '@/types/calculatorPanel'
+import type { PanelScreenshotRecognition } from '@/types/panelScreenshot'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import {
   createHistoryEntryId,
@@ -112,6 +113,20 @@ function selectWengine(wengineId: string) {
 
 function selectBangboo(bangbooId: string) {
   selectedBangbooId.value = bangbooId
+}
+
+function applyPanelRecognition(result: PanelScreenshotRecognition) {
+  const mainIndex = teamSlots.findIndex((slot) => slot.isMainC)
+  const slot = teamSlots[mainIndex >= 0 ? mainIndex : 0]!
+  if (result.agentId) {
+    slot.agentId = result.agentId
+    activeSlot.value = mainIndex >= 0 ? mainIndex : 0
+  }
+  slot.rank = result.rank
+  if (result.wengineId) slot.wengineId = result.wengineId
+  slot.wengineRefine = result.wengineRefine
+  if (result.twoPieceDriveDiscId) slot.twoPieceDriveDiscId = result.twoPieceDriveDiscId
+  if (result.fourPieceDriveDiscId) slot.fourPieceDriveDiscId = result.fourPieceDriveDiscId
 }
 
 function cloneTeamSlots(): DamageCalcHistoryEntry['teamSlots'] {
@@ -258,6 +273,7 @@ defineExpose({ scrollToSection })
       :selected-bangboo-id="selectedBangbooId"
       :bangboo-refine="bangbooRefine"
       :calc-mode="panelCalcMode"
+      @apply-recognition="applyPanelRecognition"
     />
   </div>
 </template>

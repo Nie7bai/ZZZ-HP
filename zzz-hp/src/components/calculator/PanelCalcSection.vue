@@ -37,6 +37,8 @@ import {
 import { computeFinalPanel } from '@/utils/panelBuffCalc'
 import { computeDamageResult, type EnemyResistanceType } from '@/utils/damageCalc'
 import { buildAtkPanelProcessItems, buildEnemyCombatProcessItems, buildStatSourceGroups, type StatSourceGroup } from '@/utils/statSourceTips'
+import type { PanelScreenshotRecognition } from '@/types/panelScreenshot'
+import { recognizePanelScreenshot } from '@/utils/panelScreenshotRecognize'
 
 type BaseDamageSource = 'atk' | 'pierce'
 
@@ -88,6 +90,10 @@ const props = defineProps<{
   calcMode: PanelCalcMode
 }>()
 
+const emit = defineEmits<{
+  'apply-recognition': [result: PanelScreenshotRecognition]
+}>()
+
 const emptyBangboo: BangbooBuffDoc = {
   id: 'none',
   name: '未选择',
@@ -98,6 +104,10 @@ const emptyBangboo: BangbooBuffDoc = {
 
 const panelImageUrl = ref('')
 const panelImageName = ref('')
+const recognitionStatus = ref('')
+const recognitionResult = ref<PanelScreenshotRecognition | null>(null)
+const recognitionError = ref('')
+const recognizing = ref(false)
 const baseDamageSource = ref<BaseDamageSource>('atk')
 const showDetailedResults = ref(false)
 const externalPanel = reactive<PanelStats>(createDefaultExternalPanel())
@@ -235,17 +245,54 @@ const externalPiercePower = computed(() =>
   computePiercePower(effectiveExternalPanel.value.hp, effectiveExternalPanel.value.atk),
 )
 
-function onUploadPanelImage(file: File | null) {
+function applyRecognitionToExternalPanel(result: PanelScreenshotRecognition) {
+  if (isAffixMode.value) return
+  for (const [key, value] of Object.entries(result.externalPanel) as [keyof PanelStats, number][]) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      externalPanel[key] = value
+    }
+  }
+}
+
+async function onUploadPanelImage(file: File | null) {
   if (panelImageUrl.value.startsWith('blob:')) {
     URL.revokeObjectURL(panelImageUrl.value)
   }
+  recognitionResult.value = null
+  recognitionError.value = ''
+  recognitionStatus.value = ''
+
   if (!file) {
     panelImageUrl.value = ''
     panelImageName.value = ''
     return
   }
+
   panelImageUrl.value = URL.createObjectURL(file)
   panelImageName.value = file.name
+
+  recognizing.value = true
+  try {
+    const result = await recognizePanelScreenshot(
+      file,
+      {
+        agents: props.agents,
+        wengines: props.wengines,
+        driveDiscs: props.driveDiscs,
+      },
+      (message) => {
+        recognitionStatus.value = message
+      },
+    )
+    recognitionResult.value = result
+    applyRecognitionToExternalPanel(result)
+    emit('apply-recognition', result)
+  } catch (error) {
+    recognitionError.value = error instanceof Error ? error.message : '截图识别失败'
+  } finally {
+    recognizing.value = false
+    recognitionStatus.value = ''
+  }
 }
 
 watch(
@@ -1220,9 +1267,41 @@ defineExpose({ getSnapshot, loadSnapshot })
       </article>
     </details>
 
-    <div v-if="!isAffixMode" class="upload-box">
+    <div class="upload-box">
       <p class="upload-label">上传角色面板截图</p>
+      <p class="upload-hint">
+        两个黑框划定范围：上框认角色名、影画与右侧属性（小穿在穿透率下方/面板左下角；xx伤害加成=增伤）；框间认音擎；下框先认齐 6 个套装名再按数量判定 2/4 件。截图请尽量与标准图同比例。
+      </p>
       <AdminImagePicker button-text="选择截图" @change="onUploadPanelImage" />
+      <p v-if="recognizing" class="recognition-status">{{ recognitionStatus || '正在识别…' }}</p>
+      <p v-if="recognitionError" class="recognition-error">{{ recognitionError }}</p>
+      <div v-if="recognitionResult" class="recognition-result">
+        <p class="recognition-result-title">识别结果（已填入主C槽位{{ isAffixMode ? '' : '与局外面板' }}）</p>
+        <ul>
+          <li>角色：{{ recognitionResult.agentName ?? '未识别' }} · {{ recognitionResult.rank }}影</li>
+          <li>
+            音擎：{{ recognitionResult.wengineName ?? '未识别' }} · 精{{
+              recognitionResult.wengineRefine
+            }}
+          </li>
+          <li>
+            驱动盘：2件 {{ recognitionResult.twoPieceDriveDiscName ?? '未识别' }} · 4件
+            {{ recognitionResult.fourPieceDriveDiscName ?? '未识别' }}
+          </li>
+          <li v-if="!isAffixMode && recognitionResult.externalPanel.hp">
+            生命 {{ recognitionResult.externalPanel.hp }} · 攻击
+            {{ recognitionResult.externalPanel.atk ?? '—' }}
+          </li>
+          <li v-if="!isAffixMode">
+            穿透率 {{ recognitionResult.externalPanel.penRate ?? '—' }}% · 穿透值
+            {{ recognitionResult.externalPanel.pen ?? '—' }} · 增伤
+            {{ recognitionResult.externalPanel.dmgBonus ?? '—' }}%
+          </li>
+        </ul>
+        <ul v-if="recognitionResult.warnings.length" class="recognition-warnings">
+          <li v-for="warning in recognitionResult.warnings" :key="warning">{{ warning }}</li>
+        </ul>
+      </div>
       <div class="upload-preview">
         <img v-if="panelImageUrl" :src="panelImageUrl" :alt="panelImageName || '面板预览'" />
         <p v-else>选择截图后可在此对照录入局外面板数据。</p>
@@ -1693,6 +1772,54 @@ defineExpose({ getSnapshot, loadSnapshot })
   color: #aab2bf;
 }
 
+.upload-hint {
+  margin: 0 0 0.45rem;
+  font-size: 0.74rem;
+  color: #8f96a3;
+  line-height: 1.45;
+}
+
+.recognition-status {
+  margin: 0.45rem 0 0;
+  font-size: 0.78rem;
+  color: #d8c39a;
+}
+
+.recognition-error {
+  margin: 0.45rem 0 0;
+  font-size: 0.78rem;
+  color: #ffb4b4;
+}
+
+.recognition-result {
+  margin-top: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #34302a;
+  border-radius: 8px;
+  background: #14120f;
+  font-size: 0.78rem;
+  color: #d8c39a;
+}
+
+.recognition-result-title {
+  margin: 0 0 0.35rem;
+  font-weight: 600;
+}
+
+.recognition-result ul {
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.recognition-result li {
+  margin: 0.15rem 0;
+}
+
+.recognition-warnings {
+  margin-top: 0.35rem !important;
+  color: #e8b4a0;
+}
+
 .upload-box :deep(.image-picker) {
   border-color: #2d323a;
   background: #0f1217;
@@ -1728,8 +1855,12 @@ defineExpose({ getSnapshot, loadSnapshot })
 
 .upload-preview img {
   margin-top: 0.5rem;
+  width: auto;
+  height: auto;
   max-width: 100%;
-  max-height: 240px;
+  max-height: 360px;
+  object-fit: contain;
+  object-position: left top;
   border-radius: 8px;
 }
 
