@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import AdminBuffStatFieldGrid from '@/components/admin/calculator/AdminBuffStatFieldGrid.vue'
+import AdminBuffEffectEditor from '@/components/admin/calculator/AdminBuffEffectEditor.vue'
 import AdminCalculatorAvatarField from '@/components/admin/calculator/AdminCalculatorAvatarField.vue'
 import AdminRememberedNumberField from '@/components/admin/calculator/AdminRememberedNumberField.vue'
 import AdminWengineAdvancedStatsGrid from '@/components/admin/calculator/AdminWengineAdvancedStatsGrid.vue'
@@ -9,6 +9,7 @@ import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import type { AgentMindscapeRankBuffs, WengineAdvancedStats, WengineBuffDoc } from '@/types/calculator'
 import type { WengineBuffEditSectionId } from '@/constants/wengineBuffEditNav'
+import { packFromBlocks, packFromEffects } from '@/utils/buffEffect'
 import {
   rememberWengineStatValue,
   WENGINE_BASE_ATK_FIELD_KEY,
@@ -62,10 +63,29 @@ const activeRefinementForm = computed(
 )
 
 function cloneSelfTeamBuffs(buffs: AgentMindscapeRankBuffs): AgentMindscapeRankBuffs {
-  return {
-    selfMods: { ...buffs.selfMods },
-    teamMods: { ...buffs.teamMods },
+  if (buffs.effectBlocks?.length) {
+    return packFromBlocks(
+      buffs.effectBlocks.map((block) => ({
+        ...block,
+        effects: block.effects.map((effect) => ({
+          ...effect,
+          convert: effect.convert ? { ...effect.convert } : undefined,
+          elementFilter: Array.isArray(effect.elementFilter)
+            ? [...effect.elementFilter]
+            : effect.elementFilter,
+        })),
+      })),
+    )
   }
+  return packFromEffects(
+    (buffs.effects ?? []).map((effect) => ({
+      ...effect,
+      convert: effect.convert ? { ...effect.convert } : undefined,
+      elementFilter: Array.isArray(effect.elementFilter)
+        ? [...effect.elementFilter]
+        : effect.elementFilter,
+    })),
+  )
 }
 
 function loadRefinementForm(refinementBuffs: WengineBuffDoc['refinementBuffs']) {
@@ -120,7 +140,7 @@ function createNew() {
 }
 
 function buildRefinementBuffs() {
-  return form.value.refinementForm.map((rank) => cloneSelfTeamBuffs(rank))
+  return form.value.refinementForm.map((rank) => packFromBlocks(rank.effectBlocks ?? []))
 }
 
 function rememberWenginePanelStats() {
@@ -166,7 +186,7 @@ async function saveItem() {
       avatar_image,
       baseAtk: Number(form.value.baseAtk) || 0,
       advancedStats: { ...form.value.advancedStats } as WengineAdvancedStats,
-      fixedBuffs: cloneSelfTeamBuffs(form.value.fixedBuffs),
+      fixedBuffs: packFromBlocks(form.value.fixedBuffs.effectBlocks ?? []),
       refinementBuffs: buildRefinementBuffs(),
     }
 
@@ -345,10 +365,7 @@ defineExpose({ scrollToSection, saveItem, removeItem, selectedId, saving })
           <header class="mindscape-header">
             <h3>固定增益</h3>
           </header>
-          <p class="mods-section-title">自身增益</p>
-          <AdminBuffStatFieldGrid v-model="form.fixedBuffs.selfMods" />
-          <p class="mods-section-title">队友增益</p>
-          <AdminBuffStatFieldGrid v-model="form.fixedBuffs.teamMods" />
+          <AdminBuffEffectEditor v-model="form.fixedBuffs.effectBlocks" />
         </section>
 
         <section id="admin-wengine-refinement" class="mindscape-section editor-anchor">
@@ -369,10 +386,8 @@ defineExpose({ scrollToSection, saveItem, removeItem, selectedId, saving })
             </button>
           </div>
 
-          <p class="mods-section-title">精{{ activeRefinementRank }} · 自身增益</p>
-          <AdminBuffStatFieldGrid v-model="activeRefinementForm.selfMods" />
-          <p class="mods-section-title">精{{ activeRefinementRank }} · 队友增益</p>
-          <AdminBuffStatFieldGrid v-model="activeRefinementForm.teamMods" />
+          <p class="mods-section-title">精{{ activeRefinementRank }} · 效果块</p>
+          <AdminBuffEffectEditor v-model="activeRefinementForm.effectBlocks" />
         </section>
 
         <p v-if="error" class="form-error">{{ error }}</p>

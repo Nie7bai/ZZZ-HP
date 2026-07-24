@@ -1,5 +1,6 @@
 import type { BuffStatModifiers, DriveDiscBuffDoc } from '@/types/calculator'
 import type { AffixCounts, AffixDriveDiscMainStats, PanelStats } from '@/types/calculatorPanel'
+import { createEmptyAffixCounts } from '@/types/calculatorPanel'
 import type { AgentBasePanel, WengineAdvancedStats } from '@/types/calculator'
 import {
   AFFIX_DRIVE_DISC_SLOT_1_HP,
@@ -138,6 +139,7 @@ export function computeExternalPanelFromAffixes(input: AffixPanelCalcInput): Pan
   return {
     hp: roundPanelValue(hp),
     atk: roundPanelValue(atk),
+    def: roundPanelValue(agentBase.def),
     critRate: roundPanelValue(
       agentBase.critRate +
         wengineAdvanced.critRate +
@@ -172,6 +174,10 @@ export function computeExternalPanelFromAffixes(input: AffixPanelCalcInput): Pan
     anomalyCritRate: roundPanelValue(agentBase.anomalyCritRate),
     anomalyCritDmg: roundPanelValue(agentBase.anomalyCritDmg),
     anomalyDmgBonus: roundPanelValue(agentBase.anomalyDmgBonus),
+    anomalyReleaseCritRate: 0,
+    anomalyReleaseCritDmg: 0,
+    anomalyReleaseMult: 0,
+    anomalyReleaseDmgBonus: 0,
     directDmgMult: roundPanelValue(agentBase.directDmgMult),
     anomalyMult: roundPanelValue(agentBase.anomalyMult),
     disorderBaseMult: roundPanelValue(agentBase.disorderBaseMult),
@@ -184,6 +190,134 @@ export function computeExternalPanelFromAffixes(input: AffixPanelCalcInput): Pan
   }
 }
 
+function clampCount(value: number, max = 40) {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(max, Math.max(0, Math.round(value)))
+}
+
+/**
+ * 由局外面板反推词条数（逆用 computeExternalPanelFromAffixes）。
+ * 生命/攻击存在「固定值词条 × 百分比词条」耦合，以网格搜索取误差最小的非负整数解。
+ */
+export function inferAffixCountsFromExternalPanel(input: {
+  target: Partial<PanelStats>
+  agentBase: AgentBasePanel
+  wengineBaseAtk: number
+  wengineAdvanced: WengineAdvancedStats
+  driveDiscSelection: AffixDriveDiscSelection
+  driveDiscMainStats: AffixDriveDiscMainStats
+  driveDiscs: DriveDiscBuffDoc[]
+}): { affixCounts: AffixCounts; warnings: string[] } {
+  const warnings: string[] = []
+  const agentBase = input.agentBase ?? createEmptyAgentBasePanel()
+  const wengineAdvanced = input.wengineAdvanced ?? createEmptyWengineAdvancedStats()
+  const twoPieceMods = collectAffixTwoPieceMods(input.driveDiscs, input.driveDiscSelection)
+  const mainStats = collectAffixDriveDiscMainStatContribution(input.driveDiscMainStats)
+  const counts = createEmptyAffixCounts()
+
+  const fixedHpPercent =
+    wengineAdvanced.externalHpPercent +
+    readTwoPieceExternalPercents(twoPieceMods).externalHpPercent +
+    mainStats.externalHpPercent
+  const fixedAtkPercent =
+    wengineAdvanced.externalAtkPercent +
+    readTwoPieceExternalPercents(twoPieceMods).externalAtkPercent +
+    mainStats.externalAtkPercent
+
+  const targetHp = input.target.hp
+  if (typeof targetHp === 'number' && Number.isFinite(targetHp) && targetHp > 0) {
+    let best = { pct: 0, flat: 0, err: Number.POSITIVE_INFINITY }
+    for (let pct = 0; pct <= 36; pct++) {
+      const withPct =
+        agentBase.hp * (1 + (fixedHpPercent + pct * AFFIX_VALUE_PER_COUNT.hpPercent) / 100) +
+        AFFIX_DRIVE_DISC_SLOT_1_HP
+      const flat = clampCount((targetHp - withPct) / AFFIX_VALUE_PER_COUNT.hpFlat)
+      const actual =
+        agentBase.hp * (1 + (fixedHpPercent + pct * AFFIX_VALUE_PER_COUNT.hpPercent) / 100) +
+        flat * AFFIX_VALUE_PER_COUNT.hpFlat +
+        AFFIX_DRIVE_DISC_SLOT_1_HP
+      const err = Math.abs(actual - targetHp)
+      if (err < best.err || (err === best.err && pct + flat < best.pct + best.flat)) {
+        best = { pct, flat, err }
+      }
+    }
+    counts.hpPercent = best.pct
+    counts.hpFlat = best.flat
+    if (best.err > 80) {
+      warnings.push(`生命反推残差较大（Δ${roundPanelValue(best.err)}），请核对主C基础面板与驱动盘主属性`)
+    }
+  }
+
+  const targetAtk = input.target.atk
+  if (typeof targetAtk === 'number' && Number.isFinite(targetAtk) && targetAtk > 0) {
+    const atkBase = agentBase.atk + input.wengineBaseAtk
+    let best = { pct: 0, flat: 0, err: Number.POSITIVE_INFINITY }
+    for (let pct = 0; pct <= 36; pct++) {
+      const withPct =
+        atkBase * (1 + (fixedAtkPercent + pct * AFFIX_VALUE_PER_COUNT.atkPercent) / 100) +
+        AFFIX_DRIVE_DISC_SLOT_2_ATK
+      const flat = clampCount((targetAtk - withPct) / AFFIX_VALUE_PER_COUNT.atkFlat)
+      const actual =
+        atkBase * (1 + (fixedAtkPercent + pct * AFFIX_VALUE_PER_COUNT.atkPercent) / 100) +
+        flat * AFFIX_VALUE_PER_COUNT.atkFlat +
+        AFFIX_DRIVE_DISC_SLOT_2_ATK
+      const err = Math.abs(actual - targetAtk)
+      if (err < best.err || (err === best.err && pct + flat < best.pct + best.flat)) {
+        best = { pct, flat, err }
+      }
+    }
+    counts.atkPercent = best.pct
+    counts.atkFlat = best.flat
+    if (best.err > 30) {
+      warnings.push(`攻击反推残差较大（Δ${roundPanelValue(best.err)}），请核对音擎与驱动盘主属性`)
+    }
+  }
+
+  const independent: {
+    key: keyof Pick<AffixCounts, 'pen' | 'critRate' | 'critDmg' | 'mastery'>
+    panelKey: keyof PanelStats
+    base: number
+  }[] = [
+    {
+      key: 'critRate',
+      panelKey: 'critRate',
+      base: agentBase.critRate + wengineAdvanced.critRate + twoPieceMods.critRate + mainStats.critRate,
+    },
+    {
+      key: 'critDmg',
+      panelKey: 'critDmg',
+      base: agentBase.critDmg + wengineAdvanced.critDmg + twoPieceMods.critDmg + mainStats.critDmg,
+    },
+    {
+      key: 'pen',
+      panelKey: 'pen',
+      base: agentBase.pen,
+    },
+    {
+      key: 'mastery',
+      panelKey: 'mastery',
+      base: agentBase.mastery + wengineAdvanced.mastery + twoPieceMods.mastery + mainStats.mastery,
+    },
+  ]
+
+  for (const item of independent) {
+    const observed = input.target[item.panelKey]
+    if (typeof observed !== 'number' || !Number.isFinite(observed)) continue
+    const rem = observed - item.base
+    counts[item.key] = clampCount(rem / AFFIX_VALUE_PER_COUNT[item.key])
+  }
+
+  const hasAnyTarget =
+    (typeof targetHp === 'number' && targetHp > 0) ||
+    (typeof targetAtk === 'number' && targetAtk > 0) ||
+    independent.some((item) => typeof input.target[item.panelKey] === 'number')
+  if (!hasAnyTarget) {
+    warnings.push('识别局外面板缺少可用数值，未能反推词条数')
+  }
+
+  return { affixCounts: counts, warnings }
+}
+
 export const AFFIX_COUNT_FIELDS: {
   key: keyof AffixCounts
   label: string
@@ -193,14 +327,14 @@ export const AFFIX_COUNT_FIELDS: {
   { key: 'hpFlat', label: '生命值', unitLabel: '条', perCount: AFFIX_VALUE_PER_COUNT.hpFlat },
   {
     key: 'hpPercent',
-    label: '局外生命值%',
+    label: '局外大生命',
     unitLabel: '条',
     perCount: AFFIX_VALUE_PER_COUNT.hpPercent,
   },
   { key: 'atkFlat', label: '攻击力', unitLabel: '条', perCount: AFFIX_VALUE_PER_COUNT.atkFlat },
   {
     key: 'atkPercent',
-    label: '局内攻击力%',
+    label: '局外大攻击',
     unitLabel: '条',
     perCount: AFFIX_VALUE_PER_COUNT.atkPercent,
   },

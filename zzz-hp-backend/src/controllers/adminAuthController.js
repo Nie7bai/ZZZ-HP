@@ -1,4 +1,5 @@
 import { verifyAdminPassword } from '../services/adminAuthService.js'
+import { createAdminSession } from '../services/adminSessionService.js'
 import { success, fail } from '../utils/response.js'
 
 export async function loginAdmin(req, res) {
@@ -13,7 +14,8 @@ export async function loginAdmin(req, res) {
     if (!ok) {
       return fail(res, '密码错误', 401)
     }
-    return success(res, { authenticated: true }, '登录成功')
+    const session = createAdminSession()
+    return success(res, { authenticated: true, token: session.token }, '登录成功')
   } catch (err) {
     return fail(res, '登录失败', 500, { error: err.message })
   }

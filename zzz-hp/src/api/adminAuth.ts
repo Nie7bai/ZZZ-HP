@@ -20,5 +20,5 @@ export async function loginAdmin(password: string) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ password }),
   })
-  return parseResponse<{ authenticated: boolean }>(response)
+  return parseResponse<{ authenticated: boolean; token?: string }>(response)
 }

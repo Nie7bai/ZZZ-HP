@@ -1,4 +1,5 @@
 import pool from '../config/db.js'
+import { listSkillSubcategories } from './skillSubcategoryService.js'
 
 const WENGINE_TABLE = '`W-Engine`'
 
@@ -37,6 +38,7 @@ const EMPTY_WENGINE_ADVANCED_STATS = {
 }
 
 const BUFF_STAT_KEYS = [
+  'hp',
   'inCombatHpPercent',
   'inCombatAtkPercent',
   'externalHpPercent',
@@ -50,12 +52,19 @@ const BUFF_STAT_KEYS = [
   'resPen',
   'mastery',
   'pierce',
+  'pierceDmgBonus',
   'vulnerable',
+  'globalStaggerVulnerable',
   'staggerVulnerable',
+  'staggerVulnerableOnly',
   'special',
   'anomalyCritRate',
   'anomalyCritDmg',
   'anomalyDmgBonus',
+  'anomalyReleaseDmgBonus',
+  'anomalyReleaseCritRate',
+  'anomalyReleaseCritDmg',
+  'anomalyReleaseMult',
   'directDmgMult',
   'anomalyMult',
   'disorderBaseMult',
@@ -65,6 +74,8 @@ const BUFF_STAT_KEYS = [
   'turbulenceCompMult',
   'disorderDmgBonus',
   'turbulenceDmgBonus',
+  'skillDmgBonus',
+  'skillMultiplierBonus',
 ]
 
 function readNumber(value) {
@@ -116,6 +127,138 @@ function normalizeWengineAdvancedStats(value) {
 
 function createEmptyBuffStatModifiers() {
   return Object.fromEntries(BUFF_STAT_KEYS.map((key) => [key, 0]))
+}
+
+function flatModsToEffects(mods, applyTarget) {
+  const effects = []
+  for (const key of BUFF_STAT_KEYS) {
+    const value = readNumber(mods?.[key])
+    if (!value) continue
+    effects.push({
+      id: `legacy-${applyTarget}-${key}`,
+      scope: 'general',
+      applyTarget,
+      kind: 'fixed',
+      stat: key,
+      value,
+      enabledDefault: true,
+    })
+  }
+  return effects
+}
+
+function effectsToFlatMods(effects, applyTarget) {
+  const result = createEmptyBuffStatModifiers()
+  for (const effect of effects || []) {
+    if (applyTarget && effect.applyTarget !== applyTarget) continue
+    if (effect.scope && effect.scope !== 'general') continue
+    const amount = readNumber(effect.value ?? effect.valuePerStack)
+    if (!amount || !BUFF_STAT_KEYS.includes(effect.stat)) continue
+    result[effect.stat] += amount
+  }
+  return result
+}
+
+function normalizeEffectList(value) {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((item) => item && typeof item === 'object')
+    .map((item, index) => ({
+      id: typeof item.id === 'string' && item.id ? item.id : `eff-${index}`,
+      origin: typeof item.origin === 'string' ? item.origin : '',
+      scope: item.scope === 'skill' ? 'skill' : 'general',
+      applyTarget: item.applyTarget === 'team' ? 'team' : 'self',
+      applySituation:
+        item.applySituation === 'stagger' || item.applySituation === 'non_stagger'
+          ? item.applySituation
+          : 'global',
+      skillCategory: item.skillCategory || undefined,
+      skillSubcategoryId: item.skillSubcategoryId ?? null,
+      elementFilter: item.elementFilter ?? 'all',
+      kind:
+        item.kind === 'stacked' || item.kind === 'convert' ? item.kind : 'fixed',
+      stat: BUFF_STAT_KEYS.includes(item.stat) ? item.stat : 'dmgBonus',
+      value: readNumber(item.value),
+      stackable: Boolean(item.stackable),
+      maxStacks: Math.max(1, readNumber(item.maxStacks) || 1),
+      valuePerStack: readNumber(item.valuePerStack),
+      defaultStacks: Math.max(0, readNumber(item.defaultStacks) || 1),
+      convert: item.convert ?? undefined,
+      appliesToAnomaly:
+        item.appliesToAnomaly == null ? undefined : Boolean(item.appliesToAnomaly),
+      enabledDefault: item.enabledDefault === false ? false : true,
+      note: typeof item.note === 'string' ? item.note : '',
+    }))
+}
+
+function normalizeSelfTeamBuffs(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    if (Array.isArray(value.effectBlocks)) {
+      const effectBlocks = value.effectBlocks
+        .filter((item) => item && typeof item === 'object')
+        .map((item, index) => ({
+          id: typeof item.id === 'string' && item.id ? item.id : `blk-${index}`,
+          name: typeof item.name === 'string' && item.name ? item.name : `效果块 ${index + 1}`,
+          note: typeof item.note === 'string' ? item.note : '',
+          effects: normalizeEffectList(item.effects),
+          enabledDefault: item.enabledDefault === false ? false : true,
+        }))
+      const effects = effectBlocks.flatMap((block) => block.effects)
+      return {
+        effectBlocks,
+        effects,
+        selfMods: effectsToFlatMods(effects, 'self'),
+        teamMods: effectsToFlatMods(effects, 'team'),
+      }
+    }
+    if (Array.isArray(value.effects)) {
+      const effects = normalizeEffectList(value.effects)
+      return {
+        effectBlocks: effects.length
+          ? [
+              {
+                id: 'blk-legacy',
+                name: '效果块 1',
+                note: '',
+                effects,
+                enabledDefault: true,
+              },
+            ]
+          : [],
+        effects,
+        selfMods: effectsToFlatMods(effects, 'self'),
+        teamMods: effectsToFlatMods(effects, 'team'),
+      }
+    }
+    const selfMods = normalizeBuffStatModifiers(value.selfMods)
+    const teamMods = normalizeBuffStatModifiers(value.teamMods)
+    const effects = [
+      ...flatModsToEffects(selfMods, 'self'),
+      ...flatModsToEffects(teamMods, 'team'),
+    ]
+    return {
+      effectBlocks: effects.length
+        ? [
+            {
+              id: 'blk-legacy',
+              name: '效果块 1',
+              note: '',
+              effects,
+              enabledDefault: true,
+            },
+          ]
+        : [],
+      effects,
+      selfMods,
+      teamMods,
+    }
+  }
+  return {
+    effectBlocks: [],
+    effects: [],
+    selfMods: createEmptyBuffStatModifiers(),
+    teamMods: createEmptyBuffStatModifiers(),
+  }
 }
 
 function normalizeBuffStatModifiers(value) {
@@ -172,7 +315,11 @@ function rowToAgent(row) {
       row.mindscape_notes,
       normalizeMindscapeNotesArray(raw.mindscapeNotes),
     ),
-    mindscapeBuffs: parseJson(row.mindscape_buffs, raw.mindscapeBuffs ?? []),
+    mindscapeBuffs: Array.isArray(parseJson(row.mindscape_buffs, raw.mindscapeBuffs))
+      ? parseJson(row.mindscape_buffs, raw.mindscapeBuffs).map((item) =>
+          normalizeSelfTeamBuffs(item),
+        )
+      : [],
   }
 }
 
@@ -185,27 +332,85 @@ function normalizeMindscapeNotesArray(value) {
 
 function rowToBangboo(row) {
   const raw = parseJson(row.raw_json, {})
+  let effects = normalizeEffectList(
+    raw.effects ?? raw.fixedEffects ?? null,
+  )
+  const refinementEffects = Array.isArray(raw.refinementEffects)
+    ? raw.refinementEffects.map((list) => normalizeEffectList(list))
+    : null
+
+  let fixedMods = normalizeBuffStatModifiers(
+    parseJson(row.fixed_mods, raw.fixedMods ?? {}),
+  )
+  let refinementMods = Array.isArray(parseJson(row.refinement_mods, raw.refinementMods))
+    ? parseJson(row.refinement_mods, raw.refinementMods).map((item) =>
+        normalizeBuffStatModifiers(item),
+      )
+    : []
+
+  if (effects.length) {
+    fixedMods = effectsToFlatMods(effects, 'team')
+    const selfFlat = effectsToFlatMods(effects, 'self')
+    for (const key of BUFF_STAT_KEYS) {
+      fixedMods[key] += selfFlat[key]
+    }
+  } else if (Object.values(fixedMods).some((v) => v)) {
+    effects.push(...flatModsToEffects(fixedMods, 'team'))
+  }
+
+  if (refinementEffects) {
+    refinementMods = refinementEffects.map((list) => {
+      const team = effectsToFlatMods(list, 'team')
+      const self = effectsToFlatMods(list, 'self')
+      const merged = createEmptyBuffStatModifiers()
+      for (const key of BUFF_STAT_KEYS) merged[key] = team[key] + self[key]
+      return merged
+    })
+  }
+
   return {
     id: row.id,
     name: row.name,
     avatar_image: row.avatar_image ?? null,
-    fixedMods: parseJson(row.fixed_mods, raw.fixedMods ?? {}),
-    refinementMods: parseJson(row.refinement_mods, raw.refinementMods ?? []),
+    effects,
+    refinementEffects:
+      refinementEffects ??
+      refinementMods.map((mods) => flatModsToEffects(mods, 'team')),
+    fixedMods,
+    refinementMods,
   }
 }
 
 function rowToDriveDisc(row) {
   const raw = parseJson(row.raw_json, {})
+  const fourPieceBuffs = normalizeSelfTeamBuffs(
+    parseJson(row.four_piece_buffs, raw.fourPieceBuffs ?? {}),
+  )
+  let twoPieceEffects = normalizeEffectList(raw.twoPieceEffects)
+  let twoPieceMods = normalizeTwoPieceMods(
+    parseJson(row.two_piece_mods, raw.twoPieceMods ?? {}),
+  )
+  if (twoPieceEffects.length) {
+    const team = effectsToFlatMods(twoPieceEffects, 'team')
+    const self = effectsToFlatMods(twoPieceEffects, 'self')
+    twoPieceMods = normalizeTwoPieceMods(
+      Object.fromEntries(
+        BUFF_STAT_KEYS.map((key) => [key, team[key] + self[key]]),
+      ),
+    )
+  } else if (Object.values(twoPieceMods).some((v) => v)) {
+    twoPieceEffects = flatModsToEffects(twoPieceMods, 'self')
+  }
+
   return {
     id: row.id,
     name: row.name,
     avatar_image: row.avatar_image ?? null,
     twoPieceNote: row.two_piece_note ?? raw.twoPieceNote ?? '',
     fourPieceNote: row.four_piece_note ?? raw.fourPieceNote ?? '',
-    twoPieceMods: normalizeTwoPieceMods(
-      parseJson(row.two_piece_mods, raw.twoPieceMods ?? {}),
-    ),
-    fourPieceBuffs: parseJson(row.four_piece_buffs, raw.fourPieceBuffs ?? {}),
+    twoPieceEffects,
+    twoPieceMods,
+    fourPieceBuffs,
   }
 }
 
@@ -222,8 +427,12 @@ function rowToWengine(row) {
     advancedStats: normalizeWengineAdvancedStats(
       parseJson(row.advanced_stats, raw.advancedStats),
     ),
-    fixedBuffs: parseJson(row.fixed_buffs, raw.fixedBuffs ?? {}),
-    refinementBuffs: parseJson(row.refinement_buffs, raw.refinementBuffs ?? []),
+    fixedBuffs: normalizeSelfTeamBuffs(parseJson(row.fixed_buffs, raw.fixedBuffs ?? {})),
+    refinementBuffs: Array.isArray(parseJson(row.refinement_buffs, raw.refinementBuffs))
+      ? parseJson(row.refinement_buffs, raw.refinementBuffs).map((item) =>
+          normalizeSelfTeamBuffs(item),
+        )
+      : [],
   }
 }
 
@@ -242,12 +451,14 @@ export async function listCalculatorBuffs() {
   const [wengines] = await pool.query(
     `SELECT * FROM ${WENGINE_TABLE} ORDER BY name ASC, id ASC`,
   )
+  const skillSubcategories = await listSkillSubcategories()
 
   return {
     agents: agents.map(rowToAgent),
     bangboos: bangboos.map(rowToBangboo),
     driveDiscs: driveDiscs.map(rowToDriveDisc),
     wengines: wengines.map(rowToWengine),
+    skillSubcategories,
   }
 }
 
@@ -268,7 +479,9 @@ export async function upsertAgent(doc) {
     note: typeof doc.note === 'string' ? doc.note : '',
     basePanel: normalizeAgentBasePanel(doc.basePanel),
     mindscapeNotes: normalizeMindscapeNotesArray(doc.mindscapeNotes),
-    mindscapeBuffs: Array.isArray(doc.mindscapeBuffs) ? doc.mindscapeBuffs : [],
+    mindscapeBuffs: Array.isArray(doc.mindscapeBuffs)
+      ? doc.mindscapeBuffs.map((item) => normalizeSelfTeamBuffs(item))
+      : [],
   }
 
   await pool.execute(
@@ -324,8 +537,29 @@ export async function upsertBangboo(doc) {
     id,
     name,
     avatar_image: doc.avatar_image ?? null,
-    fixedMods: doc.fixedMods ?? {},
+    effects: normalizeEffectList(doc.effects),
+    refinementEffects: Array.isArray(doc.refinementEffects)
+      ? doc.refinementEffects.map((list) => normalizeEffectList(list))
+      : [],
+    fixedMods: normalizeBuffStatModifiers(doc.fixedMods ?? {}),
     refinementMods: Array.isArray(doc.refinementMods) ? doc.refinementMods : [],
+  }
+  if (payload.effects.length) {
+    const team = effectsToFlatMods(payload.effects, 'team')
+    const self = effectsToFlatMods(payload.effects, 'self')
+    payload.fixedMods = createEmptyBuffStatModifiers()
+    for (const key of BUFF_STAT_KEYS) {
+      payload.fixedMods[key] = team[key] + self[key]
+    }
+  }
+  if (payload.refinementEffects.length) {
+    payload.refinementMods = payload.refinementEffects.map((list) => {
+      const team = effectsToFlatMods(list, 'team')
+      const self = effectsToFlatMods(list, 'self')
+      const merged = createEmptyBuffStatModifiers()
+      for (const key of BUFF_STAT_KEYS) merged[key] = team[key] + self[key]
+      return merged
+    })
   }
 
   await pool.execute(
@@ -367,14 +601,26 @@ export async function upsertDriveDisc(doc) {
     throw new Error('驱动盘 ID 与名称为必填项')
   }
 
+  const fourPieceBuffs = normalizeSelfTeamBuffs(doc.fourPieceBuffs ?? {})
+  const twoPieceEffects = normalizeEffectList(doc.twoPieceEffects)
+  let twoPieceMods = normalizeTwoPieceMods(doc.twoPieceMods ?? {})
+  if (twoPieceEffects.length) {
+    const team = effectsToFlatMods(twoPieceEffects, 'team')
+    const self = effectsToFlatMods(twoPieceEffects, 'self')
+    twoPieceMods = normalizeTwoPieceMods(
+      Object.fromEntries(BUFF_STAT_KEYS.map((key) => [key, team[key] + self[key]])),
+    )
+  }
+
   const payload = {
     id,
     name,
     avatar_image: doc.avatar_image ?? null,
     twoPieceNote: typeof doc.twoPieceNote === 'string' ? doc.twoPieceNote : '',
     fourPieceNote: typeof doc.fourPieceNote === 'string' ? doc.fourPieceNote : '',
-    twoPieceMods: normalizeTwoPieceMods(doc.twoPieceMods ?? {}),
-    fourPieceBuffs: doc.fourPieceBuffs ?? {},
+    twoPieceEffects,
+    twoPieceMods,
+    fourPieceBuffs,
   }
 
   await pool.execute(
@@ -429,8 +675,10 @@ export async function upsertWengine(doc) {
     note: typeof doc.note === 'string' ? doc.note : '',
     baseAtk: readNumber(doc.baseAtk),
     advancedStats: normalizeWengineAdvancedStats(doc.advancedStats),
-    fixedBuffs: doc.fixedBuffs ?? {},
-    refinementBuffs: Array.isArray(doc.refinementBuffs) ? doc.refinementBuffs : [],
+    fixedBuffs: normalizeSelfTeamBuffs(doc.fixedBuffs ?? {}),
+    refinementBuffs: Array.isArray(doc.refinementBuffs)
+      ? doc.refinementBuffs.map((item) => normalizeSelfTeamBuffs(item))
+      : [],
   }
 
   await pool.execute(

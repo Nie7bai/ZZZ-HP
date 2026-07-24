@@ -14,6 +14,7 @@ const panels: { id: AdminPanel; label: string }[] = [
   { id: 'delete-monster', label: '删除怪物' },
   { id: 'buff', label: '添加 Buff' },
   { id: 'delete-buff', label: '删除 Buff' },
+  { id: 'season-date', label: '版本日期管理' },
 ]
 </script>
 

@@ -1,13 +1,21 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import AdminBuffStatFieldGrid from '@/components/admin/calculator/AdminBuffStatFieldGrid.vue'
+import AdminBuffEffectEditor from '@/components/admin/calculator/AdminBuffEffectEditor.vue'
 import AdminCalculatorAvatarField from '@/components/admin/calculator/AdminCalculatorAvatarField.vue'
 import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import type { DriveDiscBuffEditSectionId } from '@/constants/driveDiscBuffEditNav'
-import type { AgentMindscapeRankBuffs, BuffStatModifiers, DriveDiscBuffDoc } from '@/types/calculator'
-import { createEmptyBuffStatModifiers, createEmptySelfTeamBuffs, TWO_PIECE_BUFF_STAT_FIELDS } from '@/utils/calculatorUi'
+import type { AgentMindscapeRankBuffs, BuffEffectBlock, DriveDiscBuffDoc } from '@/types/calculator'
+import {
+  flatModsToEffects,
+  flattenEffectBlocks,
+  normalizeBuffEffectBlocks,
+  packFromBlocks,
+  packFromEffects,
+  wrapEffectsAsBlocks,
+} from '@/utils/buffEffect'
+import { createEmptyBuffStatModifiers, createEmptySelfTeamBuffs } from '@/utils/calculatorUi'
 
 const store = useCalculatorBuffStore()
 const { driveDiscs } = storeToRefs(store)
@@ -24,7 +32,7 @@ const form = ref({
   name: '',
   twoPieceNote: '',
   fourPieceNote: '',
-  twoPieceMods: createEmptyBuffStatModifiers(),
+  twoPieceBlocks: [] as BuffEffectBlock[],
   fourPieceBuffs: createEmptySelfTeamBuffs(),
 })
 
@@ -34,24 +42,42 @@ const filteredDriveDiscs = computed(() => {
   return driveDiscs.value.filter((item) => `${item.name}${item.id}`.includes(keyword))
 })
 
-function cloneMods(mods: BuffStatModifiers): BuffStatModifiers {
-  return { ...mods }
-}
-
 function cloneSelfTeamBuffs(buffs: AgentMindscapeRankBuffs): AgentMindscapeRankBuffs {
-  return {
-    selfMods: cloneMods(buffs.selfMods),
-    teamMods: cloneMods(buffs.teamMods),
+  if (buffs.effectBlocks?.length) {
+    return packFromBlocks(
+      buffs.effectBlocks.map((block) => ({
+        ...block,
+        effects: block.effects.map((effect) => ({
+          ...effect,
+          convert: effect.convert ? { ...effect.convert } : undefined,
+          elementFilter: Array.isArray(effect.elementFilter)
+            ? [...effect.elementFilter]
+            : effect.elementFilter,
+        })),
+      })),
+    )
   }
+  return packFromEffects(
+    (buffs.effects ?? []).map((effect) => ({
+      ...effect,
+      convert: effect.convert ? { ...effect.convert } : undefined,
+      elementFilter: Array.isArray(effect.elementFilter)
+        ? [...effect.elementFilter]
+        : effect.elementFilter,
+    })),
+  )
 }
 
 function loadForm(doc: DriveDiscBuffDoc) {
+  const twoPieceEffects = doc.twoPieceEffects?.length
+    ? doc.twoPieceEffects
+    : flatModsToEffects(doc.twoPieceMods, 'self')
   form.value = {
     id: doc.id,
     name: doc.name,
     twoPieceNote: doc.twoPieceNote,
     fourPieceNote: doc.fourPieceNote,
-    twoPieceMods: cloneMods(doc.twoPieceMods),
+    twoPieceBlocks: wrapEffectsAsBlocks(twoPieceEffects),
     fourPieceBuffs: cloneSelfTeamBuffs(doc.fourPieceBuffs),
   }
   void nextTick(() => {
@@ -65,7 +91,7 @@ function resetForm() {
     name: '',
     twoPieceNote: '',
     fourPieceNote: '',
-    twoPieceMods: createEmptyBuffStatModifiers(),
+    twoPieceBlocks: [],
     fourPieceBuffs: createEmptySelfTeamBuffs(),
   }
   selectedId.value = ''
@@ -106,14 +132,22 @@ async function saveItem() {
   saving.value = true
   try {
     const avatar_image = (await avatarFieldRef.value?.resolveAvatarImageOnSave()) ?? null
+    const twoPieceBlocks = normalizeBuffEffectBlocks(form.value.twoPieceBlocks)
+    const twoPieceEffects = flattenEffectBlocks(twoPieceBlocks)
+    const twoPieceMods = createEmptyBuffStatModifiers()
+    for (const effect of twoPieceEffects) {
+      const amount = Number(effect.value ?? effect.valuePerStack) || 0
+      if (amount) twoPieceMods[effect.stat] += amount
+    }
     const doc: DriveDiscBuffDoc = {
       id,
       name,
       avatar_image,
       twoPieceNote: form.value.twoPieceNote.trim(),
       fourPieceNote: form.value.fourPieceNote.trim(),
-      twoPieceMods: cloneMods(form.value.twoPieceMods),
-      fourPieceBuffs: cloneSelfTeamBuffs(form.value.fourPieceBuffs),
+      twoPieceEffects,
+      twoPieceMods,
+      fourPieceBuffs: packFromBlocks(form.value.fourPieceBuffs.effectBlocks ?? []),
     }
 
     if (isEditing && selectedId.value !== id) {
@@ -238,10 +272,10 @@ defineExpose({ scrollToSection, saveItem, removeItem, selectedId, saving })
               placeholder="佩戴该套装 2 件套时显示"
             />
           </label>
-          <AdminBuffStatFieldGrid
-            v-model="form.twoPieceMods"
-            :fields="TWO_PIECE_BUFF_STAT_FIELDS"
-            hint="2 件套使用局外生命%/局外攻击%，不参与面板计算的局内乘算。"
+          <AdminBuffEffectEditor
+            v-model="form.twoPieceBlocks"
+            lock-apply-target="self"
+            hint="2 件套效果；局外生命%/局外攻击% 主要用于词条计算。"
           />
         </section>
 
@@ -259,10 +293,7 @@ defineExpose({ scrollToSection, saveItem, removeItem, selectedId, saving })
               placeholder="佩戴该套装 4 件套时显示"
             />
           </label>
-          <p class="mods-section-title">自身增益</p>
-          <AdminBuffStatFieldGrid v-model="form.fourPieceBuffs.selfMods" />
-          <p class="mods-section-title">队友增益</p>
-          <AdminBuffStatFieldGrid v-model="form.fourPieceBuffs.teamMods" />
+          <AdminBuffEffectEditor v-model="form.fourPieceBuffs.effectBlocks" />
         </section>
 
         <p v-if="error" class="form-error">{{ error }}</p>

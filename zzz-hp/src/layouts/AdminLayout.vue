@@ -5,6 +5,7 @@ import AdminMonsterPanel from '@/components/admin/AdminMonsterPanel.vue'
 import AdminDeleteMonsterPanel from '@/components/admin/AdminDeleteMonsterPanel.vue'
 import AdminBuffPanel from '@/components/admin/AdminBuffPanel.vue'
 import AdminDeleteBuffPanel from '@/components/admin/AdminDeleteBuffPanel.vue'
+import AdminSeasonDatePanel from '@/components/admin/AdminSeasonDatePanel.vue'
 import type { AdminPanel, AdminScope } from '@/types/admin'
 
 defineProps<{
@@ -25,11 +26,15 @@ const activePanel = ref<AdminPanel>('monster')
       :back-to="backTo"
       :back-label="backLabel"
     />
-    <main class="admin-content">
+    <main
+      class="admin-content"
+      :class="{ 'admin-content--fill': activePanel === 'season-date' }"
+    >
       <AdminMonsterPanel v-if="activePanel === 'monster'" :scope="scope" />
       <AdminDeleteMonsterPanel v-else-if="activePanel === 'delete-monster'" :scope="scope" />
       <AdminBuffPanel v-else-if="activePanel === 'buff'" :scope="scope" />
-      <AdminDeleteBuffPanel v-else :scope="scope" />
+      <AdminDeleteBuffPanel v-else-if="activePanel === 'delete-buff'" :scope="scope" />
+      <AdminSeasonDatePanel v-else :scope="scope" />
     </main>
   </div>
 </template>
@@ -47,5 +52,16 @@ const activePanel = ref<AdminPanel>('monster')
   min-height: 0;
   padding: 1.5rem 1rem;
   overflow-y: auto;
+}
+
+.admin-content--fill {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-content--fill > * {
+  flex: 1;
+  min-height: 0;
 }
 </style>

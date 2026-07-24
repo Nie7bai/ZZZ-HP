@@ -3,6 +3,7 @@ import type {
   BangbooBuffDoc,
   CalculatorBuffData,
   DriveDiscBuffDoc,
+  SkillSubcategory,
   WengineBuffDoc,
 } from '@/types/calculator'
 
@@ -31,6 +32,27 @@ export async function saveAgentBuff(doc: AgentBuffDoc): Promise<AgentBuffDoc> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(doc),
   })
+}
+
+export async function fetchSkillSubcategories(): Promise<SkillSubcategory[]> {
+  return requestJson<SkillSubcategory[]>('/api/calculator-buffs/skill-subcategories')
+}
+
+export async function saveSkillSubcategory(
+  doc: SkillSubcategory,
+): Promise<SkillSubcategory> {
+  return requestJson<SkillSubcategory>('/api/calculator-buffs/skill-subcategories', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(doc),
+  })
+}
+
+export async function deleteSkillSubcategory(id: string): Promise<void> {
+  await requestJson<{ id: string }>(
+    `/api/calculator-buffs/skill-subcategories/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
+  )
 }
 
 export async function deleteAgentBuff(id: string): Promise<void> {

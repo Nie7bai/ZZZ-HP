@@ -395,13 +395,13 @@ watch(
 <style scoped>
 .buff-compare-panel {
   width: 100%;
-  height: 100%;
-  min-height: 0;
+  height: auto;
+  min-height: 100%;
   margin: 0;
   padding: 0.5rem 0.25rem 0.75rem;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
   box-sizing: border-box;
 }
 
@@ -583,8 +583,8 @@ watch(
 
 .status-text,
 .compare-empty {
-  flex: 1;
-  min-height: 0;
+  flex: none;
+  min-height: 30vh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -603,10 +603,9 @@ watch(
 }
 
 .phase-list {
-  flex: 1;
+  flex: none;
   min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: visible;
   padding: 0.15rem 0.25rem 0.75rem;
 }
 
@@ -802,6 +801,124 @@ watch(
 @media (max-width: 900px) {
   .buff-row {
     flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 768px) {
+  .buff-compare-panel {
+    min-height: auto;
+    padding: 0.35rem 0.15rem 0.55rem;
+  }
+
+  .panel-header {
+    gap: 0.2rem;
+    margin-bottom: 0.45rem;
+  }
+
+  .page-title {
+    font-size: 1.05rem;
+  }
+
+  .panel-desc {
+    font-size: 0.72rem;
+  }
+
+  .buff-selector {
+    align-items: stretch;
+    gap: 0.5rem;
+    margin-bottom: 0.55rem;
+  }
+
+  .buff-search-form {
+    align-items: stretch;
+  }
+
+  .selector-actions {
+    width: 100%;
+  }
+
+  .buff-search-input {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+  }
+
+  .quick-add {
+    align-items: stretch;
+  }
+
+  .quick-add-row {
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-width: 100%;
+    padding-bottom: 0.15rem;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .quick-add-select {
+    min-width: 7.5rem;
+    max-width: 11rem;
+  }
+
+  .phase-list {
+    padding: 0.1rem 0 0.5rem;
+  }
+
+  .phase-list--compare {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+  }
+
+  .phase-card--compare {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .phase-card-header {
+    padding: 0.6rem 0.65rem 0.35rem;
+  }
+
+  .phase-card-title-row {
+    flex-wrap: wrap;
+    gap: 0.25rem 0.55rem;
+  }
+
+  .buff-row {
+    --buff-slot-width: 100%;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    width: 100%;
+    max-width: 100%;
+    gap: 0.5rem;
+    padding: 0 0.55rem 0.65rem;
+  }
+
+  .buff-item--card {
+    flex: none;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .buff-item--card .buff-name {
+    font-size: 0.85rem;
+  }
+
+  .buff-lines {
+    font-size: 0.72rem;
+    line-height: 1.5;
+  }
+
+  /* 触屏无 hover：移除按钮常显 */
+  .buff-remove-btn {
+    opacity: 0.55;
+    visibility: visible;
+    font-size: 1rem;
+    font-weight: 500;
+    padding: 0.2rem 0.35rem;
   }
 }
 </style>

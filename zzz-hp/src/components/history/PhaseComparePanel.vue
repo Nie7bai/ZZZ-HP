@@ -8,6 +8,7 @@ import {
   filterChartPointsByLabels,
   formatPhaseCompactCode,
   resolvePhaseFromInput,
+  type CrisisHpChartMode,
   type HpChartPoint,
 } from '@/api/crisisAssault'
 import { fetchDefensePhaseCompareChart } from '@/api/defense'
@@ -43,6 +44,7 @@ const loadError = ref('')
 const defenseRemoveMode = ref<DefenseRemoveMode>('menu')
 const removeMenuPoint = ref<HpChartPoint | null>(null)
 const removeMenuAnchor = ref<RemoveMenuAnchor | null>(null)
+const crisisHpMode = ref<CrisisHpChartMode>('normal')
 const { visible: detailVisible, point: detailPoint, open: openPhaseDetail, close: closePhaseDetail } =
   usePhaseDetailModal()
 
@@ -52,27 +54,44 @@ const defenseVariant = computed<DefenseVariant>(() =>
 
 const selectedLabels = computed({
   get() {
-    return props.mode === 'defense'
-      ? defenseCompareStore.selectedPhaseLabels
+    if (props.mode === 'defense') return defenseCompareStore.selectedPhaseLabels
+    return crisisHpMode.value === 'hard'
+      ? crisisCompareStore.selectedHardPhaseLabels
       : crisisCompareStore.selectedPhaseLabels
   },
   set(value: string[]) {
     if (props.mode === 'defense') {
       defenseCompareStore.selectedPhaseLabels = value
-    } else {
-      crisisCompareStore.selectedPhaseLabels = value
+      return
     }
+    if (crisisHpMode.value === 'hard') {
+      crisisCompareStore.selectedHardPhaseLabels = value
+      return
+    }
+    crisisCompareStore.selectedPhaseLabels = value
   },
 })
 
 const pageTitle = computed(() => modeTitles[props.mode])
 
 const isDefenseMode = computed(() => props.mode === 'defense')
+const isHardMode = computed(() => !isDefenseMode.value && crisisHpMode.value === 'hard')
 
-const panelDesc = computed(() =>
-  isDefenseMode.value
-    ? '添加任意期数，对比最后一防线总血量与相对膨胀变化；点击图表数据点可移除期数'
-    : '添加任意期数，对比总血量与相对膨胀变化',
+const chartPoints = computed(() =>
+  filterChartPointsByLabels(allPoints.value, selectedLabels.value),
+)
+
+const panelDesc = computed(() => {
+  if (isDefenseMode.value) {
+    return '添加任意期数，对比最后一防线总血量与相对膨胀变化；点击图表数据点可移除期数'
+  }
+  return isHardMode.value
+    ? '添加任意期数，对比困难模式总血量与相对膨胀变化；可勾选 953 防御换算（T）'
+    : '添加任意期数，对比总血量与相对膨胀变化；可勾选 953 防御换算（T）'
+})
+
+const panelHeading = computed(() =>
+  isHardMode.value ? `${pageTitle.value} · 困难期数对比折线图` : `${pageTitle.value} · 期数对比折线图`,
 )
 
 const defensePointClickHint = computed(() =>
@@ -80,10 +99,6 @@ const defensePointClickHint = computed(() =>
 )
 
 const isRemoveMenuOpen = computed(() => removeMenuPoint.value !== null && removeMenuAnchor.value !== null)
-
-const chartPoints = computed(() =>
-  filterChartPointsByLabels(allPoints.value, selectedLabels.value),
-)
 
 const selectedPoints = computed(() => chartPoints.value)
 
@@ -109,7 +124,7 @@ async function loadChartData() {
     if (props.mode === 'defense') {
       allPoints.value = await fetchDefensePhaseCompareChart(defenseVariant.value)
     } else if (props.mode === 'crisis-assault') {
-      allPoints.value = await fetchCrisisAssaultHpChart()
+      allPoints.value = await fetchCrisisAssaultHpChart(crisisHpMode.value)
     } else {
       allPoints.value = []
     }
@@ -245,6 +260,10 @@ watch(defenseVariant, () => {
   if (props.mode === 'defense') loadChartData()
 })
 
+watch(crisisHpMode, () => {
+  if (props.mode === 'crisis-assault') loadChartData()
+})
+
 watch(phaseSearchInput, () => {
   if (inputError.value) inputError.value = ''
 })
@@ -253,7 +272,7 @@ watch(phaseSearchInput, () => {
 <template>
   <div class="phase-compare-panel">
     <header class="panel-header">
-      <h1 class="page-title">{{ pageTitle }} · 期数对比折线图</h1>
+      <h1 class="page-title">{{ panelHeading }}</h1>
       <p class="panel-desc">{{ panelDesc }}</p>
     </header>
 
@@ -333,17 +352,23 @@ watch(phaseSearchInput, () => {
 
       <DualLineChartView
         v-model:remove-mode="defenseRemoveMode"
+        v-model:hp-mode="crisisHpMode"
         class="chart-view"
         :points="chartPoints"
         show-when-empty
-        hp-chart-title="期数对比 · 总血量折线图"
-        expansion-chart-title="期数对比 · 血量相对膨胀折线图"
-        :hp-aria-label="isDefenseMode ? '式舆防卫战期数对比总血量折线图' : '危局强袭战期数对比总血量折线图'"
-        :expansion-aria-label="isDefenseMode ? '式舆防卫战期数对比血量相对膨胀折线图' : '危局强袭战期数对比血量相对膨胀折线图'"
+        borderless
+        :show-hp-mode-toggle="!isDefenseMode"
+        :enable-score-hp-overlays="!isDefenseMode"
+        :hp-chart-title="isHardMode ? '困难期数对比 · 血量折线图' : '期数对比 · 血量折线图'"
+        :expansion-chart-title="isHardMode ? '困难期数对比 · 血量相对膨胀折线图' : '期数对比 · 血量相对膨胀折线图'"
+        :hp-aria-label="isDefenseMode ? '式舆防卫战期数对比血量折线图' : `危局强袭战${isHardMode ? '困难' : ''}期数对比血量折线图`"
+        :expansion-aria-label="isDefenseMode ? '式舆防卫战期数对比血量相对膨胀折线图' : `危局强袭战${isHardMode ? '困难' : ''}期数对比血量相对膨胀折线图`"
         :enable-point-click="isDefenseMode ? chartPoints.length > 0 : true"
         :point-click-hint="isDefenseMode && chartPoints.length > 0 ? defensePointClickHint : undefined"
         :show-remove-mode-toggle="isDefenseMode && chartPoints.length > 0"
         :boss-preview-mode="isDefenseMode ? 'embedded' : 'crisis'"
+        :enable-boss-preview="false"
+        :enable-hp-converted953-toggle="!isDefenseMode"
         @point-click="onChartPointClick"
       />
 
@@ -399,7 +424,7 @@ watch(phaseSearchInput, () => {
   height: 100%;
   min-height: 0;
   margin: 0;
-  padding: 0.5rem 0.25rem 0.75rem;
+  padding: 0.35rem 0.25rem 0.5rem;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -626,6 +651,85 @@ watch(phaseSearchInput, () => {
   flex: 1;
   min-height: 0;
   display: flex;
+}
+
+@media (max-width: 768px) {
+  .phase-compare-panel {
+    min-height: auto;
+    padding: 0.35rem 0.15rem 0.55rem;
+  }
+
+  .panel-header {
+    gap: 0.2rem;
+    margin-bottom: 0.45rem;
+  }
+
+  .page-title {
+    font-size: 1.05rem;
+  }
+
+  .panel-desc {
+    font-size: 0.72rem;
+    padding-inline: 0.35rem;
+    line-height: 1.35;
+  }
+
+  .phase-selector {
+    align-items: stretch;
+    gap: 0.5rem;
+    margin-bottom: 0.55rem;
+  }
+
+  .phase-search-form {
+    align-items: stretch;
+  }
+
+  .selector-actions {
+    width: 100%;
+  }
+
+  .phase-search-input {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+  }
+
+  .quick-add {
+    align-items: stretch;
+  }
+
+  .quick-add-row {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-width: 100%;
+    padding-bottom: 0.15rem;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .quick-add-btn {
+    min-height: 2.2rem;
+  }
+
+  .quick-add-select {
+    min-width: 7rem;
+    max-width: 9.5rem;
+  }
+
+  .selected-phases {
+    align-items: stretch;
+  }
+
+  .phase-tags {
+    justify-content: flex-start;
+    max-width: 100%;
+  }
+
+  .phase-tag {
+    font-size: 0.78rem;
+  }
 }
 </style>
 

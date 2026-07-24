@@ -1,19 +1,26 @@
 import { Router } from 'express'
 import {
   getCalculatorBuffs,
+  getSkillSubcategories,
   removeAgent,
   removeBangboo,
   removeDriveDisc,
+  removeSkillSubcategory,
   removeWengine,
   saveAgent,
   saveBangboo,
   saveDriveDisc,
+  saveSkillSubcategory,
   saveWengine,
 } from '../controllers/calculatorBuffController.js'
 
 const router = Router()
 
 router.get('/', getCalculatorBuffs)
+
+router.get('/skill-subcategories', getSkillSubcategories)
+router.put('/skill-subcategories', saveSkillSubcategory)
+router.delete('/skill-subcategories/:id', removeSkillSubcategory)
 
 router.put('/agents', saveAgent)
 router.delete('/agents/:id', removeAgent)

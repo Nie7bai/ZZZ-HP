@@ -26,6 +26,9 @@ export interface CreateBossPayload {
   monsterCategory?: DefenseMonsterCategory
   monsterSubType?: number
   count?: number
+  crisis_base_hp?: number
+  hp_coeff_percent?: number
+  hp_coeff_manual?: boolean
 }
 
 export interface CreateBuffPayload {
@@ -43,6 +46,7 @@ export interface CreateBuffPayload {
 
 export interface CreateBuffResult {
   id: number
+  action?: 'created' | 'updated'
 }
 
 export interface UploadImageResult {
@@ -58,6 +62,7 @@ export interface BossInfoRecord {
   boss_image: string | null
   weakness: string | null
   resistance: string | null
+  crisis_base_hp?: number | null
 }
 
 export interface BossInfoSyncResult {
@@ -227,5 +232,52 @@ export async function searchBuffRecords(params: AdminSearchParams = {}) {
 
 export async function deleteBuffRecord(id: number) {
   const response = await fetch(`/api/buff/${id}`, { method: 'DELETE' })
+  return parseResponse<{ id: number }>(response)
+}
+
+export type SeasonDateMode = 'crisis' | 'defense'
+
+export interface SeasonDateRecord {
+  id: number
+  mode: SeasonDateMode
+  version: string
+  phase: string
+  startDate: string | null
+  endDate: string | null
+}
+
+export interface SeasonDatePayload {
+  mode: SeasonDateMode
+  version: string
+  phase: string
+  startDate: string
+  endDate: string
+}
+
+export async function fetchSeasonDates(mode: SeasonDateMode) {
+  const response = await fetch(`/api/season-dates?mode=${mode}`)
+  return parseResponse<SeasonDateRecord[]>(response)
+}
+
+export async function createSeasonDate(payload: SeasonDatePayload) {
+  const response = await fetch('/api/season-dates', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  return parseResponse<SeasonDateRecord>(response)
+}
+
+export async function updateSeasonDate(id: number, payload: SeasonDatePayload) {
+  const response = await fetch(`/api/season-dates/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  return parseResponse<SeasonDateRecord>(response)
+}
+
+export async function deleteSeasonDate(id: number) {
+  const response = await fetch(`/api/season-dates/${id}`, { method: 'DELETE' })
   return parseResponse<{ id: number }>(response)
 }

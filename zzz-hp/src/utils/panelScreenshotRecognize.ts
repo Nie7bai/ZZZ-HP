@@ -1,6 +1,11 @@
 import type { AgentBuffDoc, DriveDiscBuffDoc, WengineBuffDoc } from '@/types/calculator'
 import type { PanelStats } from '@/types/calculatorPanel'
 import type { PanelScreenshotRecognition } from '@/types/panelScreenshot'
+import {
+  recognizeFromTencentOcrJson,
+  type TencentOcrDetection,
+} from '@/utils/panelTencentOcrRecognize'
+import { recognizeDriveDiscMainStatsFromOcr } from '@/utils/driveDiscMainStatRecognize'
 
 interface PixelRect {
   x: number
@@ -18,6 +23,25 @@ const REFERENCE_WIDTH = 613
 const REFERENCE_HEIGHT = 1024
 const REFERENCE_ASPECT = REFERENCE_WIDTH / REFERENCE_HEIGHT
 
+/**
+ * 米游社绝区零战绩面板相对坐标（由两份腾讯高精度 OCR JSON 标定，坐标相对整图内容）。
+ * 不依赖黑框检测；裁黑边后直接按此版面抠区 OCR。
+ */
+const PANEL_LAYOUT = {
+  mindscape: { x: 0.22, y: 0.09, w: 0.1, h: 0.055 },
+  agentName: { x: 0.02, y: 0.285, w: 0.3, h: 0.045 },
+  /** 右侧整块属性面板（含双列） */
+  statsBlock: { x: 0.34, y: 0.09, w: 0.64, h: 0.23 },
+  hpRow: { x: 0.35, y: 0.095, w: 0.28, h: 0.055 },
+  atkRow: { x: 0.64, y: 0.095, w: 0.34, h: 0.055 },
+  penRateRow: { x: 0.35, y: 0.225, w: 0.28, h: 0.045 },
+  penRow: { x: 0.35, y: 0.26, w: 0.28, h: 0.045 },
+  dmgRow: { x: 0.64, y: 0.26, w: 0.34, h: 0.045 },
+  wengineName: { x: 0.1, y: 0.39, w: 0.3, h: 0.04 },
+  wengineStars: { x: 0.02, y: 0.425, w: 0.24, h: 0.04 },
+  discNames: { x: 0.02, y: 0.47, w: 0.96, h: 0.27 },
+} as const
+
 const OCR_CHAR_FIX: Record<string, string> = {
   融: '壳',
   戎: '壳',
@@ -31,7 +55,16 @@ const OCR_CHAR_FIX: Record<string, string> = {
 
 type TesseractWorker = {
   setParameters: (params: Record<string, string>) => Promise<unknown>
-  recognize: (image: Blob | HTMLCanvasElement | string) => Promise<{ data: { text: string } }>
+  recognize: (image: Blob | HTMLCanvasElement | string) => Promise<{
+    data: {
+      text: string
+      words?: {
+        text: string
+        confidence: number
+        bbox: { x0: number; y0: number; x1: number; y1: number }
+      }[]
+    }
+  }>
 }
 
 let workerPromise: Promise<TesseractWorker> | null = null
@@ -96,8 +129,8 @@ function cropToContent(source: HTMLCanvasElement): HTMLCanvasElement {
   for (let y = 0; y < h; y += stepY) {
     for (let x = 0; x < w; x += stepX) {
       if (lum(x, y) > 28) {
-        colHas[x]++
-        rowHas[y]++
+        colHas[x] = (colHas[x] ?? 0) + 1
+        rowHas[y] = (rowHas[y] ?? 0) + 1
       }
     }
   }
@@ -130,26 +163,6 @@ function cropToContent(source: HTMLCanvasElement): HTMLCanvasElement {
   const octx = out.getContext('2d')!
   octx.drawImage(source, x0, y0, out.width, out.height, 0, 0, out.width, out.height)
   return out
-}
-
-/** 等比装入标准画布（613×1024），不足处留黑边，绝不拉伸变形 */
-function fitToReferenceCanvas(source: HTMLCanvasElement): HTMLCanvasElement {
-  const target = document.createElement('canvas')
-  target.width = REFERENCE_WIDTH
-  target.height = REFERENCE_HEIGHT
-  const ctx = target.getContext('2d')!
-  ctx.fillStyle = '#000'
-  ctx.fillRect(0, 0, REFERENCE_WIDTH, REFERENCE_HEIGHT)
-
-  const scale = Math.min(REFERENCE_WIDTH / source.width, REFERENCE_HEIGHT / source.height)
-  const dw = Math.max(1, Math.round(source.width * scale))
-  const dh = Math.max(1, Math.round(source.height * scale))
-  const ox = Math.round((REFERENCE_WIDTH - dw) / 2)
-  const oy = Math.round((REFERENCE_HEIGHT - dh) / 2)
-  ctx.imageSmoothingEnabled = true
-  ctx.imageSmoothingQuality = 'high'
-  ctx.drawImage(source, ox, oy, dw, dh)
-  return target
 }
 
 function cropPixels(source: HTMLCanvasElement, rect: PixelRect, upscale = 1): HTMLCanvasElement {
@@ -238,103 +251,93 @@ async function ocrImage(
   })
 }
 
+/** 把相对版面坐标落到真实像素矩形 */
+function layoutRect(
+  canvas: HTMLCanvasElement,
+  frac: { x: number; y: number; w: number; h: number },
+): PixelRect {
+  return {
+    x: canvas.width * frac.x,
+    y: canvas.height * frac.y,
+    w: canvas.width * frac.w,
+    h: canvas.height * frac.h,
+  }
+}
+
+/** 放大过小的内容图，提升本地 OCR 字框质量 */
+function ensureReadableSize(source: HTMLCanvasElement, minWidth = 1100): HTMLCanvasElement {
+  if (source.width >= minWidth) return source
+  const scale = minWidth / source.width
+  const out = document.createElement('canvas')
+  out.width = Math.round(source.width * scale)
+  out.height = Math.round(source.height * scale)
+  const ctx = out.getContext('2d')!
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(source, 0, 0, out.width, out.height)
+  return out
+}
+
 /**
- * 检测截图中的两个黑框（上：角色+属性；下：驱动盘）
- * 通过深色边框行聚类成对，取面积最大的两个矩形
+ * 对指定区域 OCR，并把字框映射回整图像素，供空间解析使用（与腾讯 OCR JSON 同结构）。
  */
-function findBlackFrames(canvas: HTMLCanvasElement): { upper: PixelRect; lower: PixelRect } | null {
-  const w = canvas.width
-  const h = canvas.height
-  const ctx = canvas.getContext('2d')!
-  const { data } = ctx.getImageData(0, 0, w, h)
-  const lum = (x: number, y: number) => {
-    const i = (y * w + x) * 4
-    return 0.299 * data[i]! + 0.587 * data[i + 1]! + 0.114 * data[i + 2]!
-  }
-  const isDark = (x: number, y: number) => lum(x, y) < 48
-
-  const borderRows: number[] = []
-  for (let y = 0; y < h; y++) {
-    let dark = 0
-    // 取样加速
-    for (let x = 0; x < w; x += 2) if (isDark(x, y)) dark++
-    if (dark / (w / 2) > 0.42) borderRows.push(y)
-  }
-  if (borderRows.length < 4) return null
-
-  const bands: { y0: number; y1: number }[] = []
-  let start = borderRows[0]!
-  let prev = borderRows[0]!
-  for (const y of borderRows.slice(1)) {
-    if (y - prev <= 4) {
-      prev = y
-      continue
-    }
-    bands.push({ y0: start, y1: prev })
-    start = y
-    prev = y
-  }
-  bands.push({ y0: start, y1: prev })
-  if (bands.length < 2) return null
-
-  const candidates: PixelRect[] = []
-  for (let i = 0; i < bands.length - 1; i++) {
-    const top = bands[i]!.y1
-    const bottom = bands[i + 1]!.y0
-    const boxH = bottom - top
-    if (boxH < h * 0.14 || boxH > h * 0.7) continue
-
-    // 在框高范围内找左右竖边
-    let left = 0
-    let right = w - 1
-    for (let x = 0; x < w * 0.2; x++) {
-      let dark = 0
-      const samples = Math.max(1, Math.floor(boxH / 4))
-      for (let k = 0; k < samples; k++) {
-        const y = top + Math.floor((k + 0.5) * (boxH / samples))
-        if (isDark(x, y)) dark++
-      }
-      if (dark / samples > 0.55) {
-        left = x
-        break
-      }
-    }
-    for (let x = w - 1; x > w * 0.8; x--) {
-      let dark = 0
-      const samples = Math.max(1, Math.floor(boxH / 4))
-      for (let k = 0; k < samples; k++) {
-        const y = top + Math.floor((k + 0.5) * (boxH / samples))
-        if (isDark(x, y)) dark++
-      }
-      if (dark / samples > 0.55) {
-        right = x
-        break
-      }
-    }
-    const boxW = right - left
-    if (boxW < w * 0.55) continue
-    candidates.push({
-      x: left,
-      y: top,
-      w: boxW,
-      h: boxH,
+async function ocrRegionAsDetections(
+  canvas: HTMLCanvasElement,
+  rect: PixelRect,
+  upscale: number,
+  params?: { psm?: string; whitelist?: string },
+): Promise<TencentOcrDetection[]> {
+  return enqueueOcr(async () => {
+    const crop = cropPixels(canvas, rect, upscale)
+    const worker = await getOcrWorker()
+    const prepared = preprocessForOcr(crop)
+    await worker.setParameters({
+      tessedit_pageseg_mode: params?.psm ?? '6',
+      tessedit_char_whitelist: params?.whitelist ?? '',
     })
-  }
+    const result = await worker.recognize(await canvasToPngBlob(prepared))
+    const words = result.data.words ?? []
+    const scale = Math.max(1, upscale)
+    const detections: TencentOcrDetection[] = []
 
-  candidates.sort((a, b) => b.w * b.h - a.w * a.h)
-  if (candidates.length < 2) {
-    // 退化为按垂直位置切两块：上 48% / 下 42%
-    const padX = Math.round(w * 0.03)
-    return {
-      upper: { x: padX, y: Math.round(h * 0.02), w: w - padX * 2, h: Math.round(h * 0.48) },
-      lower: { x: padX, y: Math.round(h * 0.55), w: w - padX * 2, h: Math.round(h * 0.42) },
+    if (words.length) {
+      for (const word of words) {
+        const text = (word.text ?? '').trim()
+        if (!text) continue
+        const x0 = rect.x + word.bbox.x0 / scale
+        const y0 = rect.y + word.bbox.y0 / scale
+        const x1 = rect.x + word.bbox.x1 / scale
+        const y1 = rect.y + word.bbox.y1 / scale
+        detections.push({
+          DetectedText: text,
+          Confidence: Math.round(word.confidence || 0),
+          ItemPolygon: {
+            X: Math.round(x0),
+            Y: Math.round(y0),
+            Width: Math.max(1, Math.round(x1 - x0)),
+            Height: Math.max(1, Math.round(y1 - y0)),
+          },
+        })
+      }
+      return detections
     }
-  }
 
-  const topTwo = candidates.slice(0, 4).sort((a, b) => a.y - b.y)
-  const upper = topTwo[0]!
-  const lower = topTwo.find((r) => r.y > upper.y + upper.h * 0.5) ?? topTwo[1]!
-  return { upper, lower }
+    // 无字框时退化为整区一行文本（仍带区域包围盒）
+    const text = (result.data.text ?? '').trim()
+    if (text) {
+      detections.push({
+        DetectedText: text.replace(/\s+/g, ' '),
+        Confidence: 80,
+        ItemPolygon: {
+          X: Math.round(rect.x),
+          Y: Math.round(rect.y),
+          Width: Math.round(rect.w),
+          Height: Math.round(rect.h),
+        },
+      })
+    }
+    return detections
+  })
 }
 
 function normalizeOcrText(text: string): string {
@@ -945,279 +948,169 @@ export async function recognizePanelScreenshot(
   const original = await loadImageToCanvas(file)
 
   onProgress?.('裁除黑边、定位面板…')
-  // 先裁掉四周黑边（应对宽屏/带黑边截图），再等比装入标准画布，避免面板被缩小糊化
   const content = cropToContent(original)
-
-  onProgress?.('等比装入标准画布 613×1024（不拉伸）…')
-  const canvas = fitToReferenceCanvas(content)
+  // 按米游社战绩版面相对坐标识别，不再依赖黑框；必要时放大保证字框清晰
+  const canvas = ensureReadableSize(content, 1100)
   const aspect = content.width / content.height
-  if (Math.abs(aspect - REFERENCE_ASPECT) > 0.08) {
+  if (Math.abs(aspect - REFERENCE_ASPECT) > 0.12) {
     warnings.push(
-      `截图宽高比 ${aspect.toFixed(2)} 与标准 ${REFERENCE_ASPECT.toFixed(2)} 偏差较大，已留黑边适配；请尽量使用与标准图相同比例的截图`,
+      `截图宽高比 ${aspect.toFixed(2)} 与常见战绩图 ${REFERENCE_ASPECT.toFixed(2)} 偏差较大；已裁黑边后按固定版面识别`,
     )
   }
 
-  onProgress?.('检测两个黑框…')
-  const frames = findBlackFrames(canvas)
-  if (!frames) warnings.push('未稳定检测到黑框，已使用默认分区')
-  const upper =
-    frames?.upper ??
-    ({
-      x: Math.round(canvas.width * 0.03),
-      y: Math.round(canvas.height * 0.02),
-      w: Math.round(canvas.width * 0.94),
-      h: Math.round(canvas.height * 0.48),
-    } satisfies PixelRect)
-  const lower =
-    frames?.lower ??
-    ({
-      x: Math.round(canvas.width * 0.03),
-      y: Math.round(canvas.height * 0.55),
-      w: Math.round(canvas.width * 0.94),
-      h: Math.round(canvas.height * 0.42),
-    } satisfies PixelRect)
+  onProgress?.('按版面分区 OCR（属性 / 角色 / 音擎 / 驱动盘）…')
+  const regions: { key: keyof typeof PANEL_LAYOUT; upscale: number; psm: string; whitelist?: string }[] =
+    [
+      { key: 'statsBlock', upscale: 2.4, psm: '6' },
+      { key: 'hpRow', upscale: 3.5, psm: '6' },
+      { key: 'atkRow', upscale: 3.5, psm: '6' },
+      { key: 'penRateRow', upscale: 3.2, psm: '6' },
+      { key: 'penRow', upscale: 3.2, psm: '6' },
+      { key: 'dmgRow', upscale: 3.2, psm: '6' },
+      { key: 'agentName', upscale: 3.5, psm: '7' },
+      { key: 'wengineName', upscale: 3.5, psm: '7' },
+      { key: 'discNames', upscale: 2.2, psm: '6' },
+      { key: 'mindscape', upscale: 6, psm: '10', whitelist: '0123456789' },
+    ]
 
-  // 上黑框：左角色 / 右属性面板；两框之间：音擎
-  const charArea: PixelRect = {
-    x: upper.x,
-    y: upper.y,
-    w: upper.w * 0.32,
-    h: upper.h,
-  }
-  // 属性面板：上框右侧，必须盖住最底一行（穿透值 / 增伤）
-  const statsArea: PixelRect = {
-    x: upper.x + upper.w * 0.28,
-    y: upper.y + upper.h * 0.02,
-    w: upper.w * 0.7,
-    h: upper.h * 0.96,
-  }
-  // 名字区放宽：头像下方一整条
-  const nameArea: PixelRect = {
-    x: charArea.x + charArea.w * 0.05,
-    y: charArea.y + charArea.h * 0.34,
-    w: charArea.w * 0.9,
-    h: charArea.h * 0.16,
-  }
-  const gapTop = upper.y + upper.h
-  const gapBottom = lower.y
-  const midBandH = gapBottom - gapTop
-
-  // 音擎通常在两黑框之间；若间隙过小，则取上框底部左侧
-  const wengineNameArea: PixelRect =
-    midBandH >= 36
-      ? {
-          x: upper.x + upper.w * 0.14,
-          y: gapTop + midBandH * 0.08,
-          w: upper.w * 0.5,
-          h: Math.max(32, midBandH * 0.5),
-        }
-      : {
-          x: upper.x + upper.w * 0.14,
-          y: upper.y + upper.h * 0.78,
-          w: upper.w * 0.4,
-          h: upper.h * 0.12,
-        }
-  const wengineStarsArea: PixelRect =
-    midBandH >= 36
-      ? {
-          // 星标通常在音擎图标下方、名字左侧一段横条
-          x: upper.x + upper.w * 0.02,
-          y: gapTop + midBandH * 0.48,
-          w: upper.w * 0.38,
-          h: Math.max(30, midBandH * 0.38),
-        }
-      : {
-          x: upper.x + upper.w * 0.02,
-          y: upper.y + upper.h * 0.86,
-          w: upper.w * 0.32,
-          h: upper.h * 0.1,
-        }
-  // 音擎名在「下框表头」图标右侧、LV 上方；收紧到名字本身，避开图标与「驱动盘…共命中」计数
-  const wengineHeaderArea: PixelRect = {
-    x: lower.x + lower.w * 0.11,
-    y: lower.y + lower.h * 0.008,
-    w: lower.w * 0.26,
-    h: Math.max(22, lower.h * 0.055),
+  const detections: TencentOcrDetection[] = []
+  for (const region of regions) {
+    const rect = layoutRect(canvas, PANEL_LAYOUT[region.key])
+    const part = await ocrRegionAsDetections(canvas, rect, region.upscale, {
+      psm: region.psm,
+      whitelist: region.whitelist,
+    })
+    detections.push(...part)
   }
 
-  onProgress?.('识别角色名 / 属性面板 / 音擎…')
-  // 先跑中文 OCR，再跑影画数字，避免白名单互相干扰（队列也会串行）
-  const nameText = await ocrImage(cropPixels(canvas, nameArea, 3), { psm: '7' })
-  const statsText = await ocrImage(cropPixels(canvas, statsArea, 3), { psm: '6' })
-  const statsLeft: PixelRect = {
-    x: statsArea.x,
-    y: statsArea.y,
-    w: statsArea.w * 0.52,
-    h: statsArea.h,
-  }
-  const statsRight: PixelRect = {
-    x: statsArea.x + statsArea.w * 0.48,
-    y: statsArea.y,
-    w: statsArea.w * 0.52,
-    h: statsArea.h,
-  }
-  // 最底一行整宽：左穿透值、右增伤
-  const statsBottomRow: PixelRect = {
-    x: statsArea.x,
-    y: statsArea.y + statsArea.h * 0.78,
-    w: statsArea.w,
-    h: statsArea.h * 0.22,
-  }
-  // 小穿：整个「左列」底部两行（穿透率 + 穿透值），左列没有冲击力，取穿透率之后的数字即可
-  const statsPenZone: PixelRect = {
-    x: statsArea.x,
-    y: statsArea.y + statsArea.h * 0.62,
-    w: statsArea.w * 0.55,
-    h: statsArea.h * 0.38,
-  }
-  // 增伤：最右下角
-  const statsDmgZone: PixelRect = {
-    x: statsArea.x + statsArea.w * 0.5,
-    y: statsArea.y + statsArea.h * 0.72,
-    w: statsArea.w * 0.5,
-    h: statsArea.h * 0.28,
-  }
-  const statsLeftText = await ocrImage(cropPixels(canvas, statsLeft, 3.2), { psm: '6' })
-  const statsRightText = await ocrImage(cropPixels(canvas, statsRight, 3.2), { psm: '6' })
-  const statsBottomRowText = await ocrImage(cropPixels(canvas, statsBottomRow, 3), { psm: '6' })
-  const statsPenText = await ocrImage(cropPixels(canvas, statsPenZone, 3.5), { psm: '6' })
-  const statsDmgText = await ocrImage(cropPixels(canvas, statsDmgZone, 3), { psm: '6' })
-  const wengineText = await ocrImage(cropPixels(canvas, wengineNameArea, 2.5), { psm: '7' })
-  const wengineHeaderText = await ocrImage(cropPixels(canvas, wengineHeaderArea, 3), { psm: '7' })
-  const midBandText =
-    midBandH >= 36
-      ? await ocrImage(
-          cropPixels(
-            canvas,
-            {
-              x: upper.x + upper.w * 0.1,
-              y: gapTop,
-              w: upper.w * 0.6,
-              h: midBandH,
-            },
-            1.8,
-          ),
-          { psm: '6' },
-        )
-      : ''
-  const leftColText = await ocrImage(cropPixels(canvas, charArea, 1.5), { psm: '6' })
-  const lowerText = await ocrImage(cropPixels(canvas, lower, 1.4), { psm: '6' })
-
-  onProgress?.('识别影画角标…')
-  const rank = await recognizeMindscapeRank(canvas, charArea)
-
-  const wengineRefine = detectRefinementStars(cropPixels(canvas, wengineStarsArea, 3))
-
-  const agent =
-    findBestNameInText(nameText, catalogs.agents) ??
-    findBestNameInText(leftColText, catalogs.agents)
-
-  // 音擎名：优先下框表头（云宵霖光 之类），再退回黑框间隙 / 上框底 / 整下框文本
-  const wengine =
-    findBestNameInText(wengineHeaderText, catalogs.wengines) ??
-    findBestNameInText(wengineText, catalogs.wengines) ??
-    findBestNameInText(midBandText, catalogs.wengines) ??
-    findBestNameInText(lowerText, catalogs.wengines) ??
-    findBestNameInText(leftColText, catalogs.wengines)
-
-  // 整面板优先（生命/攻击/穿透率），专区只补穿透值/增伤
-  const externalPanel = mergePanelStats(
-    parsePanelStats(statsText),
-    parsePanelStats(statsLeftText),
-    parsePanelStats(statsRightText),
-    parsePanelStats(statsBottomRowText),
-    parsePanelStats(statsDmgText),
-    parsePanelStats(statsPenText),
+  onProgress?.('按坐标归属解析…')
+  const spatial = recognizeFromTencentOcrJson(
+    { TextDetections: detections },
+    catalogs,
   )
-  // 穿透率允许为 0；标签可能被误读，用模糊匹配（穿+任意 0~2 字+率/宰）
-  const rateBlob = normalizeForStats(
-    [statsPenText, statsLeftText, statsBottomRowText, statsText].join(''),
-  ).replace(/\s+/g, '')
-  if (externalPanel.penRate == null) {
-    const rm =
-      rateBlob.match(/穿[透适守诱]?[率宰束]([\d.]+)/) ??
-      rateBlob.match(/穿[\u4e00-\u9fff]{0,2}率([\d.]+)/) ??
-      // 位于「异常掌控 xxx」与「穿透值」之间的数（穿透率所在行）
-      rateBlob.match(/异常掌控[\d.]+[^\d]{0,6}?([\d.]+)[^\d]{0,6}?穿[透适][值直]/)
-    if (rm) {
-      const v = Number(rm[1])
-      if (Number.isFinite(v) && v >= 0 && v <= 400) externalPanel.penRate = v
+
+  // 精炼：星标用色块计数（OCR 对 ★ 不稳）
+  const wengineRefine = detectRefinementStars(
+    cropPixels(canvas, layoutRect(canvas, PANEL_LAYOUT.wengineStars), 3),
+  )
+
+  // 影画：空间解析为 0 时，再跑角标专用识别（虚拟角色区对齐版面标定）
+  let rank = spatial.rank
+  if (rank === 0) {
+    onProgress?.('补识别影画角标…')
+    const mindRect = layoutRect(canvas, PANEL_LAYOUT.mindscape)
+    const virtualCharArea: PixelRect = {
+      x: canvas.width * 0.02,
+      y: canvas.height * 0.02,
+      w: canvas.width * 0.32,
+      h: canvas.height * 0.4,
+    }
+    rank = await recognizeMindscapeRank(canvas, virtualCharArea)
+    if (rank === 0) {
+      const badgeText = await ocrImage(cropPixels(canvas, mindRect, 8), {
+        psm: '10',
+        whitelist: '0123456789',
+        invert: false,
+      })
+      const m = badgeText.replace(/\s+/g, '').match(/[1-6]/)
+      if (m) rank = Number(m[0])
     }
   }
-  // 穿透值（小穿）：只用「左列」文本（穿透率下方的数字），左列无冲击力干扰；可大于 80，不做阈值过滤
-  {
-    const penCorner =
-      parsePenBelowPenRate(statsPenText) ??
-      parsePenBelowPenRate(statsLeftText) ??
-      parsePenBelowPenRate(statsBottomRowText) ??
-      parsePenBelowPenRate(statsText)
-    if (penCorner != null) externalPanel.pen = penCorner
+
+  // 专区纯文本兜底：空间解析缺字段时用旧解析补
+  onProgress?.('补缺字段…')
+  const hpText = await ocrImage(cropPixels(canvas, layoutRect(canvas, PANEL_LAYOUT.hpRow), 3.5), {
+    psm: '6',
+  })
+  const atkText = await ocrImage(cropPixels(canvas, layoutRect(canvas, PANEL_LAYOUT.atkRow), 3.5), {
+    psm: '6',
+  })
+  const penText = await ocrImage(
+    cropPixels(
+      canvas,
+      {
+        x: canvas.width * PANEL_LAYOUT.penRateRow.x,
+        y: canvas.height * PANEL_LAYOUT.penRateRow.y,
+        w: canvas.width * PANEL_LAYOUT.penRateRow.w,
+        h: canvas.height * (PANEL_LAYOUT.penRow.y + PANEL_LAYOUT.penRow.h - PANEL_LAYOUT.penRateRow.y),
+      },
+      3.2,
+    ),
+    { psm: '6' },
+  )
+  const dmgText = await ocrImage(cropPixels(canvas, layoutRect(canvas, PANEL_LAYOUT.dmgRow), 3.2), {
+    psm: '6',
+  })
+  const statsFallback = mergePanelStats(
+    parsePanelStats(hpText),
+    parsePanelStats(atkText),
+    parsePanelStats(penText),
+    parsePanelStats(dmgText),
+  )
+  const externalPanel = { ...statsFallback, ...spatial.externalPanel }
+  // 粘连「7673 10334」：空格拆开取较大值
+  if (externalPanel.hp == null || (hpText.includes(' ') && /\d+\s+\d+/.test(hpText))) {
+    const glued = [...hpText.matchAll(/(\d{3,5})\s+(\d{3,5})/g)]
+    for (const m of glued) {
+      const a = Number(m[1])
+      const b = Number(m[2])
+      if (Number.isFinite(a) && Number.isFinite(b)) {
+        externalPanel.hp = Math.max(a, b)
+        break
+      }
+    }
   }
 
-  // 驱动盘：以逐格识别计数为准；整框仅在缺 2 或缺 4 时补
-  onProgress?.('识别驱动盘套装…')
-  const byOcr = await matchDriveDiscsByOcrOnly(canvas, lower, catalogs.driveDiscs, lowerText)
-  const byName = matchDriveDiscsByNameOcr(lowerText, catalogs.driveDiscs)
-  let twoPiece = byOcr.twoPiece
-  let fourPiece = byOcr.fourPiece
-  if (!fourPiece && byName.fourPiece) fourPiece = byName.fourPiece
-  if (!twoPiece && byName.twoPiece && byName.twoPiece.id !== fourPiece?.id) {
-    twoPiece = byName.twoPiece
+  const result: PanelScreenshotRecognition = {
+    agentId: spatial.agentId,
+    agentName: spatial.agentName,
+    rank,
+    wengineId: spatial.wengineId,
+    wengineName: spatial.wengineName,
+    wengineRefine: wengineRefine || spatial.wengineRefine || 1,
+    twoPieceDriveDiscId: spatial.twoPieceDriveDiscId,
+    twoPieceDriveDiscName: spatial.twoPieceDriveDiscName,
+    fourPieceDriveDiscId: spatial.fourPieceDriveDiscId,
+    fourPieceDriveDiscName: spatial.fourPieceDriveDiscName,
+    externalPanel,
+    warnings: [],
   }
-  // 若整框计数更完整（两套都有且数量和更大），采用整框结果
+
+  if (!result.agentId) warnings.push('未能识别角色名')
+  if (!result.wengineId) warnings.push('未能识别音擎名')
+  if (!result.twoPieceDriveDiscId && !result.fourPieceDriveDiscId) {
+    warnings.push('未能识别驱动盘套装')
+  }
+  if (result.externalPanel.hp == null && result.externalPanel.atk == null) {
+    warnings.push('未能识别生命/攻击')
+  }
   if (
-    byName.twoPiece &&
-    byName.fourPiece &&
-    byName.twoPiece.id !== byName.fourPiece.id &&
-    (!twoPiece || !fourPiece)
+    result.externalPanel.penRate == null ||
+    result.externalPanel.pen == null ||
+    result.externalPanel.dmgBonus == null
   ) {
-    twoPiece = byName.twoPiece
-    fourPiece = byName.fourPiece
+    const missing: string[] = []
+    if (result.externalPanel.penRate == null) missing.push('穿透率')
+    if (result.externalPanel.pen == null) missing.push('穿透值')
+    if (result.externalPanel.dmgBonus == null) missing.push('增伤')
+    warnings.push(`属性未识别：${missing.join('、')}`)
+  }
+  if (result.rank === 0) {
+    warnings.push('影画角标未读到数字，已按 0 影处理')
+  }
+  // 保留空间解析自身警告中与缺字段相关的提示
+  for (const w of spatial.warnings) {
+    if (!warnings.includes(w) && /未能|未识别|影画/.test(w)) warnings.push(w)
   }
 
-  if (!agent) {
-    warnings.push(
-      `未能识别角色名（名字区：${normalizeOcrText(nameText) || '空'}；左栏：${normalizeOcrText(leftColText).slice(0, 20) || '空'}）`,
-    )
+  const mains = recognizeDriveDiscMainStatsFromOcr({ TextDetections: detections })
+  if (Object.keys(mains).length) {
+    result.driveDiscMainStats = mains
+  } else {
+    warnings.push('未识别到 4/5/6 号盘主属性，词条反推将使用当前下拉选择')
   }
-  if (!wengine) {
-    warnings.push(
-      `未能识别音擎名（表头：${normalizeOcrText(wengineHeaderText).slice(0, 16) || '空'}）`,
-    )
-  }
-  if (!twoPiece && !fourPiece) {
-    warnings.push('未能识别驱动盘套装（请确认套装名清晰可见）')
-  }
-  if (!externalPanel.hp && !externalPanel.atk) {
-    warnings.push(`未能从属性面板识别基础属性（OCR片段：${normalizeForStats(statsText).slice(0, 40) || '空'}）`)
-  }
-  if (externalPanel.penRate == null || externalPanel.pen == null || externalPanel.dmgBonus == null) {
-    const missing: string[] = []
-    if (externalPanel.penRate == null) missing.push('穿透率')
-    if (externalPanel.pen == null) missing.push('穿透值')
-    if (externalPanel.dmgBonus == null) missing.push('增伤')
-    warnings.push(
-      `属性面板未识别：${missing.join('、')}（左列OCR：${rateBlob.slice(0, 48) || '空'}）`,
-    )
-  }
-  if (rank === 0) {
-    warnings.push('影画角标未读到数字，已按 0 影处理（若头像右上角有数字请核对）')
-  }
+  result.warnings = warnings
 
   onProgress?.('识别完成')
-
-  return {
-    agentId: agent?.id ?? null,
-    agentName: agent?.name ?? null,
-    rank,
-    wengineId: wengine?.id ?? null,
-    wengineName: wengine?.name ?? null,
-    wengineRefine,
-    twoPieceDriveDiscId: twoPiece?.id ?? null,
-    twoPieceDriveDiscName: twoPiece?.name ?? null,
-    fourPieceDriveDiscId: fourPiece?.id ?? null,
-    fourPieceDriveDiscName: fourPiece?.name ?? null,
-    externalPanel,
-    warnings,
-  }
+  return result
 }

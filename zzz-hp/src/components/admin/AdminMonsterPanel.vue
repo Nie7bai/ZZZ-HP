@@ -1,10 +1,20 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { createBoss, lookupBossInfo, searchBossInfoNames, uploadBossImage } from '@/api/admin'
+import {
+  createBoss,
+  fetchSeasonDates,
+  lookupBossInfo,
+  searchBossInfoNames,
+  searchBossRecords,
+  uploadBossImage,
+  type SeasonDateMode,
+} from '@/api/admin'
 import AdminImagePicker from '@/components/admin/AdminImagePicker.vue'
 import type { AdminScope, DefenseMonsterCategory } from '@/types/admin'
-import { adminScopeTitles, isDefenseScope } from '@/types/admin'
+import { adminScopeTitles, isDefenseScope, recordSchemeFromScope } from '@/types/admin'
 import { encodeDefenseBossId } from '@/utils/defenseId'
+import { calcCrisisHpCoeffPercent, getCrisisBaseHpByName } from '@/utils/crisisHpCoeff'
+import { CRISIS_HARD_ROOM_CODE, normalizeCrisisRoomCode } from '@/utils/crisisRoom'
 import { resolveAssetUrl } from '@/utils/gameData'
 
 const props = defineProps<{
@@ -12,16 +22,31 @@ const props = defineProps<{
 }>()
 
 const isDefense = computed(() => isDefenseScope(props.scope))
+const isDefenseNew = computed(() => props.scope === 'defense-new')
+const seasonMode = computed<SeasonDateMode>(() => (isDefense.value ? 'defense' : 'crisis'))
+
+const CRISIS_ROOM_OPTIONS = [
+  { value: '1', label: '房间 1' },
+  { value: '2', label: '房间 2' },
+  { value: '3', label: '房间 3' },
+  { value: CRISIS_HARD_ROOM_CODE, label: '困难' },
+] as const
 
 const version = ref('')
 const phase = ref('')
+const customVersion = ref('')
+const customPhase = ref('')
+const knownVersionPhases = ref<Array<{ version: string; phase: string }>>([])
 const bossName = ref('')
 const hp = ref('')
+const crisisBaseHp = ref('')
+const hpCoeffPercent = ref('')
+const hpCoeffManual = ref(false)
 const defense = ref('')
-const level = ref('1')
-const room = ref('')
-const stage = ref('')
-const roomInStage = ref('')
+const level = ref('70')
+const room = ref('1')
+const stage = ref('5')
+const roomInStage = ref('1')
 const wave = ref('1')
 const monsterCategory = ref<DefenseMonsterCategory>('boss')
 const monsterSubType = ref('1')
@@ -46,6 +71,66 @@ function fieldText(value: string | number | null | undefined) {
   return String(value ?? '').trim()
 }
 
+function compareVersionDesc(a: string, b: string) {
+  const parse = (value: string) =>
+    value.split('.').map((part) => Number(part.replace(/\D/g, '')) || 0)
+  const left = parse(a)
+  const right = parse(b)
+  const len = Math.max(left.length, right.length)
+  for (let i = 0; i < len; i += 1) {
+    const diff = (right[i] ?? 0) - (left[i] ?? 0)
+    if (diff !== 0) return diff
+  }
+  return 0
+}
+
+const resolvedVersion = computed(() => customVersion.value.trim() || version.value.trim())
+const resolvedPhase = computed(() => customPhase.value.trim() || phase.value.trim())
+
+const availableVersions = computed(() => {
+  const set = new Set(knownVersionPhases.value.map((item) => item.version).filter(Boolean))
+  return [...set].sort(compareVersionDesc)
+})
+
+const availablePhases = computed(() => {
+  const currentVersion = resolvedVersion.value
+  if (!currentVersion) return []
+  const set = new Set(
+    knownVersionPhases.value
+      .filter((item) => item.version === currentVersion)
+      .map((item) => String(item.phase).replace(/\D/g, '') || String(item.phase))
+      .filter(Boolean),
+  )
+  return [...set].sort((a, b) => Number(b) - Number(a))
+})
+
+function applyDefaultVersionPhase() {
+  const latestVersion = availableVersions.value[0] ?? ''
+  if (!version.value && latestVersion) version.value = latestVersion
+  const phases = availablePhases.value
+  if (!phase.value && phases.length) phase.value = phases[0] ?? ''
+}
+
+async function loadVersionPhaseOptions() {
+  try {
+    const scheme = recordSchemeFromScope(props.scope)
+    const [dates, bosses] = await Promise.all([
+      fetchSeasonDates(seasonMode.value),
+      scheme
+        ? searchBossRecords({ recordScheme: scheme, limit: 1000 })
+        : Promise.resolve([]),
+    ])
+    const merged = [
+      ...dates.map((row) => ({ version: row.version, phase: String(row.phase) })),
+      ...bosses.map((row) => ({ version: row.version, phase: String(row.phase) })),
+    ]
+    knownVersionPhases.value = merged
+    applyDefaultVersionPhase()
+  } catch {
+    knownVersionPhases.value = []
+  }
+}
+
 function showFeedback(target: 'error' | 'message') {
   requestAnimationFrame(() => {
     const selector = target === 'error' ? '.form-error' : '.form-success'
@@ -59,15 +144,23 @@ function applyBossInfo(info: {
   weakness: string | null
   resistance: string | null
   boss_image: string | null
+  crisis_base_hp?: number | null
 }) {
   defense.value = String(info.defense ?? 0)
   level.value = String(info.level ?? 1)
   weakness.value = info.weakness ?? ''
   resistance.value = info.resistance ?? ''
+  if (info.crisis_base_hp != null && Number.isFinite(Number(info.crisis_base_hp))) {
+    crisisBaseHp.value = String(info.crisis_base_hp)
+  } else {
+    const mapped = getCrisisBaseHpByName(bossName.value)
+    crisisBaseHp.value = mapped != null ? String(mapped) : ''
+  }
   imageUrl.value = info.boss_image ?? ''
   imagePreview.value = resolveAssetUrl(info.boss_image) ?? ''
   imageFile.value = null
   imagePickerRef.value?.reset()
+  syncAutoCoeff()
 }
 
 async function fetchBossInfoByName(name: string) {
@@ -124,6 +217,34 @@ function onImageChange(file: File | null) {
   imagePreview.value = file ? URL.createObjectURL(file) : resolveAssetUrl(imageUrl.value) ?? ''
 }
 
+function syncAutoCoeff() {
+  if (hpCoeffManual.value || isDefense.value) return
+  const hpNumber = Number(hp.value)
+  const baseNumber = Number(crisisBaseHp.value)
+  const auto = calcCrisisHpCoeffPercent(hpNumber, baseNumber)
+  hpCoeffPercent.value = auto != null ? String(auto) : ''
+}
+
+const autoCoeffHint = computed(() => {
+  if (isDefense.value) return ''
+  const hpNumber = Number(hp.value)
+  const baseNumber = Number(crisisBaseHp.value)
+  const auto = calcCrisisHpCoeffPercent(hpNumber, baseNumber)
+  if (auto == null) return '填写血量与基础血量后可自动计算系数'
+  if (hpCoeffManual.value) return `自动计算为 ${auto}%（当前为手动覆盖）`
+  return `自动计算：${auto}%`
+})
+
+function onCoeffInput() {
+  hpCoeffManual.value = fieldText(hpCoeffPercent.value).length > 0
+}
+
+function resetCrisisCoeffFields() {
+  crisisBaseHp.value = ''
+  hpCoeffPercent.value = ''
+  hpCoeffManual.value = false
+}
+
 function updatePreviewId() {
   if (!isDefense.value) {
     previewId.value = ''
@@ -133,8 +254,8 @@ function updatePreviewId() {
   try {
     previewId.value = String(
       encodeDefenseBossId({
-        version: version.value.trim(),
-        phase: phase.value.trim(),
+        version: resolvedVersion.value,
+        phase: resolvedPhase.value,
         stage: Number(stage.value),
         roomInStage: Number(roomInStage.value),
         wave: Number(wave.value),
@@ -149,14 +270,64 @@ function updatePreviewId() {
 }
 
 function resetDefenseFields() {
-  stage.value = ''
-  roomInStage.value = ''
+  stage.value = '5'
+  roomInStage.value = '1'
   wave.value = '1'
   monsterCategory.value = 'boss'
   monsterSubType.value = '1'
   count.value = '1'
   previewId.value = ''
 }
+
+const defenseStageOptions = computed(() => {
+  if (isDefenseNew.value) return [1, 2, 3, 4, 5]
+  return [1, 2, 3, 4, 5, 6, 7, 8, 9]
+})
+
+const defenseRoomOptions = computed(() => {
+  const stageNum = Number(stage.value)
+  if (stageNum === 5) return [1, 2, 3]
+  return [1, 2]
+})
+
+function applyScopeDefaults() {
+  if (isDefense.value) {
+    resetDefenseFields()
+    level.value = '1'
+  } else {
+    level.value = '70'
+    room.value = '1'
+  }
+}
+
+watch(
+  () => props.scope,
+  () => {
+    applyScopeDefaults()
+    customVersion.value = ''
+    customPhase.value = ''
+    version.value = ''
+    phase.value = ''
+    loadVersionPhaseOptions()
+  },
+  { immediate: true },
+)
+
+watch([version, customVersion], () => {
+  const phases = availablePhases.value
+  if (phase.value && !phases.includes(phase.value)) {
+    phase.value = phases[0] ?? ''
+  } else if (!phase.value && phases.length) {
+    phase.value = phases[0] ?? ''
+  }
+})
+
+watch(stage, () => {
+  if (!isDefense.value) return
+  if (!defenseRoomOptions.value.includes(Number(roomInStage.value))) {
+    roomInStage.value = String(defenseRoomOptions.value[0] ?? 1)
+  }
+})
 
 function bossInfoSyncMessage(action?: string) {
   if (action === 'created') return '已新增 boss_info 基础信息'
@@ -170,7 +341,7 @@ async function submitForm() {
   error.value = ''
 
   try {
-    if (!fieldText(version.value) || !fieldText(phase.value) || !fieldText(bossName.value)) {
+    if (!resolvedVersion.value || !resolvedPhase.value || !fieldText(bossName.value)) {
       error.value = '版本、期数、怪物名称为必填项'
       showFeedback('error')
       return
@@ -187,8 +358,8 @@ async function submitForm() {
         showFeedback('error')
         return
       }
-    } else if (!fieldText(room.value)) {
-      error.value = '危局强袭战须填写房间（1 / 2 / 3）'
+    } else if (!normalizeCrisisRoomCode(room.value)) {
+      error.value = '危局强袭战须选择房间（1 / 2 / 3 / 困难）'
       showFeedback('error')
       return
     }
@@ -204,8 +375,8 @@ async function submitForm() {
     if (isDefense.value) {
       try {
         defenseBossId = encodeDefenseBossId({
-          version: fieldText(version.value),
-          phase: fieldText(phase.value),
+          version: resolvedVersion.value,
+          phase: resolvedPhase.value,
           stage: Number(stage.value),
           roomInStage: Number(roomInStage.value),
           wave: Number(wave.value),
@@ -242,16 +413,29 @@ async function submitForm() {
       : { recordScheme: 'crisis' as const }
 
     const result = await createBoss({
-      version: fieldText(version.value),
-      phase: fieldText(phase.value),
+      version: resolvedVersion.value,
+      phase: resolvedPhase.value,
       boss_name: fieldText(bossName.value),
       hp: hpNumber,
       defense: fieldText(defense.value) ? Number(defense.value) : 0,
-      level: fieldText(level.value) ? Number(level.value) : 1,
-      room: isDefense.value ? null : fieldText(room.value),
+      level: fieldText(level.value)
+        ? Number(level.value)
+        : isDefense.value
+          ? 1
+          : 70,
+      room: isDefense.value ? null : normalizeCrisisRoomCode(room.value),
       weakness: fieldText(weakness.value) || null,
       resistance: fieldText(resistance.value) || null,
       boss_image: bossImage,
+      crisis_base_hp:
+        !isDefense.value && fieldText(crisisBaseHp.value)
+          ? Number(crisisBaseHp.value)
+          : undefined,
+      hp_coeff_percent:
+        !isDefense.value && hpCoeffManual.value && fieldText(hpCoeffPercent.value)
+          ? Number(hpCoeffPercent.value)
+          : undefined,
+      hp_coeff_manual: !isDefense.value && hpCoeffManual.value,
       ...defensePayload,
     })
 
@@ -262,14 +446,19 @@ async function submitForm() {
       : `怪物添加成功（ID ${result.id}）${actionHint}`
     showFeedback('message')
 
-    version.value = ''
-    phase.value = ''
+    const keptVersion = resolvedVersion.value
+    const keptPhase = resolvedPhase.value
+    version.value = keptVersion
+    phase.value = keptPhase
+    customVersion.value = ''
+    customPhase.value = ''
     bossName.value = ''
     hp.value = ''
     defense.value = ''
-    level.value = '1'
-    room.value = ''
+    level.value = isDefense.value ? '1' : '70'
+    room.value = '1'
     resetDefenseFields()
+    resetCrisisCoeffFields()
     weakness.value = ''
     resistance.value = ''
     imageFile.value = null
@@ -278,6 +467,12 @@ async function submitForm() {
     imageUrl.value = ''
     lookupHint.value = ''
     nameSuggestions.value = []
+    await loadVersionPhaseOptions()
+    version.value = keptVersion
+    phase.value = keptPhase
+    if (!availablePhases.value.includes(keptPhase) && keptPhase) {
+      customPhase.value = keptPhase
+    }
   } catch (err) {
     error.value = err instanceof Error ? err.message : '提交失败'
     showFeedback('error')
@@ -288,6 +483,17 @@ async function submitForm() {
 
 watch(bossName, (value) => {
   scheduleBossLookup(value)
+  if (!isDefense.value) {
+    const mapped = getCrisisBaseHpByName(value)
+    if (mapped != null && !fieldText(crisisBaseHp.value)) {
+      crisisBaseHp.value = String(mapped)
+    }
+    syncAutoCoeff()
+  }
+})
+
+watch([hp, crisisBaseHp], () => {
+  syncAutoCoeff()
 })
 
 watch(
@@ -308,12 +514,36 @@ watch(
     <form class="admin-form" novalidate @submit.prevent="submitForm">
       <label class="field">
         <span class="field-label">版本 *</span>
-        <input v-model="version" type="text" class="field-input" placeholder="如 3.0" />
+        <select v-model="version" class="field-input">
+          <option v-if="!availableVersions.length" value="" disabled>暂无可选版本</option>
+          <option v-for="item in availableVersions" :key="item" :value="item">
+            {{ item }}
+          </option>
+        </select>
+        <input
+          v-model="customVersion"
+          type="text"
+          class="field-input"
+          placeholder="新版本（填写后覆盖上方选择）"
+        />
       </label>
 
       <label class="field">
         <span class="field-label">期数 *</span>
-        <input v-model="phase" type="text" class="field-input" placeholder="如 1 或 第 1 期" />
+        <select v-model="phase" class="field-input">
+          <option v-if="!availablePhases.length" value="" disabled>
+            {{ resolvedVersion ? '该版本暂无期数，可在下方输入' : '请先选择版本' }}
+          </option>
+          <option v-for="item in availablePhases" :key="item" :value="item">
+            第 {{ item }} 期
+          </option>
+        </select>
+        <input
+          v-model="customPhase"
+          type="text"
+          class="field-input"
+          placeholder="新期数（填写后覆盖上方选择）"
+        />
       </label>
 
       <label class="field">
@@ -344,21 +574,52 @@ watch(
         </label>
       </div>
 
+      <template v-if="!isDefense">
+        <div class="field-row">
+          <label class="field">
+            <span class="field-label">怪物危局基础血量</span>
+            <input
+              v-model="crisisBaseHp"
+              type="number"
+              min="0"
+              step="any"
+              class="field-input"
+              placeholder="可从名称自动带出"
+            />
+          </label>
+          <label class="field">
+            <span class="field-label">危局血量系数 %</span>
+            <input
+              v-model="hpCoeffPercent"
+              type="number"
+              step="1"
+              class="field-input"
+              placeholder="自动计算，可手动覆盖"
+              @input="onCoeffInput"
+            />
+          </label>
+        </div>
+        <p class="lookup-hint">
+          {{ autoCoeffHint }}；公式：Boss血量 = 基础血量 × (系数 ÷ 100)，系数取整百分比
+        </p>
+      </template>
+
       <div v-if="isDefense" class="field-row">
         <label class="field">
           <span class="field-label">关卡 *</span>
-          <input v-model="stage" type="number" min="1" max="9" class="field-input" placeholder="1-9" />
+          <select v-model="stage" class="field-input">
+            <option v-for="item in defenseStageOptions" :key="item" :value="String(item)">
+              第 {{ item }} 关
+            </option>
+          </select>
         </label>
         <label class="field">
           <span class="field-label">房间 *</span>
-          <input
-            v-model="roomInStage"
-            type="number"
-            min="1"
-            max="9"
-            class="field-input"
-            placeholder="当前关卡第几间"
-          />
+          <select v-model="roomInStage" class="field-input">
+            <option v-for="item in defenseRoomOptions" :key="item" :value="String(item)">
+              房间 {{ item }}
+            </option>
+          </select>
         </label>
       </div>
 
@@ -397,7 +658,11 @@ watch(
 
       <label v-else class="field">
         <span class="field-label">房间 *</span>
-        <input v-model="room" type="text" class="field-input" placeholder="1 / 2 / 3" />
+        <select v-model="room" class="field-input">
+          <option v-for="item in CRISIS_ROOM_OPTIONS" :key="item.value" :value="item.value">
+            {{ item.label }}
+          </option>
+        </select>
       </label>
 
       <p v-if="isDefense && previewId" class="id-preview">预计怪物 ID：{{ previewId }}</p>

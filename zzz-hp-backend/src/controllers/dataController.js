@@ -17,9 +17,12 @@ function validateBoss(body) {
 }
 
 function validateBuff(body) {
-  const { version, phase, buff_name, recordScheme } = body
+  const { version, phase, buff_name, recordScheme, buffIndex } = body
   if (!version || !phase || !buff_name) {
     return 'version、phase、buff_name 为必填字段'
+  }
+  if (buffIndex == null || buffIndex === '') {
+    return 'buffIndex（Buff 序号）为必填字段'
   }
   if (recordScheme === 'defense') {
     const required = ['stage', 'roomInStage', 'buffIndex']

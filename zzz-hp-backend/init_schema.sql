@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS boss (
   phase VARCHAR(50) NOT NULL COMMENT '阶段',
   boss_name VARCHAR(255) NOT NULL COMMENT 'Boss名称',
   hp INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '生命值',
+  hp_coeff_percent INT NULL COMMENT '危局血量系数%（手动覆盖，空则自动计算）',
   defense INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '防御力',
   level INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '等级',
   room VARCHAR(100) DEFAULT NULL COMMENT '房间',
@@ -47,6 +48,7 @@ CREATE TABLE IF NOT EXISTS boss_info (
   boss_image VARCHAR(500) DEFAULT NULL COMMENT 'Boss图片',
   weakness VARCHAR(255) DEFAULT NULL COMMENT '弱点',
   resistance VARCHAR(255) DEFAULT NULL COMMENT '抗性',
+  crisis_base_hp DOUBLE NULL COMMENT '怪物危局基础血量',
   PRIMARY KEY (id),
   UNIQUE KEY uk_boss_name (boss_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Boss基础信息表';
@@ -75,11 +77,13 @@ CREATE TABLE IF NOT EXISTS id_buff (
 
 CREATE TABLE IF NOT EXISTS date (
   id INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  mode VARCHAR(20) NOT NULL DEFAULT 'crisis' COMMENT 'crisis|defense',
   version VARCHAR(50) NOT NULL COMMENT '版本',
   phase VARCHAR(50) NOT NULL COMMENT '阶段',
   start_date DATE NOT NULL COMMENT '开始日期',
   end_date DATE NOT NULL COMMENT '结束日期',
-  PRIMARY KEY (id)
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_date_mode_version_phase (mode, version, phase)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='日期表';
 
 -- ---------------------------------------------------------------------------
@@ -156,3 +160,67 @@ CREATE TABLE IF NOT EXISTS `W-Engine` (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='音擎增益表';
+
+CREATE TABLE IF NOT EXISTS calculator_skill_subcategories (
+  id VARCHAR(64) NOT NULL PRIMARY KEY,
+  category_id VARCHAR(32) NOT NULL,
+  name VARCHAR(128) NOT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='计算器招式小类';
+
+-- ---------------------------------------------------------------------------
+-- 站点更新日志
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS changelog (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  version VARCHAR(32) NOT NULL COMMENT '版本号，如 3.0.0',
+  title VARCHAR(200) NOT NULL COMMENT '标题',
+  content TEXT NOT NULL COMMENT '更新内容（纯文本，换行保留）',
+  published_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '发布日期',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_changelog_published (published_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='站点更新日志';
+
+-- ---------------------------------------------------------------------------
+-- 首页留言板
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS guestbook (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  nickname VARCHAR(40) NOT NULL DEFAULT '匿名' COMMENT '昵称',
+  title VARCHAR(80) NOT NULL DEFAULT '' COMMENT '标题',
+  category VARCHAR(20) NOT NULL DEFAULT '灌水' COMMENT '分类',
+  content VARCHAR(1000) NOT NULL COMMENT '留言内容',
+  is_hidden TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=隐藏，前台不展示',
+  is_anonymous TINYINT(1) NOT NULL DEFAULT 0 COMMENT '匿名发布',
+  is_sensitive TINYINT(1) NOT NULL DEFAULT 0 COMMENT '敏感内容（图片默认模糊）',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_guestbook_visible_created (is_hidden, created_at),
+  KEY idx_guestbook_category (category)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='首页留言板';
+
+CREATE TABLE IF NOT EXISTS guestbook_comment (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  post_id INT UNSIGNED NOT NULL COMMENT '所属帖子',
+  nickname VARCHAR(40) NOT NULL DEFAULT '匿名' COMMENT '昵称',
+  content VARCHAR(1000) NOT NULL COMMENT '评论内容',
+  is_hidden TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=隐藏',
+  is_anonymous TINYINT(1) NOT NULL DEFAULT 0 COMMENT '匿名评论',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_gb_comment_post_created (post_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='留言板评论';
+
+CREATE TABLE IF NOT EXISTS guestbook_setting (
+  setting_key VARCHAR(64) NOT NULL,
+  setting_value VARCHAR(255) NOT NULL DEFAULT '',
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (setting_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='留言板设置';

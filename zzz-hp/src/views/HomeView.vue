@@ -1,15 +1,20 @@
 <script setup lang="ts">
+import siteLogo from '@/assets/ZZZ.png'
+import HomeChangelog from '@/components/home/HomeChangelog.vue'
+
 const modes = [
   { title: '危局强袭战', path: '/crisis-assault', color: '#ff6b35' },
   { title: '式舆防卫战', path: '/defense', color: '#4ecdc4' },
   { title: '临界推演', path: '/deduction', color: '#a78bfa' },
   { title: '角色计算器', path: '/character-calculator', color: '#f6c453' },
+  { title: '网站说明', path: '/about', color: '#7eb8da' },
 ]
 </script>
 
 <template>
   <main class="home">
-    <h1 class="title">欢迎使用ZZZ-HP</h1>
+    <img class="home-logo" :src="siteLogo" alt="ZZZ-HP" />
+    <h1 class="title">欢迎使用 ZZZ-HP</h1>
     <div class="cards">
       <RouterLink
         v-for="mode in modes"
@@ -21,6 +26,8 @@ const modes = [
         <span class="card-title">{{ mode.title }}</span>
       </RouterLink>
     </div>
+
+    <HomeChangelog />
 
     <RouterLink to="/admin/login" class="admin-entry">管理员入口</RouterLink>
   </main>
@@ -34,16 +41,23 @@ const modes = [
   align-items: center;
   justify-content: center;
   padding: 2rem;
-  gap: 3rem;
+  gap: 2.5rem;
   position: relative;
 }
 
 .title {
-  font-size: clamp(2rem, 5vw, 3rem);
+  font-size: clamp(1.35rem, 4vw, 2rem);
   font-weight: 700;
   color: var(--color-heading);
   letter-spacing: 0.05em;
   text-align: center;
+}
+
+.home-logo {
+  width: min(220px, 56vw);
+  height: auto;
+  object-fit: contain;
+  user-select: none;
 }
 
 .cards {
@@ -115,5 +129,32 @@ const modes = [
   background: var(--color-background-mute);
   border-color: var(--color-border-hover);
   transform: translateY(-1px);
+}
+
+@media (max-width: 560px) {
+  .home {
+    padding: 1.25rem 0.85rem 4.5rem;
+    gap: 1.5rem;
+    justify-content: flex-start;
+  }
+
+  .title {
+    margin-top: 0.75rem;
+    font-size: 1.65rem;
+  }
+
+  .card {
+    min-height: 100px;
+    padding: 1.35rem 1rem;
+  }
+
+  .card-title {
+    font-size: 1.15rem;
+  }
+
+  .admin-entry {
+    right: 0.75rem;
+    bottom: 0.75rem;
+  }
 }
 </style>

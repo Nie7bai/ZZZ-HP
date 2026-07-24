@@ -9,6 +9,11 @@ import {
   upsertDriveDisc,
   upsertWengine,
 } from '../services/calculatorBuffService.js'
+import {
+  deleteSkillSubcategory,
+  listSkillSubcategories,
+  upsertSkillSubcategory,
+} from '../services/skillSubcategoryService.js'
 import { fail, success } from '../utils/response.js'
 
 export async function getCalculatorBuffs(_req, res) {
@@ -17,6 +22,33 @@ export async function getCalculatorBuffs(_req, res) {
     return success(res, data)
   } catch (err) {
     return fail(res, err.message || '获取计算器增益数据失败', 500, { error: err.message })
+  }
+}
+
+export async function getSkillSubcategories(_req, res) {
+  try {
+    const data = await listSkillSubcategories()
+    return success(res, data)
+  } catch (err) {
+    return fail(res, err.message || '获取招式小类失败', 500, { error: err.message })
+  }
+}
+
+export async function saveSkillSubcategory(req, res) {
+  try {
+    const data = await upsertSkillSubcategory(req.body)
+    return success(res, data, '招式小类保存成功')
+  } catch (err) {
+    return fail(res, err.message || '招式小类保存失败', 400, { error: err.message })
+  }
+}
+
+export async function removeSkillSubcategory(req, res) {
+  try {
+    const data = await deleteSkillSubcategory(req.params.id)
+    return success(res, data, '招式小类删除成功')
+  } catch (err) {
+    return fail(res, err.message || '招式小类删除失败', 400, { error: err.message })
   }
 }
 

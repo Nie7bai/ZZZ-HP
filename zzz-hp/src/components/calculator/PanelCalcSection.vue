@@ -1,11 +1,20 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import AdminBuffStatFieldGrid from '@/components/admin/calculator/AdminBuffStatFieldGrid.vue'
-import AdminImagePicker from '@/components/admin/AdminImagePicker.vue'
+import ExtraBuffGainEditor, {
+  type ExtraBuffGain,
+} from '@/components/calculator/ExtraBuffGainEditor.vue'
 import BuffModSourcesDisplay from '@/components/calculator/BuffModSourcesDisplay.vue'
 import StatValueWithSources from '@/components/calculator/StatValueWithSources.vue'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
-import type { AgentBuffDoc, BangbooBuffDoc, DriveDiscBuffDoc, WengineBuffDoc } from '@/types/calculator'
+import type {
+  AgentBuffDoc,
+  BangbooBuffDoc,
+  BuffStatKey,
+  BuffStatModifiers,
+  CharacterAttrKey,
+  DriveDiscBuffDoc,
+  WengineBuffDoc,
+} from '@/types/calculator'
 import type { DamageCalcPanelSnapshot } from '@/types/damageCalcHistory'
 import {
   createDefaultExternalPanel,
@@ -17,6 +26,7 @@ import {
 import {
   AFFIX_COUNT_FIELDS,
   computeExternalPanelFromAffixes,
+  inferAffixCountsFromExternalPanel,
 } from '@/utils/affixPanelCalc'
 import {
   DRIVE_DISC_SLOT_4_OPTIONS,
@@ -33,51 +43,97 @@ import {
   createEmptyRefinementMods,
   createEmptyWengineAdvancedStats,
   getMindscapeNotesUpToRank,
+  mergeBuffStatModifiers,
 } from '@/utils/calculatorUi'
 import { computeFinalPanel } from '@/utils/panelBuffCalc'
 import { computeDamageResult, type EnemyResistanceType } from '@/utils/damageCalc'
 import { buildAtkPanelProcessItems, buildEnemyCombatProcessItems, buildStatSourceGroups, type StatSourceGroup } from '@/utils/statSourceTips'
+import {
+  ENEMY_DEFENSE_PRESETS,
+  STAGGER_MULTIPLIER_PRESETS,
+} from '@/utils/enemyInputPresets'
+import EnemyPresetCombo from '@/components/calculator/EnemyPresetCombo.vue'
 import type { PanelScreenshotRecognition } from '@/types/panelScreenshot'
-import { recognizePanelScreenshot } from '@/utils/panelScreenshotRecognize'
 
 type BaseDamageSource = 'atk' | 'pierce'
 
 const MB_PROFESSION = '命破'
-const PANEL_FIELDS: { key: keyof PanelStats; label: string }[] = [
-  { key: 'hp', label: '生命值' },
-  { key: 'atk', label: '攻击力' },
-  { key: 'critRate', label: '暴击率%' },
-  { key: 'critDmg', label: '暴伤%' },
-  { key: 'dmgBonus', label: '增伤%' },
-  { key: 'ignoreDefense', label: '无视防御%' },
-  { key: 'reduceDefense', label: '减防%' },
-  { key: 'penRate', label: '穿透率%' },
-  { key: 'pen', label: '穿透值' },
-  { key: 'resPen', label: '抗穿%' },
-  { key: 'mastery', label: '精通' },
-  { key: 'anomalyCritRate', label: '异常暴击%' },
-  { key: 'anomalyCritDmg', label: '异常爆伤%' },
-  { key: 'anomalyDmgBonus', label: '异常增伤%' },
-  { key: 'directDmgMult', label: '直伤倍率%' },
-  { key: 'anomalyMult', label: '异常倍率%' },
-  { key: 'disorderBaseMult', label: '紊乱基础倍率%' },
-  { key: 'anomalyDuration', label: '异常持续时间(s)' },
-  { key: 'disorderCompMult', label: '紊乱补偿倍率%' },
-  { key: 'turbulenceBaseMult', label: '乱流基础倍率%' },
-  { key: 'turbulenceCompMult', label: '乱流补偿倍率%' },
-  { key: 'disorderDmgBonus', label: '紊乱增伤%' },
-  { key: 'turbulenceDmgBonus', label: '乱流增伤%' },
+
+type PanelFieldSlot =
+  | { id: string; kind: 'stat'; key: keyof PanelStats; label: string }
+  | { id: string; kind: 'pierce'; label: string }
+  | { id: string; kind: 'mod'; key: keyof BuffStatModifiers; label: string }
+  | { id: string; kind: 'finalRate'; rate: 'anomaly' | 'disorder' | 'turbulence' | 'release'; label: string }
+  | { id: string; kind: 'spacer' }
+
+/** 局外面板字段（按行排布，含空位） */
+const EXTERNAL_PANEL_SLOTS: PanelFieldSlot[] = [
+  { id: 'hp', kind: 'stat', key: 'hp', label: '生命值' },
+  { id: 'atk', kind: 'stat', key: 'atk', label: '攻击力' },
+  { id: 'pierce', kind: 'pierce', label: '贯穿力' },
+  { id: 'def', kind: 'stat', key: 'def', label: '防御力' },
+  { id: 'critRate', kind: 'stat', key: 'critRate', label: '暴击率%' },
+  { id: 'critDmg', kind: 'stat', key: 'critDmg', label: '爆伤%' },
+  { id: 'dmgBonus', kind: 'stat', key: 'dmgBonus', label: '增伤%' },
+  { id: 'penRate', kind: 'stat', key: 'penRate', label: '穿透率%' },
+  { id: 'pen', kind: 'stat', key: 'pen', label: '穿透值' },
+  { id: 'mastery', kind: 'stat', key: 'mastery', label: '精通' },
+  { id: 'spacer-1', kind: 'spacer' },
+  { id: 'spacer-2', kind: 'spacer' },
+  { id: 'anomalyMult', kind: 'stat', key: 'anomalyMult', label: '异常倍率%' },
+  { id: 'anomalyDuration', kind: 'stat', key: 'anomalyDuration', label: '异常持续时间(s)' },
+  { id: 'spacer-3', kind: 'spacer' },
+  { id: 'spacer-4', kind: 'spacer' },
+  { id: 'disorderBaseMult', kind: 'stat', key: 'disorderBaseMult', label: '紊乱基础倍率%' },
+  { id: 'disorderCompMult', kind: 'stat', key: 'disorderCompMult', label: '紊乱补偿倍率%' },
+  { id: 'turbulenceBaseMult', kind: 'stat', key: 'turbulenceBaseMult', label: '乱流基本倍率%' },
+  { id: 'turbulenceCompMult', kind: 'stat', key: 'turbulenceCompMult', label: '乱流补偿倍率%' },
 ]
 
-/** 局外初始面板不展示异常/紊乱/乱流增伤及异常暴击（仍参与局内计算） */
-const EXTERNAL_PANEL_FIELDS = PANEL_FIELDS.filter(
-  (field) =>
-    field.key !== 'anomalyCritRate' &&
-    field.key !== 'anomalyCritDmg' &&
-    field.key !== 'anomalyDmgBonus' &&
-    field.key !== 'disorderDmgBonus' &&
-    field.key !== 'turbulenceDmgBonus',
-)
+/** 局内最终面板字段 */
+const FINAL_PANEL_SLOTS: PanelFieldSlot[] = [
+  { id: 'hp', kind: 'stat', key: 'hp', label: '生命值' },
+  { id: 'atk', kind: 'stat', key: 'atk', label: '攻击力' },
+  { id: 'pierce', kind: 'pierce', label: '贯穿力' },
+  { id: 'def', kind: 'stat', key: 'def', label: '防御力' },
+  { id: 'critRate', kind: 'stat', key: 'critRate', label: '暴击率%' },
+  { id: 'critDmg', kind: 'stat', key: 'critDmg', label: '爆伤%' },
+  { id: 'dmgBonus', kind: 'stat', key: 'dmgBonus', label: '增伤%' },
+  { id: 'penRate', kind: 'stat', key: 'penRate', label: '穿透率%' },
+  { id: 'pen', kind: 'stat', key: 'pen', label: '穿透值' },
+  { id: 'mastery', kind: 'stat', key: 'mastery', label: '精通' },
+  { id: 'spacer-a', kind: 'spacer' },
+  { id: 'spacer-b', kind: 'spacer' },
+  { id: 'anomalyCritRate', kind: 'stat', key: 'anomalyCritRate', label: '异常暴击%' },
+  { id: 'anomalyCritDmg', kind: 'stat', key: 'anomalyCritDmg', label: '异常爆伤%' },
+  { id: 'anomalyMultLift', kind: 'mod', key: 'anomalyMult', label: '异常倍率提升%' },
+  { id: 'anomalyDmgBonus', kind: 'stat', key: 'anomalyDmgBonus', label: '异常增伤%' },
+  { id: 'anomalyReleaseCritRate', kind: 'stat', key: 'anomalyReleaseCritRate', label: '异放暴击%' },
+  { id: 'anomalyReleaseCritDmg', kind: 'stat', key: 'anomalyReleaseCritDmg', label: '异放爆伤%' },
+  { id: 'anomalyReleaseMult', kind: 'stat', key: 'anomalyReleaseMult', label: '异放倍率提升%' },
+  { id: 'anomalyReleaseDmgBonus', kind: 'stat', key: 'anomalyReleaseDmgBonus', label: '异放增伤%' },
+  { id: 'disorderMultLift', kind: 'mod', key: 'disorderBaseMult', label: '紊乱倍率提升%' },
+  { id: 'disorderDmgBonus', kind: 'stat', key: 'disorderDmgBonus', label: '紊乱增伤%' },
+  { id: 'turbulenceMultLift', kind: 'mod', key: 'turbulenceBaseMult', label: '乱流倍率提升%' },
+  { id: 'turbulenceDmgBonus', kind: 'stat', key: 'turbulenceDmgBonus', label: '乱流增伤%' },
+  { id: 'finalAnomaly', kind: 'finalRate', rate: 'anomaly', label: '异常倍率%' },
+  { id: 'finalDisorder', kind: 'finalRate', rate: 'disorder', label: '紊乱倍率%' },
+  { id: 'finalTurbulence', kind: 'finalRate', rate: 'turbulence', label: '乱流倍率%' },
+  { id: 'finalRelease', kind: 'finalRate', rate: 'release', label: '异放倍率%' },
+  { id: 'directDmgMult', kind: 'stat', key: 'directDmgMult', label: '直伤倍率%' },
+  { id: 'pierceDmgBonus', kind: 'mod', key: 'pierceDmgBonus', label: '贯穿增伤%' },
+  { id: 'special', kind: 'mod', key: 'special', label: '特殊补充%' },
+]
+
+const emptyBangboo: BangbooBuffDoc = {
+  id: 'none',
+  name: '未选择',
+  avatar_image: null,
+  effects: [],
+  refinementEffects: createEmptyRefinementMods().map(() => []),
+  fixedMods: createEmptyBuffStatModifiers(),
+  refinementMods: createEmptyRefinementMods(),
+}
 
 const props = defineProps<{
   teamSlots: TeamSlot[]
@@ -88,32 +144,34 @@ const props = defineProps<{
   selectedBangbooId: string
   bangbooRefine: number
   calcMode: PanelCalcMode
+  sectionId?: string
+  damageKind?: import('@/types/calculator').DamageCalcKind
+  skillCategoryId?: import('@/types/calculator').SkillCategoryId
+  skillSubcategoryId?: string | null
+  buffSelection?: import('@/utils/panelBuffCalc').BuffSelectionState | null
+  staggerPhase?: import('@/types/calculator').StaggerPhase
 }>()
 
-const emit = defineEmits<{
-  'apply-recognition': [result: PanelScreenshotRecognition]
-}>()
-
-const emptyBangboo: BangbooBuffDoc = {
-  id: 'none',
-  name: '未选择',
-  avatar_image: null,
-  fixedMods: createEmptyBuffStatModifiers(),
-  refinementMods: createEmptyRefinementMods(),
-}
-
-const panelImageUrl = ref('')
-const panelImageName = ref('')
-const recognitionStatus = ref('')
-const recognitionResult = ref<PanelScreenshotRecognition | null>(null)
-const recognitionError = ref('')
-const recognizing = ref(false)
 const baseDamageSource = ref<BaseDamageSource>('atk')
 const showDetailedResults = ref(false)
 const externalPanel = reactive<PanelStats>(createDefaultExternalPanel())
 const affixCounts = reactive(createEmptyAffixCounts())
 const affixDriveDiscMainStats = reactive(createDefaultAffixDriveDiscMainStats())
-const extraMods = reactive(createEmptyBuffStatModifiers())
+const extraGains = ref<ExtraBuffGain[]>([])
+
+const extraMods = computed(() => {
+  let total = createEmptyBuffStatModifiers()
+  const phase = props.staggerPhase ?? 'stagger'
+  for (const gain of extraGains.value) {
+    const situation = gain.applySituation ?? 'global'
+    if (situation === 'stagger' && phase !== 'stagger') continue
+    if (situation === 'non_stagger' && phase !== 'normal') continue
+    const next = createEmptyBuffStatModifiers()
+    next[gain.stat as BuffStatKey] = gain.value
+    total = mergeBuffStatModifiers(total, next)
+  }
+  return total
+})
 
 const enemyInput = reactive({
   defense: 953,
@@ -190,6 +248,16 @@ const effectiveBaseDamageSource = computed<BaseDamageSource>(() =>
   isMbMainAgent.value ? 'pierce' : baseDamageSource.value,
 )
 
+const convertAttrDefaults = computed<Partial<Record<CharacterAttrKey, number>>>(() => ({
+  externalHp: effectiveExternalPanel.value.hp,
+  externalAtk: effectiveExternalPanel.value.atk,
+  mastery: effectiveExternalPanel.value.mastery,
+  penRate: effectiveExternalPanel.value.penRate,
+  inCombatHp: effectiveExternalPanel.value.hp,
+  inCombatAtk: effectiveExternalPanel.value.atk,
+  def: effectiveExternalPanel.value.def,
+}))
+
 const panelBreakdown = computed(() =>
   computeFinalPanel(effectiveExternalPanel.value, {
     teamSlots: props.teamSlots,
@@ -199,7 +267,16 @@ const panelBreakdown = computed(() =>
     bangbooRefine: props.bangbooRefine,
     mainSlotIndex: mainSlotIndex.value,
     driveDiscs: props.driveDiscs,
-    extraMods,
+    extraMods: extraMods.value,
+    skillContext: {
+      damageKind: props.damageKind ?? 'direct',
+      categoryId: props.skillCategoryId ?? 'basic',
+      subcategoryId: props.skillSubcategoryId ?? null,
+      element: mainAgent.value?.element,
+      staggerPhase: props.staggerPhase ?? 'stagger',
+    },
+    buffSelection: props.buffSelection ?? null,
+    attrValues: convertAttrDefaults.value,
   }),
 )
 
@@ -223,10 +300,11 @@ function formatFormulaNumber(v: number, precision = 4) {
   return text.replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1')
 }
 
-function formatPanelValue(key: keyof PanelStats | 'pierce', value: number) {
+function formatPanelValue(key: keyof PanelStats | 'pierce' | 'special' | string, value: number) {
   if (
     key === 'hp' ||
     key === 'atk' ||
+    key === 'def' ||
     key === 'pen' ||
     key === 'mastery' ||
     key === 'pierce' ||
@@ -235,6 +313,34 @@ function formatPanelValue(key: keyof PanelStats | 'pierce', value: number) {
     return formatNumber(value)
   }
   return round(value, 2)
+}
+
+function formatPanelSlot(slot: PanelFieldSlot, scope: 'external' | 'final') {
+  if (slot.kind === 'spacer') return ''
+  if (slot.kind === 'pierce') {
+    return formatPanelValue(
+      'pierce',
+      scope === 'external' ? externalPiercePower.value : piercePower.value,
+    )
+  }
+  if (slot.kind === 'mod') {
+    return formatPanelValue(slot.key, panelBreakdown.value.totalMods[slot.key])
+  }
+  if (slot.kind === 'finalRate') {
+    const p = calcParts.value
+    if (slot.rate === 'anomaly') {
+      return formatPanelValue('anomalyMult', finalPanel.value.anomalyMult)
+    }
+    if (slot.rate === 'disorder') {
+      return formatPanelValue('disorder', p.disorderZone * 100)
+    }
+    if (slot.rate === 'turbulence') {
+      return formatPanelValue('turbulence', p.turbulenceZone * 100)
+    }
+    return formatPanelValue('release', finalPanel.value.anomalyReleaseMult)
+  }
+  const panel = scope === 'external' ? effectiveExternalPanel.value : finalPanel.value
+  return formatPanelValue(slot.key, panel[slot.key])
 }
 
 function computePiercePower(hp: number, atk: number, pierceMod = 0) {
@@ -246,53 +352,35 @@ const externalPiercePower = computed(() =>
 )
 
 function applyRecognitionToExternalPanel(result: PanelScreenshotRecognition) {
-  if (isAffixMode.value) return
-  for (const [key, value] of Object.entries(result.externalPanel) as [keyof PanelStats, number][]) {
+  // 面板计算与词条计算同步写入，避免只更新当前模式
+  for (const [key, value] of Object.entries(result.externalPanel) as [
+    keyof PanelStats,
+    number,
+  ][]) {
     if (typeof value === 'number' && Number.isFinite(value)) {
       externalPanel[key] = value
     }
   }
-}
 
-async function onUploadPanelImage(file: File | null) {
-  if (panelImageUrl.value.startsWith('blob:')) {
-    URL.revokeObjectURL(panelImageUrl.value)
-  }
-  recognitionResult.value = null
-  recognitionError.value = ''
-  recognitionStatus.value = ''
+  // 先写入识别到的 4/5/6 主属性，再反推词条（反推会扣除主属性贡献）
+  const mains = result.driveDiscMainStats
+  if (mains?.slot4MainStat) affixDriveDiscMainStats.slot4MainStat = mains.slot4MainStat
+  if (mains?.slot5MainStat) affixDriveDiscMainStats.slot5MainStat = mains.slot5MainStat
+  if (mains?.slot6MainStat) affixDriveDiscMainStats.slot6MainStat = mains.slot6MainStat
 
-  if (!file) {
-    panelImageUrl.value = ''
-    panelImageName.value = ''
-    return
-  }
-
-  panelImageUrl.value = URL.createObjectURL(file)
-  panelImageName.value = file.name
-
-  recognizing.value = true
-  try {
-    const result = await recognizePanelScreenshot(
-      file,
-      {
-        agents: props.agents,
-        wengines: props.wengines,
-        driveDiscs: props.driveDiscs,
-      },
-      (message) => {
-        recognitionStatus.value = message
-      },
-    )
-    recognitionResult.value = result
-    applyRecognitionToExternalPanel(result)
-    emit('apply-recognition', result)
-  } catch (error) {
-    recognitionError.value = error instanceof Error ? error.message : '截图识别失败'
-  } finally {
-    recognizing.value = false
-    recognitionStatus.value = ''
-  }
+  const inferred = inferAffixCountsFromExternalPanel({
+    target: result.externalPanel,
+    agentBase: mainAgent.value?.basePanel ?? createEmptyAgentBasePanel(),
+    wengineBaseAtk: mainWengine.value?.baseAtk ?? 0,
+    wengineAdvanced: mainWengine.value?.advancedStats ?? createEmptyWengineAdvancedStats(),
+    driveDiscSelection: {
+      twoPieceDriveDiscId: mainSlot.value.twoPieceDriveDiscId,
+      fourPieceDriveDiscId: mainSlot.value.fourPieceDriveDiscId,
+    },
+    driveDiscMainStats: { ...affixDriveDiscMainStats },
+    driveDiscs: props.driveDiscs,
+  })
+  Object.assign(affixCounts, createEmptyAffixCounts(), inferred.affixCounts)
 }
 
 watch(
@@ -310,6 +398,7 @@ watch(
   () => {
     if (!mainAgent.value || isAffixMode.value) return
     const base = mainAgent.value.basePanel
+    externalPanel.def = base.def
     externalPanel.directDmgMult = base.directDmgMult
     externalPanel.anomalyMult = base.anomalyMult
     externalPanel.anomalyCritRate = base.anomalyCritRate
@@ -342,8 +431,12 @@ const calcParts = computed(() =>
     isMbMainAgent: isMbMainAgent.value,
     enemyInput,
     combatVulnerable: panelBreakdown.value.combatMods.vulnerable,
+    combatGlobalStaggerVulnerable: panelBreakdown.value.combatMods.globalStaggerVulnerable,
     combatStaggerVulnerable: panelBreakdown.value.combatMods.staggerVulnerable,
+    combatStaggerVulnerableOnly: panelBreakdown.value.combatMods.staggerVulnerableOnly,
     combatSpecial: panelBreakdown.value.combatMods.special,
+    combatPierceDmgBonus: panelBreakdown.value.combatMods.pierceDmgBonus,
+    staggerPhase: props.staggerPhase ?? 'stagger',
     mainAgentElement: mainAgent.value?.element ?? '',
     mainAgentId: mainAgent.value?.id ?? '',
     mainAgentName: mainAgent.value?.name ?? '',
@@ -423,6 +516,7 @@ type ValueTipsKey =
   | 'generalMultiplier'
   | 'critMultiplier'
   | 'specialMultiplier'
+  | 'pierceDmgMultiplier'
   | 'directDmgMultZone'
   | 'masteryZone'
   | 'levelZone'
@@ -469,15 +563,27 @@ const alignedGeneralFormula = computed(() => {
 
 const alignedDirectFormula = computed(() => {
   const p = calcParts.value
+  const terms: AlignedFormulaTerm[] = [
+    { label: '通用乘区', value: formatFormulaNumber(p.generalMultiplier, 2), tipsKey: 'generalMultiplier' },
+    { label: '暴击区', value: formatFormulaNumber(p.critMultiplier), tipsKey: 'critMultiplier' },
+    { label: '特殊乘区', value: formatFormulaNumber(p.specialMultiplier), tipsKey: 'specialMultiplier' },
+  ]
+  if (p.baseDamageSource === 'pierce') {
+    terms.push({
+      label: '贯穿增伤区',
+      value: formatFormulaNumber(p.pierceDmgMultiplier),
+      tipsKey: 'pierceDmgMultiplier',
+    })
+  }
+  terms.push({
+    label: '直伤倍率区',
+    value: formatFormulaNumber(p.directDmgMultZone),
+    tipsKey: 'directDmgMultZone',
+  })
   return {
     key: 'directDamageExpected' as AlignedFormulaResultKey,
     title: '公式',
-    terms: [
-      { label: '通用乘区', value: formatFormulaNumber(p.generalMultiplier, 2), tipsKey: 'generalMultiplier' },
-      { label: '暴击区', value: formatFormulaNumber(p.critMultiplier), tipsKey: 'critMultiplier' },
-      { label: '特殊乘区', value: formatFormulaNumber(p.specialMultiplier), tipsKey: 'specialMultiplier' },
-      { label: '直伤倍率区', value: formatFormulaNumber(p.directDmgMultZone), tipsKey: 'directDmgMultZone' },
-    ] satisfies AlignedFormulaTerm[],
+    terms,
     result: formatNumber(p.directDamageExpected),
   }
 })
@@ -493,6 +599,7 @@ const alignedAnomalyFormulas = computed(() => {
         { label: '通用乘区', value: formatFormulaNumber(p.generalMultiplier, 2), tipsKey: 'generalMultiplier' },
         { label: '精通区', value: formatFormulaNumber(p.masteryZone), tipsKey: 'masteryZone' },
         { label: '等级区', value: formatFormulaNumber(p.levelZone), tipsKey: 'levelZone' },
+        { label: '特殊乘区', value: formatFormulaNumber(p.specialMultiplier), tipsKey: 'specialMultiplier' },
       ] satisfies AlignedFormulaTerm[],
       result: formatNumber(p.anomalyBaseExpected),
     },
@@ -649,7 +756,7 @@ const valueTips = computed(() => {
                 label: '敌方与环境 / 局外面板',
                 items: [
                   `敌方防御 ${formatFormulaNumber(enemy.defense, 2)}`,
-                  `无视防御 ${formatFormulaNumber(external.ignoreDefense, 2)}%`,
+                  `无视防御/减防 ${formatFormulaNumber(external.ignoreDefense + panel.reduceDefense, 2)}%`,
                   `穿透值 ${formatFormulaNumber(external.pen, 2)}`,
                 ],
               },
@@ -802,6 +909,25 @@ const valueTips = computed(() => {
         resultLabel: '特殊乘区',
       }),
     ),
+    pierceDmgMultiplier: withTotal(
+      [
+        {
+          label: '乘区说明',
+          items:
+            p.baseDamageSource === 'pierce'
+              ? ['基础伤害来源为贯穿力，贯穿增伤作为独立乘区生效']
+              : ['基础伤害来源非贯穿力，贯穿增伤区固定为 1'],
+        },
+        ...buildStatSourceGroups({
+          keys: ['pierceDmgBonus'],
+          externalPanel: external,
+          sources,
+          externalKeyMap: { pierceDmgBonus: null },
+          showAdditiveProcess: false,
+        }),
+      ],
+      `贯穿增伤区 ${formatFormulaNumber(p.pierceDmgMultiplier)}`,
+    ),
     directDmgMultZone: withTotal(
       buildStatSourceGroups({
         keys: ['directDmgMult'],
@@ -831,24 +957,23 @@ const valueTips = computed(() => {
             label: '敌方与环境 / 局外面板',
             items: [
               `敌方防御 ${formatFormulaNumber(enemy.defense, 2)}`,
-              `无视防御 ${formatFormulaNumber(external.ignoreDefense, 2)}%`,
-              `穿透值 ${formatFormulaNumber(external.pen, 2)}`,
+              `无视防御/减防 ${formatFormulaNumber(panel.ignoreDefense + panel.reduceDefense, 2)}%`,
+              `穿透值 ${formatFormulaNumber(panel.pen, 2)}`,
             ],
           },
         ],
         showAdditiveProcess: false,
       }),
       `有效防御 ${formatFormulaNumber(p.effectiveDefense, 2)}`,
-      [
-        `敌方防御 ${formatFormulaNumber(enemy.defense, 2)}`,
-        `无视防御 ${formatFormulaNumber(external.ignoreDefense, 2)}%`,
-        `减防 ${formatFormulaNumber(panel.reduceDefense, 2)}%`,
-        `穿透率 ${formatFormulaNumber(panel.penRate, 2)}%`,
-        `穿透值 ${formatFormulaNumber(external.pen, 2)}`,
-        `防御因子 ${formatFormulaNumber(p.defenseFactor)}`,
-        `折后防御 ${formatFormulaNumber(enemy.defense * p.defenseFactor * (1 - p.penRateRatio), 2)}`,
-        `折后防御 - 穿透值 = ${formatFormulaNumber(p.effectiveDefense, 2)}`,
-      ],
+      (() => {
+        const defenseCut = panel.ignoreDefense + panel.reduceDefense
+        const defenseAfter = enemy.defense * p.defenseFactor * (1 - p.penRateRatio)
+        return [
+          `防御因子 = max(0, 1 − 无视防御/减防) = max(0, 1 − ${formatFormulaNumber(defenseCut / 100)}) = ${formatFormulaNumber(p.defenseFactor)}`,
+          `折后防御 = 敌方防御 × 防御因子 × (1 − 穿透率) = ${formatFormulaNumber(enemy.defense, 2)} × ${formatFormulaNumber(p.defenseFactor)} × (1 − ${formatFormulaNumber(p.penRateRatio)}) = ${formatFormulaNumber(defenseAfter, 2)}`,
+          `有效防御 = max(0, 折后防御) − 穿透值 = max(0, ${formatFormulaNumber(defenseAfter, 2)}) − ${formatFormulaNumber(panel.pen, 2)} = ${formatFormulaNumber(p.effectiveDefense, 2)}`,
+        ]
+      })(),
     ),
     piercePower: withTotal(
       [
@@ -1196,7 +1321,8 @@ function getSnapshot(): DamageCalcPanelSnapshot {
     externalPanel: { ...externalPanel },
     affixCounts: { ...affixCounts },
     affixDriveDiscMainStats: { ...affixDriveDiscMainStats },
-    extraMods: { ...extraMods },
+    extraMods: { ...extraMods.value },
+    extraGains: extraGains.value.map((item) => ({ ...item })),
     enemyInput: { ...enemyInput },
   }
 }
@@ -1206,18 +1332,42 @@ function loadSnapshot(snapshot: DamageCalcPanelSnapshot) {
   Object.assign(externalPanel, createDefaultExternalPanel(), snapshot.externalPanel)
   Object.assign(affixCounts, snapshot.affixCounts)
   Object.assign(affixDriveDiscMainStats, snapshot.affixDriveDiscMainStats)
-  Object.assign(extraMods, createEmptyBuffStatModifiers(), snapshot.extraMods)
+  if (snapshot.extraGains?.length) {
+    extraGains.value = snapshot.extraGains.map((item) => ({
+      id: item.id,
+      name: item.name,
+      stat: item.stat as BuffStatKey,
+      value: item.value,
+      applySituation: item.applySituation ?? 'global',
+    }))
+  } else {
+    const mods = { ...createEmptyBuffStatModifiers(), ...snapshot.extraMods }
+    extraGains.value = BUFF_STAT_FIELDS.filter((field) => mods[field.key] !== 0).map(
+      (field, index) => ({
+        id: `legacy-${field.key}-${index}`,
+        name: buffStatFieldLabel(field),
+        stat: field.key,
+        value: mods[field.key],
+        applySituation: 'global' as const,
+      }),
+    )
+  }
   Object.assign(enemyInput, snapshot.enemyInput)
   if (!Number.isFinite(enemyInput.level) || enemyInput.level < 1) {
     enemyInput.level = 60
   }
 }
 
-defineExpose({ getSnapshot, loadSnapshot })
+defineExpose({
+  getSnapshot,
+  loadSnapshot,
+  applyRecognitionToExternalPanel,
+  convertAttrDefaults,
+})
 </script>
 
 <template>
-  <section id="damage-panel" class="section-card panel-section damage-anchor">
+  <section :id="sectionId" class="section-card panel-section damage-anchor">
     <header class="section-header">
       <div>
         <h2>面板录入与伤害计算</h2>
@@ -1236,26 +1386,6 @@ defineExpose({ getSnapshot, loadSnapshot })
       当前主C为命破：基础伤害来源固定为贯穿力，防御区固定为 1。
     </p>
 
-    <details v-if="teamAgentNotes.length" class="team-notes">
-      <summary class="team-notes-title">查看队伍角色注释</summary>
-      <article v-for="item in teamAgentNotes" :key="item.key" class="team-note-item">
-        <p class="team-note-label">{{ item.label }}</p>
-        <p v-if="item.note" class="team-note-text">
-          <span class="team-note-type">角色注释</span>
-          {{ item.note }}
-        </p>
-        <p
-          v-for="mindscapeNote in item.mindscapeNotes"
-          :key="`${item.key}-${mindscapeNote.rank}`"
-          class="team-note-text"
-        >
-          <span class="team-note-type">{{ mindscapeNote.rank }}影注释</span>
-          {{ mindscapeNote.text }}
-        </p>
-        <p v-if="!item.note && !item.mindscapeNotes.length" class="team-note-empty">暂无注释</p>
-      </article>
-    </details>
-
     <details v-if="teamWengineNotes.length" class="team-notes team-wengine-notes">
       <summary class="team-notes-title">查看队伍音擎注释</summary>
       <article v-for="item in teamWengineNotes" :key="item.key" class="team-note-item">
@@ -1267,47 +1397,6 @@ defineExpose({ getSnapshot, loadSnapshot })
       </article>
     </details>
 
-    <div class="upload-box">
-      <p class="upload-label">上传角色面板截图</p>
-      <p class="upload-hint">
-        两个黑框划定范围：上框认角色名、影画与右侧属性（小穿在穿透率下方/面板左下角；xx伤害加成=增伤）；框间认音擎；下框先认齐 6 个套装名再按数量判定 2/4 件。截图请尽量与标准图同比例。
-      </p>
-      <AdminImagePicker button-text="选择截图" @change="onUploadPanelImage" />
-      <p v-if="recognizing" class="recognition-status">{{ recognitionStatus || '正在识别…' }}</p>
-      <p v-if="recognitionError" class="recognition-error">{{ recognitionError }}</p>
-      <div v-if="recognitionResult" class="recognition-result">
-        <p class="recognition-result-title">识别结果（已填入主C槽位{{ isAffixMode ? '' : '与局外面板' }}）</p>
-        <ul>
-          <li>角色：{{ recognitionResult.agentName ?? '未识别' }} · {{ recognitionResult.rank }}影</li>
-          <li>
-            音擎：{{ recognitionResult.wengineName ?? '未识别' }} · 精{{
-              recognitionResult.wengineRefine
-            }}
-          </li>
-          <li>
-            驱动盘：2件 {{ recognitionResult.twoPieceDriveDiscName ?? '未识别' }} · 4件
-            {{ recognitionResult.fourPieceDriveDiscName ?? '未识别' }}
-          </li>
-          <li v-if="!isAffixMode && recognitionResult.externalPanel.hp">
-            生命 {{ recognitionResult.externalPanel.hp }} · 攻击
-            {{ recognitionResult.externalPanel.atk ?? '—' }}
-          </li>
-          <li v-if="!isAffixMode">
-            穿透率 {{ recognitionResult.externalPanel.penRate ?? '—' }}% · 穿透值
-            {{ recognitionResult.externalPanel.pen ?? '—' }} · 增伤
-            {{ recognitionResult.externalPanel.dmgBonus ?? '—' }}%
-          </li>
-        </ul>
-        <ul v-if="recognitionResult.warnings.length" class="recognition-warnings">
-          <li v-for="warning in recognitionResult.warnings" :key="warning">{{ warning }}</li>
-        </ul>
-      </div>
-      <div class="upload-preview">
-        <img v-if="panelImageUrl" :src="panelImageUrl" :alt="panelImageName || '面板预览'" />
-        <p v-else>选择截图后可在此对照录入局外面板数据。</p>
-      </div>
-    </div>
-
     <div class="grid four meta-grid">
       <label class="field">
         <span>基础伤害来源</span>
@@ -1317,8 +1406,8 @@ defineExpose({ getSnapshot, loadSnapshot })
         </select>
       </label>
       <label class="field">
-        <span>主C槽位</span>
-        <input :value="mainSlot.isMainC ? '已标记主C' : '未标记'" type="text" readonly />
+        <span>主C角色名</span>
+        <input :value="mainAgent?.name ?? '未选择'" type="text" readonly />
       </label>
       <label class="field">
         <span>已选邦布</span>
@@ -1407,34 +1496,37 @@ defineExpose({ getSnapshot, loadSnapshot })
             </p>
           </header>
           <div class="grid four">
-            <label v-for="field in EXTERNAL_PANEL_FIELDS" :key="`external-${field.key}`" class="field">
-              <span>{{ field.label }}</span>
-              <input
-                v-if="!isAffixMode"
-                v-model.number="externalPanel[field.key]"
-                type="number"
-                step="any"
-              />
-              <input
-                v-else
-                :value="formatPanelValue(field.key, effectiveExternalPanel[field.key])"
-                type="text"
-                readonly
-              />
-            </label>
-            <label class="field">
-              <span>贯穿力</span>
-              <input :value="formatPanelValue('pierce', externalPiercePower)" type="text" readonly />
-            </label>
+            <template v-for="slot in EXTERNAL_PANEL_SLOTS" :key="`external-${slot.id}`">
+              <div v-if="slot.kind === 'spacer'" class="field field-spacer" aria-hidden="true" />
+              <label v-else-if="slot.kind === 'stat'" class="field">
+                <span>{{ slot.label }}</span>
+                <input
+                  v-if="!isAffixMode"
+                  v-model.number="externalPanel[slot.key]"
+                  type="number"
+                  step="any"
+                />
+                <input
+                  v-else
+                  :value="formatPanelSlot(slot, 'external')"
+                  type="text"
+                  readonly
+                />
+              </label>
+              <label v-else class="field">
+                <span>{{ slot.label }}</span>
+                <input :value="formatPanelSlot(slot, 'external')" type="text" readonly />
+              </label>
+            </template>
           </div>
         </section>
 
         <section class="panel-block extra-mods-block">
           <header class="panel-block-header">
-            <h3>额外 Buff</h3>
-            <p>未录入角色/音擎/邦布数据时的补充增益，参与局内面板与乘区汇总。</p>
+            <h3>额外 Buff 增益</h3>
+            <p>未录入角色/音擎/邦布数据时的补充增益，按条添加，参与局内面板与乘区汇总。</p>
           </header>
-          <AdminBuffStatFieldGrid v-model="extraMods" hint="" />
+          <ExtraBuffGainEditor v-model="extraGains" />
         </section>
       </div>
 
@@ -1444,18 +1536,13 @@ defineExpose({ getSnapshot, loadSnapshot })
           <p>叠加自身/队友/音擎/邦布/驱动盘/额外 Buff 后的战斗面板，仅展示。</p>
         </header>
         <div class="grid four panel-grid-fill">
-          <label v-for="field in PANEL_FIELDS" :key="`final-${field.key}`" class="field">
-            <span>{{ field.label }}</span>
-            <input
-              :value="formatPanelValue(field.key, finalPanel[field.key])"
-              type="text"
-              readonly
-            />
-          </label>
-          <label class="field">
-            <span>贯穿力</span>
-            <input :value="formatPanelValue('pierce', piercePower)" type="text" readonly />
-          </label>
+          <template v-for="slot in FINAL_PANEL_SLOTS" :key="`final-${slot.id}`">
+            <div v-if="slot.kind === 'spacer'" class="field field-spacer" aria-hidden="true" />
+            <label v-else class="field">
+              <span>{{ slot.label }}</span>
+              <input :value="formatPanelSlot(slot, 'final')" type="text" readonly />
+            </label>
+          </template>
         </div>
       </section>
     </div>
@@ -1473,7 +1560,14 @@ defineExpose({ getSnapshot, loadSnapshot })
 
     <h3 class="enemy-title">敌方与环境</h3>
     <div class="grid four">
-      <label class="field"><span>敌方防御</span><input v-model.number="enemyInput.defense" type="number" /></label>
+      <label class="field">
+        <span>敌方防御</span>
+        <EnemyPresetCombo
+          v-model="enemyInput.defense"
+          :presets="ENEMY_DEFENSE_PRESETS"
+          aria-label="敌方防御预设"
+        />
+      </label>
       <label class="field">
         <span>敌方抗性</span>
         <select v-model="enemyInput.resistanceType">
@@ -1484,7 +1578,15 @@ defineExpose({ getSnapshot, loadSnapshot })
         </select>
       </label>
       <label class="field"><span>易伤区（基础）</span><input v-model.number="enemyInput.vulnerableMultiplier" type="number" step="0.01" /></label>
-      <label class="field"><span>失衡易伤区（基础）</span><input v-model.number="enemyInput.staggerMultiplier" type="number" step="0.01" /></label>
+      <label class="field">
+        <span>失衡易伤区（基础）</span>
+        <EnemyPresetCombo
+          v-model="enemyInput.staggerMultiplier"
+          :presets="STAGGER_MULTIPLIER_PRESETS"
+          step="0.01"
+          aria-label="失衡易伤预设"
+        />
+      </label>
       <label class="field"><span>特殊乘区（基础）</span><input v-model.number="enemyInput.specialMultiplier" type="number" step="0.01" /></label>
       <label class="field"><span>代理人等级</span><input v-model.number="enemyInput.level" type="number" min="1" max="60" step="1" /></label>
     </div>
@@ -1499,34 +1601,36 @@ defineExpose({ getSnapshot, loadSnapshot })
 
     <template v-if="!showDetailedResults">
       <div class="result-grid result-grid-summary">
-        <p class="result-total">
+        <p v-if="damageKind !== 'anomaly'" class="result-total">
           直伤期望伤害：
           <StatValueWithSources
             :value="formatNumber(calcParts.directDamageExpected)"
             :groups="valueTips.directDamageExpected"
           />
         </p>
-        <p class="result-total">
-          异常期望伤害：
-          <StatValueWithSources
-            :value="formatNumber(calcParts.anomalyExpected)"
-            :groups="valueTips.anomalyExpected"
-          />
-        </p>
-        <p class="result-total">
-          紊乱期望伤害：
-          <StatValueWithSources
-            :value="formatNumber(calcParts.disorderExpected)"
-            :groups="valueTips.disorderExpected"
-          />
-        </p>
-        <p class="result-total">
-          乱流期望伤害：
-          <StatValueWithSources
-            :value="formatNumber(calcParts.turbulenceExpected)"
-            :groups="valueTips.turbulenceExpected"
-          />
-        </p>
+        <template v-if="damageKind !== 'direct'">
+          <p class="result-total">
+            异常期望伤害：
+            <StatValueWithSources
+              :value="formatNumber(calcParts.anomalyExpected)"
+              :groups="valueTips.anomalyExpected"
+            />
+          </p>
+          <p class="result-total">
+            紊乱期望伤害：
+            <StatValueWithSources
+              :value="formatNumber(calcParts.disorderExpected)"
+              :groups="valueTips.disorderExpected"
+            />
+          </p>
+          <p class="result-total">
+            乱流期望伤害：
+            <StatValueWithSources
+              :value="formatNumber(calcParts.turbulenceExpected)"
+              :groups="valueTips.turbulenceExpected"
+            />
+          </p>
+        </template>
       </div>
     </template>
 
@@ -1568,6 +1672,7 @@ defineExpose({ getSnapshot, loadSnapshot })
       <p class="result-subtotal">通用乘区：<StatValueWithSources :value="formatNumber(calcParts.generalMultiplier)" :groups="valueTips.generalMultiplier" /></p>
     </div>
 
+    <template v-if="damageKind !== 'anomaly'">
     <h3 class="result-section-title">直伤期望伤害</h3>
     <div class="formula-block formula-block--aligned">
       <div class="formula-aligned-group">
@@ -1599,13 +1704,18 @@ defineExpose({ getSnapshot, loadSnapshot })
       <p>暴击率（计入上限 1）：<StatValueWithSources :value="calcParts.critRateRatio" :groups="valueTips.critRateRatio" /></p>
       <p>暴击区：<StatValueWithSources :value="calcParts.critMultiplier" :groups="valueTips.critMultiplier" /></p>
       <p>特殊乘区（含增益）：<StatValueWithSources :value="calcParts.specialMultiplier" :groups="valueTips.specialMultiplier" /></p>
+      <p v-if="calcParts.baseDamageSource === 'pierce'">
+        贯穿增伤区：<StatValueWithSources :value="calcParts.pierceDmgMultiplier" :groups="valueTips.pierceDmgMultiplier" />
+      </p>
       <p>直伤倍率区：<StatValueWithSources :value="calcParts.directDmgMultZone" :groups="valueTips.directDmgMultZone" /></p>
       <p>穿透率（计入）：<StatValueWithSources :value="calcParts.penRateRatio" :groups="valueTips.penRateRatio" /></p>
       <p>有效防御项：<StatValueWithSources :value="calcParts.effectiveDefense" :groups="valueTips.effectiveDefense" /></p>
       <p>贯穿力（局内）：<StatValueWithSources :value="formatNumber(piercePower)" :groups="valueTips.piercePower" /></p>
       <p class="result-total">直伤期望伤害：<StatValueWithSources :value="formatNumber(calcParts.directDamageExpected)" :groups="valueTips.directDamageExpected" /></p>
     </div>
+    </template>
 
+    <template v-if="damageKind !== 'direct'">
     <h3 class="result-section-title">异常 / 紊乱 / 乱流期望伤害</h3>
     <div class="formula-block formula-block--aligned">
       <div
@@ -1638,6 +1748,7 @@ defineExpose({ getSnapshot, loadSnapshot })
       <h4 class="result-subsection-title">异常基础期望</h4>
       <p>精通区：<StatValueWithSources :value="calcParts.masteryZone" :groups="valueTips.masteryZone" /></p>
       <p>等级区：<StatValueWithSources :value="calcParts.levelZone" :groups="valueTips.levelZone" /></p>
+      <p>特殊乘区：<StatValueWithSources :value="calcParts.specialMultiplier" :groups="valueTips.specialMultiplier" /></p>
       <p class="result-total">异常基础期望：<StatValueWithSources :value="formatNumber(calcParts.anomalyBaseExpected)" :groups="valueTips.anomalyBaseExpected" /></p>
 
       <h4 class="result-subsection-title">异常期望伤害</h4>
@@ -1670,6 +1781,7 @@ defineExpose({ getSnapshot, loadSnapshot })
       </p>
       <p class="result-total">乱流期望伤害：<StatValueWithSources :value="formatNumber(calcParts.turbulenceExpected)" :groups="valueTips.turbulenceExpected" /></p>
     </div>
+    </template>
     </template>
   </section>
 </template>
@@ -1762,108 +1874,6 @@ defineExpose({ getSnapshot, loadSnapshot })
   color: #7a828f;
 }
 
-.upload-box {
-  margin-bottom: 0.8rem;
-}
-
-.upload-label {
-  margin: 0 0 0.35rem;
-  font-size: 0.76rem;
-  color: #aab2bf;
-}
-
-.upload-hint {
-  margin: 0 0 0.45rem;
-  font-size: 0.74rem;
-  color: #8f96a3;
-  line-height: 1.45;
-}
-
-.recognition-status {
-  margin: 0.45rem 0 0;
-  font-size: 0.78rem;
-  color: #d8c39a;
-}
-
-.recognition-error {
-  margin: 0.45rem 0 0;
-  font-size: 0.78rem;
-  color: #ffb4b4;
-}
-
-.recognition-result {
-  margin-top: 0.5rem;
-  padding: 0.55rem 0.7rem;
-  border: 1px solid #34302a;
-  border-radius: 8px;
-  background: #14120f;
-  font-size: 0.78rem;
-  color: #d8c39a;
-}
-
-.recognition-result-title {
-  margin: 0 0 0.35rem;
-  font-weight: 600;
-}
-
-.recognition-result ul {
-  margin: 0;
-  padding-left: 1rem;
-}
-
-.recognition-result li {
-  margin: 0.15rem 0;
-}
-
-.recognition-warnings {
-  margin-top: 0.35rem !important;
-  color: #e8b4a0;
-}
-
-.upload-box :deep(.image-picker) {
-  border-color: #2d323a;
-  background: #0f1217;
-}
-
-.upload-box :deep(.image-picker-btn) {
-  border-color: #3a4033;
-  background: #1c1915;
-  color: #d8c8aa;
-}
-
-.upload-box :deep(.image-picker-btn:hover) {
-  border-color: #c9a55c;
-  background: #252018;
-}
-
-.upload-box :deep(.image-picker-name) {
-  color: #8f8678;
-}
-
-.upload-preview {
-  margin-top: 0.35rem;
-  border: 1px dashed #2b2f35;
-  border-radius: 10px;
-  padding: 0.6rem;
-  min-height: 110px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  color: #97a0ad;
-  background: #111319;
-}
-
-.upload-preview img {
-  margin-top: 0.5rem;
-  width: auto;
-  height: auto;
-  max-width: 100%;
-  max-height: 360px;
-  object-fit: contain;
-  object-position: left top;
-  border-radius: 8px;
-}
-
 .grid {
   display: grid;
   gap: 0.55rem;
@@ -1934,13 +1944,19 @@ defineExpose({ getSnapshot, loadSnapshot })
   gap: 0.25rem;
 }
 
+.field-spacer {
+  min-height: 1px;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .field span {
   font-size: 0.76rem;
   color: #aab2bf;
 }
 
-.field input,
-.field select,
+.field > input,
+.field > select,
 .extra-buff-textarea {
   border: 1px solid #2d323a;
   border-radius: 8px;
@@ -1949,7 +1965,7 @@ defineExpose({ getSnapshot, loadSnapshot })
   padding: 0.44rem 0.54rem;
 }
 
-.field input:read-only {
+.field > input:read-only {
   opacity: 0.92;
   background: #0c1016;
 }
@@ -2283,13 +2299,53 @@ defineExpose({ getSnapshot, loadSnapshot })
   }
 }
 
-@media (max-width: 680px) {
-  .panel-layout {
-    grid-template-columns: 1fr;
+@media (max-width: 768px) {
+  .result-mode-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.45rem;
+  }
+
+  .result-mode-title {
+    font-size: 0.95rem;
+  }
+
+  .detail-mode-toggle {
+    align-self: flex-start;
+  }
+
+  .panel-block {
+    padding: 0.75rem;
   }
 
   .grid.four,
   .result-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .field > input,
+  .field > select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .formula-aligned-body {
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .formula-aligned-term {
+    min-width: 0;
+  }
+
+  .affix-base-summary {
+    font-size: 0.78rem;
+    line-height: 1.45;
+  }
+}
+
+@media (max-width: 680px) {
+  .panel-layout {
     grid-template-columns: 1fr;
   }
 }

@@ -4,7 +4,7 @@ import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
 import TeamSlotCard from '@/components/calculator/TeamSlotCard.vue'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
 import type { AgentBuffDoc, DriveDiscBuffDoc, WengineBuffDoc } from '@/types/calculator'
-import { AGENT_ELEMENTS, AGENT_ROLES, WENGINE_RARITIES } from '@/utils/calculatorUi'
+import { AGENT_ELEMENTS, AGENT_ROLES, WENGINE_RARITIES, isWengineProfessionMatch } from '@/utils/calculatorUi'
 
 const props = defineProps<{
   agents: AgentBuffDoc[]
@@ -59,6 +59,18 @@ const activeSlotData = computed(() => props.teamSlots[props.activeSlot]!)
 const selectedWengine = computed(() =>
   props.wengines.find((item) => item.id === activeSlotData.value.wengineId),
 )
+
+const wengineBuffsDisabled = computed(() => {
+  if (!props.activeAgent || !selectedWengine.value || selectedWengine.value.id === 'none') {
+    return false
+  }
+  return !isWengineProfessionMatch(props.activeAgent.profession, selectedWengine.value.profession)
+})
+
+function isOffSpecWengine(wengine: WengineBuffDoc) {
+  if (!props.activeAgent) return false
+  return !isWengineProfessionMatch(props.activeAgent.profession, wengine.profession)
+}
 
 function toggleAgentRoleFilter(role: string) {
   agentRoleFilter.value = agentRoleFilter.value === role ? '' : role
@@ -188,7 +200,7 @@ function driveDiscSummary(slot: TeamSlot) {
     <header class="section-header">
       <div>
         <h2>音擎选择</h2>
-        <p class="section-desc">为当前选择中的代理人选择音擎</p>
+        <p class="section-desc">为当前槽位代理人选择音擎；可不佩戴</p>
       </div>
       <input
         v-model="wengineSearch"
@@ -263,16 +275,31 @@ function driveDiscSummary(slot: TeamSlot) {
       </div>
 
       <p class="selected-bar">
-        已选音擎 {{ selectedWengine?.name ?? '未选择' }}
+        已选音擎 {{ selectedWengine && selectedWengine.id !== 'none' ? selectedWengine.name : '未佩戴' }}
+        <span v-if="wengineBuffsDisabled" class="off-spec-hint">
+          · 异职音擎：仅基础属性生效，音擎增益不生效
+        </span>
       </p>
 
       <div class="wengine-grid">
+        <button
+          type="button"
+          class="wengine-cell"
+          :class="{ active: activeSlotData.wengineId === 'none' }"
+          @click="emit('selectWengine', 'none')"
+        >
+          <span class="wengine-placeholder">—</span>
+          <span class="wengine-name">不佩戴</span>
+        </button>
         <button
           v-for="wengine in filteredWengines"
           :key="wengine.id"
           type="button"
           class="wengine-cell"
-          :class="{ active: activeSlotData.wengineId === wengine.id }"
+          :class="{
+            active: activeSlotData.wengineId === wengine.id,
+            'off-spec': isOffSpecWengine(wengine),
+          }"
           @click="emit('selectWengine', wengine.id)"
         >
           <CalculatorAvatar
@@ -280,7 +307,7 @@ function driveDiscSummary(slot: TeamSlot) {
             :avatar-image="wengine.avatar_image"
             :name="wengine.name"
           />
-          <span>{{ wengine.name }}</span>
+          <span class="wengine-name">{{ wengine.name }}</span>
         </button>
       </div>
     </template>
@@ -478,45 +505,68 @@ function driveDiscSummary(slot: TeamSlot) {
   color: #d5dae4;
 }
 
+.off-spec-hint {
+  color: #d4a017;
+  font-size: 0.78rem;
+}
+
 .wengine-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
   gap: 0.5rem;
 }
 
 .wengine-cell {
-  border: 1px solid #34302a;
+  border: 1px solid #2d323a;
   border-radius: 10px;
-  background: #12100e;
-  color: #ece2cf;
-  padding: 0.45rem 0.35rem;
+  background: #10141a;
+  color: #e4e8ef;
+  padding: 0.45rem 0.35rem 0.4rem;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.3rem;
+}
+
+.wengine-cell.off-spec {
+  opacity: 0.72;
 }
 
 .wengine-cell.active {
   border-color: #c9a55c;
-  box-shadow: 0 0 0 1px rgba(201, 165, 92, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(201, 165, 92, 0.35);
+}
+
+.wengine-placeholder {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: #1a1f27;
+  color: #7d8796;
+  font-size: 1.2rem;
 }
 
 .wengine-avatar :deep(.calculator-avatar) {
-  width: 58px;
-  height: 58px;
-  border-radius: 12px;
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
 }
 
 .wengine-avatar :deep(.calculator-avatar img),
 .wengine-avatar :deep(.fallback) {
-  border-radius: 12px;
+  border-radius: 10px;
 }
 
-.wengine-cell span {
+.wengine-name {
+  width: 100%;
   font-size: 0.72rem;
-  line-height: 1.2;
   text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .empty-panel {
@@ -540,6 +590,48 @@ function driveDiscSummary(slot: TeamSlot) {
 
   .search-input {
     width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .section-header h2 {
+    font-size: 0.98rem;
+  }
+
+  .section-desc {
+    font-size: 0.72rem;
+    line-height: 1.4;
+  }
+
+  .search-input {
+    font-size: 0.85rem;
+  }
+
+  .section-card {
+    padding: 0.75rem;
+  }
+
+  .team-slots {
+    gap: 0.65rem;
+  }
+
+  .agent-grid {
+    grid-template-columns: repeat(auto-fill, minmax(68px, 1fr));
+    gap: 0.4rem;
+  }
+
+  .wengine-grid {
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+    gap: 0.4rem;
+  }
+
+  .chip {
+    min-height: 2rem;
+    font-size: 0.74rem;
+  }
+
+  .wengine-toolbar {
+    gap: 0.45rem;
   }
 }
 </style>

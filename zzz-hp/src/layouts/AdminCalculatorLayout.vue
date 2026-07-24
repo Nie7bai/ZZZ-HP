@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import AdminCalculatorSidebar from '@/components/admin/calculator/AdminCalculatorSidebar.vue'
 import AdminAgentBuffPanel from '@/components/admin/calculator/AdminAgentBuffPanel.vue'
 import AdminWengineBuffPanel from '@/components/admin/calculator/AdminWengineBuffPanel.vue'
 import AdminBangbooBuffPanel from '@/components/admin/calculator/AdminBangbooBuffPanel.vue'
 import AdminDriveDiscBuffPanel from '@/components/admin/calculator/AdminDriveDiscBuffPanel.vue'
+import AdminSkillSubcategoryPanel from '@/components/admin/calculator/AdminSkillSubcategoryPanel.vue'
 import type { AgentBuffEditActionId, AgentBuffEditSectionId } from '@/constants/agentBuffEditNav'
 import type { BangbooBuffEditActionId, BangbooBuffEditSectionId } from '@/constants/bangbooBuffEditNav'
 import type { DriveDiscBuffEditActionId, DriveDiscBuffEditSectionId } from '@/constants/driveDiscBuffEditNav'
@@ -32,8 +33,19 @@ const driveDiscSaving = computed(() => driveDiscPanelRef.value?.saving ?? false)
 const driveDiscCanDelete = computed(() => Boolean(driveDiscPanelRef.value?.selectedId))
 
 onMounted(() => {
-  void calculatorBuffStore.ensureLoaded()
+  void calculatorBuffStore.ensureLoaded().catch(() => {
+    // error 已写入 store
+  })
 })
+
+watch(
+  () => calculatorBuffStore.loaded,
+  (isLoaded) => {
+    if (!isLoaded && !calculatorBuffStore.loading) {
+      void calculatorBuffStore.loadAll(true)
+    }
+  },
+)
 
 async function scrollToAgentSection(sectionId: AgentBuffEditSectionId) {
   const wasAgent = activePanel.value === 'agent'
@@ -134,13 +146,15 @@ async function handleDriveDiscAction(actionId: DriveDiscBuffEditActionId) {
     />
 
     <main class="admin-content">
-      <p v-if="loading || !loaded" class="load-hint">正在从数据库加载...</p>
-      <p v-else-if="error" class="load-error">{{ error }}</p>
+      <p v-if="loading && !loaded" class="load-hint">正在从数据库加载...</p>
+      <p v-else-if="error && !loaded" class="load-error">{{ error }}</p>
       <template v-else>
+        <p v-if="error" class="load-error">{{ error }}（显示缓存数据）</p>
         <AdminAgentBuffPanel v-show="activePanel === 'agent'" ref="agentPanelRef" />
         <AdminWengineBuffPanel v-show="activePanel === 'wengine'" ref="wenginePanelRef" />
         <AdminBangbooBuffPanel v-show="activePanel === 'bangboo'" ref="bangbooPanelRef" />
         <AdminDriveDiscBuffPanel v-show="activePanel === 'drive-disc'" ref="driveDiscPanelRef" />
+        <AdminSkillSubcategoryPanel v-show="activePanel === 'skill-subcategory'" />
       </template>
     </main>
   </div>

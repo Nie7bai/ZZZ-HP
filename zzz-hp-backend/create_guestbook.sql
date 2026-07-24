@@ -1,0 +1,55 @@
+-- 留言板帖子 + 评论（已有库可单独执行；服务也会自动建表/补字段）
+CREATE TABLE IF NOT EXISTS guestbook (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  nickname VARCHAR(40) NOT NULL DEFAULT '匿名' COMMENT '昵称',
+  title VARCHAR(120) NOT NULL DEFAULT '' COMMENT '标题',
+  category VARCHAR(20) NOT NULL DEFAULT '灌水' COMMENT '分类',
+  content TEXT NOT NULL COMMENT '正文',
+  cover VARCHAR(255) NOT NULL DEFAULT '' COMMENT '封面图',
+  images_json TEXT NULL COMMENT '图片列表JSON',
+  is_hidden TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=隐藏，前台不展示',
+  is_anonymous TINYINT(1) NOT NULL DEFAULT 0 COMMENT '匿名发布',
+  is_sensitive TINYINT(1) NOT NULL DEFAULT 0 COMMENT '敏感内容（图片默认模糊）',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_guestbook_visible_created (is_hidden, created_at),
+  KEY idx_guestbook_category (category)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='首页留言板';
+
+CREATE TABLE IF NOT EXISTS guestbook_comment (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  post_id INT UNSIGNED NOT NULL COMMENT '所属帖子',
+  nickname VARCHAR(40) NOT NULL DEFAULT '匿名' COMMENT '昵称',
+  content VARCHAR(1000) NOT NULL COMMENT '评论内容',
+  is_hidden TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=隐藏',
+  is_anonymous TINYINT(1) NOT NULL DEFAULT 0 COMMENT '匿名评论',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_gb_comment_post_created (post_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='留言板评论';
+
+CREATE TABLE IF NOT EXISTS guestbook_setting (
+  setting_key VARCHAR(64) NOT NULL,
+  setting_value VARCHAR(255) NOT NULL DEFAULT '',
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (setting_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='留言板设置';
+
+CREATE TABLE IF NOT EXISTS guestbook_user (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  mihoyo_aid VARCHAR(64) NOT NULL,
+  mihoyo_mid VARCHAR(64) NOT NULL DEFAULT '',
+  nickname VARCHAR(40) NOT NULL DEFAULT '绳网旅人',
+  avatar VARCHAR(512) NOT NULL DEFAULT '',
+  bio VARCHAR(120) NOT NULL DEFAULT '' COMMENT '个性签名',
+  banner VARCHAR(512) NOT NULL DEFAULT '' COMMENT '名片背景',
+  phone VARCHAR(20) NOT NULL DEFAULT '' COMMENT '绑定手机号',
+  password_hash VARCHAR(160) NOT NULL DEFAULT '' COMMENT '登录密码哈希',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_guestbook_user_aid (mihoyo_aid),
+  KEY idx_guestbook_user_phone (phone)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='留言板登录用户';

@@ -1,6 +1,6 @@
 {
   "name": "zzz-hp",
-  "version": "0.0.0",
+  "version": "3.0.8",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,14 +16,19 @@
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
+    "isomorphic-dompurify": "^3.19.0",
+    "markdown-it": "^14.3.0",
     "pinia": "^3.0.4",
+    "qrcode": "^1.5.4",
     "tesseract.js": "^7.0.0",
     "vue": "^3.5.38",
     "vue-router": "^5.1.0"
   },
   "devDependencies": {
     "@tsconfig/node24": "^24.0.4",
+    "@types/markdown-it": "^14.1.2",
     "@types/node": "^24.13.2",
+    "@types/qrcode": "^1.5.6",
     "@vitejs/plugin-vue": "^6.0.7",
     "@vue/eslint-config-typescript": "^14.8.0",
     "@vue/tsconfig": "^0.9.1",

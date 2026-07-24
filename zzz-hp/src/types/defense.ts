@@ -57,6 +57,7 @@ export interface DefenseSeason {
   dateRange: string
   seasonId: string
   nodeType: string
+  isHidden?: boolean
   rawHp: string
   aoeHp?: string
   altHp?: string

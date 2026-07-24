@@ -1,6 +1,7 @@
 import pool from '../config/db.js'
 import { upsertBossInfo } from './bossInfoService.js'
 import {
+  encodeCrisisBuffId,
   encodeDefenseBossId,
   encodeDefenseBuffId,
   formatDefenseBossRoom,
@@ -9,6 +10,8 @@ import {
   isDefenseBossId,
   isDefenseBuffId,
 } from '../utils/defenseId.js'
+import { resolveCrisisHpCoeff } from '../utils/crisisHpCoeff.js'
+import { normalizeCrisisRoomCode } from '../utils/crisisRoom.js'
 
 const MAX_UNSIGNED_INT = 4294967295
 
@@ -28,11 +31,18 @@ function assertHpInRange(hp) {
 function encodeCrisisBossId(version, phase, room) {
   const versionCode = String(version).trim().replace('.', '')
   const phaseCode = String(phase).replace(/\D/g, '')
-  const roomCode = String(room).replace(/\D/g, '')
+  const roomCode = normalizeCrisisRoomCode(room)
   if (!versionCode || !phaseCode || !roomCode) {
     throw new Error('版本、期数、房间为必填项')
   }
   return Number(`${versionCode}${phaseCode}${roomCode}`)
+}
+
+function normalizeManualCoeff(raw) {
+  if (raw == null || raw === '') return null
+  const n = Number(raw)
+  if (!Number.isFinite(n)) return null
+  return Math.round(n)
 }
 
 export async function createBoss(payload) {
@@ -55,11 +65,18 @@ export async function createBoss(payload) {
     monsterCategory = null,
     monsterSubType = null,
     count = null,
+    crisis_base_hp = null,
+    hp_coeff_percent = null,
+    hp_coeff_manual = false,
   } = payload
 
   const versionValue = String(version).trim()
   const phaseValue = normalizePhase(phase)
   const hpValue = assertHpInRange(hp)
+  const manualCoeff =
+    recordScheme === 'crisis' && (hp_coeff_manual === true || hp_coeff_manual === 'true')
+      ? normalizeManualCoeff(hp_coeff_percent)
+      : null
 
   let bossId = id
   let roomValue = room
@@ -82,6 +99,9 @@ export async function createBoss(payload) {
     roomValue = formatDefenseBossRoom(stage, roomInStage)
   } else if (bossId == null && room != null) {
     bossId = encodeCrisisBossId(versionValue, phaseValue, room)
+    roomValue = normalizeCrisisRoomCode(room)
+  } else if (room != null) {
+    roomValue = normalizeCrisisRoomCode(room) || room
   }
 
   const bossInfoSync = await upsertBossInfo({
@@ -91,6 +111,13 @@ export async function createBoss(payload) {
     weakness,
     resistance,
     boss_image,
+    crisis_base_hp,
+  })
+
+  const coeffResolved = resolveCrisisHpCoeff({
+    bossHp: hpValue,
+    baseHp: bossInfoSync.crisis_base_hp,
+    manualPercent: manualCoeff,
   })
 
   const bossValues = [
@@ -98,6 +125,7 @@ export async function createBoss(payload) {
     phaseValue,
     boss_name,
     hpValue,
+    manualCoeff,
     defense,
     level,
     roomValue,
@@ -111,7 +139,7 @@ export async function createBoss(payload) {
     if (existing.length) {
       await pool.execute(
         `UPDATE boss
-         SET version = ?, phase = ?, boss_name = ?, hp = ?, defense = ?, level = ?,
+         SET version = ?, phase = ?, boss_name = ?, hp = ?, hp_coeff_percent = ?, defense = ?, level = ?,
              room = ?, weakness = ?, resistance = ?, boss_image = ?
          WHERE id = ?`,
         [...bossValues, bossId],
@@ -122,6 +150,9 @@ export async function createBoss(payload) {
         phase: phaseValue,
         boss_name,
         hp: hpValue,
+        hp_coeff_percent: coeffResolved.percent,
+        hp_coeff_manual: coeffResolved.manual,
+        crisis_base_hp: bossInfoSync.crisis_base_hp,
         defense,
         level,
         room: roomValue,
@@ -134,8 +165,8 @@ export async function createBoss(payload) {
     }
 
     await pool.execute(
-      `INSERT INTO boss (id, version, phase, boss_name, hp, defense, level, room, weakness, resistance, boss_image)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO boss (id, version, phase, boss_name, hp, hp_coeff_percent, defense, level, room, weakness, resistance, boss_image)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [bossId, ...bossValues],
     )
     return {
@@ -144,6 +175,9 @@ export async function createBoss(payload) {
       phase: phaseValue,
       boss_name,
       hp: hpValue,
+      hp_coeff_percent: coeffResolved.percent,
+      hp_coeff_manual: coeffResolved.manual,
+      crisis_base_hp: bossInfoSync.crisis_base_hp,
       defense,
       level,
       room: roomValue,
@@ -156,8 +190,8 @@ export async function createBoss(payload) {
   }
 
   const [result] = await pool.execute(
-    `INSERT INTO boss (version, phase, boss_name, hp, defense, level, room, weakness, resistance, boss_image)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO boss (version, phase, boss_name, hp, hp_coeff_percent, defense, level, room, weakness, resistance, boss_image)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     bossValues,
   )
 
@@ -167,6 +201,9 @@ export async function createBoss(payload) {
     phase: phaseValue,
     boss_name,
     hp: hpValue,
+    hp_coeff_percent: coeffResolved.percent,
+    hp_coeff_manual: coeffResolved.manual,
+    crisis_base_hp: bossInfoSync.crisis_base_hp,
     defense,
     level,
     room: roomValue,
@@ -192,12 +229,15 @@ export async function createBuff(payload) {
     buffIndex = null,
   } = payload
 
-  let buffId = id
+  const versionValue = String(version).trim()
+  const phaseValue = normalizePhase(phase)
+  let buffId = id != null && id !== '' ? Number(id) : null
+  let action = 'created'
 
   if (recordScheme === 'defense') {
     const encodedId = encodeDefenseBuffId({
-      version,
-      phase,
+      version: versionValue,
+      phase: phaseValue,
       stage,
       roomInStage,
       buffIndex,
@@ -206,28 +246,45 @@ export async function createBuff(payload) {
       throw new Error('Buff ID 与填写信息不一致')
     }
     buffId = encodedId
+  } else {
+    // 危局必须按 31101 规则编码，禁止自增落入防卫战 7 位 ID 区间
+    const index = buffIndex != null && buffIndex !== '' ? Number(buffIndex) : 1
+    const encodedId = encodeCrisisBuffId({
+      version: versionValue,
+      phase: phaseValue,
+      buffIndex: index,
+    })
+    if (buffId != null && Number(buffId) !== encodedId) {
+      throw new Error('Buff ID 与填写信息不一致')
+    }
+    buffId = encodedId
   }
 
-  const columns = buffId
-    ? `(id, version, phase, buff_name, buff, buff_image)`
-    : `(version, phase, buff_name, buff, buff_image)`
-  const placeholders = buffId ? `(?, ?, ?, ?, ?, ?)` : `(?, ?, ?, ?, ?)`
-  const values = buffId
-    ? [buffId, version, phase, buff_name, buff, buff_image]
-    : [version, phase, buff_name, buff, buff_image]
-
-  const [result] = await pool.execute(
-    `INSERT INTO buff ${columns} VALUES ${placeholders}`,
-    values,
-  )
+  const [existing] = await pool.execute('SELECT id FROM buff WHERE id = ? LIMIT 1', [buffId])
+  if (existing.length) {
+    await pool.execute(
+      `UPDATE buff
+       SET version = ?, phase = ?, buff_name = ?, buff = ?, buff_image = ?
+       WHERE id = ?`,
+      [versionValue, phaseValue, buff_name, buff, buff_image, buffId],
+    )
+    action = 'updated'
+  } else {
+    await pool.execute(
+      `INSERT INTO buff (id, version, phase, buff_name, buff, buff_image)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [buffId, versionValue, phaseValue, buff_name, buff, buff_image],
+    )
+  }
 
   return {
-    id: buffId ?? result.insertId,
-    version,
-    phase,
+    id: buffId,
+    version: versionValue,
+    phase: phaseValue,
     buff_name,
     buff,
     buff_image,
+    action,
   }
 }
 

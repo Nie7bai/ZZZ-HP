@@ -22,8 +22,11 @@ async function submitLogin() {
 
   loading.value = true
   try {
-    await loginAdmin(value)
-    setAdminAuthenticated(true)
+    const result = await loginAdmin(value)
+    if (!result.token) {
+      throw new Error('登录成功但未返回管理员凭证，请重启后端后重试')
+    }
+    setAdminAuthenticated(true, result.token)
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/admin'
     await router.replace(redirect.startsWith('/admin') ? redirect : '/admin')
   } catch (err) {

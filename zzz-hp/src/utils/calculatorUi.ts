@@ -1,4 +1,18 @@
-import type { AgentBasePanel, AgentMindscapeRankBuffs, BuffStatKey, BuffStatModifiers, WengineAdvancedStats } from '@/types/calculator'
+import type {
+  AgentBasePanel,
+  AgentMindscapeRankBuffs,
+  BuffStatKey,
+  BuffStatModifiers,
+  WengineAdvancedStats,
+} from '@/types/calculator'
+import {
+  flatModsToEffects,
+  normalizeBuffEffectBlocks,
+  normalizeBuffEffects,
+  packFromBlocks,
+  packFromEffects,
+  wrapEffectsAsBlocks,
+} from '@/utils/buffEffect'
 
 export const AGENT_ROLES = ['强攻', '击破', '异常', '支援', '防护', '命破'] as const
 export const AGENT_ELEMENTS = ['风', '火', '电', '物理', '以太', '冰'] as const
@@ -7,6 +21,17 @@ export type WengineRarity = (typeof WENGINE_RARITIES)[number]
 
 export type AgentRole = (typeof AGENT_ROLES)[number]
 export type AgentElement = (typeof AGENT_ELEMENTS)[number]
+
+/** 音擎职业与角色一致时增益才生效；任一方职业为空时放行（兼容未填数据） */
+export function isWengineProfessionMatch(
+  agentProfession: string | null | undefined,
+  wengineProfession: string | null | undefined,
+) {
+  const agent = String(agentProfession ?? '').trim()
+  const wengine = String(wengineProfession ?? '').trim()
+  if (!agent || !wengine) return true
+  return agent === wengine
+}
 
 export const AGENT_MINDSCAPE_RANKS = [0, 1, 2, 3, 4, 5, 6] as const
 export const REFINEMENT_RANKS = [1, 2, 3, 4, 5] as const
@@ -64,12 +89,34 @@ export const BUFF_STAT_FIELDS: {
   { key: 'critRate', label: '暴击', unit: 'percent', hint: '百分点，累加到局内暴击率%' },
   { key: 'critDmg', label: '爆伤', unit: 'percent', hint: '百分点，累加到局内暴伤%' },
   { key: 'penRate', label: '穿透率', unit: 'percent', hint: '百分点，累加到局内穿透率%' },
-  { key: 'reduceDefense', label: '减防', unit: 'percent', hint: '百分点，累加到局内减防%' },
+  { key: 'reduceDefense', label: '无视防御/减防', unit: 'percent', hint: '百分点，累加到局内无视防御与减防（二者加算）' },
   { key: 'resPen', label: '抗性穿透', unit: 'percent', hint: '百分点，累加到局内抗穿%' },
   { key: 'mastery', label: '精通', unit: 'flat', hint: '固定数值，累加到局内精通' },
-  { key: 'vulnerable', label: '易伤', unit: 'percent', hint: '百分点，与本区基础加算（如 1.5 + 30% = 1.8）' },
-  { key: 'staggerVulnerable', label: '失衡易伤', unit: 'percent', hint: '百分点，与本区基础加算' },
-  { key: 'special', label: '特殊补充', unit: 'percent', hint: '百分点，与本区基础加算' },
+  { key: 'vulnerable', label: '易伤', unit: 'percent', hint: '独立易伤区，常驻加算（如 1.5 + 30% = 1.8）' },
+  {
+    key: 'globalStaggerVulnerable',
+    label: '全局失衡易伤',
+    unit: 'percent',
+    hint: '失衡期与非失衡期均生效',
+  },
+  {
+    key: 'staggerVulnerable',
+    label: '失衡易伤',
+    unit: 'percent',
+    hint: '全局存在，仅在失衡期计入乘区',
+  },
+  {
+    key: 'staggerVulnerableOnly',
+    label: '失衡易伤（仅失衡）',
+    unit: 'percent',
+    hint: '仅在失衡期存在并计入乘区',
+  },
+  {
+    key: 'special',
+    label: '特殊补充',
+    unit: 'percent',
+    hint: '独立乘区，对所有伤害生效；与本区基础加算',
+  },
   { key: 'anomalyCritRate', label: '异常暴击', unit: 'percent', hint: '百分点，累加到局内异常暴击率%' },
   { key: 'anomalyCritDmg', label: '异常爆伤', unit: 'percent', hint: '百分点，累加到局内异常爆伤%' },
   { key: 'anomalyDmgBonus', label: '异常增伤', unit: 'percent', hint: '百分点，与异常增伤区加算（1 + 值/100）' },
@@ -81,15 +128,15 @@ export const BUFF_STAT_FIELDS: {
   },
   {
     key: 'anomalyMult',
-    label: '异常倍率',
+    label: '异常倍率提升',
     unit: 'percent',
     hint: '百分点，累加到局内异常倍率%（伤害 × 值/100）',
   },
   {
     key: 'disorderBaseMult',
-    label: '紊乱基础倍率',
+    label: '紊乱倍率提升',
     unit: 'percent',
-    hint: '百分点，参与紊乱期望：基础倍率/100 + 有效持续时间 × 补偿倍率/100',
+    hint: '百分点，加算到紊乱基础倍率（参与最终紊乱倍率）',
   },
   {
     key: 'anomalyDuration',
@@ -105,9 +152,9 @@ export const BUFF_STAT_FIELDS: {
   },
   {
     key: 'turbulenceBaseMult',
-    label: '乱流基础倍率',
+    label: '乱流倍率提升',
     unit: 'percent',
-    hint: '百分点，参与乱流期望：基础倍率 + 有效持续时间 × 补偿倍率',
+    hint: '百分点，加算到乱流基础倍率（参与最终乱流倍率）',
   },
   {
     key: 'turbulenceCompMult',
@@ -127,7 +174,61 @@ export const BUFF_STAT_FIELDS: {
     unit: 'percent',
     hint: '百分点，乱流增伤区 = 1 + 值%',
   },
+  { key: 'hp', label: '固定生命', unit: 'flat', hint: '固定数值，直接加到局内生命' },
+  {
+    key: 'pierceDmgBonus',
+    label: '贯穿增伤',
+    unit: 'percent',
+    hint: '独立乘区，仅当直伤基础来源为贯穿力时生效，不进增伤区',
+  },
+  {
+    key: 'anomalyReleaseDmgBonus',
+    label: '异放增伤',
+    unit: 'percent',
+    hint: '百分点，异放增伤区加算',
+  },
+  {
+    key: 'anomalyReleaseCritRate',
+    label: '异放暴击',
+    unit: 'percent',
+    hint: '百分点，累加到异放暴击率',
+  },
+  {
+    key: 'anomalyReleaseCritDmg',
+    label: '异放爆伤',
+    unit: 'percent',
+    hint: '百分点，累加到异放爆伤',
+  },
+  {
+    key: 'anomalyReleaseMult',
+    label: '异放倍率提升',
+    unit: 'percent',
+    hint: '百分点，异放倍率加算',
+  },
+  {
+    key: 'skillDmgBonus',
+    label: '招式伤害加成',
+    unit: 'percent',
+    hint: '招式增益：进增伤区加算',
+  },
+  {
+    key: 'skillMultiplierBonus',
+    label: '招式倍率加算',
+    unit: 'percent',
+    hint: '招式增益：进直伤倍率区加算',
+  },
 ]
+
+/** 招式专属字段（管理端招式 scope 可选） */
+export const SKILL_BUFF_STAT_KEYS: BuffStatKey[] = ['skillDmgBonus', 'skillMultiplierBonus']
+
+export const GENERAL_BUFF_STAT_FIELDS = BUFF_STAT_FIELDS.filter(
+  (field) => !SKILL_BUFF_STAT_KEYS.includes(field.key),
+)
+
+export const SKILL_BUFF_STAT_FIELDS = BUFF_STAT_FIELDS.filter((field) =>
+  SKILL_BUFF_STAT_KEYS.includes(field.key),
+)
 
 /** 异常倍率% 按属性默认值 */
 export const ANOMALY_MULT_BY_ELEMENT: Record<AgentElement, number> = {
@@ -258,6 +359,7 @@ export function normalizeWengineRarity(value: unknown): WengineRarity {
 
 export function createEmptyBuffStatModifiers(): BuffStatModifiers {
   return {
+    hp: 0,
     inCombatHpPercent: 0,
     inCombatAtkPercent: 0,
     externalHpPercent: 0,
@@ -271,12 +373,19 @@ export function createEmptyBuffStatModifiers(): BuffStatModifiers {
     resPen: 0,
     mastery: 0,
     pierce: 0,
+    pierceDmgBonus: 0,
     vulnerable: 0,
+    globalStaggerVulnerable: 0,
     staggerVulnerable: 0,
+    staggerVulnerableOnly: 0,
     special: 0,
     anomalyCritRate: 0,
     anomalyCritDmg: 0,
     anomalyDmgBonus: 0,
+    anomalyReleaseDmgBonus: 0,
+    anomalyReleaseCritRate: 0,
+    anomalyReleaseCritDmg: 0,
+    anomalyReleaseMult: 0,
     directDmgMult: 0,
     anomalyMult: 0,
     disorderBaseMult: 0,
@@ -286,14 +395,13 @@ export function createEmptyBuffStatModifiers(): BuffStatModifiers {
     turbulenceCompMult: 0,
     disorderDmgBonus: 0,
     turbulenceDmgBonus: 0,
+    skillDmgBonus: 0,
+    skillMultiplierBonus: 0,
   }
 }
 
 export function createEmptySelfTeamBuffs(): AgentMindscapeRankBuffs {
-  return {
-    selfMods: createEmptyBuffStatModifiers(),
-    teamMods: createEmptyBuffStatModifiers(),
-  }
+  return packFromEffects([])
 }
 
 export function createEmptyMindscapeBuffs() {
@@ -364,15 +472,29 @@ export function normalizeBuffStatModifiers(value: unknown): BuffStatModifiers {
 export function normalizeSelfTeamBuffs(value: unknown): AgentMindscapeRankBuffs {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     const entry = value as Record<string, unknown>
-    if (entry.selfMods || entry.teamMods) {
-      return {
-        selfMods: normalizeBuffStatModifiers(entry.selfMods),
-        teamMods: normalizeBuffStatModifiers(entry.teamMods),
-      }
+    if (Array.isArray(entry.effectBlocks)) {
+      return packFromBlocks(normalizeBuffEffectBlocks(entry.effectBlocks))
     }
-    return {
-      selfMods: normalizeBuffStatModifiers(entry.selfBuffs ? {} : entry),
-      teamMods: normalizeBuffStatModifiers(entry.teamBuffs ? {} : {}),
+    if (Array.isArray(entry.effects)) {
+      return packFromEffects(normalizeBuffEffects(entry.effects))
+    }
+    if (entry.selfMods || entry.teamMods) {
+      const selfMods = normalizeBuffStatModifiers(entry.selfMods)
+      const teamMods = normalizeBuffStatModifiers(entry.teamMods)
+      return packFromEffects([
+        ...flatModsToEffects(selfMods, 'self'),
+        ...flatModsToEffects(teamMods, 'team'),
+      ])
+    }
+    if (entry.selfBuffs || entry.teamBuffs) {
+      return packFromEffects([
+        ...flatModsToEffects(normalizeBuffStatModifiers(entry.selfBuffs), 'self'),
+        ...flatModsToEffects(normalizeBuffStatModifiers(entry.teamBuffs), 'team'),
+      ])
+    }
+    const mods = normalizeBuffStatModifiers(entry)
+    if (hasNonZeroBuffMods(mods)) {
+      return packFromEffects(flatModsToEffects(mods, 'self'))
     }
   }
   return createEmptySelfTeamBuffs()
@@ -411,16 +533,24 @@ export function collectMindscapeRankBuffs(
   rank: number,
 ): AgentMindscapeRankBuffs {
   const clampedRank = Math.min(6, Math.max(0, Math.round(rank)))
-  let selfMods = createEmptyBuffStatModifiers()
-  let teamMods = createEmptyBuffStatModifiers()
+  const blocks: import('@/types/calculator').BuffEffectBlock[] = []
 
   for (let index = 0; index <= clampedRank; index++) {
     const rankBuffs = mindscapeBuffs[index] ?? createEmptySelfTeamBuffs()
-    selfMods = mergeBuffStatModifiers(selfMods, rankBuffs.selfMods)
-    teamMods = mergeBuffStatModifiers(teamMods, rankBuffs.teamMods)
+    const rankBlocks =
+      rankBuffs.effectBlocks?.length > 0
+        ? rankBuffs.effectBlocks
+        : wrapEffectsAsBlocks(rankBuffs.effects ?? [])
+    for (const block of rankBlocks) {
+      blocks.push({
+        ...block,
+        id: `r${index}-${block.id}`,
+        name: `${index}影 · ${block.name?.trim() || '效果块'}`,
+      })
+    }
   }
 
-  return { selfMods, teamMods }
+  return packFromBlocks(blocks)
 }
 
 /** 仅取指定影画阶的增益，不含低阶叠加 */

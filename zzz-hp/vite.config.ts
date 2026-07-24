@@ -33,6 +33,10 @@ export default defineConfig({
         target: 'http://localhost:3010',
         changeOrigin: true,
       },
+      '/guestbook_image': {
+        target: 'http://localhost:3010',
+        changeOrigin: true,
+      },
     },
   },
 })

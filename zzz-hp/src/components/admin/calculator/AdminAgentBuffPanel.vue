@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import AdminBuffStatFieldGrid from '@/components/admin/calculator/AdminBuffStatFieldGrid.vue'
+import AdminBuffEffectEditor from '@/components/admin/calculator/AdminBuffEffectEditor.vue'
 import AdminCalculatorAvatarField from '@/components/admin/calculator/AdminCalculatorAvatarField.vue'
 import AdminNumericStatFieldGrid from '@/components/admin/calculator/AdminNumericStatFieldGrid.vue'
 import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import type { AgentBasePanel, AgentBuffDoc, AgentMindscapeRankBuffs, SupportStatNeed } from '@/types/calculator'
 import type { AgentBuffEditSectionId } from '@/constants/agentBuffEditNav'
+import { packFromBlocks, packFromEffects } from '@/utils/buffEffect'
 import {
   AGENT_BASE_PANEL_FIELDS,
   AGENT_ELEMENTS,
@@ -68,10 +69,29 @@ const activeMindscapeNote = computed({
 function loadMindscapeForm(mindscapeBuffs: AgentBuffDoc['mindscapeBuffs']) {
   return AGENT_MINDSCAPE_RANKS.map((_, index) => {
     const rank = mindscapeBuffs[index] ?? createEmptySelfTeamBuffs()
-    return {
-      selfMods: { ...rank.selfMods },
-      teamMods: { ...rank.teamMods },
+    if (rank.effectBlocks?.length) {
+      return packFromBlocks(
+        rank.effectBlocks.map((block) => ({
+          ...block,
+          effects: block.effects.map((effect) => ({
+            ...effect,
+            convert: effect.convert ? { ...effect.convert } : undefined,
+            elementFilter: Array.isArray(effect.elementFilter)
+              ? [...effect.elementFilter]
+              : effect.elementFilter,
+          })),
+        })),
+      )
     }
+    return packFromEffects(
+      (rank.effects ?? []).map((effect) => ({
+        ...effect,
+        convert: effect.convert ? { ...effect.convert } : undefined,
+        elementFilter: Array.isArray(effect.elementFilter)
+          ? [...effect.elementFilter]
+          : effect.elementFilter,
+      })),
+    )
   })
 }
 
@@ -142,10 +162,9 @@ function onElementChange() {
 }
 
 function buildMindscapeBuffs(): AgentMindscapeRankBuffs[] {
-  return form.value.mindscapeForm.map((rank) => ({
-    selfMods: { ...rank.selfMods },
-    teamMods: { ...rank.teamMods },
-  }))
+  return form.value.mindscapeForm.map((rank) =>
+    packFromBlocks(rank.effectBlocks ?? []),
+  )
 }
 
 async function saveAgent() {
@@ -390,11 +409,11 @@ defineExpose({ scrollToSection, saveAgent, removeAgent, selectedId, saving })
             />
           </label>
 
-          <p class="mods-section-title">{{ activeMindscapeRank }} 影 · 自身增益</p>
-          <AdminBuffStatFieldGrid v-model="activeMindscapeForm.selfMods" />
-
-          <p class="mods-section-title">{{ activeMindscapeRank }} 影 · 队友增益</p>
-          <AdminBuffStatFieldGrid v-model="activeMindscapeForm.teamMods" />
+          <p class="mods-section-title">{{ activeMindscapeRank }} 影 · 效果块</p>
+          <AdminBuffEffectEditor
+            v-model="activeMindscapeForm.effectBlocks"
+            :agent-id="form.id || undefined"
+          />
         </section>
 
         <p v-if="error" class="form-error">{{ error }}</p>

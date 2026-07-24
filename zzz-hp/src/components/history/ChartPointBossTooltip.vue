@@ -31,9 +31,14 @@ defineProps<{
             <span v-else class="tooltip-boss-placeholder">?</span>
           </div>
           <div class="tooltip-boss-meta">
-            <span class="tooltip-boss-room">房间 {{ boss.room }}</span>
+            <span class="tooltip-boss-room">
+              {{ boss.room === '困难' ? '困难' : `房间 ${boss.room}` }}
+            </span>
             <span class="tooltip-boss-name">{{ boss.bossName }}</span>
             <span class="tooltip-boss-hp">{{ boss.hp }}</span>
+            <span v-if="boss.hpConverted953" class="tooltip-boss-hp-converted">
+              953：{{ boss.hpConverted953 }}
+            </span>
           </div>
         </li>
       </ul>
@@ -163,5 +168,11 @@ defineProps<{
   font-size: 0.62rem;
   font-weight: 600;
   color: #e85d4c;
+}
+
+.tooltip-boss-hp-converted {
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: #4c8fe8;
 }
 </style>

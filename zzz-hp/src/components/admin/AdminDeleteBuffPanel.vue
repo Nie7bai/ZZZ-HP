@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, toRef } from 'vue'
 import { deleteBuffRecord, searchBuffRecords } from '@/api/admin'
 import type { BuffRecord } from '@/api/admin'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
+import { useAdminVersionPhaseSelect } from '@/composables/useAdminVersionPhaseSelect'
 import type { AdminScope } from '@/types/admin'
 import { adminScopeTitles, isDefenseScope, recordSchemeFromScope } from '@/types/admin'
 import { formatDefenseBuffIdSummary, isDefenseBuffId } from '@/utils/defenseId'
@@ -12,8 +13,17 @@ const props = defineProps<{
   scope: AdminScope
 }>()
 
-const version = ref('')
-const phase = ref('')
+const {
+  version,
+  phase,
+  customVersion,
+  customPhase,
+  resolvedVersion,
+  resolvedPhase,
+  availableVersions,
+  availablePhases,
+} = useAdminVersionPhaseSelect(toRef(props, 'scope'), { source: 'buff' })
+
 const keyword = ref('')
 const records = ref<BuffRecord[]>([])
 const loading = ref(false)
@@ -31,8 +41,8 @@ async function searchRecords() {
 
   try {
     records.value = await searchBuffRecords({
-      version: version.value,
-      phase: phase.value,
+      version: resolvedVersion.value,
+      phase: resolvedPhase.value,
       keyword: keyword.value,
       limit: 80,
       recordScheme: recordSchemeFromScope(props.scope) ?? undefined,
@@ -101,16 +111,39 @@ async function executeDelete() {
     </header>
 
     <form class="admin-form" @submit.prevent="searchRecords">
-      <div class="field-row">
-        <label class="field">
-          <span class="field-label">版本</span>
-          <input v-model="version" type="text" class="field-input" placeholder="如 3.0" />
-        </label>
-        <label class="field">
-          <span class="field-label">期数</span>
-          <input v-model="phase" type="text" class="field-input" placeholder="如 4" />
-        </label>
-      </div>
+      <label class="field">
+        <span class="field-label">版本</span>
+        <select v-model="version" class="field-input">
+          <option v-if="!availableVersions.length" value="" disabled>暂无可选版本</option>
+          <option v-for="item in availableVersions" :key="item" :value="item">
+            {{ item }}
+          </option>
+        </select>
+        <input
+          v-model="customVersion"
+          type="text"
+          class="field-input"
+          placeholder="新版本（填写后覆盖上方选择）"
+        />
+      </label>
+
+      <label class="field">
+        <span class="field-label">期数</span>
+        <select v-model="phase" class="field-input">
+          <option v-if="!availablePhases.length" value="" disabled>
+            {{ resolvedVersion ? '该版本暂无期数，可在下方输入' : '请先选择版本' }}
+          </option>
+          <option v-for="item in availablePhases" :key="item" :value="item">
+            第 {{ item }} 期
+          </option>
+        </select>
+        <input
+          v-model="customPhase"
+          type="text"
+          class="field-input"
+          placeholder="新期数（填写后覆盖上方选择）"
+        />
+      </label>
 
       <label class="field">
         <span class="field-label">Buff 名称</span>
@@ -195,12 +228,6 @@ async function executeDelete() {
   margin-bottom: 1rem;
 }
 
-.field-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.85rem;
-}
-
 .field {
   display: flex;
   flex-direction: column;
@@ -223,6 +250,10 @@ async function executeDelete() {
   font-size: 0.9rem;
   outline: none;
   transition: border-color 0.2s;
+}
+
+.field > .field-input + .field-input {
+  margin-top: 0;
 }
 
 .field-input:focus {
@@ -345,10 +376,6 @@ async function executeDelete() {
 }
 
 @media (max-width: 640px) {
-  .field-row {
-    grid-template-columns: 1fr;
-  }
-
   .record-item {
     flex-wrap: wrap;
   }

@@ -27,6 +27,7 @@ const modalOpen = ref(false)
 const calcModeLabel: Record<DamageCalcHistoryEntry['panelCalcMode'], string> = {
   panel: '面板计算',
   affix: '词条计算',
+  optimal: '最优词条分配',
 }
 
 const activeEntry = computed(() =>
@@ -451,5 +452,39 @@ onUnmounted(() => {
 .history-delete:hover {
   border-color: #c96c6c;
   background: #241616;
+}
+
+@media (max-width: 768px) {
+  .history-modal-overlay {
+    padding: 0;
+    align-items: stretch;
+  }
+
+  .history-modal {
+    width: 100%;
+    max-height: 100%;
+    height: 100%;
+    border-radius: 0;
+    padding: 0.75rem;
+  }
+
+  .history-save-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .field {
+    flex: none;
+    width: 100%;
+  }
+
+  .save-btn {
+    width: 100%;
+    min-height: 2.4rem;
+  }
+
+  .history-item {
+    flex-wrap: wrap;
+  }
 }
 </style>

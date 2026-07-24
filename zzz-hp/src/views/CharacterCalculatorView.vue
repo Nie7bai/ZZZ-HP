@@ -1,18 +1,23 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import BuffModsDisplay from '@/components/calculator/BuffModsDisplay.vue'
+import BuffEffectBlocksDisplay from '@/components/calculator/BuffEffectBlocksDisplay.vue'
 import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
 import DamageCalcPage from '@/components/calculator/DamageCalcPage.vue'
-import { DAMAGE_CALC_SECTIONS } from '@/constants/damageCalcNav'
+import { DAMAGE_CALC_SECTIONS, DAMAGE_CALC_MODE_ITEMS, type DamageCalcNavItem } from '@/constants/damageCalcNav'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
+import { useThemeStore } from '@/stores/theme'
 
-import { AGENT_MINDSCAPE_RANKS, AGENT_ROLES, collectMindscapeRankBuffs, createEmptyBuffStatModifiers, getMindscapeNote, getMindscapeRankOnlyBuffs, REFINEMENT_RANKS, SUPPORT_STAT_OPTIONS, WENGINE_RARITIES } from '@/utils/calculatorUi'
+import '@/assets/calculatorLight.css'
+
+import { AGENT_MINDSCAPE_RANKS, AGENT_ROLES, collectMindscapeRankBuffs, createEmptyBuffStatModifiers, createEmptySelfTeamBuffs, getMindscapeNote, getMindscapeRankOnlyBuffs, REFINEMENT_RANKS, SUPPORT_STAT_OPTIONS, WENGINE_RARITIES } from '@/utils/calculatorUi'
 
 type CalcPage = 'damage' | 'role-buff' | 'wengine-buff' | 'bangboo-buff' | 'drive-disc-buff'
 type MindscapeBuffMode = 'current' | 'cumulative'
 
 const calculatorBuffStore = useCalculatorBuffStore()
+const themeStore = useThemeStore()
+const { mode: themeMode } = storeToRefs(themeStore)
 const { agents, wengines: wengineDocs, bangboos: bangbooDocs, driveDiscs: driveDiscDocs, loading, loaded, error } =
   storeToRefs(calculatorBuffStore)
 
@@ -45,9 +50,45 @@ const pageTitleMap: Record<CalcPage, string> = {
 }
 
 const damageSubNav = DAMAGE_CALC_SECTIONS
-
+const damageCalcModeItems = DAMAGE_CALC_MODE_ITEMS
+const damageCalcModeHint = ref<'panel' | 'affix' | 'optimal'>('panel')
 const activePage = ref<CalcPage>('damage')
+const mobileNavOpen = ref(false)
 const damageCalcPageRef = ref<InstanceType<typeof DamageCalcPage> | null>(null)
+
+const mobileSubtitle = computed(() => pageTitleMap[activePage.value])
+
+watch(activePage, () => {
+  mobileNavOpen.value = false
+})
+
+watch(mobileNavOpen, (open) => {
+  if (typeof document === 'undefined') return
+  document.body.style.overflow = open ? 'hidden' : ''
+})
+
+onUnmounted(() => {
+  document.body.style.overflow = ''
+})
+
+function selectPage(page: CalcPage) {
+  activePage.value = page
+  mobileNavOpen.value = false
+}
+
+async function scrollToDamageSection(item: DamageCalcNavItem | { id: 'damage-calc-mode' }) {
+  const wasDamage = activePage.value === 'damage'
+  activePage.value = 'damage'
+  mobileNavOpen.value = false
+  if ('calcMode' in item && item.calcMode) {
+    damageCalcModeHint.value = item.calcMode
+    damageCalcPageRef.value?.setCalcMode(item.calcMode)
+  }
+  await nextTick()
+  if (!wasDamage) await nextTick()
+  await damageCalcPageRef.value?.scrollToSection(item.id)
+}
+
 const roleDocSearch = ref('')
 const roleDocRoleFilter = ref('')
 const wengineSearch = ref('')
@@ -108,7 +149,7 @@ function supportNeedLabels(needs: string[]) {
 
 const selectedMindscapeBuffs = computed(() => {
   if (!selectedAgentDoc.value) {
-    return { selfMods: createEmptyBuffStatModifiers(), teamMods: createEmptyBuffStatModifiers() }
+    return createEmptySelfTeamBuffs()
   }
   const { mindscapeBuffs } = selectedAgentDoc.value
   const rank = selectedMindscapeRank.value
@@ -129,13 +170,11 @@ const selectedMindscapeNote = computed(() => {
 
 const selectedWengineRefinementBuffs = computed(() => {
   if (!selectedWengineDoc.value) {
-    return { selfMods: createEmptyBuffStatModifiers(), teamMods: createEmptyBuffStatModifiers() }
+    return createEmptySelfTeamBuffs()
   }
   return (
-    selectedWengineDoc.value.refinementBuffs[selectedWengineRefinementRank.value - 1] ?? {
-      selfMods: createEmptyBuffStatModifiers(),
-      teamMods: createEmptyBuffStatModifiers(),
-    }
+    selectedWengineDoc.value.refinementBuffs[selectedWengineRefinementRank.value - 1] ??
+    createEmptySelfTeamBuffs()
   )
 })
 
@@ -171,20 +210,38 @@ const filteredDriveDiscDocs = computed(() =>
     (d) => !driveDiscSearch.value || d.name.includes(driveDiscSearch.value.trim()),
   ),
 )
-
-async function scrollToDamageSection(sectionId: (typeof DAMAGE_CALC_SECTIONS)[number]['id']) {
-  const wasDamage = activePage.value === 'damage'
-  activePage.value = 'damage'
-  await nextTick()
-  if (!wasDamage) await nextTick()
-  await damageCalcPageRef.value?.scrollToSection(sectionId)
-}
 </script>
 
 <template>
-  <main class="calculator-page">
-    <aside class="sidebar">
-      <RouterLink to="/" class="back">← 返回首页</RouterLink>
+  <main
+    class="calculator-page"
+    :class="{ 'theme-light': themeMode === 'light', 'nav-open': mobileNavOpen }"
+  >
+    <header class="mobile-topbar">
+      <button
+        type="button"
+        class="mobile-menu-btn"
+        aria-label="打开菜单"
+        @click="mobileNavOpen = true"
+      >
+        菜单
+      </button>
+      <div class="mobile-topbar-text">
+        <strong>角色计算器</strong>
+        <span>{{ mobileSubtitle }}</span>
+      </div>
+    </header>
+
+    <button
+      v-show="mobileNavOpen"
+      type="button"
+      class="sidebar-backdrop"
+      aria-label="关闭菜单"
+      @click="mobileNavOpen = false"
+    />
+
+    <aside class="sidebar" :class="{ 'sidebar--open': mobileNavOpen }">
+      <RouterLink to="/" class="back" @click="mobileNavOpen = false">← 返回首页</RouterLink>
       <h1 class="sidebar-title">角色计算器</h1>
       <nav class="sidebar-nav">
         <div v-for="p in (['damage', 'role-buff', 'wengine-buff', 'bangboo-buff', 'drive-disc-buff'] as CalcPage[])" :key="p" class="sidebar-nav-group">
@@ -192,7 +249,7 @@ async function scrollToDamageSection(sectionId: (typeof DAMAGE_CALC_SECTIONS)[nu
             class="sidebar-btn"
             :class="{ active: activePage === p }"
             type="button"
-            @click="activePage = p"
+            @click="selectPage(p)"
           >
             {{ pageTitleMap[p] }}
           </button>
@@ -209,10 +266,34 @@ async function scrollToDamageSection(sectionId: (typeof DAMAGE_CALC_SECTIONS)[nu
                   type="button"
                   class="damage-subnav-btn"
                   :tabindex="activePage === 'damage' ? 0 : -1"
-                  @click="scrollToDamageSection(item.id)"
+                  @click="scrollToDamageSection(item)"
                 >
                   {{ item.label }}
                 </button>
+
+                <div class="damage-calc-mode-group">
+                  <button
+                    type="button"
+                    class="damage-subnav-btn damage-calc-mode-label"
+                    :tabindex="activePage === 'damage' ? 0 : -1"
+                    @click="scrollToDamageSection({ id: 'damage-calc-mode' })"
+                  >
+                    计算方式
+                  </button>
+                  <div class="damage-calc-mode-children">
+                    <button
+                      v-for="item in damageCalcModeItems"
+                      :key="item.id"
+                      type="button"
+                      class="damage-subnav-btn"
+                      :class="{ active: damageCalcModeHint === item.calcMode }"
+                      :tabindex="activePage === 'damage' ? 0 : -1"
+                      @click="scrollToDamageSection(item)"
+                    >
+                      {{ item.label }}
+                    </button>
+                  </div>
+                </div>
               </nav>
             </div>
           </div>
@@ -224,7 +305,11 @@ async function scrollToDamageSection(sectionId: (typeof DAMAGE_CALC_SECTIONS)[nu
       <p v-if="loading || !loaded" class="load-hint">正在从数据库加载计算器数据...</p>
       <p v-else-if="error" class="load-error">{{ error }}</p>
       <template v-else>
-      <DamageCalcPage v-show="activePage === 'damage'" ref="damageCalcPageRef" />
+      <DamageCalcPage
+        v-show="activePage === 'damage'"
+        ref="damageCalcPageRef"
+        @update:calc-mode="damageCalcModeHint = $event"
+      />
 
       <article v-if="activePage === 'role-buff'" class="card">
         <h2>角色增益详细</h2>
@@ -317,10 +402,8 @@ async function scrollToDamageSection(sectionId: (typeof DAMAGE_CALC_SECTIONS)[nu
             {{ selectedMindscapeNote }}
           </p>
 
-          <p>{{ selectedMindscapeRank }} 影 · 对自身增益（{{ mindscapeBuffScopeLabel }}）</p>
-          <BuffModsDisplay :mods="selectedMindscapeBuffs.selfMods" />
-          <p>{{ selectedMindscapeRank }} 影 · 对队友增益（{{ mindscapeBuffScopeLabel }}）</p>
-          <BuffModsDisplay :mods="selectedMindscapeBuffs.teamMods" />
+          <p>{{ selectedMindscapeRank }} 影 · 增益效果块（{{ mindscapeBuffScopeLabel }}）</p>
+          <BuffEffectBlocksDisplay :blocks="selectedMindscapeBuffs.effectBlocks" />
         </div>
       </article>
 
@@ -362,10 +445,7 @@ async function scrollToDamageSection(sectionId: (typeof DAMAGE_CALC_SECTIONS)[nu
             {{ selectedWengineDoc.note }}
           </p>
           <h4 class="doc-subtitle">固定增益</h4>
-          <p>自身增益</p>
-          <BuffModsDisplay :mods="selectedWengineDoc.fixedBuffs.selfMods" />
-          <p>队友增益</p>
-          <BuffModsDisplay :mods="selectedWengineDoc.fixedBuffs.teamMods" />
+          <BuffEffectBlocksDisplay :blocks="selectedWengineDoc.fixedBuffs.effectBlocks" />
           <h4 class="doc-subtitle">精炼增益</h4>
           <div class="mindscape-tabs">
             <button
@@ -379,10 +459,8 @@ async function scrollToDamageSection(sectionId: (typeof DAMAGE_CALC_SECTIONS)[nu
               精{{ rank }}
             </button>
           </div>
-          <p>精{{ selectedWengineRefinementRank }} · 自身增益</p>
-          <BuffModsDisplay :mods="selectedWengineRefinementBuffs.selfMods" />
-          <p>精{{ selectedWengineRefinementRank }} · 队友增益</p>
-          <BuffModsDisplay :mods="selectedWengineRefinementBuffs.teamMods" />
+          <p>精{{ selectedWengineRefinementRank }}</p>
+          <BuffEffectBlocksDisplay :blocks="selectedWengineRefinementBuffs.effectBlocks" />
         </div>
       </article>
 
@@ -410,7 +488,10 @@ async function scrollToDamageSection(sectionId: (typeof DAMAGE_CALC_SECTIONS)[nu
         <div v-if="selectedBangbooDoc" class="doc-detail">
           <h3>{{ selectedBangbooDoc.name }}</h3>
           <h4 class="doc-subtitle">固定增益</h4>
-          <BuffModsDisplay :mods="selectedBangbooDoc.fixedMods" />
+          <BuffEffectBlocksDisplay
+            :effects="selectedBangbooDoc.effects"
+            title="固定增益"
+          />
           <h4 class="doc-subtitle">精炼增益</h4>
           <div class="mindscape-tabs">
             <button
@@ -425,7 +506,10 @@ async function scrollToDamageSection(sectionId: (typeof DAMAGE_CALC_SECTIONS)[nu
             </button>
           </div>
           <p>精{{ selectedBangbooRefinementRank }}</p>
-          <BuffModsDisplay :mods="selectedBangbooRefinementBuffs" />
+          <BuffEffectBlocksDisplay
+            :effects="selectedBangbooDoc.refinementEffects[selectedBangbooRefinementRank - 1] ?? []"
+            :title="`精${selectedBangbooRefinementRank}`"
+          />
         </div>
       </article>
 
@@ -458,11 +542,12 @@ async function scrollToDamageSection(sectionId: (typeof DAMAGE_CALC_SECTIONS)[nu
             {{ selectedDriveDiscDoc.fourPieceNote }}
           </p>
           <p>2 件套效果</p>
-          <BuffModsDisplay :mods="selectedDriveDiscDoc.twoPieceMods" />
-          <p>4 件套 · 自身增益</p>
-          <BuffModsDisplay :mods="selectedDriveDiscDoc.fourPieceBuffs.selfMods" />
-          <p>4 件套 · 队友增益</p>
-          <BuffModsDisplay :mods="selectedDriveDiscDoc.fourPieceBuffs.teamMods" />
+          <BuffEffectBlocksDisplay
+            :effects="selectedDriveDiscDoc.twoPieceEffects"
+            title="2 件套"
+          />
+          <p>4 件套效果</p>
+          <BuffEffectBlocksDisplay :blocks="selectedDriveDiscDoc.fourPieceBuffs.effectBlocks" />
         </div>
       </article>
       </template>
@@ -478,18 +563,44 @@ async function scrollToDamageSection(sectionId: (typeof DAMAGE_CALC_SECTIONS)[nu
   grid-template-columns: 220px 1fr;
   background: #0f1012;
   color: #e9eaec;
+  transition:
+    background-color 0.2s,
+    color 0.2s;
+}
+
+.mobile-topbar,
+.sidebar-backdrop {
+  display: none;
+}
+
+.calculator-page.theme-light {
+  background: #eef1f5;
+  color: #1c212a;
 }
 
 .sidebar {
   border-right: 1px solid #25282e;
   background: #121419;
   padding: 1rem;
+  overflow-y: auto;
+  transition:
+    background-color 0.2s,
+    border-color 0.2s;
+}
+
+.calculator-page.theme-light .sidebar {
+  background: #f7f8fa;
+  border-right-color: #d8dde5;
 }
 
 .back {
   font-size: 0.84rem;
   color: #b7bec8;
   text-decoration: none;
+}
+
+.calculator-page.theme-light .back {
+  color: #4a5568;
 }
 
 .sidebar-title {
@@ -574,6 +685,32 @@ async function scrollToDamageSection(sectionId: (typeof DAMAGE_CALC_SECTIONS)[nu
 .damage-subnav-btn:hover {
   color: #dce1ea;
   background: #171a1f;
+}
+
+.damage-subnav-btn.active {
+  color: #e8edf5;
+  background: #1f2430;
+}
+
+.damage-calc-mode-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-top: 0.1rem;
+}
+
+.damage-calc-mode-label {
+  color: #b4bcc8;
+  font-weight: 600;
+}
+
+.damage-calc-mode-children {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  margin-left: 0.35rem;
+  padding-left: 0.5rem;
+  border-left: 2px solid #3a414d;
 }
 
 .content {
@@ -803,18 +940,293 @@ async function scrollToDamageSection(sectionId: (typeof DAMAGE_CALC_SECTIONS)[nu
   margin: 0.2rem 0;
 }
 
-@media (max-width: 1100px) {
+/* 白天模式：页面壳 + 常用卡片 */
+.calculator-page.theme-light .sidebar-btn {
+  border-color: #d0d5dd;
+  background: #fff;
+  color: #2d3440;
+}
+
+.calculator-page.theme-light .sidebar-btn:hover {
+  background: #f0f2f6;
+}
+
+.calculator-page.theme-light .sidebar-btn.active {
+  border-color: #c9a55c;
+  background: #fff8eb;
+  color: #5c4818;
+}
+
+.calculator-page.theme-light .damage-subnav {
+  border-left-color: #d0d5dd;
+}
+
+.calculator-page.theme-light .damage-subnav-btn {
+  color: #5a6575;
+}
+
+.calculator-page.theme-light .damage-subnav-btn:hover {
+  color: #1c212a;
+  background: #e8ebf0;
+}
+
+.calculator-page.theme-light .damage-subnav-btn.active {
+  color: #1c212a;
+  background: #dde3ec;
+}
+
+.calculator-page.theme-light .damage-calc-mode-label {
+  color: #3a4454;
+}
+
+.calculator-page.theme-light .damage-calc-mode-children {
+  border-left-color: #c5ccd8;
+}
+
+.calculator-page.theme-light .card {
+  border-color: #d5dae3;
+  background: linear-gradient(180deg, #ffffff 0%, #f6f8fb 100%);
+  color: #1c212a;
+}
+
+.calculator-page.theme-light .helper-text,
+.calculator-page.theme-light .doc-detail p,
+.calculator-page.theme-light .doc-meta,
+.calculator-page.theme-light .filter-label,
+.calculator-page.theme-light .field span {
+  color: #667085;
+}
+
+.calculator-page.theme-light .doc-detail {
+  border-color: #d5dae3;
+  background: #f5f7fa;
+  color: #1c212a;
+}
+
+.calculator-page.theme-light .doc-note {
+  border-color: #e6d7b0;
+  background: #fff9ef;
+  color: #5c4818;
+}
+
+.calculator-page.theme-light .doc-note-label {
+  color: #8a6d2e;
+}
+
+.calculator-page.theme-light .doc-subtitle {
+  color: #1c212a;
+}
+
+.calculator-page.theme-light .doc-item {
+  border-color: #d5dae3;
+  background: #f5f7fa;
+  color: #1c212a;
+}
+
+.calculator-page.theme-light .doc-item span {
+  color: #667085;
+}
+
+.calculator-page.theme-light .field input:not(.preset-combo__input),
+.calculator-page.theme-light .field select {
+  border-color: #d5dae3;
+  background: #fff;
+  color: #1c212a;
+}
+
+.calculator-page.theme-light .chip,
+.calculator-page.theme-light .mindscape-tab {
+  border-color: #d5dae3;
+  background: #f5f7fa;
+  color: #1c212a;
+}
+
+.calculator-page.theme-light .chip.active,
+.calculator-page.theme-light .mindscape-tab.active,
+.calculator-page.theme-light .doc-item.active {
+  border-color: #c9a55c;
+  background: #fff8eb;
+  color: #5c4818;
+}
+
+.calculator-page.theme-light .load-hint {
+  border-color: #e6d7b0;
+  background: #fff9ef;
+  color: #6b5420;
+}
+
+@media (max-width: 768px) {
   .calculator-page {
     grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    height: 100dvh;
+  }
+
+  .mobile-topbar {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    grid-column: 1;
+    grid-row: 1;
+    z-index: 1;
+    padding: 0.55rem 0.75rem;
+    padding-top: max(0.55rem, env(safe-area-inset-top));
+    border-bottom: 1px solid #25282e;
+    background: #121419;
+  }
+
+  .calculator-page.theme-light .mobile-topbar {
+    border-bottom-color: #d8dde5;
+    background: #f7f8fa;
+  }
+
+  .mobile-menu-btn {
+    flex-shrink: 0;
+    min-height: 2.4rem;
+    padding: 0.4rem 0.75rem;
+    border: 1px solid #2a2d33;
+    border-radius: 8px;
+    background: #171a1f;
+    color: #e9eaec;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .calculator-page.theme-light .mobile-menu-btn {
+    border-color: #d0d5dd;
+    background: #fff;
+    color: #2d3440;
+  }
+
+  .mobile-topbar-text {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+
+  .mobile-topbar-text strong {
+    font-size: 0.92rem;
+    line-height: 1.2;
+  }
+
+  .mobile-topbar-text span {
+    font-size: 0.75rem;
+    opacity: 0.7;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1190;
+    border: none;
+    padding: 0;
+    margin: 0;
+    background: rgba(0, 0, 0, 0.5);
+    cursor: pointer;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1200;
+    width: min(288px, 86vw);
+    height: 100dvh;
+    border-right: 1px solid #25282e;
+    box-shadow: 8px 0 28px rgba(0, 0, 0, 0.35);
+    transform: translateX(-105%);
+    transition: transform 0.22s ease;
+    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  .sidebar--open {
+    transform: translateX(0);
+  }
+
+  .sidebar-btn {
+    min-height: 2.65rem;
+    font-size: 0.9rem;
+  }
+
+  .damage-subnav-btn {
+    min-height: 2.2rem;
+    font-size: 0.8rem;
+  }
+
+  .content {
+    grid-column: 1;
+    grid-row: 2;
+    min-height: 0;
+    padding: 0.65rem 0.6rem 1rem;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .card {
+    padding: 0.75rem;
+  }
+
+  .card h2 {
+    font-size: 1.05rem;
   }
 
   .grid.four,
   .doc-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .doc-grid {
+    gap: 0.4rem;
+  }
+
+  .doc-item {
+    padding: 0.4rem;
+  }
+
+  .mindscape-tabs {
+    gap: 0.35rem;
+  }
+
+  .mindscape-tab,
+  .chip {
+    min-height: 2rem;
+  }
+
+  .grid.four,
+  .compact-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .field input,
+  .field select {
+    width: 100%;
+    min-width: 0;
+    min-height: 2.4rem;
+    font-size: 0.9rem;
+  }
+
+  .doc-detail {
+    padding: 0.6rem;
+  }
+
+  .helper-text {
+    font-size: 0.78rem;
+    line-height: 1.4;
+  }
+
+  .damage-subnav-wrap {
+    margin-left: 0.25rem;
+  }
 }
 
-@media (max-width: 680px) {
+@media (max-width: 480px) {
   .grid.four,
   .doc-grid {
     grid-template-columns: 1fr;

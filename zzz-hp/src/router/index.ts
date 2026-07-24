@@ -14,6 +14,18 @@ const router = createRouter({
       component: HomeView,
     },
     {
+      path: '/account',
+      name: 'account',
+      component: () => import('../views/AccountView.vue'),
+      meta: { title: '账号中心' },
+    },
+    {
+      path: '/about',
+      name: 'about',
+      component: () => import('../views/SiteInfoView.vue'),
+      meta: { title: '网站说明' },
+    },
+    {
       path: '/crisis-assault',
       name: 'crisis-assault',
       component: () => import('../views/CrisisAssaultView.vue'),
@@ -58,10 +70,38 @@ const router = createRouter({
       meta: { requiresAdmin: true },
     },
     {
+      path: '/admin/changelog',
+      name: 'admin-changelog',
+      component: () => import('../views/admin/AdminChangelogView.vue'),
+      meta: { requiresAdmin: true },
+    },
+    {
+      path: '/admin/guestbook',
+      name: 'admin-guestbook',
+      component: () => import('../views/admin/AdminGuestbookView.vue'),
+      meta: { requiresAdmin: true },
+    },
+    {
       path: '/admin/defense',
       name: 'admin-defense-select',
       component: () => import('../views/admin/AdminDefenseSelectView.vue'),
       meta: { requiresAdmin: true },
+    },
+    {
+      path: '/admin/site-info',
+      name: 'admin-site-info',
+      component: () => import('../views/admin/AdminSiteInfoView.vue'),
+      meta: { requiresAdmin: true, title: '网站说明管理' },
+    },
+    {
+      path: '/admin/about',
+      name: 'admin-about',
+      component: () => import('../views/SiteInfoView.vue'),
+      props: {
+        backTo: '/admin',
+        backLabel: '← 返回管理员入口',
+      },
+      meta: { requiresAdmin: true, title: '网站说明' },
     },
     {
       path: '/admin/crisis-assault',

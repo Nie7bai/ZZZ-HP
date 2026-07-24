@@ -1,0 +1,978 @@
+/**
+ * 角色计算器 · 白天模式
+ * 注意：此文件为全局 CSS，勿使用 Vue 的 :deep()
+ */
+
+.calculator-page.theme-light {
+  --calc-surface: #ffffff;
+  --calc-surface-2: #f5f7fa;
+  --calc-surface-3: #eef1f5;
+  --calc-border: #d5dae3;
+  --calc-text: #1c212a;
+  --calc-muted: #667085;
+  --calc-accent: #c9a55c;
+  --calc-accent-bg: #fff8eb;
+  --calc-input-bg: #ffffff;
+}
+
+/* —— 大卡片 —— */
+.calculator-page.theme-light .section-card,
+.calculator-page.theme-light .panel-block,
+.calculator-page.theme-light .calc-mode-section,
+.calculator-page.theme-light .history-section,
+.calculator-page.theme-light .history-trigger,
+.calculator-page.theme-light .history-modal,
+.calculator-page.theme-light .upload-section,
+.calculator-page.theme-light .upload-box,
+.calculator-page.theme-light .recognition-result,
+.calculator-page.theme-light .formula-block,
+.calculator-page.theme-light .result-mode-bar,
+.calculator-page.theme-light .team-disc-notes,
+.calculator-page.theme-light .disc-note-item,
+.calculator-page.theme-light .disc-group,
+.calculator-page.theme-light .wengine-toolbar,
+.calculator-page.theme-light .slot-toolbar,
+.calculator-page.theme-light .empty-panel,
+.calculator-page.theme-light .card {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface) !important;
+  color: var(--calc-text) !important;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.calculator-page.theme-light .history-trigger,
+.calculator-page.theme-light .history-modal {
+  background: linear-gradient(180deg, #ffffff 0%, #f6f8fb 100%) !important;
+}
+
+.calculator-page.theme-light .section-header h2,
+.calculator-page.theme-light .wengine-toolbar h3,
+.calculator-page.theme-light .slot-toolbar h3,
+.calculator-page.theme-light .calc-mode-header h2,
+.calculator-page.theme-light .panel-block-header,
+.calculator-page.theme-light .history-header,
+.calculator-page.theme-light .disc-group-header,
+.calculator-page.theme-light .disc-group-header h3,
+.calculator-page.theme-light .recognition-result-title,
+.calculator-page.theme-light .result-section-title,
+.calculator-page.theme-light .result-subsection-title,
+.calculator-page.theme-light .team-notes-title,
+.calculator-page.theme-light h2,
+.calculator-page.theme-light h3,
+.calculator-page.theme-light h4 {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .section-desc,
+.calculator-page.theme-light .calc-mode-desc,
+.calculator-page.theme-light .history-desc,
+.calculator-page.theme-light .history-summary,
+.calculator-page.theme-light .helper-text,
+.calculator-page.theme-light .upload-hint,
+.calculator-page.theme-light .upload-label,
+.calculator-page.theme-light .filter-label,
+.calculator-page.theme-light .field > span,
+.calculator-page.theme-light .empty-panel,
+.calculator-page.theme-light .team-note-empty,
+.calculator-page.theme-light .history-empty,
+.calculator-page.theme-light .history-item-meta,
+.calculator-page.theme-light .agent-name,
+.calculator-page.theme-light .bangboo-name,
+.calculator-page.theme-light .disc-name,
+.calculator-page.theme-light .disc-group-header p,
+.calculator-page.theme-light .slot-meta {
+  color: var(--calc-muted) !important;
+}
+
+/* —— 搜索框 / 输入框（含 .search-input；不含 range / 合框内部） —— */
+.calculator-page.theme-light input:not([type='checkbox']):not([type='radio']):not([type='range']):not(.preset-combo__input),
+.calculator-page.theme-light select,
+.calculator-page.theme-light textarea,
+.calculator-page.theme-light .search-input,
+.calculator-page.theme-light .field-input,
+.calculator-page.theme-light .field > input:not([type='range']),
+.calculator-page.theme-light .field > select {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-input-bg) !important;
+  background-color: var(--calc-input-bg) !important;
+  color: var(--calc-text) !important;
+  color-scheme: light;
+}
+
+/* 敌方预设合框（白天） */
+.calculator-page.theme-light .preset-combo {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-input-bg) !important;
+  background-color: var(--calc-input-bg) !important;
+  color-scheme: light;
+}
+
+.calculator-page.theme-light .preset-combo.is-open,
+.calculator-page.theme-light .preset-combo:focus-within {
+  border-color: #98a2b3 !important;
+}
+
+.calculator-page.theme-light .preset-combo__trigger,
+.calculator-page.theme-light .preset-combo__input {
+  background: transparent !important;
+  background-color: transparent !important;
+  color: var(--calc-text) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.calculator-page.theme-light .preset-combo__input {
+  border-left: 1px solid var(--calc-border) !important;
+}
+
+.calculator-page.theme-light .preset-combo__caret {
+  border-top-color: #98a2b3 !important;
+}
+
+.calculator-page.theme-light .preset-combo__menu {
+  border-color: var(--calc-border) !important;
+  background: #fff !important;
+  background-color: #fff !important;
+  box-shadow: 0 10px 28px rgba(16, 24, 40, 0.12) !important;
+}
+
+.calculator-page.theme-light .preset-combo__menu li {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .preset-combo__menu li:hover {
+  background: #f2f4f7 !important;
+}
+
+.calculator-page.theme-light .preset-combo__menu li.is-active {
+  background: #eef4ff !important;
+  color: #1849a9 !important;
+}
+
+.calculator-page.theme-light input::placeholder,
+.calculator-page.theme-light .search-input::placeholder {
+  color: #98a2b3 !important;
+}
+
+/* —— 拖动条（影画 / 精炼等） —— */
+.calculator-page.theme-light input[type='range'],
+.calculator-page.theme-light .rank-slider,
+.calculator-page.theme-light .refine-slider {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 1.35rem;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  accent-color: #c9a55c;
+  color-scheme: light;
+  cursor: pointer;
+}
+
+.calculator-page.theme-light input[type='range']::-webkit-slider-runnable-track,
+.calculator-page.theme-light .rank-slider::-webkit-slider-runnable-track,
+.calculator-page.theme-light .refine-slider::-webkit-slider-runnable-track {
+  height: 0.45rem;
+  border-radius: 999px;
+  background: #d8dee8 !important;
+  border: none;
+}
+
+.calculator-page.theme-light input[type='range']::-webkit-slider-thumb,
+.calculator-page.theme-light .rank-slider::-webkit-slider-thumb,
+.calculator-page.theme-light .refine-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 1rem;
+  height: 1rem;
+  margin-top: -0.28rem;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: #c9a55c !important;
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.25);
+  cursor: pointer;
+}
+
+.calculator-page.theme-light input[type='range']::-moz-range-track,
+.calculator-page.theme-light .rank-slider::-moz-range-track,
+.calculator-page.theme-light .refine-slider::-moz-range-track {
+  height: 0.45rem;
+  border-radius: 999px;
+  background: #d8dee8 !important;
+  border: none;
+}
+
+.calculator-page.theme-light input[type='range']::-moz-range-progress,
+.calculator-page.theme-light .rank-slider::-moz-range-progress,
+.calculator-page.theme-light .refine-slider::-moz-range-progress {
+  height: 0.45rem;
+  border-radius: 999px;
+  background: #e6d7b0 !important;
+}
+
+.calculator-page.theme-light input[type='range']::-moz-range-thumb,
+.calculator-page.theme-light .rank-slider::-moz-range-thumb,
+.calculator-page.theme-light .refine-slider::-moz-range-thumb {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: #c9a55c !important;
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.25);
+  cursor: pointer;
+}
+
+.calculator-page.theme-light .refine-row {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .editing-label {
+  color: #8a6d2e !important;
+}
+
+.calculator-page.theme-light .refine-badge {
+  border-color: #e6d7b0 !important;
+  background: var(--calc-accent-bg) !important;
+  color: #5c4818 !important;
+}
+
+.calculator-page.theme-light .detail-mode-toggle,
+.calculator-page.theme-light .preview-toggle {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .detail-mode-toggle input,
+.calculator-page.theme-light .preview-toggle input,
+.calculator-page.theme-light input[type='checkbox'],
+.calculator-page.theme-light input[type='radio'] {
+  accent-color: #c9a55c;
+  color-scheme: light;
+}
+
+/* —— 计算方式 / chip —— */
+.calculator-page.theme-light .calc-mode-tab,
+.calculator-page.theme-light .chip,
+.calculator-page.theme-light .result-mode-btn,
+.calculator-page.theme-light .mindscape-tab,
+.calculator-page.theme-light .ocr-json-btn,
+.calculator-page.theme-light .image-picker-btn {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface-2) !important;
+  background-color: var(--calc-surface-2) !important;
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .calc-mode-tab:hover,
+.calculator-page.theme-light .chip:hover,
+.calculator-page.theme-light .ocr-json-btn:hover,
+.calculator-page.theme-light .image-picker-btn:hover {
+  background: var(--calc-surface-3) !important;
+}
+
+.calculator-page.theme-light .calc-mode-tab.active,
+.calculator-page.theme-light .chip.active,
+.calculator-page.theme-light .chip.highlight,
+.calculator-page.theme-light .result-mode-btn.active,
+.calculator-page.theme-light .mindscape-tab.active,
+.calculator-page.theme-light .slot-card.active,
+.calculator-page.theme-light .bangboo-cell.active,
+.calculator-page.theme-light .disc-cell.active,
+.calculator-page.theme-light .wengine-cell.active,
+.calculator-page.theme-light .agent-cell.active,
+.calculator-page.theme-light .history-item.active,
+.calculator-page.theme-light .doc-item.active {
+  border-color: var(--calc-accent) !important;
+  background: var(--calc-accent-bg) !important;
+  background-color: var(--calc-accent-bg) !important;
+  color: #5c4818 !important;
+}
+
+/* —— 角色 / 音擎 / 邦布 / 驱动盘格子 —— */
+.calculator-page.theme-light .slot-card,
+.calculator-page.theme-light .agent-cell,
+.calculator-page.theme-light .wengine-cell,
+.calculator-page.theme-light .bangboo-cell,
+.calculator-page.theme-light .disc-cell,
+.calculator-page.theme-light .history-item,
+.calculator-page.theme-light .doc-item {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface-2) !important;
+  background-color: var(--calc-surface-2) !important;
+  color: var(--calc-text) !important;
+}
+
+/* 代理人槽位内：音擎 / 驱动盘信息框 */
+.calculator-page.theme-light .wengine-box,
+.calculator-page.theme-light .drive-disc-box {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface) !important;
+  background-color: var(--calc-surface) !important;
+}
+
+.calculator-page.theme-light .wengine-title {
+  color: #8a6d2e !important;
+}
+
+.calculator-page.theme-light .wengine-hint,
+.calculator-page.theme-light .empty-hint,
+.calculator-page.theme-light .rank-label {
+  color: var(--calc-muted) !important;
+}
+
+.calculator-page.theme-light .slot-meta strong,
+.calculator-page.theme-light .empty-title {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .slot-meta span {
+  color: var(--calc-muted) !important;
+}
+
+.calculator-page.theme-light .main-c {
+  color: #5c4818 !important;
+}
+
+.calculator-page.theme-light .remove-btn {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface) !important;
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .remove-btn:hover {
+  border-color: var(--calc-accent) !important;
+  background: var(--calc-accent-bg) !important;
+  color: #5c4818 !important;
+}
+
+.calculator-page.theme-light .badge.role {
+  color: #5c4818 !important;
+  background: var(--calc-accent-bg) !important;
+  border-color: #e6d7b0 !important;
+}
+
+.calculator-page.theme-light .badge.element {
+  color: #3d4a63 !important;
+  background: var(--calc-surface-3) !important;
+  border-color: var(--calc-border) !important;
+}
+
+.calculator-page.theme-light .agent-name,
+.calculator-page.theme-light .history-item-main {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .calc-avatar,
+.calculator-page.theme-light .slot-avatar,
+.calculator-page.theme-light .agent-avatar,
+.calculator-page.theme-light .bangboo-avatar,
+.calculator-page.theme-light .disc-avatar,
+.calculator-page.theme-light .wengine-avatar,
+.calculator-page.theme-light .avatar {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface-3) !important;
+  color: #3d4a63 !important;
+}
+
+/* —— 上传 —— */
+.calculator-page.theme-light .upload-preview,
+.calculator-page.theme-light .image-picker {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface-2) !important;
+  color: var(--calc-muted) !important;
+}
+
+.calculator-page.theme-light .ocr-json-btn {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface-2) !important;
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .ocr-quota-hint {
+  color: #8a6d2e !important;
+}
+
+.calculator-page.theme-light .recognition-result {
+  background: #fff9ef !important;
+  border-color: #e6d7b0 !important;
+  color: #5c4818 !important;
+}
+
+.calculator-page.theme-light .recognition-status,
+.calculator-page.theme-light .ocr-quota-hint {
+  color: #8a6d2e !important;
+}
+
+.calculator-page.theme-light .recognition-error,
+.calculator-page.theme-light .recognition-warnings li {
+  color: #b42318 !important;
+}
+
+/* —— 结果 / 公式 —— */
+.calculator-page.theme-light .result-grid,
+.calculator-page.theme-light .formula-aligned,
+.calculator-page.theme-light .sources-popover,
+.calculator-page.theme-light .stat-popover,
+.calculator-page.theme-light .panel-block--final {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface) !important;
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .formula-label,
+.calculator-page.theme-light .formula-aligned-term-label {
+  color: var(--calc-muted) !important;
+}
+
+.calculator-page.theme-light .formula-value,
+.calculator-page.theme-light .result-value {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .team-summary,
+.calculator-page.theme-light .mb-hint {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface-2) !important;
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .mb-hint {
+  border-color: #e6d7b0 !important;
+  background: var(--calc-accent-bg) !important;
+  color: #5c4818 !important;
+}
+
+/* —— 历史 —— */
+.calculator-page.theme-light .history-modal-overlay {
+  background: rgba(15, 23, 42, 0.35) !important;
+}
+
+.calculator-page.theme-light .history-delete {
+  background: #fef3f2 !important;
+  border-color: #fecdca !important;
+  color: #b42318 !important;
+}
+
+/* —— 注释 —— */
+.calculator-page.theme-light .team-notes,
+.calculator-page.theme-light .team-note-item {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface-2) !important;
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .team-note-label,
+.calculator-page.theme-light .team-note-type {
+  color: #8a6d2e !important;
+}
+
+.calculator-page.theme-light .team-note-text {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .disc-note-item strong {
+  color: #8a6d2e !important;
+}
+
+.calculator-page.theme-light .disc-note-item p {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .disc-note-item + .disc-note-item {
+  border-top-color: var(--calc-border) !important;
+}
+
+.calculator-page.theme-light .slot-badges span,
+.calculator-page.theme-light .slot-badge {
+  background: var(--calc-surface-3) !important;
+  color: var(--calc-text) !important;
+  border-color: var(--calc-border) !important;
+}
+
+.calculator-page.theme-light .preview-toggle {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .selected-bar,
+.calculator-page.theme-light .wengine-placeholder,
+.calculator-page.theme-light .bangboo-placeholder,
+.calculator-page.theme-light .disc-placeholder {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface-3) !important;
+  color: var(--calc-muted) !important;
+}
+
+.calculator-page.theme-light .selected-bar {
+  background: var(--calc-surface-2) !important;
+  color: var(--calc-text) !important;
+}
+
+/* —— 历史入口内联摘要 —— */
+.calculator-page.theme-light .history-summary,
+.calculator-page.theme-light .history-open-hint {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface-2) !important;
+  color: var(--calc-muted) !important;
+}
+
+.calculator-page.theme-light .history-inline-message,
+.calculator-page.theme-light .history-message {
+  color: #8a6d2e !important;
+}
+
+/* —— 局内增益汇总 —— */
+.calculator-page.theme-light .buff-breakdown,
+.calculator-page.theme-light .affix-base-summary,
+.calculator-page.theme-light .extra-mods-block {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface-2) !important;
+  color: var(--calc-text) !important;
+}
+
+/* —— 额外 Buff 增益编辑 —— */
+.calculator-page.theme-light .extra-buff-editor .field {
+  color: var(--calc-muted) !important;
+}
+
+.calculator-page.theme-light .extra-buff-editor .field input,
+.calculator-page.theme-light .extra-buff-editor .field select {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-input-bg) !important;
+  color: var(--calc-text) !important;
+  color-scheme: light;
+}
+
+.calculator-page.theme-light .extra-buff-editor .add-btn {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface) !important;
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .extra-buff-editor .remove-btn {
+  border-color: rgba(196, 92, 92, 0.45) !important;
+  background: transparent !important;
+  color: #b42318 !important;
+}
+
+.calculator-page.theme-light .extra-buff-item {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface) !important;
+}
+
+.calculator-page.theme-light .extra-buff-copy strong {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .extra-buff-copy span,
+.calculator-page.theme-light .extra-buff-empty {
+  color: var(--calc-muted) !important;
+}
+
+.calculator-page.theme-light .buff-breakdown summary,
+.calculator-page.theme-light .buff-breakdown li,
+.calculator-page.theme-light .mods-summary li,
+.calculator-page.theme-light .affix-hint {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .mods-summary li span {
+  color: var(--calc-muted) !important;
+}
+
+.calculator-page.theme-light .mods-summary li strong {
+  color: var(--calc-text) !important;
+}
+
+/* —— 增益来源 / 增伤列表（角色·音擎·驱动盘·邦布） —— */
+.calculator-page.theme-light .doc-detail {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface-2) !important;
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .doc-note {
+  border-color: #e6d7b0 !important;
+  background: #fff9ef !important;
+  color: #5c4818 !important;
+}
+
+.calculator-page.theme-light .doc-note-label,
+.calculator-page.theme-light .doc-subtitle,
+.calculator-page.theme-light .doc-meta,
+.calculator-page.theme-light .filter-label {
+  color: var(--calc-muted) !important;
+}
+
+.calculator-page.theme-light .mods-list li,
+.calculator-page.theme-light .empty-mods {
+  color: var(--calc-muted) !important;
+}
+
+.calculator-page.theme-light .mods-list strong {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .buff-sources {
+  border-top-color: var(--calc-border) !important;
+}
+
+.calculator-page.theme-light .buff-sources-title,
+.calculator-page.theme-light .buff-source-note,
+.calculator-page.theme-light .buff-sources-empty {
+  color: var(--calc-muted) !important;
+}
+
+.calculator-page.theme-light .buff-source-label {
+  color: #8a6d2e !important;
+}
+
+.calculator-page.theme-light .buff-source-item + .buff-source-item,
+.calculator-page.theme-light .buff-source-mods.has-note {
+  border-top-color: var(--calc-border) !important;
+}
+
+.calculator-page.theme-light .doc-item span {
+  color: var(--calc-muted) !important;
+}
+
+.calculator-page.theme-light .save-btn {
+  border-color: #c9d4b8 !important;
+  background: #f3f7ee !important;
+  color: #3d4f2f !important;
+}
+
+/* —— 最优词条分配 —— */
+.calculator-page.theme-light .opt-section {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface) !important;
+  color: var(--calc-text) !important;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.calculator-page.theme-light .opt-section .opt-header p,
+.calculator-page.theme-light .opt-section .constraint-hint,
+.calculator-page.theme-light .opt-section .hint,
+.calculator-page.theme-light .opt-section .field,
+.calculator-page.theme-light .opt-section .empty,
+.calculator-page.theme-light .opt-section .empty-cell,
+.calculator-page.theme-light .opt-section .count-chip,
+.calculator-page.theme-light .opt-section .legend {
+  color: var(--calc-muted) !important;
+}
+
+.calculator-page.theme-light .opt-section .kind-tab,
+.calculator-page.theme-light .opt-section .detail-tab,
+.calculator-page.theme-light .opt-section .ghost-btn {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface-2) !important;
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .opt-section .kind-tab.active,
+.calculator-page.theme-light .opt-section .detail-tab.active {
+  border-color: var(--calc-accent) !important;
+  background: var(--calc-accent-bg) !important;
+  color: #5c4818 !important;
+}
+
+.calculator-page.theme-light .opt-section .detail {
+  border-top-color: var(--calc-border) !important;
+}
+
+.calculator-page.theme-light .opt-section .result-summary,
+.calculator-page.theme-light .opt-section .process-grid,
+.calculator-page.theme-light .opt-section .next-label {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .opt-section .result-summary strong {
+  color: #8a6d2e !important;
+}
+
+.calculator-page.theme-light .opt-section .table-wrap {
+  border-color: var(--calc-border) !important;
+}
+
+.calculator-page.theme-light .opt-section .main-stat-section-heading,
+.calculator-page.theme-light .opt-section .combined-main-stat-card__header,
+.calculator-page.theme-light .opt-section .main-stat-card__header {
+  border-color: var(--calc-border) !important;
+}
+
+.calculator-page.theme-light .opt-section .main-stat-section-heading p,
+.calculator-page.theme-light .opt-section .combined-main-stat-card__header p,
+.calculator-page.theme-light .opt-section .combined-main-stat-label,
+.calculator-page.theme-light .opt-section .combined-result > span,
+.calculator-page.theme-light .opt-section .main-stat-selects label,
+.calculator-page.theme-light .opt-section .main-stat-current {
+  color: var(--calc-muted) !important;
+}
+
+.calculator-page.theme-light .opt-section .metric-badge {
+  border-color: #c9d4b8 !important;
+  background: #f3f7ee !important;
+  color: #526b36 !important;
+}
+
+.calculator-page.theme-light .opt-section .combined-main-stat-card {
+  border-color: #c9d4b8 !important;
+  background:
+    linear-gradient(135deg, rgba(136, 171, 78, 0.08), transparent 42%),
+    var(--calc-surface) !important;
+}
+
+.calculator-page.theme-light .opt-section .main-stat-card,
+.calculator-page.theme-light .opt-section .main-stat-stack p,
+.calculator-page.theme-light .opt-section .combined-result {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface) !important;
+}
+
+.calculator-page.theme-light .opt-section .main-stat-stack p,
+.calculator-page.theme-light .opt-section .main-stat-title,
+.calculator-page.theme-light .opt-section .main-stat-subheading,
+.calculator-page.theme-light .opt-section .combined-main-stat-card__header h5 {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .opt-section .main-stat-selects select,
+.calculator-page.theme-light .opt-section .reset-combination-btn {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface-2) !important;
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .opt-section .main-stat-stack i,
+.calculator-page.theme-light .opt-section .combined-main-stat-arrow,
+.calculator-page.theme-light .opt-section .main-stat-current strong {
+  color: #6c842f !important;
+}
+
+.calculator-page.theme-light .opt-section th {
+  background: var(--calc-surface-2) !important;
+  color: var(--calc-muted) !important;
+}
+
+.calculator-page.theme-light .opt-section td,
+.calculator-page.theme-light .opt-section th {
+  border-bottom-color: var(--calc-border) !important;
+}
+
+.calculator-page.theme-light .opt-section td {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .opt-section td.pos {
+  color: #1f7a47 !important;
+}
+
+.calculator-page.theme-light .opt-section td.neg,
+.calculator-page.theme-light .opt-section .neg {
+  color: #b42318 !important;
+}
+
+.calculator-page.theme-light .opt-section .pos {
+  color: #1f7a47 !important;
+}
+
+.calculator-page.theme-light .opt-section .err {
+  color: #b42318 !important;
+}
+
+.calculator-page.theme-light .opt-section .count-chip {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface-2) !important;
+}
+
+.calculator-page.theme-light .opt-section .next-track {
+  background: var(--calc-surface-3) !important;
+}
+
+.calculator-page.theme-light .opt-bar-chart .grid,
+.calculator-page.theme-light .opt-line-chart .grid {
+  stroke: rgba(16, 24, 40, 0.08) !important;
+}
+
+.calculator-page.theme-light .opt-bar-chart .axis-label,
+.calculator-page.theme-light .opt-bar-chart .x-label,
+.calculator-page.theme-light .opt-line-chart .axis-label {
+  fill: #667085 !important;
+}
+
+.calculator-page.theme-light .opt-bar-chart .bar-group.selected rect:not(.hit) {
+  stroke: #c9a55c !important;
+}
+
+/*
+ * Teleport 到 body 的历史弹窗不在 .calculator-page 内，
+ * 必须用 html[data-theme] 覆盖。
+ */
+[data-theme='light'] .history-modal-overlay {
+  background: rgba(15, 23, 42, 0.35) !important;
+}
+
+[data-theme='light'] .history-modal {
+  border-color: #d5dae3 !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f6f8fb 100%) !important;
+  color: #1c212a !important;
+  box-shadow: 0 18px 48px rgba(16, 24, 40, 0.12) !important;
+}
+
+[data-theme='light'] .history-modal-header h2,
+[data-theme='light'] .history-item-main {
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .history-modal-header p,
+[data-theme='light'] .history-empty,
+[data-theme='light'] .history-item-meta,
+[data-theme='light'] .history-modal .field-label {
+  color: #667085 !important;
+}
+
+[data-theme='light'] .history-modal-close,
+[data-theme='light'] .history-modal .field-input {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+  color: #1c212a !important;
+  color-scheme: light;
+}
+
+[data-theme='light'] .history-modal .save-btn {
+  border-color: #c9d4b8 !important;
+  background: #f3f7ee !important;
+  color: #3d4f2f !important;
+}
+
+[data-theme='light'] .history-item {
+  border-color: #d5dae3 !important;
+  background: #f5f7fa !important;
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .history-item:hover,
+[data-theme='light'] .history-item.active {
+  border-color: #c9a55c !important;
+  background: #fff8eb !important;
+  color: #5c4818 !important;
+}
+
+[data-theme='light'] .history-delete {
+  background: #fef3f2 !important;
+  border-color: #fecdca !important;
+  color: #b42318 !important;
+}
+
+[data-theme='light'] .history-message {
+  color: #8a6d2e !important;
+}
+
+/*
+ * Teleport 到 body 的 Buff 选择弹窗不在 .calculator-page 内，
+ * 必须用 html[data-theme] 覆盖。
+ */
+[data-theme='light'] .buff-picker-overlay {
+  background: rgba(15, 23, 42, 0.35) !important;
+}
+
+[data-theme='light'] .buff-picker-modal {
+  border-color: #d5dae3 !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f6f8fb 100%) !important;
+  color: #1c212a !important;
+  box-shadow: 0 18px 48px rgba(16, 24, 40, 0.12) !important;
+}
+
+[data-theme='light'] .buff-picker-header {
+  border-bottom-color: #d5dae3 !important;
+}
+
+[data-theme='light'] .buff-picker-header h3 {
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .buff-picker-header p,
+[data-theme='light'] .buff-picker-footer .muted,
+[data-theme='light'] .buff-copy small,
+[data-theme='light'] .title-sep,
+[data-theme='light'] .rule-coverage-control,
+[data-theme='light'] .empty {
+  color: #667085 !important;
+}
+
+[data-theme='light'] .buff-picker-modal .close-btn {
+  color: #667085 !important;
+}
+
+[data-theme='light'] .buff-picker-modal .search,
+[data-theme='light'] .buff-picker-modal .ghost,
+[data-theme='light'] .buff-picker-modal .group-tab,
+[data-theme='light'] .buff-picker-modal .count {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+  color: #1c212a !important;
+  color-scheme: light;
+}
+
+[data-theme='light'] .buff-picker-modal .group-tabs {
+  background: #eef1f5 !important;
+}
+
+[data-theme='light'] .buff-picker-modal .group-tab.active,
+[data-theme='light'] .buff-picker-modal .primary {
+  border-color: #98a2b3 !important;
+  background: #fff8eb !important;
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .buff-row {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+}
+
+[data-theme='light'] .buff-row.selected,
+[data-theme='light'] .buff-row.partial {
+  border-color: #c9a55c !important;
+  background: #fff8eb !important;
+}
+
+[data-theme='light'] .buff-row-toggle:hover {
+  border-color: rgba(201, 165, 92, 0.45) !important;
+  background: rgba(255, 248, 235, 0.7) !important;
+}
+
+[data-theme='light'] .buff-copy strong,
+[data-theme='light'] .buff-effect-text {
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .buff-effect-row {
+  border-bottom-color: #e4e7ec !important;
+}
+
+[data-theme='light'] .buff-picker-footer {
+  border-top-color: #d5dae3 !important;
+}
+
+[data-theme='light'] .buff-picker-modal .num-stepper {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+}
+
+[data-theme='light'] .buff-picker-modal .step-input,
+[data-theme='light'] .buff-picker-modal .step-btn {
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .buff-picker-modal .step-btns,
+[data-theme='light'] .buff-picker-modal .step-btn {
+  border-color: #d5dae3 !important;
+}
+
+[data-theme='light'] .buff-picker-modal .chip {
+  border-color: #d5dae3 !important;
+  background: #f5f7fa !important;
+  color: #344054 !important;
+}
+
+[data-theme='light'] .buff-picker-modal .chip.muted {
+  color: #667085 !important;
+}

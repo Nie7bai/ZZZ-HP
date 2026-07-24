@@ -50,4 +50,22 @@ const visibleFields = computed(() =>
   font-size: 0.8rem;
   color: #7a828f;
 }
+
+@media (max-width: 768px) {
+  .mods-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+:global([data-theme='light']) .mods-list li {
+  color: #667085;
+}
+
+:global([data-theme='light']) .mods-list strong {
+  color: #1c212a;
+}
+
+:global([data-theme='light']) .empty-mods {
+  color: #667085;
+}
 </style>

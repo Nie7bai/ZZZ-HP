@@ -9,6 +9,9 @@ const modes = [
   { title: '式舆防卫战', path: '/admin/defense', color: '#4ecdc4' },
   { title: '临界推演', path: '/admin/deduction', color: '#a78bfa' },
   { title: '角色计算器', path: '/admin/character-calculator', color: '#3f8cff' },
+  { title: '更新日志', path: '/admin/changelog', color: '#c4a35a' },
+  { title: '网站说明管理', path: '/admin/site-info', color: '#7eb8da' },
+  { title: '留言板管理员', path: '/admin/guestbook', color: '#6b84b8' },
 ]
 
 function logout() {

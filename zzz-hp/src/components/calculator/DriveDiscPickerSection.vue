@@ -361,4 +361,33 @@ function selectFourPiece(id: string) {
     width: 100%;
   }
 }
+
+@media (max-width: 768px) {
+  .section-card {
+    padding: 0.75rem;
+  }
+
+  .section-header h2 {
+    font-size: 0.98rem;
+  }
+
+  .section-desc {
+    font-size: 0.72rem;
+    line-height: 1.4;
+  }
+
+  .slot-toolbar {
+    flex-wrap: wrap;
+    padding: 0.6rem;
+  }
+
+  .disc-grid {
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+    gap: 0.4rem;
+  }
+
+  .disc-group {
+    padding: 0.65rem;
+  }
+}
 </style>

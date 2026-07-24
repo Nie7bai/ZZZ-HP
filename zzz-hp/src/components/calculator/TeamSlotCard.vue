@@ -254,4 +254,39 @@ const emit = defineEmits<{
   font-size: 0.86rem;
   line-height: 1.6;
 }
+
+@media (max-width: 768px) {
+  .slot-card {
+    min-height: 0;
+    padding: 0.7rem;
+    gap: 0.55rem;
+  }
+
+  .slot-header {
+    grid-template-columns: auto 1fr;
+    align-items: start;
+  }
+
+  .slot-badges {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+  }
+
+  .slot-avatar :deep(.calculator-avatar) {
+    width: 46px;
+    height: 46px;
+  }
+
+  .slot-meta strong {
+    font-size: 0.92rem;
+  }
+
+  .slot-footer {
+    flex-wrap: wrap;
+  }
+
+  .remove-btn {
+    min-height: 2rem;
+  }
+}
 </style>

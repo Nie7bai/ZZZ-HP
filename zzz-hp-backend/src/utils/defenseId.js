@@ -120,6 +120,32 @@ export function encodeDefenseBuffId(parts) {
   return Number(idText)
 }
 
+/** 危局 Buff ID：版本去点 + 期数 + 两位序号，如 3.1 第1期第1条 → 31101 */
+export function encodeCrisisBuffId(parts) {
+  const versionCode = String(parts.version ?? '')
+    .trim()
+    .replace('.', '')
+  const phase = parsePhaseDigit(parts.phase)
+  const buffIndex = Number(parts.buffIndex)
+
+  if (!versionCode) {
+    throw new Error('版本为必填项')
+  }
+  if (!Number.isInteger(buffIndex) || buffIndex < 1 || buffIndex > 99) {
+    throw new Error('Buff 序号须为 1-99')
+  }
+
+  const idText = `${versionCode}${phase}${String(buffIndex).padStart(2, '0')}`
+  const id = Number(idText)
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new Error('危局 Buff ID 编码异常')
+  }
+  if (isDefenseBuffId(id)) {
+    throw new Error('危局 Buff ID 与防卫战 ID 规则冲突，请调整序号')
+  }
+  return id
+}
+
 export function decodeDefenseBuffId(id) {
   const idText = String(id).padStart(7, '0')
   if (!/^\d{7}$/.test(idText)) {

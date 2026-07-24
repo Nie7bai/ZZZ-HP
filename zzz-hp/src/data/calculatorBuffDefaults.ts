@@ -6,6 +6,7 @@ import type {
   DriveDiscBuffDoc,
   WengineBuffDoc,
 } from '@/types/calculator'
+import { flatModsToEffects, packFromEffects } from '@/utils/buffEffect'
 import {
   createEmptyBuffStatModifiers,
   createEmptyAgentBasePanel,
@@ -24,7 +25,10 @@ function selfTeam(
   self: Partial<BuffStatModifiers> = {},
   team: Partial<BuffStatModifiers> = {},
 ): AgentMindscapeRankBuffs {
-  return { selfMods: mods(self), teamMods: mods(team) }
+  return packFromEffects([
+    ...flatModsToEffects(mods(self), 'self'),
+    ...flatModsToEffects(mods(team), 'team'),
+  ])
 }
 
 function agentDoc(
@@ -78,16 +82,26 @@ function wengineDoc(
 }
 
 function bangbooDoc(
-  partial: Omit<BangbooBuffDoc, 'refinementMods'> & {
+  partial: Omit<BangbooBuffDoc, 'refinementMods' | 'effects' | 'refinementEffects'> & {
     refinementMods?: BuffStatModifiers[]
+    effects?: BangbooBuffDoc['effects']
+    refinementEffects?: BangbooBuffDoc['refinementEffects']
   },
 ): BangbooBuffDoc {
+  const fixedMods = partial.fixedMods
+  const refinementMods = partial.refinementMods ?? createEmptyRefinementMods()
+  const effects = partial.effects ?? flatModsToEffects(fixedMods, 'team')
+  const refinementEffects =
+    partial.refinementEffects ??
+    refinementMods.map((mods) => flatModsToEffects(mods, 'team'))
   return {
     id: partial.id,
     name: partial.name,
     avatar_image: partial.avatar_image,
-    fixedMods: partial.fixedMods,
-    refinementMods: partial.refinementMods ?? createEmptyRefinementMods(),
+    effects,
+    refinementEffects,
+    fixedMods,
+    refinementMods,
   }
 }
 
@@ -1196,6 +1210,7 @@ export const defaultDriveDiscBuffDocs: DriveDiscBuffDoc[] = [
     twoPieceNote: '',
     fourPieceNote: '',
     twoPieceMods: mods({ critRate: 8 }),
+    twoPieceEffects: flatModsToEffects(mods({ critRate: 8 }), 'self'),
     fourPieceBuffs: selfTeam({ inCombatAtkPercent: 9 }),
   },
   {
@@ -1205,6 +1220,7 @@ export const defaultDriveDiscBuffDocs: DriveDiscBuffDoc[] = [
     twoPieceNote: '',
     fourPieceNote: '',
     twoPieceMods: mods({ special: 5 }),
+    twoPieceEffects: flatModsToEffects(mods({ special: 5 }), 'self'),
     fourPieceBuffs: selfTeam({ dmgBonus: 15 }),
   },
   {
@@ -1214,6 +1230,7 @@ export const defaultDriveDiscBuffDocs: DriveDiscBuffDoc[] = [
     twoPieceNote: '',
     fourPieceNote: '',
     twoPieceMods: mods({ dmgBonus: 10 }),
+    twoPieceEffects: flatModsToEffects(mods({ dmgBonus: 10 }), 'self'),
     fourPieceBuffs: selfTeam({ critDmg: 20 }),
   },
   {
@@ -1223,6 +1240,7 @@ export const defaultDriveDiscBuffDocs: DriveDiscBuffDoc[] = [
     twoPieceNote: '',
     fourPieceNote: '',
     twoPieceMods: mods({ dmgBonus: 10 }),
+    twoPieceEffects: flatModsToEffects(mods({ dmgBonus: 10 }), 'self'),
     fourPieceBuffs: selfTeam({ vulnerable: 35 }),
   },
   {
@@ -1232,6 +1250,7 @@ export const defaultDriveDiscBuffDocs: DriveDiscBuffDoc[] = [
     twoPieceNote: '',
     fourPieceNote: '',
     twoPieceMods: mods({ externalAtkPercent: 10 }),
+    twoPieceEffects: flatModsToEffects(mods({ externalAtkPercent: 10 }), 'self'),
     fourPieceBuffs: selfTeam({ inCombatAtkPercent: 25 }),
   },
 ]

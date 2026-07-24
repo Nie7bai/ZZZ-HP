@@ -31,6 +31,14 @@ const currentIndex = ref(0)
 const roomHpIndex = ref(0)
 const showPicker = ref(false)
 
+function defaultPublicSeasonIndex(list: DefenseSeason[]): number {
+  if (!list.length) return 0
+  for (let index = list.length - 1; index >= 0; index--) {
+    if (!list[index]?.isHidden) return index
+  }
+  return list.length - 1
+}
+
 async function loadSeasons() {
   loading.value = true
   loadError.value = ''
@@ -40,7 +48,7 @@ async function loadSeasons() {
     if (props.chartPoint) {
       applyChartPointSelection()
     } else {
-      currentIndex.value = Math.max(data.length - 1, 0)
+      currentIndex.value = defaultPublicSeasonIndex(data)
     }
     roomHpIndex.value = 0
   } catch (error) {
@@ -182,10 +190,35 @@ function formatEnemyResistance(value?: string) {
         <h1 v-if="!embedded" class="page-title">{{ pageTitle }}</h1>
 
         <template v-if="currentSeason">
+          <div v-if="!embedded" class="mobile-phase-stepper">
+            <button
+              type="button"
+              class="mobile-step-btn"
+              :disabled="currentIndex === 0"
+              @click="prevSeason"
+            >
+              上一期
+            </button>
+            <button type="button" class="mobile-step-btn mobile-step-btn--primary" @click="showPicker = true">
+              选期
+            </button>
+            <button
+              type="button"
+              class="mobile-step-btn"
+              :disabled="currentIndex >= seasons.length - 1"
+              @click="nextSeason"
+            >
+              下一期
+            </button>
+          </div>
+
           <div class="header-info-row">
             <div class="phase-selector">
               <button type="button" class="phase-btn" @click="showPicker = true">
-                <span class="phase-version">{{ currentSeason.version }} {{ currentSeason.phase }}</span>
+                <span class="phase-version">
+                  {{ currentSeason.version }} {{ currentSeason.phase }}
+                  <span v-if="currentSeason.isHidden" class="phase-hidden-badge">未公开</span>
+                </span>
                 <span class="phase-date">{{ currentSeason.dateRange }}</span>
                 <span class="phase-id">ID: {{ currentSeason.seasonId }} · {{ currentSeason.nodeType }}</span>
               </button>
@@ -256,10 +289,13 @@ function formatEnemyResistance(value?: string) {
                       :key="season.id"
                       type="button"
                       class="phase-card"
-                      :class="{ active: index === currentIndex }"
+                      :class="{ active: index === currentIndex, 'phase-card--hidden': season.isHidden }"
                       @click="selectSeason(index)"
                     >
-                      <span class="phase-card-version">{{ season.version }} {{ season.phase }}</span>
+                      <span class="phase-card-version">
+                        {{ season.version }} {{ season.phase }}
+                        <span v-if="season.isHidden" class="phase-hidden-badge">未公开</span>
+                      </span>
                       <span class="phase-card-date">{{ season.dateRange }}</span>
                       <span class="phase-card-id">ID: {{ season.seasonId }}</span>
                     </button>
@@ -446,13 +482,15 @@ function formatEnemyResistance(value?: string) {
 }
 
 .defense-panel-wrapper--embedded {
-  min-height: 0;
-  height: 100%;
+  min-height: auto;
+  height: auto;
+  overflow: visible;
 }
 
 .defense-panel--embedded {
   padding: 0;
-  overflow: auto;
+  height: auto;
+  overflow: visible;
 }
 
 .defense-panel--embedded .panel-header {
@@ -541,6 +579,24 @@ function formatEnemyResistance(value?: string) {
 .phase-version {
   font-weight: 700;
   font-size: clamp(1.05rem, 2.2vw, 1.25rem);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.phase-hidden-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.08rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #f5c451;
+  background: color-mix(in srgb, #f5c451 18%, transparent);
+  border: 1px solid color-mix(in srgb, #f5c451 45%, transparent);
 }
 
 .phase-date,
@@ -778,9 +834,19 @@ function formatEnemyResistance(value?: string) {
   background: var(--color-background-mute);
 }
 
+.phase-card--hidden {
+  border-style: dashed;
+  border-color: color-mix(in srgb, #f5c451 55%, var(--color-border));
+}
+
 .phase-card-version {
   font-size: 0.98rem;
   font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
 }
 
 .phase-card-date,
@@ -1125,13 +1191,200 @@ function formatEnemyResistance(value?: string) {
   }
 }
 
-@media (max-width: 640px) {
+.mobile-phase-stepper {
+  display: none;
+}
+
+@media (max-width: 768px) {
   .defense-panel-wrapper {
     flex-direction: column;
+    min-height: auto;
   }
 
   .nav-zone {
     display: none;
+  }
+
+  .mobile-phase-stepper {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0.45rem;
+    width: 100%;
+    max-width: 420px;
+  }
+
+  .mobile-step-btn {
+    min-height: 2.4rem;
+    padding: 0.4rem 0.55rem;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-background);
+    color: var(--color-heading);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .mobile-step-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .mobile-step-btn--primary {
+    border-color: color-mix(in srgb, #e8a838 55%, var(--color-border));
+    background: color-mix(in srgb, #e8a838 14%, var(--color-background));
+  }
+
+  .defense-panel {
+    padding: 0.75rem 0.55rem 1.25rem;
+  }
+
+  .page-title {
+    font-size: 1.2rem;
+  }
+
+  .panel-header {
+    gap: 0.65rem;
+    margin-bottom: 0.85rem;
+  }
+
+  .header-info-row {
+    gap: 0.55rem;
+  }
+
+  .phase-btn {
+    min-height: 72px;
+    padding: 0.65rem 0.85rem;
+  }
+
+  .phase-version {
+    font-size: 0.95rem;
+  }
+
+  .phase-date,
+  .phase-id {
+    font-size: 0.72rem;
+  }
+
+  .hp-summary {
+    width: 100%;
+    min-height: 72px;
+    padding: 0.65rem 0.75rem;
+  }
+
+  .hp-room-btn {
+    width: 2.1rem;
+    height: 2.1rem;
+  }
+
+  .hp-number {
+    font-size: 0.9rem;
+  }
+
+  .phase-modal-overlay {
+    padding: 0.75rem;
+  }
+
+  .phase-modal {
+    width: min(100vw - 1rem, 1120px);
+    max-height: min(88dvh, 860px);
+    padding: 2.1rem 0.85rem 0.85rem;
+  }
+
+  .phase-modal-title {
+    font-size: 1.15rem;
+    margin-bottom: 0.85rem;
+  }
+
+  .phase-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.45rem;
+  }
+
+  .phase-card {
+    min-height: 84px;
+    padding: 0.55rem 0.4rem;
+  }
+
+  .phase-card-version {
+    font-size: 0.82rem;
+  }
+
+  .phase-card-date,
+  .phase-card-id {
+    font-size: 0.66rem;
+  }
+
+  .frontier-scroll {
+    gap: 0.85rem;
+  }
+
+  .frontier-section {
+    padding: 0.75rem;
+  }
+
+  .frontier-title {
+    font-size: 1.05rem;
+  }
+
+  .room-card {
+    padding: 0.7rem;
+    gap: 0.6rem;
+  }
+
+  .room-card-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .rank-block {
+    align-self: flex-start;
+  }
+
+  .battle-room-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .trait-row {
+    text-align: left;
+  }
+
+  .enemy-grid {
+    flex-direction: column;
+    flex-wrap: nowrap;
+  }
+
+  .enemy-chip {
+    flex: none;
+    width: 100%;
+  }
+
+  .buff-lines {
+    font-size: 0.7rem;
+  }
+
+  .defense-panel-wrapper--embedded {
+    height: auto;
+    min-height: auto;
+  }
+
+  .defense-panel--embedded {
+    height: auto;
+    overflow: visible;
+    padding: 0.45rem 0.55rem 0.85rem;
+  }
+
+  .defense-panel--embedded .header-info-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .defense-panel--embedded .phase-btn,
+  .defense-panel--embedded .hp-summary {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
   }
 }
 </style>

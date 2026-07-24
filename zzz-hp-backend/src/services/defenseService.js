@@ -7,6 +7,7 @@ import {
 } from '../utils/defenseId.js'
 import { getDefenseSeasonMeta } from './nanoka/defenseSeasonCatalog.js'
 import { versionPhaseToDisplayId } from '../utils/defenseSeasonId.js'
+import { isSeasonPubliclyVisible, isSeasonUnreleased, SEASON_EARLY_RELEASE_DAYS } from '../utils/crisisRoom.js'
 
 const CHINESE_STAGE = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十']
 
@@ -27,9 +28,24 @@ function formatPhaseLabel(phase) {
   return num ? `第 ${num} 期` : String(phase)
 }
 
+function formatDateValue(value) {
+  if (!value) return null
+  if (value instanceof Date) {
+    const year = value.getFullYear()
+    const month = String(value.getMonth() + 1).padStart(2, '0')
+    const day = String(value.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+  const text = String(value).slice(0, 10)
+  const match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+  if (!match) return text || null
+  return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`
+}
+
 function formatDotDate(value) {
-  if (!value) return ''
-  const [year, month, day] = String(value).slice(0, 10).split('-')
+  const normalized = formatDateValue(value)
+  if (!normalized) return ''
+  const [year, month, day] = normalized.split('-')
   return `${year}.${Number(month)}.${Number(day)}`
 }
 
@@ -101,6 +117,7 @@ function buildSeasonSkeleton(version, phase, dateInfo) {
     version: String(version),
     phase: formatPhaseLabel(phase),
     phaseNum,
+    startDateRaw: formatDateValue(startDate),
     dateRange: formatDateRange(startDate, endDate),
     seasonId,
     nodeType: '剧变节点',
@@ -189,6 +206,34 @@ function finalizeRoom(room) {
   }
 }
 
+function roomHasEnemies(room) {
+  for (const battleRoom of room.battleRooms.values()) {
+    for (const wave of battleRoom.waves.values()) {
+      if (wave.enemies.length > 0) return true
+    }
+  }
+  return false
+}
+
+function roomHasBuff(room) {
+  if (String(room.roomBuff?.name ?? '').trim()) return true
+  if (Array.isArray(room.zoneBuffs) && room.zoneBuffs.length > 0) return true
+  return false
+}
+
+/** 防卫战：第5关 3 间均有怪物，且每间 buff 已填写 */
+function isDefenseSeasonReadyForEarlyRelease(season) {
+  const frontier = season.frontiers.get(5)
+  if (!frontier) return false
+  for (const roomInStage of [1, 2, 3]) {
+    const room = frontier.rooms.get(`5-${roomInStage}`)
+    if (!room) return false
+    if (!roomHasEnemies(room)) return false
+    if (!roomHasBuff(room)) return false
+  }
+  return true
+}
+
 function finalizeSeason(season) {
   const frontiers = [...season.frontiers.entries()]
     .sort(([a], [b]) => Number(b) - Number(a))
@@ -211,6 +256,12 @@ function finalizeSeason(season) {
     })
 
   const totalHp = frontiers.reduce((sum, frontier) => sum + computeFrontierTotalHp(frontier), 0)
+  const allowEarly = isDefenseSeasonReadyForEarlyRelease(season)
+  const listed = isSeasonPubliclyVisible(season.startDateRaw, {
+    allowEarly,
+    earlyReleaseDays: SEASON_EARLY_RELEASE_DAYS,
+  })
+  const isHidden = isSeasonUnreleased(season.startDateRaw)
 
   return {
     id: season.id,
@@ -219,6 +270,8 @@ function finalizeSeason(season) {
     dateRange: season.dateRange,
     seasonId: season.seasonId,
     nodeType: season.nodeType,
+    isHidden,
+    listed,
     rawHp: formatHpNumber(totalHp),
     totalHp,
     frontiers,
@@ -262,7 +315,7 @@ function applyRoomBuffFallback(room, buff, decoded) {
   void decoded
 }
 
-export async function getDefenseSeasons(variant = 'new') {
+export async function getDefenseSeasons(variant = 'new', { includeHidden = false } = {}) {
   const [bossRows] = await pool.execute(
     `SELECT id, version, phase, boss_name, hp, defense, level, room, weakness, resistance, boss_image
      FROM boss
@@ -274,7 +327,16 @@ export async function getDefenseSeasons(variant = 'new') {
      ORDER BY version, CAST(phase AS UNSIGNED), id`,
   )
   const [dateRows] = await pool.execute(
-    'SELECT version, phase, start_date, end_date FROM `date`',
+    `SELECT version, phase, start_date, end_date FROM \`date\` WHERE mode = 'defense'
+     UNION ALL
+     SELECT version, phase, start_date, end_date FROM \`date\`
+     WHERE (mode = 'crisis' OR mode IS NULL OR mode = '')
+       AND NOT EXISTS (
+         SELECT 1 FROM \`date\` d2
+         WHERE d2.mode = 'defense'
+           AND d2.version = \`date\`.version
+           AND d2.phase = \`date\`.phase
+       )`,
   )
 
   const dateMap = new Map(
@@ -369,5 +431,9 @@ export async function getDefenseSeasons(variant = 'new') {
     applyRoomBuffFallback(room, buff, decoded)
   }
 
-  return [...seasons.values()].sort(compareSeason).map((season) => finalizeSeason(season))
+  return [...seasons.values()]
+    .sort(compareSeason)
+    .map((season) => finalizeSeason(season))
+    .filter((season) => includeHidden || season.listed)
+    .map(({ listed: _listed, ...season }) => season)
 }

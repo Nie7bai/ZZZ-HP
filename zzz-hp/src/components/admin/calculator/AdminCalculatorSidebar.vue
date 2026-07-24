@@ -53,6 +53,7 @@ const panels: { id: AdminCalculatorPanel; label: string }[] = [
   { id: 'wengine', label: '编辑音擎增益' },
   { id: 'bangboo', label: '编辑邦布增益' },
   { id: 'drive-disc', label: '编辑驱动盘增益' },
+  { id: 'skill-subcategory', label: '招式小类管理' },
 ]
 </script>
 

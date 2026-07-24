@@ -1,9 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { fetchCrisisAssaultPhases, findPhaseIndexFromChartPoint, type HpChartPoint } from '@/api/crisisAssault'
+import {
+  FS_HP_RATIO_NORMAL,
+  HARD_SCORE_MARKERS,
+  scaleHpByRatio,
+} from '@/data/crisisScoreHpTable'
 import { historyData } from '@/data/historyData'
 import { modeTitles, type ModeKey, type PhaseData } from '@/types/history'
-import { formatHpDelta, formatHpExpansionPercent, parseHpString } from '@/utils/gameData'
+import { formatHp, formatHpDelta, formatHpExpansionPercent, parseHpString } from '@/utils/gameData'
 
 const props = defineProps<{
   mode: ModeKey
@@ -52,6 +57,107 @@ const phaseTotalHpComparison = computed(() => {
   }
 })
 
+const showConvertedTotalHp = computed(() => {
+  const phase = currentPhase.value
+  if (!phase || props.mode !== 'crisis-assault') return false
+  if (
+    phase.enemies.some(
+      (enemy) => !enemy.isHardRoom && enemy.defense != null && enemy.defense !== 953,
+    )
+  ) {
+    return true
+  }
+  if (
+    phase.totalHp != null &&
+    phase.totalHpConverted953 != null &&
+    phase.totalHpConverted953 !== phase.totalHp
+  ) {
+    return true
+  }
+  return Boolean(phase.rawHpConverted953 && phase.rawHpConverted953 !== phase.rawHp)
+})
+
+const showHardTotalHp = computed(() => {
+  const phase = currentPhase.value
+  if (!phase || props.mode !== 'crisis-assault') return false
+  return (phase.hardTotalHp ?? 0) > 0
+})
+
+const showConvertedHardTotalHp = computed(() => {
+  const phase = currentPhase.value
+  if (!phase || !showHardTotalHp.value) return false
+  if (
+    phase.enemies.some(
+      (enemy) => enemy.isHardRoom && enemy.defense != null && enemy.defense !== 953,
+    )
+  ) {
+    return true
+  }
+  return (
+    phase.hardTotalHp != null &&
+    phase.hardTotalHpConverted953 != null &&
+    phase.hardTotalHpConverted953 !== phase.hardTotalHp
+  )
+})
+
+const phaseFsHp = computed(() => {
+  const phase = currentPhase.value
+  if (!phase || props.mode !== 'crisis-assault') return null
+  const total = phase.totalHp ?? parseHpString(phase.rawHp)
+  if (total == null || total <= 0) return null
+  const hp = scaleHpByRatio(total, FS_HP_RATIO_NORMAL)
+  const converted =
+    phase.totalHpConverted953 != null && phase.totalHpConverted953 > 0
+      ? scaleHpByRatio(phase.totalHpConverted953, FS_HP_RATIO_NORMAL)
+      : null
+  return { hp, converted }
+})
+
+const phaseHardScoreHps = computed(() => {
+  const phase = currentPhase.value
+  if (!phase || !showHardTotalHp.value) return []
+  const total = phase.hardTotalHp ?? 0
+  if (total <= 0) return []
+  const convertedTotal = phase.hardTotalHpConverted953 ?? null
+  return HARD_SCORE_MARKERS.map((marker) => ({
+    ...marker,
+    hp: scaleHpByRatio(total, marker.hpRatio),
+    converted:
+      convertedTotal != null && convertedTotal > 0
+        ? scaleHpByRatio(convertedTotal, marker.hpRatio)
+        : null,
+  }))
+})
+
+const phaseHardTotalHpComparison = computed(() => {
+  const index = currentIndex.value
+  if (index <= 0 || props.mode !== 'crisis-assault') return null
+
+  const current = phases.value[index]
+  const previous = phases.value[index - 1]
+  if (!current || !previous) return null
+
+  const currentHp = current.hardTotalHp ?? 0
+  const previousHp = previous.hardTotalHp ?? 0
+  if (!currentHp && !previousHp) return null
+  const diff = currentHp - previousHp
+  if (diff === 0) return null
+
+  return {
+    diff,
+    expansion: formatHpExpansionPercent(currentHp, previousHp),
+  }
+})
+
+function shouldShowConvertedEnemyHp(enemy: PhaseData['enemies'][number]) {
+  return (
+    props.mode === 'crisis-assault' &&
+    enemy.defense != null &&
+    enemy.defense !== 953 &&
+    Boolean(enemy.hpConverted953)
+  )
+}
+
 function getBossHpComparison(
   bossName: string | undefined,
   hpValue: number | undefined,
@@ -85,6 +191,36 @@ function getBossHpComparison(
   return null
 }
 
+function getBossHpCoeffComparison(
+  bossName: string | undefined,
+  currentCoeff: number | null | undefined,
+) {
+  if (!bossName) return null
+  if (currentCoeff == null || !Number.isFinite(currentCoeff)) return null
+
+  for (let index = currentIndex.value - 1; index >= 0; index--) {
+    const phase = phases.value[index]
+    if (!phase) continue
+
+    for (const enemy of phase.enemies) {
+      if (enemy.bossName !== bossName) continue
+      const previousCoeff = enemy.hpCoeffPercent
+      if (previousCoeff == null || !Number.isFinite(previousCoeff)) continue
+
+      const diff = currentCoeff - previousCoeff
+      if (Math.abs(diff) < 1e-6) return null
+
+      const signed = diff >= 0 ? `+${diff.toFixed(1)}%` : `${diff.toFixed(1)}%`
+      return {
+        diff,
+        deltaLabel: signed,
+      }
+    }
+  }
+
+  return null
+}
+
 const currentEnemyHpComparisons = computed(() => {
   const phase = currentPhase.value
   if (!phase) return []
@@ -93,6 +229,23 @@ const currentEnemyHpComparisons = computed(() => {
     getBossHpComparison(enemy.bossName, enemy.hpValue, enemy.hp),
   )
 })
+
+const currentEnemyHpCoeffComparisons = computed(() => {
+  const phase = currentPhase.value
+  if (!phase) return []
+
+  return phase.enemies.map((enemy) =>
+    getBossHpCoeffComparison(enemy.bossName, enemy.hpCoeffPercent ?? null),
+  )
+})
+
+function defaultPublicPhaseIndex(list: { isHidden?: boolean }[]): number {
+  if (!list.length) return 0
+  for (let index = list.length - 1; index >= 0; index--) {
+    if (!list[index]?.isHidden) return index
+  }
+  return list.length - 1
+}
 
 async function loadCrisisAssaultData() {
   if (props.mode !== 'crisis-assault') return
@@ -104,7 +257,7 @@ async function loadCrisisAssaultData() {
     if (props.chartPoint) {
       applyChartPointSelection()
     } else {
-      currentIndex.value = 0
+      currentIndex.value = defaultPublicPhaseIndex(crisisPhases.value)
     }
   } catch (error) {
     loadError.value = error instanceof Error ? error.message : '加载失败'
@@ -238,10 +391,35 @@ function onPickerWheel(event: WheelEvent) {
         <p v-else-if="loadError" class="status-text error">{{ loadError }}</p>
 
         <template v-else-if="currentPhase">
+          <div v-if="!embedded" class="mobile-phase-stepper">
+            <button
+              type="button"
+              class="mobile-step-btn"
+              :disabled="currentIndex === 0"
+              @click="prevPhase"
+            >
+              上一期
+            </button>
+            <button type="button" class="mobile-step-btn mobile-step-btn--primary" @click="openPhasePicker">
+              选期
+            </button>
+            <button
+              type="button"
+              class="mobile-step-btn"
+              :disabled="currentIndex >= phases.length - 1"
+              @click="nextPhase"
+            >
+              下一期
+            </button>
+          </div>
+
           <div class="header-info-row">
             <div class="phase-selector">
               <button type="button" class="phase-btn" @click="openPhasePicker">
-                <span class="phase-version">{{ currentPhase.version }} {{ currentPhase.phase }}</span>
+                <span class="phase-version">
+                  {{ currentPhase.version }} {{ currentPhase.phase }}
+                  <span v-if="currentPhase.isHidden" class="phase-hidden-badge">未公开</span>
+                </span>
                 <span class="phase-date">{{ currentPhase.dateRange }}</span>
                 <span class="phase-id">ID: {{ currentPhase.tid }}</span>
               </button>
@@ -261,6 +439,63 @@ function onPickerWheel(event: WheelEvent) {
                   <span class="hp-tag hp-tag--ghost" aria-hidden="true">HP</span>
                   <span class="hp-delta">{{ formatHpDelta(phaseTotalHpComparison.diff) }}</span>
                 </div>
+                <div v-if="showConvertedTotalHp" class="hp-metric-row">
+                  <span class="hp-tag hp-tag--converted">953</span>
+                  <span class="hp-number">{{ currentPhase.rawHpConverted953 }}</span>
+                </div>
+                <div v-if="phaseFsHp" class="hp-metric-row hp-metric-row--score">
+                  <span class="hp-tag hp-tag--fs">FS</span>
+                  <span class="hp-number">{{ formatHp(phaseFsHp.hp) }}</span>
+                  <span class="hp-score-hint">2万满星S</span>
+                </div>
+                <div
+                  v-if="phaseFsHp?.converted != null && showConvertedTotalHp"
+                  class="hp-metric-row hp-metric-row--score"
+                >
+                  <span class="hp-tag hp-tag--converted">953</span>
+                  <span class="hp-number">{{ formatHp(phaseFsHp.converted) }}</span>
+                  <span class="hp-score-hint">FS-HP</span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="showHardTotalHp" class="hp-summary hp-summary--hard">
+              <span class="hp-label">困难总血量</span>
+              <div class="hp-metrics">
+                <div class="hp-metric-row">
+                  <span class="hp-tag hp-tag--hard">H-HP</span>
+                  <span class="hp-number">{{ currentPhase.rawHardHp }}</span>
+                  <span v-if="phaseHardTotalHpComparison?.expansion" class="hp-expansion">
+                    {{ phaseHardTotalHpComparison.expansion }}
+                  </span>
+                </div>
+                <div v-if="phaseHardTotalHpComparison" class="hp-metric-row">
+                  <span class="hp-tag hp-tag--ghost" aria-hidden="true">H-HP</span>
+                  <span class="hp-delta">{{ formatHpDelta(phaseHardTotalHpComparison.diff) }}</span>
+                </div>
+                <div v-if="showConvertedHardTotalHp" class="hp-metric-row">
+                  <span class="hp-tag hp-tag--converted">953</span>
+                  <span class="hp-number">{{ currentPhase.rawHardHpConverted953 }}</span>
+                </div>
+                <div
+                  v-for="item in phaseHardScoreHps"
+                  :key="item.id"
+                  class="hp-metric-row hp-metric-row--score"
+                >
+                  <span class="hp-tag hp-tag--star" :style="{ color: item.color }">{{ item.shortLabel }}</span>
+                  <span class="hp-number">{{ formatHp(item.hp) }}</span>
+                </div>
+                <template v-if="showConvertedHardTotalHp">
+                  <div
+                    v-for="item in phaseHardScoreHps"
+                    :key="`953-${item.id}`"
+                    class="hp-metric-row hp-metric-row--score"
+                  >
+                    <span class="hp-tag hp-tag--converted">953</span>
+                    <span class="hp-number">{{ formatHp(item.converted ?? 0) }}</span>
+                    <span class="hp-score-hint">{{ item.shortLabel }}</span>
+                  </div>
+                </template>
               </div>
             </div>
           </div>
@@ -297,10 +532,13 @@ function onPickerWheel(event: WheelEvent) {
                       :key="phase.id"
                       type="button"
                       class="phase-card"
-                      :class="{ active: index === currentIndex }"
+                      :class="{ active: index === currentIndex, 'phase-card--hidden': phase.isHidden }"
                       :data-index="index"
                     >
-                      <span class="phase-card-version">{{ phase.version }} {{ phase.phase }}</span>
+                      <span class="phase-card-version">
+                        {{ phase.version }} {{ phase.phase }}
+                        <span v-if="phase.isHidden" class="phase-hidden-badge">未公开</span>
+                      </span>
                       <span class="phase-card-date">{{ phase.dateRange }}</span>
                       <span class="phase-card-id">ID: {{ phase.tid }}</span>
                     </button>
@@ -336,6 +574,7 @@ function onPickerWheel(event: WheelEvent) {
             v-for="(enemy, index) in currentPhase.enemies"
             :key="`${currentPhase.id}-enemy-${index}`"
             class="enemy-card"
+            :class="{ 'enemy-card--hard': enemy.isHardRoom }"
           >
             <p class="enemy-label">{{ enemy.label }}</p>
             <div class="enemy-body">
@@ -361,6 +600,27 @@ function onPickerWheel(event: WheelEvent) {
                     <span class="enemy-hp-prefix enemy-hp-prefix--ghost" aria-hidden="true">血量：</span>
                     <span class="enemy-hp-delta">
                       {{ formatHpDelta(currentEnemyHpComparisons[index]!.diff) }}
+                    </span>
+                  </p>
+                  <p
+                    v-if="shouldShowConvertedEnemyHp(enemy)"
+                    class="enemy-hp-row enemy-hp-row--meta enemy-hp-row--converted"
+                  >
+                    <span class="enemy-hp-prefix">953防御换算：</span>
+                    <span class="enemy-hp-number">{{ enemy.hpConverted953 }}</span>
+                  </p>
+                  <p v-if="enemy.crisisBaseHp != null" class="enemy-hp-row enemy-hp-row--meta">
+                    <span class="enemy-hp-prefix">基础血量：</span>
+                    <span class="enemy-hp-number">{{ formatHp(enemy.crisisBaseHp) }}</span>
+                  </p>
+                  <p v-if="enemy.hpCoeffLabel" class="enemy-hp-row enemy-hp-row--meta">
+                    <span class="enemy-hp-prefix">危局血量系数：</span>
+                    <span class="enemy-hp-number">{{ enemy.hpCoeffLabel }}</span>
+                    <span
+                      v-if="currentEnemyHpCoeffComparisons[index]?.deltaLabel"
+                      class="enemy-hp-expansion"
+                    >
+                      {{ currentEnemyHpCoeffComparisons[index]!.deltaLabel }}
                     </span>
                   </p>
                 </div>
@@ -393,11 +653,9 @@ function onPickerWheel(event: WheelEvent) {
   display: flex;
   align-items: stretch;
   width: 100%;
-  height: 100%;
-  min-height: 0;
-  overflow-y: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  min-height: 100%;
+  height: auto;
+  overflow: visible;
 }
 
 .history-panel-wrapper::-webkit-scrollbar {
@@ -409,24 +667,25 @@ function onPickerWheel(event: WheelEvent) {
   min-width: 0;
   max-width: min(1440px, 100%);
   margin: 0 auto;
-  padding: 1.5rem 0.75rem 2rem;
+  padding: clamp(0.75rem, 1.5vh, 1.5rem) 0.75rem clamp(1.25rem, 2.5vh, 2rem);
+  box-sizing: border-box;
 }
 
 .history-panel-wrapper--embedded {
-  flex: 1;
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
+  flex: none;
+  height: auto;
+  min-height: 100%;
+  overflow: visible;
 }
 
 .history-panel--embedded {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  min-height: 0;
+  height: auto;
+  min-height: 100%;
   max-width: none;
   padding: 0.65rem 1.25rem 0.85rem;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .history-panel--embedded .panel-header {
@@ -453,23 +712,23 @@ function onPickerWheel(event: WheelEvent) {
 }
 
 .content-grid--embedded {
-  flex: 1;
+  flex: none;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
   display: grid;
-  grid-template-rows: minmax(0, 0.4fr) minmax(0, 0.6fr);
+  grid-template-rows: auto auto;
   gap: 0.6rem;
 }
 
 .content-grid--embedded .buff-row {
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
   gap: 0.65rem;
 }
 
 .content-grid--embedded .buff-card {
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
   padding: 0.55rem 0.65rem;
 }
 
@@ -487,21 +746,25 @@ function onPickerWheel(event: WheelEvent) {
 .content-grid--embedded .buff-lines {
   font-size: clamp(0.62rem, 1.05vh, 0.72rem);
   line-height: 1.42;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .content-grid--embedded .enemy-row {
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
   align-items: stretch;
   gap: 0.75rem;
 }
 
 .content-grid--embedded .enemy-card {
-  height: 100%;
+  height: auto;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
   padding: 0.55rem 0.75rem 0.65rem;
+}
+
+.content-grid--embedded .enemy-card--hard {
+  width: min(100%, 320px);
 }
 
 .content-grid--embedded .enemy-label {
@@ -510,7 +773,7 @@ function onPickerWheel(event: WheelEvent) {
 }
 
 .content-grid--embedded .enemy-body {
-  flex: 1;
+  flex: none;
   min-height: 0;
   align-items: center;
   gap: 0.55rem;
@@ -518,8 +781,9 @@ function onPickerWheel(event: WheelEvent) {
 
 .content-grid--embedded .enemy-image {
   width: auto;
-  height: min(100%, 26vh);
-  max-width: 44%;
+  height: auto;
+  max-height: min(320px, 42vh);
+  max-width: min(220px, 44%);
   aspect-ratio: 3 / 4;
 }
 
@@ -531,6 +795,20 @@ function onPickerWheel(event: WheelEvent) {
 .content-grid--embedded .enemy-hp-prefix,
 .content-grid--embedded .enemy-hp-number {
   font-size: clamp(0.88rem, 1.5vh, 1rem);
+}
+
+.content-grid--embedded .enemy-hp-row--meta .enemy-hp-prefix,
+.content-grid--embedded .enemy-hp-row--meta .enemy-hp-number {
+  font-size: clamp(0.72rem, 1.2vh, 0.84rem);
+  font-weight: 600;
+  color: var(--color-heading);
+  opacity: 0.88;
+}
+
+.content-grid--embedded .enemy-hp-row--converted .enemy-hp-prefix,
+.content-grid--embedded .enemy-hp-row--converted .enemy-hp-number {
+  color: #4c8fe8;
+  opacity: 1;
 }
 
 .content-grid--embedded .enemy-hp-delta,
@@ -547,7 +825,7 @@ function onPickerWheel(event: WheelEvent) {
 
 .content-grid--embedded .enemy-info {
   gap: 0.28rem;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .nav-zone {
@@ -576,13 +854,13 @@ function onPickerWheel(event: WheelEvent) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1.25rem;
-  margin-bottom: 2rem;
+  gap: 0.85rem;
+  margin-bottom: 1.25rem;
   position: relative;
 }
 
 .page-title {
-  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  font-size: clamp(1.35rem, 3vw, 1.75rem);
   font-weight: 700;
   color: var(--color-heading);
   letter-spacing: 0.04em;
@@ -602,14 +880,15 @@ function onPickerWheel(event: WheelEvent) {
   justify-content: center;
   gap: 1rem;
   width: 100%;
-  max-width: 900px;
+  max-width: 1100px;
+  flex-wrap: wrap;
 }
 
 .phase-btn {
   width: 100%;
-  min-width: 280px;
-  min-height: 108px;
-  padding: 1rem 1.5rem;
+  min-width: 240px;
+  min-height: 88px;
+  padding: 0.75rem 1.15rem;
   border: 1px solid var(--color-border);
   border-radius: 12px;
   background: var(--color-background-soft);
@@ -619,7 +898,7 @@ function onPickerWheel(event: WheelEvent) {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.35rem;
+  gap: 0.25rem;
   transition: background-color 0.2s;
 }
 
@@ -629,12 +908,30 @@ function onPickerWheel(event: WheelEvent) {
 
 .phase-version {
   font-weight: 700;
-  font-size: clamp(1.05rem, 2.2vw, 1.25rem);
+  font-size: clamp(0.92rem, 1.8vw, 1.08rem);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.phase-hidden-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.08rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #f5c451;
+  background: color-mix(in srgb, #f5c451 18%, transparent);
+  border: 1px solid color-mix(in srgb, #f5c451 45%, transparent);
 }
 
 .phase-date,
 .phase-id {
-  font-size: clamp(0.82rem, 1.6vw, 0.92rem);
+  font-size: clamp(0.72rem, 1.35vw, 0.82rem);
   opacity: 0.72;
 }
 
@@ -751,9 +1048,19 @@ function onPickerWheel(event: WheelEvent) {
   background: var(--color-background-mute);
 }
 
+.phase-card--hidden {
+  border-style: dashed;
+  border-color: color-mix(in srgb, #f5c451 55%, var(--color-border));
+}
+
 .phase-card-version {
   font-size: 0.98rem;
   font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
 }
 
 .phase-card-date,
@@ -766,9 +1073,9 @@ function onPickerWheel(event: WheelEvent) {
 .hp-summary {
   flex: 1;
   min-width: 0;
-  min-height: 108px;
-  max-width: 360px;
-  padding: 1rem 1.5rem;
+  min-height: 88px;
+  max-width: 320px;
+  padding: 0.75rem 1.15rem;
   border-radius: 12px;
   background: var(--color-background-soft);
   border: 1px solid var(--color-border);
@@ -779,8 +1086,16 @@ function onPickerWheel(event: WheelEvent) {
   justify-content: center;
 }
 
+.hp-summary--hard {
+  border-color: color-mix(in srgb, #c084fc 45%, var(--color-border));
+}
+
+.hp-summary--hard .hp-label {
+  color: #c084fc;
+}
+
 .hp-label {
-  font-size: clamp(0.9rem, 1.8vw, 1rem);
+  font-size: clamp(0.78rem, 1.5vw, 0.88rem);
   color: #e85d4c;
   font-weight: 700;
 }
@@ -789,46 +1104,78 @@ function onPickerWheel(event: WheelEvent) {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.2rem;
-  margin-top: 0.35rem;
+  gap: 0.15rem;
+  margin-top: 0.25rem;
   width: fit-content;
 }
 
 .hp-metric-row {
   display: flex;
   align-items: baseline;
-  gap: 0.35rem;
+  gap: 0.3rem;
 }
 
 .hp-number {
-  font-size: clamp(1rem, 2.2vw, 1.2rem);
+  font-size: clamp(0.88rem, 1.8vw, 1.05rem);
   color: var(--color-heading);
   font-weight: 600;
 }
 
 .hp-delta {
-  font-size: clamp(0.72rem, 1.4vw, 0.82rem);
+  font-size: clamp(0.66rem, 1.2vw, 0.74rem);
   color: #e85d4c;
   font-weight: 600;
   line-height: 1.4;
 }
 
 .hp-expansion {
-  font-size: clamp(0.78rem, 1.5vw, 0.9rem);
+  font-size: clamp(0.7rem, 1.3vw, 0.8rem);
   color: #4d9fff;
   font-weight: 600;
 }
 
 .hp-tag {
   flex-shrink: 0;
-  min-width: 1.65rem;
+  min-width: 1.45rem;
   color: #e85d4c;
   font-weight: 600;
-  font-size: clamp(1rem, 2.2vw, 1.2rem);
+  font-size: clamp(0.88rem, 1.8vw, 1.02rem);
 }
 
 .hp-tag--ghost {
   visibility: hidden;
+}
+
+.hp-tag--converted {
+  color: #4c8fe8;
+}
+
+.hp-tag--hard {
+  color: #c084fc;
+  font-size: clamp(0.72rem, 1.4vw, 0.82rem);
+  min-width: 2.6rem;
+}
+
+.hp-tag--fs {
+  color: #e8a838;
+  font-size: clamp(0.72rem, 1.4vw, 0.82rem);
+  min-width: 1.6rem;
+}
+
+.hp-tag--star {
+  font-size: clamp(0.62rem, 1.2vw, 0.72rem);
+  min-width: 2.4rem;
+  font-weight: 700;
+}
+
+.hp-metric-row--score {
+  margin-top: 0.12rem;
+}
+
+.hp-score-hint {
+  font-size: clamp(0.62rem, 1.15vw, 0.7rem);
+  opacity: 0.68;
+  color: var(--color-text);
 }
 
 .status-text {
@@ -844,26 +1191,32 @@ function onPickerWheel(event: WheelEvent) {
 .content-grid {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.75rem;
 }
 
 .buff-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
+  gap: 0.75rem;
   align-items: stretch;
 }
 
 .enemy-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1.25rem;
+  gap: 0.85rem;
   align-items: start;
+}
+
+.enemy-card--hard {
+  grid-column: 1 / -1;
+  width: min(100%, 360px);
+  justify-self: center;
 }
 
 .buff-card {
   height: 100%;
-  padding: 1rem 0.85rem;
+  padding: 0.75rem 0.7rem;
   border-radius: 8px;
   border: 1px solid var(--color-border);
   background: var(--color-background-soft);
@@ -872,16 +1225,16 @@ function onPickerWheel(event: WheelEvent) {
 }
 
 .buff-icon {
-  font-size: 1.25rem;
-  margin-bottom: 0.35rem;
+  font-size: 1.05rem;
+  margin-bottom: 0.25rem;
   align-self: center;
   text-align: center;
 }
 
 .buff-image {
-  width: 48px;
-  height: 48px;
-  margin: 0 auto 0.35rem;
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 0.3rem;
 }
 
 .buff-image img {
@@ -891,19 +1244,19 @@ function onPickerWheel(event: WheelEvent) {
 }
 
 .buff-name {
-  font-size: 0.95rem;
+  font-size: 0.84rem;
   font-weight: 700;
   color: var(--color-heading);
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.4rem;
   text-align: center;
   width: 100%;
 }
 
 .buff-lines {
   list-style: disc;
-  padding-left: 1.1rem;
-  font-size: 0.78rem;
-  line-height: 1.55;
+  padding-left: 1rem;
+  font-size: 0.7rem;
+  line-height: 1.5;
   color: var(--color-text);
   flex: 1;
 }
@@ -911,7 +1264,7 @@ function onPickerWheel(event: WheelEvent) {
 .enemy-card {
   display: flex;
   flex-direction: column;
-  padding: 1rem 1.1rem 1.25rem;
+  padding: 0.75rem 0.85rem 0.9rem;
   border-radius: 12px;
   border: 1px solid var(--color-border);
   background: var(--color-background-soft);
@@ -919,9 +1272,9 @@ function onPickerWheel(event: WheelEvent) {
 
 .enemy-label {
   flex-shrink: 0;
-  margin: 0 0 0.35rem;
+  margin: 0 0 0.25rem;
   text-align: center;
-  font-size: clamp(0.92rem, 1.8vw, 1.08rem);
+  font-size: clamp(0.8rem, 1.5vw, 0.92rem);
   font-weight: 700;
   color: #e8a838;
 }
@@ -946,9 +1299,9 @@ function onPickerWheel(event: WheelEvent) {
 
 .enemy-name {
   margin: 0;
-  padding: 0.4rem 0.85rem;
+  padding: 0.28rem 0.7rem;
   max-width: 100%;
-  font-size: clamp(0.95rem, 1.9vw, 1.12rem);
+  font-size: clamp(0.82rem, 1.55vw, 0.95rem);
   font-weight: 700;
   line-height: 1.35;
   letter-spacing: 0.03em;
@@ -975,13 +1328,13 @@ function onPickerWheel(event: WheelEvent) {
 
 .enemy-stats {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: 0.74rem;
   opacity: 0.75;
 }
 
 .enemy-image {
   flex-shrink: 0;
-  width: clamp(158px, 52%, 300px);
+  width: clamp(120px, 38%, 260px);
   aspect-ratio: 3 / 4;
   border-radius: 10px;
   border: 1px solid var(--color-border);
@@ -1020,8 +1373,8 @@ function onPickerWheel(event: WheelEvent) {
 
 .enemy-hp-prefix {
   flex-shrink: 0;
-  min-width: 3rem;
-  font-size: clamp(1rem, 2vw, 1.15rem);
+  min-width: 2.6rem;
+  font-size: clamp(0.84rem, 1.6vw, 0.95rem);
   font-weight: 700;
   color: #e85d4c;
 }
@@ -1030,34 +1383,80 @@ function onPickerWheel(event: WheelEvent) {
   visibility: hidden;
 }
 
+.enemy-hp-row--meta .enemy-hp-prefix,
+.enemy-hp-row--meta .enemy-hp-number {
+  font-size: clamp(0.74rem, 1.35vw, 0.84rem);
+  font-weight: 600;
+  color: var(--color-heading);
+  opacity: 0.88;
+  min-width: 0;
+}
+
+.enemy-hp-row--converted .enemy-hp-prefix,
+.enemy-hp-row--converted .enemy-hp-number {
+  color: #4c8fe8;
+  opacity: 1;
+}
+
 .enemy-hp-number {
-  font-size: clamp(1rem, 2vw, 1.15rem);
+  font-size: clamp(0.84rem, 1.6vw, 0.95rem);
   font-weight: 700;
   color: #e85d4c;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-all;
 }
 
 .enemy-hp-delta {
-  font-size: clamp(0.72rem, 1.4vw, 0.82rem);
+  font-size: clamp(0.66rem, 1.2vw, 0.74rem);
   font-weight: 600;
   color: #e85d4c;
   line-height: 1.4;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .enemy-hp-expansion {
-  margin-left: 0.35rem;
-  font-size: clamp(0.78rem, 1.5vw, 0.9rem);
+  margin-left: 0.3rem;
+  font-size: clamp(0.7rem, 1.3vw, 0.8rem);
   font-weight: 600;
   color: #4d9fff;
+  white-space: nowrap;
 }
 
 .enemy-defense,
 .enemy-weakness,
 .enemy-resistance {
   margin: 0;
-  font-size: clamp(0.84rem, 1.6vw, 0.95rem);
+  font-size: clamp(0.74rem, 1.35vw, 0.84rem);
   color: var(--color-heading);
   opacity: 0.88;
-  line-height: 1.45;
+  line-height: 1.4;
+}
+
+@media (max-width: 1100px) {
+  .enemy-row {
+    grid-template-columns: 1fr;
+  }
+
+  .enemy-image {
+    width: clamp(140px, 42vw, 220px);
+  }
+}
+
+@media (max-height: 820px) {
+  .history-panel {
+    padding-top: 0.65rem;
+    padding-bottom: 1rem;
+  }
+
+  .enemy-image {
+    width: clamp(100px, 28%, 180px);
+  }
+}
+
+.mobile-phase-stepper {
+  display: none;
 }
 
 @media (max-width: 768px) {
@@ -1066,43 +1465,196 @@ function onPickerWheel(event: WheelEvent) {
   }
 
   .nav-zone {
-    min-width: 32px;
-    max-width: 48px;
+    display: none;
+  }
+
+  .mobile-phase-stepper {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0.45rem;
+    width: 100%;
+    max-width: 420px;
+  }
+
+  .mobile-step-btn {
+    min-height: 2.4rem;
+    padding: 0.4rem 0.55rem;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-background);
+    color: var(--color-heading);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .mobile-step-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .mobile-step-btn--primary {
+    border-color: color-mix(in srgb, #e8a838 55%, var(--color-border));
+    background: color-mix(in srgb, #e8a838 14%, var(--color-background));
+  }
+
+  .page-title {
+    font-size: 1.2rem;
+  }
+
+  .panel-header {
+    gap: 0.65rem;
+    margin-bottom: 0.85rem;
   }
 
   .buff-row,
   .enemy-row {
     grid-template-columns: 1fr;
+    gap: 0.65rem;
+  }
+
+  .enemy-body {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .enemy-info {
+    width: 100%;
+    align-items: center;
+    text-align: center;
   }
 
   .enemy-image {
-    width: clamp(140px, 52vw, 220px);
+    width: min(200px, 58vw);
+  }
+
+  .enemy-name {
+    margin-inline: auto;
   }
 
   .phase-btn {
     min-width: 0;
-    min-height: 96px;
-    padding: 0.85rem 1rem;
+    min-height: 72px;
+    padding: 0.65rem 0.85rem;
   }
 
   .header-info-row {
     flex-direction: column;
-    align-items: center;
+    align-items: stretch;
     max-width: 100%;
+    gap: 0.55rem;
   }
 
   .hp-summary {
     width: 100%;
     max-width: 100%;
-    min-height: 96px;
+    min-height: 72px;
+  }
+
+  .buff-lines {
+    font-size: 0.68rem;
   }
 
   .phase-modal {
-    padding: 2.25rem 1rem 1rem;
+    width: min(100vw - 1rem, 1120px);
+    max-height: min(88dvh, 860px);
+    padding: 2.1rem 0.85rem 0.85rem;
   }
 
   .phase-grid {
     grid-template-columns: repeat(2, 1fr);
+    gap: 0.45rem;
+  }
+
+  .phase-card {
+    padding: 0.55rem 0.4rem;
+  }
+
+  .phase-card-version {
+    font-size: 0.82rem;
+  }
+
+  .phase-card-date,
+  .phase-card-id {
+    font-size: 0.66rem;
+  }
+
+  /* 图表点开的嵌入详细：允许竖向滚动，避免被裁切 */
+  .history-panel-wrapper--embedded {
+    height: auto;
+    overflow: visible;
+  }
+
+  .history-panel--embedded {
+    height: auto;
+    overflow: visible;
+    padding: 0.45rem 0.55rem 0.85rem;
+  }
+
+  .history-panel--embedded .panel-header {
+    margin-bottom: 0.55rem;
+    gap: 0.5rem;
+  }
+
+  .history-panel--embedded .header-info-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .history-panel--embedded .phase-btn {
+    min-width: 0;
+    width: 100%;
+    min-height: 64px;
+  }
+
+  .history-panel--embedded .hp-summary {
+    max-width: 100%;
+    width: 100%;
+    min-height: 64px;
+  }
+
+  .content-grid--embedded {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    overflow: visible;
+    gap: 0.75rem;
+  }
+
+  .content-grid--embedded .buff-row,
+  .content-grid--embedded .enemy-row {
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .content-grid--embedded .buff-card,
+  .content-grid--embedded .enemy-card {
+    height: auto;
+    overflow: visible;
+  }
+
+  .content-grid--embedded .buff-lines {
+    overflow: visible;
+    font-size: 0.68rem;
+  }
+
+  .content-grid--embedded .enemy-body {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .content-grid--embedded .enemy-info {
+    width: 100%;
+    align-items: center;
+    text-align: center;
+    overflow: visible;
+  }
+
+  .content-grid--embedded .enemy-image {
+    width: min(180px, 52vw);
+    max-width: min(180px, 52vw);
+    height: auto;
   }
 }
 </style>

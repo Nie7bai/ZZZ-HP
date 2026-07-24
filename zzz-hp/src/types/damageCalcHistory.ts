@@ -31,6 +31,14 @@ export interface DamageCalcPanelSnapshot {
   affixCounts: AffixCounts
   affixDriveDiscMainStats: AffixDriveDiscMainStats
   extraMods: BuffStatModifiers
+  /** 额外 Buff 增益条目（优先于扁平 extraMods） */
+  extraGains?: Array<{
+    id: string
+    name: string
+    stat: keyof BuffStatModifiers
+    value: number
+    applySituation?: import('@/types/calculator').BuffApplySituation
+  }>
   enemyInput: DamageCalcEnemyInputSnapshot
 }
 

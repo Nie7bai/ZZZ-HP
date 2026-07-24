@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, toRef, watch } from 'vue'
 import { createBuff, uploadBuffImage } from '@/api/admin'
 import AdminImagePicker from '@/components/admin/AdminImagePicker.vue'
+import { useAdminVersionPhaseSelect } from '@/composables/useAdminVersionPhaseSelect'
 import type { AdminScope } from '@/types/admin'
 import { adminScopeTitles, isDefenseScope } from '@/types/admin'
-import { encodeDefenseBuffId } from '@/utils/defenseId'
+import { encodeCrisisBuffId, encodeDefenseBuffId } from '@/utils/defenseId'
 
 const props = defineProps<{
   scope: AdminScope
@@ -12,8 +13,19 @@ const props = defineProps<{
 
 const isDefense = computed(() => isDefenseScope(props.scope))
 
-const version = ref('')
-const phase = ref('')
+const {
+  version,
+  phase,
+  customVersion,
+  customPhase,
+  resolvedVersion,
+  resolvedPhase,
+  availableVersions,
+  availablePhases,
+  loadVersionPhaseOptions,
+  keepVersionPhaseAfterSubmit,
+} = useAdminVersionPhaseSelect(toRef(props, 'scope'), { source: 'both' })
+
 const buffName = ref('')
 const buffText = ref('')
 const stage = ref('')
@@ -32,18 +44,23 @@ function fieldText(value: string | number | null | undefined) {
 }
 
 function updatePreviewId() {
-  if (!isDefense.value) {
-    previewId.value = ''
-    return
-  }
-
   try {
+    if (isDefense.value) {
+      previewId.value = String(
+        encodeDefenseBuffId({
+          version: resolvedVersion.value,
+          phase: resolvedPhase.value,
+          stage: Number(stage.value),
+          roomInStage: Number(roomInStage.value),
+          buffIndex: Number(buffIndex.value),
+        }),
+      )
+      return
+    }
     previewId.value = String(
-      encodeDefenseBuffId({
-        version: version.value.trim(),
-        phase: phase.value.trim(),
-        stage: Number(stage.value),
-        roomInStage: Number(roomInStage.value),
+      encodeCrisisBuffId({
+        version: resolvedVersion.value,
+        phase: resolvedPhase.value,
         buffIndex: Number(buffIndex.value),
       }),
     )
@@ -69,14 +86,19 @@ async function submitForm() {
   error.value = ''
 
   try {
-    if (!fieldText(version.value) || !fieldText(phase.value) || !fieldText(buffName.value)) {
+    if (!resolvedVersion.value || !resolvedPhase.value || !fieldText(buffName.value)) {
       error.value = '版本、期数、Buff 名称为必填项'
       return
     }
 
+    if (!fieldText(buffIndex.value)) {
+      error.value = 'Buff 序号为必填项'
+      return
+    }
+
     if (isDefense.value) {
-      if (!fieldText(stage.value) || !fieldText(roomInStage.value) || !fieldText(buffIndex.value)) {
-        error.value = '关卡、房间、Buff 序号为必填项'
+      if (!fieldText(stage.value) || !fieldText(roomInStage.value)) {
+        error.value = '关卡、房间为必填项'
         return
       }
     }
@@ -89,12 +111,12 @@ async function submitForm() {
       buffImage = uploaded.url
     }
 
-    const defensePayload = isDefense.value
+    const schemePayload = isDefense.value
       ? {
           recordScheme: 'defense' as const,
           id: encodeDefenseBuffId({
-            version: fieldText(version.value),
-            phase: fieldText(phase.value),
+            version: resolvedVersion.value,
+            phase: resolvedPhase.value,
             stage: Number(stage.value),
             roomInStage: Number(roomInStage.value),
             buffIndex: Number(buffIndex.value),
@@ -103,26 +125,36 @@ async function submitForm() {
           roomInStage: Number(roomInStage.value),
           buffIndex: Number(buffIndex.value),
         }
-      : { recordScheme: 'crisis' as const }
+      : {
+          recordScheme: 'crisis' as const,
+          id: encodeCrisisBuffId({
+            version: resolvedVersion.value,
+            phase: resolvedPhase.value,
+            buffIndex: Number(buffIndex.value),
+          }),
+          buffIndex: Number(buffIndex.value),
+        }
 
     const result = await createBuff({
-      version: fieldText(version.value),
-      phase: fieldText(phase.value),
+      version: resolvedVersion.value,
+      phase: resolvedPhase.value,
       buff_name: fieldText(buffName.value),
       buff: fieldText(buffText.value) || null,
       buff_image: buffImage,
-      ...defensePayload,
+      ...schemePayload,
     })
 
-    message.value = `Buff 添加成功（ID ${result.id}）`
-    version.value = ''
-    phase.value = ''
+    const actionHint = result.action === 'updated' ? '（已覆盖同 ID 记录）' : ''
+    message.value = `Buff 添加成功（ID ${result.id}）${actionHint}`
+    keepVersionPhaseAfterSubmit()
     buffName.value = ''
     buffText.value = ''
     resetDefenseFields()
     imageFile.value = null
     imagePickerRef.value?.reset()
     imagePreview.value = ''
+    await loadVersionPhaseOptions()
+    keepVersionPhaseAfterSubmit()
   } catch (err) {
     error.value = err instanceof Error ? err.message : '提交失败'
   } finally {
@@ -130,7 +162,7 @@ async function submitForm() {
   }
 }
 
-watch([isDefense, version, phase, stage, roomInStage, buffIndex], () => {
+watch([isDefense, resolvedVersion, resolvedPhase, stage, roomInStage, buffIndex], () => {
   updatePreviewId()
 })
 </script>
@@ -145,12 +177,36 @@ watch([isDefense, version, phase, stage, roomInStage, buffIndex], () => {
     <form class="admin-form" novalidate @submit.prevent="submitForm">
       <label class="field">
         <span class="field-label">版本 *</span>
-        <input v-model="version" type="text" class="field-input" placeholder="如 3.0" />
+        <select v-model="version" class="field-input">
+          <option v-if="!availableVersions.length" value="" disabled>暂无可选版本</option>
+          <option v-for="item in availableVersions" :key="item" :value="item">
+            {{ item }}
+          </option>
+        </select>
+        <input
+          v-model="customVersion"
+          type="text"
+          class="field-input"
+          placeholder="新版本（填写后覆盖上方选择）"
+        />
       </label>
 
       <label class="field">
         <span class="field-label">期数 *</span>
-        <input v-model="phase" type="text" class="field-input" placeholder="如 1 或 第 1 期" />
+        <select v-model="phase" class="field-input">
+          <option v-if="!availablePhases.length" value="" disabled>
+            {{ resolvedVersion ? '该版本暂无期数，可在下方输入' : '请先选择版本' }}
+          </option>
+          <option v-for="item in availablePhases" :key="item" :value="item">
+            第 {{ item }} 期
+          </option>
+        </select>
+        <input
+          v-model="customPhase"
+          type="text"
+          class="field-input"
+          placeholder="新期数（填写后覆盖上方选择）"
+        />
       </label>
 
       <label class="field">
@@ -176,12 +232,19 @@ watch([isDefense, version, phase, stage, roomInStage, buffIndex], () => {
         </label>
       </div>
 
-      <label v-if="isDefense" class="field">
+      <label class="field">
         <span class="field-label">Buff 序号 *</span>
-        <input v-model="buffIndex" type="number" min="1" max="9" class="field-input" placeholder="1-9" />
+        <input
+          v-model="buffIndex"
+          type="number"
+          min="1"
+          :max="isDefense ? 9 : 99"
+          class="field-input"
+          :placeholder="isDefense ? '1-9' : '如 1、2、3（对应 ID 末两位）'"
+        />
       </label>
 
-      <p v-if="isDefense && previewId" class="id-preview">预计 Buff ID：{{ previewId }}</p>
+      <p v-if="previewId" class="id-preview">预计 Buff ID：{{ previewId }}</p>
 
       <label class="field">
         <span class="field-label">Buff 描述</span>
@@ -271,6 +334,10 @@ watch([isDefense, version, phase, stage, roomInStage, buffIndex], () => {
   outline: none;
   transition: border-color 0.2s;
   font-family: inherit;
+}
+
+.field > .field-input + .field-input {
+  margin-top: 0.35rem;
 }
 
 .field-input:focus,

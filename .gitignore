@@ -7,11 +7,17 @@ dist-ssr/
 coverage/
 *.tsbuildinfo
 .eslintcache
+packages/
 
 # Env & secrets
 .env
 .env.*
 !.env.example
+SecretKey.csv
+**/SecretKey.csv
+*SecretKey*.csv
+*.pem
+*.key
 
 # Logs
 logs/
@@ -24,6 +30,22 @@ pnpm-debug.log*
 zzz-hp-backend/uploads/
 **/uploads/**
 !**/uploads/.gitkeep
+zzz-hp-backend/guestbook_image/
+zzz-hp-backend/boss_image/*
+!zzz-hp-backend/boss_image/.gitkeep
+zzz-hp-backend/buff_image/*
+!zzz-hp-backend/buff_image/.gitkeep
+zzz-hp-backend/calculator_image/*
+!zzz-hp-backend/calculator_image/.gitkeep
+zzz-hp-backend/W-Engine/
+zzz-hp-backend/data/*
+!zzz-hp-backend/data/.gitkeep
+
+# Certificates
+*.pfx
+
+# Local Cursor search dumps
+**/.cursor-search/
 
 # Editor / OS
 .DS_Store

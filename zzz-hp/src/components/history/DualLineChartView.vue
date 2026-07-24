@@ -1,16 +1,25 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, toRefs, watch } from 'vue'
-import ChartPointBossTooltip from '@/components/history/ChartPointBossTooltip.vue'
+import { storeToRefs } from 'pinia'
 import ChartPointRoomBuffTooltip from '@/components/history/ChartPointRoomBuffTooltip.vue'
+import ChartPointSeriesTooltip, {
+  type ChartSeriesTooltipRow,
+} from '@/components/history/ChartPointSeriesTooltip.vue'
 import {
-  fetchCrisisAssaultPhases,
   getChartPointPhaseKey,
-  type ChartBossPreview,
+  type CrisisHpChartMode,
   type HpChartPoint,
 } from '@/api/crisisAssault'
-import { formatExpansion, formatHp } from '@/utils/gameData'
+import { getScoreMarkers, scaleHpByRatio, type CrisisScoreMarker } from '@/data/crisisScoreHpTable'
+import { useChartViewSyncStore, type ChartViewMode } from '@/stores/chartViewSync'
+import { formatExpansion, formatHp, formatHpDelta } from '@/utils/gameData'
 
-type ChartViewMode = 'detail' | 'overview'
+/** ratio：相对倍率；delta：数值差（本期 − 上期） */
+type ExpansionMode = 'ratio' | 'delta'
+
+const COEFF_LINE_COLOR = '#9b6bff'
+const COEFF_CHART_TITLE = '血量系数'
+const COEFF_EXPANSION_CHART_TITLE = '血量系数增长'
 
 const props = withDefaults(
   defineProps<{
@@ -26,9 +35,25 @@ const props = withDefaults(
     enableRoomBuffPreview?: boolean
     bossPreviewMode?: 'crisis' | 'embedded'
     showRemoveModeToggle?: boolean
+    /** 上图数值格式：血量或整数百分比 */
+    valueFormat?: 'hp' | 'percent'
+    /** 下图：倍率或数值增长 */
+    expansionMode?: ExpansionMode
+    /** 显示「953防御换算」勾选（按 T 切换） */
+    enableHpConverted953Toggle?: boolean
+    /** 显示正常/困难切换（样式同详细/总览，位于其左侧） */
+    showHpModeToggle?: boolean
+    /** 联动组：同组折线图同步详细/总览期数聚焦与横向滚动 */
+    syncGroup?: string
+    /** 危局：在总血量图叠加分数线，并在下方单独绘制分数线膨胀图 */
+    enableScoreHpOverlays?: boolean
+    /** 危局：有血量系数时额外绘制系数折线与系数膨胀图 */
+    enableHpCoeffCharts?: boolean
+    /** 去掉外框边线 */
+    borderless?: boolean
   }>(),
   {
-    hpChartTitle: '总血量折线图',
+    hpChartTitle: '血量折线图',
     expansionChartTitle: '血量相对膨胀折线图',
     hpAriaLabel: '血量折线图',
     expansionAriaLabel: '血量相对膨胀折线图',
@@ -38,16 +63,37 @@ const props = withDefaults(
     enableRoomBuffPreview: false,
     bossPreviewMode: 'crisis',
     showRemoveModeToggle: false,
+    valueFormat: 'hp',
+    expansionMode: 'ratio',
+    enableHpConverted953Toggle: false,
+    showHpModeToggle: false,
+    syncGroup: undefined,
+    enableScoreHpOverlays: false,
+    enableHpCoeffCharts: false,
+    borderless: false,
   },
 )
 
 const removeMode = defineModel<'direct' | 'menu'>('removeMode', { default: 'menu' })
+const hpMode = defineModel<CrisisHpChartMode>('hpMode', { default: 'normal' })
 
 const emit = defineEmits<{
   pointClick: [point: HpChartPoint, index: number, event?: MouseEvent]
 }>()
 
 const { points } = toRefs(props)
+
+const chartSync = useChartViewSyncStore()
+const { viewMode, hideDatesInOverview, linkedFocus } = storeToRefs(chartSync)
+const instanceId = `dlc-${Math.random().toString(36).slice(2, 10)}`
+let applyingRemoteFocus = false
+let scrollSyncRaf = 0
+let lastBroadcastPhaseKey: string | null | undefined = undefined
+
+function formatPrimaryValue(value: number) {
+  if (props.valueFormat === 'percent') return `${Math.round(value)}%`
+  return formatHp(value)
+}
 
 interface ExpansionPoint extends HpChartPoint {
   expansion: number
@@ -67,27 +113,41 @@ interface PlottedPoint {
 const containerRef = ref<HTMLElement | null>(null)
 const scrollRef = ref<HTMLElement | null>(null)
 const hoverIndex = ref<number | null>(null)
+const hoverChartId = ref<string | null>(null)
 const chartHeight = ref(260)
 const viewportWidth = ref(960)
-const viewMode = ref<ChartViewMode>('detail')
-const hideDatesInOverview = ref(true)
 const hideBossTooltip = ref(false)
+const useConverted953 = ref(false)
+/** 各折线图显示开关；缺省视为显示 */
+const visibleSections = ref<Record<string, boolean>>({})
 const isDragging = ref(false)
 const dragMoved = ref(false)
 const dragStartX = ref(0)
 const dragScrollLeft = ref(0)
 const phaseSearchQuery = ref('')
 const phaseSearchHint = ref('')
-const bossPreviewByKey = ref<Map<string, ChartBossPreview[]>>(new Map())
 const tooltipPosition = ref({ left: '0px', top: '0px', transform: 'translate(-50%, -100%)' })
-const showBossTooltip = ref(false)
+const showSeriesTooltip = ref(false)
 const showRoomBuffTooltip = ref(false)
 
-const pointSpacing = 168
-const minChartWidth = 960
+const pointSpacingBase = 168
+const minChartWidthBase = 960
+const pointSpacingMobile = 118
+const minChartWidthMobile = 560
+const isNarrowViewport = ref(false)
+const pointSpacing = computed(() =>
+  isNarrowViewport.value ? pointSpacingMobile : pointSpacingBase,
+)
+const minChartWidth = computed(() =>
+  isNarrowViewport.value ? minChartWidthMobile : minChartWidthBase,
+)
 const pointInset = 30
 const sectionGap = 10
 const OVERVIEW_HOVER_LABEL_LIFT = 16
+
+function syncNarrowViewport() {
+  isNarrowViewport.value = window.matchMedia('(max-width: 768px)').matches
+}
 
 const isDetailMode = computed(() => viewMode.value === 'detail')
 const isOverviewMode = computed(() => viewMode.value === 'overview')
@@ -95,31 +155,80 @@ const showDates = computed(() => isDetailMode.value || !hideDatesInOverview.valu
 const isChartEmpty = computed(() => points.value.length === 0)
 const shouldRenderChart = computed(() => !isChartEmpty.value || props.showWhenEmpty)
 
+const chartSourcePoints = computed<HpChartPoint[]>(() => {
+  if (!props.enableHpConverted953Toggle || !useConverted953.value) return points.value
+  return points.value.map((point) => ({
+    ...point,
+    totalHp: point.totalHpConverted953 ?? point.totalHp,
+  }))
+})
+
+const displayHpChartTitle = computed(() => {
+  if (!props.enableHpConverted953Toggle || !useConverted953.value) return props.hpChartTitle
+  if (props.hpChartTitle.includes('953')) return props.hpChartTitle
+  if (props.hpChartTitle.includes('总血量')) {
+    return props.hpChartTitle.replace('总血量', '953防御换算总血量')
+  }
+  return props.hpChartTitle.replace('血量', '953防御换算血量')
+})
+
+const displayExpansionChartTitle = computed(() => {
+  if (!props.enableHpConverted953Toggle || !useConverted953.value) {
+    return props.expansionChartTitle
+  }
+  if (props.expansionChartTitle.includes('953')) return props.expansionChartTitle
+  return props.expansionChartTitle.replace('血量相对膨胀', '953防御换算血量相对膨胀')
+})
+
+const displayHpAriaLabel = computed(() => {
+  if (!props.enableHpConverted953Toggle || !useConverted953.value) return props.hpAriaLabel
+  if (props.hpAriaLabel.includes('953')) return props.hpAriaLabel
+  if (props.hpAriaLabel.includes('总血量')) {
+    return props.hpAriaLabel.replace('总血量', '953换算总血量')
+  }
+  return props.hpAriaLabel.replace('血量', '953换算血量')
+})
+
+const displayExpansionAriaLabel = computed(() => {
+  if (!props.enableHpConverted953Toggle || !useConverted953.value) {
+    return props.expansionAriaLabel
+  }
+  if (props.expansionAriaLabel.includes('953')) return props.expansionAriaLabel
+  return props.expansionAriaLabel.replace('血量相对膨胀', '953换算血量相对膨胀')
+})
+
 const EMPTY_HP_RANGE = { min: 0, max: 1_000_000 }
-const EMPTY_EXPANSION_RANGE = { min: 0.5, max: 1.5 }
+const EMPTY_EXPANSION_RANGE_RATIO = { min: 0.5, max: 1.5 }
+const EMPTY_EXPANSION_RANGE_DELTA = { min: -1, max: 1 }
+
+const isExpansionDelta = computed(() => props.expansionMode === 'delta')
+const expansionBaselineValue = computed(() => (isExpansionDelta.value ? 0 : 1))
 
 const chartPadding = computed(() => {
+  const left = isNarrowViewport.value ? 52 : 88
+  const right = isNarrowViewport.value ? 16 : 28
   if (isOverviewMode.value) {
     const bottom = showDates.value
-      ? 44 + 12 + OVERVIEW_HOVER_LABEL_LIFT + 22
-      : 22 + OVERVIEW_HOVER_LABEL_LIFT + 20
-    return { top: 28, right: 28, bottom, left: 88 }
+      ? 52 + 12 + OVERVIEW_HOVER_LABEL_LIFT + 16
+      : 30 + OVERVIEW_HOVER_LABEL_LIFT + 14
+    return { top: 20, right, bottom, left }
   }
-  return { top: 28, right: 28, bottom: 96, left: 88 }
+  // 详细模式：为期数 + 两行日期预留下方空间，避免贴底被裁切
+  return { top: 20, right, bottom: isNarrowViewport.value ? 96 : 108, left }
 })
 
 const chartWidth = computed(() => {
-  const count = points.value.length
+  const count = chartSourcePoints.value.length
   const pad = chartPadding.value
 
   if (isOverviewMode.value) {
-    return Math.max(minChartWidth, viewportWidth.value)
+    return Math.max(minChartWidth.value, viewportWidth.value)
   }
 
-  if (count <= 1) return minChartWidth
+  if (count <= 1) return minChartWidth.value
   return Math.max(
-    minChartWidth,
-    pad.left + pad.right + pointInset * 2 + (count - 1) * pointSpacing,
+    minChartWidth.value,
+    pad.left + pad.right + pointInset * 2 + (count - 1) * pointSpacing.value,
   )
 })
 
@@ -127,11 +236,119 @@ const plotWidth = computed(() => chartWidth.value - chartPadding.value.left - ch
 const plotHeight = computed(() => chartHeight.value - chartPadding.value.top - chartPadding.value.bottom)
 
 const expansionPoints = computed<ExpansionPoint[]>(() =>
-  points.value.map((item, index) => ({
-    ...item,
-    expansion: index === 0 ? 1 : item.totalHp / points.value[index - 1]!.totalHp,
-  })),
+  chartSourcePoints.value.map((item, index) => {
+    if (index === 0) {
+      return { ...item, expansion: isExpansionDelta.value ? 0 : 1 }
+    }
+    const previous = chartSourcePoints.value[index - 1]!.totalHp
+    const expansion = isExpansionDelta.value
+      ? item.totalHp - previous
+      : previous
+        ? item.totalHp / previous
+        : 1
+    return { ...item, expansion }
+  }),
 )
+
+const scoreMarkers = computed<CrisisScoreMarker[]>(() => {
+  if (!props.enableScoreHpOverlays || props.valueFormat !== 'hp') return []
+  return getScoreMarkers(hpMode.value === 'hard' ? 'hard' : 'normal')
+})
+
+function isSectionVisible(id: string) {
+  const explicit = visibleSections.value[id]
+  if (explicit !== undefined) return explicit !== false
+  // 默认不显示正常模式的 1.5万 / FS-HP 相对膨胀
+  if (id.startsWith('score-exp-')) {
+    const markerId = id.slice('score-exp-'.length)
+    const marker = scoreMarkers.value.find((item) => item.id === markerId)
+    if (marker && (marker.shortLabel === '均1.5w' || marker.shortLabel === '均2w')) {
+      return false
+    }
+  }
+  return true
+}
+
+function setSectionVisible(id: string, visible: boolean) {
+  // 至少保留一张图，避免整页空白
+  if (!visible) {
+    const remaining = chartSectionCount.value - (isSectionVisible(id) ? 1 : 0)
+    if (remaining < 1) return
+  }
+  visibleSections.value = { ...visibleSections.value, [id]: visible }
+  nextTick(updateLayoutMetrics)
+}
+
+function onVisibilityCheckboxChange(id: string, event: Event) {
+  const checked = (event.target as HTMLInputElement | null)?.checked ?? false
+  setSectionVisible(id, checked)
+}
+
+function getCoeffValue(point: HpChartPoint): number | null {
+  if (point.hpCoeffPercent == null) return null
+  const n = Number(point.hpCoeffPercent)
+  return Number.isFinite(n) ? n : null
+}
+
+const showHpCoeffCharts = computed(() => {
+  if (!props.enableHpCoeffCharts || isChartEmpty.value) return false
+  return chartSourcePoints.value.some((point) => getCoeffValue(point) != null)
+})
+
+const chartSectionCount = computed(() => {
+  let count = 0
+  if (isSectionVisible('hp')) count += 1
+  if (isSectionVisible('exp')) count += 1
+  for (const marker of scoreMarkers.value) {
+    if (isSectionVisible(`score-exp-${marker.id}`)) count += 1
+  }
+  if (showHpCoeffCharts.value && isSectionVisible('coeff')) count += 1
+  if (showHpCoeffCharts.value && isSectionVisible('coeff-exp')) count += 1
+  return count
+})
+
+const chartVisibilityOptions = computed(() => {
+  const options: Array<{ id: string; label: string }> = [
+    { id: 'hp', label: displayHpChartTitle.value },
+    { id: 'exp', label: displayExpansionChartTitle.value },
+  ]
+  for (const marker of scoreMarkers.value) {
+    options.push({
+      id: `score-exp-${marker.id}`,
+      label: `${marker.shortLabel}相对膨胀`,
+    })
+  }
+  if (showHpCoeffCharts.value) {
+    options.push({ id: 'coeff', label: COEFF_CHART_TITLE })
+    options.push({ id: 'coeff-exp', label: COEFF_EXPANSION_CHART_TITLE })
+  }
+  return options
+})
+
+function buildExpansionSeries(values: number[]) {
+  return values.map((value, index) => {
+    if (index === 0) return isExpansionDelta.value ? 0 : 1
+    const previous = values[index - 1] ?? 0
+    if (isExpansionDelta.value) return value - previous
+    return previous ? value / previous : 1
+  })
+}
+
+function formatExpansionValue(value: number) {
+  if (!isExpansionDelta.value) return formatExpansion(value)
+  if (props.valueFormat === 'percent') {
+    const rounded = Math.round(value)
+    return rounded >= 0 ? `+${rounded}%` : `${rounded}%`
+  }
+  return formatHpDelta(value)
+}
+
+function formatExpansionTick(value: number) {
+  if (!isExpansionDelta.value) return formatExpansion(value)
+  if (props.valueFormat === 'percent') return `${Math.round(value)}%`
+  if (value < 0) return `-${formatHp(Math.abs(value))}`
+  return formatHp(value)
+}
 
 function getPointX(index: number) {
   const count = points.value.length
@@ -145,7 +362,7 @@ function getPointX(index: number) {
     return pad.left + pointInset + (innerWidth * index) / (count - 1)
   }
 
-  return pad.left + pointInset + index * pointSpacing
+  return pad.left + pointInset + index * pointSpacing.value
 }
 
 function splitDateRange(dateRange: string) {
@@ -195,15 +412,20 @@ function buildYTicks(min: number, max: number) {
 
 function buildExpansionYTicks(min: number, max: number) {
   const ticks = buildYTicks(min, max)
-  if (min <= 1 && max >= 1 && !ticks.some((tick) => Math.abs(tick - 1) < 1e-6)) {
-    ticks.push(1)
+  const baseline = expansionBaselineValue.value
+  if (
+    min <= baseline &&
+    max >= baseline &&
+    !ticks.some((tick) => Math.abs(tick - baseline) < 1e-6)
+  ) {
+    ticks.push(baseline)
     ticks.sort((a, b) => a - b)
   }
   return ticks
 }
 
 function isExpansionBaselineTick(tick: number) {
-  return Math.abs(tick - 1) < 1e-6
+  return Math.abs(tick - expansionBaselineValue.value) < 1e-6
 }
 
 function valueToY(value: number, min: number, max: number) {
@@ -213,14 +435,19 @@ function valueToY(value: number, min: number, max: number) {
   return pad.top + plotHeight.value - ((value - min) / range) * plotHeight.value
 }
 
-const hpRange = computed(() =>
-  isChartEmpty.value
-    ? EMPTY_HP_RANGE
-    : buildValueRange(points.value.map((item) => item.totalHp)),
-)
+const hpRange = computed(() => {
+  if (isChartEmpty.value) return EMPTY_HP_RANGE
+  const totals = chartSourcePoints.value.map((item) => item.totalHp)
+  const overlays = scoreMarkers.value.flatMap((marker) =>
+    chartSourcePoints.value.map((item) => scaleHpByRatio(item.totalHp, marker.hpRatio)),
+  )
+  return buildValueRange([...totals, ...overlays])
+})
 const expansionRange = computed(() =>
   isChartEmpty.value
-    ? EMPTY_EXPANSION_RANGE
+    ? isExpansionDelta.value
+      ? EMPTY_EXPANSION_RANGE_DELTA
+      : EMPTY_EXPANSION_RANGE_RATIO
     : buildValueRange(expansionPoints.value.map((item) => item.expansion)),
 )
 
@@ -247,7 +474,7 @@ function plotPoints<T extends { label: string; dateRange: string }>(
 }
 
 const hpChartPoints = computed(() =>
-  plotPoints(points.value, (item) => item.totalHp, hpRange.value),
+  plotPoints(chartSourcePoints.value, (item) => item.totalHp, hpRange.value),
 )
 
 const expansionChartPoints = computed(() =>
@@ -261,11 +488,16 @@ const expansionYTicks = computed(() =>
 
 const expansionBaselineVisible = computed(() => {
   const { min, max } = expansionRange.value
-  return min <= 1 && max >= 1
+  const baseline = expansionBaselineValue.value
+  return min <= baseline && max >= baseline
 })
 
 const expansionBaselineY = computed(() =>
-  valueToY(1, expansionRange.value.min, expansionRange.value.max),
+  valueToY(expansionBaselineValue.value, expansionRange.value.min, expansionRange.value.max),
+)
+
+const expansionBaselineLabel = computed(() =>
+  isExpansionDelta.value ? '基准 0' : '基准 1',
 )
 
 const columnZones = computed(() => {
@@ -304,25 +536,21 @@ const hoveredChartPoint = computed(() =>
   hoverIndex.value === null ? null : points.value[hoverIndex.value] ?? null,
 )
 
-const isBossPreviewEnabled = computed(
-  () => props.enableBossPreview && !hideBossTooltip.value,
-)
-
 const isRoomBuffPreviewEnabled = computed(
   () => props.enableRoomBuffPreview && !hideBossTooltip.value,
 )
 
-const isHoverPreviewEnabled = computed(
-  () => isBossPreviewEnabled.value || isRoomBuffPreviewEnabled.value,
+const isSeriesTooltipEnabled = computed(
+  () => !hideBossTooltip.value && !isChartEmpty.value && hpChartPoints.value.length > 0,
 )
 
-const hoveredBossPreviews = computed(() => {
-  const point = hoveredChartPoint.value
-  if (!point || !isBossPreviewEnabled.value) return []
-  if (point.bosses?.length) return point.bosses
-  if (props.bossPreviewMode === 'embedded') return []
-  return bossPreviewByKey.value.get(getChartPointPhaseKey(point)) ?? []
-})
+const canToggleHoverPreview = computed(
+  () => (!isChartEmpty.value && hpChartPoints.value.length > 0) || props.enableRoomBuffPreview,
+)
+
+const isHoverPreviewEnabled = computed(
+  () => isSeriesTooltipEnabled.value || isRoomBuffPreviewEnabled.value,
+)
 
 const hoveredRoomBuff = computed(() => {
   const point = hoveredChartPoint.value
@@ -340,6 +568,128 @@ const hoveredExpansionPoint = computed(() =>
   hoverIndex.value === null ? null : expansionChartPoints.value[hoverIndex.value] ?? null,
 )
 
+const seriesTooltipTitle = computed(() => {
+  const id = hoverChartId.value ?? 'hp'
+  if (id === 'hp') return displayHpChartTitle.value
+  if (id === 'exp') return displayExpansionChartTitle.value
+  if (id === 'coeff') return COEFF_CHART_TITLE
+  if (id === 'coeff-exp') return COEFF_EXPANSION_CHART_TITLE
+  if (id.startsWith('score-exp-')) {
+    const markerId = id.slice('score-exp-'.length)
+    const series = scoreOverlaySeries.value.find((item) => item.marker.id === markerId)
+    return series ? `${series.marker.shortLabel}相对膨胀` : displayExpansionChartTitle.value
+  }
+  return displayHpChartTitle.value
+})
+
+const seriesTooltipRows = computed((): ChartSeriesTooltipRow[] => {
+  const index = hoverIndex.value
+  if (index === null) return []
+  const id = hoverChartId.value ?? 'hp'
+
+  const sortByValueDesc = (rows: ChartSeriesTooltipRow[]) =>
+    [...rows].sort((a, b) => (b.numericValue ?? 0) - (a.numericValue ?? 0))
+
+  if (id === 'hp') {
+    const hpPoint = hpChartPoints.value[index]
+    if (!hpPoint) return []
+    const rows: ChartSeriesTooltipRow[] = [
+      {
+        label: '总血量',
+        value: formatPrimaryValue(hpPoint.value),
+        color: '#e85d4c',
+        numericValue: hpPoint.value,
+      },
+    ]
+    for (const series of scoreOverlaySeries.value) {
+      const point = series.chartPoints[index]
+      if (!point) continue
+      rows.push({
+        label: series.marker.label,
+        value: formatPrimaryValue(point.value),
+        color: series.marker.color,
+        numericValue: point.value,
+      })
+    }
+    return sortByValueDesc(rows)
+  }
+
+  if (id === 'exp') {
+    const point = expansionChartPoints.value[index]
+    if (!point) return []
+    return [
+      {
+        label: '膨胀',
+        value: formatExpansionValue(point.value),
+        color: '#e85d4c',
+        numericValue: point.value,
+      },
+    ]
+  }
+
+  if (id.startsWith('score-exp-')) {
+    const markerId = id.slice('score-exp-'.length)
+    const series = scoreOverlaySeries.value.find((item) => item.marker.id === markerId)
+    const point = series?.expansionChartPoints[index]
+    if (!series || !point) return []
+    return [
+      {
+        label: `${series.marker.shortLabel}膨胀`,
+        value: formatExpansionValue(point.value),
+        color: series.marker.color,
+        numericValue: point.value,
+      },
+    ]
+  }
+
+  if (id === 'coeff') {
+    const point = coeffChartPoints.value[index]
+    if (!point?.valid) return []
+    return [
+      {
+        label: COEFF_CHART_TITLE,
+        value: formatCoeffPercent(point.value),
+        color: COEFF_LINE_COLOR,
+        numericValue: point.value,
+      },
+    ]
+  }
+
+  if (id === 'coeff-exp') {
+    const point = coeffExpansionChartPoints.value[index]
+    if (!point?.valid) return []
+    return [
+      {
+        label: COEFF_EXPANSION_CHART_TITLE,
+        value: formatCoeffDelta(point.value),
+        color: COEFF_LINE_COLOR,
+        numericValue: point.value,
+      },
+    ]
+  }
+
+  return []
+})
+
+function getAnchorPointForChart(chartId: string, index: number): PlottedPoint | null {
+  if (chartId === 'hp') return hpChartPoints.value[index] ?? null
+  if (chartId === 'exp') return expansionChartPoints.value[index] ?? null
+  if (chartId === 'coeff') {
+    const point = coeffChartPoints.value[index]
+    return point?.valid ? point : hpChartPoints.value[index] ?? null
+  }
+  if (chartId === 'coeff-exp') {
+    const point = coeffExpansionChartPoints.value[index]
+    return point?.valid ? point : hpChartPoints.value[index] ?? null
+  }
+  if (chartId.startsWith('score-exp-')) {
+    const markerId = chartId.slice('score-exp-'.length)
+    const series = scoreOverlaySeries.value.find((item) => item.marker.id === markerId)
+    return series?.expansionChartPoints[index] ?? null
+  }
+  return hpChartPoints.value[index] ?? null
+}
+
 function buildLinePath(chartPoints: PlottedPoint[]) {
   if (!chartPoints.length) return ''
   return chartPoints
@@ -347,12 +697,201 @@ function buildLinePath(chartPoints: PlottedPoint[]) {
     .join(' ')
 }
 
+/** 仅连接连续有效点，无效点处断开 */
+function buildGappedLinePath(chartPoints: Array<PlottedPoint & { valid: boolean }>) {
+  const parts: string[] = []
+  let drawing = false
+  for (const point of chartPoints) {
+    if (!point.valid) {
+      drawing = false
+      continue
+    }
+    parts.push(`${drawing ? 'L' : 'M'} ${point.x} ${point.y}`)
+    drawing = true
+  }
+  return parts.join(' ')
+}
+
 const hpLinePath = computed(() => buildLinePath(hpChartPoints.value))
 const expansionLinePath = computed(() => buildLinePath(expansionChartPoints.value))
+
+interface ScoreOverlaySeries {
+  marker: CrisisScoreMarker
+  chartPoints: PlottedPoint[]
+  linePath: string
+  expansionChartPoints: PlottedPoint[]
+  expansionRange: { min: number; max: number }
+  expansionLinePath: string
+  expansionYTicks: number[]
+  expansionBaselineVisible: boolean
+  expansionBaselineY: number
+}
+
+const scoreOverlaySeries = computed<ScoreOverlaySeries[]>(() => {
+  const markers = scoreMarkers.value
+  const source = chartSourcePoints.value
+  if (!markers.length || !source.length) return []
+
+  return markers.map((marker) => {
+    const values = source.map((item) => scaleHpByRatio(item.totalHp, marker.hpRatio))
+    const chartPoints = plotPoints(
+      source.map((item, index) => ({ ...item, totalHp: values[index]! })),
+      (item) => item.totalHp,
+      hpRange.value,
+    )
+    const expansionValues = buildExpansionSeries(values)
+    const expansionRangeLocal = buildValueRange(expansionValues)
+    const expansionItems = source.map((item, index) => ({
+      ...item,
+      expansion: expansionValues[index] ?? 0,
+    }))
+    const expansionPts = plotPoints(
+      expansionItems,
+      (item) => item.expansion,
+      expansionRangeLocal,
+    )
+    return {
+      marker,
+      chartPoints,
+      linePath: buildLinePath(chartPoints),
+      expansionChartPoints: expansionPts,
+      expansionRange: expansionRangeLocal,
+      expansionLinePath: buildLinePath(expansionPts),
+      expansionYTicks: buildExpansionYTicks(expansionRangeLocal.min, expansionRangeLocal.max),
+      expansionBaselineVisible:
+        expansionRangeLocal.min <= expansionBaselineValue.value &&
+        expansionRangeLocal.max >= expansionBaselineValue.value,
+      expansionBaselineY: valueToY(
+        expansionBaselineValue.value,
+        expansionRangeLocal.min,
+        expansionRangeLocal.max,
+      ),
+    }
+  })
+})
+
+interface CoeffPlottedPoint extends PlottedPoint {
+  valid: boolean
+}
+
+const coeffValues = computed<(number | null)[]>(() =>
+  chartSourcePoints.value.map((point) => getCoeffValue(point)),
+)
+
+const coeffRange = computed(() => {
+  const vals = coeffValues.value.filter((v): v is number => v != null)
+  if (!vals.length) return { min: 0, max: 100 }
+  return buildValueRange(vals)
+})
+
+const coeffChartPoints = computed<CoeffPlottedPoint[]>(() => {
+  const source = chartSourcePoints.value
+  if (!source.length) return []
+  const range = coeffRange.value
+  return source.map((item, index) => {
+    const value = coeffValues.value[index] ?? null
+    const { start, end } = splitDateRange(item.dateRange)
+    const valid = value != null
+    return {
+      label: item.label,
+      dateRange: item.dateRange,
+      dateStart: start,
+      dateEnd: end,
+      value: value ?? 0,
+      x: getPointX(index),
+      y: valid ? valueToY(value!, range.min, range.max) : 0,
+      index,
+      valid,
+    }
+  })
+})
+
+const coeffYTicks = computed(() => buildYTicks(coeffRange.value.min, coeffRange.value.max))
+const coeffLinePath = computed(() => buildGappedLinePath(coeffChartPoints.value))
+
+const coeffExpansionValues = computed<(number | null)[]>(() =>
+  coeffValues.value.map((value, index) => {
+    if (value == null) return null
+    if (index === 0) return 0
+    const previous = coeffValues.value[index - 1]
+    if (previous == null) return null
+    return value - previous
+  }),
+)
+
+const coeffExpansionRange = computed(() => {
+  const vals = coeffExpansionValues.value.filter((v): v is number => v != null)
+  if (!vals.length) return EMPTY_EXPANSION_RANGE_DELTA
+  return buildValueRange(vals)
+})
+
+const coeffExpansionChartPoints = computed<CoeffPlottedPoint[]>(() => {
+  const source = chartSourcePoints.value
+  if (!source.length) return []
+  const range = coeffExpansionRange.value
+  return source.map((item, index) => {
+    const value = coeffExpansionValues.value[index] ?? null
+    const { start, end } = splitDateRange(item.dateRange)
+    const valid = value != null
+    return {
+      label: item.label,
+      dateRange: item.dateRange,
+      dateStart: start,
+      dateEnd: end,
+      value: value ?? 0,
+      x: getPointX(index),
+      y: valid ? valueToY(value!, range.min, range.max) : 0,
+      index,
+      valid,
+    }
+  })
+})
+
+const coeffExpansionYTicks = computed(() => {
+  const ticks = buildYTicks(coeffExpansionRange.value.min, coeffExpansionRange.value.max)
+  const { min, max } = coeffExpansionRange.value
+  if (min <= 0 && max >= 0 && !ticks.some((tick) => Math.abs(tick) < 1e-6)) {
+    ticks.push(0)
+    ticks.sort((a, b) => a - b)
+  }
+  return ticks
+})
+
+const coeffExpansionBaselineVisible = computed(() => {
+  const { min, max } = coeffExpansionRange.value
+  return min <= 0 && max >= 0
+})
+
+const coeffExpansionBaselineY = computed(() =>
+  valueToY(0, coeffExpansionRange.value.min, coeffExpansionRange.value.max),
+)
+
+const coeffExpansionLinePath = computed(() => buildGappedLinePath(coeffExpansionChartPoints.value))
+
+const hoveredCoeffPoint = computed(() =>
+  hoverIndex.value === null ? null : coeffChartPoints.value[hoverIndex.value] ?? null,
+)
+
+const hoveredCoeffExpansionPoint = computed(() =>
+  hoverIndex.value === null ? null : coeffExpansionChartPoints.value[hoverIndex.value] ?? null,
+)
+
+function formatCoeffPercent(value: number) {
+  return `${Math.round(value)}%`
+}
+
+function formatCoeffDelta(value: number) {
+  const rounded = Math.round(value)
+  return rounded >= 0 ? `+${rounded}%` : `${rounded}%`
+}
 
 function shouldShowPointValue(index: number) {
   if (isDetailMode.value) return true
   return hoverIndex.value === index
+}
+
+function setHoverChart(chartId: string) {
+  hoverChartId.value = chartId
 }
 
 function setHover(index: number) {
@@ -397,67 +936,44 @@ function onScrollAreaPointerMove(event: PointerEvent) {
   if (!isDragging.value) onChartsAreaPointerMove(event)
 }
 
-function isColumnHitTarget(target: EventTarget | null) {
-  return target instanceof Element && !!target.closest('.column-hit')
-}
-
 function clearHover() {
   hoverIndex.value = null
-  showBossTooltip.value = false
+  showSeriesTooltip.value = false
   showRoomBuffTooltip.value = false
-}
-
-async function loadBossPreviewCache() {
-  if (!props.enableBossPreview || hideBossTooltip.value) return
-  if (props.bossPreviewMode === 'embedded') return
-
-  try {
-    const phases = await fetchCrisisAssaultPhases()
-    const map = new Map<string, ChartBossPreview[]>()
-    for (const phase of phases) {
-      const phaseNum = phase.phase.match(/\d+/)?.[0] ?? '1'
-      map.set(
-        `${phase.version}-${Number(phaseNum)}`,
-        phase.enemies.map((enemy, index) => ({
-          room: enemy.label.match(/\d+/)?.[0] ?? String(index + 1),
-          bossName: enemy.bossName ?? enemy.subStats ?? '—',
-          hp: enemy.hp,
-          imageUrl: enemy.imageUrl,
-        })),
-      )
-    }
-    bossPreviewByKey.value = map
-  } catch {
-    bossPreviewByKey.value = new Map()
-  }
 }
 
 function updateBossTooltipPosition() {
-  showBossTooltip.value = false
+  showSeriesTooltip.value = false
   showRoomBuffTooltip.value = false
 
-  if (hoverIndex.value === null || isDragging.value) return
+  if (hoverIndex.value === null || isDragging.value || hideBossTooltip.value) return
 
-  const plotted = hpChartPoints.value[hoverIndex.value]
+  const chartId = hoverChartId.value ?? 'hp'
+  const plotted = getAnchorPointForChart(chartId, hoverIndex.value)
   if (!plotted || !scrollRef.value) return
 
-  const svg = scrollRef.value.querySelector('svg.hp-chart') as SVGSVGElement | null
+  const svg =
+    (scrollRef.value.querySelector(
+      `svg.hp-chart[data-chart-id="${chartId}"]`,
+    ) as SVGSVGElement | null) ??
+    (scrollRef.value.querySelector('svg.hp-chart') as SVGSVGElement | null)
   if (!svg) return
 
   const rect = svg.getBoundingClientRect()
   if (!rect.width || !rect.height) return
 
   const hasRoomBuff = isRoomBuffPreviewEnabled.value && hoveredRoomBuff.value
-  const hasBossPreview = isBossPreviewEnabled.value && hoveredBossPreviews.value.length
+  const hasSeriesTooltip =
+    !hasRoomBuff && isSeriesTooltipEnabled.value && seriesTooltipRows.value.length > 0
 
-  if (!hasRoomBuff && !hasBossPreview) return
+  if (!hasRoomBuff && !hasSeriesTooltip) return
 
   const scaleX = rect.width / chartWidth.value
   const scaleY = rect.height / chartHeight.value
   const anchorX = rect.left + plotted.x * scaleX
   const anchorY = rect.top + plotted.y * scaleY
 
-  const tooltipWidth = hasRoomBuff ? 220 : 188
+  const tooltipWidth = hasRoomBuff ? 220 : 220
   const tooltipHeight = hasRoomBuff ? 170 : 150
   const margin = 8
   const clampedX = Math.min(
@@ -484,7 +1000,7 @@ function updateBossTooltipPosition() {
     return
   }
 
-  showBossTooltip.value = true
+  showSeriesTooltip.value = true
 }
 
 function onPointClick(index: number, event?: MouseEvent) {
@@ -498,11 +1014,23 @@ function getOverviewLabelLift(index: number) {
 }
 
 function getVersionLabelY(index: number) {
-  return chartPadding.value.top + plotHeight.value + (showDates.value ? 26 : 22) + getOverviewLabelLift(index)
+  return chartPadding.value.top + plotHeight.value + (showDates.value ? 24 : 20) + getOverviewLabelLift(index)
 }
 
 function getDateLabelY(index: number) {
-  return chartPadding.value.top + plotHeight.value + 44 + getOverviewLabelLift(index)
+  return chartPadding.value.top + plotHeight.value + 42 + getOverviewLabelLift(index)
+}
+
+/** 总览模式下按宽度抽样显示期数，避免挤成一团 */
+function shouldShowAxisLabel(index: number) {
+  if (isDetailMode.value) return true
+  if (hoverIndex.value === index) return true
+  const count = points.value.length
+  if (count <= 12) return true
+  const usable = Math.max(1, plotWidth.value - pointInset * 2)
+  const maxLabels = Math.max(6, Math.floor(usable / 64))
+  const step = Math.max(1, Math.ceil(count / maxLabels))
+  return index % step === 0 || index === count - 1
 }
 
 function isActiveOverviewLabel(index: number) {
@@ -510,15 +1038,68 @@ function isActiveOverviewLabel(index: number) {
 }
 
 function shouldRenderLabelLayer(index: number, layer: 'base' | 'active') {
+  if (!shouldShowAxisLabel(index) && layer === 'base') return false
   const active = isActiveOverviewLabel(index)
   return layer === 'active' ? active : !active
 }
 
 function setViewMode(mode: ChartViewMode) {
-  viewMode.value = mode
-  if (mode === 'overview') hideDatesInOverview.value = true
+  chartSync.setViewMode(mode)
   if (scrollRef.value) scrollRef.value.scrollLeft = 0
   hoverIndex.value = null
+}
+
+function findIndexByPhaseKey(phaseKey: string | null | undefined) {
+  if (!phaseKey) return -1
+  return points.value.findIndex((point) => getChartPointPhaseKey(point) === phaseKey)
+}
+
+function getCenteredPhaseIndex() {
+  if (!scrollRef.value || !points.value.length) return -1
+  const centerX = scrollRef.value.scrollLeft + scrollRef.value.clientWidth / 2
+  let bestIndex = 0
+  let bestDist = Number.POSITIVE_INFINITY
+  for (let index = 0; index < points.value.length; index++) {
+    const dist = Math.abs(getPointX(index) - centerX)
+    if (dist < bestDist) {
+      bestDist = dist
+      bestIndex = index
+    }
+  }
+  return bestIndex
+}
+
+function broadcastLinkedPhase(phaseKey: string | null) {
+  if (!props.syncGroup || applyingRemoteFocus) return
+  if (lastBroadcastPhaseKey === phaseKey) return
+  lastBroadcastPhaseKey = phaseKey
+  chartSync.broadcastLinkedFocus(props.syncGroup, instanceId, phaseKey)
+}
+
+function applyRemotePhaseKey(phaseKey: string | null, { smooth = false } = {}) {
+  if (!props.syncGroup) return
+  applyingRemoteFocus = true
+  lastBroadcastPhaseKey = phaseKey
+  const index = findIndexByPhaseKey(phaseKey)
+  if (index < 0) {
+    hoverIndex.value = null
+    window.setTimeout(() => {
+      applyingRemoteFocus = false
+    }, 0)
+    return
+  }
+
+  hoverIndex.value = index
+  if (isDetailMode.value && scrollRef.value) {
+    scrollRef.value.scrollTo({
+      left: getPhaseScrollLeft(index),
+      behavior: smooth ? 'smooth' : 'auto',
+    })
+  }
+  window.setTimeout(() => {
+    applyingRemoteFocus = false
+    updateBossTooltipPosition()
+  }, 0)
 }
 
 function isTypingContext() {
@@ -541,8 +1122,14 @@ function onChartKeydown(event: KeyboardEvent) {
   if (event.ctrlKey || event.metaKey || event.altKey) return
 
   const key = event.key.toLowerCase()
-  if (key === 'h' && (props.enableBossPreview || props.enableRoomBuffPreview)) {
+  if (key === 'h' && canToggleHoverPreview.value) {
     hideBossTooltip.value = !hideBossTooltip.value
+    event.preventDefault()
+    return
+  }
+
+  if (key === 't' && props.enableHpConverted953Toggle) {
+    useConverted953.value = !useConverted953.value
     event.preventDefault()
     return
   }
@@ -555,26 +1142,53 @@ function onChartKeydown(event: KeyboardEvent) {
 
 function updateLayoutMetrics() {
   if (scrollRef.value) {
-    viewportWidth.value = Math.max(minChartWidth, scrollRef.value.clientWidth)
+    viewportWidth.value = Math.max(320, scrollRef.value.clientWidth)
   }
   if (!containerRef.value) return
 
-  const toolbarHeight = 44
-  const hintHeight = isDetailMode.value ? 28 : 0
-  const available = containerRef.value.clientHeight - toolbarHeight - hintHeight
-  const sectionHeight = (available - sectionGap) / 2
-  const minSectionHeight = isOverviewMode.value ? 188 : 160
-  const overviewBonus = isOverviewMode.value ? 16 : 0
-  chartHeight.value = Math.max(minSectionHeight, sectionHeight + overviewBonus)
+  const toolbarEl = containerRef.value.querySelector('.chart-toolbar') as HTMLElement | null
+  const visibilityEl = containerRef.value.querySelector('.chart-visibility') as HTMLElement | null
+  const hintEl = containerRef.value.querySelector('.scroll-hint') as HTMLElement | null
+  const legendEl = containerRef.value.querySelector('.score-legend') as HTMLElement | null
+  const toolbarHeight = toolbarEl?.offsetHeight ?? 44
+  const visibilityHeight = visibilityEl?.offsetHeight ?? 0
+  const hintHeight = hintEl?.offsetHeight ?? (isDetailMode.value ? 28 : 0)
+  const legendHeight = legendEl?.offsetHeight ?? 0
+  // charts-stack 上下 padding（约 0.5rem * 2）
+  const stackPad = 16
+  // 横向滚动条预留，避免压住下方期数标签
+  const scrollbarReserve = isDetailMode.value ? 14 : 0
+  const available =
+    containerRef.value.clientHeight -
+    toolbarHeight -
+    visibilityHeight -
+    hintHeight -
+    legendHeight -
+    stackPad -
+    scrollbarReserve
+  const sections = Math.max(1, chartSectionCount.value)
+  const gaps = sectionGap * Math.max(0, sections - 1)
+  const sectionHeight = (available - gaps) / sections
+  const labelRoom = chartPadding.value.bottom + chartPadding.value.top
+  const minPlot = isOverviewMode.value ? 180 : 200
+  const minSectionHeight = labelRoom + minPlot
+  // 约两张图占满一屏；多图时纵向滚动
+  const targetMinChart = Math.max(
+    isOverviewMode.value ? 400 : 440,
+    Math.floor(available * 0.46),
+  )
+  chartHeight.value = Math.max(targetMinChart, minSectionHeight, sectionHeight)
 }
 
 let resizeObserver: ResizeObserver | null = null
-
 let scrollElement: HTMLElement | null = null
+let narrowMq: MediaQueryList | null = null
 
 onMounted(() => {
+  syncNarrowViewport()
+  narrowMq = window.matchMedia('(max-width: 768px)')
+  narrowMq.addEventListener('change', syncNarrowViewport)
   updateLayoutMetrics()
-  loadBossPreviewCache()
   if (!containerRef.value) return
   resizeObserver = new ResizeObserver(() => {
     updateLayoutMetrics()
@@ -584,22 +1198,23 @@ onMounted(() => {
   if (scrollRef.value) {
     resizeObserver.observe(scrollRef.value)
     scrollElement = scrollRef.value
-    scrollElement.addEventListener('scroll', updateBossTooltipPosition, { passive: true })
+    scrollElement.addEventListener('scroll', onLinkedScroll, { passive: true })
   }
   window.addEventListener('resize', updateBossTooltipPosition)
   window.addEventListener('keydown', onChartKeydown)
 })
 
 onUnmounted(() => {
+  narrowMq?.removeEventListener('change', syncNarrowViewport)
   resizeObserver?.disconnect()
   window.removeEventListener('resize', updateBossTooltipPosition)
   window.removeEventListener('keydown', onChartKeydown)
-  scrollElement?.removeEventListener('scroll', updateBossTooltipPosition)
+  scrollElement?.removeEventListener('scroll', onLinkedScroll)
+  if (scrollSyncRaf) cancelAnimationFrame(scrollSyncRaf)
 })
 
 function onPointerDown(event: PointerEvent) {
   if (!isDetailMode.value || !scrollRef.value || event.button !== 0) return
-  if (isColumnHitTarget(event.target)) return
   isDragging.value = true
   dragMoved.value = false
   dragStartX.value = event.clientX
@@ -616,9 +1231,15 @@ function onPointerMove(event: PointerEvent) {
 
 function onPointerUp(event: PointerEvent) {
   if (!scrollRef.value) return
+  const wasDragging = isDragging.value
   isDragging.value = false
   if (scrollRef.value.hasPointerCapture(event.pointerId)) {
     scrollRef.value.releasePointerCapture(event.pointerId)
+  }
+  if (wasDragging && props.syncGroup && !applyingRemoteFocus) {
+    const index = hoverIndex.value ?? getCenteredPhaseIndex()
+    const point = index >= 0 ? points.value[index] : null
+    broadcastLinkedPhase(point ? getChartPointPhaseKey(point) : null)
   }
   window.setTimeout(() => {
     dragMoved.value = false
@@ -628,7 +1249,11 @@ function onPointerUp(event: PointerEvent) {
 
 function onWheel(event: WheelEvent) {
   if (!isDetailMode.value || !scrollRef.value) return
-  const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
+  // 仅在明确横向意图时接管滚轮，避免挡住整页纵向滚动
+  const horizontalIntent =
+    event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)
+  if (!horizontalIntent) return
+  const delta = event.shiftKey ? event.deltaY || event.deltaX : event.deltaX
   if (!delta) return
   event.preventDefault()
   scrollRef.value.scrollLeft += delta
@@ -646,13 +1271,17 @@ function getPhaseScrollLeft(index: number) {
   return Math.max(0, pointX - viewport / 2)
 }
 
-function scrollToPhaseIndex(index: number) {
+function scrollToPhaseIndex(index: number, { smooth = true, broadcast = true } = {}) {
   if (!scrollRef.value || index < 0) return
   scrollRef.value.scrollTo({
     left: getPhaseScrollLeft(index),
-    behavior: 'smooth',
+    behavior: smooth ? 'smooth' : 'auto',
   })
   hoverIndex.value = index
+  if (broadcast) {
+    const point = points.value[index]
+    broadcastLinkedPhase(point ? getChartPointPhaseKey(point) : null)
+  }
 }
 
 function onPhaseSearch() {
@@ -669,18 +1298,45 @@ function onPhaseSearch() {
 
   if (isOverviewMode.value) {
     hoverIndex.value = index
+    const point = points.value[index]
+    broadcastLinkedPhase(point ? getChartPointPhaseKey(point) : null)
     return
   }
 
   scrollToPhaseIndex(index)
 }
 
+function onLinkedScroll() {
+  updateBossTooltipPosition()
+  if (!props.syncGroup || applyingRemoteFocus || !isDetailMode.value) return
+  if (scrollSyncRaf) cancelAnimationFrame(scrollSyncRaf)
+  scrollSyncRaf = requestAnimationFrame(() => {
+    scrollSyncRaf = 0
+    const index = getCenteredPhaseIndex()
+    if (index < 0) return
+    if (hoverIndex.value !== index) hoverIndex.value = index
+    const point = points.value[index]
+    broadcastLinkedPhase(point ? getChartPointPhaseKey(point) : null)
+  })
+}
+
 watch(points, () => {
   hoverIndex.value = null
-  showBossTooltip.value = false
+  showSeriesTooltip.value = false
 })
 
-watch(hoverIndex, () => {
+watch(hoverIndex, (index) => {
+  nextTick(updateBossTooltipPosition)
+  if (applyingRemoteFocus || !props.syncGroup) return
+  if (index == null) {
+    broadcastLinkedPhase(null)
+    return
+  }
+  const point = points.value[index]
+  if (point) broadcastLinkedPhase(getChartPointPhaseKey(point))
+})
+
+watch(hoverChartId, () => {
   nextTick(updateBossTooltipPosition)
 })
 
@@ -689,6 +1345,8 @@ watch([chartWidth, chartHeight], () => {
 })
 
 watch(viewMode, () => {
+  if (scrollRef.value) scrollRef.value.scrollLeft = 0
+  hoverIndex.value = null
   updateLayoutMetrics()
 })
 
@@ -696,13 +1354,31 @@ watch(hideDatesInOverview, () => {
   updateLayoutMetrics()
 })
 
+watch(visibleSections, () => {
+  nextTick(updateLayoutMetrics)
+}, { deep: true })
+
+watch(scoreMarkers, () => {
+  nextTick(updateLayoutMetrics)
+})
+
+watch(showHpCoeffCharts, () => {
+  nextTick(updateLayoutMetrics)
+})
+
+watch(linkedFocus, (focus) => {
+  if (!props.syncGroup || !focus) return
+  if (focus.groupId !== props.syncGroup) return
+  if (focus.sourceId === instanceId) return
+  applyRemotePhaseKey(focus.phaseKey)
+})
+
 watch(hideBossTooltip, (hidden) => {
   if (hidden) {
-    showBossTooltip.value = false
+    showSeriesTooltip.value = false
     showRoomBuffTooltip.value = false
     return
   }
-  loadBossPreviewCache()
   nextTick(updateBossTooltipPosition)
 })
 
@@ -712,9 +1388,37 @@ watch(phaseSearchQuery, () => {
 </script>
 
 <template>
-  <div v-if="shouldRenderChart" ref="containerRef" class="charts-panel">
+  <div
+    v-if="shouldRenderChart"
+    ref="containerRef"
+    class="charts-panel"
+    :class="{ 'charts-panel--borderless': borderless }"
+  >
     <div class="chart-toolbar">
       <div class="toolbar-main">
+        <div
+          v-if="showHpModeToggle"
+          class="mode-toggle"
+          role="group"
+          aria-label="正常或困难模式"
+        >
+          <button
+            type="button"
+            class="mode-btn"
+            :class="{ active: hpMode === 'normal' }"
+            @click="hpMode = 'normal'"
+          >
+            正常
+          </button>
+          <button
+            type="button"
+            class="mode-btn"
+            :class="{ active: hpMode === 'hard' }"
+            @click="hpMode = 'hard'"
+          >
+            困难
+          </button>
+        </div>
         <div class="mode-toggle" role="group" aria-label="折线图显示模式">
           <button
             type="button"
@@ -749,7 +1453,7 @@ watch(phaseSearchQuery, () => {
       <div class="toolbar-toggles">
         <label v-if="isOverviewMode" class="date-toggle">
           <input v-model="hideDatesInOverview" type="checkbox" />
-          <span>隐藏日期 (D)</span>
+          <span>隐藏日期 <span class="shortcut-hint">(D)</span></span>
         </label>
         <div
           v-if="showRemoveModeToggle"
@@ -774,11 +1478,51 @@ watch(phaseSearchQuery, () => {
             弹窗
           </button>
         </div>
-        <label v-if="enableBossPreview || enableRoomBuffPreview" class="date-toggle">
+        <label v-if="enableHpConverted953Toggle" class="date-toggle">
+          <input v-model="useConverted953" type="checkbox" />
+          <span>953防御换算 <span class="shortcut-hint">(T)</span></span>
+        </label>
+        <label v-if="canToggleHoverPreview" class="date-toggle">
           <input v-model="hideBossTooltip" type="checkbox" />
-          <span>隐藏小窗 (H)</span>
+          <span>隐藏小窗 <span class="shortcut-hint">(H)</span></span>
         </label>
       </div>
+    </div>
+
+    <div
+      v-if="chartVisibilityOptions.length > 1"
+      class="chart-visibility"
+      role="group"
+      aria-label="显示折线图"
+    >
+      <span class="chart-visibility__label">显示</span>
+      <label
+        v-for="opt in chartVisibilityOptions"
+        :key="opt.id"
+        class="date-toggle chart-visibility__item"
+      >
+        <input
+          type="checkbox"
+          :checked="isSectionVisible(opt.id)"
+          @change="onVisibilityCheckboxChange(opt.id, $event)"
+        />
+        <span>{{ opt.label }}</span>
+      </label>
+    </div>
+
+    <div v-if="scoreOverlaySeries.length" class="score-legend" aria-label="分数血量图例">
+      <span class="score-legend-item">
+        <i class="score-legend-swatch score-legend-swatch--total" />
+        总血量
+      </span>
+      <span
+        v-for="series in scoreOverlaySeries"
+        :key="`legend-${series.marker.id}`"
+        class="score-legend-item"
+      >
+        <i class="score-legend-swatch" :style="{ background: series.marker.color }" />
+        {{ series.marker.label }}
+      </span>
     </div>
 
     <div
@@ -796,11 +1540,16 @@ watch(phaseSearchQuery, () => {
       @wheel="onWheel"
     >
       <div class="charts-stack" :class="{ 'charts-stack--overview': isOverviewMode }">
-        <section class="chart-section">
-          <div class="y-axis-title y-axis-title-hp" aria-hidden="true">{{ hpChartTitle }}</div>
+        <section
+          v-if="isSectionVisible('hp')"
+          class="chart-section"
+          @pointerenter="setHoverChart('hp')"
+        >
+          <div class="y-axis-title y-axis-title-hp" aria-hidden="true">{{ displayHpChartTitle }}</div>
           <div class="chart-wrap">
             <svg
               class="hp-chart"
+              data-chart-id="hp"
               :class="{ 'hp-chart--overview': isOverviewMode }"
               :viewBox="`0 0 ${chartWidth} ${chartHeight}`"
               :style="{
@@ -809,7 +1558,7 @@ watch(phaseSearchQuery, () => {
                 minWidth: isDetailMode ? `${chartWidth}px` : undefined,
               }"
               role="img"
-              :aria-label="hpAriaLabel"
+              :aria-label="displayHpAriaLabel"
             >
               <line
                 :x1="chartPadding.left"
@@ -840,7 +1589,7 @@ watch(phaseSearchQuery, () => {
                   class="axis-label axis-label-y"
                   text-anchor="end"
                 >
-                  {{ formatHp(tick) }}
+                  {{ formatPrimaryValue(tick) }}
                 </text>
               </g>
 
@@ -854,7 +1603,6 @@ watch(phaseSearchQuery, () => {
                 class="column-hit"
                 :class="{ 'column-hit--clickable': enablePointClick }"
                 @pointerenter="setHover(zone.index)"
-                @pointerdown.stop
                 @click="onPointClick(zone.index, $event)"
               />
 
@@ -868,6 +1616,39 @@ watch(phaseSearchQuery, () => {
               />
 
               <path v-if="hpLinePath" :d="hpLinePath" class="line-path line-path-hp" />
+
+              <template v-for="series in scoreOverlaySeries" :key="`hp-overlay-${series.marker.id}`">
+                <path
+                  v-if="series.linePath"
+                  :d="series.linePath"
+                  class="line-path line-path-score"
+                  :style="{ stroke: series.marker.color }"
+                />
+                <g
+                  v-for="point in series.chartPoints"
+                  :key="`${series.marker.id}-${point.label}`"
+                  class="point-group"
+                >
+                  <circle
+                    :cx="point.x"
+                    :cy="point.y"
+                    :r="hoverIndex === point.index ? 7 : isOverviewMode ? 3 : 4"
+                    class="line-point line-point-score"
+                    :class="{ active: hoverIndex === point.index }"
+                    :style="{ fill: series.marker.color, stroke: series.marker.color }"
+                  />
+                  <text
+                    v-if="hoverIndex === point.index"
+                    :x="point.x"
+                    :y="point.y + 18"
+                    class="point-value point-value-score"
+                    text-anchor="middle"
+                    :style="{ fill: series.marker.color }"
+                  >
+                    {{ series.marker.shortLabel }} {{ formatPrimaryValue(point.value) }}
+                  </text>
+                </g>
+              </template>
 
               <g v-for="point in hpChartPoints" :key="point.label" class="point-group">
                 <circle
@@ -885,7 +1666,7 @@ watch(phaseSearchQuery, () => {
                   :class="{ 'point-value-hp-active': hoverIndex === point.index }"
                   text-anchor="middle"
                 >
-                  {{ formatHp(point.value) }}
+                  {{ formatPrimaryValue(point.value) }}
                 </text>
               </g>
 
@@ -959,13 +1740,18 @@ watch(phaseSearchQuery, () => {
           </div>
         </section>
 
-        <section class="chart-section">
+        <section
+          v-if="isSectionVisible('exp')"
+          class="chart-section"
+          @pointerenter="setHoverChart('exp')"
+        >
           <div class="y-axis-title y-axis-title-expansion" aria-hidden="true">
-            {{ expansionChartTitle }}
+            {{ displayExpansionChartTitle }}
           </div>
           <div class="chart-wrap">
             <svg
               class="hp-chart"
+              data-chart-id="exp"
               :class="{ 'hp-chart--overview': isOverviewMode }"
               :viewBox="`0 0 ${chartWidth} ${chartHeight}`"
               :style="{
@@ -974,7 +1760,7 @@ watch(phaseSearchQuery, () => {
                 minWidth: isDetailMode ? `${chartWidth}px` : undefined,
               }"
               role="img"
-              :aria-label="expansionAriaLabel"
+              :aria-label="displayExpansionAriaLabel"
             >
               <line
                 :x1="chartPadding.left"
@@ -998,15 +1784,17 @@ watch(phaseSearchQuery, () => {
                   :x2="chartPadding.left + plotWidth"
                   :y2="valueToY(tick, expansionRange.min, expansionRange.max)"
                   :class="isExpansionBaselineTick(tick) ? 'grid-line grid-line-baseline' : 'grid-line'"
+                  :style="isExpansionBaselineTick(tick) ? { stroke: '#e85d4c' } : undefined"
                 />
                 <text
                   :x="chartPadding.left - 10"
                   :y="valueToY(tick, expansionRange.min, expansionRange.max) + 4"
                   class="axis-label axis-label-y"
                   :class="{ 'axis-label-y-baseline': isExpansionBaselineTick(tick) }"
+                  :style="isExpansionBaselineTick(tick) ? { fill: '#e85d4c' } : undefined"
                   text-anchor="end"
                 >
-                  {{ formatExpansion(tick) }}
+                  {{ formatExpansionTick(tick) }}
                 </text>
               </g>
 
@@ -1017,13 +1805,15 @@ watch(phaseSearchQuery, () => {
                   :x2="chartPadding.left + plotWidth"
                   :y2="expansionBaselineY"
                   class="baseline-line"
+                  style="stroke: #e85d4c"
                 />
                 <text
                   :x="chartPadding.left + plotWidth + 6"
                   :y="expansionBaselineY + 4"
                   class="baseline-label"
+                  style="fill: #e85d4c"
                 >
-                  基准 1
+                  {{ expansionBaselineLabel }}
                 </text>
               </g>
 
@@ -1037,7 +1827,6 @@ watch(phaseSearchQuery, () => {
                 class="column-hit"
                 :class="{ 'column-hit--clickable': enablePointClick }"
                 @pointerenter="setHover(zone.index)"
-                @pointerdown.stop
                 @click="onPointClick(zone.index, $event)"
               />
 
@@ -1072,7 +1861,7 @@ watch(phaseSearchQuery, () => {
                   :class="{ 'point-value-expansion-active': hoverIndex === point.index }"
                   text-anchor="middle"
                 >
-                  {{ formatExpansion(point.value) }}
+                  {{ formatExpansionValue(point.value) }}
                 </text>
               </g>
 
@@ -1145,25 +1934,523 @@ watch(phaseSearchQuery, () => {
             </svg>
           </div>
         </section>
+
+        <template v-for="series in scoreOverlaySeries" :key="`exp-${series.marker.id}`">
+        <section
+          v-if="isSectionVisible(`score-exp-${series.marker.id}`)"
+          class="chart-section"
+          @pointerenter="setHoverChart(`score-exp-${series.marker.id}`)"
+        >
+          <div
+            class="y-axis-title y-axis-title-expansion y-axis-title-score"
+            :style="{ color: series.marker.color }"
+            aria-hidden="true"
+          >
+            {{ series.marker.shortLabel }}相对膨胀
+          </div>
+          <div class="chart-wrap">
+            <svg
+              class="hp-chart"
+              :data-chart-id="`score-exp-${series.marker.id}`"
+              :class="{ 'hp-chart--overview': isOverviewMode }"
+              :viewBox="`0 0 ${chartWidth} ${chartHeight}`"
+              :style="{
+                height: `${chartHeight}px`,
+                width: isOverviewMode ? '100%' : undefined,
+                minWidth: isDetailMode ? `${chartWidth}px` : undefined,
+              }"
+              role="img"
+              :aria-label="`${series.marker.label}相对膨胀折线图`"
+            >
+              <line
+                :x1="chartPadding.left"
+                :y1="chartPadding.top + plotHeight"
+                :x2="chartPadding.left + plotWidth"
+                :y2="chartPadding.top + plotHeight"
+                class="axis-line"
+              />
+              <line
+                :x1="chartPadding.left"
+                :y1="chartPadding.top"
+                :x2="chartPadding.left"
+                :y2="chartPadding.top + plotHeight"
+                class="axis-line"
+              />
+
+              <g v-for="tick in series.expansionYTicks" :key="`${series.marker.id}-tick-${tick}`">
+                <line
+                  :x1="chartPadding.left"
+                  :y1="valueToY(tick, series.expansionRange.min, series.expansionRange.max)"
+                  :x2="chartPadding.left + plotWidth"
+                  :y2="valueToY(tick, series.expansionRange.min, series.expansionRange.max)"
+                  :class="isExpansionBaselineTick(tick) ? 'grid-line grid-line-baseline' : 'grid-line'"
+                  :style="isExpansionBaselineTick(tick) ? { stroke: series.marker.color } : undefined"
+                />
+                <text
+                  :x="chartPadding.left - 10"
+                  :y="valueToY(tick, series.expansionRange.min, series.expansionRange.max) + 4"
+                  class="axis-label axis-label-y"
+                  :class="{ 'axis-label-y-baseline': isExpansionBaselineTick(tick) }"
+                  :style="isExpansionBaselineTick(tick) ? { fill: series.marker.color } : undefined"
+                  text-anchor="end"
+                >
+                  {{ formatExpansionTick(tick) }}
+                </text>
+              </g>
+
+              <g v-if="series.expansionBaselineVisible">
+                <line
+                  :x1="chartPadding.left"
+                  :y1="series.expansionBaselineY"
+                  :x2="chartPadding.left + plotWidth"
+                  :y2="series.expansionBaselineY"
+                  class="baseline-line"
+                  :style="{ stroke: series.marker.color }"
+                />
+              </g>
+
+              <rect
+                v-for="zone in columnZones"
+                :key="`${series.marker.id}-zone-${zone.index}`"
+                :x="zone.x1"
+                y="0"
+                :width="zone.width"
+                :height="chartHeight"
+                class="column-hit"
+                :class="{ 'column-hit--clickable': enablePointClick }"
+                @pointerenter="setHover(zone.index)"
+                @click="onPointClick(zone.index, $event)"
+              />
+
+              <line
+                v-if="hoverIndex !== null && series.expansionChartPoints[hoverIndex]"
+                :x1="series.expansionChartPoints[hoverIndex]!.x"
+                :y1="chartPadding.top"
+                :x2="series.expansionChartPoints[hoverIndex]!.x"
+                :y2="chartPadding.top + plotHeight"
+                class="hover-guide hover-guide-expansion"
+                :style="{ stroke: series.marker.color }"
+              />
+
+              <path
+                v-if="series.expansionLinePath"
+                :d="series.expansionLinePath"
+                class="line-path line-path-score"
+                :style="{ stroke: series.marker.color }"
+              />
+
+              <g
+                v-for="point in series.expansionChartPoints"
+                :key="`${series.marker.id}-exp-${point.label}`"
+                class="point-group"
+              >
+                <circle
+                  :cx="point.x"
+                  :cy="point.y"
+                  :r="hoverIndex === point.index ? 9 : isOverviewMode ? 4 : 5"
+                  class="line-point line-point-score"
+                  :class="{ active: hoverIndex === point.index }"
+                  :style="{ fill: series.marker.color, stroke: series.marker.color }"
+                />
+                <text
+                  v-if="shouldShowPointValue(point.index)"
+                  :x="point.x"
+                  :y="point.y - 16"
+                  class="point-value"
+                  text-anchor="middle"
+                  :style="{ fill: series.marker.color }"
+                >
+                  {{ formatExpansionValue(point.value) }}
+                </text>
+              </g>
+
+              <g
+                v-for="point in series.expansionChartPoints"
+                v-show="shouldRenderLabelLayer(point.index, 'base')"
+                :key="`${series.marker.id}-${point.label}-label`"
+              >
+                <text
+                  :x="point.x"
+                  :y="getVersionLabelY(point.index)"
+                  class="axis-label axis-label-x"
+                  :class="{ 'axis-label-x--compact': isOverviewMode }"
+                  text-anchor="middle"
+                >
+                  {{ point.label }}
+                </text>
+                <text
+                  v-if="showDates"
+                  :x="point.x"
+                  :y="getDateLabelY(point.index)"
+                  class="axis-label axis-date"
+                  :class="{ 'axis-date--compact': isOverviewMode }"
+                  text-anchor="middle"
+                >
+                  <tspan :x="point.x" dy="0">{{ point.dateStart }}</tspan>
+                  <tspan v-if="point.dateEnd" :x="point.x" dy="12">{{ point.dateEnd }}</tspan>
+                </text>
+              </g>
+            </svg>
+          </div>
+        </section>
+        </template>
+
+        <section
+          v-if="showHpCoeffCharts && isSectionVisible('coeff')"
+          class="chart-section"
+          @pointerenter="setHoverChart('coeff')"
+        >
+          <div class="y-axis-title y-axis-title-coeff" aria-hidden="true">{{ COEFF_CHART_TITLE }}</div>
+          <div class="chart-wrap">
+            <svg
+              class="hp-chart"
+              data-chart-id="coeff"
+              :class="{ 'hp-chart--overview': isOverviewMode }"
+              :viewBox="`0 0 ${chartWidth} ${chartHeight}`"
+              :style="{
+                height: `${chartHeight}px`,
+                width: isOverviewMode ? '100%' : undefined,
+                minWidth: isDetailMode ? `${chartWidth}px` : undefined,
+              }"
+              role="img"
+              :aria-label="COEFF_CHART_TITLE"
+            >
+              <line
+                :x1="chartPadding.left"
+                :y1="chartPadding.top + plotHeight"
+                :x2="chartPadding.left + plotWidth"
+                :y2="chartPadding.top + plotHeight"
+                class="axis-line"
+              />
+              <line
+                :x1="chartPadding.left"
+                :y1="chartPadding.top"
+                :x2="chartPadding.left"
+                :y2="chartPadding.top + plotHeight"
+                class="axis-line"
+              />
+
+              <g v-for="tick in coeffYTicks" :key="`coeff-${tick}`">
+                <line
+                  :x1="chartPadding.left"
+                  :y1="valueToY(tick, coeffRange.min, coeffRange.max)"
+                  :x2="chartPadding.left + plotWidth"
+                  :y2="valueToY(tick, coeffRange.min, coeffRange.max)"
+                  class="grid-line"
+                />
+                <text
+                  :x="chartPadding.left - 10"
+                  :y="valueToY(tick, coeffRange.min, coeffRange.max) + 4"
+                  class="axis-label axis-label-y"
+                  text-anchor="end"
+                >
+                  {{ formatCoeffPercent(tick) }}
+                </text>
+              </g>
+
+              <rect
+                v-for="zone in columnZones"
+                :key="`coeff-zone-${zone.index}`"
+                :x="zone.x1"
+                y="0"
+                :width="zone.width"
+                :height="chartHeight"
+                class="column-hit"
+                :class="{ 'column-hit--clickable': enablePointClick }"
+                @pointerenter="setHover(zone.index)"
+                @click="onPointClick(zone.index, $event)"
+              />
+
+              <line
+                v-if="hoveredCoeffPoint?.valid"
+                :x1="hoveredCoeffPoint.x"
+                :y1="chartPadding.top"
+                :x2="hoveredCoeffPoint.x"
+                :y2="chartPadding.top + plotHeight"
+                class="hover-guide hover-guide-coeff"
+              />
+
+              <path v-if="coeffLinePath" :d="coeffLinePath" class="line-path line-path-coeff" />
+
+              <g
+                v-for="point in coeffChartPoints"
+                v-show="point.valid"
+                :key="`coeff-${point.label}`"
+                class="point-group"
+              >
+                <circle
+                  :cx="point.x"
+                  :cy="point.y"
+                  :r="hoverIndex === point.index ? 9 : isOverviewMode ? 4 : 5"
+                  class="line-point line-point-coeff"
+                  :class="{ active: hoverIndex === point.index }"
+                />
+                <text
+                  v-if="shouldShowPointValue(point.index)"
+                  :x="point.x"
+                  :y="point.y - 16"
+                  class="point-value"
+                  :class="{ 'point-value-coeff-active': hoverIndex === point.index }"
+                  text-anchor="middle"
+                >
+                  {{ formatCoeffPercent(point.value) }}
+                </text>
+              </g>
+
+              <g
+                v-for="point in coeffChartPoints"
+                v-show="shouldRenderLabelLayer(point.index, 'base')"
+                :key="`coeff-${point.label}-label`"
+              >
+                <text
+                  :x="point.x"
+                  :y="getVersionLabelY(point.index)"
+                  class="axis-label axis-label-x"
+                  :class="{
+                    'axis-active-coeff': hoverIndex === point.index,
+                    'axis-label-x--compact': isOverviewMode,
+                  }"
+                  text-anchor="middle"
+                >
+                  {{ point.label }}
+                </text>
+                <text
+                  v-if="showDates"
+                  :x="point.x"
+                  :y="getDateLabelY(point.index)"
+                  class="axis-label axis-date"
+                  :class="{
+                    'axis-active-coeff': hoverIndex === point.index,
+                    'axis-date--compact': isOverviewMode,
+                  }"
+                  text-anchor="middle"
+                >
+                  <tspan :x="point.x" dy="0">{{ point.dateStart }}</tspan>
+                  <tspan v-if="point.dateEnd" :x="point.x" dy="12">{{ point.dateEnd }}</tspan>
+                </text>
+              </g>
+
+              <g
+                v-for="point in coeffChartPoints"
+                v-show="shouldRenderLabelLayer(point.index, 'active')"
+                :key="`coeff-${point.label}-label-active`"
+                class="axis-label-layer-active"
+              >
+                <text
+                  :x="point.x"
+                  :y="getVersionLabelY(point.index)"
+                  class="axis-label axis-label-x axis-label-x--raised"
+                  :class="{
+                    'axis-active-coeff': hoverIndex === point.index,
+                    'axis-label-x--compact': isOverviewMode,
+                  }"
+                  text-anchor="middle"
+                >
+                  {{ point.label }}
+                </text>
+                <text
+                  v-if="showDates"
+                  :x="point.x"
+                  :y="getDateLabelY(point.index)"
+                  class="axis-label axis-date axis-date--raised"
+                  :class="{
+                    'axis-active-coeff': hoverIndex === point.index,
+                    'axis-date--compact': isOverviewMode,
+                  }"
+                  text-anchor="middle"
+                >
+                  <tspan :x="point.x" dy="0">{{ point.dateStart }}</tspan>
+                  <tspan v-if="point.dateEnd" :x="point.x" dy="12">{{ point.dateEnd }}</tspan>
+                </text>
+              </g>
+            </svg>
+          </div>
+        </section>
+
+        <section
+          v-if="showHpCoeffCharts && isSectionVisible('coeff-exp')"
+          class="chart-section"
+          @pointerenter="setHoverChart('coeff-exp')"
+        >
+            <div class="y-axis-title y-axis-title-coeff" aria-hidden="true">
+              {{ COEFF_EXPANSION_CHART_TITLE }}
+            </div>
+            <div class="chart-wrap">
+              <svg
+                class="hp-chart"
+                data-chart-id="coeff-exp"
+                :class="{ 'hp-chart--overview': isOverviewMode }"
+                :viewBox="`0 0 ${chartWidth} ${chartHeight}`"
+                :style="{
+                  height: `${chartHeight}px`,
+                  width: isOverviewMode ? '100%' : undefined,
+                  minWidth: isDetailMode ? `${chartWidth}px` : undefined,
+                }"
+                role="img"
+                :aria-label="COEFF_EXPANSION_CHART_TITLE"
+              >
+                <line
+                  :x1="chartPadding.left"
+                  :y1="chartPadding.top + plotHeight"
+                  :x2="chartPadding.left + plotWidth"
+                  :y2="chartPadding.top + plotHeight"
+                  class="axis-line"
+                />
+                <line
+                  :x1="chartPadding.left"
+                  :y1="chartPadding.top"
+                  :x2="chartPadding.left"
+                  :y2="chartPadding.top + plotHeight"
+                  class="axis-line"
+                />
+
+                <g v-for="tick in coeffExpansionYTicks" :key="`coeff-exp-${tick}`">
+                  <line
+                    :x1="chartPadding.left"
+                    :y1="valueToY(tick, coeffExpansionRange.min, coeffExpansionRange.max)"
+                    :x2="chartPadding.left + plotWidth"
+                    :y2="valueToY(tick, coeffExpansionRange.min, coeffExpansionRange.max)"
+                    :class="Math.abs(tick) < 1e-6 ? 'grid-line grid-line-baseline-coeff' : 'grid-line'"
+                  />
+                  <text
+                    :x="chartPadding.left - 10"
+                    :y="valueToY(tick, coeffExpansionRange.min, coeffExpansionRange.max) + 4"
+                    class="axis-label axis-label-y"
+                    :class="{ 'axis-label-y-coeff': Math.abs(tick) < 1e-6 }"
+                    text-anchor="end"
+                  >
+                    {{ formatCoeffDelta(tick) }}
+                  </text>
+                </g>
+
+                <g v-if="coeffExpansionBaselineVisible">
+                  <line
+                    :x1="chartPadding.left"
+                    :y1="coeffExpansionBaselineY"
+                    :x2="chartPadding.left + plotWidth"
+                    :y2="coeffExpansionBaselineY"
+                    class="baseline-line baseline-line-coeff"
+                  />
+                </g>
+
+                <rect
+                  v-for="zone in columnZones"
+                  :key="`coeff-exp-zone-${zone.index}`"
+                  :x="zone.x1"
+                  y="0"
+                  :width="zone.width"
+                  :height="chartHeight"
+                  class="column-hit"
+                  :class="{ 'column-hit--clickable': enablePointClick }"
+                  @pointerenter="setHover(zone.index)"
+                  @click="onPointClick(zone.index, $event)"
+                />
+
+                <line
+                  v-if="hoveredCoeffExpansionPoint?.valid"
+                  :x1="hoveredCoeffExpansionPoint.x"
+                  :y1="chartPadding.top"
+                  :x2="hoveredCoeffExpansionPoint.x"
+                  :y2="chartPadding.top + plotHeight"
+                  class="hover-guide hover-guide-coeff"
+                />
+
+                <path
+                  v-if="coeffExpansionLinePath"
+                  :d="coeffExpansionLinePath"
+                  class="line-path line-path-coeff"
+                />
+
+                <g
+                  v-for="point in coeffExpansionChartPoints"
+                  v-show="point.valid"
+                  :key="`coeff-exp-${point.label}`"
+                  class="point-group"
+                >
+                  <circle
+                    :cx="point.x"
+                    :cy="point.y"
+                    :r="hoverIndex === point.index ? 9 : isOverviewMode ? 4 : 5"
+                    class="line-point line-point-coeff"
+                    :class="{ active: hoverIndex === point.index }"
+                  />
+                  <text
+                    v-if="shouldShowPointValue(point.index)"
+                    :x="point.x"
+                    :y="point.y - 16"
+                    class="point-value"
+                    :class="{ 'point-value-coeff-active': hoverIndex === point.index }"
+                    text-anchor="middle"
+                  >
+                    {{ formatCoeffDelta(point.value) }}
+                  </text>
+                </g>
+
+                <g
+                  v-for="point in coeffExpansionChartPoints"
+                  v-show="shouldRenderLabelLayer(point.index, 'base')"
+                  :key="`coeff-exp-${point.label}-label`"
+                >
+                  <text
+                    :x="point.x"
+                    :y="getVersionLabelY(point.index)"
+                    class="axis-label axis-label-x"
+                    :class="{
+                      'axis-active-coeff': hoverIndex === point.index,
+                      'axis-label-x--compact': isOverviewMode,
+                    }"
+                    text-anchor="middle"
+                  >
+                    {{ point.label }}
+                  </text>
+                  <text
+                    v-if="showDates"
+                    :x="point.x"
+                    :y="getDateLabelY(point.index)"
+                    class="axis-label axis-date"
+                    :class="{
+                      'axis-active-coeff': hoverIndex === point.index,
+                      'axis-date--compact': isOverviewMode,
+                    }"
+                    text-anchor="middle"
+                  >
+                    <tspan :x="point.x" dy="0">{{ point.dateStart }}</tspan>
+                    <tspan v-if="point.dateEnd" :x="point.x" dy="12">{{ point.dateEnd }}</tspan>
+                  </text>
+                </g>
+              </svg>
+            </div>
+          </section>
       </div>
     </div>
 
     <p v-if="isDetailMode" class="scroll-hint">
-      详细模式：按住图表拖拽，或使用滚轮横向浏览；<template v-if="isHoverPreviewEnabled"
-        >悬停数据点预览详情，</template
-      ><template v-if="pointClickHint">{{ pointClickHint }}</template
-      ><template v-else-if="enablePointClick">点击打开往期详细</template
-      ><template v-if="isHoverPreviewEnabled">；按 H 隐藏小窗</template
-      ><template v-else-if="showRemoveModeToggle">；点击数据点可移除期数</template>
+      <span class="hint-desktop">
+        详细模式：左右拖拽或横向滚动可查看全部期数；底部期数标签完整可见。
+        <template v-if="isHoverPreviewEnabled">悬停数据点预览详情，</template>
+        <template v-if="pointClickHint">{{ pointClickHint }}</template>
+        <template v-else-if="enablePointClick">点击打开往期详细</template>
+        <template v-if="isHoverPreviewEnabled">；按 H 隐藏小窗</template>
+        <template v-else-if="showRemoveModeToggle">；点击数据点可移除期数</template>
+      </span>
+      <span class="hint-mobile">
+        左右滑动查看期数；点选数据点打开详情
+        <template v-if="isHoverPreviewEnabled">（可勾选隐藏小窗）</template>
+      </span>
     </p>
     <p v-else-if="enablePointClick && !isChartEmpty" class="scroll-hint">
-      {{ isHoverPreviewEnabled ? '悬停数据点预览详情，' : '' }}{{ pointClickHint ?? '点击打开往期详细' }}<template
-        v-if="isHoverPreviewEnabled"
-        >；按 H 隐藏小窗</template
-      ><template v-if="isOverviewMode">；按 D 隐藏日期</template>
+      <span class="hint-desktop">
+        {{ isHoverPreviewEnabled ? '悬停数据点预览详情，' : '' }}{{ pointClickHint ?? '点击打开往期详细'
+        }}<template v-if="isHoverPreviewEnabled">；按 H 隐藏小窗</template
+        ><template v-if="isOverviewMode">；按 D 隐藏日期</template>
+      </span>
+      <span class="hint-mobile">点选数据点打开详情<template v-if="isOverviewMode">；可隐藏日期</template></span>
     </p>
     <p v-else-if="isHoverPreviewEnabled && !isChartEmpty" class="scroll-hint">
-      悬停数据点预览详情；按 H 隐藏小窗<template v-if="isOverviewMode">，按 D 隐藏日期</template>
+      <span class="hint-desktop"
+        >悬停数据点预览详情；按 H 隐藏小窗<template v-if="isOverviewMode">，按 D 隐藏日期</template></span
+      >
+      <span class="hint-mobile">点选数据点预览详情<template v-if="isOverviewMode">；可隐藏日期</template></span>
     </p>
 
     <ChartPointRoomBuffTooltip
@@ -1173,10 +2460,11 @@ watch(phaseSearchQuery, () => {
       :position-style="bossTooltipStyle"
     />
 
-    <ChartPointBossTooltip
-      :visible="showBossTooltip && isBossPreviewEnabled"
+    <ChartPointSeriesTooltip
+      :visible="showSeriesTooltip && isSeriesTooltipEnabled"
       :phase-label="hoveredChartPoint?.label ?? ''"
-      :bosses="hoveredBossPreviews"
+      :chart-title="seriesTooltipTitle"
+      :rows="seriesTooltipRows"
       :position-style="bossTooltipStyle"
     />
   </div>
@@ -1194,6 +2482,12 @@ watch(phaseSearchQuery, () => {
   overflow: hidden;
   position: relative;
   isolation: isolate;
+}
+
+.charts-panel--borderless {
+  border: none;
+  border-radius: 0;
+  background: transparent;
 }
 
 .chart-toolbar {
@@ -1325,20 +2619,32 @@ watch(phaseSearchQuery, () => {
   flex: 1;
   min-height: 0;
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: auto;
   cursor: grab;
-  touch-action: pan-x;
-  scrollbar-width: none;
+  touch-action: pan-x pan-y;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-border-hover) 70%, transparent) transparent;
 }
 
 .charts-scroll--overview {
   overflow-x: hidden;
+  overflow-y: auto;
   cursor: default;
   touch-action: auto;
 }
 
 .charts-scroll::-webkit-scrollbar {
-  display: none;
+  height: 10px;
+  width: 10px;
+}
+
+.charts-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-border-hover) 65%, transparent);
+  border-radius: 999px;
+}
+
+.charts-scroll::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .charts-scroll.is-dragging {
@@ -1352,9 +2658,8 @@ watch(phaseSearchQuery, () => {
   gap: 10px;
   width: max-content;
   min-width: 100%;
-  height: 100%;
   min-height: 100%;
-  padding: 0.5rem 0.35rem;
+  padding: 0.35rem 0.35rem 0.55rem;
   box-sizing: border-box;
 }
 
@@ -1363,8 +2668,7 @@ watch(phaseSearchQuery, () => {
 }
 
 .chart-section {
-  flex: 1;
-  min-height: 0;
+  flex: 0 0 auto;
   display: flex;
   align-items: stretch;
   gap: 0.35rem;
@@ -1388,22 +2692,92 @@ watch(phaseSearchQuery, () => {
 }
 
 .y-axis-title-hp {
-  color: #e85d4c;
+  color: #111111;
+}
+
+html[data-theme='dark'] .y-axis-title-hp {
+  color: #ffffff;
 }
 
 .y-axis-title-expansion {
-  color: #5b9bd5;
+  color: #e85d4c;
+}
+
+.y-axis-title-coeff {
+  color: #9b6bff;
+}
+
+.chart-visibility {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.85rem;
+  padding: 0.35rem 0.75rem 0.55rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.chart-visibility__label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--color-text);
+  opacity: 0.72;
+}
+
+.chart-visibility__item {
+  font-size: 0.78rem;
+}
+
+.score-legend {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 1rem;
+  padding: 0.35rem 0.75rem 0.55rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.score-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--color-text);
+}
+
+.score-legend-swatch {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.score-legend-swatch--total {
+  background: #e85d4c;
+}
+
+.line-path-score {
+  fill: none;
+  stroke-width: 2.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.92;
+}
+
+.line-point-score {
+  stroke-width: 1.5;
+  fill-opacity: 0.95;
 }
 
 .chart-wrap {
   flex: 1;
   min-width: 0;
-  min-height: 0;
+  overflow: visible;
 }
 
 .hp-chart {
   display: block;
-  height: 100%;
+  overflow: visible;
 }
 
 .hp-chart--overview {
@@ -1432,29 +2806,46 @@ watch(phaseSearchQuery, () => {
 }
 
 .grid-line-baseline {
-  stroke: #5b9bd5;
+  stroke: #e85d4c;
+  stroke-width: 1.5;
+  stroke-dasharray: none;
+  opacity: 0.45;
+}
+
+.grid-line-baseline-coeff {
+  stroke: #9b6bff;
   stroke-width: 1.5;
   stroke-dasharray: none;
   opacity: 0.45;
 }
 
 .baseline-line {
-  stroke: #5b9bd5;
+  stroke: #e85d4c;
   stroke-width: 2;
   stroke-dasharray: 8 5;
   opacity: 0.9;
   pointer-events: none;
 }
 
+.baseline-line-coeff {
+  stroke: #9b6bff;
+}
+
 .baseline-label {
-  fill: #5b9bd5;
+  fill: #e85d4c;
   font-size: 10px;
   font-weight: 700;
   pointer-events: none;
 }
 
 .axis-label-y-baseline {
-  fill: #5b9bd5;
+  fill: #e85d4c;
+  font-weight: 700;
+  opacity: 1;
+}
+
+.axis-label-y-coeff {
+  fill: #9b6bff;
   font-weight: 700;
   opacity: 1;
 }
@@ -1480,7 +2871,11 @@ watch(phaseSearchQuery, () => {
 }
 
 .hover-guide-expansion {
-  stroke: #5b9bd5;
+  stroke: #e85d4c;
+}
+
+.hover-guide-coeff {
+  stroke: #9b6bff;
 }
 
 .line-path {
@@ -1496,7 +2891,11 @@ watch(phaseSearchQuery, () => {
 }
 
 .line-path-expansion {
-  stroke: #5b9bd5;
+  stroke: #e85d4c;
+}
+
+.line-path-coeff {
+  stroke: #9b6bff;
 }
 
 .point-group {
@@ -1513,7 +2912,11 @@ watch(phaseSearchQuery, () => {
 }
 
 .line-point-expansion {
-  fill: #5b9bd5;
+  fill: #e85d4c;
+}
+
+.line-point-coeff {
+  fill: #9b6bff;
 }
 
 .line-point.active {
@@ -1527,6 +2930,10 @@ watch(phaseSearchQuery, () => {
 
 .line-point-expansion.active {
   filter: drop-shadow(0 0 6px rgba(91, 155, 213, 0.55));
+}
+
+.line-point-coeff.active {
+  filter: drop-shadow(0 0 6px rgba(155, 107, 255, 0.55));
 }
 
 .point-value {
@@ -1545,7 +2952,14 @@ watch(phaseSearchQuery, () => {
 }
 
 .point-value-expansion-active {
-  fill: #5b9bd5;
+  fill: #e85d4c;
+  font-size: 14px;
+  font-weight: 700;
+  opacity: 1;
+}
+
+.point-value-coeff-active {
+  fill: #9b6bff;
   font-size: 14px;
   font-weight: 700;
   opacity: 1;
@@ -1578,7 +2992,12 @@ watch(phaseSearchQuery, () => {
 }
 
 .axis-active-expansion {
-  fill: #5b9bd5;
+  fill: #e85d4c;
+  font-size: 13px;
+}
+
+.axis-active-coeff {
+  fill: #9b6bff;
   font-size: 13px;
 }
 
@@ -1592,7 +3011,8 @@ watch(phaseSearchQuery, () => {
 }
 
 .axis-date.axis-active-hp,
-.axis-date.axis-active-expansion {
+.axis-date.axis-active-expansion,
+.axis-date.axis-active-coeff {
   opacity: 1;
   font-size: 11px;
   font-weight: 600;
@@ -1608,5 +3028,71 @@ watch(phaseSearchQuery, () => {
   stroke: var(--color-background-soft);
   stroke-width: 4px;
   stroke-linejoin: round;
+}
+
+.hint-mobile {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .chart-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.45rem;
+    padding: 0.5rem 0.55rem;
+  }
+
+  .toolbar-main {
+    gap: 0.45rem;
+  }
+
+  .toolbar-toggles {
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    justify-content: flex-start;
+  }
+
+  .phase-search {
+    width: 100%;
+  }
+
+  .phase-search-input {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+  }
+
+  .mode-btn {
+    min-width: 3.6rem;
+    padding: 0.35rem 0.65rem;
+  }
+
+  .shortcut-hint {
+    display: none;
+  }
+
+  .y-axis-title {
+    width: 1.35rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.02em;
+  }
+
+  .scroll-hint {
+    padding: 0.3rem 0.55rem 0.45rem;
+    font-size: 0.68rem;
+    line-height: 1.35;
+  }
+
+  .hint-desktop {
+    display: none;
+  }
+
+  .hint-mobile {
+    display: inline;
+  }
+
+  .date-toggle {
+    white-space: normal;
+  }
 }
 </style>

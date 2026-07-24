@@ -4,7 +4,12 @@ export type AdminScope =
   | 'defense-new'
   | 'deduction'
 
-export type AdminPanel = 'monster' | 'delete-monster' | 'buff' | 'delete-buff'
+export type AdminPanel =
+  | 'monster'
+  | 'delete-monster'
+  | 'buff'
+  | 'delete-buff'
+  | 'season-date'
 
 export type DefenseMonsterCategory = 'minion' | 'elite' | 'boss'
 

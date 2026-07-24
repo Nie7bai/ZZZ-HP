@@ -1,6 +1,8 @@
 export interface PanelStats {
   hp: number
   atk: number
+  /** 防御力（展示用，不进当前伤害公式） */
+  def: number
   critRate: number
   critDmg: number
   dmgBonus: number
@@ -13,6 +15,14 @@ export interface PanelStats {
   anomalyCritRate: number
   anomalyCritDmg: number
   anomalyDmgBonus: number
+  /** 异放暴击%（与异常分开展示，计算时并入异常暴击） */
+  anomalyReleaseCritRate: number
+  /** 异放爆伤% */
+  anomalyReleaseCritDmg: number
+  /** 异放倍率% */
+  anomalyReleaseMult: number
+  /** 异放增伤% */
+  anomalyReleaseDmgBonus: number
   /** 直伤倍率%，默认 100（即 ×1） */
   directDmgMult: number
   /** 异常倍率% */
@@ -60,7 +70,7 @@ export interface AffixCounts {
   mastery: number
 }
 
-export type PanelCalcMode = 'panel' | 'affix'
+export type PanelCalcMode = 'panel' | 'affix' | 'optimal'
 
 export type DriveDiscSlot4StatId =
   | 'critDmg'
@@ -133,6 +143,7 @@ export function createDefaultExternalPanel(): PanelStats {
   return {
     hp: 9873,
     atk: 4008,
+    def: 0,
     critRate: 48.2,
     critDmg: 186,
     dmgBonus: 10,
@@ -145,6 +156,10 @@ export function createDefaultExternalPanel(): PanelStats {
     anomalyCritRate: 0,
     anomalyCritDmg: 0,
     anomalyDmgBonus: 0,
+    anomalyReleaseCritRate: 0,
+    anomalyReleaseCritDmg: 0,
+    anomalyReleaseMult: 0,
+    anomalyReleaseDmgBonus: 0,
     directDmgMult: 100,
     anomalyMult: 0,
     disorderBaseMult: 0,

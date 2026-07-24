@@ -23,7 +23,7 @@ const fallback = computed(() => props.name.trim().slice(0, 1) || '?')
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  border: 1px solid #3a404b;
+  border: 1px solid var(--calc-border, #3a404b);
   background: linear-gradient(135deg, #263449, #1f2736);
   display: inline-flex;
   align-items: center;

@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import AdminBuffStatFieldGrid from '@/components/admin/calculator/AdminBuffStatFieldGrid.vue'
+import AdminBuffEffectEditor from '@/components/admin/calculator/AdminBuffEffectEditor.vue'
 import AdminCalculatorAvatarField from '@/components/admin/calculator/AdminCalculatorAvatarField.vue'
 import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import type { BangbooBuffEditSectionId } from '@/constants/bangbooBuffEditNav'
-import type { BangbooBuffDoc, BuffStatModifiers } from '@/types/calculator'
+import type { BangbooBuffDoc, BuffEffect, BuffEffectBlock } from '@/types/calculator'
 import {
-  createEmptyBuffStatModifiers,
-  createEmptyRefinementMods,
-  REFINEMENT_RANKS,
-} from '@/utils/calculatorUi'
+  createEmptyBuffEffectBlock,
+  flatModsToEffects,
+  flattenEffectBlocks,
+  normalizeBuffEffectBlocks,
+  wrapEffectsAsBlocks,
+} from '@/utils/buffEffect'
+import { createEmptyBuffStatModifiers, REFINEMENT_RANKS } from '@/utils/calculatorUi'
 
 const store = useCalculatorBuffStore()
 const { bangboos } = storeToRefs(store)
@@ -23,12 +26,17 @@ const error = ref('')
 const saving = ref(false)
 const activeRefinementRank = ref(1)
 const avatarFieldRef = ref<InstanceType<typeof AdminCalculatorAvatarField> | null>(null)
+const panelRootRef = ref<HTMLElement | null>(null)
+
+function emptyRefinementBlocks(): BuffEffectBlock[][] {
+  return REFINEMENT_RANKS.map(() => [])
+}
 
 const form = ref({
   id: '',
   name: '',
-  fixedMods: createEmptyBuffStatModifiers(),
-  refinementForm: createEmptyRefinementMods(),
+  effectBlocks: [] as BuffEffectBlock[],
+  refinementBlocks: emptyRefinementBlocks(),
 })
 
 const filteredBangboos = computed(() => {
@@ -37,26 +45,38 @@ const filteredBangboos = computed(() => {
   return bangboos.value.filter((item) => `${item.name}${item.id}`.includes(keyword))
 })
 
-const activeRefinementForm = computed(
-  () => form.value.refinementForm[activeRefinementRank.value - 1]!,
-)
+const activeRefinementBlocks = computed({
+  get: () => form.value.refinementBlocks[activeRefinementRank.value - 1]!,
+  set: (value: BuffEffectBlock[]) => {
+    form.value.refinementBlocks[activeRefinementRank.value - 1] = value
+  },
+})
 
-function cloneMods(mods: BuffStatModifiers): BuffStatModifiers {
-  return { ...mods }
-}
-
-function loadRefinementForm(refinementMods: BangbooBuffDoc['refinementMods']) {
-  return REFINEMENT_RANKS.map((_, index) =>
-    cloneMods(refinementMods[index] ?? createEmptyBuffStatModifiers()),
+function toBlocks(effects: BuffEffect[]): BuffEffectBlock[] {
+  return wrapEffectsAsBlocks(effects).map((block) =>
+    createEmptyBuffEffectBlock({
+      ...block,
+      effects: block.effects.map((e) => ({
+        ...e,
+        applyTarget: 'team',
+      })),
+    }),
   )
 }
 
 function loadForm(doc: BangbooBuffDoc) {
+  const effects =
+    doc.effects?.length ? doc.effects : flatModsToEffects(doc.fixedMods, 'team')
+  const refinementBlocks = REFINEMENT_RANKS.map((_, index) => {
+    const list = doc.refinementEffects?.[index]
+    if (list?.length) return toBlocks(list)
+    return toBlocks(flatModsToEffects(doc.refinementMods[index] ?? createEmptyBuffStatModifiers(), 'team'))
+  })
   form.value = {
     id: doc.id,
     name: doc.name,
-    fixedMods: cloneMods(doc.fixedMods),
-    refinementForm: loadRefinementForm(doc.refinementMods),
+    effectBlocks: toBlocks(effects),
+    refinementBlocks,
   }
   activeRefinementRank.value = 1
   void nextTick(() => {
@@ -68,8 +88,8 @@ function resetForm() {
   form.value = {
     id: '',
     name: '',
-    fixedMods: createEmptyBuffStatModifiers(),
-    refinementForm: createEmptyRefinementMods(),
+    effectBlocks: [],
+    refinementBlocks: emptyRefinementBlocks(),
   }
   activeRefinementRank.value = 1
   selectedId.value = ''
@@ -84,6 +104,15 @@ function selectItem(id: string) {
 
 function createNew() {
   resetForm()
+}
+
+function effectsToMods(list: BuffEffect[]) {
+  const mods = createEmptyBuffStatModifiers()
+  for (const effect of list) {
+    const amount = Number(effect.value ?? effect.valuePerStack) || 0
+    if (amount) mods[effect.stat] += amount
+  }
+  return mods
 }
 
 async function saveItem() {
@@ -110,12 +139,20 @@ async function saveItem() {
   saving.value = true
   try {
     const avatar_image = (await avatarFieldRef.value?.resolveAvatarImageOnSave()) ?? null
+    const effectBlocks = normalizeBuffEffectBlocks(form.value.effectBlocks)
+    const refinementBlocks = form.value.refinementBlocks.map((blocks) =>
+      normalizeBuffEffectBlocks(blocks),
+    )
+    const effects = flattenEffectBlocks(effectBlocks)
+    const refinementEffects = refinementBlocks.map((blocks) => flattenEffectBlocks(blocks))
     const doc: BangbooBuffDoc = {
       id,
       name,
       avatar_image,
-      fixedMods: cloneMods(form.value.fixedMods),
-      refinementMods: form.value.refinementForm.map((mods) => cloneMods(mods)),
+      effects,
+      refinementEffects,
+      fixedMods: effectsToMods(effects),
+      refinementMods: refinementEffects.map((list) => effectsToMods(list)),
     }
 
     if (isEditing && selectedId.value !== id) {
@@ -134,45 +171,30 @@ async function saveItem() {
 
 async function removeItem() {
   if (!selectedId.value) return
-  const current = bangboos.value.find((item) => item.id === selectedId.value)
-  if (!current) return
-  if (!window.confirm(`确定删除邦布「${current.name}」吗？`)) return
-
+  if (!window.confirm(`确认删除邦布「${form.value.name || selectedId.value}」？`)) return
   try {
     await store.deleteBangboo(selectedId.value)
-    message.value = `已删除邦布「${current.name}」`
-    const next = bangboos.value[0]
-    if (next) {
-      selectItem(next.id)
-    } else {
-      resetForm()
-    }
+    message.value = '已删除'
+    resetForm()
   } catch (err) {
     error.value = err instanceof Error ? err.message : '删除失败'
   }
 }
 
+async function scrollToSection(sectionId: BangbooBuffEditSectionId) {
+  await nextTick()
+  panelRootRef.value
+    ?.querySelector<HTMLElement>(`#${sectionId}`)
+    ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 watch(
   bangboos,
   (list) => {
-    if (!list.length) {
-      resetForm()
-      return
-    }
-    if (!selectedId.value || !list.some((item) => item.id === selectedId.value)) {
-      selectItem(list[0]!.id)
-    }
+    if (!selectedId.value && list[0]) selectItem(list[0].id)
   },
   { immediate: true },
 )
-
-const panelRootRef = ref<HTMLElement | null>(null)
-
-async function scrollToSection(sectionId: BangbooBuffEditSectionId) {
-  await nextTick()
-  const target = panelRootRef.value?.querySelector<HTMLElement>(`#${sectionId}`)
-  target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-}
 
 defineExpose({ scrollToSection, saveItem, removeItem, selectedId, saving })
 </script>
@@ -181,7 +203,7 @@ defineExpose({ scrollToSection, saveItem, removeItem, selectedId, saving })
   <div ref="panelRootRef" class="editor-panel">
     <header class="panel-header">
       <h1 class="panel-title">编辑邦布增益</h1>
-      <p class="panel-desc">固定增益与精1至精5精炼增益均使用固定数值条目。</p>
+      <p class="panel-desc">邦布增益默认作用于全队（含主C）。</p>
     </header>
 
     <div class="editor-layout">
@@ -190,9 +212,7 @@ defineExpose({ scrollToSection, saveItem, removeItem, selectedId, saving })
           <span class="field-label">搜索邦布</span>
           <input v-model="search" type="text" class="field-input" placeholder="名称" />
         </label>
-
         <button type="button" class="secondary-btn" @click="createNew">+ 新增邦布</button>
-
         <div class="list-scroll">
           <button
             v-for="item in filteredBangboos"
@@ -209,35 +229,36 @@ defineExpose({ scrollToSection, saveItem, removeItem, selectedId, saving })
       </aside>
 
       <form class="editor-form" @submit.prevent="saveItem">
-        <div id="admin-bangboo-basic" class="editor-anchor">
+        <section id="admin-bangboo-basic" class="mindscape-section editor-anchor">
+          <header class="mindscape-header">
+            <h3>基础信息</h3>
+          </header>
           <div class="field-row">
             <label class="field">
               <span class="field-label">ID *</span>
-              <input v-model="form.id" type="text" class="field-input" placeholder="如 resonaboo" />
+              <input v-model="form.id" class="field-input" />
             </label>
             <label class="field">
               <span class="field-label">名称 *</span>
-              <input v-model="form.name" type="text" class="field-input" placeholder="邦布名称" />
+              <input v-model="form.name" class="field-input" />
             </label>
           </div>
-        </div>
-
-        <div id="admin-bangboo-avatar" class="editor-anchor">
-          <AdminCalculatorAvatarField ref="avatarFieldRef" />
-        </div>
+          <div id="admin-bangboo-avatar" class="editor-anchor">
+            <AdminCalculatorAvatarField ref="avatarFieldRef" category="bangboo" />
+          </div>
+        </section>
 
         <section id="admin-bangboo-fixed" class="mindscape-section editor-anchor">
           <header class="mindscape-header">
             <h3>固定增益</h3>
           </header>
-          <AdminBuffStatFieldGrid v-model="form.fixedMods" />
+          <AdminBuffEffectEditor v-model="form.effectBlocks" lock-apply-target="team" />
         </section>
 
         <section id="admin-bangboo-refinement" class="mindscape-section editor-anchor">
           <header class="mindscape-header">
             <h3>精炼增益</h3>
           </header>
-
           <div class="mindscape-tabs">
             <button
               v-for="rank in REFINEMENT_RANKS"
@@ -250,9 +271,7 @@ defineExpose({ scrollToSection, saveItem, removeItem, selectedId, saving })
               精{{ rank }}
             </button>
           </div>
-
-          <p class="mods-section-title">精{{ activeRefinementRank }}</p>
-          <AdminBuffStatFieldGrid v-model="activeRefinementForm" />
+          <AdminBuffEffectEditor v-model="activeRefinementBlocks" lock-apply-target="team" />
         </section>
 
         <p v-if="error" class="form-error">{{ error }}</p>

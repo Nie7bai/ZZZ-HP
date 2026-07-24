@@ -23,6 +23,10 @@ const filteredBangboos = computed(() => {
   if (!keyword) return selectableBangboos.value
   return selectableBangboos.value.filter((item) => item.name.includes(keyword))
 })
+
+const selectedBangboo = computed(() =>
+  selectableBangboos.value.find((item) => item.id === props.selectedId),
+)
 </script>
 
 <template>
@@ -30,10 +34,12 @@ const filteredBangboos = computed(() => {
     <header class="section-header">
       <div>
         <h2>邦布</h2>
-        <p class="section-desc">选择本次出分使用的邦布与精炼等级</p>
+        <p class="section-desc">选择本次出分使用的邦布与精炼等级；可不佩戴</p>
       </div>
       <input v-model="search" class="search-input" type="text" placeholder="搜索邦布..." />
     </header>
+
+    <p class="selected-bar">已选邦布 {{ selectedBangboo?.name ?? '未佩戴' }}</p>
 
     <div v-if="selectedId !== 'none'" class="refine-row">
       <span>精炼</span>
@@ -50,6 +56,15 @@ const filteredBangboos = computed(() => {
     </div>
 
     <div class="bangboo-grid">
+      <button
+        type="button"
+        class="bangboo-cell"
+        :class="{ active: selectedId === 'none' }"
+        @click="emit('select', 'none')"
+      >
+        <span class="bangboo-placeholder">—</span>
+        <span class="bangboo-name">不佩戴</span>
+      </button>
       <button
         v-for="bangboo in filteredBangboos"
         :key="bangboo.id"
@@ -107,6 +122,16 @@ const filteredBangboos = computed(() => {
   font-size: 0.88rem;
 }
 
+.selected-bar {
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  background: #0f1217;
+  border: 1px solid #2d323a;
+  font-size: 0.84rem;
+  color: #d5dae4;
+}
+
 .refine-row {
   display: flex;
   align-items: center;
@@ -154,6 +179,17 @@ const filteredBangboos = computed(() => {
   box-shadow: inset 0 0 0 1px rgba(201, 165, 92, 0.35);
 }
 
+.bangboo-placeholder {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: #1a1f27;
+  color: #7d8796;
+  font-size: 1.2rem;
+}
+
 .bangboo-avatar :deep(.calculator-avatar) {
   width: 56px;
   height: 56px;
@@ -182,6 +218,26 @@ const filteredBangboos = computed(() => {
 
   .search-input {
     width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .section-card {
+    padding: 0.75rem;
+  }
+
+  .section-header h2 {
+    font-size: 0.98rem;
+  }
+
+  .section-desc {
+    font-size: 0.72rem;
+    line-height: 1.4;
+  }
+
+  .bangboo-grid {
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+    gap: 0.4rem;
   }
 }
 </style>

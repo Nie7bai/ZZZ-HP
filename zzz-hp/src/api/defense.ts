@@ -17,6 +17,7 @@ import {
   getDefenseHpOptionKey,
   type DefenseRoomHpOption,
 } from '@/utils/defenseHp'
+import { getAdminToken, isAdminAuthenticated } from '@/utils/adminAuth'
 
 export { filterChartPointsByLabels }
 
@@ -28,9 +29,20 @@ interface ApiResponse {
   data: ApiDefenseSeason[]
 }
 
+function adminAuthHeaders(): HeadersInit {
+  if (!isAdminAuthenticated()) return {}
+  const token = getAdminToken()
+  if (!token) return {}
+  return {
+    Authorization: `Bearer ${token}`,
+    'X-Admin-Token': token,
+  }
+}
+
 function normalizeSeason(season: DefenseSeason): DefenseSeason {
   return {
     ...season,
+    isHidden: Boolean(season.isHidden),
     frontiers: season.frontiers.map((frontier) => ({
       ...frontier,
       rooms: frontier.rooms.map((room) => ({
@@ -55,7 +67,9 @@ function normalizeSeason(season: DefenseSeason): DefenseSeason {
 }
 
 export async function fetchDefenseSeasons(variant: DefenseVariant): Promise<DefenseSeason[]> {
-  const response = await fetch(`/api/defense/seasons?variant=${variant}`)
+  const response = await fetch(`/api/defense/seasons?variant=${variant}`, {
+    headers: adminAuthHeaders(),
+  })
   if (!response.ok) {
     throw new Error(`请求失败: ${response.status}`)
   }

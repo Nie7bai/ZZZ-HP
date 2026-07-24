@@ -24,6 +24,7 @@ const route = useRoute()
 const bossList = ref<BossOption[]>([])
 const selectedBoss = ref('')
 const selectedCategory = ref<DefenseCompareMonsterCategory>('elite')
+const crisisRoomType = ref<'normal' | 'hard'>('normal')
 const points = ref<HpChartPoint[]>([])
 const listLoading = ref(false)
 const chartLoading = ref(false)
@@ -40,11 +41,14 @@ const isDefenseMode = computed(() => props.mode === 'defense')
 
 const pageTitle = computed(() => modeTitles[props.mode])
 
-const panelDesc = computed(() =>
-  isDefenseMode.value
-    ? '先选择精英或 Boss，再选择怪物，查看其在各期出现时的血量与相对膨胀变化'
-    : '选择 Boss 后，查看其在各期出现时的血量与相对膨胀变化',
-)
+const panelDesc = computed(() => {
+  if (isDefenseMode.value) {
+    return '先选择精英或 Boss，再选择怪物，查看其在各期出现时的血量与相对膨胀变化'
+  }
+  return crisisRoomType.value === 'hard'
+    ? '选择困难模式 Boss 后，查看其在各期出现时的血量、危局血量系数与相对变化'
+    : '选择正常模式 Boss（房间 1/2/3）后，查看其在各期出现时的血量、危局血量系数与相对变化'
+})
 
 const selectedBossInfo = computed(() =>
   bossList.value.find((boss) => boss.boss_name === selectedBoss.value),
@@ -61,7 +65,7 @@ async function loadBossList() {
     if (isDefenseMode.value) {
       bossList.value = await fetchDefenseBossList(defenseVariant.value, selectedCategory.value)
     } else {
-      bossList.value = await fetchBossList()
+      bossList.value = await fetchBossList(crisisRoomType.value)
     }
 
     if (bossList.value.some((boss) => boss.boss_name === selectedBoss.value)) return
@@ -84,9 +88,15 @@ async function loadBossChart() {
   chartLoading.value = true
   chartError.value = ''
   try {
-    points.value = isDefenseMode.value
-      ? await fetchDefenseBossChart(defenseVariant.value, selectedBoss.value, selectedCategory.value)
-      : await fetchBossChart(selectedBoss.value)
+    if (isDefenseMode.value) {
+      points.value = await fetchDefenseBossChart(
+        defenseVariant.value,
+        selectedBoss.value,
+        selectedCategory.value,
+      )
+    } else {
+      points.value = await fetchBossChart(selectedBoss.value, crisisRoomType.value)
+    }
   } catch (error) {
     chartError.value = error instanceof Error ? error.message : '加载折线图失败'
     points.value = []
@@ -106,6 +116,12 @@ watch(defenseVariant, () => {
 
 watch(selectedCategory, () => {
   if (!isDefenseMode.value) return
+  selectedBoss.value = ''
+  loadBossList()
+})
+
+watch(crisisRoomType, () => {
+  if (isDefenseMode.value) return
   selectedBoss.value = ''
   loadBossList()
 })
@@ -137,7 +153,13 @@ watch(selectedBoss, () => {
 
         <div class="selector-field">
           <label class="selector-label" for="boss-select">
-            {{ isDefenseMode ? `选择${categoryLabel}` : '选择 Boss' }}
+            {{
+              isDefenseMode
+                ? `选择${categoryLabel}`
+                : crisisRoomType === 'hard'
+                  ? '选择困难 Boss'
+                  : '选择正常 Boss'
+            }}
           </label>
           <div class="selector-row">
             <img
@@ -170,14 +192,18 @@ watch(selectedBoss, () => {
       <DualLineChartView
         v-else-if="points.length"
         class="chart-view"
+        v-model:hp-mode="crisisRoomType"
+        :show-hp-mode-toggle="!isDefenseMode"
+        :enable-hp-coeff-charts="!isDefenseMode"
         :points="points"
         :hp-chart-title="`${selectedBoss} 血量折线图`"
         :expansion-chart-title="`${selectedBoss} 血量相对膨胀折线图`"
         :hp-aria-label="`${selectedBoss} 血量折线图`"
         :expansion-aria-label="`${selectedBoss} 血量相对膨胀折线图`"
         :enable-point-click="!isDefenseMode"
-        :enable-boss-preview="!isDefenseMode"
+        :enable-boss-preview="false"
         :enable-room-buff-preview="isDefenseMode"
+        :enable-hp-converted953-toggle="!isDefenseMode"
         @point-click="openPhaseDetail"
       />
 
@@ -199,7 +225,7 @@ watch(selectedBoss, () => {
   height: 100%;
   min-height: 0;
   margin: 0;
-  padding: 0.5rem 0.25rem 0.75rem;
+  padding: 0.35rem 0.25rem 0.5rem;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -305,5 +331,43 @@ watch(selectedBoss, () => {
   flex: 1;
   min-height: 0;
   display: flex;
+}
+
+@media (max-width: 768px) {
+  .monster-compare-panel {
+    min-height: auto;
+    padding: 0.35rem 0.15rem 0.55rem;
+  }
+
+  .page-title {
+    font-size: 1.05rem;
+  }
+
+  .panel-desc {
+    font-size: 0.72rem;
+    padding-inline: 0.35rem;
+  }
+
+  .selector-toolbar--defense {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.55rem;
+  }
+
+  .selector-field {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .selector-row {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .boss-select {
+    min-width: 0;
+    flex: 1;
+    width: 100%;
+  }
 }
 </style>

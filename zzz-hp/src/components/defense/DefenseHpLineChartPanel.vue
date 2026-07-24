@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import DualLineChartView from '@/components/history/DualLineChartView.vue'
+import PhaseDetailModal from '@/components/history/PhaseDetailModal.vue'
 import {
   buildDefenseHpChartPoints,
   fetchDefenseSeasons,
@@ -10,6 +11,7 @@ import {
 } from '@/api/defense'
 import type { HpChartPoint } from '@/api/crisisAssault'
 import type { DefenseSeason, DefenseVariant } from '@/types/defense'
+import { usePhaseDetailModal } from '@/composables/usePhaseDetailModal'
 import { getDefenseHpOptionKey } from '@/utils/defenseHp'
 
 const route = useRoute()
@@ -29,6 +31,8 @@ const selectedOptionKey = ref('')
 const points = ref<HpChartPoint[]>([])
 const chartLoading = ref(false)
 const loadError = ref('')
+const { visible: detailVisible, point: detailPoint, open: openPhaseDetail, close: closePhaseDetail } =
+  usePhaseDetailModal()
 
 const hpOptions = computed(() => getDefenseHpChartOptions(seasons.value))
 
@@ -134,8 +138,15 @@ watch(selectedOptionKey, loadChartData)
         :expansion-chart-title="`${selectedOptionLabel} 血量相对膨胀折线图`"
         :hp-aria-label="`${selectedOptionLabel} 总血量折线图`"
         :expansion-aria-label="`${selectedOptionLabel} 血量相对膨胀折线图`"
-        :enable-point-click="false"
         boss-preview-mode="embedded"
+        @point-click="openPhaseDetail"
+      />
+
+      <PhaseDetailModal
+        :visible="detailVisible"
+        :point="detailPoint"
+        mode="defense"
+        @close="closePhaseDetail"
       />
     </template>
   </div>
@@ -222,5 +233,38 @@ watch(selectedOptionKey, loadChartData)
   flex: 1;
   min-height: 0;
   display: flex;
+}
+
+@media (max-width: 768px) {
+  .hp-chart-panel {
+    padding: 0.2rem 0.1rem 0.35rem;
+  }
+
+  .page-title {
+    font-size: 1.05rem;
+  }
+
+  .panel-desc {
+    font-size: 0.72rem;
+    padding-inline: 0.35rem;
+  }
+
+  .target-selector {
+    align-items: stretch;
+    gap: 0.4rem;
+    margin-bottom: 0.55rem;
+    padding-inline: 0.25rem;
+  }
+
+  .selector-label {
+    font-size: 0.78rem;
+    text-align: center;
+  }
+
+  .target-select {
+    min-width: 0;
+    width: 100%;
+    font-size: 0.85rem;
+  }
 }
 </style>

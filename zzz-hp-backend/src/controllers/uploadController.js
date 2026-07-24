@@ -31,9 +31,23 @@ export function uploadCalculator(req, res) {
   return success(res, { url, filename: req.file.filename }, '计算器头像上传成功', 201)
 }
 
-export function handleUploadError(err, _req, res, next) {
-  if (err) {
-    return fail(res, err.message || '图片上传失败', 400)
+export function uploadGuestbook(req, res) {
+  if (!req.file) {
+    return fail(res, '请上传图片文件，字段名为 image', 400)
   }
-  next()
+
+  const url = buildImageUrl('guestbook', req.file.filename)
+  return success(res, { url, filename: req.file.filename }, '留言板图片上传成功', 201)
+}
+
+export function handleUploadError(err, _req, res, next) {
+  if (!err) return next()
+
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return fail(res, '图片不能超过 5MB', 400)
+  }
+  if (err.code === 'ENOENT' || err.code === 'EACCES' || err.code === 'EPERM') {
+    return fail(res, '服务器图片目录不可写，请检查 guestbook_image 权限', 500)
+  }
+  return fail(res, err.message || '图片上传失败', 400)
 }

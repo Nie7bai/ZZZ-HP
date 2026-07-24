@@ -12,6 +12,9 @@ const tipVisible = ref(false)
 const tipStyle = ref<Record<string, string>>({})
 
 function getTipWidth() {
+  if (window.innerWidth <= 768) {
+    return Math.min(360, window.innerWidth - 24)
+  }
   return Math.min(560, Math.max(320, window.innerWidth * 0.88))
 }
 
@@ -23,7 +26,7 @@ async function updateTipPosition() {
   const rect = el.getBoundingClientRect()
   const tipWidth = getTipWidth()
   const margin = 12
-  const sidebarReserve = 232
+  const sidebarReserve = window.innerWidth <= 768 ? margin : 232
 
   let left = rect.left + rect.width / 2 - tipWidth / 2
   left = Math.max(left, sidebarReserve, margin)
@@ -48,6 +51,20 @@ function onHide() {
   tipVisible.value = false
 }
 
+function onToggle() {
+  if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) return
+  if (tipVisible.value) onHide()
+  else onShow()
+}
+
+function onDocumentPointerDown(event: Event) {
+  if (!tipVisible.value) return
+  const target = event.target
+  if (!(target instanceof Node)) return
+  if (triggerRef.value?.contains(target)) return
+  onHide()
+}
+
 function onScrollOrResize() {
   if (!tipVisible.value) return
   updateTipPosition()
@@ -56,12 +73,14 @@ function onScrollOrResize() {
 if (typeof window !== 'undefined') {
   window.addEventListener('scroll', onScrollOrResize, true)
   window.addEventListener('resize', onScrollOrResize)
+  document.addEventListener('pointerdown', onDocumentPointerDown, true)
 }
 
 onBeforeUnmount(() => {
   if (typeof window === 'undefined') return
   window.removeEventListener('scroll', onScrollOrResize, true)
   window.removeEventListener('resize', onScrollOrResize)
+  document.removeEventListener('pointerdown', onDocumentPointerDown, true)
 })
 </script>
 
@@ -74,6 +93,7 @@ onBeforeUnmount(() => {
     @mouseleave="onHide"
     @focus="onShow"
     @blur="onHide"
+    @click="onToggle"
   >
     <strong>{{ value }}</strong>
     <Teleport to="body">
@@ -209,7 +229,7 @@ onBeforeUnmount(() => {
   width: auto;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .stat-value-tip {
     min-width: 0;
   }
