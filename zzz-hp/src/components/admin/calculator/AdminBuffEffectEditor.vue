@@ -126,6 +126,29 @@ function setAppliesToAnomaly(effect: BuffEffect, checked: boolean) {
   effect.appliesToAnomaly = checked ? true : undefined
 }
 
+function convertPreviewText(effect: BuffEffect): string {
+  const convert = effect.convert
+  if (!convert) return ''
+  const attrLabel =
+    CHARACTER_ATTR_OPTIONS.find((item) => item.id === convert.from)?.label ?? convert.from
+  const statLabel = buffStatFieldLabel(
+    BUFF_STAT_FIELDS.find((item) => item.key === effect.stat) ?? BUFF_STAT_FIELDS[0]!,
+  )
+  if (convert.panelSource === 'manual') {
+    const base = convert.defaultBase ?? 0
+    let amount = (base * (convert.ratioPercent ?? 0)) / 100
+    let capped = false
+    if (convert.cap != null && Number.isFinite(convert.cap) && amount > convert.cap) {
+      amount = convert.cap
+      capped = true
+    }
+    const rounded = Math.round(amount * 100) / 100
+    return `${attrLabel} ${base} × ${convert.ratioPercent ?? 0}% = ${statLabel} +${rounded}${capped ? '（已达上限）' : ''}`
+  }
+  const sourceLabel = convert.panelSource === 'final' ? '局内' : '局外'
+  return `${sourceLabel}${attrLabel} × ${convert.ratioPercent ?? 0}% → ${statLabel}，数值随面板实时折算`
+}
+
 function ensureConvert(effect: BuffEffect) {
   if (!effect.convert) {
     effect.convert = {
@@ -515,6 +538,7 @@ defineExpose({
               "
             />
           </label>
+          <p class="convert-preview">{{ convertPreviewText(effect) }}</p>
         </div>
       </div>
 
@@ -629,6 +653,17 @@ defineExpose({
 
 .note-field {
   width: 100%;
+}
+
+.convert-preview {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-border) 25%, transparent);
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--color-text);
 }
 
 .subcat-actions {

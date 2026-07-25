@@ -154,6 +154,7 @@ type ValueTipsKey =
   | 'turbulenceCombinedDmgBonusZone'
   | 'turbulenceExpected'
   | 'anomalyExpected'
+  | 'anomalyReleaseExpected'
 
 interface AlignedFormulaTerm {
   label: string
@@ -166,13 +167,22 @@ type AlignedFormulaResultKey =
   | 'directDamageExpected'
   | 'anomalyBaseExpected'
   | 'anomalyExpected'
+  | 'anomalyReleaseExpected'
   | 'disorderExpected'
   | 'turbulenceExpected'
 
-const alignedGeneralFormula = computed(() => {
+interface AlignedFormulaGroup {
+  key: AlignedFormulaResultKey
+  title: string
+  hint?: string
+  terms: AlignedFormulaTerm[]
+  result: string
+}
+
+const alignedGeneralFormula = computed((): AlignedFormulaGroup => {
   const p = props.calcParts
   return {
-    key: 'generalMultiplier' as AlignedFormulaResultKey,
+    key: 'generalMultiplier',
     title: '公式',
     terms: [
       { label: '基础伤害', value: formatFormulaNumber(p.baseDamage, 2), tipsKey: 'baseDamage' },
@@ -181,63 +191,63 @@ const alignedGeneralFormula = computed(() => {
       { label: '抗性区', value: formatFormulaNumber(p.resistanceMultiplier), tipsKey: 'resistanceMultiplier' },
       { label: '易伤区', value: formatFormulaNumber(p.vulnerableMultiplier), tipsKey: 'vulnerableMultiplier' },
       { label: '失衡易伤区', value: formatFormulaNumber(p.staggerMultiplier), tipsKey: 'staggerMultiplier' },
-    ] satisfies AlignedFormulaTerm[],
+    ],
     result: formatNumber(p.generalMultiplier),
   }
 })
 
-const alignedDirectFormula = computed(() => {
+const alignedDirectFormula = computed((): AlignedFormulaGroup => {
   const p = props.calcParts
   return {
-    key: 'directDamageExpected' as AlignedFormulaResultKey,
+    key: 'directDamageExpected',
     title: '公式',
     terms: [
       { label: '通用乘区', value: formatFormulaNumber(p.generalMultiplier, 2), tipsKey: 'generalMultiplier' },
       { label: '暴击区', value: formatFormulaNumber(p.critMultiplier), tipsKey: 'critMultiplier' },
       { label: '特殊乘区', value: formatFormulaNumber(p.specialMultiplier), tipsKey: 'specialMultiplier' },
       { label: '直伤倍率区', value: formatFormulaNumber(p.directDmgMultZone), tipsKey: 'directDmgMultZone' },
-    ] satisfies AlignedFormulaTerm[],
+    ],
     result: formatNumber(p.directDamageExpected),
   }
 })
 
-const alignedAnomalyFormulas = computed(() => {
+const alignedAnomalyFormulas = computed((): AlignedFormulaGroup[] => {
   const p = props.calcParts
   const sub = anomalySubKind.value
-  const base = {
-    key: 'anomalyBaseExpected' as AlignedFormulaResultKey,
+  const base: AlignedFormulaGroup = {
+    key: 'anomalyBaseExpected',
     title: '异常基础',
     hint: '（不含异常增伤/倍率/暴击）',
     terms: [
       { label: '通用乘区', value: formatFormulaNumber(p.generalMultiplier, 2), tipsKey: 'generalMultiplier' },
       { label: '精通区', value: formatFormulaNumber(p.masteryZone), tipsKey: 'masteryZone' },
       { label: '等级区', value: formatFormulaNumber(p.levelZone), tipsKey: 'levelZone' },
-    ] satisfies AlignedFormulaTerm[],
+    ],
     result: formatNumber(p.anomalyBaseExpected),
   }
-  const anomaly = {
-    key: 'anomalyExpected' as AlignedFormulaResultKey,
+  const anomaly: AlignedFormulaGroup = {
+    key: 'anomalyExpected',
     title: '异常期望',
     terms: [
       { label: '异常基础期望', value: formatNumber(p.anomalyBaseExpected), tipsKey: 'anomalyBaseExpected' },
       { label: '异常增伤区', value: formatFormulaNumber(p.anomalyDmgBonusZone), tipsKey: 'anomalyDmgBonusZone' },
       { label: '异常倍率区', value: formatFormulaNumber(p.anomalyMultZone), tipsKey: 'anomalyMultZone' },
       { label: '异常暴击区', value: formatFormulaNumber(p.anomalyCritZone), tipsKey: 'anomalyCritZone' },
-    ] satisfies AlignedFormulaTerm[],
+    ],
     result: formatNumber(p.anomalyExpected),
   }
-  const disorder = {
-    key: 'disorderExpected' as AlignedFormulaResultKey,
+  const disorder: AlignedFormulaGroup = {
+    key: 'disorderExpected',
     title: '紊乱期望',
     terms: [
       { label: '异常基础期望', value: formatNumber(p.anomalyBaseExpected), tipsKey: 'anomalyBaseExpected' },
       { label: '紊乱倍率区', value: formatFormulaNumber(p.disorderZone), tipsKey: 'disorderZone' },
       { label: '紊乱增伤区', value: formatFormulaNumber(p.disorderDmgBonusZone), tipsKey: 'disorderDmgBonusZone' },
-    ] satisfies AlignedFormulaTerm[],
+    ],
     result: formatNumber(p.disorderExpected),
   }
-  const turbulence = {
-    key: 'turbulenceExpected' as AlignedFormulaResultKey,
+  const turbulence: AlignedFormulaGroup = {
+    key: 'turbulenceExpected',
     title: '乱流期望',
     terms: [
       { label: '异常基础期望', value: formatNumber(p.anomalyBaseExpected), tipsKey: 'anomalyBaseExpected' },
@@ -245,7 +255,7 @@ const alignedAnomalyFormulas = computed(() => {
       {
         label: '乱流增伤区+异常增伤区',
         value: formatFormulaNumber(p.turbulenceCombinedDmgBonusZone),
-        tipsKey: 'turbulenceCombinedDmgBonusZone' as ValueTipsKey,
+        tipsKey: 'turbulenceCombinedDmgBonusZone',
       },
       ...(p.turbulenceUsesAnomalyCrit
         ? [
@@ -256,11 +266,11 @@ const alignedAnomalyFormulas = computed(() => {
             },
           ]
         : []),
-    ] satisfies AlignedFormulaTerm[],
+    ],
     result: formatNumber(p.turbulenceExpected),
   }
-  const release = {
-    key: 'anomalyExpected' as AlignedFormulaResultKey,
+  const release: AlignedFormulaGroup = {
+    key: 'anomalyReleaseExpected',
     title: '异放期望',
     terms: [
       { label: '异常基础期望', value: formatNumber(p.anomalyBaseExpected), tipsKey: 'anomalyBaseExpected' },
@@ -279,7 +289,7 @@ const alignedAnomalyFormulas = computed(() => {
         value: formatFormulaNumber(p.anomalyReleaseCritZone),
         tipsKey: 'anomalyCritZone',
       },
-    ] satisfies AlignedFormulaTerm[],
+    ],
     result: formatNumber(p.anomalyReleaseExpected),
   }
   if (sub === 'disorder') return [base, disorder]
@@ -873,6 +883,31 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
         items: [
           `${turbulenceFormulaParts.value.join(' × ')}`,
           `= ${formatNumber(p.turbulenceExpected)}`,
+        ],
+      },
+    ],
+    anomalyReleaseExpected: [
+      {
+        label: '乘区组成',
+        items: [
+          `异常基础期望 ${formatNumber(p.anomalyBaseExpected)}`,
+          `异放增伤区 ${formatFormulaNumber(p.anomalyReleaseDmgBonusZone)}`,
+          `异放倍率区 ${formatFormulaNumber(p.anomalyReleaseMultZone)}`,
+          `异放暴击区 ${formatFormulaNumber(p.anomalyReleaseCritZone)}`,
+          `合计 ${formatNumber(p.anomalyReleaseExpected)}`,
+        ],
+      },
+      {
+        label: '加减过程',
+        fullWidth: true,
+        items: [
+          [
+            formatNumber(p.anomalyBaseExpected),
+            formatFormulaNumber(p.anomalyReleaseDmgBonusZone),
+            formatFormulaNumber(p.anomalyReleaseMultZone),
+            formatFormulaNumber(p.anomalyReleaseCritZone),
+          ].join(' × '),
+          `= ${formatNumber(p.anomalyReleaseExpected)}`,
         ],
       },
     ],

@@ -4,6 +4,7 @@ import type {
   BangbooBuffDoc,
   BuffStatModifiers,
   DriveDiscBuffDoc,
+  SkillCalcContext,
   WengineBuffDoc,
 } from '@/types/calculator'
 import type { AffixCounts, AffixDriveDiscMainStats, PanelStats } from '@/types/calculatorPanel'
@@ -23,9 +24,15 @@ import {
   type DamageCalcResult,
   type DamageEnemyInput,
 } from '@/utils/damageCalc'
-import { computeFinalPanel, type PanelCalcContext } from '@/utils/panelBuffCalc'
+import {
+  computeFinalPanel,
+  type BuffSelectionState,
+  type PanelCalcContext,
+} from '@/utils/panelBuffCalc'
 
 export type OptimalDamageKind = 'direct' | 'anomaly'
+
+export type OptimalAnomalyMetric = 'anomaly' | 'disorder' | 'turbulence' | 'anomalyRelease'
 
 export type OptimalAffixKey =
   | 'atkFlat'
@@ -465,7 +472,7 @@ export function sweepAnomalyDamage(
 function damageMetric(
   result: DamageCalcResult,
   kind: OptimalDamageKind,
-  anomalyMetric: 'anomaly' | 'disorder' | 'turbulence' | 'anomalyRelease' = 'anomaly',
+  anomalyMetric: OptimalAnomalyMetric = 'anomaly',
 ) {
   if (kind === 'direct') return result.directDamageExpected
   if (anomalyMetric === 'disorder') return result.disorderExpected
@@ -503,7 +510,7 @@ export function computeDiffAnalysis(
   ctx: OptimalEvalContext,
   baseCounts: AffixCounts,
   kind: OptimalDamageKind,
-  anomalyMetric: 'anomaly' | 'disorder' | 'turbulence' = 'anomaly',
+  anomalyMetric: OptimalAnomalyMetric = 'anomaly',
 ): { addOne: AffixDiffRow[]; replace: AffixReplaceRow[] } {
   const candidates = kind === 'direct' ? directCandidateKeys(ctx.isMb) : anomalyCandidateKeys(ctx.isMb)
   const base = evaluateAffixCounts(ctx, baseCounts)
@@ -597,7 +604,7 @@ export function computeBenefitCurves(
   ctx: OptimalEvalContext,
   baseCounts: AffixCounts,
   kind: OptimalDamageKind,
-  anomalyMetric: 'anomaly' | 'disorder' | 'turbulence' = 'anomaly',
+  anomalyMetric: OptimalAnomalyMetric = 'anomaly',
   maxAdded = BENEFIT_CURVE_MAX_ADDED,
 ): { series: BenefitCurveSeries[]; nextStep: AffixDiffRow[] } {
   const candidates = kind === 'direct' ? directCandidateKeys(ctx.isMb) : anomalyCandidateKeys(ctx.isMb)
@@ -658,6 +665,8 @@ export function buildOptimalEvalContext(input: {
   enemyInput: DamageEnemyInput
   baseDamageSource: 'atk' | 'pierce'
   extraMods?: BuffStatModifiers
+  skillContext?: SkillCalcContext | null
+  buffSelection?: BuffSelectionState | null
 }): OptimalEvalContext {
   const mainSlot = input.teamSlots[input.mainSlotIndex]!
   const mainAgent = input.agents.find((a) => a.id === mainSlot.agentId)
@@ -686,6 +695,8 @@ export function buildOptimalEvalContext(input: {
       mainSlotIndex: input.mainSlotIndex,
       driveDiscs: input.driveDiscs,
       extraMods: input.extraMods,
+      skillContext: input.skillContext,
+      buffSelection: input.buffSelection,
     },
     enemyInput: input.enemyInput,
     baseDamageSource: input.baseDamageSource,

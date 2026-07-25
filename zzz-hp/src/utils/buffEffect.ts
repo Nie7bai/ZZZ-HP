@@ -96,7 +96,9 @@ function readNumber(value: unknown) {
 }
 
 function emptyMods(): BuffStatModifiers {
-  return Object.fromEntries(BUFF_STAT_KEYS.map((key) => [key, 0])) as BuffStatModifiers
+  const mods = {} as BuffStatModifiers
+  for (const key of BUFF_STAT_KEYS) mods[key] = 0
+  return mods
 }
 
 function newEffectId() {
@@ -533,7 +535,9 @@ export function createEmptyBuffEffectBlock(
   }
 }
 
-export function flattenEffectBlocks(blocks: BuffEffectBlock[]): BuffEffect[] {
+export function flattenEffectBlocks(
+  blocks: Array<{ effects?: BuffEffect[] | null }>,
+): BuffEffect[] {
   return blocks.flatMap((block) => block.effects ?? [])
 }
 
@@ -620,8 +624,21 @@ function normalizeLooseMods(value: unknown): BuffStatModifiers {
   return result
 }
 
+/** 收集效果时允许只带 blocks/effects 的轻量 pack（如邦布精炼临时对象） */
+export type BuffEffectPackLike = {
+  effectBlocks?: Array<{
+    id?: string
+    name?: string
+    note?: string
+    effects?: BuffEffect[] | null
+  }> | null
+  effects?: BuffEffect[] | null
+  selfMods?: BuffStatModifiers | null
+  teamMods?: BuffStatModifiers | null
+}
+
 export function collectEffectsFromPack(
-  pack: AgentMindscapeRankBuffs | null | undefined,
+  pack: BuffEffectPackLike | null | undefined,
 ): BuffEffect[] {
   if (!pack) return []
   if (Array.isArray(pack.effectBlocks) && pack.effectBlocks.length > 0) {
@@ -638,13 +655,13 @@ export function collectEffectsFromPack(
 
 /** 按效果块收集，便于选择器/明细按块展示 */
 export function collectBlockEntriesFromPack(
-  pack: AgentMindscapeRankBuffs | null | undefined,
+  pack: BuffEffectPackLike | null | undefined,
 ): Array<{ blockId: string; blockName: string; blockNote: string; effects: BuffEffect[] }> {
   if (!pack) return []
   if (Array.isArray(pack.effectBlocks) && pack.effectBlocks.length > 0) {
     const blocks = pack.effectBlocks
       .map((block) => ({
-        blockId: block.id,
+        blockId: block.id || 'legacy',
         blockName: block.name?.trim() || '效果块',
         blockNote: block.note?.trim() || '',
         effects: Array.isArray(block.effects) ? block.effects : [],
@@ -655,7 +672,7 @@ export function collectBlockEntriesFromPack(
   const effects = collectEffectsFromPack({
     ...pack,
     effectBlocks: [],
-    effects: Array.isArray(pack.effects) && pack.effects.length ? pack.effects : undefined,
+    effects: Array.isArray(pack.effects) && pack.effects.length ? pack.effects : [],
   })
   if (!effects.length) return []
   return [{ blockId: 'legacy', blockName: '增益', blockNote: '', effects }]

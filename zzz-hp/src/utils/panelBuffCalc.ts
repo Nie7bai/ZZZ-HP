@@ -39,7 +39,7 @@ function flattenBlocks(blocks: { effects?: BuffEffect[] }[]): BuffEffect[] {
 function withRefinementAnomalyFlags(
   activeEffects: BuffEffect[],
   allRefineEffects: BuffEffect[][],
-  allRefineBlocks?: { effects: BuffEffect[] }[][] | null,
+  allRefineBlocks?: { effects?: BuffEffect[] }[][] | null,
 ): BuffEffect[] {
   const flagged = new Set<string>()
   const mark = (effect: BuffEffect) => {
@@ -67,11 +67,14 @@ function withRefinementAnomalyFlags(
   })
 }
 
-function applyAnomalyFlagsToPack(
-  pack: { effectBlocks?: { effects: BuffEffect[] }[]; effects?: BuffEffect[] },
+function applyAnomalyFlagsToPack<T extends {
+  effectBlocks?: { effects?: BuffEffect[] }[] | null
+  effects?: BuffEffect[] | null
+}>(
+  pack: T,
   allRefineEffects: BuffEffect[][],
-  allRefineBlocks?: { effects: BuffEffect[] }[][] | null,
-) {
+  allRefineBlocks?: { effects?: BuffEffect[] }[][] | null,
+): T {
   if (pack.effectBlocks?.length) {
     return {
       ...pack,
@@ -83,7 +86,7 @@ function applyAnomalyFlagsToPack(
           allRefineBlocks,
         ),
       })),
-    }
+    } as T
   }
   return {
     ...pack,
@@ -92,7 +95,7 @@ function applyAnomalyFlagsToPack(
       allRefineEffects,
       allRefineBlocks,
     ),
-  }
+  } as T
 }
 
 export interface DriveDiscSelection {
@@ -188,10 +191,11 @@ function resolvePackMods(
   isMain: boolean,
   ctx: PanelCalcContext,
 ): BuffStatModifiers {
+  const skillCtx = ctx.skillContext ?? defaultSkillContext('direct')
   return resolveEffectsToMods(effects, {
     applyTargets: isMain ? ['self', 'team'] : ['team'],
-    ctx: ctx.skillContext ?? defaultSkillContext('direct', ctx.skillContext?.element),
-    element: ctx.skillContext?.element,
+    ctx: skillCtx,
+    element: skillCtx.element,
     stacksByEffectId: ctx.buffSelection?.stacksByEffectId,
     convertInputs: ctx.buffSelection?.convertInputs,
     attrValues: ctx.attrValues,
