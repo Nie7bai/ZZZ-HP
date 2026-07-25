@@ -478,6 +478,19 @@ defineExpose({
               </option>
             </select>
           </label>
+          <label
+            v-if="ensureConvert(effect).panelSource === 'manual'"
+            class="field"
+          >
+            <span>自行设置基础值</span>
+            <NumberStepper
+              :model-value="ensureConvert(effect).defaultBase ?? 0"
+              :min="0"
+              :max="999999"
+              :step="1"
+              @update:model-value="ensureConvert(effect).defaultBase = $event"
+            />
+          </label>
           <label class="field">
             <span>转换比例%</span>
             <NumberStepper

@@ -258,7 +258,7 @@ const effectiveBaseDamageSource = computed<BaseDamageSource>(() =>
 )
 
 const convertAttrDefaults = computed<Partial<Record<CharacterAttrKey, number>>>(() =>
-  panelToConvertAttrValues(effectiveExternalPanel.value),
+  panelToConvertAttrValues(effectiveExternalPanel.value, { level: 60 }),
 )
 
 const panelBreakdown = computed(() =>
@@ -286,8 +286,8 @@ const panelBreakdown = computed(() =>
 const finalPanel = computed(() => panelBreakdown.value.finalPanel)
 
 const convertPanelSourceValues = computed(() => ({
-  external: panelToConvertAttrValues(effectiveExternalPanel.value),
-  final: panelToConvertAttrValues(finalPanel.value),
+  external: panelToConvertAttrValues(effectiveExternalPanel.value, { level: 60 }),
+  final: panelToConvertAttrValues(finalPanel.value, { level: 60 }),
 }))
 
 /** 队伍中异常职业且非主 C 的槽位 */

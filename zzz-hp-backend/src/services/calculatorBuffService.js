@@ -182,14 +182,24 @@ function normalizeConvert(value) {
     'penRate',
     'impact',
     'def',
+    'level',
   ]
   const rawFrom = value.from
   if (typeof rawFrom !== 'string') return undefined
   let from = rawFrom
-  let panelSource = value.panelSource === 'final' ? 'final' : 'external'
+  let panelSource =
+    value.panelSource === 'final'
+      ? 'final'
+      : value.panelSource === 'manual'
+        ? 'manual'
+        : 'external'
   if (LEGACY[rawFrom]) {
     from = LEGACY[rawFrom].from
-    if (value.panelSource !== 'external' && value.panelSource !== 'final') {
+    if (
+      value.panelSource !== 'external' &&
+      value.panelSource !== 'final' &&
+      value.panelSource !== 'manual'
+    ) {
       panelSource = LEGACY[rawFrom].panelSource
     }
   } else if (!ATTRS.includes(rawFrom)) {

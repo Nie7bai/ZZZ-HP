@@ -905,7 +905,8 @@
 [data-theme='light'] .buff-picker-modal .search,
 [data-theme='light'] .buff-picker-modal .ghost,
 [data-theme='light'] .buff-picker-modal .group-tab,
-[data-theme='light'] .buff-picker-modal .count {
+[data-theme='light'] .buff-picker-modal .count,
+[data-theme='light'] .buff-picker-modal .convert-clear {
   border-color: #d5dae3 !important;
   background: #ffffff !important;
   color: #1c212a !important;

@@ -74,6 +74,7 @@ const CHARACTER_ATTRS: CharacterAttrKey[] = [
   'penRate',
   'impact',
   'def',
+  'level',
 ]
 
 /** 旧转模 from 字段映射到新 CharacterAttrKey + panelSource */
@@ -220,14 +221,25 @@ export function resolveConvertValue(
 ): number {
   if (effect.kind !== 'convert' || !effect.convert) return 0
   const source = effect.convert.panelSource ?? 'external'
-  const sourceMap =
-    panelSourceValues?.[source] ??
-    (source === 'final' ? panelSourceValues?.final : panelSourceValues?.external) ??
-    attrValues
-  const from =
-    overrideBase != null && Number.isFinite(overrideBase)
-      ? overrideBase
-      : (sourceMap[effect.convert.from] ?? attrValues[effect.convert.from] ?? 0)
+  let from: number
+  if (source === 'manual') {
+    // 自行设置：不读面板，优先用计算页输入，其次配置的 defaultBase
+    from =
+      overrideBase != null && Number.isFinite(overrideBase)
+        ? overrideBase
+        : effect.convert.defaultBase != null && Number.isFinite(effect.convert.defaultBase)
+          ? effect.convert.defaultBase
+          : 0
+  } else {
+    const sourceMap =
+      panelSourceValues?.[source] ??
+      (source === 'final' ? panelSourceValues?.final : panelSourceValues?.external) ??
+      attrValues
+    from =
+      overrideBase != null && Number.isFinite(overrideBase)
+        ? overrideBase
+        : (sourceMap[effect.convert.from] ?? attrValues[effect.convert.from] ?? 0)
+  }
   let amount = (from * effect.convert.ratioPercent) / 100
   if (effect.convert.cap != null && Number.isFinite(effect.convert.cap)) {
     amount = Math.min(amount, effect.convert.cap)
@@ -416,13 +428,21 @@ function normalizeConvert(value: unknown): BuffEffect['convert'] {
   if (typeof rawFrom !== 'string') return undefined
 
   let from: CharacterAttrKey
-  let panelSource: 'external' | 'final' =
-    entry.panelSource === 'final' ? 'final' : 'external'
+  let panelSource: 'external' | 'final' | 'manual' =
+    entry.panelSource === 'final'
+      ? 'final'
+      : entry.panelSource === 'manual'
+        ? 'manual'
+        : 'external'
 
   const legacy = LEGACY_CONVERT_FROM[rawFrom]
   if (legacy) {
     from = legacy.from
-    if (entry.panelSource !== 'external' && entry.panelSource !== 'final') {
+    if (
+      entry.panelSource !== 'external' &&
+      entry.panelSource !== 'final' &&
+      entry.panelSource !== 'manual'
+    ) {
       panelSource = legacy.panelSource
     }
   } else if ((CHARACTER_ATTRS as string[]).includes(rawFrom)) {

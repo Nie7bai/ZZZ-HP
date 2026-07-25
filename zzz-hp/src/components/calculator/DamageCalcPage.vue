@@ -302,11 +302,15 @@ watch(
       if (item.effect.kind !== 'convert' || !item.effect.convert) continue
       const id = item.effect.id
       if (id in buffSelection.convertInputs) continue
+      const source = item.effect.convert.panelSource ?? 'external'
       const configured = item.effect.convert.defaultBase
-      buffSelection.convertInputs[id] =
-        configured != null && Number.isFinite(configured)
-          ? configured
-          : (attrs[item.effect.convert.from] ?? 0)
+      if (source === 'manual') {
+        buffSelection.convertInputs[id] =
+          configured != null && Number.isFinite(configured) ? configured : 0
+      } else if (configured != null && Number.isFinite(configured)) {
+        // 旧数据兼容：局外/局内若写了 defaultBase，仍预填覆盖
+        buffSelection.convertInputs[id] = configured
+      }
     }
   },
 )

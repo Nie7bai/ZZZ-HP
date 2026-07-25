@@ -24,8 +24,8 @@ export type DamageCalcKind = 'direct' | 'anomaly'
 /** 异常伤害子类：异常 / 紊乱 / 乱流 / 异放 */
 export type AnomalyDamageSubKind = 'anomaly' | 'disorder' | 'turbulence' | 'anomalyRelease'
 export type StaggerPhase = 'normal' | 'stagger'
-/** 转模读取局外或局内面板 */
-export type ConvertPanelSource = 'external' | 'final'
+/** 转模读取局外/局内面板，或自行设置基础值 */
+export type ConvertPanelSource = 'external' | 'final' | 'manual'
 
 export type SkillCategoryId =
   | 'basic'
@@ -44,7 +44,7 @@ export const SKILL_CATEGORY_OPTIONS: { id: SkillCategoryId; label: string }[] = 
   { id: 'ultimate', label: '终结技' },
 ]
 
-/** 转模来源属性（配合 panelSource 选择局外/局内） */
+/** 转模来源属性（配合 panelSource；自行设置时仅作展示标签） */
 export type CharacterAttrKey =
   | 'hp'
   | 'atk'
@@ -54,6 +54,7 @@ export type CharacterAttrKey =
   | 'penRate'
   | 'impact'
   | 'def'
+  | 'level'
 
 export const CHARACTER_ATTR_OPTIONS: { id: CharacterAttrKey; label: string }[] = [
   { id: 'hp', label: '生命' },
@@ -64,11 +65,13 @@ export const CHARACTER_ATTR_OPTIONS: { id: CharacterAttrKey; label: string }[] =
   { id: 'penRate', label: '穿透率' },
   { id: 'impact', label: '冲击力' },
   { id: 'def', label: '防御力' },
+  { id: 'level', label: '等级' },
 ]
 
 export const CONVERT_PANEL_SOURCE_OPTIONS: { id: ConvertPanelSource; label: string }[] = [
   { id: 'external', label: '根据局外面板' },
   { id: 'final', label: '根据局内面板' },
+  { id: 'manual', label: '自行设置' },
 ]
 
 export const ANOMALY_DAMAGE_SUBKIND_OPTIONS: {
@@ -149,11 +152,11 @@ export type BuffStatKey = keyof BuffStatModifiers
 
 export interface BuffEffectConvert {
   from: CharacterAttrKey
-  /** 读取局外或局内面板；缺省按 external */
+  /** external/final 读面板；manual 自行设置基础值（不看面板） */
   panelSource?: ConvertPanelSource
   ratioPercent: number
   cap?: number | null
-  /** @deprecated 兼容旧数据；新 UI 默认用面板实时折算 */
+  /** 自行设置时的默认基础值；局外/局内模式下仅作兼容旧数据预填 */
   defaultBase?: number | null
 }
 

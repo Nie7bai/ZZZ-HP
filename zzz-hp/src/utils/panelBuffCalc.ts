@@ -840,6 +840,7 @@ export function panelToConvertAttrValues(
     penRate: panel.penRate,
     def: panel.def,
     impact: extras?.impact ?? 0,
+    level: extras?.level ?? 60,
     ...extras,
   }
 }
@@ -866,8 +867,14 @@ export function computeFinalPanel(
   }
   const interimMods = collectPanelBuffMods(baseCtx)
   const interimPanel = applyBuffModsToPanel(externalPanel, interimMods)
-  const externalAttrs = panelToConvertAttrValues(externalPanel)
-  const finalAttrs = panelToConvertAttrValues(interimPanel)
+  const externalAttrs = panelToConvertAttrValues(externalPanel, {
+    level: ctx.attrValues?.level ?? 60,
+    impact: ctx.attrValues?.impact ?? 0,
+  })
+  const finalAttrs = panelToConvertAttrValues(interimPanel, {
+    level: ctx.attrValues?.level ?? 60,
+    impact: ctx.attrValues?.impact ?? 0,
+  })
   const attrValues = {
     ...externalAttrs,
     ...ctx.attrValues,
@@ -903,10 +910,14 @@ export function buildDefaultBuffSelection(
     if (item.effect.kind === 'stacked' || item.effect.stackable) {
       stacksByEffectId[item.effect.id] = item.effect.defaultStacks ?? 1
     }
-    // 仅当配置了 defaultBase 时预填覆盖值；否则实时读面板
+    // 自行设置：始终预填输入；局外/局内：仅旧数据带了 defaultBase 时预填覆盖
     if (item.effect.kind === 'convert' && item.effect.convert) {
+      const source = item.effect.convert.panelSource ?? 'external'
       const configured = item.effect.convert.defaultBase
-      if (configured != null && Number.isFinite(configured)) {
+      if (source === 'manual') {
+        convertInputs[item.effect.id] =
+          configured != null && Number.isFinite(configured) ? configured : 0
+      } else if (configured != null && Number.isFinite(configured)) {
         convertInputs[item.effect.id] = configured
       }
     }

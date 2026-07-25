@@ -67,7 +67,13 @@ function attrLabel(from: string) {
 
 function panelSourceLabel(item: CollectedEffect) {
   const source = item.effect.convert?.panelSource ?? 'external'
-  return source === 'final' ? '局内' : '局外'
+  if (source === 'final') return '局内'
+  if (source === 'manual') return '自行'
+  return '局外'
+}
+
+function isManualConvert(item: CollectedEffect) {
+  return item.effect.convert?.panelSource === 'manual'
 }
 
 function isEnabled(id: string, fallback: boolean) {
@@ -93,12 +99,19 @@ function setStacks(id: string, value: number) {
 function convertLiveBase(item: CollectedEffect) {
   const convert = item.effect.convert
   if (!convert) return 0
+  if (convert.panelSource === 'manual') {
+    return convert.defaultBase != null && Number.isFinite(convert.defaultBase)
+      ? convert.defaultBase
+      : 0
+  }
   if (convert.defaultBase != null && Number.isFinite(convert.defaultBase)) {
     return convert.defaultBase
   }
   const source = convert.panelSource ?? 'external'
   const map =
-    props.panelSourceValues?.[source] ??
+    (source === 'final' || source === 'external'
+      ? props.panelSourceValues?.[source]
+      : undefined) ??
     props.attrDefaults ??
     {}
   return map[convert.from] ?? props.attrDefaults?.[convert.from] ?? 0
@@ -120,16 +133,24 @@ function setConvert(id: string, value: number) {
   showConvertOverride.value[id] = true
 }
 
-function clearConvertOverride(id: string) {
+function clearConvertOverride(id: string, item?: CollectedEffect) {
+  if (item && isManualConvert(item)) {
+    // 自行设置：复位到配置默认值，不删输入项
+    selection.value.convertInputs[id] = convertLiveBase(item)
+    return
+  }
   delete selection.value.convertInputs[id]
   showConvertOverride.value[id] = false
 }
 
 function convertResult(item: CollectedEffect) {
+  const convert = item.effect.convert
   const override =
     item.effect.id in selection.value.convertInputs
       ? selection.value.convertInputs[item.effect.id]!
-      : null
+      : convert?.panelSource === 'manual'
+        ? (convert.defaultBase ?? 0)
+        : null
   return resolveConvertValue(
     item.effect,
     props.attrDefaults ?? {},
@@ -370,21 +391,36 @@ function close() {
                     {{ panelSourceLabel(item) }}·{{ attrLabel(item.effect.convert.from) }}
                     → {{ formatSigned(convertResult(item)) }}
                   </span>
-                  <template v-if="hasConvertOverride(item.effect.id) || showConvertOverride[item.effect.id]">
+                  <template
+                    v-if="
+                      isManualConvert(item) ||
+                      hasConvertOverride(item.effect.id) ||
+                      showConvertOverride[item.effect.id]
+                    "
+                  >
                     <NumberStepper
                       :model-value="convertOverrideModel(item.effect.id, item)"
                       :min="0"
                       :max="999999"
-                      :step="10"
+                      :step="isManualConvert(item) && item.effect.convert.from === 'level' ? 1 : 10"
                       :disabled="!isEnabled(item.effect.id, item.effect.enabledDefault !== false)"
                       @update:model-value="setConvert(item.effect.id, $event)"
                     />
                     <button
+                      v-if="!isManualConvert(item)"
                       type="button"
                       class="convert-clear"
                       @click="clearConvertOverride(item.effect.id)"
                     >
                       实时
+                    </button>
+                    <button
+                      v-else
+                      type="button"
+                      class="convert-clear"
+                      @click="clearConvertOverride(item.effect.id, item)"
+                    >
+                      复位
                     </button>
                   </template>
                   <button
