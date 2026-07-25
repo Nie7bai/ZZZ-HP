@@ -162,6 +162,7 @@ export interface AnomalySweepPoint {
   anomalyExpected: number
   disorderExpected: number
   turbulenceExpected: number
+  anomalyReleaseExpected: number
 }
 
 export interface AffixDiffRow {
@@ -455,15 +456,21 @@ export function sweepAnomalyDamage(
       anomalyExpected: result.anomalyExpected,
       disorderExpected: result.disorderExpected,
       turbulenceExpected: result.turbulenceExpected,
+      anomalyReleaseExpected: result.anomalyReleaseExpected,
     })
   }
   return points
 }
 
-function damageMetric(result: DamageCalcResult, kind: OptimalDamageKind, anomalyMetric: 'anomaly' | 'disorder' | 'turbulence' = 'anomaly') {
+function damageMetric(
+  result: DamageCalcResult,
+  kind: OptimalDamageKind,
+  anomalyMetric: 'anomaly' | 'disorder' | 'turbulence' | 'anomalyRelease' = 'anomaly',
+) {
   if (kind === 'direct') return result.directDamageExpected
   if (anomalyMetric === 'disorder') return result.disorderExpected
   if (anomalyMetric === 'turbulence') return result.turbulenceExpected
+  if (anomalyMetric === 'anomalyRelease') return result.anomalyReleaseExpected
   return result.anomalyExpected
 }
 

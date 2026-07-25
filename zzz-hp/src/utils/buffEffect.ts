@@ -27,6 +27,8 @@ const BUFF_STAT_KEYS: BuffStatKey[] = [
   'reduceDefense',
   'resPen',
   'mastery',
+  'anomalyControl',
+  'energyRegen',
   'pierce',
   'pierceDmgBonus',
   'vulnerable',
@@ -64,10 +66,8 @@ const SKILL_CATEGORIES: SkillCategoryId[] = [
 ]
 
 const CHARACTER_ATTRS: CharacterAttrKey[] = [
-  'externalHp',
-  'inCombatHp',
-  'externalAtk',
-  'inCombatAtk',
+  'hp',
+  'atk',
   'mastery',
   'anomalyControl',
   'energyRegen',
@@ -75,6 +75,17 @@ const CHARACTER_ATTRS: CharacterAttrKey[] = [
   'impact',
   'def',
 ]
+
+/** 旧转模 from 字段映射到新 CharacterAttrKey + panelSource */
+const LEGACY_CONVERT_FROM: Record<
+  string,
+  { from: CharacterAttrKey; panelSource: 'external' | 'final' }
+> = {
+  externalHp: { from: 'hp', panelSource: 'external' },
+  inCombatHp: { from: 'hp', panelSource: 'final' },
+  externalAtk: { from: 'atk', panelSource: 'external' },
+  inCombatAtk: { from: 'atk', panelSource: 'final' },
+}
 
 function readNumber(value: unknown) {
   const num = Number(value)
@@ -202,12 +213,21 @@ export function resolveConvertValue(
   effect: BuffEffect,
   attrValues: Partial<Record<CharacterAttrKey, number>>,
   overrideBase?: number | null,
+  panelSourceValues?: {
+    external?: Partial<Record<CharacterAttrKey, number>>
+    final?: Partial<Record<CharacterAttrKey, number>>
+  },
 ): number {
   if (effect.kind !== 'convert' || !effect.convert) return 0
+  const source = effect.convert.panelSource ?? 'external'
+  const sourceMap =
+    panelSourceValues?.[source] ??
+    (source === 'final' ? panelSourceValues?.final : panelSourceValues?.external) ??
+    attrValues
   const from =
     overrideBase != null && Number.isFinite(overrideBase)
       ? overrideBase
-      : (attrValues[effect.convert.from] ?? 0)
+      : (sourceMap[effect.convert.from] ?? attrValues[effect.convert.from] ?? 0)
   let amount = (from * effect.convert.ratioPercent) / 100
   if (effect.convert.cap != null && Number.isFinite(effect.convert.cap)) {
     amount = Math.min(amount, effect.convert.cap)
@@ -317,6 +337,12 @@ export function resolveEffectsToMods(
     stacksByEffectId?: Record<string, number>
     convertInputs?: Record<string, number>
     attrValues?: Partial<Record<CharacterAttrKey, number>>
+    panelSourceValues?: {
+      external?: Partial<Record<CharacterAttrKey, number>>
+      final?: Partial<Record<CharacterAttrKey, number>>
+    }
+    /** 跳过转模效果（用于先叠非转模再算转模） */
+    skipConvert?: boolean
     selection?: { enabledIds?: Record<string, boolean> } | null
   } = {},
 ): BuffStatModifiers {
@@ -330,6 +356,7 @@ export function resolveEffectsToMods(
     if (!isEffectEnabled(effect, options.selection)) continue
     if (!effectMatchesContext(effect, options.ctx)) continue
     if (!effectMatchesElement(effect, options.element ?? options.ctx?.element)) continue
+    if (options.skipConvert && effect.kind === 'convert') continue
 
     const stacks =
       options.stacksByEffectId?.[effect.id] ?? effect.defaultStacks ?? 1
@@ -341,6 +368,7 @@ export function resolveEffectsToMods(
             options.convertInputs && effect.id in options.convertInputs
               ? options.convertInputs[effect.id]
               : null,
+            options.panelSourceValues,
           )
         : resolveEffectBaseValue(effect, stacks)
     if (!amount) continue
@@ -384,14 +412,30 @@ function normalizeSkillCategory(value: unknown): SkillCategoryId | undefined {
 function normalizeConvert(value: unknown): BuffEffect['convert'] {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
   const entry = value as Record<string, unknown>
-  const from = entry.from
-  if (typeof from !== 'string' || !(CHARACTER_ATTRS as string[]).includes(from)) {
+  const rawFrom = entry.from
+  if (typeof rawFrom !== 'string') return undefined
+
+  let from: CharacterAttrKey
+  let panelSource: 'external' | 'final' =
+    entry.panelSource === 'final' ? 'final' : 'external'
+
+  const legacy = LEGACY_CONVERT_FROM[rawFrom]
+  if (legacy) {
+    from = legacy.from
+    if (entry.panelSource !== 'external' && entry.panelSource !== 'final') {
+      panelSource = legacy.panelSource
+    }
+  } else if ((CHARACTER_ATTRS as string[]).includes(rawFrom)) {
+    from = rawFrom as CharacterAttrKey
+  } else {
     return undefined
   }
+
   const capRaw = entry.cap
   const defaultBaseRaw = entry.defaultBase
   return {
-    from: from as CharacterAttrKey,
+    from,
+    panelSource,
     ratioPercent: readNumber(entry.ratioPercent),
     cap: capRaw == null || capRaw === '' ? null : readNumber(capRaw),
     defaultBase:

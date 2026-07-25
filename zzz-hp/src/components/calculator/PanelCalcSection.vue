@@ -8,6 +8,7 @@ import StatValueWithSources from '@/components/calculator/StatValueWithSources.v
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
 import type {
   AgentBuffDoc,
+  AnomalyDamageSubKind,
   BangbooBuffDoc,
   BuffStatKey,
   BuffStatModifiers,
@@ -45,7 +46,7 @@ import {
   getMindscapeNotesUpToRank,
   mergeBuffStatModifiers,
 } from '@/utils/calculatorUi'
-import { computeFinalPanel } from '@/utils/panelBuffCalc'
+import { computeFinalPanel, panelToConvertAttrValues } from '@/utils/panelBuffCalc'
 import { computeDamageResult, type EnemyResistanceType } from '@/utils/damageCalc'
 import { buildAtkPanelProcessItems, buildEnemyCombatProcessItems, buildStatSourceGroups, type StatSourceGroup } from '@/utils/statSourceTips'
 import {
@@ -78,8 +79,8 @@ const EXTERNAL_PANEL_SLOTS: PanelFieldSlot[] = [
   { id: 'penRate', kind: 'stat', key: 'penRate', label: '穿透率%' },
   { id: 'pen', kind: 'stat', key: 'pen', label: '穿透值' },
   { id: 'mastery', kind: 'stat', key: 'mastery', label: '精通' },
-  { id: 'spacer-1', kind: 'spacer' },
-  { id: 'spacer-2', kind: 'spacer' },
+  { id: 'anomalyControl', kind: 'stat', key: 'anomalyControl', label: '异常掌控' },
+  { id: 'energyRegen', kind: 'stat', key: 'energyRegen', label: '能量回复效率%' },
   { id: 'anomalyMult', kind: 'stat', key: 'anomalyMult', label: '异常倍率%' },
   { id: 'anomalyDuration', kind: 'stat', key: 'anomalyDuration', label: '异常持续时间(s)' },
   { id: 'spacer-3', kind: 'spacer' },
@@ -102,8 +103,8 @@ const FINAL_PANEL_SLOTS: PanelFieldSlot[] = [
   { id: 'penRate', kind: 'stat', key: 'penRate', label: '穿透率%' },
   { id: 'pen', kind: 'stat', key: 'pen', label: '穿透值' },
   { id: 'mastery', kind: 'stat', key: 'mastery', label: '精通' },
-  { id: 'spacer-a', kind: 'spacer' },
-  { id: 'spacer-b', kind: 'spacer' },
+  { id: 'anomalyControl', kind: 'stat', key: 'anomalyControl', label: '异常掌控' },
+  { id: 'energyRegen', kind: 'stat', key: 'energyRegen', label: '能量回复效率%' },
   { id: 'anomalyCritRate', kind: 'stat', key: 'anomalyCritRate', label: '异常暴击%' },
   { id: 'anomalyCritDmg', kind: 'stat', key: 'anomalyCritDmg', label: '异常爆伤%' },
   { id: 'anomalyMultLift', kind: 'mod', key: 'anomalyMult', label: '异常倍率提升%' },
@@ -146,10 +147,18 @@ const props = defineProps<{
   calcMode: PanelCalcMode
   sectionId?: string
   damageKind?: import('@/types/calculator').DamageCalcKind
+  anomalySubKind?: AnomalyDamageSubKind
+  triggerAnomalyAgentId?: string | null
+  /** 异常非主 C 槽位局外面板，key = agentId */
+  anomalySlotPanels?: Record<string, PanelStats>
   skillCategoryId?: import('@/types/calculator').SkillCategoryId
   skillSubcategoryId?: string | null
   buffSelection?: import('@/utils/panelBuffCalc').BuffSelectionState | null
   staggerPhase?: import('@/types/calculator').StaggerPhase
+}>()
+
+const emit = defineEmits<{
+  'update:anomalySlotPanels': [value: Record<string, PanelStats>]
 }>()
 
 const baseDamageSource = ref<BaseDamageSource>('atk')
@@ -248,15 +257,9 @@ const effectiveBaseDamageSource = computed<BaseDamageSource>(() =>
   isMbMainAgent.value ? 'pierce' : baseDamageSource.value,
 )
 
-const convertAttrDefaults = computed<Partial<Record<CharacterAttrKey, number>>>(() => ({
-  externalHp: effectiveExternalPanel.value.hp,
-  externalAtk: effectiveExternalPanel.value.atk,
-  mastery: effectiveExternalPanel.value.mastery,
-  penRate: effectiveExternalPanel.value.penRate,
-  inCombatHp: effectiveExternalPanel.value.hp,
-  inCombatAtk: effectiveExternalPanel.value.atk,
-  def: effectiveExternalPanel.value.def,
-}))
+const convertAttrDefaults = computed<Partial<Record<CharacterAttrKey, number>>>(() =>
+  panelToConvertAttrValues(effectiveExternalPanel.value),
+)
 
 const panelBreakdown = computed(() =>
   computeFinalPanel(effectiveExternalPanel.value, {
@@ -281,6 +284,115 @@ const panelBreakdown = computed(() =>
 )
 
 const finalPanel = computed(() => panelBreakdown.value.finalPanel)
+
+const convertPanelSourceValues = computed(() => ({
+  external: panelToConvertAttrValues(effectiveExternalPanel.value),
+  final: panelToConvertAttrValues(finalPanel.value),
+}))
+
+/** 队伍中异常职业且非主 C 的槽位 */
+const anomalySupportSlots = computed(() =>
+  props.teamSlots
+    .map((slot, index) => ({ slot, index }))
+    .filter(({ slot, index }) => {
+      if (!slot.agentId || index === mainSlotIndex.value) return false
+      const agent = props.agents.find((item) => item.id === slot.agentId)
+      return agent?.profession === '异常'
+    }),
+)
+
+function ensureAnomalySlotPanel(agentId: string): PanelStats {
+  const existing = props.anomalySlotPanels?.[agentId]
+  if (existing) return existing
+  return createDefaultExternalPanel()
+}
+
+function updateAnomalySlotPanel(agentId: string, key: keyof PanelStats, value: number) {
+  const next = {
+    ...(props.anomalySlotPanels ?? {}),
+    [agentId]: {
+      ...ensureAnomalySlotPanel(agentId),
+      [key]: value,
+    },
+  }
+  emit('update:anomalySlotPanels', next)
+}
+
+const triggerSlotIndex = computed(() => {
+  const id = props.triggerAnomalyAgentId
+  if (!id) return -1
+  return props.teamSlots.findIndex((slot) => slot.agentId === id)
+})
+
+const triggerAgent = computed(() =>
+  props.agents.find((item) => item.id === props.triggerAnomalyAgentId),
+)
+
+const needsTriggerPanel = computed(() => {
+  const sub = props.anomalySubKind
+  return (
+    props.damageKind === 'anomaly' &&
+    (sub === 'turbulence' || sub === 'anomalyRelease')
+  )
+})
+
+const triggerExternalPanel = computed<PanelStats | null>(() => {
+  if (!needsTriggerPanel.value || !props.triggerAnomalyAgentId) return null
+  if (props.triggerAnomalyAgentId === mainAgent.value?.id) {
+    return effectiveExternalPanel.value
+  }
+  return ensureAnomalySlotPanel(props.triggerAnomalyAgentId)
+})
+
+const triggerPanelBreakdown = computed(() => {
+  if (!triggerExternalPanel.value || triggerSlotIndex.value < 0) return null
+  return computeFinalPanel(triggerExternalPanel.value, {
+    teamSlots: props.teamSlots,
+    agents: props.agents,
+    wengines: props.wengines,
+    bangboo: selectedBangboo.value,
+    bangbooRefine: props.bangbooRefine,
+    mainSlotIndex: triggerSlotIndex.value,
+    driveDiscs: props.driveDiscs,
+    extraMods: extraMods.value,
+    skillContext: {
+      damageKind: props.damageKind ?? 'anomaly',
+      categoryId: props.skillCategoryId ?? 'basic',
+      subcategoryId: props.skillSubcategoryId ?? null,
+      element: triggerAgent.value?.element,
+      staggerPhase: props.staggerPhase ?? 'stagger',
+    },
+    buffSelection: props.buffSelection ?? null,
+  })
+})
+
+const triggerFinalPanel = computed(() => triggerPanelBreakdown.value?.finalPanel ?? null)
+
+const turbulenceTeamOk = computed(() => {
+  const elements = new Set(
+    props.teamSlots
+      .map((slot) => props.agents.find((a) => a.id === slot.agentId)?.element)
+      .filter((el): el is string => Boolean(el)),
+  )
+  const hasWind = elements.has('风')
+  const hasNonWind = [...elements].some((el) => el !== '风')
+  return hasWind && hasNonWind
+})
+
+const anomalyCalcBlockedReason = computed(() => {
+  if (props.damageKind !== 'anomaly') return ''
+  const sub = props.anomalySubKind ?? 'anomaly'
+  if (sub === 'turbulence' && !turbulenceTeamOk.value) {
+    return '乱流需队伍同时包含风属性与至少一个非风属性'
+  }
+  if (
+    (sub === 'turbulence' || sub === 'anomalyRelease') &&
+    !props.triggerAnomalyAgentId
+  ) {
+    return '请先选择触发时的异常属性（异常职业角色）'
+  }
+  return ''
+})
 
 function round(v: number, p = 2) {
   const f = 10 ** p
@@ -307,6 +419,7 @@ function formatPanelValue(key: keyof PanelStats | 'pierce' | 'special' | string,
     key === 'def' ||
     key === 'pen' ||
     key === 'mastery' ||
+    key === 'anomalyControl' ||
     key === 'pierce' ||
     key === 'anomalyDuration'
   ) {
@@ -404,6 +517,8 @@ watch(
     externalPanel.anomalyCritRate = base.anomalyCritRate
     externalPanel.anomalyCritDmg = base.anomalyCritDmg
     externalPanel.anomalyDmgBonus = base.anomalyDmgBonus
+    externalPanel.anomalyControl = base.anomalyControl
+    externalPanel.energyRegen = base.energyRegen
     externalPanel.disorderBaseMult = base.disorderBaseMult
     externalPanel.anomalyDuration = base.anomalyDuration
     externalPanel.disorderCompMult = base.disorderCompMult
@@ -423,6 +538,15 @@ const piercePower = computed(() =>
   ),
 )
 
+const triggerPiercePower = computed(() => {
+  if (!triggerFinalPanel.value || !triggerPanelBreakdown.value) return piercePower.value
+  return computePiercePower(
+    triggerFinalPanel.value.hp,
+    triggerFinalPanel.value.atk,
+    triggerPanelBreakdown.value.totalMods.pierce,
+  )
+})
+
 const calcParts = computed(() =>
   computeDamageResult({
     finalPanel: finalPanel.value,
@@ -440,6 +564,11 @@ const calcParts = computed(() =>
     mainAgentElement: mainAgent.value?.element ?? '',
     mainAgentId: mainAgent.value?.id ?? '',
     mainAgentName: mainAgent.value?.name ?? '',
+    anomalySubKind: props.anomalySubKind ?? 'anomaly',
+    triggerFinalPanel: triggerFinalPanel.value ?? undefined,
+    triggerAgentElement: triggerAgent.value?.element,
+    triggerPiercePower: triggerPiercePower.value,
+    triggerIsMb: triggerAgent.value?.profession === MB_PROFESSION,
   }),
 )
 
@@ -541,8 +670,13 @@ type AlignedFormulaResultKey =
   | 'directDamageExpected'
   | 'anomalyBaseExpected'
   | 'anomalyExpected'
+  | 'anomalyReleaseExpected'
   | 'disorderExpected'
   | 'turbulenceExpected'
+
+const effectiveAnomalySubKind = computed(
+  () => props.anomalySubKind ?? 'anomaly',
+)
 
 const alignedGeneralFormula = computed(() => {
   const p = calcParts.value
@@ -590,64 +724,91 @@ const alignedDirectFormula = computed(() => {
 
 const alignedAnomalyFormulas = computed(() => {
   const p = calcParts.value
-  return [
-    {
-      key: 'anomalyBaseExpected' as AlignedFormulaResultKey,
-      title: '异常基础',
-      hint: '（不含异常增伤/倍率/暴击）',
-      terms: [
-        { label: '通用乘区', value: formatFormulaNumber(p.generalMultiplier, 2), tipsKey: 'generalMultiplier' },
-        { label: '精通区', value: formatFormulaNumber(p.masteryZone), tipsKey: 'masteryZone' },
-        { label: '等级区', value: formatFormulaNumber(p.levelZone), tipsKey: 'levelZone' },
-        { label: '特殊乘区', value: formatFormulaNumber(p.specialMultiplier), tipsKey: 'specialMultiplier' },
-      ] satisfies AlignedFormulaTerm[],
-      result: formatNumber(p.anomalyBaseExpected),
-    },
-    {
-      key: 'anomalyExpected' as AlignedFormulaResultKey,
-      title: '异常期望',
-      terms: [
-        { label: '异常基础期望', value: formatNumber(p.anomalyBaseExpected), tipsKey: 'anomalyBaseExpected' },
-        { label: '异常增伤区', value: formatFormulaNumber(p.anomalyDmgBonusZone), tipsKey: 'anomalyDmgBonusZone' },
-        { label: '异常倍率区', value: formatFormulaNumber(p.anomalyMultZone), tipsKey: 'anomalyMultZone' },
-        { label: '异常暴击区', value: formatFormulaNumber(p.anomalyCritZone), tipsKey: 'anomalyCritZone' },
-      ] satisfies AlignedFormulaTerm[],
-      result: formatNumber(p.anomalyExpected),
-    },
-    {
-      key: 'disorderExpected' as AlignedFormulaResultKey,
-      title: '紊乱期望',
-      terms: [
-        { label: '异常基础期望', value: formatNumber(p.anomalyBaseExpected), tipsKey: 'anomalyBaseExpected' },
-        { label: '紊乱倍率区', value: formatFormulaNumber(p.disorderZone), tipsKey: 'disorderZone' },
-        { label: '紊乱增伤区', value: formatFormulaNumber(p.disorderDmgBonusZone), tipsKey: 'disorderDmgBonusZone' },
-      ] satisfies AlignedFormulaTerm[],
-      result: formatNumber(p.disorderExpected),
-    },
-    {
-      key: 'turbulenceExpected' as AlignedFormulaResultKey,
-      title: '乱流期望',
-      terms: [
-        { label: '异常基础期望', value: formatNumber(p.anomalyBaseExpected), tipsKey: 'anomalyBaseExpected' },
-        { label: '乱流倍率区', value: formatFormulaNumber(p.turbulenceZone), tipsKey: 'turbulenceZone' },
-        {
-          label: '乱流增伤区+异常增伤区',
-          value: formatFormulaNumber(p.turbulenceCombinedDmgBonusZone),
-          tipsKey: 'turbulenceCombinedDmgBonusZone',
-        },
-        ...(p.turbulenceUsesAnomalyCrit
-          ? [
-              {
-                label: '异常暴击区',
-                value: formatFormulaNumber(p.anomalyCritZone),
-                tipsKey: 'anomalyCritZone' as ValueTipsKey,
-              },
-            ]
-          : []),
-      ] satisfies AlignedFormulaTerm[],
-      result: formatNumber(p.turbulenceExpected),
-    },
-  ]
+  const sub = effectiveAnomalySubKind.value
+  const base = {
+    key: 'anomalyBaseExpected' as AlignedFormulaResultKey,
+    title: '异常基础',
+    hint: '（不含异常增伤/倍率/暴击）',
+    terms: [
+      { label: '通用乘区', value: formatFormulaNumber(p.generalMultiplier, 2), tipsKey: 'generalMultiplier' },
+      { label: '精通区', value: formatFormulaNumber(p.masteryZone), tipsKey: 'masteryZone' },
+      { label: '等级区', value: formatFormulaNumber(p.levelZone), tipsKey: 'levelZone' },
+      { label: '特殊乘区', value: formatFormulaNumber(p.specialMultiplier), tipsKey: 'specialMultiplier' },
+    ] satisfies AlignedFormulaTerm[],
+    result: formatNumber(p.anomalyBaseExpected),
+  }
+  const anomaly = {
+    key: 'anomalyExpected' as AlignedFormulaResultKey,
+    title: '异常期望',
+    terms: [
+      { label: '异常基础期望', value: formatNumber(p.anomalyBaseExpected), tipsKey: 'anomalyBaseExpected' },
+      { label: '异常增伤区', value: formatFormulaNumber(p.anomalyDmgBonusZone), tipsKey: 'anomalyDmgBonusZone' },
+      { label: '异常倍率区', value: formatFormulaNumber(p.anomalyMultZone), tipsKey: 'anomalyMultZone' },
+      { label: '异常暴击区', value: formatFormulaNumber(p.anomalyCritZone), tipsKey: 'anomalyCritZone' },
+    ] satisfies AlignedFormulaTerm[],
+    result: formatNumber(p.anomalyExpected),
+  }
+  const disorder = {
+    key: 'disorderExpected' as AlignedFormulaResultKey,
+    title: '紊乱期望',
+    terms: [
+      { label: '异常基础期望', value: formatNumber(p.anomalyBaseExpected), tipsKey: 'anomalyBaseExpected' },
+      { label: '紊乱倍率区', value: formatFormulaNumber(p.disorderZone), tipsKey: 'disorderZone' },
+      { label: '紊乱增伤区', value: formatFormulaNumber(p.disorderDmgBonusZone), tipsKey: 'disorderDmgBonusZone' },
+    ] satisfies AlignedFormulaTerm[],
+    result: formatNumber(p.disorderExpected),
+  }
+  const turbulence = {
+    key: 'turbulenceExpected' as AlignedFormulaResultKey,
+    title: '乱流期望',
+    terms: [
+      { label: '异常基础期望', value: formatNumber(p.anomalyBaseExpected), tipsKey: 'anomalyBaseExpected' },
+      { label: '乱流倍率区', value: formatFormulaNumber(p.turbulenceZone), tipsKey: 'turbulenceZone' },
+      {
+        label: '乱流增伤区+异常增伤区',
+        value: formatFormulaNumber(p.turbulenceCombinedDmgBonusZone),
+        tipsKey: 'turbulenceCombinedDmgBonusZone',
+      },
+      ...(p.turbulenceUsesAnomalyCrit
+        ? [
+            {
+              label: '异常暴击区',
+              value: formatFormulaNumber(p.anomalyCritZone),
+              tipsKey: 'anomalyCritZone' as ValueTipsKey,
+            },
+          ]
+        : []),
+    ] satisfies AlignedFormulaTerm[],
+    result: formatNumber(p.turbulenceExpected),
+  }
+  const release = {
+    key: 'anomalyReleaseExpected' as AlignedFormulaResultKey,
+    title: '异放期望',
+    terms: [
+      { label: '异常基础期望', value: formatNumber(p.anomalyBaseExpected), tipsKey: 'anomalyBaseExpected' },
+      {
+        label: '异放增伤区',
+        value: formatFormulaNumber(p.anomalyReleaseDmgBonusZone),
+        tipsKey: 'anomalyDmgBonusZone',
+      },
+      {
+        label: '异放倍率区',
+        value: formatFormulaNumber(p.anomalyReleaseMultZone),
+        tipsKey: 'anomalyMultZone',
+      },
+      {
+        label: '异放暴击区',
+        value: formatFormulaNumber(p.anomalyReleaseCritZone),
+        tipsKey: 'anomalyCritZone',
+      },
+    ] satisfies AlignedFormulaTerm[],
+    result: formatNumber(p.anomalyReleaseExpected),
+  }
+
+  if (sub === 'disorder') return [base, disorder]
+  if (sub === 'turbulence') return [base, turbulence]
+  if (sub === 'anomalyRelease') return [base, release]
+  return [base, anomaly]
 })
 
 function formatSigned(value: number) {
@@ -1363,6 +1524,7 @@ defineExpose({
   loadSnapshot,
   applyRecognitionToExternalPanel,
   convertAttrDefaults,
+  convertPanelSourceValues,
 })
 </script>
 
@@ -1521,6 +1683,49 @@ defineExpose({
           </div>
         </section>
 
+        <section
+          v-if="anomalySupportSlots.length"
+          class="panel-block anomaly-support-panels"
+        >
+          <header class="panel-block-header">
+            <h3>异常队友局外面板</h3>
+            <p>乱流/异放的异常基础乘区使用触发角色最终面板；请为非主 C 异常职业录入面板。</p>
+          </header>
+          <details
+            v-for="item in anomalySupportSlots"
+            :key="item.slot.agentId"
+            class="anomaly-slot-details"
+          >
+            <summary>
+              {{ props.agents.find((a) => a.id === item.slot.agentId)?.name ?? item.slot.agentId }}
+              ·
+              {{ props.agents.find((a) => a.id === item.slot.agentId)?.element ?? '' }}
+            </summary>
+            <div class="grid four">
+              <label
+                v-for="slot in EXTERNAL_PANEL_SLOTS.filter((s) => s.kind === 'stat')"
+                :key="`${item.slot.agentId}-${slot.id}`"
+                class="field"
+              >
+                <span>{{ slot.kind === 'stat' ? slot.label : '' }}</span>
+                <input
+                  v-if="slot.kind === 'stat'"
+                  type="number"
+                  step="any"
+                  :value="ensureAnomalySlotPanel(item.slot.agentId)[slot.key]"
+                  @change="
+                    updateAnomalySlotPanel(
+                      item.slot.agentId,
+                      slot.key,
+                      Number(($event.target as HTMLInputElement).value) || 0,
+                    )
+                  "
+                />
+              </label>
+            </div>
+          </details>
+        </section>
+
         <section class="panel-block extra-mods-block">
           <header class="panel-block-header">
             <h3>额外 Buff 增益</h3>
@@ -1599,7 +1804,11 @@ defineExpose({
       </label>
     </div>
 
-    <template v-if="!showDetailedResults">
+    <p v-if="anomalyCalcBlockedReason" class="anomaly-block-hint">
+      {{ anomalyCalcBlockedReason }}
+    </p>
+
+    <template v-if="!showDetailedResults && !anomalyCalcBlockedReason">
       <div class="result-grid result-grid-summary">
         <p v-if="damageKind !== 'anomaly'" class="result-total">
           直伤期望伤害：
@@ -1609,25 +1818,32 @@ defineExpose({
           />
         </p>
         <template v-if="damageKind !== 'direct'">
-          <p class="result-total">
+          <p v-if="effectiveAnomalySubKind === 'anomaly'" class="result-total">
             异常期望伤害：
             <StatValueWithSources
               :value="formatNumber(calcParts.anomalyExpected)"
               :groups="valueTips.anomalyExpected"
             />
           </p>
-          <p class="result-total">
+          <p v-else-if="effectiveAnomalySubKind === 'disorder'" class="result-total">
             紊乱期望伤害：
             <StatValueWithSources
               :value="formatNumber(calcParts.disorderExpected)"
               :groups="valueTips.disorderExpected"
             />
           </p>
-          <p class="result-total">
+          <p v-else-if="effectiveAnomalySubKind === 'turbulence'" class="result-total">
             乱流期望伤害：
             <StatValueWithSources
               :value="formatNumber(calcParts.turbulenceExpected)"
               :groups="valueTips.turbulenceExpected"
+            />
+          </p>
+          <p v-else class="result-total">
+            异放期望伤害：
+            <StatValueWithSources
+              :value="formatNumber(calcParts.anomalyReleaseExpected)"
+              :groups="valueTips.anomalyExpected"
             />
           </p>
         </template>
@@ -1715,8 +1931,18 @@ defineExpose({
     </div>
     </template>
 
-    <template v-if="damageKind !== 'direct'">
-    <h3 class="result-section-title">异常 / 紊乱 / 乱流期望伤害</h3>
+    <template v-if="damageKind !== 'direct' && !anomalyCalcBlockedReason">
+    <h3 class="result-section-title">
+      {{
+        effectiveAnomalySubKind === 'disorder'
+          ? '紊乱期望伤害'
+          : effectiveAnomalySubKind === 'turbulence'
+            ? '乱流期望伤害'
+            : effectiveAnomalySubKind === 'anomalyRelease'
+              ? '异放期望伤害'
+              : '异常期望伤害'
+      }}
+    </h3>
     <div class="formula-block formula-block--aligned">
       <div
         v-for="group in alignedAnomalyFormulas"
@@ -1751,12 +1977,15 @@ defineExpose({
       <p>特殊乘区：<StatValueWithSources :value="calcParts.specialMultiplier" :groups="valueTips.specialMultiplier" /></p>
       <p class="result-total">异常基础期望：<StatValueWithSources :value="formatNumber(calcParts.anomalyBaseExpected)" :groups="valueTips.anomalyBaseExpected" /></p>
 
+      <template v-if="effectiveAnomalySubKind === 'anomaly'">
       <h4 class="result-subsection-title">异常期望伤害</h4>
       <p>异常增伤区：<StatValueWithSources :value="calcParts.anomalyDmgBonusZone" :groups="valueTips.anomalyDmgBonusZone" /></p>
       <p>异常倍率区：<StatValueWithSources :value="calcParts.anomalyMultZone" :groups="valueTips.anomalyMultZone" /></p>
       <p>异常暴击区：<StatValueWithSources :value="calcParts.anomalyCritZone" :groups="valueTips.anomalyCritZone" /></p>
       <p class="result-total">异常期望伤害：<StatValueWithSources :value="formatNumber(calcParts.anomalyExpected)" :groups="valueTips.anomalyExpected" /></p>
+      </template>
 
+      <template v-else-if="effectiveAnomalySubKind === 'disorder'">
       <h4 class="result-subsection-title">紊乱期望伤害</h4>
       <p>紊乱基础倍率：<StatValueWithSources :value="calcParts.disorderBaseMultRatio" :groups="valueTips.disorderBaseMult" /></p>
       <p>异常持续时间(有效)：<StatValueWithSources :value="calcParts.effectiveAnomalyDuration" :groups="valueTips.anomalyDuration" /></p>
@@ -1764,7 +1993,9 @@ defineExpose({
       <p>紊乱倍率区：<StatValueWithSources :value="calcParts.disorderZone" :groups="valueTips.disorderZone" /></p>
       <p>紊乱增伤区：<StatValueWithSources :value="calcParts.disorderDmgBonusZone" :groups="valueTips.disorderDmgBonusZone" /></p>
       <p class="result-total">紊乱期望伤害：<StatValueWithSources :value="formatNumber(calcParts.disorderExpected)" :groups="valueTips.disorderExpected" /></p>
+      </template>
 
+      <template v-else-if="effectiveAnomalySubKind === 'turbulence'">
       <h4 class="result-subsection-title">乱流期望伤害</h4>
       <p>乱流基础倍率：<StatValueWithSources :value="calcParts.turbulenceBaseMultRatio" :groups="valueTips.turbulenceBaseMult" /></p>
       <p>异常持续时间(有效)：<StatValueWithSources :value="calcParts.effectiveAnomalyDuration" :groups="valueTips.anomalyDuration" /></p>
@@ -1780,6 +2011,15 @@ defineExpose({
         异常暴击区：<StatValueWithSources :value="calcParts.anomalyCritZone" :groups="valueTips.anomalyCritZone" />
       </p>
       <p class="result-total">乱流期望伤害：<StatValueWithSources :value="formatNumber(calcParts.turbulenceExpected)" :groups="valueTips.turbulenceExpected" /></p>
+      </template>
+
+      <template v-else>
+      <h4 class="result-subsection-title">异放期望伤害</h4>
+      <p>异放增伤区：{{ formatFormulaNumber(calcParts.anomalyReleaseDmgBonusZone) }}</p>
+      <p>异放倍率区：{{ formatFormulaNumber(calcParts.anomalyReleaseMultZone) }}</p>
+      <p>异放暴击区：{{ formatFormulaNumber(calcParts.anomalyReleaseCritZone) }}</p>
+      <p class="result-total">异放期望伤害：{{ formatNumber(calcParts.anomalyReleaseExpected) }}</p>
+      </template>
     </div>
     </template>
     </template>
@@ -2342,6 +2582,39 @@ defineExpose({
     font-size: 0.78rem;
     line-height: 1.45;
   }
+}
+
+.anomaly-support-panels {
+  margin-top: 0.75rem;
+}
+
+.anomaly-slot-details {
+  margin-top: 0.55rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #2d323a;
+  border-radius: 10px;
+  background: #0f1217;
+}
+
+.anomaly-slot-details summary {
+  cursor: pointer;
+  color: #e8ecf4;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.anomaly-slot-details .grid {
+  margin-top: 0.65rem;
+}
+
+.anomaly-block-hint {
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid rgba(224, 120, 80, 0.45);
+  background: rgba(224, 120, 80, 0.12);
+  color: #f0c2a8;
+  font-size: 0.84rem;
 }
 
 @media (max-width: 680px) {

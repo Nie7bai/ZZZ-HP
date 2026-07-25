@@ -8,7 +8,7 @@ import type {
   SkillCategoryId,
   SkillSubcategory,
 } from '@/types/calculator'
-import { CHARACTER_ATTR_OPTIONS, SKILL_CATEGORY_OPTIONS } from '@/types/calculator'
+import { CHARACTER_ATTR_OPTIONS, CONVERT_PANEL_SOURCE_OPTIONS, SKILL_CATEGORY_OPTIONS } from '@/types/calculator'
 import { AGENT_ELEMENTS } from '@/utils/calculatorUi'
 import {
   BUFF_STAT_FIELDS,
@@ -28,6 +28,13 @@ const props = defineProps<{
   hint?: string
   /** 当前编辑的角色（招式小类创建/筛选） */
   agentId?: string
+  /** 空列表时新增的第一个效果块默认名称（如「精1」） */
+  defaultFirstBlockName?: string
+  /**
+   * 勾选「异常计算时也生效」时回调（用于邦布/音擎精炼跨精同步）。
+   * 返回 true 表示已由外部处理，编辑器不再单独改当前 effect。
+   */
+  onAppliesToAnomalyChange?: (effect: BuffEffect, value: boolean) => void
 }>()
 
 const model = defineModel<BuffEffectBlock[]>({ required: true })
@@ -67,11 +74,32 @@ function statFieldsFor(effect: BuffEffect) {
   return GENERAL_BUFF_STAT_FIELDS.length ? GENERAL_BUFF_STAT_FIELDS : BUFF_STAT_FIELDS
 }
 
+function patchBlock(blockIndex: number, patch: Partial<BuffEffectBlock>) {
+  const current = model.value[blockIndex]
+  if (!current) return
+  Object.assign(current, patch)
+  // 触发 defineModel 更新，避免父级 computed 绑定读不到变更
+  model.value = [...model.value]
+}
+
+function setBlockName(blockIndex: number, name: string) {
+  patchBlock(blockIndex, { name })
+}
+
+function setBlockNote(blockIndex: number, note: string) {
+  patchBlock(blockIndex, { note })
+}
+
 function addBlock() {
+  const isFirst = model.value.length === 0
+  const name =
+    isFirst && props.defaultFirstBlockName?.trim()
+      ? props.defaultFirstBlockName.trim()
+      : `效果块 ${model.value.length + 1}`
   model.value = [
     ...model.value,
     createEmptyBuffEffectBlock({
-      name: `效果块 ${model.value.length + 1}`,
+      name,
       effects: [
         createEmptyBuffEffect({
           applyTarget: props.lockApplyTarget ?? 'self',
@@ -106,9 +134,26 @@ function onScopeChange(effect: BuffEffect) {
   }
 }
 
+function setAppliesToAnomaly(effect: BuffEffect, checked: boolean) {
+  if (props.onAppliesToAnomalyChange) {
+    props.onAppliesToAnomalyChange(effect, checked)
+    return
+  }
+  effect.appliesToAnomaly = checked ? true : undefined
+}
+
 function ensureConvert(effect: BuffEffect) {
   if (!effect.convert) {
-    effect.convert = { from: 'externalAtk', ratioPercent: 0, cap: null, defaultBase: null }
+    effect.convert = {
+      from: 'atk',
+      panelSource: 'external',
+      ratioPercent: 0,
+      cap: null,
+      defaultBase: null,
+    }
+  }
+  if (!effect.convert.panelSource) {
+    effect.convert.panelSource = 'external'
   }
   if (effect.convert.defaultBase === undefined) {
     effect.convert.defaultBase = null
@@ -187,14 +232,27 @@ defineExpose({
       <header class="block-head">
         <label class="field name-field">
           <span>效果块名称</span>
-          <input v-model="block.name" type="text" />
+          <input
+            :value="block.name"
+            type="text"
+            @input="
+              setBlockName(blockIndex, ($event.target as HTMLInputElement).value)
+            "
+          />
         </label>
         <button type="button" class="danger-btn" @click="removeBlock(blockIndex)">删除块</button>
       </header>
 
       <label class="field note-field">
         <span>块备注</span>
-        <input v-model="block.note" type="text" placeholder="可选说明" />
+        <input
+          :value="block.note ?? ''"
+          type="text"
+          placeholder="可选说明"
+          @input="
+            setBlockNote(blockIndex, ($event.target as HTMLInputElement).value)
+          "
+        />
       </label>
 
       <div v-for="(effect, effectIndex) in block.effects" :key="effect.id" class="effect-card">
@@ -322,15 +380,13 @@ defineExpose({
             <span>默认启用</span>
           </label>
 
-          <label class="field checkbox" title="默认：通用增益参与异常；招式伤害/倍率不参与。勾选后异常结算也会计入。">
+          <label class="field checkbox" title="默认：通用增益参与异常；招式伤害/倍率不参与。勾选后异常结算也会计入。邦布/音擎精炼下勾选会对所有精炼同步。">
             <input
               :checked="effect.appliesToAnomaly === true"
               type="checkbox"
               @change="
                 (e) => {
-                  effect.appliesToAnomaly = (e.target as HTMLInputElement).checked
-                    ? true
-                    : undefined
+                  setAppliesToAnomaly(effect, (e.target as HTMLInputElement).checked)
                 }
               "
             />
@@ -422,6 +478,18 @@ defineExpose({
 
         <div v-else class="grid">
           <label class="field">
+            <span>面板来源</span>
+            <select v-model="ensureConvert(effect).panelSource">
+              <option
+                v-for="opt in CONVERT_PANEL_SOURCE_OPTIONS"
+                :key="opt.id"
+                :value="opt.id"
+              >
+                {{ opt.label }}
+              </option>
+            </select>
+          </label>
+          <label class="field">
             <span>来源属性</span>
             <select v-model="ensureConvert(effect).from">
               <option v-for="opt in CHARACTER_ATTR_OPTIONS" :key="opt.id" :value="opt.id">
@@ -437,20 +505,6 @@ defineExpose({
               :max="9999"
               :step="0.1"
               @update:model-value="ensureConvert(effect).ratioPercent = $event"
-            />
-          </label>
-          <label class="field">
-            <span>默认基础数值</span>
-            <NumberStepper
-              :model-value="ensureConvert(effect).defaultBase ?? 0"
-              :min="0"
-              :max="999999"
-              :step="0.1"
-              @update:model-value="
-                (v) => {
-                  ensureConvert(effect).defaultBase = v > 0 ? v : 0
-                }
-              "
             />
           </label>
           <label class="field">

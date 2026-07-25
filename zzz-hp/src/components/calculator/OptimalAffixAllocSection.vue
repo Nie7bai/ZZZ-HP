@@ -10,6 +10,7 @@ import OptimalDamageBarChart from '@/components/calculator/OptimalDamageBarChart
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
 import type {
   AgentBuffDoc,
+  AnomalyDamageSubKind,
   BangbooBuffDoc,
   BuffStatKey,
   DriveDiscBuffDoc,
@@ -76,6 +77,8 @@ const PANEL_FIELDS: { key: keyof PanelStats; label: string }[] = [
   { key: 'pen', label: '穿透值' },
   { key: 'resPen', label: '抗穿%' },
   { key: 'mastery', label: '精通' },
+  { key: 'anomalyControl', label: '异常掌控' },
+  { key: 'energyRegen', label: '能量回复效率%' },
   { key: 'anomalyCritRate', label: '异常暴击%' },
   { key: 'anomalyCritDmg', label: '异常爆伤%' },
   { key: 'anomalyDmgBonus', label: '异常增伤%' },
@@ -108,6 +111,8 @@ const FINAL_PANEL_FIELDS: FinalPanelField[] = [
   { id: 'resPen', label: '抗穿%', kind: 'stat', key: 'resPen' },
   { id: 'special', label: '特殊补充%', kind: 'special' },
   { id: 'mastery', label: '精通', kind: 'stat', key: 'mastery' },
+  { id: 'anomalyControl', label: '异常掌控', kind: 'stat', key: 'anomalyControl' },
+  { id: 'energyRegen', label: '能量回复效率%', kind: 'stat', key: 'energyRegen' },
   { id: 'anomalyCritRate', label: '异常暴击%', kind: 'stat', key: 'anomalyCritRate' },
   { id: 'anomalyCritDmg', label: '异常爆伤%', kind: 'stat', key: 'anomalyCritDmg' },
   { id: 'anomalyDmgBonus', label: '异常增伤%', kind: 'stat', key: 'anomalyDmgBonus' },
@@ -144,6 +149,9 @@ const props = defineProps<{
   selectedBangbooId: string
   bangbooRefine: number
   damageKind?: import('@/utils/optimalAffixAlloc').OptimalDamageKind
+  anomalySubKind?: AnomalyDamageSubKind
+  triggerAnomalyAgentId?: string | null
+  anomalySlotPanels?: Record<string, PanelStats>
   skillCategoryId?: import('@/types/calculator').SkillCategoryId
   skillSubcategoryId?: string | null
   buffSelection?: import('@/utils/panelBuffCalc').BuffSelectionState | null
@@ -161,10 +169,11 @@ const emptyBangboo: BangbooBuffDoc = {
 }
 
 type DetailTab = 'diff' | 'process' | 'curve'
-type AnomalyMetric = 'anomaly' | 'disorder' | 'turbulence'
+type AnomalyMetric = 'anomaly' | 'disorder' | 'turbulence' | 'anomalyRelease'
 type CurveMode = 'cumulative' | 'marginal'
 
 const damageKind = computed(() => props.damageKind ?? 'direct')
+const anomalySubKind = computed(() => props.anomalySubKind ?? 'anomaly')
 const baseDamageSource = ref<'atk' | 'pierce'>('atk')
 const driveDiscMainStats = reactive(createDefaultAffixDriveDiscMainStats())
 const extraGains = ref<ExtraBuffGain[]>([])
@@ -286,44 +295,68 @@ const directBarSeries = computed(() => [
   },
 ])
 
-const anomalyChartList = computed(() => [
-  {
-    key: 'anomaly',
-    title: '异常期望伤害',
-    series: [
-      {
-        key: 'anomaly',
-        label: '异常期望',
-        color: '#abb2bf',
-        values: anomalyPoints.value.map((p) => p.anomalyExpected),
-      },
-    ],
+const anomalyChartList = computed(() => {
+  const all = [
+    {
+      key: 'anomaly' as AnomalyMetric,
+      title: '异常期望伤害',
+      series: [
+        {
+          key: 'anomaly',
+          label: '异常期望',
+          color: '#abb2bf',
+          values: anomalyPoints.value.map((p) => p.anomalyExpected),
+        },
+      ],
+    },
+    {
+      key: 'disorder' as AnomalyMetric,
+      title: '紊乱期望伤害',
+      series: [
+        {
+          key: 'disorder',
+          label: '紊乱期望',
+          color: '#c678dd',
+          values: anomalyPoints.value.map((p) => p.disorderExpected),
+        },
+      ],
+    },
+    {
+      key: 'turbulence' as AnomalyMetric,
+      title: '乱流期望伤害',
+      series: [
+        {
+          key: 'turbulence',
+          label: '乱流期望',
+          color: '#6eb6ff',
+          values: anomalyPoints.value.map((p) => p.turbulenceExpected),
+        },
+      ],
+    },
+    {
+      key: 'anomalyRelease' as AnomalyMetric,
+      title: '异放期望伤害',
+      series: [
+        {
+          key: 'anomalyRelease',
+          label: '异放期望',
+          color: '#e5c07b',
+          values: anomalyPoints.value.map((p) => p.anomalyReleaseExpected),
+        },
+      ],
+    },
+  ]
+  const sub = anomalySubKind.value
+  return all.filter((item) => item.key === sub)
+})
+
+watch(
+  anomalySubKind,
+  (sub) => {
+    anomalyChartMetric.value = sub
   },
-  {
-    key: 'disorder',
-    title: '紊乱期望伤害',
-    series: [
-      {
-        key: 'disorder',
-        label: '紊乱期望',
-        color: '#c678dd',
-        values: anomalyPoints.value.map((p) => p.disorderExpected),
-      },
-    ],
-  },
-  {
-    key: 'turbulence',
-    title: '乱流期望伤害',
-    series: [
-      {
-        key: 'turbulence',
-        label: '乱流期望',
-        color: '#6eb6ff',
-        values: anomalyPoints.value.map((p) => p.turbulenceExpected),
-      },
-    ],
-  },
-])
+  { immediate: true },
+)
 
 const selectedDirect = computed(() => {
   if (selectedIndex.value == null) return null
@@ -409,6 +442,7 @@ function metricOf(result: DamageCalcResult) {
   if (damageKind.value === 'direct') return result.directDamageExpected
   if (anomalyChartMetric.value === 'disorder') return result.disorderExpected
   if (anomalyChartMetric.value === 'turbulence') return result.turbulenceExpected
+  if (anomalyChartMetric.value === 'anomalyRelease') return result.anomalyReleaseExpected
   return result.anomalyExpected
 }
 
@@ -844,33 +878,17 @@ watch(
         </div>
       </header>
 
-      <div v-if="damageKind === 'anomaly'" class="metric-tabs">
-        <span>分析指标：</span>
-        <button
-          type="button"
-          class="chip"
-          :class="{ active: anomalyChartMetric === 'anomaly' }"
-          @click="anomalyChartMetric = 'anomaly'"
-        >
-          异常期望
-        </button>
-        <button
-          type="button"
-          class="chip"
-          :class="{ active: anomalyChartMetric === 'disorder' }"
-          @click="anomalyChartMetric = 'disorder'"
-        >
-          紊乱期望
-        </button>
-        <button
-          type="button"
-          class="chip"
-          :class="{ active: anomalyChartMetric === 'turbulence' }"
-          @click="anomalyChartMetric = 'turbulence'"
-        >
-          乱流期望
-        </button>
-      </div>
+            <p v-if="damageKind === 'anomaly'" class="metric-tabs">
+        当前异常子类：{{
+          anomalySubKind === 'disorder'
+            ? '紊乱伤害'
+            : anomalySubKind === 'turbulence'
+              ? '乱流伤害'
+              : anomalySubKind === 'anomalyRelease'
+                ? '异放伤害'
+                : '异常伤害'
+        }}
+      </p>
 
       <template v-if="detailTab === 'process'">
         <div class="result-summary">
@@ -878,9 +896,10 @@ watch(
             <p>直伤期望伤害：<strong>{{ formatNumber(selectedEval.result.directDamageExpected) }}</strong></p>
           </template>
           <template v-else>
-            <p>异常期望伤害：<strong>{{ formatNumber(selectedEval.result.anomalyExpected) }}</strong></p>
-            <p>紊乱期望伤害：<strong>{{ formatNumber(selectedEval.result.disorderExpected) }}</strong></p>
-            <p>乱流期望伤害：<strong>{{ formatNumber(selectedEval.result.turbulenceExpected) }}</strong></p>
+            <p v-if="anomalySubKind === 'anomaly'">异常期望伤害：<strong>{{ formatNumber(selectedEval.result.anomalyExpected) }}</strong></p>
+            <p v-else-if="anomalySubKind === 'disorder'">紊乱期望伤害：<strong>{{ formatNumber(selectedEval.result.disorderExpected) }}</strong></p>
+            <p v-else-if="anomalySubKind === 'turbulence'">乱流期望伤害：<strong>{{ formatNumber(selectedEval.result.turbulenceExpected) }}</strong></p>
+            <p v-else>异放期望伤害：<strong>{{ formatNumber(selectedEval.result.anomalyReleaseExpected) }}</strong></p>
           </template>
         </div>
         <DamageResultDetail
@@ -893,6 +912,7 @@ watch(
           :enemy-input="enemyInput"
           :is-mb="isMb"
           :show="damageKind"
+          :anomaly-sub-kind="anomalySubKind"
         />
       </template>
 

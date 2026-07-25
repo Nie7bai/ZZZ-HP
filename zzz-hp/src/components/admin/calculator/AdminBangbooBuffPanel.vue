@@ -14,6 +14,10 @@ import {
   normalizeBuffEffectBlocks,
   wrapEffectsAsBlocks,
 } from '@/utils/buffEffect'
+import {
+  ensureRefinementFirstBlockName,
+  syncAppliesToAnomalyAcrossRefinementBlocks,
+} from '@/utils/buffEffectBlockHelpers'
 import { createEmptyBuffStatModifiers, REFINEMENT_RANKS } from '@/utils/calculatorUi'
 
 const store = useCalculatorBuffStore()
@@ -52,8 +56,8 @@ const activeRefinementBlocks = computed({
   },
 })
 
-function toBlocks(effects: BuffEffect[]): BuffEffectBlock[] {
-  return wrapEffectsAsBlocks(effects).map((block) =>
+function toBlocks(effects: BuffEffect[], firstBlockName?: string): BuffEffectBlock[] {
+  const blocks = wrapEffectsAsBlocks(effects).map((block) =>
     createEmptyBuffEffectBlock({
       ...block,
       effects: block.effects.map((e) => ({
@@ -62,20 +66,54 @@ function toBlocks(effects: BuffEffect[]): BuffEffectBlock[] {
       })),
     }),
   )
+  if (firstBlockName && blocks[0] && (!blocks[0].name || /^效果块/.test(blocks[0].name))) {
+    blocks[0].name = firstBlockName
+  }
+  return blocks
 }
 
 function loadForm(doc: BangbooBuffDoc) {
-  const effects =
-    doc.effects?.length ? doc.effects : flatModsToEffects(doc.fixedMods, 'team')
+  const effectBlocks =
+    doc.effectBlocks?.length
+      ? normalizeBuffEffectBlocks(doc.effectBlocks).map((block) =>
+          createEmptyBuffEffectBlock({
+            ...block,
+            effects: block.effects.map((e) => ({ ...e, applyTarget: 'team' })),
+          }),
+        )
+      : toBlocks(
+          doc.effects?.length ? doc.effects : flatModsToEffects(doc.fixedMods, 'team'),
+        )
+
   const refinementBlocks = REFINEMENT_RANKS.map((_, index) => {
+    const rank = index + 1
+    const stored = doc.refinementEffectBlocks?.[index]
+    if (stored?.length) {
+      return ensureRefinementFirstBlockName(
+        normalizeBuffEffectBlocks(stored).map((block) =>
+          createEmptyBuffEffectBlock({
+            ...block,
+            effects: block.effects.map((e) => ({ ...e, applyTarget: 'team' })),
+          }),
+        ),
+        rank,
+      )
+    }
     const list = doc.refinementEffects?.[index]
-    if (list?.length) return toBlocks(list)
-    return toBlocks(flatModsToEffects(doc.refinementMods[index] ?? createEmptyBuffStatModifiers(), 'team'))
+    if (list?.length) return ensureRefinementFirstBlockName(toBlocks(list, `精${rank}`), rank)
+    return ensureRefinementFirstBlockName(
+      toBlocks(
+        flatModsToEffects(doc.refinementMods[index] ?? createEmptyBuffStatModifiers(), 'team'),
+        `精${rank}`,
+      ),
+      rank,
+    )
   })
+
   form.value = {
     id: doc.id,
     name: doc.name,
-    effectBlocks: toBlocks(effects),
+    effectBlocks,
     refinementBlocks,
   }
   activeRefinementRank.value = 1
@@ -140,8 +178,8 @@ async function saveItem() {
   try {
     const avatar_image = (await avatarFieldRef.value?.resolveAvatarImageOnSave()) ?? null
     const effectBlocks = normalizeBuffEffectBlocks(form.value.effectBlocks)
-    const refinementBlocks = form.value.refinementBlocks.map((blocks) =>
-      normalizeBuffEffectBlocks(blocks),
+    const refinementBlocks = form.value.refinementBlocks.map((blocks, index) =>
+      ensureRefinementFirstBlockName(normalizeBuffEffectBlocks(blocks), index + 1),
     )
     const effects = flattenEffectBlocks(effectBlocks)
     const refinementEffects = refinementBlocks.map((blocks) => flattenEffectBlocks(blocks))
@@ -149,7 +187,9 @@ async function saveItem() {
       id,
       name,
       avatar_image,
+      effectBlocks,
       effects,
+      refinementEffectBlocks: refinementBlocks,
       refinementEffects,
       fixedMods: effectsToMods(effects),
       refinementMods: refinementEffects.map((list) => effectsToMods(list)),
@@ -179,6 +219,14 @@ async function removeItem() {
   } catch (err) {
     error.value = err instanceof Error ? err.message : '删除失败'
   }
+}
+
+function syncRefinementAppliesToAnomaly(effect: BuffEffect, value: boolean) {
+  syncAppliesToAnomalyAcrossRefinementBlocks(
+    form.value.refinementBlocks,
+    effect,
+    value,
+  )
 }
 
 async function scrollToSection(sectionId: BangbooBuffEditSectionId) {
@@ -271,7 +319,12 @@ defineExpose({ scrollToSection, saveItem, removeItem, selectedId, saving })
               精{{ rank }}
             </button>
           </div>
-          <AdminBuffEffectEditor v-model="activeRefinementBlocks" lock-apply-target="team" />
+          <AdminBuffEffectEditor
+            v-model="activeRefinementBlocks"
+            lock-apply-target="team"
+            :default-first-block-name="`精${activeRefinementRank}`"
+            :on-applies-to-anomaly-change="syncRefinementAppliesToAnomaly"
+          />
         </section>
 
         <p v-if="error" class="form-error">{{ error }}</p>

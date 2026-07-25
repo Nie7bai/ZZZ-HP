@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, inject } from 'vue'
+import { computed, inject, ref, watch } from 'vue'
 import { GUESTBOOK_SENSITIVE_REVEAL_KEY } from '@/composables/useGuestbookSensitiveReveal'
+
+const FALLBACK_SRC = '/guestbook_image/zzz.jpg'
 
 const props = defineProps<{
   postId: number
@@ -12,23 +14,42 @@ const props = defineProps<{
 }>()
 
 const revealApi = inject(GUESTBOOK_SENSITIVE_REVEAL_KEY)
+const broken = ref(false)
 
 const blurred = computed(
   () => revealApi?.shouldBlurPost(props.postId, props.isSensitive) ?? false,
 )
 
+const displaySrc = computed(() => {
+  if (broken.value) return FALLBACK_SRC
+  return props.src || FALLBACK_SRC
+})
+
+watch(
+  () => props.src,
+  () => {
+    broken.value = false
+  },
+)
+
 function onReveal() {
   revealApi?.revealPost(props.postId)
+}
+
+function onImgError() {
+  if (broken.value) return
+  broken.value = true
 }
 </script>
 
 <template>
-  <div class="gb-sensitive-media" :class="{ 'is-blurred': blurred }">
+  <div class="gb-sensitive-media" :class="{ 'is-blurred': blurred, 'is-broken': broken }">
     <img
       :class="[imgClass, { 'gb-sensitive-media__img--blurred': blurred }]"
-      :src="src"
+      :src="displaySrc"
       :alt="alt || ''"
       :loading="loading"
+      @error="onImgError"
     />
     <button v-if="blurred" type="button" class="gb-sensitive-media__mask" @click.stop="onReveal">
       敏感内容，点击查看

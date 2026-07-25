@@ -1,3 +1,4 @@
+import type { AnomalyDamageSubKind } from '@/types/calculator'
 import type { PanelStats } from '@/types/calculatorPanel'
 import { effectiveAnomalyDuration, turbulenceUsesAnomalyCrit } from '@/utils/calculatorUi'
 
@@ -36,6 +37,19 @@ export interface DamageCalcInput {
   mainAgentId?: string
   /** 主C 名称 */
   mainAgentName?: string
+  /** 异常子类 */
+  anomalySubKind?: AnomalyDamageSubKind
+  /**
+   * 触发异常角色最终面板（乱流/异放的异常基础乘区）。
+   * 缺省时异常基础仍用 finalPanel（主 C）。
+   */
+  triggerFinalPanel?: PanelStats
+  /** 触发角色元素（影响异常有效持续时间，若走触发面板） */
+  triggerAgentElement?: string
+  /** 触发角色 piercePower（命破等）；缺省用主 C piercePower */
+  triggerPiercePower?: number
+  triggerBaseDamageSource?: 'atk' | 'pierce'
+  triggerIsMb?: boolean
 }
 
 export interface DamageCalcResult {
@@ -71,8 +85,16 @@ export interface DamageCalcResult {
   anomalyFullCritZone: number
   /** 异常基础期望（不含异常增伤/倍率/暴击区） */
   anomalyBaseExpected: number
-  /** 异常期望伤害（含异常增伤/倍率/暴击区） */
+  /** 异常期望伤害（含异常增伤/倍率/暴击区，不含异放） */
   anomalyExpected: number
+  /** 异放增伤区 */
+  anomalyReleaseDmgBonusZone: number
+  /** 异放倍率区 */
+  anomalyReleaseMultZone: number
+  /** 异放暴击区 */
+  anomalyReleaseCritZone: number
+  /** 异放期望伤害 */
+  anomalyReleaseExpected: number
   effectiveAnomalyDuration: number
   disorderBaseMultRatio: number
   disorderCompMultRatio: number
@@ -83,7 +105,7 @@ export interface DamageCalcResult {
   turbulenceCompMultRatio: number
   turbulenceZone: number
   turbulenceDmgBonusZone: number
-  /** 乱流增伤区 + 异常增伤区（百分点加算后乘区） */
+  /** 乱流增伤区 + 异常增伤区（百分点加算后乘区；不含异放） */
   turbulenceCombinedDmgBonusZone: number
   /** 乱流期望是否计入异常暴击区（简） */
   turbulenceUsesAnomalyCrit: boolean
@@ -111,15 +133,25 @@ export function computeLevelZone(level: number) {
   return 1 + (safeLevel - 1) / 59
 }
 
-export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
-  const panel = input.finalPanel
-  const enemyRes = RESISTANCE_MAP[input.enemyInput.resistanceType]
-  const element = input.mainAgentElement ?? ''
+function computeGeneralAndAnomalyBase(options: {
+  panel: PanelStats
+  piercePower: number
+  baseDamageSource: 'atk' | 'pierce'
+  isMb: boolean
+  enemyInput: DamageEnemyInput
+  combatVulnerable: number
+  combatGlobalStaggerVulnerable: number
+  combatStaggerVulnerable: number
+  combatStaggerVulnerableOnly: number
+  combatSpecial: number
+  combatPierceDmgBonus: number
+  staggerPhase: 'normal' | 'stagger'
+}) {
+  const panel = options.panel
+  const enemyRes = RESISTANCE_MAP[options.enemyInput.resistanceType]
 
   const baseDamage =
-    input.baseDamageSource === 'atk' && !input.isMbMainAgent
-      ? panel.atk
-      : input.piercePower
+    options.baseDamageSource === 'atk' && !options.isMb ? panel.atk : options.piercePower
 
   const dmgMultiplier = 1 + clamp(panel.dmgBonus / 100, -0.95, 20)
   const critRateRatio = clamp(panel.critRate / 100, 0, 1)
@@ -130,23 +162,22 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const ignoreDefenseRatio = clamp(panel.ignoreDefense / 100, 0, 1)
   const reduceDefenseRatio = clamp(panel.reduceDefense / 100, 0, 1)
   const defenseFactor = Math.max(0, 1 - ignoreDefenseRatio - reduceDefenseRatio)
-  const defenseAfterModifiers = input.enemyInput.defense * defenseFactor * (1 - penRateRatio)
+  const defenseAfterModifiers = options.enemyInput.defense * defenseFactor * (1 - penRateRatio)
   const effectiveDefense = Math.max(0, defenseAfterModifiers) - panel.pen
-  const defenseMultiplier = input.isMbMainAgent ? 1 : 794 / (794 + effectiveDefense)
+  const defenseMultiplier = options.isMb ? 1 : 794 / (794 + effectiveDefense)
   const resistanceMultiplier = 1 - enemyRes + clamp(panel.resPen / 100, -2, 2)
 
   const vulnerableMultiplier =
-    input.enemyInput.vulnerableMultiplier + input.combatVulnerable / 100
-  const staggerPhase = input.staggerPhase ?? 'stagger'
-  const globalStagger = (input.combatGlobalStaggerVulnerable ?? 0) / 100
+    options.enemyInput.vulnerableMultiplier + options.combatVulnerable / 100
+  const globalStagger = options.combatGlobalStaggerVulnerable / 100
   const phaseStagger =
-    staggerPhase === 'stagger'
-      ? (input.combatStaggerVulnerable + (input.combatStaggerVulnerableOnly ?? 0)) / 100
+    options.staggerPhase === 'stagger'
+      ? (options.combatStaggerVulnerable + options.combatStaggerVulnerableOnly) / 100
       : 0
   const staggerMultiplier =
-    input.enemyInput.staggerMultiplier + globalStagger + phaseStagger
-  const specialMultiplier = input.enemyInput.specialMultiplier + input.combatSpecial / 100
-  const pierceDmgBonusRatio = (input.combatPierceDmgBonus ?? 0) / 100
+    options.enemyInput.staggerMultiplier + globalStagger + phaseStagger
+  const specialMultiplier = options.enemyInput.specialMultiplier + options.combatSpecial / 100
+  const pierceDmgBonusRatio = options.combatPierceDmgBonus / 100
 
   const generalMultiplier =
     baseDamage *
@@ -157,59 +188,139 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     Math.max(0, staggerMultiplier)
 
   const usedBaseSource: 'atk' | 'pierce' =
-    input.baseDamageSource === 'atk' && !input.isMbMainAgent ? 'atk' : 'pierce'
+    options.baseDamageSource === 'atk' && !options.isMb ? 'atk' : 'pierce'
   const pierceDmgMultiplier =
     usedBaseSource === 'pierce' ? 1 + pierceDmgBonusRatio : 1
 
+  const masteryZone = panel.mastery / 100
+  const levelZone = computeLevelZone(options.enemyInput.level)
+  const anomalyBaseExpected =
+    generalMultiplier * masteryZone * levelZone * Math.max(0, specialMultiplier)
+
+  return {
+    baseDamage,
+    usedBaseSource,
+    dmgMultiplier,
+    critRateRatio,
+    critDmgRatio,
+    critMultiplier,
+    penRateRatio,
+    ignoreDefenseRatio,
+    reduceDefenseRatio,
+    defenseFactor,
+    enemyRes,
+    effectiveDefense,
+    defenseMultiplier,
+    resistanceMultiplier,
+    vulnerableMultiplier,
+    staggerMultiplier,
+    specialMultiplier,
+    pierceDmgMultiplier,
+    generalMultiplier,
+    masteryZone,
+    levelZone,
+    anomalyBaseExpected,
+  }
+}
+
+export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
+  const panel = input.finalPanel
+  const staggerPhase = input.staggerPhase ?? 'stagger'
+  const subKind = input.anomalySubKind ?? 'anomaly'
+  const useTriggerBase =
+    (subKind === 'turbulence' || subKind === 'anomalyRelease') &&
+    Boolean(input.triggerFinalPanel)
+
+  const mainParts = computeGeneralAndAnomalyBase({
+    panel,
+    piercePower: input.piercePower,
+    baseDamageSource: input.baseDamageSource,
+    isMb: input.isMbMainAgent,
+    enemyInput: input.enemyInput,
+    combatVulnerable: input.combatVulnerable,
+    combatGlobalStaggerVulnerable: input.combatGlobalStaggerVulnerable ?? 0,
+    combatStaggerVulnerable: input.combatStaggerVulnerable,
+    combatStaggerVulnerableOnly: input.combatStaggerVulnerableOnly ?? 0,
+    combatSpecial: input.combatSpecial,
+    combatPierceDmgBonus: input.combatPierceDmgBonus ?? 0,
+    staggerPhase,
+  })
+
+  const triggerPanel = input.triggerFinalPanel ?? panel
+  const triggerParts = useTriggerBase
+    ? computeGeneralAndAnomalyBase({
+        panel: triggerPanel,
+        piercePower: input.triggerPiercePower ?? input.piercePower,
+        baseDamageSource: input.triggerBaseDamageSource ?? input.baseDamageSource,
+        isMb: input.triggerIsMb ?? false,
+        enemyInput: input.enemyInput,
+        combatVulnerable: input.combatVulnerable,
+        combatGlobalStaggerVulnerable: input.combatGlobalStaggerVulnerable ?? 0,
+        combatStaggerVulnerable: input.combatStaggerVulnerable,
+        combatStaggerVulnerableOnly: input.combatStaggerVulnerableOnly ?? 0,
+        combatSpecial: input.combatSpecial,
+        combatPierceDmgBonus: input.combatPierceDmgBonus ?? 0,
+        staggerPhase,
+      })
+    : mainParts
+
   const directDmgMultZone = Math.max(0, panel.directDmgMult / 100)
   const directDamageExpected =
-    generalMultiplier *
-    critMultiplier *
-    Math.max(0, specialMultiplier) *
-    Math.max(0, pierceDmgMultiplier) *
+    mainParts.generalMultiplier *
+    mainParts.critMultiplier *
+    Math.max(0, mainParts.specialMultiplier) *
+    Math.max(0, mainParts.pierceDmgMultiplier) *
     directDmgMultZone
 
-  const masteryZone = panel.mastery / 100
-  const levelZone = computeLevelZone(input.enemyInput.level)
-  const anomalyDmgBonusZone =
-    1 + (panel.anomalyDmgBonus + panel.anomalyReleaseDmgBonus) / 100
-  const anomalyMultZone = Math.max(
-    0,
-    (panel.anomalyMult + panel.anomalyReleaseMult) / 100,
-  )
-  const disorderDmgBonusZone = 1 + panel.disorderDmgBonus / 100
-  const turbulenceDmgBonusZone = 1 + panel.turbulenceDmgBonus / 100
-  const turbulenceCombinedDmgBonusZone =
-    1 +
-    (panel.turbulenceDmgBonus + panel.anomalyDmgBonus + panel.anomalyReleaseDmgBonus) /
-      100
-
-  const anomalyCritRateRatio =
-    (panel.anomalyCritRate + panel.anomalyReleaseCritRate) / 100
-  const anomalyCritDmgRatio = clamp(
-    (panel.anomalyCritDmg + panel.anomalyReleaseCritDmg) / 100,
-    0,
-    20,
-  )
+  // 异常乘区：仅异常字段，不再并入异放
+  const anomalyDmgBonusZone = 1 + panel.anomalyDmgBonus / 100
+  const anomalyMultZone = Math.max(0, panel.anomalyMult / 100)
+  const anomalyCritRateRatio = panel.anomalyCritRate / 100
+  const anomalyCritDmgRatio = clamp(panel.anomalyCritDmg / 100, 0, 20)
   const anomalyCritZone = 1 + anomalyCritRateRatio * anomalyCritDmgRatio
   const anomalyFullCritZone = 1 + anomalyCritDmgRatio
 
-  // 异常基础期望：通用 × 精通 × 等级 × 特殊补充（不含异常增伤/倍率/暴击）
-  const anomalyBaseExpected =
-    generalMultiplier * masteryZone * levelZone * Math.max(0, specialMultiplier)
-  // 异常期望伤害：异常基础 × 异常增伤 × 异常倍率 × 异常暴击
+  const anomalyBaseExpected = triggerParts.anomalyBaseExpected
   const anomalyExpected =
     anomalyBaseExpected * anomalyDmgBonusZone * anomalyMultZone * anomalyCritZone
 
-  const effectiveDuration = effectiveAnomalyDuration(panel.anomalyDuration, element)
+  // 异放：基础用触发面板；倍率/增伤/暴击用主 C
+  const anomalyReleaseDmgBonusZone = 1 + panel.anomalyReleaseDmgBonus / 100
+  const anomalyReleaseMultZone = Math.max(0, panel.anomalyReleaseMult / 100)
+  const releaseCritRateRatio = panel.anomalyReleaseCritRate / 100
+  const releaseCritDmgRatio = clamp(panel.anomalyReleaseCritDmg / 100, 0, 20)
+  const anomalyReleaseCritZone = 1 + releaseCritRateRatio * releaseCritDmgRatio
+  const anomalyReleaseExpected =
+    anomalyBaseExpected *
+    anomalyReleaseDmgBonusZone *
+    anomalyReleaseMultZone *
+    anomalyReleaseCritZone
+
+  const durationElement = useTriggerBase
+    ? (input.triggerAgentElement ?? input.mainAgentElement ?? '')
+    : (input.mainAgentElement ?? '')
+  const effectiveDuration = effectiveAnomalyDuration(
+    (useTriggerBase ? triggerPanel : panel).anomalyDuration || panel.anomalyDuration,
+    durationElement,
+  )
+
+  const disorderDmgBonusZone = 1 + panel.disorderDmgBonus / 100
   const disorderBaseMultRatio = panel.disorderBaseMult / 100
   const disorderCompMultRatio = panel.disorderCompMult / 100
   const disorderZone = Math.max(
     0,
     disorderBaseMultRatio + effectiveDuration * disorderCompMultRatio,
   )
-  const disorderExpected = anomalyBaseExpected * disorderZone * disorderDmgBonusZone
+  // 紊乱基础仍来自主 C（计划：异常基础来自主 C）
+  const disorderBase =
+    subKind === 'disorder' || !useTriggerBase
+      ? mainParts.anomalyBaseExpected
+      : mainParts.anomalyBaseExpected
+  const disorderExpected = disorderBase * disorderZone * disorderDmgBonusZone
 
+  const turbulenceDmgBonusZone = 1 + panel.turbulenceDmgBonus / 100
+  const turbulenceCombinedDmgBonusZone =
+    1 + (panel.turbulenceDmgBonus + panel.anomalyDmgBonus) / 100
   const turbulenceBaseMultRatio = panel.turbulenceBaseMult / 100
   const turbulenceCompMultRatio = panel.turbulenceCompMult / 100
   const turbulenceZone = Math.max(
@@ -227,29 +338,35 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   }
 
   return {
-    baseDamage: round(baseDamage, 2),
-    baseDamageSource: usedBaseSource,
-    dmgMultiplier: round(dmgMultiplier, 4),
-    critRateRatio: round(critRateRatio, 4),
-    critDmgRatio: round(critDmgRatio, 4),
-    critMultiplier: round(critMultiplier, 4),
-    penRateRatio: round(penRateRatio, 4),
-    ignoreDefenseRatio: round(ignoreDefenseRatio, 4),
-    reduceDefenseRatio: round(reduceDefenseRatio, 4),
-    defenseFactor: round(defenseFactor, 4),
-    enemyResistance: enemyRes,
-    effectiveDefense: round(effectiveDefense, 2),
-    defenseMultiplier: round(defenseMultiplier, 4),
-    resistanceMultiplier: round(resistanceMultiplier, 4),
-    vulnerableMultiplier: round(vulnerableMultiplier, 4),
-    staggerMultiplier: round(staggerMultiplier, 4),
-    specialMultiplier: round(specialMultiplier, 4),
-    pierceDmgMultiplier: round(pierceDmgMultiplier, 4),
-    generalMultiplier: round(generalMultiplier, 2),
+    baseDamage: round(mainParts.baseDamage, 2),
+    baseDamageSource: mainParts.usedBaseSource,
+    dmgMultiplier: round(mainParts.dmgMultiplier, 4),
+    critRateRatio: round(mainParts.critRateRatio, 4),
+    critDmgRatio: round(mainParts.critDmgRatio, 4),
+    critMultiplier: round(mainParts.critMultiplier, 4),
+    penRateRatio: round(mainParts.penRateRatio, 4),
+    ignoreDefenseRatio: round(mainParts.ignoreDefenseRatio, 4),
+    reduceDefenseRatio: round(mainParts.reduceDefenseRatio, 4),
+    defenseFactor: round(mainParts.defenseFactor, 4),
+    enemyResistance: mainParts.enemyRes,
+    effectiveDefense: round(mainParts.effectiveDefense, 2),
+    defenseMultiplier: round(mainParts.defenseMultiplier, 4),
+    resistanceMultiplier: round(mainParts.resistanceMultiplier, 4),
+    vulnerableMultiplier: round(mainParts.vulnerableMultiplier, 4),
+    staggerMultiplier: round(mainParts.staggerMultiplier, 4),
+    specialMultiplier: round(mainParts.specialMultiplier, 4),
+    pierceDmgMultiplier: round(mainParts.pierceDmgMultiplier, 4),
+    generalMultiplier: round(
+      useTriggerBase ? triggerParts.generalMultiplier : mainParts.generalMultiplier,
+      2,
+    ),
     directDmgMultZone: round(directDmgMultZone, 4),
     directDamageExpected: round(directDamageExpected, 0),
-    masteryZone: round(masteryZone, 4),
-    levelZone: round(levelZone, 4),
+    masteryZone: round(
+      useTriggerBase ? triggerParts.masteryZone : mainParts.masteryZone,
+      4,
+    ),
+    levelZone: round(mainParts.levelZone, 4),
     anomalyDmgBonusZone: round(anomalyDmgBonusZone, 4),
     anomalyMultZone: round(anomalyMultZone, 4),
     anomalyCritRateRatio: round(anomalyCritRateRatio, 4),
@@ -258,6 +375,10 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     anomalyFullCritZone: round(anomalyFullCritZone, 4),
     anomalyBaseExpected: round(anomalyBaseExpected, 0),
     anomalyExpected: round(anomalyExpected, 0),
+    anomalyReleaseDmgBonusZone: round(anomalyReleaseDmgBonusZone, 4),
+    anomalyReleaseMultZone: round(anomalyReleaseMultZone, 4),
+    anomalyReleaseCritZone: round(anomalyReleaseCritZone, 4),
+    anomalyReleaseExpected: round(anomalyReleaseExpected, 0),
     effectiveAnomalyDuration: round(effectiveDuration, 4),
     disorderBaseMultRatio: round(disorderBaseMultRatio, 4),
     disorderCompMultRatio: round(disorderCompMultRatio, 4),

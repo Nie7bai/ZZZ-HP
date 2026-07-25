@@ -11,6 +11,10 @@ import { CHARACTER_ATTR_OPTIONS } from '@/types/calculator'
 const props = defineProps<{
   effects: CollectedEffect[]
   attrDefaults?: Partial<Record<CharacterAttrKey, number>>
+  panelSourceValues?: {
+    external?: Partial<Record<CharacterAttrKey, number>>
+    final?: Partial<Record<CharacterAttrKey, number>>
+  }
 }>()
 
 const open = defineModel<boolean>('open', { default: false })
@@ -18,6 +22,7 @@ const selection = defineModel<BuffSelectionState>('selection', { required: true 
 
 const search = ref('')
 const activeGroup = ref('全部')
+const showConvertOverride = ref<Record<string, boolean>>({})
 
 const groupOrder = [
   '全部',
@@ -60,6 +65,11 @@ function attrLabel(from: string) {
   return CHARACTER_ATTR_OPTIONS.find((item) => item.id === from)?.label ?? from
 }
 
+function panelSourceLabel(item: CollectedEffect) {
+  const source = item.effect.convert?.panelSource ?? 'external'
+  return source === 'final' ? '局内' : '局外'
+}
+
 function isEnabled(id: string, fallback: boolean) {
   if (id in selection.value.enabledIds) return selection.value.enabledIds[id]!
   return fallback
@@ -80,24 +90,52 @@ function setStacks(id: string, value: number) {
   selection.value.stacksByEffectId[id] = Math.max(0, value)
 }
 
-function defaultConvertBase(item: CollectedEffect) {
+function convertLiveBase(item: CollectedEffect) {
   const convert = item.effect.convert
   if (!convert) return 0
   if (convert.defaultBase != null && Number.isFinite(convert.defaultBase)) {
     return convert.defaultBase
   }
-  return props.attrDefaults?.[convert.from] ?? 0
+  const source = convert.panelSource ?? 'external'
+  const map =
+    props.panelSourceValues?.[source] ??
+    props.attrDefaults ??
+    {}
+  return map[convert.from] ?? props.attrDefaults?.[convert.from] ?? 0
 }
 
-function convertModel(id: string, item: CollectedEffect) {
+function hasConvertOverride(id: string) {
+  return id in selection.value.convertInputs
+}
+
+function convertOverrideModel(id: string, item: CollectedEffect) {
   if (!(id in selection.value.convertInputs)) {
-    selection.value.convertInputs[id] = defaultConvertBase(item)
+    return convertLiveBase(item)
   }
   return selection.value.convertInputs[id]!
 }
 
 function setConvert(id: string, value: number) {
   selection.value.convertInputs[id] = Math.max(0, value)
+  showConvertOverride.value[id] = true
+}
+
+function clearConvertOverride(id: string) {
+  delete selection.value.convertInputs[id]
+  showConvertOverride.value[id] = false
+}
+
+function convertResult(item: CollectedEffect) {
+  const override =
+    item.effect.id in selection.value.convertInputs
+      ? selection.value.convertInputs[item.effect.id]!
+      : null
+  return resolveConvertValue(
+    item.effect,
+    props.attrDefaults ?? {},
+    override,
+    props.panelSourceValues,
+  )
 }
 
 function blockNameText(item: CollectedEffect) {
@@ -132,11 +170,6 @@ function effectResultText(item: CollectedEffect) {
     return `${label} ${formatSigned(convertResult(item))}`
   }
   return `${label} ${formatSigned(Number(item.effect.value) || 0)}`
-}
-
-function convertResult(item: CollectedEffect) {
-  const base = convertModel(item.effect.id, item)
-  return resolveConvertValue(item.effect, props.attrDefaults ?? {}, base)
 }
 
 function isStackable(item: CollectedEffect) {
@@ -333,15 +366,36 @@ function close() {
                   class="rule-coverage-control convert"
                   @click.stop
                 >
-                  <span>{{ attrLabel(item.effect.convert.from) }}</span>
-                  <NumberStepper
-                    :model-value="convertModel(item.effect.id, item)"
-                    :min="0"
-                    :max="999999"
-                    :step="10"
+                  <span>
+                    {{ panelSourceLabel(item) }}·{{ attrLabel(item.effect.convert.from) }}
+                    → {{ formatSigned(convertResult(item)) }}
+                  </span>
+                  <template v-if="hasConvertOverride(item.effect.id) || showConvertOverride[item.effect.id]">
+                    <NumberStepper
+                      :model-value="convertOverrideModel(item.effect.id, item)"
+                      :min="0"
+                      :max="999999"
+                      :step="10"
+                      :disabled="!isEnabled(item.effect.id, item.effect.enabledDefault !== false)"
+                      @update:model-value="setConvert(item.effect.id, $event)"
+                    />
+                    <button
+                      type="button"
+                      class="convert-clear"
+                      @click="clearConvertOverride(item.effect.id)"
+                    >
+                      实时
+                    </button>
+                  </template>
+                  <button
+                    v-else
+                    type="button"
+                    class="convert-clear"
                     :disabled="!isEnabled(item.effect.id, item.effect.enabledDefault !== false)"
-                    @update:model-value="setConvert(item.effect.id, $event)"
-                  />
+                    @click="showConvertOverride[item.effect.id] = true"
+                  >
+                    覆盖
+                  </button>
                 </label>
               </div>
             </div>
@@ -626,6 +680,16 @@ function close() {
 .rule-coverage-control :deep(.num-stepper) {
   max-width: 9.5rem;
   min-width: 8rem;
+}
+
+.convert-clear {
+  border: 1px solid #4a5563;
+  border-radius: 6px;
+  background: #1b2230;
+  color: #9aa3b5;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.72rem;
+  cursor: pointer;
 }
 
 .chip-row {

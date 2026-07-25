@@ -12,10 +12,14 @@ export interface PanelStats {
   pen: number
   resPen: number
   mastery: number
+  /** 异常掌控（不进伤害乘区） */
+  anomalyControl: number
+  /** 能量回复效率（不进伤害乘区） */
+  energyRegen: number
   anomalyCritRate: number
   anomalyCritDmg: number
   anomalyDmgBonus: number
-  /** 异放暴击%（与异常分开展示，计算时并入异常暴击） */
+  /** 异放暴击% */
   anomalyReleaseCritRate: number
   /** 异放爆伤% */
   anomalyReleaseCritDmg: number
@@ -153,6 +157,8 @@ export function createDefaultExternalPanel(): PanelStats {
     pen: 90,
     resPen: 0,
     mastery: 0,
+    anomalyControl: 0,
+    energyRegen: 0,
     anomalyCritRate: 0,
     anomalyCritDmg: 0,
     anomalyDmgBonus: 0,

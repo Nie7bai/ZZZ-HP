@@ -53,6 +53,8 @@ export interface AffixDriveDiscMainStatContribution {
   dmgBonus: number
   penRate: number
   mastery: number
+  anomalyControl: number
+  energyRegen: number
 }
 
 export function createEmptyAffixDriveDiscMainStatContribution(): AffixDriveDiscMainStatContribution {
@@ -64,6 +66,8 @@ export function createEmptyAffixDriveDiscMainStatContribution(): AffixDriveDiscM
     dmgBonus: 0,
     penRate: 0,
     mastery: 0,
+    anomalyControl: 0,
+    energyRegen: 0,
   }
 }
 
@@ -108,6 +112,12 @@ export function collectAffixDriveDiscMainStatContribution(input: {
         break
       case 'mastery':
         result.mastery += option.value
+        break
+      case 'anomalyControl':
+        result.anomalyControl += option.value
+        break
+      case 'energyRegen':
+        result.energyRegen += option.value
         break
       default:
         break

@@ -1,0 +1,45 @@
+import type { BuffEffect, BuffEffectBlock } from '@/types/calculator'
+
+/**
+ * 效果块身份匹配（跨精炼同步「异常计算时也生效」用）
+ */
+export function sameBuffEffectIdentity(a: BuffEffect, b: BuffEffect) {
+  return (
+    a.stat === b.stat &&
+    a.kind === b.kind &&
+    a.scope === b.scope &&
+    a.applyTarget === b.applyTarget &&
+    (a.skillCategory ?? undefined) === (b.skillCategory ?? undefined) &&
+    (a.skillSubcategoryId ?? null) === (b.skillSubcategoryId ?? null)
+  )
+}
+
+/** 邦布/音擎：勾选「异常计算时也生效」时同步到所有精炼 */
+export function syncAppliesToAnomalyAcrossRefinementBlocks(
+  ranks: BuffEffectBlock[][],
+  target: BuffEffect,
+  value: boolean,
+) {
+  for (const blocks of ranks) {
+    for (const block of blocks) {
+      for (const effect of block.effects) {
+        if (!sameBuffEffectIdentity(effect, target)) continue
+        effect.appliesToAnomaly = value ? true : undefined
+      }
+    }
+  }
+}
+
+/** 精炼效果块：保证第一块默认名为 精N */
+export function ensureRefinementFirstBlockName(
+  blocks: BuffEffectBlock[],
+  rank: number,
+): BuffEffectBlock[] {
+  if (!blocks.length) return blocks
+  const first = blocks[0]!
+  const trimmed = first.name?.trim() ?? ''
+  if (!trimmed || /^效果块(\s*\d+)?$/.test(trimmed)) {
+    first.name = `精${rank}`
+  }
+  return blocks
+}

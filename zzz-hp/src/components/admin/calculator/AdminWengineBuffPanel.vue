@@ -11,6 +11,10 @@ import type { AgentMindscapeRankBuffs, WengineAdvancedStats, WengineBuffDoc } fr
 import type { WengineBuffEditSectionId } from '@/constants/wengineBuffEditNav'
 import { packFromBlocks, packFromEffects } from '@/utils/buffEffect'
 import {
+  ensureRefinementFirstBlockName,
+  syncAppliesToAnomalyAcrossRefinementBlocks,
+} from '@/utils/buffEffectBlockHelpers'
+import {
   rememberWengineStatValue,
   WENGINE_BASE_ATK_FIELD_KEY,
   wengineAdvancedStatFieldKey,
@@ -89,9 +93,11 @@ function cloneSelfTeamBuffs(buffs: AgentMindscapeRankBuffs): AgentMindscapeRankB
 }
 
 function loadRefinementForm(refinementBuffs: WengineBuffDoc['refinementBuffs']) {
-  return REFINEMENT_RANKS.map((_, index) =>
-    cloneSelfTeamBuffs(refinementBuffs[index] ?? createEmptySelfTeamBuffs()),
-  )
+  return REFINEMENT_RANKS.map((_, index) => {
+    const packed = cloneSelfTeamBuffs(refinementBuffs[index] ?? createEmptySelfTeamBuffs())
+    packed.effectBlocks = ensureRefinementFirstBlockName(packed.effectBlocks ?? [], index + 1)
+    return packed
+  })
 }
 
 function loadForm(doc: WengineBuffDoc) {
@@ -140,7 +146,19 @@ function createNew() {
 }
 
 function buildRefinementBuffs() {
-  return form.value.refinementForm.map((rank) => packFromBlocks(rank.effectBlocks ?? []))
+  return form.value.refinementForm.map((rank, index) =>
+    packFromBlocks(
+      ensureRefinementFirstBlockName(rank.effectBlocks ?? [], index + 1),
+    ),
+  )
+}
+
+function syncRefinementAppliesToAnomaly(effect: import('@/types/calculator').BuffEffect, value: boolean) {
+  syncAppliesToAnomalyAcrossRefinementBlocks(
+    form.value.refinementForm.map((rank) => rank.effectBlocks ?? []),
+    effect,
+    value,
+  )
 }
 
 function rememberWenginePanelStats() {
@@ -387,7 +405,11 @@ defineExpose({ scrollToSection, saveItem, removeItem, selectedId, saving })
           </div>
 
           <p class="mods-section-title">精{{ activeRefinementRank }} · 效果块</p>
-          <AdminBuffEffectEditor v-model="activeRefinementForm.effectBlocks" />
+          <AdminBuffEffectEditor
+            v-model="activeRefinementForm.effectBlocks"
+            :default-first-block-name="`精${activeRefinementRank}`"
+            :on-applies-to-anomaly-change="syncRefinementAppliesToAnomaly"
+          />
         </section>
 
         <p v-if="error" class="form-error">{{ error }}</p>

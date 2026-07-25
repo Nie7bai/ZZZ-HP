@@ -21,7 +21,11 @@ export type BuffApplyTarget = 'self' | 'team'
 export type BuffApplySituation = 'global' | 'stagger' | 'non_stagger'
 export type BuffEffectKind = 'fixed' | 'stacked' | 'convert'
 export type DamageCalcKind = 'direct' | 'anomaly'
+/** 异常伤害子类：异常 / 紊乱 / 乱流 / 异放 */
+export type AnomalyDamageSubKind = 'anomaly' | 'disorder' | 'turbulence' | 'anomalyRelease'
 export type StaggerPhase = 'normal' | 'stagger'
+/** 转模读取局外或局内面板 */
+export type ConvertPanelSource = 'external' | 'final'
 
 export type SkillCategoryId =
   | 'basic'
@@ -40,12 +44,10 @@ export const SKILL_CATEGORY_OPTIONS: { id: SkillCategoryId; label: string }[] = 
   { id: 'ultimate', label: '终结技' },
 ]
 
-/** 转模来源：局外/局内角色属性 */
+/** 转模来源属性（配合 panelSource 选择局外/局内） */
 export type CharacterAttrKey =
-  | 'externalHp'
-  | 'inCombatHp'
-  | 'externalAtk'
-  | 'inCombatAtk'
+  | 'hp'
+  | 'atk'
   | 'mastery'
   | 'anomalyControl'
   | 'energyRegen'
@@ -54,16 +56,29 @@ export type CharacterAttrKey =
   | 'def'
 
 export const CHARACTER_ATTR_OPTIONS: { id: CharacterAttrKey; label: string }[] = [
-  { id: 'externalHp', label: '局外生命' },
-  { id: 'inCombatHp', label: '局内生命' },
-  { id: 'externalAtk', label: '局外攻击' },
-  { id: 'inCombatAtk', label: '局内攻击' },
+  { id: 'hp', label: '生命' },
+  { id: 'atk', label: '攻击' },
   { id: 'mastery', label: '异常精通' },
   { id: 'anomalyControl', label: '异常掌控' },
   { id: 'energyRegen', label: '能量恢复' },
   { id: 'penRate', label: '穿透率' },
   { id: 'impact', label: '冲击力' },
   { id: 'def', label: '防御力' },
+]
+
+export const CONVERT_PANEL_SOURCE_OPTIONS: { id: ConvertPanelSource; label: string }[] = [
+  { id: 'external', label: '根据局外面板' },
+  { id: 'final', label: '根据局内面板' },
+]
+
+export const ANOMALY_DAMAGE_SUBKIND_OPTIONS: {
+  id: AnomalyDamageSubKind
+  label: string
+}[] = [
+  { id: 'anomaly', label: '异常伤害' },
+  { id: 'disorder', label: '紊乱伤害' },
+  { id: 'turbulence', label: '乱流伤害' },
+  { id: 'anomalyRelease', label: '异放伤害' },
 ]
 
 export interface BuffStatModifiers {
@@ -81,6 +96,10 @@ export interface BuffStatModifiers {
   reduceDefense: number
   resPen: number
   mastery: number
+  /** 异常掌控（不进伤害乘区） */
+  anomalyControl: number
+  /** 能量回复效率（不进伤害乘区） */
+  energyRegen: number
   pierce: number
   /** 贯穿增伤% */
   pierceDmgBonus: number
@@ -130,9 +149,11 @@ export type BuffStatKey = keyof BuffStatModifiers
 
 export interface BuffEffectConvert {
   from: CharacterAttrKey
+  /** 读取局外或局内面板；缺省按 external */
+  panelSource?: ConvertPanelSource
   ratioPercent: number
   cap?: number | null
-  /** 转模手输基础值的默认值（增益编辑里配置） */
+  /** @deprecated 兼容旧数据；新 UI 默认用面板实时折算 */
   defaultBase?: number | null
 }
 
@@ -209,6 +230,10 @@ export interface AgentBasePanel {
   critRate: number
   critDmg: number
   mastery: number
+  /** 异常掌控（不进伤害乘区） */
+  anomalyControl: number
+  /** 能量回复效率（不进伤害乘区） */
+  energyRegen: number
   penRate: number
   dmgBonus: number
   pen: number
@@ -275,7 +300,11 @@ export interface BangbooBuffDoc {
   id: string
   name: string
   avatar_image: string | null
+  /** 效果块（优先；展示名与备注以此为准） */
+  effectBlocks?: BuffEffectBlock[]
   effects: BuffEffect[]
+  /** 精炼效果块（精1～精5） */
+  refinementEffectBlocks?: BuffEffectBlock[][]
   refinementEffects: BuffEffect[][]
   /** 由 effects 派生 */
   fixedMods: BuffStatModifiers

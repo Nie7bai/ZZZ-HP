@@ -13,8 +13,16 @@ import type { DamageCalcSectionId } from '@/constants/damageCalcNav'
 import type { DamageCalcHistoryEntry } from '@/types/damageCalcHistory'
 import type { PanelCalcMode } from '@/types/calculatorPanel'
 import type { PanelScreenshotRecognition } from '@/types/panelScreenshot'
-import type { BangbooBuffDoc, DamageCalcKind, SkillCategoryId, StaggerPhase } from '@/types/calculator'
-import { SKILL_CATEGORY_OPTIONS } from '@/types/calculator'
+import type {
+  AnomalyDamageSubKind,
+  BangbooBuffDoc,
+  DamageCalcKind,
+  SkillCategoryId,
+  StaggerPhase,
+} from '@/types/calculator'
+import { ANOMALY_DAMAGE_SUBKIND_OPTIONS, SKILL_CATEGORY_OPTIONS } from '@/types/calculator'
+import type { PanelStats } from '@/types/calculatorPanel'
+import { createDefaultExternalPanel } from '@/types/calculatorPanel'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import {
   createHistoryEntryId,
@@ -82,6 +90,9 @@ const activeHistoryId = ref('')
 const historyMessage = ref('')
 
 const damageKind = ref<DamageCalcKind>('direct')
+const anomalySubKind = ref<AnomalyDamageSubKind>('anomaly')
+const triggerAnomalyAgentId = ref<string | null>(null)
+const anomalySlotPanels = reactive<Record<string, PanelStats>>({})
 const skillCategoryId = ref<SkillCategoryId>('basic')
 const skillSubcategoryId = ref<string | null>(null)
 const staggerPhase = ref<StaggerPhase>('stagger')
@@ -91,6 +102,72 @@ const buffSelection = reactive<BuffSelectionState>({
   stacksByEffectId: {},
   convertInputs: {},
 })
+
+const anomalyTriggerOptions = computed(() =>
+  teamSlots
+    .map((slot) => {
+      const agent = agents.value.find((item) => item.id === slot.agentId)
+      if (!agent || agent.profession !== '异常') return null
+      return {
+        id: agent.id,
+        label: `${agent.name}·${agent.element}`,
+        element: agent.element,
+      }
+    })
+    .filter((item): item is { id: string; label: string; element: string } => Boolean(item)),
+)
+
+const turbulenceTeamOk = computed(() => {
+  const elements = new Set(
+    teamSlots
+      .map((slot) => agents.value.find((a) => a.id === slot.agentId)?.element)
+      .filter((el): el is string => Boolean(el)),
+  )
+  return elements.has('风') && [...elements].some((el) => el !== '风')
+})
+
+watch(anomalyTriggerOptions, (opts) => {
+  if (!triggerAnomalyAgentId.value) return
+  if (!opts.some((item) => item.id === triggerAnomalyAgentId.value)) {
+    triggerAnomalyAgentId.value = null
+  }
+})
+
+watch(damageKind, (kind) => {
+  if (kind !== 'anomaly') {
+    triggerAnomalyAgentId.value = null
+  }
+})
+
+watch(
+  () => anomalyTriggerOptions.value.map((item) => item.id).join(','),
+  () => {
+    for (const opt of anomalyTriggerOptions.value) {
+      if (anomalySlotPanels[opt.id]) continue
+      const agent = agents.value.find((item) => item.id === opt.id)
+      const panel = createDefaultExternalPanel()
+      if (agent?.basePanel) {
+        panel.def = agent.basePanel.def
+        panel.mastery = agent.basePanel.mastery
+        panel.anomalyControl = agent.basePanel.anomalyControl
+        panel.energyRegen = agent.basePanel.energyRegen
+        panel.anomalyMult = agent.basePanel.anomalyMult
+        panel.anomalyCritRate = agent.basePanel.anomalyCritRate
+        panel.anomalyCritDmg = agent.basePanel.anomalyCritDmg
+        panel.anomalyDmgBonus = agent.basePanel.anomalyDmgBonus
+        panel.anomalyDuration = agent.basePanel.anomalyDuration
+        panel.disorderBaseMult = agent.basePanel.disorderBaseMult
+        panel.disorderCompMult = agent.basePanel.disorderCompMult
+        panel.turbulenceBaseMult = agent.basePanel.turbulenceBaseMult
+        panel.turbulenceCompMult = agent.basePanel.turbulenceCompMult
+        panel.disorderDmgBonus = agent.basePanel.disorderDmgBonus
+        panel.turbulenceDmgBonus = agent.basePanel.turbulenceDmgBonus
+        panel.directDmgMult = agent.basePanel.directDmgMult
+      }
+      anomalySlotPanels[opt.id] = panel
+    }
+  },
+)
 
 const emptyBangboo: BangbooBuffDoc = {
   id: 'none',
@@ -469,6 +546,43 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
           异常
         </button>
       </div>
+      <div
+        v-if="damageKind === 'anomaly'"
+        class="calc-mode-tabs subkind-tabs"
+        role="tablist"
+        aria-label="异常伤害子类"
+      >
+        <button
+          v-for="opt in ANOMALY_DAMAGE_SUBKIND_OPTIONS"
+          :key="opt.id"
+          type="button"
+          class="calc-mode-tab"
+          :class="{ active: anomalySubKind === opt.id }"
+          @click="anomalySubKind = opt.id"
+        >
+          {{ opt.label }}
+        </button>
+      </div>
+      <div
+        v-if="
+          damageKind === 'anomaly' &&
+          (anomalySubKind === 'turbulence' || anomalySubKind === 'anomalyRelease')
+        "
+        class="skill-context-row"
+      >
+        <label>
+          <span>触发时的异常属性</span>
+          <select v-model="triggerAnomalyAgentId">
+            <option :value="null">请选择异常职业角色</option>
+            <option v-for="opt in anomalyTriggerOptions" :key="opt.id" :value="opt.id">
+              {{ opt.label }}
+            </option>
+          </select>
+        </label>
+        <p v-if="anomalySubKind === 'turbulence' && !turbulenceTeamOk" class="inline-warn">
+          乱流需队伍同时包含风与至少一个非风属性
+        </p>
+      </div>
       <div v-if="damageKind === 'direct'" class="skill-context-row">
         <label>
           <span>招式大类</span>
@@ -511,6 +625,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       v-model:selection="buffSelection"
       :effects="collectedEffects"
       :attr-defaults="panelCalcSectionRef?.convertAttrDefaults ?? {}"
+      :panel-source-values="panelCalcSectionRef?.convertPanelSourceValues ?? undefined"
     />
 
     <section id="damage-calc-mode" class="calc-mode-section damage-anchor">
@@ -567,10 +682,14 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :bangboo-refine="bangbooRefine"
       :calc-mode="panelCalcMode"
       :damage-kind="damageKind"
+      :anomaly-sub-kind="anomalySubKind"
+      :trigger-anomaly-agent-id="triggerAnomalyAgentId"
+      :anomaly-slot-panels="anomalySlotPanels"
       :skill-category-id="skillCategoryId"
       :skill-subcategory-id="skillSubcategoryId"
       :buff-selection="buffSelection"
       :stagger-phase="staggerPhase"
+      @update:anomaly-slot-panels="Object.assign(anomalySlotPanels, $event)"
     />
 
     <OptimalAffixAllocSection
@@ -585,6 +704,9 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :selected-bangboo-id="selectedBangbooId"
       :bangboo-refine="bangbooRefine"
       :damage-kind="damageKind"
+      :anomaly-sub-kind="anomalySubKind"
+      :trigger-anomaly-agent-id="triggerAnomalyAgentId"
+      :anomaly-slot-panels="anomalySlotPanels"
       :skill-category-id="skillCategoryId"
       :skill-subcategory-id="skillSubcategoryId"
       :buff-selection="buffSelection"
@@ -647,6 +769,17 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
   background: rgba(201, 165, 92, 0.14);
   color: #f0d7a2;
   font-weight: 600;
+}
+
+.subkind-tabs {
+  margin-top: 0.55rem;
+}
+
+.inline-warn {
+  margin: 0;
+  align-self: end;
+  font-size: 0.78rem;
+  color: #f0c2a8;
 }
 
 .skill-context-row {

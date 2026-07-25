@@ -29,6 +29,72 @@ import {
   mergeBuffStatModifiers,
 } from '@/utils/calculatorUi'
 
+function flattenBlocks(blocks: { effects?: BuffEffect[] }[]): BuffEffect[] {
+  return blocks.flatMap((block) => block.effects ?? [])
+}
+
+/**
+ * 邦布/音擎精炼：任一精炼勾选了「异常计算时也生效」，则当前精炼同身份效果也生效。
+ */
+function withRefinementAnomalyFlags(
+  activeEffects: BuffEffect[],
+  allRefineEffects: BuffEffect[][],
+  allRefineBlocks?: { effects: BuffEffect[] }[][] | null,
+): BuffEffect[] {
+  const flagged = new Set<string>()
+  const mark = (effect: BuffEffect) => {
+    if (effect.appliesToAnomaly === true) {
+      flagged.add(
+        `${effect.stat}|${effect.kind}|${effect.scope}|${effect.applyTarget}|${effect.skillCategory ?? ''}|${effect.skillSubcategoryId ?? ''}`,
+      )
+    }
+  }
+  for (const list of allRefineEffects) {
+    for (const effect of list ?? []) mark(effect)
+  }
+  if (allRefineBlocks) {
+    for (const blocks of allRefineBlocks) {
+      for (const block of blocks ?? []) {
+        for (const effect of block.effects ?? []) mark(effect)
+      }
+    }
+  }
+  if (!flagged.size) return activeEffects
+  return activeEffects.map((effect) => {
+    const key = `${effect.stat}|${effect.kind}|${effect.scope}|${effect.applyTarget}|${effect.skillCategory ?? ''}|${effect.skillSubcategoryId ?? ''}`
+    if (!flagged.has(key) || effect.appliesToAnomaly === true) return effect
+    return { ...effect, appliesToAnomaly: true }
+  })
+}
+
+function applyAnomalyFlagsToPack(
+  pack: { effectBlocks?: { effects: BuffEffect[] }[]; effects?: BuffEffect[] },
+  allRefineEffects: BuffEffect[][],
+  allRefineBlocks?: { effects: BuffEffect[] }[][] | null,
+) {
+  if (pack.effectBlocks?.length) {
+    return {
+      ...pack,
+      effectBlocks: pack.effectBlocks.map((block) => ({
+        ...block,
+        effects: withRefinementAnomalyFlags(
+          block.effects ?? [],
+          allRefineEffects,
+          allRefineBlocks,
+        ),
+      })),
+    }
+  }
+  return {
+    ...pack,
+    effects: withRefinementAnomalyFlags(
+      pack.effects ?? [],
+      allRefineEffects,
+      allRefineBlocks,
+    ),
+  }
+}
+
 export interface DriveDiscSelection {
   twoPieceId: string
   fourPieceId: string
@@ -53,6 +119,12 @@ export interface PanelCalcContext {
   skillContext?: SkillCalcContext | null
   buffSelection?: BuffSelectionState | null
   attrValues?: Partial<Record<CharacterAttrKey, number>>
+  panelSourceValues?: {
+    external?: Partial<Record<CharacterAttrKey, number>>
+    final?: Partial<Record<CharacterAttrKey, number>>
+  }
+  /** 跳过转模（两阶段结算用） */
+  skipConvert?: boolean
 }
 
 export interface CombatBuffMods {
@@ -123,6 +195,8 @@ function resolvePackMods(
     stacksByEffectId: ctx.buffSelection?.stacksByEffectId,
     convertInputs: ctx.buffSelection?.convertInputs,
     attrValues: ctx.attrValues,
+    panelSourceValues: ctx.panelSourceValues,
+    skipConvert: ctx.skipConvert,
     selection: ctx.buffSelection,
   })
 }
@@ -304,7 +378,14 @@ export function collectAllBuffEffects(ctx: PanelCalcContext): CollectedEffect[] 
       // 异职音擎：仅基础属性（baseAtk / advancedStats）生效，不收集增益
       if (wengine && isWengineProfessionMatch(agent.profession, wengine.profession)) {
         const refineIndex = clampRefine(slot.wengineRefine) - 1
-        const refineBuffs = wengine.refinementBuffs[refineIndex] ?? createEmptySelfTeamBuffs()
+        const refineBuffsRaw = wengine.refinementBuffs[refineIndex] ?? createEmptySelfTeamBuffs()
+        const allRefineEffects = wengine.refinementBuffs.map((rank) => rank.effects ?? [])
+        const allRefineBlocks = wengine.refinementBuffs.map((rank) => rank.effectBlocks ?? [])
+        const refineBuffs = applyAnomalyFlagsToPack(
+          refineBuffsRaw,
+          allRefineEffects,
+          allRefineBlocks,
+        )
         const sourceLabel = `${roleLabel} · ${agent.name} · 音擎 · ${wengine.name}（精${slot.wengineRefine}）`
         const groupFor = (effect: BuffEffect) =>
           isMain
@@ -434,22 +515,39 @@ export function collectAllBuffEffects(ctx: PanelCalcContext): CollectedEffect[] 
 
   if (ctx.bangboo?.id && ctx.bangboo.id !== 'none') {
     const refineIndex = clampRefine(ctx.bangbooRefine) - 1
-    const effects = [
-      ...(ctx.bangboo.effects ?? []),
-      ...(ctx.bangboo.refinementEffects?.[refineIndex] ?? []),
-    ]
-    for (const effect of effects) {
-      collected.push({
-        effect: cloneEffectInstance(effect, 'bangboo', 'bangboo'),
-        sourceKey: 'bangboo',
-        sourceLabel: `邦布 · ${ctx.bangboo.name}（精${ctx.bangbooRefine}）`,
-        providerName: ctx.bangboo.name,
-        providerAvatar: ctx.bangboo.avatar_image,
-        group: '邦布',
-        blockId: 'bangboo',
-        blockName: ctx.bangboo.name,
-      })
+    const fixedPack = {
+      effectBlocks: ctx.bangboo.effectBlocks?.length
+        ? ctx.bangboo.effectBlocks
+        : undefined,
+      effects: ctx.bangboo.effects ?? [],
     }
+    const refineBlocks = ctx.bangboo.refinementEffectBlocks?.[refineIndex]
+    const refinePack = applyAnomalyFlagsToPack(
+      {
+        effectBlocks: refineBlocks?.length ? refineBlocks : undefined,
+        effects: ctx.bangboo.refinementEffects?.[refineIndex] ?? [],
+      },
+      ctx.bangboo.refinementEffects ?? [],
+      ctx.bangboo.refinementEffectBlocks,
+    )
+    pushPack(
+      fixedPack,
+      'bangboo-fixed',
+      `邦布 · ${ctx.bangboo.name}（精${ctx.bangbooRefine}）`,
+      ctx.bangboo.name,
+      ctx.bangboo.avatar_image,
+      () => '邦布',
+      () => true,
+    )
+    pushPack(
+      refinePack,
+      'bangboo-refine',
+      `邦布 · ${ctx.bangboo.name}（精${ctx.bangbooRefine}）`,
+      ctx.bangboo.name,
+      ctx.bangboo.avatar_image,
+      () => '邦布',
+      () => true,
+    )
   }
 
   return collected
@@ -511,7 +609,14 @@ export function collectPanelBuffModSources(ctx: PanelCalcContext): BuffModSource
       const wengine = ctx.wengines.find((item) => item.id === slot.wengineId)
       if (wengine && isWengineProfessionMatch(agent.profession, wengine.profession)) {
         const refineIndex = clampRefine(slot.wengineRefine) - 1
-        const refineBuffs = wengine.refinementBuffs[refineIndex] ?? createEmptySelfTeamBuffs()
+        const refineBuffsRaw = wengine.refinementBuffs[refineIndex] ?? createEmptySelfTeamBuffs()
+        const allRefineEffects = wengine.refinementBuffs.map((rank) => rank.effects ?? [])
+        const allRefineBlocks = wengine.refinementBuffs.map((rank) => rank.effectBlocks ?? [])
+        const refineBuffs = applyAnomalyFlagsToPack(
+          refineBuffsRaw,
+          allRefineEffects,
+          allRefineBlocks,
+        )
         const packs = [
           { key: 'fixed', pack: wengine.fixedBuffs },
           { key: 'refine', pack: refineBuffs },
@@ -628,10 +733,19 @@ export function collectPanelBuffModSources(ctx: PanelCalcContext): BuffModSource
 
   if (ctx.bangboo?.id && ctx.bangboo.id !== 'none') {
     const refineIndex = clampRefine(ctx.bangbooRefine) - 1
-    const effects = [
-      ...(ctx.bangboo.effects ?? []),
-      ...(ctx.bangboo.refinementEffects?.[refineIndex] ?? []),
-    ].map((effect) => cloneEffectInstance(effect, 'bangboo', 'bangboo'))
+    const fixedEffects = ctx.bangboo.effectBlocks?.length
+      ? flattenBlocks(ctx.bangboo.effectBlocks)
+      : (ctx.bangboo.effects ?? [])
+    const refineEffects = withRefinementAnomalyFlags(
+      ctx.bangboo.refinementEffectBlocks?.[refineIndex]?.length
+        ? flattenBlocks(ctx.bangboo.refinementEffectBlocks[refineIndex]!)
+        : (ctx.bangboo.refinementEffects?.[refineIndex] ?? []),
+      ctx.bangboo.refinementEffects ?? [],
+      ctx.bangboo.refinementEffectBlocks,
+    )
+    const effects = [...fixedEffects, ...refineEffects].map((effect) =>
+      cloneEffectInstance(effect, 'bangboo', 'bangboo'),
+    )
     const bangbooMods = resolveEffectsToMods(effects, {
       ctx: skillCtx,
       stacksByEffectId: ctx.buffSelection?.stacksByEffectId,
@@ -639,12 +753,15 @@ export function collectPanelBuffModSources(ctx: PanelCalcContext): BuffModSource
       attrValues: ctx.attrValues,
       selection: ctx.buffSelection,
     })
+    const refineBlockName =
+      ctx.bangboo.refinementEffectBlocks?.[refineIndex]?.[0]?.name?.trim() ||
+      `精${ctx.bangbooRefine}`
     sources.push({
       key: 'bangboo',
       label: `邦布 · ${ctx.bangboo.name}（精${ctx.bangbooRefine}）`,
       mods: bangbooMods,
       effects,
-      blockName: ctx.bangboo.name,
+      blockName: refineBlockName,
     })
   }
 
@@ -685,6 +802,8 @@ export function applyBuffModsToPanel(
     pen: externalPanel.pen,
     resPen: externalPanel.resPen + mods.resPen,
     mastery: externalPanel.mastery + mods.mastery,
+    anomalyControl: externalPanel.anomalyControl + mods.anomalyControl,
+    energyRegen: externalPanel.energyRegen + mods.energyRegen,
     anomalyCritRate: externalPanel.anomalyCritRate + mods.anomalyCritRate,
     anomalyCritDmg: externalPanel.anomalyCritDmg + mods.anomalyCritDmg,
     anomalyDmgBonus: externalPanel.anomalyDmgBonus + mods.anomalyDmgBonus,
@@ -708,6 +827,23 @@ export function applyBuffModsToPanel(
   }
 }
 
+export function panelToConvertAttrValues(
+  panel: PanelStats,
+  extras?: Partial<Record<CharacterAttrKey, number>>,
+): Partial<Record<CharacterAttrKey, number>> {
+  return {
+    hp: panel.hp,
+    atk: panel.atk,
+    mastery: panel.mastery,
+    anomalyControl: panel.anomalyControl,
+    energyRegen: panel.energyRegen,
+    penRate: panel.penRate,
+    def: panel.def,
+    impact: extras?.impact ?? 0,
+    ...extras,
+  }
+}
+
 export function extractCombatMods(mods: BuffStatModifiers): CombatBuffMods {
   return {
     vulnerable: mods.vulnerable,
@@ -723,13 +859,35 @@ export function computeFinalPanel(
   externalPanel: PanelStats,
   ctx: PanelCalcContext,
 ): PanelBuffBreakdown {
-  const totalMods = collectPanelBuffMods(ctx)
+  // 先叠非转模，再用局外/局内面板实时折算转模，避免环依赖
+  const baseCtx: PanelCalcContext = {
+    ...ctx,
+    skipConvert: true,
+  }
+  const interimMods = collectPanelBuffMods(baseCtx)
+  const interimPanel = applyBuffModsToPanel(externalPanel, interimMods)
+  const externalAttrs = panelToConvertAttrValues(externalPanel)
+  const finalAttrs = panelToConvertAttrValues(interimPanel)
+  const attrValues = {
+    ...externalAttrs,
+    ...ctx.attrValues,
+  }
+  const fullCtx: PanelCalcContext = {
+    ...ctx,
+    skipConvert: false,
+    attrValues,
+    panelSourceValues: {
+      external: externalAttrs,
+      final: finalAttrs,
+    },
+  }
+  const totalMods = collectPanelBuffMods(fullCtx)
   return {
     totalMods,
     combatMods: extractCombatMods(totalMods),
     finalPanel: applyBuffModsToPanel(externalPanel, totalMods),
-    sources: collectPanelBuffModSources(ctx),
-    collectedEffects: collectAllBuffEffects(ctx),
+    sources: collectPanelBuffModSources(fullCtx),
+    collectedEffects: collectAllBuffEffects(fullCtx),
   }
 }
 
@@ -745,15 +903,17 @@ export function buildDefaultBuffSelection(
     if (item.effect.kind === 'stacked' || item.effect.stackable) {
       stacksByEffectId[item.effect.id] = item.effect.defaultStacks ?? 1
     }
+    // 仅当配置了 defaultBase 时预填覆盖值；否则实时读面板
     if (item.effect.kind === 'convert' && item.effect.convert) {
       const configured = item.effect.convert.defaultBase
-      convertInputs[item.effect.id] =
-        configured != null && Number.isFinite(configured)
-          ? configured
-          : (attrValues?.[item.effect.convert.from] ?? 0)
+      if (configured != null && Number.isFinite(configured)) {
+        convertInputs[item.effect.id] = configured
+      }
     }
   }
+  void attrValues
   return { enabledIds, stacksByEffectId, convertInputs }
 }
 
 export type { SkillCategoryId }
+

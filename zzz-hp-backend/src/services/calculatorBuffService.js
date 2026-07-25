@@ -10,6 +10,8 @@ const EMPTY_AGENT_BASE_PANEL = {
   critRate: 0,
   critDmg: 0,
   mastery: 0,
+  anomalyControl: 0,
+  energyRegen: 0,
   penRate: 0,
   dmgBonus: 0,
   pen: 0,
@@ -51,6 +53,8 @@ const BUFF_STAT_KEYS = [
   'reduceDefense',
   'resPen',
   'mastery',
+  'anomalyControl',
+  'energyRegen',
   'pierce',
   'pierceDmgBonus',
   'vulnerable',
@@ -93,6 +97,8 @@ function normalizeAgentBasePanel(value) {
     critRate: readNumber(value.critRate),
     critDmg: readNumber(value.critDmg),
     mastery: readNumber(value.mastery),
+    anomalyControl: readNumber(value.anomalyControl),
+    energyRegen: readNumber(value.energyRegen),
     penRate: readNumber(value.penRate),
     dmgBonus: readNumber(value.dmgBonus),
     pen: readNumber(value.pen),
@@ -159,6 +165,48 @@ function effectsToFlatMods(effects, applyTarget) {
   return result
 }
 
+function normalizeConvert(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const LEGACY = {
+    externalHp: { from: 'hp', panelSource: 'external' },
+    inCombatHp: { from: 'hp', panelSource: 'final' },
+    externalAtk: { from: 'atk', panelSource: 'external' },
+    inCombatAtk: { from: 'atk', panelSource: 'final' },
+  }
+  const ATTRS = [
+    'hp',
+    'atk',
+    'mastery',
+    'anomalyControl',
+    'energyRegen',
+    'penRate',
+    'impact',
+    'def',
+  ]
+  const rawFrom = value.from
+  if (typeof rawFrom !== 'string') return undefined
+  let from = rawFrom
+  let panelSource = value.panelSource === 'final' ? 'final' : 'external'
+  if (LEGACY[rawFrom]) {
+    from = LEGACY[rawFrom].from
+    if (value.panelSource !== 'external' && value.panelSource !== 'final') {
+      panelSource = LEGACY[rawFrom].panelSource
+    }
+  } else if (!ATTRS.includes(rawFrom)) {
+    return undefined
+  }
+  return {
+    from,
+    panelSource,
+    ratioPercent: readNumber(value.ratioPercent),
+    cap: value.cap == null || value.cap === '' ? null : readNumber(value.cap),
+    defaultBase:
+      value.defaultBase == null || value.defaultBase === ''
+        ? null
+        : readNumber(value.defaultBase),
+  }
+}
+
 function normalizeEffectList(value) {
   if (!Array.isArray(value)) return []
   return value
@@ -183,7 +231,7 @@ function normalizeEffectList(value) {
       maxStacks: Math.max(1, readNumber(item.maxStacks) || 1),
       valuePerStack: readNumber(item.valuePerStack),
       defaultStacks: Math.max(0, readNumber(item.defaultStacks) || 1),
-      convert: item.convert ?? undefined,
+      convert: normalizeConvert(item.convert),
       appliesToAnomaly:
         item.appliesToAnomaly == null ? undefined : Boolean(item.appliesToAnomaly),
       enabledDefault: item.enabledDefault === false ? false : true,
@@ -332,12 +380,51 @@ function normalizeMindscapeNotesArray(value) {
 
 function rowToBangboo(row) {
   const raw = parseJson(row.raw_json, {})
-  let effects = normalizeEffectList(
-    raw.effects ?? raw.fixedEffects ?? null,
-  )
-  const refinementEffects = Array.isArray(raw.refinementEffects)
-    ? raw.refinementEffects.map((list) => normalizeEffectList(list))
+  const effectBlocks = Array.isArray(raw.effectBlocks)
+    ? raw.effectBlocks
+        .filter((item) => item && typeof item === 'object')
+        .map((item, index) => ({
+          id: typeof item.id === 'string' && item.id ? item.id : `blk-${index}`,
+          name:
+            typeof item.name === 'string' && item.name
+              ? item.name
+              : `效果块 ${index + 1}`,
+          note: typeof item.note === 'string' ? item.note : '',
+          effects: normalizeEffectList(item.effects),
+          enabledDefault: item.enabledDefault === false ? false : true,
+        }))
+    : []
+
+  let effects = effectBlocks.length
+    ? effectBlocks.flatMap((block) => block.effects)
+    : normalizeEffectList(raw.effects ?? raw.fixedEffects ?? null)
+
+  const refinementEffectBlocks = Array.isArray(raw.refinementEffectBlocks)
+    ? raw.refinementEffectBlocks.map((blocks, rankIndex) =>
+        Array.isArray(blocks)
+          ? blocks
+              .filter((item) => item && typeof item === 'object')
+              .map((item, index) => ({
+                id: typeof item.id === 'string' && item.id ? item.id : `blk-r${rankIndex}-${index}`,
+                name:
+                  typeof item.name === 'string' && item.name
+                    ? item.name
+                    : index === 0
+                      ? `精${rankIndex + 1}`
+                      : `效果块 ${index + 1}`,
+                note: typeof item.note === 'string' ? item.note : '',
+                effects: normalizeEffectList(item.effects),
+                enabledDefault: item.enabledDefault === false ? false : true,
+              }))
+          : [],
+      )
     : null
+
+  const refinementEffects = refinementEffectBlocks
+    ? refinementEffectBlocks.map((blocks) => blocks.flatMap((block) => block.effects))
+    : Array.isArray(raw.refinementEffects)
+      ? raw.refinementEffects.map((list) => normalizeEffectList(list))
+      : null
 
   let fixedMods = normalizeBuffStatModifiers(
     parseJson(row.fixed_mods, raw.fixedMods ?? {}),
@@ -372,7 +459,9 @@ function rowToBangboo(row) {
     id: row.id,
     name: row.name,
     avatar_image: row.avatar_image ?? null,
+    effectBlocks,
     effects,
+    refinementEffectBlocks: refinementEffectBlocks ?? undefined,
     refinementEffects:
       refinementEffects ??
       refinementMods.map((mods) => flatModsToEffects(mods, 'team')),
@@ -537,12 +626,28 @@ export async function upsertBangboo(doc) {
     id,
     name,
     avatar_image: doc.avatar_image ?? null,
+    effectBlocks: Array.isArray(doc.effectBlocks) ? doc.effectBlocks : [],
     effects: normalizeEffectList(doc.effects),
+    refinementEffectBlocks: Array.isArray(doc.refinementEffectBlocks)
+      ? doc.refinementEffectBlocks
+      : [],
     refinementEffects: Array.isArray(doc.refinementEffects)
       ? doc.refinementEffects.map((list) => normalizeEffectList(list))
       : [],
     fixedMods: normalizeBuffStatModifiers(doc.fixedMods ?? {}),
     refinementMods: Array.isArray(doc.refinementMods) ? doc.refinementMods : [],
+  }
+  if (payload.effectBlocks.length) {
+    payload.effects = payload.effectBlocks.flatMap((block) =>
+      normalizeEffectList(block?.effects),
+    )
+  }
+  if (payload.refinementEffectBlocks.length) {
+    payload.refinementEffects = payload.refinementEffectBlocks.map((blocks) =>
+      Array.isArray(blocks)
+        ? blocks.flatMap((block) => normalizeEffectList(block?.effects))
+        : [],
+    )
   }
   if (payload.effects.length) {
     const team = effectsToFlatMods(payload.effects, 'team')
