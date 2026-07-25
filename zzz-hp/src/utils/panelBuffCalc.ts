@@ -33,6 +33,28 @@ function flattenBlocks(blocks: { effects?: BuffEffect[] }[]): BuffEffect[] {
   return blocks.flatMap((block) => block.effects ?? [])
 }
 
+/** 2 件套：优先按效果块（保留名称/注释），否则回退扁平效果 */
+function collectTwoPieceBlockEntries(disc: DriveDiscBuffDoc) {
+  if (disc.twoPieceEffectBlocks?.length) {
+    return collectBlockEntriesFromPack({
+      effectBlocks: disc.twoPieceEffectBlocks,
+      effects: disc.twoPieceEffects,
+    })
+  }
+  const effects = disc.twoPieceEffects?.length
+    ? disc.twoPieceEffects
+    : flatModsToEffects(disc.twoPieceMods, 'self', 'general', `${disc.id}-2pc`)
+  if (!effects.length) return []
+  return [
+    {
+      blockId: `${disc.id}-2pc`,
+      blockName: `${disc.name} · 2件套`,
+      blockNote: disc.twoPieceNote?.trim() || '',
+      effects,
+    },
+  ]
+}
+
 /**
  * 邦布/音擎精炼：任一精炼勾选了「异常计算时也生效」，则当前精炼同身份效果也生效。
  */
@@ -223,11 +245,9 @@ export function collectSlotDriveDiscEffects(
       : undefined
 
   function pushTwoPiece(disc: DriveDiscBuffDoc) {
-    effects.push(
-      ...(disc.twoPieceEffects?.length
-        ? disc.twoPieceEffects
-        : flatModsToEffects(disc.twoPieceMods, 'self', 'general', `${disc.id}-2pc`)),
-    )
+    for (const entry of collectTwoPieceBlockEntries(disc)) {
+      effects.push(...entry.effects)
+    }
   }
 
   if (isMain) {
@@ -435,24 +455,22 @@ export function collectAllBuffEffects(ctx: PanelCalcContext): CollectedEffect[] 
 
     if (isMain && fourDisc) {
       const twoKey = `${sourceKey}-4set-2pc`
-      const twoBlockId = `${fourDisc.id}-2pc`
-      const twoEffects = (
-        fourDisc.twoPieceEffects?.length
-          ? fourDisc.twoPieceEffects
-          : flatModsToEffects(fourDisc.twoPieceMods, 'self', 'general', `${fourDisc.id}-2pc`)
-      ).filter(matchesTarget)
-      for (const effect of twoEffects) {
-        collected.push({
-          effect: cloneEffectInstance(effect, twoKey, twoBlockId),
-          sourceKey: twoKey,
-          sourceLabel: `${roleLabel} · ${agent.name} · 驱动盘 · ${fourDisc.name}（2件）`,
-          providerName: fourDisc.name,
-          providerAvatar: fourDisc.avatar_image,
-          group,
-          blockId: twoBlockId,
-          blockName: `${fourDisc.name} · 2件套`,
-          blockNote: fourDisc.twoPieceNote?.trim() || '',
-        })
+      for (const entry of collectTwoPieceBlockEntries(fourDisc)) {
+        for (const effect of entry.effects.filter(matchesTarget)) {
+          collected.push({
+            effect: cloneEffectInstance(effect, twoKey, entry.blockId),
+            sourceKey: twoKey,
+            sourceLabel: `${roleLabel} · ${agent.name} · 驱动盘 · ${fourDisc.name}（2件）`,
+            providerName: fourDisc.name,
+            providerAvatar: fourDisc.avatar_image,
+            group,
+            blockId: entry.blockId,
+            blockName: entry.blockName,
+            blockNote: [fourDisc.twoPieceNote?.trim() || '', entry.blockNote]
+              .filter(Boolean)
+              .join('\n'),
+          })
+        }
       }
       const fourKey = `${sourceKey}-4set`
       for (const entry of collectBlockEntriesFromPack(fourDisc.fourPieceBuffs)) {
@@ -475,24 +493,22 @@ export function collectAllBuffEffects(ctx: PanelCalcContext): CollectedEffect[] 
     }
     if (isMain && twoDisc && twoDisc.id !== fourDisc?.id) {
       const twoKey = `${sourceKey}-2set`
-      const twoBlockId = `${twoDisc.id}-2pc`
-      const twoEffects = (
-        twoDisc.twoPieceEffects?.length
-          ? twoDisc.twoPieceEffects
-          : flatModsToEffects(twoDisc.twoPieceMods, 'self', 'general', `${twoDisc.id}-2pc`)
-      ).filter(matchesTarget)
-      for (const effect of twoEffects) {
-        collected.push({
-          effect: cloneEffectInstance(effect, twoKey, twoBlockId),
-          sourceKey: twoKey,
-          sourceLabel: `${roleLabel} · ${agent.name} · 驱动盘 · ${twoDisc.name}（2件）`,
-          providerName: twoDisc.name,
-          providerAvatar: twoDisc.avatar_image,
-          group,
-          blockId: twoBlockId,
-          blockName: `${twoDisc.name} · 2件套`,
-          blockNote: twoDisc.twoPieceNote?.trim() || '',
-        })
+      for (const entry of collectTwoPieceBlockEntries(twoDisc)) {
+        for (const effect of entry.effects.filter(matchesTarget)) {
+          collected.push({
+            effect: cloneEffectInstance(effect, twoKey, entry.blockId),
+            sourceKey: twoKey,
+            sourceLabel: `${roleLabel} · ${agent.name} · 驱动盘 · ${twoDisc.name}（2件）`,
+            providerName: twoDisc.name,
+            providerAvatar: twoDisc.avatar_image,
+            group,
+            blockId: entry.blockId,
+            blockName: entry.blockName,
+            blockNote: [twoDisc.twoPieceNote?.trim() || '', entry.blockNote]
+              .filter(Boolean)
+              .join('\n'),
+          })
+        }
       }
     }
     if (!isMain && fourDisc) {
@@ -689,16 +705,15 @@ export function collectPanelBuffModSources(ctx: PanelCalcContext): BuffModSource
       }
 
       if (isMain && fourDisc) {
-        const twoEffects = fourDisc.twoPieceEffects?.length
-          ? fourDisc.twoPieceEffects
-          : flatModsToEffects(fourDisc.twoPieceMods, 'self', 'general', `${fourDisc.id}-2pc`)
-        pushDiscSource(
-          `${baseKey}-4set-2pc`,
-          `${roleLabel} · ${agent.name} · 驱动盘 · ${fourDisc.name}（2件）`,
-          `${fourDisc.id}-2pc`,
-          `${fourDisc.name} · 2件套`,
-          twoEffects,
-        )
+        for (const entry of collectTwoPieceBlockEntries(fourDisc)) {
+          pushDiscSource(
+            `${baseKey}-4set-2pc`,
+            `${roleLabel} · ${agent.name} · 驱动盘 · ${fourDisc.name}（2件）`,
+            entry.blockId,
+            entry.blockName,
+            entry.effects,
+          )
+        }
         for (const entry of collectBlockEntriesFromPack(fourDisc.fourPieceBuffs)) {
           pushDiscSource(
             `${baseKey}-4set`,
@@ -710,16 +725,15 @@ export function collectPanelBuffModSources(ctx: PanelCalcContext): BuffModSource
         }
       }
       if (isMain && twoDisc && twoDisc.id !== fourDisc?.id) {
-        const twoEffects = twoDisc.twoPieceEffects?.length
-          ? twoDisc.twoPieceEffects
-          : flatModsToEffects(twoDisc.twoPieceMods, 'self', 'general', `${twoDisc.id}-2pc`)
-        pushDiscSource(
-          `${baseKey}-2set`,
-          `${roleLabel} · ${agent.name} · 驱动盘 · ${twoDisc.name}（2件）`,
-          `${twoDisc.id}-2pc`,
-          `${twoDisc.name} · 2件套`,
-          twoEffects,
-        )
+        for (const entry of collectTwoPieceBlockEntries(twoDisc)) {
+          pushDiscSource(
+            `${baseKey}-2set`,
+            `${roleLabel} · ${agent.name} · 驱动盘 · ${twoDisc.name}（2件）`,
+            entry.blockId,
+            entry.blockName,
+            entry.effects,
+          )
+        }
       }
       if (!isMain && fourDisc) {
         for (const entry of collectBlockEntriesFromPack(fourDisc.fourPieceBuffs)) {

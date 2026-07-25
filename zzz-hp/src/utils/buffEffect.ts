@@ -596,10 +596,10 @@ export function packFromBlocks(blocks: BuffEffectBlock[]): AgentMindscapeRankBuf
 export function normalizeSelfTeamBuffsWithEffects(value: unknown): AgentMindscapeRankBuffs {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     const entry = value as Record<string, unknown>
-    if (Array.isArray(entry.effectBlocks)) {
+    if (Array.isArray(entry.effectBlocks) && entry.effectBlocks.length > 0) {
       return packFromBlocks(normalizeBuffEffectBlocks(entry.effectBlocks))
     }
-    if (Array.isArray(entry.effects)) {
+    if (Array.isArray(entry.effects) && entry.effects.length > 0) {
       return packFromEffects(normalizeBuffEffects(entry.effects))
     }
     if (entry.selfMods || entry.teamMods) {

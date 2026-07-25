@@ -486,10 +486,10 @@ export function normalizeBuffStatModifiers(value: unknown): BuffStatModifiers {
 export function normalizeSelfTeamBuffs(value: unknown): AgentMindscapeRankBuffs {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     const entry = value as Record<string, unknown>
-    if (Array.isArray(entry.effectBlocks)) {
+    if (Array.isArray(entry.effectBlocks) && entry.effectBlocks.length > 0) {
       return packFromBlocks(normalizeBuffEffectBlocks(entry.effectBlocks))
     }
-    if (Array.isArray(entry.effects)) {
+    if (Array.isArray(entry.effects) && entry.effects.length > 0) {
       return packFromEffects(normalizeBuffEffects(entry.effects))
     }
     if (entry.selfMods || entry.teamMods) {
@@ -516,18 +516,14 @@ export function normalizeSelfTeamBuffs(value: unknown): AgentMindscapeRankBuffs 
 
 export function normalizeWengineRefinementBuffs(value: unknown): AgentMindscapeRankBuffs[] {
   const empty = createEmptyWengineRefinementBuffs()
-  if (!Array.isArray(value) || value.length !== REFINEMENT_RANKS.length) {
-    return empty
-  }
-  return value.map((rank) => normalizeSelfTeamBuffs(rank))
+  if (!Array.isArray(value)) return empty
+  return REFINEMENT_RANKS.map((_, index) => normalizeSelfTeamBuffs(value[index] ?? {}))
 }
 
 export function normalizeRefinementMods(value: unknown): BuffStatModifiers[] {
   const empty = createEmptyRefinementMods()
-  if (!Array.isArray(value) || value.length !== REFINEMENT_RANKS.length) {
-    return empty
-  }
-  return value.map((rank) => normalizeBuffStatModifiers(rank))
+  if (!Array.isArray(value)) return empty
+  return REFINEMENT_RANKS.map((_, index) => normalizeBuffStatModifiers(value[index]))
 }
 
 export function mergeBuffStatModifiers(

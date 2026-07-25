@@ -22,6 +22,7 @@ import type {
   WengineBuffDoc,
 } from '@/types/calculator'
 import {
+  AGENT_MINDSCAPE_RANKS,
   createEmptyMindscapeBuffs,
   createEmptyRefinementMods,
   defaultTurbulenceStats,
@@ -58,8 +59,11 @@ function normalizeAvatarImage(value: unknown): string | null {
 }
 
 function normalizeMindscapeBuffs(item: Record<string, unknown>) {
-  if (Array.isArray(item.mindscapeBuffs) && item.mindscapeBuffs.length === 7) {
-    return item.mindscapeBuffs.map((rank) => normalizeSelfTeamBuffs(rank))
+  if (Array.isArray(item.mindscapeBuffs)) {
+    const ranks = item.mindscapeBuffs as unknown[]
+    return AGENT_MINDSCAPE_RANKS.map((_, index) =>
+      normalizeSelfTeamBuffs(ranks[index] ?? {}),
+    )
   }
 
   const mindscapeBuffs = createEmptyMindscapeBuffs()
@@ -194,9 +198,16 @@ function normalizeBangboo(item: Record<string, unknown>): BangbooBuffDoc {
 }
 
 function normalizeDriveDisc(item: Record<string, unknown>): DriveDiscBuffDoc {
-  let twoPieceEffects = normalizeBuffEffects(item.twoPieceEffects)
-  let twoPieceMods = normalizeTwoPieceMods(item.twoPieceMods ?? item.twoPiece)
   const discId = String(item.id ?? '')
+  const twoPieceEffectBlocks = Array.isArray(item.twoPieceEffectBlocks)
+    ? normalizeBuffEffectBlocks(item.twoPieceEffectBlocks)
+    : []
+
+  let twoPieceEffects = twoPieceEffectBlocks.length
+    ? flattenEffectBlocks(twoPieceEffectBlocks)
+    : normalizeBuffEffects(item.twoPieceEffects)
+  let twoPieceMods = normalizeTwoPieceMods(item.twoPieceMods ?? item.twoPiece)
+
   if (!twoPieceEffects.length && Object.values(twoPieceMods).some((v) => v !== 0)) {
     twoPieceEffects = flatModsToEffects(
       twoPieceMods,
@@ -214,10 +225,11 @@ function normalizeDriveDisc(item: Record<string, unknown>): DriveDiscBuffDoc {
   }
 
   return {
-    id: String(item.id ?? ''),
+    id: discId,
     name: String(item.name ?? ''),
     avatar_image:
       normalizeAvatarImage(item.avatar_image) ?? normalizeAvatarImage(item.avatar),
+    twoPieceEffectBlocks: twoPieceEffectBlocks.length ? twoPieceEffectBlocks : undefined,
     twoPieceEffects,
     twoPieceMods,
     fourPieceBuffs: normalizeSelfTeamBuffs(

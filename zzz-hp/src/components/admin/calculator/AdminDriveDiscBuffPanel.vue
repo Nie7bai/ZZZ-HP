@@ -69,15 +69,19 @@ function cloneSelfTeamBuffs(buffs: AgentMindscapeRankBuffs): AgentMindscapeRankB
 }
 
 function loadForm(doc: DriveDiscBuffDoc) {
-  const twoPieceEffects = doc.twoPieceEffects?.length
-    ? doc.twoPieceEffects
-    : flatModsToEffects(doc.twoPieceMods, 'self')
+  const twoPieceBlocks = doc.twoPieceEffectBlocks?.length
+    ? normalizeBuffEffectBlocks(doc.twoPieceEffectBlocks)
+    : wrapEffectsAsBlocks(
+        doc.twoPieceEffects?.length
+          ? doc.twoPieceEffects
+          : flatModsToEffects(doc.twoPieceMods, 'self'),
+      )
   form.value = {
     id: doc.id,
     name: doc.name,
     twoPieceNote: doc.twoPieceNote,
     fourPieceNote: doc.fourPieceNote,
-    twoPieceBlocks: wrapEffectsAsBlocks(twoPieceEffects),
+    twoPieceBlocks,
     fourPieceBuffs: cloneSelfTeamBuffs(doc.fourPieceBuffs),
   }
   void nextTick(() => {
@@ -145,6 +149,7 @@ async function saveItem() {
       avatar_image,
       twoPieceNote: form.value.twoPieceNote.trim(),
       fourPieceNote: form.value.fourPieceNote.trim(),
+      twoPieceEffectBlocks: twoPieceBlocks,
       twoPieceEffects,
       twoPieceMods,
       fourPieceBuffs: packFromBlocks(form.value.fourPieceBuffs.effectBlocks ?? []),

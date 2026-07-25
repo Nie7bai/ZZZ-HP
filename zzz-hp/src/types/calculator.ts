@@ -320,6 +320,8 @@ export interface DriveDiscBuffDoc {
   avatar_image: string | null
   twoPieceNote: string
   fourPieceNote: string
+  /** 2 件套效果块（优先；展示名与备注以此为准） */
+  twoPieceEffectBlocks?: BuffEffectBlock[]
   twoPieceEffects: BuffEffect[]
   /** 由 twoPieceEffects 派生 */
   twoPieceMods: BuffStatModifiers

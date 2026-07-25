@@ -549,6 +549,7 @@ const filteredDriveDiscDocs = computed(() =>
           </p>
           <p>2 件套效果</p>
           <BuffEffectBlocksDisplay
+            :blocks="selectedDriveDiscDoc.twoPieceEffectBlocks"
             :effects="selectedDriveDiscDoc.twoPieceEffects"
             title="2 件套"
           />

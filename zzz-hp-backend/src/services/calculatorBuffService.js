@@ -251,7 +251,7 @@ function normalizeEffectList(value) {
 
 function normalizeSelfTeamBuffs(value) {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
-    if (Array.isArray(value.effectBlocks)) {
+    if (Array.isArray(value.effectBlocks) && value.effectBlocks.length > 0) {
       const effectBlocks = value.effectBlocks
         .filter((item) => item && typeof item === 'object')
         .map((item, index) => ({
@@ -269,20 +269,18 @@ function normalizeSelfTeamBuffs(value) {
         teamMods: effectsToFlatMods(effects, 'team'),
       }
     }
-    if (Array.isArray(value.effects)) {
+    if (Array.isArray(value.effects) && value.effects.length > 0) {
       const effects = normalizeEffectList(value.effects)
       return {
-        effectBlocks: effects.length
-          ? [
-              {
-                id: 'blk-legacy',
-                name: '效果块 1',
-                note: '',
-                effects,
-                enabledDefault: true,
-              },
-            ]
-          : [],
+        effectBlocks: [
+          {
+            id: 'blk-legacy',
+            name: '效果块 1',
+            note: '',
+            effects,
+            enabledDefault: true,
+          },
+        ],
         effects,
         selfMods: effectsToFlatMods(effects, 'self'),
         teamMods: effectsToFlatMods(effects, 'team'),
@@ -359,6 +357,7 @@ function parseJson(value, fallback) {
 
 function rowToAgent(row) {
   const raw = parseJson(row.raw_json, {})
+  const mindscapeBuffsRaw = parseJson(row.mindscape_buffs, raw.mindscapeBuffs)
   return {
     ...raw,
     id: row.id,
@@ -373,11 +372,11 @@ function rowToAgent(row) {
       row.mindscape_notes,
       normalizeMindscapeNotesArray(raw.mindscapeNotes),
     ),
-    mindscapeBuffs: Array.isArray(parseJson(row.mindscape_buffs, raw.mindscapeBuffs))
-      ? parseJson(row.mindscape_buffs, raw.mindscapeBuffs).map((item) =>
-          normalizeSelfTeamBuffs(item),
-        )
-      : [],
+    mindscapeBuffs: [0, 1, 2, 3, 4, 5, 6].map((index) =>
+      normalizeSelfTeamBuffs(
+        Array.isArray(mindscapeBuffsRaw) ? mindscapeBuffsRaw[index] ?? {} : {},
+      ),
+    ),
   }
 }
 
@@ -480,12 +479,31 @@ function rowToBangboo(row) {
   }
 }
 
+function normalizeEffectBlocks(value) {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((item) => item && typeof item === 'object')
+    .map((item, index) => ({
+      id: typeof item.id === 'string' && item.id ? item.id : `blk-${index}`,
+      name:
+        typeof item.name === 'string' && item.name
+          ? item.name
+          : `效果块 ${index + 1}`,
+      note: typeof item.note === 'string' ? item.note : '',
+      effects: normalizeEffectList(item.effects),
+      enabledDefault: item.enabledDefault === false ? false : true,
+    }))
+}
+
 function rowToDriveDisc(row) {
   const raw = parseJson(row.raw_json, {})
   const fourPieceBuffs = normalizeSelfTeamBuffs(
     parseJson(row.four_piece_buffs, raw.fourPieceBuffs ?? {}),
   )
-  let twoPieceEffects = normalizeEffectList(raw.twoPieceEffects)
+  const twoPieceEffectBlocks = normalizeEffectBlocks(raw.twoPieceEffectBlocks)
+  let twoPieceEffects = twoPieceEffectBlocks.length
+    ? twoPieceEffectBlocks.flatMap((block) => block.effects)
+    : normalizeEffectList(raw.twoPieceEffects)
   let twoPieceMods = normalizeTwoPieceMods(
     parseJson(row.two_piece_mods, raw.twoPieceMods ?? {}),
   )
@@ -507,6 +525,9 @@ function rowToDriveDisc(row) {
     avatar_image: row.avatar_image ?? null,
     twoPieceNote: row.two_piece_note ?? raw.twoPieceNote ?? '',
     fourPieceNote: row.four_piece_note ?? raw.fourPieceNote ?? '',
+    twoPieceEffectBlocks: twoPieceEffectBlocks.length
+      ? twoPieceEffectBlocks
+      : undefined,
     twoPieceEffects,
     twoPieceMods,
     fourPieceBuffs,
@@ -515,6 +536,7 @@ function rowToDriveDisc(row) {
 
 function rowToWengine(row) {
   const raw = parseJson(row.raw_json, {})
+  const refinementRaw = parseJson(row.refinement_buffs, raw.refinementBuffs)
   return {
     id: row.id,
     name: row.name,
@@ -527,11 +549,9 @@ function rowToWengine(row) {
       parseJson(row.advanced_stats, raw.advancedStats),
     ),
     fixedBuffs: normalizeSelfTeamBuffs(parseJson(row.fixed_buffs, raw.fixedBuffs ?? {})),
-    refinementBuffs: Array.isArray(parseJson(row.refinement_buffs, raw.refinementBuffs))
-      ? parseJson(row.refinement_buffs, raw.refinementBuffs).map((item) =>
-          normalizeSelfTeamBuffs(item),
-        )
-      : [],
+    refinementBuffs: [0, 1, 2, 3, 4].map((index) =>
+      normalizeSelfTeamBuffs(Array.isArray(refinementRaw) ? refinementRaw[index] ?? {} : {}),
+    ),
   }
 }
 
@@ -579,8 +599,10 @@ export async function upsertAgent(doc) {
     basePanel: normalizeAgentBasePanel(doc.basePanel),
     mindscapeNotes: normalizeMindscapeNotesArray(doc.mindscapeNotes),
     mindscapeBuffs: Array.isArray(doc.mindscapeBuffs)
-      ? doc.mindscapeBuffs.map((item) => normalizeSelfTeamBuffs(item))
-      : [],
+      ? [0, 1, 2, 3, 4, 5, 6].map((index) =>
+          normalizeSelfTeamBuffs(doc.mindscapeBuffs[index] ?? {}),
+        )
+      : [0, 1, 2, 3, 4, 5, 6].map(() => normalizeSelfTeamBuffs({})),
   }
 
   await pool.execute(
@@ -636,10 +658,12 @@ export async function upsertBangboo(doc) {
     id,
     name,
     avatar_image: doc.avatar_image ?? null,
-    effectBlocks: Array.isArray(doc.effectBlocks) ? doc.effectBlocks : [],
+    effectBlocks: normalizeEffectBlocks(doc.effectBlocks),
     effects: normalizeEffectList(doc.effects),
     refinementEffectBlocks: Array.isArray(doc.refinementEffectBlocks)
-      ? doc.refinementEffectBlocks
+      ? [0, 1, 2, 3, 4].map((index) =>
+          normalizeEffectBlocks(doc.refinementEffectBlocks[index] ?? []),
+        )
       : [],
     refinementEffects: Array.isArray(doc.refinementEffects)
       ? doc.refinementEffects.map((list) => normalizeEffectList(list))
@@ -717,7 +741,10 @@ export async function upsertDriveDisc(doc) {
   }
 
   const fourPieceBuffs = normalizeSelfTeamBuffs(doc.fourPieceBuffs ?? {})
-  const twoPieceEffects = normalizeEffectList(doc.twoPieceEffects)
+  const twoPieceEffectBlocks = normalizeEffectBlocks(doc.twoPieceEffectBlocks)
+  let twoPieceEffects = twoPieceEffectBlocks.length
+    ? twoPieceEffectBlocks.flatMap((block) => block.effects)
+    : normalizeEffectList(doc.twoPieceEffects)
   let twoPieceMods = normalizeTwoPieceMods(doc.twoPieceMods ?? {})
   if (twoPieceEffects.length) {
     const team = effectsToFlatMods(twoPieceEffects, 'team')
@@ -733,6 +760,9 @@ export async function upsertDriveDisc(doc) {
     avatar_image: doc.avatar_image ?? null,
     twoPieceNote: typeof doc.twoPieceNote === 'string' ? doc.twoPieceNote : '',
     fourPieceNote: typeof doc.fourPieceNote === 'string' ? doc.fourPieceNote : '',
+    twoPieceEffectBlocks: twoPieceEffectBlocks.length
+      ? twoPieceEffectBlocks
+      : undefined,
     twoPieceEffects,
     twoPieceMods,
     fourPieceBuffs,
@@ -792,8 +822,10 @@ export async function upsertWengine(doc) {
     advancedStats: normalizeWengineAdvancedStats(doc.advancedStats),
     fixedBuffs: normalizeSelfTeamBuffs(doc.fixedBuffs ?? {}),
     refinementBuffs: Array.isArray(doc.refinementBuffs)
-      ? doc.refinementBuffs.map((item) => normalizeSelfTeamBuffs(item))
-      : [],
+      ? [0, 1, 2, 3, 4].map((index) =>
+          normalizeSelfTeamBuffs(doc.refinementBuffs[index] ?? {}),
+        )
+      : [0, 1, 2, 3, 4].map(() => normalizeSelfTeamBuffs({})),
   }
 
   await pool.execute(
