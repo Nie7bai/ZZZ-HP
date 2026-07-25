@@ -11,8 +11,11 @@ import {
 } from '../services/calculatorBuffService.js'
 import {
   deleteSkillSubcategory,
+  listFollowUpSkillRules,
   listSkillSubcategories,
+  upsertFollowUpSkillRule,
   upsertSkillSubcategory,
+  deleteFollowUpSkillRule,
 } from '../services/skillSubcategoryService.js'
 import { fail, success } from '../utils/response.js'
 
@@ -49,6 +52,33 @@ export async function removeSkillSubcategory(req, res) {
     return success(res, data, '招式小类删除成功')
   } catch (err) {
     return fail(res, err.message || '招式小类删除失败', 400, { error: err.message })
+  }
+}
+
+export async function getFollowUpSkillRules(_req, res) {
+  try {
+    const data = await listFollowUpSkillRules()
+    return success(res, data)
+  } catch (err) {
+    return fail(res, err.message || '获取追加攻击规则失败', 500, { error: err.message })
+  }
+}
+
+export async function saveFollowUpSkillRule(req, res) {
+  try {
+    const data = await upsertFollowUpSkillRule(req.body)
+    return success(res, data, '追加攻击规则保存成功')
+  } catch (err) {
+    return fail(res, err.message || '追加攻击规则保存失败', 400, { error: err.message })
+  }
+}
+
+export async function removeFollowUpSkillRule(req, res) {
+  try {
+    const data = await deleteFollowUpSkillRule(req.params.id)
+    return success(res, data, '追加攻击规则删除成功')
+  } catch (err) {
+    return fail(res, err.message || '追加攻击规则删除失败', 400, { error: err.message })
   }
 }
 

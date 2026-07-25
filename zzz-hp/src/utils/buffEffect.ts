@@ -7,11 +7,14 @@ import type {
   BuffEffectConvert,
   BuffEffectKind,
   BuffScope,
+  BuffSkillTargetId,
   BuffStatKey,
   BuffStatModifiers,
   CharacterAttrKey,
+  FollowUpSkillRule,
   SkillCalcContext,
   SkillCategoryId,
+  SkillSubcategory,
 } from '@/types/calculator'
 import { CHARACTER_ATTR_OPTIONS } from '@/types/calculator'
 
@@ -66,6 +69,8 @@ const SKILL_CATEGORIES: SkillCategoryId[] = [
   'chain',
   'ultimate',
 ]
+
+const BUFF_SKILL_TARGETS: BuffSkillTargetId[] = [...SKILL_CATEGORIES, 'follow_up']
 
 const CHARACTER_ATTRS: CharacterAttrKey[] = [
   'hp',
@@ -288,6 +293,13 @@ export function effectMatchesContext(
 
   if (effect.scope === 'skill') {
     if (ctx.damageKind === 'anomaly' && effect.appliesToAnomaly !== true) return false
+    if (effect.skillCategory === 'follow_up') {
+      if (!ctx.isFollowUp) return false
+      if (effect.skillSubcategoryId) {
+        return effect.skillSubcategoryId === ctx.subcategoryId
+      }
+      return true
+    }
     if (!effect.skillCategory || effect.skillCategory !== ctx.categoryId) return false
     if (effect.skillSubcategoryId) {
       return effect.skillSubcategoryId === ctx.subcategoryId
@@ -295,6 +307,33 @@ export function effectMatchesContext(
     return true
   }
 
+  return false
+}
+
+/** 根据小类打标与整大类规则判断当前招式是否视为追加攻击 */
+export function resolveIsFollowUp(options: {
+  agentId?: string | null
+  categoryId: SkillCategoryId
+  subcategoryId?: string | null
+  skillSubcategories?: SkillSubcategory[] | null
+  followUpSkillRules?: FollowUpSkillRule[] | null
+}): boolean {
+  const agentId = options.agentId?.trim() || ''
+  const subcategoryId = options.subcategoryId ?? null
+  const subs = options.skillSubcategories ?? []
+  const rules = options.followUpSkillRules ?? []
+
+  if (subcategoryId) {
+    const sub = subs.find((item) => item.id === subcategoryId)
+    if (sub?.countsAsFollowUp) return true
+  }
+
+  for (const rule of rules) {
+    if (rule.agentId && rule.agentId !== agentId) continue
+    if (rule.categoryId !== options.categoryId) continue
+    if (rule.subcategoryId == null) return true
+    if (subcategoryId && rule.subcategoryId === subcategoryId) return true
+  }
   return false
 }
 
@@ -418,9 +457,9 @@ function normalizeStat(value: unknown): BuffStatKey {
   return 'dmgBonus'
 }
 
-function normalizeSkillCategory(value: unknown): SkillCategoryId | undefined {
-  if (typeof value === 'string' && (SKILL_CATEGORIES as string[]).includes(value)) {
-    return value as SkillCategoryId
+function normalizeSkillCategory(value: unknown): BuffSkillTargetId | undefined {
+  if (typeof value === 'string' && (BUFF_SKILL_TARGETS as string[]).includes(value)) {
+    return value as BuffSkillTargetId
   }
   return undefined
 }
@@ -682,13 +721,14 @@ export function mergeEffectLists(...lists: BuffEffect[][]): BuffEffect[] {
   return lists.flat()
 }
 
-const SKILL_CATEGORY_LABELS: Record<SkillCategoryId, string> = {
+const SKILL_CATEGORY_LABELS: Record<BuffSkillTargetId, string> = {
   basic: '普通攻击',
   dodge: '闪避',
   assist: '支援技',
   special: '特殊技',
   chain: '连携技',
   ultimate: '终结技',
+  follow_up: '追加攻击',
 }
 
 const APPLY_SITUATION_LABELS: Record<string, string> = {

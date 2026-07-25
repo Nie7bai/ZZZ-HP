@@ -35,6 +35,9 @@ export type SkillCategoryId =
   | 'chain'
   | 'ultimate'
 
+/** 增益招式目标：真实大类，或伪大类「追加攻击」 */
+export type BuffSkillTargetId = SkillCategoryId | 'follow_up'
+
 export const SKILL_CATEGORY_OPTIONS: { id: SkillCategoryId; label: string }[] = [
   { id: 'basic', label: '普通攻击' },
   { id: 'dodge', label: '闪避' },
@@ -42,6 +45,12 @@ export const SKILL_CATEGORY_OPTIONS: { id: SkillCategoryId; label: string }[] = 
   { id: 'special', label: '特殊技' },
   { id: 'chain', label: '连携技' },
   { id: 'ultimate', label: '终结技' },
+]
+
+/** 增益编辑器用（含追加攻击伪大类） */
+export const BUFF_SKILL_TARGET_OPTIONS: { id: BuffSkillTargetId; label: string }[] = [
+  ...SKILL_CATEGORY_OPTIONS,
+  { id: 'follow_up', label: '追加攻击' },
 ]
 
 /** 转模来源属性（配合 panelSource；自行设置时仅作展示标签） */
@@ -168,8 +177,8 @@ export interface BuffEffect {
   applyTarget: BuffApplyTarget
   /** 作用情况：全局 / 失衡期 / 非失衡期，默认全局 */
   applySituation?: BuffApplySituation
-  /** 招式：小类空 = 整大类生效 */
-  skillCategory?: SkillCategoryId
+  /** 招式：小类空 = 整大类生效；follow_up = 追加攻击伪大类 */
+  skillCategory?: BuffSkillTargetId
   skillSubcategoryId?: string | null
   /** 属性限定（属性增伤/异常增伤/抗性穿透等） */
   elementFilter?: 'all' | string[]
@@ -203,10 +212,22 @@ export interface BuffEffectBlock {
 
 export interface SkillSubcategory {
   id: string
-  /** 所属角色；空表示通用 */
+  /** 所属角色；空表示通用（全部角色） */
   agentId: string
   categoryId: SkillCategoryId
   name: string
+  /** 该小类视为追加攻击 */
+  countsAsFollowUp?: boolean
+}
+
+/** 整大类（或指定小类）视为追加攻击的规则 */
+export interface FollowUpSkillRule {
+  id: string
+  /** 空 = 全部角色 */
+  agentId: string
+  categoryId: SkillCategoryId
+  /** null = 整大类 */
+  subcategoryId: string | null
 }
 
 export interface SkillCalcContext {
@@ -215,6 +236,8 @@ export interface SkillCalcContext {
   subcategoryId: string | null
   element?: string
   staggerPhase?: StaggerPhase
+  /** 当前招式是否视为追加攻击 */
+  isFollowUp?: boolean
 }
 
 export interface AgentMindscapeRankBuffs {
@@ -334,4 +357,5 @@ export interface CalculatorBuffData {
   bangboos: BangbooBuffDoc[]
   driveDiscs: DriveDiscBuffDoc[]
   skillSubcategories?: SkillSubcategory[]
+  followUpSkillRules?: FollowUpSkillRule[]
 }

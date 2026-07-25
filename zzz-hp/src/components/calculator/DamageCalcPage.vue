@@ -35,6 +35,7 @@ import {
   collectAllBuffEffects,
   type BuffSelectionState,
 } from '@/utils/panelBuffCalc'
+import { resolveIsFollowUp } from '@/utils/buffEffect'
 import { createEmptyBuffStatModifiers, createEmptyRefinementMods } from '@/utils/calculatorUi'
 
 export interface TeamSlot {
@@ -48,7 +49,7 @@ export interface TeamSlot {
 }
 
 const calculatorBuffStore = useCalculatorBuffStore()
-const { agents, wengines, bangboos, driveDiscs, skillSubcategories } =
+const { agents, wengines, bangboos, driveDiscs, skillSubcategories, followUpSkillRules } =
   storeToRefs(calculatorBuffStore)
 
 const teamSlots = reactive<TeamSlot[]>([
@@ -224,6 +225,25 @@ const teamBuffSignature = computed(() =>
   }),
 )
 
+const filteredSubcategories = computed(() =>
+  skillSubcategories.value.filter((item) => {
+    if (item.categoryId !== skillCategoryId.value) return false
+    const agentId = mainAgent.value?.id
+    if (!agentId) return true
+    return !item.agentId || item.agentId === agentId
+  }),
+)
+
+const skillIsFollowUp = computed(() =>
+  resolveIsFollowUp({
+    agentId: mainAgent.value?.id,
+    categoryId: skillCategoryId.value,
+    subcategoryId: skillSubcategoryId.value,
+    skillSubcategories: skillSubcategories.value,
+    followUpSkillRules: followUpSkillRules.value,
+  }),
+)
+
 const collectedEffects = computed(() =>
   collectAllBuffEffects({
     teamSlots,
@@ -239,16 +259,8 @@ const collectedEffects = computed(() =>
       subcategoryId: skillSubcategoryId.value,
       element: mainAgent.value?.element,
       staggerPhase: staggerPhase.value,
+      isFollowUp: skillIsFollowUp.value,
     },
-  }),
-)
-
-const filteredSubcategories = computed(() =>
-  skillSubcategories.value.filter((item) => {
-    if (item.categoryId !== skillCategoryId.value) return false
-    const agentId = mainAgent.value?.id
-    if (!agentId) return true
-    return !item.agentId || item.agentId === agentId
   }),
 )
 
@@ -601,10 +613,11 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
           <select v-model="skillSubcategoryId">
             <option :value="null">整大类</option>
             <option v-for="sub in filteredSubcategories" :key="sub.id" :value="sub.id">
-              {{ sub.name }}
+              {{ sub.name }}{{ sub.countsAsFollowUp ? '（追加）' : '' }}
             </option>
           </select>
         </label>
+        <p v-if="skillIsFollowUp" class="follow-up-hint">当前招式视为追加攻击（原大类增益与追加攻击增益叠加）</p>
       </div>
       <div class="skill-context-row">
         <label>
@@ -784,6 +797,13 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
   align-self: end;
   font-size: 0.78rem;
   color: #f0c2a8;
+}
+
+.follow-up-hint {
+  margin: 0;
+  width: 100%;
+  font-size: 0.78rem;
+  color: #9ad0b8;
 }
 
 .skill-context-row {

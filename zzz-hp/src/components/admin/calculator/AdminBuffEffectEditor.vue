@@ -5,10 +5,16 @@ import NumberStepper from '@/components/common/NumberStepper.vue'
 import type {
   BuffEffect,
   BuffEffectBlock,
+  BuffSkillTargetId,
   SkillCategoryId,
   SkillSubcategory,
 } from '@/types/calculator'
-import { CHARACTER_ATTR_OPTIONS, CONVERT_PANEL_SOURCE_OPTIONS, SKILL_CATEGORY_OPTIONS } from '@/types/calculator'
+import {
+  BUFF_SKILL_TARGET_OPTIONS,
+  CHARACTER_ATTR_OPTIONS,
+  CONVERT_PANEL_SOURCE_OPTIONS,
+  SKILL_CATEGORY_OPTIONS,
+} from '@/types/calculator'
 import { AGENT_ELEMENTS } from '@/utils/calculatorUi'
 import {
   BUFF_STAT_FIELDS,
@@ -47,6 +53,7 @@ const newSubcat = ref({
   agentId: '',
   name: '',
   categoryId: 'basic' as SkillCategoryId,
+  countsAsFollowUp: false,
 })
 const subcatMessage = ref('')
 const subcatError = ref('')
@@ -62,6 +69,30 @@ const subcategoriesByCategory = computed(() => {
   }
   return map
 })
+
+const followUpSubcategories = computed(() => {
+  const agentFilter = props.agentId || newSubcat.value.agentId
+  return skillSubcategories.value.filter((item) => {
+    if (!item.countsAsFollowUp) return false
+    if (agentFilter && item.agentId && item.agentId !== agentFilter) return false
+    return true
+  })
+})
+
+function skillTargetOptionsFor(effect: BuffEffect) {
+  return BUFF_SKILL_TARGET_OPTIONS
+}
+
+function subcategoriesForEffect(effect: BuffEffect): SkillSubcategory[] {
+  if (effect.skillCategory === 'follow_up') return followUpSubcategories.value
+  return (
+    subcategoriesByCategory.value.get((effect.skillCategory as SkillCategoryId) ?? 'basic') ?? []
+  )
+}
+
+function canCreateSubcat(effect: BuffEffect) {
+  return effect.skillCategory !== 'follow_up'
+}
 
 function isCreatingSubcat(effect: BuffEffect) {
   return creatingSubcatForId.value === effect.id
@@ -111,11 +142,15 @@ function removeEffect(block: BuffEffectBlock, effectIndex: number) {
 
 function onScopeChange(effect: BuffEffect) {
   if (effect.scope === 'skill') {
-    effect.skillCategory = effect.skillCategory ?? 'basic'
+    effect.skillCategory = (effect.skillCategory ?? 'basic') as BuffSkillTargetId
     if (!SKILL_BUFF_STAT_FIELDS.some((f) => f.key === effect.stat)) {
       effect.stat = 'skillDmgBonus'
     }
   }
+}
+
+function onSkillCategoryChange(effect: BuffEffect) {
+  effect.skillSubcategoryId = null
 }
 
 function setAppliesToAnomaly(effect: BuffEffect, checked: boolean) {
@@ -172,11 +207,8 @@ async function createSubcategory(effect: BuffEffect) {
   subcatMessage.value = ''
   subcatError.value = ''
   const name = newSubcat.value.name.trim()
-  const agentId = props.agentId || newSubcat.value.agentId
-  if (!agentId) {
-    subcatError.value = '请先选择角色'
-    return
-  }
+  // 允许空 agentId = 全部角色
+  const agentId = props.agentId ?? newSubcat.value.agentId
   if (!name) {
     subcatError.value = '小类名称为必填'
     return
@@ -187,6 +219,7 @@ async function createSubcategory(effect: BuffEffect) {
       agentId,
       categoryId: newSubcat.value.categoryId,
       name,
+      countsAsFollowUp: newSubcat.value.countsAsFollowUp,
     })
     effect.skillCategory = saved.categoryId
     effect.skillSubcategoryId = saved.id
@@ -194,7 +227,8 @@ async function createSubcategory(effect: BuffEffect) {
     newSubcat.value = {
       agentId: props.agentId || agentId,
       name: '',
-      categoryId: effect.skillCategory ?? 'basic',
+      categoryId: (effect.skillCategory as SkillCategoryId) ?? 'basic',
+      countsAsFollowUp: false,
     }
     subcatMessage.value = `已添加小类「${saved.name}」`
   } catch (err) {
@@ -204,10 +238,15 @@ async function createSubcategory(effect: BuffEffect) {
 
 function openCreateSubcat(effect: BuffEffect) {
   creatingSubcatForId.value = effect.id
+  const categoryId =
+    effect.skillCategory && effect.skillCategory !== 'follow_up'
+      ? effect.skillCategory
+      : 'basic'
   newSubcat.value = {
-    agentId: props.agentId || agents.value[0]?.id || '',
+    agentId: props.agentId || '',
     name: '',
-    categoryId: effect.skillCategory ?? 'basic',
+    categoryId,
+    countsAsFollowUp: false,
   }
   subcatError.value = ''
   subcatMessage.value = ''
@@ -347,9 +386,18 @@ defineExpose({
           <template v-if="effect.scope === 'skill'">
             <label class="field">
               <span>招式大类</span>
-              <select v-model="effect.skillCategory">
+              <select
+                :value="effect.skillCategory ?? 'basic'"
+                @change="
+                  (e) => {
+                    effect.skillCategory = (e.target as HTMLSelectElement)
+                      .value as BuffSkillTargetId
+                    onSkillCategoryChange(effect)
+                  }
+                "
+              >
                 <option
-                  v-for="opt in SKILL_CATEGORY_OPTIONS"
+                  v-for="opt in skillTargetOptionsFor(effect)"
                   :key="opt.id"
                   :value="opt.id"
                 >
@@ -360,11 +408,11 @@ defineExpose({
             <label class="field">
               <span>招式小类</span>
               <select v-model="effect.skillSubcategoryId">
-                <option :value="null">整大类</option>
+                <option :value="null">
+                  {{ effect.skillCategory === 'follow_up' ? '全部追加' : '整大类' }}
+                </option>
                 <option
-                  v-for="sub in subcategoriesByCategory.get(
-                    (effect.skillCategory as SkillCategoryId) ?? 'basic',
-                  ) ?? []"
+                  v-for="sub in subcategoriesForEffect(effect)"
                   :key="sub.id"
                   :value="sub.id"
                 >
@@ -372,7 +420,7 @@ defineExpose({
                 </option>
               </select>
             </label>
-            <div class="field subcat-actions">
+            <div v-if="canCreateSubcat(effect)" class="field subcat-actions">
               <button type="button" class="ghost-btn" @click="openCreateSubcat(effect)">
                 ＋ 新建招式小类
               </button>
@@ -409,7 +457,7 @@ defineExpose({
             <label v-if="!agentId" class="field">
               <span>角色</span>
               <select v-model="newSubcat.agentId">
-                <option value="">请选择角色</option>
+                <option value="">全部角色</option>
                 <option v-for="agent in agents" :key="agent.id" :value="agent.id">
                   {{ agent.name }}
                 </option>
@@ -426,6 +474,10 @@ defineExpose({
             <label class="field">
               <span>小类名称</span>
               <input v-model="newSubcat.name" type="text" placeholder="显示名称" />
+            </label>
+            <label class="field checkbox">
+              <input v-model="newSubcat.countsAsFollowUp" type="checkbox" />
+              <span>视为追加攻击</span>
             </label>
           </div>
           <div class="subcat-create-actions">

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import ExtraBuffGainEditor, {
   type ExtraBuffGain,
 } from '@/components/calculator/ExtraBuffGainEditor.vue'
@@ -62,6 +63,8 @@ import {
   STAGGER_MULTIPLIER_PRESETS,
 } from '@/utils/enemyInputPresets'
 import EnemyPresetCombo from '@/components/calculator/EnemyPresetCombo.vue'
+import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
+import { resolveIsFollowUp } from '@/utils/buffEffect'
 
 const MB_PROFESSION = '命破'
 
@@ -230,6 +233,18 @@ const mainSlot = computed(() => props.teamSlots[mainSlotIndex.value]!)
 
 const mainAgent = computed(() => props.agents.find((item) => item.id === mainSlot.value.agentId))
 
+const { skillSubcategories, followUpSkillRules } = storeToRefs(useCalculatorBuffStore())
+
+const skillIsFollowUp = computed(() =>
+  resolveIsFollowUp({
+    agentId: mainAgent.value?.id,
+    categoryId: props.skillCategoryId ?? 'basic',
+    subcategoryId: props.skillSubcategoryId ?? null,
+    skillSubcategories: skillSubcategories.value,
+    followUpSkillRules: followUpSkillRules.value,
+  }),
+)
+
 const isMb = computed(() => mainAgent.value?.profession === MB_PROFESSION)
 
 const selectedBangboo = computed(
@@ -259,6 +274,7 @@ const evalCtx = computed(() =>
       subcategoryId: props.skillSubcategoryId ?? null,
       element: mainAgent.value?.element,
       staggerPhase: props.staggerPhase ?? 'stagger',
+      isFollowUp: skillIsFollowUp.value,
     },
     buffSelection: props.buffSelection ?? null,
   }),

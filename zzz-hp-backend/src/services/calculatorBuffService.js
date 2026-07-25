@@ -1,5 +1,5 @@
 import pool from '../config/db.js'
-import { listSkillSubcategories } from './skillSubcategoryService.js'
+import { listFollowUpSkillRules, listSkillSubcategories } from './skillSubcategoryService.js'
 
 const WENGINE_TABLE = '`W-Engine`'
 
@@ -571,6 +571,7 @@ export async function listCalculatorBuffs() {
     `SELECT * FROM ${WENGINE_TABLE} ORDER BY name ASC, id ASC`,
   )
   const skillSubcategories = await listSkillSubcategories()
+  const followUpSkillRules = await listFollowUpSkillRules()
 
   return {
     agents: agents.map(rowToAgent),
@@ -578,6 +579,7 @@ export async function listCalculatorBuffs() {
     driveDiscs: driveDiscs.map(rowToDriveDisc),
     wengines: wengines.map(rowToWengine),
     skillSubcategories,
+    followUpSkillRules,
   }
 }
 

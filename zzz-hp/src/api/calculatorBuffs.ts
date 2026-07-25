@@ -3,6 +3,7 @@ import type {
   BangbooBuffDoc,
   CalculatorBuffData,
   DriveDiscBuffDoc,
+  FollowUpSkillRule,
   SkillSubcategory,
   WengineBuffDoc,
 } from '@/types/calculator'
@@ -51,6 +52,23 @@ export async function saveSkillSubcategory(
 export async function deleteSkillSubcategory(id: string): Promise<void> {
   await requestJson<{ id: string }>(
     `/api/calculator-buffs/skill-subcategories/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
+  )
+}
+
+export async function saveFollowUpSkillRule(
+  doc: FollowUpSkillRule,
+): Promise<FollowUpSkillRule> {
+  return requestJson<FollowUpSkillRule>('/api/calculator-buffs/follow-up-rules', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(doc),
+  })
+}
+
+export async function deleteFollowUpSkillRule(id: string): Promise<void> {
+  await requestJson<{ id: string }>(
+    `/api/calculator-buffs/follow-up-rules/${encodeURIComponent(id)}`,
     { method: 'DELETE' },
   )
 }

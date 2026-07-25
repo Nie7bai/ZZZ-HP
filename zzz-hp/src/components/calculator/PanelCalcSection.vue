@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import ExtraBuffGainEditor, {
   type ExtraBuffGain,
 } from '@/components/calculator/ExtraBuffGainEditor.vue'
@@ -55,6 +56,8 @@ import {
 } from '@/utils/enemyInputPresets'
 import EnemyPresetCombo from '@/components/calculator/EnemyPresetCombo.vue'
 import type { PanelScreenshotRecognition } from '@/types/panelScreenshot'
+import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
+import { resolveIsFollowUp } from '@/utils/buffEffect'
 
 type BaseDamageSource = 'atk' | 'pierce'
 
@@ -202,6 +205,18 @@ const mainAgent = computed(() =>
   props.agents.find((item) => item.id === mainSlot.value.agentId),
 )
 
+const { skillSubcategories, followUpSkillRules } = storeToRefs(useCalculatorBuffStore())
+
+const skillIsFollowUp = computed(() =>
+  resolveIsFollowUp({
+    agentId: mainAgent.value?.id,
+    categoryId: props.skillCategoryId ?? 'basic',
+    subcategoryId: props.skillSubcategoryId ?? null,
+    skillSubcategories: skillSubcategories.value,
+    followUpSkillRules: followUpSkillRules.value,
+  }),
+)
+
 const mainWengine = computed(() => {
   const id = mainSlot.value.wengineId
   if (!id || id === 'none') return null
@@ -277,6 +292,7 @@ const panelBreakdown = computed(() =>
       subcategoryId: props.skillSubcategoryId ?? null,
       element: mainAgent.value?.element,
       staggerPhase: props.staggerPhase ?? 'stagger',
+      isFollowUp: skillIsFollowUp.value,
     },
     buffSelection: props.buffSelection ?? null,
     attrValues: convertAttrDefaults.value,
@@ -361,6 +377,7 @@ const triggerPanelBreakdown = computed(() => {
       subcategoryId: props.skillSubcategoryId ?? null,
       element: triggerAgent.value?.element,
       staggerPhase: props.staggerPhase ?? 'stagger',
+      isFollowUp: skillIsFollowUp.value,
     },
     buffSelection: props.buffSelection ?? null,
   })

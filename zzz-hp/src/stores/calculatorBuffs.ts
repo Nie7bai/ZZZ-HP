@@ -4,12 +4,14 @@ import {
   deleteAgentBuff,
   deleteBangbooBuff,
   deleteDriveDiscBuff,
+  deleteFollowUpSkillRule,
   deleteSkillSubcategory,
   deleteWengineBuff,
   fetchCalculatorBuffs,
   saveAgentBuff,
   saveBangbooBuff,
   saveDriveDiscBuff,
+  saveFollowUpSkillRule,
   saveSkillSubcategory,
   saveWengineBuff,
 } from '@/api/calculatorBuffs'
@@ -17,6 +19,8 @@ import type {
   AgentBuffDoc,
   BangbooBuffDoc,
   DriveDiscBuffDoc,
+  FollowUpSkillRule,
+  SkillCategoryId,
   SkillSubcategory,
   SupportStatNeed,
   WengineBuffDoc,
@@ -251,6 +255,19 @@ function normalizeSkillSubcategory(item: Record<string, unknown>): SkillSubcateg
     agentId: String(item.agentId ?? ''),
     categoryId: (item.categoryId as SkillSubcategory['categoryId']) || 'basic',
     name: String(item.name ?? ''),
+    countsAsFollowUp: Boolean(item.countsAsFollowUp),
+  }
+}
+
+function normalizeFollowUpSkillRule(item: Record<string, unknown>): FollowUpSkillRule {
+  return {
+    id: String(item.id ?? ''),
+    agentId: String(item.agentId ?? ''),
+    categoryId: (item.categoryId as SkillCategoryId) || 'basic',
+    subcategoryId:
+      item.subcategoryId == null || item.subcategoryId === ''
+        ? null
+        : String(item.subcategoryId),
   }
 }
 
@@ -260,6 +277,7 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
   const bangboos = ref<BangbooBuffDoc[]>([])
   const driveDiscs = ref<DriveDiscBuffDoc[]>([])
   const skillSubcategories = ref<SkillSubcategory[]>([])
+  const followUpSkillRules = ref<FollowUpSkillRule[]>([])
   const loading = ref(true)
   const loaded = ref(false)
   const error = ref('')
@@ -333,6 +351,9 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
         )
         skillSubcategories.value = (data.skillSubcategories ?? []).map((item) =>
           normalizeSkillSubcategory(item as unknown as Record<string, unknown>),
+        )
+        followUpSkillRules.value = (data.followUpSkillRules ?? []).map((item) =>
+          normalizeFollowUpSkillRule(item as unknown as Record<string, unknown>),
         )
         loaded.value = true
         error.value = ''
@@ -420,12 +441,33 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
     skillSubcategories.value = skillSubcategories.value.filter((item) => item.id !== id)
   }
 
+  async function upsertFollowUpSkillRuleDoc(doc: FollowUpSkillRule) {
+    const saved = await saveFollowUpSkillRule(doc)
+    const normalized = normalizeFollowUpSkillRule(saved as unknown as Record<string, unknown>)
+    const index = followUpSkillRules.value.findIndex((item) => item.id === normalized.id)
+    if (index >= 0) followUpSkillRules.value[index] = normalized
+    else followUpSkillRules.value.push(normalized)
+    followUpSkillRules.value.sort(
+      (a, b) =>
+        a.agentId.localeCompare(b.agentId) ||
+        a.categoryId.localeCompare(b.categoryId) ||
+        a.id.localeCompare(b.id),
+    )
+    return normalized
+  }
+
+  async function removeFollowUpSkillRuleDoc(id: string) {
+    await deleteFollowUpSkillRule(id)
+    followUpSkillRules.value = followUpSkillRules.value.filter((item) => item.id !== id)
+  }
+
   return {
     agents,
     wengines,
     bangboos,
     driveDiscs,
     skillSubcategories,
+    followUpSkillRules,
     loading,
     loaded,
     error,
@@ -441,5 +483,7 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
     deleteDriveDisc,
     upsertSkillSubcategoryDoc,
     removeSkillSubcategoryDoc,
+    upsertFollowUpSkillRuleDoc,
+    removeFollowUpSkillRuleDoc,
   }
 })
