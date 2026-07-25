@@ -74,22 +74,6 @@ function statFieldsFor(effect: BuffEffect) {
   return GENERAL_BUFF_STAT_FIELDS.length ? GENERAL_BUFF_STAT_FIELDS : BUFF_STAT_FIELDS
 }
 
-function patchBlock(blockIndex: number, patch: Partial<BuffEffectBlock>) {
-  const current = model.value[blockIndex]
-  if (!current) return
-  Object.assign(current, patch)
-  // 触发 defineModel 更新，避免父级 computed 绑定读不到变更
-  model.value = [...model.value]
-}
-
-function setBlockName(blockIndex: number, name: string) {
-  patchBlock(blockIndex, { name })
-}
-
-function setBlockNote(blockIndex: number, note: string) {
-  patchBlock(blockIndex, { note })
-}
-
 function addBlock() {
   const isFirst = model.value.length === 0
   const name =
@@ -233,25 +217,22 @@ defineExpose({
         <label class="field name-field">
           <span>效果块名称</span>
           <input
-            :value="block.name"
+            v-model="block.name"
             type="text"
-            @input="
-              setBlockName(blockIndex, ($event.target as HTMLInputElement).value)
-            "
+            autocomplete="off"
+            placeholder="可自定义名称"
           />
         </label>
         <button type="button" class="danger-btn" @click="removeBlock(blockIndex)">删除块</button>
       </header>
 
       <label class="field note-field">
-        <span>块备注</span>
-        <input
-          :value="block.note ?? ''"
-          type="text"
-          placeholder="可选说明"
-          @input="
-            setBlockNote(blockIndex, ($event.target as HTMLInputElement).value)
-          "
+        <span>块备注 / 注释</span>
+        <textarea
+          v-model="block.note"
+          rows="2"
+          autocomplete="off"
+          placeholder="可选说明、触发条件等"
         />
       </label>
 
@@ -617,12 +598,20 @@ defineExpose({
 }
 
 .field input[type='text'],
+.field textarea,
 .field select {
   border: 1px solid var(--color-border);
   border-radius: 8px;
   background: var(--color-background);
   color: var(--color-text);
   padding: 0.4rem 0.5rem;
+  font: inherit;
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 2.6rem;
+  line-height: 1.4;
 }
 
 .note-field {

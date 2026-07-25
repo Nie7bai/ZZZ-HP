@@ -6,19 +6,29 @@ import AdminCalculatorAvatarField from '@/components/admin/calculator/AdminCalcu
 import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import type { BangbooBuffEditSectionId } from '@/constants/bangbooBuffEditNav'
-import type { BangbooBuffDoc, BuffEffect, BuffEffectBlock } from '@/types/calculator'
+import type {
+  AgentMindscapeRankBuffs,
+  BangbooBuffDoc,
+  BuffEffect,
+  BuffEffectBlock,
+} from '@/types/calculator'
 import {
-  createEmptyBuffEffectBlock,
   flatModsToEffects,
   flattenEffectBlocks,
   normalizeBuffEffectBlocks,
-  wrapEffectsAsBlocks,
+  packFromBlocks,
+  packFromEffects,
 } from '@/utils/buffEffect'
 import {
   ensureRefinementFirstBlockName,
   syncAppliesToAnomalyAcrossRefinementBlocks,
 } from '@/utils/buffEffectBlockHelpers'
-import { createEmptyBuffStatModifiers, REFINEMENT_RANKS } from '@/utils/calculatorUi'
+import {
+  createEmptyBuffStatModifiers,
+  createEmptySelfTeamBuffs,
+  createEmptyWengineRefinementBuffs,
+  REFINEMENT_RANKS,
+} from '@/utils/calculatorUi'
 
 const store = useCalculatorBuffStore()
 const { bangboos } = storeToRefs(store)
@@ -32,15 +42,11 @@ const activeRefinementRank = ref(1)
 const avatarFieldRef = ref<InstanceType<typeof AdminCalculatorAvatarField> | null>(null)
 const panelRootRef = ref<HTMLElement | null>(null)
 
-function emptyRefinementBlocks(): BuffEffectBlock[][] {
-  return REFINEMENT_RANKS.map(() => [])
-}
-
 const form = ref({
   id: '',
   name: '',
-  effectBlocks: [] as BuffEffectBlock[],
-  refinementBlocks: emptyRefinementBlocks(),
+  fixedBuffs: createEmptySelfTeamBuffs(),
+  refinementForm: createEmptyWengineRefinementBuffs(),
 })
 
 const filteredBangboos = computed(() => {
@@ -49,72 +55,73 @@ const filteredBangboos = computed(() => {
   return bangboos.value.filter((item) => `${item.name}${item.id}`.includes(keyword))
 })
 
-const activeRefinementBlocks = computed({
-  get: () => form.value.refinementBlocks[activeRefinementRank.value - 1]!,
-  set: (value: BuffEffectBlock[]) => {
-    form.value.refinementBlocks[activeRefinementRank.value - 1] = value
-  },
-})
+/** 与音擎一致：当前精炼阶的整包增益（含 effectBlocks） */
+const activeRefinementForm = computed(
+  () => form.value.refinementForm[activeRefinementRank.value - 1]!,
+)
 
-function toBlocks(effects: BuffEffect[], firstBlockName?: string): BuffEffectBlock[] {
-  const blocks = wrapEffectsAsBlocks(effects).map((block) =>
-    createEmptyBuffEffectBlock({
-      ...block,
-      effects: block.effects.map((e) => ({
-        ...e,
-        applyTarget: 'team',
-      })),
-    }),
-  )
-  if (firstBlockName && blocks[0] && (!blocks[0].name || /^效果块/.test(blocks[0].name))) {
-    blocks[0].name = firstBlockName
+function forceTeamEffects(effects: BuffEffect[]): BuffEffect[] {
+  return effects.map((effect) => ({
+    ...effect,
+    applyTarget: 'team' as const,
+    convert: effect.convert ? { ...effect.convert } : undefined,
+    elementFilter: Array.isArray(effect.elementFilter)
+      ? [...effect.elementFilter]
+      : effect.elementFilter,
+  }))
+}
+
+function forceTeamBlocks(blocks: BuffEffectBlock[]): BuffEffectBlock[] {
+  return normalizeBuffEffectBlocks(blocks).map((block) => ({
+    ...block,
+    note: typeof block.note === 'string' ? block.note : '',
+    effects: forceTeamEffects(block.effects ?? []),
+  }))
+}
+
+function blocksToPack(blocks: BuffEffectBlock[], rank?: number): AgentMindscapeRankBuffs {
+  const normalized = forceTeamBlocks(blocks)
+  const named =
+    typeof rank === 'number' ? ensureRefinementFirstBlockName(normalized, rank) : normalized
+  return packFromBlocks(named)
+}
+
+function loadFixedBuffs(doc: BangbooBuffDoc): AgentMindscapeRankBuffs {
+  if (doc.effectBlocks?.length) {
+    return blocksToPack(doc.effectBlocks)
   }
-  return blocks
+  if (doc.effects?.length) {
+    return packFromEffects(forceTeamEffects(doc.effects))
+  }
+  return packFromEffects(forceTeamEffects(flatModsToEffects(doc.fixedMods, 'team')))
+}
+
+function loadRefinementForm(doc: BangbooBuffDoc): AgentMindscapeRankBuffs[] {
+  return REFINEMENT_RANKS.map((_, index) => {
+    const rank = index + 1
+    const storedBlocks = doc.refinementEffectBlocks?.[index]
+    if (storedBlocks?.length) {
+      return blocksToPack(storedBlocks, rank)
+    }
+    const storedEffects = doc.refinementEffects?.[index]
+    if (storedEffects?.length) {
+      const packed = packFromEffects(forceTeamEffects(storedEffects))
+      packed.effectBlocks = ensureRefinementFirstBlockName(packed.effectBlocks ?? [], rank)
+      return packed
+    }
+    const mods = doc.refinementMods[index] ?? createEmptyBuffStatModifiers()
+    const packed = packFromEffects(forceTeamEffects(flatModsToEffects(mods, 'team')))
+    packed.effectBlocks = ensureRefinementFirstBlockName(packed.effectBlocks ?? [], rank)
+    return packed
+  })
 }
 
 function loadForm(doc: BangbooBuffDoc) {
-  const effectBlocks =
-    doc.effectBlocks?.length
-      ? normalizeBuffEffectBlocks(doc.effectBlocks).map((block) =>
-          createEmptyBuffEffectBlock({
-            ...block,
-            effects: block.effects.map((e) => ({ ...e, applyTarget: 'team' })),
-          }),
-        )
-      : toBlocks(
-          doc.effects?.length ? doc.effects : flatModsToEffects(doc.fixedMods, 'team'),
-        )
-
-  const refinementBlocks = REFINEMENT_RANKS.map((_, index) => {
-    const rank = index + 1
-    const stored = doc.refinementEffectBlocks?.[index]
-    if (stored?.length) {
-      return ensureRefinementFirstBlockName(
-        normalizeBuffEffectBlocks(stored).map((block) =>
-          createEmptyBuffEffectBlock({
-            ...block,
-            effects: block.effects.map((e) => ({ ...e, applyTarget: 'team' })),
-          }),
-        ),
-        rank,
-      )
-    }
-    const list = doc.refinementEffects?.[index]
-    if (list?.length) return ensureRefinementFirstBlockName(toBlocks(list, `精${rank}`), rank)
-    return ensureRefinementFirstBlockName(
-      toBlocks(
-        flatModsToEffects(doc.refinementMods[index] ?? createEmptyBuffStatModifiers(), 'team'),
-        `精${rank}`,
-      ),
-      rank,
-    )
-  })
-
   form.value = {
     id: doc.id,
     name: doc.name,
-    effectBlocks,
-    refinementBlocks,
+    fixedBuffs: loadFixedBuffs(doc),
+    refinementForm: loadRefinementForm(doc),
   }
   activeRefinementRank.value = 1
   void nextTick(() => {
@@ -126,8 +133,8 @@ function resetForm() {
   form.value = {
     id: '',
     name: '',
-    effectBlocks: [],
-    refinementBlocks: emptyRefinementBlocks(),
+    fixedBuffs: createEmptySelfTeamBuffs(),
+    refinementForm: createEmptyWengineRefinementBuffs(),
   }
   activeRefinementRank.value = 1
   selectedId.value = ''
@@ -151,6 +158,23 @@ function effectsToMods(list: BuffEffect[]) {
     if (amount) mods[effect.stat] += amount
   }
   return mods
+}
+
+/** 与音擎 buildRefinementBuffs 一致：按块打包，保留自定义名称与注释 */
+function buildRefinementPacks() {
+  return form.value.refinementForm.map((rank, index) =>
+    packFromBlocks(
+      ensureRefinementFirstBlockName(forceTeamBlocks(rank.effectBlocks ?? []), index + 1),
+    ),
+  )
+}
+
+function syncRefinementAppliesToAnomaly(effect: BuffEffect, value: boolean) {
+  syncAppliesToAnomalyAcrossRefinementBlocks(
+    form.value.refinementForm.map((rank) => rank.effectBlocks ?? []),
+    effect,
+    value,
+  )
 }
 
 async function saveItem() {
@@ -177,19 +201,22 @@ async function saveItem() {
   saving.value = true
   try {
     const avatar_image = (await avatarFieldRef.value?.resolveAvatarImageOnSave()) ?? null
-    const effectBlocks = normalizeBuffEffectBlocks(form.value.effectBlocks)
-    const refinementBlocks = form.value.refinementBlocks.map((blocks, index) =>
-      ensureRefinementFirstBlockName(normalizeBuffEffectBlocks(blocks), index + 1),
-    )
+    const fixedPack = packFromBlocks(forceTeamBlocks(form.value.fixedBuffs.effectBlocks ?? []))
+    const refinementPacks = buildRefinementPacks()
+    const effectBlocks = fixedPack.effectBlocks
     const effects = flattenEffectBlocks(effectBlocks)
-    const refinementEffects = refinementBlocks.map((blocks) => flattenEffectBlocks(blocks))
+    const refinementEffectBlocks = refinementPacks.map((pack) => pack.effectBlocks ?? [])
+    const refinementEffects = refinementPacks.map((pack) =>
+      flattenEffectBlocks(pack.effectBlocks ?? []),
+    )
+
     const doc: BangbooBuffDoc = {
       id,
       name,
       avatar_image,
       effectBlocks,
       effects,
-      refinementEffectBlocks: refinementBlocks,
+      refinementEffectBlocks,
       refinementEffects,
       fixedMods: effectsToMods(effects),
       refinementMods: refinementEffects.map((list) => effectsToMods(list)),
@@ -201,6 +228,8 @@ async function saveItem() {
 
     await store.upsertBangboo(doc)
     selectedId.value = id
+    const saved = bangboos.value.find((item) => item.id === id)
+    if (saved) loadForm(saved)
     message.value = isEditing ? `已保存邦布「${name}」` : `已新增邦布「${name}」`
   } catch (err) {
     error.value = err instanceof Error ? err.message : '保存失败'
@@ -219,14 +248,6 @@ async function removeItem() {
   } catch (err) {
     error.value = err instanceof Error ? err.message : '删除失败'
   }
-}
-
-function syncRefinementAppliesToAnomaly(effect: BuffEffect, value: boolean) {
-  syncAppliesToAnomalyAcrossRefinementBlocks(
-    form.value.refinementBlocks,
-    effect,
-    value,
-  )
 }
 
 async function scrollToSection(sectionId: BangbooBuffEditSectionId) {
@@ -251,7 +272,7 @@ defineExpose({ scrollToSection, saveItem, removeItem, selectedId, saving })
   <div ref="panelRootRef" class="editor-panel">
     <header class="panel-header">
       <h1 class="panel-title">编辑邦布增益</h1>
-      <p class="panel-desc">邦布增益默认作用于全队（含主C）。</p>
+      <p class="panel-desc">邦布增益默认作用于全队（含主C）。精炼效果块与音擎一致：默认显示「精N」，名称与注释均可修改并保存。</p>
     </header>
 
     <div class="editor-layout">
@@ -300,7 +321,7 @@ defineExpose({ scrollToSection, saveItem, removeItem, selectedId, saving })
           <header class="mindscape-header">
             <h3>固定增益</h3>
           </header>
-          <AdminBuffEffectEditor v-model="form.effectBlocks" lock-apply-target="team" />
+          <AdminBuffEffectEditor v-model="form.fixedBuffs.effectBlocks" lock-apply-target="team" />
         </section>
 
         <section id="admin-bangboo-refinement" class="mindscape-section editor-anchor">
@@ -319,8 +340,9 @@ defineExpose({ scrollToSection, saveItem, removeItem, selectedId, saving })
               精{{ rank }}
             </button>
           </div>
+          <p class="mods-section-title">精{{ activeRefinementRank }} · 效果块</p>
           <AdminBuffEffectEditor
-            v-model="activeRefinementBlocks"
+            v-model="activeRefinementForm.effectBlocks"
             lock-apply-target="team"
             :default-first-block-name="`精${activeRefinementRank}`"
             :on-applies-to-anomaly-change="syncRefinementAppliesToAnomaly"

@@ -505,7 +505,7 @@ export function createEmptyBuffEffectBlock(
   return {
     id: overrides.id ?? newBlockId(),
     name: overrides.name ?? '效果块',
-    note: overrides.note ?? '',
+    note: typeof overrides.note === 'string' ? overrides.note : '',
     effects: overrides.effects ?? [],
     enabledDefault: overrides.enabledDefault ?? true,
   }

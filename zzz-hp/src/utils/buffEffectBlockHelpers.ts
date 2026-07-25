@@ -30,7 +30,7 @@ export function syncAppliesToAnomalyAcrossRefinementBlocks(
   }
 }
 
-/** 精炼效果块：保证第一块默认名为 精N */
+/** 精炼效果块：保证第一块默认名为 精N（不覆盖用户已改过的名字） */
 export function ensureRefinementFirstBlockName(
   blocks: BuffEffectBlock[],
   rank: number,
@@ -38,8 +38,10 @@ export function ensureRefinementFirstBlockName(
   if (!blocks.length) return blocks
   const first = blocks[0]!
   const trimmed = first.name?.trim() ?? ''
+  // 仅补空名或占位「效果块 / 效果块 N」；用户自定义名称一律保留
   if (!trimmed || /^效果块(\s*\d+)?$/.test(trimmed)) {
     first.name = `精${rank}`
   }
+  if (typeof first.note !== 'string') first.note = ''
   return blocks
 }

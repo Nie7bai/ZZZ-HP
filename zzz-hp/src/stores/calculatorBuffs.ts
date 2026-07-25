@@ -36,7 +36,7 @@ import {
   REFINEMENT_RANKS,
   SUPPORT_STAT_OPTIONS,
 } from '@/utils/calculatorUi'
-import { flatModsToEffects, normalizeBuffEffects } from '@/utils/buffEffect'
+import { flatModsToEffects, flattenEffectBlocks, normalizeBuffEffectBlocks, normalizeBuffEffects } from '@/utils/buffEffect'
 
 function normalizeSupportNeeds(value: unknown): SupportStatNeed[] {
   if (!Array.isArray(value)) return []
@@ -117,15 +117,31 @@ function normalizeWengine(item: Record<string, unknown>): WengineBuffDoc {
 }
 
 function normalizeBangboo(item: Record<string, unknown>): BangbooBuffDoc {
-  let effects = normalizeBuffEffects(item.effects ?? item.fixedEffects)
-  const fixedMods = normalizeBuffStatModifiers(item.fixedMods ?? item.fixedBuffs)
   const bangbooId = String(item.id ?? '')
+  const effectBlocks = Array.isArray(item.effectBlocks)
+    ? normalizeBuffEffectBlocks(item.effectBlocks)
+    : []
+
+  let effects = effectBlocks.length
+    ? flattenEffectBlocks(effectBlocks)
+    : normalizeBuffEffects(item.effects ?? item.fixedEffects)
+  const fixedMods = normalizeBuffStatModifiers(item.fixedMods ?? item.fixedBuffs)
   if (!effects.length && Object.values(fixedMods).some((v) => v !== 0)) {
     effects = flatModsToEffects(fixedMods, 'team', 'general', `${bangbooId || 'bangboo'}-fixed`)
   }
 
+  let refinementEffectBlocks: ReturnType<typeof normalizeBuffEffectBlocks>[] | undefined
+  if (Array.isArray(item.refinementEffectBlocks)) {
+    const rawRanks = item.refinementEffectBlocks as unknown[]
+    refinementEffectBlocks = REFINEMENT_RANKS.map((_, index) =>
+      normalizeBuffEffectBlocks(rawRanks[index] ?? []),
+    )
+  }
+
   let refinementEffects: ReturnType<typeof normalizeBuffEffects>[] = []
-  if (Array.isArray(item.refinementEffects)) {
+  if (refinementEffectBlocks?.some((blocks) => blocks.length)) {
+    refinementEffects = refinementEffectBlocks.map((blocks) => flattenEffectBlocks(blocks))
+  } else if (Array.isArray(item.refinementEffects)) {
     refinementEffects = item.refinementEffects.map((list) => normalizeBuffEffects(list))
   } else {
     const refinementMods = Array.isArray(item.refinementMods)
@@ -155,11 +171,15 @@ function normalizeBangboo(item: Record<string, unknown>): BangbooBuffDoc {
   }
 
   return {
-    id: String(item.id ?? ''),
+    id: bangbooId,
     name: String(item.name ?? ''),
     avatar_image:
       normalizeAvatarImage(item.avatar_image) ?? normalizeAvatarImage(item.avatar),
+    effectBlocks: effectBlocks.length ? effectBlocks : undefined,
     effects,
+    refinementEffectBlocks: refinementEffectBlocks?.some((blocks) => blocks.length)
+      ? refinementEffectBlocks
+      : undefined,
     refinementEffects: refinementEffects.slice(0, REFINEMENT_RANKS.length),
     fixedMods: Object.values(mergedFixed).some((v) => v) ? mergedFixed : fixedMods,
     refinementMods: refinementEffects.slice(0, REFINEMENT_RANKS.length).map((list) => {
