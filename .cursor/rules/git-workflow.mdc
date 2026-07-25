@@ -1,0 +1,12 @@
+---
+description: ZZZ-HP 仓库 Git、分支、提交与发版约定
+alwaysApply: true
+---
+
+# Git 与协作约定
+
+- 主干是 `main`。新工作从最新 `main` 拉短命分支：`feature/*`、`fix/*`、`chore/*`。
+- 提交用 Conventional Commits：`feat|fix|refactor|docs|chore(scope): 简述`。一个提交一件事；计算器与留言板等无关改动分开提交。
+- 版本号用三段 SemVer，前后端 `package.json` 同步。历史四段号（如 3.0.9.1）不再新增。发版在 `main` 打 `vX.Y.Z` annotated tag。
+- 提交前检查：勿加入 `.env`、证书、用户上传图、`data/*` 会话、`packages/`、`node_modules`。用户明确要求再 commit / push。
+- 详细说明见仓库根目录 `CONTRIBUTING.md`。

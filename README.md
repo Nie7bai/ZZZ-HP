@@ -106,9 +106,13 @@ cd zzz-hp
 npm run build
 ```
 
+## 协作与发版
+
+分支、提交信息、SemVer 与 PR 约定见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
+
 ## 说明
 
-- **不要提交** `.env`、`node_modules`、`dist`、运行时 `uploads`
+- **不要提交** `.env`、`node_modules`、`dist`、运行时 `uploads` / `guestbook_image` 用户上传
 - 数据库内容不在 Git 中；clone 后先跑 `init_schema.sql` 建表，再用 SQL / 导入脚本写入数据
 - 旧的 `init_tables.sql`、`create_*.sql`、`alter_*.sql` 仍保留作参考，新环境请优先使用 `init_schema.sql`
-- 图片等静态资源位于后端各资源目录，以及前端 `public` / `boss_image` 等目录
+- 图片等静态资源位于后端各资源目录，以及前端 `public` / `boss_image` 等目录；用户上传图需运维备份，Git 不会保存
