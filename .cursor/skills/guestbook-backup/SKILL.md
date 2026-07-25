@@ -50,4 +50,10 @@ npm run check:guestbook-images
 
 ## 建议
 
-把 `npm run export:guestbook` 加入定时任务（如每日），并将 `packages/` 里的导出转存到仓库外的备份位置，避免与磁盘一起丢失。
+本机已可安装 Windows 计划任务 `ZZZ-HP-Guestbook-Backup`（每天 03:00）：
+
+```sh
+powershell -NoProfile -ExecutionPolicy Bypass -File zzz-hp-backend/scripts/daily-guestbook-backup.ps1
+```
+
+会执行导出 + 图片校验，日志写到 `packages/backup-logs/`。请把 `packages/guestbook-export-*.zip` 再拷一份到仓库外的备份盘，避免与本机磁盘一起丢失。
