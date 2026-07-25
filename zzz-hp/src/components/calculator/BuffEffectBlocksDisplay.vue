@@ -23,6 +23,7 @@ const displayBlocks = computed(() => {
       {
         id: 'flat',
         name: props.title || '增益',
+        note: '',
         effects: props.effects,
       } satisfies BuffEffectBlock,
     ]
@@ -43,7 +44,7 @@ function situationLabel(effect: BuffEffect) {
 }
 
 function blockTitle(block: BuffEffectBlock) {
-  return block.name?.trim() || '增益'
+  return block.name?.trim() || props.title || '效果块'
 }
 </script>
 
@@ -55,10 +56,10 @@ function blockTitle(block: BuffEffectBlock) {
       class="effect-block-card"
     >
       <header class="effect-block-head">
-        <strong>
+        <strong class="effect-block-name">
           <template v-if="provider">{{ provider }} · </template>{{ blockTitle(block) }}
         </strong>
-        <span v-if="block.note?.trim()" class="effect-block-note">{{ block.note }}</span>
+        <p v-if="block.note?.trim()" class="effect-block-note">{{ block.note }}</p>
       </header>
       <ul class="effect-block-list">
         <li v-for="effect in block.effects" :key="effect.id" class="effect-item">
@@ -92,20 +93,25 @@ function blockTitle(block: BuffEffectBlock) {
 
 .effect-block-head {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  align-items: baseline;
-  margin-bottom: 0.4rem;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--calc-border, #3a4456) 80%, transparent);
 }
 
-.effect-block-head strong {
-  font-size: 0.86rem;
+.effect-block-name {
+  font-size: 0.9rem;
+  font-weight: 800;
   color: var(--calc-accent, #c9a55c);
 }
 
 .effect-block-note {
-  font-size: 0.74rem;
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.45;
   color: var(--calc-muted, #8b93a3);
+  white-space: pre-wrap;
 }
 
 .effect-block-list {

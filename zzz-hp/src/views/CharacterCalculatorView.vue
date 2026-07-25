@@ -489,6 +489,7 @@ const filteredDriveDiscDocs = computed(() =>
           <h3>{{ selectedBangbooDoc.name }}</h3>
           <h4 class="doc-subtitle">固定增益</h4>
           <BuffEffectBlocksDisplay
+            :blocks="selectedBangbooDoc.effectBlocks"
             :effects="selectedBangbooDoc.effects"
             title="固定增益"
           />
@@ -507,7 +508,12 @@ const filteredDriveDiscDocs = computed(() =>
           </div>
           <p>精{{ selectedBangbooRefinementRank }}</p>
           <BuffEffectBlocksDisplay
-            :effects="selectedBangbooDoc.refinementEffects[selectedBangbooRefinementRank - 1] ?? []"
+            :blocks="
+              selectedBangbooDoc.refinementEffectBlocks?.[selectedBangbooRefinementRank - 1]
+            "
+            :effects="
+              selectedBangbooDoc.refinementEffects[selectedBangbooRefinementRank - 1] ?? []
+            "
             :title="`精${selectedBangbooRefinementRank}`"
           />
         </div>

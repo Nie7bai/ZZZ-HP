@@ -4,6 +4,7 @@ import type {
   BuffApplyTarget,
   BuffEffect,
   BuffEffectBlock,
+  BuffEffectConvert,
   BuffEffectKind,
   BuffScope,
   BuffStatKey,
@@ -12,6 +13,7 @@ import type {
   SkillCalcContext,
   SkillCategoryId,
 } from '@/types/calculator'
+import { CHARACTER_ATTR_OPTIONS } from '@/types/calculator'
 
 const BUFF_STAT_KEYS: BuffStatKey[] = [
   'hp',
@@ -678,6 +680,24 @@ const APPLY_SITUATION_LABELS: Record<string, string> = {
   non_stagger: '非失衡期',
 }
 
+function convertSourceAttrLabel(convert: BuffEffectConvert): string {
+  const source =
+    convert.panelSource === 'final'
+      ? '局内'
+      : convert.panelSource === 'manual'
+        ? '自行'
+        : '局外'
+  const from =
+    CHARACTER_ATTR_OPTIONS.find((item) => item.id === convert.from)?.label ?? convert.from
+  return `${source}·${from}`
+}
+
+/** 转模说明：如「自行·等级转模120%」「局外·生命转模30%」 */
+export function convertSummaryLabel(convert: BuffEffectConvert | null | undefined): string {
+  if (!convert) return '转模'
+  return `${convertSourceAttrLabel(convert)}转模${convert.ratioPercent ?? 0}%`
+}
+
 export function effectSummaryLabel(
   effect: BuffEffect,
   statLabelFn?: (stat: BuffStatKey) => string,
@@ -696,7 +716,7 @@ export function effectSummaryLabel(
     effect.kind === 'stacked'
       ? `叠层×${effect.valuePerStack ?? 0}`
       : effect.kind === 'convert'
-        ? `转模${effect.convert?.ratioPercent ?? 0}%`
+        ? convertSummaryLabel(effect.convert)
         : `${effect.value ?? 0}`
   return `${target} · ${scope} · ${situation} · ${statText} ${kind}`
 }
