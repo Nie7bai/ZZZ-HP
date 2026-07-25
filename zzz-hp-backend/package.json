@@ -9,7 +9,9 @@
     "import:nanoka": "node scripts/import-nanoka.mjs",
     "import:nanoka:dry": "node scripts/import-nanoka.mjs --dry-run",
     "import:nanoka:range": "node scripts/import-nanoka-range.mjs",
-    "delete:defense-season": "node scripts/delete-defense-season.mjs"
+    "delete:defense-season": "node scripts/delete-defense-season.mjs",
+    "export:guestbook": "node scripts/export-guestbook.mjs",
+    "check:guestbook-images": "node scripts/check-guestbook-images.mjs"
   },
   "dependencies": {
     "cors": "^2.8.5",
