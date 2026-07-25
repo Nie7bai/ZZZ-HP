@@ -495,7 +495,7 @@ defineExpose({
               :model-value="effect.value ?? 0"
               :min="-999999"
               :max="999999"
-              :step="0.1"
+              :step="0.01"
               @update:model-value="effect.value = $event"
             />
           </label>
@@ -508,7 +508,7 @@ defineExpose({
               :model-value="effect.valuePerStack ?? 0"
               :min="-999999"
               :max="999999"
-              :step="0.1"
+              :step="0.01"
               @update:model-value="effect.valuePerStack = $event"
             />
           </label>
@@ -562,7 +562,7 @@ defineExpose({
               :model-value="ensureConvert(effect).defaultBase ?? 0"
               :min="0"
               :max="999999"
-              :step="1"
+              :step="0.01"
               @update:model-value="ensureConvert(effect).defaultBase = $event"
             />
           </label>
@@ -572,7 +572,7 @@ defineExpose({
               :model-value="ensureConvert(effect).ratioPercent"
               :min="-9999"
               :max="9999"
-              :step="0.1"
+              :step="0.01"
               @update:model-value="ensureConvert(effect).ratioPercent = $event"
             />
           </label>
@@ -582,7 +582,7 @@ defineExpose({
               :model-value="ensureConvert(effect).cap ?? 0"
               :min="0"
               :max="999999"
-              :step="0.1"
+              :step="0.01"
               @update:model-value="
                 (v) => {
                   ensureConvert(effect).cap = v > 0 ? v : null

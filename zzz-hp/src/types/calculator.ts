@@ -110,6 +110,8 @@ export interface BuffStatModifiers {
   mastery: number
   /** 异常掌控（不进伤害乘区） */
   anomalyControl: number
+  /** 异常掌控%：按角色初始异常掌控换算（不进伤害乘区） */
+  anomalyControlPercent: number
   /** 能量回复效率（不进伤害乘区） */
   energyRegen: number
   pierce: number

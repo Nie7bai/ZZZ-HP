@@ -33,6 +33,7 @@ const BUFF_STAT_KEYS: BuffStatKey[] = [
   'resPen',
   'mastery',
   'anomalyControl',
+  'anomalyControlPercent',
   'energyRegen',
   'pierce',
   'pierceDmgBonus',

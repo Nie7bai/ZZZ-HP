@@ -697,6 +697,7 @@ export function buildOptimalEvalContext(input: {
       extraMods: input.extraMods,
       skillContext: input.skillContext,
       buffSelection: input.buffSelection,
+      baseAnomalyControl: mainAgent?.basePanel.anomalyControl ?? 0,
     },
     enemyInput: input.enemyInput,
     baseDamageSource: input.baseDamageSource,

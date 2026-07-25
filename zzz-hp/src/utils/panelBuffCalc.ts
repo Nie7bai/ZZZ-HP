@@ -148,8 +148,20 @@ export interface PanelCalcContext {
     external?: Partial<Record<CharacterAttrKey, number>>
     final?: Partial<Record<CharacterAttrKey, number>>
   }
+  /** 异常掌控% 的换算基数；缺省时取结算角色基础面板的初始异常掌控 */
+  baseAnomalyControl?: number
   /** 跳过转模（两阶段结算用） */
   skipConvert?: boolean
+}
+
+/** 异常掌控% 按结算角色（主 C 槽位）的初始异常掌控换算 */
+export function resolveBaseAnomalyControl(ctx: PanelCalcContext): number {
+  if (ctx.baseAnomalyControl != null && Number.isFinite(ctx.baseAnomalyControl)) {
+    return ctx.baseAnomalyControl
+  }
+  const agentId = ctx.teamSlots[ctx.mainSlotIndex]?.agentId
+  if (!agentId) return 0
+  return ctx.agents.find((item) => item.id === agentId)?.basePanel.anomalyControl ?? 0
 }
 
 export interface CombatBuffMods {
@@ -806,7 +818,9 @@ export function collectPanelBuffMods(ctx: PanelCalcContext): BuffStatModifiers {
 export function applyBuffModsToPanel(
   externalPanel: PanelStats,
   mods: BuffStatModifiers,
+  options?: { baseAnomalyControl?: number },
 ): PanelStats {
+  const baseAnomalyControl = options?.baseAnomalyControl ?? 0
   return {
     hp: externalPanel.hp * (1 + mods.inCombatHpPercent / 100) + mods.hp,
     atk: externalPanel.atk * (1 + mods.inCombatAtkPercent / 100) + mods.atk,
@@ -820,7 +834,10 @@ export function applyBuffModsToPanel(
     pen: externalPanel.pen,
     resPen: externalPanel.resPen + mods.resPen,
     mastery: externalPanel.mastery + mods.mastery,
-    anomalyControl: externalPanel.anomalyControl + mods.anomalyControl,
+    anomalyControl:
+      externalPanel.anomalyControl +
+      mods.anomalyControl +
+      (baseAnomalyControl * mods.anomalyControlPercent) / 100,
     energyRegen: externalPanel.energyRegen + mods.energyRegen,
     anomalyCritRate: externalPanel.anomalyCritRate + mods.anomalyCritRate,
     anomalyCritDmg: externalPanel.anomalyCritDmg + mods.anomalyCritDmg,
@@ -883,8 +900,11 @@ export function computeFinalPanel(
     ...ctx,
     skipConvert: true,
   }
+  const baseAnomalyControl = resolveBaseAnomalyControl(ctx)
   const interimMods = collectPanelBuffMods(baseCtx)
-  const interimPanel = applyBuffModsToPanel(externalPanel, interimMods)
+  const interimPanel = applyBuffModsToPanel(externalPanel, interimMods, {
+    baseAnomalyControl,
+  })
   const externalAttrs = panelToConvertAttrValues(externalPanel, {
     level: ctx.attrValues?.level ?? 60,
     impact: ctx.attrValues?.impact ?? 0,
@@ -910,7 +930,7 @@ export function computeFinalPanel(
   return {
     totalMods,
     combatMods: extractCombatMods(totalMods),
-    finalPanel: applyBuffModsToPanel(externalPanel, totalMods),
+    finalPanel: applyBuffModsToPanel(externalPanel, totalMods, { baseAnomalyControl }),
     sources: collectPanelBuffModSources(fullCtx),
     collectedEffects: collectAllBuffEffects(fullCtx),
   }

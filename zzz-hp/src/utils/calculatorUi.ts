@@ -99,6 +99,12 @@ export const BUFF_STAT_FIELDS: {
     hint: '固定数值，累加到局内异常掌控（不进伤害乘区）',
   },
   {
+    key: 'anomalyControlPercent',
+    label: '异常掌控',
+    unit: 'percent',
+    hint: '百分点，按角色基础面板的初始异常掌控换算后加到局内异常掌控',
+  },
+  {
     key: 'energyRegen',
     label: '能量回复效率',
     unit: 'percent',
@@ -385,6 +391,7 @@ export function createEmptyBuffStatModifiers(): BuffStatModifiers {
     resPen: 0,
     mastery: 0,
     anomalyControl: 0,
+    anomalyControlPercent: 0,
     energyRegen: 0,
     pierce: 0,
     pierceDmgBonus: 0,
