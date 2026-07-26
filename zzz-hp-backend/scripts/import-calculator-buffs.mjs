@@ -11,6 +11,11 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import mysql from 'mysql2/promise'
+import {
+  normalizeAgentBasePanel,
+  normalizeTwoPieceMods,
+  normalizeWengineAdvancedStats,
+} from '../src/utils/calculatorBuffFields.js'
 
 dotenv.config()
 
@@ -32,123 +37,6 @@ const CREATE_SQL = fs.readFileSync(
 
 function asJson(value) {
   return JSON.stringify(value ?? null)
-}
-
-const BUFF_STAT_KEYS = [
-  'inCombatHpPercent',
-  'inCombatAtkPercent',
-  'externalHpPercent',
-  'externalAtkPercent',
-  'atk',
-  'dmgBonus',
-  'critRate',
-  'critDmg',
-  'penRate',
-  'reduceDefense',
-  'resPen',
-  'mastery',
-  'pierce',
-  'vulnerable',
-  'staggerVulnerable',
-  'special',
-  'anomalyCritRate',
-  'anomalyCritDmg',
-  'anomalyDmgBonus',
-  'directDmgMult',
-  'anomalyMult',
-  'disorderBaseMult',
-  'anomalyDuration',
-  'disorderCompMult',
-  'turbulenceBaseMult',
-  'turbulenceCompMult',
-  'disorderDmgBonus',
-  'turbulenceDmgBonus',
-]
-
-function readNumber(value) {
-  const num = Number(value)
-  return Number.isFinite(num) ? num : 0
-}
-
-function createEmptyBuffStatModifiers() {
-  return Object.fromEntries(BUFF_STAT_KEYS.map((key) => [key, 0]))
-}
-
-function normalizeBuffStatModifiers(value) {
-  const result = createEmptyBuffStatModifiers()
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return result
-  for (const key of BUFF_STAT_KEYS) {
-    result[key] = readNumber(value[key])
-  }
-  if (readNumber(value.externalAtkPercent) && !result.inCombatAtkPercent) {
-    result.inCombatAtkPercent = readNumber(value.externalAtkPercent)
-  }
-  return result
-}
-
-function normalizeTwoPieceMods(value) {
-  const mods = normalizeBuffStatModifiers(value)
-  if (!mods.externalHpPercent && mods.inCombatHpPercent) {
-    mods.externalHpPercent = mods.inCombatHpPercent
-  }
-  if (!mods.externalAtkPercent && mods.inCombatAtkPercent) {
-    mods.externalAtkPercent = mods.inCombatAtkPercent
-  }
-  mods.inCombatHpPercent = 0
-  mods.inCombatAtkPercent = 0
-  return mods
-}
-
-const EMPTY_AGENT_BASE_PANEL = {
-  hp: 0,
-  atk: 0,
-  def: 0,
-  critRate: 0,
-  critDmg: 0,
-  mastery: 0,
-  penRate: 0,
-  dmgBonus: 0,
-  pen: 0,
-  anomalyCritRate: 0,
-  anomalyCritDmg: 0,
-  anomalyDmgBonus: 0,
-  directDmgMult: 100,
-  anomalyMult: 0,
-  disorderBaseMult: 0,
-  anomalyDuration: 0,
-  disorderCompMult: 0,
-  turbulenceBaseMult: 0,
-  turbulenceCompMult: 0,
-  disorderDmgBonus: 0,
-  turbulenceDmgBonus: 0,
-}
-
-function normalizeAgentBasePanel(value) {
-  const empty = { ...EMPTY_AGENT_BASE_PANEL }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return empty
-  return {
-    hp: readNumber(value.hp),
-    atk: readNumber(value.atk),
-    def: readNumber(value.def),
-    critRate: readNumber(value.critRate),
-    critDmg: readNumber(value.critDmg),
-    mastery: readNumber(value.mastery),
-    penRate: readNumber(value.penRate),
-    dmgBonus: readNumber(value.dmgBonus),
-    pen: readNumber(value.pen),
-    anomalyCritRate: readNumber(value.anomalyCritRate),
-    anomalyCritDmg: readNumber(value.anomalyCritDmg),
-    anomalyDmgBonus: readNumber(value.anomalyDmgBonus),
-    directDmgMult: value.directDmgMult == null ? 100 : readNumber(value.directDmgMult),
-    anomalyMult: readNumber(value.anomalyMult),
-    disorderBaseMult: readNumber(value.disorderBaseMult),
-    anomalyDuration: readNumber(value.anomalyDuration),
-    disorderCompMult: readNumber(value.disorderCompMult),
-    turbulenceBaseMult: readNumber(value.turbulenceBaseMult),
-    turbulenceCompMult: readNumber(value.turbulenceCompMult),
-    disorderDmgBonus: readNumber(value.disorderDmgBonus),
-    turbulenceDmgBonus: readNumber(value.turbulenceDmgBonus),
-  }
 }
 
 function normalizeAgent(item) {
@@ -205,15 +93,7 @@ function normalizeDriveDisc(item) {
 }
 
 function normalizeWengine(item) {
-  const advancedStats = item.advancedStats ?? {
-    critRate: 0,
-    critDmg: 0,
-    energyRegen: 0,
-    mastery: 0,
-    externalAtkPercent: 0,
-    externalHpPercent: 0,
-    penRate: 0,
-  }
+  const advancedStats = normalizeWengineAdvancedStats(item.advancedStats)
   const baseAtk = Number(item.baseAtk) || 0
   return {
     id: String(item.id ?? ''),

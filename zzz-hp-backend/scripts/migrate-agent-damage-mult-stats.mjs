@@ -7,6 +7,10 @@
  */
 import dotenv from 'dotenv'
 import mysql from 'mysql2/promise'
+import {
+  normalizeAgentBasePanel as normalizeBasePanelFields,
+  readNumber,
+} from '../src/utils/calculatorBuffFields.js'
 
 dotenv.config()
 
@@ -17,28 +21,6 @@ const ANOMALY_MULT_BY_ELEMENT = {
   电: 125,
   以太: 62.5,
   风: 1250,
-}
-
-const EMPTY_AGENT_BASE_PANEL = {
-  hp: 0,
-  atk: 0,
-  def: 0,
-  critRate: 0,
-  critDmg: 0,
-  mastery: 0,
-  penRate: 0,
-  dmgBonus: 0,
-  pen: 0,
-  anomalyCritRate: 0,
-  anomalyCritDmg: 0,
-  anomalyDmgBonus: 0,
-  directDmgMult: 100,
-  anomalyMult: 0,
-}
-
-function readNumber(value) {
-  const num = Number(value)
-  return Number.isFinite(num) ? num : 0
 }
 
 function parseJson(value, fallback) {
@@ -59,32 +41,14 @@ function defaultAnomalyMultByElement(element) {
 }
 
 function normalizeAgentBasePanel(value, element) {
-  const empty = { ...EMPTY_AGENT_BASE_PANEL }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return {
-      ...empty,
-      anomalyMult: defaultAnomalyMultByElement(element),
-    }
+  const panel = normalizeBasePanelFields(value)
+  const hasValue = value && typeof value === 'object' && !Array.isArray(value)
+  if (!hasValue || value.anomalyMult == null) {
+    panel.anomalyMult = defaultAnomalyMultByElement(element)
+  } else {
+    panel.anomalyMult = readNumber(value.anomalyMult)
   }
-  return {
-    hp: readNumber(value.hp),
-    atk: readNumber(value.atk),
-    def: readNumber(value.def),
-    critRate: readNumber(value.critRate),
-    critDmg: readNumber(value.critDmg),
-    mastery: readNumber(value.mastery),
-    penRate: readNumber(value.penRate),
-    dmgBonus: readNumber(value.dmgBonus),
-    pen: readNumber(value.pen),
-    anomalyCritRate: readNumber(value.anomalyCritRate),
-    anomalyCritDmg: readNumber(value.anomalyCritDmg),
-    anomalyDmgBonus: readNumber(value.anomalyDmgBonus),
-    directDmgMult: value.directDmgMult == null ? 100 : readNumber(value.directDmgMult),
-    anomalyMult:
-      value.anomalyMult == null
-        ? defaultAnomalyMultByElement(element)
-        : readNumber(value.anomalyMult),
-  }
+  return panel
 }
 
 function asJson(value) {

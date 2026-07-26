@@ -6,28 +6,9 @@
  */
 import dotenv from 'dotenv'
 import mysql from 'mysql2/promise'
+import { normalizeAgentBasePanel } from '../src/utils/calculatorBuffFields.js'
 
 dotenv.config()
-
-const EMPTY_AGENT_BASE_PANEL = {
-  hp: 0,
-  atk: 0,
-  def: 0,
-  critRate: 0,
-  critDmg: 0,
-  mastery: 0,
-  penRate: 0,
-  dmgBonus: 0,
-  pen: 0,
-  anomalyCritRate: 0,
-  anomalyCritDmg: 0,
-  anomalyDmgBonus: 0,
-}
-
-function readNumber(value) {
-  const num = Number(value)
-  return Number.isFinite(num) ? num : 0
-}
 
 function parseJson(value, fallback) {
   if (value == null) return fallback
@@ -40,25 +21,6 @@ function parseJson(value, fallback) {
     }
   }
   return fallback
-}
-
-function normalizeAgentBasePanel(value) {
-  const empty = { ...EMPTY_AGENT_BASE_PANEL }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return empty
-  return {
-    hp: readNumber(value.hp),
-    atk: readNumber(value.atk),
-    def: readNumber(value.def),
-    critRate: readNumber(value.critRate),
-    critDmg: readNumber(value.critDmg),
-    mastery: readNumber(value.mastery),
-    penRate: readNumber(value.penRate),
-    dmgBonus: readNumber(value.dmgBonus),
-    pen: readNumber(value.pen),
-    anomalyCritRate: readNumber(value.anomalyCritRate),
-    anomalyCritDmg: readNumber(value.anomalyCritDmg),
-    anomalyDmgBonus: readNumber(value.anomalyDmgBonus),
-  }
 }
 
 function asJson(value) {

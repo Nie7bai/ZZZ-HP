@@ -6,44 +6,9 @@
  */
 import dotenv from 'dotenv'
 import mysql from 'mysql2/promise'
+import { normalizeTwoPieceMods } from '../src/utils/calculatorBuffFields.js'
 
 dotenv.config()
-
-const BUFF_STAT_KEYS = [
-  'inCombatHpPercent',
-  'inCombatAtkPercent',
-  'externalHpPercent',
-  'externalAtkPercent',
-  'atk',
-  'dmgBonus',
-  'critRate',
-  'critDmg',
-  'penRate',
-  'reduceDefense',
-  'resPen',
-  'mastery',
-  'pierce',
-  'vulnerable',
-  'staggerVulnerable',
-  'special',
-  'anomalyCritRate',
-  'anomalyCritDmg',
-  'anomalyDmgBonus',
-  'directDmgMult',
-  'anomalyMult',
-  'disorderBaseMult',
-  'anomalyDuration',
-  'disorderCompMult',
-  'turbulenceBaseMult',
-  'turbulenceCompMult',
-  'disorderDmgBonus',
-  'turbulenceDmgBonus',
-]
-
-function readNumber(value) {
-  const num = Number(value)
-  return Number.isFinite(num) ? num : 0
-}
 
 function parseJson(value, fallback) {
   if (value == null) return fallback
@@ -56,35 +21,6 @@ function parseJson(value, fallback) {
     }
   }
   return fallback
-}
-
-function createEmptyBuffStatModifiers() {
-  return Object.fromEntries(BUFF_STAT_KEYS.map((key) => [key, 0]))
-}
-
-function normalizeBuffStatModifiers(value) {
-  const result = createEmptyBuffStatModifiers()
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return result
-  for (const key of BUFF_STAT_KEYS) {
-    result[key] = readNumber(value[key])
-  }
-  if (readNumber(value.externalAtkPercent) && !result.inCombatAtkPercent) {
-    result.inCombatAtkPercent = readNumber(value.externalAtkPercent)
-  }
-  return result
-}
-
-function normalizeTwoPieceMods(value) {
-  const mods = normalizeBuffStatModifiers(value)
-  if (!mods.externalHpPercent && mods.inCombatHpPercent) {
-    mods.externalHpPercent = mods.inCombatHpPercent
-  }
-  if (!mods.externalAtkPercent && mods.inCombatAtkPercent) {
-    mods.externalAtkPercent = mods.inCombatAtkPercent
-  }
-  mods.inCombatHpPercent = 0
-  mods.inCombatAtkPercent = 0
-  return mods
 }
 
 function asJson(value) {
