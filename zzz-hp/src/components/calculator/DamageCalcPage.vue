@@ -607,7 +607,10 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
             </option>
           </select>
         </label>
-        <p v-if="anomalySubKind === 'turbulence' && !turbulenceTeamOk" class="inline-warn">
+        <p v-if="anomalySubKind === 'turbulence' && mainAgent?.element !== '风'" class="inline-warn">
+          乱流伤害仅风属性代理人可计算
+        </p>
+        <p v-else-if="anomalySubKind === 'turbulence' && !turbulenceTeamOk" class="inline-warn">
           乱流需队伍同时包含风与至少一个非风属性
         </p>
       </div>

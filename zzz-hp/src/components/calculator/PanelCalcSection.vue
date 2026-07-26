@@ -412,8 +412,14 @@ const turbulenceTeamOk = computed(() => {
 const anomalyCalcBlockedReason = computed(() => {
   if (props.damageKind !== 'anomaly') return ''
   const sub = props.anomalySubKind ?? 'anomaly'
+  if (sub === 'turbulence' && mainAgent.value?.element !== '风') {
+    return '乱流伤害仅风属性代理人可计算'
+  }
   if (sub === 'turbulence' && !turbulenceTeamOk.value) {
     return '乱流需队伍同时包含风属性与至少一个非风属性'
+  }
+  if (sub === 'anomalyRelease' && finalPanel.value.anomalyReleaseMult <= 0) {
+    return '异放伤害仅拥有异放倍率的代理人可计算（当前异放倍率为 0，请通过增益或面板补充）'
   }
   if (
     (sub === 'turbulence' || sub === 'anomalyRelease') &&
