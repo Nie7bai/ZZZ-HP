@@ -411,6 +411,7 @@ defineExpose({ scrollToSection, saveAgent, removeAgent, selectedId, saving })
 
           <p class="mods-section-title">{{ activeMindscapeRank }} 影 · 效果块</p>
           <AdminBuffEffectEditor
+            :key="`agent-mindscape-${activeMindscapeRank}`"
             v-model="activeMindscapeForm.effectBlocks"
             :agent-id="form.id || undefined"
           />

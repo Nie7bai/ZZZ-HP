@@ -407,6 +407,7 @@ defineExpose({ scrollToSection, saveItem, removeItem, selectedId, saving })
 
           <p class="mods-section-title">精{{ activeRefinementRank }} · 效果块</p>
           <AdminBuffEffectEditor
+            :key="`wengine-refinement-${activeRefinementRank}`"
             v-model="activeRefinementForm.effectBlocks"
             :default-first-block-name="`精${activeRefinementRank}`"
             energy-regen-flat-only

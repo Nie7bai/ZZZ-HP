@@ -182,12 +182,22 @@ function statFieldsFor(effect: BuffEffect) {
     props.energyRegenFlatOnly
       ? fields.filter((field) => field.key !== 'energyRegen')
       : fields
-  if (effect.scope === 'skill') {
-    return filterEnergyRegen([...SKILL_BUFF_STAT_FIELDS, ...GENERAL_BUFF_STAT_FIELDS])
+  const base =
+    effect.scope === 'skill'
+      ? filterEnergyRegen([...SKILL_BUFF_STAT_FIELDS, ...GENERAL_BUFF_STAT_FIELDS])
+      : filterEnergyRegen(
+          GENERAL_BUFF_STAT_FIELDS.length ? GENERAL_BUFF_STAT_FIELDS : BUFF_STAT_FIELDS,
+        )
+  // 当前值若不在选项里，强制保留，避免 <select> 回落到第一项「增伤」并写脏数据
+  if (!base.some((field) => field.key === effect.stat)) {
+    const orphan = BUFF_STAT_FIELDS.find((field) => field.key === effect.stat)
+    if (orphan) return [orphan, ...base]
   }
-  return filterEnergyRegen(
-    GENERAL_BUFF_STAT_FIELDS.length ? GENERAL_BUFF_STAT_FIELDS : BUFF_STAT_FIELDS,
-  )
+  return base
+}
+
+function defaultEffectStat(): BuffEffect['stat'] {
+  return props.energyRegenFlatOnly ? 'energyRegenFlat' : 'dmgBonus'
 }
 
 function addBlock() {
@@ -203,6 +213,7 @@ function addBlock() {
       effects: [
         createEmptyBuffEffect({
           applyTarget: props.lockApplyTarget ?? 'self',
+          stat: defaultEffectStat(),
         }),
       ],
     }),
@@ -217,6 +228,7 @@ function addEffect(block: BuffEffectBlock) {
   block.effects.push(
     createEmptyBuffEffect({
       applyTarget: props.lockApplyTarget ?? 'self',
+      stat: defaultEffectStat(),
     }),
   )
 }

@@ -342,6 +342,7 @@ defineExpose({ scrollToSection, saveItem, removeItem, selectedId, saving })
           </div>
           <p class="mods-section-title">精{{ activeRefinementRank }} · 效果块</p>
           <AdminBuffEffectEditor
+            :key="`bangboo-refinement-${activeRefinementRank}`"
             v-model="activeRefinementForm.effectBlocks"
             lock-apply-target="team"
             :default-first-block-name="`精${activeRefinementRank}`"
