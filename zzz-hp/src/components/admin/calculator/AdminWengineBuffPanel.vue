@@ -24,6 +24,7 @@ import {
   createEmptySelfTeamBuffs,
   createEmptyWengineAdvancedStats,
   createEmptyWengineRefinementBuffs,
+  normalizeWengineAdvancedStats,
   REFINEMENT_RANKS,
   WENGINE_ADVANCED_STAT_FIELDS,
   WENGINE_RARITIES,
@@ -108,7 +109,7 @@ function loadForm(doc: WengineBuffDoc) {
     rarity: doc.rarity,
     note: doc.note ?? '',
     baseAtk: doc.baseAtk,
-    advancedStats: { ...doc.advancedStats },
+    advancedStats: normalizeWengineAdvancedStats(doc.advancedStats),
     fixedBuffs: cloneSelfTeamBuffs(doc.fixedBuffs),
     refinementForm: loadRefinementForm(doc.refinementBuffs),
   }
@@ -203,7 +204,7 @@ async function saveItem() {
       note: form.value.note.trim(),
       avatar_image,
       baseAtk: Number(form.value.baseAtk) || 0,
-      advancedStats: { ...form.value.advancedStats } as WengineAdvancedStats,
+      advancedStats: normalizeWengineAdvancedStats(form.value.advancedStats),
       fixedBuffs: packFromBlocks(form.value.fixedBuffs.effectBlocks ?? []),
       refinementBuffs: buildRefinementBuffs(),
     }
@@ -408,6 +409,7 @@ defineExpose({ scrollToSection, saveItem, removeItem, selectedId, saving })
           <AdminBuffEffectEditor
             v-model="activeRefinementForm.effectBlocks"
             :default-first-block-name="`精${activeRefinementRank}`"
+            energy-regen-flat-only
             :on-applies-to-anomaly-change="syncRefinementAppliesToAnomaly"
           />
         </section>

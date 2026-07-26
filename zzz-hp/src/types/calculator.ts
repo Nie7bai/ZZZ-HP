@@ -112,8 +112,10 @@ export interface BuffStatModifiers {
   anomalyControl: number
   /** 异常掌控%：按角色初始异常掌控换算（不进伤害乘区） */
   anomalyControlPercent: number
-  /** 能量回复效率（不进伤害乘区） */
+  /** 能量回复效率%：按角色初始能量回复效率换算（不进伤害乘区） */
   energyRegen: number
+  /** 能量回复效率（数值）：直接累加（不进伤害乘区） */
+  energyRegenFlat: number
   pierce: number
   /** 贯穿增伤% */
   pierceDmgBonus: number
@@ -307,6 +309,9 @@ export interface AgentBasePanel {
 export interface WengineAdvancedStats {
   critRate: number
   critDmg: number
+  /** 按角色初始异常掌控乘算 */
+  anomalyControlPercent: number
+  /** 按角色初始能量回复效率乘算 */
   energyRegen: number
   mastery: number
   externalAtkPercent: number

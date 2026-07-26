@@ -281,36 +281,6 @@ const convertAttrDefaults = computed<Partial<Record<CharacterAttrKey, number>>>(
   panelToConvertAttrValues(effectiveExternalPanel.value, { level: 60 }),
 )
 
-const panelBreakdown = computed(() =>
-  computeFinalPanel(effectiveExternalPanel.value, {
-    teamSlots: props.teamSlots,
-    agents: props.agents,
-    wengines: props.wengines,
-    bangboo: selectedBangboo.value,
-    bangbooRefine: props.bangbooRefine,
-    mainSlotIndex: mainSlotIndex.value,
-    driveDiscs: props.driveDiscs,
-    extraMods: extraMods.value,
-    skillContext: {
-      damageKind: props.damageKind ?? 'direct',
-      categoryId: props.skillCategoryId ?? 'basic',
-      subcategoryId: props.skillSubcategoryId ?? null,
-      element: mainAgent.value?.element,
-      staggerPhase: props.staggerPhase ?? 'stagger',
-      isFollowUp: skillIsFollowUp.value,
-    },
-    buffSelection: props.buffSelection ?? null,
-    attrValues: convertAttrDefaults.value,
-  }),
-)
-
-const finalPanel = computed(() => panelBreakdown.value.finalPanel)
-
-const convertPanelSourceValues = computed(() => ({
-  external: panelToConvertAttrValues(effectiveExternalPanel.value, { level: 60 }),
-  final: panelToConvertAttrValues(finalPanel.value, { level: 60 }),
-}))
-
 /** 队伍中异常职业且非主 C 的槽位 */
 const anomalySupportSlots = computed(() =>
   props.teamSlots
@@ -356,6 +326,44 @@ const needsTriggerPanel = computed(() => {
     (sub === 'turbulence' || sub === 'anomalyRelease')
   )
 })
+
+/** 异放/乱流时伤害属性跟随触发角色；否则用主 C */
+const damageElement = computed(() => {
+  if (needsTriggerPanel.value && triggerAgent.value?.element) {
+    return triggerAgent.value.element
+  }
+  return mainAgent.value?.element
+})
+
+const panelBreakdown = computed(() =>
+  computeFinalPanel(effectiveExternalPanel.value, {
+    teamSlots: props.teamSlots,
+    agents: props.agents,
+    wengines: props.wengines,
+    bangboo: selectedBangboo.value,
+    bangbooRefine: props.bangbooRefine,
+    mainSlotIndex: mainSlotIndex.value,
+    driveDiscs: props.driveDiscs,
+    extraMods: extraMods.value,
+    skillContext: {
+      damageKind: props.damageKind ?? 'direct',
+      categoryId: props.skillCategoryId ?? 'basic',
+      subcategoryId: props.skillSubcategoryId ?? null,
+      element: damageElement.value,
+      staggerPhase: props.staggerPhase ?? 'stagger',
+      isFollowUp: skillIsFollowUp.value,
+    },
+    buffSelection: props.buffSelection ?? null,
+    attrValues: convertAttrDefaults.value,
+  }),
+)
+
+const finalPanel = computed(() => panelBreakdown.value.finalPanel)
+
+const convertPanelSourceValues = computed(() => ({
+  external: panelToConvertAttrValues(effectiveExternalPanel.value, { level: 60 }),
+  final: panelToConvertAttrValues(finalPanel.value, { level: 60 }),
+}))
 
 const triggerExternalPanel = computed<PanelStats | null>(() => {
   if (!needsTriggerPanel.value || !props.triggerAnomalyAgentId) return null
@@ -831,9 +839,9 @@ const alignedAnomalyFormulas = computed((): AlignedFormulaGroup[] => {
     terms: [
       { label: '异常基础期望', value: formatNumber(p.anomalyBaseExpected), tipsKey: 'anomalyBaseExpected' },
       {
-        label: '异放增伤区',
-        value: formatFormulaNumber(p.anomalyReleaseDmgBonusZone),
-        tipsKey: 'anomalyDmgBonusZone',
+        label: '异放综合增伤区',
+        value: formatFormulaNumber(p.anomalyReleaseCombinedDmgBonusZone),
+        tipsKey: 'anomalyReleaseExpected',
       },
       {
         label: '异放倍率区',
@@ -841,9 +849,9 @@ const alignedAnomalyFormulas = computed((): AlignedFormulaGroup[] => {
         tipsKey: 'anomalyMultZone',
       },
       {
-        label: '异放暴击区',
-        value: formatFormulaNumber(p.anomalyReleaseCritZone),
-        tipsKey: 'anomalyCritZone',
+        label: '异常综合暴击区',
+        value: formatFormulaNumber(p.anomalyCombinedCritZone),
+        tipsKey: 'anomalyReleaseExpected',
       },
     ],
     result: formatNumber(p.anomalyReleaseExpected),
@@ -1472,9 +1480,9 @@ const valueTips = computed(() => {
         label: '乘区组成',
         items: [
           `异常基础期望 ${formatNumber(p.anomalyBaseExpected)}`,
-          `异放增伤区 ${formatFormulaNumber(p.anomalyReleaseDmgBonusZone)}`,
+          `异放综合增伤区 ${formatFormulaNumber(p.anomalyReleaseCombinedDmgBonusZone)}（异放增伤+异常增伤）`,
           `异放倍率区 ${formatFormulaNumber(p.anomalyReleaseMultZone)}`,
-          `异放暴击区 ${formatFormulaNumber(p.anomalyReleaseCritZone)}`,
+          `异常综合暴击区 ${formatFormulaNumber(p.anomalyCombinedCritZone)}（异放暴击+异常暴击）`,
           `合计 ${formatNumber(p.anomalyReleaseExpected)}`,
         ],
       },
@@ -1484,9 +1492,9 @@ const valueTips = computed(() => {
         items: [
           [
             formatNumber(p.anomalyBaseExpected),
-            formatFormulaNumber(p.anomalyReleaseDmgBonusZone),
+            formatFormulaNumber(p.anomalyReleaseCombinedDmgBonusZone),
             formatFormulaNumber(p.anomalyReleaseMultZone),
-            formatFormulaNumber(p.anomalyReleaseCritZone),
+            formatFormulaNumber(p.anomalyCombinedCritZone),
           ].join(' × '),
           `= ${formatNumber(p.anomalyReleaseExpected)}`,
         ],
@@ -1915,7 +1923,7 @@ defineExpose({
             异放期望伤害：
             <StatValueWithSources
               :value="formatNumber(calcParts.anomalyReleaseExpected)"
-              :groups="valueTips.anomalyExpected"
+              :groups="valueTips.anomalyReleaseExpected"
             />
           </p>
         </template>
@@ -2087,10 +2095,18 @@ defineExpose({
 
       <template v-else>
       <h4 class="result-subsection-title">异放期望伤害</h4>
-      <p>异放增伤区：{{ formatFormulaNumber(calcParts.anomalyReleaseDmgBonusZone) }}</p>
+      <p>
+        异放综合增伤区：{{ formatFormulaNumber(calcParts.anomalyReleaseCombinedDmgBonusZone) }}
+      </p>
       <p>异放倍率区：{{ formatFormulaNumber(calcParts.anomalyReleaseMultZone) }}</p>
-      <p>异放暴击区：{{ formatFormulaNumber(calcParts.anomalyReleaseCritZone) }}</p>
-      <p class="result-total">异放期望伤害：{{ formatNumber(calcParts.anomalyReleaseExpected) }}</p>
+      <p>异常综合暴击区：{{ formatFormulaNumber(calcParts.anomalyCombinedCritZone) }}</p>
+      <p class="result-total">
+        异放期望伤害：
+        <StatValueWithSources
+          :value="formatNumber(calcParts.anomalyReleaseExpected)"
+          :groups="valueTips.anomalyReleaseExpected"
+        />
+      </p>
       </template>
     </div>
     </template>

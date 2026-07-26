@@ -108,7 +108,13 @@ export const BUFF_STAT_FIELDS: {
     key: 'energyRegen',
     label: '能量回复效率',
     unit: 'percent',
-    hint: '百分点，累加到局内能量回复效率（不进伤害乘区）',
+    hint: '百分点，按角色基础面板的初始能量回复效率换算后加到局内面板',
+  },
+  {
+    key: 'energyRegenFlat',
+    label: '能量回复效率',
+    unit: 'flat',
+    hint: '固定数值，直接累加到局内能量回复效率（音擎精炼使用）',
   },
   { key: 'vulnerable', label: '易伤', unit: 'percent', hint: '独立易伤区，常驻加算（如 1.5 + 30% = 1.8）' },
   {
@@ -267,16 +273,6 @@ export function isMiyabiAgent(agentIdOrName = ''): boolean {
   return text === 'miyabi' || text.includes('星见雅') || text.includes('miyabi')
 }
 
-/** 简：乱流期望伤害计入异常暴击区 */
-export function isJaneAgent(agentId = '', agentName = ''): boolean {
-  const text = `${agentId} ${agentName}`.trim().toLowerCase()
-  return text === 'jane' || text.includes('简') || text.includes('jane')
-}
-
-export function turbulenceUsesAnomalyCrit(agentId = '', agentName = ''): boolean {
-  return isJaneAgent(agentId, agentName)
-}
-
 export function defaultDisorderCompMultByElement(element: string, agentIdOrName = ''): number {
   if (element === '风') return 0
   if (isMiyabiAgent(agentIdOrName)) return 75
@@ -393,6 +389,7 @@ export function createEmptyBuffStatModifiers(): BuffStatModifiers {
     anomalyControl: 0,
     anomalyControlPercent: 0,
     energyRegen: 0,
+    energyRegenFlat: 0,
     pierce: 0,
     pierceDmgBonus: 0,
     vulnerable: 0,
@@ -628,7 +625,8 @@ export const WENGINE_ADVANCED_STAT_FIELDS: {
 }[] = [
   { key: 'critRate', label: '暴击', unit: 'percent' },
   { key: 'critDmg', label: '爆伤', unit: 'percent' },
-  { key: 'energyRegen', label: '能量恢复', unit: 'percent' },
+  { key: 'anomalyControlPercent', label: '异常掌控', unit: 'percent' },
+  { key: 'energyRegen', label: '能量恢复效率', unit: 'percent' },
   { key: 'mastery', label: '精通', unit: 'flat' },
   { key: 'externalAtkPercent', label: '局外攻击力', unit: 'percent' },
   { key: 'externalHpPercent', label: '局外生命力', unit: 'percent' },
@@ -671,6 +669,7 @@ export function createEmptyWengineAdvancedStats(): WengineAdvancedStats {
   return {
     critRate: 0,
     critDmg: 0,
+    anomalyControlPercent: 0,
     energyRegen: 0,
     mastery: 0,
     externalAtkPercent: 0,

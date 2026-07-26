@@ -275,9 +275,9 @@ const alignedAnomalyFormulas = computed((): AlignedFormulaGroup[] => {
     terms: [
       { label: '异常基础期望', value: formatNumber(p.anomalyBaseExpected), tipsKey: 'anomalyBaseExpected' },
       {
-        label: '异放增伤区',
-        value: formatFormulaNumber(p.anomalyReleaseDmgBonusZone),
-        tipsKey: 'anomalyDmgBonusZone',
+        label: '异放综合增伤区',
+        value: formatFormulaNumber(p.anomalyReleaseCombinedDmgBonusZone),
+        tipsKey: 'anomalyReleaseExpected',
       },
       {
         label: '异放倍率区',
@@ -285,9 +285,9 @@ const alignedAnomalyFormulas = computed((): AlignedFormulaGroup[] => {
         tipsKey: 'anomalyMultZone',
       },
       {
-        label: '异放暴击区',
-        value: formatFormulaNumber(p.anomalyReleaseCritZone),
-        tipsKey: 'anomalyCritZone',
+        label: '异常综合暴击区',
+        value: formatFormulaNumber(p.anomalyCombinedCritZone),
+        tipsKey: 'anomalyReleaseExpected',
       },
     ],
     result: formatNumber(p.anomalyReleaseExpected),
@@ -891,9 +891,9 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
         label: '乘区组成',
         items: [
           `异常基础期望 ${formatNumber(p.anomalyBaseExpected)}`,
-          `异放增伤区 ${formatFormulaNumber(p.anomalyReleaseDmgBonusZone)}`,
+          `异放综合增伤区 ${formatFormulaNumber(p.anomalyReleaseCombinedDmgBonusZone)}（异放增伤+异常增伤）`,
           `异放倍率区 ${formatFormulaNumber(p.anomalyReleaseMultZone)}`,
-          `异放暴击区 ${formatFormulaNumber(p.anomalyReleaseCritZone)}`,
+          `异常综合暴击区 ${formatFormulaNumber(p.anomalyCombinedCritZone)}（异放暴击+异常暴击）`,
           `合计 ${formatNumber(p.anomalyReleaseExpected)}`,
         ],
       },
@@ -903,9 +903,9 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
         items: [
           [
             formatNumber(p.anomalyBaseExpected),
-            formatFormulaNumber(p.anomalyReleaseDmgBonusZone),
+            formatFormulaNumber(p.anomalyReleaseCombinedDmgBonusZone),
             formatFormulaNumber(p.anomalyReleaseMultZone),
-            formatFormulaNumber(p.anomalyReleaseCritZone),
+            formatFormulaNumber(p.anomalyCombinedCritZone),
           ].join(' × '),
           `= ${formatNumber(p.anomalyReleaseExpected)}`,
         ],
@@ -1067,10 +1067,18 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
 
         <template v-else>
         <h4 class="result-subsection-title">异放期望伤害</h4>
-        <p>异放增伤区：{{ formatFormulaNumber(calcParts.anomalyReleaseDmgBonusZone) }}</p>
+        <p>
+          异放综合增伤区：{{ formatFormulaNumber(calcParts.anomalyReleaseCombinedDmgBonusZone) }}
+        </p>
         <p>异放倍率区：{{ formatFormulaNumber(calcParts.anomalyReleaseMultZone) }}</p>
-        <p>异放暴击区：{{ formatFormulaNumber(calcParts.anomalyReleaseCritZone) }}</p>
-        <p class="result-total">异放期望伤害：{{ formatNumber(calcParts.anomalyReleaseExpected) }}</p>
+        <p>异常综合暴击区：{{ formatFormulaNumber(calcParts.anomalyCombinedCritZone) }}</p>
+        <p class="result-total">
+          异放期望伤害：
+          <StatValueWithSources
+            :value="formatNumber(calcParts.anomalyReleaseExpected)"
+            :groups="valueTips.anomalyReleaseExpected"
+          />
+        </p>
         </template>
       </div>
     </template>

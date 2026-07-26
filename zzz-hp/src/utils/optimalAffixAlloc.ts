@@ -698,6 +698,7 @@ export function buildOptimalEvalContext(input: {
       skillContext: input.skillContext,
       buffSelection: input.buffSelection,
       baseAnomalyControl: mainAgent?.basePanel.anomalyControl ?? 0,
+      baseEnergyRegen: mainAgent?.basePanel.energyRegen ?? 0,
     },
     enemyInput: input.enemyInput,
     baseDamageSource: input.baseDamageSource,

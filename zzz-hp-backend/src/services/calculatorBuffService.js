@@ -32,6 +32,7 @@ const EMPTY_AGENT_BASE_PANEL = {
 const EMPTY_WENGINE_ADVANCED_STATS = {
   critRate: 0,
   critDmg: 0,
+  anomalyControlPercent: 0,
   energyRegen: 0,
   mastery: 0,
   externalAtkPercent: 0,
@@ -56,6 +57,7 @@ const BUFF_STAT_KEYS = [
   'anomalyControl',
   'anomalyControlPercent',
   'energyRegen',
+  'energyRegenFlat',
   'pierce',
   'pierceDmgBonus',
   'vulnerable',
@@ -124,6 +126,7 @@ function normalizeWengineAdvancedStats(value) {
   return {
     critRate: readNumber(value.critRate),
     critDmg: readNumber(value.critDmg),
+    anomalyControlPercent: readNumber(value.anomalyControlPercent),
     energyRegen: readNumber(value.energyRegen),
     mastery: readNumber(value.mastery),
     externalAtkPercent: readNumber(value.externalAtkPercent),
@@ -323,6 +326,29 @@ function normalizeSelfTeamBuffs(value) {
     effects: [],
     selfMods: createEmptyBuffStatModifiers(),
     teamMods: createEmptyBuffStatModifiers(),
+  }
+}
+
+/**
+ * 音擎精炼中的旧「能量回复效率%」实际按固定数值使用。
+ * 载入和保存时统一迁移到 energyRegenFlat，避免影响音擎高级属性与驱动盘的百分比语义。
+ */
+function normalizeWengineRefinementBuffs(value) {
+  const pack = normalizeSelfTeamBuffs(value)
+  const migrateEffect = (effect) =>
+    effect.stat === 'energyRegen' ? { ...effect, stat: 'energyRegenFlat' } : effect
+  const effectBlocks = (pack.effectBlocks ?? []).map((block) => ({
+    ...block,
+    effects: (block.effects ?? []).map(migrateEffect),
+  }))
+  const effects = effectBlocks.length
+    ? effectBlocks.flatMap((block) => block.effects)
+    : (pack.effects ?? []).map(migrateEffect)
+  return {
+    effectBlocks,
+    effects,
+    selfMods: effectsToFlatMods(effects, 'self'),
+    teamMods: effectsToFlatMods(effects, 'team'),
   }
 }
 
@@ -559,7 +585,9 @@ function rowToWengine(row) {
     ),
     fixedBuffs: normalizeSelfTeamBuffs(parseJson(row.fixed_buffs, raw.fixedBuffs ?? {})),
     refinementBuffs: [0, 1, 2, 3, 4].map((index) =>
-      normalizeSelfTeamBuffs(Array.isArray(refinementRaw) ? refinementRaw[index] ?? {} : {}),
+      normalizeWengineRefinementBuffs(
+        Array.isArray(refinementRaw) ? refinementRaw[index] ?? {} : {},
+      ),
     ),
   }
 }
@@ -834,9 +862,9 @@ export async function upsertWengine(doc) {
     fixedBuffs: normalizeSelfTeamBuffs(doc.fixedBuffs ?? {}),
     refinementBuffs: Array.isArray(doc.refinementBuffs)
       ? [0, 1, 2, 3, 4].map((index) =>
-          normalizeSelfTeamBuffs(doc.refinementBuffs[index] ?? {}),
+          normalizeWengineRefinementBuffs(doc.refinementBuffs[index] ?? {}),
         )
-      : [0, 1, 2, 3, 4].map(() => normalizeSelfTeamBuffs({})),
+      : [0, 1, 2, 3, 4].map(() => normalizeWengineRefinementBuffs({})),
   }
 
   await pool.execute(

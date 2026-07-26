@@ -1,6 +1,6 @@
 import type { AnomalyDamageSubKind } from '@/types/calculator'
 import type { PanelStats } from '@/types/calculatorPanel'
-import { effectiveAnomalyDuration, turbulenceUsesAnomalyCrit } from '@/utils/calculatorUi'
+import { effectiveAnomalyDuration } from '@/utils/calculatorUi'
 
 export type EnemyResistanceType = 'weak' | 'normal' | 'res20' | 'res40'
 
@@ -33,7 +33,7 @@ export interface DamageCalcInput {
   staggerPhase?: 'normal' | 'stagger'
   /** 主C 属性，用于火/以太异常持续时间 ÷0.5 */
   mainAgentElement?: string
-  /** 主C id，用于角色特例（如简乱流计入异常暴击） */
+  /** 主C id（预留） */
   mainAgentId?: string
   /** 主C 名称 */
   mainAgentName?: string
@@ -89,10 +89,14 @@ export interface DamageCalcResult {
   anomalyExpected: number
   /** 异放增伤区 */
   anomalyReleaseDmgBonusZone: number
+  /** 异放综合增伤区 = 异放增伤区 + 异常增伤区 */
+  anomalyReleaseCombinedDmgBonusZone: number
   /** 异放倍率区 */
   anomalyReleaseMultZone: number
   /** 异放暴击区 */
   anomalyReleaseCritZone: number
+  /** 异常综合暴击区 = 异放暴击区 + 普通异常暴击区 */
+  anomalyCombinedCritZone: number
   /** 异放期望伤害 */
   anomalyReleaseExpected: number
   effectiveAnomalyDuration: number
@@ -284,17 +288,21 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const anomalyExpected =
     anomalyBaseExpected * anomalyDmgBonusZone * anomalyMultZone * anomalyCritZone
 
-  // 异放：基础用触发面板；倍率/增伤/暴击用主 C
+  // 异放：基础用触发面板；综合增伤/综合暴击 = 异放区 + 普通异常区
   const anomalyReleaseDmgBonusZone = 1 + panel.anomalyReleaseDmgBonus / 100
+  const anomalyReleaseCombinedDmgBonusZone =
+    1 + (panel.anomalyReleaseDmgBonus + panel.anomalyDmgBonus) / 100
   const anomalyReleaseMultZone = Math.max(0, panel.anomalyReleaseMult / 100)
   const releaseCritRateRatio = panel.anomalyReleaseCritRate / 100
   const releaseCritDmgRatio = clamp(panel.anomalyReleaseCritDmg / 100, 0, 20)
   const anomalyReleaseCritZone = 1 + releaseCritRateRatio * releaseCritDmgRatio
+  /** 异常综合暴击区 = 异放暴击区 + 普通异常暴击区（百分点乘区加算） */
+  const anomalyCombinedCritZone = anomalyReleaseCritZone + anomalyCritZone - 1
   const anomalyReleaseExpected =
     anomalyBaseExpected *
-    anomalyReleaseDmgBonusZone *
+    anomalyReleaseCombinedDmgBonusZone *
     anomalyReleaseMultZone *
-    anomalyReleaseCritZone
+    anomalyCombinedCritZone
 
   const durationElement = useTriggerBase
     ? (input.triggerAgentElement ?? input.mainAgentElement ?? '')
@@ -311,11 +319,8 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     0,
     disorderBaseMultRatio + effectiveDuration * disorderCompMultRatio,
   )
-  // 紊乱基础仍来自主 C（计划：异常基础来自主 C）
-  const disorderBase =
-    subKind === 'disorder' || !useTriggerBase
-      ? mainParts.anomalyBaseExpected
-      : mainParts.anomalyBaseExpected
+  // 紊乱基础仍来自主 C
+  const disorderBase = mainParts.anomalyBaseExpected
   const disorderExpected = disorderBase * disorderZone * disorderDmgBonusZone
 
   const turbulenceDmgBonusZone = 1 + panel.turbulenceDmgBonus / 100
@@ -327,15 +332,13 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     0,
     turbulenceBaseMultRatio + effectiveDuration * turbulenceCompMultRatio,
   )
-  const useTurbulenceAnomalyCrit = turbulenceUsesAnomalyCrit(
-    input.mainAgentId ?? '',
-    input.mainAgentName ?? '',
-  )
-  let turbulenceExpected =
-    anomalyBaseExpected * turbulenceZone * turbulenceCombinedDmgBonusZone
-  if (useTurbulenceAnomalyCrit) {
-    turbulenceExpected *= anomalyCritZone
-  }
+  // 有普通异常暴击区则乘算，否则 anomalyCritZone 本身为 1
+  const useTurbulenceAnomalyCrit = Math.abs(anomalyCritZone - 1) > 1e-9
+  const turbulenceExpected =
+    anomalyBaseExpected *
+    turbulenceZone *
+    turbulenceCombinedDmgBonusZone *
+    anomalyCritZone
 
   return {
     baseDamage: round(mainParts.baseDamage, 2),
@@ -376,8 +379,10 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     anomalyBaseExpected: round(anomalyBaseExpected, 0),
     anomalyExpected: round(anomalyExpected, 0),
     anomalyReleaseDmgBonusZone: round(anomalyReleaseDmgBonusZone, 4),
+    anomalyReleaseCombinedDmgBonusZone: round(anomalyReleaseCombinedDmgBonusZone, 4),
     anomalyReleaseMultZone: round(anomalyReleaseMultZone, 4),
     anomalyReleaseCritZone: round(anomalyReleaseCritZone, 4),
+    anomalyCombinedCritZone: round(anomalyCombinedCritZone, 4),
     anomalyReleaseExpected: round(anomalyReleaseExpected, 0),
     effectiveAnomalyDuration: round(effectiveDuration, 4),
     disorderBaseMultRatio: round(disorderBaseMultRatio, 4),

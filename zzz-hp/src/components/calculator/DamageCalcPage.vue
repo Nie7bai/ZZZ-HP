@@ -244,6 +244,18 @@ const skillIsFollowUp = computed(() =>
   }),
 )
 
+/** 异放/乱流有触发角色时，增益属性过滤跟随触发角色属性 */
+const damageElement = computed(() => {
+  const needsTrigger =
+    damageKind.value === 'anomaly' &&
+    (anomalySubKind.value === 'turbulence' || anomalySubKind.value === 'anomalyRelease')
+  if (needsTrigger && triggerAnomalyAgentId.value) {
+    const trigger = agents.value.find((item) => item.id === triggerAnomalyAgentId.value)
+    if (trigger?.element) return trigger.element
+  }
+  return mainAgent.value?.element
+})
+
 const collectedEffects = computed(() =>
   collectAllBuffEffects({
     teamSlots,
@@ -257,7 +269,7 @@ const collectedEffects = computed(() =>
       damageKind: damageKind.value,
       categoryId: skillCategoryId.value,
       subcategoryId: skillSubcategoryId.value,
-      element: mainAgent.value?.element,
+      element: damageElement.value,
       staggerPhase: staggerPhase.value,
       isFollowUp: skillIsFollowUp.value,
     },

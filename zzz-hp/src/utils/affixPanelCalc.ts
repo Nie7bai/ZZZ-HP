@@ -172,15 +172,22 @@ export function computeExternalPanelFromAffixes(input: AffixPanelCalcInput): Pan
         affixStatTotal(counts.mastery, AFFIX_VALUE_PER_COUNT.mastery),
     ),
     anomalyControl: roundPanelValue(
-      agentBase.anomalyControl +
-        twoPieceMods.anomalyControl +
-        mainStats.anomalyControl,
+      agentBase.anomalyControl *
+        (1 +
+          (wengineAdvanced.anomalyControlPercent +
+            twoPieceMods.anomalyControlPercent +
+            mainStats.anomalyControl) /
+            100) +
+        twoPieceMods.anomalyControl,
     ),
     energyRegen: roundPanelValue(
-      agentBase.energyRegen +
-        wengineAdvanced.energyRegen +
-        twoPieceMods.energyRegen +
-        mainStats.energyRegen,
+      agentBase.energyRegen *
+        (1 +
+          (wengineAdvanced.energyRegen +
+            twoPieceMods.energyRegen +
+            mainStats.energyRegen) /
+            100) +
+        twoPieceMods.energyRegenFlat,
     ),
     anomalyCritRate: roundPanelValue(agentBase.anomalyCritRate),
     anomalyCritDmg: roundPanelValue(agentBase.anomalyCritDmg),

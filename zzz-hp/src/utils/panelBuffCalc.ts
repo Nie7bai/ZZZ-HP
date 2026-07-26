@@ -156,6 +156,8 @@ export interface PanelCalcContext {
   }
   /** 异常掌控% 的换算基数；缺省时取结算角色基础面板的初始异常掌控 */
   baseAnomalyControl?: number
+  /** 能量回复效率% 的换算基数；缺省时取结算角色基础面板的初始值 */
+  baseEnergyRegen?: number
   /** 跳过转模（两阶段结算用） */
   skipConvert?: boolean
 }
@@ -168,6 +170,16 @@ export function resolveBaseAnomalyControl(ctx: PanelCalcContext): number {
   const agentId = ctx.teamSlots[ctx.mainSlotIndex]?.agentId
   if (!agentId) return 0
   return ctx.agents.find((item) => item.id === agentId)?.basePanel.anomalyControl ?? 0
+}
+
+/** 能量回复效率% 按结算角色（主 C 槽位）的初始能量回复效率换算 */
+export function resolveBaseEnergyRegen(ctx: PanelCalcContext): number {
+  if (ctx.baseEnergyRegen != null && Number.isFinite(ctx.baseEnergyRegen)) {
+    return ctx.baseEnergyRegen
+  }
+  const agentId = ctx.teamSlots[ctx.mainSlotIndex]?.agentId
+  if (!agentId) return 0
+  return ctx.agents.find((item) => item.id === agentId)?.basePanel.energyRegen ?? 0
 }
 
 export interface CombatBuffMods {
@@ -836,9 +848,10 @@ export function collectPanelBuffMods(ctx: PanelCalcContext): BuffStatModifiers {
 export function applyBuffModsToPanel(
   externalPanel: PanelStats,
   mods: BuffStatModifiers,
-  options?: { baseAnomalyControl?: number },
+  options?: { baseAnomalyControl?: number; baseEnergyRegen?: number },
 ): PanelStats {
   const baseAnomalyControl = options?.baseAnomalyControl ?? 0
+  const baseEnergyRegen = options?.baseEnergyRegen ?? 0
   return {
     hp: externalPanel.hp * (1 + mods.inCombatHpPercent / 100) + mods.hp,
     atk: externalPanel.atk * (1 + mods.inCombatAtkPercent / 100) + mods.atk,
@@ -856,7 +869,10 @@ export function applyBuffModsToPanel(
       externalPanel.anomalyControl +
       mods.anomalyControl +
       (baseAnomalyControl * mods.anomalyControlPercent) / 100,
-    energyRegen: externalPanel.energyRegen + mods.energyRegen,
+    energyRegen:
+      externalPanel.energyRegen +
+      (baseEnergyRegen * mods.energyRegen) / 100 +
+      mods.energyRegenFlat,
     anomalyCritRate: externalPanel.anomalyCritRate + mods.anomalyCritRate,
     anomalyCritDmg: externalPanel.anomalyCritDmg + mods.anomalyCritDmg,
     anomalyDmgBonus: externalPanel.anomalyDmgBonus + mods.anomalyDmgBonus,
@@ -919,9 +935,11 @@ export function computeFinalPanel(
     skipConvert: true,
   }
   const baseAnomalyControl = resolveBaseAnomalyControl(ctx)
+  const baseEnergyRegen = resolveBaseEnergyRegen(ctx)
   const interimMods = collectPanelBuffMods(baseCtx)
   const interimPanel = applyBuffModsToPanel(externalPanel, interimMods, {
     baseAnomalyControl,
+    baseEnergyRegen,
   })
   const externalAttrs = panelToConvertAttrValues(externalPanel, {
     level: ctx.attrValues?.level ?? 60,
@@ -948,7 +966,10 @@ export function computeFinalPanel(
   return {
     totalMods,
     combatMods: extractCombatMods(totalMods),
-    finalPanel: applyBuffModsToPanel(externalPanel, totalMods, { baseAnomalyControl }),
+    finalPanel: applyBuffModsToPanel(externalPanel, totalMods, {
+      baseAnomalyControl,
+      baseEnergyRegen,
+    }),
     sources: collectPanelBuffModSources(fullCtx),
     collectedEffects: collectAllBuffEffects(fullCtx),
   }

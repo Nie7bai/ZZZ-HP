@@ -17,6 +17,7 @@ import {
 } from '@/api/calculatorBuffs'
 import type {
   AgentBuffDoc,
+  AgentMindscapeRankBuffs,
   BangbooBuffDoc,
   DriveDiscBuffDoc,
   FollowUpSkillRule,
@@ -41,7 +42,14 @@ import {
   REFINEMENT_RANKS,
   SUPPORT_STAT_OPTIONS,
 } from '@/utils/calculatorUi'
-import { flatModsToEffects, flattenEffectBlocks, normalizeBuffEffectBlocks, normalizeBuffEffects } from '@/utils/buffEffect'
+import {
+  flatModsToEffects,
+  flattenEffectBlocks,
+  normalizeBuffEffectBlocks,
+  normalizeBuffEffects,
+  packFromBlocks,
+  packFromEffects,
+} from '@/utils/buffEffect'
 
 function normalizeSupportNeeds(value: unknown): SupportStatNeed[] {
   if (!Array.isArray(value)) return []
@@ -120,8 +128,27 @@ function normalizeWengine(item: Record<string, unknown>): WengineBuffDoc {
     baseAtk: Number(item.baseAtk) || 0,
     advancedStats: normalizeWengineAdvancedStats(item.advancedStats),
     fixedBuffs: normalizeSelfTeamBuffs(item.fixedBuffs),
-    refinementBuffs: normalizeWengineRefinementBuffs(item.refinementBuffs),
+    refinementBuffs: normalizeWengineRefinementBuffs(item.refinementBuffs).map(
+      migrateWengineRefinementEnergyRegen,
+    ),
   }
+}
+
+/** 音擎精炼旧能量回复字段迁移为固定数值；其他来源的 energyRegen 仍表示百分比 */
+function migrateWengineRefinementEnergyRegen(
+  pack: AgentMindscapeRankBuffs,
+): AgentMindscapeRankBuffs {
+  const migrateEffect = (effect: AgentMindscapeRankBuffs['effects'][number]) =>
+    effect.stat === 'energyRegen' ? { ...effect, stat: 'energyRegenFlat' as const } : effect
+  if (pack.effectBlocks?.length) {
+    return packFromBlocks(
+      pack.effectBlocks.map((block) => ({
+        ...block,
+        effects: block.effects.map(migrateEffect),
+      })),
+    )
+  }
+  return packFromEffects((pack.effects ?? []).map(migrateEffect))
 }
 
 function normalizeBangboo(item: Record<string, unknown>): BangbooBuffDoc {

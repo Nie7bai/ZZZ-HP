@@ -40,6 +40,8 @@ const props = defineProps<{
   agentId?: string
   /** 空列表时新增的第一个效果块默认名称（如「精1」） */
   defaultFirstBlockName?: string
+  /** 音擎精炼仅允许能量回复效率（数值），隐藏百分比字段 */
+  energyRegenFlatOnly?: boolean
   /**
    * 勾选「异常计算时也生效」时回调（用于邦布/音擎精炼跨精同步）。
    * 返回 true 表示已由外部处理，编辑器不再单独改当前 effect。
@@ -176,10 +178,16 @@ function elementFilterSummary(effect: BuffEffect) {
 }
 
 function statFieldsFor(effect: BuffEffect) {
+  const filterEnergyRegen = <T extends { key: string }>(fields: T[]) =>
+    props.energyRegenFlatOnly
+      ? fields.filter((field) => field.key !== 'energyRegen')
+      : fields
   if (effect.scope === 'skill') {
-    return [...SKILL_BUFF_STAT_FIELDS, ...GENERAL_BUFF_STAT_FIELDS]
+    return filterEnergyRegen([...SKILL_BUFF_STAT_FIELDS, ...GENERAL_BUFF_STAT_FIELDS])
   }
-  return GENERAL_BUFF_STAT_FIELDS.length ? GENERAL_BUFF_STAT_FIELDS : BUFF_STAT_FIELDS
+  return filterEnergyRegen(
+    GENERAL_BUFF_STAT_FIELDS.length ? GENERAL_BUFF_STAT_FIELDS : BUFF_STAT_FIELDS,
+  )
 }
 
 function addBlock() {
