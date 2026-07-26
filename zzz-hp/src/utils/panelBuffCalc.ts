@@ -66,8 +66,11 @@ function withRefinementAnomalyFlags(
   const flagged = new Set<string>()
   const mark = (effect: BuffEffect) => {
     if (effect.appliesToAnomaly === true) {
+      const targets = (effect.skillTargets ?? [])
+        .map((item) => `${item.category}:${item.subcategoryId ?? ''}`)
+        .join('|')
       flagged.add(
-        `${effect.stat}|${effect.kind}|${effect.scope}|${effect.applyTarget}|${effect.skillCategory ?? ''}|${effect.skillSubcategoryId ?? ''}`,
+        `${effect.stat}|${effect.kind}|${effect.scope}|${effect.applyTarget}|${targets || `${effect.skillCategory ?? ''}|${effect.skillSubcategoryId ?? ''}`}`,
       )
     }
   }
@@ -83,7 +86,10 @@ function withRefinementAnomalyFlags(
   }
   if (!flagged.size) return activeEffects
   return activeEffects.map((effect) => {
-    const key = `${effect.stat}|${effect.kind}|${effect.scope}|${effect.applyTarget}|${effect.skillCategory ?? ''}|${effect.skillSubcategoryId ?? ''}`
+    const targets = (effect.skillTargets ?? [])
+      .map((item) => `${item.category}:${item.subcategoryId ?? ''}`)
+      .join('|')
+    const key = `${effect.stat}|${effect.kind}|${effect.scope}|${effect.applyTarget}|${targets || `${effect.skillCategory ?? ''}|${effect.skillSubcategoryId ?? ''}`}`
     if (!flagged.has(key) || effect.appliesToAnomaly === true) return effect
     return { ...effect, appliesToAnomaly: true }
   })
@@ -258,7 +264,13 @@ export function collectSlotDriveDiscEffects(
 
   function pushTwoPiece(disc: DriveDiscBuffDoc) {
     for (const entry of collectTwoPieceBlockEntries(disc)) {
-      effects.push(...entry.effects)
+      // 2 件套默认不参与面板 Buff 结算，需用户自行勾选；词条/最优仍走 twoPieceMods
+      effects.push(
+        ...entry.effects.map((effect) => ({
+          ...effect,
+          enabledDefault: false,
+        })),
+      )
     }
   }
 
@@ -470,7 +482,10 @@ export function collectAllBuffEffects(ctx: PanelCalcContext): CollectedEffect[] 
       for (const entry of collectTwoPieceBlockEntries(fourDisc)) {
         for (const effect of entry.effects.filter(matchesTarget)) {
           collected.push({
-            effect: cloneEffectInstance(effect, twoKey, entry.blockId),
+            effect: {
+              ...cloneEffectInstance(effect, twoKey, entry.blockId),
+              enabledDefault: false,
+            },
             sourceKey: twoKey,
             sourceLabel: `${roleLabel} · ${agent.name} · 驱动盘 · ${fourDisc.name}（2件）`,
             providerName: fourDisc.name,
@@ -508,7 +523,10 @@ export function collectAllBuffEffects(ctx: PanelCalcContext): CollectedEffect[] 
       for (const entry of collectTwoPieceBlockEntries(twoDisc)) {
         for (const effect of entry.effects.filter(matchesTarget)) {
           collected.push({
-            effect: cloneEffectInstance(effect, twoKey, entry.blockId),
+            effect: {
+              ...cloneEffectInstance(effect, twoKey, entry.blockId),
+              enabledDefault: false,
+            },
             sourceKey: twoKey,
             sourceLabel: `${roleLabel} · ${agent.name} · 驱动盘 · ${twoDisc.name}（2件）`,
             providerName: twoDisc.name,
@@ -723,7 +741,7 @@ export function collectPanelBuffModSources(ctx: PanelCalcContext): BuffModSource
             `${roleLabel} · ${agent.name} · 驱动盘 · ${fourDisc.name}（2件）`,
             entry.blockId,
             entry.blockName,
-            entry.effects,
+            entry.effects.map((effect) => ({ ...effect, enabledDefault: false })),
           )
         }
         for (const entry of collectBlockEntriesFromPack(fourDisc.fourPieceBuffs)) {
@@ -743,7 +761,7 @@ export function collectPanelBuffModSources(ctx: PanelCalcContext): BuffModSource
             `${roleLabel} · ${agent.name} · 驱动盘 · ${twoDisc.name}（2件）`,
             entry.blockId,
             entry.blockName,
-            entry.effects,
+            entry.effects.map((effect) => ({ ...effect, enabledDefault: false })),
           )
         }
       }

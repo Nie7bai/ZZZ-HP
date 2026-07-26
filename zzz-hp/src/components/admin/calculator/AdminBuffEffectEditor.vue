@@ -5,6 +5,7 @@ import NumberStepper from '@/components/common/NumberStepper.vue'
 import type {
   BuffEffect,
   BuffEffectBlock,
+  BuffSkillTarget,
   BuffSkillTargetId,
   SkillCategoryId,
   SkillSubcategory,
@@ -25,7 +26,10 @@ import {
 import {
   createEmptyBuffEffect,
   createEmptyBuffEffectBlock,
+  formatSkillTargetBracket,
+  getEffectSkillTargets,
   packFromBlocks,
+  setEffectSkillTargets,
 } from '@/utils/buffEffect'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 
@@ -58,6 +62,9 @@ const newSubcat = ref({
 const subcatMessage = ref('')
 const subcatError = ref('')
 
+/** 正在添加的招式草稿（按效果 id） */
+const draftSkillByEffectId = ref<Record<string, BuffSkillTarget>>({})
+
 const subcategoriesByCategory = computed(() => {
   const map = new Map<string, SkillSubcategory[]>()
   const agentFilter = props.agentId || newSubcat.value.agentId
@@ -79,23 +86,93 @@ const followUpSubcategories = computed(() => {
   })
 })
 
-function skillTargetOptionsFor(effect: BuffEffect) {
+function skillTargetOptionsFor(_effect: BuffEffect) {
   return BUFF_SKILL_TARGET_OPTIONS
 }
 
+function ensureDraftSkill(effect: BuffEffect): BuffSkillTarget {
+  const existing = draftSkillByEffectId.value[effect.id]
+  if (existing) return existing
+  const draft: BuffSkillTarget = {
+    category: (effect.skillCategory as BuffSkillTargetId) ?? 'basic',
+    subcategoryId: null,
+  }
+  draftSkillByEffectId.value[effect.id] = draft
+  return draft
+}
+
+function subcategoriesForCategory(category: BuffSkillTargetId): SkillSubcategory[] {
+  if (category === 'follow_up') return followUpSubcategories.value
+  return subcategoriesByCategory.value.get(category as SkillCategoryId) ?? []
+}
+
 function subcategoriesForEffect(effect: BuffEffect): SkillSubcategory[] {
-  if (effect.skillCategory === 'follow_up') return followUpSubcategories.value
-  return (
-    subcategoriesByCategory.value.get((effect.skillCategory as SkillCategoryId) ?? 'basic') ?? []
-  )
+  const draft = ensureDraftSkill(effect)
+  return subcategoriesForCategory(draft.category)
 }
 
 function canCreateSubcat(effect: BuffEffect) {
-  return effect.skillCategory !== 'follow_up'
+  return ensureDraftSkill(effect).category !== 'follow_up'
 }
 
 function isCreatingSubcat(effect: BuffEffect) {
   return creatingSubcatForId.value === effect.id
+}
+
+function skillTargetsOf(effect: BuffEffect) {
+  return getEffectSkillTargets(effect)
+}
+
+function skillTargetLabel(target: BuffSkillTarget) {
+  return formatSkillTargetBracket(target, skillSubcategories.value)
+}
+
+function removeSkillTarget(effect: BuffEffect, index: number) {
+  const next = skillTargetsOf(effect).filter((_, i) => i !== index)
+  setEffectSkillTargets(effect, next.length ? next : [{ category: 'basic', subcategoryId: null }])
+}
+
+function addSkillTarget(effect: BuffEffect) {
+  const draft = ensureDraftSkill(effect)
+  const next = [
+    ...skillTargetsOf(effect),
+    {
+      category: draft.category,
+      subcategoryId: draft.subcategoryId ?? null,
+    },
+  ]
+  setEffectSkillTargets(effect, next)
+}
+
+function isAllElements(effect: BuffEffect) {
+  return !effect.elementFilter || effect.elementFilter === 'all'
+}
+
+function isElementChecked(effect: BuffEffect, el: string) {
+  if (isAllElements(effect)) return false
+  return Array.isArray(effect.elementFilter) && effect.elementFilter.includes(el)
+}
+
+function setAllElements(effect: BuffEffect) {
+  effect.elementFilter = 'all'
+}
+
+function toggleElement(effect: BuffEffect, el: string) {
+  const current = isAllElements(effect)
+    ? []
+    : Array.isArray(effect.elementFilter)
+      ? [...effect.elementFilter]
+      : []
+  const idx = current.indexOf(el)
+  if (idx >= 0) current.splice(idx, 1)
+  else current.push(el)
+  effect.elementFilter = current.length ? current : 'all'
+}
+
+function elementFilterSummary(effect: BuffEffect) {
+  if (isAllElements(effect)) return '全部属性'
+  if (!Array.isArray(effect.elementFilter) || !effect.elementFilter.length) return '全部属性'
+  return effect.elementFilter.join('、')
 }
 
 function statFieldsFor(effect: BuffEffect) {
@@ -142,15 +219,81 @@ function removeEffect(block: BuffEffectBlock, effectIndex: number) {
 
 function onScopeChange(effect: BuffEffect) {
   if (effect.scope === 'skill') {
-    effect.skillCategory = (effect.skillCategory ?? 'basic') as BuffSkillTargetId
+    const targets = getEffectSkillTargets(effect)
+    if (!targets.length) {
+      setEffectSkillTargets(effect, [{ category: 'basic', subcategoryId: null }])
+    } else {
+      setEffectSkillTargets(effect, targets)
+    }
     if (!SKILL_BUFF_STAT_FIELDS.some((f) => f.key === effect.stat)) {
       effect.stat = 'skillDmgBonus'
     }
   }
 }
 
-function onSkillCategoryChange(effect: BuffEffect) {
-  effect.skillSubcategoryId = null
+function onDraftCategoryChange(effect: BuffEffect, category: BuffSkillTargetId) {
+  const draft = ensureDraftSkill(effect)
+  draft.category = category
+  draft.subcategoryId = null
+}
+
+async function createSubcategory(effect: BuffEffect) {
+  subcatMessage.value = ''
+  subcatError.value = ''
+  const name = newSubcat.value.name.trim()
+  // 允许空 agentId = 全部角色
+  const agentId = props.agentId ?? newSubcat.value.agentId
+  if (!name) {
+    subcatError.value = '小类名称为必填'
+    return
+  }
+  try {
+    const saved = await calculatorBuffStore.upsertSkillSubcategoryDoc({
+      id: '',
+      agentId,
+      categoryId: newSubcat.value.categoryId,
+      name,
+      countsAsFollowUp: newSubcat.value.countsAsFollowUp,
+    })
+    const draft = ensureDraftSkill(effect)
+    draft.category = saved.categoryId
+    draft.subcategoryId = saved.id
+    setEffectSkillTargets(effect, [
+      ...skillTargetsOf(effect),
+      { category: saved.categoryId, subcategoryId: saved.id },
+    ])
+    creatingSubcatForId.value = null
+    newSubcat.value = {
+      agentId: props.agentId || agentId,
+      name: '',
+      categoryId: saved.categoryId,
+      countsAsFollowUp: false,
+    }
+    subcatMessage.value = `已添加小类「${saved.name}」`
+  } catch (err) {
+    subcatError.value = err instanceof Error ? err.message : '添加失败'
+  }
+}
+
+function openCreateSubcat(effect: BuffEffect) {
+  creatingSubcatForId.value = effect.id
+  const draft = ensureDraftSkill(effect)
+  const categoryId =
+    draft.category && draft.category !== 'follow_up' ? draft.category : 'basic'
+  newSubcat.value = {
+    agentId: props.agentId || '',
+    name: '',
+    categoryId,
+    countsAsFollowUp: false,
+  }
+  subcatError.value = ''
+  subcatMessage.value = ''
+}
+
+function closeCreateSubcat() {
+  creatingSubcatForId.value = null
+  subcatError.value = ''
+  subcatMessage.value = ''
 }
 
 function setAppliesToAnomaly(effect: BuffEffect, checked: boolean) {
@@ -203,61 +346,6 @@ function ensureConvert(effect: BuffEffect) {
   return effect.convert
 }
 
-async function createSubcategory(effect: BuffEffect) {
-  subcatMessage.value = ''
-  subcatError.value = ''
-  const name = newSubcat.value.name.trim()
-  // 允许空 agentId = 全部角色
-  const agentId = props.agentId ?? newSubcat.value.agentId
-  if (!name) {
-    subcatError.value = '小类名称为必填'
-    return
-  }
-  try {
-    const saved = await calculatorBuffStore.upsertSkillSubcategoryDoc({
-      id: '',
-      agentId,
-      categoryId: newSubcat.value.categoryId,
-      name,
-      countsAsFollowUp: newSubcat.value.countsAsFollowUp,
-    })
-    effect.skillCategory = saved.categoryId
-    effect.skillSubcategoryId = saved.id
-    creatingSubcatForId.value = null
-    newSubcat.value = {
-      agentId: props.agentId || agentId,
-      name: '',
-      categoryId: (effect.skillCategory as SkillCategoryId) ?? 'basic',
-      countsAsFollowUp: false,
-    }
-    subcatMessage.value = `已添加小类「${saved.name}」`
-  } catch (err) {
-    subcatError.value = err instanceof Error ? err.message : '添加失败'
-  }
-}
-
-function openCreateSubcat(effect: BuffEffect) {
-  creatingSubcatForId.value = effect.id
-  const categoryId =
-    effect.skillCategory && effect.skillCategory !== 'follow_up'
-      ? effect.skillCategory
-      : 'basic'
-  newSubcat.value = {
-    agentId: props.agentId || '',
-    name: '',
-    categoryId,
-    countsAsFollowUp: false,
-  }
-  subcatError.value = ''
-  subcatMessage.value = ''
-}
-
-function closeCreateSubcat() {
-  creatingSubcatForId.value = null
-  subcatError.value = ''
-  subcatMessage.value = ''
-}
-
 defineExpose({
   syncPack: () => packFromBlocks(model.value),
 })
@@ -268,7 +356,7 @@ defineExpose({
     <p v-if="hint !== ''" class="hint">
       {{
         hint ??
-        '每个效果块可包含多条效果。招式未选小类时整大类生效。默认：通用增益参与异常；招式伤害/倍率不参与，除非勾选「异常计算时也生效」。'
+        '每个效果块可包含多条效果。招式可多选动作（按顺序展示）；未选小类时整大类生效。属性限定可多选。默认：通用增益参与异常；招式伤害/倍率不参与，除非勾选「异常计算时也生效」。'
       }}
     </p>
 
@@ -363,37 +451,60 @@ defineExpose({
             </select>
           </label>
 
-          <label class="field">
-            <span>属性限定</span>
-            <select
-              :value="
-                Array.isArray(effect.elementFilter)
-                  ? effect.elementFilter[0] ?? 'all'
-                  : effect.elementFilter ?? 'all'
-              "
-              @change="
-                (e) => {
-                  const v = (e.target as HTMLSelectElement).value
-                  effect.elementFilter = v === 'all' ? 'all' : [v]
-                }
-              "
-            >
-              <option value="all">全部属性</option>
-              <option v-for="el in AGENT_ELEMENTS" :key="el" :value="el">{{ el }}</option>
-            </select>
-          </label>
+          <div class="field field-span">
+            <span>属性限定（可多选）· 当前：{{ elementFilterSummary(effect) }}</span>
+            <div class="chip-row">
+              <label class="chip">
+                <input
+                  type="checkbox"
+                  :checked="isAllElements(effect)"
+                  @change="setAllElements(effect)"
+                />
+                <span>全部属性</span>
+              </label>
+              <label v-for="el in AGENT_ELEMENTS" :key="el" class="chip">
+                <input
+                  type="checkbox"
+                  :checked="isElementChecked(effect, el)"
+                  @change="toggleElement(effect, el)"
+                />
+                <span>{{ el }}</span>
+              </label>
+            </div>
+          </div>
 
           <template v-if="effect.scope === 'skill'">
+            <div class="field field-span">
+              <span>已选招式（可多选，按顺序展示）</span>
+              <div class="chip-row">
+                <span
+                  v-for="(target, targetIndex) in skillTargetsOf(effect)"
+                  :key="`${target.category}-${target.subcategoryId ?? 'all'}-${targetIndex}`"
+                  class="skill-chip"
+                >
+                  {{ skillTargetLabel(target) }}
+                  <button
+                    type="button"
+                    class="chip-remove"
+                    aria-label="移除招式"
+                    @click="removeSkillTarget(effect, targetIndex)"
+                  >
+                    ×
+                  </button>
+                </span>
+                <span v-if="!skillTargetsOf(effect).length" class="muted">尚未添加招式</span>
+              </div>
+            </div>
             <label class="field">
-              <span>招式大类</span>
+              <span>添加·招式大类</span>
               <select
-                :value="effect.skillCategory ?? 'basic'"
+                :value="ensureDraftSkill(effect).category"
                 @change="
-                  (e) => {
-                    effect.skillCategory = (e.target as HTMLSelectElement)
-                      .value as BuffSkillTargetId
-                    onSkillCategoryChange(effect)
-                  }
+                  (e) =>
+                    onDraftCategoryChange(
+                      effect,
+                      (e.target as HTMLSelectElement).value as BuffSkillTargetId,
+                    )
                 "
               >
                 <option
@@ -406,10 +517,12 @@ defineExpose({
               </select>
             </label>
             <label class="field">
-              <span>招式小类</span>
-              <select v-model="effect.skillSubcategoryId">
+              <span>添加·招式小类</span>
+              <select v-model="ensureDraftSkill(effect).subcategoryId">
                 <option :value="null">
-                  {{ effect.skillCategory === 'follow_up' ? '全部追加' : '整大类' }}
+                  {{
+                    ensureDraftSkill(effect).category === 'follow_up' ? '全部追加' : '整大类'
+                  }}
                 </option>
                 <option
                   v-for="sub in subcategoriesForEffect(effect)"
@@ -420,8 +533,16 @@ defineExpose({
                 </option>
               </select>
             </label>
-            <div v-if="canCreateSubcat(effect)" class="field subcat-actions">
-              <button type="button" class="ghost-btn" @click="openCreateSubcat(effect)">
+            <div class="field subcat-actions">
+              <button type="button" class="ghost-btn" @click="addSkillTarget(effect)">
+                ＋ 添加动作
+              </button>
+              <button
+                v-if="canCreateSubcat(effect)"
+                type="button"
+                class="ghost-btn"
+                @click="openCreateSubcat(effect)"
+              >
                 ＋ 新建招式小类
               </button>
             </div>
@@ -757,6 +878,60 @@ defineExpose({
 .subcat-create-actions {
   display: flex;
   gap: 0.45rem;
+}
+
+.field-span {
+  grid-column: 1 / -1;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.74rem;
+  background: var(--color-background);
+  cursor: pointer;
+}
+
+.skill-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.2rem 0.45rem 0.2rem 0.55rem;
+  font-size: 0.74rem;
+  background: color-mix(in srgb, var(--color-background) 80%, var(--color-border));
+}
+
+.chip-remove {
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: 0 0.1rem;
+  opacity: 0.7;
+}
+
+.chip-remove:hover {
+  opacity: 1;
+}
+
+.muted {
+  font-size: 0.74rem;
+  opacity: 0.6;
 }
 
 .add-btn,

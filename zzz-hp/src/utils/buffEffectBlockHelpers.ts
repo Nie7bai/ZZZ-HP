@@ -1,4 +1,11 @@
 import type { BuffEffect, BuffEffectBlock } from '@/types/calculator'
+import { getEffectSkillTargets } from '@/utils/buffEffect'
+
+function skillTargetsKey(effect: BuffEffect) {
+  return getEffectSkillTargets(effect)
+    .map((item) => `${item.category}:${item.subcategoryId ?? ''}`)
+    .join('|')
+}
 
 /**
  * 效果块身份匹配（跨精炼同步「异常计算时也生效」用）
@@ -9,8 +16,7 @@ export function sameBuffEffectIdentity(a: BuffEffect, b: BuffEffect) {
     a.kind === b.kind &&
     a.scope === b.scope &&
     a.applyTarget === b.applyTarget &&
-    (a.skillCategory ?? undefined) === (b.skillCategory ?? undefined) &&
-    (a.skillSubcategoryId ?? null) === (b.skillSubcategoryId ?? null)
+    skillTargetsKey(a) === skillTargetsKey(b)
   )
 }
 

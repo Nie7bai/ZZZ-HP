@@ -643,6 +643,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :effects="collectedEffects"
       :attr-defaults="panelCalcSectionRef?.convertAttrDefaults ?? {}"
       :panel-source-values="panelCalcSectionRef?.convertPanelSourceValues ?? undefined"
+      :skill-subcategories="skillSubcategories"
     />
 
     <section id="damage-calc-mode" class="calc-mode-section damage-anchor">

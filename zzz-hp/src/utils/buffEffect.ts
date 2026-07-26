@@ -7,6 +7,7 @@ import type {
   BuffEffectConvert,
   BuffEffectKind,
   BuffScope,
+  BuffSkillTarget,
   BuffSkillTargetId,
   BuffStatKey,
   BuffStatModifiers,
@@ -114,14 +115,21 @@ function newEffectId() {
 export function createEmptyBuffEffect(
   overrides: Partial<BuffEffect> = {},
 ): BuffEffect {
+  const skillTargets = normalizeSkillTargets(
+    overrides.skillTargets,
+    overrides.skillCategory,
+    overrides.skillSubcategoryId,
+  )
+  const primary = skillTargets[0]
   return {
     id: overrides.id ?? newEffectId(),
     origin: overrides.origin ?? '',
     scope: overrides.scope ?? 'general',
     applyTarget: overrides.applyTarget ?? 'self',
     applySituation: overrides.applySituation ?? 'global',
-    skillCategory: overrides.skillCategory,
-    skillSubcategoryId: overrides.skillSubcategoryId ?? null,
+    skillTargets: skillTargets.length ? skillTargets : undefined,
+    skillCategory: primary?.category ?? overrides.skillCategory,
+    skillSubcategoryId: primary?.subcategoryId ?? overrides.skillSubcategoryId ?? null,
     elementFilter: overrides.elementFilter ?? 'all',
     kind: overrides.kind ?? 'fixed',
     stat: overrides.stat ?? 'dmgBonus',
@@ -135,6 +143,52 @@ export function createEmptyBuffEffect(
     enabledDefault: overrides.enabledDefault ?? true,
     note: overrides.note ?? '',
   }
+}
+
+/** 读取效果的招式目标列表（兼容旧单字段） */
+export function getEffectSkillTargets(effect: BuffEffect): BuffSkillTarget[] {
+  return normalizeSkillTargets(
+    effect.skillTargets,
+    effect.skillCategory,
+    effect.skillSubcategoryId,
+  )
+}
+
+/** 写入招式目标列表，并同步旧字段为首项 */
+export function setEffectSkillTargets(effect: BuffEffect, targets: BuffSkillTarget[]) {
+  const normalized = normalizeSkillTargets(targets)
+  effect.skillTargets = normalized.length ? normalized : undefined
+  effect.skillCategory = normalized[0]?.category
+  effect.skillSubcategoryId = normalized[0]?.subcategoryId ?? null
+}
+
+function normalizeSkillTargets(
+  targets?: BuffSkillTarget[] | null,
+  legacyCategory?: BuffSkillTargetId | null,
+  legacySubId?: string | null,
+): BuffSkillTarget[] {
+  if (Array.isArray(targets) && targets.length) {
+    const result: BuffSkillTarget[] = []
+    for (const item of targets) {
+      const category = normalizeSkillCategory(item?.category)
+      if (!category) continue
+      const subcategoryId =
+        item.subcategoryId == null || item.subcategoryId === ''
+          ? null
+          : String(item.subcategoryId)
+      result.push({ category, subcategoryId })
+    }
+    return result
+  }
+  const category = normalizeSkillCategory(legacyCategory)
+  if (!category) return []
+  return [
+    {
+      category,
+      subcategoryId:
+        legacySubId == null || legacySubId === '' ? null : String(legacySubId),
+    },
+  ]
 }
 
 /** 旧扁平 mods → fixed effects */
@@ -180,6 +234,10 @@ export function cloneEffectInstance(
   return {
     ...effect,
     id: effectInstanceId(sourceKey, blockId, effect.id),
+    skillTargets: effect.skillTargets?.map((item) => ({ ...item })),
+    elementFilter: Array.isArray(effect.elementFilter)
+      ? [...effect.elementFilter]
+      : effect.elementFilter,
     convert: effect.convert ? { ...effect.convert } : undefined,
   }
 }
@@ -294,21 +352,30 @@ export function effectMatchesContext(
 
   if (effect.scope === 'skill') {
     if (ctx.damageKind === 'anomaly' && effect.appliesToAnomaly !== true) return false
-    if (effect.skillCategory === 'follow_up') {
-      if (!ctx.isFollowUp) return false
-      if (effect.skillSubcategoryId) {
-        return effect.skillSubcategoryId === ctx.subcategoryId
-      }
-      return true
-    }
-    if (!effect.skillCategory || effect.skillCategory !== ctx.categoryId) return false
-    if (effect.skillSubcategoryId) {
-      return effect.skillSubcategoryId === ctx.subcategoryId
-    }
-    return true
+    const targets = getEffectSkillTargets(effect)
+    if (!targets.length) return false
+    return targets.some((target) => skillTargetMatchesContext(target, ctx))
   }
 
   return false
+}
+
+function skillTargetMatchesContext(
+  target: BuffSkillTarget,
+  ctx: SkillCalcContext,
+): boolean {
+  if (target.category === 'follow_up') {
+    if (!ctx.isFollowUp) return false
+    if (target.subcategoryId) {
+      return target.subcategoryId === ctx.subcategoryId
+    }
+    return true
+  }
+  if (target.category !== ctx.categoryId) return false
+  if (target.subcategoryId) {
+    return target.subcategoryId === ctx.subcategoryId
+  }
+  return true
 }
 
 /** 根据小类打标与整大类规则判断当前招式是否视为追加攻击 */
@@ -524,6 +591,9 @@ export function normalizeBuffEffect(value: unknown): BuffEffect | null {
     scope: normalizeScope(entry.scope),
     applyTarget: normalizeApplyTarget(entry.applyTarget),
     applySituation: normalizeApplySituation(entry.applySituation),
+    skillTargets: Array.isArray(entry.skillTargets)
+      ? (entry.skillTargets as BuffSkillTarget[])
+      : undefined,
     skillCategory: normalizeSkillCategory(entry.skillCategory),
     skillSubcategoryId:
       entry.skillSubcategoryId == null || entry.skillSubcategoryId === ''
@@ -546,8 +616,13 @@ export function normalizeBuffEffect(value: unknown): BuffEffect | null {
   if (effect.kind === 'convert' && !effect.convert) {
     effect.kind = 'fixed'
   }
-  if (effect.scope === 'skill' && !effect.skillCategory) {
-    effect.skillCategory = 'basic'
+  if (effect.scope === 'skill') {
+    const targets = getEffectSkillTargets(effect)
+    if (!targets.length) {
+      setEffectSkillTargets(effect, [{ category: 'basic', subcategoryId: null }])
+    } else {
+      setEffectSkillTargets(effect, targets)
+    }
   }
   return effect
 }
@@ -722,7 +797,7 @@ export function mergeEffectLists(...lists: BuffEffect[][]): BuffEffect[] {
   return lists.flat()
 }
 
-const SKILL_CATEGORY_LABELS: Record<BuffSkillTargetId, string> = {
+export const SKILL_CATEGORY_LABELS: Record<BuffSkillTargetId, string> = {
   basic: '普通攻击',
   dodge: '闪避',
   assist: '支援技',
@@ -756,16 +831,43 @@ export function convertSummaryLabel(convert: BuffEffectConvert | null | undefine
   return `${convertSourceAttrLabel(convert)}转模${convert.ratioPercent ?? 0}%`
 }
 
+/** 招式目标展示：`[终结技：斩妄开天]`；找不到名称时只显示大类，不露内部 id */
+export function formatSkillTargetBracket(
+  target: BuffSkillTarget,
+  skillSubcategories?: SkillSubcategory[] | null,
+): string {
+  const catLabel = SKILL_CATEGORY_LABELS[target.category] ?? '招式'
+  if (!target.subcategoryId) {
+    return `[${catLabel}]`
+  }
+  const name = skillSubcategories?.find((item) => item.id === target.subcategoryId)?.name?.trim()
+  if (name) return `[${catLabel}：${name}]`
+  return `[${catLabel}]`
+}
+
+/** 按顺序拼接全部招式目标括号 */
+export function formatSkillTargetsPrefix(
+  effect: BuffEffect,
+  skillSubcategories?: SkillSubcategory[] | null,
+): string {
+  if (effect.scope !== 'skill') return ''
+  return getEffectSkillTargets(effect)
+    .map((target) => formatSkillTargetBracket(target, skillSubcategories))
+    .join('')
+}
+
 export function effectSummaryLabel(
   effect: BuffEffect,
   statLabelFn?: (stat: BuffStatKey) => string,
+  skillSubcategories?: SkillSubcategory[] | null,
 ): string {
   const target = effect.applyTarget === 'team' ? '全队' : '自身'
+  const skillPrefix = formatSkillTargetsPrefix(effect, skillSubcategories)
   const scope =
     effect.scope === 'skill'
-      ? `招式·${SKILL_CATEGORY_LABELS[effect.skillCategory ?? 'basic'] ?? effect.skillCategory}${
-          effect.skillSubcategoryId ? `/${effect.skillSubcategoryId}` : ''
-        }`
+      ? skillPrefix
+        ? `招式·${skillPrefix}`
+        : '招式'
       : '通用'
   const situation =
     APPLY_SITUATION_LABELS[effect.applySituation ?? 'global'] ?? '全局'
@@ -777,6 +879,20 @@ export function effectSummaryLabel(
         ? convertSummaryLabel(effect.convert)
         : `${effect.value ?? 0}`
   return `${target} · ${scope} · ${situation} · ${statText} ${kind}`
+}
+
+/** 局内 Buff 卡片效果行：`[终结技：斩妄开天]无视防御/减防% +40` */
+export function formatBuffEffectResultText(
+  effect: BuffEffect,
+  amountText: string,
+  options?: {
+    statLabelFn?: (stat: BuffStatKey) => string
+    skillSubcategories?: SkillSubcategory[] | null
+  },
+): string {
+  const skillPrefix = formatSkillTargetsPrefix(effect, options?.skillSubcategories)
+  const label = options?.statLabelFn?.(effect.stat) ?? effect.stat
+  return `${skillPrefix}${label} ${amountText}`
 }
 
 export { BUFF_STAT_KEYS }

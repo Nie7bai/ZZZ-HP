@@ -233,6 +233,14 @@ function normalizeEffectList(value) {
           : 'global',
       skillCategory: item.skillCategory || undefined,
       skillSubcategoryId: item.skillSubcategoryId ?? null,
+      skillTargets: Array.isArray(item.skillTargets)
+        ? item.skillTargets
+            .filter((t) => t && typeof t === 'object')
+            .map((t) => ({
+              category: t.category || 'basic',
+              subcategoryId: t.subcategoryId ?? null,
+            }))
+        : undefined,
       elementFilter: item.elementFilter ?? 'all',
       kind:
         item.kind === 'stacked' || item.kind === 'convert' ? item.kind : 'fixed',

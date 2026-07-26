@@ -81,9 +81,13 @@ const EXTERNAL_PANEL_SLOTS: PanelFieldSlot[] = [
   { id: 'dmgBonus', kind: 'stat', key: 'dmgBonus', label: '增伤%' },
   { id: 'penRate', kind: 'stat', key: 'penRate', label: '穿透率%' },
   { id: 'pen', kind: 'stat', key: 'pen', label: '穿透值' },
+  { id: 'reduceDefense', kind: 'stat', key: 'reduceDefense', label: '无视防御/减防%' },
   { id: 'mastery', kind: 'stat', key: 'mastery', label: '精通' },
   { id: 'anomalyControl', kind: 'stat', key: 'anomalyControl', label: '异常掌控' },
   { id: 'energyRegen', kind: 'stat', key: 'energyRegen', label: '能量回复效率%' },
+  { id: 'directDmgMult', kind: 'stat', key: 'directDmgMult', label: '直伤倍率%' },
+  { id: 'spacer-direct-1', kind: 'spacer' },
+  { id: 'spacer-direct-2', kind: 'spacer' },
   { id: 'anomalyMult', kind: 'stat', key: 'anomalyMult', label: '异常倍率%' },
   { id: 'anomalyDuration', kind: 'stat', key: 'anomalyDuration', label: '异常持续时间(s)' },
   { id: 'spacer-3', kind: 'spacer' },
@@ -105,6 +109,7 @@ const FINAL_PANEL_SLOTS: PanelFieldSlot[] = [
   { id: 'dmgBonus', kind: 'stat', key: 'dmgBonus', label: '增伤%' },
   { id: 'penRate', kind: 'stat', key: 'penRate', label: '穿透率%' },
   { id: 'pen', kind: 'stat', key: 'pen', label: '穿透值' },
+  { id: 'reduceDefense', kind: 'stat', key: 'reduceDefense', label: '无视防御/减防%' },
   { id: 'mastery', kind: 'stat', key: 'mastery', label: '精通' },
   { id: 'anomalyControl', kind: 'stat', key: 'anomalyControl', label: '异常掌控' },
   { id: 'energyRegen', kind: 'stat', key: 'energyRegen', label: '能量回复效率%' },
@@ -1824,7 +1829,10 @@ defineExpose({
           <strong>{{ panelBreakdown.totalMods[field.key] }}</strong>
         </li>
       </ul>
-      <BuffModSourcesDisplay :sources="panelBreakdown.sources" />
+      <BuffModSourcesDisplay
+        :sources="panelBreakdown.sources"
+        :skill-subcategories="skillSubcategories"
+      />
     </details>
 
     <h3 class="enemy-title">敌方与环境</h3>

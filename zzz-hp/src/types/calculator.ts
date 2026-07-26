@@ -171,6 +171,13 @@ export interface BuffEffectConvert {
   defaultBase?: number | null
 }
 
+/** 招式作用目标（可多选） */
+export interface BuffSkillTarget {
+  category: BuffSkillTargetId
+  /** 空 = 整大类（或全部追加） */
+  subcategoryId?: string | null
+}
+
 export interface BuffEffect {
   id: string
   /** @deprecated 已改用效果块名称展示，仅兼容旧数据 */
@@ -179,10 +186,19 @@ export interface BuffEffect {
   applyTarget: BuffApplyTarget
   /** 作用情况：全局 / 失衡期 / 非失衡期，默认全局 */
   applySituation?: BuffApplySituation
-  /** 招式：小类空 = 整大类生效；follow_up = 追加攻击伪大类 */
+  /**
+   * 招式作用目标列表（可多选，按顺序展示）。
+   * 匹配时任一目标命中即生效。
+   */
+  skillTargets?: BuffSkillTarget[]
+  /**
+   * @deprecated 兼容旧数据；优先用 skillTargets。
+   * 招式：小类空 = 整大类生效；follow_up = 追加攻击伪大类
+   */
   skillCategory?: BuffSkillTargetId
+  /** @deprecated 兼容旧数据；优先用 skillTargets */
   skillSubcategoryId?: string | null
-  /** 属性限定（属性增伤/异常增伤/抗性穿透等） */
+  /** 属性限定（属性增伤/异常增伤/抗性穿透等）；可多选 */
   elementFilter?: 'all' | string[]
   kind: BuffEffectKind
   stat: BuffStatKey

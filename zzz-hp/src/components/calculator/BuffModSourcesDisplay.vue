@@ -3,10 +3,12 @@ import type { BuffModSource } from '@/utils/panelBuffCalc'
 import BuffModsDisplay from '@/components/calculator/BuffModsDisplay.vue'
 import { effectSummaryLabel } from '@/utils/buffEffect'
 import { buffStatFieldLabel, BUFF_STAT_FIELDS, hasNonZeroBuffMods } from '@/utils/calculatorUi'
+import type { SkillSubcategory } from '@/types/calculator'
 import { computed } from 'vue'
 
 const props = defineProps<{
   sources: BuffModSource[]
+  skillSubcategories?: SkillSubcategory[] | null
 }>()
 
 const visibleSources = computed(() =>
@@ -35,7 +37,7 @@ function statLabel(stat: string) {
       <p v-if="source.note?.trim()" class="buff-source-note">{{ source.note }}</p>
       <ul v-if="source.effects?.length" class="buff-effect-list">
         <li v-for="effect in source.effects" :key="effect.id">
-          {{ effectSummaryLabel(effect, (s) => statLabel(s)) }}
+          {{ effectSummaryLabel(effect, (s) => statLabel(s), props.skillSubcategories) }}
         </li>
       </ul>
       <div

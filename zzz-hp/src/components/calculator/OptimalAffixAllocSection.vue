@@ -824,7 +824,10 @@ watch(
           <strong>{{ displayEval.breakdown.totalMods[field.key] }}</strong>
         </li>
       </ul>
-      <BuffModSourcesDisplay :sources="displayEval.breakdown.sources" />
+      <BuffModSourcesDisplay
+        :sources="displayEval.breakdown.sources"
+        :skill-subcategories="skillSubcategories"
+      />
     </details>
 
     <h3 class="block-title">期望伤害柱状图</h3>

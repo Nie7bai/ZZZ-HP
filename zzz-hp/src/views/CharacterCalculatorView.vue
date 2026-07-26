@@ -18,7 +18,7 @@ type MindscapeBuffMode = 'current' | 'cumulative'
 const calculatorBuffStore = useCalculatorBuffStore()
 const themeStore = useThemeStore()
 const { mode: themeMode } = storeToRefs(themeStore)
-const { agents, wengines: wengineDocs, bangboos: bangbooDocs, driveDiscs: driveDiscDocs, loading, loaded, error } =
+const { agents, wengines: wengineDocs, bangboos: bangbooDocs, driveDiscs: driveDiscDocs, skillSubcategories, loading, loaded, error } =
   storeToRefs(calculatorBuffStore)
 
 onMounted(() => {
@@ -403,7 +403,7 @@ const filteredDriveDiscDocs = computed(() =>
           </p>
 
           <p>{{ selectedMindscapeRank }} 影 · 增益效果块（{{ mindscapeBuffScopeLabel }}）</p>
-          <BuffEffectBlocksDisplay :blocks="selectedMindscapeBuffs.effectBlocks" />
+          <BuffEffectBlocksDisplay :skill-subcategories="skillSubcategories" :blocks="selectedMindscapeBuffs.effectBlocks" />
         </div>
       </article>
 
@@ -445,7 +445,7 @@ const filteredDriveDiscDocs = computed(() =>
             {{ selectedWengineDoc.note }}
           </p>
           <h4 class="doc-subtitle">固定增益</h4>
-          <BuffEffectBlocksDisplay :blocks="selectedWengineDoc.fixedBuffs.effectBlocks" />
+          <BuffEffectBlocksDisplay :skill-subcategories="skillSubcategories" :blocks="selectedWengineDoc.fixedBuffs.effectBlocks" />
           <h4 class="doc-subtitle">精炼增益</h4>
           <div class="mindscape-tabs">
             <button
@@ -460,7 +460,7 @@ const filteredDriveDiscDocs = computed(() =>
             </button>
           </div>
           <p>精{{ selectedWengineRefinementRank }}</p>
-          <BuffEffectBlocksDisplay :blocks="selectedWengineRefinementBuffs.effectBlocks" />
+          <BuffEffectBlocksDisplay :skill-subcategories="skillSubcategories" :blocks="selectedWengineRefinementBuffs.effectBlocks" />
         </div>
       </article>
 
@@ -489,6 +489,7 @@ const filteredDriveDiscDocs = computed(() =>
           <h3>{{ selectedBangbooDoc.name }}</h3>
           <h4 class="doc-subtitle">固定增益</h4>
           <BuffEffectBlocksDisplay
+            :skill-subcategories="skillSubcategories"
             :blocks="selectedBangbooDoc.effectBlocks"
             :effects="selectedBangbooDoc.effects"
             title="固定增益"
@@ -508,6 +509,7 @@ const filteredDriveDiscDocs = computed(() =>
           </div>
           <p>精{{ selectedBangbooRefinementRank }}</p>
           <BuffEffectBlocksDisplay
+            :skill-subcategories="skillSubcategories"
             :blocks="
               selectedBangbooDoc.refinementEffectBlocks?.[selectedBangbooRefinementRank - 1]
             "
@@ -549,12 +551,13 @@ const filteredDriveDiscDocs = computed(() =>
           </p>
           <p>2 件套效果</p>
           <BuffEffectBlocksDisplay
+            :skill-subcategories="skillSubcategories"
             :blocks="selectedDriveDiscDoc.twoPieceEffectBlocks"
             :effects="selectedDriveDiscDoc.twoPieceEffects"
             title="2 件套"
           />
           <p>4 件套效果</p>
-          <BuffEffectBlocksDisplay :blocks="selectedDriveDiscDoc.fourPieceBuffs.effectBlocks" />
+          <BuffEffectBlocksDisplay :skill-subcategories="skillSubcategories" :blocks="selectedDriveDiscDoc.fourPieceBuffs.effectBlocks" />
         </div>
       </article>
       </template>

@@ -2,9 +2,9 @@
 import { computed, ref, watch } from 'vue'
 import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
 import NumberStepper from '@/components/common/NumberStepper.vue'
-import type { CharacterAttrKey } from '@/types/calculator'
+import type { CharacterAttrKey, SkillSubcategory } from '@/types/calculator'
 import type { CollectedEffect, BuffSelectionState } from '@/utils/panelBuffCalc'
-import { resolveConvertValue } from '@/utils/buffEffect'
+import { formatBuffEffectResultText, resolveConvertValue } from '@/utils/buffEffect'
 import { buffStatFieldLabel, BUFF_STAT_FIELDS } from '@/utils/calculatorUi'
 import { CHARACTER_ATTR_OPTIONS } from '@/types/calculator'
 
@@ -15,6 +15,7 @@ const props = defineProps<{
     external?: Partial<Record<CharacterAttrKey, number>>
     final?: Partial<Record<CharacterAttrKey, number>>
   }
+  skillSubcategories?: SkillSubcategory[]
 }>()
 
 const open = defineModel<boolean>('open', { default: false })
@@ -179,18 +180,22 @@ function formatSigned(value: number) {
   return `${rounded >= 0 ? '+ ' : ''}${rounded}`
 }
 
-/** 参考站效果行：属性名 + 数值 */
+/** 参考站效果行：招式前缀 + 属性名 + 数值 */
 function effectResultText(item: CollectedEffect) {
-  const label = statLabel(item.effect.stat)
+  let amountText = ''
   if (item.effect.kind === 'stacked' || item.effect.stackable) {
     const stacks = stacksModel(item.effect.id, item.effect.defaultStacks ?? 1)
     const per = item.effect.valuePerStack ?? 0
-    return `${label} ${formatSigned(per * stacks)}`
+    amountText = formatSigned(per * stacks)
+  } else if (item.effect.kind === 'convert') {
+    amountText = formatSigned(convertResult(item))
+  } else {
+    amountText = formatSigned(Number(item.effect.value) || 0)
   }
-  if (item.effect.kind === 'convert') {
-    return `${label} ${formatSigned(convertResult(item))}`
-  }
-  return `${label} ${formatSigned(Number(item.effect.value) || 0)}`
+  return formatBuffEffectResultText(item.effect, amountText, {
+    statLabelFn: (stat) => statLabel(stat),
+    skillSubcategories: props.skillSubcategories,
+  })
 }
 
 function isStackable(item: CollectedEffect) {

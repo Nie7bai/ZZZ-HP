@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { BuffEffect, BuffEffectBlock } from '@/types/calculator'
+import type { BuffEffect, BuffEffectBlock, SkillSubcategory } from '@/types/calculator'
 import { effectSummaryLabel } from '@/utils/buffEffect'
 import { buffStatFieldLabel, BUFF_STAT_FIELDS } from '@/utils/calculatorUi'
 import { computed } from 'vue'
@@ -12,6 +12,7 @@ const props = defineProps<{
   emptyText?: string
   /** 增益提供者（角色/音擎等），有则按参考站顺序展示 */
   provider?: string
+  skillSubcategories?: SkillSubcategory[] | null
 }>()
 
 const displayBlocks = computed(() => {
@@ -67,7 +68,7 @@ function blockTitle(block: BuffEffectBlock) {
             <span class="effect-situation">{{ situationLabel(effect) }}</span>
           </div>
           <strong class="effect-summary">{{
-            effectSummaryLabel(effect, (s) => statLabel(s))
+            effectSummaryLabel(effect, (s) => statLabel(s), props.skillSubcategories)
           }}</strong>
         </li>
       </ul>
