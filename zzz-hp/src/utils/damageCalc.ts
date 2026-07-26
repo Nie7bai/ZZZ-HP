@@ -82,23 +82,41 @@ export interface DamageCalcResult {
   anomalyCritRateRatio: number
   anomalyCritDmgRatio: number
   anomalyCritZone: number
+  /** 普通异常暴击区（暴击率强制为 1） */
   anomalyFullCritZone: number
   /** 异常基础期望（不含异常增伤/倍率/暴击区） */
   anomalyBaseExpected: number
-  /** 异常期望伤害（含异常增伤/倍率/暴击区，不含异放） */
+  /** 异常期望伤害（实际暴击率加权；不含异放） */
   anomalyExpected: number
+  /** 异常伤害（暴击率=0，不触发暴击） */
+  anomalyExpectedNoCrit: number
+  /** 异常伤害（暴击率=1，必定暴击） */
+  anomalyExpectedFullCrit: number
   /** 异放增伤区 */
   anomalyReleaseDmgBonusZone: number
   /** 异放综合增伤区 = 异放增伤区 + 异常增伤区 */
   anomalyReleaseCombinedDmgBonusZone: number
   /** 异放倍率区 */
   anomalyReleaseMultZone: number
-  /** 异放暴击区 */
+  /** 异放暴击区（单独期望形式，仅展示参考） */
   anomalyReleaseCritZone: number
-  /** 异常综合暴击区 = 异放暴击区 + 普通异常暴击区 */
+  /** 综合暴击率比值 = 异常暴击率 + 异放暴击率 */
+  anomalyCombinedCritRateRatio: number
+  /** 综合爆伤比值 = 异常爆伤 + 异放爆伤 */
+  anomalyCombinedCritDmgRatio: number
+  /**
+   * 异常综合暴击区 =
+   * 1 + (异常暴击 + 异放暴击) × (异常爆伤 + 异放爆伤)
+   */
   anomalyCombinedCritZone: number
-  /** 异放期望伤害 */
+  /** 异常综合暴击区（暴击率强制为 1） */
+  anomalyCombinedFullCritZone: number
+  /** 异放期望伤害（实际综合暴击率加权） */
   anomalyReleaseExpected: number
+  /** 异放伤害（暴击率=0） */
+  anomalyReleaseExpectedNoCrit: number
+  /** 异放伤害（暴击率=1） */
+  anomalyReleaseExpectedFullCrit: number
   effectiveAnomalyDuration: number
   disorderBaseMultRatio: number
   disorderCompMultRatio: number
@@ -111,9 +129,13 @@ export interface DamageCalcResult {
   turbulenceDmgBonusZone: number
   /** 乱流增伤区 + 异常增伤区（百分点加算后乘区；不含异放） */
   turbulenceCombinedDmgBonusZone: number
-  /** 乱流期望是否计入异常暴击区（简） */
+  /** 乱流是否乘了非 1 的异常暴击区（有普通异常暴击时为 true） */
   turbulenceUsesAnomalyCrit: boolean
   turbulenceExpected: number
+  /** 乱流伤害（暴击率=0） */
+  turbulenceExpectedNoCrit: number
+  /** 乱流伤害（暴击率=1） */
+  turbulenceExpectedFullCrit: number
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -283,12 +305,16 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const anomalyCritDmgRatio = clamp(panel.anomalyCritDmg / 100, 0, 20)
   const anomalyCritZone = 1 + anomalyCritRateRatio * anomalyCritDmgRatio
   const anomalyFullCritZone = 1 + anomalyCritDmgRatio
+  const anomalyNoCritZone = 1
 
   const anomalyBaseExpected = triggerParts.anomalyBaseExpected
-  const anomalyExpected =
-    anomalyBaseExpected * anomalyDmgBonusZone * anomalyMultZone * anomalyCritZone
+  const anomalyPreCrit =
+    anomalyBaseExpected * anomalyDmgBonusZone * anomalyMultZone
+  const anomalyExpected = anomalyPreCrit * anomalyCritZone
+  const anomalyExpectedNoCrit = anomalyPreCrit * anomalyNoCritZone
+  const anomalyExpectedFullCrit = anomalyPreCrit * anomalyFullCritZone
 
-  // 异放：基础用触发面板；综合增伤/综合暴击 = 异放区 + 普通异常区
+  // 异放：基础用触发面板；综合增伤加算；综合暴击率/爆伤加算后再乘
   const anomalyReleaseDmgBonusZone = 1 + panel.anomalyReleaseDmgBonus / 100
   const anomalyReleaseCombinedDmgBonusZone =
     1 + (panel.anomalyReleaseDmgBonus + panel.anomalyDmgBonus) / 100
@@ -296,13 +322,22 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const releaseCritRateRatio = panel.anomalyReleaseCritRate / 100
   const releaseCritDmgRatio = clamp(panel.anomalyReleaseCritDmg / 100, 0, 20)
   const anomalyReleaseCritZone = 1 + releaseCritRateRatio * releaseCritDmgRatio
-  /** 异常综合暴击区 = 异放暴击区 + 普通异常暴击区（百分点乘区加算） */
-  const anomalyCombinedCritZone = anomalyReleaseCritZone + anomalyCritZone - 1
-  const anomalyReleaseExpected =
+  const anomalyCombinedCritRateRatio = anomalyCritRateRatio + releaseCritRateRatio
+  const anomalyCombinedCritDmgRatio = anomalyCritDmgRatio + releaseCritDmgRatio
+  /** 1 + (异常暴击 + 异放暴击) × (异常爆伤 + 异放爆伤) */
+  const anomalyCombinedCritZone =
+    1 + anomalyCombinedCritRateRatio * anomalyCombinedCritDmgRatio
+  const anomalyCombinedFullCritZone = 1 + anomalyCombinedCritDmgRatio
+  const anomalyCombinedNoCritZone = 1
+  const anomalyReleasePreCrit =
     anomalyBaseExpected *
     anomalyReleaseCombinedDmgBonusZone *
-    anomalyReleaseMultZone *
-    anomalyCombinedCritZone
+    anomalyReleaseMultZone
+  const anomalyReleaseExpected = anomalyReleasePreCrit * anomalyCombinedCritZone
+  const anomalyReleaseExpectedNoCrit =
+    anomalyReleasePreCrit * anomalyCombinedNoCritZone
+  const anomalyReleaseExpectedFullCrit =
+    anomalyReleasePreCrit * anomalyCombinedFullCritZone
 
   const durationElement = useTriggerBase
     ? (input.triggerAgentElement ?? input.mainAgentElement ?? '')
@@ -334,11 +369,11 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   )
   // 有普通异常暴击区则乘算，否则 anomalyCritZone 本身为 1
   const useTurbulenceAnomalyCrit = Math.abs(anomalyCritZone - 1) > 1e-9
-  const turbulenceExpected =
-    anomalyBaseExpected *
-    turbulenceZone *
-    turbulenceCombinedDmgBonusZone *
-    anomalyCritZone
+  const turbulencePreCrit =
+    anomalyBaseExpected * turbulenceZone * turbulenceCombinedDmgBonusZone
+  const turbulenceExpected = turbulencePreCrit * anomalyCritZone
+  const turbulenceExpectedNoCrit = turbulencePreCrit * anomalyNoCritZone
+  const turbulenceExpectedFullCrit = turbulencePreCrit * anomalyFullCritZone
 
   return {
     baseDamage: round(mainParts.baseDamage, 2),
@@ -378,12 +413,19 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     anomalyFullCritZone: round(anomalyFullCritZone, 4),
     anomalyBaseExpected: round(anomalyBaseExpected, 0),
     anomalyExpected: round(anomalyExpected, 0),
+    anomalyExpectedNoCrit: round(anomalyExpectedNoCrit, 0),
+    anomalyExpectedFullCrit: round(anomalyExpectedFullCrit, 0),
     anomalyReleaseDmgBonusZone: round(anomalyReleaseDmgBonusZone, 4),
     anomalyReleaseCombinedDmgBonusZone: round(anomalyReleaseCombinedDmgBonusZone, 4),
     anomalyReleaseMultZone: round(anomalyReleaseMultZone, 4),
     anomalyReleaseCritZone: round(anomalyReleaseCritZone, 4),
+    anomalyCombinedCritRateRatio: round(anomalyCombinedCritRateRatio, 4),
+    anomalyCombinedCritDmgRatio: round(anomalyCombinedCritDmgRatio, 4),
     anomalyCombinedCritZone: round(anomalyCombinedCritZone, 4),
+    anomalyCombinedFullCritZone: round(anomalyCombinedFullCritZone, 4),
     anomalyReleaseExpected: round(anomalyReleaseExpected, 0),
+    anomalyReleaseExpectedNoCrit: round(anomalyReleaseExpectedNoCrit, 0),
+    anomalyReleaseExpectedFullCrit: round(anomalyReleaseExpectedFullCrit, 0),
     effectiveAnomalyDuration: round(effectiveDuration, 4),
     disorderBaseMultRatio: round(disorderBaseMultRatio, 4),
     disorderCompMultRatio: round(disorderCompMultRatio, 4),
@@ -397,5 +439,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     turbulenceCombinedDmgBonusZone: round(turbulenceCombinedDmgBonusZone, 4),
     turbulenceUsesAnomalyCrit: useTurbulenceAnomalyCrit,
     turbulenceExpected: round(turbulenceExpected, 0),
+    turbulenceExpectedNoCrit: round(turbulenceExpectedNoCrit, 0),
+    turbulenceExpectedFullCrit: round(turbulenceExpectedFullCrit, 0),
   }
 }
