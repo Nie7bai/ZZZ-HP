@@ -10,8 +10,6 @@ import type {
 import { TRIGGER_AGENT_AT_CALC } from '@/types/calculator'
 import {
   createEmptyDamageEvent,
-  DAMAGE_EVENT_KIND_OPTIONS,
-  formatDamageEventDisplayName,
 } from '@/utils/damageEvent'
 import {
   createCustomModeId,
@@ -73,6 +71,15 @@ watch(open, (isOpen) => {
     draftName.value = modeName.value || ''
     message.value = ''
     customModes.value = loadCustomModes()
+    // 管理员预设：每次打开重置为默认，会话内改动不持久化
+    if (isPresetMode.value && modeId.value) {
+      const preset = (props.presetModes ?? []).find((item) => item.id === modeId.value)
+      if (preset) {
+        events.value = cloneEventsForCalc(preset.events)
+        modeName.value = preset.name
+        draftName.value = preset.name
+      }
+    }
   }
 })
 
@@ -107,7 +114,7 @@ function selectPreset(mode: DamageEventMode) {
   modeName.value = mode.name
   draftName.value = mode.name
   events.value = cloneEventsForCalc(mode.events)
-  message.value = `已载入预设「${mode.name}」（只读，可另存为自定义）`
+  message.value = `已载入预设「${mode.name}」（可编辑；不另存为则下次打开重置）`
 }
 
 function selectCustom(mode: DamageEventMode) {
@@ -185,15 +192,6 @@ function applyModeName() {
   }
   if (isCustomMode.value) persistCurrentCustom()
 }
-
-function kindLabel(kind: DamageEvent['kind']) {
-  return DAMAGE_EVENT_KIND_OPTIONS.find((item) => item.id === kind)?.label ?? kind
-}
-
-function resolveSubName(id: string | null) {
-  if (!id) return null
-  return props.skillSubcategories.find((item) => item.id === id) ?? null
-}
 </script>
 
 <template>
@@ -214,7 +212,7 @@ function resolveSubName(id: string | null) {
             <h3>{{ modeType === 'anomaly' ? '异常伤害事件' : '直伤伤害事件' }}</h3>
             <p>
               {{ agentName ? `当前主 C：${agentName}` : '请先选择主 C' }}
-              · 管理端预设只读，自定义模式自动缓存
+              · 管理端预设可编辑（不另存则下次重置），自定义模式自动缓存
             </p>
           </div>
           <button type="button" class="close-btn" aria-label="关闭" @click="close">×</button>
@@ -232,7 +230,7 @@ function resolveSubName(id: string | null) {
               @click="selectPreset(mode)"
             >
               <strong>{{ mode.name }}</strong>
-              <span>{{ mode.events.length }} 条 · 只读</span>
+              <span>{{ mode.events.length }} 条 · 预设</span>
             </button>
             <p v-if="!agentPresets.length" class="aside-empty">暂无该角色的管理端预设</p>
 
@@ -288,11 +286,11 @@ function resolveSubName(id: string | null) {
             </div>
 
             <p v-if="isPresetMode" class="readonly-hint">
-              当前为管理员预设，不可直接修改。如需调整请「另存为自定义」。
+              当前为管理员预设，可临时修改；不「另存为自定义」则下次打开会恢复默认。
             </p>
 
             <DamageEventEditor
-              v-if="modeId && !isPresetMode"
+              v-if="modeId"
               v-model="events"
               :skill-subcategories="skillSubcategories"
               :agent-id="agentId"
@@ -302,15 +300,6 @@ function resolveSubName(id: string | null) {
               :resolve-mult-defaults="resolveMultDefaults"
               embedded
             />
-            <div v-else-if="modeId && isPresetMode" class="preset-preview">
-              <ul>
-                <li v-for="event in events" :key="event.id">
-                  {{ kindLabel(event.kind) }} ·
-                  {{ formatDamageEventDisplayName(event, resolveSubName) }}
-                  ×{{ event.count }}
-                </li>
-              </ul>
-            </div>
             <p v-else class="pick-hint">请先选择预设模式或新建自定义模式</p>
           </div>
         </div>
@@ -567,24 +556,6 @@ function resolveSubName(id: string | null) {
   width: 100%;
   font-size: 0.76rem;
   color: #9ad0b8;
-}
-
-.preset-preview ul {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.preset-preview li {
-  padding: 0.45rem 0.55rem;
-  border: 1px solid #2d323a;
-  border-radius: 8px;
-  background: #0f1217;
-  color: #c5cdd8;
-  font-size: 0.8rem;
 }
 
 .done-btn {

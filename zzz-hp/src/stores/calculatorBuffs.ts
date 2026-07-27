@@ -142,12 +142,22 @@ function normalizeWengine(item: Record<string, unknown>): WengineBuffDoc {
   }
 }
 
-/** 音擎精炼旧能量回复字段迁移为固定数值；其他来源的 energyRegen 仍表示百分比 */
+/** 音擎精炼能量回复统一为百分比：旧 energyRegenFlat 迁回 energyRegen（1.2 → 120） */
 function migrateWengineRefinementEnergyRegen(
   pack: AgentMindscapeRankBuffs,
 ): AgentMindscapeRankBuffs {
-  const migrateEffect = (effect: AgentMindscapeRankBuffs['effects'][number]) =>
-    effect.stat === 'energyRegen' ? { ...effect, stat: 'energyRegenFlat' as const } : effect
+  const migrateEffect = (effect: AgentMindscapeRankBuffs['effects'][number]) => {
+    if (effect.stat !== 'energyRegenFlat') return effect
+    const raw = Number(effect.value ?? effect.valuePerStack ?? 0)
+    // 旧固定值若按 1.2 这类小数存，改为百分点 120；已是大数则视为已是百分点
+    const asPercent = Number.isFinite(raw) && Math.abs(raw) > 0 && Math.abs(raw) < 10 ? raw * 100 : raw
+    return {
+      ...effect,
+      stat: 'energyRegen' as const,
+      value: effect.kind === 'stacked' ? effect.value : asPercent,
+      valuePerStack: effect.kind === 'stacked' || effect.stackable ? asPercent : effect.valuePerStack,
+    }
+  }
   if (pack.effectBlocks?.length) {
     return packFromBlocks(
       pack.effectBlocks.map((block) => ({

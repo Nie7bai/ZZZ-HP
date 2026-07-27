@@ -43,7 +43,7 @@ const props = defineProps<{
   agentId?: string
   /** 空列表时新增的第一个效果块默认名称（如「精1」） */
   defaultFirstBlockName?: string
-  /** 音擎精炼仅允许能量回复效率（数值），隐藏百分比字段 */
+  /** 仅允许能量回复效率（百分比）等受限场景用；现已统一百分比语义 */
   energyRegenFlatOnly?: boolean
   /**
    * 勾选「异常计算时也生效」时回调（用于邦布/音擎精炼跨精同步）。
@@ -183,7 +183,7 @@ function elementFilterSummary(effect: BuffEffect) {
 function statFieldsFor(effect: BuffEffect) {
   const filterEnergyRegen = <T extends { key: string }>(fields: T[]) =>
     props.energyRegenFlatOnly
-      ? fields.filter((field) => field.key !== 'energyRegen')
+      ? fields.filter((field) => field.key === 'energyRegen')
       : fields
   const base =
     effect.scope === 'skill'
@@ -200,7 +200,29 @@ function statFieldsFor(effect: BuffEffect) {
 }
 
 function defaultEffectStat(): BuffEffect['stat'] {
-  return props.energyRegenFlatOnly ? 'energyRegenFlat' : 'dmgBonus'
+  return props.energyRegenFlatOnly ? 'energyRegen' : 'dmgBonus'
+}
+
+const FACTOR_STATS = new Set([
+  'directDmgMultFactor',
+  'anomalyMultFactor',
+  'anomalyReleaseMultFactor',
+  'disorderBaseMultFactor',
+  'turbulenceBaseMultFactor',
+])
+
+function onStatChange(effect: BuffEffect, raw: string) {
+  const next = raw as BuffEffect['stat']
+  const prevWasFactor = FACTOR_STATS.has(effect.stat)
+  const nextIsFactor = FACTOR_STATS.has(next)
+  effect.stat = next
+  // 倍率修正增益已按减 1 填写，切过来默认 0
+  if (nextIsFactor && !prevWasFactor && (effect.value == null || effect.value === 1 || effect.value === 0)) {
+    effect.value = 0
+  }
+  if (!nextIsFactor && prevWasFactor && effect.value === 0) {
+    effect.value = 0
+  }
 }
 
 function addBlock() {
@@ -488,7 +510,10 @@ defineExpose({
 
           <label class="field">
             <span>属性</span>
-            <select v-model="effect.stat">
+            <select
+              :value="effect.stat"
+              @change="onStatChange(effect, ($event.target as HTMLSelectElement).value)"
+            >
               <option
                 v-for="field in statFieldsFor(effect)"
                 :key="field.key"

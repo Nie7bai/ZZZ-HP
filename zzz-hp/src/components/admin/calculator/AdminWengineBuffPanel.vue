@@ -410,7 +410,6 @@ defineExpose({ scrollToSection, saveItem, removeItem, selectedId, saving })
             :key="`wengine-refinement-${activeRefinementRank}`"
             v-model="activeRefinementForm.effectBlocks"
             :default-first-block-name="`精${activeRefinementRank}`"
-            energy-regen-flat-only
             :on-applies-to-anomaly-change="syncRefinementAppliesToAnomaly"
           />
         </section>

@@ -675,6 +675,13 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
     rawTriggerId && rawTriggerId !== '__at_calc__' ? rawTriggerId : null
   if (eventNeedsTrigger && !evtTriggerAgentId) return null
 
+  const tAgent =
+    eventNeedsTrigger && evtTriggerAgentId
+      ? props.agents.find((a) => a.id === evtTriggerAgentId)
+      : undefined
+  const evtTriggerElement = tAgent?.element
+  const evtTriggerIsMb = tAgent?.profession === MB_PROFESSION
+
   const skillBound = event.skillBound !== false || evtDamageKind === 'direct'
   const evtIsFollowUp = skillBound
     ? resolveIsFollowUp({
@@ -686,11 +693,12 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
       })
     : false
 
+  // 异放等：主 C 结算时用产生角色属性筛选对应属性增益（含异放倍率）
   const evtSkillCtx = {
     damageKind: evtDamageKind,
     categoryId: skillBound ? event.categoryId : ('basic' as const),
     subcategoryId: skillBound ? (event.skillSubcategoryId ?? null) : null,
-    element: mainAgent.value?.element,
+    element: eventNeedsTrigger ? evtTriggerElement : mainAgent.value?.element,
     staggerPhase: event.staggerPhase,
     isFollowUp: evtIsFollowUp,
     anomalySubKind: evtAnomalySubKind,
@@ -754,13 +762,8 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
   )
 
   let evtTriggerFinalPanel: PanelStats | undefined
-  let evtTriggerElement: string | undefined
   let evtTriggerPierce: number | undefined
-  let evtTriggerIsMb: boolean | undefined
   if (eventNeedsTrigger && evtTriggerAgentId) {
-    const tAgent = props.agents.find((a) => a.id === evtTriggerAgentId)
-    evtTriggerElement = tAgent?.element
-    evtTriggerIsMb = tAgent?.profession === MB_PROFESSION
     const tSlotIndex = props.teamSlots.findIndex((slot) => slot.agentId === evtTriggerAgentId)
     if (tSlotIndex < 0) return null
 
@@ -797,7 +800,8 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
       )
     }
 
-    // 紊乱/乱流/异放倍率取产生角色最终面板（未覆写时）
+    // 紊乱/乱流倍率取产生角色最终面板（未覆写时）
+    // 异放倍率留在主 C 面板：按产生角色属性从主 C 增益筛选
     if (evtTriggerFinalPanel) {
       const o = overrides
       if (event.kind === 'disorder') {
@@ -819,13 +823,6 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
         }
         if (o?.turbulenceCompMult == null) {
           evtFinalPanel.turbulenceCompMult = evtTriggerFinalPanel.turbulenceCompMult
-        }
-      } else if (event.kind === 'anomalyRelease') {
-        if (o?.anomalyReleaseMult == null) {
-          evtFinalPanel.anomalyReleaseMult = evtTriggerFinalPanel.anomalyReleaseMult
-        }
-        if (o?.anomalyReleaseMultFactor == null) {
-          evtFinalPanel.anomalyReleaseMultFactor = evtTriggerFinalPanel.anomalyReleaseMultFactor
         }
       }
     }
@@ -1101,9 +1098,11 @@ const selectedEventAnomalyTitle = computed(() => {
   return `${line.displayName} · 异常期望伤害`
 })
 
-const alignedAnomalyFormulas = computed((): AlignedFormulaGroup[] => {
-  const p = calcParts.value
-  const sub = effectiveAnomalySubKind.value
+function buildAlignedAnomalyFormulasFor(
+  p: ReturnType<typeof computeDamageResult>,
+  sub: AnomalyDamageSubKind,
+  disorderLabel: string,
+): AlignedFormulaGroup[] {
   const base: AlignedFormulaGroup = {
     key: 'anomalyBaseExpected',
     title: '异常基础',
@@ -1137,7 +1136,7 @@ const alignedAnomalyFormulas = computed((): AlignedFormulaGroup[] => {
   }
   const disorder: AlignedFormulaGroup = {
     key: 'disorderExpected',
-    title: `${disorderDamageLabel.value}期望`,
+    title: `${disorderLabel}期望`,
     terms: [
       { label: '异常基础期望', value: formatNumber(p.anomalyBaseExpected), tipsKey: 'anomalyBaseExpected' },
       { label: '紊乱倍率区', value: formatFormulaNumber(p.disorderZone), tipsKey: 'disorderZone' },
@@ -1200,6 +1199,22 @@ const alignedAnomalyFormulas = computed((): AlignedFormulaGroup[] => {
   if (sub === 'turbulence') return [base, turbulence]
   if (sub === 'anomalyRelease') return [base, release]
   return [base, anomaly]
+}
+
+const alignedAnomalyFormulas = computed((): AlignedFormulaGroup[] =>
+  buildAlignedAnomalyFormulasFor(
+    calcParts.value,
+    effectiveAnomalySubKind.value,
+    disorderDamageLabel.value,
+  ),
+)
+
+const selectedEventAnomalyFormulas = computed((): AlignedFormulaGroup[] | null => {
+  const line = selectedDamageEventLine.value
+  if (!line || line.event.kind === 'direct') return null
+  const { anomalySubKind } = mapEventKindToCalc(line.event.kind)
+  const disorderLabel = line.result.hasPolarDisorder ? '极性紊乱' : '紊乱伤害'
+  return buildAlignedAnomalyFormulasFor(line.result, anomalySubKind, disorderLabel)
 })
 
 function formatSigned(value: number) {
@@ -2445,30 +2460,48 @@ defineExpose({
     </section>
 
     <section
-      v-if="selectedDamageEventLine && selectedDamageEventLine.event.kind !== 'direct'"
+      v-if="selectedDamageEventLine && selectedEventAnomalyFormulas"
       class="event-detail-block"
     >
       <h3 class="result-section-title">{{ selectedEventAnomalyTitle }}</h3>
+      <div class="formula-block formula-block--aligned">
+        <div
+          v-for="group in selectedEventAnomalyFormulas"
+          :key="`event-${group.key}`"
+          class="formula-aligned-group"
+        >
+          <span class="formula-label formula-aligned-title">
+            {{ group.title }}
+            <span v-if="group.hint" class="formula-aligned-hint">{{ group.hint }}</span>
+          </span>
+          <div class="formula-aligned-body">
+            <template v-for="(term, index) in group.terms" :key="`event-${group.key}-${term.label}`">
+              <span v-if="index > 0" class="formula-aligned-op" aria-hidden="true">×</span>
+              <div class="formula-aligned-term">
+                <span class="formula-aligned-term-label">{{ term.label }}</span>
+                <span class="formula-aligned-term-value">
+                  <StatValueWithSources :value="term.value" :groups="valueTips[term.tipsKey]" />
+                </span>
+              </div>
+            </template>
+            <span class="formula-aligned-op" aria-hidden="true">=</span>
+            <div v-if="group.dualResults?.length" class="formula-aligned-dual">
+              <div
+                v-for="item in group.dualResults"
+                :key="`event-${group.key}-${item.label}`"
+                class="formula-aligned-result formula-aligned-result--dual"
+              >
+                <span class="formula-aligned-term-label">{{ item.label }}</span>
+                <StatValueWithSources :value="item.value" :groups="valueTips[group.key]" />
+              </div>
+            </div>
+            <div v-else class="formula-aligned-result">
+              <StatValueWithSources :value="group.result" :groups="valueTips[group.key]" />
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="result-grid">
-        <p>异常基础期望：{{ formatNumber(selectedDamageEventLine.result.anomalyBaseExpected) }}</p>
-        <template v-if="selectedDamageEventLine.event.kind === 'anomaly'">
-          <p>异常增伤区：{{ formatFormulaNumber(selectedDamageEventLine.result.anomalyDmgBonusZone) }}</p>
-          <p>异常倍率区：{{ formatFormulaNumber(selectedDamageEventLine.result.anomalyMultZone) }}</p>
-          <p>异常期望（暴击率=0）：{{ formatNumber(selectedDamageEventLine.result.anomalyExpectedNoCrit) }}</p>
-          <p>异常期望（暴击率=1）：{{ formatNumber(selectedDamageEventLine.result.anomalyExpectedFullCrit) }}</p>
-        </template>
-        <template v-else-if="selectedDamageEventLine.event.kind === 'disorder'">
-          <p>紊乱倍率区：{{ formatFormulaNumber(selectedDamageEventLine.result.disorderZone) }}</p>
-          <p>紊乱增伤区：{{ formatFormulaNumber(selectedDamageEventLine.result.disorderDmgBonusZone) }}</p>
-        </template>
-        <template v-else-if="selectedDamageEventLine.event.kind === 'turbulence'">
-          <p>乱流倍率区：{{ formatFormulaNumber(selectedDamageEventLine.result.turbulenceZone) }}</p>
-          <p>乱流增伤区：{{ formatFormulaNumber(selectedDamageEventLine.result.turbulenceDmgBonusZone) }}</p>
-        </template>
-        <template v-else>
-          <p>异放倍率区：{{ formatFormulaNumber(selectedDamageEventLine.result.anomalyReleaseMultZone) }}</p>
-          <p>异放增伤区：{{ formatFormulaNumber(selectedDamageEventLine.result.anomalyReleaseCombinedDmgBonusZone) }}</p>
-        </template>
         <p class="result-total">
           单次期望：{{ formatNumber(selectedDamageEventLine.perHit) }}
         </p>

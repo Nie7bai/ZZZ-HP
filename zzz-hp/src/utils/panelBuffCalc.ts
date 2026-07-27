@@ -893,35 +893,36 @@ export function applyBuffModsToPanel(
     turbulenceCompMult: externalPanel.turbulenceCompMult + mods.turbulenceCompMult,
     disorderDmgBonus: externalPanel.disorderDmgBonus + mods.disorderDmgBonus,
     turbulenceDmgBonus: externalPanel.turbulenceDmgBonus + mods.turbulenceDmgBonus,
-    directDmgMultFactor: multiplyPanelFactor(
+    directDmgMultFactor: combinePanelFactor(
       externalPanel.directDmgMultFactor,
       mods.directDmgMultFactor,
     ),
-    anomalyMultFactor: multiplyPanelFactor(
+    anomalyMultFactor: combinePanelFactor(
       externalPanel.anomalyMultFactor,
       mods.anomalyMultFactor,
     ),
-    anomalyReleaseMultFactor: multiplyPanelFactor(
+    anomalyReleaseMultFactor: combinePanelFactor(
       externalPanel.anomalyReleaseMultFactor,
       mods.anomalyReleaseMultFactor,
     ),
-    disorderBaseMultFactor: multiplyPanelFactor(
+    disorderBaseMultFactor: combinePanelFactor(
       externalPanel.disorderBaseMultFactor,
       mods.disorderBaseMultFactor,
     ),
-    turbulenceBaseMultFactor: multiplyPanelFactor(
+    turbulenceBaseMultFactor: combinePanelFactor(
       externalPanel.turbulenceBaseMultFactor,
       mods.turbulenceBaseMultFactor,
     ),
   }
 }
 
-function multiplyPanelFactor(base: number, mod: number): number {
+/** 倍率修正区 = 面板倍率修正（默认 1）+ 增益倍率修正增量（已减 1，默认 0） */
+function combinePanelFactor(base: number, mod: number): number {
   const b = Number(base)
   const m = Number(mod)
-  const safeBase = Number.isFinite(b) && b > 0 ? b : 1
-  if (!Number.isFinite(m) || m <= 0) return safeBase
-  return safeBase * m
+  const safeBase = Number.isFinite(b) ? b : 1
+  const safeMod = Number.isFinite(m) ? m : 0
+  return safeBase + safeMod
 }
 
 export function panelToConvertAttrValues(

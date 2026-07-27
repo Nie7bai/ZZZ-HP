@@ -160,7 +160,8 @@ function isBuffMultFactorKey(key: string): boolean {
 function emptyMods(): BuffStatModifiers {
   const mods = {} as BuffStatModifiers
   for (const key of BUFF_STAT_KEYS) {
-    mods[key] = isBuffMultFactorKey(key) ? 1 : 0
+    // 倍率修正增益填写的是已减 1 的增量，空合成为 0
+    mods[key] = 0
   }
   return mods
 }
@@ -259,7 +260,7 @@ export function flatModsToEffects(
   for (const key of BUFF_STAT_KEYS) {
     const value = mods[key]
     if (isBuffMultFactorKey(key)) {
-      if (!Number.isFinite(value) || Math.abs(value - 1) < 1e-9) continue
+      if (!Number.isFinite(value) || Math.abs(value) < 1e-12) continue
     } else if (!value) {
       continue
     }
@@ -269,6 +270,7 @@ export function flatModsToEffects(
         scope,
         applyTarget,
         kind: 'fixed',
+        // 扁平 mods 中的 factor 已是「合成后的修正区」；还原为单条 effect 时直接用该值
         stat: key,
         value,
         enabledDefault: true,
@@ -312,12 +314,13 @@ export function effectsToFlatMods(
     if (applyTarget && effect.applyTarget !== applyTarget) continue
     if (effect.scope !== 'general') continue
     const amount = resolveEffectBaseValue(effect, effect.defaultStacks ?? 1)
-    if (!amount) continue
     if (isBuffMultFactorKey(effect.stat)) {
-      total[effect.stat] *= amount
-    } else {
+      if (!Number.isFinite(amount) || Math.abs(amount) < 1e-12) continue
       total = addStat(total, effect.stat, amount)
+      continue
     }
+    if (!amount) continue
+    total = addStat(total, effect.stat, amount)
   }
   return total
 }
@@ -569,6 +572,11 @@ export function resolveEffectsToMods(
             options.panelSourceValues,
           )
         : resolveEffectBaseValue(effect, stacks)
+    if (isBuffMultFactorKey(effect.stat)) {
+      if (!Number.isFinite(amount) || Math.abs(amount) < 1e-12) continue
+      total = addStat(total, effect.stat, amount)
+      continue
+    }
     if (!amount) continue
     total = addStat(total, effect.stat, amount)
   }

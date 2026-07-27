@@ -365,6 +365,23 @@ function computeEventGrandTotal(
 
   for (const event of events) {
     const { damageKind, anomalySubKind } = mapEventKindToCalc(event.kind)
+    const needsTrigger =
+      event.kind === 'disorder' ||
+      event.kind === 'turbulence' ||
+      event.kind === 'anomalyRelease'
+    const triggerId =
+      event.triggerAgentId && event.triggerAgentId !== '__at_calc__'
+        ? event.triggerAgentId
+        : null
+    if (needsTrigger && !triggerId) continue
+
+    const triggerElement =
+      needsTrigger && triggerId === ctx.mainAgentId
+        ? ctx.mainAgentElement
+        : needsTrigger
+          ? undefined
+          : ctx.mainAgentElement
+
     const skillBound = event.skillBound !== false || damageKind === 'direct'
     const isFollowUp = skillBound
       ? resolveIsFollowUp({
@@ -382,7 +399,8 @@ function computeEventGrandTotal(
         damageKind,
         categoryId: skillBound ? event.categoryId : 'basic',
         subcategoryId: skillBound ? event.skillSubcategoryId : null,
-        element: ctx.mainAgentElement,
+        // 异放等：按产生角色属性从主 C 增益取对应属性异放倍率
+        element: needsTrigger ? (triggerElement ?? ctx.mainAgentElement) : ctx.mainAgentElement,
         staggerPhase: event.staggerPhase,
         isFollowUp,
         anomalySubKind,
@@ -445,16 +463,6 @@ function computeEventGrandTotal(
             disorderMultFactor: overrides.disorderBaseMultFactor ?? sub.disorderMultFactor,
           }
         : sub
-
-    const needsTrigger =
-      event.kind === 'disorder' ||
-      event.kind === 'turbulence' ||
-      event.kind === 'anomalyRelease'
-    const triggerId =
-      event.triggerAgentId && event.triggerAgentId !== '__at_calc__'
-        ? event.triggerAgentId
-        : null
-    if (needsTrigger && !triggerId) continue
 
     const result = computeDamageResult({
       finalPanel,

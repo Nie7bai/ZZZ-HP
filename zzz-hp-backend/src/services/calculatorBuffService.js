@@ -217,13 +217,23 @@ function normalizeSelfTeamBuffs(value) {
 }
 
 /**
- * 音擎精炼中的旧「能量回复效率%」实际按固定数值使用。
- * 载入和保存时统一迁移到 energyRegenFlat，避免影响音擎高级属性与驱动盘的百分比语义。
+ * 音擎精炼能量回复统一为百分比语义（1.2 填 120）。
+ * 载入时把旧 energyRegenFlat 迁回 energyRegen。
  */
 function normalizeWengineRefinementBuffs(value) {
   const pack = normalizeSelfTeamBuffs(value)
-  const migrateEffect = (effect) =>
-    effect.stat === 'energyRegen' ? { ...effect, stat: 'energyRegenFlat' } : effect
+  const migrateEffect = (effect) => {
+    if (effect.stat !== 'energyRegenFlat') return effect
+    const raw = readNumber(effect.value ?? effect.valuePerStack)
+    const asPercent = raw !== 0 && Math.abs(raw) < 10 ? raw * 100 : raw
+    return {
+      ...effect,
+      stat: 'energyRegen',
+      value: effect.kind === 'stacked' ? effect.value : asPercent,
+      valuePerStack:
+        effect.kind === 'stacked' || effect.stackable ? asPercent : effect.valuePerStack,
+    }
+  }
   const effectBlocks = (pack.effectBlocks ?? []).map((block) => ({
     ...block,
     effects: (block.effects ?? []).map(migrateEffect),

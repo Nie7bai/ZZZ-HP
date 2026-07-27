@@ -108,13 +108,13 @@ export const BUFF_STAT_FIELDS: {
     key: 'energyRegen',
     label: '能量回复效率',
     unit: 'percent',
-    hint: '百分点，按角色基础面板的初始能量回复效率换算后加到局内面板',
+    hint: '百分点：游戏显示 1.2（120%）时填 120；提升 20% 填 20。按角色初始能量回复效率换算',
   },
   {
     key: 'energyRegenFlat',
-    label: '能量回复效率',
+    label: '能量回复效率（数值）',
     unit: 'flat',
-    hint: '固定数值，直接累加到局内能量回复效率（音擎精炼使用）',
+    hint: '固定数值直接累加；能量回复请优先用上方百分比字段',
   },
   { key: 'vulnerable', label: '易伤', unit: 'percent', hint: '独立易伤区，常驻加算（如 1.5 + 30% = 1.8）' },
   {
@@ -154,7 +154,7 @@ export const BUFF_STAT_FIELDS: {
     key: 'directDmgMultFactor',
     label: '直伤倍率修正',
     unit: 'factor',
-    hint: '乘算修正，默认 1；综合直伤倍率区 = 加算倍率区 × 修正',
+    hint: '默认增量 0（面板修正默认 1）；增益已按减 1 填写，如 +0.2 填 0.2，与面板加算成修正区',
   },
   {
     key: 'anomalyMult',
@@ -166,7 +166,7 @@ export const BUFF_STAT_FIELDS: {
     key: 'anomalyMultFactor',
     label: '异常倍率修正',
     unit: 'factor',
-    hint: '乘算修正，默认 1',
+    hint: '增益已按减 1 填写；与面板倍率修正加算成修正区',
   },
   {
     key: 'disorderBaseMult',
@@ -178,7 +178,7 @@ export const BUFF_STAT_FIELDS: {
     key: 'disorderBaseMultFactor',
     label: '紊乱倍率修正',
     unit: 'factor',
-    hint: '乘算修正，默认 1',
+    hint: '增益已按减 1 填写；与面板倍率修正加算成修正区',
   },
   {
     key: 'anomalyDuration',
@@ -202,7 +202,7 @@ export const BUFF_STAT_FIELDS: {
     key: 'turbulenceBaseMultFactor',
     label: '乱流倍率修正',
     unit: 'factor',
-    hint: '乘算修正，默认 1',
+    hint: '增益已按减 1 填写；与面板倍率修正加算成修正区',
   },
   {
     key: 'turbulenceCompMult',
@@ -257,7 +257,7 @@ export const BUFF_STAT_FIELDS: {
     key: 'anomalyReleaseMultFactor',
     label: '异放倍率修正',
     unit: 'factor',
-    hint: '乘算修正，默认 1',
+    hint: '增益已按减 1 填写；与面板倍率修正加算成修正区',
   },
   {
     key: 'skillDmgBonus',
@@ -445,11 +445,11 @@ export function createEmptyBuffStatModifiers(): BuffStatModifiers {
     turbulenceDmgBonus: 0,
     skillDmgBonus: 0,
     skillMultiplierBonus: 0,
-    directDmgMultFactor: 1,
-    anomalyMultFactor: 1,
-    anomalyReleaseMultFactor: 1,
-    disorderBaseMultFactor: 1,
-    turbulenceBaseMultFactor: 1,
+    directDmgMultFactor: 0,
+    anomalyMultFactor: 0,
+    anomalyReleaseMultFactor: 0,
+    disorderBaseMultFactor: 0,
+    turbulenceBaseMultFactor: 0,
   }
 }
 
@@ -524,7 +524,8 @@ export function normalizeBuffStatModifiers(value: unknown): BuffStatModifiers {
   for (const field of BUFF_STAT_FIELDS) {
     const raw = readNumber(entry[field.key])
     if (BUFF_MULT_FACTOR_KEYS.includes(field.key)) {
-      result[field.key] = raw > 0 ? raw : 1
+      // 增益倍率修正存已减 1 的增量，缺省为 0
+      result[field.key] = Number.isFinite(raw) ? raw : 0
     } else {
       result[field.key] = raw
     }
@@ -593,7 +594,8 @@ export function mergeBuffStatModifiers(
   for (const field of BUFF_STAT_FIELDS) {
     if (factorKeys.includes(field.key)) {
       const src = Number(source[field.key])
-      if (Number.isFinite(src) && src > 0) result[field.key] *= src
+      // 增益倍率修正已是减 1 后的增量，直接加算
+      if (Number.isFinite(src)) result[field.key] += src
     } else {
       result[field.key] += source[field.key]
     }
