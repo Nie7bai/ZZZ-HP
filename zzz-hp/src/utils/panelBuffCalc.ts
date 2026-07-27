@@ -3,6 +3,7 @@ import type {
   AgentBuffDoc,
   BangbooBuffDoc,
   BuffEffect,
+  BuffStatKey,
   BuffStatModifiers,
   CharacterAttrKey,
   DamageCalcKind,
@@ -16,6 +17,8 @@ import {
   cloneEffectInstance,
   collectBlockEntriesFromPack,
   collectEffectsFromPack,
+  effectMatchesContext,
+  effectMatchesElement,
   flatModsToEffects,
   isEffectEnabled,
   resolveEffectsToMods,
@@ -955,34 +958,60 @@ export function extractCombatMods(mods: BuffStatModifiers): CombatBuffMods {
 }
 
 /**
- * 主 C 异放倍率：局外基础 + 增益；异放倍率类增益按产生角色属性（elementFilter）筛选。
+ * 主 C 异放倍率：局外基础 + 增益；仅异放倍率类增益按产生角色属性（elementFilter）筛选。
  */
+const RELEASE_MULT_STATS = new Set<BuffStatKey>([
+  'anomalyReleaseMult',
+  'anomalyReleaseMultFactor',
+])
+
+function effectMatchesReleaseMultElement(effect: BuffEffect, triggerElement?: string): boolean {
+  const filter = effect.elementFilter
+  if (!filter || filter === 'all') return true
+  if (!triggerElement) return false
+  return filter.includes(triggerElement)
+}
+
 export function resolveMainCAnomalyReleaseMultFields(
   externalPanel: PanelStats,
   ctx: PanelCalcContext,
   triggerElement?: string,
-  skillCtxOverride?: Partial<SkillCalcContext>,
 ): Pick<PanelStats, 'anomalyReleaseMult' | 'anomalyReleaseMultFactor'> {
-  const mainAgentId = ctx.teamSlots[ctx.mainSlotIndex]?.agentId
-  const mainElement = ctx.agents.find((agent) => agent.id === mainAgentId)?.element
-  const filterElement = triggerElement ?? mainElement
-
   const skillCtx: SkillCalcContext = {
-    ...(ctx.skillContext ?? defaultSkillContext('anomaly', filterElement)),
-    ...skillCtxOverride,
+    ...(ctx.skillContext ?? defaultSkillContext('anomaly', triggerElement)),
     damageKind: 'anomaly',
     anomalySubKind: 'anomalyRelease',
-    element: filterElement,
+    element: triggerElement,
   }
 
-  const breakdown = computeFinalPanel(externalPanel, {
-    ...ctx,
-    skillContext: skillCtx,
+  const collected = collectAllBuffEffects({ ...ctx, skillContext: skillCtx })
+  const releaseMultEffects: BuffEffect[] = []
+  for (const item of collected) {
+    const effect = item.effect
+    if (!RELEASE_MULT_STATS.has(effect.stat)) continue
+    if (!isEffectEnabled(effect, ctx.buffSelection)) continue
+    if (!effectMatchesContext(effect, skillCtx)) continue
+    if (!effectMatchesReleaseMultElement(effect, triggerElement)) continue
+    if (!effectMatchesElement(effect, triggerElement)) continue
+    releaseMultEffects.push(effect)
+  }
+
+  const mods = resolveEffectsToMods(releaseMultEffects, {
+    ctx: skillCtx,
+    element: triggerElement,
+    stacksByEffectId: ctx.buffSelection?.stacksByEffectId,
+    convertInputs: ctx.buffSelection?.convertInputs,
+    attrValues: ctx.attrValues,
+    panelSourceValues: ctx.panelSourceValues,
+    selection: ctx.buffSelection,
   })
 
   return {
-    anomalyReleaseMult: breakdown.finalPanel.anomalyReleaseMult,
-    anomalyReleaseMultFactor: breakdown.finalPanel.anomalyReleaseMultFactor,
+    anomalyReleaseMult: externalPanel.anomalyReleaseMult + mods.anomalyReleaseMult,
+    anomalyReleaseMultFactor: combinePanelFactor(
+      externalPanel.anomalyReleaseMultFactor,
+      mods.anomalyReleaseMultFactor,
+    ),
   }
 }
 

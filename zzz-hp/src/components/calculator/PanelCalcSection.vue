@@ -393,7 +393,42 @@ const panelBreakdown = computed(() =>
   }),
 )
 
-const finalPanel = computed(() => panelBreakdown.value.finalPanel)
+const finalPanel = computed(() => {
+  const panel = { ...panelBreakdown.value.finalPanel }
+  if (
+    props.damageKind === 'anomaly' &&
+    (props.anomalySubKind ?? 'anomaly') === 'anomalyRelease'
+  ) {
+    const fields = resolveMainCAnomalyReleaseMultFields(
+      effectiveExternalPanel.value,
+      {
+        teamSlots: props.teamSlots,
+        agents: props.agents,
+        wengines: props.wengines,
+        bangboo: selectedBangboo.value,
+        bangbooRefine: props.bangbooRefine,
+        mainSlotIndex: mainSlotIndex.value,
+        driveDiscs: props.driveDiscs,
+        extraMods: extraMods.value,
+        skillContext: {
+          damageKind: props.damageKind ?? 'anomaly',
+          categoryId: props.skillCategoryId ?? 'basic',
+          subcategoryId: props.skillSubcategoryId ?? null,
+          element: damageElement.value,
+          staggerPhase: props.staggerPhase ?? 'stagger',
+          isFollowUp: skillIsFollowUp.value,
+          anomalySubKind: 'anomalyRelease',
+        },
+        buffSelection: props.buffSelection ?? null,
+        attrValues: convertAttrDefaults.value,
+      },
+      damageElement.value ?? undefined,
+    )
+    panel.anomalyReleaseMult = fields.anomalyReleaseMult
+    panel.anomalyReleaseMultFactor = fields.anomalyReleaseMultFactor
+  }
+  return panel
+})
 
 const convertPanelSourceValues = computed(() => ({
   external: panelToConvertAttrValues(effectiveExternalPanel.value, { level: 60 }),
