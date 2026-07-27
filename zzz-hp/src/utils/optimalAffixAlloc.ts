@@ -385,6 +385,7 @@ function computeEventGrandTotal(
         element: ctx.mainAgentElement,
         staggerPhase: event.staggerPhase,
         isFollowUp,
+        anomalySubKind,
       },
     })
     let finalPanel = { ...breakdown.finalPanel }

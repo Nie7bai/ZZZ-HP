@@ -277,6 +277,7 @@ const evalCtx = computed(() =>
       element: mainAgent.value?.element,
       staggerPhase: props.staggerPhase ?? 'stagger',
       isFollowUp: skillIsFollowUp.value,
+      anomalySubKind: damageKind.value === 'anomaly' ? anomalySubKind.value : undefined,
     },
     buffSelection: props.buffSelection ?? null,
     damageEvents: props.damageEvents,

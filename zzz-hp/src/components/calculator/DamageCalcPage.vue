@@ -312,6 +312,7 @@ const collectedEffects = computed(() =>
       element: damageElement.value,
       staggerPhase: staggerPhase.value,
       isFollowUp: skillIsFollowUp.value,
+      anomalySubKind: damageKind.value === 'anomaly' ? anomalySubKind.value : undefined,
     },
   }),
 )

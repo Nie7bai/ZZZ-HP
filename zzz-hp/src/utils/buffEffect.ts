@@ -1,5 +1,6 @@
 import type {
   AgentMindscapeRankBuffs,
+  AnomalyDamageSubKind,
   BuffApplySituation,
   BuffApplyTarget,
   BuffEffect,
@@ -19,6 +20,41 @@ import type {
 } from '@/types/calculator'
 import { CHARACTER_ATTR_OPTIONS } from '@/types/calculator'
 import { formatCalcDecimal, roundCalc } from '@/utils/calcNumberFormat'
+
+const BUFF_SCOPE_SET = new Set<string>([
+  'general',
+  'skill',
+  'anomaly',
+  'disorder',
+  'turbulence',
+  'anomalyRelease',
+])
+
+const BUFF_SCOPE_LABELS: Record<string, string> = {
+  general: '通用',
+  skill: '招式',
+  anomaly: '异常',
+  disorder: '紊乱',
+  turbulence: '乱流',
+  anomalyRelease: '异放',
+}
+
+function isAnomalyDamageScope(scope: BuffScope): boolean {
+  return (
+    scope === 'anomaly' ||
+    scope === 'disorder' ||
+    scope === 'turbulence' ||
+    scope === 'anomalyRelease'
+  )
+}
+
+function scopeToAnomalySubKind(scope: BuffScope): AnomalyDamageSubKind | null {
+  if (scope === 'anomaly') return 'anomaly'
+  if (scope === 'disorder') return 'disorder'
+  if (scope === 'turbulence') return 'turbulence'
+  if (scope === 'anomalyRelease') return 'anomalyRelease'
+  return null
+}
 
 const BUFF_STAT_KEYS: BuffStatKey[] = [
   'hp',
@@ -360,16 +396,6 @@ export function effectMatchesContext(
     if (situation === 'non_stagger' && phase !== 'normal') return false
   }
 
-  if (ctx.damageKind === 'anomaly') {
-    const skillStat =
-      effect.stat === 'skillDmgBonus' || effect.stat === 'skillMultiplierBonus'
-    const allowsAnomaly =
-      effect.appliesToAnomaly === true ||
-      (effect.appliesToAnomaly !== false && effect.scope === 'general' && !skillStat)
-    if (!allowsAnomaly) return false
-    if (effect.scope === 'skill' && effect.appliesToAnomaly !== true) return false
-  }
-
   if (
     effect.stat === 'staggerVulnerableOnly' &&
     ctx.staggerPhase &&
@@ -378,9 +404,28 @@ export function effectMatchesContext(
     return false
   }
 
-  if (effect.scope === 'general') return true
+  const scope = effect.scope
 
-  if (effect.scope === 'skill') {
+  if (isAnomalyDamageScope(scope)) {
+    if (ctx.damageKind !== 'anomaly') return false
+    const required = scopeToAnomalySubKind(scope)
+    const current = ctx.anomalySubKind ?? 'anomaly'
+    return required === current
+  }
+
+  if (ctx.damageKind === 'anomaly') {
+    const skillStat =
+      effect.stat === 'skillDmgBonus' || effect.stat === 'skillMultiplierBonus'
+    const allowsAnomaly =
+      effect.appliesToAnomaly === true ||
+      (effect.appliesToAnomaly !== false && scope === 'general' && !skillStat)
+    if (!allowsAnomaly) return false
+    if (scope === 'skill' && effect.appliesToAnomaly !== true) return false
+  }
+
+  if (scope === 'general') return true
+
+  if (scope === 'skill') {
     if (ctx.damageKind === 'anomaly' && effect.appliesToAnomaly !== true) return false
     const targets = getEffectSkillTargets(effect)
     if (!targets.length) return false
@@ -531,7 +576,10 @@ export function resolveEffectsToMods(
 }
 
 function normalizeScope(value: unknown): BuffScope {
-  return value === 'skill' ? 'skill' : 'general'
+  if (typeof value === 'string' && BUFF_SCOPE_SET.has(value)) {
+    return value as BuffScope
+  }
+  return 'general'
 }
 
 function normalizeApplyTarget(value: unknown): BuffApplyTarget {
@@ -898,7 +946,7 @@ export function effectSummaryLabel(
       ? skillPrefix
         ? `招式·${skillPrefix}`
         : '招式'
-      : '通用'
+      : (BUFF_SCOPE_LABELS[effect.scope] ?? '通用')
   const situation =
     APPLY_SITUATION_LABELS[effect.applySituation ?? 'global'] ?? '全局'
   const statText = statLabelFn?.(effect.stat) ?? effect.stat

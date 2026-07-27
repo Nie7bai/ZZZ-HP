@@ -379,6 +379,8 @@ const panelBreakdown = computed(() =>
       element: damageElement.value,
       staggerPhase: props.staggerPhase ?? 'stagger',
       isFollowUp: skillIsFollowUp.value,
+      anomalySubKind:
+        props.damageKind === 'anomaly' ? (props.anomalySubKind ?? 'anomaly') : undefined,
     },
     buffSelection: props.buffSelection ?? null,
     attrValues: convertAttrDefaults.value,
@@ -418,6 +420,8 @@ const triggerPanelBreakdown = computed(() => {
       element: triggerAgent.value?.element,
       staggerPhase: props.staggerPhase ?? 'stagger',
       isFollowUp: skillIsFollowUp.value,
+      anomalySubKind:
+        props.damageKind === 'anomaly' ? (props.anomalySubKind ?? 'anomaly') : undefined,
     },
     buffSelection: props.buffSelection ?? null,
   })
@@ -689,6 +693,7 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
     element: mainAgent.value?.element,
     staggerPhase: event.staggerPhase,
     isFollowUp: evtIsFollowUp,
+    anomalySubKind: evtAnomalySubKind,
   }
 
   const evtBreakdown = computeFinalPanel(effectiveExternalPanel.value, {
@@ -780,6 +785,7 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
           element: tAgent?.element,
           staggerPhase: event.staggerPhase,
           isFollowUp: false,
+          anomalySubKind: evtAnomalySubKind,
         },
         buffSelection: props.buffSelection ?? null,
       })

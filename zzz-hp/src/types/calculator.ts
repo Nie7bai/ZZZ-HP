@@ -16,7 +16,22 @@ export type SupportStatNeed =
   | 'pen'
   | 'resPen'
 
-export type BuffScope = 'general' | 'skill'
+export type BuffScope =
+  | 'general'
+  | 'skill'
+  | 'anomaly'
+  | 'disorder'
+  | 'turbulence'
+  | 'anomalyRelease'
+
+export const BUFF_SCOPE_OPTIONS: { id: BuffScope; label: string }[] = [
+  { id: 'general', label: '通用' },
+  { id: 'skill', label: '招式' },
+  { id: 'anomaly', label: '异常' },
+  { id: 'disorder', label: '紊乱' },
+  { id: 'turbulence', label: '乱流' },
+  { id: 'anomalyRelease', label: '异放' },
+]
 export type BuffApplyTarget = 'self' | 'team'
 /** 增益作用情况：全局 / 仅失衡期 / 仅非失衡期 */
 export type BuffApplySituation = 'global' | 'stagger' | 'non_stagger'
@@ -341,6 +356,8 @@ export interface SkillCalcContext {
   staggerPhase?: StaggerPhase
   /** 当前招式是否视为追加攻击 */
   isFollowUp?: boolean
+  /** 异常伤害子类（异常/紊乱/乱流/异放）；直伤时可省略 */
+  anomalySubKind?: AnomalyDamageSubKind
 }
 
 export interface AgentMindscapeRankBuffs {

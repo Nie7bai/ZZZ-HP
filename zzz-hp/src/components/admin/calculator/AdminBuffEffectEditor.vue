@@ -14,6 +14,7 @@ import {
   BUFF_SKILL_TARGET_OPTIONS,
   CHARACTER_ATTR_OPTIONS,
   CONVERT_PANEL_SOURCE_OPTIONS,
+  BUFF_SCOPE_OPTIONS,
   SKILL_CATEGORY_OPTIONS,
 } from '@/types/calculator'
 import { AGENT_ELEMENTS } from '@/utils/calculatorUi'
@@ -250,7 +251,26 @@ function onScopeChange(effect: BuffEffect) {
     if (!SKILL_BUFF_STAT_FIELDS.some((f) => f.key === effect.stat)) {
       effect.stat = 'skillDmgBonus'
     }
+    return
   }
+  if (
+    effect.scope === 'anomaly' ||
+    effect.scope === 'disorder' ||
+    effect.scope === 'turbulence' ||
+    effect.scope === 'anomalyRelease'
+  ) {
+    setEffectSkillTargets(effect, [])
+    effect.appliesToAnomaly = undefined
+  }
+}
+
+function isAnomalyDamageScope(scope: BuffEffect['scope']) {
+  return (
+    scope === 'anomaly' ||
+    scope === 'disorder' ||
+    scope === 'turbulence' ||
+    scope === 'anomalyRelease'
+  )
 }
 
 function onDraftCategoryChange(effect: BuffEffect, category: BuffSkillTargetId) {
@@ -439,8 +459,13 @@ defineExpose({
           <label class="field">
             <span>作用域</span>
             <select v-model="effect.scope" @change="onScopeChange(effect)">
-              <option value="general">通用</option>
-              <option value="skill">招式</option>
+              <option
+                v-for="opt in BUFF_SCOPE_OPTIONS"
+                :key="opt.id"
+                :value="opt.id"
+              >
+                {{ opt.label }}
+              </option>
             </select>
           </label>
 
@@ -576,7 +601,11 @@ defineExpose({
             <span>默认启用</span>
           </label>
 
-          <label class="field checkbox" title="默认：通用增益参与异常；招式伤害/倍率不参与。勾选后异常结算也会计入。邦布/音擎精炼下勾选会对所有精炼同步。">
+          <label
+            v-if="!isAnomalyDamageScope(effect.scope)"
+            class="field checkbox"
+            title="默认：通用增益参与异常；招式伤害/倍率不参与。勾选后异常结算也会计入。邦布/音擎精炼下勾选会对所有精炼同步。"
+          >
             <input
               :checked="effect.appliesToAnomaly === true"
               type="checkbox"

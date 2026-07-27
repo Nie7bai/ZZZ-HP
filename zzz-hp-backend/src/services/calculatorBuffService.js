@@ -12,6 +12,20 @@ import { listFollowUpSkillRules, listSkillSubcategories } from './skillSubcatego
 
 const WENGINE_TABLE = '`W-Engine`'
 
+const BUFF_SCOPE_VALUES = new Set([
+  'general',
+  'skill',
+  'anomaly',
+  'disorder',
+  'turbulence',
+  'anomalyRelease',
+])
+
+function normalizeScopeValue(value) {
+  if (typeof value === 'string' && BUFF_SCOPE_VALUES.has(value)) return value
+  return 'general'
+}
+
 function flatModsToEffects(mods, applyTarget) {
   const effects = []
   for (const key of BUFF_STAT_KEYS) {
@@ -101,7 +115,7 @@ function normalizeEffectList(value) {
     .map((item, index) => ({
       id: typeof item.id === 'string' && item.id ? item.id : `eff-${index}`,
       origin: typeof item.origin === 'string' ? item.origin : '',
-      scope: item.scope === 'skill' ? 'skill' : 'general',
+      scope: normalizeScopeValue(item.scope),
       applyTarget: item.applyTarget === 'team' ? 'team' : 'self',
       applySituation:
         item.applySituation === 'stagger' || item.applySituation === 'non_stagger'
