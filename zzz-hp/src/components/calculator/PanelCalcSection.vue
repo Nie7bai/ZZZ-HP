@@ -15,6 +15,7 @@ import type {
   BuffStatModifiers,
   CharacterAttrKey,
   DamageEvent,
+  DamageEventMultOverrides,
   DriveDiscBuffDoc,
   SkillSubcategory,
   WengineBuffDoc,
@@ -306,6 +307,34 @@ function updateAnomalySlotPanel(agentId: string, key: keyof PanelStats, value: n
   emit('update:anomalySlotPanels', next)
 }
 
+function emitAnomalySlotPanel(agentId: string, panel: PanelStats) {
+  emit('update:anomalySlotPanels', {
+    ...(props.anomalySlotPanels ?? {}),
+    [agentId]: { ...panel },
+  })
+}
+
+function applyAgentBaseToExternalPanel(base: PanelStats | AgentBuffDoc['basePanel']) {
+  externalPanel.def = base.def
+  externalPanel.directDmgMult = base.directDmgMult
+  externalPanel.anomalyMult = base.anomalyMult
+  externalPanel.anomalyCritRate = base.anomalyCritRate
+  externalPanel.anomalyCritDmg = base.anomalyCritDmg
+  externalPanel.anomalyDmgBonus = base.anomalyDmgBonus
+  externalPanel.anomalyControl = base.anomalyControl
+  externalPanel.energyRegen = base.energyRegen
+  externalPanel.disorderBaseMult = base.disorderBaseMult
+  externalPanel.anomalyDuration = base.anomalyDuration
+  externalPanel.disorderCompMult = base.disorderCompMult
+  externalPanel.turbulenceBaseMult = base.turbulenceBaseMult
+  externalPanel.turbulenceCompMult = base.turbulenceCompMult
+  externalPanel.disorderDmgBonus = base.disorderDmgBonus
+  externalPanel.turbulenceDmgBonus = base.turbulenceDmgBonus
+  if ('mastery' in base && typeof base.mastery === 'number') {
+    externalPanel.mastery = base.mastery
+  }
+}
+
 const triggerSlotIndex = computed(() => {
   const id = props.triggerAnomalyAgentId
   if (!id) return -1
@@ -541,26 +570,40 @@ watch(
 
 watch(
   () => mainAgent.value?.id,
-  () => {
-    if (!mainAgent.value || isAffixMode.value) return
-    const base = mainAgent.value.basePanel
-    externalPanel.def = base.def
-    externalPanel.directDmgMult = base.directDmgMult
-    externalPanel.anomalyMult = base.anomalyMult
-    externalPanel.anomalyCritRate = base.anomalyCritRate
-    externalPanel.anomalyCritDmg = base.anomalyCritDmg
-    externalPanel.anomalyDmgBonus = base.anomalyDmgBonus
-    externalPanel.anomalyControl = base.anomalyControl
-    externalPanel.energyRegen = base.energyRegen
-    externalPanel.disorderBaseMult = base.disorderBaseMult
-    externalPanel.anomalyDuration = base.anomalyDuration
-    externalPanel.disorderCompMult = base.disorderCompMult
-    externalPanel.turbulenceBaseMult = base.turbulenceBaseMult
-    externalPanel.turbulenceCompMult = base.turbulenceCompMult
-    externalPanel.disorderDmgBonus = base.disorderDmgBonus
-    externalPanel.turbulenceDmgBonus = base.turbulenceDmgBonus
+  (newId, oldId) => {
+    if (isAffixMode.value) return
+
+    if (oldId) {
+      const oldAgent = props.agents.find((item) => item.id === oldId)
+      if (oldAgent?.profession === '异常') {
+        emitAnomalySlotPanel(oldId, externalPanel)
+      }
+    }
+
+    if (!mainAgent.value || !newId) return
+
+    const saved = props.anomalySlotPanels?.[newId]
+    if (saved && mainAgent.value.profession === '异常') {
+      Object.assign(externalPanel, createDefaultExternalPanel(), saved)
+      return
+    }
+
+    applyAgentBaseToExternalPanel(mainAgent.value.basePanel)
+    if (mainAgent.value.profession === '异常') {
+      emitAnomalySlotPanel(newId, externalPanel)
+    }
   },
   { immediate: true },
+)
+
+watch(
+  externalPanel,
+  () => {
+    const id = mainAgent.value?.id
+    if (!id || isAffixMode.value || mainAgent.value?.profession !== '异常') return
+    emitAnomalySlotPanel(id, externalPanel)
+  },
+  { deep: true },
 )
 
 const piercePower = computed(() =>
@@ -742,6 +785,39 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
         tBreakdown.finalPanel.atk,
         tBreakdown.totalMods.pierce,
       )
+    }
+
+    // 紊乱/乱流/异放倍率取产生角色最终面板（未覆写时）
+    if (evtTriggerFinalPanel) {
+      const o = overrides
+      if (event.kind === 'disorder') {
+        if (o?.disorderBaseMult == null) {
+          evtFinalPanel.disorderBaseMult = evtTriggerFinalPanel.disorderBaseMult
+        }
+        if (o?.disorderBaseMultFactor == null) {
+          evtFinalPanel.disorderBaseMultFactor = evtTriggerFinalPanel.disorderBaseMultFactor
+        }
+        if (o?.disorderCompMult == null) {
+          evtFinalPanel.disorderCompMult = evtTriggerFinalPanel.disorderCompMult
+        }
+      } else if (event.kind === 'turbulence') {
+        if (o?.turbulenceBaseMult == null) {
+          evtFinalPanel.turbulenceBaseMult = evtTriggerFinalPanel.turbulenceBaseMult
+        }
+        if (o?.turbulenceBaseMultFactor == null) {
+          evtFinalPanel.turbulenceBaseMultFactor = evtTriggerFinalPanel.turbulenceBaseMultFactor
+        }
+        if (o?.turbulenceCompMult == null) {
+          evtFinalPanel.turbulenceCompMult = evtTriggerFinalPanel.turbulenceCompMult
+        }
+      } else if (event.kind === 'anomalyRelease') {
+        if (o?.anomalyReleaseMult == null) {
+          evtFinalPanel.anomalyReleaseMult = evtTriggerFinalPanel.anomalyReleaseMult
+        }
+        if (o?.anomalyReleaseMultFactor == null) {
+          evtFinalPanel.anomalyReleaseMultFactor = evtTriggerFinalPanel.anomalyReleaseMultFactor
+        }
+      }
     }
   }
 
@@ -1823,12 +1899,53 @@ function loadSnapshot(snapshot: DamageCalcPanelSnapshot) {
   }
 }
 
+/** 事件倍率默认值：异常取主 C 最终面板；紊乱/乱流/异放取产生角色最终面板 */
+function resolveMultDefaultsForEvent(
+  event: DamageEvent,
+): Partial<Record<keyof DamageEventMultOverrides, number>> {
+  const result: Partial<Record<keyof DamageEventMultOverrides, number>> = {}
+  const probe: DamageEvent = { ...event, multOverrides: null }
+  const input = buildEventCalcFull(probe)
+
+  if (event.kind === 'direct') {
+    const panel = input?.finalPanel ?? finalPanel.value
+    result.directDmgMult = panel.directDmgMult
+    result.directDmgMultFactor = panel.directDmgMultFactor
+    return result
+  }
+
+  if (event.kind === 'anomaly') {
+    const panel = input?.finalPanel ?? finalPanel.value
+    result.anomalyMult = panel.anomalyMult
+    result.anomalyMultFactor = panel.anomalyMultFactor
+    return result
+  }
+
+  const panel = input?.triggerFinalPanel
+  if (!panel) return result
+
+  if (event.kind === 'disorder') {
+    result.disorderBaseMult = panel.disorderBaseMult
+    result.disorderBaseMultFactor = panel.disorderBaseMultFactor
+    result.disorderCompMult = panel.disorderCompMult
+  } else if (event.kind === 'turbulence') {
+    result.turbulenceBaseMult = panel.turbulenceBaseMult
+    result.turbulenceBaseMultFactor = panel.turbulenceBaseMultFactor
+    result.turbulenceCompMult = panel.turbulenceCompMult
+  } else if (event.kind === 'anomalyRelease') {
+    result.anomalyReleaseMult = panel.anomalyReleaseMult
+    result.anomalyReleaseMultFactor = panel.anomalyReleaseMultFactor
+  }
+  return result
+}
+
 defineExpose({
   getSnapshot,
   loadSnapshot,
   applyRecognitionToExternalPanel,
   convertAttrDefaults,
   convertPanelSourceValues,
+  resolveMultDefaultsForEvent,
 })
 </script>
 

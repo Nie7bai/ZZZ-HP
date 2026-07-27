@@ -1365,6 +1365,48 @@ body:has(.calculator-page.theme-light) .mode-summary-hint,
   color: #667085 !important;
 }
 
+body:has(.calculator-page.theme-light) .mode-item strong,
+.theme-light .mode-item strong {
+  color: #1c212a !important;
+}
+
+body:has(.calculator-page.theme-light) .mode-item span,
+.theme-light .mode-item span {
+  color: #667085 !important;
+}
+
+body:has(.calculator-page.theme-light) .mode-aside,
+.theme-light .mode-aside {
+  border-right-color: #e4e7ec !important;
+}
+
+body:has(.calculator-page.theme-light) .aside-section,
+body:has(.calculator-page.theme-light) .aside-empty,
+body:has(.calculator-page.theme-light) .pick-hint,
+.theme-light .aside-section,
+.theme-light .aside-empty,
+.theme-light .pick-hint {
+  color: #667085 !important;
+}
+
+body:has(.calculator-page.theme-light) .preset-preview li,
+.theme-light .preset-preview li {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+  color: #1c212a !important;
+}
+
+.calculator-page.theme-light .skill-context-row > label > span {
+  color: #667085 !important;
+}
+
+.calculator-page.theme-light .skill-context-row > label > select {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+  color: #1c212a !important;
+  color-scheme: light;
+}
+
 .calculator-page.theme-light .anomaly-support-panels,
 .calculator-page.theme-light .anomaly-slot-details {
   border-color: var(--calc-border) !important;

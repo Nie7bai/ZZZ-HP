@@ -28,6 +28,9 @@ const props = withDefaults(
     skillSubcategories: SkillSubcategory[]
     modeType?: DamageEventModeType
     triggerAgentOptions?: { id: string; name: string }[]
+    resolveMultDefaults?: (
+      event: DamageEvent,
+    ) => Partial<Record<keyof import('@/types/calculator').DamageEventMultOverrides, number>>
   }>(),
   { modeType: 'direct' },
 )
@@ -114,6 +117,8 @@ function selectCustom(mode: DamageEventMode) {
   events.value = mode.events.map((event, index) => ({
     ...event,
     multOverrides: event.multOverrides ? { ...event.multOverrides } : null,
+    triggerAgentId:
+      event.triggerAgentId === TRIGGER_AGENT_AT_CALC ? null : (event.triggerAgentId ?? null),
     id: event.id || `evt-copy-${Date.now().toString(36)}-${index}`,
   }))
   message.value = `已载入自定义模式「${mode.name}」`
@@ -294,6 +299,7 @@ function resolveSubName(id: string | null) {
               :mode-type="modeType"
               :trigger-agent-options="triggerAgentOptions"
               :allow-calc-time-trigger="false"
+              :resolve-mult-defaults="resolveMultDefaults"
               embedded
             />
             <div v-else-if="modeId && isPresetMode" class="preset-preview">

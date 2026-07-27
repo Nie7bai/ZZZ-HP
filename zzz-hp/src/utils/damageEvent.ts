@@ -37,7 +37,8 @@ export function createEmptyDamageEvent(
     count: 1,
     staggerPhase: 'stagger',
     critMode: 'expected',
-    triggerAgentId: isAnomaly ? TRIGGER_AGENT_AT_CALC : null,
+    // 计算页默认待选；管理端在编辑器里通过 allowCalcTimeTrigger 写入 __at_calc__
+    triggerAgentId: null,
     skillBound: !isAnomaly,
     multOverrides: null,
   }

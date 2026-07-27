@@ -29,6 +29,10 @@ const props = withDefaults(
     triggerAgentOptions?: { id: string; name: string }[]
     /** 管理端：允许配置为计算时再选产生角色 */
     allowCalcTimeTrigger?: boolean
+    /** 计算页：按面板解析出的倍率默认值（覆写为空时展示） */
+    resolveMultDefaults?: (
+      event: DamageEvent,
+    ) => Partial<Record<keyof DamageEventMultOverrides, number>>
   }>(),
   { embedded: false, modeType: 'direct', allowCalcTimeTrigger: false },
 )
@@ -91,6 +95,12 @@ function eventSummary(event: DamageEvent) {
 function addEvent() {
   const defaultKind = props.modeType === 'anomaly' ? 'anomaly' : 'direct'
   const next = createEmptyDamageEvent(events.value.length, defaultKind)
+  if (
+    props.allowCalcTimeTrigger &&
+    eventNeedsAnomalyProducer(defaultKind)
+  ) {
+    next.triggerAgentId = TRIGGER_AGENT_AT_CALC
+  }
   events.value = [...events.value, next]
   selectedEventId.value = next.id
 }
@@ -116,24 +126,46 @@ function onSkillBoundChange(event: DamageEvent, bound: boolean) {
 
 function onKindChange(event: DamageEvent, kind: DamageEvent['kind']) {
   const patch: Partial<DamageEvent> = { kind }
-  if (eventNeedsAnomalyProducer(kind) && props.allowCalcTimeTrigger && !event.triggerAgentId) {
-    patch.triggerAgentId = TRIGGER_AGENT_AT_CALC
+  if (eventNeedsAnomalyProducer(kind)) {
+    if (props.allowCalcTimeTrigger && !event.triggerAgentId) {
+      patch.triggerAgentId = TRIGGER_AGENT_AT_CALC
+    }
+  } else {
+    patch.triggerAgentId = null
   }
   updateEvent(event.id, patch)
 }
 
-/** 读取事件的倍率覆写值；null/undefined 表示使用默认 */
-function getMultOverride(event: DamageEvent, key: keyof DamageEventMultOverrides): number | null {
-  const value = event.multOverrides?.[key]
-  return value == null ? null : value
+/** 读取事件倍率输入展示值：覆写优先，否则用面板解析默认 */
+function getMultDisplayValue(
+  event: DamageEvent,
+  key: keyof DamageEventMultOverrides,
+): number | '' {
+  const override = event.multOverrides?.[key]
+  if (override != null) return override
+  const resolved = props.resolveMultDefaults?.(event)?.[key]
+  return resolved == null ? '' : resolved
 }
 
 function setMultOverride(eventId: string, key: keyof DamageEventMultOverrides, raw: string) {
   const current = events.value.find((item) => item.id === eventId)
   if (!current) return
-  const parsed = raw.trim() === '' ? null : Number(raw)
-  const value = parsed !== null && !Number.isFinite(parsed) ? null : parsed
-  const overrides: DamageEventMultOverrides = { ...current.multOverrides, [key]: value }
+  const trimmed = raw.trim()
+  if (trimmed === '') {
+    const overrides: DamageEventMultOverrides = { ...current.multOverrides, [key]: null }
+    updateEvent(eventId, { multOverrides: overrides })
+    return
+  }
+  const parsed = Number(trimmed)
+  if (!Number.isFinite(parsed)) return
+  const resolved = props.resolveMultDefaults?.(current)?.[key]
+  // 与默认值相同则清覆写，避免无意义覆盖
+  if (resolved != null && parsed === resolved) {
+    const overrides: DamageEventMultOverrides = { ...current.multOverrides, [key]: null }
+    updateEvent(eventId, { multOverrides: overrides })
+    return
+  }
+  const overrides: DamageEventMultOverrides = { ...current.multOverrides, [key]: parsed }
   updateEvent(eventId, { multOverrides: overrides })
 }
 
@@ -187,11 +219,7 @@ const needsTriggerAgent = computed(() => {
   return eventNeedsAnomalyProducer(selectedEvent.value.kind)
 })
 
-const showTriggerSelect = computed(
-  () =>
-    needsTriggerAgent.value &&
-    (props.allowCalcTimeTrigger || (props.triggerAgentOptions?.length ?? 0) > 0),
-)
+const showTriggerSelect = computed(() => needsTriggerAgent.value)
 
 const filteredKindOptions = computed(() =>
   props.modeType === 'direct'
@@ -338,15 +366,15 @@ const filteredKindOptions = computed(() =>
         </div>
 
         <div v-if="currentMultFields.length" class="mult-section">
-          <h5 class="mult-title">倍率 / 倍率修正（留空使用默认）</h5>
+          <h5 class="mult-title">倍率 / 倍率修正</h5>
           <div class="field-row">
             <label v-for="mf in currentMultFields" :key="mf.key" class="field">
               <span>{{ mf.label }}</span>
               <input
                 type="number"
                 step="any"
-                :value="getMultOverride(selectedEvent!, mf.key) ?? ''"
-                placeholder="默认"
+                :value="getMultDisplayValue(selectedEvent!, mf.key)"
+                :placeholder="resolveMultDefaults ? '面板默认' : '默认'"
                 @input="
                   setMultOverride(
                     selectedEvent!.id,

@@ -19,6 +19,8 @@ import type {
   BangbooBuffDoc,
   DamageCalcKind,
   DamageEvent,
+  DamageEventMultOverrides,
+  StaggerPhase,
 } from '@/types/calculator'
 import type { PanelStats } from '@/types/calculatorPanel'
 import { createDefaultExternalPanel } from '@/types/calculatorPanel'
@@ -90,6 +92,7 @@ const activeHistoryId = ref('')
 const historyMessage = ref('')
 
 const damageKind = ref<DamageCalcKind>('direct')
+const staggerPhase = ref<StaggerPhase>('stagger')
 const anomalySlotPanels = reactive<Record<string, PanelStats>>({})
 const directEventModeId = ref<string | null>(null)
 const directEventModeName = ref('')
@@ -146,14 +149,39 @@ const triggerAgentOptionsForEditor = computed(() =>
   anomalyTriggerOptions.value.map((opt) => ({ id: opt.id, name: opt.label })),
 )
 
+function syncStaggerPhaseToEvents(phase: StaggerPhase) {
+  for (const event of directEvents.value) {
+    event.staggerPhase = phase
+  }
+  for (const event of anomalyEvents.value) {
+    event.staggerPhase = phase
+  }
+}
+
+watch(staggerPhase, (phase) => {
+  syncStaggerPhaseToEvents(phase)
+})
+
+watch(
+  () =>
+    [
+      ...directEvents.value.map((event) => event.id),
+      ...anomalyEvents.value.map((event) => event.id),
+    ].join(','),
+  () => {
+    syncStaggerPhaseToEvents(staggerPhase.value)
+  },
+)
+
 watch(anomalyTriggerOptions, (opts) => {
   const validIds = new Set(opts.map((item) => item.id))
   for (const event of anomalyEvents.value) {
-    if (
-      event.triggerAgentId &&
-      event.triggerAgentId !== '__at_calc__' &&
-      !validIds.has(event.triggerAgentId)
-    ) {
+    // 计算页不保留「计算时选择」哨兵
+    if (event.triggerAgentId === '__at_calc__') {
+      event.triggerAgentId = null
+      continue
+    }
+    if (event.triggerAgentId && !validIds.has(event.triggerAgentId)) {
       event.triggerAgentId = null
     }
   }
@@ -258,7 +286,9 @@ const skillIsFollowUp = computed(() =>
 const damageElement = computed(() => {
   const needsTrigger =
     damageKind.value === 'anomaly' &&
-    (anomalySubKind.value === 'turbulence' || anomalySubKind.value === 'anomalyRelease')
+    (anomalySubKind.value === 'disorder' ||
+      anomalySubKind.value === 'turbulence' ||
+      anomalySubKind.value === 'anomalyRelease')
   if (needsTrigger && triggerAnomalyAgentId.value) {
     const trigger = agents.value.find((item) => item.id === triggerAnomalyAgentId.value)
     if (trigger?.element) return trigger.element
@@ -280,11 +310,17 @@ const collectedEffects = computed(() =>
       categoryId: skillCategoryId.value,
       subcategoryId: skillSubcategoryId.value,
       element: damageElement.value,
-      staggerPhase: 'stagger',
+      staggerPhase: staggerPhase.value,
       isFollowUp: skillIsFollowUp.value,
     },
   }),
 )
+
+function resolveMultDefaultsForEvent(
+  event: DamageEvent,
+): Partial<Record<keyof DamageEventMultOverrides, number>> {
+  return panelCalcSectionRef.value?.resolveMultDefaultsForEvent?.(event) ?? {}
+}
 
 watch(teamBuffSignature, () => {
   buffSelection.enabledIds = {}
@@ -601,6 +637,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
             :preset-modes="damageEventModes"
             :skill-subcategories="skillSubcategories"
             :trigger-agent-options="triggerAgentOptionsForEditor"
+            :resolve-mult-defaults="resolveMultDefaultsForEvent"
           />
         </div>
       </div>
@@ -618,11 +655,19 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
             :preset-modes="damageEventModes"
             :skill-subcategories="skillSubcategories"
             :trigger-agent-options="triggerAgentOptionsForEditor"
+            :resolve-mult-defaults="resolveMultDefaultsForEvent"
           />
         </div>
       </div>
 
       <div class="skill-context-row">
+        <label>
+          <span>失衡状态</span>
+          <select v-model="staggerPhase">
+            <option value="stagger">失衡期</option>
+            <option value="normal">非失衡期</option>
+          </select>
+        </label>
         <button type="button" class="buff-open-btn" @click="buffPickerOpen = true">
           选择局内 Buff（已选
           {{
@@ -702,7 +747,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :skill-category-id="skillCategoryId"
       :skill-subcategory-id="skillSubcategoryId"
       :buff-selection="buffSelection"
-      :stagger-phase="'stagger'"
+      :stagger-phase="staggerPhase"
       :damage-events="damageEvents"
       @update:anomaly-slot-panels="Object.assign(anomalySlotPanels, $event)"
     />
@@ -725,7 +770,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :skill-category-id="skillCategoryId"
       :skill-subcategory-id="skillSubcategoryId"
       :buff-selection="buffSelection"
-      :stagger-phase="'stagger'"
+      :stagger-phase="staggerPhase"
       :damage-events="damageEvents"
     />
   </div>
@@ -792,6 +837,27 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
   flex-wrap: wrap;
   gap: 0.75rem 1.25rem;
   margin-top: 0.85rem;
+}
+
+.skill-context-row > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 9rem;
+}
+
+.skill-context-row > label > span {
+  font-size: 0.8rem;
+  color: #9aa3b0;
+}
+
+.skill-context-row > label > select {
+  border: 1px solid #2d323a;
+  border-radius: 8px;
+  background: #0f1217;
+  color: #e8edf5;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.84rem;
 }
 
 .event-mode-row {
