@@ -365,44 +365,98 @@ function computeEventGrandTotal(
 
   for (const event of events) {
     const { damageKind, anomalySubKind } = mapEventKindToCalc(event.kind)
-    const isFollowUp = resolveIsFollowUp({
-      agentId: ctx.mainAgentId,
-      categoryId: event.categoryId,
-      subcategoryId: event.skillSubcategoryId,
-      skillSubcategories: ctx.skillSubcategories,
-      followUpSkillRules: ctx.followUpSkillRules,
-    })
+    const skillBound = event.skillBound !== false || damageKind === 'direct'
+    const isFollowUp = skillBound
+      ? resolveIsFollowUp({
+          agentId: ctx.mainAgentId,
+          categoryId: event.categoryId,
+          subcategoryId: event.skillSubcategoryId,
+          skillSubcategories: ctx.skillSubcategories,
+          followUpSkillRules: ctx.followUpSkillRules,
+        })
+      : false
     const breakdown = computeFinalPanel(external, {
       ...ctx.panelContext,
       extraMods: extraMods ?? ctx.panelContext.extraMods ?? createEmptyBuffStatModifiers(),
       skillContext: {
         damageKind,
-        categoryId: event.categoryId,
-        subcategoryId: event.skillSubcategoryId,
+        categoryId: skillBound ? event.categoryId : 'basic',
+        subcategoryId: skillBound ? event.skillSubcategoryId : null,
         element: ctx.mainAgentElement,
         staggerPhase: event.staggerPhase,
         isFollowUp,
       },
     })
+    let finalPanel = { ...breakdown.finalPanel }
+    const overrides = event.multOverrides
+    if (overrides) {
+      if (overrides.directDmgMult != null) finalPanel.directDmgMult = overrides.directDmgMult
+      if (overrides.directDmgMultFactor != null) {
+        finalPanel.directDmgMultFactor = overrides.directDmgMultFactor
+      }
+      if (overrides.anomalyMult != null) finalPanel.anomalyMult = overrides.anomalyMult
+      if (overrides.anomalyMultFactor != null) {
+        finalPanel.anomalyMultFactor = overrides.anomalyMultFactor
+      }
+      if (overrides.anomalyReleaseMult != null) {
+        finalPanel.anomalyReleaseMult = overrides.anomalyReleaseMult
+      }
+      if (overrides.anomalyReleaseMultFactor != null) {
+        finalPanel.anomalyReleaseMultFactor = overrides.anomalyReleaseMultFactor
+      }
+      if (overrides.disorderBaseMult != null) {
+        finalPanel.disorderBaseMult = overrides.disorderBaseMult
+      }
+      if (overrides.disorderBaseMultFactor != null) {
+        finalPanel.disorderBaseMultFactor = overrides.disorderBaseMultFactor
+      }
+      if (overrides.disorderCompMult != null) {
+        finalPanel.disorderCompMult = overrides.disorderCompMult
+      }
+      if (overrides.turbulenceBaseMult != null) {
+        finalPanel.turbulenceBaseMult = overrides.turbulenceBaseMult
+      }
+      if (overrides.turbulenceBaseMultFactor != null) {
+        finalPanel.turbulenceBaseMultFactor = overrides.turbulenceBaseMultFactor
+      }
+      if (overrides.turbulenceCompMult != null) {
+        finalPanel.turbulenceCompMult = overrides.turbulenceCompMult
+      }
+    }
     const piercePower = computePiercePower(
-      breakdown.finalPanel.hp,
-      breakdown.finalPanel.atk,
+      finalPanel.hp,
+      finalPanel.atk,
       breakdown.totalMods.pierce,
     )
-    const sub = ctx.resolveSubcategory?.(event.skillSubcategoryId ?? null) ?? null
-    const overrides = event.multOverrides
+    const sub = skillBound
+      ? (ctx.resolveSubcategory?.(event.skillSubcategoryId ?? null) ?? null)
+      : null
     const effectiveSub =
       sub && overrides
         ? {
             ...sub,
             directDmgMult: overrides.directDmgMult ?? sub.directDmgMult,
+            directDmgMultFactor: overrides.directDmgMultFactor ?? sub.directDmgMultFactor,
             anomalyReleaseMult: overrides.anomalyReleaseMult ?? sub.anomalyReleaseMult,
+            anomalyReleaseMultFactor:
+              overrides.anomalyReleaseMultFactor ?? sub.anomalyReleaseMultFactor,
             disorderMult: overrides.disorderBaseMult ?? sub.disorderMult,
+            disorderMultFactor: overrides.disorderBaseMultFactor ?? sub.disorderMultFactor,
           }
         : sub
 
+    const needsTrigger =
+      event.kind === 'disorder' ||
+      event.kind === 'turbulence' ||
+      event.kind === 'anomalyRelease'
+    const triggerId =
+      event.triggerAgentId && event.triggerAgentId !== '__at_calc__'
+        ? event.triggerAgentId
+        : null
+    if (needsTrigger && !triggerId) continue
+
     const result = computeDamageResult({
-      finalPanel: breakdown.finalPanel,
+      finalPanel,
       piercePower,
       baseDamageSource: ctx.isMb ? 'pierce' : ctx.baseDamageSource,
       isMbMainAgent: ctx.isMb,
@@ -418,6 +472,11 @@ function computeEventGrandTotal(
       mainAgentId: ctx.mainAgentId,
       mainAgentName: ctx.mainAgentName,
       anomalySubKind,
+      // 最优词条暂用主 C 局内面板作为产生角色面板；非主 C 产生角色需面板页完整结算
+      triggerFinalPanel:
+        needsTrigger && triggerId === ctx.mainAgentId ? finalPanel : undefined,
+      triggerAgentElement:
+        needsTrigger && triggerId === ctx.mainAgentId ? ctx.mainAgentElement : undefined,
       skillSubcategory: effectiveSub,
     })
     const perHit = pickEventDamage(result, event.kind, event.critMode)

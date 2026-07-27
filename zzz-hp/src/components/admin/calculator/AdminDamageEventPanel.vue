@@ -33,6 +33,14 @@ const sortedList = computed(() =>
     ),
 )
 
+const directModes = computed(() =>
+  sortedList.value.filter((item) => (item.modeType ?? 'direct') === 'direct'),
+)
+
+const anomalyModes = computed(() =>
+  sortedList.value.filter((item) => item.modeType === 'anomaly'),
+)
+
 function agentName(id: string) {
   if (!id) return '全部角色'
   return agents.value.find((item) => item.id === id)?.name ?? id
@@ -126,20 +134,39 @@ defineExpose({ selectedId, saving, saveItem, removeItem })
       <aside class="item-list">
         <button type="button" class="secondary-btn" @click="resetForm">+ 新建模式</button>
         <div class="list-scroll">
-          <button
-            v-for="item in sortedList"
-            :key="item.id"
-            type="button"
-            class="list-item"
-            :class="{ active: selectedId === item.id }"
-            @click="selectItem(item)"
-          >
-            <span class="list-name">{{ item.name }}</span>
-            <span class="list-meta">
-              {{ agentName(item.agentId) }} · {{ item.modeType === 'anomaly' ? '异常' : '直伤' }} ·
-              {{ item.events.length }} 条事件
-            </span>
-          </button>
+          <template v-if="directModes.length">
+            <h4 class="list-group-title">直伤模式</h4>
+            <button
+              v-for="item in directModes"
+              :key="item.id"
+              type="button"
+              class="list-item"
+              :class="{ active: selectedId === item.id }"
+              @click="selectItem(item)"
+            >
+              <span class="list-name">{{ item.name }}</span>
+              <span class="list-meta">
+                {{ agentName(item.agentId) }} · {{ item.events.length }} 条事件
+              </span>
+            </button>
+          </template>
+          <template v-if="anomalyModes.length">
+            <h4 class="list-group-title">异常模式</h4>
+            <button
+              v-for="item in anomalyModes"
+              :key="item.id"
+              type="button"
+              class="list-item"
+              :class="{ active: selectedId === item.id }"
+              @click="selectItem(item)"
+            >
+              <span class="list-name">{{ item.name }}</span>
+              <span class="list-meta">
+                {{ agentName(item.agentId) }} · {{ item.events.length }} 条事件
+              </span>
+            </button>
+          </template>
+          <p v-if="!sortedList.length" class="list-empty">暂无模式</p>
         </div>
       </aside>
 
@@ -181,6 +208,7 @@ defineExpose({ selectedId, saving, saveItem, removeItem })
             :skill-subcategories="skillSubcategories"
             :agent-id="form.agentId || undefined"
             :mode-type="form.modeType"
+            allow-calc-time-trigger
           />
         </section>
 
@@ -205,6 +233,22 @@ defineExpose({ selectedId, saving, saveItem, removeItem })
 .filter-row {
   margin-bottom: 0.85rem;
   max-width: 280px;
+}
+.list-group-title {
+  margin: 0.65rem 0 0.35rem;
+  padding: 0 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #9aa3b0;
+  letter-spacing: 0.04em;
+}
+.list-group-title:first-child {
+  margin-top: 0.25rem;
+}
+.list-empty {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+  color: #8f96a3;
 }
 .editor-form :deep(.damage-event-editor) {
   margin-top: 0.85rem;

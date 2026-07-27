@@ -611,27 +611,34 @@ const disorderDamageLabel = computed(() =>
 )
 
 function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
-  const { damageKind: evtDamageKind, anomalySubKind: evtAnomalySubKind } = mapEventKindToCalc(event.kind)
+  const { damageKind: evtDamageKind, anomalySubKind: evtAnomalySubKind } = mapEventKindToCalc(
+    event.kind,
+  )
   const eventNeedsTrigger =
     event.kind === 'disorder' ||
     event.kind === 'turbulence' ||
     event.kind === 'anomalyRelease'
 
-  const evtTriggerAgentId = event.triggerAgentId ?? props.triggerAnomalyAgentId
+  const rawTriggerId = event.triggerAgentId ?? props.triggerAnomalyAgentId
+  const evtTriggerAgentId =
+    rawTriggerId && rawTriggerId !== '__at_calc__' ? rawTriggerId : null
   if (eventNeedsTrigger && !evtTriggerAgentId) return null
 
-  const evtIsFollowUp = resolveIsFollowUp({
-    agentId: mainAgent.value?.id,
-    categoryId: event.categoryId,
-    subcategoryId: event.skillSubcategoryId,
-    skillSubcategories: skillSubcategories.value,
-    followUpSkillRules: followUpSkillRules.value,
-  })
+  const skillBound = event.skillBound !== false || evtDamageKind === 'direct'
+  const evtIsFollowUp = skillBound
+    ? resolveIsFollowUp({
+        agentId: mainAgent.value?.id,
+        categoryId: event.categoryId,
+        subcategoryId: event.skillSubcategoryId,
+        skillSubcategories: skillSubcategories.value,
+        followUpSkillRules: followUpSkillRules.value,
+      })
+    : false
 
   const evtSkillCtx = {
     damageKind: evtDamageKind,
-    categoryId: event.categoryId,
-    subcategoryId: event.skillSubcategoryId ?? null,
+    categoryId: skillBound ? event.categoryId : ('basic' as const),
+    subcategoryId: skillBound ? (event.skillSubcategoryId ?? null) : null,
     element: mainAgent.value?.element,
     staggerPhase: event.staggerPhase,
     isFollowUp: evtIsFollowUp,
@@ -651,8 +658,48 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
     attrValues: convertAttrDefaults.value,
   })
 
-  const evtFinalPanel = evtBreakdown.finalPanel
-  const evtPierce = computePiercePower(evtFinalPanel.hp, evtFinalPanel.atk, evtBreakdown.totalMods.pierce)
+  let evtFinalPanel = { ...evtBreakdown.finalPanel }
+  const overrides = event.multOverrides
+  if (overrides) {
+    if (overrides.directDmgMult != null) evtFinalPanel.directDmgMult = overrides.directDmgMult
+    if (overrides.directDmgMultFactor != null) {
+      evtFinalPanel.directDmgMultFactor = overrides.directDmgMultFactor
+    }
+    if (overrides.anomalyMult != null) evtFinalPanel.anomalyMult = overrides.anomalyMult
+    if (overrides.anomalyMultFactor != null) {
+      evtFinalPanel.anomalyMultFactor = overrides.anomalyMultFactor
+    }
+    if (overrides.anomalyReleaseMult != null) {
+      evtFinalPanel.anomalyReleaseMult = overrides.anomalyReleaseMult
+    }
+    if (overrides.anomalyReleaseMultFactor != null) {
+      evtFinalPanel.anomalyReleaseMultFactor = overrides.anomalyReleaseMultFactor
+    }
+    if (overrides.disorderBaseMult != null) {
+      evtFinalPanel.disorderBaseMult = overrides.disorderBaseMult
+    }
+    if (overrides.disorderBaseMultFactor != null) {
+      evtFinalPanel.disorderBaseMultFactor = overrides.disorderBaseMultFactor
+    }
+    if (overrides.disorderCompMult != null) {
+      evtFinalPanel.disorderCompMult = overrides.disorderCompMult
+    }
+    if (overrides.turbulenceBaseMult != null) {
+      evtFinalPanel.turbulenceBaseMult = overrides.turbulenceBaseMult
+    }
+    if (overrides.turbulenceBaseMultFactor != null) {
+      evtFinalPanel.turbulenceBaseMultFactor = overrides.turbulenceBaseMultFactor
+    }
+    if (overrides.turbulenceCompMult != null) {
+      evtFinalPanel.turbulenceCompMult = overrides.turbulenceCompMult
+    }
+  }
+
+  const evtPierce = computePiercePower(
+    evtFinalPanel.hp,
+    evtFinalPanel.atk,
+    evtBreakdown.totalMods.pierce,
+  )
 
   let evtTriggerFinalPanel: PanelStats | undefined
   let evtTriggerElement: string | undefined
@@ -662,25 +709,57 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
     const tAgent = props.agents.find((a) => a.id === evtTriggerAgentId)
     evtTriggerElement = tAgent?.element
     evtTriggerIsMb = tAgent?.profession === MB_PROFESSION
+    const tSlotIndex = props.teamSlots.findIndex((slot) => slot.agentId === evtTriggerAgentId)
+    if (tSlotIndex < 0) return null
+
     if (evtTriggerAgentId === mainAgent.value?.id) {
       evtTriggerFinalPanel = evtFinalPanel
       evtTriggerPierce = evtPierce
-    } else if (triggerFinalPanel.value) {
-      evtTriggerFinalPanel = triggerFinalPanel.value
-      evtTriggerPierce = triggerPiercePower.value
+    } else {
+      const tExternal = ensureAnomalySlotPanel(evtTriggerAgentId)
+      const tBreakdown = computeFinalPanel(tExternal, {
+        teamSlots: props.teamSlots,
+        agents: props.agents,
+        wengines: props.wengines,
+        bangboo: selectedBangboo.value,
+        bangbooRefine: props.bangbooRefine,
+        mainSlotIndex: tSlotIndex,
+        driveDiscs: props.driveDiscs,
+        extraMods: extraMods.value,
+        skillContext: {
+          damageKind: 'anomaly',
+          categoryId: skillBound ? event.categoryId : 'basic',
+          subcategoryId: skillBound ? (event.skillSubcategoryId ?? null) : null,
+          element: tAgent?.element,
+          staggerPhase: event.staggerPhase,
+          isFollowUp: false,
+        },
+        buffSelection: props.buffSelection ?? null,
+      })
+      evtTriggerFinalPanel = tBreakdown.finalPanel
+      evtTriggerPierce = computePiercePower(
+        tBreakdown.finalPanel.hp,
+        tBreakdown.finalPanel.atk,
+        tBreakdown.totalMods.pierce,
+      )
     }
   }
 
-  const sub = resolveSubcategoryById(event.skillSubcategoryId)
-  const overrides = event.multOverrides
-  const effectiveSub = sub && overrides
-    ? {
-        ...sub,
-        directDmgMult: overrides.directDmgMult ?? sub.directDmgMult,
-        anomalyReleaseMult: overrides.anomalyReleaseMult ?? sub.anomalyReleaseMult,
-        disorderMult: overrides.disorderBaseMult ?? sub.disorderMult,
-      }
-    : sub
+  const sub =
+    skillBound ? resolveSubcategoryById(event.skillSubcategoryId) : null
+  const effectiveSub =
+    sub && overrides
+      ? {
+          ...sub,
+          directDmgMult: overrides.directDmgMult ?? sub.directDmgMult,
+          directDmgMultFactor: overrides.directDmgMultFactor ?? sub.directDmgMultFactor,
+          anomalyReleaseMult: overrides.anomalyReleaseMult ?? sub.anomalyReleaseMult,
+          anomalyReleaseMultFactor:
+            overrides.anomalyReleaseMultFactor ?? sub.anomalyReleaseMultFactor,
+          disorderMult: overrides.disorderBaseMult ?? sub.disorderMult,
+          disorderMultFactor: overrides.disorderBaseMultFactor ?? sub.disorderMultFactor,
+        }
+      : sub
 
   return {
     finalPanel: evtFinalPanel,
@@ -1913,8 +1992,11 @@ defineExpose({
           class="panel-block anomaly-support-panels"
         >
           <header class="panel-block-header">
-            <h3>异常队友局外面板</h3>
-            <p>紊乱/乱流/异放的异常基础乘区使用触发角色最终面板；请为非主 C 异常职业录入面板。</p>
+            <h3>当前属性异常的产生角色 · 局外面板</h3>
+            <p>
+              紊乱/乱流/异放的异常基础乘区使用该角色<strong>局内最终面板</strong>（吃完增益后）；请为非主
+              C 异常职业录入局外初始面板。
+            </p>
           </header>
           <details
             v-for="item in anomalySupportSlots"

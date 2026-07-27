@@ -292,22 +292,35 @@ export interface DamageEvent {
   count: number
   staggerPhase: StaggerPhase
   critMode: DamageEventCritMode
-  /** 异常事件需要触发角色时的 agentId（仅 disorder/turbulence/anomalyRelease） */
+  /**
+   * 当前属性异常的产生角色 agentId。
+   * 特殊值 `__at_calc__` 表示管理端配置为「计算时选择」。
+   */
   triggerAgentId?: string | null
+  /** 是否绑定招式（异常事件可关闭；直伤默认 true） */
+  skillBound?: boolean
   /** 倍率覆写：不为 null 时覆盖招式小类/面板默认值 */
   multOverrides?: DamageEventMultOverrides | null
 }
 
-/** 事件级倍率覆写（null / undefined = 使用默认） */
+/** 事件级倍率 / 倍率修正覆写（null / undefined = 使用默认） */
 export interface DamageEventMultOverrides {
   directDmgMult?: number | null
+  directDmgMultFactor?: number | null
   anomalyMult?: number | null
+  anomalyMultFactor?: number | null
   anomalyReleaseMult?: number | null
+  anomalyReleaseMultFactor?: number | null
   disorderBaseMult?: number | null
+  disorderBaseMultFactor?: number | null
   disorderCompMult?: number | null
   turbulenceBaseMult?: number | null
+  turbulenceBaseMultFactor?: number | null
   turbulenceCompMult?: number | null
 }
+
+/** 管理端：计算时再选产生角色 */
+export const TRIGGER_AGENT_AT_CALC = '__at_calc__' as const
 
 export type DamageEventModeType = 'direct' | 'anomaly'
 

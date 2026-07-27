@@ -326,7 +326,8 @@ function normalizeDamageEventMode(item: Record<string, unknown>): DamageEventMod
           entry.triggerAgentId == null || entry.triggerAgentId === ''
             ? null
             : String(entry.triggerAgentId),
-        multOverrides: entry.multOverrides as DamageEvent['multOverrides'] ?? null,
+        skillBound: entry.skillBound === false ? false : entry.skillBound === true ? true : undefined,
+        multOverrides: (entry.multOverrides as DamageEvent['multOverrides']) ?? null,
       }
     }),
   }

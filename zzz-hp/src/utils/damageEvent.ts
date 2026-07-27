@@ -7,7 +7,7 @@ import type {
   SkillCategoryId,
   SkillSubcategory,
 } from '@/types/calculator'
-import { SKILL_CATEGORY_OPTIONS } from '@/types/calculator'
+import { SKILL_CATEGORY_OPTIONS, TRIGGER_AGENT_AT_CALC } from '@/types/calculator'
 import { computeDamageResult, type DamageCalcInput, type DamageCalcResult } from '@/utils/damageCalc'
 
 export const DAMAGE_EVENT_KIND_OPTIONS: { id: DamageEventKind; label: string }[] = [
@@ -28,6 +28,7 @@ export function createEmptyDamageEvent(
   index = 0,
   kind: DamageEventKind = 'direct',
 ): DamageEvent {
+  const isAnomaly = kind !== 'direct'
   return {
     id: `evt-local-${Date.now().toString(36)}-${index}`,
     kind,
@@ -36,7 +37,8 @@ export function createEmptyDamageEvent(
     count: 1,
     staggerPhase: 'stagger',
     critMode: 'expected',
-    triggerAgentId: null,
+    triggerAgentId: isAnomaly ? TRIGGER_AGENT_AT_CALC : null,
+    skillBound: !isAnomaly,
     multOverrides: null,
   }
 }
@@ -113,11 +115,16 @@ export interface DamageEventLine {
   result: DamageCalcResult
 }
 
-/** 伤害事件展示名（不含直伤/异常等种类前缀） */
+/** 伤害事件展示名（不含直伤/异常等种类前缀；不暴露内部 id） */
 export function formatDamageEventDisplayName(
   event: DamageEvent,
   resolveSubcategory?: (id: string | null) => SkillSubcategory | null,
 ): string {
+  if (event.skillBound === false) {
+    const kindLabel =
+      DAMAGE_EVENT_KIND_OPTIONS.find((item) => item.id === event.kind)?.label ?? event.kind
+    return kindLabel
+  }
   const cat =
     SKILL_CATEGORY_OPTIONS.find((item) => item.id === event.categoryId)?.label ??
     (event.categoryId as SkillCategoryId)
@@ -125,6 +132,14 @@ export function formatDamageEventDisplayName(
     ? resolveSubcategory?.(event.skillSubcategoryId)?.name
     : null
   return sub ? `${cat} · ${sub}` : `${cat} · 整大类`
+}
+
+export function eventNeedsAnomalyProducer(kind: DamageEventKind): boolean {
+  return kind === 'disorder' || kind === 'turbulence' || kind === 'anomalyRelease'
+}
+
+export function isTriggerAgentAtCalc(id: string | null | undefined): boolean {
+  return id === TRIGGER_AGENT_AT_CALC || id == null || id === ''
 }
 
 export function summarizeDamageEvents(

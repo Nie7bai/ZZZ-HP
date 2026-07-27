@@ -109,7 +109,9 @@ const anomalySubKind = computed<AnomalyDamageSubKind>(() => {
   return 'anomaly'
 })
 const triggerAnomalyAgentId = computed(() => {
-  const withTrigger = anomalyEvents.value.find((e) => e.triggerAgentId)
+  const withTrigger = anomalyEvents.value.find(
+    (e) => e.triggerAgentId && e.triggerAgentId !== '__at_calc__',
+  )
   return withTrigger?.triggerAgentId ?? null
 })
 
@@ -147,7 +149,11 @@ const triggerAgentOptionsForEditor = computed(() =>
 watch(anomalyTriggerOptions, (opts) => {
   const validIds = new Set(opts.map((item) => item.id))
   for (const event of anomalyEvents.value) {
-    if (event.triggerAgentId && !validIds.has(event.triggerAgentId)) {
+    if (
+      event.triggerAgentId &&
+      event.triggerAgentId !== '__at_calc__' &&
+      !validIds.has(event.triggerAgentId)
+    ) {
       event.triggerAgentId = null
     }
   }
@@ -248,7 +254,7 @@ const skillIsFollowUp = computed(() =>
   }),
 )
 
-/** 异放/乱流有触发角色时，增益属性过滤跟随触发角色属性 */
+/** 异放/乱流/紊乱有产生角色时，增益属性过滤跟随该角色属性 */
 const damageElement = computed(() => {
   const needsTrigger =
     damageKind.value === 'anomaly' &&
@@ -559,7 +565,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       <header class="calc-mode-header">
         <h2>伤害类型与招式上下文</h2>
         <p class="calc-mode-desc">
-          直伤/异常在此切换；招式与触发角色在伤害事件模式中按条配置。最优词条跟随该选择。
+          直伤/异常在此切换；招式与「当前属性异常的产生角色」在伤害事件中按条配置。最优词条跟随事件总伤。
         </p>
       </header>
       <div class="calc-mode-tabs" role="tablist" aria-label="伤害类型">

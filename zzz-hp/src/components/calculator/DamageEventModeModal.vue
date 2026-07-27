@@ -7,7 +7,12 @@ import type {
   DamageEventModeType,
   SkillSubcategory,
 } from '@/types/calculator'
-import { createEmptyDamageEvent } from '@/utils/damageEvent'
+import { TRIGGER_AGENT_AT_CALC } from '@/types/calculator'
+import {
+  createEmptyDamageEvent,
+  DAMAGE_EVENT_KIND_OPTIONS,
+  formatDamageEventDisplayName,
+} from '@/utils/damageEvent'
 import {
   createCustomModeId,
   loadCustomModes,
@@ -81,15 +86,24 @@ function close() {
   open.value = false
 }
 
+function cloneEventsForCalc(source: DamageEvent[]): DamageEvent[] {
+  return source.map((event, index) => ({
+    ...event,
+    multOverrides: event.multOverrides ? { ...event.multOverrides } : null,
+    // 管理端「计算时选择」载入计算页后改为待选
+    triggerAgentId:
+      event.triggerAgentId === TRIGGER_AGENT_AT_CALC ? null : (event.triggerAgentId ?? null),
+    id: event.id?.startsWith('evt-')
+      ? `evt-copy-${Date.now().toString(36)}-${index}`
+      : `evt-copy-${Date.now().toString(36)}-${index}`,
+  }))
+}
+
 function selectPreset(mode: DamageEventMode) {
   modeId.value = mode.id
   modeName.value = mode.name
   draftName.value = mode.name
-  events.value = mode.events.map((event, index) => ({
-    ...event,
-    multOverrides: event.multOverrides ? { ...event.multOverrides } : null,
-    id: `evt-copy-${Date.now().toString(36)}-${index}`,
-  }))
+  events.value = cloneEventsForCalc(mode.events)
   message.value = `已载入预设「${mode.name}」（只读，可另存为自定义）`
 }
 
@@ -165,6 +179,15 @@ function applyModeName() {
     return
   }
   if (isCustomMode.value) persistCurrentCustom()
+}
+
+function kindLabel(kind: DamageEvent['kind']) {
+  return DAMAGE_EVENT_KIND_OPTIONS.find((item) => item.id === kind)?.label ?? kind
+}
+
+function resolveSubName(id: string | null) {
+  if (!id) return null
+  return props.skillSubcategories.find((item) => item.id === id) ?? null
 }
 </script>
 
@@ -270,13 +293,14 @@ function applyModeName() {
               :agent-id="agentId"
               :mode-type="modeType"
               :trigger-agent-options="triggerAgentOptions"
+              :allow-calc-time-trigger="false"
               embedded
             />
             <div v-else-if="modeId && isPresetMode" class="preset-preview">
               <ul>
                 <li v-for="event in events" :key="event.id">
-                  {{ event.kind }} · {{ event.categoryId }}
-                  <span v-if="event.skillSubcategoryId"> · {{ event.skillSubcategoryId }}</span>
+                  {{ kindLabel(event.kind) }} ·
+                  {{ formatDamageEventDisplayName(event, resolveSubName) }}
                   ×{{ event.count }}
                 </li>
               </ul>

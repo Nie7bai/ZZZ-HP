@@ -55,6 +55,7 @@ function normalizeEvent(raw, index = 0) {
       entry.triggerAgentId == null || entry.triggerAgentId === ''
         ? null
         : String(entry.triggerAgentId),
+    skillBound: entry.skillBound === false ? false : entry.skillBound === true ? true : undefined,
     multOverrides:
       entry.multOverrides && typeof entry.multOverrides === 'object'
         ? entry.multOverrides

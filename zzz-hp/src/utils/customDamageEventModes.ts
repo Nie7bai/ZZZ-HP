@@ -44,6 +44,7 @@ function normalizeMode(item: Record<string, unknown>): DamageEventMode {
           entry.triggerAgentId == null || entry.triggerAgentId === ''
             ? null
             : String(entry.triggerAgentId),
+        skillBound: entry.skillBound === false ? false : entry.skillBound === true ? true : undefined,
         multOverrides: (entry.multOverrides as DamageEvent['multOverrides']) ?? null,
       }
     }),

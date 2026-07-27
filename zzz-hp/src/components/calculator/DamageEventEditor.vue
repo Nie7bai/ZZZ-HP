@@ -6,8 +6,12 @@ import type {
   SkillCategoryId,
   SkillSubcategory,
 } from '@/types/calculator'
-import { SKILL_CATEGORY_OPTIONS } from '@/types/calculator'
-import { createEmptyDamageEvent, DAMAGE_EVENT_KIND_OPTIONS } from '@/utils/damageEvent'
+import { SKILL_CATEGORY_OPTIONS, TRIGGER_AGENT_AT_CALC } from '@/types/calculator'
+import {
+  createEmptyDamageEvent,
+  DAMAGE_EVENT_KIND_OPTIONS,
+  eventNeedsAnomalyProducer,
+} from '@/utils/damageEvent'
 
 const props = withDefaults(
   defineProps<{
@@ -18,10 +22,15 @@ const props = withDefaults(
     embedded?: boolean
     /** 模式类型，控制 kind 选择和倍率展示 */
     modeType?: 'direct' | 'anomaly'
-    /** 队伍中可用的异常触发角色 */
+    /**
+     * 当前属性异常的产生角色候选项。
+     * 管理端可不传具体队友；配合 allowCalcTimeTrigger 显示「计算时选择」。
+     */
     triggerAgentOptions?: { id: string; name: string }[]
+    /** 管理端：允许配置为计算时再选产生角色 */
+    allowCalcTimeTrigger?: boolean
   }>(),
-  { embedded: false, modeType: 'direct' },
+  { embedded: false, modeType: 'direct', allowCalcTimeTrigger: false },
 )
 
 const emit = defineEmits<{
@@ -61,9 +70,17 @@ function filteredSubcategories(categoryId: SkillCategoryId) {
   })
 }
 
+function isSkillBound(event: DamageEvent) {
+  if (props.modeType === 'direct') return true
+  return event.skillBound !== false
+}
+
 function eventSummary(event: DamageEvent) {
   const kind =
     DAMAGE_EVENT_KIND_OPTIONS.find((item) => item.id === event.kind)?.label ?? event.kind
+  if (!isSkillBound(event)) {
+    return `${kind} · 无招式 ×${event.count}`
+  }
   const cat = SKILL_CATEGORY_OPTIONS.find((item) => item.id === event.categoryId)?.label ?? ''
   const sub = event.skillSubcategoryId
     ? props.skillSubcategories.find((item) => item.id === event.skillSubcategoryId)?.name
@@ -72,7 +89,8 @@ function eventSummary(event: DamageEvent) {
 }
 
 function addEvent() {
-  const next = createEmptyDamageEvent(events.value.length)
+  const defaultKind = props.modeType === 'anomaly' ? 'anomaly' : 'direct'
+  const next = createEmptyDamageEvent(events.value.length, defaultKind)
   events.value = [...events.value, next]
   selectedEventId.value = next.id
 }
@@ -89,9 +107,25 @@ function onCategoryChange(event: DamageEvent, categoryId: SkillCategoryId) {
   updateEvent(event.id, { categoryId, skillSubcategoryId: null })
 }
 
+function onSkillBoundChange(event: DamageEvent, bound: boolean) {
+  updateEvent(event.id, {
+    skillBound: bound,
+    ...(bound ? {} : { skillSubcategoryId: null }),
+  })
+}
+
+function onKindChange(event: DamageEvent, kind: DamageEvent['kind']) {
+  const patch: Partial<DamageEvent> = { kind }
+  if (eventNeedsAnomalyProducer(kind) && props.allowCalcTimeTrigger && !event.triggerAgentId) {
+    patch.triggerAgentId = TRIGGER_AGENT_AT_CALC
+  }
+  updateEvent(event.id, patch)
+}
+
 /** 读取事件的倍率覆写值；null/undefined 表示使用默认 */
 function getMultOverride(event: DamageEvent, key: keyof DamageEventMultOverrides): number | null {
-  return event.multOverrides?.[key] ?? null
+  const value = event.multOverrides?.[key]
+  return value == null ? null : value
 }
 
 function setMultOverride(eventId: string, key: keyof DamageEventMultOverrides, raw: string) {
@@ -105,37 +139,64 @@ function setMultOverride(eventId: string, key: keyof DamageEventMultOverrides, r
 
 const DIRECT_MULT_FIELDS: { key: keyof DamageEventMultOverrides; label: string }[] = [
   { key: 'directDmgMult', label: '直伤倍率%' },
+  { key: 'directDmgMultFactor', label: '直伤倍率修正' },
 ]
 
 const ANOMALY_MULT_FIELDS: { key: keyof DamageEventMultOverrides; label: string }[] = [
   { key: 'anomalyMult', label: '异常倍率%' },
+  { key: 'anomalyMultFactor', label: '异常倍率修正' },
   { key: 'anomalyReleaseMult', label: '异放倍率%' },
+  { key: 'anomalyReleaseMultFactor', label: '异放倍率修正' },
   { key: 'disorderBaseMult', label: '紊乱基础倍率%' },
+  { key: 'disorderBaseMultFactor', label: '紊乱倍率修正' },
   { key: 'disorderCompMult', label: '紊乱补偿倍率%' },
   { key: 'turbulenceBaseMult', label: '乱流基础倍率%' },
+  { key: 'turbulenceBaseMultFactor', label: '乱流倍率修正' },
   { key: 'turbulenceCompMult', label: '乱流补偿倍率%' },
 ]
 
-const currentMultFields = computed(() =>
-  props.modeType === 'direct' ? DIRECT_MULT_FIELDS : ANOMALY_MULT_FIELDS,
-)
+const currentMultFields = computed(() => {
+  if (props.modeType === 'direct') return DIRECT_MULT_FIELDS
+  const event = selectedEvent.value
+  if (!event) return ANOMALY_MULT_FIELDS
+  if (event.kind === 'anomaly') {
+    return ANOMALY_MULT_FIELDS.filter(
+      (f) => f.key === 'anomalyMult' || f.key === 'anomalyMultFactor',
+    )
+  }
+  if (event.kind === 'disorder') {
+    return ANOMALY_MULT_FIELDS.filter((f) =>
+      ['disorderBaseMult', 'disorderBaseMultFactor', 'disorderCompMult'].includes(f.key),
+    )
+  }
+  if (event.kind === 'turbulence') {
+    return ANOMALY_MULT_FIELDS.filter((f) =>
+      ['turbulenceBaseMult', 'turbulenceBaseMultFactor', 'turbulenceCompMult'].includes(f.key),
+    )
+  }
+  if (event.kind === 'anomalyRelease') {
+    return ANOMALY_MULT_FIELDS.filter(
+      (f) => f.key === 'anomalyReleaseMult' || f.key === 'anomalyReleaseMultFactor',
+    )
+  }
+  return ANOMALY_MULT_FIELDS
+})
 
 const needsTriggerAgent = computed(() => {
   if (!selectedEvent.value) return false
-  const kind = selectedEvent.value.kind
-  return kind === 'disorder' || kind === 'turbulence' || kind === 'anomalyRelease'
+  return eventNeedsAnomalyProducer(selectedEvent.value.kind)
 })
 
-const directKindOptions = computed(() =>
-  DAMAGE_EVENT_KIND_OPTIONS.filter((opt) => opt.id === 'direct'),
-)
-
-const anomalyKindOptions = computed(() =>
-  DAMAGE_EVENT_KIND_OPTIONS.filter((opt) => opt.id !== 'direct'),
+const showTriggerSelect = computed(
+  () =>
+    needsTriggerAgent.value &&
+    (props.allowCalcTimeTrigger || (props.triggerAgentOptions?.length ?? 0) > 0),
 )
 
 const filteredKindOptions = computed(() =>
-  props.modeType === 'direct' ? directKindOptions.value : anomalyKindOptions.value,
+  props.modeType === 'direct'
+    ? DAMAGE_EVENT_KIND_OPTIONS.filter((opt) => opt.id === 'direct')
+    : DAMAGE_EVENT_KIND_OPTIONS.filter((opt) => opt.id !== 'direct'),
 )
 </script>
 
@@ -165,9 +226,10 @@ const filteredKindOptions = computed(() =>
             <select
               :value="selectedEvent!.kind"
               @change="
-                updateEvent(selectedEvent!.id, {
-                  kind: ($event.target as HTMLSelectElement).value as DamageEvent['kind'],
-                })
+                onKindChange(
+                  selectedEvent!,
+                  ($event.target as HTMLSelectElement).value as DamageEvent['kind'],
+                )
               "
             >
               <option v-for="opt in filteredKindOptions" :key="opt.id" :value="opt.id">
@@ -190,7 +252,27 @@ const filteredKindOptions = computed(() =>
             />
           </label>
         </div>
-        <div class="field-row">
+
+        <div v-if="modeType === 'anomaly'" class="field-row">
+          <label class="field field--checkbox">
+            <span>绑定招式</span>
+            <label class="checkbox-line">
+              <input
+                type="checkbox"
+                :checked="isSkillBound(selectedEvent!)"
+                @change="
+                  onSkillBoundChange(
+                    selectedEvent!,
+                    ($event.target as HTMLInputElement).checked,
+                  )
+                "
+              />
+              <span>该事件按招式大类/小类结算（关闭则仅按伤害种类计算）</span>
+            </label>
+          </label>
+        </div>
+
+        <div v-if="isSkillBound(selectedEvent!)" class="field-row">
           <label class="field">
             <span>招式大类</span>
             <select
@@ -229,9 +311,9 @@ const filteredKindOptions = computed(() =>
           </label>
         </div>
 
-        <div v-if="needsTriggerAgent && triggerAgentOptions?.length" class="field-row">
+        <div v-if="showTriggerSelect" class="field-row">
           <label class="field">
-            <span>触发角色</span>
+            <span>当前属性异常的产生角色</span>
             <select
               :value="selectedEvent!.triggerAgentId ?? ''"
               @change="
@@ -240,8 +322,15 @@ const filteredKindOptions = computed(() =>
                 })
               "
             >
-              <option value="">待设置</option>
-              <option v-for="agent in triggerAgentOptions" :key="agent.id" :value="agent.id">
+              <option v-if="allowCalcTimeTrigger" :value="TRIGGER_AGENT_AT_CALC">
+                计算时选择
+              </option>
+              <option v-if="!allowCalcTimeTrigger" value="">请选择异常职业角色</option>
+              <option
+                v-for="agent in triggerAgentOptions"
+                :key="agent.id"
+                :value="agent.id"
+              >
                 {{ agent.name }}
               </option>
             </select>
@@ -249,16 +338,22 @@ const filteredKindOptions = computed(() =>
         </div>
 
         <div v-if="currentMultFields.length" class="mult-section">
-          <h5 class="mult-title">倍率区（留空使用默认）</h5>
+          <h5 class="mult-title">倍率 / 倍率修正（留空使用默认）</h5>
           <div class="field-row">
             <label v-for="mf in currentMultFields" :key="mf.key" class="field">
               <span>{{ mf.label }}</span>
               <input
                 type="number"
                 step="any"
-                :value="getMultOverride(selectedEvent!, mf.key)"
-                :placeholder="'默认'"
-                @input="setMultOverride(selectedEvent!.id, mf.key, ($event.target as HTMLInputElement).value)"
+                :value="getMultOverride(selectedEvent!, mf.key) ?? ''"
+                placeholder="默认"
+                @input="
+                  setMultOverride(
+                    selectedEvent!.id,
+                    mf.key,
+                    ($event.target as HTMLInputElement).value,
+                  )
+                "
               />
             </label>
           </div>
@@ -358,13 +453,26 @@ const filteredKindOptions = computed(() =>
   flex: 1;
 }
 
+.field--checkbox {
+  min-width: 100%;
+}
+
+.checkbox-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  color: #c5cdd8;
+}
+
 .field span {
   font-size: 0.76rem;
   color: #9aa3b0;
 }
 
 .field select,
-.field input {
+.field input[type='number'],
+.field input[type='text'] {
   border: 1px solid #2d323a;
   border-radius: 8px;
   background: #0f1217;
