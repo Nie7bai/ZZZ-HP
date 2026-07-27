@@ -29,6 +29,10 @@ const props = withDefaults(
     triggerAgentOptions?: { id: string; name: string }[]
     /** 管理端：允许配置为计算时再选产生角色 */
     allowCalcTimeTrigger?: boolean
+    /** 计算页：队伍满足风 + 另一属性时可选择乱流事件 */
+    turbulenceSelectable?: boolean
+    /** 计算页：主 C 须为风属性才能选择乱流 */
+    mainAgentElement?: string | null
     /** 计算页：按面板解析出的倍率默认值（覆写为空时展示） */
     resolveMultDefaults?: (
       event: DamageEvent,
@@ -125,6 +129,9 @@ function onSkillBoundChange(event: DamageEvent, bound: boolean) {
 }
 
 function onKindChange(event: DamageEvent, kind: DamageEvent['kind']) {
+  if (kind === 'turbulence' && props.modeType === 'anomaly' && !props.turbulenceSelectable) {
+    return
+  }
   const patch: Partial<DamageEvent> = { kind }
   if (eventNeedsAnomalyProducer(kind)) {
     if (props.allowCalcTimeTrigger && !event.triggerAgentId) {
@@ -226,6 +233,18 @@ const filteredKindOptions = computed(() =>
     ? DAMAGE_EVENT_KIND_OPTIONS.filter((opt) => opt.id === 'direct')
     : DAMAGE_EVENT_KIND_OPTIONS.filter((opt) => opt.id !== 'direct'),
 )
+
+const turbulenceKindDisabled = computed(
+  () => props.modeType === 'anomaly' && !props.turbulenceSelectable,
+)
+
+const turbulenceKindHint = computed(() => {
+  if (!turbulenceKindDisabled.value) return ''
+  if (props.mainAgentElement && props.mainAgentElement !== '风') {
+    return '乱流伤害事件仅主 C 为风属性时可选择'
+  }
+  return '乱流伤害事件需队伍同时包含风属性与至少一个非风属性代理人'
+})
 </script>
 
 <template>
@@ -260,11 +279,17 @@ const filteredKindOptions = computed(() =>
                 )
               "
             >
-              <option v-for="opt in filteredKindOptions" :key="opt.id" :value="opt.id">
+              <option
+                v-for="opt in filteredKindOptions"
+                :key="opt.id"
+                :value="opt.id"
+                :disabled="opt.id === 'turbulence' && turbulenceKindDisabled"
+              >
                 {{ opt.label }}
               </option>
             </select>
           </label>
+          <p v-if="turbulenceKindHint" class="kind-hint">{{ turbulenceKindHint }}</p>
           <label class="field">
             <span>次数</span>
             <input
@@ -471,6 +496,14 @@ const filteredKindOptions = computed(() =>
   flex-wrap: wrap;
   gap: 0.65rem;
   margin-bottom: 0.55rem;
+}
+
+.kind-hint {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 0.76rem;
+  color: #c9a55c;
+  line-height: 1.45;
 }
 
 .field {

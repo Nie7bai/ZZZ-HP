@@ -29,6 +29,8 @@ const props = withDefaults(
     resolveMultDefaults?: (
       event: DamageEvent,
     ) => Partial<Record<keyof import('@/types/calculator').DamageEventMultOverrides, number>>
+    turbulenceSelectable?: boolean
+    mainAgentElement?: string | null
   }>(),
   { modeType: 'direct' },
 )
@@ -298,6 +300,8 @@ function applyModeName() {
               :trigger-agent-options="triggerAgentOptions"
               :allow-calc-time-trigger="false"
               :resolve-mult-defaults="resolveMultDefaults"
+              :turbulence-selectable="turbulenceSelectable"
+              :main-agent-element="mainAgentElement"
               embedded
             />
             <p v-else class="pick-hint">请先选择预设模式或新建自定义模式</p>

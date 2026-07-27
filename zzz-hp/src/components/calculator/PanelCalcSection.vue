@@ -52,7 +52,13 @@ import {
 } from '@/utils/calculatorUi'
 import { computeFinalPanel, panelToConvertAttrValues } from '@/utils/panelBuffCalc'
 import { computeDamageResult, type DamageCalcInput, type EnemyResistanceType } from '@/utils/damageCalc'
-import { mapEventKindToCalc, summarizeDamageEvents, type DamageEventLine } from '@/utils/damageEvent'
+import {
+  canSelectTurbulenceDamageEvent,
+  isTurbulenceTeamCompositionOk,
+  mapEventKindToCalc,
+  summarizeDamageEvents,
+  type DamageEventLine,
+} from '@/utils/damageEvent'
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 import { buildAtkPanelProcessItems, buildEnemyCombatProcessItems, buildStatSourceGroups, type StatSourceGroup } from '@/utils/statSourceTips'
 import {
@@ -429,16 +435,17 @@ const triggerPanelBreakdown = computed(() => {
 
 const triggerFinalPanel = computed(() => triggerPanelBreakdown.value?.finalPanel ?? null)
 
-const turbulenceTeamOk = computed(() => {
-  const elements = new Set(
-    props.teamSlots
-      .map((slot) => props.agents.find((a) => a.id === slot.agentId)?.element)
-      .filter((el): el is string => Boolean(el)),
-  )
-  const hasWind = elements.has('风')
-  const hasNonWind = [...elements].some((el) => el !== '风')
-  return hasWind && hasNonWind
-})
+const turbulenceTeamOk = computed(() =>
+  isTurbulenceTeamCompositionOk(props.teamSlots, props.agents),
+)
+
+const turbulenceEventSelectable = computed(() =>
+  canSelectTurbulenceDamageEvent(
+    props.teamSlots,
+    props.agents,
+    mainAgent.value?.element,
+  ),
+)
 
 const anomalyCalcBlockedReason = computed(() => {
   if (props.damageKind !== 'anomaly') return ''
@@ -674,6 +681,8 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
   const evtTriggerAgentId =
     rawTriggerId && rawTriggerId !== '__at_calc__' ? rawTriggerId : null
   if (eventNeedsTrigger && !evtTriggerAgentId) return null
+
+  if (event.kind === 'turbulence' && !turbulenceEventSelectable.value) return null
 
   const tAgent =
     eventNeedsTrigger && evtTriggerAgentId
@@ -1924,7 +1933,7 @@ function loadSnapshot(snapshot: DamageCalcPanelSnapshot) {
   }
 }
 
-/** 事件倍率默认值：异常取主 C 最终面板；紊乱/乱流/异放取产生角色最终面板 */
+/** 事件倍率默认值：异常取主 C 最终面板；紊乱/乱流取产生角色最终面板；异放倍率取主 C（按产生角色属性筛选增益） */
 function resolveMultDefaultsForEvent(
   event: DamageEvent,
 ): Partial<Record<keyof DamageEventMultOverrides, number>> {
@@ -1946,6 +1955,13 @@ function resolveMultDefaultsForEvent(
     return result
   }
 
+  if (event.kind === 'anomalyRelease') {
+    const panel = input?.finalPanel ?? finalPanel.value
+    result.anomalyReleaseMult = panel.anomalyReleaseMult
+    result.anomalyReleaseMultFactor = panel.anomalyReleaseMultFactor
+    return result
+  }
+
   const panel = input?.triggerFinalPanel
   if (!panel) return result
 
@@ -1957,9 +1973,6 @@ function resolveMultDefaultsForEvent(
     result.turbulenceBaseMult = panel.turbulenceBaseMult
     result.turbulenceBaseMultFactor = panel.turbulenceBaseMultFactor
     result.turbulenceCompMult = panel.turbulenceCompMult
-  } else if (event.kind === 'anomalyRelease') {
-    result.anomalyReleaseMult = panel.anomalyReleaseMult
-    result.anomalyReleaseMultFactor = panel.anomalyReleaseMultFactor
   }
   return result
 }

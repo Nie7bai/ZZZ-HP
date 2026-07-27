@@ -37,6 +37,7 @@ import {
   type BuffSelectionState,
 } from '@/utils/panelBuffCalc'
 import { resolveIsFollowUp } from '@/utils/buffEffect'
+import { canSelectTurbulenceDamageEvent } from '@/utils/damageEvent'
 import { createEmptyBuffStatModifiers, createEmptyRefinementMods } from '@/utils/calculatorUi'
 
 export interface TeamSlot {
@@ -247,6 +248,10 @@ const mainSlotIndex = computed(() => {
 
 const mainAgent = computed(() =>
   agents.value.find((item) => item.id === teamSlots[mainSlotIndex.value]?.agentId),
+)
+
+const turbulenceSelectable = computed(() =>
+  canSelectTurbulenceDamageEvent(teamSlots, agents.value, mainAgent.value?.element),
 )
 
 const selectedBangboo = computed(
@@ -639,6 +644,8 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
             :skill-subcategories="skillSubcategories"
             :trigger-agent-options="triggerAgentOptionsForEditor"
             :resolve-mult-defaults="resolveMultDefaultsForEvent"
+            :turbulence-selectable="turbulenceSelectable"
+            :main-agent-element="mainAgent?.element"
           />
         </div>
       </div>
@@ -657,6 +664,8 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
             :skill-subcategories="skillSubcategories"
             :trigger-agent-options="triggerAgentOptionsForEditor"
             :resolve-mult-defaults="resolveMultDefaultsForEvent"
+            :turbulence-selectable="turbulenceSelectable"
+            :main-agent-element="mainAgent?.element"
           />
         </div>
       </div>

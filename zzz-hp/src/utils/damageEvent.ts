@@ -139,6 +139,28 @@ export function eventNeedsAnomalyProducer(kind: DamageEventKind): boolean {
   return kind === 'disorder' || kind === 'turbulence' || kind === 'anomalyRelease'
 }
 
+/** 队伍中是否同时存在风属性与至少一个非风属性代理人 */
+export function isTurbulenceTeamCompositionOk(
+  teamSlots: Array<{ agentId: string }>,
+  agents: Array<{ id: string; element: string }>,
+): boolean {
+  const elements = new Set(
+    teamSlots
+      .map((slot) => agents.find((agent) => agent.id === slot.agentId)?.element)
+      .filter((element): element is string => Boolean(element)),
+  )
+  return elements.has('风') && [...elements].some((element) => element !== '风')
+}
+
+/** 乱流伤害事件：主 C 须为风，且队伍须含风 + 另一属性代理人 */
+export function canSelectTurbulenceDamageEvent(
+  teamSlots: Array<{ agentId: string }>,
+  agents: Array<{ id: string; element: string }>,
+  mainAgentElement?: string | null,
+): boolean {
+  return mainAgentElement === '风' && isTurbulenceTeamCompositionOk(teamSlots, agents)
+}
+
 export function isTriggerAgentAtCalc(id: string | null | undefined): boolean {
   return id === TRIGGER_AGENT_AT_CALC || id == null || id === ''
 }

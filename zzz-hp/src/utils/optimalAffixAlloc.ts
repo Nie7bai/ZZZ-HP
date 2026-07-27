@@ -26,7 +26,7 @@ import {
   type DamageCalcResult,
   type DamageEnemyInput,
 } from '@/utils/damageCalc'
-import { mapEventKindToCalc, pickEventDamage } from '@/utils/damageEvent'
+import { mapEventKindToCalc, pickEventDamage, canSelectTurbulenceDamageEvent } from '@/utils/damageEvent'
 import {
   computeFinalPanel,
   type BuffSelectionState,
@@ -374,13 +374,22 @@ function computeEventGrandTotal(
         ? event.triggerAgentId
         : null
     if (needsTrigger && !triggerId) continue
+    if (
+      event.kind === 'turbulence' &&
+      !canSelectTurbulenceDamageEvent(
+        ctx.panelContext.teamSlots,
+        ctx.panelContext.agents,
+        ctx.mainAgentElement,
+      )
+    ) {
+      continue
+    }
 
-    const triggerElement =
-      needsTrigger && triggerId === ctx.mainAgentId
-        ? ctx.mainAgentElement
-        : needsTrigger
-          ? undefined
-          : ctx.mainAgentElement
+    const triggerAgent =
+      needsTrigger && triggerId
+        ? ctx.panelContext.agents.find((agent) => agent.id === triggerId)
+        : undefined
+    const triggerElement = needsTrigger ? triggerAgent?.element : ctx.mainAgentElement
 
     const skillBound = event.skillBound !== false || damageKind === 'direct'
     const isFollowUp = skillBound
@@ -484,8 +493,7 @@ function computeEventGrandTotal(
       // 最优词条暂用主 C 局内面板作为产生角色面板；非主 C 产生角色需面板页完整结算
       triggerFinalPanel:
         needsTrigger && triggerId === ctx.mainAgentId ? finalPanel : undefined,
-      triggerAgentElement:
-        needsTrigger && triggerId === ctx.mainAgentId ? ctx.mainAgentElement : undefined,
+      triggerAgentElement: needsTrigger ? triggerElement : undefined,
       skillSubcategory: effectiveSub,
     })
     const perHit = pickEventDamage(result, event.kind, event.critMode)
