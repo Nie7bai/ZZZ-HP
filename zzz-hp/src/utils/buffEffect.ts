@@ -413,7 +413,16 @@ export function effectMatchesContext(
     if (ctx.damageKind !== 'anomaly') return false
     const required = scopeToAnomalySubKind(scope)
     const current = ctx.anomalySubKind ?? 'anomaly'
-    return required === current
+    if (required === current) return true
+    // 异常 scope 的异放倍率增益在异放结算时也应生效
+    if (
+      current === 'anomalyRelease' &&
+      required === 'anomaly' &&
+      (effect.stat === 'anomalyReleaseMult' || effect.stat === 'anomalyReleaseMultFactor')
+    ) {
+      return true
+    }
+    return false
   }
 
   if (ctx.damageKind === 'anomaly') {

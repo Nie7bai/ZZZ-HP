@@ -50,7 +50,7 @@ import {
   getMindscapeNotesUpToRank,
   mergeBuffStatModifiers,
 } from '@/utils/calculatorUi'
-import { computeFinalPanel, panelToConvertAttrValues } from '@/utils/panelBuffCalc'
+import { computeFinalPanel, panelToConvertAttrValues, resolveMainCAnomalyReleaseMultFields } from '@/utils/panelBuffCalc'
 import { computeDamageResult, type DamageCalcInput, type EnemyResistanceType } from '@/utils/damageCalc'
 import {
   canSelectTurbulenceDamageEvent,
@@ -439,7 +439,7 @@ const turbulenceTeamOk = computed(() =>
   isTurbulenceTeamCompositionOk(props.teamSlots, props.agents),
 )
 
-const turbulenceEventSelectable = computed(() =>
+const turbulenceEventCalculable = computed(() =>
   canSelectTurbulenceDamageEvent(
     props.teamSlots,
     props.agents,
@@ -668,7 +668,15 @@ const disorderDamageLabel = computed(() =>
   calcParts.value.hasPolarDisorder ? '极性紊乱' : '紊乱伤害',
 )
 
-function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
+function resolveEventTriggerElement(event: DamageEvent): string | undefined {
+  const rawTriggerId = event.triggerAgentId ?? props.triggerAnomalyAgentId
+  const triggerId =
+    rawTriggerId && rawTriggerId !== '__at_calc__' ? rawTriggerId : null
+  if (!triggerId) return undefined
+  return props.agents.find((agent) => agent.id === triggerId)?.element
+}
+
+function buildEventSkillContext(event: DamageEvent) {
   const { damageKind: evtDamageKind, anomalySubKind: evtAnomalySubKind } = mapEventKindToCalc(
     event.kind,
   )
@@ -676,21 +684,7 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
     event.kind === 'disorder' ||
     event.kind === 'turbulence' ||
     event.kind === 'anomalyRelease'
-
-  const rawTriggerId = event.triggerAgentId ?? props.triggerAnomalyAgentId
-  const evtTriggerAgentId =
-    rawTriggerId && rawTriggerId !== '__at_calc__' ? rawTriggerId : null
-  if (eventNeedsTrigger && !evtTriggerAgentId) return null
-
-  if (event.kind === 'turbulence' && !turbulenceEventSelectable.value) return null
-
-  const tAgent =
-    eventNeedsTrigger && evtTriggerAgentId
-      ? props.agents.find((a) => a.id === evtTriggerAgentId)
-      : undefined
-  const evtTriggerElement = tAgent?.element
-  const evtTriggerIsMb = tAgent?.profession === MB_PROFESSION
-
+  const triggerElement = resolveEventTriggerElement(event)
   const skillBound = event.skillBound !== false || evtDamageKind === 'direct'
   const evtIsFollowUp = skillBound
     ? resolveIsFollowUp({
@@ -702,18 +696,26 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
       })
     : false
 
-  // 异放等：主 C 结算时用产生角色属性筛选对应属性增益（含异放倍率）
-  const evtSkillCtx = {
-    damageKind: evtDamageKind,
-    categoryId: skillBound ? event.categoryId : ('basic' as const),
-    subcategoryId: skillBound ? (event.skillSubcategoryId ?? null) : null,
-    element: eventNeedsTrigger ? evtTriggerElement : mainAgent.value?.element,
-    staggerPhase: event.staggerPhase,
-    isFollowUp: evtIsFollowUp,
-    anomalySubKind: evtAnomalySubKind,
+  return {
+    skillCtx: {
+      damageKind: evtDamageKind,
+      categoryId: skillBound ? event.categoryId : ('basic' as const),
+      subcategoryId: skillBound ? (event.skillSubcategoryId ?? null) : null,
+      element: eventNeedsTrigger ? triggerElement : mainAgent.value?.element,
+      staggerPhase: event.staggerPhase,
+      isFollowUp: evtIsFollowUp,
+      anomalySubKind: evtAnomalySubKind,
+    },
+    eventNeedsTrigger,
+    triggerElement,
+    skillBound,
+    evtDamageKind,
+    evtAnomalySubKind,
   }
+}
 
-  const evtBreakdown = computeFinalPanel(effectiveExternalPanel.value, {
+function buildEventPanelCalcContext(skillCtx: ReturnType<typeof buildEventSkillContext>['skillCtx']) {
+  return {
     teamSlots: props.teamSlots,
     agents: props.agents,
     wengines: props.wengines,
@@ -722,10 +724,36 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
     mainSlotIndex: mainSlotIndex.value,
     driveDiscs: props.driveDiscs,
     extraMods: extraMods.value,
-    skillContext: evtSkillCtx,
+    skillContext: skillCtx,
     buffSelection: props.buffSelection ?? null,
     attrValues: convertAttrDefaults.value,
-  })
+  }
+}
+
+function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
+  const {
+    skillCtx: evtSkillCtx,
+    eventNeedsTrigger,
+    triggerElement: evtTriggerElement,
+    skillBound,
+    evtDamageKind,
+    evtAnomalySubKind,
+  } = buildEventSkillContext(event)
+
+  const rawTriggerId = event.triggerAgentId ?? props.triggerAnomalyAgentId
+  const evtTriggerAgentId =
+    rawTriggerId && rawTriggerId !== '__at_calc__' ? rawTriggerId : null
+  if (eventNeedsTrigger && !evtTriggerAgentId) return null
+
+  if (event.kind === 'turbulence' && !turbulenceEventCalculable.value) return null
+
+  const tAgent =
+    eventNeedsTrigger && evtTriggerAgentId
+      ? props.agents.find((a) => a.id === evtTriggerAgentId)
+      : undefined
+  const evtTriggerIsMb = tAgent?.profession === MB_PROFESSION
+
+  const evtBreakdown = computeFinalPanel(effectiveExternalPanel.value, buildEventPanelCalcContext(evtSkillCtx))
 
   let evtFinalPanel = { ...evtBreakdown.finalPanel }
   const overrides = event.multOverrides
@@ -761,6 +789,20 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
     }
     if (overrides.turbulenceCompMult != null) {
       evtFinalPanel.turbulenceCompMult = overrides.turbulenceCompMult
+    }
+  }
+
+  if (event.kind === 'anomalyRelease') {
+    const releaseFields = resolveMainCAnomalyReleaseMultFields(
+      effectiveExternalPanel.value,
+      buildEventPanelCalcContext(evtSkillCtx),
+      evtTriggerElement,
+    )
+    if (overrides?.anomalyReleaseMult == null) {
+      evtFinalPanel.anomalyReleaseMult = releaseFields.anomalyReleaseMult
+    }
+    if (overrides?.anomalyReleaseMultFactor == null) {
+      evtFinalPanel.anomalyReleaseMultFactor = releaseFields.anomalyReleaseMultFactor
     }
   }
 
@@ -1938,6 +1980,19 @@ function resolveMultDefaultsForEvent(
   event: DamageEvent,
 ): Partial<Record<keyof DamageEventMultOverrides, number>> {
   const result: Partial<Record<keyof DamageEventMultOverrides, number>> = {}
+
+  if (event.kind === 'anomalyRelease') {
+    const { skillCtx, triggerElement } = buildEventSkillContext(event)
+    const fields = resolveMainCAnomalyReleaseMultFields(
+      effectiveExternalPanel.value,
+      buildEventPanelCalcContext(skillCtx),
+      triggerElement,
+    )
+    result.anomalyReleaseMult = fields.anomalyReleaseMult
+    result.anomalyReleaseMultFactor = fields.anomalyReleaseMultFactor
+    return result
+  }
+
   const probe: DamageEvent = { ...event, multOverrides: null }
   const input = buildEventCalcFull(probe)
 
@@ -1952,13 +2007,6 @@ function resolveMultDefaultsForEvent(
     const panel = input?.finalPanel ?? finalPanel.value
     result.anomalyMult = panel.anomalyMult
     result.anomalyMultFactor = panel.anomalyMultFactor
-    return result
-  }
-
-  if (event.kind === 'anomalyRelease') {
-    const panel = input?.finalPanel ?? finalPanel.value
-    result.anomalyReleaseMult = panel.anomalyReleaseMult
-    result.anomalyReleaseMultFactor = panel.anomalyReleaseMultFactor
     return result
   }
 

@@ -250,7 +250,7 @@ const mainAgent = computed(() =>
   agents.value.find((item) => item.id === teamSlots[mainSlotIndex.value]?.agentId),
 )
 
-const turbulenceSelectable = computed(() =>
+const turbulenceCalculable = computed(() =>
   canSelectTurbulenceDamageEvent(teamSlots, agents.value, mainAgent.value?.element),
 )
 
@@ -644,7 +644,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
             :skill-subcategories="skillSubcategories"
             :trigger-agent-options="triggerAgentOptionsForEditor"
             :resolve-mult-defaults="resolveMultDefaultsForEvent"
-            :turbulence-selectable="turbulenceSelectable"
+            :turbulence-calculable="turbulenceCalculable"
             :main-agent-element="mainAgent?.element"
           />
         </div>
@@ -664,7 +664,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
             :skill-subcategories="skillSubcategories"
             :trigger-agent-options="triggerAgentOptionsForEditor"
             :resolve-mult-defaults="resolveMultDefaultsForEvent"
-            :turbulence-selectable="turbulenceSelectable"
+            :turbulence-calculable="turbulenceCalculable"
             :main-agent-element="mainAgent?.element"
           />
         </div>

@@ -29,7 +29,7 @@ const props = withDefaults(
     resolveMultDefaults?: (
       event: DamageEvent,
     ) => Partial<Record<keyof import('@/types/calculator').DamageEventMultOverrides, number>>
-    turbulenceSelectable?: boolean
+    turbulenceCalculable?: boolean
     mainAgentElement?: string | null
   }>(),
   { modeType: 'direct' },
@@ -300,7 +300,7 @@ function applyModeName() {
               :trigger-agent-options="triggerAgentOptions"
               :allow-calc-time-trigger="false"
               :resolve-mult-defaults="resolveMultDefaults"
-              :turbulence-selectable="turbulenceSelectable"
+              :turbulence-calculable="turbulenceCalculable"
               :main-agent-element="mainAgentElement"
               embedded
             />

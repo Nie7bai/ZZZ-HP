@@ -29,9 +29,9 @@ const props = withDefaults(
     triggerAgentOptions?: { id: string; name: string }[]
     /** 管理端：允许配置为计算时再选产生角色 */
     allowCalcTimeTrigger?: boolean
-    /** 计算页：队伍满足风 + 另一属性时可选择乱流事件 */
-    turbulenceSelectable?: boolean
-    /** 计算页：主 C 须为风属性才能选择乱流 */
+    /** 计算页：队伍满足风 + 另一属性时乱流事件可参与计算 */
+    turbulenceCalculable?: boolean
+    /** 计算页：主 C 须为风属性才能计算乱流 */
     mainAgentElement?: string | null
     /** 计算页：按面板解析出的倍率默认值（覆写为空时展示） */
     resolveMultDefaults?: (
@@ -129,9 +129,6 @@ function onSkillBoundChange(event: DamageEvent, bound: boolean) {
 }
 
 function onKindChange(event: DamageEvent, kind: DamageEvent['kind']) {
-  if (kind === 'turbulence' && props.modeType === 'anomaly' && !props.turbulenceSelectable) {
-    return
-  }
   const patch: Partial<DamageEvent> = { kind }
   if (eventNeedsAnomalyProducer(kind)) {
     if (props.allowCalcTimeTrigger && !event.triggerAgentId) {
@@ -143,6 +140,15 @@ function onKindChange(event: DamageEvent, kind: DamageEvent['kind']) {
   updateEvent(event.id, patch)
 }
 
+const multDefaultsByEventId = computed(() => {
+  const map = new Map<string, Partial<Record<keyof DamageEventMultOverrides, number>>>()
+  if (!props.resolveMultDefaults) return map
+  for (const event of events.value) {
+    map.set(event.id, props.resolveMultDefaults(event))
+  }
+  return map
+})
+
 /** 读取事件倍率输入展示值：覆写优先，否则用面板解析默认 */
 function getMultDisplayValue(
   event: DamageEvent,
@@ -150,7 +156,7 @@ function getMultDisplayValue(
 ): number | '' {
   const override = event.multOverrides?.[key]
   if (override != null) return override
-  const resolved = props.resolveMultDefaults?.(event)?.[key]
+  const resolved = multDefaultsByEventId.value.get(event.id)?.[key]
   return resolved == null ? '' : resolved
 }
 
@@ -165,7 +171,7 @@ function setMultOverride(eventId: string, key: keyof DamageEventMultOverrides, r
   }
   const parsed = Number(trimmed)
   if (!Number.isFinite(parsed)) return
-  const resolved = props.resolveMultDefaults?.(current)?.[key]
+  const resolved = multDefaultsByEventId.value.get(current.id)?.[key]
   // 与默认值相同则清覆写，避免无意义覆盖
   if (resolved != null && parsed === resolved) {
     const overrides: DamageEventMultOverrides = { ...current.multOverrides, [key]: null }
@@ -234,17 +240,37 @@ const filteredKindOptions = computed(() =>
     : DAMAGE_EVENT_KIND_OPTIONS.filter((opt) => opt.id !== 'direct'),
 )
 
-const turbulenceKindDisabled = computed(
-  () => props.modeType === 'anomaly' && !props.turbulenceSelectable,
-)
-
 const turbulenceKindHint = computed(() => {
-  if (!turbulenceKindDisabled.value) return ''
+  if (props.modeType !== 'anomaly' || selectedEvent.value?.kind !== 'turbulence') return ''
+  if (props.turbulenceCalculable !== false) return ''
   if (props.mainAgentElement && props.mainAgentElement !== '风') {
-    return '乱流伤害事件仅主 C 为风属性时可选择'
+    return '当前条件不满足：乱流伤害仅主 C 为风属性时可计算，该事件将不参与伤害汇总'
   }
-  return '乱流伤害事件需队伍同时包含风属性与至少一个非风属性代理人'
+  return '当前条件不满足：乱流需队伍同时包含风属性与至少一个非风属性代理人，该事件将不参与伤害汇总'
 })
+
+watch(
+  () => selectedEvent.value?.triggerAgentId,
+  (next, prev) => {
+    if (!selectedEvent.value || next === prev) return
+    if (selectedEvent.value.kind !== 'anomalyRelease') return
+    const current = selectedEvent.value
+    if (!current.multOverrides) return
+    const overrides = { ...current.multOverrides }
+    let changed = false
+    if (overrides.anomalyReleaseMult != null) {
+      overrides.anomalyReleaseMult = null
+      changed = true
+    }
+    if (overrides.anomalyReleaseMultFactor != null) {
+      overrides.anomalyReleaseMultFactor = null
+      changed = true
+    }
+    if (changed) {
+      updateEvent(current.id, { multOverrides: overrides })
+    }
+  },
+)
 </script>
 
 <template>
@@ -283,7 +309,6 @@ const turbulenceKindHint = computed(() => {
                 v-for="opt in filteredKindOptions"
                 :key="opt.id"
                 :value="opt.id"
-                :disabled="opt.id === 'turbulence' && turbulenceKindDisabled"
               >
                 {{ opt.label }}
               </option>
@@ -396,6 +421,7 @@ const turbulenceKindHint = computed(() => {
             <label v-for="mf in currentMultFields" :key="mf.key" class="field">
               <span>{{ mf.label }}</span>
               <input
+                :key="`${selectedEvent!.id}-${selectedEvent!.kind}-${selectedEvent!.triggerAgentId ?? ''}-${mf.key}`"
                 type="number"
                 step="any"
                 :value="getMultDisplayValue(selectedEvent!, mf.key)"

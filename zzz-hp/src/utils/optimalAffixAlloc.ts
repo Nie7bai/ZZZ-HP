@@ -29,6 +29,7 @@ import {
 import { mapEventKindToCalc, pickEventDamage, canSelectTurbulenceDamageEvent } from '@/utils/damageEvent'
 import {
   computeFinalPanel,
+  resolveMainCAnomalyReleaseMultFields,
   type BuffSelectionState,
   type PanelCalcContext,
 } from '@/utils/panelBuffCalc'
@@ -449,6 +450,31 @@ function computeEventGrandTotal(
       }
       if (overrides.turbulenceCompMult != null) {
         finalPanel.turbulenceCompMult = overrides.turbulenceCompMult
+      }
+    }
+    if (event.kind === 'anomalyRelease') {
+      const releaseFields = resolveMainCAnomalyReleaseMultFields(
+        external,
+        {
+          ...ctx.panelContext,
+          extraMods: extraMods ?? ctx.panelContext.extraMods ?? createEmptyBuffStatModifiers(),
+          skillContext: {
+            damageKind,
+            categoryId: skillBound ? event.categoryId : 'basic',
+            subcategoryId: skillBound ? event.skillSubcategoryId : null,
+            element: triggerElement ?? ctx.mainAgentElement,
+            staggerPhase: event.staggerPhase,
+            isFollowUp,
+            anomalySubKind,
+          },
+        },
+        triggerElement,
+      )
+      if (overrides?.anomalyReleaseMult == null) {
+        finalPanel.anomalyReleaseMult = releaseFields.anomalyReleaseMult
+      }
+      if (overrides?.anomalyReleaseMultFactor == null) {
+        finalPanel.anomalyReleaseMultFactor = releaseFields.anomalyReleaseMultFactor
       }
     }
     const piercePower = computePiercePower(

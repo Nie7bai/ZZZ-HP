@@ -954,6 +954,38 @@ export function extractCombatMods(mods: BuffStatModifiers): CombatBuffMods {
   }
 }
 
+/**
+ * 主 C 异放倍率：局外基础 + 增益；异放倍率类增益按产生角色属性（elementFilter）筛选。
+ */
+export function resolveMainCAnomalyReleaseMultFields(
+  externalPanel: PanelStats,
+  ctx: PanelCalcContext,
+  triggerElement?: string,
+  skillCtxOverride?: Partial<SkillCalcContext>,
+): Pick<PanelStats, 'anomalyReleaseMult' | 'anomalyReleaseMultFactor'> {
+  const mainAgentId = ctx.teamSlots[ctx.mainSlotIndex]?.agentId
+  const mainElement = ctx.agents.find((agent) => agent.id === mainAgentId)?.element
+  const filterElement = triggerElement ?? mainElement
+
+  const skillCtx: SkillCalcContext = {
+    ...(ctx.skillContext ?? defaultSkillContext('anomaly', filterElement)),
+    ...skillCtxOverride,
+    damageKind: 'anomaly',
+    anomalySubKind: 'anomalyRelease',
+    element: filterElement,
+  }
+
+  const breakdown = computeFinalPanel(externalPanel, {
+    ...ctx,
+    skillContext: skillCtx,
+  })
+
+  return {
+    anomalyReleaseMult: breakdown.finalPanel.anomalyReleaseMult,
+    anomalyReleaseMultFactor: breakdown.finalPanel.anomalyReleaseMultFactor,
+  }
+}
+
 export function computeFinalPanel(
   externalPanel: PanelStats,
   ctx: PanelCalcContext,
