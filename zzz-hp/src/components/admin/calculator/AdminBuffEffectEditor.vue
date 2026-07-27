@@ -32,6 +32,7 @@ import {
   setEffectSkillTargets,
 } from '@/utils/buffEffect'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
+import { createDefaultSkillSubcategoryMults } from '@/utils/skillSubcategoryMult'
 
 const props = defineProps<{
   lockApplyTarget?: 'self' | 'team' | null
@@ -274,6 +275,7 @@ async function createSubcategory(effect: BuffEffect) {
       categoryId: newSubcat.value.categoryId,
       name,
       countsAsFollowUp: newSubcat.value.countsAsFollowUp,
+      ...createDefaultSkillSubcategoryMults(),
     })
     const draft = ensureDraftSkill(effect)
     draft.category = saved.categoryId

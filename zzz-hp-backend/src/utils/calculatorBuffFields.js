@@ -47,6 +47,11 @@ export const BUFF_STAT_KEYS = [
   'turbulenceDmgBonus',
   'skillDmgBonus',
   'skillMultiplierBonus',
+  'directDmgMultFactor',
+  'anomalyMultFactor',
+  'anomalyReleaseMultFactor',
+  'disorderBaseMultFactor',
+  'turbulenceBaseMultFactor',
 ]
 
 export const AGENT_BASE_PANEL_KEYS = [
@@ -92,7 +97,14 @@ export function readNumber(value) {
 }
 
 export function createEmptyBuffStatModifiers() {
-  return Object.fromEntries(BUFF_STAT_KEYS.map((key) => [key, 0]))
+  return Object.fromEntries(
+    BUFF_STAT_KEYS.map((key) => [
+      key,
+      ['directDmgMultFactor', 'anomalyMultFactor', 'anomalyReleaseMultFactor', 'disorderBaseMultFactor', 'turbulenceBaseMultFactor'].includes(key)
+        ? 1
+        : 0,
+    ]),
+  )
 }
 
 export function createEmptyAgentBasePanel() {

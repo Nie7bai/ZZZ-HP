@@ -32,6 +32,23 @@ async function ensureTable() {
   } catch {
     // column may already exist
   }
+  const multColumns = [
+    ['direct_dmg_mult', 'DOUBLE NOT NULL DEFAULT 100'],
+    ['anomaly_release_mult', 'DOUBLE NOT NULL DEFAULT 0'],
+    ['disorder_mult', 'DOUBLE NOT NULL DEFAULT 0'],
+    ['direct_dmg_mult_factor', 'DOUBLE NOT NULL DEFAULT 1'],
+    ['anomaly_release_mult_factor', 'DOUBLE NOT NULL DEFAULT 1'],
+    ['disorder_mult_factor', 'DOUBLE NOT NULL DEFAULT 1'],
+  ]
+  for (const [col, def] of multColumns) {
+    try {
+      await pool.query(
+        `ALTER TABLE calculator_skill_subcategories ADD COLUMN ${col} ${def}`,
+      )
+    } catch {
+      // column may already exist
+    }
+  }
   await pool.query(`
     CREATE TABLE IF NOT EXISTS calculator_follow_up_rules (
       id VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -44,6 +61,11 @@ async function ensureTable() {
   ensured = true
 }
 
+function readNumber(value, fallback) {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : fallback
+}
+
 function rowToDoc(row) {
   return {
     id: String(row.id),
@@ -51,6 +73,12 @@ function rowToDoc(row) {
     categoryId: String(row.category_id),
     name: String(row.name ?? ''),
     countsAsFollowUp: Boolean(row.counts_as_follow_up),
+    directDmgMult: readNumber(row.direct_dmg_mult, 100),
+    anomalyReleaseMult: readNumber(row.anomaly_release_mult, 0),
+    disorderMult: readNumber(row.disorder_mult, 0),
+    directDmgMultFactor: readNumber(row.direct_dmg_mult_factor, 1),
+    anomalyReleaseMultFactor: readNumber(row.anomaly_release_mult_factor, 1),
+    disorderMultFactor: readNumber(row.disorder_mult_factor, 1),
   }
 }
 
@@ -89,6 +117,12 @@ export async function upsertSkillSubcategory(doc) {
   const categoryId = String(doc.categoryId ?? '').trim()
   const name = String(doc.name ?? '').trim()
   const countsAsFollowUp = Boolean(doc.countsAsFollowUp)
+  const directDmgMult = readNumber(doc.directDmgMult, 100)
+  const anomalyReleaseMult = readNumber(doc.anomalyReleaseMult, 0)
+  const disorderMult = readNumber(doc.disorderMult, 0)
+  const directDmgMultFactor = readNumber(doc.directDmgMultFactor, 1)
+  const anomalyReleaseMultFactor = readNumber(doc.anomalyReleaseMultFactor, 1)
+  const disorderMultFactor = readNumber(doc.disorderMultFactor, 1)
   if (!categoryId || !name) {
     throw new Error('招式小类大类与名称为必填项')
   }
@@ -100,14 +134,35 @@ export async function upsertSkillSubcategory(doc) {
 
   await pool.query(
     `INSERT INTO calculator_skill_subcategories
-      (id, agent_id, category_id, name, counts_as_follow_up, sort_order)
-     VALUES (?, ?, ?, ?, ?, 0)
+      (id, agent_id, category_id, name, counts_as_follow_up,
+       direct_dmg_mult, anomaly_release_mult, disorder_mult,
+       direct_dmg_mult_factor, anomaly_release_mult_factor, disorder_mult_factor,
+       sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
      ON DUPLICATE KEY UPDATE
        agent_id = VALUES(agent_id),
        category_id = VALUES(category_id),
        name = VALUES(name),
-       counts_as_follow_up = VALUES(counts_as_follow_up)`,
-    [id, agentId, categoryId, name, countsAsFollowUp ? 1 : 0],
+       counts_as_follow_up = VALUES(counts_as_follow_up),
+       direct_dmg_mult = VALUES(direct_dmg_mult),
+       anomaly_release_mult = VALUES(anomaly_release_mult),
+       disorder_mult = VALUES(disorder_mult),
+       direct_dmg_mult_factor = VALUES(direct_dmg_mult_factor),
+       anomaly_release_mult_factor = VALUES(anomaly_release_mult_factor),
+       disorder_mult_factor = VALUES(disorder_mult_factor)`,
+    [
+      id,
+      agentId,
+      categoryId,
+      name,
+      countsAsFollowUp ? 1 : 0,
+      directDmgMult,
+      anomalyReleaseMult,
+      disorderMult,
+      directDmgMultFactor,
+      anomalyReleaseMultFactor,
+      disorderMultFactor,
+    ],
   )
 
   const [rows] = await pool.query(`SELECT * FROM ${TABLE} WHERE id = ? LIMIT 1`, [id])

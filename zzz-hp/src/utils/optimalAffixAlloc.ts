@@ -3,8 +3,10 @@ import type {
   AgentBuffDoc,
   BangbooBuffDoc,
   BuffStatModifiers,
+  DamageEvent,
   DriveDiscBuffDoc,
   SkillCalcContext,
+  SkillSubcategory,
   WengineBuffDoc,
 } from '@/types/calculator'
 import type { AffixCounts, AffixDriveDiscMainStats, PanelStats } from '@/types/calculatorPanel'
@@ -24,11 +26,13 @@ import {
   type DamageCalcResult,
   type DamageEnemyInput,
 } from '@/utils/damageCalc'
+import { mapEventKindToCalc, pickEventDamage } from '@/utils/damageEvent'
 import {
   computeFinalPanel,
   type BuffSelectionState,
   type PanelCalcContext,
 } from '@/utils/panelBuffCalc'
+import { resolveIsFollowUp } from '@/utils/buffEffect'
 
 export type OptimalDamageKind = 'direct' | 'anomaly'
 
@@ -149,6 +153,11 @@ export interface OptimalEvalContext {
   mainAgentElement: string
   mainAgentId: string
   mainAgentName: string
+  /** 伤害事件列表：有则最优词条按事件总伤期望扫掠 */
+  damageEvents?: DamageEvent[]
+  resolveSubcategory?: (id: string | null) => SkillSubcategory | null
+  skillSubcategories?: SkillSubcategory[]
+  followUpSkillRules?: import('@/types/calculator').FollowUpSkillRule[]
 }
 
 export interface DirectSweepPoint {
@@ -340,6 +349,88 @@ function computePiercePower(hp: number, atk: number, pierceMod = 0) {
 
 export type OptimalPanelBreakdown = ReturnType<typeof computeFinalPanel>
 
+function computeEventGrandTotal(
+  ctx: OptimalEvalContext,
+  external: PanelStats,
+  extraMods?: BuffStatModifiers,
+): { grandTotal: number; firstResult: DamageCalcResult | null; firstBreakdown: OptimalPanelBreakdown | null } {
+  const events = ctx.damageEvents ?? []
+  if (!events.length) {
+    return { grandTotal: 0, firstResult: null, firstBreakdown: null }
+  }
+
+  let grandTotal = 0
+  let firstResult: DamageCalcResult | null = null
+  let firstBreakdown: OptimalPanelBreakdown | null = null
+
+  for (const event of events) {
+    const { damageKind, anomalySubKind } = mapEventKindToCalc(event.kind)
+    const isFollowUp = resolveIsFollowUp({
+      agentId: ctx.mainAgentId,
+      categoryId: event.categoryId,
+      subcategoryId: event.skillSubcategoryId,
+      skillSubcategories: ctx.skillSubcategories,
+      followUpSkillRules: ctx.followUpSkillRules,
+    })
+    const breakdown = computeFinalPanel(external, {
+      ...ctx.panelContext,
+      extraMods: extraMods ?? ctx.panelContext.extraMods ?? createEmptyBuffStatModifiers(),
+      skillContext: {
+        damageKind,
+        categoryId: event.categoryId,
+        subcategoryId: event.skillSubcategoryId,
+        element: ctx.mainAgentElement,
+        staggerPhase: event.staggerPhase,
+        isFollowUp,
+      },
+    })
+    const piercePower = computePiercePower(
+      breakdown.finalPanel.hp,
+      breakdown.finalPanel.atk,
+      breakdown.totalMods.pierce,
+    )
+    const sub = ctx.resolveSubcategory?.(event.skillSubcategoryId ?? null) ?? null
+    const overrides = event.multOverrides
+    const effectiveSub =
+      sub && overrides
+        ? {
+            ...sub,
+            directDmgMult: overrides.directDmgMult ?? sub.directDmgMult,
+            anomalyReleaseMult: overrides.anomalyReleaseMult ?? sub.anomalyReleaseMult,
+            disorderMult: overrides.disorderBaseMult ?? sub.disorderMult,
+          }
+        : sub
+
+    const result = computeDamageResult({
+      finalPanel: breakdown.finalPanel,
+      piercePower,
+      baseDamageSource: ctx.isMb ? 'pierce' : ctx.baseDamageSource,
+      isMbMainAgent: ctx.isMb,
+      enemyInput: ctx.enemyInput,
+      combatVulnerable: breakdown.combatMods.vulnerable,
+      combatGlobalStaggerVulnerable: breakdown.combatMods.globalStaggerVulnerable,
+      combatStaggerVulnerable: breakdown.combatMods.staggerVulnerable,
+      combatStaggerVulnerableOnly: breakdown.combatMods.staggerVulnerableOnly,
+      combatSpecial: breakdown.combatMods.special,
+      combatPierceDmgBonus: breakdown.combatMods.pierceDmgBonus,
+      staggerPhase: event.staggerPhase,
+      mainAgentElement: ctx.mainAgentElement,
+      mainAgentId: ctx.mainAgentId,
+      mainAgentName: ctx.mainAgentName,
+      anomalySubKind,
+      skillSubcategory: effectiveSub,
+    })
+    const perHit = pickEventDamage(result, event.kind, event.critMode)
+    grandTotal += perHit * Math.max(0, event.count)
+    if (!firstResult) {
+      firstResult = result
+      firstBreakdown = breakdown
+    }
+  }
+
+  return { grandTotal, firstResult, firstBreakdown }
+}
+
 export function evaluateAffixCounts(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
@@ -350,6 +441,7 @@ export function evaluateAffixCounts(
   piercePower: number
   external: PanelStats
   breakdown: OptimalPanelBreakdown
+  grandTotal: number
 } {
   const external = computeExternalPanelFromAffixes({
     agentBase: ctx.agentBase ?? createEmptyAgentBasePanel(),
@@ -360,6 +452,48 @@ export function evaluateAffixCounts(
     driveDiscMainStats: ctx.driveDiscMainStats,
     driveDiscs: ctx.driveDiscs,
   })
+
+  if (ctx.damageEvents?.length) {
+    const { grandTotal, firstResult, firstBreakdown } = computeEventGrandTotal(
+      ctx,
+      external,
+      extraMods,
+    )
+    const breakdown =
+      firstBreakdown ??
+      computeFinalPanel(external, {
+        ...ctx.panelContext,
+        extraMods: extraMods ?? ctx.panelContext.extraMods ?? createEmptyBuffStatModifiers(),
+      })
+    const piercePower = computePiercePower(
+      breakdown.finalPanel.hp,
+      breakdown.finalPanel.atk,
+      breakdown.totalMods.pierce,
+    )
+    const result =
+      firstResult ??
+      computeDamageResult({
+        finalPanel: breakdown.finalPanel,
+        piercePower,
+        baseDamageSource: ctx.isMb ? 'pierce' : ctx.baseDamageSource,
+        isMbMainAgent: ctx.isMb,
+        enemyInput: ctx.enemyInput,
+        combatVulnerable: breakdown.combatMods.vulnerable,
+        combatStaggerVulnerable: breakdown.combatMods.staggerVulnerable,
+        combatSpecial: breakdown.combatMods.special,
+        mainAgentElement: ctx.mainAgentElement,
+        mainAgentId: ctx.mainAgentId,
+        mainAgentName: ctx.mainAgentName,
+      })
+    return {
+      finalPanel: breakdown.finalPanel,
+      result,
+      piercePower,
+      external,
+      breakdown,
+      grandTotal,
+    }
+  }
 
   const breakdown = computeFinalPanel(external, {
     ...ctx.panelContext,
@@ -386,7 +520,17 @@ export function evaluateAffixCounts(
     mainAgentName: ctx.mainAgentName,
   })
 
-  return { finalPanel: breakdown.finalPanel, result, piercePower, external, breakdown }
+  return {
+    finalPanel: breakdown.finalPanel,
+    result,
+    piercePower,
+    external,
+    breakdown,
+    grandTotal:
+      ctx.panelContext.skillContext?.damageKind === 'anomaly'
+        ? result.anomalyExpected
+        : result.directDamageExpected,
+  }
 }
 
 /** 使局内暴击率刚好 > 100% 的最小暴击条数 */
@@ -426,14 +570,14 @@ export function sweepDirectDamage(
     const critDmg = remain - outPercent
     if (outPercent > outCap || critDmg > caps.critDmg || crit > caps.critRate) continue
     const affixCounts = buildDirectAffixCounts(ctx.isMb, { ...state, critRate: crit, totalRolls: total }, outPercent, critDmg)
-    const { result } = evaluateAffixCounts(ctx, affixCounts)
+    const { result, grandTotal } = evaluateAffixCounts(ctx, affixCounts)
     points.push({
       outPercent,
       critDmg,
       label: `${outLabel}${outPercent}/爆伤${critDmg}`,
       affixCounts,
       result,
-      directExpected: result.directDamageExpected,
+      directExpected: grandTotal,
     })
   }
   return points
@@ -453,14 +597,14 @@ export function sweepAnomalyDamage(
     const mastery = total - outPercent
     if (outPercent > outCap || mastery > caps.mastery) continue
     const affixCounts = buildAnomalyAffixCounts(ctx.isMb, { ...state, totalRolls: total }, outPercent, mastery)
-    const { result } = evaluateAffixCounts(ctx, affixCounts)
+    const { result, grandTotal } = evaluateAffixCounts(ctx, affixCounts)
     points.push({
       outPercent,
       mastery,
       label: `${outLabel}${outPercent}/精通${mastery}`,
       affixCounts,
       result,
-      anomalyExpected: result.anomalyExpected,
+      anomalyExpected: grandTotal,
       disorderExpected: result.disorderExpected,
       turbulenceExpected: result.turbulenceExpected,
       anomalyReleaseExpected: result.anomalyReleaseExpected,
@@ -473,7 +617,9 @@ function damageMetric(
   result: DamageCalcResult,
   kind: OptimalDamageKind,
   anomalyMetric: OptimalAnomalyMetric = 'anomaly',
+  grandTotal?: number,
 ) {
+  if (typeof grandTotal === 'number' && Number.isFinite(grandTotal)) return grandTotal
   if (kind === 'direct') return result.directDamageExpected
   if (anomalyMetric === 'disorder') return result.disorderExpected
   if (anomalyMetric === 'turbulence') return result.turbulenceExpected
@@ -514,7 +660,7 @@ export function computeDiffAnalysis(
 ): { addOne: AffixDiffRow[]; replace: AffixReplaceRow[] } {
   const candidates = kind === 'direct' ? directCandidateKeys(ctx.isMb) : anomalyCandidateKeys(ctx.isMb)
   const base = evaluateAffixCounts(ctx, baseCounts)
-  const baseDmg = damageMetric(base.result, kind, anomalyMetric)
+  const baseDmg = damageMetric(base.result, kind, anomalyMetric, base.grandTotal)
   const mainStats = ctx.driveDiscMainStats
 
   const addOne: AffixDiffRow[] = candidates.map((key) => {
@@ -532,7 +678,7 @@ export function computeDiffAnalysis(
     }
     const bumped = bumpAffix(baseCounts, key, 1)
     const next = evaluateAffixCounts(ctx, bumped)
-    const nextDmg = damageMetric(next.result, kind, anomalyMetric)
+    const nextDmg = damageMetric(next.result, kind, anomalyMetric, next.grandTotal)
     const delta = nextDmg - baseDmg
     return {
       key,
@@ -562,7 +708,7 @@ export function computeDiffAnalysis(
       if (exceedsAffixCap(mainStats, cand, nextCount)) continue
       const swapped = bumpAffix(without, cand, 1)
       const evaled = evaluateAffixCounts(ctx, swapped)
-      const dmg = damageMetric(evaled.result, kind, anomalyMetric)
+      const dmg = damageMetric(evaled.result, kind, anomalyMetric, evaled.grandTotal)
       const delta = dmg - baseDmg
       if (delta > bestDelta) {
         bestDelta = delta
@@ -609,7 +755,7 @@ export function computeBenefitCurves(
 ): { series: BenefitCurveSeries[]; nextStep: AffixDiffRow[] } {
   const candidates = kind === 'direct' ? directCandidateKeys(ctx.isMb) : anomalyCandidateKeys(ctx.isMb)
   const base = evaluateAffixCounts(ctx, baseCounts)
-  const baseDmg = damageMetric(base.result, kind, anomalyMetric)
+  const baseDmg = damageMetric(base.result, kind, anomalyMetric, base.grandTotal)
   const mainStats = ctx.driveDiscMainStats
 
   const series: BenefitCurveSeries[] = candidates.map((key) => {
@@ -629,7 +775,7 @@ export function computeBenefitCurves(
       }
       counts = bumpAffix(counts, key, 1)
       const evaled = evaluateAffixCounts(ctx, counts)
-      const dmg = damageMetric(evaled.result, kind, anomalyMetric)
+      const dmg = damageMetric(evaled.result, kind, anomalyMetric, evaled.grandTotal)
       const cum = baseDmg > 0 ? ((dmg - baseDmg) / baseDmg) * 100 : 0
       const mar = prevDmg > 0 ? ((dmg - prevDmg) / prevDmg) * 100 : 0
       cumulativePercent.push(cum)
@@ -667,6 +813,10 @@ export function buildOptimalEvalContext(input: {
   extraMods?: BuffStatModifiers
   skillContext?: SkillCalcContext | null
   buffSelection?: BuffSelectionState | null
+  damageEvents?: DamageEvent[]
+  resolveSubcategory?: (id: string | null) => SkillSubcategory | null
+  skillSubcategories?: SkillSubcategory[]
+  followUpSkillRules?: import('@/types/calculator').FollowUpSkillRule[]
 }): OptimalEvalContext {
   const mainSlot = input.teamSlots[input.mainSlotIndex]!
   const mainAgent = input.agents.find((a) => a.id === mainSlot.agentId)
@@ -705,5 +855,9 @@ export function buildOptimalEvalContext(input: {
     mainAgentElement: mainAgent?.element ?? '',
     mainAgentId: mainAgent?.id ?? '',
     mainAgentName: mainAgent?.name ?? '',
+    damageEvents: input.damageEvents,
+    resolveSubcategory: input.resolveSubcategory,
+    skillSubcategories: input.skillSubcategories,
+    followUpSkillRules: input.followUpSkillRules,
   }
 }

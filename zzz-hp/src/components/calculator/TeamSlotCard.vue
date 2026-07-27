@@ -55,7 +55,7 @@ const emit = defineEmits<{
       <div class="wengine-box">
         <p class="wengine-title">音擎</p>
         <p class="wengine-hint">
-          {{ wengineName ? `已选：${wengineName}` : '请在下方网格中选择音擎' }}
+          {{ wengineName ? `已选：${wengineName}` : '请从下方选择音擎' }}
         </p>
       </div>
 
@@ -76,7 +76,7 @@ const emit = defineEmits<{
 
     <template v-else>
       <p class="empty-title">槽位 {{ index + 1 }}</p>
-      <p class="empty-hint">请从下方网格中选择代理人。</p>
+      <p class="empty-hint">请从下方选择代理人。</p>
     </template>
   </article>
 </template>

@@ -17,6 +17,11 @@ import {
   upsertSkillSubcategory,
   deleteFollowUpSkillRule,
 } from '../services/skillSubcategoryService.js'
+import {
+  deleteDamageEventMode,
+  listDamageEventModes,
+  upsertDamageEventMode,
+} from '../services/damageEventModeService.js'
 import { fail, success } from '../utils/response.js'
 
 export async function getCalculatorBuffs(_req, res) {
@@ -79,6 +84,33 @@ export async function removeFollowUpSkillRule(req, res) {
     return success(res, data, '追加攻击规则删除成功')
   } catch (err) {
     return fail(res, err.message || '追加攻击规则删除失败', 400, { error: err.message })
+  }
+}
+
+export async function getDamageEventModes(_req, res) {
+  try {
+    const data = await listDamageEventModes()
+    return success(res, data)
+  } catch (err) {
+    return fail(res, err.message || '获取伤害事件模式失败', 500, { error: err.message })
+  }
+}
+
+export async function saveDamageEventMode(req, res) {
+  try {
+    const data = await upsertDamageEventMode(req.body)
+    return success(res, data, '伤害事件模式保存成功')
+  } catch (err) {
+    return fail(res, err.message || '伤害事件模式保存失败', 400, { error: err.message })
+  }
+}
+
+export async function removeDamageEventMode(req, res) {
+  try {
+    const data = await deleteDamageEventMode(req.params.id)
+    return success(res, data, '伤害事件模式删除成功')
+  } catch (err) {
+    return fail(res, err.message || '伤害事件模式删除失败', 400, { error: err.message })
   }
 }
 

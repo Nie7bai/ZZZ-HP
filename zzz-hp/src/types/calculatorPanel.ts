@@ -45,6 +45,16 @@ export interface PanelStats {
   disorderDmgBonus: number
   /** 乱流增伤% */
   turbulenceDmgBonus: number
+  /** 直伤倍率乘算修正（默认 1） */
+  directDmgMultFactor: number
+  /** 异常倍率乘算修正（默认 1） */
+  anomalyMultFactor: number
+  /** 异放倍率乘算修正（默认 1） */
+  anomalyReleaseMultFactor: number
+  /** 紊乱倍率乘算修正（默认 1） */
+  disorderBaseMultFactor: number
+  /** 乱流倍率乘算修正（默认 1） */
+  turbulenceBaseMultFactor: number
 }
 
 export interface PanelStatDelta {
@@ -175,5 +185,10 @@ export function createDefaultExternalPanel(): PanelStats {
     turbulenceCompMult: 0,
     disorderDmgBonus: 0,
     turbulenceDmgBonus: 0,
+    directDmgMultFactor: 1,
+    anomalyMultFactor: 1,
+    anomalyReleaseMultFactor: 1,
+    disorderBaseMultFactor: 1,
+    turbulenceBaseMultFactor: 1,
   }
 }

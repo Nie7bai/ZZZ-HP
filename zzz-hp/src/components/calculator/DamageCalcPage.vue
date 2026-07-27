@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import BangbooPickerSection from '@/components/calculator/BangbooPickerSection.vue'
 import BuffEffectPickerModal from '@/components/calculator/BuffEffectPickerModal.vue'
 import DamageCalcHistorySection from '@/components/calculator/DamageCalcHistorySection.vue'
+import DamageEventModeModal from '@/components/calculator/DamageEventModeModal.vue'
 import DriveDiscPickerSection from '@/components/calculator/DriveDiscPickerSection.vue'
 import OptimalAffixAllocSection from '@/components/calculator/OptimalAffixAllocSection.vue'
 import PanelCalcSection from '@/components/calculator/PanelCalcSection.vue'
@@ -17,10 +18,8 @@ import type {
   AnomalyDamageSubKind,
   BangbooBuffDoc,
   DamageCalcKind,
-  SkillCategoryId,
-  StaggerPhase,
+  DamageEvent,
 } from '@/types/calculator'
-import { ANOMALY_DAMAGE_SUBKIND_OPTIONS, SKILL_CATEGORY_OPTIONS } from '@/types/calculator'
 import type { PanelStats } from '@/types/calculatorPanel'
 import { createDefaultExternalPanel } from '@/types/calculatorPanel'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
@@ -49,7 +48,7 @@ export interface TeamSlot {
 }
 
 const calculatorBuffStore = useCalculatorBuffStore()
-const { agents, wengines, bangboos, driveDiscs, skillSubcategories, followUpSkillRules } =
+const { agents, wengines, bangboos, driveDiscs, skillSubcategories, followUpSkillRules, damageEventModes } =
   storeToRefs(calculatorBuffStore)
 
 const teamSlots = reactive<TeamSlot[]>([
@@ -91,12 +90,35 @@ const activeHistoryId = ref('')
 const historyMessage = ref('')
 
 const damageKind = ref<DamageCalcKind>('direct')
-const anomalySubKind = ref<AnomalyDamageSubKind>('anomaly')
-const triggerAnomalyAgentId = ref<string | null>(null)
 const anomalySlotPanels = reactive<Record<string, PanelStats>>({})
-const skillCategoryId = ref<SkillCategoryId>('basic')
-const skillSubcategoryId = ref<string | null>(null)
-const staggerPhase = ref<StaggerPhase>('stagger')
+const directEventModeId = ref<string | null>(null)
+const directEventModeName = ref('')
+const directEventModalOpen = ref(false)
+const directEvents = ref<DamageEvent[]>([])
+const anomalyEventModeId = ref<string | null>(null)
+const anomalyEventModeName = ref('')
+const anomalyEventModalOpen = ref(false)
+const anomalyEvents = ref<DamageEvent[]>([])
+
+const anomalySubKind = computed<AnomalyDamageSubKind>(() => {
+  const first = anomalyEvents.value[0]
+  if (!first) return 'anomaly'
+  if (first.kind === 'disorder') return 'disorder'
+  if (first.kind === 'turbulence') return 'turbulence'
+  if (first.kind === 'anomalyRelease') return 'anomalyRelease'
+  return 'anomaly'
+})
+const triggerAnomalyAgentId = computed(() => {
+  const withTrigger = anomalyEvents.value.find((e) => e.triggerAgentId)
+  return withTrigger?.triggerAgentId ?? null
+})
+
+const damageEvents = computed(() =>
+  damageKind.value === 'direct' ? directEvents.value : anomalyEvents.value,
+)
+const skillCategoryId = computed(() => damageEvents.value[0]?.categoryId ?? 'basic')
+const skillSubcategoryId = computed(() => damageEvents.value[0]?.skillSubcategoryId ?? null)
+
 const buffPickerOpen = ref(false)
 const buffSelection = reactive<BuffSelectionState>({
   enabledIds: {},
@@ -118,25 +140,16 @@ const anomalyTriggerOptions = computed(() =>
     .filter((item): item is { id: string; label: string; element: string } => Boolean(item)),
 )
 
-const turbulenceTeamOk = computed(() => {
-  const elements = new Set(
-    teamSlots
-      .map((slot) => agents.value.find((a) => a.id === slot.agentId)?.element)
-      .filter((el): el is string => Boolean(el)),
-  )
-  return elements.has('风') && [...elements].some((el) => el !== '风')
-})
+const triggerAgentOptionsForEditor = computed(() =>
+  anomalyTriggerOptions.value.map((opt) => ({ id: opt.id, name: opt.label })),
+)
 
 watch(anomalyTriggerOptions, (opts) => {
-  if (!triggerAnomalyAgentId.value) return
-  if (!opts.some((item) => item.id === triggerAnomalyAgentId.value)) {
-    triggerAnomalyAgentId.value = null
-  }
-})
-
-watch(damageKind, (kind) => {
-  if (kind !== 'anomaly') {
-    triggerAnomalyAgentId.value = null
+  const validIds = new Set(opts.map((item) => item.id))
+  for (const event of anomalyEvents.value) {
+    if (event.triggerAgentId && !validIds.has(event.triggerAgentId)) {
+      event.triggerAgentId = null
+    }
   }
 })
 
@@ -225,15 +238,6 @@ const teamBuffSignature = computed(() =>
   }),
 )
 
-const filteredSubcategories = computed(() =>
-  skillSubcategories.value.filter((item) => {
-    if (item.categoryId !== skillCategoryId.value) return false
-    const agentId = mainAgent.value?.id
-    if (!agentId) return true
-    return !item.agentId || item.agentId === agentId
-  }),
-)
-
 const skillIsFollowUp = computed(() =>
   resolveIsFollowUp({
     agentId: mainAgent.value?.id,
@@ -270,7 +274,7 @@ const collectedEffects = computed(() =>
       categoryId: skillCategoryId.value,
       subcategoryId: skillSubcategoryId.value,
       element: damageElement.value,
-      staggerPhase: staggerPhase.value,
+      staggerPhase: 'stagger',
       isFollowUp: skillIsFollowUp.value,
     },
   }),
@@ -339,10 +343,6 @@ watch(
   },
 )
 
-watch(skillCategoryId, () => {
-  skillSubcategoryId.value = null
-})
-
 function selectSlot(index: number) {
   activeSlot.value = index
 }
@@ -380,6 +380,12 @@ function selectWengine(wengineId: string) {
     return
   }
   activeSlotData.value.wengineId = wengineId
+  if (wengineId !== 'none') {
+    const wengine = wengines.value.find((item) => item.id === wengineId)
+    if (wengine && wengine.rarity !== 'S') {
+      activeSlotData.value.wengineRefine = 5
+    }
+  }
 }
 
 function selectBangboo(bangbooId: string) {
@@ -553,7 +559,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       <header class="calc-mode-header">
         <h2>伤害类型与招式上下文</h2>
         <p class="calc-mode-desc">
-          直伤/异常只在此处选择一次；招式增益按大类·小类过滤（未选小类则整大类生效）。最优词条跟随该选择。
+          直伤/异常在此切换；招式与触发角色在伤害事件模式中按条配置。最优词条跟随该选择。
         </p>
       </header>
       <div class="calc-mode-tabs" role="tablist" aria-label="伤害类型">
@@ -574,74 +580,43 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
           异常
         </button>
       </div>
-      <div
-        v-if="damageKind === 'anomaly'"
-        class="calc-mode-tabs subkind-tabs"
-        role="tablist"
-        aria-label="异常伤害子类"
-      >
-        <button
-          v-for="opt in ANOMALY_DAMAGE_SUBKIND_OPTIONS"
-          :key="opt.id"
-          type="button"
-          class="calc-mode-tab"
-          :class="{ active: anomalySubKind === opt.id }"
-          @click="anomalySubKind = opt.id"
-        >
-          {{ opt.label }}
-        </button>
+
+      <div v-if="damageKind === 'direct'" class="skill-context-row event-mode-row">
+        <div class="event-mode-block">
+          <span class="event-mode-label">直伤事件模式</span>
+          <DamageEventModeModal
+            v-model:open="directEventModalOpen"
+            v-model:events="directEvents"
+            v-model:mode-id="directEventModeId"
+            v-model:mode-name="directEventModeName"
+            mode-type="direct"
+            :agent-id="mainAgent?.id"
+            :agent-name="mainAgent?.name"
+            :preset-modes="damageEventModes"
+            :skill-subcategories="skillSubcategories"
+            :trigger-agent-options="triggerAgentOptionsForEditor"
+          />
+        </div>
       </div>
-      <div
-        v-if="
-          damageKind === 'anomaly' &&
-          (anomalySubKind === 'turbulence' || anomalySubKind === 'anomalyRelease')
-        "
-        class="skill-context-row"
-      >
-        <label>
-          <span>触发时的异常属性</span>
-          <select v-model="triggerAnomalyAgentId">
-            <option :value="null">请选择异常职业角色</option>
-            <option v-for="opt in anomalyTriggerOptions" :key="opt.id" :value="opt.id">
-              {{ opt.label }}
-            </option>
-          </select>
-        </label>
-        <p v-if="anomalySubKind === 'turbulence' && mainAgent?.element !== '风'" class="inline-warn">
-          乱流伤害仅风属性代理人可计算
-        </p>
-        <p v-else-if="anomalySubKind === 'turbulence' && !turbulenceTeamOk" class="inline-warn">
-          乱流需队伍同时包含风与至少一个非风属性
-        </p>
+      <div v-else class="skill-context-row event-mode-row">
+        <div class="event-mode-block">
+          <span class="event-mode-label">异常事件模式</span>
+          <DamageEventModeModal
+            v-model:open="anomalyEventModalOpen"
+            v-model:events="anomalyEvents"
+            v-model:mode-id="anomalyEventModeId"
+            v-model:mode-name="anomalyEventModeName"
+            mode-type="anomaly"
+            :agent-id="mainAgent?.id"
+            :agent-name="mainAgent?.name"
+            :preset-modes="damageEventModes"
+            :skill-subcategories="skillSubcategories"
+            :trigger-agent-options="triggerAgentOptionsForEditor"
+          />
+        </div>
       </div>
-      <div v-if="damageKind === 'direct'" class="skill-context-row">
-        <label>
-          <span>招式大类</span>
-          <select v-model="skillCategoryId">
-            <option v-for="opt in SKILL_CATEGORY_OPTIONS" :key="opt.id" :value="opt.id">
-              {{ opt.label }}
-            </option>
-          </select>
-        </label>
-        <label>
-          <span>招式小类</span>
-          <select v-model="skillSubcategoryId">
-            <option :value="null">整大类</option>
-            <option v-for="sub in filteredSubcategories" :key="sub.id" :value="sub.id">
-              {{ sub.name }}{{ sub.countsAsFollowUp ? '（追加）' : '' }}
-            </option>
-          </select>
-        </label>
-        <p v-if="skillIsFollowUp" class="follow-up-hint">当前招式视为追加攻击（原大类增益与追加攻击增益叠加）</p>
-      </div>
+
       <div class="skill-context-row">
-        <label>
-          <span>失衡状态</span>
-          <select v-model="staggerPhase">
-            <option value="stagger">失衡期</option>
-            <option value="normal">非失衡期</option>
-          </select>
-        </label>
         <button type="button" class="buff-open-btn" @click="buffPickerOpen = true">
           选择局内 Buff（已选
           {{
@@ -665,7 +640,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       <header class="calc-mode-header">
         <h2>计算方式</h2>
         <p class="calc-mode-desc">
-          面板计算直接录入局外面板；词条计算通过副词条条数推导局外面板；最优词条分配在约束下扫掠分配并绘制期望伤害曲线。
+          面板计算直接录入局外面板；词条计算通过副词条条数推导局外面板；最优词条分配在约束下扫描分配并绘制期望伤害曲线。
         </p>
       </header>
       <div class="calc-mode-tabs" role="tablist" aria-label="面板计算方式">
@@ -721,7 +696,8 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :skill-category-id="skillCategoryId"
       :skill-subcategory-id="skillSubcategoryId"
       :buff-selection="buffSelection"
-      :stagger-phase="staggerPhase"
+      :stagger-phase="'stagger'"
+      :damage-events="damageEvents"
       @update:anomaly-slot-panels="Object.assign(anomalySlotPanels, $event)"
     />
 
@@ -743,7 +719,8 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :skill-category-id="skillCategoryId"
       :skill-subcategory-id="skillSubcategoryId"
       :buff-selection="buffSelection"
-      :stagger-phase="staggerPhase"
+      :stagger-phase="'stagger'"
+      :damage-events="damageEvents"
     />
   </div>
 </template>
@@ -804,24 +781,6 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
   font-weight: 600;
 }
 
-.subkind-tabs {
-  margin-top: 0.55rem;
-}
-
-.inline-warn {
-  margin: 0;
-  align-self: end;
-  font-size: 0.78rem;
-  color: #f0c2a8;
-}
-
-.follow-up-hint {
-  margin: 0;
-  width: 100%;
-  font-size: 0.78rem;
-  color: #9ad0b8;
-}
-
 .skill-context-row {
   display: flex;
   flex-wrap: wrap;
@@ -829,21 +788,20 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
   margin-top: 0.85rem;
 }
 
-.skill-context-row label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  font-size: 0.8rem;
-  color: #9aa3b0;
+.event-mode-row {
+  width: 100%;
 }
 
-.skill-context-row select {
-  min-width: 10rem;
-  border: 1px solid #2d323a;
-  border-radius: 8px;
-  background: #0f1217;
-  color: #ebedf0;
-  padding: 0.4rem 0.55rem;
+.event-mode-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+}
+
+.event-mode-label {
+  font-size: 0.8rem;
+  color: #9aa3b0;
 }
 
 .buff-open-btn {

@@ -893,7 +893,35 @@ export function applyBuffModsToPanel(
     turbulenceCompMult: externalPanel.turbulenceCompMult + mods.turbulenceCompMult,
     disorderDmgBonus: externalPanel.disorderDmgBonus + mods.disorderDmgBonus,
     turbulenceDmgBonus: externalPanel.turbulenceDmgBonus + mods.turbulenceDmgBonus,
+    directDmgMultFactor: multiplyPanelFactor(
+      externalPanel.directDmgMultFactor,
+      mods.directDmgMultFactor,
+    ),
+    anomalyMultFactor: multiplyPanelFactor(
+      externalPanel.anomalyMultFactor,
+      mods.anomalyMultFactor,
+    ),
+    anomalyReleaseMultFactor: multiplyPanelFactor(
+      externalPanel.anomalyReleaseMultFactor,
+      mods.anomalyReleaseMultFactor,
+    ),
+    disorderBaseMultFactor: multiplyPanelFactor(
+      externalPanel.disorderBaseMultFactor,
+      mods.disorderBaseMultFactor,
+    ),
+    turbulenceBaseMultFactor: multiplyPanelFactor(
+      externalPanel.turbulenceBaseMultFactor,
+      mods.turbulenceBaseMultFactor,
+    ),
   }
+}
+
+function multiplyPanelFactor(base: number, mod: number): number {
+  const b = Number(base)
+  const m = Number(mod)
+  const safeBase = Number.isFinite(b) && b > 0 ? b : 1
+  if (!Number.isFinite(m) || m <= 0) return safeBase
+  return safeBase * m
 }
 
 export function panelToConvertAttrValues(

@@ -2,6 +2,7 @@ import type {
   AgentBuffDoc,
   BangbooBuffDoc,
   CalculatorBuffData,
+  DamageEventMode,
   DriveDiscBuffDoc,
   FollowUpSkillRule,
   SkillSubcategory,
@@ -69,6 +70,25 @@ export async function saveFollowUpSkillRule(
 export async function deleteFollowUpSkillRule(id: string): Promise<void> {
   await requestJson<{ id: string }>(
     `/api/calculator-buffs/follow-up-rules/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
+  )
+}
+
+export async function fetchDamageEventModes(): Promise<DamageEventMode[]> {
+  return requestJson<DamageEventMode[]>('/api/calculator-buffs/damage-event-modes')
+}
+
+export async function saveDamageEventMode(doc: DamageEventMode): Promise<DamageEventMode> {
+  return requestJson<DamageEventMode>('/api/calculator-buffs/damage-event-modes', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(doc),
+  })
+}
+
+export async function deleteDamageEventMode(id: string): Promise<void> {
+  await requestJson<{ id: string }>(
+    `/api/calculator-buffs/damage-event-modes/${encodeURIComponent(id)}`,
     { method: 'DELETE' },
   )
 }

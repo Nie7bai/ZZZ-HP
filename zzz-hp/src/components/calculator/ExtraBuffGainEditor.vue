@@ -1,7 +1,26 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import type { BuffApplySituation, BuffStatKey } from '@/types/calculator'
 import { BUFF_STAT_FIELDS, buffStatFieldLabel } from '@/utils/calculatorUi'
+
+const MULT_RATE_KEYS: BuffStatKey[] = [
+  'directDmgMult',
+  'directDmgMultFactor',
+  'anomalyMult',
+  'anomalyMultFactor',
+  'anomalyReleaseMult',
+  'anomalyReleaseMultFactor',
+  'disorderBaseMult',
+  'disorderBaseMultFactor',
+  'disorderCompMult',
+  'turbulenceBaseMult',
+  'turbulenceBaseMultFactor',
+  'turbulenceCompMult',
+]
+
+const availableFields = computed(() =>
+  BUFF_STAT_FIELDS.filter((field) => !MULT_RATE_KEYS.includes(field.key)),
+)
 
 export interface ExtraBuffGain {
   id: string
@@ -60,7 +79,7 @@ function situationLabel(value?: BuffApplySituation) {
       <label class="field">
         <span>增益类型</span>
         <select v-model="draftStat">
-          <option v-for="field in BUFF_STAT_FIELDS" :key="field.key" :value="field.key">
+          <option v-for="field in availableFields" :key="field.key" :value="field.key">
             {{ buffStatFieldLabel(field) }}
           </option>
         </select>

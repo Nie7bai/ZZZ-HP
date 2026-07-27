@@ -1,6 +1,7 @@
-import type { AnomalyDamageSubKind } from '@/types/calculator'
+import type { AnomalyDamageSubKind, SkillSubcategory } from '@/types/calculator'
 import type { PanelStats } from '@/types/calculatorPanel'
 import { effectiveAnomalyDuration } from '@/utils/calculatorUi'
+import { resolveSkillMults } from '@/utils/skillSubcategoryMult'
 
 export type EnemyResistanceType = 'weak' | 'normal' | 'res20' | 'res40'
 
@@ -50,6 +51,8 @@ export interface DamageCalcInput {
   triggerPiercePower?: number
   triggerBaseDamageSource?: 'atk' | 'pierce'
   triggerIsMb?: boolean
+  /** 当前招式小类（有则优先采用小类倍率） */
+  skillSubcategory?: SkillSubcategory | null
 }
 
 export interface DamageCalcResult {
@@ -136,10 +139,17 @@ export interface DamageCalcResult {
   turbulenceExpectedNoCrit: number
   /** 乱流伤害（暴击率=1） */
   turbulenceExpectedFullCrit: number
+  /** 有招式紊乱倍率贡献时为极性紊乱 */
+  hasPolarDisorder: boolean
 }
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
+}
+
+function readFactor(value: number | undefined | null, fallback = 1): number {
+  const num = Number(value)
+  return Number.isFinite(num) && num > 0 ? num : fallback
 }
 
 function round(value: number, precision = 2) {
@@ -254,8 +264,13 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const staggerPhase = input.staggerPhase ?? 'stagger'
   const subKind = input.anomalySubKind ?? 'anomaly'
   const useTriggerBase =
-    (subKind === 'turbulence' || subKind === 'anomalyRelease') &&
+    (subKind === 'turbulence' || subKind === 'anomalyRelease' || subKind === 'disorder') &&
     Boolean(input.triggerFinalPanel)
+
+  const skillMults = input.skillSubcategory
+    ? resolveSkillMults(panel, input.skillSubcategory)
+    : null
+  const hasPolarDisorder = skillMults?.hasPolarDisorder ?? false
 
   const mainParts = computeGeneralAndAnomalyBase({
     panel,
@@ -290,7 +305,9 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       })
     : mainParts
 
-  const directDmgMultZone = Math.max(0, panel.directDmgMult / 100)
+  const directDmgMultZone = skillMults
+    ? skillMults.directDmgMultZone
+    : Math.max(0, panel.directDmgMult / 100) * readFactor(panel.directDmgMultFactor)
   const directDamageExpected =
     mainParts.generalMultiplier *
     mainParts.critMultiplier *
@@ -300,7 +317,8 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
 
   // 异常乘区：仅异常字段，不再并入异放
   const anomalyDmgBonusZone = 1 + panel.anomalyDmgBonus / 100
-  const anomalyMultZone = Math.max(0, panel.anomalyMult / 100)
+  const anomalyMultZone =
+    Math.max(0, panel.anomalyMult / 100) * readFactor(panel.anomalyMultFactor)
   const anomalyCritRateRatio = panel.anomalyCritRate / 100
   const anomalyCritDmgRatio = clamp(panel.anomalyCritDmg / 100, 0, 20)
   const anomalyCritZone = 1 + anomalyCritRateRatio * anomalyCritDmgRatio
@@ -318,7 +336,10 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const anomalyReleaseDmgBonusZone = 1 + panel.anomalyReleaseDmgBonus / 100
   const anomalyReleaseCombinedDmgBonusZone =
     1 + (panel.anomalyReleaseDmgBonus + panel.anomalyDmgBonus) / 100
-  const anomalyReleaseMultZone = Math.max(0, panel.anomalyReleaseMult / 100)
+  const anomalyReleaseMultZone = skillMults
+    ? skillMults.anomalyReleaseMultZone
+    : Math.max(0, panel.anomalyReleaseMult / 100) *
+        readFactor(panel.anomalyReleaseMultFactor)
   const releaseCritRateRatio = panel.anomalyReleaseCritRate / 100
   const releaseCritDmgRatio = clamp(panel.anomalyReleaseCritDmg / 100, 0, 20)
   const anomalyReleaseCritZone = 1 + releaseCritRateRatio * releaseCritDmgRatio
@@ -348,20 +369,22 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   )
 
   const disorderDmgBonusZone = 1 + panel.disorderDmgBonus / 100
-  const disorderBaseMultRatio = panel.disorderBaseMult / 100
+  const disorderBaseMultRatio = skillMults
+    ? skillMults.disorderMultZone
+    : Math.max(0, panel.disorderBaseMult / 100) * readFactor(panel.disorderBaseMultFactor)
   const disorderCompMultRatio = panel.disorderCompMult / 100
   const disorderZone = Math.max(
     0,
     disorderBaseMultRatio + effectiveDuration * disorderCompMultRatio,
   )
-  // 紊乱基础仍来自主 C
-  const disorderBase = mainParts.anomalyBaseExpected
+  const disorderBase = useTriggerBase ? triggerParts.anomalyBaseExpected : mainParts.anomalyBaseExpected
   const disorderExpected = disorderBase * disorderZone * disorderDmgBonusZone
 
   const turbulenceDmgBonusZone = 1 + panel.turbulenceDmgBonus / 100
   const turbulenceCombinedDmgBonusZone =
     1 + (panel.turbulenceDmgBonus + panel.anomalyDmgBonus) / 100
-  const turbulenceBaseMultRatio = panel.turbulenceBaseMult / 100
+  const turbulenceBaseMultRatio =
+    Math.max(0, panel.turbulenceBaseMult / 100) * readFactor(panel.turbulenceBaseMultFactor)
   const turbulenceCompMultRatio = panel.turbulenceCompMult / 100
   const turbulenceZone = Math.max(
     0,
@@ -441,5 +464,6 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     turbulenceExpected: round(turbulenceExpected, 0),
     turbulenceExpectedNoCrit: round(turbulenceExpectedNoCrit, 0),
     turbulenceExpectedFullCrit: round(turbulenceExpectedFullCrit, 0),
+    hasPolarDisorder,
   }
 }

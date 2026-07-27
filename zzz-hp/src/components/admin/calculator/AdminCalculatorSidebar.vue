@@ -33,6 +33,8 @@ defineProps<{
   bangbooCanDelete?: boolean
   driveDiscSaving?: boolean
   driveDiscCanDelete?: boolean
+  damageEventSaving?: boolean
+  damageEventCanDelete?: boolean
 }>()
 
 const activePanel = defineModel<AdminCalculatorPanel>('activePanel', { default: 'agent' })
@@ -46,6 +48,7 @@ const emit = defineEmits<{
   bangbooAction: [actionId: BangbooBuffEditActionId]
   scrollDriveDiscSection: [sectionId: (typeof DRIVE_DISC_BUFF_EDIT_SECTIONS)[number]['id']]
   driveDiscAction: [actionId: DriveDiscBuffEditActionId]
+  damageEventAction: [actionId: 'save' | 'delete']
 }>()
 
 const panels: { id: AdminCalculatorPanel; label: string }[] = [
@@ -54,6 +57,7 @@ const panels: { id: AdminCalculatorPanel; label: string }[] = [
   { id: 'bangboo', label: '编辑邦布增益' },
   { id: 'drive-disc', label: '编辑驱动盘增益' },
   { id: 'skill-subcategory', label: '招式小类管理' },
+  { id: 'damage-event', label: '伤害事件模式' },
 ]
 </script>
 
@@ -220,6 +224,37 @@ const panels: { id: AdminCalculatorPanel; label: string }[] = [
                   @click="emit('driveDiscAction', item.id)"
                 >
                   {{ item.id === 'save' && driveDiscSaving ? '保存中...' : item.label }}
+                </button>
+              </div>
+            </nav>
+          </div>
+        </div>
+
+        <div
+          v-if="panel.id === 'damage-event'"
+          class="panel-subnav-wrap"
+          :class="{ expanded: activePanel === 'damage-event' }"
+        >
+          <div class="panel-subnav-inner">
+            <nav class="panel-subnav" :aria-hidden="activePanel !== 'damage-event'">
+              <div class="panel-subnav-actions">
+                <button
+                  type="button"
+                  class="panel-subnav-btn action"
+                  :disabled="damageEventSaving"
+                  :tabindex="activePanel === 'damage-event' ? 0 : -1"
+                  @click="emit('damageEventAction', 'save')"
+                >
+                  {{ damageEventSaving ? '保存中...' : '保存模式' }}
+                </button>
+                <button
+                  type="button"
+                  class="panel-subnav-btn danger"
+                  :disabled="!damageEventCanDelete"
+                  :tabindex="activePanel === 'damage-event' ? 0 : -1"
+                  @click="emit('damageEventAction', 'delete')"
+                >
+                  删除模式
                 </button>
               </div>
             </nav>

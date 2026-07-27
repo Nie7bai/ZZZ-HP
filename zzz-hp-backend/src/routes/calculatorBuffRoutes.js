@@ -3,17 +3,20 @@ import {
   getCalculatorBuffs,
   getFollowUpSkillRules,
   getSkillSubcategories,
+  getDamageEventModes,
   removeAgent,
   removeBangboo,
   removeDriveDisc,
   removeFollowUpSkillRule,
   removeSkillSubcategory,
+  removeDamageEventMode,
   removeWengine,
   saveAgent,
   saveBangboo,
   saveDriveDisc,
   saveFollowUpSkillRule,
   saveSkillSubcategory,
+  saveDamageEventMode,
   saveWengine,
 } from '../controllers/calculatorBuffController.js'
 
@@ -28,6 +31,10 @@ router.delete('/skill-subcategories/:id', removeSkillSubcategory)
 router.get('/follow-up-rules', getFollowUpSkillRules)
 router.put('/follow-up-rules', saveFollowUpSkillRule)
 router.delete('/follow-up-rules/:id', removeFollowUpSkillRule)
+
+router.get('/damage-event-modes', getDamageEventModes)
+router.put('/damage-event-modes', saveDamageEventMode)
+router.delete('/damage-event-modes/:id', removeDamageEventMode)
 
 router.put('/agents', saveAgent)
 router.delete('/agents/:id', removeAgent)

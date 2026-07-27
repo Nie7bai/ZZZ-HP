@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
+import AgentFuzzySelect from '@/components/admin/calculator/AgentFuzzySelect.vue'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import type { FollowUpSkillRule, SkillCategoryId, SkillSubcategory } from '@/types/calculator'
 import { SKILL_CATEGORY_OPTIONS } from '@/types/calculator'
@@ -12,6 +13,7 @@ const message = ref('')
 const error = ref('')
 const saving = ref(false)
 const selectedId = ref('')
+const filterAgentId = ref('')
 
 const form = ref({
   id: '',
@@ -19,6 +21,12 @@ const form = ref({
   categoryId: 'basic' as SkillCategoryId,
   name: '',
   countsAsFollowUp: false,
+  directDmgMult: 100,
+  anomalyReleaseMult: 0,
+  disorderMult: 0,
+  directDmgMultFactor: 1,
+  anomalyReleaseMultFactor: 1,
+  disorderMultFactor: 1,
 })
 
 const ruleForm = ref({
@@ -30,12 +38,18 @@ const ruleError = ref('')
 const ruleSaving = ref(false)
 
 const sortedList = computed(() =>
-  [...skillSubcategories.value].sort(
-    (a, b) =>
-      a.agentId.localeCompare(b.agentId) ||
-      a.categoryId.localeCompare(b.categoryId) ||
-      a.name.localeCompare(b.name),
-  ),
+  [...skillSubcategories.value]
+    .filter((item) => {
+      if (!filterAgentId.value) return true
+      if (filterAgentId.value === '__common__') return !item.agentId
+      return item.agentId === filterAgentId.value
+    })
+    .sort(
+      (a, b) =>
+        a.agentId.localeCompare(b.agentId) ||
+        a.categoryId.localeCompare(b.categoryId) ||
+        a.name.localeCompare(b.name),
+    ),
 )
 
 const sortedRules = computed(() =>
@@ -59,10 +73,16 @@ function categoryLabel(id: string) {
 function resetForm() {
   form.value = {
     id: '',
-    agentId: '',
+    agentId: filterAgentId.value === '__common__' ? '' : filterAgentId.value,
     categoryId: 'basic',
     name: '',
     countsAsFollowUp: false,
+    directDmgMult: 100,
+    anomalyReleaseMult: 0,
+    disorderMult: 0,
+    directDmgMultFactor: 1,
+    anomalyReleaseMultFactor: 1,
+    disorderMultFactor: 1,
   }
   selectedId.value = ''
   message.value = ''
@@ -77,6 +97,12 @@ function selectItem(item: SkillSubcategory) {
     categoryId: item.categoryId,
     name: item.name,
     countsAsFollowUp: Boolean(item.countsAsFollowUp),
+    directDmgMult: item.directDmgMult,
+    anomalyReleaseMult: item.anomalyReleaseMult,
+    disorderMult: item.disorderMult,
+    directDmgMultFactor: item.directDmgMultFactor,
+    anomalyReleaseMultFactor: item.anomalyReleaseMultFactor,
+    disorderMultFactor: item.disorderMultFactor,
   }
 }
 
@@ -96,6 +122,12 @@ async function saveItem() {
       categoryId: form.value.categoryId,
       name,
       countsAsFollowUp: form.value.countsAsFollowUp,
+      directDmgMult: form.value.directDmgMult,
+      anomalyReleaseMult: form.value.anomalyReleaseMult,
+      disorderMult: form.value.disorderMult,
+      directDmgMultFactor: form.value.directDmgMultFactor,
+      anomalyReleaseMultFactor: form.value.anomalyReleaseMultFactor,
+      disorderMultFactor: form.value.disorderMultFactor,
     })
     selectedId.value = saved.id
     form.value.id = saved.id
@@ -171,6 +203,13 @@ defineExpose({ selectedId, saving, saveItem, removeItem })
       </p>
     </header>
 
+    <div class="filter-row">
+      <label class="field">
+        <span class="field-label">筛选角色</span>
+        <AgentFuzzySelect v-model="filterAgentId" :agents="agents" empty-label="全部角色" />
+      </label>
+    </div>
+
     <div class="editor-layout">
       <aside class="item-list">
         <button type="button" class="secondary-btn" @click="resetForm">+ 新建小类</button>
@@ -202,12 +241,12 @@ defineExpose({ selectedId, saving, saveItem, removeItem })
           <div class="field-row">
             <label class="field">
               <span class="field-label">角色</span>
-              <select v-model="form.agentId" class="field-input" :disabled="Boolean(selectedId)">
-                <option value="">全部角色</option>
-                <option v-for="agent in agents" :key="agent.id" :value="agent.id">
-                  {{ agent.name }}
-                </option>
-              </select>
+              <AgentFuzzySelect
+                v-model="form.agentId"
+                :agents="agents"
+                empty-label="全部角色"
+                :disabled="Boolean(selectedId)"
+              />
             </label>
             <label class="field">
               <span class="field-label">招式大类 *</span>
@@ -232,6 +271,41 @@ defineExpose({ selectedId, saving, saveItem, removeItem })
             <input v-model="form.countsAsFollowUp" type="checkbox" />
             <span>视为追加攻击</span>
           </label>
+
+          <div class="field-row mult-row">
+            <label class="field">
+              <span class="field-label">直伤倍率%</span>
+              <input v-model.number="form.directDmgMult" class="field-input" type="number" step="any" />
+            </label>
+            <label class="field">
+              <span class="field-label">异放倍率%</span>
+              <input v-model.number="form.anomalyReleaseMult" class="field-input" type="number" step="any" />
+            </label>
+            <label class="field">
+              <span class="field-label">紊乱倍率%</span>
+              <input v-model.number="form.disorderMult" class="field-input" type="number" step="any" />
+            </label>
+          </div>
+          <div class="field-row mult-row">
+            <label class="field">
+              <span class="field-label">直伤倍率修正</span>
+              <input v-model.number="form.directDmgMultFactor" class="field-input" type="number" step="any" min="0" />
+            </label>
+            <label class="field">
+              <span class="field-label">异放倍率修正</span>
+              <input
+                v-model.number="form.anomalyReleaseMultFactor"
+                class="field-input"
+                type="number"
+                step="any"
+                min="0"
+              />
+            </label>
+            <label class="field">
+              <span class="field-label">紊乱倍率修正</span>
+              <input v-model.number="form.disorderMultFactor" class="field-input" type="number" step="any" min="0" />
+            </label>
+          </div>
         </section>
 
         <p v-if="error" class="form-error">{{ error }}</p>
@@ -254,12 +328,7 @@ defineExpose({ selectedId, saving, saveItem, removeItem })
           <div class="field-row">
             <label class="field">
               <span class="field-label">角色</span>
-              <select v-model="ruleForm.agentId" class="field-input">
-                <option value="">全部角色</option>
-                <option v-for="agent in agents" :key="agent.id" :value="agent.id">
-                  {{ agent.name }}
-                </option>
-              </select>
+              <AgentFuzzySelect v-model="ruleForm.agentId" :agents="agents" empty-label="全部角色" />
             </label>
             <label class="field">
               <span class="field-label">招式大类</span>
@@ -302,6 +371,10 @@ defineExpose({ selectedId, saving, saveItem, removeItem })
 
 <style scoped src="./adminCalculatorPanel.css"></style>
 <style scoped>
+.filter-row {
+  margin-bottom: 0.85rem;
+  max-width: 280px;
+}
 .tag-follow {
   margin-left: 0.35rem;
   padding: 0.05rem 0.3rem;
@@ -316,6 +389,9 @@ defineExpose({ selectedId, saving, saveItem, removeItem })
   gap: 0.45rem;
   margin-top: 0.5rem;
   font-weight: 600;
+}
+.mult-row {
+  margin-top: 0.65rem;
 }
 .follow-up-section {
   margin-top: 1.25rem;

@@ -51,7 +51,7 @@ export const SUPPORT_STAT_OPTIONS = [
 export const BUFF_STAT_FIELDS: {
   key: BuffStatKey
   label: string
-  unit: 'percent' | 'flat'
+  unit: 'percent' | 'flat' | 'factor'
   hint: string
 }[] = [
   {
@@ -151,16 +151,34 @@ export const BUFF_STAT_FIELDS: {
     hint: '百分点，累加到局内直伤倍率%（伤害 × 值/100）',
   },
   {
+    key: 'directDmgMultFactor',
+    label: '直伤倍率修正',
+    unit: 'factor',
+    hint: '乘算修正，默认 1；综合直伤倍率区 = 加算倍率区 × 修正',
+  },
+  {
     key: 'anomalyMult',
     label: '异常倍率提升',
     unit: 'percent',
     hint: '百分点，累加到局内异常倍率%（伤害 × 值/100）',
   },
   {
+    key: 'anomalyMultFactor',
+    label: '异常倍率修正',
+    unit: 'factor',
+    hint: '乘算修正，默认 1',
+  },
+  {
     key: 'disorderBaseMult',
     label: '紊乱倍率提升',
     unit: 'percent',
     hint: '百分点，加算到紊乱基础倍率（参与最终紊乱倍率）',
+  },
+  {
+    key: 'disorderBaseMultFactor',
+    label: '紊乱倍率修正',
+    unit: 'factor',
+    hint: '乘算修正，默认 1',
   },
   {
     key: 'anomalyDuration',
@@ -179,6 +197,12 @@ export const BUFF_STAT_FIELDS: {
     label: '乱流倍率提升',
     unit: 'percent',
     hint: '百分点，加算到乱流基础倍率（参与最终乱流倍率）',
+  },
+  {
+    key: 'turbulenceBaseMultFactor',
+    label: '乱流倍率修正',
+    unit: 'factor',
+    hint: '乘算修正，默认 1',
   },
   {
     key: 'turbulenceCompMult',
@@ -228,6 +252,12 @@ export const BUFF_STAT_FIELDS: {
     label: '异放倍率提升',
     unit: 'percent',
     hint: '百分点，异放倍率加算',
+  },
+  {
+    key: 'anomalyReleaseMultFactor',
+    label: '异放倍率修正',
+    unit: 'factor',
+    hint: '乘算修正，默认 1',
   },
   {
     key: 'skillDmgBonus',
@@ -415,6 +445,11 @@ export function createEmptyBuffStatModifiers(): BuffStatModifiers {
     turbulenceDmgBonus: 0,
     skillDmgBonus: 0,
     skillMultiplierBonus: 0,
+    directDmgMultFactor: 1,
+    anomalyMultFactor: 1,
+    anomalyReleaseMultFactor: 1,
+    disorderBaseMultFactor: 1,
+    turbulenceBaseMultFactor: 1,
   }
 }
 
@@ -471,6 +506,14 @@ function readNumber(value: unknown) {
   return Number.isFinite(num) ? num : 0
 }
 
+const BUFF_MULT_FACTOR_KEYS: BuffStatKey[] = [
+  'directDmgMultFactor',
+  'anomalyMultFactor',
+  'anomalyReleaseMultFactor',
+  'disorderBaseMultFactor',
+  'turbulenceBaseMultFactor',
+]
+
 export function normalizeBuffStatModifiers(value: unknown): BuffStatModifiers {
   const empty = createEmptyBuffStatModifiers()
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -479,7 +522,12 @@ export function normalizeBuffStatModifiers(value: unknown): BuffStatModifiers {
   const entry = value as Record<string, unknown>
   const result = { ...empty }
   for (const field of BUFF_STAT_FIELDS) {
-    result[field.key] = readNumber(entry[field.key])
+    const raw = readNumber(entry[field.key])
+    if (BUFF_MULT_FACTOR_KEYS.includes(field.key)) {
+      result[field.key] = raw > 0 ? raw : 1
+    } else {
+      result[field.key] = raw
+    }
   }
   if (readNumber(entry.externalAtkPercent) && !result.inCombatAtkPercent) {
     result.inCombatAtkPercent = readNumber(entry.externalAtkPercent)
@@ -535,8 +583,20 @@ export function mergeBuffStatModifiers(
   source: BuffStatModifiers,
 ): BuffStatModifiers {
   const result = { ...target }
+  const factorKeys: BuffStatKey[] = [
+    'directDmgMultFactor',
+    'anomalyMultFactor',
+    'anomalyReleaseMultFactor',
+    'disorderBaseMultFactor',
+    'turbulenceBaseMultFactor',
+  ]
   for (const field of BUFF_STAT_FIELDS) {
-    result[field.key] += source[field.key]
+    if (factorKeys.includes(field.key)) {
+      const src = Number(source[field.key])
+      if (Number.isFinite(src) && src > 0) result[field.key] *= src
+    } else {
+      result[field.key] += source[field.key]
+    }
   }
   return result
 }

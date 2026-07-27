@@ -159,6 +159,7 @@ const props = defineProps<{
   skillSubcategoryId?: string | null
   buffSelection?: import('@/utils/panelBuffCalc').BuffSelectionState | null
   staggerPhase?: import('@/types/calculator').StaggerPhase
+  damageEvents?: import('@/types/calculator').DamageEvent[]
 }>()
 
 const emptyBangboo: BangbooBuffDoc = {
@@ -277,6 +278,10 @@ const evalCtx = computed(() =>
       isFollowUp: skillIsFollowUp.value,
     },
     buffSelection: props.buffSelection ?? null,
+    damageEvents: props.damageEvents,
+    resolveSubcategory: (id) => skillSubcategories.value.find((item) => item.id === id) ?? null,
+    skillSubcategories: skillSubcategories.value,
+    followUpSkillRules: followUpSkillRules.value,
   }),
 )
 
@@ -454,7 +459,8 @@ const diffAnalysis = computed(() => {
   )
 })
 
-function metricOf(result: DamageCalcResult) {
+function metricOf(result: DamageCalcResult, grandTotal?: number) {
+  if (typeof grandTotal === 'number' && Number.isFinite(grandTotal)) return grandTotal
   if (damageKind.value === 'direct') return result.directDamageExpected
   if (anomalyChartMetric.value === 'disorder') return result.disorderExpected
   if (anomalyChartMetric.value === 'turbulence') return result.turbulenceExpected
@@ -473,7 +479,7 @@ const mainStatDiff = computed(() => {
   const counts = selectedCounts.value
   const base = selectedEval.value
   if (!counts || !base) return null
-  const baseDmg = metricOf(base.result)
+  const baseDmg = metricOf(base.result, base.grandTotal)
 
   return MAIN_STAT_SLOTS.map(({ key, title, options }) => {
     const currentId = driveDiscMainStats[key]
@@ -489,7 +495,7 @@ const mainStatDiff = computed(() => {
           } as AffixDriveDiscMainStats,
         }
         const evaled = evaluateAffixCounts(ctx2, counts)
-        const dmg = metricOf(evaled.result)
+        const dmg = metricOf(evaled.result, evaled.grandTotal)
         const delta = dmg - baseDmg
         return {
           id: o.id,
@@ -911,7 +917,11 @@ watch(
 
       <template v-if="detailTab === 'process'">
         <div class="result-summary">
-          <template v-if="damageKind === 'direct'">
+          <p v-if="damageEvents?.length">
+            {{ damageKind === 'anomaly' ? '异常伤害事件总伤期望' : '伤害事件总伤期望' }}：
+            <strong>{{ formatNumber(selectedEval.grandTotal) }}</strong>
+          </p>
+          <template v-else-if="damageKind === 'direct'">
             <p>直伤期望伤害：<strong>{{ formatNumber(selectedEval.result.directDamageExpected) }}</strong></p>
           </template>
           <template v-else>

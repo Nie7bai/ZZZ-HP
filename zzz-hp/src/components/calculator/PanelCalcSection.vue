@@ -14,7 +14,9 @@ import type {
   BuffStatKey,
   BuffStatModifiers,
   CharacterAttrKey,
+  DamageEvent,
   DriveDiscBuffDoc,
+  SkillSubcategory,
   WengineBuffDoc,
 } from '@/types/calculator'
 import type { DamageCalcPanelSnapshot } from '@/types/damageCalcHistory'
@@ -48,7 +50,8 @@ import {
   mergeBuffStatModifiers,
 } from '@/utils/calculatorUi'
 import { computeFinalPanel, panelToConvertAttrValues } from '@/utils/panelBuffCalc'
-import { computeDamageResult, type EnemyResistanceType } from '@/utils/damageCalc'
+import { computeDamageResult, type DamageCalcInput, type EnemyResistanceType } from '@/utils/damageCalc'
+import { mapEventKindToCalc, summarizeDamageEvents, type DamageEventLine } from '@/utils/damageEvent'
 import { buildAtkPanelProcessItems, buildEnemyCombatProcessItems, buildStatSourceGroups, type StatSourceGroup } from '@/utils/statSourceTips'
 import {
   ENEMY_DEFENSE_PRESETS,
@@ -70,7 +73,7 @@ type PanelFieldSlot =
   | { id: string; kind: 'finalRate'; rate: 'anomaly' | 'disorder' | 'turbulence' | 'release'; label: string }
   | { id: string; kind: 'spacer' }
 
-/** 局外面板字段（按行排布，含空位） */
+/** 局外面板字段（按行排布，含空位）— 倍率相关字段移至伤害事件详情 */
 const EXTERNAL_PANEL_SLOTS: PanelFieldSlot[] = [
   { id: 'hp', kind: 'stat', key: 'hp', label: '生命值' },
   { id: 'atk', kind: 'stat', key: 'atk', label: '攻击力' },
@@ -85,20 +88,10 @@ const EXTERNAL_PANEL_SLOTS: PanelFieldSlot[] = [
   { id: 'mastery', kind: 'stat', key: 'mastery', label: '精通' },
   { id: 'anomalyControl', kind: 'stat', key: 'anomalyControl', label: '异常掌控' },
   { id: 'energyRegen', kind: 'stat', key: 'energyRegen', label: '能量回复效率%' },
-  { id: 'directDmgMult', kind: 'stat', key: 'directDmgMult', label: '直伤倍率%' },
-  { id: 'spacer-direct-1', kind: 'spacer' },
-  { id: 'spacer-direct-2', kind: 'spacer' },
-  { id: 'anomalyMult', kind: 'stat', key: 'anomalyMult', label: '异常倍率%' },
   { id: 'anomalyDuration', kind: 'stat', key: 'anomalyDuration', label: '异常持续时间(s)' },
-  { id: 'spacer-3', kind: 'spacer' },
-  { id: 'spacer-4', kind: 'spacer' },
-  { id: 'disorderBaseMult', kind: 'stat', key: 'disorderBaseMult', label: '紊乱基础倍率%' },
-  { id: 'disorderCompMult', kind: 'stat', key: 'disorderCompMult', label: '紊乱补偿倍率%' },
-  { id: 'turbulenceBaseMult', kind: 'stat', key: 'turbulenceBaseMult', label: '乱流基本倍率%' },
-  { id: 'turbulenceCompMult', kind: 'stat', key: 'turbulenceCompMult', label: '乱流补偿倍率%' },
 ]
 
-/** 局内最终面板字段 */
+/** 局内最终面板字段 — 倍率/factor/finalRate 移至伤害事件详情 */
 const FINAL_PANEL_SLOTS: PanelFieldSlot[] = [
   { id: 'hp', kind: 'stat', key: 'hp', label: '生命值' },
   { id: 'atk', kind: 'stat', key: 'atk', label: '攻击力' },
@@ -115,21 +108,12 @@ const FINAL_PANEL_SLOTS: PanelFieldSlot[] = [
   { id: 'energyRegen', kind: 'stat', key: 'energyRegen', label: '能量回复效率%' },
   { id: 'anomalyCritRate', kind: 'stat', key: 'anomalyCritRate', label: '异常暴击%' },
   { id: 'anomalyCritDmg', kind: 'stat', key: 'anomalyCritDmg', label: '异常爆伤%' },
-  { id: 'anomalyMultLift', kind: 'mod', key: 'anomalyMult', label: '异常倍率提升%' },
   { id: 'anomalyDmgBonus', kind: 'stat', key: 'anomalyDmgBonus', label: '异常增伤%' },
   { id: 'anomalyReleaseCritRate', kind: 'stat', key: 'anomalyReleaseCritRate', label: '异放暴击%' },
   { id: 'anomalyReleaseCritDmg', kind: 'stat', key: 'anomalyReleaseCritDmg', label: '异放爆伤%' },
-  { id: 'anomalyReleaseMult', kind: 'stat', key: 'anomalyReleaseMult', label: '异放倍率提升%' },
   { id: 'anomalyReleaseDmgBonus', kind: 'stat', key: 'anomalyReleaseDmgBonus', label: '异放增伤%' },
-  { id: 'disorderMultLift', kind: 'mod', key: 'disorderBaseMult', label: '紊乱倍率提升%' },
   { id: 'disorderDmgBonus', kind: 'stat', key: 'disorderDmgBonus', label: '紊乱增伤%' },
-  { id: 'turbulenceMultLift', kind: 'mod', key: 'turbulenceBaseMult', label: '乱流倍率提升%' },
   { id: 'turbulenceDmgBonus', kind: 'stat', key: 'turbulenceDmgBonus', label: '乱流增伤%' },
-  { id: 'finalAnomaly', kind: 'finalRate', rate: 'anomaly', label: '异常倍率%' },
-  { id: 'finalDisorder', kind: 'finalRate', rate: 'disorder', label: '紊乱倍率%' },
-  { id: 'finalTurbulence', kind: 'finalRate', rate: 'turbulence', label: '乱流倍率%' },
-  { id: 'finalRelease', kind: 'finalRate', rate: 'release', label: '异放倍率%' },
-  { id: 'directDmgMult', kind: 'stat', key: 'directDmgMult', label: '直伤倍率%' },
   { id: 'pierceDmgBonus', kind: 'mod', key: 'pierceDmgBonus', label: '贯穿增伤%' },
   { id: 'special', kind: 'mod', key: 'special', label: '特殊补充%' },
 ]
@@ -163,6 +147,7 @@ const props = defineProps<{
   skillSubcategoryId?: string | null
   buffSelection?: import('@/utils/panelBuffCalc').BuffSelectionState | null
   staggerPhase?: import('@/types/calculator').StaggerPhase
+  damageEvents?: DamageEvent[]
 }>()
 
 const emit = defineEmits<{
@@ -171,6 +156,7 @@ const emit = defineEmits<{
 
 const baseDamageSource = ref<BaseDamageSource>('atk')
 const showDetailedResults = ref(false)
+const selectedDamageEventId = ref<string | null>(null)
 const externalPanel = reactive<PanelStats>(createDefaultExternalPanel())
 const affixCounts = reactive(createEmptyAffixCounts())
 const affixDriveDiscMainStats = reactive(createDefaultAffixDriveDiscMainStats())
@@ -221,6 +207,17 @@ const skillIsFollowUp = computed(() =>
     followUpSkillRules: followUpSkillRules.value,
   }),
 )
+
+const resolvedSkillSubcategory = computed<SkillSubcategory | null>(() => {
+  const id = props.skillSubcategoryId
+  if (!id) return null
+  return skillSubcategories.value.find((item) => item.id === id) ?? null
+})
+
+function resolveSubcategoryById(id: string | null): SkillSubcategory | null {
+  if (!id) return null
+  return skillSubcategories.value.find((item) => item.id === id) ?? null
+}
 
 const mainWengine = computed(() => {
   const id = mainSlot.value.wengineId
@@ -323,7 +320,7 @@ const needsTriggerPanel = computed(() => {
   const sub = props.anomalySubKind
   return (
     props.damageKind === 'anomaly' &&
-    (sub === 'turbulence' || sub === 'anomalyRelease')
+    (sub === 'turbulence' || sub === 'anomalyRelease' || sub === 'disorder')
   )
 })
 
@@ -422,7 +419,7 @@ const anomalyCalcBlockedReason = computed(() => {
     return '异放伤害仅拥有异放倍率的代理人可计算（当前异放倍率为 0，请通过增益或面板补充）'
   }
   if (
-    (sub === 'turbulence' || sub === 'anomalyRelease') &&
+    (sub === 'turbulence' || sub === 'anomalyRelease' || sub === 'disorder') &&
     !props.triggerAnomalyAgentId
   ) {
     return '请先选择触发时的异常属性（异常职业角色）'
@@ -605,8 +602,144 @@ const calcParts = computed(() =>
     triggerAgentElement: triggerAgent.value?.element,
     triggerPiercePower: triggerPiercePower.value,
     triggerIsMb: triggerAgent.value?.profession === MB_PROFESSION,
+    skillSubcategory: resolvedSkillSubcategory.value,
   }),
 )
+
+const disorderDamageLabel = computed(() =>
+  calcParts.value.hasPolarDisorder ? '极性紊乱' : '紊乱伤害',
+)
+
+function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
+  const { damageKind: evtDamageKind, anomalySubKind: evtAnomalySubKind } = mapEventKindToCalc(event.kind)
+  const eventNeedsTrigger =
+    event.kind === 'disorder' ||
+    event.kind === 'turbulence' ||
+    event.kind === 'anomalyRelease'
+
+  const evtTriggerAgentId = event.triggerAgentId ?? props.triggerAnomalyAgentId
+  if (eventNeedsTrigger && !evtTriggerAgentId) return null
+
+  const evtIsFollowUp = resolveIsFollowUp({
+    agentId: mainAgent.value?.id,
+    categoryId: event.categoryId,
+    subcategoryId: event.skillSubcategoryId,
+    skillSubcategories: skillSubcategories.value,
+    followUpSkillRules: followUpSkillRules.value,
+  })
+
+  const evtSkillCtx = {
+    damageKind: evtDamageKind,
+    categoryId: event.categoryId,
+    subcategoryId: event.skillSubcategoryId ?? null,
+    element: mainAgent.value?.element,
+    staggerPhase: event.staggerPhase,
+    isFollowUp: evtIsFollowUp,
+  }
+
+  const evtBreakdown = computeFinalPanel(effectiveExternalPanel.value, {
+    teamSlots: props.teamSlots,
+    agents: props.agents,
+    wengines: props.wengines,
+    bangboo: selectedBangboo.value,
+    bangbooRefine: props.bangbooRefine,
+    mainSlotIndex: mainSlotIndex.value,
+    driveDiscs: props.driveDiscs,
+    extraMods: extraMods.value,
+    skillContext: evtSkillCtx,
+    buffSelection: props.buffSelection ?? null,
+    attrValues: convertAttrDefaults.value,
+  })
+
+  const evtFinalPanel = evtBreakdown.finalPanel
+  const evtPierce = computePiercePower(evtFinalPanel.hp, evtFinalPanel.atk, evtBreakdown.totalMods.pierce)
+
+  let evtTriggerFinalPanel: PanelStats | undefined
+  let evtTriggerElement: string | undefined
+  let evtTriggerPierce: number | undefined
+  let evtTriggerIsMb: boolean | undefined
+  if (eventNeedsTrigger && evtTriggerAgentId) {
+    const tAgent = props.agents.find((a) => a.id === evtTriggerAgentId)
+    evtTriggerElement = tAgent?.element
+    evtTriggerIsMb = tAgent?.profession === MB_PROFESSION
+    if (evtTriggerAgentId === mainAgent.value?.id) {
+      evtTriggerFinalPanel = evtFinalPanel
+      evtTriggerPierce = evtPierce
+    } else if (triggerFinalPanel.value) {
+      evtTriggerFinalPanel = triggerFinalPanel.value
+      evtTriggerPierce = triggerPiercePower.value
+    }
+  }
+
+  const sub = resolveSubcategoryById(event.skillSubcategoryId)
+  const overrides = event.multOverrides
+  const effectiveSub = sub && overrides
+    ? {
+        ...sub,
+        directDmgMult: overrides.directDmgMult ?? sub.directDmgMult,
+        anomalyReleaseMult: overrides.anomalyReleaseMult ?? sub.anomalyReleaseMult,
+        disorderMult: overrides.disorderBaseMult ?? sub.disorderMult,
+      }
+    : sub
+
+  return {
+    finalPanel: evtFinalPanel,
+    piercePower: evtPierce,
+    baseDamageSource: effectiveBaseDamageSource.value,
+    isMbMainAgent: isMbMainAgent.value,
+    enemyInput,
+    combatVulnerable: evtBreakdown.combatMods.vulnerable,
+    combatGlobalStaggerVulnerable: evtBreakdown.combatMods.globalStaggerVulnerable,
+    combatStaggerVulnerable: evtBreakdown.combatMods.staggerVulnerable,
+    combatStaggerVulnerableOnly: evtBreakdown.combatMods.staggerVulnerableOnly ?? 0,
+    combatSpecial: evtBreakdown.combatMods.special,
+    combatPierceDmgBonus: evtBreakdown.combatMods.pierceDmgBonus,
+    staggerPhase: event.staggerPhase,
+    mainAgentElement: mainAgent.value?.element ?? '',
+    mainAgentId: mainAgent.value?.id ?? '',
+    mainAgentName: mainAgent.value?.name ?? '',
+    anomalySubKind: evtAnomalySubKind,
+    triggerFinalPanel: evtTriggerFinalPanel,
+    triggerAgentElement: evtTriggerElement,
+    triggerPiercePower: evtTriggerPierce,
+    triggerIsMb: evtTriggerIsMb,
+    skillSubcategory: effectiveSub,
+  }
+}
+
+const damageEventSummary = computed(() => {
+  if (!props.damageEvents?.length) return null
+  return summarizeDamageEvents(props.damageEvents, buildEventCalcFull, resolveSubcategoryById)
+})
+
+const hasDamageEventResults = computed(
+  () => (damageEventSummary.value?.lines.length ?? 0) > 0,
+)
+
+const damageEventTotalLabel = computed(() =>
+  props.damageKind === 'anomaly' ? '异常伤害事件总伤期望' : '伤害事件总伤期望',
+)
+
+const selectedDamageEventLine = computed(
+  () =>
+    damageEventSummary.value?.lines.find((line) => line.event.id === selectedDamageEventId.value) ??
+    null,
+)
+
+function toggleDamageEventSelection(eventId: string) {
+  selectedDamageEventId.value = selectedDamageEventId.value === eventId ? null : eventId
+}
+
+watch(
+  () => props.damageEvents,
+  () => {
+    selectedDamageEventId.value = null
+  },
+)
+
+watch(showDetailedResults, (enabled) => {
+  if (!enabled) selectedDamageEventId.value = null
+})
 
 const generalFormulaParts = computed(() => {
   const p = calcParts.value
@@ -755,8 +888,10 @@ const alignedGeneralFormula = computed((): AlignedFormulaGroup => {
   }
 })
 
-const alignedDirectFormula = computed((): AlignedFormulaGroup => {
-  const p = calcParts.value
+function buildAlignedDirectFormula(
+  p: ReturnType<typeof computeDamageResult>,
+  resultValue?: string,
+): AlignedFormulaGroup {
   const terms: AlignedFormulaTerm[] = [
     { label: '通用乘区', value: formatFormulaNumber(p.generalMultiplier, 2), tipsKey: 'generalMultiplier' },
     { label: '暴击区', value: formatFormulaNumber(p.critMultiplier), tipsKey: 'critMultiplier' },
@@ -778,8 +913,27 @@ const alignedDirectFormula = computed((): AlignedFormulaGroup => {
     key: 'directDamageExpected',
     title: '公式',
     terms,
-    result: formatNumber(p.directDamageExpected),
+    result: resultValue ?? formatNumber(p.directDamageExpected),
   }
+}
+
+const alignedDirectFormula = computed((): AlignedFormulaGroup => buildAlignedDirectFormula(calcParts.value))
+
+const selectedEventDirectFormula = computed(() => {
+  const line = selectedDamageEventLine.value
+  if (!line || line.event.kind !== 'direct') return null
+  return buildAlignedDirectFormula(line.result, formatNumber(line.perHit))
+})
+
+const selectedEventAnomalyTitle = computed(() => {
+  const line = selectedDamageEventLine.value
+  if (!line || line.event.kind === 'direct') return ''
+  if (line.event.kind === 'disorder') {
+    return `${line.displayName} · ${line.result.hasPolarDisorder ? '极性紊乱' : '紊乱'}期望伤害`
+  }
+  if (line.event.kind === 'turbulence') return `${line.displayName} · 乱流期望伤害`
+  if (line.event.kind === 'anomalyRelease') return `${line.displayName} · 异放期望伤害`
+  return `${line.displayName} · 异常期望伤害`
 })
 
 const alignedAnomalyFormulas = computed((): AlignedFormulaGroup[] => {
@@ -818,7 +972,7 @@ const alignedAnomalyFormulas = computed((): AlignedFormulaGroup[] => {
   }
   const disorder: AlignedFormulaGroup = {
     key: 'disorderExpected',
-    title: '紊乱期望',
+    title: `${disorderDamageLabel.value}期望`,
     terms: [
       { label: '异常基础期望', value: formatNumber(p.anomalyBaseExpected), tipsKey: 'anomalyBaseExpected' },
       { label: '紊乱倍率区', value: formatFormulaNumber(p.disorderZone), tipsKey: 'disorderZone' },
@@ -1760,7 +1914,7 @@ defineExpose({
         >
           <header class="panel-block-header">
             <h3>异常队友局外面板</h3>
-            <p>乱流/异放的异常基础乘区使用触发角色最终面板；请为非主 C 异常职业录入面板。</p>
+            <p>紊乱/乱流/异放的异常基础乘区使用触发角色最终面板；请为非主 C 异常职业录入面板。</p>
           </header>
           <details
             v-for="item in anomalySupportSlots"
@@ -1884,7 +2038,11 @@ defineExpose({
 
     <template v-if="!showDetailedResults && !anomalyCalcBlockedReason">
       <div class="result-grid result-grid-summary">
-        <p v-if="damageKind !== 'anomaly'" class="result-total">
+        <p v-if="hasDamageEventResults" class="result-total">
+          {{ damageEventTotalLabel }}：
+          <span>{{ formatNumber(damageEventSummary!.grandTotal) }}</span>
+        </p>
+        <p v-else-if="damageKind !== 'anomaly'" class="result-total">
           直伤期望伤害：
           <StatValueWithSources
             :value="formatNumber(calcParts.directDamageExpected)"
@@ -1909,7 +2067,7 @@ defineExpose({
             </p>
           </template>
           <p v-else-if="effectiveAnomalySubKind === 'disorder'" class="result-total">
-            紊乱期望伤害：
+            {{ disorderDamageLabel }}期望伤害：
             <StatValueWithSources
               :value="formatNumber(calcParts.disorderExpected)"
               :groups="valueTips.disorderExpected"
@@ -1952,6 +2110,34 @@ defineExpose({
     </template>
 
     <template v-else>
+    <section v-if="hasDamageEventResults" class="event-summary-block">
+      <h3 class="result-section-title event-summary-title">{{ damageEventTotalLabel }}</h3>
+      <ul class="event-summary-list">
+        <li
+          v-for="line in damageEventSummary!.lines"
+          :key="line.event.id"
+          class="event-summary-item"
+          :class="{ 'event-summary-item--active': selectedDamageEventId === line.event.id }"
+          role="button"
+          tabindex="0"
+          @click="toggleDamageEventSelection(line.event.id)"
+          @keydown.enter.prevent="toggleDamageEventSelection(line.event.id)"
+          @keydown.space.prevent="toggleDamageEventSelection(line.event.id)"
+        >
+          <span class="event-summary-name">
+            {{ line.displayName }}
+            <span v-if="line.event.count > 1" class="event-summary-count">×{{ line.event.count }}</span>
+          </span>
+          <span class="event-summary-damage">
+            单次 {{ formatNumber(line.perHit) }} · 合计 {{ formatNumber(line.total) }}
+          </span>
+        </li>
+      </ul>
+      <p class="result-total event-summary-total">
+        {{ damageEventTotalLabel }}：{{ formatNumber(damageEventSummary!.grandTotal) }}
+      </p>
+    </section>
+
     <h3 class="result-section-title">通用乘区</h3>
     <div class="formula-block formula-block--aligned">
       <div class="formula-aligned-group">
@@ -1989,7 +2175,101 @@ defineExpose({
       <p class="result-subtotal">通用乘区：<StatValueWithSources :value="formatNumber(calcParts.generalMultiplier)" :groups="valueTips.generalMultiplier" /></p>
     </div>
 
-    <template v-if="damageKind !== 'anomaly'">
+    <section
+      v-if="selectedDamageEventLine && selectedEventDirectFormula"
+      class="event-detail-block"
+    >
+      <h3 class="result-section-title">
+        {{ selectedDamageEventLine.displayName }} · 直伤期望伤害
+      </h3>
+      <div class="formula-block formula-block--aligned">
+        <div class="formula-aligned-group">
+          <span class="formula-label formula-aligned-title">
+            {{ selectedEventDirectFormula.title }}
+          </span>
+          <div class="formula-aligned-body">
+            <template
+              v-for="(term, index) in selectedEventDirectFormula.terms"
+              :key="`event-direct-${term.label}`"
+            >
+              <span v-if="index > 0" class="formula-aligned-op" aria-hidden="true">×</span>
+              <div class="formula-aligned-term">
+                <span class="formula-aligned-term-label">{{ term.label }}</span>
+                <span class="formula-aligned-term-value">
+                  <StatValueWithSources :value="term.value" :groups="valueTips[term.tipsKey]" />
+                </span>
+              </div>
+            </template>
+            <span class="formula-aligned-op" aria-hidden="true">=</span>
+            <div class="formula-aligned-result">
+              <StatValueWithSources
+                :value="selectedEventDirectFormula.result"
+                :groups="valueTips.directDamageExpected"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="result-grid">
+        <p>暴击率（计入上限 1）：<StatValueWithSources :value="selectedDamageEventLine.result.critRateRatio" :groups="valueTips.critRateRatio" /></p>
+        <p>暴击区：<StatValueWithSources :value="selectedDamageEventLine.result.critMultiplier" :groups="valueTips.critMultiplier" /></p>
+        <p>特殊乘区（含增益）：<StatValueWithSources :value="selectedDamageEventLine.result.specialMultiplier" :groups="valueTips.specialMultiplier" /></p>
+        <p v-if="selectedDamageEventLine.result.baseDamageSource === 'pierce'">
+          贯穿增伤区：<StatValueWithSources :value="selectedDamageEventLine.result.pierceDmgMultiplier" :groups="valueTips.pierceDmgMultiplier" />
+        </p>
+        <p>直伤倍率区：<StatValueWithSources :value="selectedDamageEventLine.result.directDmgMultZone" :groups="valueTips.directDmgMultZone" /></p>
+        <p>穿透率（计入）：<StatValueWithSources :value="selectedDamageEventLine.result.penRateRatio" :groups="valueTips.penRateRatio" /></p>
+        <p>有效防御项：<StatValueWithSources :value="selectedDamageEventLine.result.effectiveDefense" :groups="valueTips.effectiveDefense" /></p>
+        <p>贯穿力（局内）：<StatValueWithSources :value="formatNumber(piercePower)" :groups="valueTips.piercePower" /></p>
+        <p class="result-total">
+          直伤期望伤害：
+          <StatValueWithSources
+            :value="formatNumber(selectedDamageEventLine.perHit)"
+            :groups="valueTips.directDamageExpected"
+          />
+        </p>
+        <p v-if="selectedDamageEventLine.event.count > 1" class="result-total">
+          合计伤害：
+          <span>{{ formatNumber(selectedDamageEventLine.total) }}</span>
+        </p>
+      </div>
+    </section>
+
+    <section
+      v-if="selectedDamageEventLine && selectedDamageEventLine.event.kind !== 'direct'"
+      class="event-detail-block"
+    >
+      <h3 class="result-section-title">{{ selectedEventAnomalyTitle }}</h3>
+      <div class="result-grid">
+        <p>异常基础期望：{{ formatNumber(selectedDamageEventLine.result.anomalyBaseExpected) }}</p>
+        <template v-if="selectedDamageEventLine.event.kind === 'anomaly'">
+          <p>异常增伤区：{{ formatFormulaNumber(selectedDamageEventLine.result.anomalyDmgBonusZone) }}</p>
+          <p>异常倍率区：{{ formatFormulaNumber(selectedDamageEventLine.result.anomalyMultZone) }}</p>
+          <p>异常期望（暴击率=0）：{{ formatNumber(selectedDamageEventLine.result.anomalyExpectedNoCrit) }}</p>
+          <p>异常期望（暴击率=1）：{{ formatNumber(selectedDamageEventLine.result.anomalyExpectedFullCrit) }}</p>
+        </template>
+        <template v-else-if="selectedDamageEventLine.event.kind === 'disorder'">
+          <p>紊乱倍率区：{{ formatFormulaNumber(selectedDamageEventLine.result.disorderZone) }}</p>
+          <p>紊乱增伤区：{{ formatFormulaNumber(selectedDamageEventLine.result.disorderDmgBonusZone) }}</p>
+        </template>
+        <template v-else-if="selectedDamageEventLine.event.kind === 'turbulence'">
+          <p>乱流倍率区：{{ formatFormulaNumber(selectedDamageEventLine.result.turbulenceZone) }}</p>
+          <p>乱流增伤区：{{ formatFormulaNumber(selectedDamageEventLine.result.turbulenceDmgBonusZone) }}</p>
+        </template>
+        <template v-else>
+          <p>异放倍率区：{{ formatFormulaNumber(selectedDamageEventLine.result.anomalyReleaseMultZone) }}</p>
+          <p>异放增伤区：{{ formatFormulaNumber(selectedDamageEventLine.result.anomalyReleaseCombinedDmgBonusZone) }}</p>
+        </template>
+        <p class="result-total">
+          单次期望：{{ formatNumber(selectedDamageEventLine.perHit) }}
+        </p>
+        <p v-if="selectedDamageEventLine.event.count > 1" class="result-total">
+          合计伤害：{{ formatNumber(selectedDamageEventLine.total) }}
+        </p>
+      </div>
+    </section>
+
+    <template v-if="damageKind !== 'anomaly' && !hasDamageEventResults">
     <h3 class="result-section-title">直伤期望伤害</h3>
     <div class="formula-block formula-block--aligned">
       <div class="formula-aligned-group">
@@ -2032,11 +2312,11 @@ defineExpose({
     </div>
     </template>
 
-    <template v-if="damageKind !== 'direct' && !anomalyCalcBlockedReason">
+    <template v-if="damageKind !== 'direct' && !anomalyCalcBlockedReason && !hasDamageEventResults">
     <h3 class="result-section-title">
       {{
         effectiveAnomalySubKind === 'disorder'
-          ? '紊乱期望伤害'
+          ? `${disorderDamageLabel}期望伤害`
           : effectiveAnomalySubKind === 'turbulence'
             ? '乱流期望伤害'
             : effectiveAnomalySubKind === 'anomalyRelease'
@@ -2099,13 +2379,13 @@ defineExpose({
       </template>
 
       <template v-else-if="effectiveAnomalySubKind === 'disorder'">
-      <h4 class="result-subsection-title">紊乱期望伤害</h4>
+      <h4 class="result-subsection-title">{{ disorderDamageLabel }}期望伤害</h4>
       <p>紊乱基础倍率：<StatValueWithSources :value="calcParts.disorderBaseMultRatio" :groups="valueTips.disorderBaseMult" /></p>
       <p>异常持续时间(有效)：<StatValueWithSources :value="calcParts.effectiveAnomalyDuration" :groups="valueTips.anomalyDuration" /></p>
       <p>紊乱补偿倍率：<StatValueWithSources :value="calcParts.disorderCompMultRatio" :groups="valueTips.disorderCompMult" /></p>
       <p>紊乱倍率区：<StatValueWithSources :value="calcParts.disorderZone" :groups="valueTips.disorderZone" /></p>
       <p>紊乱增伤区：<StatValueWithSources :value="calcParts.disorderDmgBonusZone" :groups="valueTips.disorderDmgBonusZone" /></p>
-      <p class="result-total">紊乱期望伤害：<StatValueWithSources :value="formatNumber(calcParts.disorderExpected)" :groups="valueTips.disorderExpected" /></p>
+      <p class="result-total">{{ disorderDamageLabel }}期望伤害：<StatValueWithSources :value="formatNumber(calcParts.disorderExpected)" :groups="valueTips.disorderExpected" /></p>
       </template>
 
       <template v-else-if="effectiveAnomalySubKind === 'turbulence'">
@@ -2762,6 +3042,78 @@ defineExpose({
   background: rgba(224, 120, 80, 0.12);
   color: #f0c2a8;
   font-size: 0.84rem;
+}
+
+.event-summary-block {
+  margin-bottom: 0.85rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #2d323a;
+  border-radius: 10px;
+  background: #0f1217;
+}
+
+.event-summary-title {
+  margin: 0;
+}
+
+.event-summary-list {
+  margin: 0.45rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.event-summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  color: #c5cdd8;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.event-summary-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: #3a414c;
+}
+
+.event-summary-item--active {
+  background: rgba(201, 165, 92, 0.1);
+  border-color: rgba(201, 165, 92, 0.45);
+}
+
+.event-summary-name {
+  flex: 1;
+  min-width: 0;
+  color: #e8edf3;
+}
+
+.event-summary-count {
+  margin-left: 0.25rem;
+  color: #9aa3b0;
+}
+
+.event-summary-damage {
+  flex-shrink: 0;
+  color: #aeb7c4;
+  text-align: right;
+}
+
+.event-detail-block {
+  margin-bottom: 1rem;
+}
+
+.event-summary-total {
+  margin-top: 0.55rem !important;
+  padding-top: 0.45rem;
+  border-top: 1px solid #2a2f36;
 }
 
 @media (max-width: 680px) {

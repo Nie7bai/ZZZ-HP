@@ -4,6 +4,7 @@ export type AdminCalculatorPanel =
   | 'bangboo'
   | 'drive-disc'
   | 'skill-subcategory'
+  | 'damage-event'
 
 export type SupportStatNeed =
   | 'hp'
@@ -159,6 +160,16 @@ export interface BuffStatModifiers {
   skillDmgBonus: number
   /** 招式倍率加算%（进直伤倍率区） */
   skillMultiplierBonus: number
+  /** 直伤倍率乘算修正（默认 1，多来源连乘） */
+  directDmgMultFactor: number
+  /** 异常倍率乘算修正（默认 1） */
+  anomalyMultFactor: number
+  /** 异放倍率乘算修正（默认 1） */
+  anomalyReleaseMultFactor: number
+  /** 紊乱基础倍率乘算修正（默认 1；作用于紊乱倍率区） */
+  disorderBaseMultFactor: number
+  /** 乱流基础倍率乘算修正（默认 1；作用于乱流倍率区） */
+  turbulenceBaseMultFactor: number
 }
 
 export type BuffStatKey = keyof BuffStatModifiers
@@ -238,6 +249,18 @@ export interface SkillSubcategory {
   name: string
   /** 该小类视为追加攻击 */
   countsAsFollowUp?: boolean
+  /** 直伤倍率%（默认 100 = ×1） */
+  directDmgMult: number
+  /** 异放倍率%（0 = 未设置，回落面板） */
+  anomalyReleaseMult: number
+  /** 紊乱倍率%（0 = 未设置，回落面板；有贡献时称极性紊乱） */
+  disorderMult: number
+  /** 直伤倍率乘算修正（默认 1） */
+  directDmgMultFactor: number
+  /** 异放倍率乘算修正（默认 1） */
+  anomalyReleaseMultFactor: number
+  /** 紊乱倍率乘算修正（默认 1） */
+  disorderMultFactor: number
 }
 
 /** 整大类（或指定小类）视为追加攻击的规则 */
@@ -248,6 +271,53 @@ export interface FollowUpSkillRule {
   categoryId: SkillCategoryId
   /** null = 整大类 */
   subcategoryId: string | null
+}
+
+/** 伤害事件暴击模式 */
+export type DamageEventCritMode = 'expected' | 'noCrit' | 'fullCrit'
+
+/** 单条伤害事件种类 */
+export type DamageEventKind =
+  | 'direct'
+  | 'anomaly'
+  | 'disorder'
+  | 'anomalyRelease'
+  | 'turbulence'
+
+export interface DamageEvent {
+  id: string
+  kind: DamageEventKind
+  categoryId: SkillCategoryId
+  skillSubcategoryId: string | null
+  count: number
+  staggerPhase: StaggerPhase
+  critMode: DamageEventCritMode
+  /** 异常事件需要触发角色时的 agentId（仅 disorder/turbulence/anomalyRelease） */
+  triggerAgentId?: string | null
+  /** 倍率覆写：不为 null 时覆盖招式小类/面板默认值 */
+  multOverrides?: DamageEventMultOverrides | null
+}
+
+/** 事件级倍率覆写（null / undefined = 使用默认） */
+export interface DamageEventMultOverrides {
+  directDmgMult?: number | null
+  anomalyMult?: number | null
+  anomalyReleaseMult?: number | null
+  disorderBaseMult?: number | null
+  disorderCompMult?: number | null
+  turbulenceBaseMult?: number | null
+  turbulenceCompMult?: number | null
+}
+
+export type DamageEventModeType = 'direct' | 'anomaly'
+
+/** 按角色配置的伤害事件模式（管理端预设 / 计算端可选） */
+export interface DamageEventMode {
+  id: string
+  agentId: string
+  name: string
+  modeType: DamageEventModeType
+  events: DamageEvent[]
 }
 
 export interface SkillCalcContext {

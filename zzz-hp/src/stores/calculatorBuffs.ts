@@ -4,12 +4,15 @@ import {
   deleteAgentBuff,
   deleteBangbooBuff,
   deleteDriveDiscBuff,
+  deleteDamageEventMode,
   deleteFollowUpSkillRule,
   deleteSkillSubcategory,
   deleteWengineBuff,
   fetchCalculatorBuffs,
+  fetchDamageEventModes,
   saveAgentBuff,
   saveBangbooBuff,
+  saveDamageEventMode,
   saveDriveDiscBuff,
   saveFollowUpSkillRule,
   saveSkillSubcategory,
@@ -19,6 +22,8 @@ import type {
   AgentBuffDoc,
   AgentMindscapeRankBuffs,
   BangbooBuffDoc,
+  DamageEvent,
+  DamageEventMode,
   DriveDiscBuffDoc,
   FollowUpSkillRule,
   SkillCategoryId,
@@ -26,6 +31,9 @@ import type {
   SupportStatNeed,
   WengineBuffDoc,
 } from '@/types/calculator'
+import {
+  normalizeSkillSubcategoryMultFields,
+} from '@/utils/skillSubcategoryMult'
 import {
   AGENT_MINDSCAPE_RANKS,
   createEmptyMindscapeBuffs,
@@ -277,12 +285,50 @@ function normalizeDriveDisc(item: Record<string, unknown>): DriveDiscBuffDoc {
 }
 
 function normalizeSkillSubcategory(item: Record<string, unknown>): SkillSubcategory {
+  const mults = normalizeSkillSubcategoryMultFields(item as Partial<SkillSubcategory>)
   return {
     id: String(item.id ?? ''),
     agentId: String(item.agentId ?? ''),
     categoryId: (item.categoryId as SkillSubcategory['categoryId']) || 'basic',
     name: String(item.name ?? ''),
     countsAsFollowUp: Boolean(item.countsAsFollowUp),
+    ...mults,
+  }
+}
+
+function normalizeDamageEventMode(item: Record<string, unknown>): DamageEventMode {
+  const events = Array.isArray(item.events) ? item.events : []
+  const rawModeType = String(item.modeType ?? '')
+  const modeType =
+    rawModeType === 'anomaly' ? 'anomaly' as const : 'direct' as const
+  return {
+    id: String(item.id ?? ''),
+    agentId: String(item.agentId ?? ''),
+    name: String(item.name ?? ''),
+    modeType,
+    events: events.map((raw, index) => {
+      const entry = raw as Record<string, unknown>
+      return {
+        id: String(entry.id ?? `evt-${index}`),
+        kind: (entry.kind as DamageEventMode['events'][number]['kind']) ?? 'direct',
+        categoryId: (entry.categoryId as SkillCategoryId) || 'basic',
+        skillSubcategoryId:
+          entry.skillSubcategoryId == null || entry.skillSubcategoryId === ''
+            ? null
+            : String(entry.skillSubcategoryId),
+        count: Math.max(0, Number(entry.count) || 1),
+        staggerPhase: entry.staggerPhase === 'normal' ? 'normal' : 'stagger',
+        critMode:
+          entry.critMode === 'noCrit' || entry.critMode === 'fullCrit'
+            ? entry.critMode
+            : 'expected',
+        triggerAgentId:
+          entry.triggerAgentId == null || entry.triggerAgentId === ''
+            ? null
+            : String(entry.triggerAgentId),
+        multOverrides: entry.multOverrides as DamageEvent['multOverrides'] ?? null,
+      }
+    }),
   }
 }
 
@@ -305,6 +351,7 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
   const driveDiscs = ref<DriveDiscBuffDoc[]>([])
   const skillSubcategories = ref<SkillSubcategory[]>([])
   const followUpSkillRules = ref<FollowUpSkillRule[]>([])
+  const damageEventModes = ref<DamageEventMode[]>([])
   const loading = ref(true)
   const loaded = ref(false)
   const error = ref('')
@@ -382,6 +429,14 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
         followUpSkillRules.value = (data.followUpSkillRules ?? []).map((item) =>
           normalizeFollowUpSkillRule(item as unknown as Record<string, unknown>),
         )
+        try {
+          const modes = await fetchDamageEventModes()
+          damageEventModes.value = modes.map((item) =>
+            normalizeDamageEventMode(item as unknown as Record<string, unknown>),
+          )
+        } catch {
+          damageEventModes.value = []
+        }
         loaded.value = true
         error.value = ''
       } catch (err) {
@@ -488,6 +543,23 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
     followUpSkillRules.value = followUpSkillRules.value.filter((item) => item.id !== id)
   }
 
+  async function upsertDamageEventModeDoc(doc: DamageEventMode) {
+    const saved = await saveDamageEventMode(doc)
+    const normalized = normalizeDamageEventMode(saved as unknown as Record<string, unknown>)
+    const index = damageEventModes.value.findIndex((item) => item.id === normalized.id)
+    if (index >= 0) damageEventModes.value[index] = normalized
+    else damageEventModes.value.push(normalized)
+    damageEventModes.value.sort(
+      (a, b) => a.agentId.localeCompare(b.agentId) || a.name.localeCompare(b.name),
+    )
+    return normalized
+  }
+
+  async function removeDamageEventModeDoc(id: string) {
+    await deleteDamageEventMode(id)
+    damageEventModes.value = damageEventModes.value.filter((item) => item.id !== id)
+  }
+
   return {
     agents,
     wengines,
@@ -495,6 +567,7 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
     driveDiscs,
     skillSubcategories,
     followUpSkillRules,
+    damageEventModes,
     loading,
     loaded,
     error,
@@ -512,5 +585,7 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
     removeSkillSubcategoryDoc,
     upsertFollowUpSkillRuleDoc,
     removeFollowUpSkillRuleDoc,
+    upsertDamageEventModeDoc,
+    removeDamageEventModeDoc,
   }
 })

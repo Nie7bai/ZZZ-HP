@@ -62,6 +62,11 @@ const BUFF_STAT_KEYS: BuffStatKey[] = [
   'turbulenceDmgBonus',
   'skillDmgBonus',
   'skillMultiplierBonus',
+  'directDmgMultFactor',
+  'anomalyMultFactor',
+  'anomalyReleaseMultFactor',
+  'disorderBaseMultFactor',
+  'turbulenceBaseMultFactor',
 ]
 
 const SKILL_CATEGORIES: SkillCategoryId[] = [
@@ -103,9 +108,23 @@ function readNumber(value: unknown) {
   return Number.isFinite(num) ? num : 0
 }
 
+const BUFF_MULT_FACTOR_KEYS: BuffStatKey[] = [
+  'directDmgMultFactor',
+  'anomalyMultFactor',
+  'anomalyReleaseMultFactor',
+  'disorderBaseMultFactor',
+  'turbulenceBaseMultFactor',
+]
+
+function isBuffMultFactorKey(key: string): boolean {
+  return (BUFF_MULT_FACTOR_KEYS as string[]).includes(key)
+}
+
 function emptyMods(): BuffStatModifiers {
   const mods = {} as BuffStatModifiers
-  for (const key of BUFF_STAT_KEYS) mods[key] = 0
+  for (const key of BUFF_STAT_KEYS) {
+    mods[key] = isBuffMultFactorKey(key) ? 1 : 0
+  }
   return mods
 }
 
@@ -202,7 +221,11 @@ export function flatModsToEffects(
   const effects: BuffEffect[] = []
   for (const key of BUFF_STAT_KEYS) {
     const value = mods[key]
-    if (!value) continue
+    if (isBuffMultFactorKey(key)) {
+      if (!Number.isFinite(value) || Math.abs(value - 1) < 1e-9) continue
+    } else if (!value) {
+      continue
+    }
     effects.push(
       createEmptyBuffEffect({
         id: idPrefix ? `${idPrefix}-${applyTarget}-${key}` : undefined,
@@ -253,7 +276,11 @@ export function effectsToFlatMods(
     if (effect.scope !== 'general') continue
     const amount = resolveEffectBaseValue(effect, effect.defaultStacks ?? 1)
     if (!amount) continue
-    total = addStat(total, effect.stat, amount)
+    if (isBuffMultFactorKey(effect.stat)) {
+      total[effect.stat] *= amount
+    } else {
+      total = addStat(total, effect.stat, amount)
+    }
   }
   return total
 }
