@@ -10,6 +10,7 @@ import {
   buildStatSourceGroups,
   type StatSourceGroup,
 } from '@/utils/statSourceTips'
+import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 
 const props = defineProps<{
   calcParts: DamageCalcResult
@@ -43,12 +44,15 @@ function formatNumber(v: number) {
 }
 
 function formatFormulaNumber(v: number, precision = 4) {
+  // 乘区/百分比统一明确展示到至少 4 位小数；大数与整数仍按原规则
   if (!Number.isFinite(v)) return String(v)
-  if (Number.isInteger(v) || Math.abs(v) >= 1000) {
-    return round(v, Math.abs(v) >= 1000 ? 2 : 0).toLocaleString('en-US')
+  if (Number.isInteger(v) && Math.abs(v) < 1000) {
+    return v.toLocaleString('en-US')
   }
-  const text = round(v, precision).toString()
-  return text.replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1')
+  if (Math.abs(v) >= 1000) {
+    return formatCalcDecimal(v, Math.min(precision, 2))
+  }
+  return formatCalcDecimal(v, Math.max(precision, 4))
 }
 
 function formatSigned(value: number) {
@@ -71,7 +75,7 @@ const generalFormulaParts = computed(() => {
 const directFormulaParts = computed(() => {
   const p = props.calcParts
   return [
-    formatFormulaNumber(p.generalMultiplier, 2),
+    formatFormulaNumber(p.generalMultiplier),
     formatFormulaNumber(p.critMultiplier),
     formatFormulaNumber(p.specialMultiplier),
     formatFormulaNumber(p.directDmgMultZone),
@@ -81,7 +85,7 @@ const directFormulaParts = computed(() => {
 const anomalyFormulaParts = computed(() => {
   const p = props.calcParts
   return [
-    formatFormulaNumber(p.generalMultiplier, 2),
+    formatFormulaNumber(p.generalMultiplier),
     formatFormulaNumber(p.masteryZone),
     formatFormulaNumber(p.levelZone),
   ]

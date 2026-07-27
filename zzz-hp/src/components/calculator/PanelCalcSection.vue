@@ -53,6 +53,7 @@ import {
 import { computeFinalPanel, panelToConvertAttrValues } from '@/utils/panelBuffCalc'
 import { computeDamageResult, type DamageCalcInput, type EnemyResistanceType } from '@/utils/damageCalc'
 import { mapEventKindToCalc, summarizeDamageEvents, type DamageEventLine } from '@/utils/damageEvent'
+import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 import { buildAtkPanelProcessItems, buildEnemyCombatProcessItems, buildStatSourceGroups, type StatSourceGroup } from '@/utils/statSourceTips'
 import {
   ENEMY_DEFENSE_PRESETS,
@@ -466,12 +467,15 @@ function formatNumber(v: number) {
 }
 
 function formatFormulaNumber(v: number, precision = 4) {
+  // 乘区/百分比统一明确展示到至少 4 位小数；大数与整数仍按原规则
   if (!Number.isFinite(v)) return String(v)
-  if (Number.isInteger(v) || Math.abs(v) >= 1000) {
-    return round(v, Math.abs(v) >= 1000 ? 2 : 0).toLocaleString('en-US')
+  if (Number.isInteger(v) && Math.abs(v) < 1000) {
+    return v.toLocaleString('en-US')
   }
-  const text = round(v, precision).toString()
-  return text.replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1')
+  if (Math.abs(v) >= 1000) {
+    return formatCalcDecimal(v, Math.min(precision, 2))
+  }
+  return formatCalcDecimal(v, Math.max(precision, 4))
 }
 
 function formatPanelValue(key: keyof PanelStats | 'pierce' | 'special' | string, value: number) {
@@ -487,7 +491,7 @@ function formatPanelValue(key: keyof PanelStats | 'pierce' | 'special' | string,
   ) {
     return formatNumber(value)
   }
-  return round(value, 2)
+  return formatCalcDecimal(value, 4)
 }
 
 function formatPanelSlot(slot: PanelFieldSlot, scope: 'external' | 'final') {

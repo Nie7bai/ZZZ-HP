@@ -18,6 +18,7 @@ import type {
   SkillSubcategory,
 } from '@/types/calculator'
 import { CHARACTER_ATTR_OPTIONS } from '@/types/calculator'
+import { formatCalcDecimal, roundCalc } from '@/utils/calcNumberFormat'
 
 const BUFF_STAT_KEYS: BuffStatKey[] = [
   'hp',
@@ -340,7 +341,8 @@ export function resolveConvertValue(
   if (effect.convert.cap != null && Number.isFinite(effect.convert.cap)) {
     amount = Math.min(amount, effect.convert.cap)
   }
-  return amount
+  // 转模结果统一到 4 位小数，与界面展示一致
+  return roundCalc(amount)
 }
 
 export function effectMatchesContext(
@@ -856,7 +858,7 @@ function convertSourceAttrLabel(convert: BuffEffectConvert): string {
 /** 转模说明：如「自行·等级转模120%」「局外·生命转模30%」 */
 export function convertSummaryLabel(convert: BuffEffectConvert | null | undefined): string {
   if (!convert) return '转模'
-  return `${convertSourceAttrLabel(convert)}转模${convert.ratioPercent ?? 0}%`
+  return `${convertSourceAttrLabel(convert)}转模${formatCalcDecimal(convert.ratioPercent ?? 0)}%`
 }
 
 /** 招式目标展示：`[终结技：斩妄开天]`；找不到名称时只显示大类，不露内部 id */

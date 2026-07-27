@@ -36,6 +36,7 @@ import {
   createEmptyRefinementMods,
   mergeBuffStatModifiers,
 } from '@/utils/calculatorUi'
+import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 import type { DamageCalcResult, EnemyResistanceType } from '@/utils/damageCalc'
 import {
   ANOMALY_CONSTRAINTS,
@@ -428,7 +429,7 @@ function formatPanelValue(key: keyof PanelStats | 'pierce' | 'special', value: n
   ) {
     return formatNumber(value)
   }
-  return Math.round(value * 100) / 100
+  return formatCalcDecimal(value, 4)
 }
 
 function formatFinalPanelField(field: FinalPanelField) {

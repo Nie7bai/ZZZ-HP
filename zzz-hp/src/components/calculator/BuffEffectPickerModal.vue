@@ -5,6 +5,7 @@ import NumberStepper from '@/components/common/NumberStepper.vue'
 import type { CharacterAttrKey, SkillSubcategory } from '@/types/calculator'
 import type { CollectedEffect, BuffSelectionState } from '@/utils/panelBuffCalc'
 import { formatBuffEffectResultText, resolveConvertValue } from '@/utils/buffEffect'
+import { formatCalcSigned } from '@/utils/calcNumberFormat'
 import { buffStatFieldLabel, BUFF_STAT_FIELDS } from '@/utils/calculatorUi'
 import { CHARACTER_ATTR_OPTIONS } from '@/types/calculator'
 
@@ -176,8 +177,7 @@ function noteText(item: CollectedEffect) {
 }
 
 function formatSigned(value: number) {
-  const rounded = Math.round(value * 100) / 100
-  return `${rounded >= 0 ? '+ ' : ''}${rounded}`
+  return formatCalcSigned(value)
 }
 
 /** 参考站效果行：招式前缀 + 属性名 + 数值 */

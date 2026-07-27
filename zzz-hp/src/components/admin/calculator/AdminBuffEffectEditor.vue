@@ -23,6 +23,7 @@ import {
   SKILL_BUFF_STAT_FIELDS,
   buffStatFieldLabel,
 } from '@/utils/calculatorUi'
+import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 import {
   createEmptyBuffEffect,
   createEmptyBuffEffectBlock,
@@ -342,11 +343,11 @@ function convertPreviewText(effect: BuffEffect): string {
       amount = convert.cap
       capped = true
     }
-    const rounded = Math.round(amount * 100) / 100
-    return `${attrLabel} ${base} × ${convert.ratioPercent ?? 0}% = ${statLabel} +${rounded}${capped ? '（已达上限）' : ''}`
+    const rounded = formatCalcDecimal(amount)
+    return `${attrLabel} ${formatCalcDecimal(base)} × ${formatCalcDecimal(convert.ratioPercent ?? 0)}% = ${statLabel} +${rounded}${capped ? '（已达上限）' : ''}`
   }
   const sourceLabel = convert.panelSource === 'final' ? '局内' : '局外'
-  return `${sourceLabel}${attrLabel} × ${convert.ratioPercent ?? 0}% → ${statLabel}，数值随面板实时折算`
+  return `${sourceLabel}${attrLabel} × ${formatCalcDecimal(convert.ratioPercent ?? 0)}% → ${statLabel}，数值随面板实时折算`
 }
 
 function ensureConvert(effect: BuffEffect) {
@@ -638,7 +639,7 @@ defineExpose({
               :model-value="effect.value ?? 0"
               :min="-999999"
               :max="999999"
-              :step="0.01"
+              :step="0.0001"
               @update:model-value="effect.value = $event"
             />
           </label>
@@ -651,7 +652,7 @@ defineExpose({
               :model-value="effect.valuePerStack ?? 0"
               :min="-999999"
               :max="999999"
-              :step="0.01"
+              :step="0.0001"
               @update:model-value="effect.valuePerStack = $event"
             />
           </label>
@@ -705,7 +706,7 @@ defineExpose({
               :model-value="ensureConvert(effect).defaultBase ?? 0"
               :min="0"
               :max="999999"
-              :step="0.01"
+              :step="0.0001"
               @update:model-value="ensureConvert(effect).defaultBase = $event"
             />
           </label>
@@ -715,7 +716,7 @@ defineExpose({
               :model-value="ensureConvert(effect).ratioPercent"
               :min="-9999"
               :max="9999"
-              :step="0.01"
+              :step="0.0001"
               @update:model-value="ensureConvert(effect).ratioPercent = $event"
             />
           </label>
@@ -725,7 +726,7 @@ defineExpose({
               :model-value="ensureConvert(effect).cap ?? 0"
               :min="0"
               :max="999999"
-              :step="0.01"
+              :step="0.0001"
               @update:model-value="
                 (v) => {
                   ensureConvert(effect).cap = v > 0 ? v : null

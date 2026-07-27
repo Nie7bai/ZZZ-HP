@@ -15,11 +15,11 @@ function formatSigned(value: number) {
   return String(value)
 }
 
-function formatProcessNumber(value: number, precision = 2) {
+function formatProcessNumber(value: number, precision = 4) {
   if (!Number.isFinite(value)) return String(value)
   if (Number.isInteger(value)) return String(value)
   const text = Math.round(value * 10 ** precision) / 10 ** precision
-  return String(text).replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1')
+  return text.toFixed(precision)
 }
 
 /** 面板百分点 → 乘区小数，用于展示：33% = 0.33 */
