@@ -1040,7 +1040,6 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
         <DirectDamageFormulaAligned
           :group="alignedDirectFormula"
           :value-tips="valueTips"
-          :format-base-chain="(value) => formatFormulaNumber(value, 2)"
         />
       </div>
       <div class="result-grid">
