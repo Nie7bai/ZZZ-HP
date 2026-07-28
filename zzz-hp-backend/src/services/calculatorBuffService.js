@@ -67,6 +67,8 @@ function normalizeConvert(value) {
   const ATTRS = [
     'hp',
     'atk',
+    'critRate',
+    'critDmg',
     'mastery',
     'anomalyControl',
     'energyRegen',

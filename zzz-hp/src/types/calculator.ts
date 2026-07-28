@@ -73,6 +73,8 @@ export const BUFF_SKILL_TARGET_OPTIONS: { id: BuffSkillTargetId; label: string }
 export type CharacterAttrKey =
   | 'hp'
   | 'atk'
+  | 'critRate'
+  | 'critDmg'
   | 'mastery'
   | 'anomalyControl'
   | 'energyRegen'
@@ -84,6 +86,8 @@ export type CharacterAttrKey =
 export const CHARACTER_ATTR_OPTIONS: { id: CharacterAttrKey; label: string }[] = [
   { id: 'hp', label: '生命' },
   { id: 'atk', label: '攻击' },
+  { id: 'critRate', label: '暴击' },
+  { id: 'critDmg', label: '爆伤' },
   { id: 'mastery', label: '异常精通' },
   { id: 'anomalyControl', label: '异常掌控' },
   { id: 'energyRegen', label: '能量恢复' },

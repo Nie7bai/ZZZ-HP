@@ -123,6 +123,8 @@ const BUFF_SKILL_TARGETS: BuffSkillTargetId[] = [...SKILL_CATEGORIES, 'follow_up
 const CHARACTER_ATTRS: CharacterAttrKey[] = [
   'hp',
   'atk',
+  'critRate',
+  'critDmg',
   'mastery',
   'anomalyControl',
   'energyRegen',

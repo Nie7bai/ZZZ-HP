@@ -931,6 +931,8 @@ export function panelToConvertAttrValues(
   return {
     hp: panel.hp,
     atk: panel.atk,
+    critRate: panel.critRate,
+    critDmg: panel.critDmg,
     mastery: panel.mastery,
     anomalyControl: panel.anomalyControl,
     energyRegen: panel.energyRegen,
