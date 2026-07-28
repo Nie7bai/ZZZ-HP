@@ -10,6 +10,7 @@
     "import:nanoka:dry": "node scripts/import-nanoka.mjs --dry-run",
     "import:nanoka:range": "node scripts/import-nanoka-range.mjs",
     "delete:defense-season": "node scripts/delete-defense-season.mjs",
+    "export:calculator-buffs": "node scripts/export-calculator-buffs.mjs",
     "export:guestbook": "node scripts/export-guestbook.mjs",
     "check:guestbook-images": "node scripts/check-guestbook-images.mjs"
   },
