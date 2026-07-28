@@ -107,6 +107,10 @@ function normalizeConvert(value) {
       value.defaultBase == null || value.defaultBase === ''
         ? null
         : readNumber(value.defaultBase),
+    initialBase:
+      value.initialBase == null || value.initialBase === ''
+        ? 0
+        : readNumber(value.initialBase),
   }
 }
 

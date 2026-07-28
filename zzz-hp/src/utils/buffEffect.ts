@@ -383,7 +383,12 @@ export function resolveConvertValue(
         ? overrideBase
         : (sourceMap[effect.convert.from] ?? attrValues[effect.convert.from] ?? 0)
   }
-  let amount = (from * effect.convert.ratioPercent) / 100
+  const initialBase =
+    effect.convert.initialBase != null && Number.isFinite(effect.convert.initialBase)
+      ? effect.convert.initialBase
+      : 0
+  const convertible = Math.max(0, from - initialBase)
+  let amount = (convertible * effect.convert.ratioPercent) / 100
   if (effect.convert.cap != null && Number.isFinite(effect.convert.cap)) {
     amount = Math.min(amount, effect.convert.cap)
   }
@@ -666,6 +671,7 @@ function normalizeConvert(value: unknown): BuffEffect['convert'] {
 
   const capRaw = entry.cap
   const defaultBaseRaw = entry.defaultBase
+  const initialBaseRaw = entry.initialBase
   return {
     from,
     panelSource,
@@ -673,6 +679,8 @@ function normalizeConvert(value: unknown): BuffEffect['convert'] {
     cap: capRaw == null || capRaw === '' ? null : readNumber(capRaw),
     defaultBase:
       defaultBaseRaw == null || defaultBaseRaw === '' ? null : readNumber(defaultBaseRaw),
+    initialBase:
+      initialBaseRaw == null || initialBaseRaw === '' ? 0 : readNumber(initialBaseRaw),
   }
 }
 
@@ -927,10 +935,14 @@ function convertSourceAttrLabel(convert: BuffEffectConvert): string {
   return `${source}·${from}`
 }
 
-/** 转模说明：如「自行·等级转模120%」「局外·生命转模30%」 */
+/** 转模说明：如「自行·等级转模120%」「局外·生命转模30%（初始50）」 */
 export function convertSummaryLabel(convert: BuffEffectConvert | null | undefined): string {
   if (!convert) return '转模'
-  return `${convertSourceAttrLabel(convert)}转模${formatCalcDecimal(convert.ratioPercent ?? 0)}%`
+  const initial =
+    convert.initialBase != null && Number.isFinite(convert.initialBase) && convert.initialBase !== 0
+      ? `（初始${formatCalcDecimal(convert.initialBase)}）`
+      : ''
+  return `${convertSourceAttrLabel(convert)}转模${formatCalcDecimal(convert.ratioPercent ?? 0)}%${initial}`
 }
 
 /** 招式目标展示：`[终结技：斩妄开天]`；找不到名称时只显示大类，不露内部 id */

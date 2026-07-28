@@ -377,19 +377,27 @@ function convertPreviewText(effect: BuffEffect): string {
   const statLabel = buffStatFieldLabel(
     BUFF_STAT_FIELDS.find((item) => item.key === effect.stat) ?? BUFF_STAT_FIELDS[0]!,
   )
+  const initial = convert.initialBase ?? 0
+  const initialHint =
+    initial > 0 ? `，超出初始值 ${formatCalcDecimal(initial)} 的部分参与折算` : ''
   if (convert.panelSource === 'manual') {
     const base = convert.defaultBase ?? 0
-    let amount = (base * (convert.ratioPercent ?? 0)) / 100
+    const excess = Math.max(0, base - initial)
+    let amount = (excess * (convert.ratioPercent ?? 0)) / 100
     let capped = false
     if (convert.cap != null && Number.isFinite(convert.cap) && amount > convert.cap) {
       amount = convert.cap
       capped = true
     }
     const rounded = formatCalcDecimal(amount)
-    return `${attrLabel} ${formatCalcDecimal(base)} × ${formatCalcDecimal(convert.ratioPercent ?? 0)}% = ${statLabel} +${rounded}${capped ? '（已达上限）' : ''}`
+    const baseExpr =
+      initial > 0
+        ? `max(0, ${formatCalcDecimal(base)} − ${formatCalcDecimal(initial)})`
+        : formatCalcDecimal(base)
+    return `${attrLabel} ${baseExpr} × ${formatCalcDecimal(convert.ratioPercent ?? 0)}% = ${statLabel} +${rounded}${capped ? '（已达上限）' : ''}${initialHint}`
   }
   const sourceLabel = convert.panelSource === 'final' ? '局内' : '局外'
-  return `${sourceLabel}${attrLabel} × ${formatCalcDecimal(convert.ratioPercent ?? 0)}% → ${statLabel}，数值随面板实时折算`
+  return `${sourceLabel}${attrLabel} × ${formatCalcDecimal(convert.ratioPercent ?? 0)}% → ${statLabel}，超出初始值部分实时折算${initialHint}`
 }
 
 function ensureConvert(effect: BuffEffect) {
@@ -400,6 +408,7 @@ function ensureConvert(effect: BuffEffect) {
       ratioPercent: 0,
       cap: null,
       defaultBase: null,
+      initialBase: 0,
     }
   }
   if (!effect.convert.panelSource) {
@@ -407,6 +416,9 @@ function ensureConvert(effect: BuffEffect) {
   }
   if (effect.convert.defaultBase === undefined) {
     effect.convert.defaultBase = null
+  }
+  if (effect.convert.initialBase == null || !Number.isFinite(effect.convert.initialBase)) {
+    effect.convert.initialBase = 0
   }
   return effect.convert
 }
@@ -772,6 +784,16 @@ defineExpose({
               :max="9999"
               :step="0.0001"
               @update:model-value="ensureConvert(effect).ratioPercent = $event"
+            />
+          </label>
+          <label class="field">
+            <span>转模初始值</span>
+            <NumberStepper
+              :model-value="ensureConvert(effect).initialBase ?? 0"
+              :min="0"
+              :max="999999"
+              :step="0.0001"
+              @update:model-value="ensureConvert(effect).initialBase = $event"
             />
           </label>
           <label class="field">

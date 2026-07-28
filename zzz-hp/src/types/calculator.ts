@@ -207,6 +207,8 @@ export interface BuffEffectConvert {
   cap?: number | null
   /** 自行设置时的默认基础值；局外/局内模式下仅作兼容旧数据预填 */
   defaultBase?: number | null
+  /** 转模初始值：仅超出该值的部分参与折算，默认 0（旧数据缺省同 0） */
+  initialBase?: number | null
 }
 
 /** 招式作用目标（可多选） */
