@@ -85,6 +85,7 @@ import {
   STAGGER_MULTIPLIER_PRESETS,
 } from '@/utils/enemyInputPresets'
 import DirectDamageFormulaAligned from '@/components/calculator/DirectDamageFormulaAligned.vue'
+import EnemyPresetCombo from '@/components/calculator/EnemyPresetCombo.vue'
 import type { PanelScreenshotRecognition } from '@/types/panelScreenshot'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import { resolveIsFollowUp } from '@/utils/buffEffect'
@@ -2727,7 +2728,6 @@ defineExpose({
         <DirectDamageFormulaAligned
           :group="selectedEventDirectFormula"
           :value-tips="valueTips"
-          :format-base-chain="(value) => formatFormulaNumber(value, 2)"
         />
       </div>
       <div class="result-grid">
@@ -2816,7 +2816,6 @@ defineExpose({
       <DirectDamageFormulaAligned
         :group="alignedDirectFormula"
         :value-tips="valueTips"
-        :format-base-chain="(value) => formatFormulaNumber(value, 2)"
       />
     </div>
     <div class="result-grid">
