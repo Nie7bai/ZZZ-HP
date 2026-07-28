@@ -206,8 +206,11 @@ function computeGeneralAndAnomalyBase(options: {
   combatSpecial: number
   combatPierceDmgBonus: number
   staggerPhase: 'normal' | 'stagger'
+  /** 防御区穿透/减防分项；缺省与 panel 一致 */
+  defensePanel?: Pick<PanelStats, 'penRate' | 'pen' | 'ignoreDefense' | 'reduceDefense'>
 }) {
   const panel = options.panel
+  const defense = options.defensePanel ?? panel
   const enemyRes = RESISTANCE_MAP[options.enemyInput.resistanceType]
 
   const { baseDamage, usedBaseSource } = resolveBaseDamageParts({
@@ -222,12 +225,12 @@ function computeGeneralAndAnomalyBase(options: {
   const critDmgRatio = clamp(panel.critDmg / 100, 0, 20)
   const critMultiplier = 1 + critRateRatio * critDmgRatio
 
-  const penRateRatio = clamp(panel.penRate / 100, 0, 0.95)
-  const ignoreDefenseRatio = clamp(panel.ignoreDefense / 100, 0, 1)
-  const reduceDefenseRatio = clamp(panel.reduceDefense / 100, 0, 1)
+  const penRateRatio = clamp(defense.penRate / 100, 0, 0.95)
+  const ignoreDefenseRatio = clamp(defense.ignoreDefense / 100, 0, 1)
+  const reduceDefenseRatio = clamp(defense.reduceDefense / 100, 0, 1)
   const defenseFactor = Math.max(0, 1 - ignoreDefenseRatio - reduceDefenseRatio)
   const defenseAfterModifiers = options.enemyInput.defense * defenseFactor * (1 - penRateRatio)
-  const effectiveDefense = Math.max(0, defenseAfterModifiers) - panel.pen
+  const effectiveDefense = Math.max(0, defenseAfterModifiers) - defense.pen
   const defenseMultiplier = options.isMb ? 1 : 794 / (794 + effectiveDefense)
   const resistanceMultiplier = 1 - enemyRes + clamp(panel.resPen / 100, -2, 2)
 
@@ -328,6 +331,13 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
         combatSpecial: input.combatSpecial,
         combatPierceDmgBonus: input.combatPierceDmgBonus ?? 0,
         staggerPhase,
+        // 异常基础防御区：穿透率/穿透值取产生角色，减防/无视防御取主 C
+        defensePanel: {
+          penRate: triggerPanel.penRate,
+          pen: triggerPanel.pen,
+          ignoreDefense: panel.ignoreDefense,
+          reduceDefense: panel.reduceDefense,
+        },
       })
     : mainParts
 
