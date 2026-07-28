@@ -924,10 +924,16 @@ export function applyBuffModsToPanel(
   }
 }
 
+export function computePiercePower(hp: number, atk: number, pierceMod = 0) {
+  return Math.round((0.1 * hp + 0.3 * atk + pierceMod) * 100) / 100
+}
+
 export function panelToConvertAttrValues(
   panel: PanelStats,
-  extras?: Partial<Record<CharacterAttrKey, number>>,
+  options?: Partial<Record<CharacterAttrKey, number>> & { pierceMod?: number },
 ): Partial<Record<CharacterAttrKey, number>> {
+  const pierceMod = options?.pierceMod ?? 0
+  const { pierceMod: _pierceMod, ...extras } = options ?? {}
   return {
     hp: panel.hp,
     atk: panel.atk,
@@ -938,8 +944,9 @@ export function panelToConvertAttrValues(
     energyRegen: panel.energyRegen,
     penRate: panel.penRate,
     def: panel.def,
-    impact: extras?.impact ?? 0,
-    level: extras?.level ?? 60,
+    pierce: computePiercePower(panel.hp, panel.atk, pierceMod),
+    impact: extras.impact ?? 0,
+    level: extras.level ?? 60,
     ...extras,
   }
 }
@@ -1032,10 +1039,12 @@ export function computeFinalPanel(
   const externalAttrs = panelToConvertAttrValues(externalPanel, {
     level: ctx.attrValues?.level ?? 60,
     impact: ctx.attrValues?.impact ?? 0,
+    pierceMod: 0,
   })
   const finalAttrs = panelToConvertAttrValues(interimPanel, {
     level: ctx.attrValues?.level ?? 60,
     impact: ctx.attrValues?.impact ?? 0,
+    pierceMod: interimMods.pierce,
   })
   const attrValues = {
     ...externalAttrs,

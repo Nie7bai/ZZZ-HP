@@ -75,6 +75,7 @@ function normalizeConvert(value) {
     'penRate',
     'impact',
     'def',
+    'pierce',
     'level',
   ]
   const rawFrom = value.from

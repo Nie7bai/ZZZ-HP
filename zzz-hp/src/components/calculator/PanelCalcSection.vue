@@ -51,7 +51,7 @@ import {
   getMindscapeNotesUpToRank,
   mergeBuffStatModifiers,
 } from '@/utils/calculatorUi'
-import { computeFinalPanel, panelToConvertAttrValues, resolveMainCAnomalyReleaseMultFields } from '@/utils/panelBuffCalc'
+import { computeFinalPanel, computePiercePower, panelToConvertAttrValues, resolveMainCAnomalyReleaseMultFields } from '@/utils/panelBuffCalc'
 import { computeDamageResult, type DamageCalcInput, type EnemyResistanceType } from '@/utils/damageCalc'
 import {
   canSelectTurbulenceDamageEvent,
@@ -282,7 +282,7 @@ const effectiveBaseDamageSource = computed<BaseDamageSource>(() =>
 )
 
 const convertAttrDefaults = computed<Partial<Record<CharacterAttrKey, number>>>(() =>
-  panelToConvertAttrValues(effectiveExternalPanel.value, { level: 60 }),
+  panelToConvertAttrValues(effectiveExternalPanel.value, { level: 60, pierceMod: 0 }),
 )
 
 /** 队伍中异常职业且非主 C 的槽位 */
@@ -430,8 +430,11 @@ const finalPanel = computed(() => {
 })
 
 const convertPanelSourceValues = computed(() => ({
-  external: panelToConvertAttrValues(effectiveExternalPanel.value, { level: 60 }),
-  final: panelToConvertAttrValues(finalPanel.value, { level: 60 }),
+  external: panelToConvertAttrValues(effectiveExternalPanel.value, { level: 60, pierceMod: 0 }),
+  final: panelToConvertAttrValues(finalPanel.value, {
+    level: 60,
+    pierceMod: panelBreakdown.value.totalMods.pierce,
+  }),
 }))
 
 const triggerExternalPanel = computed<PanelStats | null>(() => {
@@ -565,10 +568,6 @@ function formatPanelSlot(slot: PanelFieldSlot, scope: 'external' | 'final') {
   }
   const panel = scope === 'external' ? effectiveExternalPanel.value : finalPanel.value
   return formatPanelValue(slot.key, panel[slot.key])
-}
-
-function computePiercePower(hp: number, atk: number, pierceMod = 0) {
-  return round(0.1 * hp + 0.3 * atk + pierceMod, 2)
 }
 
 const externalPiercePower = computed(() =>

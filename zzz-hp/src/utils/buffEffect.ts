@@ -131,6 +131,7 @@ const CHARACTER_ATTRS: CharacterAttrKey[] = [
   'penRate',
   'impact',
   'def',
+  'pierce',
   'level',
 ]
 

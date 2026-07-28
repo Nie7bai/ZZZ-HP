@@ -81,6 +81,7 @@ export type CharacterAttrKey =
   | 'penRate'
   | 'impact'
   | 'def'
+  | 'pierce'
   | 'level'
 
 export const CHARACTER_ATTR_OPTIONS: { id: CharacterAttrKey; label: string }[] = [
@@ -94,6 +95,7 @@ export const CHARACTER_ATTR_OPTIONS: { id: CharacterAttrKey; label: string }[] =
   { id: 'penRate', label: '穿透率' },
   { id: 'impact', label: '冲击力' },
   { id: 'def', label: '防御力' },
+  { id: 'pierce', label: '贯穿力' },
   { id: 'level', label: '等级' },
 ]
 
