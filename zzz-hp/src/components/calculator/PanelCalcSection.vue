@@ -21,6 +21,7 @@ import type {
   SkillSubcategory,
   WengineBuffDoc,
 } from '@/types/calculator'
+import { CHARACTER_ATTR_OPTIONS } from '@/types/calculator'
 import type { DamageCalcPanelSnapshot } from '@/types/damageCalcHistory'
 import {
   createDefaultExternalPanel,
@@ -51,7 +52,16 @@ import {
   getMindscapeNotesUpToRank,
   mergeBuffStatModifiers,
 } from '@/utils/calculatorUi'
-import { computeFinalPanel, computePiercePower, panelToConvertAttrValues, resolveMainCAnomalyReleaseMultFields } from '@/utils/panelBuffCalc'
+import {
+  applyConvertPartialToExternalPanel,
+  collectConvertSupportSlots,
+  computeFinalPanel,
+  computePiercePower,
+  externalPanelToConvertPartial,
+  panelToConvertAttrValues,
+  resolveMainCAnomalyReleaseMultFields,
+  type ConvertSlotPanels,
+} from '@/utils/panelBuffCalc'
 import { computeDamageResult, type DamageCalcInput, type EnemyResistanceType } from '@/utils/damageCalc'
 import {
   canSelectTurbulenceDamageEvent,
@@ -151,6 +161,8 @@ const props = defineProps<{
   triggerAnomalyAgentId?: string | null
   /** 异常非主 C 槽位局外面板，key = agentId */
   anomalySlotPanels?: Record<string, PanelStats>
+  /** 转模增益角色局外面板（仅转模来源属性），key = agentId */
+  convertSlotPanels?: ConvertSlotPanels
   skillCategoryId?: import('@/types/calculator').SkillCategoryId
   skillSubcategoryId?: string | null
   buffSelection?: import('@/utils/panelBuffCalc').BuffSelectionState | null
@@ -160,6 +172,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:anomalySlotPanels': [value: Record<string, PanelStats>]
+  'update:convertSlotPanels': [value: ConvertSlotPanels]
 }>()
 
 const baseDamageSource = ref<BaseDamageSource>('atk')
@@ -301,6 +314,77 @@ const anomalySupportSlots = computed(() => {
     .filter(({ slot }) => Boolean(slot.agentId && triggerIds.has(slot.agentId)))
 })
 
+function buildBasePanelCalcContext() {
+  return {
+    teamSlots: props.teamSlots,
+    agents: props.agents,
+    wengines: props.wengines,
+    bangboo: selectedBangboo.value,
+    bangbooRefine: props.bangbooRefine,
+    mainSlotIndex: mainSlotIndex.value,
+    driveDiscs: props.driveDiscs,
+    extraMods: extraMods.value,
+    skillContext: {
+      damageKind: props.damageKind ?? 'direct',
+      categoryId: props.skillCategoryId ?? 'basic',
+      subcategoryId: props.skillSubcategoryId ?? null,
+      element: damageElement.value,
+      staggerPhase: props.staggerPhase ?? 'stagger',
+      isFollowUp: skillIsFollowUp.value,
+      anomalySubKind:
+        props.damageKind === 'anomaly' ? (props.anomalySubKind ?? 'anomaly') : undefined,
+    },
+    buffSelection: props.buffSelection ?? null,
+    anomalySlotPanels: props.anomalySlotPanels,
+    convertSlotPanels: props.convertSlotPanels,
+  }
+}
+
+const anomalyProducerAgentIds = computed(() => {
+  const ids = new Set<string>()
+  for (const item of anomalySupportSlots.value) {
+    if (item.slot.agentId) ids.add(item.slot.agentId)
+  }
+  return ids
+})
+
+/** 需录入局外面板的转模增益角色（非主 C、非异常产生角色） */
+const convertSupportSlots = computed(() =>
+  collectConvertSupportSlots(buildBasePanelCalcContext(), {
+    excludeAnomalyAgentIds: anomalyProducerAgentIds.value,
+  }),
+)
+
+function characterAttrLabel(key: CharacterAttrKey): string {
+  return CHARACTER_ATTR_OPTIONS.find((item) => item.id === key)?.label ?? key
+}
+
+function ensureConvertSlotPartial(agentId: string): Partial<Record<CharacterAttrKey, number>> {
+  return props.convertSlotPanels?.[agentId] ?? {}
+}
+
+function updateConvertSlotAttr(agentId: string, key: CharacterAttrKey, value: number) {
+  emit('update:convertSlotPanels', {
+    ...(props.convertSlotPanels ?? {}),
+    [agentId]: {
+      ...ensureConvertSlotPartial(agentId),
+      [key]: value,
+    },
+  })
+}
+
+function emitConvertSlotPanel(
+  agentId: string,
+  keys: CharacterAttrKey[],
+  panel: PanelStats,
+) {
+  if (!keys.length) return
+  emit('update:convertSlotPanels', {
+    ...(props.convertSlotPanels ?? {}),
+    [agentId]: externalPanelToConvertPartial(panel, keys),
+  })
+}
+
 function ensureAnomalySlotPanel(agentId: string): PanelStats {
   const existing = props.anomalySlotPanels?.[agentId]
   if (existing) return existing
@@ -374,25 +458,7 @@ const damageElement = computed(() => {
 
 const panelBreakdown = computed(() =>
   computeFinalPanel(effectiveExternalPanel.value, {
-    teamSlots: props.teamSlots,
-    agents: props.agents,
-    wengines: props.wengines,
-    bangboo: selectedBangboo.value,
-    bangbooRefine: props.bangbooRefine,
-    mainSlotIndex: mainSlotIndex.value,
-    driveDiscs: props.driveDiscs,
-    extraMods: extraMods.value,
-    skillContext: {
-      damageKind: props.damageKind ?? 'direct',
-      categoryId: props.skillCategoryId ?? 'basic',
-      subcategoryId: props.skillSubcategoryId ?? null,
-      element: damageElement.value,
-      staggerPhase: props.staggerPhase ?? 'stagger',
-      isFollowUp: skillIsFollowUp.value,
-      anomalySubKind:
-        props.damageKind === 'anomaly' ? (props.anomalySubKind ?? 'anomaly') : undefined,
-    },
-    buffSelection: props.buffSelection ?? null,
+    ...buildBasePanelCalcContext(),
     attrValues: convertAttrDefaults.value,
   }),
 )
@@ -453,14 +519,8 @@ const triggerExternalPanel = computed<PanelStats | null>(() => {
 const triggerPanelBreakdown = computed(() => {
   if (!triggerExternalPanel.value || triggerSlotIndex.value < 0) return null
   return computeFinalPanel(triggerExternalPanel.value, {
-    teamSlots: props.teamSlots,
-    agents: props.agents,
-    wengines: props.wengines,
-    bangboo: selectedBangboo.value,
-    bangbooRefine: props.bangbooRefine,
+    ...buildBasePanelCalcContext(),
     mainSlotIndex: triggerSlotIndex.value,
-    driveDiscs: props.driveDiscs,
-    extraMods: extraMods.value,
     skillContext: {
       damageKind: props.damageKind ?? 'anomaly',
       categoryId: props.skillCategoryId ?? 'basic',
@@ -471,7 +531,6 @@ const triggerPanelBreakdown = computed(() => {
       anomalySubKind:
         props.damageKind === 'anomaly' ? (props.anomalySubKind ?? 'anomaly') : undefined,
     },
-    buffSelection: props.buffSelection ?? null,
   })
 })
 
@@ -631,13 +690,27 @@ watch(
       if (oldAgent?.profession === '异常') {
         emitAnomalySlotPanel(oldId, externalPanel)
       }
+      const convertSlot = convertSupportSlots.value.find((item) => item.agentId === oldId)
+      if (convertSlot) {
+        emitConvertSlotPanel(oldId, convertSlot.requiredAttrs, externalPanel)
+      } else if (props.convertSlotPanels?.[oldId]) {
+        const keys = Object.keys(props.convertSlotPanels[oldId]) as CharacterAttrKey[]
+        emitConvertSlotPanel(oldId, keys, externalPanel)
+      }
     }
 
     if (!mainAgent.value || !newId) return
 
-    const saved = props.anomalySlotPanels?.[newId]
-    if (saved && mainAgent.value.profession === '异常') {
-      Object.assign(externalPanel, createDefaultExternalPanel(), saved)
+    const savedAnomaly = props.anomalySlotPanels?.[newId]
+    if (savedAnomaly && mainAgent.value.profession === '异常') {
+      Object.assign(externalPanel, createDefaultExternalPanel(), savedAnomaly)
+      return
+    }
+
+    const savedConvert = props.convertSlotPanels?.[newId]
+    if (savedConvert && Object.keys(savedConvert).length > 0) {
+      applyAgentBaseToExternalPanel(mainAgent.value.basePanel)
+      applyConvertPartialToExternalPanel(savedConvert, externalPanel)
       return
     }
 
@@ -653,8 +726,14 @@ watch(
   externalPanel,
   () => {
     const id = mainAgent.value?.id
-    if (!id || isAffixMode.value || mainAgent.value?.profession !== '异常') return
-    emitAnomalySlotPanel(id, externalPanel)
+    if (!id || isAffixMode.value) return
+    if (mainAgent.value?.profession === '异常') {
+      emitAnomalySlotPanel(id, externalPanel)
+    }
+    const convertSlot = convertSupportSlots.value.find((item) => item.agentId === id)
+    if (convertSlot) {
+      emitConvertSlotPanel(id, convertSlot.requiredAttrs, externalPanel)
+    }
   },
   { deep: true },
 )
@@ -754,16 +833,8 @@ function buildEventSkillContext(event: DamageEvent) {
 
 function buildEventPanelCalcContext(skillCtx: ReturnType<typeof buildEventSkillContext>['skillCtx']) {
   return {
-    teamSlots: props.teamSlots,
-    agents: props.agents,
-    wengines: props.wengines,
-    bangboo: selectedBangboo.value,
-    bangbooRefine: props.bangbooRefine,
-    mainSlotIndex: mainSlotIndex.value,
-    driveDiscs: props.driveDiscs,
-    extraMods: extraMods.value,
+    ...buildBasePanelCalcContext(),
     skillContext: skillCtx,
-    buffSelection: props.buffSelection ?? null,
     attrValues: convertAttrDefaults.value,
   }
 }
@@ -2365,6 +2436,52 @@ defineExpose({
                     updateAnomalySlotPanel(
                       item.slot.agentId,
                       slot.key,
+                      Number(($event.target as HTMLInputElement).value) || 0,
+                    )
+                  "
+                />
+              </label>
+            </div>
+          </details>
+        </section>
+
+        <section
+          v-if="convertSupportSlots.length"
+          class="panel-block convert-support-panels"
+        >
+          <header class="panel-block-header">
+            <h3>转模增益角色 · 局外面板</h3>
+            <p>
+              队友增益含<strong>局外/局内转模</strong>且来源非主
+              C、非异常产生角色时，仅需录入该角色转模实际用到的来源属性；局内面板将在此基础上叠加其身上增益后参与转模计算。切换为主
+              C 后，已填属性会映射到主 C 局外面板。
+            </p>
+          </header>
+          <details
+            v-for="item in convertSupportSlots"
+            :key="item.agentId"
+            class="anomaly-slot-details"
+          >
+            <summary>
+              {{ props.agents.find((a) => a.id === item.agentId)?.name ?? item.agentId }}
+              ·
+              {{ props.agents.find((a) => a.id === item.agentId)?.element ?? '' }}
+            </summary>
+            <div class="grid four">
+              <label
+                v-for="attr in item.requiredAttrs"
+                :key="`${item.agentId}-${attr}`"
+                class="field"
+              >
+                <span>{{ characterAttrLabel(attr) }}</span>
+                <input
+                  type="number"
+                  step="any"
+                  :value="ensureConvertSlotPartial(item.agentId)[attr] ?? 0"
+                  @change="
+                    updateConvertSlotAttr(
+                      item.agentId,
+                      attr,
                       Number(($event.target as HTMLInputElement).value) || 0,
                     )
                   "

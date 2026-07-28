@@ -34,7 +34,9 @@ import {
 import {
   buildDefaultBuffSelection,
   collectAllBuffEffects,
+  collectConvertSupportSlots,
   type BuffSelectionState,
+  type ConvertSlotPanels,
 } from '@/utils/panelBuffCalc'
 import { resolveIsFollowUp } from '@/utils/buffEffect'
 import { canSelectTurbulenceDamageEvent, eventNeedsAnomalyProducer } from '@/utils/damageEvent'
@@ -95,6 +97,7 @@ const historyMessage = ref('')
 const damageKind = ref<DamageCalcKind>('direct')
 const staggerPhase = ref<StaggerPhase>('stagger')
 const anomalySlotPanels = reactive<Record<string, PanelStats>>({})
+const convertSlotPanels = reactive<ConvertSlotPanels>({})
 const directEventModeId = ref<string | null>(null)
 const directEventModeName = ref('')
 const directEventModalOpen = ref(false)
@@ -342,6 +345,69 @@ const collectedEffects = computed(() =>
       anomalySubKind: damageKind.value === 'anomaly' ? anomalySubKind.value : undefined,
     },
   }),
+)
+
+const convertSupportSlots = computed(() =>
+  collectConvertSupportSlots(
+    {
+      teamSlots,
+      agents: agents.value,
+      wengines: wengines.value,
+      bangboo: selectedBangboo.value,
+      bangbooRefine: bangbooRefine.value,
+      mainSlotIndex: mainSlotIndex.value,
+      driveDiscs: driveDiscs.value,
+      buffSelection,
+      anomalySlotPanels,
+      convertSlotPanels,
+      skillContext: {
+        damageKind: damageKind.value,
+        categoryId: skillCategoryId.value,
+        subcategoryId: skillSubcategoryId.value,
+        element: damageElement.value,
+        staggerPhase: staggerPhase.value,
+        isFollowUp: skillIsFollowUp.value,
+        anomalySubKind: damageKind.value === 'anomaly' ? anomalySubKind.value : undefined,
+      },
+    },
+    { excludeAnomalyAgentIds: getAnomalySlotAgentIds() },
+  ),
+)
+
+function ensureConvertSlotPanel(agentId: string, requiredAttrs: string[]) {
+  if (!convertSlotPanels[agentId]) {
+    convertSlotPanels[agentId] = {}
+  }
+  const agent = agents.value.find((item) => item.id === agentId)
+  const partial = convertSlotPanels[agentId]!
+  for (const attr of requiredAttrs) {
+    if (partial[attr as keyof typeof partial] != null) continue
+    if (attr === 'level') {
+      partial.level = 60
+      continue
+    }
+    if (attr === 'impact') {
+      partial.impact = 0
+      continue
+    }
+    const base = agent?.basePanel
+    if (!base) continue
+    if (attr === 'hp' || attr === 'atk' || attr === 'def') {
+      partial[attr] = base[attr]
+    } else if (attr in base) {
+      partial[attr as 'mastery'] = (base as Record<string, number>)[attr] ?? 0
+    }
+  }
+}
+
+watch(
+  convertSupportSlots,
+  (slots) => {
+    for (const slot of slots) {
+      ensureConvertSlotPanel(slot.agentId, slot.requiredAttrs)
+    }
+  },
+  { immediate: true, deep: true },
 )
 
 function resolveMultDefaultsForEvent(
@@ -771,12 +837,14 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :anomaly-sub-kind="anomalySubKind"
       :trigger-anomaly-agent-id="triggerAnomalyAgentId"
       :anomaly-slot-panels="anomalySlotPanels"
+      :convert-slot-panels="convertSlotPanels"
       :skill-category-id="skillCategoryId"
       :skill-subcategory-id="skillSubcategoryId"
       :buff-selection="buffSelection"
       :stagger-phase="staggerPhase"
       :damage-events="damageEvents"
       @update:anomaly-slot-panels="Object.assign(anomalySlotPanels, $event)"
+      @update:convert-slot-panels="Object.assign(convertSlotPanels, $event)"
     />
 
     <OptimalAffixAllocSection

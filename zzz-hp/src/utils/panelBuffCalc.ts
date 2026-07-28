@@ -12,7 +12,7 @@ import type {
   SkillCategoryId,
   WengineBuffDoc,
 } from '@/types/calculator'
-import type { PanelStats } from '@/types/calculatorPanel'
+import { createDefaultExternalPanel, type PanelStats } from '@/types/calculatorPanel'
 import {
   combineMultFactorPercent,
   normalizeBuffMultFactorDelta,
@@ -146,6 +146,34 @@ export interface BuffSelectionState {
   convertInputs: Record<string, number>
 }
 
+/** 转模增益角色局外面板：仅录入转模来源属性 */
+export type ConvertSlotPanels = Record<string, Partial<Record<CharacterAttrKey, number>>>
+
+export interface ConvertSupportSlot {
+  agentId: string
+  slotIndex: number
+  requiredAttrs: CharacterAttrKey[]
+}
+
+type PanelStatAttrKey = Extract<CharacterAttrKey, keyof PanelStats>
+
+const PANEL_STAT_ATTR_KEYS: PanelStatAttrKey[] = [
+  'hp',
+  'atk',
+  'critRate',
+  'critDmg',
+  'mastery',
+  'anomalyControl',
+  'energyRegen',
+  'penRate',
+  'def',
+]
+
+export type PanelSourceValues = {
+  external?: Partial<Record<CharacterAttrKey, number>>
+  final?: Partial<Record<CharacterAttrKey, number>>
+}
+
 export interface PanelCalcContext {
   teamSlots: TeamSlot[]
   agents: AgentBuffDoc[]
@@ -158,16 +186,182 @@ export interface PanelCalcContext {
   skillContext?: SkillCalcContext | null
   buffSelection?: BuffSelectionState | null
   attrValues?: Partial<Record<CharacterAttrKey, number>>
-  panelSourceValues?: {
-    external?: Partial<Record<CharacterAttrKey, number>>
-    final?: Partial<Record<CharacterAttrKey, number>>
-  }
+  panelSourceValues?: PanelSourceValues
+  /** 主 C 局外面板（按槽位转模时用于主槽位） */
+  mainExternalPanel?: PanelStats
+  /** 异常产生角色局外面板 */
+  anomalySlotPanels?: Record<string, PanelStats>
+  /** 转模增益角色局外面板（仅转模来源属性） */
+  convertSlotPanels?: ConvertSlotPanels
+  /** 各槽位局外/局内转模取值（按 effect 来源槽位解析） */
+  panelSourceValuesBySlot?: Map<number, PanelSourceValues>
   /** 异常掌控% 的换算基数；缺省时取结算角色基础面板的初始异常掌控 */
   baseAnomalyControl?: number
   /** 能量回复效率% 的换算基数；缺省时取结算角色基础面板的初始值 */
   baseEnergyRegen?: number
   /** 跳过转模（两阶段结算用） */
   skipConvert?: boolean
+}
+
+/** 从增益 sourceKey 解析队伍槽位索引（agent / 音擎 / 驱动盘） */
+export function parseSourceKeySlotIndex(sourceKey: string): number | null {
+  const match = sourceKey.match(/^(?:agent|wengine|drive-disc)-(\d+)-/)
+  if (!match) return null
+  const index = Number(match[1])
+  return Number.isFinite(index) ? index : null
+}
+
+export function convertSlotPartialToExternalPanel(
+  partial: Partial<Record<CharacterAttrKey, number>> | undefined,
+  fallback?: PanelStats,
+): PanelStats {
+  const panel = fallback ? { ...fallback } : createDefaultExternalPanel()
+  if (!partial) return panel
+  for (const key of PANEL_STAT_ATTR_KEYS) {
+    const value = partial[key]
+    if (value != null && Number.isFinite(value)) {
+      panel[key] = value
+    }
+  }
+  return panel
+}
+
+export function externalPanelToConvertPartial(
+  panel: PanelStats,
+  keys: CharacterAttrKey[],
+  options?: { level?: number; pierceMod?: number },
+): Partial<Record<CharacterAttrKey, number>> {
+  const attrs = panelToConvertAttrValues(panel, {
+    level: options?.level ?? 60,
+    pierceMod: options?.pierceMod ?? 0,
+  })
+  const result: Partial<Record<CharacterAttrKey, number>> = {}
+  for (const key of keys) {
+    if (attrs[key] != null) result[key] = attrs[key]!
+  }
+  return result
+}
+
+export function applyConvertPartialToExternalPanel(
+  partial: Partial<Record<CharacterAttrKey, number>>,
+  target: PanelStats,
+) {
+  const merged = convertSlotPartialToExternalPanel(partial, target)
+  for (const key of PANEL_STAT_ATTR_KEYS) {
+    target[key] = merged[key]
+  }
+}
+
+function resolveExternalPanelForSlot(
+  slotIndex: number,
+  ctx: PanelCalcContext,
+  mainExternalPanel: PanelStats,
+): PanelStats {
+  if (slotIndex === ctx.mainSlotIndex) {
+    return mainExternalPanel
+  }
+  const agentId = ctx.teamSlots[slotIndex]?.agentId
+  if (!agentId) return createDefaultExternalPanel()
+  const anomaly = ctx.anomalySlotPanels?.[agentId]
+  if (anomaly) return { ...anomaly }
+  const convertPartial = ctx.convertSlotPanels?.[agentId]
+  if (convertPartial) {
+    return convertSlotPartialToExternalPanel(convertPartial)
+  }
+  return createDefaultExternalPanel()
+}
+
+function resolveConvertAttrExtras(
+  slotIndex: number,
+  ctx: PanelCalcContext,
+): Partial<Record<CharacterAttrKey, number>> {
+  const agentId = ctx.teamSlots[slotIndex]?.agentId
+  const partial = agentId ? ctx.convertSlotPanels?.[agentId] : undefined
+  const extras: Partial<Record<CharacterAttrKey, number>> = {
+    level: partial?.level ?? ctx.attrValues?.level ?? 60,
+    impact: partial?.impact ?? ctx.attrValues?.impact ?? 0,
+  }
+  if (partial?.pierce != null && Number.isFinite(partial.pierce)) {
+    extras.pierce = partial.pierce
+  }
+  return extras
+}
+
+function buildPanelSourceValuesForSlot(
+  slotIndex: number,
+  ctx: PanelCalcContext,
+  mainExternalPanel: PanelStats,
+): PanelSourceValues {
+  const externalPanel = resolveExternalPanelForSlot(slotIndex, ctx, mainExternalPanel)
+  const slotCtx: PanelCalcContext = {
+    ...ctx,
+    mainSlotIndex: slotIndex,
+    mainExternalPanel: externalPanel,
+    skipConvert: true,
+  }
+  const baseAnomalyControl = resolveBaseAnomalyControl(slotCtx)
+  const baseEnergyRegen = resolveBaseEnergyRegen(slotCtx)
+  const interimMods = collectPanelBuffMods(slotCtx)
+  const interimPanel = applyBuffModsToPanel(externalPanel, interimMods, {
+    baseAnomalyControl,
+    baseEnergyRegen,
+  })
+  const extras = resolveConvertAttrExtras(slotIndex, ctx)
+  return {
+    external: panelToConvertAttrValues(externalPanel, { ...extras, pierceMod: 0 }),
+    final: panelToConvertAttrValues(interimPanel, {
+      ...extras,
+      pierceMod: interimMods.pierce,
+    }),
+  }
+}
+
+function buildAllPanelSourceValuesBySlot(
+  ctx: PanelCalcContext,
+  mainExternalPanel: PanelStats,
+): Map<number, PanelSourceValues> {
+  const map = new Map<number, PanelSourceValues>()
+  ctx.teamSlots.forEach((slot, index) => {
+    if (!slot.agentId) return
+    map.set(index, buildPanelSourceValuesForSlot(index, ctx, mainExternalPanel))
+  })
+  return map
+}
+
+/** 需录入局外面板的转模增益角色（非主 C、非异常产生角色） */
+export function collectConvertSupportSlots(
+  ctx: PanelCalcContext,
+  options?: { excludeAnomalyAgentIds?: Iterable<string> },
+): ConvertSupportSlot[] {
+  const mainId = ctx.teamSlots[ctx.mainSlotIndex]?.agentId
+  const anomalyIds = new Set(options?.excludeAnomalyAgentIds ?? [])
+  const attrByAgent = new Map<string, Set<CharacterAttrKey>>()
+  const slotByAgent = new Map<string, number>()
+
+  for (const item of collectAllBuffEffects(ctx)) {
+    const effect = item.effect
+    if (effect.kind !== 'convert' || !effect.convert) continue
+    const source = effect.convert.panelSource ?? 'external'
+    if (source === 'manual') continue
+    if (!isEffectEnabled(effect, ctx.buffSelection)) continue
+
+    const slotIndex = parseSourceKeySlotIndex(item.sourceKey)
+    if (slotIndex == null) continue
+
+    const agentId = ctx.teamSlots[slotIndex]?.agentId
+    if (!agentId || agentId === mainId || anomalyIds.has(agentId)) continue
+
+    slotByAgent.set(agentId, slotIndex)
+    const set = attrByAgent.get(agentId) ?? new Set<CharacterAttrKey>()
+    set.add(effect.convert.from)
+    attrByAgent.set(agentId, set)
+  }
+
+  return [...attrByAgent.entries()].map(([agentId, attrs]) => ({
+    agentId,
+    slotIndex: slotByAgent.get(agentId)!,
+    requiredAttrs: [...attrs],
+  }))
 }
 
 /** 异常掌控% 按结算角色（主 C 槽位）的初始异常掌控换算 */
@@ -250,8 +444,13 @@ function resolvePackMods(
   effects: BuffEffect[],
   isMain: boolean,
   ctx: PanelCalcContext,
+  slotIndex?: number,
 ): BuffStatModifiers {
   const skillCtx = ctx.skillContext ?? defaultSkillContext('direct')
+  let panelSourceValues = ctx.panelSourceValues
+  if (slotIndex != null && ctx.panelSourceValuesBySlot?.has(slotIndex)) {
+    panelSourceValues = ctx.panelSourceValuesBySlot.get(slotIndex)
+  }
   return resolveEffectsToMods(effects, {
     applyTargets: isMain ? ['self', 'team'] : ['team'],
     ctx: skillCtx,
@@ -259,7 +458,7 @@ function resolvePackMods(
     stacksByEffectId: ctx.buffSelection?.stacksByEffectId,
     convertInputs: ctx.buffSelection?.convertInputs,
     attrValues: ctx.attrValues,
-    panelSourceValues: ctx.panelSourceValues,
+    panelSourceValues,
     skipConvert: ctx.skipConvert,
     selection: ctx.buffSelection,
   })
@@ -662,7 +861,7 @@ export function collectPanelBuffModSources(ctx: PanelCalcContext): BuffModSource
         const mindscapeMods = resolvePackMods(effects, isMain, {
           ...ctx,
           skillContext: skillCtx,
-        })
+        }, index)
         if (!hasNonZeroBuffMods(mindscapeMods) && !note && !effects.length) return
         sources.push({
           key: `agent-${index}-${rank}-${entry.blockId}`,
@@ -700,7 +899,7 @@ export function collectPanelBuffModSources(ctx: PanelCalcContext): BuffModSource
             const wengineMods = resolvePackMods(effects, isMain, {
               ...ctx,
               skillContext: skillCtx,
-            })
+            }, index)
             if (!hasNonZeroBuffMods(wengineMods) && !effects.length) continue
             sources.push({
               key: `wengine-${index}-${item.key}-${entry.blockId}`,
@@ -743,7 +942,7 @@ export function collectPanelBuffModSources(ctx: PanelCalcContext): BuffModSource
         const mods = resolvePackMods(effects, isMain, {
           ...ctx,
           skillContext: skillCtx,
-        })
+        }, index)
         if (!hasNonZeroBuffMods(mods) && !effects.length) return
         sources.push({
           key: `${key}-${blockId}`,
@@ -819,6 +1018,9 @@ export function collectPanelBuffModSources(ctx: PanelCalcContext): BuffModSource
       stacksByEffectId: ctx.buffSelection?.stacksByEffectId,
       convertInputs: ctx.buffSelection?.convertInputs,
       attrValues: ctx.attrValues,
+      panelSourceValues:
+        ctx.panelSourceValuesBySlot?.get(ctx.mainSlotIndex) ?? ctx.panelSourceValues,
+      skipConvert: ctx.skipConvert,
       selection: ctx.buffSelection,
     })
     const refineBlockName =
@@ -1025,26 +1227,31 @@ export function computeFinalPanel(
   externalPanel: PanelStats,
   ctx: PanelCalcContext,
 ): PanelBuffBreakdown {
+  const panelSourceValuesBySlot = buildAllPanelSourceValuesBySlot(ctx, externalPanel)
+  const mainPanelSources = panelSourceValuesBySlot.get(ctx.mainSlotIndex)
+
   // 先叠非转模，再用局外/局内面板实时折算转模，避免环依赖
   const baseCtx: PanelCalcContext = {
     ...ctx,
+    mainExternalPanel: externalPanel,
+    panelSourceValuesBySlot,
+    panelSourceValues: mainPanelSources,
     skipConvert: true,
   }
-  const baseAnomalyControl = resolveBaseAnomalyControl(ctx)
-  const baseEnergyRegen = resolveBaseEnergyRegen(ctx)
+  const baseAnomalyControl = resolveBaseAnomalyControl(baseCtx)
+  const baseEnergyRegen = resolveBaseEnergyRegen(baseCtx)
   const interimMods = collectPanelBuffMods(baseCtx)
   const interimPanel = applyBuffModsToPanel(externalPanel, interimMods, {
     baseAnomalyControl,
     baseEnergyRegen,
   })
+  const mainExtras = resolveConvertAttrExtras(ctx.mainSlotIndex, ctx)
   const externalAttrs = panelToConvertAttrValues(externalPanel, {
-    level: ctx.attrValues?.level ?? 60,
-    impact: ctx.attrValues?.impact ?? 0,
+    ...mainExtras,
     pierceMod: 0,
   })
   const finalAttrs = panelToConvertAttrValues(interimPanel, {
-    level: ctx.attrValues?.level ?? 60,
-    impact: ctx.attrValues?.impact ?? 0,
+    ...mainExtras,
     pierceMod: interimMods.pierce,
   })
   const attrValues = {
@@ -1052,7 +1259,7 @@ export function computeFinalPanel(
     ...ctx.attrValues,
   }
   const fullCtx: PanelCalcContext = {
-    ...ctx,
+    ...baseCtx,
     skipConvert: false,
     attrValues,
     panelSourceValues: {
