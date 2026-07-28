@@ -3,7 +3,8 @@ import { computed, ref, watch } from 'vue'
 import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
 import NumberStepper from '@/components/common/NumberStepper.vue'
 import type { CharacterAttrKey, SkillSubcategory } from '@/types/calculator'
-import type { CollectedEffect, BuffSelectionState } from '@/utils/panelBuffCalc'
+import type { CollectedEffect, BuffSelectionState, PanelSourceValues } from '@/utils/panelBuffCalc'
+import { parseSourceKeySlotIndex } from '@/utils/panelBuffCalc'
 import { formatBuffEffectResultText, resolveConvertValue } from '@/utils/buffEffect'
 import { formatCalcSigned } from '@/utils/calcNumberFormat'
 import { buffStatFieldLabel, BUFF_STAT_FIELDS } from '@/utils/calculatorUi'
@@ -12,12 +13,19 @@ import { CHARACTER_ATTR_OPTIONS } from '@/types/calculator'
 const props = defineProps<{
   effects: CollectedEffect[]
   attrDefaults?: Partial<Record<CharacterAttrKey, number>>
-  panelSourceValues?: {
-    external?: Partial<Record<CharacterAttrKey, number>>
-    final?: Partial<Record<CharacterAttrKey, number>>
-  }
+  panelSourceValues?: PanelSourceValues
+  /** 按队伍槽位的局外/局内转模取值（队友转模来源） */
+  panelSourceValuesBySlot?: Record<number, PanelSourceValues>
   skillSubcategories?: SkillSubcategory[]
 }>()
+
+function panelSourceValuesForEffect(item: CollectedEffect): PanelSourceValues | undefined {
+  const slotIndex = parseSourceKeySlotIndex(item.sourceKey)
+  if (slotIndex != null && props.panelSourceValuesBySlot?.[slotIndex]) {
+    return props.panelSourceValuesBySlot[slotIndex]
+  }
+  return props.panelSourceValues
+}
 
 const open = defineModel<boolean>('open', { default: false })
 const selection = defineModel<BuffSelectionState>('selection', { required: true })
@@ -110,9 +118,10 @@ function convertLiveBase(item: CollectedEffect) {
     return convert.defaultBase
   }
   const source = convert.panelSource ?? 'external'
+  const panelSources = panelSourceValuesForEffect(item)
   const map =
     (source === 'final' || source === 'external'
-      ? props.panelSourceValues?.[source]
+      ? panelSources?.[source]
       : undefined) ??
     props.attrDefaults ??
     {}
@@ -164,7 +173,7 @@ function convertResult(item: CollectedEffect) {
     item.effect,
     props.attrDefaults ?? {},
     override,
-    props.panelSourceValues,
+    panelSourceValuesForEffect(item),
   )
 }
 

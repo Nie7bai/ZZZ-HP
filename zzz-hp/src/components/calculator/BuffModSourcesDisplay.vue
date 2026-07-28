@@ -35,18 +35,18 @@ function statLabel(stat: string) {
         <span v-if="source.blockName" class="buff-block-tag">{{ source.blockName }}</span>
       </p>
       <p v-if="source.note?.trim()" class="buff-source-note">{{ source.note }}</p>
-      <ul v-if="source.effects?.length" class="buff-effect-list">
-        <li v-for="effect in source.effects" :key="effect.id">
-          {{ effectSummaryLabel(effect, (s) => statLabel(s), props.skillSubcategories) }}
-        </li>
-      </ul>
       <div
-        v-else
+        v-if="hasNonZeroBuffMods(source.mods)"
         class="buff-source-mods"
         :class="{ 'has-note': source.note?.trim() }"
       >
         <BuffModsDisplay :mods="source.mods" />
       </div>
+      <ul v-if="source.effects?.length" class="buff-effect-list">
+        <li v-for="effect in source.effects" :key="effect.id">
+          {{ effectSummaryLabel(effect, (s) => statLabel(s), props.skillSubcategories) }}
+        </li>
+      </ul>
     </article>
   </div>
   <p v-else class="buff-sources-empty">当前没有可展示的增益来源</p>

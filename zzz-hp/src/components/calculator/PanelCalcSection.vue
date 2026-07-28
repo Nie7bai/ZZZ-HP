@@ -54,6 +54,7 @@ import {
 } from '@/utils/calculatorUi'
 import {
   applyConvertPartialToExternalPanel,
+  buildPanelSourceValuesBySlotRecord,
   collectConvertSupportSlots,
   computeFinalPanel,
   computePiercePower,
@@ -456,12 +457,18 @@ const damageElement = computed(() => {
   return mainAgent.value?.element
 })
 
-const panelBreakdown = computed(() =>
-  computeFinalPanel(effectiveExternalPanel.value, {
+/** 追踪转模局外面板深层变更，确保局内增益展示重算 */
+const convertSlotPanelsSignature = computed(() =>
+  JSON.stringify(props.convertSlotPanels ?? {}),
+)
+
+const panelBreakdown = computed(() => {
+  void convertSlotPanelsSignature.value
+  return computeFinalPanel(effectiveExternalPanel.value, {
     ...buildBasePanelCalcContext(),
     attrValues: convertAttrDefaults.value,
-  }),
-)
+  })
+})
 
 const finalPanel = computed(() => {
   const panel = { ...panelBreakdown.value.finalPanel }
@@ -507,6 +514,17 @@ const convertPanelSourceValues = computed(() => ({
     pierceMod: panelBreakdown.value.totalMods.pierce,
   }),
 }))
+
+const panelSourceValuesBySlot = computed(() => {
+  void convertSlotPanelsSignature.value
+  return buildPanelSourceValuesBySlotRecord(
+    {
+      ...buildBasePanelCalcContext(),
+      attrValues: convertAttrDefaults.value,
+    },
+    effectiveExternalPanel.value,
+  )
+})
 
 const triggerExternalPanel = computed<PanelStats | null>(() => {
   if (!needsTriggerPanel.value || !props.triggerAnomalyAgentId) return null
@@ -2239,6 +2257,7 @@ defineExpose({
   applyRecognitionToExternalPanel,
   convertAttrDefaults,
   convertPanelSourceValues,
+  panelSourceValuesBySlot,
   resolveMultDefaultsForEvent,
 })
 </script>

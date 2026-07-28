@@ -328,6 +328,14 @@ function buildAllPanelSourceValuesBySlot(
   return map
 }
 
+/** 各槽位局外/局内转模取值（供 Buff 展示等 UI 按来源槽位解析） */
+export function buildPanelSourceValuesBySlotRecord(
+  ctx: PanelCalcContext,
+  mainExternalPanel: PanelStats,
+): Record<number, PanelSourceValues> {
+  return Object.fromEntries(buildAllPanelSourceValuesBySlot(ctx, mainExternalPanel).entries())
+}
+
 /** 需录入局外面板的转模增益角色（非主 C、非异常产生角色） */
 export function collectConvertSupportSlots(
   ctx: PanelCalcContext,
