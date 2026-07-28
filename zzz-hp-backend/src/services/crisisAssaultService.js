@@ -7,7 +7,7 @@ import {
   resolveCrisisHpCoeff,
 } from '../utils/crisisHpCoeff.js'
 import { convertHpToDefense953, roundConvertedHp } from '../utils/defenseHpConvert.js'
-import { isCrisisHardRoom, isSeasonPubliclyVisible, isSeasonUnreleased, isCrisisPhaseReadyForEarlyRelease, SEASON_EARLY_RELEASE_DAYS } from '../utils/crisisRoom.js'
+import { isCrisisHardRoom, isSeasonPubliclyVisible, isSeasonUnreleased } from '../utils/crisisRoom.js'
 import { getSeasonDateMap } from './seasonDateService.js'
 
 let schemaEnsured = false
@@ -186,12 +186,7 @@ export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
       const phaseId = Number(`${String(item.version).replace('.', '')}${item.phase}`)
       const tid = tidMap.get(phaseId) ?? null
       const startDate = formatDateValue(dateInfo?.start_date)
-      const allowEarly = isCrisisPhaseReadyForEarlyRelease(item.bosses, item.buffs)
-      const listed = isSeasonPubliclyVisible(startDate, {
-        allowEarly,
-        earlyReleaseDays: SEASON_EARLY_RELEASE_DAYS,
-      })
-      // 未到开始日一律标未公开；提前进列表也不当作「当前期」
+      const listed = isSeasonPubliclyVisible(startDate)
       const isHidden = isSeasonUnreleased(startDate)
 
       return {
@@ -266,27 +261,6 @@ export async function getBossChartHistory(
   const dateMap = await getSeasonDateMap('crisis')
   const baseHpByName = await loadCrisisBaseHpMap()
 
-  const [allBossRows] = await pool.execute(
-    'SELECT id, version, phase, room, boss_name, hp FROM boss',
-  )
-  const [allBuffRows] = await pool.execute(
-    'SELECT id, version, phase, buff_name, buff FROM buff',
-  )
-  const bossesByPhase = new Map()
-  for (const row of allBossRows) {
-    if (!isCrisisBossId(row.id)) continue
-    const key = seasonDateKey(row.version, row.phase)
-    if (!bossesByPhase.has(key)) bossesByPhase.set(key, [])
-    bossesByPhase.get(key).push(row)
-  }
-  const buffsByPhase = new Map()
-  for (const row of allBuffRows) {
-    if (!isCrisisBuffId(row.id)) continue
-    const key = seasonDateKey(row.version, row.phase)
-    if (!buffsByPhase.has(key)) buffsByPhase.set(key, [])
-    buffsByPhase.get(key).push(row)
-  }
-
   return bossRows
     .filter((boss) => isCrisisBossId(boss.id))
     .filter((boss) => {
@@ -305,15 +279,7 @@ export async function getBossChartHistory(
       const dateInfo = dateMap.get(seasonDateKey(boss.version, boss.phase))
       const enriched = enrichBoss(boss, baseHpByName)
       const startDate = formatDateValue(dateInfo?.start_date)
-      const phaseKey = seasonDateKey(boss.version, boss.phase)
-      const allowEarly = isCrisisPhaseReadyForEarlyRelease(
-        bossesByPhase.get(phaseKey) || [],
-        buffsByPhase.get(phaseKey) || [],
-      )
-      const listed = isSeasonPubliclyVisible(startDate, {
-        allowEarly,
-        earlyReleaseDays: SEASON_EARLY_RELEASE_DAYS,
-      })
+      const listed = isSeasonPubliclyVisible(startDate)
       const isHidden = isSeasonUnreleased(startDate)
       return {
         label: `${boss.version}第${boss.phase}期`,

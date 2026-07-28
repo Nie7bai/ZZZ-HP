@@ -7,7 +7,7 @@ import {
 } from '../utils/defenseId.js'
 import { getDefenseSeasonMeta } from './nanoka/defenseSeasonCatalog.js'
 import { versionPhaseToDisplayId } from '../utils/defenseSeasonId.js'
-import { isSeasonPubliclyVisible, isSeasonUnreleased, SEASON_EARLY_RELEASE_DAYS } from '../utils/crisisRoom.js'
+import { isSeasonPubliclyVisible, isSeasonUnreleased } from '../utils/crisisRoom.js'
 
 const CHINESE_STAGE = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十']
 
@@ -206,34 +206,6 @@ function finalizeRoom(room) {
   }
 }
 
-function roomHasEnemies(room) {
-  for (const battleRoom of room.battleRooms.values()) {
-    for (const wave of battleRoom.waves.values()) {
-      if (wave.enemies.length > 0) return true
-    }
-  }
-  return false
-}
-
-function roomHasBuff(room) {
-  if (String(room.roomBuff?.name ?? '').trim()) return true
-  if (Array.isArray(room.zoneBuffs) && room.zoneBuffs.length > 0) return true
-  return false
-}
-
-/** 防卫战：第5关 3 间均有怪物，且每间 buff 已填写 */
-function isDefenseSeasonReadyForEarlyRelease(season) {
-  const frontier = season.frontiers.get(5)
-  if (!frontier) return false
-  for (const roomInStage of [1, 2, 3]) {
-    const room = frontier.rooms.get(`5-${roomInStage}`)
-    if (!room) return false
-    if (!roomHasEnemies(room)) return false
-    if (!roomHasBuff(room)) return false
-  }
-  return true
-}
-
 function finalizeSeason(season) {
   const frontiers = [...season.frontiers.entries()]
     .sort(([a], [b]) => Number(b) - Number(a))
@@ -256,11 +228,7 @@ function finalizeSeason(season) {
     })
 
   const totalHp = frontiers.reduce((sum, frontier) => sum + computeFrontierTotalHp(frontier), 0)
-  const allowEarly = isDefenseSeasonReadyForEarlyRelease(season)
-  const listed = isSeasonPubliclyVisible(season.startDateRaw, {
-    allowEarly,
-    earlyReleaseDays: SEASON_EARLY_RELEASE_DAYS,
-  })
+  const listed = isSeasonPubliclyVisible(season.startDateRaw)
   const isHidden = isSeasonUnreleased(season.startDateRaw)
 
   return {

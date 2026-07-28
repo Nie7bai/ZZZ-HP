@@ -81,44 +81,14 @@ export function isStartDateOnOrBeforeToday(startDate) {
 }
 
 /**
- * 期数是否进入公开列表（含提前 7 天可见）。
- * earlyReleaseDays>0 且 allowEarly 时：开始日前 N 天即可出现在列表中。
+ * 期数是否进入公开列表：开始日为空视为可显示；有开始日则须 <= 今天（仅当天及之后公开）。
  */
-export function isSeasonPubliclyVisible(startDate, { allowEarly = false, earlyReleaseDays = 0 } = {}) {
-  if (!startDate) return true
-  if (isStartDateOnOrBeforeToday(startDate)) return true
-  if (!allowEarly) return false
-  const days = Math.max(0, Number(earlyReleaseDays) || 0)
-  if (!days) return false
-  const earlyFrom = addCalendarDays(startDate, -days)
-  if (!earlyFrom) return false
-  return earlyFrom <= todayCalendarDate()
+export function isSeasonPubliclyVisible(startDate) {
+  return isStartDateOnOrBeforeToday(startDate)
 }
 
-/** 是否尚未到官方开始日（用于「未公开」角标；与是否进列表无关） */
+/** 是否尚未到官方开始日（用于「未公开」角标；与是否进列表一致） */
 export function isSeasonUnreleased(startDate) {
   if (!startDate) return false
   return !isStartDateOnOrBeforeToday(startDate)
 }
-
-/** 危局：1/2/3 间 + 困难间均有怪物，且至少 3 条 buff */
-export function isCrisisPhaseReadyForEarlyRelease(bosses = [], buffs = []) {
-  const byRoom = new Map()
-  for (const boss of bosses) {
-    const code = normalizeCrisisRoomCode(boss.room)
-    if (!code) continue
-    if (!String(boss.boss_name ?? '').trim()) continue
-    if (!(Number(boss.hp) > 0)) continue
-    byRoom.set(code, boss)
-  }
-  for (const room of ['1', '2', '3', CRISIS_HARD_ROOM_CODE]) {
-    if (!byRoom.has(room)) return false
-  }
-  const filledBuffs = buffs.filter(
-    (buff) => String(buff.buff_name ?? '').trim() || String(buff.buff ?? '').trim(),
-  )
-  return filledBuffs.length >= 3
-}
-
-/** 未公开期提前公开的天数 */
-export const SEASON_EARLY_RELEASE_DAYS = 7
