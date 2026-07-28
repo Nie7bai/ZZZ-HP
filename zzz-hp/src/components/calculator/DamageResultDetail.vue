@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import StatValueWithSources from '@/components/calculator/StatValueWithSources.vue'
+import DirectDamageFormulaAligned from '@/components/calculator/DirectDamageFormulaAligned.vue'
 import type { PanelStats } from '@/types/calculatorPanel'
 import type { DamageCalcResult } from '@/utils/damageCalc'
 import type { BuffModSource } from '@/utils/panelBuffCalc'
@@ -12,6 +13,12 @@ import {
   type StatSourceGroup,
 } from '@/utils/statSourceTips'
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
+import {
+  buildAlignedDirectFormulaGroup,
+  buildDirectDamageExpectedProcessItems,
+  formatDirectDmgMultZoneFormula,
+  formatSettlementDmgMultZoneFormula,
+} from '@/utils/directDamageDisplay'
 
 const props = defineProps<{
   calcParts: DamageCalcResult
@@ -75,12 +82,16 @@ const generalFormulaParts = computed(() => {
 
 const directFormulaParts = computed(() => {
   const p = props.calcParts
-  return [
+  const parts = [
     formatFormulaNumber(p.generalMultiplier),
     formatFormulaNumber(p.critMultiplier),
     formatFormulaNumber(p.specialMultiplier),
-    formatFormulaNumber(p.directDmgMultZone),
   ]
+  if (p.baseDamageSource === 'pierce') {
+    parts.push(formatFormulaNumber(p.pierceDmgMultiplier))
+  }
+  parts.push(formatFormulaNumber(p.directDmgMultZone))
+  return parts
 })
 
 const anomalyFormulaParts = computed(() => {
@@ -206,28 +217,9 @@ const alignedGeneralFormula = computed((): AlignedFormulaGroup => {
   }
 })
 
-const alignedDirectFormula = computed((): AlignedFormulaGroup => {
-  const p = props.calcParts
-  const terms: AlignedFormulaTerm[] = [
-    { label: '通用乘区', value: formatFormulaNumber(p.generalMultiplier, 2), tipsKey: 'generalMultiplier' },
-    { label: '暴击区', value: formatFormulaNumber(p.critMultiplier), tipsKey: 'critMultiplier' },
-    { label: '特殊乘区', value: formatFormulaNumber(p.specialMultiplier), tipsKey: 'specialMultiplier' },
-    { label: '直伤倍率区', value: formatFormulaNumber(p.directDmgMultZone), tipsKey: 'directDmgMultZone' },
-  ]
-  if (p.settlementDmgMultZone > 0) {
-    terms.push({
-      label: '决算倍率区',
-      value: formatFormulaNumber(p.settlementDmgMultZone),
-      tipsKey: 'settlementDmgMultZone',
-    })
-  }
-  return {
-    key: 'directDamageExpected',
-    title: '公式',
-    terms,
-    result: formatNumber(p.directDamageExpected),
-  }
-})
+const alignedDirectFormula = computed(() =>
+  buildAlignedDirectFormulaGroup(props.calcParts, formatFormulaNumber, formatNumber),
+)
 
 const alignedAnomalyFormulas = computed((): AlignedFormulaGroup[] => {
   const p = props.calcParts
@@ -607,21 +599,27 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
     ),
     directDmgMultZone: withTotal(
       buildStatSourceGroups({
-        keys: ['directDmgMult'],
+        keys: ['directDmgMult', 'directDmgMultFactor'],
         externalPanel: external,
         sources,
-        finalValues: { directDmgMult: panel.directDmgMult },
+        finalValues: {
+          directDmgMult: panel.directDmgMult,
+          directDmgMultFactor: panel.directDmgMultFactor,
+        },
       }),
-      `直伤倍率区 ${formatFormulaNumber(panel.directDmgMult, 2)}% = ${formatFormulaNumber(p.directDmgMultZone)}`,
+      formatDirectDmgMultZoneFormula(panel, p.directDmgMultZone),
     ),
     settlementDmgMultZone: withTotal(
       buildStatSourceGroups({
-        keys: ['settlementDmgMult'],
+        keys: ['settlementDmgMult', 'directDmgMultFactor'],
         externalPanel: external,
         sources,
-        finalValues: { settlementDmgMult: panel.settlementDmgMult },
+        finalValues: {
+          settlementDmgMult: panel.settlementDmgMult,
+          directDmgMultFactor: panel.directDmgMultFactor,
+        },
       }),
-      `决算倍率区 ${formatFormulaNumber(panel.settlementDmgMult, 2)}% = ${formatFormulaNumber(p.settlementDmgMultZone)}`,
+      formatSettlementDmgMultZoneFormula(panel, p.settlementDmgMultZone),
     ),
     penRateRatio: withTotal(
       buildStatSourceGroups({
@@ -687,6 +685,9 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
           `通用乘区 ${directFormulaParts.value[0]}`,
           `暴击区 ${directFormulaParts.value[1]}`,
           `特殊乘区 ${directFormulaParts.value[2]}`,
+          ...(p.baseDamageSource === 'pierce'
+            ? [`贯穿增伤区 ${formatFormulaNumber(p.pierceDmgMultiplier)}`]
+            : []),
           `直伤倍率区 ${formatFormulaNumber(p.directDmgMultZone)} → 直伤分量 ${formatNumber(p.directDamageFromDirectMult)}`,
           ...(p.settlementDmgMultZone > 0
             ? [
@@ -699,15 +700,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
       {
         label: '加减过程',
         fullWidth: true,
-        items: p.settlementDmgMultZone > 0
-          ? [
-              `${formatNumber(p.directDamageFromDirectMult)} + ${formatNumber(p.settlementDamageExpected)}`,
-              `= ${formatNumber(p.directDamageExpected)}`,
-            ]
-          : [
-              `${directFormulaParts.value[0]} × ${directFormulaParts.value[1]} × ${directFormulaParts.value[2]} × ${formatFormulaNumber(p.directDmgMultZone)}`,
-              `= ${formatNumber(p.directDamageExpected)}`,
-            ],
+        items: buildDirectDamageExpectedProcessItems(p, formatFormulaNumber, formatNumber),
       },
     ],
     masteryZone: withTotal(
@@ -1044,30 +1037,11 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
     <template v-if="show === 'direct'">
       <h3 class="result-section-title">直伤期望伤害</h3>
       <div class="formula-block formula-block--aligned">
-        <div class="formula-aligned-group">
-          <span class="formula-label formula-aligned-title">{{ alignedDirectFormula.title }}</span>
-          <div class="formula-aligned-body">
-            <template
-              v-for="(term, index) in alignedDirectFormula.terms"
-              :key="`direct-${term.label}`"
-            >
-              <span v-if="index > 0" class="formula-aligned-op" aria-hidden="true">×</span>
-              <div class="formula-aligned-term">
-                <span class="formula-aligned-term-label">{{ term.label }}</span>
-                <span class="formula-aligned-term-value">
-                  <StatValueWithSources :value="term.value" :groups="valueTips[term.tipsKey]" />
-                </span>
-              </div>
-            </template>
-            <span class="formula-aligned-op" aria-hidden="true">=</span>
-            <div class="formula-aligned-result">
-              <StatValueWithSources
-                :value="alignedDirectFormula.result"
-                :groups="valueTips[alignedDirectFormula.key]"
-              />
-            </div>
-          </div>
-        </div>
+        <DirectDamageFormulaAligned
+          :group="alignedDirectFormula"
+          :value-tips="valueTips"
+          :format-base-chain="(value) => formatFormulaNumber(value, 2)"
+        />
       </div>
       <div class="result-grid">
         <p>暴击率（计入上限 1）：<StatValueWithSources :value="calcParts.critRateRatio" :groups="valueTips.critRateRatio" /></p>
