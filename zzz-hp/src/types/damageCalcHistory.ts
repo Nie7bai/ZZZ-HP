@@ -26,7 +26,7 @@ export interface DamageCalcEnemyInputSnapshot {
 }
 
 export interface DamageCalcPanelSnapshot {
-  baseDamageSource: 'atk' | 'pierce'
+  baseDamageSource: 'atk' | 'pierce' | 'def'
   externalPanel: PanelStats
   affixCounts: AffixCounts
   affixDriveDiscMainStats: AffixDriveDiscMainStats

@@ -60,9 +60,12 @@ const BUFF_STAT_KEYS: BuffStatKey[] = [
   'hp',
   'inCombatHpPercent',
   'inCombatAtkPercent',
+  'inCombatDefPercent',
   'externalHpPercent',
   'externalAtkPercent',
+  'externalDefPercent',
   'atk',
+  'def',
   'dmgBonus',
   'critRate',
   'critDmg',
@@ -138,6 +141,8 @@ const LEGACY_CONVERT_FROM: Record<
   inCombatHp: { from: 'hp', panelSource: 'final' },
   externalAtk: { from: 'atk', panelSource: 'external' },
   inCombatAtk: { from: 'atk', panelSource: 'final' },
+  externalDef: { from: 'def', panelSource: 'external' },
+  inCombatDef: { from: 'def', panelSource: 'final' },
 }
 
 function readNumber(value: unknown) {

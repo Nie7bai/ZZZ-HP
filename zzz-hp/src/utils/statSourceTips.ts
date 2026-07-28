@@ -142,6 +142,51 @@ export function buildAtkPanelProcessItems(options: {
   return steps
 }
 
+/** 局内防御力：局外 × (1 + 局内防御%) + 固定防御 */
+export function buildDefPanelProcessItems(options: {
+  externalDef: number
+  finalDef: number
+  sources: BuffModSource[]
+}): string[] {
+  let totalPercent = 0
+  let totalFlat = 0
+  const steps: string[] = [`局外防御 ${formatProcessNumber(options.externalDef)}`]
+
+  for (const source of options.sources) {
+    const pct = source.mods.inCombatDefPercent
+    const flat = source.mods.def
+    if (pct) {
+      steps.push(`${source.label} 局内防御力 ${formatSigned(pct)}%`)
+      totalPercent += pct
+    }
+    if (flat) {
+      steps.push(`${source.label} 防御力（数值） ${formatSigned(flat)}`)
+      totalFlat += flat
+    }
+  }
+
+  if (!totalPercent && !totalFlat) return []
+
+  const afterPercent = options.externalDef * (1 + totalPercent / 100)
+
+  if (totalPercent) {
+    steps.push(
+      `${formatProcessNumber(options.externalDef)} × (1 + ${formatProcessNumber(totalPercent)}%) = ${formatProcessNumber(afterPercent)}`,
+    )
+  }
+
+  if (totalFlat) {
+    const baseForFlat = totalPercent ? afterPercent : options.externalDef
+    steps.push(
+      `${formatProcessNumber(baseForFlat)} + ${formatProcessNumber(totalFlat)} = ${formatProcessNumber(options.finalDef)}`,
+    )
+  } else if (totalPercent) {
+    steps[steps.length - 1] = `${formatProcessNumber(options.externalDef)} × (1 + ${formatProcessNumber(totalPercent)}%) = ${formatProcessNumber(options.finalDef)}`
+  }
+
+  return steps
+}
+
 /** 敌方基础 + 战斗增益 的加减过程 */
 export function buildEnemyCombatProcessItems(options: {
   baseLabel: string

@@ -1,7 +1,6 @@
 export interface PanelStats {
   hp: number
   atk: number
-  /** 防御力（展示用，不进当前伤害公式） */
   def: number
   critRate: number
   critDmg: number

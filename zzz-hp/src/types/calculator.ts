@@ -109,14 +109,20 @@ export const ANOMALY_DAMAGE_SUBKIND_OPTIONS: {
   { id: 'anomalyRelease', label: '异放伤害' },
 ]
 
+export type BaseDamageSource = 'atk' | 'pierce' | 'def'
+
 export interface BuffStatModifiers {
   /** 固定生命 */
   hp: number
   inCombatHpPercent: number
   inCombatAtkPercent: number
+  inCombatDefPercent: number
   externalHpPercent: number
   externalAtkPercent: number
+  externalDefPercent: number
   atk: number
+  /** 固定防御力 */
+  def: number
   dmgBonus: number
   critRate: number
   critDmg: number
@@ -416,6 +422,7 @@ export interface WengineAdvancedStats {
   mastery: number
   externalAtkPercent: number
   externalHpPercent: number
+  externalDefPercent: number
   penRate: number
 }
 

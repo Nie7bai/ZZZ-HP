@@ -68,6 +68,12 @@ export const BUFF_STAT_FIELDS: {
     hint: '仅对局外基础攻击乘算，不含固定攻击力',
   },
   {
+    key: 'inCombatDefPercent',
+    label: '局内防御力',
+    unit: 'percent',
+    hint: '仅对局外基础防御乘算，不含固定防御力',
+  },
+  {
     key: 'externalHpPercent',
     label: '局外生命值',
     unit: 'percent',
@@ -80,10 +86,22 @@ export const BUFF_STAT_FIELDS: {
     hint: '参与词条计算的局外攻击乘算',
   },
   {
+    key: 'externalDefPercent',
+    label: '局外防御力',
+    unit: 'percent',
+    hint: '参与词条计算的局外防御乘算',
+  },
+  {
     key: 'atk',
     label: '攻击力',
     unit: 'flat',
     hint: '固定数值，直接加到局内攻击，不受局内攻击力%影响',
+  },
+  {
+    key: 'def',
+    label: '防御力',
+    unit: 'flat',
+    hint: '固定数值，直接加到局内防御，不受局内防御力%影响',
   },
   { key: 'pierce', label: '贯穿力', unit: 'flat', hint: '固定数值，加到局内贯穿力' },
   { key: 'dmgBonus', label: '增伤', unit: 'percent', hint: '百分点，累加到局内增伤%' },
@@ -377,7 +395,10 @@ export function buffStatFieldLabel(field: (typeof BUFF_STAT_FIELDS)[number]) {
 }
 
 export const TWO_PIECE_BUFF_STAT_FIELDS = BUFF_STAT_FIELDS.filter(
-  (field) => field.key !== 'inCombatHpPercent' && field.key !== 'inCombatAtkPercent',
+  (field) =>
+    field.key !== 'inCombatHpPercent' &&
+    field.key !== 'inCombatAtkPercent' &&
+    field.key !== 'inCombatDefPercent',
 )
 
 export function normalizeTwoPieceMods(value: unknown): BuffStatModifiers {
@@ -388,8 +409,12 @@ export function normalizeTwoPieceMods(value: unknown): BuffStatModifiers {
   if (!mods.externalAtkPercent && mods.inCombatAtkPercent) {
     mods.externalAtkPercent = mods.inCombatAtkPercent
   }
+  if (!mods.externalDefPercent && mods.inCombatDefPercent) {
+    mods.externalDefPercent = mods.inCombatDefPercent
+  }
   mods.inCombatHpPercent = 0
   mods.inCombatAtkPercent = 0
+  mods.inCombatDefPercent = 0
   return mods
 }
 
@@ -407,9 +432,12 @@ export function createEmptyBuffStatModifiers(): BuffStatModifiers {
     hp: 0,
     inCombatHpPercent: 0,
     inCombatAtkPercent: 0,
+    inCombatDefPercent: 0,
     externalHpPercent: 0,
     externalAtkPercent: 0,
+    externalDefPercent: 0,
     atk: 0,
+    def: 0,
     dmgBonus: 0,
     critRate: 0,
     critDmg: 0,
@@ -532,6 +560,9 @@ export function normalizeBuffStatModifiers(value: unknown): BuffStatModifiers {
   }
   if (readNumber(entry.externalAtkPercent) && !result.inCombatAtkPercent) {
     result.inCombatAtkPercent = readNumber(entry.externalAtkPercent)
+  }
+  if (readNumber(entry.externalDefPercent) && !result.inCombatDefPercent) {
+    result.inCombatDefPercent = readNumber(entry.externalDefPercent)
   }
   return result
 }
@@ -692,6 +723,7 @@ export const WENGINE_ADVANCED_STAT_FIELDS: {
   { key: 'mastery', label: '精通', unit: 'flat' },
   { key: 'externalAtkPercent', label: '局外攻击力', unit: 'percent' },
   { key: 'externalHpPercent', label: '局外生命力', unit: 'percent' },
+  { key: 'externalDefPercent', label: '局外防御力', unit: 'percent' },
   { key: 'penRate', label: '穿透率', unit: 'percent' },
 ]
 
@@ -736,6 +768,7 @@ export function createEmptyWengineAdvancedStats(): WengineAdvancedStats {
     mastery: 0,
     externalAtkPercent: 0,
     externalHpPercent: 0,
+    externalDefPercent: 0,
     penRate: 0,
   }
 }

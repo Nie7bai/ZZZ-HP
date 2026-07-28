@@ -11,6 +11,7 @@ import type {
   AgentBuffDoc,
   AnomalyDamageSubKind,
   BangbooBuffDoc,
+  BaseDamageSource,
   BuffStatKey,
   BuffStatModifiers,
   CharacterAttrKey,
@@ -60,7 +61,7 @@ import {
   type DamageEventLine,
 } from '@/utils/damageEvent'
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
-import { buildAtkPanelProcessItems, buildEnemyCombatProcessItems, buildStatSourceGroups, type StatSourceGroup } from '@/utils/statSourceTips'
+import { buildAtkPanelProcessItems, buildDefPanelProcessItems, buildEnemyCombatProcessItems, buildStatSourceGroups, type StatSourceGroup } from '@/utils/statSourceTips'
 import {
   ENEMY_DEFENSE_PRESETS,
   STAGGER_MULTIPLIER_PRESETS,
@@ -69,8 +70,6 @@ import EnemyPresetCombo from '@/components/calculator/EnemyPresetCombo.vue'
 import type { PanelScreenshotRecognition } from '@/types/panelScreenshot'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import { resolveIsFollowUp } from '@/utils/buffEffect'
-
-type BaseDamageSource = 'atk' | 'pierce'
 
 const MB_PROFESSION = '命破'
 
@@ -1358,11 +1357,46 @@ const valueTips = computed(() => {
     externalKeyMap: { pierce: null },
   })
 
+  const defGroups = buildStatSourceGroups({
+    keys: ['inCombatDefPercent', 'def'],
+    externalPanel: external,
+    sources,
+    externalKeyMap: { inCombatDefPercent: null, def: null },
+    extraGroups: external.def
+      ? [{ label: '局外面板', items: [`防御力 ${formatFormulaNumber(external.def, 2)}`] }]
+      : [],
+  })
+
   const atkProcessItems = buildAtkPanelProcessItems({
     externalAtk: external.atk,
     finalAtk: panel.atk,
     sources,
   })
+
+  const defProcessItems = buildDefPanelProcessItems({
+    externalDef: external.def,
+    finalDef: panel.def,
+    sources,
+  })
+
+  const pierceBaseDamageTips = withTotal(
+    [
+      ...hpGroups.map((group) => ({
+        ...group,
+        items: group.items.map((item) => `生命：${item}`),
+      })),
+      ...atkGroups.map((group) => ({
+        ...group,
+        items: group.items.map((item) => `攻击：${item}`),
+      })),
+      ...pierceGroups,
+    ],
+    `贯穿力 ${formatFormulaNumber(piercePower.value, 2)} = 0.1×${formatFormulaNumber(panel.hp, 2)} + 0.3×${formatFormulaNumber(panel.atk, 2)} + ${formatFormulaNumber(pierceMod, 2)}`,
+    [
+      ...(atkProcessItems.length ? ['攻击力：', ...atkProcessItems] : []),
+      `贯穿力 = 0.1 × ${formatFormulaNumber(panel.hp, 2)} + 0.3 × ${formatFormulaNumber(panel.atk, 2)} + ${formatFormulaNumber(pierceMod, 2)} = ${formatFormulaNumber(piercePower.value, 2)}`,
+    ],
+  )
 
   return {
     baseDamage:
@@ -1372,24 +1406,13 @@ const valueTips = computed(() => {
             `局内攻击力 ${formatFormulaNumber(panel.atk, 2)}`,
             atkProcessItems,
           )
-        : withTotal(
-            [
-              ...hpGroups.map((group) => ({
-                ...group,
-                items: group.items.map((item) => `生命：${item}`),
-              })),
-              ...atkGroups.map((group) => ({
-                ...group,
-                items: group.items.map((item) => `攻击：${item}`),
-              })),
-              ...pierceGroups,
-            ],
-            `贯穿力 ${formatFormulaNumber(piercePower.value, 2)} = 0.1×${formatFormulaNumber(panel.hp, 2)} + 0.3×${formatFormulaNumber(panel.atk, 2)} + ${formatFormulaNumber(pierceMod, 2)}`,
-            [
-              ...(atkProcessItems.length ? ['攻击力：', ...atkProcessItems] : []),
-              `贯穿力 = 0.1 × ${formatFormulaNumber(panel.hp, 2)} + 0.3 × ${formatFormulaNumber(panel.atk, 2)} + ${formatFormulaNumber(pierceMod, 2)} = ${formatFormulaNumber(piercePower.value, 2)}`,
-            ],
-          ),
+        : p.baseDamageSource === 'def'
+          ? withTotal(
+              defGroups,
+              `局内防御力 ${formatFormulaNumber(panel.def, 2)}`,
+              defProcessItems,
+            )
+          : pierceBaseDamageTips,
     dmgMultiplier: withTotal(
       buildStatSourceGroups({
         keys: ['dmgBonus'],
@@ -2149,6 +2172,7 @@ defineExpose({
         <span>基础伤害来源</span>
         <select v-model="baseDamageSource" :disabled="isMbMainAgent">
           <option value="atk">攻击力</option>
+          <option value="def">防御力</option>
           <option value="pierce">贯穿力</option>
         </select>
       </label>

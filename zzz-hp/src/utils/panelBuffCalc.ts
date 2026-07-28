@@ -863,7 +863,7 @@ export function applyBuffModsToPanel(
   return {
     hp: externalPanel.hp * (1 + mods.inCombatHpPercent / 100) + mods.hp,
     atk: externalPanel.atk * (1 + mods.inCombatAtkPercent / 100) + mods.atk,
-    def: externalPanel.def,
+    def: externalPanel.def * (1 + mods.inCombatDefPercent / 100) + mods.def,
     critRate: externalPanel.critRate + mods.critRate,
     critDmg: externalPanel.critDmg + mods.critDmg,
     dmgBonus: externalPanel.dmgBonus + mods.dmgBonus + mods.skillDmgBonus,

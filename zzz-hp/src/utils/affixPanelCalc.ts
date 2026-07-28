@@ -56,6 +56,7 @@ function readTwoPieceExternalPercents(mods: BuffStatModifiers) {
   return {
     externalHpPercent: mods.externalHpPercent + mods.inCombatHpPercent,
     externalAtkPercent: mods.externalAtkPercent + mods.inCombatAtkPercent,
+    externalDefPercent: mods.externalDefPercent + mods.inCombatDefPercent,
   }
 }
 
@@ -103,6 +104,10 @@ function sumExternalPercents(
       wengineAdvanced.externalAtkPercent +
       twoPieceExternal.externalAtkPercent +
       mainStats.externalAtkPercent,
+    defPercent:
+      wengineAdvanced.externalDefPercent +
+      twoPieceExternal.externalDefPercent +
+      mainStats.externalDefPercent,
   }
 }
 
@@ -136,10 +141,12 @@ export function computeExternalPanelFromAffixes(input: AffixPanelCalcInput): Pan
     atkFlatFromAffix +
     AFFIX_DRIVE_DISC_SLOT_2_ATK
 
+  const def = agentBase.def * (1 + externalPercents.defPercent / 100)
+
   return {
     hp: roundPanelValue(hp),
     atk: roundPanelValue(atk),
-    def: roundPanelValue(agentBase.def),
+    def: roundPanelValue(def),
     critRate: roundPanelValue(
       agentBase.critRate +
         wengineAdvanced.critRate +

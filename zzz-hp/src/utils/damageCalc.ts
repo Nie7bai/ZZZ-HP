@@ -1,4 +1,4 @@
-import type { AnomalyDamageSubKind, SkillSubcategory } from '@/types/calculator'
+import type { AnomalyDamageSubKind, BaseDamageSource, SkillSubcategory } from '@/types/calculator'
 import type { PanelStats } from '@/types/calculatorPanel'
 import { effectiveAnomalyDuration } from '@/utils/calculatorUi'
 import { resolveSkillMults } from '@/utils/skillSubcategoryMult'
@@ -14,10 +14,12 @@ export interface DamageEnemyInput {
   level: number
 }
 
+export type { BaseDamageSource }
+
 export interface DamageCalcInput {
   finalPanel: PanelStats
   piercePower: number
-  baseDamageSource: 'atk' | 'pierce'
+  baseDamageSource: BaseDamageSource
   isMbMainAgent: boolean
   enemyInput: DamageEnemyInput
   combatVulnerable: number
@@ -49,7 +51,7 @@ export interface DamageCalcInput {
   triggerAgentElement?: string
   /** 触发角色 piercePower（命破等）；缺省用主 C piercePower */
   triggerPiercePower?: number
-  triggerBaseDamageSource?: 'atk' | 'pierce'
+  triggerBaseDamageSource?: BaseDamageSource
   triggerIsMb?: boolean
   /** 当前招式小类（有则优先采用小类倍率） */
   skillSubcategory?: SkillSubcategory | null
@@ -57,7 +59,7 @@ export interface DamageCalcInput {
 
 export interface DamageCalcResult {
   baseDamage: number
-  baseDamageSource: 'atk' | 'pierce'
+  baseDamageSource: BaseDamageSource
   dmgMultiplier: number
   critRateRatio: number
   critDmgRatio: number
@@ -170,10 +172,25 @@ export function computeLevelZone(level: number) {
   return 1 + (safeLevel - 1) / 59
 }
 
+function resolveBaseDamageParts(options: {
+  panel: PanelStats
+  piercePower: number
+  baseDamageSource: BaseDamageSource
+  isMb: boolean
+}) {
+  if (options.isMb || options.baseDamageSource === 'pierce') {
+    return { baseDamage: options.piercePower, usedBaseSource: 'pierce' as const }
+  }
+  if (options.baseDamageSource === 'def') {
+    return { baseDamage: options.panel.def, usedBaseSource: 'def' as const }
+  }
+  return { baseDamage: options.panel.atk, usedBaseSource: 'atk' as const }
+}
+
 function computeGeneralAndAnomalyBase(options: {
   panel: PanelStats
   piercePower: number
-  baseDamageSource: 'atk' | 'pierce'
+  baseDamageSource: BaseDamageSource
   isMb: boolean
   enemyInput: DamageEnemyInput
   combatVulnerable: number
@@ -187,8 +204,12 @@ function computeGeneralAndAnomalyBase(options: {
   const panel = options.panel
   const enemyRes = RESISTANCE_MAP[options.enemyInput.resistanceType]
 
-  const baseDamage =
-    options.baseDamageSource === 'atk' && !options.isMb ? panel.atk : options.piercePower
+  const { baseDamage, usedBaseSource } = resolveBaseDamageParts({
+    panel,
+    piercePower: options.piercePower,
+    baseDamageSource: options.baseDamageSource,
+    isMb: options.isMb,
+  })
 
   const dmgMultiplier = 1 + clamp(panel.dmgBonus / 100, -0.95, 20)
   const critRateRatio = clamp(panel.critRate / 100, 0, 1)
@@ -224,8 +245,6 @@ function computeGeneralAndAnomalyBase(options: {
     Math.max(0, vulnerableMultiplier) *
     Math.max(0, staggerMultiplier)
 
-  const usedBaseSource: 'atk' | 'pierce' =
-    options.baseDamageSource === 'atk' && !options.isMb ? 'atk' : 'pierce'
   const pierceDmgMultiplier =
     usedBaseSource === 'pierce' ? 1 + pierceDmgBonusRatio : 1
 

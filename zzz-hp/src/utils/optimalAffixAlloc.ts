@@ -2,6 +2,7 @@ import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
 import type {
   AgentBuffDoc,
   BangbooBuffDoc,
+  BaseDamageSource,
   BuffStatModifiers,
   DamageEvent,
   DriveDiscBuffDoc,
@@ -150,7 +151,7 @@ export interface OptimalEvalContext {
   driveDiscs: DriveDiscBuffDoc[]
   panelContext: PanelCalcContext
   enemyInput: DamageEnemyInput
-  baseDamageSource: 'atk' | 'pierce'
+  baseDamageSource: BaseDamageSource
   mainAgentElement: string
   mainAgentId: string
   mainAgentName: string
@@ -911,7 +912,7 @@ export function buildOptimalEvalContext(input: {
   mainSlotIndex: number
   driveDiscMainStats: AffixDriveDiscMainStats
   enemyInput: DamageEnemyInput
-  baseDamageSource: 'atk' | 'pierce'
+  baseDamageSource: BaseDamageSource
   extraMods?: BuffStatModifiers
   skillContext?: SkillCalcContext | null
   buffSelection?: BuffSelectionState | null

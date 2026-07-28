@@ -13,6 +13,7 @@ import type {
   AgentBuffDoc,
   AnomalyDamageSubKind,
   BangbooBuffDoc,
+  BaseDamageSource,
   BuffStatKey,
   DriveDiscBuffDoc,
   WengineBuffDoc,
@@ -179,7 +180,7 @@ type CurveMode = 'cumulative' | 'marginal'
 
 const damageKind = computed(() => props.damageKind ?? 'direct')
 const anomalySubKind = computed(() => props.anomalySubKind ?? 'anomaly')
-const baseDamageSource = ref<'atk' | 'pierce'>('atk')
+const baseDamageSource = ref<BaseDamageSource>('atk')
 const driveDiscMainStats = reactive(createDefaultAffixDriveDiscMainStats())
 const extraGains = ref<ExtraBuffGain[]>([])
 const extraMods = computed(() => {
@@ -648,6 +649,7 @@ watch(
         <span>基础伤害来源</span>
         <select v-model="baseDamageSource" :disabled="isMb">
           <option value="atk">攻击力</option>
+          <option value="def">防御力</option>
           <option value="pierce">贯穿力</option>
         </select>
         <small v-if="isMb" class="hint">命破角色固定使用贯穿力</small>

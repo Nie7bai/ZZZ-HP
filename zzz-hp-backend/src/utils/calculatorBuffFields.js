@@ -8,9 +8,12 @@ export const BUFF_STAT_KEYS = [
   'hp',
   'inCombatHpPercent',
   'inCombatAtkPercent',
+  'inCombatDefPercent',
   'externalHpPercent',
   'externalAtkPercent',
+  'externalDefPercent',
   'atk',
+  'def',
   'dmgBonus',
   'critRate',
   'critDmg',
@@ -88,6 +91,7 @@ export const WENGINE_ADVANCED_STAT_KEYS = [
   'mastery',
   'externalAtkPercent',
   'externalHpPercent',
+  'externalDefPercent',
   'penRate',
 ]
 
@@ -126,6 +130,9 @@ export function normalizeBuffStatModifiers(value) {
   if (readNumber(value.externalAtkPercent) && !result.inCombatAtkPercent) {
     result.inCombatAtkPercent = readNumber(value.externalAtkPercent)
   }
+  if (readNumber(value.externalDefPercent) && !result.inCombatDefPercent) {
+    result.inCombatDefPercent = readNumber(value.externalDefPercent)
+  }
   return result
 }
 
@@ -138,8 +145,12 @@ export function normalizeTwoPieceMods(value) {
   if (!mods.externalAtkPercent && mods.inCombatAtkPercent) {
     mods.externalAtkPercent = mods.inCombatAtkPercent
   }
+  if (!mods.externalDefPercent && mods.inCombatDefPercent) {
+    mods.externalDefPercent = mods.inCombatDefPercent
+  }
   mods.inCombatHpPercent = 0
   mods.inCombatAtkPercent = 0
+  mods.inCombatDefPercent = 0
   return mods
 }
 

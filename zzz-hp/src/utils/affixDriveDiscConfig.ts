@@ -48,6 +48,7 @@ export const DRIVE_DISC_SLOT_6_OPTIONS: {
 export interface AffixDriveDiscMainStatContribution {
   externalHpPercent: number
   externalAtkPercent: number
+  externalDefPercent: number
   critRate: number
   critDmg: number
   dmgBonus: number
@@ -61,6 +62,7 @@ export function createEmptyAffixDriveDiscMainStatContribution(): AffixDriveDiscM
   return {
     externalHpPercent: 0,
     externalAtkPercent: 0,
+    externalDefPercent: 0,
     critRate: 0,
     critDmg: 0,
     dmgBonus: 0,
@@ -97,6 +99,9 @@ export function collectAffixDriveDiscMainStatContribution(input: {
         break
       case 'externalAtkPercent':
         result.externalAtkPercent += option.value
+        break
+      case 'externalDefPercent':
+        result.externalDefPercent += option.value
         break
       case 'critRate':
         result.critRate += option.value
