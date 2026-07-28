@@ -3,11 +3,26 @@ import {
   getBossNames,
   getCrisisAssaultPhases,
 } from '../services/crisisAssaultService.js'
+import { isValidAdminSession } from '../services/adminSessionService.js'
 import { success, fail } from '../utils/response.js'
 
-export async function listPhases(_req, res) {
+function readIsSiteAdmin(req) {
+  const auth = req.headers.authorization
+  if (typeof auth === 'string' && auth.startsWith('Bearer ')) {
+    const token = auth.slice(7).trim()
+    if (isValidAdminSession(token)) return true
+  }
+  const headerToken = req.headers['x-admin-token']
+  if (typeof headerToken === 'string' && isValidAdminSession(headerToken.trim())) {
+    return true
+  }
+  return false
+}
+
+export async function listPhases(req, res) {
   try {
-    const data = await getCrisisAssaultPhases()
+    const includeHidden = readIsSiteAdmin(req)
+    const data = await getCrisisAssaultPhases({ includeHidden })
     return success(res, data)
   } catch (err) {
     return fail(res, '获取危局强袭战数据失败', 500, { error: err.message })
@@ -30,7 +45,8 @@ export async function getBossChart(req, res) {
   }
 
   try {
-    const data = await getBossChartHistory(bossName)
+    const includeHidden = readIsSiteAdmin(req)
+    const data = await getBossChartHistory(bossName, { includeHidden })
     if (!data.length) {
       return fail(res, '未找到该 Boss 数据', 404)
     }
