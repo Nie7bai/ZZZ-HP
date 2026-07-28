@@ -79,6 +79,12 @@ export interface DamageCalcResult {
   pierceDmgMultiplier: number
   generalMultiplier: number
   directDmgMultZone: number
+  /** 决算倍率区（直伤大类下的独立伤害分量） */
+  settlementDmgMultZone: number
+  /** 直伤倍率分量期望伤害 */
+  directDamageFromDirectMult: number
+  /** 决算倍率分量期望伤害 */
+  settlementDamageExpected: number
   directDamageExpected: number
   masteryZone: number
   levelZone: number
@@ -327,14 +333,18 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
 
   const directDmgMultZone = skillMults
     ? skillMults.directDmgMultZone
-    : Math.max(0, (panel.directDmgMult + panel.settlementDmgMult) / 100) *
-        readFactor(panel.directDmgMultFactor)
-  const directDamageExpected =
+    : Math.max(0, panel.directDmgMult / 100) * readFactor(panel.directDmgMultFactor)
+  const settlementDmgMultZone = skillMults
+    ? skillMults.settlementDmgMultZone
+    : Math.max(0, panel.settlementDmgMult / 100) * readFactor(panel.directDmgMultFactor)
+  const directBaseChain =
     mainParts.generalMultiplier *
     mainParts.critMultiplier *
     Math.max(0, mainParts.specialMultiplier) *
-    Math.max(0, mainParts.pierceDmgMultiplier) *
-    directDmgMultZone
+    Math.max(0, mainParts.pierceDmgMultiplier)
+  const directDamageFromDirectMult = directBaseChain * directDmgMultZone
+  const settlementDamageExpected = directBaseChain * settlementDmgMultZone
+  const directDamageExpected = directDamageFromDirectMult + settlementDamageExpected
 
   // 异常乘区：仅异常字段，不再并入异放
   const anomalyDmgBonusZone = 1 + panel.anomalyDmgBonus / 100
@@ -443,6 +453,9 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       2,
     ),
     directDmgMultZone: round(directDmgMultZone, 4),
+    settlementDmgMultZone: round(settlementDmgMultZone, 4),
+    directDamageFromDirectMult: round(directDamageFromDirectMult, 0),
+    settlementDamageExpected: round(settlementDamageExpected, 0),
     directDamageExpected: round(directDamageExpected, 0),
     masteryZone: round(
       useTriggerBase ? triggerParts.masteryZone : mainParts.masteryZone,

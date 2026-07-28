@@ -68,21 +68,16 @@ export function pickEventDamage(
   critMode: DamageEventCritMode,
 ): number {
   if (kind === 'direct') {
+    const baseChain =
+      result.generalMultiplier *
+      result.specialMultiplier *
+      result.pierceDmgMultiplier
+    const multSum = result.directDmgMultZone + result.settlementDmgMultZone
     if (critMode === 'noCrit') {
-      return (
-        result.generalMultiplier *
-        result.specialMultiplier *
-        result.pierceDmgMultiplier *
-        result.directDmgMultZone
-      )
+      return baseChain * multSum
     }
     if (critMode === 'fullCrit') {
-      const preCrit =
-        result.generalMultiplier *
-        result.specialMultiplier *
-        result.pierceDmgMultiplier *
-        result.directDmgMultZone
-      return preCrit * (1 + result.critDmgRatio)
+      return baseChain * multSum * (1 + result.critDmgRatio)
     }
     return result.directDamageExpected
   }

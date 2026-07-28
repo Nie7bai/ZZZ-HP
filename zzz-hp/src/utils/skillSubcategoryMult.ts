@@ -3,6 +3,8 @@ import type { PanelStats } from '@/types/calculatorPanel'
 
 export interface ResolvedSkillMults {
   directDmgMultZone: number
+  /** 决算倍率区（直伤大类下的独立伤害分量） */
+  settlementDmgMultZone: number
   anomalyReleaseMultZone: number
   /** 紊乱倍率区（不含持续时间补偿；与 disorderZone 中基础部分一致） */
   disorderMultZone: number
@@ -84,9 +86,10 @@ export function resolveSkillMults(
   const sub = normalizeSkillSubcategoryMultFields(subcategory ?? undefined)
 
   const panelDirectFactor = readFactor(panel.directDmgMultFactor)
-  const directMultPercent = sub.directDmgMult + sub.settlementDmgMult
   const directDmgMultZone =
-    Math.max(0, directMultPercent / 100) * sub.directDmgMultFactor * panelDirectFactor
+    Math.max(0, sub.directDmgMult / 100) * sub.directDmgMultFactor * panelDirectFactor
+  const settlementDmgMultZone =
+    Math.max(0, sub.settlementDmgMult / 100) * sub.directDmgMultFactor * panelDirectFactor
 
   const panelReleaseFactor = readFactor(panel.anomalyReleaseMultFactor)
   const anomalyReleaseMultZone = unsetSkillMult(sub.anomalyReleaseMult)
@@ -112,6 +115,7 @@ export function resolveSkillMults(
 
   return {
     directDmgMultZone,
+    settlementDmgMultZone,
     anomalyReleaseMultZone,
     disorderMultZone,
     hasPolarDisorder,

@@ -168,7 +168,7 @@ export interface BuffStatModifiers {
   /** 异放倍率加算% */
   anomalyReleaseMult: number
   directDmgMult: number
-  /** 决算倍率%（与直伤倍率同乘区加算） */
+  /** 决算倍率%（直伤大类下的独立伤害分量，公式同直伤倍率区） */
   settlementDmgMult: number
   anomalyMult: number
   /** 紊乱基础倍率% */
@@ -282,7 +282,7 @@ export interface SkillSubcategory {
   countsAsFollowUp?: boolean
   /** 直伤倍率%（默认 100 = ×1） */
   directDmgMult: number
-  /** 决算倍率%（默认 0；与直伤倍率同乘区加算） */
+  /** 决算倍率%（默认 0；直伤大类下的独立伤害分量） */
   settlementDmgMult: number
   /** 异放倍率%（0 = 未设置，回落面板） */
   anomalyReleaseMult: number

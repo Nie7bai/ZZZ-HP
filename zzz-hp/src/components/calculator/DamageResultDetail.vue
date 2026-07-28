@@ -136,6 +136,7 @@ type ValueTipsKey =
   | 'critMultiplier'
   | 'specialMultiplier'
   | 'directDmgMultZone'
+  | 'settlementDmgMultZone'
   | 'penRateRatio'
   | 'effectiveDefense'
   | 'piercePower'
@@ -207,15 +208,23 @@ const alignedGeneralFormula = computed((): AlignedFormulaGroup => {
 
 const alignedDirectFormula = computed((): AlignedFormulaGroup => {
   const p = props.calcParts
+  const terms: AlignedFormulaTerm[] = [
+    { label: '通用乘区', value: formatFormulaNumber(p.generalMultiplier, 2), tipsKey: 'generalMultiplier' },
+    { label: '暴击区', value: formatFormulaNumber(p.critMultiplier), tipsKey: 'critMultiplier' },
+    { label: '特殊乘区', value: formatFormulaNumber(p.specialMultiplier), tipsKey: 'specialMultiplier' },
+    { label: '直伤倍率区', value: formatFormulaNumber(p.directDmgMultZone), tipsKey: 'directDmgMultZone' },
+  ]
+  if (p.settlementDmgMultZone > 0) {
+    terms.push({
+      label: '决算倍率区',
+      value: formatFormulaNumber(p.settlementDmgMultZone),
+      tipsKey: 'settlementDmgMultZone',
+    })
+  }
   return {
     key: 'directDamageExpected',
     title: '公式',
-    terms: [
-      { label: '通用乘区', value: formatFormulaNumber(p.generalMultiplier, 2), tipsKey: 'generalMultiplier' },
-      { label: '暴击区', value: formatFormulaNumber(p.critMultiplier), tipsKey: 'critMultiplier' },
-      { label: '特殊乘区', value: formatFormulaNumber(p.specialMultiplier), tipsKey: 'specialMultiplier' },
-      { label: '直伤倍率区', value: formatFormulaNumber(p.directDmgMultZone), tipsKey: 'directDmgMultZone' },
-    ],
+    terms,
     result: formatNumber(p.directDamageExpected),
   }
 })
@@ -598,15 +607,21 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
     ),
     directDmgMultZone: withTotal(
       buildStatSourceGroups({
-        keys: ['directDmgMult', 'settlementDmgMult'],
+        keys: ['directDmgMult'],
         externalPanel: external,
         sources,
-        finalValues: {
-          directDmgMult: panel.directDmgMult,
-          settlementDmgMult: panel.settlementDmgMult,
-        },
+        finalValues: { directDmgMult: panel.directDmgMult },
       }),
-      `直伤倍率区 ${formatFormulaNumber(panel.directDmgMult + panel.settlementDmgMult, 2)}% = ${formatFormulaNumber(p.directDmgMultZone)}`,
+      `直伤倍率区 ${formatFormulaNumber(panel.directDmgMult, 2)}% = ${formatFormulaNumber(p.directDmgMultZone)}`,
+    ),
+    settlementDmgMultZone: withTotal(
+      buildStatSourceGroups({
+        keys: ['settlementDmgMult'],
+        externalPanel: external,
+        sources,
+        finalValues: { settlementDmgMult: panel.settlementDmgMult },
+      }),
+      `决算倍率区 ${formatFormulaNumber(panel.settlementDmgMult, 2)}% = ${formatFormulaNumber(p.settlementDmgMultZone)}`,
     ),
     penRateRatio: withTotal(
       buildStatSourceGroups({
@@ -672,17 +687,27 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
           `通用乘区 ${directFormulaParts.value[0]}`,
           `暴击区 ${directFormulaParts.value[1]}`,
           `特殊乘区 ${directFormulaParts.value[2]}`,
-          `直伤倍率区 ${directFormulaParts.value[3]}`,
+          `直伤倍率区 ${formatFormulaNumber(p.directDmgMultZone)} → 直伤分量 ${formatNumber(p.directDamageFromDirectMult)}`,
+          ...(p.settlementDmgMultZone > 0
+            ? [
+                `决算倍率区 ${formatFormulaNumber(p.settlementDmgMultZone)} → 决算分量 ${formatNumber(p.settlementDamageExpected)}`,
+              ]
+            : []),
           `合计 ${formatNumber(p.directDamageExpected)}`,
         ],
       },
       {
         label: '加减过程',
         fullWidth: true,
-        items: [
-          `${directFormulaParts.value[0]} × ${directFormulaParts.value[1]} × ${directFormulaParts.value[2]} × ${directFormulaParts.value[3]}`,
-          `= ${formatNumber(p.directDamageExpected)}`,
-        ],
+        items: p.settlementDmgMultZone > 0
+          ? [
+              `${formatNumber(p.directDamageFromDirectMult)} + ${formatNumber(p.settlementDamageExpected)}`,
+              `= ${formatNumber(p.directDamageExpected)}`,
+            ]
+          : [
+              `${directFormulaParts.value[0]} × ${directFormulaParts.value[1]} × ${directFormulaParts.value[2]} × ${formatFormulaNumber(p.directDmgMultZone)}`,
+              `= ${formatNumber(p.directDamageExpected)}`,
+            ],
       },
     ],
     masteryZone: withTotal(
@@ -1049,6 +1074,9 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
         <p>暴击区：<StatValueWithSources :value="calcParts.critMultiplier" :groups="valueTips.critMultiplier" /></p>
         <p>特殊乘区（含增益）：<StatValueWithSources :value="calcParts.specialMultiplier" :groups="valueTips.specialMultiplier" /></p>
         <p>直伤倍率区：<StatValueWithSources :value="calcParts.directDmgMultZone" :groups="valueTips.directDmgMultZone" /></p>
+        <p v-if="calcParts.settlementDmgMultZone > 0">
+          决算倍率区：<StatValueWithSources :value="calcParts.settlementDmgMultZone" :groups="valueTips.settlementDmgMultZone" />
+        </p>
         <p>穿透率（计入）：<StatValueWithSources :value="calcParts.penRateRatio" :groups="valueTips.penRateRatio" /></p>
         <p>有效防御项：<StatValueWithSources :value="calcParts.effectiveDefense" :groups="valueTips.effectiveDefense" /></p>
         <p>贯穿力（局内）：<StatValueWithSources :value="Math.round(piercePower).toLocaleString('en-US')" :groups="valueTips.piercePower" /></p>

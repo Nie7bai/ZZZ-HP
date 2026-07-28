@@ -1072,6 +1072,7 @@ type ValueTipsKey =
   | 'specialMultiplier'
   | 'pierceDmgMultiplier'
   | 'directDmgMultZone'
+  | 'settlementDmgMultZone'
   | 'penRateRatio'
   | 'effectiveDefense'
   | 'piercePower'
@@ -1167,6 +1168,13 @@ function buildAlignedDirectFormula(
     value: formatFormulaNumber(p.directDmgMultZone),
     tipsKey: 'directDmgMultZone',
   })
+  if (p.settlementDmgMultZone > 0) {
+    terms.push({
+      label: '决算倍率区',
+      value: formatFormulaNumber(p.settlementDmgMultZone),
+      tipsKey: 'settlementDmgMultZone',
+    })
+  }
   return {
     key: 'directDamageExpected',
     title: '公式',
@@ -1617,15 +1625,21 @@ const valueTips = computed(() => {
     ),
     directDmgMultZone: withTotal(
       buildStatSourceGroups({
-        keys: ['directDmgMult', 'settlementDmgMult'],
+        keys: ['directDmgMult'],
         externalPanel: external,
         sources,
-        finalValues: {
-          directDmgMult: panel.directDmgMult,
-          settlementDmgMult: panel.settlementDmgMult,
-        },
+        finalValues: { directDmgMult: panel.directDmgMult },
       }),
-      `直伤倍率区 ${formatFormulaNumber(panel.directDmgMult + panel.settlementDmgMult, 2)}% = ${formatFormulaNumber(p.directDmgMultZone)}`,
+      `直伤倍率区 ${formatFormulaNumber(panel.directDmgMult, 2)}% = ${formatFormulaNumber(p.directDmgMultZone)}`,
+    ),
+    settlementDmgMultZone: withTotal(
+      buildStatSourceGroups({
+        keys: ['settlementDmgMult'],
+        externalPanel: external,
+        sources,
+        finalValues: { settlementDmgMult: panel.settlementDmgMult },
+      }),
+      `决算倍率区 ${formatFormulaNumber(panel.settlementDmgMult, 2)}% = ${formatFormulaNumber(p.settlementDmgMultZone)}`,
     ),
     penRateRatio: withTotal(
       buildStatSourceGroups({
@@ -1690,17 +1704,27 @@ const valueTips = computed(() => {
           `通用乘区 ${directFormulaParts.value[0]}`,
           `暴击区 ${directFormulaParts.value[1]}`,
           `特殊乘区 ${directFormulaParts.value[2]}`,
-          `直伤倍率区 ${directFormulaParts.value[3]}`,
+          `直伤倍率区 ${formatFormulaNumber(p.directDmgMultZone)} → 直伤分量 ${formatNumber(p.directDamageFromDirectMult)}`,
+          ...(p.settlementDmgMultZone > 0
+            ? [
+                `决算倍率区 ${formatFormulaNumber(p.settlementDmgMultZone)} → 决算分量 ${formatNumber(p.settlementDamageExpected)}`,
+              ]
+            : []),
           `合计 ${formatNumber(p.directDamageExpected)}`,
         ],
       },
       {
         label: '加减过程',
         fullWidth: true,
-        items: [
-          `${directFormulaParts.value[0]} × ${directFormulaParts.value[1]} × ${directFormulaParts.value[2]} × ${directFormulaParts.value[3]}`,
-          `= ${formatNumber(p.directDamageExpected)}`,
-        ],
+        items: p.settlementDmgMultZone > 0
+          ? [
+              `${formatNumber(p.directDamageFromDirectMult)} + ${formatNumber(p.settlementDamageExpected)}`,
+              `= ${formatNumber(p.directDamageExpected)}`,
+            ]
+          : [
+              `${directFormulaParts.value[0]} × ${directFormulaParts.value[1]} × ${directFormulaParts.value[2]} × ${formatFormulaNumber(p.directDmgMultZone)}`,
+              `= ${formatNumber(p.directDamageExpected)}`,
+            ],
       },
     ],
     masteryZone: withTotal(
@@ -2617,6 +2641,9 @@ defineExpose({
           贯穿增伤区：<StatValueWithSources :value="selectedDamageEventLine.result.pierceDmgMultiplier" :groups="valueTips.pierceDmgMultiplier" />
         </p>
         <p>直伤倍率区：<StatValueWithSources :value="selectedDamageEventLine.result.directDmgMultZone" :groups="valueTips.directDmgMultZone" /></p>
+        <p v-if="selectedDamageEventLine.result.settlementDmgMultZone > 0">
+          决算倍率区：<StatValueWithSources :value="selectedDamageEventLine.result.settlementDmgMultZone" :groups="valueTips.settlementDmgMultZone" />
+        </p>
         <p>穿透率（计入）：<StatValueWithSources :value="selectedDamageEventLine.result.penRateRatio" :groups="valueTips.penRateRatio" /></p>
         <p>有效防御项：<StatValueWithSources :value="selectedDamageEventLine.result.effectiveDefense" :groups="valueTips.effectiveDefense" /></p>
         <p>贯穿力（局内）：<StatValueWithSources :value="formatNumber(piercePower)" :groups="valueTips.piercePower" /></p>
@@ -2722,6 +2749,9 @@ defineExpose({
         贯穿增伤区：<StatValueWithSources :value="calcParts.pierceDmgMultiplier" :groups="valueTips.pierceDmgMultiplier" />
       </p>
       <p>直伤倍率区：<StatValueWithSources :value="calcParts.directDmgMultZone" :groups="valueTips.directDmgMultZone" /></p>
+      <p v-if="calcParts.settlementDmgMultZone > 0">
+        决算倍率区：<StatValueWithSources :value="calcParts.settlementDmgMultZone" :groups="valueTips.settlementDmgMultZone" />
+      </p>
       <p>穿透率（计入）：<StatValueWithSources :value="calcParts.penRateRatio" :groups="valueTips.penRateRatio" /></p>
       <p>有效防御项：<StatValueWithSources :value="calcParts.effectiveDefense" :groups="valueTips.effectiveDefense" /></p>
       <p>贯穿力（局内）：<StatValueWithSources :value="formatNumber(piercePower)" :groups="valueTips.piercePower" /></p>

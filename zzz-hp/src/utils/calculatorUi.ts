@@ -173,7 +173,7 @@ export const BUFF_STAT_FIELDS: {
     key: 'settlementDmgMult',
     label: '决算倍率',
     unit: 'percent',
-    hint: '百分点，与直伤倍率%加算后进入直伤倍率区（伤害 × 值/100）',
+    hint: '百分点，独立决算伤害分量，计入直伤大类（通用乘区 × 值/100 × 直伤倍率修正）',
   },
   {
     key: 'directDmgMultFactor',
