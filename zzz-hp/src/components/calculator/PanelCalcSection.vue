@@ -1075,6 +1075,9 @@ type ValueTipsKey =
   | 'anomalyDmgBonusZone'
   | 'anomalyMultZone'
   | 'anomalyCritZone'
+  | 'anomalyReleaseCombinedDmgBonusZone'
+  | 'anomalyReleaseMultZone'
+  | 'anomalyCombinedCritZone'
   | 'disorderBaseMult'
   | 'anomalyDuration'
   | 'disorderCompMult'
@@ -1261,17 +1264,17 @@ function buildAlignedAnomalyFormulasFor(
       {
         label: '异放综合增伤区',
         value: formatFormulaNumber(p.anomalyReleaseCombinedDmgBonusZone),
-        tipsKey: 'anomalyReleaseExpected',
+        tipsKey: 'anomalyReleaseCombinedDmgBonusZone',
       },
       {
         label: '异放倍率区',
         value: formatFormulaNumber(p.anomalyReleaseMultZone),
-        tipsKey: 'anomalyMultZone',
+        tipsKey: 'anomalyReleaseMultZone',
       },
       {
         label: '异常综合暴击区',
         value: `1 / ${formatFormulaNumber(p.anomalyCombinedFullCritZone)}`,
-        tipsKey: 'anomalyReleaseExpected',
+        tipsKey: 'anomalyCombinedCritZone',
       },
     ],
     result: formatNumber(p.anomalyReleaseExpected),
@@ -1701,6 +1704,46 @@ const valueTips = computed(() => {
         finalValues: { anomalyMult: panel.anomalyMult },
       }),
       `异常倍率区 ${formatFormulaNumber(panel.anomalyMult, 2)}% = ${formatFormulaNumber(p.anomalyMultZone)}`,
+    ),
+    anomalyReleaseCombinedDmgBonusZone: [
+      {
+        label: '乘区组成',
+        items: [
+          `异放增伤区 1 + ${formatFormulaNumber(panel.anomalyReleaseDmgBonus, 2)}% = ${formatFormulaNumber(1 + panel.anomalyReleaseDmgBonus / 100)}`,
+          `异常增伤区 1 + ${formatFormulaNumber(panel.anomalyDmgBonus, 2)}% = ${formatFormulaNumber(p.anomalyDmgBonusZone)}`,
+          `异放综合增伤区 1 + (${formatFormulaNumber(panel.anomalyReleaseDmgBonus, 2)}% + ${formatFormulaNumber(panel.anomalyDmgBonus, 2)}%) = ${formatFormulaNumber(p.anomalyReleaseCombinedDmgBonusZone)}`,
+        ],
+      },
+    ],
+    anomalyReleaseMultZone: withTotal(
+      buildStatSourceGroups({
+        keys: ['anomalyReleaseMult', 'anomalyReleaseMultFactor'],
+        externalPanel: external,
+        sources,
+        finalValues: {
+          anomalyReleaseMult: panel.anomalyReleaseMult,
+          anomalyReleaseMultFactor: panel.anomalyReleaseMultFactor,
+        },
+      }),
+      `异放倍率区 ${formatFormulaNumber(panel.anomalyReleaseMult, 2)}% × ${formatFormulaNumber(panel.anomalyReleaseMultFactor, 2)}% = ${formatFormulaNumber(p.anomalyReleaseMultZone)}`,
+    ),
+    anomalyCombinedCritZone: withTotal(
+      buildStatSourceGroups({
+        keys: ['anomalyCritRate', 'anomalyCritDmg', 'anomalyReleaseCritRate', 'anomalyReleaseCritDmg'],
+        externalPanel: external,
+        sources,
+        finalValues: {
+          anomalyCritRate: panel.anomalyCritRate,
+          anomalyCritDmg: panel.anomalyCritDmg,
+          anomalyReleaseCritRate: panel.anomalyReleaseCritRate,
+          anomalyReleaseCritDmg: panel.anomalyReleaseCritDmg,
+        },
+      }),
+      [
+        `暴击率=0：异常综合暴击区 = 1`,
+        `暴击率=1：异常综合暴击区 = 1 + ${formatFormulaNumber(p.anomalyCombinedCritDmgRatio)} = ${formatFormulaNumber(p.anomalyCombinedFullCritZone)}`,
+        `实际期望：1 + ${formatFormulaNumber(p.anomalyCombinedCritRateRatio)} × ${formatFormulaNumber(p.anomalyCombinedCritDmgRatio)} = ${formatFormulaNumber(p.anomalyCombinedCritZone)}`,
+      ].join('；'),
     ),
     anomalyCritZone: withTotal(
       buildStatSourceGroups({

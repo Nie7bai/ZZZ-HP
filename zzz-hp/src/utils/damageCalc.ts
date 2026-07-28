@@ -147,9 +147,10 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
 }
 
+import { multFactorPercentToRatio } from '@/utils/multFactorPercent'
+
 function readFactor(value: number | undefined | null, fallback = 1): number {
-  const num = Number(value)
-  return Number.isFinite(num) && num > 0 ? num : fallback
+  return multFactorPercentToRatio(value) || fallback
 }
 
 function round(value: number, precision = 2) {

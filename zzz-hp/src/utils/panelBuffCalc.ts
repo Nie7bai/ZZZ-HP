@@ -14,6 +14,11 @@ import type {
 } from '@/types/calculator'
 import type { PanelStats } from '@/types/calculatorPanel'
 import {
+  combineMultFactorPercent,
+  normalizeBuffMultFactorDelta,
+  normalizePanelMultFactorPercent,
+} from '@/utils/multFactorPercent'
+import {
   cloneEffectInstance,
   collectBlockEntriesFromPack,
   collectEffectsFromPack,
@@ -896,36 +901,27 @@ export function applyBuffModsToPanel(
     turbulenceCompMult: externalPanel.turbulenceCompMult + mods.turbulenceCompMult,
     disorderDmgBonus: externalPanel.disorderDmgBonus + mods.disorderDmgBonus,
     turbulenceDmgBonus: externalPanel.turbulenceDmgBonus + mods.turbulenceDmgBonus,
-    directDmgMultFactor: combinePanelFactor(
+    directDmgMultFactor: combineMultFactorPercent(
       externalPanel.directDmgMultFactor,
       mods.directDmgMultFactor,
     ),
-    anomalyMultFactor: combinePanelFactor(
+    anomalyMultFactor: combineMultFactorPercent(
       externalPanel.anomalyMultFactor,
       mods.anomalyMultFactor,
     ),
-    anomalyReleaseMultFactor: combinePanelFactor(
+    anomalyReleaseMultFactor: combineMultFactorPercent(
       externalPanel.anomalyReleaseMultFactor,
       mods.anomalyReleaseMultFactor,
     ),
-    disorderBaseMultFactor: combinePanelFactor(
+    disorderBaseMultFactor: combineMultFactorPercent(
       externalPanel.disorderBaseMultFactor,
       mods.disorderBaseMultFactor,
     ),
-    turbulenceBaseMultFactor: combinePanelFactor(
+    turbulenceBaseMultFactor: combineMultFactorPercent(
       externalPanel.turbulenceBaseMultFactor,
       mods.turbulenceBaseMultFactor,
     ),
   }
-}
-
-/** 倍率修正区 = 面板倍率修正（默认 1）+ 增益倍率修正增量（已减 1，默认 0） */
-function combinePanelFactor(base: number, mod: number): number {
-  const b = Number(base)
-  const m = Number(mod)
-  const safeBase = Number.isFinite(b) ? b : 1
-  const safeMod = Number.isFinite(m) ? m : 0
-  return safeBase + safeMod
 }
 
 export function panelToConvertAttrValues(
@@ -1008,7 +1004,7 @@ export function resolveMainCAnomalyReleaseMultFields(
 
   return {
     anomalyReleaseMult: externalPanel.anomalyReleaseMult + mods.anomalyReleaseMult,
-    anomalyReleaseMultFactor: combinePanelFactor(
+    anomalyReleaseMultFactor: combineMultFactorPercent(
       externalPanel.anomalyReleaseMultFactor,
       mods.anomalyReleaseMultFactor,
     ),
@@ -1077,15 +1073,13 @@ export function buildDefaultBuffSelection(
     if (item.effect.kind === 'stacked' || item.effect.stackable) {
       stacksByEffectId[item.effect.id] = item.effect.defaultStacks ?? 1
     }
-    // 自行设置：始终预填输入；局外/局内：仅旧数据带了 defaultBase 时预填覆盖
+    // 自行设置：仅预填默认值；局外/局内转模运行时读面板，不写入 convertInputs
     if (item.effect.kind === 'convert' && item.effect.convert) {
       const source = item.effect.convert.panelSource ?? 'external'
       const configured = item.effect.convert.defaultBase
       if (source === 'manual') {
         convertInputs[item.effect.id] =
           configured != null && Number.isFinite(configured) ? configured : 0
-      } else if (configured != null && Number.isFinite(configured)) {
-        convertInputs[item.effect.id] = configured
       }
     }
   }

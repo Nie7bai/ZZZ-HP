@@ -216,7 +216,7 @@ function onStatChange(effect: BuffEffect, raw: string) {
   const prevWasFactor = FACTOR_STATS.has(effect.stat)
   const nextIsFactor = FACTOR_STATS.has(next)
   effect.stat = next
-  // 倍率修正增益已按减 1 填写，切过来默认 0
+  // 倍率修正增益填写百分点增量，切过来默认 0
   if (nextIsFactor && !prevWasFactor && (effect.value == null || effect.value === 1 || effect.value === 0)) {
     effect.value = 0
   }

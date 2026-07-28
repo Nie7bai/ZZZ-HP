@@ -372,21 +372,16 @@ watch(
 
 watch(
   () => panelCalcSectionRef.value?.convertAttrDefaults,
-  (attrs) => {
-    if (!attrs) return
+  () => {
     for (const item of collectedEffects.value) {
       if (item.effect.kind !== 'convert' || !item.effect.convert) continue
       const id = item.effect.id
       if (id in buffSelection.convertInputs) continue
       const source = item.effect.convert.panelSource ?? 'external'
+      if (source !== 'manual') continue
       const configured = item.effect.convert.defaultBase
-      if (source === 'manual') {
-        buffSelection.convertInputs[id] =
-          configured != null && Number.isFinite(configured) ? configured : 0
-      } else if (configured != null && Number.isFinite(configured)) {
-        // 旧数据兼容：局外/局内若写了 defaultBase，仍预填覆盖
-        buffSelection.convertInputs[id] = configured
-      }
+      buffSelection.convertInputs[id] =
+        configured != null && Number.isFinite(configured) ? configured : 0
     }
   },
 )

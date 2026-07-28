@@ -9,9 +9,10 @@ export interface ResolvedSkillMults {
   hasPolarDisorder: boolean
 }
 
+import { multFactorPercentToRatio } from '@/utils/multFactorPercent'
+
 function readFactor(value: number | undefined | null, fallback = 1): number {
-  const num = Number(value)
-  return Number.isFinite(num) && num > 0 ? num : fallback
+  return multFactorPercentToRatio(value) || fallback
 }
 
 function unsetSkillMult(value: number | undefined | null): boolean {
@@ -31,9 +32,9 @@ export function createDefaultSkillSubcategoryMults(): Pick<
     directDmgMult: 100,
     anomalyReleaseMult: 0,
     disorderMult: 0,
-    directDmgMultFactor: 1,
-    anomalyReleaseMultFactor: 1,
-    disorderMultFactor: 1,
+    directDmgMultFactor: 100,
+    anomalyReleaseMultFactor: 100,
+    disorderMultFactor: 100,
   }
 }
 
@@ -99,7 +100,8 @@ export function resolveSkillMults(
         panelDisorderFactor
 
   const hasPolarDisorder =
-    !unsetSkillMult(sub.disorderMult) || Math.abs(sub.disorderMultFactor - 1) > 1e-9
+    !unsetSkillMult(sub.disorderMult) ||
+    Math.abs(readFactor(sub.disorderMultFactor) - 1) > 1e-9
 
   return {
     directDmgMultZone,

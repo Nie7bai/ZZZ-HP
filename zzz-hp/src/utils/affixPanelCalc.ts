@@ -205,11 +205,11 @@ export function computeExternalPanelFromAffixes(input: AffixPanelCalcInput): Pan
     turbulenceCompMult: roundPanelValue(agentBase.turbulenceCompMult),
     disorderDmgBonus: roundPanelValue(agentBase.disorderDmgBonus),
     turbulenceDmgBonus: roundPanelValue(agentBase.turbulenceDmgBonus),
-    directDmgMultFactor: 1,
-    anomalyMultFactor: 1,
-    anomalyReleaseMultFactor: 1,
-    disorderBaseMultFactor: 1,
-    turbulenceBaseMultFactor: 1,
+    directDmgMultFactor: 100,
+    anomalyMultFactor: 100,
+    anomalyReleaseMultFactor: 100,
+    disorderBaseMultFactor: 100,
+    turbulenceBaseMultFactor: 100,
   }
 }
 

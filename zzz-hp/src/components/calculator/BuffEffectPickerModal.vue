@@ -147,12 +147,19 @@ function clearConvertOverride(id: string, item?: CollectedEffect) {
 
 function convertResult(item: CollectedEffect) {
   const convert = item.effect.convert
-  const override =
-    item.effect.id in selection.value.convertInputs
-      ? selection.value.convertInputs[item.effect.id]!
-      : convert?.panelSource === 'manual'
-        ? (convert.defaultBase ?? 0)
-        : null
+  const id = item.effect.id
+  const source = convert?.panelSource ?? 'external'
+  let override: number | null | undefined
+  if (source === 'manual') {
+    override =
+      id in selection.value.convertInputs
+        ? selection.value.convertInputs[id]!
+        : (convert?.defaultBase ?? 0)
+  } else if (showConvertOverride.value[id] && id in selection.value.convertInputs) {
+    override = selection.value.convertInputs[id]!
+  } else {
+    override = null
+  }
   return resolveConvertValue(
     item.effect,
     props.attrDefaults ?? {},

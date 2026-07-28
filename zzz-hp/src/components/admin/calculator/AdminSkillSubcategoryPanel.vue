@@ -24,9 +24,9 @@ const form = ref({
   directDmgMult: 100,
   anomalyReleaseMult: 0,
   disorderMult: 0,
-  directDmgMultFactor: 1,
-  anomalyReleaseMultFactor: 1,
-  disorderMultFactor: 1,
+  directDmgMultFactor: 100,
+  anomalyReleaseMultFactor: 100,
+  disorderMultFactor: 100,
 })
 
 const ruleForm = ref({
@@ -80,9 +80,9 @@ function resetForm() {
     directDmgMult: 100,
     anomalyReleaseMult: 0,
     disorderMult: 0,
-    directDmgMultFactor: 1,
-    anomalyReleaseMultFactor: 1,
-    disorderMultFactor: 1,
+    directDmgMultFactor: 100,
+    anomalyReleaseMultFactor: 100,
+    disorderMultFactor: 100,
   }
   selectedId.value = ''
   message.value = ''

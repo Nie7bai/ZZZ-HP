@@ -185,10 +185,10 @@ export function createDefaultExternalPanel(): PanelStats {
     turbulenceCompMult: 0,
     disorderDmgBonus: 0,
     turbulenceDmgBonus: 0,
-    directDmgMultFactor: 1,
-    anomalyMultFactor: 1,
-    anomalyReleaseMultFactor: 1,
-    disorderBaseMultFactor: 1,
-    turbulenceBaseMultFactor: 1,
+    directDmgMultFactor: 100,
+    anomalyMultFactor: 100,
+    anomalyReleaseMultFactor: 100,
+    disorderBaseMultFactor: 100,
+    turbulenceBaseMultFactor: 100,
   }
 }

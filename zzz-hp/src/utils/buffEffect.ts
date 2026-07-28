@@ -160,7 +160,7 @@ function isBuffMultFactorKey(key: string): boolean {
 function emptyMods(): BuffStatModifiers {
   const mods = {} as BuffStatModifiers
   for (const key of BUFF_STAT_KEYS) {
-    // 倍率修正增益填写的是已减 1 的增量，空合成为 0
+  // 倍率修正增益填写百分点增量，空合成为 0
     mods[key] = 0
   }
   return mods

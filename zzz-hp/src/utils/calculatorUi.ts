@@ -13,6 +13,7 @@ import {
   packFromEffects,
   wrapEffectsAsBlocks,
 } from '@/utils/buffEffect'
+import { normalizeBuffMultFactorDelta, normalizePanelMultFactorPercent } from '@/utils/multFactorPercent'
 
 export const AGENT_ROLES = ['强攻', '击破', '异常', '支援', '防护', '命破'] as const
 export const AGENT_ELEMENTS = ['风', '火', '电', '物理', '以太', '冰'] as const
@@ -153,8 +154,8 @@ export const BUFF_STAT_FIELDS: {
   {
     key: 'directDmgMultFactor',
     label: '直伤倍率修正',
-    unit: 'factor',
-    hint: '默认增量 0（面板修正默认 1）；增益已按减 1 填写，如 +0.2 填 0.2，与面板加算成修正区',
+    unit: 'percent',
+    hint: '百分点，与面板倍率修正加算；默认 100% 表示 ×1',
   },
   {
     key: 'anomalyMult',
@@ -165,8 +166,8 @@ export const BUFF_STAT_FIELDS: {
   {
     key: 'anomalyMultFactor',
     label: '异常倍率修正',
-    unit: 'factor',
-    hint: '增益已按减 1 填写；与面板倍率修正加算成修正区',
+    unit: 'percent',
+    hint: '百分点，与面板倍率修正加算',
   },
   {
     key: 'disorderBaseMult',
@@ -177,8 +178,8 @@ export const BUFF_STAT_FIELDS: {
   {
     key: 'disorderBaseMultFactor',
     label: '紊乱倍率修正',
-    unit: 'factor',
-    hint: '增益已按减 1 填写；与面板倍率修正加算成修正区',
+    unit: 'percent',
+    hint: '百分点，与面板倍率修正加算',
   },
   {
     key: 'anomalyDuration',
@@ -201,8 +202,8 @@ export const BUFF_STAT_FIELDS: {
   {
     key: 'turbulenceBaseMultFactor',
     label: '乱流倍率修正',
-    unit: 'factor',
-    hint: '增益已按减 1 填写；与面板倍率修正加算成修正区',
+    unit: 'percent',
+    hint: '百分点，与面板倍率修正加算',
   },
   {
     key: 'turbulenceCompMult',
@@ -256,8 +257,8 @@ export const BUFF_STAT_FIELDS: {
   {
     key: 'anomalyReleaseMultFactor',
     label: '异放倍率修正',
-    unit: 'factor',
-    hint: '增益已按减 1 填写；与面板倍率修正加算成修正区',
+    unit: 'percent',
+    hint: '百分点，与面板倍率修正加算',
   },
   {
     key: 'skillDmgBonus',
@@ -524,8 +525,7 @@ export function normalizeBuffStatModifiers(value: unknown): BuffStatModifiers {
   for (const field of BUFF_STAT_FIELDS) {
     const raw = readNumber(entry[field.key])
     if (BUFF_MULT_FACTOR_KEYS.includes(field.key)) {
-      // 增益倍率修正存已减 1 的增量，缺省为 0
-      result[field.key] = Number.isFinite(raw) ? raw : 0
+      result[field.key] = normalizeBuffMultFactorDelta(raw)
     } else {
       result[field.key] = raw
     }
@@ -594,7 +594,7 @@ export function mergeBuffStatModifiers(
   for (const field of BUFF_STAT_FIELDS) {
     if (factorKeys.includes(field.key)) {
       const src = Number(source[field.key])
-      // 增益倍率修正已是减 1 后的增量，直接加算
+      // 增益倍率修正为百分点增量，直接加算
       if (Number.isFinite(src)) result[field.key] += src
     } else {
       result[field.key] += source[field.key]
@@ -740,6 +740,14 @@ export function createEmptyWengineAdvancedStats(): WengineAdvancedStats {
   }
 }
 
+/** 能量回复：旧乘数 1.2 迁为百分点 120 */
+export function normalizeEnergyRegenPercent(value: number | undefined | null): number {
+  const num = Number(value)
+  if (!Number.isFinite(num) || num === 0) return 0
+  if (num > 0 && num <= 5 && !Number.isInteger(num)) return num * 100
+  return num
+}
+
 export function normalizeAgentBasePanel(value: unknown): AgentBasePanel {
   const empty = createEmptyAgentBasePanel()
   if (!value || typeof value !== 'object' || Array.isArray(value)) return empty
@@ -752,6 +760,7 @@ export function normalizeAgentBasePanel(value: unknown): AgentBasePanel {
   if (entry.directDmgMult == null) {
     result.directDmgMult = 100
   }
+  result.energyRegen = normalizeEnergyRegenPercent(result.energyRegen)
   return result
 }
 
@@ -763,6 +772,7 @@ export function normalizeWengineAdvancedStats(value: unknown): WengineAdvancedSt
   for (const field of WENGINE_ADVANCED_STAT_FIELDS) {
     result[field.key] = readNumber(entry[field.key])
   }
+  result.energyRegen = normalizeEnergyRegenPercent(result.energyRegen)
   return result
 }
 
