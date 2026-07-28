@@ -184,6 +184,7 @@ function setMultOverride(eventId: string, key: keyof DamageEventMultOverrides, r
 
 const DIRECT_MULT_FIELDS: { key: keyof DamageEventMultOverrides; label: string }[] = [
   { key: 'directDmgMult', label: '直伤倍率%' },
+  { key: 'settlementDmgMult', label: '决算倍率%' },
   { key: 'directDmgMultFactor', label: '直伤倍率修正' },
 ]
 

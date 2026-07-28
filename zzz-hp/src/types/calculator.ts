@@ -168,6 +168,8 @@ export interface BuffStatModifiers {
   /** 异放倍率加算% */
   anomalyReleaseMult: number
   directDmgMult: number
+  /** 决算倍率%（与直伤倍率同乘区加算） */
+  settlementDmgMult: number
   anomalyMult: number
   /** 紊乱基础倍率% */
   disorderBaseMult: number
@@ -280,6 +282,8 @@ export interface SkillSubcategory {
   countsAsFollowUp?: boolean
   /** 直伤倍率%（默认 100 = ×1） */
   directDmgMult: number
+  /** 决算倍率%（默认 0；与直伤倍率同乘区加算） */
+  settlementDmgMult: number
   /** 异放倍率%（0 = 未设置，回落面板） */
   anomalyReleaseMult: number
   /** 紊乱倍率%（0 = 未设置，回落面板；有贡献时称极性紊乱） */
@@ -335,6 +339,7 @@ export interface DamageEvent {
 /** 事件级倍率 / 倍率修正覆写（null / undefined = 使用默认） */
 export interface DamageEventMultOverrides {
   directDmgMult?: number | null
+  settlementDmgMult?: number | null
   directDmgMultFactor?: number | null
   anomalyMult?: number | null
   anomalyMultFactor?: number | null

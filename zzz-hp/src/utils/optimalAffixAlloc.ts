@@ -421,6 +421,9 @@ function computeEventGrandTotal(
     const overrides = event.multOverrides
     if (overrides) {
       if (overrides.directDmgMult != null) finalPanel.directDmgMult = overrides.directDmgMult
+      if (overrides.settlementDmgMult != null) {
+        finalPanel.settlementDmgMult = overrides.settlementDmgMult
+      }
       if (overrides.directDmgMultFactor != null) {
         finalPanel.directDmgMultFactor = overrides.directDmgMultFactor
       }
@@ -491,6 +494,7 @@ function computeEventGrandTotal(
         ? {
             ...sub,
             directDmgMult: overrides.directDmgMult ?? sub.directDmgMult,
+            settlementDmgMult: overrides.settlementDmgMult ?? sub.settlementDmgMult,
             directDmgMultFactor: overrides.directDmgMultFactor ?? sub.directDmgMultFactor,
             anomalyReleaseMult: overrides.anomalyReleaseMult ?? sub.anomalyReleaseMult,
             anomalyReleaseMultFactor:

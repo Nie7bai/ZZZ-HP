@@ -598,12 +598,15 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
     ),
     directDmgMultZone: withTotal(
       buildStatSourceGroups({
-        keys: ['directDmgMult'],
+        keys: ['directDmgMult', 'settlementDmgMult'],
         externalPanel: external,
         sources,
-        finalValues: { directDmgMult: panel.directDmgMult },
+        finalValues: {
+          directDmgMult: panel.directDmgMult,
+          settlementDmgMult: panel.settlementDmgMult,
+        },
       }),
-      `直伤倍率区 ${formatFormulaNumber(panel.directDmgMult, 2)}% = ${formatFormulaNumber(p.directDmgMultZone)}`,
+      `直伤倍率区 ${formatFormulaNumber(panel.directDmgMult + panel.settlementDmgMult, 2)}% = ${formatFormulaNumber(p.directDmgMultZone)}`,
     ),
     penRateRatio: withTotal(
       buildStatSourceGroups({

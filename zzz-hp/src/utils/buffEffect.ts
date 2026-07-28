@@ -92,6 +92,7 @@ const BUFF_STAT_KEYS: BuffStatKey[] = [
   'anomalyReleaseCritDmg',
   'anomalyReleaseMult',
   'directDmgMult',
+  'settlementDmgMult',
   'anomalyMult',
   'disorderBaseMult',
   'anomalyDuration',

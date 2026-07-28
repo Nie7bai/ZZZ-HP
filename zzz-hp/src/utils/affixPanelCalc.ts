@@ -204,6 +204,7 @@ export function computeExternalPanelFromAffixes(input: AffixPanelCalcInput): Pan
     anomalyReleaseMult: 0,
     anomalyReleaseDmgBonus: 0,
     directDmgMult: roundPanelValue(agentBase.directDmgMult),
+    settlementDmgMult: 0,
     anomalyMult: roundPanelValue(agentBase.anomalyMult),
     disorderBaseMult: roundPanelValue(agentBase.disorderBaseMult),
     anomalyDuration: roundPanelValue(agentBase.anomalyDuration),

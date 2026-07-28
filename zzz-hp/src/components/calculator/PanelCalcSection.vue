@@ -797,6 +797,9 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
   const overrides = event.multOverrides
   if (overrides) {
     if (overrides.directDmgMult != null) evtFinalPanel.directDmgMult = overrides.directDmgMult
+    if (overrides.settlementDmgMult != null) {
+      evtFinalPanel.settlementDmgMult = overrides.settlementDmgMult
+    }
     if (overrides.directDmgMultFactor != null) {
       evtFinalPanel.directDmgMultFactor = overrides.directDmgMultFactor
     }
@@ -924,6 +927,7 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
       ? {
           ...sub,
           directDmgMult: overrides.directDmgMult ?? sub.directDmgMult,
+          settlementDmgMult: overrides.settlementDmgMult ?? sub.settlementDmgMult,
           directDmgMultFactor: overrides.directDmgMultFactor ?? sub.directDmgMultFactor,
           anomalyReleaseMult: overrides.anomalyReleaseMult ?? sub.anomalyReleaseMult,
           anomalyReleaseMultFactor:
@@ -1613,12 +1617,15 @@ const valueTips = computed(() => {
     ),
     directDmgMultZone: withTotal(
       buildStatSourceGroups({
-        keys: ['directDmgMult'],
+        keys: ['directDmgMult', 'settlementDmgMult'],
         externalPanel: external,
         sources,
-        finalValues: { directDmgMult: panel.directDmgMult },
+        finalValues: {
+          directDmgMult: panel.directDmgMult,
+          settlementDmgMult: panel.settlementDmgMult,
+        },
       }),
-      `直伤倍率区 ${formatFormulaNumber(panel.directDmgMult, 2)}% = ${formatFormulaNumber(p.directDmgMultZone)}`,
+      `直伤倍率区 ${formatFormulaNumber(panel.directDmgMult + panel.settlementDmgMult, 2)}% = ${formatFormulaNumber(p.directDmgMultZone)}`,
     ),
     penRateRatio: withTotal(
       buildStatSourceGroups({
@@ -2104,6 +2111,7 @@ function resolveMultDefaultsForEvent(
   if (event.kind === 'direct') {
     const panel = input?.finalPanel ?? finalPanel.value
     result.directDmgMult = panel.directDmgMult
+    result.settlementDmgMult = panel.settlementDmgMult
     result.directDmgMultFactor = panel.directDmgMultFactor
     return result
   }

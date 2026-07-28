@@ -40,6 +40,7 @@ export const BUFF_STAT_KEYS = [
   'anomalyReleaseCritDmg',
   'anomalyReleaseMult',
   'directDmgMult',
+  'settlementDmgMult',
   'anomalyMult',
   'disorderBaseMult',
   'anomalyDuration',

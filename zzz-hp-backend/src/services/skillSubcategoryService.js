@@ -34,6 +34,7 @@ async function ensureTable() {
   }
   const multColumns = [
     ['direct_dmg_mult', 'DOUBLE NOT NULL DEFAULT 100'],
+    ['settlement_dmg_mult', 'DOUBLE NOT NULL DEFAULT 0'],
     ['anomaly_release_mult', 'DOUBLE NOT NULL DEFAULT 0'],
     ['disorder_mult', 'DOUBLE NOT NULL DEFAULT 0'],
     ['direct_dmg_mult_factor', 'DOUBLE NOT NULL DEFAULT 1'],
@@ -74,6 +75,7 @@ function rowToDoc(row) {
     name: String(row.name ?? ''),
     countsAsFollowUp: Boolean(row.counts_as_follow_up),
     directDmgMult: readNumber(row.direct_dmg_mult, 100),
+    settlementDmgMult: readNumber(row.settlement_dmg_mult, 0),
     anomalyReleaseMult: readNumber(row.anomaly_release_mult, 0),
     disorderMult: readNumber(row.disorder_mult, 0),
     directDmgMultFactor: readNumber(row.direct_dmg_mult_factor, 1),
@@ -118,6 +120,7 @@ export async function upsertSkillSubcategory(doc) {
   const name = String(doc.name ?? '').trim()
   const countsAsFollowUp = Boolean(doc.countsAsFollowUp)
   const directDmgMult = readNumber(doc.directDmgMult, 100)
+  const settlementDmgMult = readNumber(doc.settlementDmgMult, 0)
   const anomalyReleaseMult = readNumber(doc.anomalyReleaseMult, 0)
   const disorderMult = readNumber(doc.disorderMult, 0)
   const directDmgMultFactor = readNumber(doc.directDmgMultFactor, 1)
@@ -135,16 +138,17 @@ export async function upsertSkillSubcategory(doc) {
   await pool.query(
     `INSERT INTO calculator_skill_subcategories
       (id, agent_id, category_id, name, counts_as_follow_up,
-       direct_dmg_mult, anomaly_release_mult, disorder_mult,
+       direct_dmg_mult, settlement_dmg_mult, anomaly_release_mult, disorder_mult,
        direct_dmg_mult_factor, anomaly_release_mult_factor, disorder_mult_factor,
        sort_order)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
      ON DUPLICATE KEY UPDATE
        agent_id = VALUES(agent_id),
        category_id = VALUES(category_id),
        name = VALUES(name),
        counts_as_follow_up = VALUES(counts_as_follow_up),
        direct_dmg_mult = VALUES(direct_dmg_mult),
+       settlement_dmg_mult = VALUES(settlement_dmg_mult),
        anomaly_release_mult = VALUES(anomaly_release_mult),
        disorder_mult = VALUES(disorder_mult),
        direct_dmg_mult_factor = VALUES(direct_dmg_mult_factor),
@@ -157,6 +161,7 @@ export async function upsertSkillSubcategory(doc) {
       name,
       countsAsFollowUp ? 1 : 0,
       directDmgMult,
+      settlementDmgMult,
       anomalyReleaseMult,
       disorderMult,
       directDmgMultFactor,

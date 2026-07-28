@@ -327,7 +327,8 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
 
   const directDmgMultZone = skillMults
     ? skillMults.directDmgMultZone
-    : Math.max(0, panel.directDmgMult / 100) * readFactor(panel.directDmgMultFactor)
+    : Math.max(0, (panel.directDmgMult + panel.settlementDmgMult) / 100) *
+        readFactor(panel.directDmgMultFactor)
   const directDamageExpected =
     mainParts.generalMultiplier *
     mainParts.critMultiplier *

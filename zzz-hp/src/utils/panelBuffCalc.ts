@@ -893,6 +893,7 @@ export function applyBuffModsToPanel(
       externalPanel.anomalyReleaseDmgBonus + mods.anomalyReleaseDmgBonus,
     directDmgMult:
       externalPanel.directDmgMult + mods.directDmgMult + mods.skillMultiplierBonus,
+    settlementDmgMult: mods.settlementDmgMult,
     anomalyMult: externalPanel.anomalyMult + mods.anomalyMult,
     disorderBaseMult: externalPanel.disorderBaseMult + mods.disorderBaseMult,
     anomalyDuration: externalPanel.anomalyDuration + mods.anomalyDuration,

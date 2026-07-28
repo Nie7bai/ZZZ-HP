@@ -170,6 +170,12 @@ export const BUFF_STAT_FIELDS: {
     hint: '百分点，累加到局内直伤倍率%（伤害 × 值/100）',
   },
   {
+    key: 'settlementDmgMult',
+    label: '决算倍率',
+    unit: 'percent',
+    hint: '百分点，与直伤倍率%加算后进入直伤倍率区（伤害 × 值/100）',
+  },
+  {
     key: 'directDmgMultFactor',
     label: '直伤倍率修正',
     unit: 'percent',
@@ -464,6 +470,7 @@ export function createEmptyBuffStatModifiers(): BuffStatModifiers {
     anomalyReleaseCritDmg: 0,
     anomalyReleaseMult: 0,
     directDmgMult: 0,
+    settlementDmgMult: 0,
     anomalyMult: 0,
     disorderBaseMult: 0,
     anomalyDuration: 0,

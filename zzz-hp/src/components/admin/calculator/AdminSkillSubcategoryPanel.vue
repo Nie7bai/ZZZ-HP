@@ -22,6 +22,7 @@ const form = ref({
   name: '',
   countsAsFollowUp: false,
   directDmgMult: 100,
+  settlementDmgMult: 0,
   anomalyReleaseMult: 0,
   disorderMult: 0,
   directDmgMultFactor: 100,
@@ -78,6 +79,7 @@ function resetForm() {
     name: '',
     countsAsFollowUp: false,
     directDmgMult: 100,
+    settlementDmgMult: 0,
     anomalyReleaseMult: 0,
     disorderMult: 0,
     directDmgMultFactor: 100,
@@ -98,6 +100,7 @@ function selectItem(item: SkillSubcategory) {
     name: item.name,
     countsAsFollowUp: Boolean(item.countsAsFollowUp),
     directDmgMult: item.directDmgMult,
+    settlementDmgMult: item.settlementDmgMult,
     anomalyReleaseMult: item.anomalyReleaseMult,
     disorderMult: item.disorderMult,
     directDmgMultFactor: item.directDmgMultFactor,
@@ -123,6 +126,7 @@ async function saveItem() {
       name,
       countsAsFollowUp: form.value.countsAsFollowUp,
       directDmgMult: form.value.directDmgMult,
+      settlementDmgMult: form.value.settlementDmgMult,
       anomalyReleaseMult: form.value.anomalyReleaseMult,
       disorderMult: form.value.disorderMult,
       directDmgMultFactor: form.value.directDmgMultFactor,
@@ -276,6 +280,10 @@ defineExpose({ selectedId, saving, saveItem, removeItem })
             <label class="field">
               <span class="field-label">直伤倍率%</span>
               <input v-model.number="form.directDmgMult" class="field-input" type="number" step="any" />
+            </label>
+            <label class="field">
+              <span class="field-label">决算倍率%</span>
+              <input v-model.number="form.settlementDmgMult" class="field-input" type="number" step="any" />
             </label>
             <label class="field">
               <span class="field-label">异放倍率%</span>

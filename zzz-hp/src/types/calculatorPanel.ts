@@ -28,6 +28,8 @@ export interface PanelStats {
   anomalyReleaseDmgBonus: number
   /** 直伤倍率%，默认 100（即 ×1） */
   directDmgMult: number
+  /** 决算倍率%（仅来自增益，默认 0） */
+  settlementDmgMult: number
   /** 异常倍率% */
   anomalyMult: number
   /** 紊乱基础倍率% */
@@ -176,6 +178,7 @@ export function createDefaultExternalPanel(): PanelStats {
     anomalyReleaseMult: 0,
     anomalyReleaseDmgBonus: 0,
     directDmgMult: 100,
+    settlementDmgMult: 0,
     anomalyMult: 0,
     disorderBaseMult: 0,
     anomalyDuration: 0,

@@ -22,6 +22,7 @@ function unsetSkillMult(value: number | undefined | null): boolean {
 export function createDefaultSkillSubcategoryMults(): Pick<
   SkillSubcategory,
   | 'directDmgMult'
+  | 'settlementDmgMult'
   | 'anomalyReleaseMult'
   | 'disorderMult'
   | 'directDmgMultFactor'
@@ -30,6 +31,7 @@ export function createDefaultSkillSubcategoryMults(): Pick<
 > {
   return {
     directDmgMult: 100,
+    settlementDmgMult: 0,
     anomalyReleaseMult: 0,
     disorderMult: 0,
     directDmgMultFactor: 100,
@@ -43,6 +45,7 @@ export function normalizeSkillSubcategoryMultFields(
 ): Pick<
   SkillSubcategory,
   | 'directDmgMult'
+  | 'settlementDmgMult'
   | 'anomalyReleaseMult'
   | 'disorderMult'
   | 'directDmgMultFactor'
@@ -55,6 +58,9 @@ export function normalizeSkillSubcategoryMultFields(
     directDmgMult: Number.isFinite(Number(value.directDmgMult))
       ? Number(value.directDmgMult)
       : defaults.directDmgMult,
+    settlementDmgMult: Number.isFinite(Number(value.settlementDmgMult))
+      ? Number(value.settlementDmgMult)
+      : defaults.settlementDmgMult,
     anomalyReleaseMult: Number.isFinite(Number(value.anomalyReleaseMult))
       ? Number(value.anomalyReleaseMult)
       : defaults.anomalyReleaseMult,
@@ -78,8 +84,9 @@ export function resolveSkillMults(
   const sub = normalizeSkillSubcategoryMultFields(subcategory ?? undefined)
 
   const panelDirectFactor = readFactor(panel.directDmgMultFactor)
+  const directMultPercent = sub.directDmgMult + sub.settlementDmgMult
   const directDmgMultZone =
-    Math.max(0, sub.directDmgMult / 100) * sub.directDmgMultFactor * panelDirectFactor
+    Math.max(0, directMultPercent / 100) * sub.directDmgMultFactor * panelDirectFactor
 
   const panelReleaseFactor = readFactor(panel.anomalyReleaseMultFactor)
   const anomalyReleaseMultZone = unsetSkillMult(sub.anomalyReleaseMult)
