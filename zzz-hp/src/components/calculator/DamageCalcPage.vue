@@ -777,6 +777,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :effects="collectedEffects"
       :attr-defaults="panelCalcSectionRef?.convertAttrDefaults ?? {}"
       :panel-source-values="panelCalcSectionRef?.convertPanelSourceValues ?? undefined"
+      :panel-source-values-by-slot="panelCalcSectionRef?.panelSourceValuesBySlot ?? undefined"
       :skill-subcategories="skillSubcategories"
     />
 
