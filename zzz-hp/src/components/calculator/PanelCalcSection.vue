@@ -55,6 +55,7 @@ import { computeFinalPanel, computePiercePower, panelToConvertAttrValues, resolv
 import { computeDamageResult, type DamageCalcInput, type EnemyResistanceType } from '@/utils/damageCalc'
 import {
   canSelectTurbulenceDamageEvent,
+  eventNeedsAnomalyProducer,
   isTurbulenceTeamCompositionOk,
   mapEventKindToCalc,
   summarizeDamageEvents,
@@ -285,16 +286,20 @@ const convertAttrDefaults = computed<Partial<Record<CharacterAttrKey, number>>>(
   panelToConvertAttrValues(effectiveExternalPanel.value, { level: 60, pierceMod: 0 }),
 )
 
-/** 队伍中异常职业且非主 C 的槽位 */
-const anomalySupportSlots = computed(() =>
-  props.teamSlots
+/** 伤害事件中选为产生角色且非主 C 的槽位 */
+const anomalySupportSlots = computed(() => {
+  const mainId = mainSlot.value.agentId
+  const triggerIds = new Set<string>()
+  for (const event of props.damageEvents ?? []) {
+    if (!eventNeedsAnomalyProducer(event.kind)) continue
+    const id = event.triggerAgentId
+    if (!id || id === '__at_calc__' || id === mainId) continue
+    triggerIds.add(id)
+  }
+  return props.teamSlots
     .map((slot, index) => ({ slot, index }))
-    .filter(({ slot, index }) => {
-      if (!slot.agentId || index === mainSlotIndex.value) return false
-      const agent = props.agents.find((item) => item.id === slot.agentId)
-      return agent?.profession === '异常'
-    }),
-)
+    .filter(({ slot }) => Boolean(slot.agentId && triggerIds.has(slot.agentId)))
+})
 
 function ensureAnomalySlotPanel(agentId: string): PanelStats {
   const existing = props.anomalySlotPanels?.[agentId]
@@ -500,7 +505,7 @@ const anomalyCalcBlockedReason = computed(() => {
     (sub === 'turbulence' || sub === 'anomalyRelease' || sub === 'disorder') &&
     !props.triggerAnomalyAgentId
   ) {
-    return '请先选择触发时的异常属性（异常职业角色）'
+    return '请先选择当前属性异常的产生角色'
   }
   return ''
 })
@@ -2298,8 +2303,8 @@ defineExpose({
           <header class="panel-block-header">
             <h3>当前属性异常的产生角色 · 局外面板</h3>
             <p>
-              紊乱/乱流/异放的异常基础乘区使用该角色<strong>局内最终面板</strong>（吃完增益后）；请为非主
-              C 异常职业录入局外初始面板。
+              紊乱/乱流/异放的异常基础乘区使用该角色<strong>局内最终面板</strong>（吃完增益后）；请为在伤害事件中选为产生角色且非主
+              C 的代理人录入局外初始面板。
             </p>
           </header>
           <details

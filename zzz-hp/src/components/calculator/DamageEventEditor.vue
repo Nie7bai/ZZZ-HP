@@ -403,7 +403,7 @@ watch(
               <option v-if="allowCalcTimeTrigger" :value="TRIGGER_AGENT_AT_CALC">
                 计算时选择
               </option>
-              <option v-if="!allowCalcTimeTrigger" value="">请选择异常职业角色</option>
+              <option v-if="!allowCalcTimeTrigger" value="">请选择产生角色</option>
               <option
                 v-for="agent in triggerAgentOptions"
                 :key="agent.id"

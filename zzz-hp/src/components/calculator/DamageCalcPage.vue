@@ -37,7 +37,7 @@ import {
   type BuffSelectionState,
 } from '@/utils/panelBuffCalc'
 import { resolveIsFollowUp } from '@/utils/buffEffect'
-import { canSelectTurbulenceDamageEvent } from '@/utils/damageEvent'
+import { canSelectTurbulenceDamageEvent, eventNeedsAnomalyProducer } from '@/utils/damageEvent'
 import { createEmptyBuffStatModifiers, createEmptyRefinementMods } from '@/utils/calculatorUi'
 
 export interface TeamSlot {
@@ -136,7 +136,7 @@ const anomalyTriggerOptions = computed(() =>
   teamSlots
     .map((slot) => {
       const agent = agents.value.find((item) => item.id === slot.agentId)
-      if (!agent || agent.profession !== '异常') return null
+      if (!agent) return null
       return {
         id: agent.id,
         label: `${agent.name}·${agent.element}`,
@@ -145,6 +145,43 @@ const anomalyTriggerOptions = computed(() =>
     })
     .filter((item): item is { id: string; label: string; element: string } => Boolean(item)),
 )
+
+function getAnomalySlotAgentIds(): string[] {
+  const mainAgentId = teamSlots.find((slot) => slot.isMainC)?.agentId
+  const ids = new Set<string>()
+  for (const event of anomalyEvents.value) {
+    if (!eventNeedsAnomalyProducer(event.kind)) continue
+    const id = event.triggerAgentId
+    if (!id || id === '__at_calc__' || id === mainAgentId) continue
+    ids.add(id)
+  }
+  return [...ids]
+}
+
+function ensureAnomalySlotPanel(agentId: string) {
+  if (anomalySlotPanels[agentId]) return
+  const agent = agents.value.find((item) => item.id === agentId)
+  const panel = createDefaultExternalPanel()
+  if (agent?.basePanel) {
+    panel.def = agent.basePanel.def
+    panel.mastery = agent.basePanel.mastery
+    panel.anomalyControl = agent.basePanel.anomalyControl
+    panel.energyRegen = agent.basePanel.energyRegen
+    panel.anomalyMult = agent.basePanel.anomalyMult
+    panel.anomalyCritRate = agent.basePanel.anomalyCritRate
+    panel.anomalyCritDmg = agent.basePanel.anomalyCritDmg
+    panel.anomalyDmgBonus = agent.basePanel.anomalyDmgBonus
+    panel.anomalyDuration = agent.basePanel.anomalyDuration
+    panel.disorderBaseMult = agent.basePanel.disorderBaseMult
+    panel.disorderCompMult = agent.basePanel.disorderCompMult
+    panel.turbulenceBaseMult = agent.basePanel.turbulenceBaseMult
+    panel.turbulenceCompMult = agent.basePanel.turbulenceCompMult
+    panel.disorderDmgBonus = agent.basePanel.disorderDmgBonus
+    panel.turbulenceDmgBonus = agent.basePanel.turbulenceDmgBonus
+    panel.directDmgMult = agent.basePanel.directDmgMult
+  }
+  anomalySlotPanels[agentId] = panel
+}
 
 const triggerAgentOptionsForEditor = computed(() =>
   anomalyTriggerOptions.value.map((opt) => ({ id: opt.id, name: opt.label })),
@@ -189,31 +226,16 @@ watch(anomalyTriggerOptions, (opts) => {
 })
 
 watch(
-  () => anomalyTriggerOptions.value.map((item) => item.id).join(','),
+  () =>
+    [
+      ...getAnomalySlotAgentIds(),
+      ...anomalyEvents.value.map(
+        (event) => `${event.id}:${event.kind}:${event.triggerAgentId ?? ''}`,
+      ),
+    ].join(','),
   () => {
-    for (const opt of anomalyTriggerOptions.value) {
-      if (anomalySlotPanels[opt.id]) continue
-      const agent = agents.value.find((item) => item.id === opt.id)
-      const panel = createDefaultExternalPanel()
-      if (agent?.basePanel) {
-        panel.def = agent.basePanel.def
-        panel.mastery = agent.basePanel.mastery
-        panel.anomalyControl = agent.basePanel.anomalyControl
-        panel.energyRegen = agent.basePanel.energyRegen
-        panel.anomalyMult = agent.basePanel.anomalyMult
-        panel.anomalyCritRate = agent.basePanel.anomalyCritRate
-        panel.anomalyCritDmg = agent.basePanel.anomalyCritDmg
-        panel.anomalyDmgBonus = agent.basePanel.anomalyDmgBonus
-        panel.anomalyDuration = agent.basePanel.anomalyDuration
-        panel.disorderBaseMult = agent.basePanel.disorderBaseMult
-        panel.disorderCompMult = agent.basePanel.disorderCompMult
-        panel.turbulenceBaseMult = agent.basePanel.turbulenceBaseMult
-        panel.turbulenceCompMult = agent.basePanel.turbulenceCompMult
-        panel.disorderDmgBonus = agent.basePanel.disorderDmgBonus
-        panel.turbulenceDmgBonus = agent.basePanel.turbulenceDmgBonus
-        panel.directDmgMult = agent.basePanel.directDmgMult
-      }
-      anomalySlotPanels[opt.id] = panel
+    for (const agentId of getAnomalySlotAgentIds()) {
+      ensureAnomalySlotPanel(agentId)
     }
   },
 )
