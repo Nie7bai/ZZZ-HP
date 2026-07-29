@@ -5,6 +5,13 @@ import type {
   PanelCalcMode,
   PanelStats,
 } from '@/types/calculatorPanel'
+import type { CharacterAttrKey } from '@/types/calculator'
+
+/** 转模增益角色局外面板（按 agentId 存部分属性） */
+export type DamageCalcConvertSlotPanels = Record<
+  string,
+  Partial<Record<CharacterAttrKey, number>>
+>
 
 export interface DamageCalcTeamSlotSnapshot {
   agentId: string
@@ -52,4 +59,8 @@ export interface DamageCalcHistoryEntry {
   bangbooRefine: number
   panelCalcMode: PanelCalcMode
   panelState: DamageCalcPanelSnapshot
+  /** 异常产生角色局外面板（按 agentId） */
+  anomalySlotPanels?: Record<string, PanelStats>
+  /** 转模增益角色局外面板（按 agentId） */
+  convertSlotPanels?: DamageCalcConvertSlotPanels
 }

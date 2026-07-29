@@ -38,6 +38,11 @@ const props = defineProps<{
   /** direct=通用乘区+直伤；anomaly=通用乘区+异常子类 */
   show: 'direct' | 'anomaly'
   anomalySubKind?: import('@/types/calculator').AnomalyDamageSubKind
+  /** 紊乱/乱流：产生角色面板（用于倍率区来源提示） */
+  producerFinalPanel?: PanelStats
+  producerExternalPanel?: PanelStats
+  producerSources?: BuffModSource[]
+  producerAgentLabel?: string
 }>()
 
 const anomalySubKind = computed(() => props.anomalySubKind ?? 'anomaly')
@@ -338,6 +343,22 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
   const sources = props.sources
   const enemy = props.enemyInput
   const pierceMod = props.pierceMod
+
+  const sub = anomalySubKind.value
+  const usesProducerMult =
+    (sub === 'turbulence' || sub === 'disorder') &&
+    Boolean(props.producerFinalPanel && props.producerExternalPanel && props.producerSources)
+  const multPanel = usesProducerMult ? props.producerFinalPanel! : panel
+  const multExternal = usesProducerMult ? props.producerExternalPanel! : external
+  const multSources = usesProducerMult ? props.producerSources! : sources
+  const producerExtraGroup = usesProducerMult
+    ? [
+        {
+          label: props.producerAgentLabel ?? '异常产生角色',
+          items: ['紊乱/乱流基础与补偿倍率、异常持续时间取产生角色面板'],
+        },
+      ]
+    : []
 
   const atkGroups = buildStatSourceGroups({
     keys: ['inCombatAtkPercent', 'atk'],
@@ -827,31 +848,40 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
       },
     ],
     disorderBaseMult: withTotal(
-      buildStatSourceGroups({
-        keys: ['disorderBaseMult'],
-        externalPanel: external,
-        sources,
-        finalValues: { disorderBaseMult: panel.disorderBaseMult },
-      }),
-      `紊乱基础倍率 ${formatFormulaNumber(panel.disorderBaseMult, 2)}% = ${formatFormulaNumber(p.disorderBaseMultRatio)}`,
+      [
+        ...producerExtraGroup,
+        ...buildStatSourceGroups({
+          keys: ['disorderBaseMult'],
+          externalPanel: multExternal,
+          sources: multSources,
+          finalValues: { disorderBaseMult: multPanel.disorderBaseMult },
+        }),
+      ],
+      `紊乱基础倍率 ${formatFormulaNumber(multPanel.disorderBaseMult, 2)}% = ${formatFormulaNumber(p.disorderBaseMultRatio)}`,
     ),
     anomalyDuration: withTotal(
-      buildStatSourceGroups({
-        keys: ['anomalyDuration'],
-        externalPanel: external,
-        sources,
-        finalValues: { anomalyDuration: panel.anomalyDuration },
-      }),
-      `异常持续时间 ${formatFormulaNumber(panel.anomalyDuration, 2)}s → 有效 ${formatFormulaNumber(p.effectiveAnomalyDuration)}s`,
+      [
+        ...producerExtraGroup,
+        ...buildStatSourceGroups({
+          keys: ['anomalyDuration'],
+          externalPanel: multExternal,
+          sources: multSources,
+          finalValues: { anomalyDuration: multPanel.anomalyDuration },
+        }),
+      ],
+      `异常持续时间 ${formatFormulaNumber(multPanel.anomalyDuration, 2)}s → 有效 ${formatFormulaNumber(p.effectiveAnomalyDuration)}s`,
     ),
     disorderCompMult: withTotal(
-      buildStatSourceGroups({
-        keys: ['disorderCompMult'],
-        externalPanel: external,
-        sources,
-        finalValues: { disorderCompMult: panel.disorderCompMult },
-      }),
-      `紊乱补偿倍率 ${formatFormulaNumber(panel.disorderCompMult, 2)}% = ${formatFormulaNumber(p.disorderCompMultRatio)}`,
+      [
+        ...producerExtraGroup,
+        ...buildStatSourceGroups({
+          keys: ['disorderCompMult'],
+          externalPanel: multExternal,
+          sources: multSources,
+          finalValues: { disorderCompMult: multPanel.disorderCompMult },
+        }),
+      ],
+      `紊乱补偿倍率 ${formatFormulaNumber(multPanel.disorderCompMult, 2)}% = ${formatFormulaNumber(p.disorderCompMultRatio)}`,
     ),
     disorderDmgBonusZone: withTotal(
       buildStatSourceGroups({
@@ -863,6 +893,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
       `紊乱增伤区 1 + ${formatFormulaNumber(panel.disorderDmgBonus, 2)}% = ${formatFormulaNumber(p.disorderDmgBonusZone)}`,
     ),
     disorderZone: [
+      ...(producerExtraGroup.length ? producerExtraGroup : []),
       {
         label: '乘区组成',
         items: [
@@ -902,22 +933,28 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
       },
     ],
     turbulenceBaseMult: withTotal(
-      buildStatSourceGroups({
-        keys: ['turbulenceBaseMult'],
-        externalPanel: external,
-        sources,
-        finalValues: { turbulenceBaseMult: panel.turbulenceBaseMult },
-      }),
-      `乱流基础倍率 ${formatFormulaNumber(panel.turbulenceBaseMult, 2)}% = ${formatFormulaNumber(p.turbulenceBaseMultRatio)}`,
+      [
+        ...producerExtraGroup,
+        ...buildStatSourceGroups({
+          keys: ['turbulenceBaseMult'],
+          externalPanel: multExternal,
+          sources: multSources,
+          finalValues: { turbulenceBaseMult: multPanel.turbulenceBaseMult },
+        }),
+      ],
+      `乱流基础倍率 ${formatFormulaNumber(multPanel.turbulenceBaseMult, 2)}% = ${formatFormulaNumber(p.turbulenceBaseMultRatio)}`,
     ),
     turbulenceCompMult: withTotal(
-      buildStatSourceGroups({
-        keys: ['turbulenceCompMult'],
-        externalPanel: external,
-        sources,
-        finalValues: { turbulenceCompMult: panel.turbulenceCompMult },
-      }),
-      `乱流补偿倍率 ${formatFormulaNumber(panel.turbulenceCompMult, 2)}% = ${formatFormulaNumber(p.turbulenceCompMultRatio)}`,
+      [
+        ...producerExtraGroup,
+        ...buildStatSourceGroups({
+          keys: ['turbulenceCompMult'],
+          externalPanel: multExternal,
+          sources: multSources,
+          finalValues: { turbulenceCompMult: multPanel.turbulenceCompMult },
+        }),
+      ],
+      `乱流补偿倍率 ${formatFormulaNumber(multPanel.turbulenceCompMult, 2)}% = ${formatFormulaNumber(p.turbulenceCompMultRatio)}`,
     ),
     turbulenceDmgBonusZone: withTotal(
       buildStatSourceGroups({
@@ -929,6 +966,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
       `乱流增伤区 1 + ${formatFormulaNumber(panel.turbulenceDmgBonus, 2)}% = ${formatFormulaNumber(p.turbulenceDmgBonusZone)}`,
     ),
     turbulenceZone: [
+      ...(producerExtraGroup.length ? producerExtraGroup : []),
       {
         label: '乘区组成',
         items: [
