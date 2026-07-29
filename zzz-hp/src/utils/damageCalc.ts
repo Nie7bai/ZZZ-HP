@@ -296,8 +296,13 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     (subKind === 'turbulence' || subKind === 'anomalyRelease' || subKind === 'disorder') &&
     Boolean(input.triggerFinalPanel)
 
+  const triggerPanel = input.triggerFinalPanel ?? panel
+  const usesProducerMultPanel =
+    useTriggerBase && (subKind === 'turbulence' || subKind === 'disorder')
+  const multPanel = usesProducerMultPanel ? triggerPanel : panel
+
   const skillMults = input.skillSubcategory
-    ? resolveSkillMults(panel, input.skillSubcategory)
+    ? resolveSkillMults(multPanel, input.skillSubcategory)
     : null
   const hasPolarDisorder = skillMults?.hasPolarDisorder ?? false
 
@@ -316,7 +321,6 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     staggerPhase,
   })
 
-  const triggerPanel = input.triggerFinalPanel ?? panel
   const triggerParts = useTriggerBase
     ? computeGeneralAndAnomalyBase({
         panel: triggerPanel,
@@ -412,8 +416,8 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const disorderDmgBonusZone = 1 + panel.disorderDmgBonus / 100
   const disorderBaseMultRatio = skillMults
     ? skillMults.disorderMultZone
-    : Math.max(0, panel.disorderBaseMult / 100) * readFactor(panel.disorderBaseMultFactor)
-  const disorderCompMultRatio = panel.disorderCompMult / 100
+    : Math.max(0, multPanel.disorderBaseMult / 100) * readFactor(multPanel.disorderBaseMultFactor)
+  const disorderCompMultRatio = multPanel.disorderCompMult / 100
   const disorderZone = Math.max(
     0,
     disorderBaseMultRatio + effectiveDuration * disorderCompMultRatio,
@@ -425,8 +429,9 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const turbulenceCombinedDmgBonusZone =
     1 + (panel.turbulenceDmgBonus + panel.anomalyDmgBonus) / 100
   const turbulenceBaseMultRatio =
-    Math.max(0, panel.turbulenceBaseMult / 100) * readFactor(panel.turbulenceBaseMultFactor)
-  const turbulenceCompMultRatio = panel.turbulenceCompMult / 100
+    Math.max(0, multPanel.turbulenceBaseMult / 100) *
+      readFactor(multPanel.turbulenceBaseMultFactor)
+  const turbulenceCompMultRatio = multPanel.turbulenceCompMult / 100
   const turbulenceZone = Math.max(
     0,
     turbulenceBaseMultRatio + effectiveDuration * turbulenceCompMultRatio,

@@ -554,6 +554,30 @@ function applyTeamSlots(slots: DamageCalcHistoryEntry['teamSlots']) {
   })
 }
 
+function cloneAnomalySlotPanels(): Record<string, PanelStats> {
+  return JSON.parse(JSON.stringify(anomalySlotPanels)) as Record<string, PanelStats>
+}
+
+function cloneConvertSlotPanels(): ConvertSlotPanels {
+  return JSON.parse(JSON.stringify(convertSlotPanels)) as ConvertSlotPanels
+}
+
+function applyAnomalySlotPanels(panels?: Record<string, PanelStats>) {
+  for (const key of Object.keys(anomalySlotPanels)) {
+    delete anomalySlotPanels[key]
+  }
+  if (!panels) return
+  Object.assign(anomalySlotPanels, JSON.parse(JSON.stringify(panels)))
+}
+
+function applyConvertSlotPanels(panels?: ConvertSlotPanels) {
+  for (const key of Object.keys(convertSlotPanels)) {
+    delete convertSlotPanels[key]
+  }
+  if (!panels) return
+  Object.assign(convertSlotPanels, JSON.parse(JSON.stringify(panels)))
+}
+
 function saveHistoryEntry(name: string) {
   if (panelCalcMode.value === 'optimal') {
     historyMessage.value = '最优词条分配模式暂不支持写入历史，请切换到面板/词条计算后再保存'
@@ -572,6 +596,8 @@ function saveHistoryEntry(name: string) {
     bangbooRefine: bangbooRefine.value,
     panelCalcMode: panelCalcMode.value,
     panelState,
+    anomalySlotPanels: cloneAnomalySlotPanels(),
+    convertSlotPanels: cloneConvertSlotPanels(),
   }
 
   historyEntries.value = saveDamageCalcHistory(entry)
@@ -585,6 +611,8 @@ function loadHistoryEntry(entry: DamageCalcHistoryEntry) {
   selectedBangbooId.value = entry.selectedBangbooId
   bangbooRefine.value = entry.bangbooRefine
   panelCalcMode.value = entry.panelCalcMode === 'optimal' ? 'affix' : entry.panelCalcMode
+  applyAnomalySlotPanels(entry.anomalySlotPanels)
+  applyConvertSlotPanels(entry.convertSlotPanels)
   void nextTick(() => {
     panelCalcSectionRef.value?.loadSnapshot(entry.panelState)
   })
