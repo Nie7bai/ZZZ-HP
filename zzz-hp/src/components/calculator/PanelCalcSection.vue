@@ -58,10 +58,13 @@ import {
   collectConvertSupportSlots,
   computeFinalPanel,
   computePiercePower,
+  convertSlotPartialToExternalPanel,
   externalPanelToConvertPartial,
   panelToConvertAttrValues,
+  resolveBuffSelectionForSlot,
   resolveMainCAnomalyReleaseMultFields,
   type ConvertSlotPanels,
+  type MultiSlotBuffSelection,
 } from '@/utils/panelBuffCalc'
 import { computeDamageResult, type DamageCalcInput, type EnemyResistanceType } from '@/utils/damageCalc'
 import {
@@ -173,7 +176,7 @@ const props = defineProps<{
   convertSlotPanels?: ConvertSlotPanels
   skillCategoryId?: import('@/types/calculator').SkillCategoryId
   skillSubcategoryId?: string | null
-  buffSelection?: import('@/utils/panelBuffCalc').BuffSelectionState | null
+  slotBuffSelections?: MultiSlotBuffSelection | null
   staggerPhase?: import('@/types/calculator').StaggerPhase
   damageEvents?: DamageEvent[]
 }>()
@@ -322,30 +325,79 @@ const anomalySupportSlots = computed(() => {
     .filter(({ slot }) => Boolean(slot.agentId && triggerIds.has(slot.agentId)))
 })
 
-function buildBasePanelCalcContext() {
+function resolveExternalPanelForSlotIndex(slotIndex: number): PanelStats {
+  if (slotIndex === mainSlotIndex.value) return effectiveExternalPanel.value
+  const agentId = props.teamSlots[slotIndex]?.agentId
+  if (!agentId) return createDefaultExternalPanel()
+  const anomaly = props.anomalySlotPanels?.[agentId]
+  if (anomaly) return { ...anomaly }
+  const partial = props.convertSlotPanels?.[agentId]
+  if (partial) return convertSlotPartialToExternalPanel(partial)
+  return createDefaultExternalPanel()
+}
+
+function buildSkillContextForSlot(slotIndex: number) {
+  const agent = props.agents.find((item) => item.id === props.teamSlots[slotIndex]?.agentId)
+  return {
+    damageKind: props.damageKind ?? 'direct',
+    categoryId: props.skillCategoryId ?? 'basic',
+    subcategoryId: props.skillSubcategoryId ?? null,
+    element: agent?.element ?? mainAgent.value?.element,
+    staggerPhase: props.staggerPhase ?? 'stagger',
+    isFollowUp: resolveIsFollowUp({
+      agentId: agent?.id,
+      categoryId: props.skillCategoryId ?? 'basic',
+      subcategoryId: props.skillSubcategoryId ?? null,
+      skillSubcategories: skillSubcategories.value,
+      followUpSkillRules: followUpSkillRules.value,
+    }),
+    anomalySubKind:
+      props.damageKind === 'anomaly' ? (props.anomalySubKind ?? 'anomaly') : undefined,
+  }
+}
+
+function buildPanelCalcContextForSlot(slotIndex: number) {
   return {
     teamSlots: props.teamSlots,
     agents: props.agents,
     wengines: props.wengines,
     bangboo: selectedBangboo.value,
     bangbooRefine: props.bangbooRefine,
-    mainSlotIndex: mainSlotIndex.value,
+    mainSlotIndex: slotIndex,
     driveDiscs: props.driveDiscs,
     extraMods: extraMods.value,
-    skillContext: {
-      damageKind: props.damageKind ?? 'direct',
-      categoryId: props.skillCategoryId ?? 'basic',
-      subcategoryId: props.skillSubcategoryId ?? null,
-      element: damageElement.value,
-      staggerPhase: props.staggerPhase ?? 'stagger',
-      isFollowUp: skillIsFollowUp.value,
-      anomalySubKind:
-        props.damageKind === 'anomaly' ? (props.anomalySubKind ?? 'anomaly') : undefined,
-    },
-    buffSelection: props.buffSelection ?? null,
+    skillContext: buildSkillContextForSlot(slotIndex),
+    buffSelection: resolveBuffSelectionForSlot(props.slotBuffSelections, slotIndex),
     anomalySlotPanels: props.anomalySlotPanels,
     convertSlotPanels: props.convertSlotPanels,
+    attrValues: getAttrDefaultsForSlot(slotIndex),
   }
+}
+
+function buildBasePanelCalcContext() {
+  return buildPanelCalcContextForSlot(mainSlotIndex.value)
+}
+
+function getAttrDefaultsForSlot(slotIndex: number) {
+  const external = resolveExternalPanelForSlotIndex(slotIndex)
+  const agentId = props.teamSlots[slotIndex]?.agentId
+  const partial = agentId ? props.convertSlotPanels?.[agentId] : undefined
+  const level =
+    partial?.level ??
+    (slotIndex === mainSlotIndex.value
+      ? enemyInput.level
+      : agentId
+        ? resolveAgentLevel(agentId)
+        : 60)
+  return panelToConvertAttrValues(external, { level, pierceMod: 0 })
+}
+
+function getPanelSourceValuesForSlot(slotIndex: number) {
+  const record = buildPanelSourceValuesBySlotRecord(
+    buildPanelCalcContextForSlot(slotIndex),
+    resolveExternalPanelForSlotIndex(slotIndex),
+  )
+  return record[slotIndex]
 }
 
 const anomalyProducerAgentIds = computed(() => {
@@ -448,6 +500,16 @@ const triggerAgent = computed(() =>
   props.agents.find((item) => item.id === props.triggerAnomalyAgentId),
 )
 
+function resolveAgentLevel(agentId: string | null | undefined): number {
+  if (!agentId || agentId === mainAgent.value?.id) {
+    return enemyInput.level
+  }
+  const saved = props.convertSlotPanels?.[agentId]?.level
+  return typeof saved === 'number' && saved >= 1 ? saved : 60
+}
+
+const triggerAgentLevel = computed(() => resolveAgentLevel(props.triggerAnomalyAgentId))
+
 const needsTriggerPanel = computed(() => {
   const sub = props.anomalySubKind
   return (
@@ -469,12 +531,17 @@ const convertSlotPanelsSignature = computed(() =>
   JSON.stringify(props.convertSlotPanels ?? {}),
 )
 
+const slotBuffSelectionsSignature = computed(() =>
+  JSON.stringify(props.slotBuffSelections ?? {}),
+)
+
 const panelBreakdown = computed(() => {
   void convertSlotPanelsSignature.value
-  return computeFinalPanel(effectiveExternalPanel.value, {
-    ...buildBasePanelCalcContext(),
-    attrValues: convertAttrDefaults.value,
-  })
+  void slotBuffSelectionsSignature.value
+  return computeFinalPanel(
+    effectiveExternalPanel.value,
+    buildPanelCalcContextForSlot(mainSlotIndex.value),
+  )
 })
 
 const finalPanel = computed(() => {
@@ -486,25 +553,13 @@ const finalPanel = computed(() => {
     const fields = resolveMainCAnomalyReleaseMultFields(
       effectiveExternalPanel.value,
       {
-        teamSlots: props.teamSlots,
-        agents: props.agents,
-        wengines: props.wengines,
-        bangboo: selectedBangboo.value,
-        bangbooRefine: props.bangbooRefine,
-        mainSlotIndex: mainSlotIndex.value,
-        driveDiscs: props.driveDiscs,
-        extraMods: extraMods.value,
+        ...buildPanelCalcContextForSlot(mainSlotIndex.value),
         skillContext: {
-          damageKind: props.damageKind ?? 'anomaly',
-          categoryId: props.skillCategoryId ?? 'basic',
-          subcategoryId: props.skillSubcategoryId ?? null,
-          element: damageElement.value,
-          staggerPhase: props.staggerPhase ?? 'stagger',
-          isFollowUp: skillIsFollowUp.value,
+          ...buildSkillContextForSlot(mainSlotIndex.value),
+          damageKind: 'anomaly',
           anomalySubKind: 'anomalyRelease',
+          element: damageElement.value,
         },
-        buffSelection: props.buffSelection ?? null,
-        attrValues: convertAttrDefaults.value,
       },
       damageElement.value ?? undefined,
     )
@@ -524,11 +579,9 @@ const convertPanelSourceValues = computed(() => ({
 
 const panelSourceValuesBySlot = computed(() => {
   void convertSlotPanelsSignature.value
+  void slotBuffSelectionsSignature.value
   return buildPanelSourceValuesBySlotRecord(
-    {
-      ...buildBasePanelCalcContext(),
-      attrValues: convertAttrDefaults.value,
-    },
+    buildPanelCalcContextForSlot(mainSlotIndex.value),
     effectiveExternalPanel.value,
   )
 })
@@ -541,22 +594,29 @@ const triggerExternalPanel = computed<PanelStats | null>(() => {
   return ensureAnomalySlotPanel(props.triggerAnomalyAgentId)
 })
 
+const producerPanelBreakdownByAgentId = computed(() => {
+  void convertSlotPanelsSignature.value
+  void slotBuffSelectionsSignature.value
+  const map: Record<string, ReturnType<typeof computeFinalPanel>> = {}
+  for (const item of anomalySupportSlots.value) {
+    const agentId = item.slot.agentId
+    if (!agentId) continue
+    map[agentId] = computeFinalPanel(
+      ensureAnomalySlotPanel(agentId),
+      buildPanelCalcContextForSlot(item.index),
+    )
+  }
+  return map
+})
+
 const triggerPanelBreakdown = computed(() => {
-  if (!triggerExternalPanel.value || triggerSlotIndex.value < 0) return null
-  return computeFinalPanel(triggerExternalPanel.value, {
-    ...buildBasePanelCalcContext(),
-    mainSlotIndex: triggerSlotIndex.value,
-    skillContext: {
-      damageKind: props.damageKind ?? 'anomaly',
-      categoryId: props.skillCategoryId ?? 'basic',
-      subcategoryId: props.skillSubcategoryId ?? null,
-      element: triggerAgent.value?.element,
-      staggerPhase: props.staggerPhase ?? 'stagger',
-      isFollowUp: skillIsFollowUp.value,
-      anomalySubKind:
-        props.damageKind === 'anomaly' ? (props.anomalySubKind ?? 'anomaly') : undefined,
-    },
-  })
+  if (!needsTriggerPanel.value || !props.triggerAnomalyAgentId || triggerSlotIndex.value < 0) {
+    return null
+  }
+  if (props.triggerAnomalyAgentId === mainAgent.value?.id) {
+    return panelBreakdown.value
+  }
+  return producerPanelBreakdownByAgentId.value[props.triggerAnomalyAgentId] ?? null
 })
 
 const triggerFinalPanel = computed(() => triggerPanelBreakdown.value?.finalPanel ?? null)
@@ -656,6 +716,22 @@ function formatPanelSlot(slot: PanelFieldSlot, scope: 'external' | 'final') {
     return formatPanelValue('release', finalPanel.value.anomalyReleaseMult)
   }
   const panel = scope === 'external' ? effectiveExternalPanel.value : finalPanel.value
+  return formatPanelValue(slot.key, panel[slot.key])
+}
+
+function formatAnomalyFinalPanel(agentId: string, slot: PanelFieldSlot) {
+  if (slot.kind === 'spacer') return ''
+  const breakdown = producerPanelBreakdownByAgentId.value[agentId]
+  const external = ensureAnomalySlotPanel(agentId)
+  const panel = breakdown?.finalPanel ?? external
+  if (slot.kind === 'pierce') {
+    const pierceMod = breakdown?.totalMods.pierce ?? 0
+    return formatPanelValue('pierce', computePiercePower(panel.hp, panel.atk, pierceMod))
+  }
+  if (slot.kind === 'mod') {
+    return formatPanelValue(slot.key, breakdown?.totalMods[slot.key] ?? 0)
+  }
+  if (slot.kind === 'finalRate') return '—'
   return formatPanelValue(slot.key, panel[slot.key])
 }
 
@@ -803,6 +879,8 @@ const calcParts = computed(() =>
     triggerPiercePower: triggerPiercePower.value,
     triggerIsMb: triggerAgent.value?.profession === MB_PROFESSION,
     skillSubcategory: resolvedSkillSubcategory.value,
+    mainAgentLevel: enemyInput.level,
+    triggerAgentLevel: triggerAgentLevel.value,
   }),
 )
 
@@ -858,9 +936,8 @@ function buildEventSkillContext(event: DamageEvent) {
 
 function buildEventPanelCalcContext(skillCtx: ReturnType<typeof buildEventSkillContext>['skillCtx']) {
   return {
-    ...buildBasePanelCalcContext(),
+    ...buildPanelCalcContextForSlot(mainSlotIndex.value),
     skillContext: skillCtx,
-    attrValues: convertAttrDefaults.value,
   }
 }
 
@@ -961,24 +1038,22 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
     } else {
       const tExternal = ensureAnomalySlotPanel(evtTriggerAgentId)
       const tBreakdown = computeFinalPanel(tExternal, {
-        teamSlots: props.teamSlots,
-        agents: props.agents,
-        wengines: props.wengines,
-        bangboo: selectedBangboo.value,
-        bangbooRefine: props.bangbooRefine,
-        mainSlotIndex: tSlotIndex,
-        driveDiscs: props.driveDiscs,
-        extraMods: extraMods.value,
+        ...buildPanelCalcContextForSlot(tSlotIndex),
         skillContext: {
           damageKind: 'anomaly',
           categoryId: skillBound ? event.categoryId : 'basic',
           subcategoryId: skillBound ? (event.skillSubcategoryId ?? null) : null,
           element: tAgent?.element,
           staggerPhase: event.staggerPhase,
-          isFollowUp: false,
+          isFollowUp: resolveIsFollowUp({
+            agentId: tAgent?.id,
+            categoryId: skillBound ? event.categoryId : 'basic',
+            subcategoryId: skillBound ? (event.skillSubcategoryId ?? null) : null,
+            skillSubcategories: skillSubcategories.value,
+            followUpSkillRules: followUpSkillRules.value,
+          }),
           anomalySubKind: evtAnomalySubKind,
         },
-        buffSelection: props.buffSelection ?? null,
       })
       evtTriggerFinalPanel = tBreakdown.finalPanel
       evtTriggerPierce = computePiercePower(
@@ -1055,6 +1130,8 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
     triggerPiercePower: evtTriggerPierce,
     triggerIsMb: evtTriggerIsMb,
     skillSubcategory: effectiveSub,
+    mainAgentLevel: enemyInput.level,
+    triggerAgentLevel: evtTriggerAgentId ? resolveAgentLevel(evtTriggerAgentId) : enemyInput.level,
   }
 }
 
@@ -1418,70 +1495,88 @@ const valueTips = computed(() => {
   const pierceMod = panelBreakdown.value.totalMods.pierce
 
   const sub = effectiveAnomalySubKind.value
-  const usesProducerMult =
-    (sub === 'turbulence' || sub === 'disorder') &&
+  const usesProducerBase =
+    (sub === 'turbulence' || sub === 'disorder' || sub === 'anomalyRelease') &&
     Boolean(triggerFinalPanel.value && triggerExternalPanel.value && triggerPanelBreakdown.value)
+  const usesProducerMult = usesProducerBase && (sub === 'turbulence' || sub === 'disorder')
+  const tipPanel = usesProducerBase ? triggerFinalPanel.value! : panel
+  const tipExternal = usesProducerBase ? triggerExternalPanel.value! : external
+  const tipSources = usesProducerBase ? triggerPanelBreakdown.value!.sources : sources
+  const tipPierceMod = usesProducerBase
+    ? triggerPanelBreakdown.value!.totalMods.pierce
+    : pierceMod
+  const tipPiercePower = usesProducerBase ? triggerPiercePower.value : piercePower.value
+  const tipIsMb = usesProducerBase
+    ? triggerAgent.value?.profession === MB_PROFESSION
+    : isMbMainAgent.value
   const multPanel = usesProducerMult ? triggerFinalPanel.value! : panel
   const multExternal = usesProducerMult ? triggerExternalPanel.value! : external
   const multSources = usesProducerMult ? triggerPanelBreakdown.value!.sources : sources
-  const producerExtraGroup = usesProducerMult
+  const durationPanel = usesProducerBase ? triggerFinalPanel.value! : panel
+  const durationExternal = usesProducerBase ? triggerExternalPanel.value! : external
+  const durationSources = usesProducerBase ? triggerPanelBreakdown.value!.sources : sources
+  const producerExtraGroup = usesProducerBase
     ? [
         {
           label: triggerAgent.value?.name
             ? `异常产生角色 · ${triggerAgent.value.name}`
             : '异常产生角色',
-          items: ['紊乱/乱流基础与补偿倍率、异常持续时间取产生角色面板'],
+          items: usesProducerMult
+            ? [
+                '异常基础乘区、紊乱/乱流倍率与异常持续时间取产生角色面板；减防/无视防御取主C',
+              ]
+            : ['异常基础乘区（含等级区）取产生角色面板；减防/无视防御取主C'],
         },
       ]
     : []
 
   const atkGroups = buildStatSourceGroups({
     keys: ['inCombatAtkPercent', 'atk'],
-    externalPanel: external,
-    sources,
+    externalPanel: tipExternal,
+    sources: tipSources,
     externalKeyMap: { inCombatAtkPercent: null, atk: null },
-    extraGroups: external.atk
-      ? [{ label: '局外面板', items: [`攻击力 ${formatFormulaNumber(external.atk, 2)}`] }]
+    extraGroups: tipExternal.atk
+      ? [{ label: '局外面板', items: [`攻击力 ${formatFormulaNumber(tipExternal.atk, 2)}`] }]
       : [],
   })
 
   const hpGroups = buildStatSourceGroups({
     keys: ['inCombatHpPercent'],
-    externalPanel: external,
-    sources,
+    externalPanel: tipExternal,
+    sources: tipSources,
     externalKeyMap: { inCombatHpPercent: null },
-    extraGroups: external.hp
-      ? [{ label: '局外面板', items: [`生命值 ${formatFormulaNumber(external.hp, 2)}`] }]
+    extraGroups: tipExternal.hp
+      ? [{ label: '局外面板', items: [`生命值 ${formatFormulaNumber(tipExternal.hp, 2)}`] }]
       : [],
   })
 
   const pierceGroups = buildStatSourceGroups({
     keys: ['pierce'],
-    externalPanel: external,
-    sources,
+    externalPanel: tipExternal,
+    sources: tipSources,
     externalKeyMap: { pierce: null },
   })
 
   const defGroups = buildStatSourceGroups({
     keys: ['inCombatDefPercent', 'def'],
-    externalPanel: external,
-    sources,
+    externalPanel: tipExternal,
+    sources: tipSources,
     externalKeyMap: { inCombatDefPercent: null, def: null },
-    extraGroups: external.def
-      ? [{ label: '局外面板', items: [`防御力 ${formatFormulaNumber(external.def, 2)}`] }]
+    extraGroups: tipExternal.def
+      ? [{ label: '局外面板', items: [`防御力 ${formatFormulaNumber(tipExternal.def, 2)}`] }]
       : [],
   })
 
   const atkProcessItems = buildAtkPanelProcessItems({
-    externalAtk: external.atk,
-    finalAtk: panel.atk,
-    sources,
+    externalAtk: tipExternal.atk,
+    finalAtk: tipPanel.atk,
+    sources: tipSources,
   })
 
   const defProcessItems = buildDefPanelProcessItems({
-    externalDef: external.def,
-    finalDef: panel.def,
-    sources,
+    externalDef: tipExternal.def,
+    finalDef: tipPanel.def,
+    sources: tipSources,
   })
 
   const pierceBaseDamageTips = withTotal(
@@ -1496,55 +1591,109 @@ const valueTips = computed(() => {
       })),
       ...pierceGroups,
     ],
-    `贯穿力 ${formatFormulaNumber(piercePower.value, 2)} = 0.1×${formatFormulaNumber(panel.hp, 2)} + 0.3×${formatFormulaNumber(panel.atk, 2)} + ${formatFormulaNumber(pierceMod, 2)}`,
+    `贯穿力 ${formatFormulaNumber(tipPiercePower, 2)} = 0.1×${formatFormulaNumber(tipPanel.hp, 2)} + 0.3×${formatFormulaNumber(tipPanel.atk, 2)} + ${formatFormulaNumber(tipPierceMod, 2)}`,
     [
       ...(atkProcessItems.length ? ['攻击力：', ...atkProcessItems] : []),
-      `贯穿力 = 0.1 × ${formatFormulaNumber(panel.hp, 2)} + 0.3 × ${formatFormulaNumber(panel.atk, 2)} + ${formatFormulaNumber(pierceMod, 2)} = ${formatFormulaNumber(piercePower.value, 2)}`,
+      `贯穿力 = 0.1 × ${formatFormulaNumber(tipPanel.hp, 2)} + 0.3 × ${formatFormulaNumber(tipPanel.atk, 2)} + ${formatFormulaNumber(tipPierceMod, 2)} = ${formatFormulaNumber(tipPiercePower, 2)}`,
     ],
   )
+
+  const mainAtkGroups = buildStatSourceGroups({
+    keys: ['inCombatAtkPercent', 'atk'],
+    externalPanel: external,
+    sources,
+    externalKeyMap: { inCombatAtkPercent: null, atk: null },
+    extraGroups: external.atk
+      ? [{ label: '局外面板', items: [`攻击力 ${formatFormulaNumber(external.atk, 2)}`] }]
+      : [],
+  })
+  const mainHpGroups = buildStatSourceGroups({
+    keys: ['inCombatHpPercent'],
+    externalPanel: external,
+    sources,
+    externalKeyMap: { inCombatHpPercent: null },
+    extraGroups: external.hp
+      ? [{ label: '局外面板', items: [`生命值 ${formatFormulaNumber(external.hp, 2)}`] }]
+      : [],
+  })
+  const mainPierceGroups = buildStatSourceGroups({
+    keys: ['pierce'],
+    externalPanel: external,
+    sources,
+    externalKeyMap: { pierce: null },
+  })
+  const mainAtkProcessItems = buildAtkPanelProcessItems({
+    externalAtk: external.atk,
+    finalAtk: panel.atk,
+    sources,
+  })
 
   return {
     baseDamage:
       p.baseDamageSource === 'atk'
         ? withTotal(
             atkGroups,
-            `局内攻击力 ${formatFormulaNumber(panel.atk, 2)}`,
+            `局内攻击力 ${formatFormulaNumber(tipPanel.atk, 2)}`,
             atkProcessItems,
           )
         : p.baseDamageSource === 'def'
           ? withTotal(
               defGroups,
-              `局内防御力 ${formatFormulaNumber(panel.def, 2)}`,
+              `局内防御力 ${formatFormulaNumber(tipPanel.def, 2)}`,
               defProcessItems,
             )
           : pierceBaseDamageTips,
     dmgMultiplier: withTotal(
       buildStatSourceGroups({
         keys: ['dmgBonus'],
-        externalPanel: external,
-        sources,
-        finalValues: { dmgBonus: panel.dmgBonus },
+        externalPanel: tipExternal,
+        sources: tipSources,
+        finalValues: { dmgBonus: tipPanel.dmgBonus },
       }),
-      `局内增伤 ${formatFormulaNumber(panel.dmgBonus, 2)}% → 增伤区 1 + ${formatFormulaNumber(panel.dmgBonus, 2)}% = ${formatFormulaNumber(p.dmgMultiplier)}`,
+      `局内增伤 ${formatFormulaNumber(tipPanel.dmgBonus, 2)}% → 增伤区 1 + ${formatFormulaNumber(tipPanel.dmgBonus, 2)}% = ${formatFormulaNumber(p.dmgMultiplier)}`,
     ),
-    defenseMultiplier: isMbMainAgent.value
-      ? [{ label: '命破主C', items: ['防御区固定为 1'] }]
+    defenseMultiplier: tipIsMb
+      ? [
+          {
+            label: usesProducerBase ? '命破产生角色' : '命破主C',
+            items: ['防御区固定为 1'],
+          },
+        ]
       : withTotal(
           buildStatSourceGroups({
-            keys: ['reduceDefense', 'penRate'],
-            externalPanel: external,
-            sources,
-            finalValues: { reduceDefense: panel.reduceDefense, penRate: panel.penRate },
-            extraGroups: [
-              {
-                label: '敌方与环境 / 局外面板',
-                items: [
-                  `敌方防御 ${formatFormulaNumber(enemy.defense, 2)}`,
-                  `无视防御/减防 ${formatFormulaNumber(external.ignoreDefense + panel.reduceDefense, 2)}%`,
-                  `穿透值 ${formatFormulaNumber(external.pen, 2)}`,
+            keys: usesProducerBase ? ['penRate'] : ['reduceDefense', 'penRate'],
+            externalPanel: usesProducerBase ? tipExternal : external,
+            sources: usesProducerBase ? tipSources : sources,
+            finalValues: usesProducerBase
+              ? { penRate: tipPanel.penRate }
+              : { reduceDefense: panel.reduceDefense, penRate: panel.penRate },
+            extraGroups: usesProducerBase
+              ? [
+                  {
+                    label: '主C · 减防/无视',
+                    items: [
+                      `减防 ${formatFormulaNumber(panel.reduceDefense, 2)}%`,
+                      `无视防御 ${formatFormulaNumber(panel.ignoreDefense, 2)}%`,
+                    ],
+                  },
+                  {
+                    label: '敌方与环境 / 局外面板',
+                    items: [
+                      `敌方防御 ${formatFormulaNumber(enemy.defense, 2)}`,
+                      `穿透值 ${formatFormulaNumber(tipExternal.pen, 2)}`,
+                    ],
+                  },
+                ]
+              : [
+                  {
+                    label: '敌方与环境 / 局外面板',
+                    items: [
+                      `敌方防御 ${formatFormulaNumber(enemy.defense, 2)}`,
+                      `无视防御/减防 ${formatFormulaNumber(external.ignoreDefense + panel.reduceDefense, 2)}%`,
+                      `穿透值 ${formatFormulaNumber(external.pen, 2)}`,
+                    ],
+                  },
                 ],
-              },
-            ],
             showAdditiveProcess: false,
           }),
           `有效防御 ${formatFormulaNumber(p.effectiveDefense, 2)} → 防御区 794 / (794 + ${formatFormulaNumber(p.effectiveDefense, 2)}) = ${formatFormulaNumber(p.defenseMultiplier)}`,
@@ -1561,24 +1710,24 @@ const valueTips = computed(() => {
         },
         ...buildStatSourceGroups({
           keys: ['resPen'],
-          externalPanel: external,
-          sources,
-          finalValues: { resPen: panel.resPen },
+          externalPanel: tipExternal,
+          sources: tipSources,
+          finalValues: { resPen: tipPanel.resPen },
           showAdditiveProcess: false,
         }),
       ],
-      `抗性区 1 - ${formatFormulaNumber(p.enemyResistance)} + ${formatFormulaNumber(panel.resPen, 2)}% = ${formatFormulaNumber(p.resistanceMultiplier)}`,
+      `抗性区 1 - ${formatFormulaNumber(p.enemyResistance)} + ${formatFormulaNumber(tipPanel.resPen, 2)}% = ${formatFormulaNumber(p.resistanceMultiplier)}`,
       [
         `敌方抗性 ${formatFormulaNumber(p.enemyResistance)}`,
-        ...(panel.resPen || sources.some((s) => s.mods.resPen)
+        ...(tipPanel.resPen || tipSources.some((s) => s.mods.resPen)
           ? [
-              `局内抗穿 ${formatFormulaNumber(panel.resPen, 2)}%`,
-              ...sources
+              `局内抗穿 ${formatFormulaNumber(tipPanel.resPen, 2)}%`,
+              ...tipSources
                 .filter((s) => s.mods.resPen)
                 .map((s) => `${s.label} ${formatSigned(s.mods.resPen)}%`),
             ]
           : []),
-        `1 - ${formatFormulaNumber(p.enemyResistance)} + ${formatFormulaNumber(panel.resPen, 2)}% = ${formatFormulaNumber(p.resistanceMultiplier)}`,
+        `1 - ${formatFormulaNumber(p.enemyResistance)} + ${formatFormulaNumber(tipPanel.resPen, 2)}% = ${formatFormulaNumber(p.resistanceMultiplier)}`,
       ],
     ),
     vulnerableMultiplier: withTotal(
@@ -1776,19 +1925,19 @@ const valueTips = computed(() => {
     ),
     piercePower: withTotal(
       [
-        ...hpGroups.map((group) => ({
+        ...mainHpGroups.map((group) => ({
           ...group,
           items: group.items.map((item) => `生命：${item}`),
         })),
-        ...atkGroups.map((group) => ({
+        ...mainAtkGroups.map((group) => ({
           ...group,
           items: group.items.map((item) => `攻击：${item}`),
         })),
-        ...pierceGroups,
+        ...mainPierceGroups,
       ],
       `贯穿力 ${formatFormulaNumber(piercePower.value, 2)} = 0.1×${formatFormulaNumber(panel.hp, 2)} + 0.3×${formatFormulaNumber(panel.atk, 2)} + ${formatFormulaNumber(pierceMod, 2)}`,
       [
-        ...(atkProcessItems.length ? ['攻击力：', ...atkProcessItems] : []),
+        ...(mainAtkProcessItems.length ? ['攻击力：', ...mainAtkProcessItems] : []),
         `贯穿力 = 0.1 × ${formatFormulaNumber(panel.hp, 2)} + 0.3 × ${formatFormulaNumber(panel.atk, 2)} + ${formatFormulaNumber(pierceMod, 2)} = ${formatFormulaNumber(piercePower.value, 2)}`,
       ],
     ),
@@ -1818,20 +1967,28 @@ const valueTips = computed(() => {
       },
     ],
     masteryZone: withTotal(
-      buildStatSourceGroups({
-        keys: ['mastery'],
-        externalPanel: external,
-        sources,
-        finalValues: { mastery: panel.mastery },
-      }),
-      `精通区 ${formatFormulaNumber(panel.mastery, 2)} → ${formatFormulaNumber(p.masteryZone)}`,
+      [
+        ...producerExtraGroup,
+        ...buildStatSourceGroups({
+          keys: ['mastery'],
+          externalPanel: tipExternal,
+          sources: tipSources,
+          finalValues: { mastery: tipPanel.mastery },
+        }),
+      ],
+      `精通区 ${formatFormulaNumber(tipPanel.mastery, 2)} → ${formatFormulaNumber(p.masteryZone)}`,
     ),
     levelZone: [
+      ...(usesProducerBase ? producerExtraGroup : []),
       {
-        label: '敌方与环境',
+        label: usesProducerBase
+          ? triggerAgent.value?.name
+            ? `产生角色 · ${triggerAgent.value.name}`
+            : '产生角色'
+          : '角色',
         items: [
-          `代理人等级 ${Math.round(enemy.level)}`,
-          `等级区 ${formatFormulaNumber(p.levelZone)} = 1 + (${Math.round(enemy.level)} - 1) / 59`,
+          `角色等级 ${Math.round(p.levelZoneAgentLevel)}`,
+          `等级区 ${formatFormulaNumber(p.levelZone)} = 1 + (${Math.round(p.levelZoneAgentLevel)} - 1) / 59`,
         ],
       },
     ],
@@ -1957,12 +2114,12 @@ const valueTips = computed(() => {
         ...producerExtraGroup,
         ...buildStatSourceGroups({
           keys: ['anomalyDuration'],
-          externalPanel: multExternal,
-          sources: multSources,
-          finalValues: { anomalyDuration: multPanel.anomalyDuration },
+          externalPanel: durationExternal,
+          sources: durationSources,
+          finalValues: { anomalyDuration: durationPanel.anomalyDuration },
         }),
       ],
-      `异常持续时间 ${formatFormulaNumber(multPanel.anomalyDuration, 2)}s → 有效 ${formatFormulaNumber(p.effectiveAnomalyDuration)}s`,
+      `异常持续时间 ${formatFormulaNumber(durationPanel.anomalyDuration, 2)}s → 有效 ${formatFormulaNumber(p.effectiveAnomalyDuration)}s`,
     ),
     disorderCompMult: withTotal(
       [
@@ -2277,6 +2434,8 @@ defineExpose({
   convertPanelSourceValues,
   panelSourceValuesBySlot,
   resolveMultDefaultsForEvent,
+  getAttrDefaultsForSlot,
+  getPanelSourceValuesForSlot,
 })
 </script>
 
@@ -2441,10 +2600,10 @@ defineExpose({
           class="panel-block anomaly-support-panels"
         >
           <header class="panel-block-header">
-            <h3>当前属性异常的产生角色 · 局外面板</h3>
+            <h3>当前属性异常的产生角色 · 面板</h3>
             <p>
-              紊乱/乱流/异放的异常基础乘区使用该角色<strong>局内最终面板</strong>（吃完增益后）；请为在伤害事件中选为产生角色且非主
-              C 的代理人录入局外初始面板。
+              紊乱/乱流/异放的异常基础乘区与紊乱/乱流倍率使用该产生角色<strong>局内最终面板</strong>（Buff 勾选与主
+              C 当主槽位时一致）；请为非主 C 产生角色录入局外初始面板。
             </p>
           </header>
           <details
@@ -2463,9 +2622,8 @@ defineExpose({
                 :key="`${item.slot.agentId}-${slot.id}`"
                 class="field"
               >
-                <span>{{ slot.kind === 'stat' ? slot.label : '' }}</span>
+                <span>{{ slot.label }}</span>
                 <input
-                  v-if="slot.kind === 'stat'"
                   type="number"
                   step="any"
                   :value="ensureAnomalySlotPanel(item.slot.agentId)[slot.key]"
@@ -2479,6 +2637,25 @@ defineExpose({
                 />
               </label>
             </div>
+            <details class="anomaly-producer-final-details">
+              <summary>局内面板（只读）</summary>
+              <div class="grid four">
+                <label
+                  v-for="slot in FINAL_PANEL_SLOTS"
+                  :key="`${item.slot.agentId}-final-${slot.id}`"
+                  class="field"
+                  :class="{ 'field-spacer-wrap': slot.kind === 'spacer' }"
+                >
+                  <span v-if="slot.kind !== 'spacer'">{{ slot.label }}</span>
+                  <input
+                    v-if="slot.kind !== 'spacer'"
+                    :value="formatAnomalyFinalPanel(item.slot.agentId, slot)"
+                    type="text"
+                    readonly
+                  />
+                </label>
+              </div>
+            </details>
           </details>
         </section>
 
@@ -3571,7 +3748,41 @@ defineExpose({
 }
 
 .anomaly-support-panels {
+  border-color: #3a4a31;
   margin-top: 0.75rem;
+}
+
+.anomaly-producer-final-details {
+  margin-top: 0.65rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px dashed #3a4455;
+  border-radius: 8px;
+  background: #0c1018;
+}
+
+.anomaly-producer-final-details > summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #b8c4d4;
+  list-style: none;
+}
+
+.anomaly-producer-final-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.anomaly-producer-final-details > summary::before {
+  content: '▸ ';
+  color: #8a96a8;
+}
+
+.anomaly-producer-final-details[open] > summary::before {
+  content: '▾ ';
+}
+
+.anomaly-producer-final-details .grid {
+  margin-top: 0.55rem;
 }
 
 .anomaly-slot-details {

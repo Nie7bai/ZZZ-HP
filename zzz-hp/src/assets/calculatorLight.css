@@ -815,6 +815,123 @@
   background: var(--calc-surface-3) !important;
 }
 
+.calculator-page.theme-light .opt-section .event-insensitive td {
+  color: #98a2b3 !important;
+}
+
+.calculator-page.theme-light .opt-section .impact-reason {
+  color: #667085 !important;
+}
+
+.calculator-page.theme-light .opt-section .chart-event-chip {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+  color: #1c212a !important;
+}
+
+.calculator-page.theme-light .opt-section .chart-event-chip.active {
+  border-color: #c9a55c !important;
+  background: #fff8eb !important;
+}
+
+.calculator-page.theme-light .opt-section .chart-event-kind {
+  background: #eef1f5 !important;
+  color: #475467 !important;
+}
+
+.calculator-page.theme-light .opt-section .chart-event-chip.active .chart-event-kind {
+  background: rgba(201, 165, 92, 0.18) !important;
+  color: #1c212a !important;
+}
+
+.calculator-page.theme-light .opt-section .chart-event-name {
+  color: #1c212a !important;
+}
+
+.calculator-page.theme-light .opt-section .chart-event-meta,
+.calculator-page.theme-light .opt-section .chart-event-filter-summary,
+.calculator-page.theme-light .opt-section .chart-event-filter-hint {
+  color: #667085 !important;
+}
+
+/* 最优词条 · 计算过程 · 伤害事件列表（须盖过 scoped 深色底） */
+.calculator-page.theme-light .opt-section .event-summary-block {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface) !important;
+}
+
+.calculator-page.theme-light .opt-section .event-summary-item {
+  border-color: var(--calc-border) !important;
+  background: #ffffff !important;
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .opt-section .event-summary-item:hover {
+  border-color: #c9a55c !important;
+  background: #fff8eb !important;
+}
+
+.calculator-page.theme-light .opt-section .event-summary-item--active {
+  border-color: rgba(201, 165, 92, 0.55) !important;
+  background: #fff8eb !important;
+}
+
+.calculator-page.theme-light .opt-section .event-summary-name {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .opt-section .event-summary-count,
+.calculator-page.theme-light .opt-section .event-summary-damage {
+  color: var(--calc-muted) !important;
+}
+
+.calculator-page.theme-light .opt-section .event-summary-total,
+.calculator-page.theme-light .opt-section .result-total {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .opt-section .result-section-title {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .opt-section .damage-result-detail .result-section-title {
+  color: #8a6d2e !important;
+}
+
+.calculator-page.theme-light .opt-section .damage-result-detail .result-subsection-title {
+  color: #8a6d2e !important;
+}
+
+.calculator-page.theme-light .opt-section .damage-result-detail .formula-block {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface) !important;
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .opt-section .damage-result-detail .formula-label {
+  color: #8a6d2e !important;
+}
+
+.calculator-page.theme-light .opt-section .damage-result-detail .formula-aligned-term-label,
+.calculator-page.theme-light .opt-section .damage-result-detail .formula-aligned-hint,
+.calculator-page.theme-light .opt-section .damage-result-detail .formula-aligned-op {
+  color: var(--calc-muted) !important;
+}
+
+.calculator-page.theme-light .opt-section .damage-result-detail .formula-aligned-group + .formula-aligned-group {
+  border-top-color: var(--calc-border) !important;
+}
+
+.calculator-page.theme-light .opt-section .damage-result-detail .result-grid {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface) !important;
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .opt-section .damage-result-detail .result-grid p {
+  color: var(--calc-text) !important;
+}
+
 .calculator-page.theme-light .opt-bar-chart .grid,
 .calculator-page.theme-light .opt-line-chart .grid {
   stroke: rgba(16, 24, 40, 0.08) !important;
@@ -910,7 +1027,25 @@
 }
 
 [data-theme='light'] .buff-picker-header {
-  border-bottom-color: #d5dae3 !important;
+  border-bottom-color: #e4e7ec !important;
+}
+
+[data-theme='light'] .buff-picker-modal .slot-tab {
+  border-color: #d5dae3 !important;
+  background: #f6f8fb !important;
+  color: #475467 !important;
+}
+
+[data-theme='light'] .buff-picker-modal .slot-tab:hover {
+  border-color: #c9a55c !important;
+  background: #fff8eb !important;
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .buff-picker-modal .slot-tab.active {
+  border-color: #c9a55c !important;
+  background: #fff8eb !important;
+  color: #1c212a !important;
 }
 
 [data-theme='light'] .buff-picker-header h3 {
@@ -1420,4 +1555,22 @@ body:has(.calculator-page.theme-light) .preset-preview li,
 
 .calculator-page.theme-light .anomaly-support-panels .panel-block-header p {
   color: var(--calc-muted) !important;
+}
+
+.calculator-page.theme-light .anomaly-producer-final-details {
+  border-color: var(--calc-border) !important;
+  background: #f6f8fb !important;
+}
+
+.calculator-page.theme-light .anomaly-producer-final-details > summary {
+  color: var(--calc-text) !important;
+}
+
+[data-theme='light'] .anomaly-producer-final-details {
+  border-color: #d5dae3 !important;
+  background: #f6f8fb !important;
+}
+
+[data-theme='light'] .anomaly-producer-final-details > summary {
+  color: #1c212a !important;
 }

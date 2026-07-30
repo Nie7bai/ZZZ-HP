@@ -3,8 +3,21 @@ import { computed, ref, watch } from 'vue'
 import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
 import NumberStepper from '@/components/common/NumberStepper.vue'
 import type { CharacterAttrKey, SkillSubcategory } from '@/types/calculator'
-import type { CollectedEffect, BuffSelectionState, PanelSourceValues } from '@/utils/panelBuffCalc'
-import { parseSourceKeySlotIndex } from '@/utils/panelBuffCalc'
+import type {
+  CollectedEffect,
+  MultiSlotBuffSelection,
+  PanelSourceValues,
+} from '@/utils/panelBuffCalc'
+import {
+  getBuffEffectConvertInput,
+  getBuffEffectEnabled,
+  getBuffEffectStacks,
+  parseSourceKeySlotIndex,
+  setBuffEffectConvertInput,
+  setBuffEffectEnabled,
+  setBuffEffectStacks,
+  isTeamBuffApplyTarget,
+} from '@/utils/panelBuffCalc'
 import { formatBuffEffectResultText, resolveConvertValue } from '@/utils/buffEffect'
 import { formatCalcSigned } from '@/utils/calcNumberFormat'
 import { buffStatFieldLabel, BUFF_STAT_FIELDS } from '@/utils/calculatorUi'
@@ -17,6 +30,8 @@ const props = defineProps<{
   /** 按队伍槽位的局外/局内转模取值（队友转模来源） */
   panelSourceValuesBySlot?: Record<number, PanelSourceValues>
   skillSubcategories?: SkillSubcategory[]
+  /** 可选角色槽位（Buff 勾选视角） */
+  slotOptions?: { index: number; label: string }[]
 }>()
 
 function panelSourceValuesForEffect(item: CollectedEffect): PanelSourceValues | undefined {
@@ -28,7 +43,8 @@ function panelSourceValuesForEffect(item: CollectedEffect): PanelSourceValues | 
 }
 
 const open = defineModel<boolean>('open', { default: false })
-const selection = defineModel<BuffSelectionState>('selection', { required: true })
+const multiSelection = defineModel<MultiSlotBuffSelection>('multiSelection', { required: true })
+const viewSlotIndex = defineModel<number>('viewSlotIndex', { default: 0 })
 
 const search = ref('')
 const activeGroup = ref('全部')
@@ -86,24 +102,44 @@ function isManualConvert(item: CollectedEffect) {
   return item.effect.convert?.panelSource === 'manual'
 }
 
-function isEnabled(id: string, fallback: boolean) {
-  if (id in selection.value.enabledIds) return selection.value.enabledIds[id]!
-  return fallback
+function isEnabled(item: CollectedEffect) {
+  return getBuffEffectEnabled(
+    multiSelection.value,
+    viewSlotIndex.value,
+    item.effect.id,
+    item.effect.applyTarget,
+    item.effect.enabledDefault !== false,
+  )
 }
 
-function setEnabled(id: string, enabled: boolean) {
-  selection.value.enabledIds[id] = enabled
+function setEnabled(item: CollectedEffect, enabled: boolean) {
+  setBuffEffectEnabled(
+    multiSelection.value,
+    viewSlotIndex.value,
+    item.effect.id,
+    item.effect.applyTarget,
+    enabled,
+  )
 }
 
-function stacksModel(id: string, fallback: number) {
-  if (!(id in selection.value.stacksByEffectId)) {
-    selection.value.stacksByEffectId[id] = fallback
-  }
-  return selection.value.stacksByEffectId[id]!
+function stacksModel(item: CollectedEffect, fallback: number) {
+  return getBuffEffectStacks(
+    multiSelection.value,
+    viewSlotIndex.value,
+    item.effect.id,
+    item.effect.applyTarget,
+    fallback,
+  )
 }
 
-function setStacks(id: string, value: number) {
-  selection.value.stacksByEffectId[id] = Math.max(0, value)
+function setStacks(item: CollectedEffect, value: number) {
+  setBuffEffectStacks(
+    multiSelection.value,
+    viewSlotIndex.value,
+    item.effect.id,
+    item.effect.applyTarget,
+    Math.max(0, value),
+  )
 }
 
 function convertLiveBase(item: CollectedEffect) {
@@ -128,29 +164,55 @@ function convertLiveBase(item: CollectedEffect) {
   return map[convert.from] ?? props.attrDefaults?.[convert.from] ?? 0
 }
 
-function hasConvertOverride(id: string) {
-  return id in selection.value.convertInputs
+function hasConvertOverride(item: CollectedEffect) {
+  return (
+    getBuffEffectConvertInput(
+      multiSelection.value,
+      viewSlotIndex.value,
+      item.effect.id,
+      item.effect.applyTarget,
+    ) != null
+  )
 }
 
-function convertOverrideModel(id: string, item: CollectedEffect) {
-  if (!(id in selection.value.convertInputs)) {
-    return convertLiveBase(item)
-  }
-  return selection.value.convertInputs[id]!
+function convertOverrideModel(item: CollectedEffect) {
+  const saved = getBuffEffectConvertInput(
+    multiSelection.value,
+    viewSlotIndex.value,
+    item.effect.id,
+    item.effect.applyTarget,
+  )
+  if (saved != null) return saved
+  return convertLiveBase(item)
 }
 
-function setConvert(id: string, value: number) {
-  selection.value.convertInputs[id] = Math.max(0, value)
-  showConvertOverride.value[id] = true
+function setConvert(item: CollectedEffect, value: number) {
+  setBuffEffectConvertInput(
+    multiSelection.value,
+    viewSlotIndex.value,
+    item.effect.id,
+    item.effect.applyTarget,
+    Math.max(0, value),
+  )
+  showConvertOverride.value[item.effect.id] = true
 }
 
-function clearConvertOverride(id: string, item?: CollectedEffect) {
-  if (item && isManualConvert(item)) {
-    // 自行设置：复位到配置默认值，不删输入项
-    selection.value.convertInputs[id] = convertLiveBase(item)
+function clearConvertOverride(item: CollectedEffect) {
+  const id = item.effect.id
+  if (isManualConvert(item)) {
+    setBuffEffectConvertInput(
+      multiSelection.value,
+      viewSlotIndex.value,
+      id,
+      item.effect.applyTarget,
+      convertLiveBase(item),
+    )
     return
   }
-  delete selection.value.convertInputs[id]
+  const store = isTeamBuffApplyTarget(item.effect.applyTarget)
+    ? multiSelection.value.team
+    : multiSelection.value.bySlot[viewSlotIndex.value]
+  if (store) delete store.convertInputs[id]
   showConvertOverride.value[id] = false
 }
 
@@ -158,14 +220,17 @@ function convertResult(item: CollectedEffect) {
   const convert = item.effect.convert
   const id = item.effect.id
   const source = convert?.panelSource ?? 'external'
+  const saved = getBuffEffectConvertInput(
+    multiSelection.value,
+    viewSlotIndex.value,
+    id,
+    item.effect.applyTarget,
+  )
   let override: number | null | undefined
   if (source === 'manual') {
-    override =
-      id in selection.value.convertInputs
-        ? selection.value.convertInputs[id]!
-        : (convert?.defaultBase ?? 0)
-  } else if (showConvertOverride.value[id] && id in selection.value.convertInputs) {
-    override = selection.value.convertInputs[id]!
+    override = saved ?? convert?.defaultBase ?? 0
+  } else if (showConvertOverride.value[id] && saved != null) {
+    override = saved
   } else {
     override = null
   }
@@ -200,7 +265,7 @@ function formatSigned(value: number) {
 function effectResultText(item: CollectedEffect) {
   let amountText = ''
   if (item.effect.kind === 'stacked' || item.effect.stackable) {
-    const stacks = stacksModel(item.effect.id, item.effect.defaultStacks ?? 1)
+    const stacks = stacksModel(item, item.effect.defaultStacks ?? 1)
     const per = item.effect.valuePerStack ?? 0
     amountText = formatSigned(per * stacks)
   } else if (item.effect.kind === 'convert') {
@@ -223,15 +288,11 @@ function isConvert(item: CollectedEffect) {
 }
 
 function cardSelected(card: BuffCardGroup) {
-  return card.items.every((item) =>
-    isEnabled(item.effect.id, item.effect.enabledDefault !== false),
-  )
+  return card.items.every((item) => isEnabled(item))
 }
 
 function cardPartial(card: BuffCardGroup) {
-  const states = card.items.map((item) =>
-    isEnabled(item.effect.id, item.effect.enabledDefault !== false),
-  )
+  const states = card.items.map((item) => isEnabled(item))
   const on = states.filter(Boolean).length
   return on > 0 && on < states.length
 }
@@ -239,7 +300,7 @@ function cardPartial(card: BuffCardGroup) {
 function toggleCard(card: BuffCardGroup) {
   const next = !cardSelected(card)
   for (const item of card.items) {
-    setEnabled(item.effect.id, next)
+    setEnabled(item, next)
   }
 }
 
@@ -290,21 +351,18 @@ const filteredCards = computed(() => {
 })
 
 const selectedCount = computed(
-  () =>
-    props.effects.filter((item) =>
-      isEnabled(item.effect.id, item.effect.enabledDefault !== false),
-    ).length,
+  () => props.effects.filter((item) => isEnabled(item)).length,
 )
 
 function addCurrentList() {
   for (const item of filtered.value) {
-    setEnabled(item.effect.id, true)
+    setEnabled(item, true)
   }
 }
 
 function removeCurrentList() {
   for (const item of filtered.value) {
-    setEnabled(item.effect.id, false)
+    setEnabled(item, false)
   }
 }
 
@@ -318,11 +376,25 @@ function close() {
     <div v-if="open" class="buff-picker-overlay" role="presentation" @click.self="close">
       <div class="buff-picker-modal" role="dialog" aria-modal="true" aria-label="选择 Buff">
         <header class="buff-picker-header">
-          <div>
-            <h3>选择 Buff</h3>
-            <p>按增益块勾选；块内每条效果独立计入计算。</p>
+          <div class="buff-picker-header-main">
+            <div class="buff-picker-title-row">
+              <h3>选择 Buff</h3>
+              <button type="button" class="close-btn" aria-label="关闭" @click="close">×</button>
+            </div>
+            <p>按增益块勾选；全队增益在一处取消后所有角色同步取消。</p>
+            <div v-if="slotOptions?.length" class="slot-tabs">
+              <button
+                v-for="opt in slotOptions"
+                :key="opt.index"
+                type="button"
+                class="slot-tab"
+                :class="{ active: viewSlotIndex === opt.index }"
+                @click="viewSlotIndex = opt.index"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
           </div>
-          <button type="button" class="close-btn" aria-label="关闭" @click="close">×</button>
         </header>
 
         <div class="toolbar">
@@ -396,11 +468,11 @@ function close() {
                 >
                   <span>层数</span>
                   <NumberStepper
-                    :model-value="stacksModel(item.effect.id, item.effect.defaultStacks ?? 1)"
+                    :model-value="stacksModel(item, item.effect.defaultStacks ?? 1)"
                     :min="0"
                     :max="item.effect.maxStacks ?? 99"
-                    :disabled="!isEnabled(item.effect.id, item.effect.enabledDefault !== false)"
-                    @update:model-value="setStacks(item.effect.id, $event)"
+                    :disabled="!isEnabled(item)"
+                    @update:model-value="setStacks(item, $event)"
                   />
                 </label>
                 <label
@@ -415,23 +487,23 @@ function close() {
                   <template
                     v-if="
                       isManualConvert(item) ||
-                      hasConvertOverride(item.effect.id) ||
+                      hasConvertOverride(item) ||
                       showConvertOverride[item.effect.id]
                     "
                   >
                     <NumberStepper
-                      :model-value="convertOverrideModel(item.effect.id, item)"
+                      :model-value="convertOverrideModel(item)"
                       :min="0"
                       :max="999999"
                       :step="isManualConvert(item) && item.effect.convert.from === 'level' ? 1 : 10"
-                      :disabled="!isEnabled(item.effect.id, item.effect.enabledDefault !== false)"
-                      @update:model-value="setConvert(item.effect.id, $event)"
+                      :disabled="!isEnabled(item)"
+                      @update:model-value="setConvert(item, $event)"
                     />
                     <button
                       v-if="!isManualConvert(item)"
                       type="button"
                       class="convert-clear"
-                      @click="clearConvertOverride(item.effect.id)"
+                      @click="clearConvertOverride(item)"
                     >
                       实时
                     </button>
@@ -439,7 +511,7 @@ function close() {
                       v-else
                       type="button"
                       class="convert-clear"
-                      @click="clearConvertOverride(item.effect.id, item)"
+                      @click="clearConvertOverride(item)"
                     >
                       复位
                     </button>
@@ -448,7 +520,7 @@ function close() {
                     v-else
                     type="button"
                     class="convert-clear"
-                    :disabled="!isEnabled(item.effect.id, item.effect.enabledDefault !== false)"
+                    :disabled="!isEnabled(item)"
                     @click="showConvertOverride[item.effect.id] = true"
                   >
                     覆盖
@@ -509,12 +581,53 @@ function close() {
 }
 
 .buff-picker-header {
+  padding: 1rem 1.1rem 0.85rem;
+  border-bottom: 1px solid #2d3646;
+}
+
+.buff-picker-header-main {
   display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.buff-picker-title-row {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  align-items: flex-start;
-  padding: 1rem 1.1rem 0.75rem;
-  border-bottom: 1px solid #2d3646;
+}
+
+.slot-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.15rem 0 0;
+}
+
+.slot-tab {
+  border: 1px solid #3a4455;
+  border-radius: 8px;
+  background: #151a24;
+  color: #c8d0dc;
+  padding: 0.28rem 0.7rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.slot-tab:hover {
+  border-color: #4f5d72;
+  background: #1c2432;
+}
+
+.slot-tab.active {
+  border-color: #6b8f4e;
+  background: #243018;
+  color: #e8f0dc;
 }
 
 .buff-picker-header h3 {

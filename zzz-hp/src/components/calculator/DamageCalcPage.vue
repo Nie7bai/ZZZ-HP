@@ -35,7 +35,10 @@ import {
   buildDefaultBuffSelection,
   collectAllBuffEffects,
   collectConvertSupportSlots,
-  type BuffSelectionState,
+  createEmptyMultiSlotBuffSelection,
+  mergeDefaultBuffSelectionIntoMulti,
+  resolveBuffSelectionForSlot,
+  type MultiSlotBuffSelection,
   type ConvertSlotPanels,
 } from '@/utils/panelBuffCalc'
 import { resolveIsFollowUp } from '@/utils/buffEffect'
@@ -129,11 +132,8 @@ const skillCategoryId = computed(() => damageEvents.value[0]?.categoryId ?? 'bas
 const skillSubcategoryId = computed(() => damageEvents.value[0]?.skillSubcategoryId ?? null)
 
 const buffPickerOpen = ref(false)
-const buffSelection = reactive<BuffSelectionState>({
-  enabledIds: {},
-  stacksByEffectId: {},
-  convertInputs: {},
-})
+const buffPickerViewSlotIndex = ref(0)
+const multiSlotBuffSelection = reactive<MultiSlotBuffSelection>(createEmptyMultiSlotBuffSelection())
 
 const anomalyTriggerOptions = computed(() =>
   teamSlots
@@ -326,26 +326,61 @@ const damageElement = computed(() => {
   return mainAgent.value?.element
 })
 
-const collectedEffects = computed(() =>
-  collectAllBuffEffects({
+const buffPickerSlotOptions = computed(() => {
+  const options: { index: number; label: string }[] = []
+  teamSlots.forEach((slot, index) => {
+    if (!slot.agentId) return
+    const agent = agents.value.find((item) => item.id === slot.agentId)
+    if (!agent) return
+    options.push({
+      index,
+      label: slot.isMainC ? `${agent.name}（主C）` : `${agent.name} · ${agent.element}`,
+    })
+  })
+  return options
+})
+
+function buildBuffCollectContext(mainSlotIdx: number) {
+  const agent = agents.value.find((item) => item.id === teamSlots[mainSlotIdx]?.agentId)
+  return {
     teamSlots,
     agents: agents.value,
     wengines: wengines.value,
     bangboo: selectedBangboo.value,
     bangbooRefine: bangbooRefine.value,
-    mainSlotIndex: mainSlotIndex.value,
+    mainSlotIndex: mainSlotIdx,
     driveDiscs: driveDiscs.value,
     skillContext: {
       damageKind: damageKind.value,
       categoryId: skillCategoryId.value,
       subcategoryId: skillSubcategoryId.value,
-      element: damageElement.value,
+      element: agent?.element ?? damageElement.value,
       staggerPhase: staggerPhase.value,
-      isFollowUp: skillIsFollowUp.value,
+      isFollowUp: resolveIsFollowUp({
+        agentId: agent?.id,
+        categoryId: skillCategoryId.value,
+        subcategoryId: skillSubcategoryId.value,
+        skillSubcategories: skillSubcategories.value,
+        followUpSkillRules: followUpSkillRules.value,
+      }),
       anomalySubKind: damageKind.value === 'anomaly' ? anomalySubKind.value : undefined,
     },
-  }),
+  }
+}
+
+const collectedEffectsForPicker = computed(() =>
+  collectAllBuffEffects(buildBuffCollectContext(buffPickerViewSlotIndex.value)),
 )
+
+const mainSlotBuffSelection = computed(() =>
+  resolveBuffSelectionForSlot(multiSlotBuffSelection, mainSlotIndex.value),
+)
+
+const buffEnabledCount = computed(() => {
+  const resolved = mainSlotBuffSelection.value
+  if (!resolved) return 0
+  return Object.values(resolved.enabledIds).filter(Boolean).length
+})
 
 const convertSupportSlots = computed(() =>
   collectConvertSupportSlots(
@@ -357,7 +392,7 @@ const convertSupportSlots = computed(() =>
       bangbooRefine: bangbooRefine.value,
       mainSlotIndex: mainSlotIndex.value,
       driveDiscs: driveDiscs.value,
-      buffSelection,
+      buffSelection: resolveBuffSelectionForSlot(multiSlotBuffSelection, mainSlotIndex.value),
       anomalySlotPanels,
       convertSlotPanels,
       skillContext: {
@@ -416,44 +451,38 @@ function resolveMultDefaultsForEvent(
   return panelCalcSectionRef.value?.resolveMultDefaultsForEvent?.(event) ?? {}
 }
 
+function syncBuffDefaultsForSlot(slotIndex: number) {
+  const effects = collectAllBuffEffects(buildBuffCollectContext(slotIndex))
+  const attrDefaults =
+    panelCalcSectionRef.value?.getAttrDefaultsForSlot?.(slotIndex) ??
+    panelCalcSectionRef.value?.convertAttrDefaults ??
+    {}
+  const defaults = buildDefaultBuffSelection(effects, attrDefaults)
+  mergeDefaultBuffSelectionIntoMulti(multiSlotBuffSelection, slotIndex, effects, defaults)
+}
+
 watch(teamBuffSignature, () => {
-  buffSelection.enabledIds = {}
-  buffSelection.stacksByEffectId = {}
-  buffSelection.convertInputs = {}
+  Object.assign(multiSlotBuffSelection, createEmptyMultiSlotBuffSelection())
 })
 
 watch(
-  collectedEffects,
-  (list) => {
-    const defaults = buildDefaultBuffSelection(
-      list,
-      panelCalcSectionRef.value?.convertAttrDefaults ?? {},
-    )
-    const validIds = new Set(list.map((item) => item.effect.id))
-    for (const id of Object.keys(buffSelection.enabledIds)) {
-      if (!validIds.has(id)) delete buffSelection.enabledIds[id]
+  buffPickerSlotOptions,
+  (options) => {
+    if (!options.length) return
+    if (!options.some((opt) => opt.index === buffPickerViewSlotIndex.value)) {
+      buffPickerViewSlotIndex.value = mainSlotIndex.value
     }
-    for (const id of Object.keys(buffSelection.stacksByEffectId)) {
-      if (!validIds.has(id)) delete buffSelection.stacksByEffectId[id]
+    for (const opt of options) {
+      syncBuffDefaultsForSlot(opt.index)
     }
-    for (const id of Object.keys(buffSelection.convertInputs)) {
-      if (!validIds.has(id)) delete buffSelection.convertInputs[id]
-    }
-    for (const [id, enabled] of Object.entries(defaults.enabledIds)) {
-      if (!(id in buffSelection.enabledIds)) {
-        buffSelection.enabledIds[id] = enabled
-      }
-    }
-    for (const [id, stacks] of Object.entries(defaults.stacksByEffectId)) {
-      if (!(id in buffSelection.stacksByEffectId)) {
-        buffSelection.stacksByEffectId[id] = stacks
-      }
-    }
-    for (const [id, value] of Object.entries(defaults.convertInputs)) {
-      if (!(id in buffSelection.convertInputs)) {
-        buffSelection.convertInputs[id] = value
-      }
-    }
+  },
+  { immediate: true, deep: true },
+)
+
+watch(
+  [collectedEffectsForPicker, buffPickerViewSlotIndex],
+  () => {
+    syncBuffDefaultsForSlot(buffPickerViewSlotIndex.value)
   },
   { immediate: true },
 )
@@ -461,15 +490,23 @@ watch(
 watch(
   () => panelCalcSectionRef.value?.convertAttrDefaults,
   () => {
-    for (const item of collectedEffects.value) {
-      if (item.effect.kind !== 'convert' || !item.effect.convert) continue
-      const id = item.effect.id
-      if (id in buffSelection.convertInputs) continue
-      const source = item.effect.convert.panelSource ?? 'external'
-      if (source !== 'manual') continue
-      const configured = item.effect.convert.defaultBase
-      buffSelection.convertInputs[id] =
-        configured != null && Number.isFinite(configured) ? configured : 0
+    for (const opt of buffPickerSlotOptions.value) {
+      const effects = collectAllBuffEffects(buildBuffCollectContext(opt.index))
+      for (const item of effects) {
+        if (item.effect.kind !== 'convert' || !item.effect.convert) continue
+        const source = item.effect.convert.panelSource ?? 'external'
+        if (source !== 'manual') continue
+        const store =
+          item.effect.applyTarget === 'team'
+            ? multiSlotBuffSelection.team
+            : multiSlotBuffSelection.bySlot[opt.index]
+        if (!store) continue
+        const id = item.effect.id
+        if (id in store.convertInputs) continue
+        const configured = item.effect.convert.defaultBase
+        store.convertInputs[id] =
+          configured != null && Number.isFinite(configured) ? configured : 0
+      }
     }
   },
 )
@@ -790,21 +827,19 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
           </select>
         </label>
         <button type="button" class="buff-open-btn" @click="buffPickerOpen = true">
-          选择局内 Buff（已选
-          {{
-            Object.values(buffSelection.enabledIds).filter(Boolean).length
-          }}
-          ）
+          选择局内 Buff（已选 {{ buffEnabledCount }} ）
         </button>
       </div>
     </section>
 
     <BuffEffectPickerModal
       v-model:open="buffPickerOpen"
-      v-model:selection="buffSelection"
-      :effects="collectedEffects"
-      :attr-defaults="panelCalcSectionRef?.convertAttrDefaults ?? {}"
-      :panel-source-values="panelCalcSectionRef?.convertPanelSourceValues ?? undefined"
+      v-model:multi-selection="multiSlotBuffSelection"
+      v-model:view-slot-index="buffPickerViewSlotIndex"
+      :effects="collectedEffectsForPicker"
+      :slot-options="buffPickerSlotOptions"
+      :attr-defaults="panelCalcSectionRef?.getAttrDefaultsForSlot?.(buffPickerViewSlotIndex) ?? panelCalcSectionRef?.convertAttrDefaults ?? {}"
+      :panel-source-values="panelCalcSectionRef?.getPanelSourceValuesForSlot?.(buffPickerViewSlotIndex) ?? panelCalcSectionRef?.convertPanelSourceValues ?? undefined"
       :panel-source-values-by-slot="panelCalcSectionRef?.panelSourceValuesBySlot ?? undefined"
       :skill-subcategories="skillSubcategories"
     />
@@ -869,7 +904,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :convert-slot-panels="convertSlotPanels"
       :skill-category-id="skillCategoryId"
       :skill-subcategory-id="skillSubcategoryId"
-      :buff-selection="buffSelection"
+      :slot-buff-selections="multiSlotBuffSelection"
       :stagger-phase="staggerPhase"
       :damage-events="damageEvents"
       @update:anomaly-slot-panels="Object.assign(anomalySlotPanels, $event)"
@@ -893,7 +928,8 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :anomaly-slot-panels="anomalySlotPanels"
       :skill-category-id="skillCategoryId"
       :skill-subcategory-id="skillSubcategoryId"
-      :buff-selection="buffSelection"
+      :buff-selection="mainSlotBuffSelection"
+      :slot-buff-selections="multiSlotBuffSelection"
       :stagger-phase="staggerPhase"
       :damage-events="damageEvents"
     />

@@ -146,6 +146,187 @@ export interface BuffSelectionState {
   convertInputs: Record<string, number>
 }
 
+/** 按角色槽位的 Buff 勾选：全队增益共享，自身增益分槽位 */
+export interface MultiSlotBuffSelection {
+  team: BuffSelectionState
+  bySlot: Record<number, BuffSelectionState>
+}
+
+export function createEmptyBuffSelectionState(): BuffSelectionState {
+  return { enabledIds: {}, stacksByEffectId: {}, convertInputs: {} }
+}
+
+export function createEmptyMultiSlotBuffSelection(): MultiSlotBuffSelection {
+  return { team: createEmptyBuffSelectionState(), bySlot: {} }
+}
+
+export function ensureSlotSelfBuffSelection(
+  multi: MultiSlotBuffSelection,
+  slotIndex: number,
+): BuffSelectionState {
+  if (!multi.bySlot[slotIndex]) {
+    multi.bySlot[slotIndex] = createEmptyBuffSelectionState()
+  }
+  return multi.bySlot[slotIndex]
+}
+
+export function isTeamBuffApplyTarget(applyTarget: string | undefined): boolean {
+  return applyTarget === 'team'
+}
+
+function buffStoreForEffect(
+  multi: MultiSlotBuffSelection,
+  slotIndex: number,
+  applyTarget: string | undefined,
+): BuffSelectionState {
+  return isTeamBuffApplyTarget(applyTarget)
+    ? multi.team
+    : ensureSlotSelfBuffSelection(multi, slotIndex)
+}
+
+/** 合并全队共享与槽位自身勾选，供 computeFinalPanel 使用 */
+export function resolveBuffSelectionForSlot(
+  multi: MultiSlotBuffSelection | null | undefined,
+  slotIndex: number,
+): BuffSelectionState | null {
+  if (!multi) return null
+  const self = multi.bySlot[slotIndex] ?? createEmptyBuffSelectionState()
+  return {
+    enabledIds: { ...multi.team.enabledIds, ...self.enabledIds },
+    stacksByEffectId: { ...multi.team.stacksByEffectId, ...self.stacksByEffectId },
+    convertInputs: { ...multi.team.convertInputs, ...self.convertInputs },
+  }
+}
+
+export function setBuffEffectEnabled(
+  multi: MultiSlotBuffSelection,
+  slotIndex: number,
+  effectId: string,
+  applyTarget: string | undefined,
+  enabled: boolean,
+): void {
+  buffStoreForEffect(multi, slotIndex, applyTarget).enabledIds[effectId] = enabled
+}
+
+export function setBuffEffectStacks(
+  multi: MultiSlotBuffSelection,
+  slotIndex: number,
+  effectId: string,
+  applyTarget: string | undefined,
+  stacks: number,
+): void {
+  buffStoreForEffect(multi, slotIndex, applyTarget).stacksByEffectId[effectId] = stacks
+}
+
+export function setBuffEffectConvertInput(
+  multi: MultiSlotBuffSelection,
+  slotIndex: number,
+  effectId: string,
+  applyTarget: string | undefined,
+  value: number,
+): void {
+  buffStoreForEffect(multi, slotIndex, applyTarget).convertInputs[effectId] = value
+}
+
+export function getBuffEffectEnabled(
+  multi: MultiSlotBuffSelection,
+  slotIndex: number,
+  effectId: string,
+  applyTarget: string | undefined,
+  fallback: boolean,
+): boolean {
+  const store = buffStoreForEffect(multi, slotIndex, applyTarget)
+  if (effectId in store.enabledIds) return Boolean(store.enabledIds[effectId])
+  return fallback
+}
+
+export function getBuffEffectStacks(
+  multi: MultiSlotBuffSelection,
+  slotIndex: number,
+  effectId: string,
+  applyTarget: string | undefined,
+  fallback: number,
+): number {
+  const store = buffStoreForEffect(multi, slotIndex, applyTarget)
+  if (effectId in store.stacksByEffectId) return store.stacksByEffectId[effectId]!
+  return fallback
+}
+
+export function getBuffEffectConvertInput(
+  multi: MultiSlotBuffSelection,
+  slotIndex: number,
+  effectId: string,
+  applyTarget: string | undefined,
+): number | undefined {
+  const store = buffStoreForEffect(multi, slotIndex, applyTarget)
+  if (effectId in store.convertInputs) return store.convertInputs[effectId]
+  return undefined
+}
+
+/** 将默认勾选合并进多槽位存储（不覆盖已有项） */
+export function mergeDefaultBuffSelectionIntoMulti(
+  multi: MultiSlotBuffSelection,
+  slotIndex: number,
+  effects: CollectedEffect[],
+  defaults: BuffSelectionState,
+): void {
+  const effectById = new Map(effects.map((item) => [item.effect.id, item.effect]))
+  const validIds = new Set(effectById.keys())
+
+  for (const store of [multi.team, ...Object.values(multi.bySlot)]) {
+    for (const id of Object.keys(store.enabledIds)) {
+      if (!validIds.has(id)) delete store.enabledIds[id]
+    }
+    for (const id of Object.keys(store.stacksByEffectId)) {
+      if (!validIds.has(id)) delete store.stacksByEffectId[id]
+    }
+    for (const id of Object.keys(store.convertInputs)) {
+      if (!validIds.has(id)) delete store.convertInputs[id]
+    }
+  }
+
+  for (const [id, enabled] of Object.entries(defaults.enabledIds)) {
+    const effect = effectById.get(id)
+    if (!effect) continue
+    const store = buffStoreForEffect(multi, slotIndex, effect.applyTarget)
+    if (!(id in store.enabledIds)) store.enabledIds[id] = enabled
+  }
+  for (const [id, stacks] of Object.entries(defaults.stacksByEffectId)) {
+    const effect = effectById.get(id)
+    if (!effect) continue
+    const store = buffStoreForEffect(multi, slotIndex, effect.applyTarget)
+    if (!(id in store.stacksByEffectId)) store.stacksByEffectId[id] = stacks
+  }
+  for (const [id, value] of Object.entries(defaults.convertInputs)) {
+    const effect = effectById.get(id)
+    if (!effect) continue
+    const store = buffStoreForEffect(multi, slotIndex, effect.applyTarget)
+    if (!(id in store.convertInputs)) store.convertInputs[id] = value
+  }
+}
+
+/** 从旧版单槽 Buff 选择迁移（主 C 视角） */
+export function migrateLegacyBuffSelection(
+  legacy: BuffSelectionState,
+  effects: CollectedEffect[],
+): MultiSlotBuffSelection {
+  const multi = createEmptyMultiSlotBuffSelection()
+  const effectById = new Map(effects.map((item) => [item.effect.id, item.effect]))
+  for (const [id, enabled] of Object.entries(legacy.enabledIds)) {
+    const effect = effectById.get(id)
+    buffStoreForEffect(multi, 0, effect?.applyTarget).enabledIds[id] = enabled
+  }
+  for (const [id, stacks] of Object.entries(legacy.stacksByEffectId)) {
+    const effect = effectById.get(id)
+    buffStoreForEffect(multi, 0, effect?.applyTarget).stacksByEffectId[id] = stacks
+  }
+  for (const [id, value] of Object.entries(legacy.convertInputs)) {
+    const effect = effectById.get(id)
+    buffStoreForEffect(multi, 0, effect?.applyTarget).convertInputs[id] = value
+  }
+  return multi
+}
+
 /** 转模增益角色局外面板：仅录入转模来源属性 */
 export type ConvertSlotPanels = Record<string, Partial<Record<CharacterAttrKey, number>>>
 

@@ -46,8 +46,11 @@ import {
   buildOptimalEvalContext,
   computeBenefitCurves,
   computeDiffAnalysis,
+  computeEventAffixImpact,
   evaluateAffixCounts,
   findMinCritRollsForOvercap,
+  evaluateOptimalEventDetail,
+  type OptimalEventEvalDetail,
   flatStatLabel,
   outPercentLabel,
   sweepAnomalyDamage,
@@ -67,6 +70,12 @@ import {
 import EnemyPresetCombo from '@/components/calculator/EnemyPresetCombo.vue'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import { resolveIsFollowUp } from '@/utils/buffEffect'
+import {
+  DAMAGE_EVENT_CRIT_MODE_OPTIONS,
+  DAMAGE_EVENT_KIND_OPTIONS,
+  eventNeedsAnomalyProducer,
+} from '@/utils/damageEvent'
+import { TRIGGER_AGENT_AT_CALC } from '@/types/calculator'
 
 const MB_PROFESSION = '命破'
 
@@ -160,6 +169,7 @@ const props = defineProps<{
   skillCategoryId?: import('@/types/calculator').SkillCategoryId
   skillSubcategoryId?: string | null
   buffSelection?: import('@/utils/panelBuffCalc').BuffSelectionState | null
+  slotBuffSelections?: import('@/utils/panelBuffCalc').MultiSlotBuffSelection | null
   staggerPhase?: import('@/types/calculator').StaggerPhase
   damageEvents?: import('@/types/calculator').DamageEvent[]
 }>()
@@ -281,6 +291,9 @@ const evalCtx = computed(() =>
       anomalySubKind: damageKind.value === 'anomaly' ? anomalySubKind.value : undefined,
     },
     buffSelection: props.buffSelection ?? null,
+    slotBuffSelections: props.slotBuffSelections ?? null,
+    anomalySlotPanels: props.anomalySlotPanels,
+    triggerAnomalyAgentId: props.triggerAnomalyAgentId,
     damageEvents: props.damageEvents,
     resolveSubcategory: (id) => skillSubcategories.value.find((item) => item.id === id) ?? null,
     skillSubcategories: skillSubcategories.value,
@@ -302,6 +315,167 @@ const directPoints = computed<DirectSweepPoint[]>(() => {
 const anomalyPoints = computed<AnomalySweepPoint[]>(() => {
   if (anomalyError.value) return []
   return sweepAnomalyDamage(evalCtx.value, { ...anomalyAlloc })
+})
+
+const hasEventMode = computed(() => (props.damageEvents?.length ?? 0) > 0)
+
+const sweepPoints = computed(() =>
+  damageKind.value === 'direct' ? directPoints.value : anomalyPoints.value,
+)
+
+const chartEventReferencePoint = computed(() => {
+  if (selectedIndex.value != null && sweepPoints.value[selectedIndex.value]) {
+    return sweepPoints.value[selectedIndex.value]
+  }
+  return sweepPoints.value[0] ?? null
+})
+
+function resolveChartEventProducerLabel(event: import('@/types/calculator').DamageEvent) {
+  if (!eventNeedsAnomalyProducer(event.kind)) return null
+  const raw = event.triggerAgentId ?? props.triggerAnomalyAgentId
+  if (!raw || raw === TRIGGER_AGENT_AT_CALC) return '产生角色未选'
+  const agent = props.agents.find((item) => item.id === raw)
+  const name = agent?.name ?? raw
+  if (raw === mainAgent.value?.id) return `产生 ${name}（主C）`
+  return `产生 ${name}${agent?.element ? ` · ${agent.element}` : ''}`
+}
+
+function resolveChartEventCritLabel(critMode: import('@/types/calculator').DamageEventCritMode) {
+  return DAMAGE_EVENT_CRIT_MODE_OPTIONS.find((item) => item.id === critMode)?.label ?? critMode
+}
+
+const chartEventOptions = computed(() => {
+  const reference = chartEventReferencePoint.value
+  const referenceLines = reference?.eventLines ?? sweepPoints.value[0]?.eventLines ?? []
+  return referenceLines.map((line) => {
+    const event = props.damageEvents?.find((item) => item.id === line.eventId)
+    const kindLabel =
+      DAMAGE_EVENT_KIND_OPTIONS.find((item) => item.id === line.kind)?.label ?? line.kind
+    const refLine = referenceLines.find((item) => item.eventId === line.eventId)
+    const total = refLine?.total ?? line.total
+    const perHit = refLine?.perHit ?? line.perHit
+    const metaParts: string[] = [kindLabel]
+    if (event) {
+      const producer = resolveChartEventProducerLabel(event)
+      if (producer) metaParts.push(producer)
+      metaParts.push(resolveChartEventCritLabel(event.critMode))
+      if (event.count > 1) metaParts.push(`×${event.count}`)
+      metaParts.push(`期望 ${formatNumber(total)}`)
+      if (event.count > 1) metaParts.push(`单次 ${formatNumber(perHit)}`)
+    } else {
+      metaParts.push(`期望 ${formatNumber(total)}`)
+    }
+    return {
+      id: line.eventId,
+      label: line.displayName,
+      kindLabel,
+      metaText: metaParts.join(' · '),
+      total,
+      perHit,
+    }
+  })
+})
+
+const chartEventSelectionSummary = computed(() => {
+  if (!selectedChartEventIds.value.length) return ''
+  const selected = chartEventOptions.value.filter((item) =>
+    selectedChartEventIds.value.includes(item.id),
+  )
+  if (!selected.length) return ''
+  if (selected.length === chartEventOptions.value.length) {
+    return `已统计全部 ${selected.length} 个事件`
+  }
+  return selected.map((item) => `${item.kindLabel} ${item.label}`).join('；')
+})
+
+/** 柱状图参与统计的事件；默认全选 = 总伤害 */
+const selectedChartEventIds = ref<string[]>([])
+
+watch(
+  chartEventOptions,
+  (options) => {
+    selectedChartEventIds.value = options.map((item) => item.id)
+  },
+  { immediate: true },
+)
+
+function isChartEventSelected(eventId: string) {
+  return selectedChartEventIds.value.includes(eventId)
+}
+
+function toggleChartEvent(eventId: string) {
+  const next = new Set(selectedChartEventIds.value)
+  if (next.has(eventId)) {
+    if (next.size <= 1) return
+    next.delete(eventId)
+  } else {
+    next.add(eventId)
+  }
+  selectedChartEventIds.value = [...next]
+}
+
+function selectAllChartEvents() {
+  selectedChartEventIds.value = chartEventOptions.value.map((item) => item.id)
+}
+
+function sumSelectedEventsForPoint(point: DirectSweepPoint | AnomalySweepPoint) {
+  const ids = new Set(selectedChartEventIds.value)
+  return (point.eventLines ?? [])
+    .filter((line) => ids.has(line.eventId))
+    .reduce((sum, line) => sum + line.total, 0)
+}
+
+const eventTotalBarSeries = computed(() => {
+  if (!hasEventMode.value || !sweepPoints.value.length || !selectedChartEventIds.value.length) {
+    return null
+  }
+  const allSelected = selectedChartEventIds.value.length === chartEventOptions.value.length
+  return [
+    {
+      key: 'event-total',
+      label: allSelected ? '总伤害期望' : `已选 ${selectedChartEventIds.value.length} 个事件`,
+      color: '#7dd3a0',
+      values: sweepPoints.value.map((point) => sumSelectedEventsForPoint(point)),
+    },
+  ]
+})
+
+const selectedProcessEventId = ref<string | null>(null)
+
+const optimalEventDetails = computed((): OptimalEventEvalDetail[] => {
+  if (!hasEventMode.value || !selectedCounts.value) return []
+  const { external } = evaluateAffixCounts(evalCtx.value, selectedCounts.value)
+  return (props.damageEvents ?? [])
+    .map((event) => evaluateOptimalEventDetail(evalCtx.value, external, event))
+    .filter((item): item is OptimalEventEvalDetail => item != null)
+})
+
+watch(
+  optimalEventDetails,
+  (details) => {
+    if (!details.length) {
+      selectedProcessEventId.value = null
+      return
+    }
+    if (!details.some((item) => item.eventId === selectedProcessEventId.value)) {
+      selectedProcessEventId.value = details[0]!.eventId
+    }
+  },
+  { immediate: true },
+)
+
+const selectedProcessEventDetail = computed(() =>
+  optimalEventDetails.value.find((item) => item.eventId === selectedProcessEventId.value) ?? null,
+)
+
+function toggleProcessEventSelection(eventId: string) {
+  selectedProcessEventId.value =
+    selectedProcessEventId.value === eventId ? null : eventId
+}
+
+const eventAffixImpact = computed(() => {
+  if (!hasEventMode.value || !selectedCounts.value) return []
+  return computeEventAffixImpact(evalCtx.value, selectedCounts.value, damageKind.value)
 })
 
 const barLabels = computed(() =>
@@ -840,11 +1014,64 @@ watch(
       />
     </details>
 
-    <h3 class="block-title">期望伤害柱状图</h3>
+    <h3 class="block-title">
+      {{ hasEventMode ? '伤害事件期望柱状图' : '期望伤害柱状图' }}
+    </h3>
     <p class="hint">
-      X 轴标签为「{{ outLabel }}条数 / {{ damageKind === 'direct' ? '爆伤' : '精通' }}条数」。点击柱体查看详情。
+      <template v-if="hasEventMode">
+        默认显示全部事件总伤害（单柱）。可在下方勾选参与统计的事件，查看其合计伤害随词条分配的变化。X 轴为「{{
+          outLabel
+        }}条数 / {{ damageKind === 'direct' ? '爆伤' : '精通' }}条数」。点击柱体查看详情。
+      </template>
+      <template v-else>
+        X 轴标签为「{{ outLabel }}条数 / {{ damageKind === 'direct' ? '爆伤' : '精通' }}条数」。点击柱体查看详情。
+      </template>
     </p>
+    <div v-if="hasEventMode && chartEventOptions.length" class="chart-event-filter">
+      <div class="chart-event-filter-head">
+        <span class="filter-label">统计事件</span>
+        <span v-if="chartEventSelectionSummary" class="chart-event-filter-summary">
+          {{ chartEventSelectionSummary }}
+        </span>
+        <button
+          v-if="selectedChartEventIds.length !== chartEventOptions.length"
+          type="button"
+          class="ghost-btn"
+          @click="selectAllChartEvents"
+        >
+          全选
+        </button>
+      </div>
+      <div class="chart-event-filter-list">
+        <button
+          v-for="opt in chartEventOptions"
+          :key="opt.id"
+          type="button"
+          class="chart-event-chip"
+          :class="{ active: isChartEventSelected(opt.id) }"
+          :title="opt.metaText"
+          @click="toggleChartEvent(opt.id)"
+        >
+          <span class="chart-event-chip-top">
+            <span class="chart-event-kind">{{ opt.kindLabel }}</span>
+            <span class="chart-event-name">{{ opt.label }}</span>
+          </span>
+          <span class="chart-event-meta">{{ opt.metaText }}</span>
+        </button>
+      </div>
+      <p class="chart-event-filter-hint">
+        标注含类型、产生角色（如有）、暴击模式、次数与
+        {{ selectedIndex != null ? '当前选中柱体' : '首个扫掠点' }}的期望伤害。
+      </p>
+    </div>
     <p v-if="!barLabels.length" class="empty">请先修正词条约束，或提高总词条数。</p>
+    <OptimalDamageBarChart
+      v-else-if="hasEventMode && eventTotalBarSeries?.length"
+      :labels="barLabels"
+      :series="eventTotalBarSeries"
+      :selected-index="selectedIndex"
+      @select="selectBar"
+    />
     <OptimalDamageBarChart
       v-else-if="damageKind === 'direct'"
       :labels="barLabels"
@@ -864,6 +1091,41 @@ watch(
           @select="selectBar"
           @hover="anomalyHoverIndex = $event"
         />
+      </div>
+    </div>
+
+    <div v-if="hasEventMode && eventAffixImpact.length" class="event-affix-impact">
+      <h4 class="sub-title">事件词条敏感度</h4>
+      <p class="hint">
+        对比当前分配下各候选副词条 +1 后，各事件伤害的最大变化。不受主C词条影响的事件（如非主C产生角色的紊乱/乱流）会单独标注。
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>伤害事件</th>
+              <th>当前期望</th>
+              <th>词条最大变化</th>
+              <th>是否受主C词条影响</th>
+              <th>说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="row in eventAffixImpact"
+              :key="row.eventId"
+              :class="{ 'event-insensitive': !row.affixSensitive }"
+            >
+              <td>{{ row.displayName }}</td>
+              <td>{{ formatNumber(row.total) }}</td>
+              <td :class="row.maxAffixDelta > 0 ? 'pos' : ''">
+                {{ row.maxAffixDelta > 0 ? formatDelta(row.maxAffixDelta) : '0' }}
+              </td>
+              <td>{{ row.affixSensitive ? '受影响' : '不受影响' }}</td>
+              <td class="impact-reason">{{ row.reason }}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
@@ -920,9 +1182,65 @@ watch(
       </p>
 
       <template v-if="detailTab === 'process'">
+        <template v-if="hasEventMode && optimalEventDetails.length">
+          <div class="result-summary">
+            <p>
+              伤害事件总伤期望：
+              <strong>{{ formatNumber(selectedEval.grandTotal) }}</strong>
+            </p>
+          </div>
+          <section class="event-summary-block">
+            <h3 class="result-section-title event-summary-title">伤害事件</h3>
+            <ul class="event-summary-list">
+              <li
+                v-for="detail in optimalEventDetails"
+                :key="detail.eventId"
+                class="event-summary-item"
+                :class="{ 'event-summary-item--active': selectedProcessEventId === detail.eventId }"
+                role="button"
+                tabindex="0"
+                @click="toggleProcessEventSelection(detail.eventId)"
+                @keydown.enter.prevent="toggleProcessEventSelection(detail.eventId)"
+                @keydown.space.prevent="toggleProcessEventSelection(detail.eventId)"
+              >
+                <span class="event-summary-name">
+                  {{ detail.displayName }}
+                  <span v-if="detail.event.count > 1" class="event-summary-count">
+                    ×{{ detail.event.count }}
+                  </span>
+                </span>
+                <span class="event-summary-damage">
+                  单次 {{ formatNumber(detail.perHit) }} · 合计 {{ formatNumber(detail.total) }}
+                </span>
+              </li>
+            </ul>
+            <p class="result-total event-summary-total">
+              伤害事件总伤期望：{{ formatNumber(selectedEval.grandTotal) }}
+            </p>
+          </section>
+          <DamageResultDetail
+            v-if="selectedProcessEventDetail"
+            :calc-parts="selectedProcessEventDetail.result"
+            :final-panel="selectedProcessEventDetail.finalPanel"
+            :external-panel="selectedProcessEventDetail.external"
+            :sources="selectedProcessEventDetail.breakdown.sources"
+            :pierce-mod="selectedProcessEventDetail.breakdown.totalMods.pierce"
+            :pierce-power="selectedProcessEventDetail.piercePower"
+            :enemy-input="enemyInput"
+            :is-mb="isMb"
+            :show="selectedProcessEventDetail.kind === 'direct' ? 'direct' : 'anomaly'"
+            :anomaly-sub-kind="selectedProcessEventDetail.anomalySubKind"
+            :producer-final-panel="selectedProcessEventDetail.producerFinalPanel"
+            :producer-external-panel="selectedProcessEventDetail.producerExternalPanel"
+            :producer-sources="selectedProcessEventDetail.producerBreakdown?.sources"
+            :producer-agent-label="selectedProcessEventDetail.producerAgentLabel"
+          />
+          <p v-else class="hint">点击上方事件查看该事件的详细计算过程。</p>
+        </template>
+        <template v-else>
         <div class="result-summary">
-          <p v-if="damageEvents?.length">
-            {{ damageKind === 'anomaly' ? '异常伤害事件总伤期望' : '伤害事件总伤期望' }}：
+          <p v-if="hasEventMode">
+            伤害事件总伤期望：
             <strong>{{ formatNumber(selectedEval.grandTotal) }}</strong>
           </p>
           <template v-else-if="damageKind === 'direct'">
@@ -947,6 +1265,7 @@ watch(
           :show="damageKind"
           :anomaly-sub-kind="anomalySubKind"
         />
+        </template>
       </template>
 
       <template v-else-if="detailTab === 'diff' && diffAnalysis">
@@ -1083,6 +1402,186 @@ watch(
 </template>
 
 <style scoped>
+.event-affix-impact {
+  margin-top: 0.25rem;
+}
+
+.event-insensitive td {
+  color: #9aa3b5;
+}
+
+.impact-reason {
+  max-width: 18rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.event-breakdown-table {
+  margin-bottom: 0.75rem;
+}
+
+.result-section-title {
+  margin: 0;
+  font-size: 0.92rem;
+  color: #e8eaed;
+}
+
+.event-summary-block {
+  margin-bottom: 0.85rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #2d323a;
+  border-radius: 10px;
+  background: #0f1217;
+}
+
+.event-summary-list {
+  margin: 0.45rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.event-summary-item {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #2a3038;
+  border-radius: 8px;
+  background: #141820;
+  cursor: pointer;
+}
+
+.event-summary-item:hover {
+  border-color: #3d4654;
+}
+
+.event-summary-item--active {
+  border-color: rgba(125, 211, 160, 0.55);
+  background: rgba(125, 211, 160, 0.08);
+}
+
+.event-summary-name {
+  color: #e8ecf4;
+  font-size: 0.86rem;
+}
+
+.event-summary-count {
+  margin-left: 0.25rem;
+  color: #9aa3b0;
+  font-size: 0.8rem;
+}
+
+.event-summary-damage {
+  color: #9aa3b0;
+  font-size: 0.8rem;
+}
+
+.event-summary-total {
+  margin: 0.55rem 0 0;
+}
+
+.chart-event-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.chart-event-filter-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.65rem;
+  align-items: center;
+}
+
+.chart-event-filter-summary {
+  flex: 1 1 12rem;
+  font-size: 0.78rem;
+  color: #9aa3b0;
+  line-height: 1.45;
+}
+
+.chart-event-filter-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.chart-event-filter-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #7a8494;
+  line-height: 1.45;
+}
+
+.chart-event-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  min-width: 10rem;
+  max-width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #3a4048;
+  border-radius: 10px;
+  background: #141820;
+  color: #e8ecf4;
+  cursor: pointer;
+  text-align: left;
+}
+
+.chart-event-chip:hover {
+  border-color: #4d5666;
+  background: #181e28;
+}
+
+.chart-event-chip.active {
+  border-color: rgba(125, 211, 160, 0.55);
+  background: rgba(125, 211, 160, 0.08);
+}
+
+.chart-event-chip-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.chart-event-kind {
+  flex-shrink: 0;
+  padding: 0.08rem 0.4rem;
+  border-radius: 999px;
+  background: #252b36;
+  color: #c9d2de;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.chart-event-chip.active .chart-event-kind {
+  background: rgba(125, 211, 160, 0.18);
+  color: #dff3e8;
+}
+
+.chart-event-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #eef2f7;
+}
+
+.chart-event-meta {
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: #9aa3b0;
+}
+
+.filter-label {
+  font-size: 0.8rem;
+  color: #9aa3b0;
+}
+
 .opt-section {
   border: 1px solid #2a2d33;
   border-radius: 14px;
