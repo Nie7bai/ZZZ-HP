@@ -70,11 +70,19 @@ import { computeDamageResult, type DamageCalcInput, type EnemyResistanceType } f
 import {
   canSelectTurbulenceDamageEvent,
   eventNeedsAnomalyProducer,
+  getDamageEventSkipReason,
   isTurbulenceTeamCompositionOk,
   mapEventKindToCalc,
   summarizeDamageEvents,
   type DamageEventLine,
 } from '@/utils/damageEvent'
+import {
+  computeMutationZone,
+  findLuminousAgentInTeam,
+  isLuminousElement,
+  resolveLuminousEquivalentElement,
+  isLuminousAgent,
+} from '@/utils/remielUtils'
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 import {
   buildAlignedDirectFormulaGroup,
@@ -338,13 +346,39 @@ function resolveExternalPanelForSlotIndex(slotIndex: number): PanelStats {
   return createDefaultExternalPanel()
 }
 
+function resolveBuffMatchElementForSlot(slotIndex: number): string | undefined {
+  const agent = props.agents.find((item) => item.id === props.teamSlots[slotIndex]?.agentId)
+  const element = agent?.element
+  if (!element) return undefined
+  if (props.damageKind === 'direct' && isLuminousElement(element)) {
+    return resolveLuminousEquivalentElement(props.teamSlots, props.agents, slotIndex)
+  }
+  return element
+}
+
+function resolveLuminousTeamModifiers() {
+  const found = findLuminousAgentInTeam(props.teamSlots, props.agents)
+  if (!found) {
+    return { mutationZone: 1, radianceResPen: 0 }
+  }
+  const breakdown = computeFinalPanel(
+    resolveExternalPanelForSlotIndex(found.slotIndex),
+    buildPanelCalcContextForSlot(found.slotIndex),
+  )
+  const panel = breakdown.finalPanel
+  return {
+    mutationZone: computeMutationZone(panel),
+    radianceResPen: panel.radianceResPen,
+  }
+}
+
 function buildSkillContextForSlot(slotIndex: number) {
   const agent = props.agents.find((item) => item.id === props.teamSlots[slotIndex]?.agentId)
   return {
     damageKind: props.damageKind ?? 'direct',
     categoryId: props.skillCategoryId ?? 'basic',
     subcategoryId: props.skillSubcategoryId ?? null,
-    element: agent?.element ?? mainAgent.value?.element,
+    element: resolveBuffMatchElementForSlot(slotIndex) ?? agent?.element ?? mainAgent.value?.element,
     staggerPhase: props.staggerPhase ?? 'stagger',
     isFollowUp: resolveIsFollowUp({
       agentId: agent?.id,
@@ -516,14 +550,24 @@ const needsTriggerPanel = computed(() => {
   const sub = props.anomalySubKind
   return (
     props.damageKind === 'anomaly' &&
-    (sub === 'turbulence' || sub === 'anomalyRelease' || sub === 'disorder')
+    (sub === 'turbulence' ||
+      sub === 'anomalyRelease' ||
+      sub === 'disorder' ||
+      sub === 'radiance')
   )
 })
 
-/** 异放/乱流时伤害属性跟随触发角色；否则用主 C */
+/** 异放/乱流/耀变时伤害属性跟随触发角色；直伤流明主 C 用等价属性；否则用主 C */
 const damageElement = computed(() => {
   if (needsTriggerPanel.value && triggerAgent.value?.element) {
     return triggerAgent.value.element
+  }
+  if (props.damageKind === 'direct' && isLuminousElement(mainAgent.value?.element)) {
+    return resolveLuminousEquivalentElement(
+      props.teamSlots,
+      props.agents,
+      mainSlotIndex.value,
+    )
   }
   return mainAgent.value?.element
 })
@@ -637,6 +681,20 @@ const turbulenceEventCalculable = computed(() =>
 
 const anomalyCalcBlockedReason = computed(() => {
   if (props.damageKind !== 'anomaly') return ''
+  if (isLuminousElement(mainAgent.value?.element)) {
+    const sub = props.anomalySubKind ?? 'anomaly'
+    if (sub !== 'radiance') {
+      return '蕾米埃尔为主 C 时仅可计算耀变伤害'
+    }
+    if (!props.triggerAnomalyAgentId) {
+      return '请先选择耀变异常产生角色（须为非蕾米埃尔队友）'
+    }
+    const producer = props.agents.find((item) => item.id === props.triggerAnomalyAgentId)
+    if (isLuminousAgent(producer)) {
+      return '耀变产生角色须为非蕾米埃尔队友'
+    }
+    return ''
+  }
   const sub = props.anomalySubKind ?? 'anomaly'
   if (sub === 'turbulence' && mainAgent.value?.element !== '风') {
     return '乱流伤害仅风属性代理人可计算'
@@ -858,6 +916,8 @@ const triggerPiercePower = computed(() => {
   )
 })
 
+const luminousTeamModifiers = computed(() => resolveLuminousTeamModifiers())
+
 const calcParts = computed(() =>
   computeDamageResult({
     finalPanel: finalPanel.value,
@@ -883,6 +943,11 @@ const calcParts = computed(() =>
     skillSubcategory: resolvedSkillSubcategory.value,
     mainAgentLevel: enemyInput.level,
     triggerAgentLevel: triggerAgentLevel.value,
+    mutationZone: luminousTeamModifiers.value.mutationZone,
+    remielRadianceResPen:
+      (props.anomalySubKind ?? 'anomaly') === 'radiance'
+        ? luminousTeamModifiers.value.radianceResPen
+        : 0,
   }),
 )
 
@@ -905,7 +970,8 @@ function buildEventSkillContext(event: DamageEvent) {
   const eventNeedsTrigger =
     event.kind === 'disorder' ||
     event.kind === 'turbulence' ||
-    event.kind === 'anomalyRelease'
+    event.kind === 'anomalyRelease' ||
+    event.kind === 'radiance'
   const triggerElement = resolveEventTriggerElement(event)
   const skillBound = event.skillBound !== false || evtDamageKind === 'direct'
   const evtIsFollowUp = skillBound
@@ -918,12 +984,17 @@ function buildEventSkillContext(event: DamageEvent) {
       })
     : false
 
+  const mainBuffElement =
+    evtDamageKind === 'direct'
+      ? resolveBuffMatchElementForSlot(mainSlotIndex.value)
+      : mainAgent.value?.element
+
   return {
     skillCtx: {
       damageKind: evtDamageKind,
       categoryId: skillBound ? event.categoryId : ('basic' as const),
       subcategoryId: skillBound ? (event.skillSubcategoryId ?? null) : null,
-      element: eventNeedsTrigger ? triggerElement : mainAgent.value?.element,
+      element: eventNeedsTrigger ? triggerElement : mainBuffElement,
       staggerPhase: event.staggerPhase,
       isFollowUp: evtIsFollowUp,
       anomalySubKind: evtAnomalySubKind,
@@ -944,6 +1015,16 @@ function buildEventPanelCalcContext(skillCtx: ReturnType<typeof buildEventSkillC
 }
 
 function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
+  if (
+    getDamageEventSkipReason(event, {
+      teamSlots: props.teamSlots,
+      agents: props.agents,
+      turbulenceCalculable: turbulenceEventCalculable.value,
+    })
+  ) {
+    return null
+  }
+
   const {
     skillCtx: evtSkillCtx,
     eventNeedsTrigger,
@@ -1005,6 +1086,12 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
     }
     if (overrides.turbulenceCompMult != null) {
       evtFinalPanel.turbulenceCompMult = overrides.turbulenceCompMult
+    }
+    if (overrides.radianceMult != null) {
+      evtFinalPanel.radianceMult = overrides.radianceMult
+    }
+    if (overrides.radianceMultFactor != null) {
+      evtFinalPanel.radianceMultFactor = overrides.radianceMultFactor
     }
   }
 
@@ -1110,6 +1197,8 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
         }
       : sub
 
+  const luminousMods = resolveLuminousTeamModifiers()
+
   return {
     finalPanel: evtFinalPanel,
     piercePower: evtPierce,
@@ -1134,12 +1223,31 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
     skillSubcategory: effectiveSub,
     mainAgentLevel: enemyInput.level,
     triggerAgentLevel: evtTriggerAgentId ? resolveAgentLevel(evtTriggerAgentId) : enemyInput.level,
+    mutationZone: luminousMods.mutationZone,
+    remielRadianceResPen: event.kind === 'radiance' ? luminousMods.radianceResPen : 0,
   }
 }
 
 const damageEventSummary = computed(() => {
   if (props.calcSuspended || !props.damageEvents?.length) return null
   return summarizeDamageEvents(props.damageEvents, buildEventCalcFull, resolveSubcategoryById)
+})
+
+const damageEventSkipHints = computed(() => {
+  if (!props.damageEvents?.length) return [] as string[]
+  const hints: string[] = []
+  const ctx = {
+    teamSlots: props.teamSlots,
+    agents: props.agents,
+    turbulenceCalculable: turbulenceEventCalculable.value,
+  }
+  for (const event of props.damageEvents) {
+    const reason = getDamageEventSkipReason(event, ctx)
+    if (reason) {
+      hints.push(`${event.kind}：${reason}`)
+    }
+  }
+  return hints
 })
 
 const hasDamageEventResults = computed(
@@ -1279,6 +1387,10 @@ type ValueTipsKey =
   | 'turbulenceExpected'
   | 'anomalyExpected'
   | 'anomalyReleaseExpected'
+  | 'radianceExpected'
+  | 'radianceCombinedDmgBonusZone'
+  | 'radianceMultZone'
+  | 'mutationZone'
 
 interface AlignedFormulaTerm {
   label: string
@@ -1292,6 +1404,7 @@ type AlignedFormulaResultKey =
   | 'anomalyBaseExpected'
   | 'anomalyExpected'
   | 'anomalyReleaseExpected'
+  | 'radianceExpected'
   | 'disorderExpected'
   | 'turbulenceExpected'
 
@@ -1349,6 +1462,7 @@ const selectedEventAnomalyTitle = computed(() => {
   }
   if (line.event.kind === 'turbulence') return `${line.displayName} · 乱流期望伤害`
   if (line.event.kind === 'anomalyRelease') return `${line.displayName} · 异放期望伤害`
+  if (line.event.kind === 'radiance') return `${line.displayName} · 耀变期望伤害`
   return `${line.displayName} · 异常期望伤害`
 })
 
@@ -1448,10 +1562,43 @@ function buildAlignedAnomalyFormulasFor(
       { label: '暴击率=1', value: formatNumber(p.anomalyReleaseExpectedFullCrit) },
     ],
   }
+  const radiance: AlignedFormulaGroup = {
+    key: 'radianceExpected',
+    title: '耀变伤害',
+    terms: [
+      { label: '异常基础期望', value: formatNumber(p.anomalyBaseExpected), tipsKey: 'anomalyBaseExpected' },
+      {
+        label: '耀变综合增伤区',
+        value: formatFormulaNumber(p.radianceCombinedDmgBonusZone),
+        tipsKey: 'radianceCombinedDmgBonusZone',
+      },
+      {
+        label: '耀变倍率区',
+        value: formatFormulaNumber(p.radianceMultZone),
+        tipsKey: 'radianceMultZone',
+      },
+      {
+        label: '异常暴击区',
+        value: `1 / ${formatFormulaNumber(p.anomalyFullCritZone)}`,
+        tipsKey: 'anomalyCritZone',
+      },
+      {
+        label: '异化系数区',
+        value: formatFormulaNumber(p.mutationZone),
+        tipsKey: 'mutationZone',
+      },
+    ],
+    result: formatNumber(p.radianceExpected),
+    dualResults: [
+      { label: '暴击率=0', value: formatNumber(p.radianceExpectedNoCrit) },
+      { label: '暴击率=1', value: formatNumber(p.radianceExpectedFullCrit) },
+    ],
+  }
 
   if (sub === 'disorder') return [base, disorder]
   if (sub === 'turbulence') return [base, turbulence]
   if (sub === 'anomalyRelease') return [base, release]
+  if (sub === 'radiance') return [base, radiance]
   return [base, anomaly]
 }
 
@@ -1498,7 +1645,10 @@ const valueTips = computed(() => {
 
   const sub = effectiveAnomalySubKind.value
   const usesProducerBase =
-    (sub === 'turbulence' || sub === 'disorder' || sub === 'anomalyRelease') &&
+    (sub === 'turbulence' ||
+      sub === 'disorder' ||
+      sub === 'anomalyRelease' ||
+      sub === 'radiance') &&
     Boolean(triggerFinalPanel.value && triggerExternalPanel.value && triggerPanelBreakdown.value)
   const usesProducerMult = usesProducerBase && (sub === 'turbulence' || sub === 'disorder')
   const tipPanel = usesProducerBase ? triggerFinalPanel.value! : panel
@@ -2281,6 +2431,44 @@ const valueTips = computed(() => {
         ],
       },
     ],
+    radianceExpected: [
+      {
+        label: '乘区组成',
+        items: [
+          `异常基础期望 ${formatNumber(p.anomalyBaseExpected)}`,
+          `耀变综合增伤区 ${formatFormulaNumber(p.radianceCombinedDmgBonusZone)}（耀变增伤+异常增伤）`,
+          `耀变倍率区 ${formatFormulaNumber(p.radianceMultZone)}`,
+          `异常暴击区（暴击率=0）1 → ${formatNumber(p.radianceExpectedNoCrit)}`,
+          `异常暴击区（暴击率=1）${formatFormulaNumber(p.anomalyFullCritZone)} → ${formatNumber(p.radianceExpectedFullCrit)}`,
+          `异化系数区 ${formatFormulaNumber(p.mutationZone)}`,
+        ],
+      },
+    ],
+    radianceCombinedDmgBonusZone: [
+      {
+        label: '乘区组成',
+        items: [
+          `耀变增伤区 ${formatFormulaNumber(1 + panel.radianceDmgBonus / 100)}`,
+          `异常增伤区 ${formatFormulaNumber(p.anomalyDmgBonusZone)}`,
+          `耀变综合增伤区 ${formatFormulaNumber(p.radianceCombinedDmgBonusZone)}`,
+        ],
+      },
+    ],
+    radianceMultZone: buildStatSourceGroups({
+      keys: ['radianceMult', 'radianceMultFactor'],
+      externalPanel: panel,
+      sources,
+      externalKeyMap: { radianceMult: null, radianceMultFactor: null },
+    }),
+    mutationZone: [
+      {
+        label: '异化系数',
+        items: [
+          `取队伍中蕾米埃尔局内最终面板的异化系数与修正`,
+          `异化系数区 ${formatFormulaNumber(p.mutationZone)}`,
+        ],
+      },
+    ],
   }
 })
 
@@ -2791,6 +2979,9 @@ defineExpose({
     <p v-if="anomalyCalcBlockedReason" class="anomaly-block-hint">
       {{ anomalyCalcBlockedReason }}
     </p>
+    <ul v-else-if="damageEventSkipHints.length" class="anomaly-block-hint anomaly-block-hint-list">
+      <li v-for="(hint, index) in damageEventSkipHints" :key="index">{{ hint }}</li>
+    </ul>
 
     <template v-if="!showDetailedResults && !anomalyCalcBlockedReason">
       <div class="result-grid result-grid-summary">
@@ -2842,6 +3033,22 @@ defineExpose({
               <StatValueWithSources
                 :value="formatNumber(calcParts.turbulenceExpectedFullCrit)"
                 :groups="valueTips.turbulenceExpected"
+              />
+            </p>
+          </template>
+          <template v-else-if="effectiveAnomalySubKind === 'radiance'">
+            <p class="result-total">
+              耀变伤害（暴击率=0）：
+              <StatValueWithSources
+                :value="formatNumber(calcParts.radianceExpectedNoCrit)"
+                :groups="valueTips.radianceExpected"
+              />
+            </p>
+            <p class="result-total">
+              耀变伤害（暴击率=1）：
+              <StatValueWithSources
+                :value="formatNumber(calcParts.radianceExpectedFullCrit)"
+                :groups="valueTips.radianceExpected"
               />
             </p>
           </template>
@@ -3059,7 +3266,9 @@ defineExpose({
             ? '乱流期望伤害'
             : effectiveAnomalySubKind === 'anomalyRelease'
               ? '异放期望伤害'
-              : '异常期望伤害'
+              : effectiveAnomalySubKind === 'radiance'
+                ? '耀变期望伤害'
+                : '异常期望伤害'
       }}
     </h3>
     <div class="formula-block formula-block--aligned">
@@ -3144,7 +3353,7 @@ defineExpose({
       <p class="result-total">乱流伤害（暴击率=1）：<StatValueWithSources :value="formatNumber(calcParts.turbulenceExpectedFullCrit)" :groups="valueTips.turbulenceExpected" /></p>
       </template>
 
-      <template v-else>
+      <template v-else-if="effectiveAnomalySubKind === 'anomalyRelease'">
       <h4 class="result-subsection-title">异放伤害</h4>
       <p>
         异放综合增伤区：{{ formatFormulaNumber(calcParts.anomalyReleaseCombinedDmgBonusZone) }}
@@ -3168,6 +3377,44 @@ defineExpose({
         <StatValueWithSources
           :value="formatNumber(calcParts.anomalyReleaseExpectedFullCrit)"
           :groups="valueTips.anomalyReleaseExpected"
+        />
+      </p>
+      </template>
+
+      <template v-else-if="effectiveAnomalySubKind === 'radiance'">
+      <h4 class="result-subsection-title">耀变伤害</h4>
+      <p>
+        耀变综合增伤区：
+        <StatValueWithSources
+          :value="formatFormulaNumber(calcParts.radianceCombinedDmgBonusZone)"
+          :groups="valueTips.radianceCombinedDmgBonusZone"
+        />
+      </p>
+      <p>
+        耀变倍率区：
+        <StatValueWithSources
+          :value="formatFormulaNumber(calcParts.radianceMultZone)"
+          :groups="valueTips.radianceMultZone"
+        />
+      </p>
+      <p>异常暴击区（暴击率=0）：1</p>
+      <p>异常暴击区（暴击率=1）：<StatValueWithSources :value="calcParts.anomalyFullCritZone" :groups="valueTips.anomalyCritZone" /></p>
+      <p>
+        异化系数区：
+        <StatValueWithSources :value="formatFormulaNumber(calcParts.mutationZone)" :groups="valueTips.mutationZone" />
+      </p>
+      <p class="result-total">
+        耀变伤害（暴击率=0）：
+        <StatValueWithSources
+          :value="formatNumber(calcParts.radianceExpectedNoCrit)"
+          :groups="valueTips.radianceExpected"
+        />
+      </p>
+      <p class="result-total">
+        耀变伤害（暴击率=1）：
+        <StatValueWithSources
+          :value="formatNumber(calcParts.radianceExpectedFullCrit)"
+          :groups="valueTips.radianceExpected"
         />
       </p>
       </template>
@@ -3807,13 +4054,18 @@ defineExpose({
 }
 
 .anomaly-block-hint {
-  margin: 0 0 0.75rem;
+  margin: 0.35rem 0 0.75rem;
   padding: 0.55rem 0.75rem;
-  border-radius: 10px;
-  border: 1px solid rgba(224, 120, 80, 0.45);
-  background: rgba(224, 120, 80, 0.12);
-  color: #f0c2a8;
-  font-size: 0.84rem;
+  border-radius: 8px;
+  background: rgba(240, 113, 120, 0.08);
+  border: 1px solid rgba(240, 113, 120, 0.25);
+  color: #f07178;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+.anomaly-block-hint-list {
+  padding-left: 1.35rem;
+  list-style: disc;
 }
 
 .event-summary-block {

@@ -11,6 +11,7 @@ import {
   createEmptyDamageEvent,
   DAMAGE_EVENT_KIND_OPTIONS,
   eventNeedsAnomalyProducer,
+  filterDamageEventKindOptionsForMainAgent,
 } from '@/utils/damageEvent'
 
 const props = withDefaults(
@@ -97,7 +98,12 @@ function eventSummary(event: DamageEvent) {
 }
 
 function addEvent() {
-  const defaultKind = props.modeType === 'anomaly' ? 'anomaly' : 'direct'
+  const defaultKind =
+    props.modeType === 'anomaly'
+      ? props.mainAgentElement && props.mainAgentElement === '流明'
+        ? 'radiance'
+        : 'anomaly'
+      : 'direct'
   const next = createEmptyDamageEvent(events.value.length, defaultKind)
   if (
     props.allowCalcTimeTrigger &&
@@ -199,6 +205,8 @@ const ANOMALY_MULT_FIELDS: { key: keyof DamageEventMultOverrides; label: string 
   { key: 'turbulenceBaseMult', label: '乱流基础倍率%' },
   { key: 'turbulenceBaseMultFactor', label: '乱流倍率修正' },
   { key: 'turbulenceCompMult', label: '乱流补偿倍率%' },
+  { key: 'radianceMult', label: '耀变倍率%' },
+  { key: 'radianceMultFactor', label: '耀变倍率修正' },
 ]
 
 const currentMultFields = computed(() => {
@@ -225,6 +233,11 @@ const currentMultFields = computed(() => {
       (f) => f.key === 'anomalyReleaseMult' || f.key === 'anomalyReleaseMultFactor',
     )
   }
+  if (event.kind === 'radiance') {
+    return ANOMALY_MULT_FIELDS.filter(
+      (f) => f.key === 'radianceMult' || f.key === 'radianceMultFactor',
+    )
+  }
   return ANOMALY_MULT_FIELDS
 })
 
@@ -236,9 +249,11 @@ const needsTriggerAgent = computed(() => {
 const showTriggerSelect = computed(() => needsTriggerAgent.value)
 
 const filteredKindOptions = computed(() =>
-  props.modeType === 'direct'
-    ? DAMAGE_EVENT_KIND_OPTIONS.filter((opt) => opt.id === 'direct')
-    : DAMAGE_EVENT_KIND_OPTIONS.filter((opt) => opt.id !== 'direct'),
+  filterDamageEventKindOptionsForMainAgent(
+    DAMAGE_EVENT_KIND_OPTIONS,
+    props.mainAgentElement,
+    props.modeType,
+  ),
 )
 
 const turbulenceKindHint = computed(() => {

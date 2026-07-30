@@ -9,6 +9,12 @@ import type {
 } from '@/types/calculator'
 import { SKILL_CATEGORY_OPTIONS, TRIGGER_AGENT_AT_CALC } from '@/types/calculator'
 import { computeDamageResult, type DamageCalcInput, type DamageCalcResult } from '@/utils/damageCalc'
+import {
+  canAgentBeAnomalyProducerForKind,
+  isLegacyAnomalyEventKind,
+  isLuminousAgent,
+  isLuminousElement,
+} from '@/utils/remielUtils'
 
 export const DAMAGE_EVENT_KIND_OPTIONS: { id: DamageEventKind; label: string }[] = [
   { id: 'direct', label: '直伤' },
@@ -16,6 +22,7 @@ export const DAMAGE_EVENT_KIND_OPTIONS: { id: DamageEventKind; label: string }[]
   { id: 'disorder', label: '紊乱' },
   { id: 'anomalyRelease', label: '异放' },
   { id: 'turbulence', label: '乱流' },
+  { id: 'radiance', label: '耀变' },
 ]
 
 export const DAMAGE_EVENT_CRIT_MODE_OPTIONS: { id: DamageEventCritMode; label: string }[] = [
@@ -59,6 +66,9 @@ export function mapEventKindToCalc(
   if (kind === 'anomalyRelease') {
     return { damageKind: 'anomaly', anomalySubKind: 'anomalyRelease' }
   }
+  if (kind === 'radiance') {
+    return { damageKind: 'anomaly', anomalySubKind: 'radiance' }
+  }
   return { damageKind: 'anomaly', anomalySubKind: 'turbulence' }
 }
 
@@ -91,6 +101,11 @@ export function pickEventDamage(
     if (critMode === 'noCrit') return result.anomalyReleaseExpectedNoCrit
     if (critMode === 'fullCrit') return result.anomalyReleaseExpectedFullCrit
     return result.anomalyReleaseExpected
+  }
+  if (kind === 'radiance') {
+    if (critMode === 'noCrit') return result.radianceExpectedNoCrit
+    if (critMode === 'fullCrit') return result.radianceExpectedFullCrit
+    return result.radianceExpected
   }
   if (critMode === 'noCrit') return result.turbulenceExpectedNoCrit
   if (critMode === 'fullCrit') return result.turbulenceExpectedFullCrit
@@ -131,7 +146,94 @@ export function formatDamageEventDisplayName(
 }
 
 export function eventNeedsAnomalyProducer(kind: DamageEventKind): boolean {
-  return kind === 'disorder' || kind === 'turbulence' || kind === 'anomalyRelease'
+  return (
+    kind === 'disorder' ||
+    kind === 'turbulence' ||
+    kind === 'anomalyRelease' ||
+    kind === 'radiance'
+  )
+}
+
+export interface DamageEventParticipationContext {
+  teamSlots: Array<{ agentId: string; isMainC?: boolean }>
+  agents: Array<{ id: string; element: string; name?: string }>
+  turbulenceCalculable: boolean
+}
+
+/** 事件不参与汇总时的原因；null 表示可计算 */
+export function getDamageEventSkipReason(
+  event: DamageEvent,
+  ctx: DamageEventParticipationContext,
+): string | null {
+  const mainSlot = ctx.teamSlots.find((slot) => slot.isMainC) ?? ctx.teamSlots[0]
+  const mainAgent = ctx.agents.find((item) => item.id === mainSlot?.agentId)
+  const mainIsLuminous = isLuminousAgent(mainAgent)
+
+  if (event.kind === 'radiance') {
+    if (!mainIsLuminous) {
+      return '耀变事件仅主 C 为蕾米埃尔（流明）时可计算'
+    }
+    const rawId = event.triggerAgentId
+    const triggerId = rawId && rawId !== TRIGGER_AGENT_AT_CALC ? rawId : null
+    if (!triggerId) {
+      return '请先选择耀变异常产生角色（须为非蕾米埃尔队友）'
+    }
+    const producer = ctx.agents.find((item) => item.id === triggerId)
+    if (!canAgentBeAnomalyProducerForKind(producer, 'radiance')) {
+      return '耀变产生角色须为非蕾米埃尔队友'
+    }
+    return null
+  }
+
+  if (mainIsLuminous && isLegacyAnomalyEventKind(event.kind)) {
+    return '蕾米埃尔为主 C 时，旧四类异常事件不参与计算（请改用耀变或切换主 C）'
+  }
+
+  const rawTriggerId = event.triggerAgentId
+  const triggerId =
+    eventNeedsAnomalyProducer(event.kind) && rawTriggerId && rawTriggerId !== TRIGGER_AGENT_AT_CALC
+      ? rawTriggerId
+      : null
+
+  if (eventNeedsAnomalyProducer(event.kind) && !triggerId) {
+    return '请先选择当前属性异常的产生角色'
+  }
+
+  if (triggerId) {
+    const producer = ctx.agents.find((item) => item.id === triggerId)
+    if (isLuminousAgent(producer)) {
+      return '旧四类异常产生角色不能为蕾米埃尔（流明）'
+    }
+  }
+
+  if (event.kind === 'turbulence' && !ctx.turbulenceCalculable) {
+    if (mainAgent?.element !== '风') {
+      return '乱流伤害仅风属性代理人为主 C 时可计算'
+    }
+    return '乱流需队伍同时包含风属性与至少一个非风属性代理人'
+  }
+
+  return null
+}
+
+export function filterAnomalyProducerAgentOptions<
+  T extends { id: string; element?: string | null },
+>(agents: T[], kind: DamageEventKind): T[] {
+  return agents.filter((agent) => canAgentBeAnomalyProducerForKind(agent, kind))
+}
+
+export function filterDamageEventKindOptionsForMainAgent(
+  options: { id: DamageEventKind; label: string }[],
+  mainAgentElement: string | null | undefined,
+  modeType: 'direct' | 'anomaly',
+): { id: DamageEventKind; label: string }[] {
+  if (modeType === 'direct') {
+    return options.filter((opt) => opt.id === 'direct')
+  }
+  if (isLuminousElement(mainAgentElement ?? null)) {
+    return options.filter((opt) => opt.id === 'radiance')
+  }
+  return options.filter((opt) => opt.id !== 'direct' && opt.id !== 'radiance')
 }
 
 /** 队伍中是否同时存在风属性与至少一个非风属性代理人 */

@@ -5,6 +5,7 @@ import AgentFuzzySelect from '@/components/admin/calculator/AgentFuzzySelect.vue
 import DamageEventEditor from '@/components/calculator/DamageEventEditor.vue'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import type { DamageEventMode } from '@/types/calculator'
+import { isLuminousElement } from '@/utils/remielUtils'
 
 const store = useCalculatorBuffStore()
 const { agents, skillSubcategories, damageEventModes } = storeToRefs(store)
@@ -40,6 +41,11 @@ const directModes = computed(() =>
 const anomalyModes = computed(() =>
   sortedList.value.filter((item) => item.modeType === 'anomaly'),
 )
+
+const selectedAgentElement = computed(() => {
+  if (!form.value.agentId) return null
+  return agents.value.find((item) => item.id === form.value.agentId)?.element ?? null
+})
 
 function agentName(id: string) {
   if (!id) return '全部角色'
@@ -77,6 +83,18 @@ async function saveItem() {
   if (!name) {
     error.value = '模式名称为必填项'
     return
+  }
+  if (form.value.modeType === 'anomaly') {
+    if (isLuminousElement(selectedAgentElement.value)) {
+      const invalid = form.value.events.some((event) => event.kind !== 'radiance')
+      if (invalid) {
+        error.value = '蕾米埃尔（流明）的异常模式只能配置耀变事件'
+        return
+      }
+    } else if (form.value.events.some((event) => event.kind === 'radiance')) {
+      error.value = '耀变事件仅适用于蕾米埃尔（流明）角色'
+      return
+    }
   }
   saving.value = true
   try {
@@ -208,6 +226,7 @@ defineExpose({ selectedId, saving, saveItem, removeItem })
             :skill-subcategories="skillSubcategories"
             :agent-id="form.agentId || undefined"
             :mode-type="form.modeType"
+            :main-agent-element="selectedAgentElement"
             allow-calc-time-trigger
           />
         </section>

@@ -16,7 +16,7 @@ import {
 import { normalizeBuffMultFactorDelta, normalizePanelMultFactorPercent } from '@/utils/multFactorPercent'
 
 export const AGENT_ROLES = ['强攻', '击破', '异常', '支援', '防护', '命破'] as const
-export const AGENT_ELEMENTS = ['风', '火', '电', '物理', '以太', '冰'] as const
+export const AGENT_ELEMENTS = ['风', '火', '电', '物理', '以太', '冰', '流明'] as const
 export const WENGINE_RARITIES = ['S', 'A', 'B'] as const
 export type WengineRarity = (typeof WENGINE_RARITIES)[number]
 
@@ -247,6 +247,42 @@ export const BUFF_STAT_FIELDS: {
     unit: 'percent',
     hint: '百分点，乱流增伤区 = 1 + 值%',
   },
+  {
+    key: 'radianceMult',
+    label: '耀变倍率',
+    unit: 'percent',
+    hint: '百分点，耀变倍率加算',
+  },
+  {
+    key: 'radianceMultFactor',
+    label: '耀变倍率修正',
+    unit: 'factor',
+    hint: '乘算修正，默认 100',
+  },
+  {
+    key: 'radianceDmgBonus',
+    label: '耀变增伤',
+    unit: 'percent',
+    hint: '与异常增伤加算后参与耀变综合增伤',
+  },
+  {
+    key: 'radianceResPen',
+    label: '耀变抗性穿透',
+    unit: 'percent',
+    hint: '仅耀变：并入产生角色抗性区',
+  },
+  {
+    key: 'mutationCoeff',
+    label: '异化系数',
+    unit: 'percent',
+    hint: '队伍有蕾米埃尔时，所有异常伤害独立乘区',
+  },
+  {
+    key: 'mutationCoeffFactor',
+    label: '异化系数修正',
+    unit: 'factor',
+    hint: '乘算修正，默认 100',
+  },
   { key: 'hp', label: '固定生命', unit: 'flat', hint: '固定数值，直接加到局内生命' },
   {
     key: 'pierceDmgBonus',
@@ -317,6 +353,7 @@ export const ANOMALY_MULT_BY_ELEMENT: Record<AgentElement, number> = {
   电: 125,
   以太: 62.5,
   风: 1250,
+  流明: 0,
 }
 
 export function defaultAnomalyMultByElement(element: string): number {
@@ -486,6 +523,12 @@ export function createEmptyBuffStatModifiers(): BuffStatModifiers {
     anomalyReleaseMultFactor: 0,
     disorderBaseMultFactor: 0,
     turbulenceBaseMultFactor: 0,
+    radianceMult: 0,
+    radianceDmgBonus: 0,
+    radianceResPen: 0,
+    mutationCoeff: 0,
+    radianceMultFactor: 0,
+    mutationCoeffFactor: 0,
   }
 }
 
@@ -548,6 +591,8 @@ const BUFF_MULT_FACTOR_KEYS: BuffStatKey[] = [
   'anomalyReleaseMultFactor',
   'disorderBaseMultFactor',
   'turbulenceBaseMultFactor',
+  'radianceMultFactor',
+  'mutationCoeffFactor',
 ]
 
 export function normalizeBuffStatModifiers(value: unknown): BuffStatModifiers {
@@ -716,6 +761,10 @@ export const AGENT_BASE_PANEL_FIELDS: {
   { key: 'turbulenceCompMult', label: '初始乱流补偿倍率', unit: 'percent' },
   { key: 'disorderDmgBonus', label: '初始紊乱增伤', unit: 'percent' },
   { key: 'turbulenceDmgBonus', label: '初始乱流增伤', unit: 'percent' },
+  { key: 'radianceMult', label: '初始耀变倍率', unit: 'percent' },
+  { key: 'radianceDmgBonus', label: '初始耀变增伤', unit: 'percent' },
+  { key: 'radianceResPen', label: '初始耀变抗性穿透', unit: 'percent' },
+  { key: 'mutationCoeff', label: '初始异化系数', unit: 'percent' },
 ]
 
 export const WENGINE_ADVANCED_STAT_FIELDS: {
@@ -763,6 +812,10 @@ export function createEmptyAgentBasePanel(): AgentBasePanel {
     turbulenceCompMult: 0,
     disorderDmgBonus: 0,
     turbulenceDmgBonus: 0,
+    radianceMult: 0,
+    radianceDmgBonus: 0,
+    radianceResPen: 0,
+    mutationCoeff: 0,
   }
 }
 

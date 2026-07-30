@@ -23,6 +23,8 @@ export type BuffScope =
   | 'disorder'
   | 'turbulence'
   | 'anomalyRelease'
+  | 'radiance'
+  | 'mutation'
 
 export const BUFF_SCOPE_OPTIONS: { id: BuffScope; label: string }[] = [
   { id: 'general', label: '通用' },
@@ -31,14 +33,21 @@ export const BUFF_SCOPE_OPTIONS: { id: BuffScope; label: string }[] = [
   { id: 'disorder', label: '紊乱' },
   { id: 'turbulence', label: '乱流' },
   { id: 'anomalyRelease', label: '异放' },
+  { id: 'radiance', label: '耀变' },
+  { id: 'mutation', label: '异化系数' },
 ]
 export type BuffApplyTarget = 'self' | 'team'
 /** 增益作用情况：全局 / 仅失衡期 / 仅非失衡期 */
 export type BuffApplySituation = 'global' | 'stagger' | 'non_stagger'
 export type BuffEffectKind = 'fixed' | 'stacked' | 'convert'
 export type DamageCalcKind = 'direct' | 'anomaly'
-/** 异常伤害子类：异常 / 紊乱 / 乱流 / 异放 */
-export type AnomalyDamageSubKind = 'anomaly' | 'disorder' | 'turbulence' | 'anomalyRelease'
+/** 异常伤害子类：异常 / 紊乱 / 乱流 / 异放 / 耀变 */
+export type AnomalyDamageSubKind =
+  | 'anomaly'
+  | 'disorder'
+  | 'turbulence'
+  | 'anomalyRelease'
+  | 'radiance'
 export type StaggerPhase = 'normal' | 'stagger'
 /** 转模读取局外/局内面板，或自行设置基础值 */
 export type ConvertPanelSource = 'external' | 'final' | 'manual'
@@ -113,6 +122,7 @@ export const ANOMALY_DAMAGE_SUBKIND_OPTIONS: {
   { id: 'disorder', label: '紊乱伤害' },
   { id: 'turbulence', label: '乱流伤害' },
   { id: 'anomalyRelease', label: '异放伤害' },
+  { id: 'radiance', label: '耀变伤害' },
 ]
 
 export type BaseDamageSource = 'atk' | 'pierce' | 'def'
@@ -185,6 +195,14 @@ export interface BuffStatModifiers {
   disorderDmgBonus: number
   /** 乱流增伤% */
   turbulenceDmgBonus: number
+  /** 耀变倍率加算% */
+  radianceMult: number
+  /** 耀变增伤% */
+  radianceDmgBonus: number
+  /** 耀变抗性穿透%（并入产生角色抗性区，仅耀变） */
+  radianceResPen: number
+  /** 异化系数加算% */
+  mutationCoeff: number
   /** 招式伤害加成%（进增伤区） */
   skillDmgBonus: number
   /** 招式倍率加算%（进直伤倍率区） */
@@ -199,6 +217,10 @@ export interface BuffStatModifiers {
   disorderBaseMultFactor: number
   /** 乱流基础倍率乘算修正（默认 1；作用于乱流倍率区） */
   turbulenceBaseMultFactor: number
+  /** 耀变倍率乘算修正（默认 1） */
+  radianceMultFactor: number
+  /** 异化系数乘算修正（默认 1） */
+  mutationCoeffFactor: number
 }
 
 export type BuffStatKey = keyof BuffStatModifiers
@@ -316,6 +338,7 @@ export type DamageEventKind =
   | 'disorder'
   | 'anomalyRelease'
   | 'turbulence'
+  | 'radiance'
 
 export interface DamageEvent {
   id: string
@@ -351,6 +374,8 @@ export interface DamageEventMultOverrides {
   turbulenceBaseMult?: number | null
   turbulenceBaseMultFactor?: number | null
   turbulenceCompMult?: number | null
+  radianceMult?: number | null
+  radianceMultFactor?: number | null
 }
 
 /** 管理端：计算时再选产生角色 */
@@ -423,6 +448,14 @@ export interface AgentBasePanel {
   disorderDmgBonus: number
   /** 乱流增伤% */
   turbulenceDmgBonus: number
+  /** 耀变倍率% */
+  radianceMult: number
+  /** 耀变增伤% */
+  radianceDmgBonus: number
+  /** 耀变抗性穿透% */
+  radianceResPen: number
+  /** 异化系数% */
+  mutationCoeff: number
 }
 
 export interface WengineAdvancedStats {

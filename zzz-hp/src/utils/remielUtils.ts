@@ -1,0 +1,107 @@
+import type { DamageEventKind } from '@/types/calculator'
+import type { PanelStats } from '@/types/calculatorPanel'
+import { multFactorPercentToRatio } from '@/utils/multFactorPercent'
+
+/** 流明属性：当前仅蕾米埃尔 */
+export const LUMINOUS_ELEMENT = '流明'
+
+export function isLuminousElement(element: string | null | undefined): boolean {
+  return element === LUMINOUS_ELEMENT
+}
+
+export function isLuminousAgent(
+  agent: { element?: string | null } | null | undefined,
+): boolean {
+  return isLuminousElement(agent?.element ?? null)
+}
+
+/** 旧四类异常事件（非耀变） */
+export function isLegacyAnomalyEventKind(kind: DamageEventKind): boolean {
+  return kind === 'anomaly' || kind === 'disorder' || kind === 'turbulence' || kind === 'anomalyRelease'
+}
+
+/**
+ * 直伤 Buff 匹配：流明角色取下一槽位等价属性（1→2→3→1；中间空槽顺延）。
+ */
+export function resolveLuminousEquivalentElement(
+  teamSlots: Array<{ agentId: string }>,
+  agents: Array<{ id: string; element: string }>,
+  luminousSlotIndex: number,
+): string | undefined {
+  const order = [
+    (luminousSlotIndex + 1) % teamSlots.length,
+    (luminousSlotIndex + 2) % teamSlots.length,
+  ]
+  for (const index of order) {
+    const slot = teamSlots[index]
+    if (!slot?.agentId) continue
+    const agent = agents.find((item) => item.id === slot.agentId)
+    const element = agent?.element?.trim()
+    if (element && !isLuminousElement(element)) return element
+  }
+  return undefined
+}
+
+export function findLuminousSlotIndex(
+  teamSlots: Array<{ agentId: string }>,
+  agents: Array<{ id: string; element: string }>,
+): number | null {
+  for (let index = 0; index < teamSlots.length; index += 1) {
+    const agent = agents.find((item) => item.id === teamSlots[index]?.agentId)
+    if (isLuminousAgent(agent)) return index
+  }
+  return null
+}
+
+export function findLuminousAgentInTeam(
+  teamSlots: Array<{ agentId: string }>,
+  agents: Array<{ id: string; element: string }>,
+): { id: string; element: string; slotIndex: number } | null {
+  for (let index = 0; index < teamSlots.length; index += 1) {
+    const agentId = teamSlots[index]?.agentId
+    if (!agentId) continue
+    const agent = agents.find((item) => item.id === agentId)
+    if (isLuminousAgent(agent)) {
+      return { id: agent!.id, element: agent!.element, slotIndex: index }
+    }
+  }
+  return null
+}
+
+/** 产生角色候选：耀变须非流明；旧四类亦不可选流明 */
+export function canAgentBeAnomalyProducerForKind(
+  agent: { element?: string | null } | null | undefined,
+  kind: DamageEventKind,
+): boolean {
+  if (!agent) return false
+  if (isLuminousAgent(agent)) return false
+  if (kind === 'radiance') return true
+  return isLegacyAnomalyEventKind(kind)
+}
+
+export function computeMutationZone(
+  panel: Pick<PanelStats, 'mutationCoeff' | 'mutationCoeffFactor'>,
+): number {
+  const ratio = multFactorPercentToRatio(panel.mutationCoeffFactor) || 1
+  return Math.max(0, 1 + panel.mutationCoeff / 100) * ratio
+}
+
+export function computeRadianceMultZone(
+  panel: Pick<PanelStats, 'radianceMult' | 'radianceMultFactor'>,
+): number {
+  const ratio = multFactorPercentToRatio(panel.radianceMultFactor) || 1
+  return Math.max(0, panel.radianceMult / 100) * ratio
+}
+
+/**
+ * Buff 属性限定：流明不参与元素白名单匹配（「全部属性」仍生效）。
+ */
+export function effectMatchesElementForCalc(
+  elementFilter: 'all' | string[] | undefined,
+  element: string | undefined,
+): boolean {
+  if (!elementFilter || elementFilter === 'all') return true
+  if (!element) return false
+  if (isLuminousElement(element)) return false
+  return elementFilter.includes(element)
+}

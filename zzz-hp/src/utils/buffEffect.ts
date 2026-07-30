@@ -19,6 +19,7 @@ import type {
   SkillSubcategory,
 } from '@/types/calculator'
 import { CHARACTER_ATTR_OPTIONS } from '@/types/calculator'
+import { isLuminousElement } from '@/utils/remielUtils'
 import { formatCalcDecimal, roundCalc } from '@/utils/calcNumberFormat'
 
 const BUFF_SCOPE_SET = new Set<string>([
@@ -28,6 +29,8 @@ const BUFF_SCOPE_SET = new Set<string>([
   'disorder',
   'turbulence',
   'anomalyRelease',
+  'radiance',
+  'mutation',
 ])
 
 const BUFF_SCOPE_LABELS: Record<string, string> = {
@@ -37,6 +40,8 @@ const BUFF_SCOPE_LABELS: Record<string, string> = {
   disorder: '紊乱',
   turbulence: '乱流',
   anomalyRelease: '异放',
+  radiance: '耀变',
+  mutation: '异化系数',
 }
 
 function isAnomalyDamageScope(scope: BuffScope): boolean {
@@ -44,7 +49,8 @@ function isAnomalyDamageScope(scope: BuffScope): boolean {
     scope === 'anomaly' ||
     scope === 'disorder' ||
     scope === 'turbulence' ||
-    scope === 'anomalyRelease'
+    scope === 'anomalyRelease' ||
+    scope === 'radiance'
   )
 }
 
@@ -53,6 +59,7 @@ function scopeToAnomalySubKind(scope: BuffScope): AnomalyDamageSubKind | null {
   if (scope === 'disorder') return 'disorder'
   if (scope === 'turbulence') return 'turbulence'
   if (scope === 'anomalyRelease') return 'anomalyRelease'
+  if (scope === 'radiance') return 'radiance'
   return null
 }
 
@@ -101,6 +108,10 @@ const BUFF_STAT_KEYS: BuffStatKey[] = [
   'turbulenceCompMult',
   'disorderDmgBonus',
   'turbulenceDmgBonus',
+  'radianceMult',
+  'radianceDmgBonus',
+  'radianceResPen',
+  'mutationCoeff',
   'skillDmgBonus',
   'skillMultiplierBonus',
   'directDmgMultFactor',
@@ -108,6 +119,8 @@ const BUFF_STAT_KEYS: BuffStatKey[] = [
   'anomalyReleaseMultFactor',
   'disorderBaseMultFactor',
   'turbulenceBaseMultFactor',
+  'radianceMultFactor',
+  'mutationCoeffFactor',
 ]
 
 const SKILL_CATEGORIES: SkillCategoryId[] = [
@@ -423,6 +436,13 @@ export function effectMatchesContext(
 
   const scope = effect.scope
 
+  if (scope === 'mutation') {
+    return ctx.damageKind === 'anomaly'
+  }
+  if (scope === 'radiance') {
+    return ctx.damageKind === 'anomaly' && (ctx.anomalySubKind ?? 'anomaly') === 'radiance'
+  }
+
   if (isAnomalyDamageScope(scope)) {
     if (ctx.damageKind !== 'anomaly') return false
     const required = scopeToAnomalySubKind(scope)
@@ -510,6 +530,7 @@ export function effectMatchesElement(effect: BuffEffect, element?: string): bool
   const filter = effect.elementFilter
   if (!filter || filter === 'all') return true
   if (!element) return true
+  if (isLuminousElement(element)) return false
   return filter.includes(element)
 }
 

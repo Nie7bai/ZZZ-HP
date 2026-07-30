@@ -1,6 +1,7 @@
 import type { AnomalyDamageSubKind, BaseDamageSource, SkillSubcategory } from '@/types/calculator'
 import type { PanelStats } from '@/types/calculatorPanel'
 import { effectiveAnomalyDuration } from '@/utils/calculatorUi'
+import { computeRadianceMultZone } from '@/utils/remielUtils'
 import { resolveSkillMults } from '@/utils/skillSubcategoryMult'
 
 export type EnemyResistanceType = 'weak' | 'normal' | 'res20' | 'res40'
@@ -59,6 +60,10 @@ export interface DamageCalcInput {
   mainAgentLevel?: number
   /** 产生角色等级（异常基础等级区）；缺省与 mainAgentLevel 相同 */
   triggerAgentLevel?: number
+  /** 队伍有蕾米埃尔时的异化系数乘区（预计算） */
+  mutationZone?: number
+  /** 耀变：蕾米埃尔耀变抗性穿透，并入产生角色抗性区 */
+  remielRadianceResPen?: number
 }
 
 export interface DamageCalcResult {
@@ -155,6 +160,16 @@ export interface DamageCalcResult {
   turbulenceExpectedFullCrit: number
   /** 有招式紊乱倍率贡献时为极性紊乱 */
   hasPolarDisorder: boolean
+  /** 耀变综合增伤区 */
+  radianceCombinedDmgBonusZone: number
+  /** 耀变倍率区 */
+  radianceMultZone: number
+  /** 异化系数乘区 */
+  mutationZone: number
+  /** 耀变期望伤害 */
+  radianceExpected: number
+  radianceExpectedNoCrit: number
+  radianceExpectedFullCrit: number
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -216,10 +231,13 @@ function computeGeneralAndAnomalyBase(options: {
   defensePanel?: Pick<PanelStats, 'penRate' | 'pen' | 'ignoreDefense' | 'reduceDefense'>
   /** 等级区所用角色等级 */
   agentLevel: number
+  /** 抗性穿透额外加算（耀变：蕾米埃尔耀变抗性穿透） */
+  extraResPen?: number
 }) {
   const panel = options.panel
   const defense = options.defensePanel ?? panel
   const enemyRes = RESISTANCE_MAP[options.enemyInput.resistanceType]
+  const extraResPen = options.extraResPen ?? 0
 
   const { baseDamage, usedBaseSource } = resolveBaseDamageParts({
     panel,
@@ -240,7 +258,7 @@ function computeGeneralAndAnomalyBase(options: {
   const defenseAfterModifiers = options.enemyInput.defense * defenseFactor * (1 - penRateRatio)
   const effectiveDefense = Math.max(0, defenseAfterModifiers) - defense.pen
   const defenseMultiplier = options.isMb ? 1 : 794 / (794 + effectiveDefense)
-  const resistanceMultiplier = 1 - enemyRes + clamp(panel.resPen / 100, -2, 2)
+  const resistanceMultiplier = 1 - enemyRes + clamp((panel.resPen + extraResPen) / 100, -2, 2)
 
   const vulnerableMultiplier =
     options.enemyInput.vulnerableMultiplier + options.combatVulnerable / 100
@@ -301,7 +319,10 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const staggerPhase = input.staggerPhase ?? 'stagger'
   const subKind = input.anomalySubKind ?? 'anomaly'
   const useTriggerBase =
-    (subKind === 'turbulence' || subKind === 'anomalyRelease' || subKind === 'disorder') &&
+    (subKind === 'turbulence' ||
+      subKind === 'anomalyRelease' ||
+      subKind === 'disorder' ||
+      subKind === 'radiance') &&
     Boolean(input.triggerFinalPanel)
 
   const triggerPanel = input.triggerFinalPanel ?? panel
@@ -358,6 +379,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
           ignoreDefense: panel.ignoreDefense,
           reduceDefense: panel.reduceDefense,
         },
+        extraResPen: subKind === 'radiance' ? (input.remielRadianceResPen ?? 0) : 0,
       })
     : mainParts
 
@@ -463,6 +485,18 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const turbulenceExpectedNoCrit = turbulencePreCrit * anomalyNoCritZone
   const turbulenceExpectedFullCrit = turbulencePreCrit * anomalyFullCritZone
 
+  const radianceCombinedDmgBonusZone =
+    1 + (panel.radianceDmgBonus + panel.anomalyDmgBonus) / 100
+  const radianceMultZone = computeRadianceMultZone(panel)
+  const radiancePreCrit =
+    anomalyBaseExpected * radianceCombinedDmgBonusZone * radianceMultZone
+  const radianceExpectedRaw = radiancePreCrit * anomalyCritZone
+  const radianceExpectedNoCritRaw = radiancePreCrit * anomalyNoCritZone
+  const radianceExpectedFullCritRaw = radiancePreCrit * anomalyFullCritZone
+
+  const mutationMult = input.mutationZone ?? 1
+  const applyMutation = (value: number) => value * mutationMult
+
   return {
     baseDamage: round(baseParts.baseDamage, 2),
     baseDamageSource: baseParts.usedBaseSource,
@@ -504,9 +538,9 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     anomalyCritZone: round(anomalyCritZone, 4),
     anomalyFullCritZone: round(anomalyFullCritZone, 4),
     anomalyBaseExpected: round(anomalyBaseExpected, 0),
-    anomalyExpected: round(anomalyExpected, 0),
-    anomalyExpectedNoCrit: round(anomalyExpectedNoCrit, 0),
-    anomalyExpectedFullCrit: round(anomalyExpectedFullCrit, 0),
+    anomalyExpected: round(applyMutation(anomalyExpected), 0),
+    anomalyExpectedNoCrit: round(applyMutation(anomalyExpectedNoCrit), 0),
+    anomalyExpectedFullCrit: round(applyMutation(anomalyExpectedFullCrit), 0),
     anomalyReleaseDmgBonusZone: round(anomalyReleaseDmgBonusZone, 4),
     anomalyReleaseCombinedDmgBonusZone: round(anomalyReleaseCombinedDmgBonusZone, 4),
     anomalyReleaseMultZone: round(anomalyReleaseMultZone, 4),
@@ -515,24 +549,30 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     anomalyCombinedCritDmgRatio: round(anomalyCombinedCritDmgRatio, 4),
     anomalyCombinedCritZone: round(anomalyCombinedCritZone, 4),
     anomalyCombinedFullCritZone: round(anomalyCombinedFullCritZone, 4),
-    anomalyReleaseExpected: round(anomalyReleaseExpected, 0),
-    anomalyReleaseExpectedNoCrit: round(anomalyReleaseExpectedNoCrit, 0),
-    anomalyReleaseExpectedFullCrit: round(anomalyReleaseExpectedFullCrit, 0),
+    anomalyReleaseExpected: round(applyMutation(anomalyReleaseExpected), 0),
+    anomalyReleaseExpectedNoCrit: round(applyMutation(anomalyReleaseExpectedNoCrit), 0),
+    anomalyReleaseExpectedFullCrit: round(applyMutation(anomalyReleaseExpectedFullCrit), 0),
     effectiveAnomalyDuration: round(effectiveDuration, 4),
     disorderBaseMultRatio: round(disorderBaseMultRatio, 4),
     disorderCompMultRatio: round(disorderCompMultRatio, 4),
     disorderZone: round(disorderZone, 4),
     disorderDmgBonusZone: round(disorderDmgBonusZone, 4),
-    disorderExpected: round(disorderExpected, 0),
+    disorderExpected: round(applyMutation(disorderExpected), 0),
     turbulenceBaseMultRatio: round(turbulenceBaseMultRatio, 4),
     turbulenceCompMultRatio: round(turbulenceCompMultRatio, 4),
     turbulenceZone: round(turbulenceZone, 4),
     turbulenceDmgBonusZone: round(turbulenceDmgBonusZone, 4),
     turbulenceCombinedDmgBonusZone: round(turbulenceCombinedDmgBonusZone, 4),
     turbulenceUsesAnomalyCrit: useTurbulenceAnomalyCrit,
-    turbulenceExpected: round(turbulenceExpected, 0),
-    turbulenceExpectedNoCrit: round(turbulenceExpectedNoCrit, 0),
-    turbulenceExpectedFullCrit: round(turbulenceExpectedFullCrit, 0),
+    turbulenceExpected: round(applyMutation(turbulenceExpected), 0),
+    turbulenceExpectedNoCrit: round(applyMutation(turbulenceExpectedNoCrit), 0),
+    turbulenceExpectedFullCrit: round(applyMutation(turbulenceExpectedFullCrit), 0),
     hasPolarDisorder,
+    radianceCombinedDmgBonusZone: round(radianceCombinedDmgBonusZone, 4),
+    radianceMultZone: round(radianceMultZone, 4),
+    mutationZone: round(mutationMult, 4),
+    radianceExpected: round(applyMutation(radianceExpectedRaw), 0),
+    radianceExpectedNoCrit: round(applyMutation(radianceExpectedNoCritRaw), 0),
+    radianceExpectedFullCrit: round(applyMutation(radianceExpectedFullCritRaw), 0),
   }
 }

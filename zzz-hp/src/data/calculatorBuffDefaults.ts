@@ -380,6 +380,17 @@ export const defaultAgentBuffDocs: AgentBuffDoc[] = [
     avatar_image: '/character/qingyi.webp',
   }),
   agentDoc({
+    id: 'remiel',
+    name: '蕾米埃尔',
+    profession: '',
+    element: '流明',
+    avatar_image: '/character/remiel.webp',
+    basePanel: {
+      ...createEmptyAgentBasePanel(),
+      directDmgMult: 100,
+    },
+  }),
+  agentDoc({
     id: 's0anby',
     name: 's0anby',
     profession: '',

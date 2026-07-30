@@ -29,7 +29,12 @@ import {
   type DamageCalcResult,
   type DamageEnemyInput,
 } from '@/utils/damageCalc'
-import { mapEventKindToCalc, pickEventDamage, canSelectTurbulenceDamageEvent, formatDamageEventDisplayName } from '@/utils/damageEvent'
+import { mapEventKindToCalc, pickEventDamage, canSelectTurbulenceDamageEvent, formatDamageEventDisplayName, getDamageEventSkipReason } from '@/utils/damageEvent'
+import {
+  computeMutationZone,
+  findLuminousAgentInTeam,
+  isLuminousAgent,
+} from '@/utils/remielUtils'
 import {
   computeFinalPanel,
   resolveMainCAnomalyReleaseMultFields,
@@ -44,7 +49,7 @@ import { resolveIsFollowUp } from '@/utils/buffEffect'
 
 export type OptimalDamageKind = 'direct' | 'anomaly'
 
-export type OptimalAnomalyMetric = 'anomaly' | 'disorder' | 'turbulence' | 'anomalyRelease'
+export type OptimalAnomalyMetric = 'anomaly' | 'disorder' | 'turbulence' | 'anomalyRelease' | 'radiance'
 
 export type OptimalAffixKey =
   | 'atkFlat'
@@ -237,6 +242,7 @@ export interface AnomalySweepPoint {
   disorderExpected: number
   turbulenceExpected: number
   anomalyReleaseExpected: number
+  radianceExpected: number
   eventLines: OptimalEventDamageLine[]
   grandTotal: number
 }
@@ -504,7 +510,39 @@ function applyEventMultOverrides(
     next.turbulenceBaseMultFactor = overrides.turbulenceBaseMultFactor
   }
   if (overrides.turbulenceCompMult != null) next.turbulenceCompMult = overrides.turbulenceCompMult
+  if (overrides.radianceMult != null) next.radianceMult = overrides.radianceMult
+  if (overrides.radianceMultFactor != null) next.radianceMultFactor = overrides.radianceMultFactor
   return next
+}
+
+function resolveLuminousTeamModifiersForOptimal(
+  ctx: OptimalEvalContext,
+  mainExternal: PanelStats,
+  extraMods?: BuffStatModifiers,
+): { mutationZone: number; radianceResPen: number } {
+  const found = findLuminousAgentInTeam(ctx.panelContext.teamSlots, ctx.panelContext.agents)
+  if (!found) return { mutationZone: 1, radianceResPen: 0 }
+  const tSlotIndex = found.slotIndex
+  const producerExternal = resolveProducerExternal(ctx, found.id)
+  const mods = extraMods ?? ctx.panelContext.extraMods ?? createEmptyBuffStatModifiers()
+  const breakdown = computeFinalPanel(producerExternal, {
+    ...buildPanelContextForSlot(ctx, tSlotIndex, producerExternal, mainExternal),
+    extraMods: mods,
+    skillContext: {
+      damageKind: 'anomaly',
+      categoryId: 'basic',
+      subcategoryId: null,
+      element: found.element,
+      staggerPhase: 'stagger',
+      isFollowUp: false,
+      anomalySubKind: 'radiance',
+    },
+  })
+  const panel = breakdown.finalPanel
+  return {
+    mutationZone: computeMutationZone(panel),
+    radianceResPen: panel.radianceResPen,
+  }
 }
 
 export function evaluateOptimalEventDetail(
@@ -517,9 +555,20 @@ export function evaluateOptimalEventDetail(
   const eventNeedsTrigger =
     event.kind === 'disorder' ||
     event.kind === 'turbulence' ||
-    event.kind === 'anomalyRelease'
+    event.kind === 'anomalyRelease' ||
+    event.kind === 'radiance'
   const triggerId = resolveEventTriggerId(ctx, event)
   if (eventNeedsTrigger && !triggerId) return null
+  const skipReason = getDamageEventSkipReason(event, {
+    teamSlots: ctx.panelContext.teamSlots,
+    agents: ctx.panelContext.agents,
+    turbulenceCalculable: canSelectTurbulenceDamageEvent(
+      ctx.panelContext.teamSlots,
+      ctx.panelContext.agents,
+      ctx.mainAgentElement,
+    ),
+  })
+  if (skipReason) return null
   if (
     event.kind === 'turbulence' &&
     !canSelectTurbulenceDamageEvent(
@@ -535,6 +584,7 @@ export function evaluateOptimalEventDetail(
     eventNeedsTrigger && triggerId
       ? ctx.panelContext.agents.find((agent) => agent.id === triggerId)
       : undefined
+  if (eventNeedsTrigger && triggerId && isLuminousAgent(triggerAgent)) return null
   const triggerElement = eventNeedsTrigger ? triggerAgent?.element : ctx.mainAgentElement
   const usesNonMainProducer = Boolean(
     eventNeedsTrigger && triggerId && triggerId !== ctx.mainAgentId,
@@ -688,6 +738,8 @@ export function evaluateOptimalEventDetail(
         }
       : sub
 
+  const luminousMods = resolveLuminousTeamModifiersForOptimal(ctx, mainExternal, extraMods)
+
   const result = computeDamageResult({
     finalPanel,
     piercePower,
@@ -713,6 +765,8 @@ export function evaluateOptimalEventDetail(
     skillSubcategory: effectiveSub,
     mainAgentLevel: ctx.enemyInput.level,
     triggerAgentLevel: resolveProducerAgentLevel(ctx, triggerId),
+    mutationZone: luminousMods.mutationZone,
+    remielRadianceResPen: event.kind === 'radiance' ? luminousMods.radianceResPen : 0,
   })
 
   const perHit = pickEventDamage(result, event.kind, event.critMode)
@@ -1218,6 +1272,7 @@ export function sweepAnomalyDamage(
       disorderExpected: subMetrics?.disorderExpected ?? 0,
       turbulenceExpected: subMetrics?.turbulenceExpected ?? 0,
       anomalyReleaseExpected: subMetrics?.anomalyReleaseExpected ?? 0,
+      radianceExpected: subMetrics?.radianceExpected ?? 0,
       eventLines,
       grandTotal,
     })
@@ -1236,6 +1291,7 @@ function damageMetric(
   if (anomalyMetric === 'disorder') return result.disorderExpected
   if (anomalyMetric === 'turbulence') return result.turbulenceExpected
   if (anomalyMetric === 'anomalyRelease') return result.anomalyReleaseExpected
+  if (anomalyMetric === 'radiance') return result.radianceExpected
   return result.anomalyExpected
 }
 

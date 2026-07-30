@@ -43,6 +43,7 @@ import {
 } from '@/utils/panelBuffCalc'
 import { resolveIsFollowUp } from '@/utils/buffEffect'
 import { canSelectTurbulenceDamageEvent, eventNeedsAnomalyProducer } from '@/utils/damageEvent'
+import { isLuminousAgent } from '@/utils/remielUtils'
 import { createEmptyBuffStatModifiers, createEmptyRefinementMods } from '@/utils/calculatorUi'
 
 export interface TeamSlot {
@@ -116,6 +117,7 @@ const anomalySubKind = computed<AnomalyDamageSubKind>(() => {
   if (first.kind === 'disorder') return 'disorder'
   if (first.kind === 'turbulence') return 'turbulence'
   if (first.kind === 'anomalyRelease') return 'anomalyRelease'
+  if (first.kind === 'radiance') return 'radiance'
   return 'anomaly'
 })
 const triggerAnomalyAgentId = computed(() => {
@@ -139,7 +141,7 @@ const anomalyTriggerOptions = computed(() =>
   teamSlots
     .map((slot) => {
       const agent = agents.value.find((item) => item.id === slot.agentId)
-      if (!agent) return null
+      if (!agent || isLuminousAgent(agent)) return null
       return {
         id: agent.id,
         label: `${agent.name}·${agent.element}`,

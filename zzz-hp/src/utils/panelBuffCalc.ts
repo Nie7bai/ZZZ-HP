@@ -1293,6 +1293,10 @@ export function applyBuffModsToPanel(
     turbulenceCompMult: externalPanel.turbulenceCompMult + mods.turbulenceCompMult,
     disorderDmgBonus: externalPanel.disorderDmgBonus + mods.disorderDmgBonus,
     turbulenceDmgBonus: externalPanel.turbulenceDmgBonus + mods.turbulenceDmgBonus,
+    radianceMult: externalPanel.radianceMult + mods.radianceMult,
+    radianceDmgBonus: externalPanel.radianceDmgBonus + mods.radianceDmgBonus,
+    radianceResPen: externalPanel.radianceResPen + mods.radianceResPen,
+    mutationCoeff: externalPanel.mutationCoeff + mods.mutationCoeff,
     directDmgMultFactor: combineMultFactorPercent(
       externalPanel.directDmgMultFactor,
       mods.directDmgMultFactor,
@@ -1312,6 +1316,14 @@ export function applyBuffModsToPanel(
     turbulenceBaseMultFactor: combineMultFactorPercent(
       externalPanel.turbulenceBaseMultFactor,
       mods.turbulenceBaseMultFactor,
+    ),
+    radianceMultFactor: combineMultFactorPercent(
+      externalPanel.radianceMultFactor,
+      mods.radianceMultFactor,
+    ),
+    mutationCoeffFactor: combineMultFactorPercent(
+      externalPanel.mutationCoeffFactor,
+      mods.mutationCoeffFactor,
     ),
   }
 }

@@ -192,7 +192,7 @@ const emptyBangboo: BangbooBuffDoc = {
 }
 
 type DetailTab = 'diff' | 'process' | 'curve'
-type AnomalyMetric = 'anomaly' | 'disorder' | 'turbulence' | 'anomalyRelease'
+type AnomalyMetric = 'anomaly' | 'disorder' | 'turbulence' | 'anomalyRelease' | 'radiance'
 type CurveMode = 'cumulative' | 'marginal'
 
 const damageKind = computed(() => props.damageKind ?? 'direct')
@@ -624,6 +624,18 @@ const anomalyChartList = computed(() => {
         },
       ],
     },
+    {
+      key: 'radiance' as AnomalyMetric,
+      title: '耀变期望伤害',
+      series: [
+        {
+          key: 'radiance',
+          label: '耀变期望',
+          color: '#ffd580',
+          values: anomalyPoints.value.map((p) => p.radianceExpected),
+        },
+      ],
+    },
   ]
   const sub = anomalySubKind.value
   return all.filter((item) => item.key === sub)
@@ -711,6 +723,7 @@ function metricOf(result: DamageCalcResult, grandTotal?: number) {
   if (anomalyChartMetric.value === 'disorder') return result.disorderExpected
   if (anomalyChartMetric.value === 'turbulence') return result.turbulenceExpected
   if (anomalyChartMetric.value === 'anomalyRelease') return result.anomalyReleaseExpected
+  if (anomalyChartMetric.value === 'radiance') return result.radianceExpected
   return result.anomalyExpected
 }
 
@@ -1683,7 +1696,9 @@ watch(
               ? '乱流伤害'
               : anomalySubKind === 'anomalyRelease'
                 ? '异放伤害'
-                : '异常伤害'
+                : anomalySubKind === 'radiance'
+                  ? '耀变伤害'
+                  : '异常伤害'
         }}
       </p>
 
@@ -1756,7 +1771,9 @@ watch(
             <p v-if="anomalySubKind === 'anomaly'">异常期望伤害：<strong>{{ formatNumber(analysisEval!.result.anomalyExpected) }}</strong></p>
             <p v-else-if="anomalySubKind === 'disorder'">紊乱期望伤害：<strong>{{ formatNumber(analysisEval!.result.disorderExpected) }}</strong></p>
             <p v-else-if="anomalySubKind === 'turbulence'">乱流期望伤害：<strong>{{ formatNumber(analysisEval!.result.turbulenceExpected) }}</strong></p>
-            <p v-else>异放期望伤害：<strong>{{ formatNumber(analysisEval!.result.anomalyReleaseExpected) }}</strong></p>
+            <p v-else-if="anomalySubKind === 'anomalyRelease'">异放期望伤害：<strong>{{ formatNumber(analysisEval!.result.anomalyReleaseExpected) }}</strong></p>
+            <p v-else-if="anomalySubKind === 'radiance'">耀变期望伤害：<strong>{{ formatNumber(analysisEval!.result.radianceExpected) }}</strong></p>
+            <p v-else>异常期望伤害：<strong>{{ formatNumber(analysisEval!.result.anomalyExpected) }}</strong></p>
           </template>
         </div>
         <DamageResultDetail
