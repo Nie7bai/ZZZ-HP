@@ -172,11 +172,15 @@ function exceedsAffixCap(
 }
 
 export interface DirectAllocState {
-  /** 攻击力或生命值（命破）条数 */
+  /** 攻击力条数（非命破为主 flat；命破时也需填写） */
   flatStat: number
+  /** 命破：生命值条数 */
+  hpFlat: number
+  /** 命破：局外大攻击条数（固定填写，不参与扫掠） */
+  atkPercent: number
   pen: number
   critRate: number
-  /** = 暴击 + 爆伤 + 局外大攻/大生命 */
+  /** 非命破 = 暴击 + 爆伤 + 局外大攻击；命破 = 暴击 + 爆伤 + 局外大生命 + 局外大攻击 */
   totalRolls: number
 }
 
@@ -211,11 +215,13 @@ export interface OptimalEvalContext {
 }
 
 export interface DirectSweepPoint {
+  /** 非命破：局外大攻击；命破：局外大生命 */
   outPercent: number
   critDmg: number
   label: string
   affixCounts: AffixCounts
-  result: DamageCalcResult
+  /** 扫掠路径下可省略，详情区会单独 evaluate */
+  result?: DamageCalcResult
   directExpected: number
   eventLines: OptimalEventDamageLine[]
   grandTotal: number
@@ -226,7 +232,7 @@ export interface AnomalySweepPoint {
   mastery: number
   label: string
   affixCounts: AffixCounts
-  result: DamageCalcResult
+  result?: DamageCalcResult
   anomalyExpected: number
   disorderExpected: number
   turbulenceExpected: number
@@ -313,27 +319,46 @@ export function validateDirectAlloc(
   isMb = false,
   mainStats?: AffixDriveDiscMainStats,
 ): string | null {
-  const flat = clampInt(state.flatStat, 0, 99)
+  const atkFlat = clampInt(state.flatStat, 0, 99)
+  const hpFlat = clampInt(state.hpFlat, 0, 99)
   const pen = clampInt(state.pen, 0, 99)
   const crit = clampInt(state.critRate, 0, DIRECT_CONSTRAINTS.maxTotalRolls)
   const total = clampInt(state.totalRolls, 0, DIRECT_CONSTRAINTS.maxTotalRolls)
+  const fixedAtkPercent = isMb ? clampInt(state.atkPercent, 0, 99) : 0
   if (total < crit) return '总词条数不能小于暴击条数'
+  if (isMb && total < crit + fixedAtkPercent) {
+    return '总词条数不能小于暴击与局外大攻击条数之和'
+  }
   if (total > DIRECT_CONSTRAINTS.maxTotalRolls) {
     return `总词条数不能超过 ${DIRECT_CONSTRAINTS.maxTotalRolls}`
   }
-  if (flat + pen + total > DIRECT_CONSTRAINTS.maxAtkPenTotal) {
-    return `${flatStatLabel(isMb)}+穿透+总词条数不能超过 ${DIRECT_CONSTRAINTS.maxAtkPenTotal}`
+  const flatPenTotal = isMb
+    ? atkFlat + hpFlat + pen + total
+    : atkFlat + pen + total
+  if (flatPenTotal > DIRECT_CONSTRAINTS.maxAtkPenTotal) {
+    return isMb
+      ? `攻击力+生命值+穿透+总词条数不能超过 ${DIRECT_CONSTRAINTS.maxAtkPenTotal}`
+      : `${flatStatLabel(isMb)}+穿透+总词条数不能超过 ${DIRECT_CONSTRAINTS.maxAtkPenTotal}`
   }
   if (mainStats) {
     const caps = getAffixRollCaps(mainStats)
     if (crit > caps.critRate) {
       return `暴击条数不能超过主词条约束上限 ${caps.critRate}`
     }
-    const remain = total - crit
-    const outCap = isMb ? caps.hpPercent : caps.atkPercent
-    const outName = outPercentLabel(isMb)
-    if (remain > outCap + caps.critDmg) {
-      return `${outName}+爆伤可分配余量 ${remain} 超出主词条约束上限（${outName}≤${outCap}，爆伤≤${caps.critDmg}）`
+    const remain = isMb ? total - crit - fixedAtkPercent : total - crit
+    if (isMb) {
+      if (fixedAtkPercent > caps.atkPercent) {
+        return `局外大攻击条数不能超过主词条约束上限 ${caps.atkPercent}`
+      }
+      if (remain > caps.hpPercent + caps.critDmg) {
+        return `局外大生命+爆伤可分配余量 ${remain} 超出主词条约束上限（局外大生命≤${caps.hpPercent}，爆伤≤${caps.critDmg}）`
+      }
+    } else {
+      const outCap = caps.atkPercent
+      const outName = outPercentLabel(isMb)
+      if (remain > outCap + caps.critDmg) {
+        return `${outName}+爆伤可分配余量 ${remain} 超出主词条约束上限（${outName}≤${outCap}，爆伤≤${caps.critDmg}）`
+      }
     }
   }
   return null
@@ -371,13 +396,18 @@ export function buildDirectAffixCounts(
   critDmg: number,
 ): AffixCounts {
   const counts = createEmptyAffixCounts()
-  const flatKey = flatStatKey(isMb)
-  const percentKey = outPercentKey(isMb)
-  counts[flatKey] = clampInt(state.flatStat, 0, 99)
   counts.pen = clampInt(state.pen, 0, 99)
   counts.critRate = clampInt(state.critRate, 0, 99)
-  counts[percentKey] = clampInt(outPercent, 0, 99)
   counts.critDmg = clampInt(critDmg, 0, 99)
+  if (isMb) {
+    counts.atkFlat = clampInt(state.flatStat, 0, 99)
+    counts.hpFlat = clampInt(state.hpFlat, 0, 99)
+    counts.hpPercent = clampInt(outPercent, 0, 99)
+    counts.atkPercent = clampInt(state.atkPercent, 0, 99)
+  } else {
+    counts.atkFlat = clampInt(state.flatStat, 0, 99)
+    counts.atkPercent = clampInt(outPercent, 0, 99)
+  }
   return counts
 }
 
@@ -784,7 +814,169 @@ function computeEventDamageLines(
   return { grandTotal, eventLines, firstResult, firstBreakdown }
 }
 
-export function evaluateAffixCounts(
+function computeEventDamageLinesForSweep(
+  ctx: OptimalEvalContext,
+  external: PanelStats,
+  extraMods?: BuffStatModifiers,
+): { grandTotal: number; eventLines: OptimalEventDamageLine[] } {
+  const events = ctx.damageEvents ?? []
+  if (!events.length) return { grandTotal: 0, eventLines: [] }
+
+  let grandTotal = 0
+  const eventLines: OptimalEventDamageLine[] = []
+  for (const event of events) {
+    const line = evaluateOptimalDamageEvent(ctx, external, event, extraMods)
+    if (!line) continue
+    eventLines.push(line)
+    grandTotal += line.total
+  }
+  return { grandTotal, eventLines }
+}
+
+const AFFIX_SWEEP_CACHE_MAX = 1200
+const affixSweepCache = new Map<
+  string,
+  { grandTotal: number; eventLines: OptimalEventDamageLine[] }
+>()
+
+export function evaluateAffixCountsForSweep(
+  ctx: OptimalEvalContext,
+  affixCounts: AffixCounts,
+): { grandTotal: number; eventLines: OptimalEventDamageLine[] } {
+  resetAffixEvalCacheIfNeeded(ctx)
+  const cacheKey = affixCountsCacheKey(affixCounts)
+  const cached = affixSweepCache.get(cacheKey)
+  if (cached) return cached
+
+  const external = computeExternalPanelFromAffixes({
+    agentBase: ctx.agentBase ?? createEmptyAgentBasePanel(),
+    wengineBaseAtk: ctx.wengineBaseAtk,
+    wengineAdvanced: ctx.wengineAdvanced ?? createEmptyWengineAdvancedStats(),
+    affixCounts,
+    driveDiscSelection: ctx.driveDiscSelection,
+    driveDiscMainStats: ctx.driveDiscMainStats,
+    driveDiscs: ctx.driveDiscs,
+  })
+
+  let payload: { grandTotal: number; eventLines: OptimalEventDamageLine[] }
+  if (ctx.damageEvents?.length) {
+    payload = computeEventDamageLinesForSweep(ctx, external)
+  } else {
+    const breakdown = computeFinalPanel(external, {
+      ...ctx.panelContext,
+      extraMods: ctx.panelContext.extraMods ?? createEmptyBuffStatModifiers(),
+    })
+    const piercePower = computePiercePower(
+      breakdown.finalPanel.hp,
+      breakdown.finalPanel.atk,
+      breakdown.totalMods.pierce,
+    )
+    const result = computeDamageResult({
+      finalPanel: breakdown.finalPanel,
+      piercePower,
+      baseDamageSource: ctx.isMb ? 'pierce' : ctx.baseDamageSource,
+      isMbMainAgent: ctx.isMb,
+      enemyInput: ctx.enemyInput,
+      combatVulnerable: breakdown.combatMods.vulnerable,
+      combatStaggerVulnerable: breakdown.combatMods.staggerVulnerable,
+      combatSpecial: breakdown.combatMods.special,
+      mainAgentElement: ctx.mainAgentElement,
+      mainAgentId: ctx.mainAgentId,
+      mainAgentName: ctx.mainAgentName,
+    })
+    payload = {
+      grandTotal:
+        ctx.panelContext.skillContext?.damageKind === 'anomaly'
+          ? result.anomalyExpected
+          : result.directDamageExpected,
+      eventLines: [],
+    }
+  }
+
+  if (affixSweepCache.size >= AFFIX_SWEEP_CACHE_MAX) {
+    const firstKey = affixSweepCache.keys().next().value
+    if (firstKey) affixSweepCache.delete(firstKey)
+  }
+  affixSweepCache.set(cacheKey, payload)
+  return payload
+}
+
+const AFFIX_EVAL_CACHE_MAX = 800
+let affixEvalCacheCtxSig = ''
+const affixEvalCache = new Map<
+  string,
+  {
+    finalPanel: PanelStats
+    result: DamageCalcResult
+    piercePower: number
+    external: PanelStats
+    breakdown: OptimalPanelBreakdown
+    grandTotal: number
+    eventLines: OptimalEventDamageLine[]
+  }
+>()
+
+function affixCountsCacheKey(affixCounts: AffixCounts): string {
+  return `${affixCounts.hpFlat},${affixCounts.hpPercent},${affixCounts.atkFlat},${affixCounts.atkPercent},${affixCounts.pen},${affixCounts.critRate},${affixCounts.critDmg},${affixCounts.mastery}`
+}
+
+function serializeBuffSelection(state: BuffSelectionState | null | undefined): string {
+  if (!state) return ''
+  return Object.entries(state.enabledIds)
+    .filter(([, enabled]) => enabled)
+    .map(([id]) => id)
+    .sort()
+    .join(',')
+}
+
+function serializeMultiSlotBuffSelection(
+  multi: MultiSlotBuffSelection | null | undefined,
+): string {
+  if (!multi) return ''
+  const slotPart = Object.keys(multi.bySlot)
+    .sort((a, b) => Number(a) - Number(b))
+    .map((key) => `${key}:${serializeBuffSelection(multi.bySlot[Number(key)])}`)
+    .join('|')
+  return `${serializeBuffSelection(multi.team)}#${slotPart}`
+}
+
+function affixEvalContextSignature(ctx: OptimalEvalContext): string {
+  const events =
+    ctx.damageEvents
+      ?.map((event) => `${event.id}:${event.kind}:${event.count}:${event.critMode}:${event.triggerAgentId ?? ''}`)
+      .join(';') ?? ''
+  return [
+    ctx.mainAgentId ?? '',
+    ctx.mainAgentElement ?? '',
+    ctx.isMb ? '1' : '0',
+    ctx.wengineBaseAtk ?? 0,
+    ctx.baseDamageSource ?? '',
+    JSON.stringify(ctx.driveDiscMainStats),
+    JSON.stringify(ctx.enemyInput),
+    JSON.stringify(ctx.panelContext.skillContext),
+    JSON.stringify(ctx.panelContext.extraMods),
+    events,
+    serializeMultiSlotBuffSelection(ctx.slotBuffSelections),
+    ctx.triggerAnomalyAgentId ?? '',
+  ].join('|')
+}
+
+function resetAffixEvalCacheIfNeeded(ctx: OptimalEvalContext) {
+  const sig = affixEvalContextSignature(ctx)
+  if (sig !== affixEvalCacheCtxSig) {
+    affixEvalCache.clear()
+    affixSweepCache.clear()
+    affixEvalCacheCtxSig = sig
+  }
+}
+
+export function clearAffixEvalCache() {
+  affixEvalCache.clear()
+  affixSweepCache.clear()
+  affixEvalCacheCtxSig = ''
+}
+
+function evaluateAffixCountsUncached(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
   extraMods?: BuffStatModifiers,
@@ -889,6 +1081,33 @@ export function evaluateAffixCounts(
   }
 }
 
+export function evaluateAffixCounts(
+  ctx: OptimalEvalContext,
+  affixCounts: AffixCounts,
+  extraMods?: BuffStatModifiers,
+): {
+  finalPanel: PanelStats
+  result: DamageCalcResult
+  piercePower: number
+  external: PanelStats
+  breakdown: OptimalPanelBreakdown
+  grandTotal: number
+  eventLines: OptimalEventDamageLine[]
+} {
+  resetAffixEvalCacheIfNeeded(ctx)
+  const cacheKey = `${affixCountsCacheKey(affixCounts)}|${extraMods ? JSON.stringify(extraMods) : ''}`
+  const cached = affixEvalCache.get(cacheKey)
+  if (cached) return cached
+
+  const result = evaluateAffixCountsUncached(ctx, affixCounts, extraMods)
+  if (affixEvalCache.size >= AFFIX_EVAL_CACHE_MAX) {
+    const firstKey = affixEvalCache.keys().next().value
+    if (firstKey) affixEvalCache.delete(firstKey)
+  }
+  affixEvalCache.set(cacheKey, result)
+  return result
+}
+
 /** 使局内暴击率刚好 > 100% 的最小暴击条数 */
 export function findMinCritRollsForOvercap(
   ctx: OptimalEvalContext,
@@ -916,23 +1135,54 @@ export function sweepDirectDamage(
 ): DirectSweepPoint[] {
   const crit = clampInt(state.critRate, 0, DIRECT_CONSTRAINTS.maxTotalRolls)
   const total = clampInt(state.totalRolls, crit, DIRECT_CONSTRAINTS.maxTotalRolls)
-  const remain = total - crit
-  const outLabel = outPercentLabel(ctx.isMb)
   const caps = getAffixRollCaps(ctx.driveDiscMainStats)
-  const outCap = ctx.isMb ? caps.hpPercent : caps.atkPercent
   const points: DirectSweepPoint[] = []
 
+  if (ctx.isMb) {
+    const fixedAtkPercent = clampInt(state.atkPercent, 0, 99)
+    const remain = total - crit - fixedAtkPercent
+    if (remain < 0 || fixedAtkPercent > caps.atkPercent || crit > caps.critRate) return points
+    for (let hpPercent = 0; hpPercent <= remain; hpPercent += 1) {
+      const critDmg = remain - hpPercent
+      if (hpPercent > caps.hpPercent || critDmg > caps.critDmg) continue
+      const affixCounts = buildDirectAffixCounts(
+        true,
+        { ...state, critRate: crit, totalRolls: total },
+        hpPercent,
+        critDmg,
+      )
+      const { grandTotal, eventLines } = evaluateAffixCountsForSweep(ctx, affixCounts)
+      points.push({
+        outPercent: hpPercent,
+        critDmg,
+        label: `局外大生命${hpPercent}/爆伤${critDmg}`,
+        affixCounts,
+        directExpected: grandTotal,
+        eventLines,
+        grandTotal,
+      })
+    }
+    return points
+  }
+
+  const remain = total - crit
+  const outLabel = outPercentLabel(false)
+  const outCap = caps.atkPercent
   for (let outPercent = 0; outPercent <= remain; outPercent += 1) {
     const critDmg = remain - outPercent
     if (outPercent > outCap || critDmg > caps.critDmg || crit > caps.critRate) continue
-    const affixCounts = buildDirectAffixCounts(ctx.isMb, { ...state, critRate: crit, totalRolls: total }, outPercent, critDmg)
-    const { result, grandTotal, eventLines } = evaluateAffixCounts(ctx, affixCounts)
+    const affixCounts = buildDirectAffixCounts(
+      false,
+      { ...state, critRate: crit, totalRolls: total },
+      outPercent,
+      critDmg,
+    )
+    const { grandTotal, eventLines } = evaluateAffixCountsForSweep(ctx, affixCounts)
     points.push({
       outPercent,
       critDmg,
       label: `${outLabel}${outPercent}/爆伤${critDmg}`,
       affixCounts,
-      result,
       directExpected: grandTotal,
       eventLines,
       grandTotal,
@@ -955,17 +1205,19 @@ export function sweepAnomalyDamage(
     const mastery = total - outPercent
     if (outPercent > outCap || mastery > caps.mastery) continue
     const affixCounts = buildAnomalyAffixCounts(ctx.isMb, { ...state, totalRolls: total }, outPercent, mastery)
-    const { result, grandTotal, eventLines } = evaluateAffixCounts(ctx, affixCounts)
+    const { grandTotal, eventLines } = evaluateAffixCountsForSweep(ctx, affixCounts)
+    const subMetrics = ctx.damageEvents?.length
+      ? null
+      : evaluateAffixCounts(ctx, affixCounts).result
     points.push({
       outPercent,
       mastery,
       label: `${outLabel}${outPercent}/精通${mastery}`,
       affixCounts,
-      result,
       anomalyExpected: grandTotal,
-      disorderExpected: result.disorderExpected,
-      turbulenceExpected: result.turbulenceExpected,
-      anomalyReleaseExpected: result.anomalyReleaseExpected,
+      disorderExpected: subMetrics?.disorderExpected ?? 0,
+      turbulenceExpected: subMetrics?.turbulenceExpected ?? 0,
+      anomalyReleaseExpected: subMetrics?.anomalyReleaseExpected ?? 0,
       eventLines,
       grandTotal,
     })
@@ -988,7 +1240,10 @@ function damageMetric(
 }
 
 export function directCandidateKeys(isMb: boolean): OptimalAffixKey[] {
-  return [flatStatKey(isMb), outPercentKey(isMb), 'pen', 'critRate', 'critDmg']
+  if (isMb) {
+    return ['atkFlat', 'hpFlat', 'hpPercent', 'atkPercent', 'pen', 'critRate', 'critDmg']
+  }
+  return ['atkFlat', 'atkPercent', 'pen', 'critRate', 'critDmg']
 }
 
 export function anomalyCandidateKeys(isMb: boolean): OptimalAffixKey[] {

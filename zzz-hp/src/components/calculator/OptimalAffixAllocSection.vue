@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import ExtraBuffGainEditor, {
   type ExtraBuffGain,
@@ -20,7 +20,11 @@ import type {
 } from '@/types/calculator'
 import {
   createDefaultAffixDriveDiscMainStats,
+  type AffixCounts,
   type AffixDriveDiscMainStats,
+  type DriveDiscSlot4StatId,
+  type DriveDiscSlot5StatId,
+  type DriveDiscSlot6StatId,
   type PanelStats,
 } from '@/types/calculatorPanel'
 import {
@@ -62,12 +66,15 @@ import {
   type DirectAllocState,
   type DirectSweepPoint,
   type OptimalDamageKind,
+  type OptimalEventAffixImpact,
+  type OptimalEventDamageLine,
 } from '@/utils/optimalAffixAlloc'
 import {
   ENEMY_DEFENSE_PRESETS,
   STAGGER_MULTIPLIER_PRESETS,
 } from '@/utils/enemyInputPresets'
 import EnemyPresetCombo from '@/components/calculator/EnemyPresetCombo.vue'
+import EquipPickerModal from '@/components/calculator/EquipPickerModal.vue'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import { resolveIsFollowUp } from '@/utils/buffEffect'
 import {
@@ -217,6 +224,8 @@ const enemyInput = reactive({
 
 const directAlloc = reactive<DirectAllocState>({
   flatStat: 0,
+  hpFlat: 0,
+  atkPercent: 0,
   pen: 0,
   critRate: 0,
   totalRolls: 0,
@@ -304,24 +313,76 @@ const evalCtx = computed(() =>
 const flatLabel = computed(() => flatStatLabel(isMb.value))
 const outLabel = computed(() => outPercentLabel(isMb.value))
 
-const directError = computed(() => validateDirectAlloc(directAlloc, isMb.value))
+const directError = computed(() =>
+  validateDirectAlloc(directAlloc, isMb.value, driveDiscMainStats),
+)
 const anomalyError = computed(() => validateAnomalyAlloc(anomalyAlloc, isMb.value))
 
-const directPoints = computed<DirectSweepPoint[]>(() => {
-  if (directError.value) return []
-  return sweepDirectDamage(evalCtx.value, { ...directAlloc })
-})
+const SWEEP_DEBOUNCE_MS = 250
+const EVENT_SWEEP_DEBOUNCE_MS = 550
+const DIFF_DEBOUNCE_MS = 450
 
-const anomalyPoints = computed<AnomalySweepPoint[]>(() => {
-  if (anomalyError.value) return []
-  return sweepAnomalyDamage(evalCtx.value, { ...anomalyAlloc })
-})
+const directPoints = ref<DirectSweepPoint[]>([])
+const anomalyPoints = ref<AnomalySweepPoint[]>([])
+const sweepComputing = ref(false)
 
 const hasEventMode = computed(() => (props.damageEvents?.length ?? 0) > 0)
+
+let sweepTimer: ReturnType<typeof setTimeout> | null = null
+let diffTimer: ReturnType<typeof setTimeout> | null = null
+
+function runSweepRecompute() {
+  if (damageKind.value === 'direct') {
+    directPoints.value = directError.value ? [] : sweepDirectDamage(evalCtx.value, { ...directAlloc })
+    anomalyPoints.value = []
+  } else {
+    anomalyPoints.value = anomalyError.value ? [] : sweepAnomalyDamage(evalCtx.value, { ...anomalyAlloc })
+    directPoints.value = []
+  }
+  sweepComputing.value = false
+}
+
+function scheduleSweepRecompute() {
+  sweepComputing.value = true
+  if (sweepTimer) clearTimeout(sweepTimer)
+  const delay = hasEventMode.value ? EVENT_SWEEP_DEBOUNCE_MS : SWEEP_DEBOUNCE_MS
+  sweepTimer = setTimeout(runSweepRecompute, delay)
+}
+
+watch(
+  [evalCtx, directAlloc, anomalyAlloc, damageKind, directError, anomalyError],
+  scheduleSweepRecompute,
+  { deep: true, immediate: true },
+)
+
+onBeforeUnmount(() => {
+  if (sweepTimer) clearTimeout(sweepTimer)
+  if (diffTimer) clearTimeout(diffTimer)
+})
+
+const showEventAffixImpact = ref(false)
+const showCombinedMainStatRankings = ref(false)
+const eventAffixImpactLoading = ref(false)
+const combinedMainStatRankingsLoading = ref(false)
 
 const sweepPoints = computed(() =>
   damageKind.value === 'direct' ? directPoints.value : anomalyPoints.value,
 )
+
+const selectedDirect = computed(() => {
+  if (selectedIndex.value == null) return null
+  return directPoints.value[selectedIndex.value] ?? null
+})
+
+const selectedAnomaly = computed(() => {
+  if (selectedIndex.value == null) return null
+  return anomalyPoints.value[selectedIndex.value] ?? null
+})
+
+const selectedCounts = computed(() => {
+  if (damageKind.value === 'direct') return selectedDirect.value?.affixCounts ?? null
+  return selectedAnomaly.value?.affixCounts ?? null
+})
 
 const chartEventReferencePoint = computed(() => {
   if (selectedIndex.value != null && sweepPoints.value[selectedIndex.value]) {
@@ -443,6 +504,7 @@ const eventTotalBarSeries = computed(() => {
 const selectedProcessEventId = ref<string | null>(null)
 
 const optimalEventDetails = computed((): OptimalEventEvalDetail[] => {
+  if (detailTab.value !== 'process') return []
   if (!hasEventMode.value || !selectedCounts.value) return []
   const { external } = evaluateAffixCounts(evalCtx.value, selectedCounts.value)
   return (props.damageEvents ?? [])
@@ -473,10 +535,29 @@ function toggleProcessEventSelection(eventId: string) {
     selectedProcessEventId.value === eventId ? null : eventId
 }
 
-const eventAffixImpact = computed(() => {
-  if (!hasEventMode.value || !selectedCounts.value) return []
-  return computeEventAffixImpact(evalCtx.value, selectedCounts.value, damageKind.value)
-})
+const eventAffixImpact = ref<OptimalEventAffixImpact[]>([])
+
+function recomputeEventAffixImpact() {
+  if (!hasEventMode.value || !analysisCounts.value) {
+    eventAffixImpact.value = []
+    return
+  }
+  eventAffixImpact.value = computeEventAffixImpact(
+    evalCtx.value,
+    analysisCounts.value,
+    damageKind.value,
+  )
+}
+
+function loadEventAffixImpact() {
+  if (eventAffixImpactLoading.value || sweepComputing.value) return
+  eventAffixImpactLoading.value = true
+  window.setTimeout(() => {
+    recomputeEventAffixImpact()
+    showEventAffixImpact.value = true
+    eventAffixImpactLoading.value = false
+  }, 0)
+}
 
 const barLabels = computed(() =>
   damageKind.value === 'direct'
@@ -556,21 +637,6 @@ watch(
   { immediate: true },
 )
 
-const selectedDirect = computed(() => {
-  if (selectedIndex.value == null) return null
-  return directPoints.value[selectedIndex.value] ?? null
-})
-
-const selectedAnomaly = computed(() => {
-  if (selectedIndex.value == null) return null
-  return anomalyPoints.value[selectedIndex.value] ?? null
-})
-
-const selectedCounts = computed(() => {
-  if (damageKind.value === 'direct') return selectedDirect.value?.affixCounts ?? null
-  return selectedAnomaly.value?.affixCounts ?? null
-})
-
 const selectedEval = computed(() => {
   if (!selectedCounts.value) return null
   return evaluateAffixCounts(evalCtx.value, selectedCounts.value)
@@ -586,6 +652,19 @@ const displayCounts = computed(() => {
 const displayEval = computed(() => {
   if (!displayCounts.value) return null
   return evaluateAffixCounts(evalCtx.value, displayCounts.value)
+})
+
+const analysisCounts = computed(() => selectedCounts.value ?? displayCounts.value)
+
+const analysisEval = computed(() => {
+  if (!analysisCounts.value) return null
+  if (selectedCounts.value && selectedEval.value) return selectedEval.value
+  return displayEval.value
+})
+
+watch([analysisCounts, evalCtx, damageKind, hasEventMode], () => {
+  showEventAffixImpact.value = false
+  eventAffixImpact.value = []
 })
 
 const displayExternalPierce = computed(() => {
@@ -626,16 +705,6 @@ function formatFinalPanelField(field: FinalPanelField) {
   return formatPanelValue('pierce', evalResult.piercePower)
 }
 
-const diffAnalysis = computed(() => {
-  if (!selectedCounts.value) return null
-  return computeDiffAnalysis(
-    evalCtx.value,
-    selectedCounts.value,
-    damageKind.value,
-    anomalyChartMetric.value,
-  )
-})
-
 function metricOf(result: DamageCalcResult, grandTotal?: number) {
   if (typeof grandTotal === 'number' && Number.isFinite(grandTotal)) return grandTotal
   if (damageKind.value === 'direct') return result.directDamageExpected
@@ -645,18 +714,179 @@ function metricOf(result: DamageCalcResult, grandTotal?: number) {
   return result.anomalyExpected
 }
 
+type AffixEvalSnapshot = {
+  result: DamageCalcResult
+  grandTotal: number
+  eventLines: OptimalEventDamageLine[]
+}
+
+/** 事件模式下按「统计事件」筛选求和；非事件模式走原 metric */
+function resolveAffixMetricDamage(evaled: AffixEvalSnapshot) {
+  if (!hasEventMode.value || !evaled.eventLines?.length) {
+    return metricOf(evaled.result, evaled.grandTotal)
+  }
+  const ids = new Set(selectedChartEventIds.value)
+  if (!ids.size) return 0
+  return evaled.eventLines
+    .filter((line) => ids.has(line.eventId))
+    .reduce((sum, line) => sum + line.total, 0)
+}
+
+const mainStatEventScopeHint = computed(() => {
+  if (!hasEventMode.value) return ''
+  if (!selectedChartEventIds.value.length) return '未选择统计事件'
+  if (selectedChartEventIds.value.length === chartEventOptions.value.length) {
+    return '按全部统计事件计算'
+  }
+  return `按已选 ${selectedChartEventIds.value.length} 个统计事件计算`
+})
+
+const rankingSlot4Ids = ref<DriveDiscSlot4StatId[]>(
+  DRIVE_DISC_SLOT_4_OPTIONS.map((item) => item.id),
+)
+const rankingSlot5Ids = ref<DriveDiscSlot5StatId[]>(
+  DRIVE_DISC_SLOT_5_OPTIONS.map((item) => item.id),
+)
+const rankingSlot6Ids = ref<DriveDiscSlot6StatId[]>(
+  DRIVE_DISC_SLOT_6_OPTIONS.map((item) => item.id),
+)
+const combinedRankingsExpanded = ref(false)
+
+const rankingSlot4Options = computed(() => {
+  const allowed = new Set(rankingSlot4Ids.value)
+  return DRIVE_DISC_SLOT_4_OPTIONS.filter((item) => allowed.has(item.id))
+})
+
+const rankingSlot5Options = computed(() => {
+  const allowed = new Set(rankingSlot5Ids.value)
+  return DRIVE_DISC_SLOT_5_OPTIONS.filter((item) => allowed.has(item.id))
+})
+
+const rankingSlot6Options = computed(() => {
+  const allowed = new Set(rankingSlot6Ids.value)
+  return DRIVE_DISC_SLOT_6_OPTIONS.filter((item) => allowed.has(item.id))
+})
+
+const rankingComboCount = computed(() => {
+  const n4 = rankingSlot4Options.value.length
+  const n5 = rankingSlot5Options.value.length
+  const n6 = rankingSlot6Options.value.length
+  if (!n4 || !n5 || !n6) return 0
+  let count = n4 * n5 * n6
+  const currentInRange =
+    rankingSlot4Options.value.some((item) => item.id === driveDiscMainStats.slot4MainStat) &&
+    rankingSlot5Options.value.some((item) => item.id === driveDiscMainStats.slot5MainStat) &&
+    rankingSlot6Options.value.some((item) => item.id === driveDiscMainStats.slot6MainStat)
+  if (currentInRange && rankingTwoPieceId.value === currentTwoPieceId.value) count -= 1
+  return count
+})
+
+const currentTwoPieceId = computed(() => mainSlot.value.twoPieceDriveDiscId)
+
+/** 限定组合排行时使用的 2 件套（单选，替换当前 2 件套数值参与计算） */
+const rankingTwoPieceId = ref('none')
+const combinedTwoPiecePickerOpen = ref(false)
+const rankingTwoPiecePickerOpen = ref(false)
+
+watch(
+  currentTwoPieceId,
+  (id) => {
+    rankingTwoPieceId.value = id
+  },
+  { immediate: true },
+)
+
+function resolveTwoPieceLabel(id: string) {
+  if (id === 'none') return '不佩戴'
+  return props.driveDiscs.find((item) => item.id === id)?.name ?? id
+}
+
+function resolveTwoPieceAvatar(id: string) {
+  if (id === 'none') return null
+  return props.driveDiscs.find((item) => item.id === id)?.avatar_image ?? null
+}
+
+function selectCombinedTwoPiece(id: string) {
+  combinedMainStatDraftTwoPieceId.value = id
+}
+
+function selectRankingTwoPiece(id: string) {
+  rankingTwoPieceId.value = id
+}
+
+function isRankingSlotOptionSelected(slot: 4 | 5 | 6, id: string) {
+  if (slot === 4) return rankingSlot4Ids.value.includes(id as DriveDiscSlot4StatId)
+  if (slot === 5) return rankingSlot5Ids.value.includes(id as DriveDiscSlot5StatId)
+  return rankingSlot6Ids.value.includes(id as DriveDiscSlot6StatId)
+}
+
+function toggleRankingSlotOption(slot: 4 | 5 | 6, id: string) {
+  if (slot === 4) {
+    const next = new Set(rankingSlot4Ids.value)
+    const statId = id as DriveDiscSlot4StatId
+    if (next.has(statId)) {
+      if (next.size <= 1) return
+      next.delete(statId)
+    } else {
+      next.add(statId)
+    }
+    rankingSlot4Ids.value = [...next]
+    return
+  }
+  if (slot === 5) {
+    const next = new Set(rankingSlot5Ids.value)
+    const statId = id as DriveDiscSlot5StatId
+    if (next.has(statId)) {
+      if (next.size <= 1) return
+      next.delete(statId)
+    } else {
+      next.add(statId)
+    }
+    rankingSlot5Ids.value = [...next]
+    return
+  }
+  const next = new Set(rankingSlot6Ids.value)
+  const statId = id as DriveDiscSlot6StatId
+  if (next.has(statId)) {
+    if (next.size <= 1) return
+    next.delete(statId)
+  } else {
+    next.add(statId)
+  }
+  rankingSlot6Ids.value = [...next]
+}
+
+function selectAllRankingSlotOptions(slot: 4 | 5 | 6) {
+  if (slot === 4) rankingSlot4Ids.value = DRIVE_DISC_SLOT_4_OPTIONS.map((item) => item.id)
+  else if (slot === 5) rankingSlot5Ids.value = DRIVE_DISC_SLOT_5_OPTIONS.map((item) => item.id)
+  else rankingSlot6Ids.value = DRIVE_DISC_SLOT_6_OPTIONS.map((item) => item.id)
+}
+
 const MAIN_STAT_SLOTS = [
   { key: 'slot4MainStat', title: '4号位', options: DRIVE_DISC_SLOT_4_OPTIONS },
   { key: 'slot5MainStat', title: '5号位', options: DRIVE_DISC_SLOT_5_OPTIONS },
   { key: 'slot6MainStat', title: '6号位', options: DRIVE_DISC_SLOT_6_OPTIONS },
 ] as const
 
-/** 主词条差异计算：逐槽位把当前主属性换成其他候选并对比伤害 */
-const mainStatDiff = computed(() => {
-  const counts = selectedCounts.value
-  const base = selectedEval.value
+const diffAnalysis = ref<ReturnType<typeof computeDiffAnalysis> | null>(null)
+const mainStatDiff = ref<ReturnType<typeof mainStatDiffBuilder> | null>(null)
+const benefitData = ref<ReturnType<typeof computeBenefitCurves> | null>(null)
+const combinedMainStatRankings = ref<
+  {
+    slot4: string
+    slot5: string
+    slot6: string
+    summaryLabel: string
+    damageDelta: number
+    percentDelta: number
+  }[]
+>([])
+
+function mainStatDiffBuilder() {
+  const counts = analysisCounts.value
+  const base = analysisEval.value
   if (!counts || !base) return null
-  const baseDmg = metricOf(base.result, base.grandTotal)
+  const baseDmg = resolveAffixMetricDamage(base)
 
   return MAIN_STAT_SLOTS.map(({ key, title, options }) => {
     const currentId = driveDiscMainStats[key]
@@ -672,7 +902,7 @@ const mainStatDiff = computed(() => {
           } as AffixDriveDiscMainStats,
         }
         const evaled = evaluateAffixCounts(ctx2, counts)
-        const dmg = metricOf(evaled.result, evaled.grandTotal)
+        const dmg = resolveAffixMetricDamage(evaled)
         const delta = dmg - baseDmg
         return {
           id: o.id,
@@ -683,22 +913,245 @@ const mainStatDiff = computed(() => {
       })
     return { key, title, currentLabel: current?.label ?? '—', rows }
   })
-})
+}
 
-const benefitData = computed(() => {
-  if (!selectedCounts.value) return null
-  return computeBenefitCurves(
+function buildCombinedMainStatRankings() {
+  if (!analysisCounts.value || !analysisEval.value) return []
+  const baseDamage = resolveAffixMetricDamage(analysisEval.value)
+  const currentStats = driveDiscMainStats
+  const rows: {
+    slot4: string
+    slot5: string
+    slot6: string
+    summaryLabel: string
+    damageDelta: number
+    percentDelta: number
+  }[] = []
+
+  for (const slot4 of rankingSlot4Options.value) {
+    for (const slot5 of rankingSlot5Options.value) {
+      for (const slot6 of rankingSlot6Options.value) {
+        if (
+          slot4.id === currentStats.slot4MainStat &&
+          slot5.id === currentStats.slot5MainStat &&
+          slot6.id === currentStats.slot6MainStat &&
+          rankingTwoPieceId.value === currentTwoPieceId.value
+        ) {
+          continue
+        }
+        const comboStats: AffixDriveDiscMainStats = {
+          slot4MainStat: slot4.id,
+          slot5MainStat: slot5.id,
+          slot6MainStat: slot6.id,
+        }
+        const damage = evaluateMainStatComboDamage(
+          comboStats,
+          analysisCounts.value,
+          rankingTwoPieceId.value,
+        )
+        const damageDelta = damage - baseDamage
+        rows.push({
+          slot4: slot4.id,
+          slot5: slot5.id,
+          slot6: slot6.id,
+          summaryLabel: `${slot4.label} / ${slot5.label} / ${slot6.label}`,
+          damageDelta,
+          percentDelta: baseDamage > 0 ? (damageDelta / baseDamage) * 100 : 0,
+        })
+      }
+    }
+  }
+
+  return rows.sort((a, b) => b.damageDelta - a.damageDelta)
+}
+
+function recomputeDiffAnalysis() {
+  if (detailTab.value !== 'diff' || !analysisCounts.value) {
+    diffAnalysis.value = null
+    mainStatDiff.value = null
+    return
+  }
+  diffAnalysis.value = computeDiffAnalysis(
     evalCtx.value,
-    selectedCounts.value,
+    analysisCounts.value,
+    damageKind.value,
+    anomalyChartMetric.value,
+  )
+  mainStatDiff.value = mainStatDiffBuilder()
+}
+
+function scheduleDiffRecompute() {
+  if (diffTimer) clearTimeout(diffTimer)
+  diffTimer = setTimeout(recomputeDiffAnalysis, DIFF_DEBOUNCE_MS)
+}
+
+function recomputeBenefitData() {
+  if (detailTab.value !== 'curve' || !analysisCounts.value) {
+    benefitData.value = null
+    return
+  }
+  benefitData.value = computeBenefitCurves(
+    evalCtx.value,
+    analysisCounts.value,
     damageKind.value,
     anomalyChartMetric.value,
     BENEFIT_CURVE_MAX_ADDED,
   )
+}
+
+function loadCombinedMainStatRankings() {
+  if (combinedMainStatRankingsLoading.value || rankingComboCount.value <= 0) return
+  combinedMainStatRankingsLoading.value = true
+  window.setTimeout(() => {
+    combinedMainStatRankings.value = buildCombinedMainStatRankings()
+    showCombinedMainStatRankings.value = true
+    combinedRankingsExpanded.value = true
+    combinedMainStatRankingsLoading.value = false
+  }, 0)
+}
+
+function collapseCombinedMainStatRankings() {
+  combinedRankingsExpanded.value = false
+}
+
+function expandCombinedMainStatRankings() {
+  if (combinedMainStatRankings.value.length) {
+    combinedRankingsExpanded.value = true
+  }
+}
+
+watch(
+  [analysisCounts, evalCtx, damageKind, anomalyChartMetric, detailTab],
+  () => {
+    scheduleDiffRecompute()
+    recomputeBenefitData()
+    if (detailTab.value !== 'diff') {
+      showCombinedMainStatRankings.value = false
+      combinedMainStatRankings.value = []
+    }
+  },
+  { deep: true, immediate: true },
+)
+
+watch(detailTab, (tab) => {
+  if (tab === 'diff') scheduleDiffRecompute()
+  if (tab === 'curve') recomputeBenefitData()
 })
 
-const remainDirect = computed(() =>
-  Math.max(0, Math.round(directAlloc.totalRolls) - Math.round(directAlloc.critRate)),
+const combinedMainStatDraft = reactive(createDefaultAffixDriveDiscMainStats())
+const combinedMainStatDraftTwoPieceId = ref('none')
+
+function resolveMainStatLabel(
+  options: readonly { id: string; label: string }[],
+  id: string,
+) {
+  return options.find((item) => item.id === id)?.label ?? id
+}
+
+function syncCombinedMainStatDraftFromCurrent() {
+  combinedMainStatDraft.slot4MainStat = driveDiscMainStats.slot4MainStat
+  combinedMainStatDraft.slot5MainStat = driveDiscMainStats.slot5MainStat
+  combinedMainStatDraft.slot6MainStat = driveDiscMainStats.slot6MainStat
+  combinedMainStatDraftTwoPieceId.value = currentTwoPieceId.value
+}
+
+watch(
+  () => [
+    driveDiscMainStats.slot4MainStat,
+    driveDiscMainStats.slot5MainStat,
+    driveDiscMainStats.slot6MainStat,
+    currentTwoPieceId.value,
+  ],
+  syncCombinedMainStatDraftFromCurrent,
+  { immediate: true },
 )
+
+function resetCombinedMainStatDraft() {
+  syncCombinedMainStatDraftFromCurrent()
+}
+
+function applyCombinedMainStatRanking(row: {
+  slot4: string
+  slot5: string
+  slot6: string
+}) {
+  combinedMainStatDraft.slot4MainStat = row.slot4 as typeof combinedMainStatDraft.slot4MainStat
+  combinedMainStatDraft.slot5MainStat = row.slot5 as typeof combinedMainStatDraft.slot5MainStat
+  combinedMainStatDraft.slot6MainStat = row.slot6 as typeof combinedMainStatDraft.slot6MainStat
+}
+
+function evaluateMainStatComboDamage(
+  mainStats: AffixDriveDiscMainStats,
+  counts: AffixCounts,
+  twoPieceId?: string,
+) {
+  const evaled = evaluateAffixCounts(
+    {
+      ...evalCtx.value,
+      driveDiscMainStats: {
+        ...evalCtx.value.driveDiscMainStats,
+        ...mainStats,
+      },
+      driveDiscSelection: {
+        ...evalCtx.value.driveDiscSelection,
+        twoPieceDriveDiscId: twoPieceId ?? evalCtx.value.driveDiscSelection.twoPieceDriveDiscId,
+      },
+    },
+    counts,
+  )
+  return resolveAffixMetricDamage(evaled)
+}
+
+const combinedMainStatPreview = computed(() => {
+  if (!analysisCounts.value || !analysisEval.value) return null
+  const baseDamage = resolveAffixMetricDamage(analysisEval.value)
+  const currentStats: AffixDriveDiscMainStats = {
+    slot4MainStat: driveDiscMainStats.slot4MainStat,
+    slot5MainStat: driveDiscMainStats.slot5MainStat,
+    slot6MainStat: driveDiscMainStats.slot6MainStat,
+  }
+  const draftStats: AffixDriveDiscMainStats = {
+    slot4MainStat: combinedMainStatDraft.slot4MainStat,
+    slot5MainStat: combinedMainStatDraft.slot5MainStat,
+    slot6MainStat: combinedMainStatDraft.slot6MainStat,
+  }
+  const unchanged =
+    draftStats.slot4MainStat === currentStats.slot4MainStat &&
+    draftStats.slot5MainStat === currentStats.slot5MainStat &&
+    draftStats.slot6MainStat === currentStats.slot6MainStat &&
+    combinedMainStatDraftTwoPieceId.value === currentTwoPieceId.value
+  const proposedDamage = unchanged
+    ? baseDamage
+    : evaluateMainStatComboDamage(
+        draftStats,
+        analysisCounts.value,
+        combinedMainStatDraftTwoPieceId.value,
+      )
+  const damageDelta = proposedDamage - baseDamage
+  return {
+    baseDamage,
+    proposedDamage,
+    damageDelta,
+    percentDelta: baseDamage > 0 ? (damageDelta / baseDamage) * 100 : 0,
+    unchanged,
+    currentLabels: {
+      slot4: resolveMainStatLabel(DRIVE_DISC_SLOT_4_OPTIONS, currentStats.slot4MainStat),
+      slot5: resolveMainStatLabel(DRIVE_DISC_SLOT_5_OPTIONS, currentStats.slot5MainStat),
+      slot6: resolveMainStatLabel(DRIVE_DISC_SLOT_6_OPTIONS, currentStats.slot6MainStat),
+      twoPiece: resolveTwoPieceLabel(currentTwoPieceId.value),
+    },
+  }
+})
+
+const remainDirect = computed(() => {
+  const crit = Math.round(directAlloc.critRate)
+  const total = Math.round(directAlloc.totalRolls)
+  if (isMb.value) {
+    const fixedAtk = Math.round(directAlloc.atkPercent)
+    return Math.max(0, total - crit - fixedAtk)
+  }
+  return Math.max(0, total - crit)
+})
 
 function formatNumber(v: number) {
   return Math.round(v).toLocaleString('en-US')
@@ -772,6 +1225,8 @@ function selectBar(index: number) {
 function applyDefaultCrit() {
   const crit = findMinCritRollsForOvercap(evalCtx.value, {
     flatStat: directAlloc.flatStat,
+    hpFlat: directAlloc.hpFlat,
+    atkPercent: directAlloc.atkPercent,
     pen: directAlloc.pen,
   })
   directAlloc.critRate = crit
@@ -801,7 +1256,17 @@ watch([directPoints, anomalyPoints, damageKind], syncSelectedBarAfterSweep)
 watch(
   () => directAlloc.critRate,
   (crit) => {
-    if (directAlloc.totalRolls < crit) directAlloc.totalRolls = crit
+    const minTotal = isMb.value ? crit + Math.round(directAlloc.atkPercent) : crit
+    if (directAlloc.totalRolls < minTotal) directAlloc.totalRolls = minTotal
+  },
+)
+
+watch(
+  () => directAlloc.atkPercent,
+  (atkPercent) => {
+    if (!isMb.value) return
+    const minTotal = Math.round(directAlloc.critRate) + Math.round(atkPercent)
+    if (directAlloc.totalRolls < minTotal) directAlloc.totalRolls = minTotal
   },
 )
 </script>
@@ -813,7 +1278,9 @@ watch(
       <p>
         在约束内设置固定词条与总词条数，扫掠局外大{{ isMb ? '生命' : '攻击' }}与{{
           damageKind === 'direct' ? '爆伤' : '精通'
-        }}的分配，并点击柱体查看差异与收益曲线。柱状图在固定{{ flatLabel }}、穿透等前提下扫掠，并非全词条穷举最优。
+        }}的分配，并点击柱体查看差异与收益曲线。柱状图在固定{{
+          isMb && damageKind === 'direct' ? '攻击、生命、局外大攻击' : flatLabel
+        }}、穿透等前提下扫掠，并非全词条穷举最优。
       </p>
     </header>
 
@@ -908,17 +1375,34 @@ watch(
         <template v-if="damageKind === 'direct'">
           <h3 class="block-title">直伤词条分配</h3>
           <p class="constraint-hint">
-            总词条数 = 暴击 + 爆伤 + {{ outLabel }}；约束：总 ≤ {{ DIRECT_CONSTRAINTS.maxTotalRolls }}，且
-            {{ flatLabel }} + 穿透 + 总 ≤ {{ DIRECT_CONSTRAINTS.maxAtkPenTotal }}
+            <template v-if="isMb">
+              总词条数 = 暴击 + 爆伤 + 局外大生命 + 局外大攻击；约束：总 ≤
+              {{ DIRECT_CONSTRAINTS.maxTotalRolls }}，且 攻击力 + 生命值 + 穿透 + 总 ≤
+              {{ DIRECT_CONSTRAINTS.maxAtkPenTotal }}
+            </template>
+            <template v-else>
+              总词条数 = 暴击 + 爆伤 + {{ outLabel }}；约束：总 ≤
+              {{ DIRECT_CONSTRAINTS.maxTotalRolls }}，且 {{ flatLabel }} + 穿透 + 总 ≤
+              {{ DIRECT_CONSTRAINTS.maxAtkPenTotal }}
+            </template>
           </p>
           <div class="grid two">
             <label class="field">
-              <span>{{ flatLabel }}</span>
+              <span>{{ isMb ? '攻击力' : flatLabel }}</span>
               <input v-model.number="directAlloc.flatStat" type="number" min="0" step="1" />
+            </label>
+            <label v-if="isMb" class="field">
+              <span>生命值</span>
+              <input v-model.number="directAlloc.hpFlat" type="number" min="0" step="1" />
             </label>
             <label class="field">
               <span>穿透值</span>
               <input v-model.number="directAlloc.pen" type="number" min="0" step="1" />
+            </label>
+            <label v-if="isMb" class="field">
+              <span>局外大攻击</span>
+              <input v-model.number="directAlloc.atkPercent" type="number" min="0" step="1" />
+              <small class="hint">固定填写，计入总词条数</small>
             </label>
             <label class="field">
               <span>暴击</span>
@@ -928,7 +1412,11 @@ watch(
             <label class="field">
               <span>总词条数</span>
               <input v-model.number="directAlloc.totalRolls" type="number" min="0" step="1" />
-              <small class="hint">可分配余量 {{ remainDirect }}（{{ outLabel }}+爆伤）</small>
+              <small class="hint">
+                可分配余量 {{ remainDirect }}（{{
+                  isMb ? '局外大生命+爆伤' : `${outLabel}+爆伤`
+                }}）
+              </small>
             </label>
           </div>
           <p v-if="directError" class="err">{{ directError }}</p>
@@ -1017,6 +1505,7 @@ watch(
     <h3 class="block-title">
       {{ hasEventMode ? '伤害事件期望柱状图' : '期望伤害柱状图' }}
     </h3>
+    <p v-if="sweepComputing && hasEventMode" class="hint sweep-status">柱状图重算中…</p>
     <p class="hint">
       <template v-if="hasEventMode">
         默认显示全部事件总伤害（单柱）。可在下方勾选参与统计的事件，查看其合计伤害随词条分配的变化。X 轴为「{{
@@ -1094,8 +1583,22 @@ watch(
       </div>
     </div>
 
-    <div v-if="hasEventMode && eventAffixImpact.length" class="event-affix-impact">
-      <h4 class="sub-title">事件词条敏感度</h4>
+    <div v-if="hasEventMode" class="event-affix-impact">
+      <div class="lazy-action-row">
+        <h4 class="sub-title">事件词条敏感度</h4>
+        <button
+          type="button"
+          class="chip"
+          :disabled="eventAffixImpactLoading || sweepComputing || !analysisCounts"
+          @click="loadEventAffixImpact"
+        >
+          {{ eventAffixImpactLoading ? '计算中…' : showEventAffixImpact ? '重新计算' : '计算敏感度' }}
+        </button>
+      </div>
+      <p v-if="!showEventAffixImpact" class="hint">
+        事件较多时自动计算较慢，需要时再点击「计算敏感度」。
+      </p>
+      <template v-else-if="eventAffixImpact.length">
       <p class="hint">
         对比当前分配下各候选副词条 +1 后，各事件伤害的最大变化。不受主C词条影响的事件（如非主C产生角色的紊乱/乱流）会单独标注。
       </p>
@@ -1127,15 +1630,18 @@ watch(
           </tbody>
         </table>
       </div>
+      </template>
+      <p v-else class="hint">当前分配下暂无敏感度结果。</p>
     </div>
 
-    <div v-if="selectedCounts && selectedEval" class="detail">
+    <div v-if="analysisCounts && analysisEval" class="detail">
       <header class="detail-header">
         <h3>
           选中分配：
           <template v-if="damageKind === 'direct' && selectedDirect">
             {{ outLabel }} {{ selectedDirect.outPercent }} · 爆伤 {{ selectedDirect.critDmg }} · 暴击
             {{ directAlloc.critRate }}
+            <template v-if="isMb"> · 局外大攻击 {{ directAlloc.atkPercent }}</template>
           </template>
           <template v-else-if="selectedAnomaly">
             {{ outLabel }} {{ selectedAnomaly.outPercent }} · 精通 {{ selectedAnomaly.mastery }}
@@ -1186,7 +1692,7 @@ watch(
           <div class="result-summary">
             <p>
               伤害事件总伤期望：
-              <strong>{{ formatNumber(selectedEval.grandTotal) }}</strong>
+              <strong>{{ formatNumber(analysisEval!.grandTotal) }}</strong>
             </p>
           </div>
           <section class="event-summary-block">
@@ -1215,7 +1721,7 @@ watch(
               </li>
             </ul>
             <p class="result-total event-summary-total">
-              伤害事件总伤期望：{{ formatNumber(selectedEval.grandTotal) }}
+              伤害事件总伤期望：{{ formatNumber(analysisEval!.grandTotal) }}
             </p>
           </section>
           <DamageResultDetail
@@ -1241,25 +1747,25 @@ watch(
         <div class="result-summary">
           <p v-if="hasEventMode">
             伤害事件总伤期望：
-            <strong>{{ formatNumber(selectedEval.grandTotal) }}</strong>
+            <strong>{{ formatNumber(analysisEval!.grandTotal) }}</strong>
           </p>
           <template v-else-if="damageKind === 'direct'">
-            <p>直伤期望伤害：<strong>{{ formatNumber(selectedEval.result.directDamageExpected) }}</strong></p>
+            <p>直伤期望伤害：<strong>{{ formatNumber(analysisEval!.result.directDamageExpected) }}</strong></p>
           </template>
           <template v-else>
-            <p v-if="anomalySubKind === 'anomaly'">异常期望伤害：<strong>{{ formatNumber(selectedEval.result.anomalyExpected) }}</strong></p>
-            <p v-else-if="anomalySubKind === 'disorder'">紊乱期望伤害：<strong>{{ formatNumber(selectedEval.result.disorderExpected) }}</strong></p>
-            <p v-else-if="anomalySubKind === 'turbulence'">乱流期望伤害：<strong>{{ formatNumber(selectedEval.result.turbulenceExpected) }}</strong></p>
-            <p v-else>异放期望伤害：<strong>{{ formatNumber(selectedEval.result.anomalyReleaseExpected) }}</strong></p>
+            <p v-if="anomalySubKind === 'anomaly'">异常期望伤害：<strong>{{ formatNumber(analysisEval!.result.anomalyExpected) }}</strong></p>
+            <p v-else-if="anomalySubKind === 'disorder'">紊乱期望伤害：<strong>{{ formatNumber(analysisEval!.result.disorderExpected) }}</strong></p>
+            <p v-else-if="anomalySubKind === 'turbulence'">乱流期望伤害：<strong>{{ formatNumber(analysisEval!.result.turbulenceExpected) }}</strong></p>
+            <p v-else>异放期望伤害：<strong>{{ formatNumber(analysisEval!.result.anomalyReleaseExpected) }}</strong></p>
           </template>
         </div>
         <DamageResultDetail
-          :calc-parts="selectedEval.result"
-          :final-panel="selectedEval.finalPanel"
-          :external-panel="selectedEval.external"
-          :sources="selectedEval.breakdown.sources"
-          :pierce-mod="selectedEval.breakdown.totalMods.pierce"
-          :pierce-power="selectedEval.piercePower"
+          :calc-parts="analysisEval!.result"
+          :final-panel="analysisEval!.finalPanel"
+          :external-panel="analysisEval!.external"
+          :sources="analysisEval!.breakdown.sources"
+          :pierce-mod="analysisEval!.breakdown.totalMods.pierce"
+          :pierce-power="analysisEval!.piercePower"
           :enemy-input="enemyInput"
           :is-mb="isMb"
           :show="damageKind"
@@ -1322,8 +1828,246 @@ watch(
           </table>
         </div>
 
+        <template v-if="combinedMainStatPreview">
+          <header class="main-stat-section-heading">
+            <h4 class="sub-title">主词条组合替换（4/5/6 与 2 件套）</h4>
+            <p class="hint">
+              在保持当前副词条分配不变的前提下，同时替换 4/5/6 号盘主属性与 2 件套并对比总伤害变化。
+            </p>
+          </header>
+
+          <div class="combined-main-stat-card">
+            <header class="combined-main-stat-card__header">
+              <h5>组合试算</h5>
+              <button type="button" class="reset-combination-btn" @click="resetCombinedMainStatDraft">
+                重置为当前
+              </button>
+            </header>
+
+            <div class="main-stat-stack main-stat-stack--current">
+              <p class="main-stat-stack-title">当前主属性</p>
+              <ul class="main-stat-stack-list">
+                <li>
+                  <span class="main-stat-slot-badge">4</span>
+                  <span class="main-stat-slot-value">{{ combinedMainStatPreview.currentLabels.slot4 }}</span>
+                </li>
+                <li>
+                  <span class="main-stat-slot-badge">5</span>
+                  <span class="main-stat-slot-value">{{ combinedMainStatPreview.currentLabels.slot5 }}</span>
+                </li>
+                <li>
+                  <span class="main-stat-slot-badge">6</span>
+                  <span class="main-stat-slot-value">{{ combinedMainStatPreview.currentLabels.slot6 }}</span>
+                </li>
+                <li>
+                  <span class="main-stat-slot-badge">2</span>
+                  <span class="main-stat-slot-value">{{ combinedMainStatPreview.currentLabels.twoPiece }}</span>
+                </li>
+              </ul>
+            </div>
+
+            <i class="combined-main-stat-arrow" aria-hidden="true">→</i>
+
+            <div class="main-stat-selects">
+              <label>
+                <span class="combined-main-stat-label">4号替换为</span>
+                <select v-model="combinedMainStatDraft.slot4MainStat">
+                  <option v-for="opt in DRIVE_DISC_SLOT_4_OPTIONS" :key="opt.id" :value="opt.id">
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </label>
+              <label>
+                <span class="combined-main-stat-label">5号替换为</span>
+                <select v-model="combinedMainStatDraft.slot5MainStat">
+                  <option v-for="opt in DRIVE_DISC_SLOT_5_OPTIONS" :key="opt.id" :value="opt.id">
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </label>
+              <label>
+                <span class="combined-main-stat-label">6号替换为</span>
+                <select v-model="combinedMainStatDraft.slot6MainStat">
+                  <option v-for="opt in DRIVE_DISC_SLOT_6_OPTIONS" :key="opt.id" :value="opt.id">
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </label>
+              <label class="main-stat-two-piece-field">
+                <span class="combined-main-stat-label">2件套替换为</span>
+                <EquipPickerModal
+                  v-model:open="combinedTwoPiecePickerOpen"
+                  title="选择 2 件套"
+                  description="可不佩戴；与 4 件套同套时不重复计入"
+                  search-placeholder="搜索驱动盘…"
+                  :items="(driveDiscs as unknown as Array<Record<string, unknown>>)"
+                  allow-none
+                  none-label="不佩戴"
+                  :selected-id="combinedMainStatDraftTwoPieceId"
+                  :selected-label="resolveTwoPieceLabel(combinedMainStatDraftTwoPieceId)"
+                  :selected-avatar="resolveTwoPieceAvatar(combinedMainStatDraftTwoPieceId)"
+                  @select="selectCombinedTwoPiece"
+                />
+              </label>
+            </div>
+
+            <div class="combined-result">
+              <span>总伤害变化</span>
+              <p v-if="mainStatEventScopeHint" class="hint combined-result-scope">{{ mainStatEventScopeHint }}</p>
+              <strong :class="combinedMainStatPreview.damageDelta >= 0 ? 'pos' : 'neg'">
+                <template v-if="combinedMainStatPreview.unchanged">与当前相同</template>
+                <template v-else>
+                  {{ formatDelta(combinedMainStatPreview.damageDelta) }}
+                  （{{ formatPercent(combinedMainStatPreview.percentDelta) }}）
+                </template>
+              </strong>
+              <p class="hint combined-result-detail">
+                当前 {{ formatNumber(combinedMainStatPreview.baseDamage) }}
+                → 试算 {{ formatNumber(combinedMainStatPreview.proposedDamage) }}
+              </p>
+            </div>
+          </div>
+
+          <section class="ranking-slot-filter">
+            <header class="ranking-slot-filter-header">
+              <h5>限定组合计算范围</h5>
+              <span class="hint">将计算 {{ rankingComboCount }} 种组合（不含当前配置）</span>
+            </header>
+            <div class="ranking-slot-filter-group">
+              <div class="ranking-slot-filter-row ranking-slot-filter-row--select">
+                <span class="ranking-slot-filter-label">2件套</span>
+                <div class="ranking-two-piece-picker">
+                  <EquipPickerModal
+                    v-model:open="rankingTwoPiecePickerOpen"
+                    title="选择 2 件套"
+                    description="单选，替换当前 2 件套数值参与排行计算"
+                    search-placeholder="搜索驱动盘…"
+                    :items="(driveDiscs as unknown as Array<Record<string, unknown>>)"
+                    allow-none
+                    none-label="不佩戴"
+                    :selected-id="rankingTwoPieceId"
+                    :selected-label="resolveTwoPieceLabel(rankingTwoPieceId)"
+                    :selected-avatar="resolveTwoPieceAvatar(rankingTwoPieceId)"
+                    @select="selectRankingTwoPiece"
+                  />
+                </div>
+                <span class="hint">单选，替换当前 2 件套数值参与排行计算</span>
+              </div>
+              <div class="ranking-slot-filter-row">
+                <span class="ranking-slot-filter-label">4号</span>
+                <button type="button" class="chip chip--compact" @click="selectAllRankingSlotOptions(4)">全选</button>
+                <button
+                  v-for="opt in DRIVE_DISC_SLOT_4_OPTIONS"
+                  :key="`rank-4-${opt.id}`"
+                  type="button"
+                  class="chip chip--compact"
+                  :class="{ active: isRankingSlotOptionSelected(4, opt.id) }"
+                  @click="toggleRankingSlotOption(4, opt.id)"
+                >
+                  {{ opt.label }}
+                </button>
+              </div>
+              <div class="ranking-slot-filter-row">
+                <span class="ranking-slot-filter-label">5号</span>
+                <button type="button" class="chip chip--compact" @click="selectAllRankingSlotOptions(5)">全选</button>
+                <button
+                  v-for="opt in DRIVE_DISC_SLOT_5_OPTIONS"
+                  :key="`rank-5-${opt.id}`"
+                  type="button"
+                  class="chip chip--compact"
+                  :class="{ active: isRankingSlotOptionSelected(5, opt.id) }"
+                  @click="toggleRankingSlotOption(5, opt.id)"
+                >
+                  {{ opt.label }}
+                </button>
+              </div>
+              <div class="ranking-slot-filter-row">
+                <span class="ranking-slot-filter-label">6号</span>
+                <button type="button" class="chip chip--compact" @click="selectAllRankingSlotOptions(6)">全选</button>
+                <button
+                  v-for="opt in DRIVE_DISC_SLOT_6_OPTIONS"
+                  :key="`rank-6-${opt.id}`"
+                  type="button"
+                  class="chip chip--compact"
+                  :class="{ active: isRankingSlotOptionSelected(6, opt.id) }"
+                  @click="toggleRankingSlotOption(6, opt.id)"
+                >
+                  {{ opt.label }}
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <div class="lazy-action-row combined-rankings-action">
+            <button
+              type="button"
+              class="chip"
+              :disabled="combinedMainStatRankingsLoading || !analysisCounts || rankingComboCount <= 0"
+              @click="loadCombinedMainStatRankings"
+            >
+              {{
+                combinedMainStatRankingsLoading
+                  ? '排行计算中…'
+                  : showCombinedMainStatRankings
+                    ? '重新计算组合排行'
+                    : '计算组合排行'
+              }}
+            </button>
+            <button
+              v-if="showCombinedMainStatRankings && combinedRankingsExpanded && combinedMainStatRankings.length"
+              type="button"
+              class="chip"
+              @click="collapseCombinedMainStatRankings"
+            >
+              收起排行
+            </button>
+            <button
+              v-else-if="showCombinedMainStatRankings && combinedMainStatRankings.length"
+              type="button"
+              class="chip"
+              @click="expandCombinedMainStatRankings"
+            >
+              展开排行（{{ combinedMainStatRankings.length }} 条）
+            </button>
+            <span v-if="!showCombinedMainStatRankings" class="hint">
+              可先限定 4/5/6 候选与 2 件套再计算，减少运算量。
+            </span>
+          </div>
+
+          <div
+            v-if="showCombinedMainStatRankings && combinedRankingsExpanded && combinedMainStatRankings.length"
+            class="table-wrap combined-main-stat-table"
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th>4 / 5 / 6 主属性组合</th>
+                  <th>伤害差值</th>
+                  <th>百分比差值</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="row in combinedMainStatRankings"
+                  :key="`${row.slot4}-${row.slot5}-${row.slot6}`"
+                >
+                  <td>{{ row.summaryLabel }}</td>
+                  <td :class="row.damageDelta >= 0 ? 'pos' : 'neg'">{{ formatDelta(row.damageDelta) }}</td>
+                  <td :class="row.percentDelta >= 0 ? 'pos' : 'neg'">{{ formatPercent(row.percentDelta) }}</td>
+                  <td>
+                    <button type="button" class="chip chip--compact" @click="applyCombinedMainStatRanking(row)">
+                      填入试算
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
+
         <template v-if="mainStatDiff">
-          <h4 class="sub-title">主词条差异计算（4/5/6 号盘主属性替换）</h4>
+          <h4 class="sub-title">主词条差异计算（单槽位替换）</h4>
           <div class="main-stat-diff">
             <div v-for="slotDiff in mainStatDiff" :key="slotDiff.key" class="main-stat-card">
               <p class="main-stat-title">{{ slotDiff.title }}</p>
@@ -1913,6 +2657,301 @@ th {
   color: #f07178;
 }
 
+.main-stat-section-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 1rem;
+}
+
+.main-stat-section-heading .hint {
+  margin: 0;
+}
+
+.combined-main-stat-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.15fr) minmax(9rem, 0.85fr);
+  gap: 0.75rem 0.85rem;
+  align-items: center;
+  margin-top: 0.55rem;
+  padding: 0.85rem 0.9rem;
+  border: 1px solid #3a4a2a;
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, rgba(136, 171, 78, 0.08), transparent 42%),
+    #10141a;
+}
+
+.combined-main-stat-card__header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid #2d323a;
+}
+
+.combined-main-stat-card__header h5 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #f0f2f6;
+}
+
+.reset-combination-btn {
+  border: 1px solid #3d4633;
+  border-radius: 8px;
+  background: rgba(136, 171, 78, 0.12);
+  color: #d6e8b5;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.main-stat-stack,
+.combined-result {
+  border: 1px solid #2d323a;
+  border-radius: 10px;
+  padding: 0.65rem 0.7rem;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.main-stat-stack--current {
+  border-color: #3d4a32;
+  border-left-width: 3px;
+  border-left-color: #88ab4e;
+  padding: 0.7rem 0.75rem 0.75rem;
+  background:
+    linear-gradient(105deg, rgba(136, 171, 78, 0.14) 0%, rgba(136, 171, 78, 0.03) 42%, rgba(0, 0, 0, 0.12) 100%);
+}
+
+.main-stat-stack-title {
+  margin: 0 0 0.45rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #b8d88a;
+  text-transform: none;
+}
+
+.main-stat-stack-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.38rem;
+}
+
+.main-stat-stack-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.main-stat-slot-badge {
+  flex-shrink: 0;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 6px;
+  border: 1px solid rgba(136, 171, 78, 0.35);
+  background: rgba(136, 171, 78, 0.16);
+  color: #c8e0a0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.main-stat-slot-value {
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: #eef2e8;
+  font-weight: 500;
+}
+
+.main-stat-subheading {
+  margin: 0 0 0.25rem;
+  font-size: 0.76rem;
+  color: #9aa3b0;
+}
+
+.main-stat-stack p {
+  margin: 0.18rem 0;
+  font-size: 0.82rem;
+  color: #e8edf5;
+}
+
+.combined-main-stat-arrow {
+  font-style: normal;
+  color: #88ab4e;
+  font-size: 1.25rem;
+  text-align: center;
+}
+
+.main-stat-selects {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.main-stat-selects label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+.main-stat-two-piece-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+.main-stat-two-piece-field :deep(.picker-summary) {
+  font-size: 0.8rem;
+}
+
+.main-stat-two-piece-field :deep(.picker-open-hint) {
+  font-size: 0.68rem;
+}
+
+.combined-main-stat-label {
+  font-size: 0.76rem;
+  color: #9aa3b0;
+}
+
+.main-stat-selects select {
+  border: 1px solid #2d323a;
+  border-radius: 8px;
+  background: #0f1217;
+  color: #e8edf5;
+  padding: 0.38rem 0.5rem;
+  font-size: 0.8rem;
+}
+
+.combined-result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.combined-result > span {
+  font-size: 0.76rem;
+  color: #9aa3b0;
+}
+
+.combined-result strong {
+  font-size: 0.95rem;
+}
+
+.combined-result-detail {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.combined-result-scope {
+  margin: 0.1rem 0 0.25rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.ranking-slot-filter {
+  margin-top: 0.75rem;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid #2d323a;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.ranking-slot-filter-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  margin-bottom: 0.55rem;
+}
+
+.ranking-slot-filter-header h5 {
+  margin: 0;
+  font-size: 0.84rem;
+  color: #e8edf5;
+}
+
+.ranking-slot-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.ranking-slot-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.ranking-slot-filter-row--select {
+  padding-bottom: 0.35rem;
+  margin-bottom: 0.15rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.ranking-two-piece-picker {
+  flex: 1 1 12rem;
+  min-width: 10rem;
+  max-width: 100%;
+}
+
+.ranking-two-piece-picker :deep(.picker-summary) {
+  font-size: 0.78rem;
+}
+
+.ranking-two-piece-picker :deep(.picker-open-hint) {
+  font-size: 0.66rem;
+}
+
+.ranking-slot-filter-label {
+  flex-shrink: 0;
+  width: 2rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #b8d88a;
+}
+
+.combined-main-stat-table {
+  margin-top: 0.75rem;
+}
+
+.chip--compact {
+  padding: 0.28rem 0.55rem;
+  font-size: 0.76rem;
+}
+
+.lazy-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.75rem;
+  margin-bottom: 0.45rem;
+}
+
+.lazy-action-row .sub-title {
+  margin: 0;
+}
+
+.combined-rankings-action {
+  margin-top: 0.65rem;
+}
+
+.sweep-status {
+  margin: 0 0 0.35rem;
+}
+
 .main-stat-diff {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1948,6 +2987,14 @@ th {
 }
 
 @media (max-width: 980px) {
+  .combined-main-stat-card {
+    grid-template-columns: 1fr;
+  }
+
+  .combined-main-stat-arrow {
+    transform: rotate(90deg);
+  }
+
   .main-stat-diff {
     grid-template-columns: 1fr;
   }

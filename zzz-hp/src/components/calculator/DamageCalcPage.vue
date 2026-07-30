@@ -829,6 +829,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
         <button type="button" class="buff-open-btn" @click="buffPickerOpen = true">
           选择局内 Buff（已选 {{ buffEnabledCount }} ）
         </button>
+        <p class="buff-set-hint">2件套数值均已自动配置，无需选择2件套。</p>
       </div>
     </section>
 
@@ -888,6 +889,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
     <PanelCalcSection
       v-show="panelCalcMode !== 'optimal'"
       ref="panelCalcSectionRef"
+      :calc-suspended="panelCalcMode === 'optimal'"
       :section-id="panelCalcMode !== 'optimal' ? 'damage-panel' : undefined"
       :team-slots="teamSlots"
       :agents="agents"
@@ -911,28 +913,30 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       @update:convert-slot-panels="Object.assign(convertSlotPanels, $event)"
     />
 
-    <OptimalAffixAllocSection
-      v-show="panelCalcMode === 'optimal'"
-      :id="panelCalcMode === 'optimal' ? 'damage-panel' : undefined"
-      class="damage-anchor"
-      :team-slots="teamSlots"
-      :agents="agents"
-      :wengines="wengines"
-      :bangboos="bangboos"
-      :drive-discs="driveDiscs"
-      :selected-bangboo-id="selectedBangbooId"
-      :bangboo-refine="bangbooRefine"
-      :damage-kind="damageKind"
-      :anomaly-sub-kind="anomalySubKind"
-      :trigger-anomaly-agent-id="triggerAnomalyAgentId"
-      :anomaly-slot-panels="anomalySlotPanels"
-      :skill-category-id="skillCategoryId"
-      :skill-subcategory-id="skillSubcategoryId"
-      :buff-selection="mainSlotBuffSelection"
-      :slot-buff-selections="multiSlotBuffSelection"
-      :stagger-phase="staggerPhase"
-      :damage-events="damageEvents"
-    />
+    <KeepAlive>
+      <OptimalAffixAllocSection
+        v-if="panelCalcMode === 'optimal'"
+        :id="panelCalcMode === 'optimal' ? 'damage-panel' : undefined"
+        class="damage-anchor"
+        :team-slots="teamSlots"
+        :agents="agents"
+        :wengines="wengines"
+        :bangboos="bangboos"
+        :drive-discs="driveDiscs"
+        :selected-bangboo-id="selectedBangbooId"
+        :bangboo-refine="bangbooRefine"
+        :damage-kind="damageKind"
+        :anomaly-sub-kind="anomalySubKind"
+        :trigger-anomaly-agent-id="triggerAnomalyAgentId"
+        :anomaly-slot-panels="anomalySlotPanels"
+        :skill-category-id="skillCategoryId"
+        :skill-subcategory-id="skillSubcategoryId"
+        :buff-selection="mainSlotBuffSelection"
+        :slot-buff-selections="multiSlotBuffSelection"
+        :stagger-phase="staggerPhase"
+        :damage-events="damageEvents"
+      />
+    </KeepAlive>
   </div>
 </template>
 
@@ -1045,6 +1049,16 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
   padding: 0.45rem 0.85rem;
   font-size: 0.84rem;
   cursor: pointer;
+}
+
+.buff-set-hint {
+  align-self: end;
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #9aa3b0;
+  flex: 1 1 12rem;
+  min-width: 0;
 }
 
 @media (max-width: 768px) {

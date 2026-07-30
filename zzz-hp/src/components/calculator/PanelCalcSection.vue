@@ -179,6 +179,8 @@ const props = defineProps<{
   slotBuffSelections?: MultiSlotBuffSelection | null
   staggerPhase?: import('@/types/calculator').StaggerPhase
   damageEvents?: DamageEvent[]
+  /** 为 true 时跳过伤害事件汇总等非必要重算（如最优词条模式） */
+  calcSuspended?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -1136,7 +1138,7 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
 }
 
 const damageEventSummary = computed(() => {
-  if (!props.damageEvents?.length) return null
+  if (props.calcSuspended || !props.damageEvents?.length) return null
   return summarizeDamageEvents(props.damageEvents, buildEventCalcFull, resolveSubcategoryById)
 })
 
