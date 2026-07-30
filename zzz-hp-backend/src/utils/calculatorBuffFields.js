@@ -49,6 +49,10 @@ export const BUFF_STAT_KEYS = [
   'turbulenceCompMult',
   'disorderDmgBonus',
   'turbulenceDmgBonus',
+  'radianceMult',
+  'radianceDmgBonus',
+  'radianceResPen',
+  'mutationCoeff',
   'skillDmgBonus',
   'skillMultiplierBonus',
   'directDmgMultFactor',
@@ -56,6 +60,8 @@ export const BUFF_STAT_KEYS = [
   'anomalyReleaseMultFactor',
   'disorderBaseMultFactor',
   'turbulenceBaseMultFactor',
+  'radianceMultFactor',
+  'mutationCoeffFactor',
 ]
 
 export const AGENT_BASE_PANEL_KEYS = [
@@ -82,6 +88,10 @@ export const AGENT_BASE_PANEL_KEYS = [
   'turbulenceCompMult',
   'disorderDmgBonus',
   'turbulenceDmgBonus',
+  'radianceMult',
+  'radianceDmgBonus',
+  'radianceResPen',
+  'mutationCoeff',
 ]
 
 export const WENGINE_ADVANCED_STAT_KEYS = [
@@ -105,7 +115,7 @@ export function createEmptyBuffStatModifiers() {
   return Object.fromEntries(
     BUFF_STAT_KEYS.map((key) => [
       key,
-      ['directDmgMultFactor', 'anomalyMultFactor', 'anomalyReleaseMultFactor', 'disorderBaseMultFactor', 'turbulenceBaseMultFactor'].includes(key)
+      ['directDmgMultFactor', 'anomalyMultFactor', 'anomalyReleaseMultFactor', 'disorderBaseMultFactor', 'turbulenceBaseMultFactor', 'radianceMultFactor', 'mutationCoeffFactor'].includes(key)
         ? 1
         : 0,
     ]),

@@ -385,6 +385,7 @@ export const defaultAgentBuffDocs: AgentBuffDoc[] = [
     profession: '',
     element: '流明',
     avatar_image: '/character/remiel.webp',
+    note: '占位角色：数值与影画增益待补全。',
     basePanel: {
       ...createEmptyAgentBasePanel(),
       directDmgMult: 100,

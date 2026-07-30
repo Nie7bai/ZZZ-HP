@@ -18,6 +18,7 @@ import {
   saveSkillSubcategory,
   saveWengineBuff,
 } from '@/api/calculatorBuffs'
+import { defaultAgentBuffDocs } from '@/data/calculatorBuffDefaults'
 import type {
   AgentBuffDoc,
   AgentMindscapeRankBuffs,
@@ -92,6 +93,17 @@ function normalizeMindscapeBuffs(item: Record<string, unknown>) {
     teamMods: item.teamBuffs,
   })
   return mindscapeBuffs
+}
+
+function mergeMissingDefaultAgents(docs: AgentBuffDoc[]): AgentBuffDoc[] {
+  const merged = [...docs]
+  const ids = new Set(merged.map((item) => item.id))
+  for (const placeholder of defaultAgentBuffDocs) {
+    if (ids.has(placeholder.id)) continue
+    merged.push(normalizeAgent(placeholder as unknown as Record<string, unknown>))
+    ids.add(placeholder.id)
+  }
+  return merged.sort((a, b) => a.id.localeCompare(b.id))
 }
 
 function normalizeAgent(item: Record<string, unknown>): AgentBuffDoc {
@@ -422,8 +434,10 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
     loadPromise = (async () => {
       try {
         const data = await fetchCalculatorBuffs()
-        agents.value = (data.agents ?? []).map((item) =>
-          normalizeAgent(item as unknown as Record<string, unknown>),
+        agents.value = mergeMissingDefaultAgents(
+          (data.agents ?? []).map((item) =>
+            normalizeAgent(item as unknown as Record<string, unknown>),
+          ),
         )
         wengines.value = (data.wengines ?? []).map((item) =>
           normalizeWengine(item as unknown as Record<string, unknown>),
