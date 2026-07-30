@@ -55,6 +55,18 @@ Write-Host "Stage:   $Stage"
 Write-Host "Output:  $ZipPath"
 
 if ($IncludeDist) {
+  Write-Host 'Exporting calculator data (buffs + skill subcategories + damage event modes)...'
+  Push-Location $Back
+  try {
+    npm run export:calculator-buffs
+    if ($LASTEXITCODE -ne 0) {
+      throw "npm run export:calculator-buffs failed (exit $LASTEXITCODE)"
+    }
+  }
+  finally {
+    Pop-Location
+  }
+
   Write-Host 'Building frontend dist...'
   Push-Location $Front
   try {

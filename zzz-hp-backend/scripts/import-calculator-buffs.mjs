@@ -16,6 +16,11 @@ import {
   normalizeTwoPieceMods,
   normalizeWengineAdvancedStats,
 } from '../src/utils/calculatorBuffFields.js'
+import {
+  upsertFollowUpSkillRule,
+  upsertSkillSubcategory,
+} from '../src/services/skillSubcategoryService.js'
+import { upsertDamageEventMode } from '../src/services/damageEventModeService.js'
 
 dotenv.config()
 
@@ -129,6 +134,9 @@ async function main() {
   const bangboos = (data.bangboos ?? []).map(normalizeBangboo).filter((x) => x.id)
   const driveDiscs = (data.driveDiscs ?? []).map(normalizeDriveDisc).filter((x) => x.id)
   const wengines = (data.wengines ?? []).map(normalizeWengine).filter((x) => x.id)
+  const skillSubcategories = Array.isArray(data.skillSubcategories) ? data.skillSubcategories : []
+  const followUpSkillRules = Array.isArray(data.followUpSkillRules) ? data.followUpSkillRules : []
+  const damageEventModes = Array.isArray(data.damageEventModes) ? data.damageEventModes : []
 
   const conn = await mysql.createConnection({
     host: process.env.DB_HOST || 'localhost',
@@ -258,6 +266,22 @@ async function main() {
 
     await conn.commit()
 
+    let skillSubCount = 0
+    for (const doc of skillSubcategories) {
+      await upsertSkillSubcategory(doc)
+      skillSubCount += 1
+    }
+    let followUpCount = 0
+    for (const doc of followUpSkillRules) {
+      await upsertFollowUpSkillRule(doc)
+      followUpCount += 1
+    }
+    let modeCount = 0
+    for (const doc of damageEventModes) {
+      await upsertDamageEventMode(doc)
+      modeCount += 1
+    }
+
     const [[c1]] = await conn.query('SELECT COUNT(*) AS c FROM `character`')
     const [[c2]] = await conn.query('SELECT COUNT(*) AS c FROM `bangboo`')
     const [[c3]] = await conn.query('SELECT COUNT(*) AS c FROM `drive_disc`')
@@ -281,6 +305,9 @@ async function main() {
             bangboo: bangbooCount,
             drive_disc: discCount,
             'W-Engine': wengineCount,
+            skillSubcategories: skillSubCount,
+            followUpSkillRules: followUpCount,
+            damageEventModes: modeCount,
           },
           tableCounts: {
             character: c1.c,

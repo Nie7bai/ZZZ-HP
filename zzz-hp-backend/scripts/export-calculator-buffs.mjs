@@ -1,5 +1,5 @@
 /**
- * 从本地 MySQL 导出计算器四表数据到仓库 JSON 快照。
+ * 从本地 MySQL 导出计算器数据到仓库 JSON 快照（含招式小类、追击规则、伤害事件模式）。
  *
  * Usage:
  *   node scripts/export-calculator-buffs.mjs
@@ -12,6 +12,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import pool from '../src/config/db.js'
 import { listCalculatorBuffs } from '../src/services/calculatorBuffService.js'
+import { listDamageEventModes } from '../src/services/damageEventModeService.js'
 
 dotenv.config()
 
@@ -29,6 +30,7 @@ const outPath =
 
 try {
   const data = await listCalculatorBuffs()
+  const damageEventModes = await listDamageEventModes()
   let out
 
   if (agentsOnly && fs.existsSync(outPath)) {
@@ -40,6 +42,9 @@ try {
       wengines: data.wengines,
       bangboos: data.bangboos,
       driveDiscs: data.driveDiscs,
+      skillSubcategories: data.skillSubcategories ?? [],
+      followUpSkillRules: data.followUpSkillRules ?? [],
+      damageEventModes,
     }
   }
 
@@ -49,6 +54,9 @@ try {
   if (!agentsOnly) {
     console.log(
       `音擎 ${out.wengines.length} · 邦布 ${out.bangboos.length} · 驱动盘 ${out.driveDiscs.length}`,
+    )
+    console.log(
+      `招式小类 ${out.skillSubcategories.length} · 追击规则 ${out.followUpSkillRules.length} · 伤害事件模式 ${out.damageEventModes.length}`,
     )
   }
 } finally {
