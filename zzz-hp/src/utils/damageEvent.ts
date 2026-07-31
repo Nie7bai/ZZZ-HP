@@ -4,9 +4,11 @@ import type {
   DamageEvent,
   DamageEventCritMode,
   DamageEventKind,
+  DamageEventMultOverrides,
   SkillCategoryId,
   SkillSubcategory,
 } from '@/types/calculator'
+import type { PanelStats } from '@/types/calculatorPanel'
 import { SKILL_CATEGORY_OPTIONS, TRIGGER_AGENT_AT_CALC } from '@/types/calculator'
 import { computeDamageResult, type DamageCalcInput, type DamageCalcResult } from '@/utils/damageCalc'
 import {
@@ -334,6 +336,77 @@ export function canSelectTurbulenceDamageEvent(
 
 export function isTriggerAgentAtCalc(id: string | null | undefined): boolean {
   return id === TRIGGER_AGENT_AT_CALC || id == null || id === ''
+}
+
+/** 耀变综合增伤/倍率/特殊倍率乘区取主 C 面板；覆写也应写入主 C 侧 */
+export function applyRadianceBonusMultOverrides(
+  panel: PanelStats,
+  overrides: DamageEventMultOverrides | null | undefined,
+): PanelStats {
+  if (!overrides) return panel
+  const hasOverride =
+    overrides.radianceMult != null ||
+    overrides.radianceMultFactor != null ||
+    overrides.specialMult != null ||
+    overrides.specialMultFactor != null
+  if (!hasOverride) return panel
+  const next = { ...panel }
+  if (overrides.radianceMult != null) next.radianceMult = overrides.radianceMult
+  if (overrides.radianceMultFactor != null) {
+    next.radianceMultFactor = overrides.radianceMultFactor
+  }
+  if (overrides.specialMult != null) next.specialMult = overrides.specialMult
+  if (overrides.specialMultFactor != null) {
+    next.specialMultFactor = overrides.specialMultFactor
+  }
+  return next
+}
+
+/** 事件倍率覆写（不含耀变主 C _bonus 字段） */
+export function applyOwnerPanelMultOverrides(
+  panel: PanelStats,
+  overrides: DamageEventMultOverrides | null | undefined,
+): PanelStats {
+  if (!overrides) return panel
+  const next = { ...panel }
+  if (overrides.directDmgMult != null) next.directDmgMult = overrides.directDmgMult
+  if (overrides.settlementDmgMult != null) next.settlementDmgMult = overrides.settlementDmgMult
+  if (overrides.directDmgMultFactor != null) {
+    next.directDmgMultFactor = overrides.directDmgMultFactor
+  }
+  if (overrides.anomalyMult != null) next.anomalyMult = overrides.anomalyMult
+  if (overrides.anomalyMultFactor != null) next.anomalyMultFactor = overrides.anomalyMultFactor
+  if (overrides.anomalyReleaseMult != null) {
+    next.anomalyReleaseMult = overrides.anomalyReleaseMult
+  }
+  if (overrides.anomalyReleaseMultFactor != null) {
+    next.anomalyReleaseMultFactor = overrides.anomalyReleaseMultFactor
+  }
+  if (overrides.disorderBaseMult != null) next.disorderBaseMult = overrides.disorderBaseMult
+  if (overrides.disorderBaseMultFactor != null) {
+    next.disorderBaseMultFactor = overrides.disorderBaseMultFactor
+  }
+  if (overrides.disorderCompMult != null) next.disorderCompMult = overrides.disorderCompMult
+  if (overrides.turbulenceBaseMult != null) next.turbulenceBaseMult = overrides.turbulenceBaseMult
+  if (overrides.turbulenceBaseMultFactor != null) {
+    next.turbulenceBaseMultFactor = overrides.turbulenceBaseMultFactor
+  }
+  if (overrides.turbulenceCompMult != null) next.turbulenceCompMult = overrides.turbulenceCompMult
+  return next
+}
+
+export function resolveRadianceBonusMultDefaults(
+  bonusPanel: Pick<
+    PanelStats,
+    'radianceMult' | 'radianceMultFactor' | 'specialMult' | 'specialMultFactor'
+  >,
+): Partial<Record<keyof DamageEventMultOverrides, number>> {
+  return {
+    radianceMult: bonusPanel.radianceMult,
+    radianceMultFactor: bonusPanel.radianceMultFactor,
+    specialMult: bonusPanel.specialMult ?? 100,
+    specialMultFactor: bonusPanel.specialMultFactor ?? 100,
+  }
 }
 
 export function summarizeDamageEvents(

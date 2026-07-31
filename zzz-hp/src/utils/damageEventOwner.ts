@@ -164,4 +164,4 @@ export function isRadianceOwnerValid(
 }
 
 export const RADIANCE_SELF_TRIGGER_HINT =
-  '异常基础乘区（含等级区）取蕾米埃尔进入战斗那一刻的面板；耀变倍率/增伤/穿透仍按耀变规则结算。'
+  '本人耀变 = 蕾米埃尔异常基础 × 防御区 × 抗性区 × 耀变综合增伤 × 耀变倍率；异常基础 = 局内攻 × 局内精通区 × 特殊等级区 × 异化系数 × 等级区（局内攻/精不含队友增益）。'

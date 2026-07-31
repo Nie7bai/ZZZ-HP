@@ -382,6 +382,10 @@ export interface PanelCalcContext {
   baseEnergyRegen?: number
   /** 跳过转模（两阶段结算用） */
   skipConvert?: boolean
+  /** 仅收集指定槽位的 Buff 来源（蕾米埃尔本人耀变：不含队友/邦布） */
+  restrictToSlotIndex?: number
+  /** 跳过邦布 Buff（默认随 restrictToSlotIndex 启用） */
+  excludeBangboo?: boolean
 }
 
 /** 从增益 sourceKey 解析队伍槽位索引（agent / 音擎 / 驱动盘） */
@@ -1070,6 +1074,7 @@ export function collectPanelBuffModSources(ctx: PanelCalcContext): BuffModSource
   const skillCtx = ctx.skillContext ?? defaultSkillContext('direct')
 
   ctx.teamSlots.forEach((slot, index) => {
+    if (ctx.restrictToSlotIndex != null && index !== ctx.restrictToSlotIndex) return
     if (!slot.agentId) return
 
     const agent = ctx.agents.find((item) => item.id === slot.agentId)
@@ -1240,7 +1245,12 @@ export function collectPanelBuffModSources(ctx: PanelCalcContext): BuffModSource
     }
   })
 
-  if (ctx.bangboo?.id && ctx.bangboo.id !== 'none') {
+  if (
+    !ctx.excludeBangboo &&
+    ctx.restrictToSlotIndex == null &&
+    ctx.bangboo?.id &&
+    ctx.bangboo.id !== 'none'
+  ) {
     const refineIndex = clampRefine(ctx.bangbooRefine) - 1
     const fixedEffects = ctx.bangboo.effectBlocks?.length
       ? flattenBlocks(ctx.bangboo.effectBlocks)
@@ -1349,6 +1359,7 @@ export function applyBuffModsToPanel(
     radianceMult: externalPanel.radianceMult + mods.radianceMult,
     radianceDmgBonus: externalPanel.radianceDmgBonus + mods.radianceDmgBonus,
     radianceResPen: externalPanel.radianceResPen + mods.radianceResPen,
+    specialMult: (externalPanel.specialMult ?? 100) + mods.specialMult,
     mutationCoeff: externalPanel.mutationCoeff + mods.mutationCoeff,
     directDmgMultFactor: combineMultFactorPercent(
       externalPanel.directDmgMultFactor,
@@ -1373,6 +1384,10 @@ export function applyBuffModsToPanel(
     radianceMultFactor: combineMultFactorPercent(
       externalPanel.radianceMultFactor,
       mods.radianceMultFactor,
+    ),
+    specialMultFactor: combineMultFactorPercent(
+      externalPanel.specialMultFactor ?? 100,
+      mods.specialMultFactor,
     ),
     mutationCoeffFactor: combineMultFactorPercent(
       externalPanel.mutationCoeffFactor,

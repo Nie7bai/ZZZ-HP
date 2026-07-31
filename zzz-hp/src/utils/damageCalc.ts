@@ -1,19 +1,23 @@
 import type { AnomalyDamageSubKind, BaseDamageSource, SkillSubcategory } from '@/types/calculator'
 import type { PanelStats } from '@/types/calculatorPanel'
 import { effectiveAnomalyDuration } from '@/utils/calculatorUi'
-import { computeRadianceMultZone } from '@/utils/remielUtils'
+import {
+  normalizeDamageEnemyInput,
+  resolveEnemyResistanceForElement,
+  type DamageEnemyInput,
+  type EnemyResistanceType,
+} from '@/utils/enemyResistance'
+import {
+  computeRemielSelfAnomalyBase,
+  computeRemielSelfRadianceSpecialLevelZone,
+  computeRemielSelfRadianceStandardLevelZone,
+  type RemielSelfRadianceCalcInput,
+  computeRadianceMultZone,
+  computeSpecialMultZone,
+} from '@/utils/remielUtils'
 import { resolveSkillMults } from '@/utils/skillSubcategoryMult'
 
-export type EnemyResistanceType = 'weak' | 'normal' | 'res20' | 'res40'
-
-export interface DamageEnemyInput {
-  defense: number
-  resistanceType: EnemyResistanceType
-  vulnerableMultiplier: number
-  staggerMultiplier: number
-  specialMultiplier: number
-  level: number
-}
+export type { DamageEnemyInput, EnemyResistanceType }
 
 export type { BaseDamageSource }
 
@@ -66,8 +70,10 @@ export interface DamageCalcInput {
   mainCFinalPanel?: PanelStats
   /** 队伍有蕾米埃尔时的异化系数乘区（预计算） */
   mutationZone?: number
-  /** 耀变：蕾米埃尔耀变抗性穿透，并入产生角色抗性区 */
+  /** 耀变：蕾米埃尔耀变抗性穿透（非本人耀变时并入产生角色抗性区） */
   remielRadianceResPen?: number
+  /** 耀变异常产生角色为蕾米埃尔本人时的专用结算输入 */
+  remielSelfRadianceCalc?: RemielSelfRadianceCalcInput | null
 }
 
 export interface DamageCalcResult {
@@ -110,8 +116,18 @@ export interface DamageCalcResult {
   anomalyCritZone: number
   /** 普通异常暴击区（暴击率强制为 1） */
   anomalyFullCritZone: number
-  /** 异常基础期望（不含异常增伤/倍率/暴击区） */
+  /** 异常基础期望（不含异常增伤/倍率/暴击区；本人耀变时为蕾米埃尔异常基础） */
   anomalyBaseExpected: number
+  /** 是否走蕾米埃尔本人耀变专用公式 */
+  remielSelfRadianceActive?: boolean
+  remielSelfAnomalyBase?: number
+  remielSelfSpecialLevelZone?: number
+  remielSelfStandardLevelZone?: number
+  remielSelfInCombatAtk?: number
+  remielSelfInCombatMasteryZone?: number
+  remielSelfResistanceElement?: string | null
+  remielSelfDefenseMultiplier?: number
+  remielSelfResistanceMultiplier?: number
   /** 异常期望伤害（实际暴击率加权；不含异放） */
   anomalyExpected: number
   /** 异常伤害（暴击率=0，不触发暴击） */
@@ -168,6 +184,8 @@ export interface DamageCalcResult {
   radianceCombinedDmgBonusZone: number
   /** 耀变倍率区 */
   radianceMultZone: number
+  /** 特殊倍率乘区 */
+  specialMultZone: number
   /** 异化系数乘区 */
   mutationZone: number
   /** 耀变期望伤害 */
@@ -191,11 +209,27 @@ function round(value: number, precision = 2) {
   return Math.round(value * factor) / factor
 }
 
-const RESISTANCE_MAP: Record<EnemyResistanceType, number> = {
-  weak: -0.2,
-  normal: 0,
-  res20: 0.2,
-  res40: 0.4,
+function computeDefenseZone(options: {
+  defensePanel: Pick<PanelStats, 'penRate' | 'pen' | 'ignoreDefense' | 'reduceDefense'>
+  isMb: boolean
+  enemyDefense: number
+}) {
+  const defense = options.defensePanel
+  const penRateRatio = clamp(defense.penRate / 100, 0, 0.95)
+  const ignoreDefenseRatio = clamp(defense.ignoreDefense / 100, 0, 1)
+  const reduceDefenseRatio = clamp(defense.reduceDefense / 100, 0, 1)
+  const defenseFactor = Math.max(0, 1 - ignoreDefenseRatio - reduceDefenseRatio)
+  const defenseAfterModifiers = options.enemyDefense * defenseFactor * (1 - penRateRatio)
+  const effectiveDefense = Math.max(0, defenseAfterModifiers) - defense.pen
+  const defenseMultiplier = options.isMb ? 1 : 794 / (794 + effectiveDefense)
+  return {
+    penRateRatio,
+    ignoreDefenseRatio,
+    reduceDefenseRatio,
+    defenseFactor,
+    effectiveDefense,
+    defenseMultiplier,
+  }
 }
 
 export function computeLevelZone(level: number) {
@@ -235,12 +269,17 @@ function computeGeneralAndAnomalyBase(options: {
   defensePanel?: Pick<PanelStats, 'penRate' | 'pen' | 'ignoreDefense' | 'reduceDefense'>
   /** 等级区所用角色等级 */
   agentLevel: number
+  /** 抗性区所参照的属性（缺省回退全局 resistanceType） */
+  resistanceElement?: string | null
   /** 抗性穿透额外加算（耀变：蕾米埃尔耀变抗性穿透） */
   extraResPen?: number
 }) {
   const panel = options.panel
   const defense = options.defensePanel ?? panel
-  const enemyRes = RESISTANCE_MAP[options.enemyInput.resistanceType]
+  const enemyRes = resolveEnemyResistanceForElement(
+    normalizeDamageEnemyInput(options.enemyInput),
+    options.resistanceElement,
+  )
   const extraResPen = options.extraResPen ?? 0
 
   const { baseDamage, usedBaseSource } = resolveBaseDamageParts({
@@ -366,6 +405,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     combatPierceDmgBonus: input.combatPierceDmgBonus ?? 0,
     staggerPhase,
     agentLevel: ownerAgentLevel,
+    resistanceElement: input.mainAgentElement,
   })
 
   const triggerParts = useTriggerBase
@@ -383,6 +423,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
         combatPierceDmgBonus: input.combatPierceDmgBonus ?? 0,
         staggerPhase,
         agentLevel: triggerAgentLevel,
+        resistanceElement: input.triggerAgentElement ?? input.mainAgentElement,
         // 异常基础防御区：穿透率/穿透值取产生角色，减防/无视防御取主 C
         defensePanel: {
           penRate: triggerPanel.penRate,
@@ -421,7 +462,49 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const anomalyFullCritZone = 1 + anomalyCritDmgRatio
   const anomalyNoCritZone = 1
 
-  const anomalyBaseExpected = triggerParts.anomalyBaseExpected
+  const remielSelf = subKind === 'radiance' ? (input.remielSelfRadianceCalc ?? null) : null
+  const remielSelfRadianceActive = Boolean(remielSelf)
+
+  let remielSelfDefenseMultiplier = 1
+  let remielSelfResistanceMultiplier = 1
+  let remielSelfAnomalyBase: number | undefined
+  let remielSelfSpecialLevelZone: number | undefined
+  let remielSelfStandardLevelZone: number | undefined
+  let remielSelfInCombatAtk: number | undefined
+  let remielSelfInCombatMasteryZone: number | undefined
+
+  let anomalyBaseExpected = triggerParts.anomalyBaseExpected
+  if (remielSelf) {
+    remielSelfAnomalyBase = computeRemielSelfAnomalyBase(remielSelf)
+    anomalyBaseExpected = remielSelfAnomalyBase
+    remielSelfSpecialLevelZone = computeRemielSelfRadianceSpecialLevelZone(remielSelf.agentLevel)
+    remielSelfStandardLevelZone = computeRemielSelfRadianceStandardLevelZone(remielSelf.agentLevel)
+    remielSelfInCombatAtk = remielSelf.inCombatAtk
+    remielSelfInCombatMasteryZone = remielSelf.inCombatMastery / 100
+
+    const defenseParts = computeDefenseZone({
+      defensePanel: {
+        penRate: remielSelf.penRate,
+        pen: remielSelf.pen,
+        ignoreDefense: mainCPanel.ignoreDefense,
+        reduceDefense: mainCPanel.reduceDefense,
+      },
+      isMb: remielSelf.isMb,
+      enemyDefense: input.enemyInput.defense,
+    })
+    remielSelfDefenseMultiplier = defenseParts.defenseMultiplier
+
+    const enemyRes = remielSelf.resistanceElement
+      ? resolveEnemyResistanceForElement(
+          normalizeDamageEnemyInput(input.enemyInput),
+          remielSelf.resistanceElement,
+        )
+      : 0
+    remielSelfResistanceMultiplier =
+      1 -
+      enemyRes +
+      clamp((remielSelf.resPen + remielSelf.radianceResPen) / 100, -2, 2)
+  }
   const anomalyPreCrit =
     anomalyBaseExpected * anomalyDmgBonusZone * anomalyMultZone
   const anomalyExpected = anomalyPreCrit * anomalyCritZone
@@ -499,14 +582,23 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const radianceCombinedDmgBonusZone =
     1 + (bonusPanel.radianceDmgBonus + bonusPanel.anomalyDmgBonus) / 100
   const radianceMultZone = computeRadianceMultZone(bonusPanel)
-  const radiancePreCrit =
-    anomalyBaseExpected * radianceCombinedDmgBonusZone * radianceMultZone
+  const specialMultZone = computeSpecialMultZone(bonusPanel)
+  const radiancePreCrit = remielSelfRadianceActive
+    ? anomalyBaseExpected *
+      remielSelfDefenseMultiplier *
+      remielSelfResistanceMultiplier *
+      radianceCombinedDmgBonusZone *
+      radianceMultZone *
+      specialMultZone *
+      Math.max(0, mainParts.specialMultiplier)
+    : anomalyBaseExpected * radianceCombinedDmgBonusZone * radianceMultZone
   const radianceExpectedRaw = radiancePreCrit
   const radianceExpectedNoCritRaw = radiancePreCrit
   const radianceExpectedFullCritRaw = radiancePreCrit
 
   const mutationMult = input.mutationZone ?? 1
-  const applyMutation = (value: number) => value * mutationMult
+  const applyMutation = (value: number) =>
+    remielSelfRadianceActive ? value : value * mutationMult
 
   return {
     baseDamage: round(baseParts.baseDamage, 2),
@@ -549,6 +641,27 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     anomalyCritZone: round(anomalyCritZone, 4),
     anomalyFullCritZone: round(anomalyFullCritZone, 4),
     anomalyBaseExpected: round(anomalyBaseExpected, 0),
+    remielSelfRadianceActive,
+    remielSelfAnomalyBase: remielSelfAnomalyBase
+      ? round(remielSelfAnomalyBase, 0)
+      : undefined,
+    remielSelfSpecialLevelZone: remielSelfSpecialLevelZone
+      ? round(remielSelfSpecialLevelZone, 4)
+      : undefined,
+    remielSelfStandardLevelZone: remielSelfStandardLevelZone
+      ? round(remielSelfStandardLevelZone, 4)
+      : undefined,
+    remielSelfInCombatAtk,
+    remielSelfInCombatMasteryZone: remielSelfInCombatMasteryZone
+      ? round(remielSelfInCombatMasteryZone, 4)
+      : undefined,
+    remielSelfResistanceElement: remielSelf?.resistanceElement ?? undefined,
+    remielSelfDefenseMultiplier: remielSelfRadianceActive
+      ? round(remielSelfDefenseMultiplier, 4)
+      : undefined,
+    remielSelfResistanceMultiplier: remielSelfRadianceActive
+      ? round(remielSelfResistanceMultiplier, 4)
+      : undefined,
     anomalyExpected: round(applyMutation(anomalyExpected), 0),
     anomalyExpectedNoCrit: round(applyMutation(anomalyExpectedNoCrit), 0),
     anomalyExpectedFullCrit: round(applyMutation(anomalyExpectedFullCrit), 0),
@@ -581,6 +694,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     hasPolarDisorder,
     radianceCombinedDmgBonusZone: round(radianceCombinedDmgBonusZone, 4),
     radianceMultZone: round(radianceMultZone, 4),
+    specialMultZone: round(specialMultZone, 4),
     mutationZone: round(mutationMult, 4),
     radianceExpected: round(applyMutation(radianceExpectedRaw), 0),
     radianceExpectedNoCrit: round(applyMutation(radianceExpectedNoCritRaw), 0),

@@ -111,6 +111,7 @@ const BUFF_STAT_KEYS: BuffStatKey[] = [
   'radianceMult',
   'radianceDmgBonus',
   'radianceResPen',
+  'specialMult',
   'mutationCoeff',
   'skillDmgBonus',
   'skillMultiplierBonus',
@@ -120,6 +121,7 @@ const BUFF_STAT_KEYS: BuffStatKey[] = [
   'disorderBaseMultFactor',
   'turbulenceBaseMultFactor',
   'radianceMultFactor',
+  'specialMultFactor',
   'mutationCoeffFactor',
 ]
 

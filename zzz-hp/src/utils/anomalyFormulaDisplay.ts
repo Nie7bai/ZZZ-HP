@@ -44,17 +44,43 @@ export function buildAlignedAnomalyFormulaGroups(
   formatNumber: (v: number) => string,
   labels?: AnomalyFormulaAgentLabels,
 ): AlignedAnomalyFormulaGroup[] {
-  const hasMutation = p.mutationZone > 1
-  const baseWithMutation = hasMutation
-    ? Math.round(p.anomalyBaseExpected * p.mutationZone)
-    : p.anomalyBaseExpected
-  const baseTerms: AlignedFormulaTerm[] = [
-    { label: '通用乘区', value: formatFormulaNumber(p.generalMultiplier, 2), tipsKey: 'generalMultiplier' },
-    { label: '精通区', value: formatFormulaNumber(p.masteryZone), tipsKey: 'masteryZone' },
-    { label: '等级区', value: formatFormulaNumber(p.levelZone), tipsKey: 'levelZone' },
-    { label: '特殊乘区', value: formatFormulaNumber(p.specialMultiplier), tipsKey: 'specialMultiplier' },
-  ]
-  if (hasMutation) {
+  const remielSelf = p.remielSelfRadianceActive
+  const baseWithMutation = resolveAnomalyBaseWithMutation(p)
+  const baseTerms: AlignedFormulaTerm[] = remielSelf
+    ? [
+        {
+          label: '局内攻击力',
+          value: formatNumber(p.remielSelfInCombatAtk ?? 0),
+          tipsKey: 'anomalyBaseExpected',
+        },
+        {
+          label: '局内精通区',
+          value: formatFormulaNumber(p.remielSelfInCombatMasteryZone ?? 0),
+          tipsKey: 'masteryZone',
+        },
+        {
+          label: '特殊等级区',
+          value: formatFormulaNumber(p.remielSelfSpecialLevelZone ?? 1),
+          tipsKey: 'levelZone',
+        },
+        {
+          label: '异化系数区',
+          value: formatFormulaNumber(p.mutationZone),
+          tipsKey: 'mutationZone',
+        },
+        {
+          label: '等级区',
+          value: formatFormulaNumber(p.remielSelfStandardLevelZone ?? 1),
+          tipsKey: 'levelZone',
+        },
+      ]
+    : [
+        { label: '通用乘区', value: formatFormulaNumber(p.generalMultiplier, 2), tipsKey: 'generalMultiplier' },
+        { label: '精通区', value: formatFormulaNumber(p.masteryZone), tipsKey: 'masteryZone' },
+        { label: '等级区', value: formatFormulaNumber(p.levelZone), tipsKey: 'levelZone' },
+        { label: '特殊乘区', value: formatFormulaNumber(p.specialMultiplier), tipsKey: 'specialMultiplier' },
+      ]
+  if (!remielSelf && p.mutationZone > 1) {
     baseTerms.push({
       label: '异化系数区',
       value: formatFormulaNumber(p.mutationZone),
@@ -63,8 +89,12 @@ export function buildAlignedAnomalyFormulaGroups(
   }
   const base: AlignedAnomalyFormulaGroup = {
     key: 'anomalyBaseExpected',
-    title: '异常基础',
-    hint: hasMutation ? '（含异化系数；不含异常增伤/倍率/暴击）' : '（不含异常增伤/倍率/暴击）',
+    title: remielSelf ? '蕾米埃尔异常基础' : '异常基础',
+    hint: remielSelf
+      ? '（局内攻/精不含队友增益；已含异化系数与双等级区）'
+      : p.mutationZone > 1
+        ? '（含异化系数；不含异常增伤/倍率/暴击）'
+        : '（不含异常增伤/倍率/暴击）',
     agentLabel: labels?.baseAgent,
     terms: baseTerms,
     result: formatNumber(baseWithMutation),
@@ -156,19 +186,57 @@ export function buildAlignedAnomalyFormulaGroups(
     key: 'radianceExpected',
     title: '耀变伤害',
     agentLabel: labels?.bonusAgent,
-    terms: [
-      { label: '异常基础期望', value: formatNumber(baseWithMutation), tipsKey: 'anomalyBaseExpected' },
-      {
-        label: '耀变综合增伤区',
-        value: formatFormulaNumber(p.radianceCombinedDmgBonusZone),
-        tipsKey: 'radianceCombinedDmgBonusZone',
-      },
-      {
-        label: '耀变倍率区',
-        value: formatFormulaNumber(p.radianceMultZone),
-        tipsKey: 'radianceMultZone',
-      },
-    ],
+    terms: remielSelf
+      ? [
+          {
+            label: '蕾米埃尔异常基础',
+            value: formatNumber(baseWithMutation),
+            tipsKey: 'anomalyBaseExpected',
+          },
+          {
+            label: '防御区',
+            value: formatFormulaNumber(p.remielSelfDefenseMultiplier ?? 1),
+            tipsKey: 'remielSelfDefenseMultiplier',
+          },
+          {
+            label: '抗性区',
+            value: formatFormulaNumber(p.remielSelfResistanceMultiplier ?? 1),
+            tipsKey: 'remielSelfResistanceMultiplier',
+          },
+          {
+            label: '耀变综合增伤区',
+            value: formatFormulaNumber(p.radianceCombinedDmgBonusZone),
+            tipsKey: 'radianceCombinedDmgBonusZone',
+          },
+          {
+            label: '耀变倍率区',
+            value: formatFormulaNumber(p.radianceMultZone),
+            tipsKey: 'radianceMultZone',
+          },
+          {
+            label: '特殊倍率乘区',
+            value: formatFormulaNumber(p.specialMultZone),
+            tipsKey: 'specialMultZone',
+          },
+          {
+            label: '特殊乘区',
+            value: formatFormulaNumber(p.specialMultiplier),
+            tipsKey: 'specialMultiplier',
+          },
+        ]
+      : [
+          { label: '异常基础期望', value: formatNumber(baseWithMutation), tipsKey: 'anomalyBaseExpected' },
+          {
+            label: '耀变综合增伤区',
+            value: formatFormulaNumber(p.radianceCombinedDmgBonusZone),
+            tipsKey: 'radianceCombinedDmgBonusZone',
+          },
+          {
+            label: '耀变倍率区',
+            value: formatFormulaNumber(p.radianceMultZone),
+            tipsKey: 'radianceMultZone',
+          },
+        ],
     result: formatNumber(p.radianceExpected),
   }
 
@@ -185,7 +253,8 @@ export function formatFormulaGroupTitle(group: Pick<AlignedAnomalyFormulaGroup, 
 }
 
 export function resolveAnomalyBaseWithMutation(
-  p: Pick<DamageCalcResult, 'anomalyBaseExpected' | 'mutationZone'>,
+  p: Pick<DamageCalcResult, 'anomalyBaseExpected' | 'mutationZone' | 'remielSelfRadianceActive'>,
 ): number {
+  if (p.remielSelfRadianceActive) return p.anomalyBaseExpected
   return p.mutationZone > 1 ? Math.round(p.anomalyBaseExpected * p.mutationZone) : p.anomalyBaseExpected
 }

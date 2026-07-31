@@ -201,6 +201,8 @@ export interface BuffStatModifiers {
   radianceDmgBonus: number
   /** 耀变抗性穿透%（并入产生角色抗性区，仅耀变） */
   radianceResPen: number
+  /** 特殊倍率加算% */
+  specialMult: number
   /** 异化系数加算% */
   mutationCoeff: number
   /** 招式伤害加成%（进增伤区） */
@@ -219,6 +221,8 @@ export interface BuffStatModifiers {
   turbulenceBaseMultFactor: number
   /** 耀变倍率乘算修正（默认 1） */
   radianceMultFactor: number
+  /** 特殊倍率乘算修正（默认 1） */
+  specialMultFactor: number
   /** 异化系数乘算修正（默认 1） */
   mutationCoeffFactor: number
 }
@@ -381,6 +385,8 @@ export interface DamageEventMultOverrides {
   turbulenceCompMult?: number | null
   radianceMult?: number | null
   radianceMultFactor?: number | null
+  specialMult?: number | null
+  specialMultFactor?: number | null
 }
 
 /** 管理端：计算时再选产生角色 */
@@ -459,6 +465,8 @@ export interface AgentBasePanel {
   radianceDmgBonus: number
   /** 耀变抗性穿透% */
   radianceResPen: number
+  /** 特殊倍率% */
+  specialMult: number
   /** 异化系数% */
   mutationCoeff: number
 }

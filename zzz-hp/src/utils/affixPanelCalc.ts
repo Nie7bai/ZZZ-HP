@@ -216,6 +216,7 @@ export function computeExternalPanelFromAffixes(input: AffixPanelCalcInput): Pan
     radianceMult: roundPanelValue(agentBase.radianceMult),
     radianceDmgBonus: roundPanelValue(agentBase.radianceDmgBonus),
     radianceResPen: roundPanelValue(agentBase.radianceResPen),
+    specialMult: roundPanelValue(agentBase.specialMult),
     mutationCoeff: roundPanelValue(agentBase.mutationCoeff),
     directDmgMultFactor: 100,
     anomalyMultFactor: 100,
@@ -223,6 +224,7 @@ export function computeExternalPanelFromAffixes(input: AffixPanelCalcInput): Pan
     disorderBaseMultFactor: 100,
     turbulenceBaseMultFactor: 100,
     radianceMultFactor: 100,
+    specialMultFactor: 100,
     mutationCoeffFactor: 100,
   }
 }

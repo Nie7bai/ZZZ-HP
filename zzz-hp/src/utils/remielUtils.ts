@@ -93,6 +93,79 @@ export function computeRadianceMultZone(
   return Math.max(0, panel.radianceMult / 100) * ratio
 }
 
+export function computeSpecialMultZone(
+  panel: Pick<PanelStats, 'specialMult' | 'specialMultFactor'>,
+): number {
+  const ratio = multFactorPercentToRatio(panel.specialMultFactor) || 1
+  return Math.max(0, (panel.specialMult ?? 100) / 100) * ratio
+}
+
+export interface RemielSelfRadianceCalcInput {
+  agentLevel: number
+  inCombatAtk: number
+  inCombatMastery: number
+  mutationZone: number
+  penRate: number
+  pen: number
+  resPen: number
+  radianceResPen: number
+  /** 下一位非流明队友属性，用于敌方抗性基准 */
+  resistanceElement: string | null
+  isMb: boolean
+}
+
+function clampRemielLevel(level: number): number {
+  return Math.min(60, Math.max(1, Math.round(level)))
+}
+
+/** 特殊等级区 = 1 + 0.025 × 等级 */
+export function computeRemielSelfRadianceSpecialLevelZone(level: number): number {
+  return 1 + 0.025 * clampRemielLevel(level)
+}
+
+/** @deprecated 使用 computeRemielSelfRadianceSpecialLevelZone */
+export function computeRemielSelfRadianceLevelZone(level: number): number {
+  return computeRemielSelfRadianceSpecialLevelZone(level)
+}
+
+/** 标准等级区 = 1 + (等级 - 1) / 59 */
+export function computeRemielSelfRadianceStandardLevelZone(level: number): number {
+  const safeLevel = clampRemielLevel(level)
+  return 1 + (safeLevel - 1) / 59
+}
+
+/** 蕾米埃尔异常基础 = 局内攻 × 局内精通区 × 特殊等级区 × 异化系数 × 标准等级区 */
+export function computeRemielSelfAnomalyBase(
+  input: Pick<
+    RemielSelfRadianceCalcInput,
+    'inCombatAtk' | 'inCombatMastery' | 'mutationZone' | 'agentLevel'
+  >,
+): number {
+  const atk = Math.max(0, input.inCombatAtk)
+  const masteryZone = Math.max(0, input.inCombatMastery) / 100
+  const specialLevelZone = computeRemielSelfRadianceSpecialLevelZone(input.agentLevel)
+  const levelZone = computeRemielSelfRadianceStandardLevelZone(input.agentLevel)
+  const mutationZone = Math.max(0, input.mutationZone)
+  return atk * masteryZone * specialLevelZone * mutationZone * levelZone
+}
+
+export function resolveWengineMasteryForSlot(
+  teamSlots: Array<{ wengineId?: string }>,
+  wengines: Array<{ id: string; advancedStats: { mastery: number } }>,
+  slotIndex: number,
+): number {
+  const wengineId = teamSlots[slotIndex]?.wengineId
+  if (!wengineId || wengineId === 'none') return 0
+  return wengines.find((item) => item.id === wengineId)?.advancedStats.mastery ?? 0
+}
+
+export function isRemielSelfRadianceTrigger(
+  triggerAgentId: string | null | undefined,
+  remielId: string | null | undefined,
+): boolean {
+  return Boolean(remielId && triggerAgentId && triggerAgentId === remielId)
+}
+
 /**
  * Buff 属性限定：流明不参与元素白名单匹配（「全部属性」仍生效）。
  */

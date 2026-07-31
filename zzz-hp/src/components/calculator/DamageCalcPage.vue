@@ -195,6 +195,11 @@ function ensureAnomalySlotPanel(agentId: string) {
     panel.disorderDmgBonus = agent.basePanel.disorderDmgBonus
     panel.turbulenceDmgBonus = agent.basePanel.turbulenceDmgBonus
     panel.directDmgMult = agent.basePanel.directDmgMult
+    panel.radianceMult = agent.basePanel.radianceMult
+    panel.radianceDmgBonus = agent.basePanel.radianceDmgBonus
+    panel.radianceResPen = agent.basePanel.radianceResPen
+    panel.specialMult = agent.basePanel.specialMult ?? 100
+    panel.mutationCoeff = agent.basePanel.mutationCoeff
   }
   anomalySlotPanels[agentId] = panel
 }

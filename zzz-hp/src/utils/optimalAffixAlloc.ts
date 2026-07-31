@@ -36,6 +36,8 @@ import {
   pickEventDamage,
   formatDamageEventDisplayName,
   getDamageEventSkipReason,
+  applyOwnerPanelMultOverrides,
+  applyRadianceBonusMultOverrides,
 } from '@/utils/damageEvent'
 import { resolveEventOwnerAgentId } from '@/utils/damageEventOwner'
 import { buildSkillContextFromDamageEvent, mergeExtraModsForEvent } from '@/utils/extraBuffCalc'
@@ -43,8 +45,10 @@ import {
   computeMutationZone,
   findLuminousAgentInTeam,
   isLuminousElement,
+  isRemielSelfRadianceTrigger,
   resolveLuminousEquivalentElement,
 } from '@/utils/remielUtils'
+import { resolveRemielSelfRadianceCalcInput } from '@/utils/remielSelfRadiancePanel'
 import {
   computeFinalPanel,
   convertSlotPartialToExternalPanel,
@@ -553,6 +557,26 @@ function buildPanelContextForSlot(
 }
 
 
+function resolveRemielSelfRadianceCalcForOptimal(
+  ctx: OptimalEvalContext,
+  triggerAgentId: string | null | undefined,
+  mainExternal: PanelStats,
+) {
+  const remiel = findLuminousAgentInTeam(ctx.panelContext.teamSlots, ctx.panelContext.agents)
+  if (!remiel || !isRemielSelfRadianceTrigger(triggerAgentId, remiel.id)) return undefined
+  const external = resolveExternalForAgent(ctx, remiel.id, remiel.slotIndex, mainExternal)
+  const agent = ctx.panelContext.agents.find((item) => item.id === remiel.id)
+  return resolveRemielSelfRadianceCalcInput({
+    teamSlots: ctx.panelContext.teamSlots,
+    agents: ctx.panelContext.agents,
+    externalPanel: external,
+    panelCtx: buildPanelContextForSlot(ctx, remiel.slotIndex, external, mainExternal),
+    remielSlotIndex: remiel.slotIndex,
+    agentLevel: resolveProducerAgentLevel(ctx, remiel.id),
+    isMb: agent?.profession === MB_PROFESSION,
+  })
+}
+
 function resolveExternalForAgent(
   ctx: OptimalEvalContext,
   agentId: string,
@@ -580,30 +604,7 @@ function applyEventMultOverrides(
   finalPanel: PanelStats,
   overrides: DamageEvent['multOverrides'],
 ): PanelStats {
-  if (!overrides) return finalPanel
-  const next = { ...finalPanel }
-  if (overrides.directDmgMult != null) next.directDmgMult = overrides.directDmgMult
-  if (overrides.settlementDmgMult != null) next.settlementDmgMult = overrides.settlementDmgMult
-  if (overrides.directDmgMultFactor != null) next.directDmgMultFactor = overrides.directDmgMultFactor
-  if (overrides.anomalyMult != null) next.anomalyMult = overrides.anomalyMult
-  if (overrides.anomalyMultFactor != null) next.anomalyMultFactor = overrides.anomalyMultFactor
-  if (overrides.anomalyReleaseMult != null) next.anomalyReleaseMult = overrides.anomalyReleaseMult
-  if (overrides.anomalyReleaseMultFactor != null) {
-    next.anomalyReleaseMultFactor = overrides.anomalyReleaseMultFactor
-  }
-  if (overrides.disorderBaseMult != null) next.disorderBaseMult = overrides.disorderBaseMult
-  if (overrides.disorderBaseMultFactor != null) {
-    next.disorderBaseMultFactor = overrides.disorderBaseMultFactor
-  }
-  if (overrides.disorderCompMult != null) next.disorderCompMult = overrides.disorderCompMult
-  if (overrides.turbulenceBaseMult != null) next.turbulenceBaseMult = overrides.turbulenceBaseMult
-  if (overrides.turbulenceBaseMultFactor != null) {
-    next.turbulenceBaseMultFactor = overrides.turbulenceBaseMultFactor
-  }
-  if (overrides.turbulenceCompMult != null) next.turbulenceCompMult = overrides.turbulenceCompMult
-  if (overrides.radianceMult != null) next.radianceMult = overrides.radianceMult
-  if (overrides.radianceMultFactor != null) next.radianceMultFactor = overrides.radianceMultFactor
-  return next
+  return applyOwnerPanelMultOverrides(finalPanel, overrides)
 }
 
 function resolveLuminousTeamModifiersForOptimal(
@@ -838,13 +839,20 @@ export function evaluateOptimalEventDetail(
 
   const luminousMods = resolveLuminousTeamModifiersForOptimal(ctx, mainExternal)
 
-  const mainCFinalPanel =
+  let mainCFinalPanel =
     ownerAgentId === ctx.mainAgentId
       ? evtFinalPanel
       : computeFinalPanel(
           mainExternal,
           buildPanelContextForSlot(ctx, mainSlotIndex, mainExternal, mainExternal),
         ).finalPanel
+
+  if (event.kind === 'radiance') {
+    mainCFinalPanel = applyRadianceBonusMultOverrides(mainCFinalPanel, event.multOverrides)
+    if (ownerAgentId === ctx.mainAgentId) {
+      evtFinalPanel = mainCFinalPanel
+    }
+  }
 
   const result = computeDamageResult({
     finalPanel: evtFinalPanel,
@@ -877,6 +885,11 @@ export function evaluateOptimalEventDetail(
       : resolveProducerAgentLevel(ctx, ownerAgentId),
     mutationZone: luminousMods.mutationZone,
     remielRadianceResPen: event.kind === 'radiance' ? luminousMods.radianceResPen : 0,
+    remielSelfRadianceCalc: resolveRemielSelfRadianceCalcForOptimal(
+      ctx,
+      evtTriggerAgentId,
+      mainExternal,
+    ),
   })
 
   const perHit = pickEventDamage(result, event.kind, event.critMode)

@@ -52,6 +52,8 @@ export interface PanelStats {
   radianceDmgBonus: number
   /** 耀变抗性穿透% */
   radianceResPen: number
+  /** 特殊倍率% */
+  specialMult: number
   /** 异化系数% */
   mutationCoeff: number
   /** 直伤倍率乘算修正（默认 1） */
@@ -66,6 +68,8 @@ export interface PanelStats {
   turbulenceBaseMultFactor: number
   /** 耀变倍率乘算修正（默认 1） */
   radianceMultFactor: number
+  /** 特殊倍率乘算修正（默认 1） */
+  specialMultFactor: number
   /** 异化系数乘算修正（默认 1） */
   mutationCoeffFactor: number
 }
@@ -207,8 +211,10 @@ export function createDefaultExternalPanel(): PanelStats {
     radianceMult: 0,
     radianceDmgBonus: 0,
     radianceResPen: 0,
+    specialMult: 100,
     mutationCoeff: 0,
     radianceMultFactor: 100,
+    specialMultFactor: 100,
     mutationCoeffFactor: 100,
   }
 }

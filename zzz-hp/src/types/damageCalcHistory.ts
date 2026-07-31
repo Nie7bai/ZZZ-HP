@@ -6,6 +6,12 @@ import type {
   PanelStats,
 } from '@/types/calculatorPanel'
 import type { CharacterAttrKey } from '@/types/calculator'
+import type { DamageEnemyInput, EnemyResistanceType } from '@/utils/enemyResistance'
+
+/** 兼容旧存档的敌方环境快照 */
+export type DamageCalcEnemyInputSnapshot = DamageEnemyInput & {
+  resistanceType?: EnemyResistanceType
+}
 
 /** 转模增益角色局外面板（按 agentId 存部分属性） */
 export type DamageCalcConvertSlotPanels = Record<
@@ -21,15 +27,6 @@ export interface DamageCalcTeamSlotSnapshot {
   isMainC: boolean
   twoPieceDriveDiscId: string
   fourPieceDriveDiscId: string
-}
-
-export interface DamageCalcEnemyInputSnapshot {
-  defense: number
-  resistanceType: 'weak' | 'normal' | 'res20' | 'res40'
-  vulnerableMultiplier: number
-  staggerMultiplier: number
-  specialMultiplier: number
-  level: number
 }
 
 export interface DamageCalcPanelSnapshot {

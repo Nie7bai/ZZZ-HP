@@ -67,7 +67,17 @@ import {
   type ConvertSlotPanels,
   type MultiSlotBuffSelection,
 } from '@/utils/panelBuffCalc'
-import { computeDamageResult, type DamageCalcInput, type EnemyResistanceType } from '@/utils/damageCalc'
+import { computeDamageResult, type DamageCalcInput } from '@/utils/damageCalc'
+import {
+  ENEMY_RESISTANCE_ELEMENTS,
+  ENEMY_RESISTANCE_OPTIONS,
+  normalizeDamageEnemyInput,
+  resolveEnemyResistanceForElement,
+  resistanceTypeLabel,
+  type DamageEnemyInput,
+  type EnemyResistanceElement,
+  type EnemyResistanceType,
+} from '@/utils/enemyResistance'
 import {
   eventNeedsAnomalyProducer,
   getDamageEventSkipReason,
@@ -75,9 +85,12 @@ import {
   mapEventKindToCalc,
   pickEventDamage,
   summarizeDamageEvents,
+  applyOwnerPanelMultOverrides,
+  applyRadianceBonusMultOverrides,
+  resolveRadianceBonusMultDefaults,
   type DamageEventLine,
 } from '@/utils/damageEvent'
-import { collectParticipantAgentIds, resolveEventOwnerAgentId, summarizeDamageByOwner } from '@/utils/damageEventOwner'
+import { collectParticipantAgentIds, resolveEventOwnerAgentId, summarizeDamageByOwner, RADIANCE_SELF_TRIGGER_HINT } from '@/utils/damageEventOwner'
 import {
   buildSkillContextFromDamageEvent,
   mergeExtraModsForEvent,
@@ -86,9 +99,11 @@ import {
   computeMutationZone,
   findLuminousAgentInTeam,
   isLuminousElement,
+  isRemielSelfRadianceTrigger,
   resolveLuminousEquivalentElement,
   isLuminousAgent,
 } from '@/utils/remielUtils'
+import { resolveRemielSelfRadianceCalcInput, computeRemielSelfInCombatPanel } from '@/utils/remielSelfRadiancePanel'
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 import {
   buildAlignedDirectFormulaGroup,
@@ -266,14 +281,26 @@ function buildExtraModsForMainPanel(): BuffStatModifiers {
 
 const extraMods = computed(() => buildExtraModsForMainPanel())
 
-const enemyInput = reactive({
-  defense: 953,
-  resistanceType: 'normal' as EnemyResistanceType,
-  vulnerableMultiplier: 1,
-  staggerMultiplier: 1,
-  specialMultiplier: 1,
-  level: 60,
-})
+const enemyInput = reactive<DamageEnemyInput>(
+  normalizeDamageEnemyInput({
+    defense: 953,
+    vulnerableMultiplier: 1,
+    staggerMultiplier: 1,
+    specialMultiplier: 1,
+    level: 60,
+  }),
+)
+
+function ensureElementResistanceMap() {
+  if (!enemyInput.elementResistance) {
+    enemyInput.elementResistance = normalizeDamageEnemyInput(enemyInput).elementResistance
+  }
+  return enemyInput.elementResistance!
+}
+
+function setElementResistance(element: EnemyResistanceElement, value: EnemyResistanceType) {
+  ensureElementResistanceMap()[element] = value
+}
 
 const mainSlotIndex = computed(() => {
   const index = props.teamSlots.findIndex((slot) => slot.isMainC)
@@ -386,6 +413,23 @@ function resolveExternalPanelForSlotIndex(slotIndex: number): PanelStats {
   const partial = props.convertSlotPanels?.[agentId]
   if (partial) return convertSlotPartialToExternalPanel(partial)
   return createDefaultExternalPanel()
+}
+
+function resolveRemielSelfRadianceCalcForTrigger(
+  triggerAgentId: string | null | undefined,
+) {
+  const remiel = findLuminousAgentInTeam(props.teamSlots, props.agents)
+  if (!remiel || !isRemielSelfRadianceTrigger(triggerAgentId, remiel.id)) return undefined
+  const agent = props.agents.find((item) => item.id === remiel.id)
+  return resolveRemielSelfRadianceCalcInput({
+    teamSlots: props.teamSlots,
+    agents: props.agents,
+    externalPanel: resolveExternalPanelForSlotIndex(remiel.slotIndex),
+    panelCtx: buildPanelCalcContextForSlot(remiel.slotIndex),
+    remielSlotIndex: remiel.slotIndex,
+    agentLevel: resolveAgentLevel(remiel.id),
+    isMb: agent?.profession === MB_PROFESSION,
+  })
 }
 
 function resolveBuffMatchElementForSlot(slotIndex: number): string | undefined {
@@ -567,6 +611,11 @@ function applyAgentBaseToExternalPanel(base: PanelStats | AgentBuffDoc['basePane
   externalPanel.turbulenceCompMult = base.turbulenceCompMult
   externalPanel.disorderDmgBonus = base.disorderDmgBonus
   externalPanel.turbulenceDmgBonus = base.turbulenceDmgBonus
+  externalPanel.radianceMult = base.radianceMult
+  externalPanel.radianceDmgBonus = base.radianceDmgBonus
+  externalPanel.radianceResPen = base.radianceResPen
+  externalPanel.specialMult = base.specialMult ?? 100
+  externalPanel.mutationCoeff = base.mutationCoeff
   if ('mastery' in base && typeof base.mastery === 'number') {
     externalPanel.mastery = base.mastery
   }
@@ -725,11 +774,7 @@ const anomalyCalcBlockedReason = computed(() => {
       return '蕾米埃尔为主 C 时仅可计算耀变伤害'
     }
     if (!props.triggerAnomalyAgentId) {
-      return '请先选择耀变异常产生角色（须为非蕾米埃尔队友）'
-    }
-    const producer = props.agents.find((item) => item.id === props.triggerAnomalyAgentId)
-    if (isLuminousAgent(producer)) {
-      return '耀变产生角色须为非蕾米埃尔队友'
+      return '请先选择耀变异常产生角色'
     }
     return ''
   }
@@ -993,6 +1038,9 @@ const calcParts = computed(() =>
       (props.anomalySubKind ?? 'anomaly') === 'radiance'
         ? luminousTeamModifiers.value.radianceResPen
         : 0,
+    remielSelfRadianceCalc: resolveRemielSelfRadianceCalcForTrigger(
+      props.triggerAnomalyAgentId,
+    ),
   }),
 )
 
@@ -1113,51 +1161,8 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
   const evtPanelCtx = buildEventPanelCalcContext(evtSkillCtx, ownerSlotIndex, event)
   const evtBreakdown = computeFinalPanel(ownerExternal, evtPanelCtx)
 
-  let evtFinalPanel = { ...evtBreakdown.finalPanel }
   const overrides = event.multOverrides
-  if (overrides) {
-    if (overrides.directDmgMult != null) evtFinalPanel.directDmgMult = overrides.directDmgMult
-    if (overrides.settlementDmgMult != null) {
-      evtFinalPanel.settlementDmgMult = overrides.settlementDmgMult
-    }
-    if (overrides.directDmgMultFactor != null) {
-      evtFinalPanel.directDmgMultFactor = overrides.directDmgMultFactor
-    }
-    if (overrides.anomalyMult != null) evtFinalPanel.anomalyMult = overrides.anomalyMult
-    if (overrides.anomalyMultFactor != null) {
-      evtFinalPanel.anomalyMultFactor = overrides.anomalyMultFactor
-    }
-    if (overrides.anomalyReleaseMult != null) {
-      evtFinalPanel.anomalyReleaseMult = overrides.anomalyReleaseMult
-    }
-    if (overrides.anomalyReleaseMultFactor != null) {
-      evtFinalPanel.anomalyReleaseMultFactor = overrides.anomalyReleaseMultFactor
-    }
-    if (overrides.disorderBaseMult != null) {
-      evtFinalPanel.disorderBaseMult = overrides.disorderBaseMult
-    }
-    if (overrides.disorderBaseMultFactor != null) {
-      evtFinalPanel.disorderBaseMultFactor = overrides.disorderBaseMultFactor
-    }
-    if (overrides.disorderCompMult != null) {
-      evtFinalPanel.disorderCompMult = overrides.disorderCompMult
-    }
-    if (overrides.turbulenceBaseMult != null) {
-      evtFinalPanel.turbulenceBaseMult = overrides.turbulenceBaseMult
-    }
-    if (overrides.turbulenceBaseMultFactor != null) {
-      evtFinalPanel.turbulenceBaseMultFactor = overrides.turbulenceBaseMultFactor
-    }
-    if (overrides.turbulenceCompMult != null) {
-      evtFinalPanel.turbulenceCompMult = overrides.turbulenceCompMult
-    }
-    if (overrides.radianceMult != null) {
-      evtFinalPanel.radianceMult = overrides.radianceMult
-    }
-    if (overrides.radianceMultFactor != null) {
-      evtFinalPanel.radianceMultFactor = overrides.radianceMultFactor
-    }
-  }
+  let evtFinalPanel = applyOwnerPanelMultOverrides(evtBreakdown.finalPanel, overrides)
 
   if (event.kind === 'anomalyRelease') {
     const releaseFields = resolveMainCAnomalyReleaseMultFields(
@@ -1267,13 +1272,20 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
   const luminousMods = resolveLuminousTeamModifiers()
 
   const actualMainId = mainAgent.value?.id ?? ''
-  const mainCFinalPanel =
+  let mainCFinalPanel =
     ownerAgentId === actualMainId
       ? evtFinalPanel
       : computeFinalPanel(
           effectiveExternalPanel.value,
           buildPanelCalcContextForSlot(mainSlotIndex.value),
         ).finalPanel
+
+  if (event.kind === 'radiance') {
+    mainCFinalPanel = applyRadianceBonusMultOverrides(mainCFinalPanel, overrides)
+    if (ownerAgentId === actualMainId) {
+      evtFinalPanel = mainCFinalPanel
+    }
+  }
 
   return {
     finalPanel: evtFinalPanel,
@@ -1305,6 +1317,7 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
       : resolveAgentLevel(ownerAgentId),
     mutationZone: luminousMods.mutationZone,
     remielRadianceResPen: event.kind === 'radiance' ? luminousMods.radianceResPen : 0,
+    remielSelfRadianceCalc: resolveRemielSelfRadianceCalcForTrigger(evtTriggerAgentId),
   }
 }
 
@@ -1335,9 +1348,11 @@ const selectedEventDetailLine = computed((): DamageEventLine | null => {
   }
 })
 
-const showGeneralZone = computed(
-  () => showDetailedResults.value && Boolean(selectedEventDetailLine.value),
-)
+const showGeneralZone = computed(() => {
+  if (!showDetailedResults.value || !selectedEventDetailLine.value) return false
+  if (displayCalcParts.value.remielSelfRadianceActive) return false
+  return true
+})
 
 const displayCalcParts = computed(
   () => selectedEventDetailLine.value?.result ?? calcParts.value,
@@ -1437,6 +1452,15 @@ const directFormulaParts = computed(() => {
 
 const anomalyFormulaParts = computed(() => {
   const p = calcParts.value
+  if (p.remielSelfRadianceActive) {
+    return [
+      formatFormulaNumber(p.remielSelfInCombatAtk ?? 0, 2),
+      formatFormulaNumber(p.remielSelfInCombatMasteryZone ?? 0),
+      formatFormulaNumber(p.remielSelfSpecialLevelZone ?? 1),
+      formatFormulaNumber(p.mutationZone),
+      formatFormulaNumber(p.remielSelfStandardLevelZone ?? 1),
+    ]
+  }
   return [
     formatFormulaNumber(p.generalMultiplier, 2),
     formatFormulaNumber(p.masteryZone),
@@ -1523,7 +1547,10 @@ type ValueTipsKey =
   | 'radianceMutation'
   | 'radianceCombinedDmgBonusZone'
   | 'radianceMultZone'
+  | 'specialMultZone'
   | 'mutationZone'
+  | 'remielSelfDefenseMultiplier'
+  | 'remielSelfResistanceMultiplier'
 
 interface AlignedFormulaTerm {
   label: string
@@ -1713,6 +1740,34 @@ const valueTips = computed(() => {
   const enemy = enemyInput
   const pierceMod = panelBreakdown.value.totalMods.pierce
 
+  const remielInTeam = p.remielSelfRadianceActive
+    ? findLuminousAgentInTeam(props.teamSlots, props.agents)
+    : null
+  const remielSelfBreakdown = remielInTeam
+    ? computeRemielSelfInCombatPanel(
+        resolveExternalPanelForSlotIndex(remielInTeam.slotIndex),
+        buildPanelCalcContextForSlot(remielInTeam.slotIndex),
+        remielInTeam.slotIndex,
+      )
+    : null
+  const remielSelfPanel = remielSelfBreakdown?.finalPanel
+  const remielSelfSources = remielSelfBreakdown?.sources ?? []
+  const remielSelfExternal = remielInTeam
+    ? resolveExternalPanelForSlotIndex(remielInTeam.slotIndex)
+    : external
+  const remielSelfEnemyRes =
+    p.remielSelfRadianceActive && p.remielSelfResistanceElement
+      ? resolveEnemyResistanceForElement(
+          normalizeDamageEnemyInput(enemy),
+          p.remielSelfResistanceElement,
+        )
+      : 0
+  const remielSelfResPenTotal =
+    (remielSelfPanel?.resPen ?? 0) + (remielSelfPanel?.radianceResPen ?? 0)
+  const remielIsMb =
+    remielInTeam?.id != null &&
+    props.agents.find((item) => item.id === remielInTeam.id)?.profession === MB_PROFESSION
+
   const eventLine = selectedEventDetailLine.value
   const ownerBreakdown = selectedEventOwnerBreakdown.value
   const eventOwnerCtx = eventLine ? buildEventSkillContext(eventLine.event) : null
@@ -1756,11 +1811,14 @@ const valueTips = computed(() => {
     ? [
         {
           label: triggerAgent.value?.name ?? '产生角色',
-          items: usesProducerMult
-            ? [
-                '异常基础乘区、紊乱/乱流倍率与异常持续时间取产生角色面板；乱流/紊乱增伤与异常暴击取事件产生角色；减防/无视防御取主C',
-              ]
-            : ['异常基础乘区（含等级区）取产生角色面板；减防/无视防御取主C'],
+          items:
+            sub === 'radiance' && p.remielSelfRadianceActive
+              ? [RADIANCE_SELF_TRIGGER_HINT]
+              : usesProducerMult
+                ? [
+                    '异常基础乘区、紊乱/乱流倍率与异常持续时间取产生角色面板；乱流/紊乱增伤与异常暴击取事件产生角色；减防/无视防御取主C',
+                  ]
+                : ['异常基础乘区（含等级区）取产生角色面板；减防/无视防御取主C'],
         },
       ]
     : []
@@ -2301,31 +2359,56 @@ const valueTips = computed(() => {
         `实际期望：1 + ${formatFormulaNumber(p.anomalyCritRateRatio)} × ${formatFormulaNumber(p.anomalyCritDmgRatio)} = ${formatFormulaNumber(p.anomalyCritZone)}`,
       ].join('；'),
     ),
-    anomalyBaseExpected: [
-      {
-        label: p.mutationZone > 1 ? '乘区组成（含异化系数；不含异常增伤/倍率/暴击）' : '乘区组成（不含异常增伤/倍率/暴击）',
-        items: [
-          `通用乘区 ${anomalyFormulaParts.value[0]}`,
-          `精通区 ${anomalyFormulaParts.value[1]}`,
-          `等级区 ${anomalyFormulaParts.value[2]}`,
-          ...(p.mutationZone > 1
-            ? [`异化系数区 ${formatFormulaNumber(p.mutationZone)}`]
-            : []),
-          `合计 ${formatNumber(anomalyBaseWithMutation.value)}`,
+    anomalyBaseExpected: p.remielSelfRadianceActive
+      ? [
+          {
+            label: '乘区组成（蕾米埃尔异常基础；已含异化系数与双等级区）',
+            items: [
+              `局内攻击力 ${anomalyFormulaParts.value[0]}`,
+              `局内精通区 ${anomalyFormulaParts.value[1]}`,
+              `特殊等级区 ${anomalyFormulaParts.value[2]}`,
+              `异化系数区 ${anomalyFormulaParts.value[3]}`,
+              `等级区 ${anomalyFormulaParts.value[4]}`,
+              `合计 ${formatNumber(anomalyBaseWithMutation.value)}`,
+              ...(p.remielSelfResistanceElement
+                ? [`抗性基准属性 ${p.remielSelfResistanceElement}`]
+                : []),
+            ],
+          },
+          {
+            label: '加减过程',
+            fullWidth: true,
+            items: [
+              anomalyFormulaParts.value.join(' × '),
+              `= ${formatNumber(anomalyBaseWithMutation.value)}`,
+            ],
+          },
+        ]
+      : [
+          {
+            label: p.mutationZone > 1 ? '乘区组成（含异化系数；不含异常增伤/倍率/暴击）' : '乘区组成（不含异常增伤/倍率/暴击）',
+            items: [
+              `通用乘区 ${anomalyFormulaParts.value[0]}`,
+              `精通区 ${anomalyFormulaParts.value[1]}`,
+              `等级区 ${anomalyFormulaParts.value[2]}`,
+              ...(p.mutationZone > 1
+                ? [`异化系数区 ${formatFormulaNumber(p.mutationZone)}`]
+                : []),
+              `合计 ${formatNumber(anomalyBaseWithMutation.value)}`,
+            ],
+          },
+          {
+            label: '加减过程',
+            fullWidth: true,
+            items: [
+              [
+                ...anomalyFormulaParts.value,
+                ...(p.mutationZone > 1 ? [formatFormulaNumber(p.mutationZone)] : []),
+              ].join(' × '),
+              `= ${formatNumber(anomalyBaseWithMutation.value)}`,
+            ],
+          },
         ],
-      },
-      {
-        label: '加减过程',
-        fullWidth: true,
-        items: [
-          [
-            ...anomalyFormulaParts.value,
-            ...(p.mutationZone > 1 ? [formatFormulaNumber(p.mutationZone)] : []),
-          ].join(' × '),
-          `= ${formatNumber(anomalyBaseWithMutation.value)}`,
-        ],
-      },
-    ],
     anomalyExpected: [
       {
         label: '乘区组成（含异常增伤/倍率/暴击）',
@@ -2520,16 +2603,33 @@ const valueTips = computed(() => {
         ],
       },
     ],
-    radianceExpected: [
-      {
-        label: '乘区组成',
-        items: [
-          `异常基础期望 ${formatNumber(anomalyBaseWithMutation.value)}`,
-          `耀变综合增伤区 ${formatFormulaNumber(p.radianceCombinedDmgBonusZone)}（耀变增伤+异常增伤）`,
-          `耀变倍率区 ${formatFormulaNumber(p.radianceMultZone)}`,
+    radianceExpected: p.remielSelfRadianceActive
+      ? [
+          {
+            label: '乘区组成',
+            items: [
+              `蕾米埃尔异常基础 ${formatNumber(anomalyBaseWithMutation.value)}`,
+              `防御区 ${formatFormulaNumber(p.remielSelfDefenseMultiplier ?? 1)}`,
+              `抗性区 ${formatFormulaNumber(p.remielSelfResistanceMultiplier ?? 1)}${
+                p.remielSelfResistanceElement ? `（基准属性 ${p.remielSelfResistanceElement}）` : ''
+              }`,
+              `耀变综合增伤区 ${formatFormulaNumber(p.radianceCombinedDmgBonusZone)}（耀变增伤+异常增伤）`,
+              `耀变倍率区 ${formatFormulaNumber(p.radianceMultZone)}`,
+              `特殊倍率乘区 ${formatFormulaNumber(p.specialMultZone)}`,
+              `特殊乘区 ${formatFormulaNumber(p.specialMultiplier)}`,
+            ],
+          },
+        ]
+      : [
+          {
+            label: '乘区组成',
+            items: [
+              `异常基础期望 ${formatNumber(anomalyBaseWithMutation.value)}`,
+              `耀变综合增伤区 ${formatFormulaNumber(p.radianceCombinedDmgBonusZone)}（耀变增伤+异常增伤）`,
+              `耀变倍率区 ${formatFormulaNumber(p.radianceMultZone)}`,
+            ],
+          },
         ],
-      },
-    ],
     radianceMutation: [
       {
         label: '乘区组成',
@@ -2555,6 +2655,12 @@ const valueTips = computed(() => {
       sources,
       externalKeyMap: { radianceMult: null, radianceMultFactor: null },
     }),
+    specialMultZone: buildStatSourceGroups({
+      keys: ['specialMult', 'specialMultFactor'],
+      externalPanel: panel,
+      sources,
+      externalKeyMap: { specialMult: null, specialMultFactor: null },
+    }),
     mutationZone: [
       {
         label: '异化系数',
@@ -2564,6 +2670,74 @@ const valueTips = computed(() => {
         ],
       },
     ],
+    remielSelfDefenseMultiplier: p.remielSelfRadianceActive
+      ? remielIsMb
+        ? [{ label: '蕾米埃尔', items: ['防御区固定为 1（命破）'] }]
+        : withTotal(
+            buildStatSourceGroups({
+              keys: ['penRate'],
+              externalPanel: remielSelfExternal,
+              sources: remielSelfSources,
+              finalValues: { penRate: remielSelfPanel?.penRate ?? 0 },
+              extraGroups: [
+                {
+                  label: mainAgent.value?.name ?? '主C',
+                  items: [
+                    `减防 ${formatFormulaNumber(panel.reduceDefense, 2)}%`,
+                    `无视防御 ${formatFormulaNumber(panel.ignoreDefense, 2)}%`,
+                  ],
+                },
+                {
+                  label: '敌方与环境 / 局外面板',
+                  items: [
+                    `敌方防御 ${formatFormulaNumber(enemy.defense, 2)}`,
+                    `穿透值 ${formatFormulaNumber(remielSelfExternal.pen, 2)}`,
+                  ],
+                },
+              ],
+              showAdditiveProcess: false,
+            }),
+            `防御区 ${formatFormulaNumber(p.remielSelfDefenseMultiplier ?? 1)}（穿透取蕾米埃尔；减防/无视取主C）`,
+          )
+      : [],
+    remielSelfResistanceMultiplier: p.remielSelfRadianceActive
+      ? withTotal(
+          [
+            {
+              label: '敌方与环境',
+              items: [
+                p.remielSelfResistanceElement
+                  ? `${p.remielSelfResistanceElement} 抗性 ${formatFormulaNumber(remielSelfEnemyRes)}（${resistanceTypeLabel(
+                      ensureElementResistanceMap()[
+                        p.remielSelfResistanceElement as EnemyResistanceElement
+                      ] ?? 'normal',
+                    )}）`
+                  : '无后续非流明队友，敌方抗性按无弱点无抗性（0）',
+              ],
+            },
+            ...buildStatSourceGroups({
+              keys: ['resPen', 'radianceResPen'],
+              externalPanel: remielSelfExternal,
+              sources: remielSelfSources,
+              finalValues: {
+                resPen: remielSelfPanel?.resPen ?? 0,
+                radianceResPen: remielSelfPanel?.radianceResPen ?? 0,
+              },
+              showAdditiveProcess: false,
+            }),
+          ],
+          `抗性区 1 - ${formatFormulaNumber(remielSelfEnemyRes)} + ${formatFormulaNumber(remielSelfResPenTotal, 2)}% = ${formatFormulaNumber(p.remielSelfResistanceMultiplier ?? 1)}`,
+          [
+            p.remielSelfResistanceElement
+              ? `基准属性 ${p.remielSelfResistanceElement} · 敌方抗性 ${formatFormulaNumber(remielSelfEnemyRes)}`
+              : '无后续非流明队友 · 敌方抗性 0',
+            ...(remielSelfResPenTotal
+              ? [`抗穿合计 ${formatFormulaNumber(remielSelfResPenTotal, 2)}%`]
+              : []),
+            `1 - ${formatFormulaNumber(remielSelfEnemyRes)} + ${formatFormulaNumber(remielSelfResPenTotal, 2)}% = ${formatFormulaNumber(p.remielSelfResistanceMultiplier ?? 1)}`,
+          ],
+        )
+      : [],
   }
 })
 
@@ -2693,7 +2867,7 @@ function loadSnapshot(snapshot: DamageCalcPanelSnapshot) {
       }),
     )
   }
-  Object.assign(enemyInput, snapshot.enemyInput)
+  Object.assign(enemyInput, normalizeDamageEnemyInput(snapshot.enemyInput))
   if (!Number.isFinite(enemyInput.level) || enemyInput.level < 1) {
     enemyInput.level = 60
   }
@@ -2732,6 +2906,12 @@ function resolveMultDefaultsForEvent(
     const panel = input?.finalPanel ?? finalPanel.value
     result.anomalyMult = panel.anomalyMult
     result.anomalyMultFactor = panel.anomalyMultFactor
+    return result
+  }
+
+  if (event.kind === 'radiance') {
+    const bonusPanel = input?.mainCFinalPanel ?? finalPanel.value
+    Object.assign(result, resolveRadianceBonusMultDefaults(bonusPanel))
     return result
   }
 
@@ -3078,13 +3258,19 @@ defineExpose({
           aria-label="敌方防御预设"
         />
       </label>
-      <label class="field">
-        <span>敌方抗性</span>
-        <select v-model="enemyInput.resistanceType">
-          <option value="weak">有弱点（-0.2）</option>
-          <option value="normal">无弱点无抗性（0）</option>
-          <option value="res20">有抗性（0.2）</option>
-          <option value="res40">高抗性（0.4）</option>
+      <label
+        v-for="element in ENEMY_RESISTANCE_ELEMENTS"
+        :key="`res-${element}`"
+        class="field"
+      >
+        <span>{{ element }} · 抗性</span>
+        <select
+          :value="ensureElementResistanceMap()[element]"
+          @change="setElementResistance(element, ($event.target as HTMLSelectElement).value as EnemyResistanceType)"
+        >
+          <option v-for="opt in ENEMY_RESISTANCE_OPTIONS" :key="opt.id" :value="opt.id">
+            {{ opt.label }}
+          </option>
         </select>
       </label>
       <label class="field"><span>易伤区（基础）</span><input v-model.number="enemyInput.vulnerableMultiplier" type="number" step="0.01" /></label>
@@ -3168,7 +3354,10 @@ defineExpose({
       </p>
     </section>
 
-    <p v-if="hasDamageEvents && !showGeneralZone" class="anomaly-block-hint">
+    <p v-if="hasDamageEvents && !showGeneralZone && displayCalcParts.remielSelfRadianceActive" class="anomaly-block-hint">
+      蕾米埃尔本人耀变不使用通用乘区，详见下方耀变公式分解
+    </p>
+    <p v-else-if="hasDamageEvents && !showGeneralZone" class="anomaly-block-hint">
       选中上方伤害事件后可查看通用乘区与详细分解
     </p>
 
@@ -3479,6 +3668,22 @@ defineExpose({
           :groups="valueTips.radianceMultZone"
         />
       </p>
+      <template v-if="calcParts.remielSelfRadianceActive">
+        <p>
+          特殊倍率乘区：
+          <StatValueWithSources
+            :value="formatFormulaNumber(calcParts.specialMultZone)"
+            :groups="valueTips.specialMultZone"
+          />
+        </p>
+        <p>
+          特殊乘区：
+          <StatValueWithSources
+            :value="formatFormulaNumber(calcParts.specialMultiplier)"
+            :groups="valueTips.specialMultiplier"
+          />
+        </p>
+      </template>
       <p class="result-total">
         耀变期望伤害：
         <StatValueWithSources
@@ -3588,6 +3793,10 @@ defineExpose({
 
 .grid.four {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.field-span-all {
+  grid-column: 1 / -1;
 }
 
 .meta-grid {

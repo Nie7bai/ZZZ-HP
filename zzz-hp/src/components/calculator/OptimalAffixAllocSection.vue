@@ -43,7 +43,15 @@ import {
   createEmptyRefinementMods,
 } from '@/utils/calculatorUi'
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
-import type { DamageCalcResult, EnemyResistanceType } from '@/utils/damageCalc'
+import type { DamageCalcResult } from '@/utils/damageCalc'
+import {
+  ENEMY_RESISTANCE_ELEMENTS,
+  ENEMY_RESISTANCE_OPTIONS,
+  normalizeDamageEnemyInput,
+  type DamageEnemyInput,
+  type EnemyResistanceElement,
+  type EnemyResistanceType,
+} from '@/utils/enemyResistance'
 import {
   ANOMALY_CONSTRAINTS,
   BENEFIT_CURVE_MAX_ADDED,
@@ -222,14 +230,26 @@ const damageKind = computed(() => props.damageKind ?? 'direct')
 const anomalySubKind = computed(() => props.anomalySubKind ?? 'anomaly')
 const baseDamageSource = ref<BaseDamageSource>('atk')
 const driveDiscMainStats = reactive(createDefaultAffixDriveDiscMainStats())
-const enemyInput = reactive({
-  defense: 953,
-  resistanceType: 'normal' as EnemyResistanceType,
-  vulnerableMultiplier: 1,
-  staggerMultiplier: 1,
-  specialMultiplier: 1,
-  level: 60,
-})
+const enemyInput = reactive<DamageEnemyInput>(
+  normalizeDamageEnemyInput({
+    defense: 953,
+    vulnerableMultiplier: 1,
+    staggerMultiplier: 1,
+    specialMultiplier: 1,
+    level: 60,
+  }),
+)
+
+function ensureElementResistanceMap() {
+  if (!enemyInput.elementResistance) {
+    enemyInput.elementResistance = normalizeDamageEnemyInput(enemyInput).elementResistance
+  }
+  return enemyInput.elementResistance!
+}
+
+function setElementResistance(element: EnemyResistanceElement, value: EnemyResistanceType) {
+  ensureElementResistanceMap()[element] = value
+}
 
 const directAlloc = reactive<DirectAllocState>({
   flatStat: 0,
@@ -1681,13 +1701,19 @@ watch(
           aria-label="敌方防御预设"
         />
       </label>
-      <label class="field">
-        <span>敌方抗性</span>
-        <select v-model="enemyInput.resistanceType">
-          <option value="weak">有弱点（-0.2）</option>
-          <option value="normal">无弱点无抗性（0）</option>
-          <option value="res20">有抗性（0.2）</option>
-          <option value="res40">高抗性（0.4）</option>
+      <label
+        v-for="element in ENEMY_RESISTANCE_ELEMENTS"
+        :key="`res-${element}`"
+        class="field"
+      >
+        <span>{{ element }} · 抗性</span>
+        <select
+          :value="ensureElementResistanceMap()[element]"
+          @change="setElementResistance(element, ($event.target as HTMLSelectElement).value as EnemyResistanceType)"
+        >
+          <option v-for="opt in ENEMY_RESISTANCE_OPTIONS" :key="opt.id" :value="opt.id">
+            {{ opt.label }}
+          </option>
         </select>
       </label>
       <label class="field">
@@ -2899,6 +2925,10 @@ watch(
 
 .grid.four {
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+}
+
+.field-span-all {
+  grid-column: 1 / -1;
 }
 
 .alloc-layout {

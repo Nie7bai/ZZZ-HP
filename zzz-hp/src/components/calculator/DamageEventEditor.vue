@@ -233,6 +233,8 @@ const ANOMALY_MULT_FIELDS: { key: keyof DamageEventMultOverrides; label: string 
   { key: 'turbulenceCompMult', label: '乱流补偿倍率%' },
   { key: 'radianceMult', label: '耀变倍率%' },
   { key: 'radianceMultFactor', label: '耀变倍率修正' },
+  { key: 'specialMult', label: '特殊倍率%' },
+  { key: 'specialMultFactor', label: '特殊倍率修正' },
 ]
 
 const currentMultFields = computed(() => {
@@ -261,7 +263,11 @@ const currentMultFields = computed(() => {
   }
   if (event.kind === 'radiance') {
     return ANOMALY_MULT_FIELDS.filter(
-      (f) => f.key === 'radianceMult' || f.key === 'radianceMultFactor',
+      (f) =>
+        f.key === 'radianceMult' ||
+        f.key === 'radianceMultFactor' ||
+        f.key === 'specialMult' ||
+        f.key === 'specialMultFactor',
     )
   }
   return ANOMALY_MULT_FIELDS

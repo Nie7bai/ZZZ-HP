@@ -52,6 +52,7 @@ export const BUFF_STAT_KEYS = [
   'radianceMult',
   'radianceDmgBonus',
   'radianceResPen',
+  'specialMult',
   'mutationCoeff',
   'skillDmgBonus',
   'skillMultiplierBonus',
@@ -61,6 +62,7 @@ export const BUFF_STAT_KEYS = [
   'disorderBaseMultFactor',
   'turbulenceBaseMultFactor',
   'radianceMultFactor',
+  'specialMultFactor',
   'mutationCoeffFactor',
 ]
 
@@ -91,6 +93,7 @@ export const AGENT_BASE_PANEL_KEYS = [
   'radianceMult',
   'radianceDmgBonus',
   'radianceResPen',
+  'specialMult',
   'mutationCoeff',
 ]
 
@@ -111,20 +114,27 @@ export function readNumber(value) {
   return Number.isFinite(num) ? num : 0
 }
 
+const MULT_FACTOR_DEFAULT_KEYS = [
+  'directDmgMultFactor',
+  'anomalyMultFactor',
+  'anomalyReleaseMultFactor',
+  'disorderBaseMultFactor',
+  'turbulenceBaseMultFactor',
+  'radianceMultFactor',
+  'specialMultFactor',
+  'mutationCoeffFactor',
+]
+
 export function createEmptyBuffStatModifiers() {
   return Object.fromEntries(
-    BUFF_STAT_KEYS.map((key) => [
-      key,
-      ['directDmgMultFactor', 'anomalyMultFactor', 'anomalyReleaseMultFactor', 'disorderBaseMultFactor', 'turbulenceBaseMultFactor', 'radianceMultFactor', 'mutationCoeffFactor'].includes(key)
-        ? 1
-        : 0,
-    ]),
+    BUFF_STAT_KEYS.map((key) => [key, MULT_FACTOR_DEFAULT_KEYS.includes(key) ? 1 : 0]),
   )
 }
 
 export function createEmptyAgentBasePanel() {
   const panel = Object.fromEntries(AGENT_BASE_PANEL_KEYS.map((key) => [key, 0]))
   panel.directDmgMult = 100
+  panel.specialMult = 100
   return panel
 }
 
@@ -174,6 +184,9 @@ export function normalizeAgentBasePanel(value) {
   // 旧数据缺省直伤倍率时按 100%（×1）处理
   if (value.directDmgMult == null) {
     result.directDmgMult = 100
+  }
+  if (value.specialMult == null) {
+    result.specialMult = 100
   }
   return result
 }

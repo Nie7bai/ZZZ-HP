@@ -260,6 +260,18 @@ export const BUFF_STAT_FIELDS: {
     hint: '乘算修正，默认 100',
   },
   {
+    key: 'specialMult',
+    label: '特殊倍率',
+    unit: 'percent',
+    hint: '百分点，特殊倍率乘区加算',
+  },
+  {
+    key: 'specialMultFactor',
+    label: '特殊倍率修正',
+    unit: 'factor',
+    hint: '乘算修正，默认 100',
+  },
+  {
     key: 'radianceDmgBonus',
     label: '耀变增伤',
     unit: 'percent',
@@ -526,8 +538,10 @@ export function createEmptyBuffStatModifiers(): BuffStatModifiers {
     radianceMult: 0,
     radianceDmgBonus: 0,
     radianceResPen: 0,
+    specialMult: 0,
     mutationCoeff: 0,
     radianceMultFactor: 0,
+    specialMultFactor: 0,
     mutationCoeffFactor: 0,
   }
 }
@@ -592,6 +606,7 @@ const BUFF_MULT_FACTOR_KEYS: BuffStatKey[] = [
   'disorderBaseMultFactor',
   'turbulenceBaseMultFactor',
   'radianceMultFactor',
+  'specialMultFactor',
   'mutationCoeffFactor',
 ]
 
@@ -764,6 +779,7 @@ export const AGENT_BASE_PANEL_FIELDS: {
   { key: 'radianceMult', label: '初始耀变倍率', unit: 'percent' },
   { key: 'radianceDmgBonus', label: '初始耀变增伤', unit: 'percent' },
   { key: 'radianceResPen', label: '初始耀变抗性穿透', unit: 'percent' },
+  { key: 'specialMult', label: '初始特殊倍率', unit: 'percent' },
   { key: 'mutationCoeff', label: '初始异化系数', unit: 'percent' },
 ]
 
@@ -815,6 +831,7 @@ export function createEmptyAgentBasePanel(): AgentBasePanel {
     radianceMult: 0,
     radianceDmgBonus: 0,
     radianceResPen: 0,
+    specialMult: 100,
     mutationCoeff: 0,
   }
 }
@@ -852,6 +869,9 @@ export function normalizeAgentBasePanel(value: unknown): AgentBasePanel {
   // 旧数据缺省直伤倍率时按 100%（×1）处理
   if (entry.directDmgMult == null) {
     result.directDmgMult = 100
+  }
+  if (entry.specialMult == null) {
+    result.specialMult = 100
   }
   result.energyRegen = normalizeEnergyRegenPercent(result.energyRegen)
   return result
