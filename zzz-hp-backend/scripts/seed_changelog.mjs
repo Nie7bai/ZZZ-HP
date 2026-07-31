@@ -118,6 +118,17 @@ const content310 = `相对 3.0.9 的增量更新（异常 / 直伤结算体系�
 · 危局 / 防卫战仅开始日当天公开（取消提前 7 天展示）；管理员可见未公开期数
 · 新增计算器四表导出脚本 export:calculator-buffs，便于本地数据同步上线`
 
+const content311 = `相对 3.1.0 的增量更新（流明角色、多产生者事件与最优词条增强为主）：
+
+· 新增流明属性与蕾米埃尔：耀变伤害、异化系数；直伤 Buff 属性等价链；旧四类异常与耀变产生角色规则区分
+· 伤害事件支持多产生者（owner）：非主 C 产生角色的局外/局内面板独立录入；转模队友与主 C 词条推导解耦
+· 最优词条：统计事件勾选与柱状图联动；配置变更后手动「开始计算」；柱体切换复用评估缓存以减轻卡顿
+· 乱流：事件产生角色为风属性时可计算（不必主 C 为风）；乱流/紊乱增伤与暴击取事件产生角色面板
+· 异放局外攻击转模修复：主 C 扫掠局外大攻击可跨槽参与转模链结算
+· 事件公式展示：异常基础/增伤行按触发与产生角色命名；异化系数并入异常基础行
+· 产生者伤害占比：按事件 owner 汇总总伤占比，可展开查看各事件占比并联动选中详情
+· 危局困难模式 9–10 条血量系数修正`
+
 const conn = await mysql.createConnection({
   host: process.env.DB_HOST || '127.0.0.1',
   port: Number(process.env.DB_PORT || 3306),
@@ -210,4 +221,20 @@ const [rows] = await conn.query(
   `SELECT id, version, title, CHAR_LENGTH(content) AS len FROM changelog ORDER BY published_at DESC`,
 )
 console.log(rows)
+
+await conn.query(`DELETE FROM changelog WHERE version = '3.1.1'`)
+await conn.query(
+  `INSERT INTO changelog (version, title, content, published_at) VALUES (?, ?, ?, ?)`,
+  [
+    '3.1.1',
+    '流明角色与多产生者事件结算',
+    content311,
+    '2026-07-31 18:30:00',
+  ],
+)
+
+const [rowsAfter] = await conn.query(
+  `SELECT id, version, title, CHAR_LENGTH(content) AS len FROM changelog ORDER BY published_at DESC LIMIT 5`,
+)
+console.log(rowsAfter)
 await conn.end()

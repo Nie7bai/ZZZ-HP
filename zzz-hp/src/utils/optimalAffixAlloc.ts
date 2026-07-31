@@ -34,7 +34,6 @@ import {
   eventNeedsAnomalyProducer,
   mapEventKindToCalc,
   pickEventDamage,
-  canSelectTurbulenceDamageEvent,
   formatDamageEventDisplayName,
   getDamageEventSkipReason,
 } from '@/utils/damageEvent'
@@ -127,6 +126,12 @@ export interface OptimalEventEvalDetail {
   producerExternalPanel?: PanelStats
   producerBreakdown?: OptimalPanelBreakdown
   producerAgentLabel?: string
+  /** 异常基础乘区角色名 */
+  baseAgentLabel?: string
+  /** 增伤/倍率乘区角色名（主 C） */
+  bonusAgentLabel?: string
+  /** 异化系数区角色名（蕾米埃尔） */
+  mutationAgentLabel?: string
 }
 
 /** 受 4/5/6 主词条计数约束的副词条 */
@@ -239,8 +244,16 @@ export interface DirectSweepPoint {
   critDmg: number
   label: string
   affixCounts: AffixCounts
-  /** 扫掠路径下可省略，详情区会单独 evaluate */
-  result?: DamageCalcResult
+  /** 扫掠时缓存完整评估，柱体切换时复用 */
+  evalSnapshot: {
+    finalPanel: PanelStats
+    result: DamageCalcResult
+    piercePower: number
+    external: PanelStats
+    breakdown: OptimalPanelBreakdown
+    grandTotal: number
+    eventLines: OptimalEventDamageLine[]
+  }
   directExpected: number
   eventLines: OptimalEventDamageLine[]
   grandTotal: number
@@ -251,7 +264,7 @@ export interface AnomalySweepPoint {
   mastery: number
   label: string
   affixCounts: AffixCounts
-  result?: DamageCalcResult
+  evalSnapshot: DirectSweepPoint['evalSnapshot']
   anomalyExpected: number
   disorderExpected: number
   turbulenceExpected: number
@@ -521,13 +534,14 @@ function buildPanelContextForSlot(
   const base: PanelCalcContext = {
     ...ctx.panelContext,
     mainSlotIndex: slotIndex,
+    mainExternalPanel: mainExternalPanel,
     extraMods,
     buffSelection: ctx.slotBuffSelections
       ? resolveBuffSelectionForSlot(ctx.slotBuffSelections, slotIndex)
       : ctx.panelContext.buffSelection,
     attrValues: panelToConvertAttrValues(externalForSlot, { level, pierceMod: 0 }),
   }
-  const panelSourceValuesRecord = buildPanelSourceValuesBySlotRecord(base, mainExternalPanel)
+  const panelSourceValuesRecord = buildPanelSourceValuesBySlotRecord(base, externalForSlot)
   const panelSourceValuesBySlot = new Map(
     Object.entries(panelSourceValuesRecord).map(([key, value]) => [Number(key), value]),
   )
@@ -624,15 +638,9 @@ export function evaluateOptimalEventDetail(
   mainExternal: PanelStats,
   event: DamageEvent,
 ): OptimalEventEvalDetail | null {
-  const turbulenceCalculable = canSelectTurbulenceDamageEvent(
-    ctx.panelContext.teamSlots,
-    ctx.panelContext.agents,
-    ctx.mainAgentElement,
-  )
   const skipReason = getDamageEventSkipReason(event, {
     teamSlots: ctx.panelContext.teamSlots,
     agents: ctx.panelContext.agents,
-    turbulenceCalculable,
     mainAgentId: ctx.mainAgentId,
   })
   if (skipReason) return null
@@ -879,6 +887,12 @@ export function evaluateOptimalEventDetail(
     ownerAgent?.name,
   )
 
+  const remiel = findLuminousAgentInTeam(ctx.panelContext.teamSlots, ctx.panelContext.agents)
+  const remielName = remiel
+    ? ctx.panelContext.agents.find((item) => item.id === remiel.id)?.name
+    : undefined
+  const baseAgentLabel = eventNeedsTrigger ? tAgent?.name : ownerAgent?.name
+
   return {
     event,
     eventId: event.id,
@@ -898,6 +912,9 @@ export function evaluateOptimalEventDetail(
     producerExternalPanel,
     producerBreakdown,
     producerAgentLabel: usesNonMainProducer ? tAgent?.name : undefined,
+    baseAgentLabel,
+    bonusAgentLabel: ownerAgent?.name,
+    mutationAgentLabel: remielName && result.mutationZone > 1 ? remielName : undefined,
   }
 }
 
@@ -1306,15 +1323,16 @@ export function sweepDirectDamage(
         hpPercent,
         critDmg,
       )
-      const { grandTotal, eventLines } = evaluateAffixCountsForSweep(ctx, affixCounts)
+      const evaled = evaluateAffixCounts(ctx, affixCounts)
       points.push({
         outPercent: hpPercent,
         critDmg,
         label: `局外大生命${hpPercent}/爆伤${critDmg}`,
         affixCounts,
-        directExpected: grandTotal,
-        eventLines,
-        grandTotal,
+        evalSnapshot: evaled,
+        directExpected: evaled.grandTotal,
+        eventLines: evaled.eventLines,
+        grandTotal: evaled.grandTotal,
       })
     }
     return points
@@ -1332,15 +1350,16 @@ export function sweepDirectDamage(
       outPercent,
       critDmg,
     )
-    const { grandTotal, eventLines } = evaluateAffixCountsForSweep(ctx, affixCounts)
+    const evaled = evaluateAffixCounts(ctx, affixCounts)
     points.push({
       outPercent,
       critDmg,
       label: `${outLabel}${outPercent}/爆伤${critDmg}`,
       affixCounts,
-      directExpected: grandTotal,
-      eventLines,
-      grandTotal,
+      evalSnapshot: evaled,
+      directExpected: evaled.grandTotal,
+      eventLines: evaled.eventLines,
+      grandTotal: evaled.grandTotal,
     })
   }
   return points
@@ -1360,22 +1379,20 @@ export function sweepAnomalyDamage(
     const mastery = total - outPercent
     if (outPercent > outCap || mastery > caps.mastery) continue
     const affixCounts = buildAnomalyAffixCounts(ctx.isMb, { ...state, totalRolls: total }, outPercent, mastery)
-    const { grandTotal, eventLines } = evaluateAffixCountsForSweep(ctx, affixCounts)
-    const subMetrics = ctx.damageEvents?.length
-      ? null
-      : evaluateAffixCounts(ctx, affixCounts).result
+    const evaled = evaluateAffixCounts(ctx, affixCounts)
     points.push({
       outPercent,
       mastery,
       label: `${outLabel}${outPercent}/精通${mastery}`,
       affixCounts,
-      anomalyExpected: grandTotal,
-      disorderExpected: subMetrics?.disorderExpected ?? 0,
-      turbulenceExpected: subMetrics?.turbulenceExpected ?? 0,
-      anomalyReleaseExpected: subMetrics?.anomalyReleaseExpected ?? 0,
-      radianceExpected: subMetrics?.radianceExpected ?? 0,
-      eventLines,
-      grandTotal,
+      evalSnapshot: evaled,
+      anomalyExpected: evaled.grandTotal,
+      disorderExpected: evaled.result.disorderExpected,
+      turbulenceExpected: evaled.result.turbulenceExpected,
+      anomalyReleaseExpected: evaled.result.anomalyReleaseExpected,
+      radianceExpected: evaled.result.radianceExpected,
+      eventLines: evaled.eventLines,
+      grandTotal: evaled.grandTotal,
     })
   }
   return points
@@ -1394,6 +1411,25 @@ function damageMetric(
   if (anomalyMetric === 'anomalyRelease') return result.anomalyReleaseExpected
   if (anomalyMetric === 'radiance') return result.radianceExpected
   return result.anomalyExpected
+}
+
+function resolveEvalMetricDamage(
+  evaled: {
+    result: DamageCalcResult
+    grandTotal: number
+    eventLines: OptimalEventDamageLine[]
+  },
+  kind: OptimalDamageKind,
+  anomalyMetric: OptimalAnomalyMetric,
+  selectedEventIds?: string[] | null,
+): number {
+  if (selectedEventIds?.length && evaled.eventLines.length) {
+    const ids = new Set(selectedEventIds)
+    return evaled.eventLines
+      .filter((line) => ids.has(line.eventId))
+      .reduce((sum, line) => sum + line.total, 0)
+  }
+  return damageMetric(evaled.result, kind, anomalyMetric, evaled.grandTotal)
 }
 
 export function directCandidateKeys(isMb: boolean): OptimalAffixKey[] {
@@ -1429,10 +1465,11 @@ export function computeDiffAnalysis(
   baseCounts: AffixCounts,
   kind: OptimalDamageKind,
   anomalyMetric: OptimalAnomalyMetric = 'anomaly',
+  selectedEventIds?: string[] | null,
 ): { addOne: AffixDiffRow[]; replace: AffixReplaceRow[] } {
   const candidates = kind === 'direct' ? directCandidateKeys(ctx.isMb) : anomalyCandidateKeys(ctx.isMb)
   const base = evaluateAffixCounts(ctx, baseCounts)
-  const baseDmg = damageMetric(base.result, kind, anomalyMetric, base.grandTotal)
+  const baseDmg = resolveEvalMetricDamage(base, kind, anomalyMetric, selectedEventIds)
   const mainStats = ctx.driveDiscMainStats
 
   const addOne: AffixDiffRow[] = candidates.map((key) => {
@@ -1450,7 +1487,7 @@ export function computeDiffAnalysis(
     }
     const bumped = bumpAffix(baseCounts, key, 1)
     const next = evaluateAffixCounts(ctx, bumped)
-    const nextDmg = damageMetric(next.result, kind, anomalyMetric, next.grandTotal)
+    const nextDmg = resolveEvalMetricDamage(next, kind, anomalyMetric, selectedEventIds)
     const delta = nextDmg - baseDmg
     return {
       key,
@@ -1480,7 +1517,7 @@ export function computeDiffAnalysis(
       if (exceedsAffixCap(mainStats, cand, nextCount)) continue
       const swapped = bumpAffix(without, cand, 1)
       const evaled = evaluateAffixCounts(ctx, swapped)
-      const dmg = damageMetric(evaled.result, kind, anomalyMetric, evaled.grandTotal)
+      const dmg = resolveEvalMetricDamage(evaled, kind, anomalyMetric, selectedEventIds)
       const delta = dmg - baseDmg
       if (delta > bestDelta) {
         bestDelta = delta
@@ -1580,10 +1617,11 @@ export function computeBenefitCurves(
   kind: OptimalDamageKind,
   anomalyMetric: OptimalAnomalyMetric = 'anomaly',
   maxAdded = BENEFIT_CURVE_MAX_ADDED,
+  selectedEventIds?: string[] | null,
 ): { series: BenefitCurveSeries[]; nextStep: AffixDiffRow[] } {
   const candidates = kind === 'direct' ? directCandidateKeys(ctx.isMb) : anomalyCandidateKeys(ctx.isMb)
   const base = evaluateAffixCounts(ctx, baseCounts)
-  const baseDmg = damageMetric(base.result, kind, anomalyMetric, base.grandTotal)
+  const baseDmg = resolveEvalMetricDamage(base, kind, anomalyMetric, selectedEventIds)
   const mainStats = ctx.driveDiscMainStats
 
   const series: BenefitCurveSeries[] = candidates.map((key) => {
@@ -1603,7 +1641,7 @@ export function computeBenefitCurves(
       }
       counts = bumpAffix(counts, key, 1)
       const evaled = evaluateAffixCounts(ctx, counts)
-      const dmg = damageMetric(evaled.result, kind, anomalyMetric, evaled.grandTotal)
+      const dmg = resolveEvalMetricDamage(evaled, kind, anomalyMetric, selectedEventIds)
       const cum = baseDmg > 0 ? ((dmg - baseDmg) / baseDmg) * 100 : 0
       const mar = prevDmg > 0 ? ((dmg - prevDmg) / prevDmg) * 100 : 0
       cumulativePercent.push(cum)
@@ -1621,7 +1659,7 @@ export function computeBenefitCurves(
     }
   })
 
-  const nextStep = computeDiffAnalysis(ctx, baseCounts, kind, anomalyMetric).addOne
+  const nextStep = computeDiffAnalysis(ctx, baseCounts, kind, anomalyMetric, selectedEventIds).addOne
 
   return { series, nextStep }
 }

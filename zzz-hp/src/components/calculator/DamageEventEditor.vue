@@ -41,9 +41,9 @@ const props = withDefaults(
     triggerAgentOptions?: { id: string; name: string }[]
     /** 管理端：允许配置为计算时再选产生角色 */
     allowCalcTimeTrigger?: boolean
-    /** 计算页：队伍满足风 + 另一属性时乱流事件可参与计算 */
+    /** 计算页：队伍满足风 + 另一属性时可配置乱流事件 */
     turbulenceCalculable?: boolean
-    /** 计算页：主 C 须为风属性才能计算乱流 */
+    /** 计算页：主 C 元素，用于乱流提示 */
     mainAgentElement?: string | null
     /** 计算页：按面板解析出的倍率默认值（覆写为空时展示） */
     resolveMultDefaults?: (
@@ -292,11 +292,28 @@ const radianceHint = computed(() => {
 
 const turbulenceKindHint = computed(() => {
   if (props.modeType !== 'anomaly' || selectedEvent.value?.kind !== 'turbulence') return ''
-  if (props.turbulenceCalculable !== false) return ''
-  if (props.mainAgentElement && props.mainAgentElement !== '风') {
-    return '当前条件不满足：乱流伤害仅主 C 为风属性时可计算，该事件将不参与伤害汇总'
+  if (props.turbulenceCalculable === false) {
+    return '当前条件不满足：乱流需队伍同时包含风属性与至少一个非风属性代理人，该事件将不参与伤害汇总'
   }
-  return '当前条件不满足：乱流需队伍同时包含风属性与至少一个非风属性代理人，该事件将不参与伤害汇总'
+  const event = selectedEvent.value
+  const mainId = props.mainAgentId ?? props.agentId ?? ''
+  const ownerId = resolveEventOwnerAgentId(event, mainId)
+  const owner = props.ownerAgentOptions?.find((item) => item.id === ownerId)
+  const triggerId =
+    event.triggerAgentId && event.triggerAgentId !== TRIGGER_AGENT_AT_CALC
+      ? event.triggerAgentId
+      : null
+  const trigger = triggerId
+    ? props.ownerAgentOptions?.find((item) => item.id === triggerId)
+    : null
+  const hasWind =
+    props.mainAgentElement === '风' ||
+    owner?.element === '风' ||
+    trigger?.element === '风'
+  if (!hasWind) {
+    return '当前条件不满足：乱流需事件产生角色、异常产生角色或主 C 之一为风属性，该事件将不参与伤害汇总'
+  }
+  return ''
 })
 
 watch(

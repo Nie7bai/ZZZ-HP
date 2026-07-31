@@ -35,6 +35,89 @@ export function formatEventOwnerPrefix(agentName: string): string {
   return name ? `${name} · ` : ''
 }
 
+export interface DamageOwnerEventShare {
+  eventId: string
+  displayName: string
+  total: number
+  /** 占全部可计算事件总伤的比例 */
+  ratio: number
+  /** 占该产生者合计伤害的比例 */
+  ownerRatio: number
+}
+
+export interface DamageOwnerShare {
+  agentId: string
+  agentName: string
+  total: number
+  eventCount: number
+  ratio: number
+  events: DamageOwnerEventShare[]
+}
+
+export interface DamageOwnerShareSummary {
+  shares: DamageOwnerShare[]
+  grandTotal: number
+}
+
+export interface DamageOwnerShareInput {
+  event: DamageEvent
+  eventId: string
+  displayName: string
+  total: number
+}
+
+/** 按事件产生角色（owner）汇总可计算事件伤害占比 */
+export function summarizeDamageByOwner(
+  items: DamageOwnerShareInput[],
+  mainAgentId: string,
+  resolveAgent: (id: string) => { id: string; name: string } | undefined,
+): DamageOwnerShareSummary {
+  const bucket = new Map<
+    string,
+    {
+      agentName: string
+      total: number
+      events: DamageOwnerEventShare[]
+    }
+  >()
+  let grandTotal = 0
+  for (const item of items) {
+    const { event, eventId, displayName, total } = item
+    if (!(total > 0)) continue
+    const ownerId = resolveEventOwnerAgentId(event, mainAgentId)
+    const agent = resolveAgent(ownerId)
+    const agentName = agent?.name?.trim() || ownerId
+    const prev = bucket.get(ownerId) ?? { agentName, total: 0, events: [] }
+    prev.total += total
+    prev.events.push({
+      eventId,
+      displayName,
+      total,
+      ratio: 0,
+      ownerRatio: 0,
+    })
+    bucket.set(ownerId, prev)
+    grandTotal += total
+  }
+  const shares = [...bucket.entries()]
+    .map(([agentId, data]) => ({
+      agentId,
+      agentName: data.agentName,
+      total: data.total,
+      eventCount: data.events.length,
+      ratio: grandTotal > 0 ? data.total / grandTotal : 0,
+      events: data.events
+        .map((event) => ({
+          ...event,
+          ratio: grandTotal > 0 ? event.total / grandTotal : 0,
+          ownerRatio: data.total > 0 ? event.total / data.total : 0,
+        }))
+        .sort((a, b) => b.total - a.total),
+    }))
+    .sort((a, b) => b.total - a.total)
+  return { shares, grandTotal }
+}
+
 export interface DamageEventKindOption {
   id: DamageEventKind
   label: string

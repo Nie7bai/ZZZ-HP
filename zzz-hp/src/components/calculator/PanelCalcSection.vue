@@ -16,6 +16,7 @@ import type {
   BuffStatModifiers,
   CharacterAttrKey,
   DamageEvent,
+  DamageEventKind,
   DamageEventMultOverrides,
   DriveDiscBuffDoc,
   SkillSubcategory,
@@ -68,7 +69,6 @@ import {
 } from '@/utils/panelBuffCalc'
 import { computeDamageResult, type DamageCalcInput, type EnemyResistanceType } from '@/utils/damageCalc'
 import {
-  canSelectTurbulenceDamageEvent,
   eventNeedsAnomalyProducer,
   getDamageEventSkipReason,
   isTurbulenceTeamCompositionOk,
@@ -77,7 +77,7 @@ import {
   summarizeDamageEvents,
   type DamageEventLine,
 } from '@/utils/damageEvent'
-import { collectParticipantAgentIds, resolveEventOwnerAgentId } from '@/utils/damageEventOwner'
+import { collectParticipantAgentIds, resolveEventOwnerAgentId, summarizeDamageByOwner } from '@/utils/damageEventOwner'
 import {
   buildSkillContextFromDamageEvent,
   mergeExtraModsForEvent,
@@ -96,12 +96,18 @@ import {
   formatDirectDmgMultZoneFormula,
   formatSettlementDmgMultZoneFormula,
 } from '@/utils/directDamageDisplay'
+import {
+  buildAlignedAnomalyFormulaGroups,
+  resolveAnomalyBaseWithMutation,
+  type AnomalyFormulaAgentLabels,
+} from '@/utils/anomalyFormulaDisplay'
 import { buildAtkPanelProcessItems, buildDefPanelProcessItems, buildEnemyCombatProcessItems, buildStatSourceGroups, type StatSourceGroup } from '@/utils/statSourceTips'
 import {
   ENEMY_DEFENSE_PRESETS,
   STAGGER_MULTIPLIER_PRESETS,
 } from '@/utils/enemyInputPresets'
 import DirectDamageFormulaAligned from '@/components/calculator/DirectDamageFormulaAligned.vue'
+import DamageOwnerShareBlock from '@/components/calculator/DamageOwnerShareBlock.vue'
 import EnemyPresetCombo from '@/components/calculator/EnemyPresetCombo.vue'
 import type { PanelScreenshotRecognition } from '@/types/panelScreenshot'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
@@ -445,6 +451,7 @@ function buildPanelCalcContextForSlot(
     buffSelection: resolveBuffSelectionForSlot(props.slotBuffSelections, slotIndex),
     anomalySlotPanels: props.anomalySlotPanels,
     convertSlotPanels: props.convertSlotPanels,
+    mainExternalPanel: resolveExternalPanelForSlotIndex(mainSlotIndex.value),
     attrValues: getAttrDefaultsForSlot(slotIndex),
   }
 }
@@ -710,14 +717,6 @@ const turbulenceTeamOk = computed(() =>
   isTurbulenceTeamCompositionOk(props.teamSlots, props.agents),
 )
 
-const turbulenceEventCalculable = computed(() =>
-  canSelectTurbulenceDamageEvent(
-    props.teamSlots,
-    props.agents,
-    mainAgent.value?.element,
-  ),
-)
-
 const anomalyCalcBlockedReason = computed(() => {
   if (props.damageKind !== 'anomaly') return ''
   if (isLuminousElement(mainAgent.value?.element)) {
@@ -735,11 +734,16 @@ const anomalyCalcBlockedReason = computed(() => {
     return ''
   }
   const sub = props.anomalySubKind ?? 'anomaly'
-  if (sub === 'turbulence' && mainAgent.value?.element !== '风') {
-    return '乱流伤害仅风属性代理人可计算'
-  }
   if (sub === 'turbulence' && !turbulenceTeamOk.value) {
     return '乱流需队伍同时包含风属性与至少一个非风属性'
+  }
+  if (sub === 'turbulence') {
+    const trigger = props.agents.find((item) => item.id === props.triggerAnomalyAgentId)
+    const hasWind =
+      mainAgent.value?.element === '风' || trigger?.element === '风'
+    if (!hasWind) {
+      return '乱流伤害需主 C 或异常产生角色为风属性'
+    }
   }
   if (sub === 'anomalyRelease' && finalPanel.value.anomalyReleaseMult <= 0) {
     return '异放伤害仅拥有异放倍率的代理人可计算（当前异放倍率为 0，请通过增益或面板补充）'
@@ -1073,7 +1077,6 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
     getDamageEventSkipReason(event, {
       teamSlots: props.teamSlots,
       agents: props.agents,
-      turbulenceCalculable: turbulenceEventCalculable.value,
       mainAgentId: mainAgent.value?.id ?? '',
     })
   ) {
@@ -1099,8 +1102,6 @@ function buildEventCalcFull(event: DamageEvent): DamageCalcInput | null {
   const evtTriggerAgentId =
     rawTriggerId && rawTriggerId !== '__at_calc__' ? rawTriggerId : null
   if (eventNeedsTrigger && !evtTriggerAgentId) return null
-
-  if (event.kind === 'turbulence' && !turbulenceEventCalculable.value) return null
 
   const tAgent =
     eventNeedsTrigger && evtTriggerAgentId
@@ -1348,7 +1349,6 @@ const damageEventSkipHints = computed(() => {
   const ctx = {
     teamSlots: props.teamSlots,
     agents: props.agents,
-    turbulenceCalculable: turbulenceEventCalculable.value,
     mainAgentId: mainAgent.value?.id ?? '',
   }
   for (const event of props.damageEvents) {
@@ -1363,6 +1363,26 @@ const damageEventSkipHints = computed(() => {
 const hasDamageEventResults = computed(
   () => (damageEventSummary.value?.lines.length ?? 0) > 0,
 )
+
+const damageOwnerShareSummary = computed(() => {
+  const lines = damageEventSummary.value?.lines
+  if (!lines?.length) return null
+  return summarizeDamageByOwner(
+    lines.map((line) => ({
+      event: line.event,
+      eventId: line.event.id,
+      displayName: line.displayName,
+      total: line.total,
+    })),
+    mainAgent.value?.id ?? '',
+    (id) => props.agents.find((item) => item.id === id),
+  )
+})
+
+function selectDamageEventFromShare(eventId: string) {
+  showDetailedResults.value = true
+  selectedDamageEventId.value = eventId
+}
 
 const damageEventTotalLabel = computed(() =>
   props.damageKind === 'anomaly' ? '异常伤害事件总伤期望' : '伤害事件总伤期望',
@@ -1424,10 +1444,12 @@ const anomalyFormulaParts = computed(() => {
   ]
 })
 
+const anomalyBaseWithMutation = computed(() => resolveAnomalyBaseWithMutation(calcParts.value))
+
 const anomalyExpectedFormulaParts = computed(() => {
   const p = calcParts.value
   return [
-    formatNumber(p.anomalyBaseExpected),
+    formatNumber(anomalyBaseWithMutation.value),
     formatFormulaNumber(p.anomalyDmgBonusZone),
     formatFormulaNumber(p.anomalyMultZone),
     formatFormulaNumber(p.anomalyCritZone),
@@ -1437,7 +1459,7 @@ const anomalyExpectedFormulaParts = computed(() => {
 const disorderFormulaParts = computed(() => {
   const p = calcParts.value
   return [
-    formatNumber(p.anomalyBaseExpected),
+    formatNumber(anomalyBaseWithMutation.value),
     formatFormulaNumber(p.disorderZone),
     formatFormulaNumber(p.disorderDmgBonusZone),
   ]
@@ -1446,7 +1468,7 @@ const disorderFormulaParts = computed(() => {
 const turbulenceFormulaParts = computed(() => {
   const p = calcParts.value
   const parts = [
-    formatNumber(p.anomalyBaseExpected),
+    formatNumber(anomalyBaseWithMutation.value),
     formatFormulaNumber(p.turbulenceZone),
     formatFormulaNumber(p.turbulenceCombinedDmgBonusZone),
   ]
@@ -1498,6 +1520,7 @@ type ValueTipsKey =
   | 'anomalyExpected'
   | 'anomalyReleaseExpected'
   | 'radianceExpected'
+  | 'radianceMutation'
   | 'radianceCombinedDmgBonusZone'
   | 'radianceMultZone'
   | 'mutationZone'
@@ -1515,6 +1538,7 @@ type AlignedFormulaResultKey =
   | 'anomalyExpected'
   | 'anomalyReleaseExpected'
   | 'radianceExpected'
+  | 'radianceMutation'
   | 'disorderExpected'
   | 'turbulenceExpected'
 
@@ -1522,6 +1546,7 @@ interface AlignedFormulaGroup {
   key: AlignedFormulaResultKey
   title: string
   hint?: string
+  agentLabel?: string
   terms: AlignedFormulaTerm[]
   result: string
   /** 涉及异常暴击时输出暴击率=0 / =1 两版 */
@@ -1576,140 +1601,58 @@ const selectedEventAnomalyTitle = computed(() => {
   return `${line.displayName} · 异常期望伤害`
 })
 
+function resolveAnomalyFormulaLabels(
+  event?: DamageEvent,
+  sub?: AnomalyDamageSubKind,
+): AnomalyFormulaAgentLabels {
+  const mainName = mainAgent.value?.name
+  const remiel = findLuminousAgentInTeam(props.teamSlots, props.agents)
+  const remielName = remiel
+    ? props.agents.find((item) => item.id === remiel.id)?.name
+    : undefined
+  const effectiveSub = sub ?? effectiveAnomalySubKind.value
+  if (event) {
+    const mainId = mainAgent.value?.id ?? ''
+    const ownerName = props.agents.find(
+      (item) => item.id === resolveEventOwnerAgentId(event, mainId),
+    )?.name
+    const rawTrigger = event.triggerAgentId ?? props.triggerAnomalyAgentId
+    const triggerId = rawTrigger && rawTrigger !== '__at_calc__' ? rawTrigger : null
+    const triggerName = triggerId
+      ? props.agents.find((item) => item.id === triggerId)?.name
+      : undefined
+    return {
+      baseAgent: eventNeedsAnomalyProducer(event.kind)
+        ? (triggerName ?? ownerName ?? mainName)
+        : (ownerName ?? mainName),
+      bonusAgent: ownerName ?? mainName,
+      mutationAgent: remielName,
+    }
+  }
+  const triggerName = props.triggerAnomalyAgentId
+    ? props.agents.find((item) => item.id === props.triggerAnomalyAgentId)?.name
+    : undefined
+  return {
+    baseAgent: eventNeedsAnomalyProducer(effectiveSub as DamageEventKind) ? triggerName : mainName,
+    bonusAgent: mainName,
+    mutationAgent: remielName,
+  }
+}
+
 function buildAlignedAnomalyFormulasFor(
   p: ReturnType<typeof computeDamageResult>,
   sub: AnomalyDamageSubKind,
   disorderLabel: string,
+  labels?: AnomalyFormulaAgentLabels,
 ): AlignedFormulaGroup[] {
-  const base: AlignedFormulaGroup = {
-    key: 'anomalyBaseExpected',
-    title: '异常基础',
-    hint: '（不含异常增伤/倍率/暴击）',
-    terms: [
-      { label: '通用乘区', value: formatFormulaNumber(p.generalMultiplier, 2), tipsKey: 'generalMultiplier' },
-      { label: '精通区', value: formatFormulaNumber(p.masteryZone), tipsKey: 'masteryZone' },
-      { label: '等级区', value: formatFormulaNumber(p.levelZone), tipsKey: 'levelZone' },
-      { label: '特殊乘区', value: formatFormulaNumber(p.specialMultiplier), tipsKey: 'specialMultiplier' },
-    ],
-    result: formatNumber(p.anomalyBaseExpected),
-  }
-  const anomaly: AlignedFormulaGroup = {
-    key: 'anomalyExpected',
-    title: '异常伤害',
-    terms: [
-      { label: '异常基础期望', value: formatNumber(p.anomalyBaseExpected), tipsKey: 'anomalyBaseExpected' },
-      { label: '异常增伤区', value: formatFormulaNumber(p.anomalyDmgBonusZone), tipsKey: 'anomalyDmgBonusZone' },
-      { label: '异常倍率区', value: formatFormulaNumber(p.anomalyMultZone), tipsKey: 'anomalyMultZone' },
-      {
-        label: '异常暴击区',
-        value: `1 / ${formatFormulaNumber(p.anomalyFullCritZone)}`,
-        tipsKey: 'anomalyCritZone',
-      },
-    ],
-    result: formatNumber(p.anomalyExpected),
-    dualResults: [
-      { label: '暴击率=0', value: formatNumber(p.anomalyExpectedNoCrit) },
-      { label: '暴击率=1', value: formatNumber(p.anomalyExpectedFullCrit) },
-    ],
-  }
-  const disorder: AlignedFormulaGroup = {
-    key: 'disorderExpected',
-    title: `${disorderLabel}期望`,
-    terms: [
-      { label: '异常基础期望', value: formatNumber(p.anomalyBaseExpected), tipsKey: 'anomalyBaseExpected' },
-      { label: '紊乱倍率区', value: formatFormulaNumber(p.disorderZone), tipsKey: 'disorderZone' },
-      { label: '紊乱增伤区', value: formatFormulaNumber(p.disorderDmgBonusZone), tipsKey: 'disorderDmgBonusZone' },
-    ],
-    result: formatNumber(p.disorderExpected),
-  }
-  const turbulence: AlignedFormulaGroup = {
-    key: 'turbulenceExpected',
-    title: '乱流伤害',
-    terms: [
-      { label: '异常基础期望', value: formatNumber(p.anomalyBaseExpected), tipsKey: 'anomalyBaseExpected' },
-      { label: '乱流倍率区', value: formatFormulaNumber(p.turbulenceZone), tipsKey: 'turbulenceZone' },
-      {
-        label: '乱流增伤区+异常增伤区',
-        value: formatFormulaNumber(p.turbulenceCombinedDmgBonusZone),
-        tipsKey: 'turbulenceCombinedDmgBonusZone',
-      },
-      {
-        label: '异常暴击区',
-        value: `1 / ${formatFormulaNumber(p.anomalyFullCritZone)}`,
-        tipsKey: 'anomalyCritZone',
-      },
-    ],
-    result: formatNumber(p.turbulenceExpected),
-    dualResults: [
-      { label: '暴击率=0', value: formatNumber(p.turbulenceExpectedNoCrit) },
-      { label: '暴击率=1', value: formatNumber(p.turbulenceExpectedFullCrit) },
-    ],
-  }
-  const release: AlignedFormulaGroup = {
-    key: 'anomalyReleaseExpected',
-    title: '异放伤害',
-    terms: [
-      { label: '异常基础期望', value: formatNumber(p.anomalyBaseExpected), tipsKey: 'anomalyBaseExpected' },
-      {
-        label: '异放综合增伤区',
-        value: formatFormulaNumber(p.anomalyReleaseCombinedDmgBonusZone),
-        tipsKey: 'anomalyReleaseCombinedDmgBonusZone',
-      },
-      {
-        label: '异放倍率区',
-        value: formatFormulaNumber(p.anomalyReleaseMultZone),
-        tipsKey: 'anomalyReleaseMultZone',
-      },
-      {
-        label: '异常综合暴击区',
-        value: `1 / ${formatFormulaNumber(p.anomalyCombinedFullCritZone)}`,
-        tipsKey: 'anomalyCombinedCritZone',
-      },
-    ],
-    result: formatNumber(p.anomalyReleaseExpected),
-    dualResults: [
-      { label: '暴击率=0', value: formatNumber(p.anomalyReleaseExpectedNoCrit) },
-      { label: '暴击率=1', value: formatNumber(p.anomalyReleaseExpectedFullCrit) },
-    ],
-  }
-  const radiance: AlignedFormulaGroup = {
-    key: 'radianceExpected',
-    title: '耀变伤害',
-    terms: [
-      { label: '异常基础期望', value: formatNumber(p.anomalyBaseExpected), tipsKey: 'anomalyBaseExpected' },
-      {
-        label: '耀变综合增伤区',
-        value: formatFormulaNumber(p.radianceCombinedDmgBonusZone),
-        tipsKey: 'radianceCombinedDmgBonusZone',
-      },
-      {
-        label: '耀变倍率区',
-        value: formatFormulaNumber(p.radianceMultZone),
-        tipsKey: 'radianceMultZone',
-      },
-      {
-        label: '异常暴击区',
-        value: `1 / ${formatFormulaNumber(p.anomalyFullCritZone)}`,
-        tipsKey: 'anomalyCritZone',
-      },
-      {
-        label: '异化系数区',
-        value: formatFormulaNumber(p.mutationZone),
-        tipsKey: 'mutationZone',
-      },
-    ],
-    result: formatNumber(p.radianceExpected),
-    dualResults: [
-      { label: '暴击率=0', value: formatNumber(p.radianceExpectedNoCrit) },
-      { label: '暴击率=1', value: formatNumber(p.radianceExpectedFullCrit) },
-    ],
-  }
-
-  if (sub === 'disorder') return [base, disorder]
-  if (sub === 'turbulence') return [base, turbulence]
-  if (sub === 'anomalyRelease') return [base, release]
-  if (sub === 'radiance') return [base, radiance]
-  return [base, anomaly]
+  return buildAlignedAnomalyFormulaGroups(
+    p,
+    sub,
+    disorderLabel,
+    formatFormulaNumber,
+    formatNumber,
+    labels,
+  ) as AlignedFormulaGroup[]
 }
 
 const alignedAnomalyFormulas = computed((): AlignedFormulaGroup[] =>
@@ -1717,6 +1660,7 @@ const alignedAnomalyFormulas = computed((): AlignedFormulaGroup[] =>
     calcParts.value,
     effectiveAnomalySubKind.value,
     disorderDamageLabel.value,
+    resolveAnomalyFormulaLabels(),
   ),
 )
 
@@ -1725,7 +1669,12 @@ const selectedEventAnomalyFormulas = computed((): AlignedFormulaGroup[] | null =
   if (!line || line.event.kind === 'direct') return null
   const { anomalySubKind } = mapEventKindToCalc(line.event.kind)
   const disorderLabel = line.result.hasPolarDisorder ? '极性紊乱' : '紊乱伤害'
-  return buildAlignedAnomalyFormulasFor(line.result, anomalySubKind, disorderLabel)
+  return buildAlignedAnomalyFormulasFor(
+    line.result,
+    anomalySubKind,
+    disorderLabel,
+    resolveAnomalyFormulaLabels(line.event, anomalySubKind),
+  )
 })
 
 function formatSigned(value: number) {
@@ -1764,6 +1713,21 @@ const valueTips = computed(() => {
   const enemy = enemyInput
   const pierceMod = panelBreakdown.value.totalMods.pierce
 
+  const eventLine = selectedEventDetailLine.value
+  const ownerBreakdown = selectedEventOwnerBreakdown.value
+  const eventOwnerCtx = eventLine ? buildEventSkillContext(eventLine.event) : null
+  const usesOwnerBonusPanel = Boolean(
+    eventLine &&
+      ownerBreakdown &&
+      eventOwnerCtx &&
+      (eventLine.event.kind === 'turbulence' || eventLine.event.kind === 'disorder'),
+  )
+  const bonusPanel = usesOwnerBonusPanel ? ownerBreakdown!.finalPanel : panel
+  const bonusExternal = usesOwnerBonusPanel
+    ? resolveOwnerExternalPanel(eventOwnerCtx!.ownerSlotIndex, eventOwnerCtx!.ownerAgentId)
+    : external
+  const bonusSources = usesOwnerBonusPanel ? ownerBreakdown!.sources : sources
+
   const sub = effectiveAnomalySubKind.value
   const usesProducerBase =
     (sub === 'turbulence' ||
@@ -1794,7 +1758,7 @@ const valueTips = computed(() => {
           label: triggerAgent.value?.name ?? '产生角色',
           items: usesProducerMult
             ? [
-                '异常基础乘区、紊乱/乱流倍率与异常持续时间取产生角色面板；减防/无视防御取主C',
+                '异常基础乘区、紊乱/乱流倍率与异常持续时间取产生角色面板；乱流/紊乱增伤与异常暴击取事件产生角色；减防/无视防御取主C',
               ]
             : ['异常基础乘区（含等级区）取产生角色面板；减防/无视防御取主C'],
         },
@@ -2266,11 +2230,11 @@ const valueTips = computed(() => {
     anomalyDmgBonusZone: withTotal(
       buildStatSourceGroups({
         keys: ['anomalyDmgBonus'],
-        externalPanel: external,
-        sources,
-        finalValues: { anomalyDmgBonus: panel.anomalyDmgBonus },
+        externalPanel: bonusExternal,
+        sources: bonusSources,
+        finalValues: { anomalyDmgBonus: bonusPanel.anomalyDmgBonus },
       }),
-      `异常增伤区 1 + ${formatFormulaNumber(panel.anomalyDmgBonus, 2)}% = ${formatFormulaNumber(p.anomalyDmgBonusZone)}`,
+      `异常增伤区 1 + ${formatFormulaNumber(bonusPanel.anomalyDmgBonus, 2)}% = ${formatFormulaNumber(p.anomalyDmgBonusZone)}`,
     ),
     anomalyMultZone: withTotal(
       buildStatSourceGroups({
@@ -2324,11 +2288,11 @@ const valueTips = computed(() => {
     anomalyCritZone: withTotal(
       buildStatSourceGroups({
         keys: ['anomalyCritRate', 'anomalyCritDmg'],
-        externalPanel: external,
-        sources,
+        externalPanel: bonusExternal,
+        sources: bonusSources,
         finalValues: {
-          anomalyCritRate: panel.anomalyCritRate,
-          anomalyCritDmg: panel.anomalyCritDmg,
+          anomalyCritRate: bonusPanel.anomalyCritRate,
+          anomalyCritDmg: bonusPanel.anomalyCritDmg,
         },
       }),
       [
@@ -2339,20 +2303,26 @@ const valueTips = computed(() => {
     ),
     anomalyBaseExpected: [
       {
-        label: '乘区组成（不含异常增伤/倍率/暴击）',
+        label: p.mutationZone > 1 ? '乘区组成（含异化系数；不含异常增伤/倍率/暴击）' : '乘区组成（不含异常增伤/倍率/暴击）',
         items: [
           `通用乘区 ${anomalyFormulaParts.value[0]}`,
           `精通区 ${anomalyFormulaParts.value[1]}`,
           `等级区 ${anomalyFormulaParts.value[2]}`,
-          `合计 ${formatNumber(p.anomalyBaseExpected)}`,
+          ...(p.mutationZone > 1
+            ? [`异化系数区 ${formatFormulaNumber(p.mutationZone)}`]
+            : []),
+          `合计 ${formatNumber(anomalyBaseWithMutation.value)}`,
         ],
       },
       {
         label: '加减过程',
         fullWidth: true,
         items: [
-          `${anomalyFormulaParts.value.join(' × ')}`,
-          `= ${formatNumber(p.anomalyBaseExpected)}`,
+          [
+            ...anomalyFormulaParts.value,
+            ...(p.mutationZone > 1 ? [formatFormulaNumber(p.mutationZone)] : []),
+          ].join(' × '),
+          `= ${formatNumber(anomalyBaseWithMutation.value)}`,
         ],
       },
     ],
@@ -2407,11 +2377,11 @@ const valueTips = computed(() => {
     disorderDmgBonusZone: withTotal(
       buildStatSourceGroups({
         keys: ['disorderDmgBonus'],
-        externalPanel: external,
-        sources,
-        finalValues: { disorderDmgBonus: panel.disorderDmgBonus },
+        externalPanel: bonusExternal,
+        sources: bonusSources,
+        finalValues: { disorderDmgBonus: bonusPanel.disorderDmgBonus },
       }),
-      `紊乱增伤区 1 + ${formatFormulaNumber(panel.disorderDmgBonus, 2)}% = ${formatFormulaNumber(p.disorderDmgBonusZone)}`,
+      `紊乱增伤区 1 + ${formatFormulaNumber(bonusPanel.disorderDmgBonus, 2)}% = ${formatFormulaNumber(p.disorderDmgBonusZone)}`,
     ),
     disorderZone: [
       ...(producerExtraGroup.length ? producerExtraGroup : []),
@@ -2438,7 +2408,7 @@ const valueTips = computed(() => {
       {
         label: '乘区组成',
         items: [
-          `异常基础期望 ${formatNumber(p.anomalyBaseExpected)}`,
+          `异常基础期望 ${formatNumber(anomalyBaseWithMutation.value)}`,
           `紊乱倍率区 ${formatFormulaNumber(p.disorderZone)}`,
           `紊乱增伤区 ${formatFormulaNumber(p.disorderDmgBonusZone)}`,
           `合计 ${formatNumber(p.disorderExpected)}`,
@@ -2480,11 +2450,11 @@ const valueTips = computed(() => {
     turbulenceDmgBonusZone: withTotal(
       buildStatSourceGroups({
         keys: ['turbulenceDmgBonus'],
-        externalPanel: external,
-        sources,
-        finalValues: { turbulenceDmgBonus: panel.turbulenceDmgBonus },
+        externalPanel: bonusExternal,
+        sources: bonusSources,
+        finalValues: { turbulenceDmgBonus: bonusPanel.turbulenceDmgBonus },
       }),
-      `乱流增伤区 1 + ${formatFormulaNumber(panel.turbulenceDmgBonus, 2)}% = ${formatFormulaNumber(p.turbulenceDmgBonusZone)}`,
+      `乱流增伤区 1 + ${formatFormulaNumber(bonusPanel.turbulenceDmgBonus, 2)}% = ${formatFormulaNumber(p.turbulenceDmgBonusZone)}`,
     ),
     turbulenceZone: [
       ...(producerExtraGroup.length ? producerExtraGroup : []),
@@ -2520,7 +2490,7 @@ const valueTips = computed(() => {
         label: '加减过程',
         fullWidth: true,
         items: [
-          `1 + ${formatFormulaNumber(panel.turbulenceDmgBonus, 2)}% + ${formatFormulaNumber(panel.anomalyDmgBonus, 2)}%`,
+          `1 + ${formatFormulaNumber(bonusPanel.turbulenceDmgBonus, 2)}% + ${formatFormulaNumber(bonusPanel.anomalyDmgBonus, 2)}%`,
           `= ${formatFormulaNumber(p.turbulenceCombinedDmgBonusZone)}`,
         ],
       },
@@ -2529,7 +2499,7 @@ const valueTips = computed(() => {
       {
         label: '乘区组成',
         items: [
-          `异常基础期望 ${formatNumber(p.anomalyBaseExpected)}`,
+          `异常基础期望 ${formatNumber(anomalyBaseWithMutation.value)}`,
           `乱流倍率区 ${formatFormulaNumber(p.turbulenceZone)}`,
           `乱流增伤区+异常增伤区 ${formatFormulaNumber(p.turbulenceCombinedDmgBonusZone)}`,
           `异常暴击区（暴击率=0）1 → ${formatNumber(p.turbulenceExpectedNoCrit)}`,
@@ -2541,7 +2511,7 @@ const valueTips = computed(() => {
       {
         label: '乘区组成',
         items: [
-          `异常基础期望 ${formatNumber(p.anomalyBaseExpected)}`,
+          `异常基础期望 ${formatNumber(anomalyBaseWithMutation.value)}`,
           `异放综合增伤区 ${formatFormulaNumber(p.anomalyReleaseCombinedDmgBonusZone)}（异放增伤+异常增伤）`,
           `异放倍率区 ${formatFormulaNumber(p.anomalyReleaseMultZone)}`,
           `异常综合暴击区 = 1 + (${formatFormulaNumber(p.anomalyCombinedCritRateRatio)} × ${formatFormulaNumber(p.anomalyCombinedCritDmgRatio)})`,
@@ -2554,12 +2524,18 @@ const valueTips = computed(() => {
       {
         label: '乘区组成',
         items: [
-          `异常基础期望 ${formatNumber(p.anomalyBaseExpected)}`,
+          `异常基础期望 ${formatNumber(anomalyBaseWithMutation.value)}`,
           `耀变综合增伤区 ${formatFormulaNumber(p.radianceCombinedDmgBonusZone)}（耀变增伤+异常增伤）`,
           `耀变倍率区 ${formatFormulaNumber(p.radianceMultZone)}`,
-          `异常暴击区（暴击率=0）1 → ${formatNumber(p.radianceExpectedNoCrit)}`,
-          `异常暴击区（暴击率=1）${formatFormulaNumber(p.anomalyFullCritZone)} → ${formatNumber(p.radianceExpectedFullCrit)}`,
+        ],
+      },
+    ],
+    radianceMutation: [
+      {
+        label: '乘区组成',
+        items: [
           `异化系数区 ${formatFormulaNumber(p.mutationZone)}`,
+          `耀变期望 ${formatNumber(p.radianceExpected)}`,
         ],
       },
     ],
@@ -3142,7 +3118,13 @@ defineExpose({
 
     <template v-if="!showDetailedResults && !anomalyCalcBlockedReason">
       <p v-if="!hasDamageEvents" class="anomaly-block-hint">暂无伤害事件</p>
-      <div v-else-if="hasDamageEventResults" class="result-grid result-grid-summary">
+      <DamageOwnerShareBlock
+        v-else-if="hasDamageEventResults"
+        :summary="damageOwnerShareSummary"
+        :selected-event-id="selectedDamageEventId"
+        @select-event="selectDamageEventFromShare"
+      />
+      <div v-if="hasDamageEventResults" class="result-grid result-grid-summary">
         <p class="result-total">
           {{ damageEventTotalLabel }}：
           <span>{{ formatNumber(damageEventSummary!.grandTotal) }}</span>
@@ -3152,6 +3134,12 @@ defineExpose({
 
     <template v-else-if="!anomalyCalcBlockedReason">
     <p v-if="!hasDamageEvents" class="anomaly-block-hint">暂无伤害事件</p>
+    <DamageOwnerShareBlock
+      v-if="hasDamageEventResults"
+      :summary="damageOwnerShareSummary"
+      :selected-event-id="selectedDamageEventId"
+      @select-event="selectDamageEventFromShare"
+    />
     <section v-if="hasDamageEventResults" class="event-summary-block">
       <h3 class="result-section-title event-summary-title">{{ damageEventTotalLabel }}</h3>
       <ul class="event-summary-list">
@@ -3279,6 +3267,7 @@ defineExpose({
           class="formula-aligned-group"
         >
           <span class="formula-label formula-aligned-title">
+            <span v-if="group.agentLabel" class="formula-agent-label">{{ group.agentLabel }} · </span>
             {{ group.title }}
             <span v-if="group.hint" class="formula-aligned-hint">{{ group.hint }}</span>
           </span>
@@ -3366,6 +3355,7 @@ defineExpose({
         class="formula-aligned-group"
       >
         <span class="formula-label formula-aligned-title">
+          <span v-if="group.agentLabel" class="formula-agent-label">{{ group.agentLabel }} · </span>
           {{ group.title }}
           <span v-if="group.hint" class="formula-aligned-hint">{{ group.hint }}</span>
         </span>
@@ -3401,7 +3391,11 @@ defineExpose({
       <p>精通区：<StatValueWithSources :value="calcParts.masteryZone" :groups="valueTips.masteryZone" /></p>
       <p>等级区：<StatValueWithSources :value="calcParts.levelZone" :groups="valueTips.levelZone" /></p>
       <p>特殊乘区：<StatValueWithSources :value="calcParts.specialMultiplier" :groups="valueTips.specialMultiplier" /></p>
-      <p class="result-total">异常基础期望：<StatValueWithSources :value="formatNumber(calcParts.anomalyBaseExpected)" :groups="valueTips.anomalyBaseExpected" /></p>
+      <p v-if="calcParts.mutationZone > 1">
+        异化系数区：
+        <StatValueWithSources :value="formatFormulaNumber(calcParts.mutationZone)" :groups="valueTips.mutationZone" />
+      </p>
+      <p class="result-total">异常基础期望：<StatValueWithSources :value="formatNumber(anomalyBaseWithMutation)" :groups="valueTips.anomalyBaseExpected" /></p>
 
       <template v-if="effectiveAnomalySubKind === 'anomaly'">
       <h4 class="result-subsection-title">异常伤害</h4>
@@ -3485,23 +3479,10 @@ defineExpose({
           :groups="valueTips.radianceMultZone"
         />
       </p>
-      <p>异常暴击区（暴击率=0）：1</p>
-      <p>异常暴击区（暴击率=1）：<StatValueWithSources :value="calcParts.anomalyFullCritZone" :groups="valueTips.anomalyCritZone" /></p>
-      <p>
-        异化系数区：
-        <StatValueWithSources :value="formatFormulaNumber(calcParts.mutationZone)" :groups="valueTips.mutationZone" />
-      </p>
       <p class="result-total">
-        耀变伤害（暴击率=0）：
+        耀变期望伤害：
         <StatValueWithSources
-          :value="formatNumber(calcParts.radianceExpectedNoCrit)"
-          :groups="valueTips.radianceExpected"
-        />
-      </p>
-      <p class="result-total">
-        耀变伤害（暴击率=1）：
-        <StatValueWithSources
-          :value="formatNumber(calcParts.radianceExpectedFullCrit)"
+          :value="formatNumber(calcParts.radianceExpected)"
           :groups="valueTips.radianceExpected"
         />
       </p>
@@ -3913,6 +3894,11 @@ defineExpose({
 
 .formula-aligned-group + .formula-aligned-group {
   border-top: 1px solid #252a32;
+}
+
+.formula-agent-label {
+  color: var(--accent, #6eb6ff);
+  font-weight: 600;
 }
 
 .formula-aligned-title {

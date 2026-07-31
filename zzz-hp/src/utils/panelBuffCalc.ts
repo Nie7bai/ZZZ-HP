@@ -433,13 +433,22 @@ export function applyConvertPartialToExternalPanel(
   }
 }
 
+function resolveTeamMainSlotIndex(ctx: PanelCalcContext): number {
+  const idx = ctx.teamSlots.findIndex((slot) => slot.isMainC)
+  return idx >= 0 ? idx : ctx.mainSlotIndex
+}
+
 function resolveExternalPanelForSlot(
   slotIndex: number,
   ctx: PanelCalcContext,
-  mainExternalPanel: PanelStats,
+  currentSlotExternalPanel: PanelStats,
 ): PanelStats {
+  const teamMainIndex = resolveTeamMainSlotIndex(ctx)
+  if (slotIndex === teamMainIndex && ctx.mainExternalPanel) {
+    return ctx.mainExternalPanel
+  }
   if (slotIndex === ctx.mainSlotIndex) {
-    return mainExternalPanel
+    return currentSlotExternalPanel
   }
   const agentId = ctx.teamSlots[slotIndex]?.agentId
   if (!agentId) return createDefaultExternalPanel()
@@ -471,9 +480,9 @@ function resolveConvertAttrExtras(
 function buildPanelSourceValuesForSlot(
   slotIndex: number,
   ctx: PanelCalcContext,
-  mainExternalPanel: PanelStats,
+  currentSlotExternalPanel: PanelStats,
 ): PanelSourceValues {
-  const externalPanel = resolveExternalPanelForSlot(slotIndex, ctx, mainExternalPanel)
+  const externalPanel = resolveExternalPanelForSlot(slotIndex, ctx, currentSlotExternalPanel)
   const slotCtx: PanelCalcContext = {
     ...ctx,
     mainSlotIndex: slotIndex,
@@ -499,12 +508,12 @@ function buildPanelSourceValuesForSlot(
 
 function buildAllPanelSourceValuesBySlot(
   ctx: PanelCalcContext,
-  mainExternalPanel: PanelStats,
+  currentSlotExternalPanel: PanelStats,
 ): Map<number, PanelSourceValues> {
   const map = new Map<number, PanelSourceValues>()
   ctx.teamSlots.forEach((slot, index) => {
     if (!slot.agentId) return
-    map.set(index, buildPanelSourceValuesForSlot(index, ctx, mainExternalPanel))
+    map.set(index, buildPanelSourceValuesForSlot(index, ctx, currentSlotExternalPanel))
   })
   return map
 }
@@ -512,9 +521,53 @@ function buildAllPanelSourceValuesBySlot(
 /** 各槽位局外/局内转模取值（供 Buff 展示等 UI 按来源槽位解析） */
 export function buildPanelSourceValuesBySlotRecord(
   ctx: PanelCalcContext,
-  mainExternalPanel: PanelStats,
+  currentSlotExternalPanel: PanelStats,
 ): Record<number, PanelSourceValues> {
-  return Object.fromEntries(buildAllPanelSourceValuesBySlot(ctx, mainExternalPanel).entries())
+  return Object.fromEntries(buildAllPanelSourceValuesBySlot(ctx, currentSlotExternalPanel).entries())
+}
+
+/** 该槽位是否存在启用的局外/局内转模（非自行设置） */
+export function slotParticipatesInConvertBuff(
+  ctx: PanelCalcContext,
+  slotIndex: number,
+): boolean {
+  for (const item of collectAllBuffEffects(ctx)) {
+    const effect = item.effect
+    if (effect.kind !== 'convert' || !effect.convert) continue
+    if ((effect.convert.panelSource ?? 'external') === 'manual') continue
+    if (!isEffectEnabled(effect, ctx.buffSelection)) continue
+    const idx = parseSourceKeySlotIndex(item.sourceKey)
+    if (idx === slotIndex) return true
+  }
+  return false
+}
+
+/** 队伍是否存在需录入面板的转模增益角色 */
+export function teamHasConvertSupportSlots(
+  ctx: PanelCalcContext,
+  options?: { excludeAnomalyAgentIds?: Iterable<string> },
+): boolean {
+  return collectConvertSupportSlots(ctx, options).length > 0
+}
+
+export function omitAgentFromConvertSlotPanels(
+  panels: ConvertSlotPanels | undefined,
+  agentId: string,
+): ConvertSlotPanels {
+  if (!panels?.[agentId]) return { ...(panels ?? {}) }
+  const next = { ...panels }
+  delete next[agentId]
+  return next
+}
+
+export function omitAgentFromAnomalySlotPanels(
+  panels: Record<string, PanelStats> | undefined,
+  agentId: string,
+): Record<string, PanelStats> | undefined {
+  if (!panels?.[agentId]) return panels
+  const next = { ...panels }
+  delete next[agentId]
+  return next
 }
 
 /** 需录入局外面板的转模增益角色（非主 C、非异常产生角色） */
@@ -1428,13 +1481,20 @@ export function computeFinalPanel(
   externalPanel: PanelStats,
   ctx: PanelCalcContext,
 ): PanelBuffBreakdown {
-  const panelSourceValuesBySlot = buildAllPanelSourceValuesBySlot(ctx, externalPanel)
+  const teamMainIndex = resolveTeamMainSlotIndex(ctx)
+  const ctxForSources: PanelCalcContext = {
+    ...ctx,
+    mainExternalPanel:
+      ctx.mainExternalPanel ??
+      (ctx.mainSlotIndex === teamMainIndex ? externalPanel : undefined),
+  }
+  const panelSourceValuesBySlot = buildAllPanelSourceValuesBySlot(ctxForSources, externalPanel)
   const mainPanelSources = panelSourceValuesBySlot.get(ctx.mainSlotIndex)
 
   // 先叠非转模，再用局外/局内面板实时折算转模，避免环依赖
   const baseCtx: PanelCalcContext = {
-    ...ctx,
-    mainExternalPanel: externalPanel,
+    ...ctxForSources,
+    mainExternalPanel: ctxForSources.mainExternalPanel ?? externalPanel,
     panelSourceValuesBySlot,
     panelSourceValues: mainPanelSources,
     skipConvert: true,

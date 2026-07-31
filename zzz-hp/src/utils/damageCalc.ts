@@ -338,8 +338,11 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const ownerAgentLevel = input.ownerAgentLevel ?? mainAgentLevel
   const triggerAgentLevel = input.triggerAgentLevel ?? mainAgentLevel
   const mainCPanel = input.mainCFinalPanel ?? panel
-  /** 产生型异常：增伤/倍率/暴击等取主 C；基础乘区取产生角色；非产生型取 owner 面板 */
-  const bonusPanel = useTriggerBase ? mainCPanel : panel
+  /** 异放/耀变增伤与倍率取主 C；紊乱/乱流增伤与暴击取 owner；异常基础取产生角色 */
+  const bonusPanel =
+    useTriggerBase && (subKind === 'anomalyRelease' || subKind === 'radiance')
+      ? mainCPanel
+      : panel
 
   const skillMults = input.skillSubcategory
     ? resolveSkillMults(
@@ -408,7 +411,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const settlementDamageExpected = directBaseChain * settlementDmgMultZone
   const directDamageExpected = directDamageFromDirectMult + settlementDamageExpected
 
-  // 异常乘区：产生型取主 C（bonusPanel）；基础期望取产生角色
+  // 异常乘区：异放/耀变取主 C（bonusPanel）；紊乱/乱流/普通异常取 owner；基础期望取产生角色
   const anomalyDmgBonusZone = 1 + bonusPanel.anomalyDmgBonus / 100
   const anomalyMultZone =
     Math.max(0, bonusPanel.anomalyMult / 100) * readFactor(bonusPanel.anomalyMultFactor)
@@ -498,9 +501,9 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const radianceMultZone = computeRadianceMultZone(bonusPanel)
   const radiancePreCrit =
     anomalyBaseExpected * radianceCombinedDmgBonusZone * radianceMultZone
-  const radianceExpectedRaw = radiancePreCrit * anomalyCritZone
-  const radianceExpectedNoCritRaw = radiancePreCrit * anomalyNoCritZone
-  const radianceExpectedFullCritRaw = radiancePreCrit * anomalyFullCritZone
+  const radianceExpectedRaw = radiancePreCrit
+  const radianceExpectedNoCritRaw = radiancePreCrit
+  const radianceExpectedFullCritRaw = radiancePreCrit
 
   const mutationMult = input.mutationZone ?? 1
   const applyMutation = (value: number) => value * mutationMult

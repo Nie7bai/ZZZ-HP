@@ -171,8 +171,38 @@ export function eventNeedsAnomalyProducer(kind: DamageEventKind): boolean {
 export interface DamageEventParticipationContext {
   teamSlots: Array<{ agentId: string; isMainC?: boolean }>
   agents: Array<{ id: string; element: string; name?: string }>
-  turbulenceCalculable: boolean
   mainAgentId?: string
+}
+
+/** 乱流：主 C、事件产生角色或异常产生角色之一须为风属性 */
+export function hasTurbulenceWindRole(
+  agents: Array<{ id: string; element: string }>,
+  mainAgentId: string,
+  ownerAgentId: string,
+  triggerAgentId: string | null,
+): boolean {
+  const elementOf = (id: string | null | undefined) =>
+    id ? agents.find((agent) => agent.id === id)?.element : undefined
+  return (
+    elementOf(mainAgentId) === '风' ||
+    elementOf(ownerAgentId) === '风' ||
+    (triggerAgentId != null && elementOf(triggerAgentId) === '风')
+  )
+}
+
+export function getTurbulenceParticipationFailureReason(
+  ctx: Pick<DamageEventParticipationContext, 'teamSlots' | 'agents'>,
+  mainAgentId: string,
+  ownerAgentId: string,
+  triggerAgentId: string | null,
+): string | null {
+  if (!isTurbulenceTeamCompositionOk(ctx.teamSlots, ctx.agents)) {
+    return '乱流需队伍同时包含风属性与至少一个非风属性代理人'
+  }
+  if (!hasTurbulenceWindRole(ctx.agents, mainAgentId, ownerAgentId, triggerAgentId)) {
+    return '乱流伤害需事件产生角色、异常产生角色或主 C 之一为风属性'
+  }
+  return null
 }
 
 /** 事件不参与汇总时的原因；null 表示可计算 */
@@ -227,12 +257,14 @@ export function getDamageEventSkipReason(
     }
   }
 
-  if (event.kind === 'turbulence' && !ctx.turbulenceCalculable) {
-    const ownerElement = ownerAgent?.element ?? mainAgent?.element
-    if (ownerElement !== '风') {
-      return '乱流伤害仅事件产生角色为风属性时可计算'
-    }
-    return '乱流需队伍同时包含风属性与至少一个非风属性代理人'
+  if (event.kind === 'turbulence') {
+    const failure = getTurbulenceParticipationFailureReason(
+      ctx,
+      mainAgentId,
+      ownerId,
+      triggerId,
+    )
+    if (failure) return failure
   }
 
   return null
@@ -291,13 +323,13 @@ export function isTurbulenceTeamCompositionOk(
   return elements.has('风') && [...elements].some((element) => element !== '风')
 }
 
-/** 乱流伤害事件：主 C 须为风，且队伍须含风 + 另一属性代理人 */
+/** 乱流伤害事件：队伍须含风 + 另一属性；具体风角色由事件产生/异常产生/主 C 校验 */
 export function canSelectTurbulenceDamageEvent(
   teamSlots: Array<{ agentId: string }>,
   agents: Array<{ id: string; element: string }>,
-  mainAgentElement?: string | null,
+  _mainAgentElement?: string | null,
 ): boolean {
-  return mainAgentElement === '风' && isTurbulenceTeamCompositionOk(teamSlots, agents)
+  return isTurbulenceTeamCompositionOk(teamSlots, agents)
 }
 
 export function isTriggerAgentAtCalc(id: string | null | undefined): boolean {

@@ -53,6 +53,7 @@ import {
   computeDiffAnalysis,
   computeEventAffixImpact,
   evaluateAffixCounts,
+  clearAffixEvalCache,
   findMinCritRollsForOvercap,
   evaluateOptimalEventDetail,
   type OptimalEventEvalDetail,
@@ -80,14 +81,21 @@ import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import { resolveIsFollowUp } from '@/utils/buffEffect'
 import {
   collectConvertSupportSlots,
+  omitAgentFromAnomalySlotPanels,
+  omitAgentFromConvertSlotPanels,
   resolveBuffSelectionForSlot,
+  slotParticipatesInConvertBuff,
+  teamHasConvertSupportSlots,
   type ConvertSlotPanels,
 } from '@/utils/panelBuffCalc'
-import { collectParticipantAgentIds } from '@/utils/damageEventOwner'
+import { collectParticipantAgentIds, resolveEventOwnerAgentId, summarizeDamageByOwner } from '@/utils/damageEventOwner'
+import DamageOwnerShareBlock from '@/components/calculator/DamageOwnerShareBlock.vue'
 import {
   DAMAGE_EVENT_CRIT_MODE_OPTIONS,
   DAMAGE_EVENT_KIND_OPTIONS,
   eventNeedsAnomalyProducer,
+  formatDamageEventDisplayName,
+  getDamageEventSkipReason,
 } from '@/utils/damageEvent'
 import { TRIGGER_AGENT_AT_CALC } from '@/types/calculator'
 
@@ -256,6 +264,25 @@ const mainSlot = computed(() => props.teamSlots[mainSlotIndex.value]!)
 
 const mainAgent = computed(() => props.agents.find((item) => item.id === mainSlot.value.agentId))
 
+const { skillSubcategories, followUpSkillRules } = storeToRefs(useCalculatorBuffStore())
+
+const skillIsFollowUp = computed(() =>
+  resolveIsFollowUp({
+    agentId: mainAgent.value?.id,
+    categoryId: props.skillCategoryId ?? 'basic',
+    subcategoryId: props.skillSubcategoryId ?? null,
+    skillSubcategories: skillSubcategories.value,
+    followUpSkillRules: followUpSkillRules.value,
+  }),
+)
+
+const selectedBangboo = computed(
+  () =>
+    props.bangboos.find((item) => item.id === props.selectedBangbooId) ??
+    props.bangboos.find((item) => item.id === 'none') ??
+    emptyBangboo,
+)
+
 const anomalySupportSlots = computed(() => {
   const mainId = mainSlot.value.agentId
   const participantIds = collectParticipantAgentIds(props.damageEvents ?? [], mainId)
@@ -307,6 +334,99 @@ const convertSupportSlotsNeedingInput = computed(() =>
   convertSupportSlots.value.filter((item) => !props.convertSlotPanels?.[item.agentId]),
 )
 
+/** 主 C 参与转模链或队伍存在转模增益角色时，主 C 与转模录入均不沿用面板计算页 */
+const optimalConvertModeActive = computed(() => {
+  const ctx = buildBasePanelCalcContext()
+  return (
+    slotParticipatesInConvertBuff(ctx, mainSlotIndex.value) ||
+    teamHasConvertSupportSlots(ctx, { excludeAnomalyAgentIds: anomalyProducerAgentIds.value })
+  )
+})
+
+const optimalConvertSlotPanels = reactive<ConvertSlotPanels>({})
+
+function defaultConvertPartialForAgent(
+  agentId: string,
+  requiredAttrs: CharacterAttrKey[],
+): Partial<Record<CharacterAttrKey, number>> {
+  const agent = props.agents.find((item) => item.id === agentId)
+  const partial: Partial<Record<CharacterAttrKey, number>> = {}
+  for (const attr of requiredAttrs) {
+    if (attr === 'level') {
+      partial.level = 60
+      continue
+    }
+    if (attr === 'impact') {
+      partial.impact = 0
+      continue
+    }
+    const base = agent?.basePanel
+    if (!base) continue
+    if (attr === 'hp' || attr === 'atk' || attr === 'def') {
+      partial[attr] = base[attr]
+    } else if (attr in base) {
+      partial[attr] = (base as unknown as Record<string, number>)[attr] ?? 0
+    }
+  }
+  return partial
+}
+
+function ensureOptimalConvertPartial(
+  agentId: string,
+  requiredAttrs: CharacterAttrKey[],
+): Partial<Record<CharacterAttrKey, number>> {
+  const existing = optimalConvertSlotPanels[agentId]
+  if (existing && requiredAttrs.every((attr) => existing[attr] != null)) {
+    return existing
+  }
+  const next = {
+    ...defaultConvertPartialForAgent(agentId, requiredAttrs),
+    ...(existing ?? {}),
+  }
+  optimalConvertSlotPanels[agentId] = next
+  return next
+}
+
+function updateOptimalConvertSlotAttr(agentId: string, key: CharacterAttrKey, value: number) {
+  optimalConvertSlotPanels[agentId] = {
+    ...(optimalConvertSlotPanels[agentId] ?? {}),
+    [key]: value,
+  }
+}
+
+watch(
+  [convertSupportSlots, optimalConvertModeActive],
+  ([slots, active]) => {
+    if (!active) return
+    const activeIds = new Set(slots.map((item) => item.agentId))
+    for (const id of Object.keys(optimalConvertSlotPanels)) {
+      if (!activeIds.has(id)) delete optimalConvertSlotPanels[id]
+    }
+    for (const item of slots) {
+      ensureOptimalConvertPartial(item.agentId, item.requiredAttrs)
+    }
+  },
+  { immediate: true },
+)
+
+const effectiveConvertSlotPanels = computed((): ConvertSlotPanels | undefined => {
+  if (!optimalConvertModeActive.value) return props.convertSlotPanels
+  return optimalConvertSlotPanels
+})
+
+const effectiveAnomalySlotPanels = computed(() => {
+  const mainId = mainAgent.value?.id
+  if (!mainId || !optimalConvertModeActive.value) return props.anomalySlotPanels
+  return omitAgentFromAnomalySlotPanels(props.anomalySlotPanels, mainId)
+})
+
+const evalConvertSlotPanels = computed(() => {
+  const mainId = mainAgent.value?.id
+  const panels = effectiveConvertSlotPanels.value
+  if (!mainId || !optimalConvertModeActive.value) return panels
+  return omitAgentFromConvertSlotPanels(panels, mainId)
+})
+
 function characterAttrLabel(key: CharacterAttrKey): string {
   return CHARACTER_ATTR_OPTIONS.find((item) => item.id === key)?.label ?? key
 }
@@ -341,26 +461,7 @@ function updateConvertSlotAttr(agentId: string, key: CharacterAttrKey, value: nu
   })
 }
 
-const { skillSubcategories, followUpSkillRules } = storeToRefs(useCalculatorBuffStore())
-
-const skillIsFollowUp = computed(() =>
-  resolveIsFollowUp({
-    agentId: mainAgent.value?.id,
-    categoryId: props.skillCategoryId ?? 'basic',
-    subcategoryId: props.skillSubcategoryId ?? null,
-    skillSubcategories: skillSubcategories.value,
-    followUpSkillRules: followUpSkillRules.value,
-  }),
-)
-
 const isMb = computed(() => mainAgent.value?.profession === MB_PROFESSION)
-
-const selectedBangboo = computed(
-  () =>
-    props.bangboos.find((item) => item.id === props.selectedBangbooId) ??
-    props.bangboos.find((item) => item.id === 'none') ??
-    emptyBangboo,
-)
 
 const evalCtx = computed(() =>
   buildOptimalEvalContext({
@@ -387,8 +488,8 @@ const evalCtx = computed(() =>
     },
     buffSelection: props.buffSelection ?? null,
     slotBuffSelections: props.slotBuffSelections ?? null,
-    anomalySlotPanels: props.anomalySlotPanels,
-    convertSlotPanels: props.convertSlotPanels,
+    anomalySlotPanels: effectiveAnomalySlotPanels.value,
+    convertSlotPanels: evalConvertSlotPanels.value,
     triggerAnomalyAgentId: props.triggerAnomalyAgentId,
     damageEvents: props.damageEvents,
     resolveSubcategory: (id) => skillSubcategories.value.find((item) => item.id === id) ?? null,
@@ -412,13 +513,41 @@ const DIFF_DEBOUNCE_MS = 450
 const directPoints = ref<DirectSweepPoint[]>([])
 const anomalyPoints = ref<AnomalySweepPoint[]>([])
 const sweepComputing = ref(false)
+/** 配置（主属性/敌人/增益等）变更后需手动点开始计算 */
+const sweepNeedsCommit = ref(true)
+/** 已提交配置后，仅词条分配变化会自动重算柱状图 */
+const sweepCommitted = ref(false)
 
 const hasEventMode = computed(() => (props.damageEvents?.length ?? 0) > 0)
 
 let sweepTimer: ReturnType<typeof setTimeout> | null = null
 let diffTimer: ReturnType<typeof setTimeout> | null = null
 
+function markSweepConfigDirty() {
+  sweepNeedsCommit.value = true
+  sweepCommitted.value = false
+  directPoints.value = []
+  anomalyPoints.value = []
+  clearBarSelection()
+  diffAnalysis.value = null
+  mainStatDiff.value = null
+  showMainStatDiff.value = false
+  benefitData.value = null
+}
+
+function startCalculation() {
+  sweepNeedsCommit.value = false
+  sweepCommitted.value = true
+  clearAffixEvalCache()
+  clearBarSelection()
+  runSweepRecompute()
+}
+
 function runSweepRecompute() {
+  if (!sweepCommitted.value) {
+    sweepComputing.value = false
+    return
+  }
   if (damageKind.value === 'direct') {
     directPoints.value = directError.value ? [] : sweepDirectDamage(evalCtx.value, { ...directAlloc })
     anomalyPoints.value = []
@@ -430,6 +559,7 @@ function runSweepRecompute() {
 }
 
 function scheduleSweepRecompute() {
+  if (!sweepCommitted.value) return
   sweepComputing.value = true
   if (sweepTimer) clearTimeout(sweepTimer)
   const delay = hasEventMode.value ? EVENT_SWEEP_DEBOUNCE_MS : SWEEP_DEBOUNCE_MS
@@ -437,9 +567,31 @@ function scheduleSweepRecompute() {
 }
 
 watch(
-  [evalCtx, directAlloc, anomalyAlloc, damageKind, directError, anomalyError],
+  [
+    baseDamageSource,
+    driveDiscMainStats,
+    enemyInput,
+    extraGains,
+    evalConvertSlotPanels,
+    effectiveAnomalySlotPanels,
+    damageKind,
+    () => props.buffSelection,
+    () => props.slotBuffSelections,
+    () => props.teamSlots,
+    () => props.triggerAnomalyAgentId,
+    () => props.damageEvents,
+    () => props.staggerPhase,
+    () => props.bangbooRefine,
+    selectedBangboo,
+  ],
+  markSweepConfigDirty,
+  { deep: true },
+)
+
+watch(
+  [directAlloc, anomalyAlloc, damageKind, directError, anomalyError],
   scheduleSweepRecompute,
-  { deep: true, immediate: true },
+  { deep: true },
 )
 
 onBeforeUnmount(() => {
@@ -588,36 +740,97 @@ const eventTotalBarSeries = computed(() => {
 
 const selectedProcessEventId = ref<string | null>(null)
 
-const optimalEventDetails = computed((): OptimalEventEvalDetail[] => {
-  if (detailTab.value !== 'process') return []
-  if (!hasEventMode.value || !selectedCounts.value) return []
-  const { external } = evaluateAffixCounts(evalCtx.value, selectedCounts.value)
+interface ProcessEventRow {
+  event: import('@/types/calculator').DamageEvent
+  eventId: string
+  displayName: string
+  detail: OptimalEventEvalDetail | null
+  skipReason: string | null
+}
+
+const processEventRows = computed((): ProcessEventRow[] => {
+  if (detailTab.value !== 'process' || !hasEventMode.value) return []
+  const counts = analysisCounts.value
+  if (!counts) return []
+  const mainId = mainAgent.value?.id ?? ''
+  const external =
+    analysisEval.value?.external ?? evaluateAffixCounts(evalCtx.value, counts).external
+  const selectedIds = new Set(selectedChartEventIds.value)
   return (props.damageEvents ?? [])
-    .map((event) => evaluateOptimalEventDetail(evalCtx.value, external, event))
-    .filter((item): item is OptimalEventEvalDetail => item != null)
+    .filter((event) => !selectedIds.size || selectedIds.has(event.id))
+    .map((event) => {
+    const ownerName = props.agents.find(
+      (item) => item.id === resolveEventOwnerAgentId(event, mainId),
+    )?.name
+    const displayName = formatDamageEventDisplayName(
+      event,
+      (id) => skillSubcategories.value.find((item) => item.id === id) ?? null,
+      ownerName,
+    )
+    const skipReason = getDamageEventSkipReason(event, {
+      teamSlots: props.teamSlots,
+      agents: props.agents,
+      mainAgentId: mainId,
+    })
+    const detail = skipReason
+      ? null
+      : evaluateOptimalEventDetail(evalCtx.value, external, event)
+    return {
+      event,
+      eventId: event.id,
+      displayName,
+      detail,
+      skipReason,
+    }
+  })
 })
 
 watch(
-  optimalEventDetails,
-  (details) => {
-    if (!details.length) {
+  processEventRows,
+  (rows) => {
+    const selectable = rows.filter((row) => row.detail)
+    if (!selectable.length) {
       selectedProcessEventId.value = null
       return
     }
-    if (!details.some((item) => item.eventId === selectedProcessEventId.value)) {
-      selectedProcessEventId.value = details[0]!.eventId
+    if (!selectable.some((row) => row.eventId === selectedProcessEventId.value)) {
+      selectedProcessEventId.value = selectable[0]!.eventId
     }
   },
   { immediate: true },
 )
 
-const selectedProcessEventDetail = computed(() =>
-  optimalEventDetails.value.find((item) => item.eventId === selectedProcessEventId.value) ?? null,
+const selectedProcessEventRow = computed(
+  () => processEventRows.value.find((row) => row.eventId === selectedProcessEventId.value) ?? null,
 )
 
+const selectedProcessEventDetail = computed(() => selectedProcessEventRow.value?.detail ?? null)
+
+const processOwnerShareSummary = computed(() => {
+  const rows = processEventRows.value.filter((row) => row.detail)
+  if (!rows.length) return null
+  return summarizeDamageByOwner(
+    rows.map((row) => ({
+      event: row.event,
+      eventId: row.eventId,
+      displayName: row.displayName,
+      total: row.detail!.total,
+    })),
+    mainAgent.value?.id ?? '',
+    (id) => props.agents.find((item) => item.id === id),
+  )
+})
+
+function selectProcessEventFromShare(eventId: string) {
+  const row = processEventRows.value.find((item) => item.eventId === eventId)
+  if (!row?.detail) return
+  selectedProcessEventId.value = eventId
+}
+
 function toggleProcessEventSelection(eventId: string) {
-  selectedProcessEventId.value =
-    selectedProcessEventId.value === eventId ? null : eventId
+  const row = processEventRows.value.find((item) => item.eventId === eventId)
+  if (!row?.detail) return
+  selectedProcessEventId.value = selectedProcessEventId.value === eventId ? null : eventId
 }
 
 const eventAffixImpact = ref<OptimalEventAffixImpact[]>([])
@@ -734,11 +947,6 @@ watch(
   { immediate: true },
 )
 
-const selectedEval = computed(() => {
-  if (!selectedCounts.value) return null
-  return evaluateAffixCounts(evalCtx.value, selectedCounts.value)
-})
-
 /** 面板展示用：未选中柱体时按第一个扫掠点（分配全部给爆伤/精通）展示 */
 const displayCounts = computed(() => {
   if (selectedCounts.value) return selectedCounts.value
@@ -746,7 +954,19 @@ const displayCounts = computed(() => {
   return anomalyPoints.value[0]?.affixCounts ?? null
 })
 
+const selectedEval = computed(() => {
+  if (!selectedCounts.value) return null
+  const point =
+    damageKind.value === 'direct' ? selectedDirect.value : selectedAnomaly.value
+  if (point?.evalSnapshot) return point.evalSnapshot
+  return evaluateAffixCounts(evalCtx.value, selectedCounts.value)
+})
+
+/** 面板展示用：未选中柱体时按第一个扫掠点展示 */
 const displayEval = computed(() => {
+  if (selectedEval.value) return selectedEval.value
+  const point = sweepPoints.value[0]
+  if (point?.evalSnapshot) return point.evalSnapshot
   if (!displayCounts.value) return null
   return evaluateAffixCounts(evalCtx.value, displayCounts.value)
 })
@@ -837,6 +1057,19 @@ const mainStatEventScopeHint = computed(() => {
     return '按全部统计事件计算'
   }
   return `按已选 ${selectedChartEventIds.value.length} 个统计事件计算`
+})
+
+const analysisMetricDamage = computed(() => {
+  if (!analysisEval.value) return 0
+  return resolveAffixMetricDamage(analysisEval.value)
+})
+
+const filteredEventAffixImpact = computed(() => {
+  if (!hasEventMode.value || !selectedChartEventIds.value.length) {
+    return eventAffixImpact.value
+  }
+  const ids = new Set(selectedChartEventIds.value)
+  return eventAffixImpact.value.filter((row) => ids.has(row.eventId))
 })
 
 const rankingSlot4Ids = ref<DriveDiscSlot4StatId[]>(
@@ -968,6 +1201,8 @@ const MAIN_STAT_SLOTS = [
 
 const diffAnalysis = ref<ReturnType<typeof computeDiffAnalysis> | null>(null)
 const mainStatDiff = ref<ReturnType<typeof mainStatDiffBuilder> | null>(null)
+const showMainStatDiff = ref(false)
+const mainStatDiffLoading = ref(false)
 const benefitData = ref<ReturnType<typeof computeBenefitCurves> | null>(null)
 const combinedMainStatRankings = ref<
   {
@@ -1067,6 +1302,7 @@ function recomputeDiffAnalysis() {
   if (detailTab.value !== 'diff' || !analysisCounts.value) {
     diffAnalysis.value = null
     mainStatDiff.value = null
+    showMainStatDiff.value = false
     return
   }
   diffAnalysis.value = computeDiffAnalysis(
@@ -1074,8 +1310,18 @@ function recomputeDiffAnalysis() {
     analysisCounts.value,
     damageKind.value,
     anomalyChartMetric.value,
+    hasEventMode.value ? selectedChartEventIds.value : null,
   )
-  mainStatDiff.value = mainStatDiffBuilder()
+}
+
+function loadMainStatDiff() {
+  if (!analysisCounts.value || !analysisEval.value) return
+  mainStatDiffLoading.value = true
+  window.setTimeout(() => {
+    mainStatDiff.value = mainStatDiffBuilder()
+    showMainStatDiff.value = true
+    mainStatDiffLoading.value = false
+  }, 0)
 }
 
 function scheduleDiffRecompute() {
@@ -1094,6 +1340,7 @@ function recomputeBenefitData() {
     damageKind.value,
     anomalyChartMetric.value,
     BENEFIT_CURVE_MAX_ADDED,
+    hasEventMode.value ? selectedChartEventIds.value : null,
   )
 }
 
@@ -1119,16 +1366,18 @@ function expandCombinedMainStatRankings() {
 }
 
 watch(
-  [analysisCounts, evalCtx, damageKind, anomalyChartMetric, detailTab],
+  [analysisCounts, evalCtx, damageKind, anomalyChartMetric, detailTab, selectedChartEventIds],
   () => {
     scheduleDiffRecompute()
     recomputeBenefitData()
+    showMainStatDiff.value = false
+    mainStatDiff.value = null
     if (detailTab.value !== 'diff') {
       showCombinedMainStatRankings.value = false
       combinedMainStatRankings.value = []
     }
   },
-  { deep: true, immediate: true },
+  { deep: true },
 )
 
 watch(detailTab, (tab) => {
@@ -1468,6 +1717,24 @@ watch(
       当前计算方式：{{ damageKind === 'direct' ? '直伤' : '异常' }}（与上方全局选择同步）
     </div>
 
+    <div class="calc-commit-row">
+      <button
+        type="button"
+        class="calc-run-btn"
+        :class="{ 'is-computing': sweepComputing }"
+        :disabled="sweepComputing || (damageKind === 'direct' ? Boolean(directError) : Boolean(anomalyError))"
+        @click="startCalculation"
+      >
+        {{ sweepComputing ? '计算中…' : '开始计算' }}
+      </button>
+      <p v-if="sweepNeedsCommit" class="hint calc-commit-hint">
+        修改基础伤害来源、驱动盘主属性、敌人参数、增益或转模录入后，请点击「开始计算」更新柱状图与详情。
+      </p>
+      <p v-else-if="sweepCommitted && !sweepComputing" class="hint calc-commit-hint calc-commit-hint--synced">
+        已按当前配置计算；调整下方词条分配会自动刷新柱状图。
+      </p>
+    </div>
+
     <div class="alloc-layout">
       <div class="alloc-left">
         <template v-if="damageKind === 'direct'">
@@ -1598,17 +1865,21 @@ watch(
       </section>
 
       <section
-        v-if="convertSupportSlotsNeedingInput.length"
+        v-if="optimalConvertModeActive ? convertSupportSlots.length : convertSupportSlotsNeedingInput.length"
         class="panel-block convert-support-panels"
       >
         <header class="panel-block-header">
           <h3>转模增益角色 · 局外面板</h3>
-          <p>
+          <p v-if="optimalConvertModeActive">
+            当前主 C 参与转模增益链路：主 C 局外由上方词条分配推导，<strong>不沿用</strong>「面板/词条计算」页的主
+            C 面板；下方转模来源属性请在本页单独录入。
+          </p>
+          <p v-else>
             已在「面板/词条计算」页填写的数据会自动沿用；此处仅补充尚未录入的转模来源属性。
           </p>
         </header>
         <details
-          v-for="item in convertSupportSlotsNeedingInput"
+          v-for="item in optimalConvertModeActive ? convertSupportSlots : convertSupportSlotsNeedingInput"
           :key="item.agentId"
           class="anomaly-slot-details"
         >
@@ -1627,13 +1898,25 @@ watch(
               <input
                 type="number"
                 step="any"
-                :value="ensureConvertSlotPartial(item.agentId)[attr] ?? 0"
+                :value="
+                  optimalConvertModeActive
+                    ? (optimalConvertSlotPanels[item.agentId]?.[attr] ??
+                      defaultConvertPartialForAgent(item.agentId, item.requiredAttrs)[attr] ??
+                      0)
+                    : ensureConvertSlotPartial(item.agentId)[attr] ?? 0
+                "
                 @change="
-                  updateConvertSlotAttr(
-                    item.agentId,
-                    attr,
-                    Number(($event.target as HTMLInputElement).value) || 0,
-                  )
+                  optimalConvertModeActive
+                    ? updateOptimalConvertSlotAttr(
+                        item.agentId,
+                        attr,
+                        Number(($event.target as HTMLInputElement).value) || 0,
+                      )
+                    : updateConvertSlotAttr(
+                        item.agentId,
+                        attr,
+                        Number(($event.target as HTMLInputElement).value) || 0,
+                      )
                 "
               />
             </label>
@@ -1646,7 +1929,12 @@ watch(
       <section class="panel-block">
         <header class="panel-block-header">
           <h3>局外面板（初始）</h3>
-          <p>{{ selectedCounts ? '跟随当前选中分配。' : '未选中柱体时按第一个扫掠点展示。' }}由词条分配与角色/音擎/驱动盘基础属性推导。</p>
+          <p>
+            {{ selectedCounts ? '跟随当前选中分配。' : '未选中柱体时按第一个扫掠点展示。' }}由词条分配与角色/音擎/驱动盘基础属性推导。
+            <template v-if="optimalConvertModeActive">
+              主 C 参与转模增益，此处不沿用「面板/词条计算」页录入的主 C 局外。
+            </template>
+          </p>
         </header>
         <div class="grid four">
           <label v-for="field in EXTERNAL_PANEL_FIELDS" :key="`external-${field.key}`" class="field">
@@ -1784,7 +2072,7 @@ watch(
       <p v-if="!showEventAffixImpact" class="hint">
         事件较多时自动计算较慢，需要时再点击「计算敏感度」。
       </p>
-      <template v-else-if="eventAffixImpact.length">
+      <template v-else-if="filteredEventAffixImpact.length">
       <p class="hint">
         对比当前分配下各候选副词条 +1 后，各事件伤害的最大变化。不受主C词条影响的事件（如非主C产生角色的紊乱/乱流）会单独标注。
       </p>
@@ -1801,7 +2089,7 @@ watch(
           </thead>
           <tbody>
             <tr
-              v-for="row in eventAffixImpact"
+              v-for="row in filteredEventAffixImpact"
               :key="row.eventId"
               :class="{ 'event-insensitive': !row.affixSensitive }"
             >
@@ -1859,9 +2147,12 @@ watch(
             计算过程
           </button>
         </div>
+        <p v-if="hasEventMode && mainStatEventScopeHint" class="hint detail-scope-hint">
+          {{ mainStatEventScopeHint }}
+        </p>
       </header>
 
-            <p v-if="damageKind === 'anomaly'" class="metric-tabs">
+            <p v-if="damageKind === 'anomaly' && !hasEventMode" class="metric-tabs">
         当前异常子类：{{
           anomalySubKind === 'disorder'
             ? '紊乱伤害'
@@ -1876,40 +2167,49 @@ watch(
       </p>
 
       <template v-if="detailTab === 'process'">
-        <template v-if="hasEventMode && optimalEventDetails.length">
+        <template v-if="hasEventMode">
           <div class="result-summary">
             <p>
               伤害事件总伤期望：
-              <strong>{{ formatNumber(analysisEval!.grandTotal) }}</strong>
+              <strong>{{ formatNumber(analysisMetricDamage) }}</strong>
             </p>
           </div>
+          <DamageOwnerShareBlock
+            :summary="processOwnerShareSummary"
+            :selected-event-id="selectedProcessEventId"
+            @select-event="selectProcessEventFromShare"
+          />
           <section class="event-summary-block">
             <h3 class="result-section-title event-summary-title">伤害事件</h3>
             <ul class="event-summary-list">
               <li
-                v-for="detail in optimalEventDetails"
-                :key="detail.eventId"
+                v-for="row in processEventRows"
+                :key="row.eventId"
                 class="event-summary-item"
-                :class="{ 'event-summary-item--active': selectedProcessEventId === detail.eventId }"
-                role="button"
-                tabindex="0"
-                @click="toggleProcessEventSelection(detail.eventId)"
-                @keydown.enter.prevent="toggleProcessEventSelection(detail.eventId)"
-                @keydown.space.prevent="toggleProcessEventSelection(detail.eventId)"
+                :class="{
+                  'event-summary-item--active': selectedProcessEventId === row.eventId,
+                  'event-summary-item--disabled': !row.detail,
+                }"
+                :role="row.detail ? 'button' : undefined"
+                :tabindex="row.detail ? 0 : undefined"
+                @click="row.detail && toggleProcessEventSelection(row.eventId)"
+                @keydown.enter.prevent="row.detail && toggleProcessEventSelection(row.eventId)"
+                @keydown.space.prevent="row.detail && toggleProcessEventSelection(row.eventId)"
               >
                 <span class="event-summary-name">
-                  {{ detail.displayName }}
-                  <span v-if="detail.event.count > 1" class="event-summary-count">
-                    ×{{ detail.event.count }}
+                  {{ row.displayName }}
+                  <span v-if="row.event.count > 1" class="event-summary-count">
+                    ×{{ row.event.count }}
                   </span>
                 </span>
-                <span class="event-summary-damage">
-                  单次 {{ formatNumber(detail.perHit) }} · 合计 {{ formatNumber(detail.total) }}
+                <span v-if="row.detail" class="event-summary-damage">
+                  单次 {{ formatNumber(row.detail.perHit) }} · 合计 {{ formatNumber(row.detail.total) }}
                 </span>
+                <span v-else class="event-summary-skip">{{ row.skipReason ?? '无法计算' }}</span>
               </li>
             </ul>
             <p class="result-total event-summary-total">
-              伤害事件总伤期望：{{ formatNumber(analysisEval!.grandTotal) }}
+              伤害事件总伤期望：{{ formatNumber(analysisMetricDamage) }}
             </p>
           </section>
           <DamageResultDetail
@@ -1928,14 +2228,20 @@ watch(
             :producer-external-panel="selectedProcessEventDetail.producerExternalPanel"
             :producer-sources="selectedProcessEventDetail.producerBreakdown?.sources"
             :producer-agent-label="selectedProcessEventDetail.producerAgentLabel"
+            :base-agent-label="selectedProcessEventDetail.baseAgentLabel"
+            :bonus-agent-label="selectedProcessEventDetail.bonusAgentLabel"
+            :mutation-agent-label="selectedProcessEventDetail.mutationAgentLabel"
           />
-          <p v-else class="hint">点击上方事件查看该事件的详细计算过程。</p>
+          <p v-else-if="processEventRows.some((row) => row.detail)" class="hint">
+            点击上方事件查看该事件的详细计算过程。
+          </p>
+          <p v-else class="hint">当前配置下暂无可用伤害事件，请检查产生角色与局外面板。</p>
         </template>
         <template v-else>
         <div class="result-summary">
           <p v-if="hasEventMode">
             伤害事件总伤期望：
-            <strong>{{ formatNumber(analysisEval!.grandTotal) }}</strong>
+            <strong>{{ formatNumber(analysisMetricDamage) }}</strong>
           </p>
           <template v-else-if="damageKind === 'direct'">
             <p>直伤期望伤害：<strong>{{ formatNumber(analysisEval!.result.directDamageExpected) }}</strong></p>
@@ -2256,7 +2562,19 @@ watch(
           </div>
         </template>
 
-        <template v-if="mainStatDiff">
+        <div class="main-stat-diff-toolbar">
+          <button
+            v-if="!showMainStatDiff"
+            type="button"
+            class="chip"
+            :disabled="mainStatDiffLoading || !analysisCounts"
+            @click="loadMainStatDiff"
+          >
+            {{ mainStatDiffLoading ? '分析中…' : '分析主属性单槽替换' }}
+          </button>
+        </div>
+
+        <template v-if="showMainStatDiff && mainStatDiff">
           <h4 class="sub-title">主词条差异计算（单槽位替换）</h4>
           <div class="main-stat-diff">
             <div v-for="slotDiff in mainStatDiff" :key="slotDiff.key" class="main-stat-card">
@@ -2398,6 +2716,20 @@ watch(
   background: rgba(125, 211, 160, 0.08);
 }
 
+.event-summary-item--disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.event-summary-item--disabled:hover {
+  border-color: #2a3140;
+}
+
+.event-summary-skip {
+  color: #c07a7a;
+  font-size: 0.8rem;
+}
+
 .event-summary-name {
   color: #e8ecf4;
   font-size: 0.86rem;
@@ -2517,6 +2849,11 @@ watch(
 }
 
 .opt-section {
+  --calc-run-border: rgba(191, 255, 9, 0.45);
+  --calc-run-bg: rgba(191, 255, 9, 0.12);
+  --calc-run-text: #bfff09;
+  --calc-run-bg-hover: rgba(191, 255, 9, 0.18);
+  --calc-run-border-hover: rgba(191, 255, 9, 0.55);
   border: 1px solid #2a2d33;
   border-radius: 14px;
   background: linear-gradient(180deg, #171a1f 0%, #12151a 100%);
@@ -2721,6 +3058,60 @@ watch(
   margin: 0.75rem 0 0;
   font-size: 0.82rem;
   opacity: 0.75;
+}
+
+.calc-commit-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.85rem;
+  margin-top: 0.35rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.calc-run-btn {
+  border: 1px solid var(--calc-run-border);
+  border-radius: 999px;
+  background: var(--calc-run-bg);
+  color: var(--calc-run-text);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.35rem 0.85rem;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.calc-run-btn:hover:not(:disabled) {
+  background: var(--calc-run-bg-hover);
+  border-color: var(--calc-run-border-hover);
+}
+
+.calc-run-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.calc-run-btn.is-computing {
+  cursor: wait;
+}
+
+.calc-commit-hint {
+  margin: 0;
+  flex: 1 1 14rem;
+  font-size: 0.78rem;
+}
+
+.calc-commit-hint--synced {
+  opacity: 0.85;
+}
+
+.main-stat-diff-toolbar {
+  margin: 0.75rem 0 0;
 }
 .detail-tabs,
 .metric-tabs,
