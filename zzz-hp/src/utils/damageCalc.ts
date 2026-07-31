@@ -56,10 +56,14 @@ export interface DamageCalcInput {
   triggerIsMb?: boolean
   /** 当前招式小类（有则优先采用小类倍率） */
   skillSubcategory?: SkillSubcategory | null
-  /** 主 C 等级（等级区）；缺省取 enemyInput.level */
+  /** 主 C 等级（直伤/非产生型异常等级区等）；缺省取 enemyInput.level */
   mainAgentLevel?: number
+  /** 事件 owner 等级（owner 非主 C 且无 trigger 面板时的等级区） */
+  ownerAgentLevel?: number
   /** 产生角色等级（异常基础等级区）；缺省与 mainAgentLevel 相同 */
   triggerAgentLevel?: number
+  /** 主 C 局内最终面板（紊乱/乱流/异放/耀变：减防/无视防御与异常增伤等乘区） */
+  mainCFinalPanel?: PanelStats
   /** 队伍有蕾米埃尔时的异化系数乘区（预计算） */
   mutationZone?: number
   /** 耀变：蕾米埃尔耀变抗性穿透，并入产生角色抗性区 */
@@ -330,16 +334,20 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     useTriggerBase && (subKind === 'turbulence' || subKind === 'disorder')
   const multPanel = usesProducerMultPanel ? triggerPanel : panel
 
+  const mainAgentLevel = input.mainAgentLevel ?? input.enemyInput.level
+  const ownerAgentLevel = input.ownerAgentLevel ?? mainAgentLevel
+  const triggerAgentLevel = input.triggerAgentLevel ?? mainAgentLevel
+  const mainCPanel = input.mainCFinalPanel ?? panel
+  /** 产生型异常：增伤/倍率/暴击等取主 C；基础乘区取产生角色；非产生型取 owner 面板 */
+  const bonusPanel = useTriggerBase ? mainCPanel : panel
+
   const skillMults = input.skillSubcategory
     ? resolveSkillMults(
-        usesProducerMultPanel ? triggerPanel : panel,
+        usesProducerMultPanel ? triggerPanel : bonusPanel,
         input.skillSubcategory,
       )
     : null
   const hasPolarDisorder = skillMults?.hasPolarDisorder ?? false
-
-  const mainAgentLevel = input.mainAgentLevel ?? input.enemyInput.level
-  const triggerAgentLevel = input.triggerAgentLevel ?? mainAgentLevel
 
   const mainParts = computeGeneralAndAnomalyBase({
     panel,
@@ -354,7 +362,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     combatSpecial: input.combatSpecial,
     combatPierceDmgBonus: input.combatPierceDmgBonus ?? 0,
     staggerPhase,
-    agentLevel: mainAgentLevel,
+    agentLevel: ownerAgentLevel,
   })
 
   const triggerParts = useTriggerBase
@@ -376,8 +384,8 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
         defensePanel: {
           penRate: triggerPanel.penRate,
           pen: triggerPanel.pen,
-          ignoreDefense: panel.ignoreDefense,
-          reduceDefense: panel.reduceDefense,
+          ignoreDefense: mainCPanel.ignoreDefense,
+          reduceDefense: mainCPanel.reduceDefense,
         },
         extraResPen: subKind === 'radiance' ? (input.remielRadianceResPen ?? 0) : 0,
       })
@@ -400,12 +408,12 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const settlementDamageExpected = directBaseChain * settlementDmgMultZone
   const directDamageExpected = directDamageFromDirectMult + settlementDamageExpected
 
-  // 异常乘区：仅异常字段，不再并入异放
-  const anomalyDmgBonusZone = 1 + panel.anomalyDmgBonus / 100
+  // 异常乘区：产生型取主 C（bonusPanel）；基础期望取产生角色
+  const anomalyDmgBonusZone = 1 + bonusPanel.anomalyDmgBonus / 100
   const anomalyMultZone =
-    Math.max(0, panel.anomalyMult / 100) * readFactor(panel.anomalyMultFactor)
-  const anomalyCritRateRatio = panel.anomalyCritRate / 100
-  const anomalyCritDmgRatio = clamp(panel.anomalyCritDmg / 100, 0, 20)
+    Math.max(0, bonusPanel.anomalyMult / 100) * readFactor(bonusPanel.anomalyMultFactor)
+  const anomalyCritRateRatio = bonusPanel.anomalyCritRate / 100
+  const anomalyCritDmgRatio = clamp(bonusPanel.anomalyCritDmg / 100, 0, 20)
   const anomalyCritZone = 1 + anomalyCritRateRatio * anomalyCritDmgRatio
   const anomalyFullCritZone = 1 + anomalyCritDmgRatio
   const anomalyNoCritZone = 1
@@ -418,15 +426,15 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const anomalyExpectedFullCrit = anomalyPreCrit * anomalyFullCritZone
 
   // 异放：基础用触发面板；综合增伤加算；综合暴击率/爆伤加算后再乘
-  const anomalyReleaseDmgBonusZone = 1 + panel.anomalyReleaseDmgBonus / 100
+  const anomalyReleaseDmgBonusZone = 1 + bonusPanel.anomalyReleaseDmgBonus / 100
   const anomalyReleaseCombinedDmgBonusZone =
-    1 + (panel.anomalyReleaseDmgBonus + panel.anomalyDmgBonus) / 100
+    1 + (bonusPanel.anomalyReleaseDmgBonus + bonusPanel.anomalyDmgBonus) / 100
   const anomalyReleaseMultZone = skillMults
     ? skillMults.anomalyReleaseMultZone
-    : Math.max(0, panel.anomalyReleaseMult / 100) *
-        readFactor(panel.anomalyReleaseMultFactor)
-  const releaseCritRateRatio = panel.anomalyReleaseCritRate / 100
-  const releaseCritDmgRatio = clamp(panel.anomalyReleaseCritDmg / 100, 0, 20)
+    : Math.max(0, bonusPanel.anomalyReleaseMult / 100) *
+        readFactor(bonusPanel.anomalyReleaseMultFactor)
+  const releaseCritRateRatio = bonusPanel.anomalyReleaseCritRate / 100
+  const releaseCritDmgRatio = clamp(bonusPanel.anomalyReleaseCritDmg / 100, 0, 20)
   const anomalyReleaseCritZone = 1 + releaseCritRateRatio * releaseCritDmgRatio
   const anomalyCombinedCritRateRatio = anomalyCritRateRatio + releaseCritRateRatio
   const anomalyCombinedCritDmgRatio = anomalyCritDmgRatio + releaseCritDmgRatio
@@ -449,11 +457,11 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     ? (input.triggerAgentElement ?? input.mainAgentElement ?? '')
     : (input.mainAgentElement ?? '')
   const effectiveDuration = effectiveAnomalyDuration(
-    (useTriggerBase ? triggerPanel : panel).anomalyDuration || panel.anomalyDuration,
+    (useTriggerBase ? triggerPanel : panel).anomalyDuration || bonusPanel.anomalyDuration,
     durationElement,
   )
 
-  const disorderDmgBonusZone = 1 + panel.disorderDmgBonus / 100
+  const disorderDmgBonusZone = 1 + bonusPanel.disorderDmgBonus / 100
   const disorderBaseMultRatio = skillMults
     ? skillMults.disorderMultZone
     : Math.max(0, multPanel.disorderBaseMult / 100) *
@@ -466,9 +474,9 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const disorderBase = useTriggerBase ? triggerParts.anomalyBaseExpected : mainParts.anomalyBaseExpected
   const disorderExpected = disorderBase * disorderZone * disorderDmgBonusZone
 
-  const turbulenceDmgBonusZone = 1 + panel.turbulenceDmgBonus / 100
+  const turbulenceDmgBonusZone = 1 + bonusPanel.turbulenceDmgBonus / 100
   const turbulenceCombinedDmgBonusZone =
-    1 + (panel.turbulenceDmgBonus + panel.anomalyDmgBonus) / 100
+    1 + (bonusPanel.turbulenceDmgBonus + bonusPanel.anomalyDmgBonus) / 100
   const turbulenceBaseMultRatio =
     Math.max(0, multPanel.turbulenceBaseMult / 100) *
       readFactor(multPanel.turbulenceBaseMultFactor)
@@ -486,8 +494,8 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const turbulenceExpectedFullCrit = turbulencePreCrit * anomalyFullCritZone
 
   const radianceCombinedDmgBonusZone =
-    1 + (panel.radianceDmgBonus + panel.anomalyDmgBonus) / 100
-  const radianceMultZone = computeRadianceMultZone(panel)
+    1 + (bonusPanel.radianceDmgBonus + bonusPanel.anomalyDmgBonus) / 100
+  const radianceMultZone = computeRadianceMultZone(bonusPanel)
   const radiancePreCrit =
     anomalyBaseExpected * radianceCombinedDmgBonusZone * radianceMultZone
   const radianceExpectedRaw = radiancePreCrit * anomalyCritZone

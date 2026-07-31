@@ -26,6 +26,9 @@ const props = withDefaults(
     skillSubcategories: SkillSubcategory[]
     modeType?: DamageEventModeType
     triggerAgentOptions?: { id: string; name: string }[]
+    mainAgentId?: string
+    ownerAgentOptions?: { id: string; name: string; element?: string }[]
+    teamHasRemiel?: boolean
     resolveMultDefaults?: (
       event: DamageEvent,
     ) => Partial<Record<keyof import('@/types/calculator').DamageEventMultOverrides, number>>
@@ -296,6 +299,9 @@ function applyModeName() {
               v-model="events"
               :skill-subcategories="skillSubcategories"
               :agent-id="agentId"
+              :main-agent-id="mainAgentId ?? agentId"
+              :owner-agent-options="ownerAgentOptions"
+              :team-has-remiel="teamHasRemiel"
               :mode-type="modeType"
               :trigger-agent-options="triggerAgentOptions"
               :allow-calc-time-trigger="false"

@@ -349,6 +349,11 @@ export interface DamageEvent {
   staggerPhase: StaggerPhase
   critMode: DamageEventCritMode
   /**
+   * 伤害事件归属角色（产生该伤害的是谁）。
+   * 缺省 / null 视为主 C；管理端「计算时选择」可用 __at_calc__。
+   */
+  ownerAgentId?: string | null
+  /**
    * 当前属性异常的产生角色 agentId。
    * 特殊值 `__at_calc__` 表示管理端配置为「计算时选择」。
    */

@@ -11,14 +11,25 @@ import {
   createEmptyDamageEvent,
   DAMAGE_EVENT_KIND_OPTIONS,
   eventNeedsAnomalyProducer,
-  filterDamageEventKindOptionsForMainAgent,
+  formatDamageEventDisplayName,
 } from '@/utils/damageEvent'
+import {
+  getDamageEventKindOptionsForMode,
+  resolveEventOwnerAgentId,
+  RADIANCE_SELF_TRIGGER_HINT,
+} from '@/utils/damageEventOwner'
 
 const props = withDefaults(
   defineProps<{
     modelValue: DamageEvent[]
     skillSubcategories: SkillSubcategory[]
     agentId?: string
+    /** 主 C agentId，缺省 owner 时使用 */
+    mainAgentId?: string
+    /** 事件产生角色（归属）候选项 */
+    ownerAgentOptions?: { id: string; name: string; element?: string }[]
+    /** 队伍是否编入蕾米埃尔 */
+    teamHasRemiel?: boolean
     /** 嵌入弹窗时去掉外边框，仅保留编辑区 */
     embedded?: boolean
     /** 模式类型，控制 kind 选择和倍率展示 */
@@ -71,11 +82,16 @@ watch(
   { immediate: true },
 )
 
-function filteredSubcategories(categoryId: SkillCategoryId) {
+function resolveOwnerAgentId(event: DamageEvent): string {
+  return resolveEventOwnerAgentId(event, props.mainAgentId ?? props.agentId ?? '')
+}
+
+function filteredSubcategories(categoryId: SkillCategoryId, event: DamageEvent) {
+  const ownerId = resolveOwnerAgentId(event)
   return props.skillSubcategories.filter((item) => {
     if (item.categoryId !== categoryId) return false
-    if (!props.agentId) return true
-    return !item.agentId || item.agentId === props.agentId
+    if (!ownerId) return true
+    return !item.agentId || item.agentId === ownerId
   })
 }
 
@@ -84,27 +100,33 @@ function isSkillBound(event: DamageEvent) {
   return event.skillBound !== false
 }
 
+function resolveOwnerName(event: DamageEvent): string | undefined {
+  const ownerId = resolveOwnerAgentId(event)
+  return props.ownerAgentOptions?.find((item) => item.id === ownerId)?.name
+}
+
 function eventSummary(event: DamageEvent) {
   const kind =
     DAMAGE_EVENT_KIND_OPTIONS.find((item) => item.id === event.kind)?.label ?? event.kind
+  const display = formatDamageEventDisplayName(
+    event,
+    (id) => (id ? props.skillSubcategories.find((item) => item.id === id) ?? null : null),
+    resolveOwnerName(event),
+  )
   if (!isSkillBound(event)) {
-    return `${kind} · 无招式 ×${event.count}`
+    return `${display} · 无招式 ×${event.count}`
   }
-  const cat = SKILL_CATEGORY_OPTIONS.find((item) => item.id === event.categoryId)?.label ?? ''
-  const sub = event.skillSubcategoryId
-    ? props.skillSubcategories.find((item) => item.id === event.skillSubcategoryId)?.name
-    : '整大类'
-  return `${kind} · ${cat} · ${sub} ×${event.count}`
+  return `${kind} · ${display} ×${event.count}`
+}
+
+function resolveRemielAgentId(): string | null {
+  return props.ownerAgentOptions?.find((item) => item.element === '流明')?.id ?? null
 }
 
 function addEvent() {
-  const defaultKind =
-    props.modeType === 'anomaly'
-      ? props.mainAgentElement && props.mainAgentElement === '流明'
-        ? 'radiance'
-        : 'anomaly'
-      : 'direct'
+  const defaultKind = props.modeType === 'anomaly' ? 'anomaly' : 'direct'
   const next = createEmptyDamageEvent(events.value.length, defaultKind)
+  next.ownerAgentId = props.mainAgentId ?? props.agentId ?? null
   if (
     props.allowCalcTimeTrigger &&
     eventNeedsAnomalyProducer(defaultKind)
@@ -136,6 +158,10 @@ function onSkillBoundChange(event: DamageEvent, bound: boolean) {
 
 function onKindChange(event: DamageEvent, kind: DamageEvent['kind']) {
   const patch: Partial<DamageEvent> = { kind }
+  if (kind === 'radiance') {
+    const remielId = resolveRemielAgentId()
+    if (remielId) patch.ownerAgentId = remielId
+  }
   if (eventNeedsAnomalyProducer(kind)) {
     if (props.allowCalcTimeTrigger && !event.triggerAgentId) {
       patch.triggerAgentId = TRIGGER_AGENT_AT_CALC
@@ -248,13 +274,21 @@ const needsTriggerAgent = computed(() => {
 
 const showTriggerSelect = computed(() => needsTriggerAgent.value)
 
-const filteredKindOptions = computed(() =>
-  filterDamageEventKindOptionsForMainAgent(
-    DAMAGE_EVENT_KIND_OPTIONS,
-    props.mainAgentElement,
-    props.modeType,
-  ),
+const kindOptions = computed(() =>
+  getDamageEventKindOptionsForMode(props.modeType ?? 'direct', props.teamHasRemiel ?? false),
 )
+
+const radianceHint = computed(() => {
+  const event = selectedEvent.value
+  if (!event || event.kind !== 'radiance') return ''
+  const remielId = resolveRemielAgentId()
+  const triggerId =
+    event.triggerAgentId && event.triggerAgentId !== TRIGGER_AGENT_AT_CALC
+      ? event.triggerAgentId
+      : null
+  if (remielId && triggerId === remielId) return RADIANCE_SELF_TRIGGER_HINT
+  return ''
+})
 
 const turbulenceKindHint = computed(() => {
   if (props.modeType !== 'anomaly' || selectedEvent.value?.kind !== 'turbulence') return ''
@@ -310,7 +344,28 @@ watch(
       <form v-if="selectedEvent" class="event-detail" @submit.prevent>
         <h4>事件详情</h4>
         <div class="field-row">
-          <label v-if="filteredKindOptions.length > 1" class="field">
+          <label v-if="ownerAgentOptions?.length" class="field">
+            <span>事件产生角色</span>
+            <select
+              :value="resolveOwnerAgentId(selectedEvent!)"
+              :disabled="selectedEvent!.kind === 'radiance'"
+              @change="
+                updateEvent(selectedEvent!.id, {
+                  ownerAgentId: ($event.target as HTMLSelectElement).value || null,
+                  skillSubcategoryId: null,
+                })
+              "
+            >
+              <option
+                v-for="agent in ownerAgentOptions"
+                :key="agent.id"
+                :value="agent.id"
+              >
+                {{ agent.name }}
+              </option>
+            </select>
+          </label>
+          <label class="field">
             <span>伤害种类</span>
             <select
               :value="selectedEvent!.kind"
@@ -322,14 +377,17 @@ watch(
               "
             >
               <option
-                v-for="opt in filteredKindOptions"
+                v-for="opt in kindOptions"
                 :key="opt.id"
                 :value="opt.id"
+                :disabled="opt.disabled"
+                :title="opt.disabledReason"
               >
-                {{ opt.label }}
+                {{ opt.label }}{{ opt.disabled ? '（不可用）' : '' }}
               </option>
             </select>
           </label>
+          <p v-if="radianceHint" class="kind-hint">{{ radianceHint }}</p>
           <p v-if="turbulenceKindHint" class="kind-hint">{{ turbulenceKindHint }}</p>
           <label class="field">
             <span>次数</span>
@@ -395,7 +453,7 @@ watch(
             >
               <option value="">整大类</option>
               <option
-                v-for="sub in filteredSubcategories(selectedEvent!.categoryId)"
+                v-for="sub in filteredSubcategories(selectedEvent!.categoryId, selectedEvent!)"
                 :key="sub.id"
                 :value="sub.id"
               >

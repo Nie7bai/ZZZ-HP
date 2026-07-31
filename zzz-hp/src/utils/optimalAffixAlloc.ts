@@ -1,4 +1,5 @@
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
+import type { ExtraBuffGain } from '@/components/calculator/ExtraBuffGainEditor.vue'
 import type {
   AgentBuffDoc,
   AnomalyDamageSubKind,
@@ -29,14 +30,25 @@ import {
   type DamageCalcResult,
   type DamageEnemyInput,
 } from '@/utils/damageCalc'
-import { mapEventKindToCalc, pickEventDamage, canSelectTurbulenceDamageEvent, formatDamageEventDisplayName, getDamageEventSkipReason } from '@/utils/damageEvent'
+import {
+  eventNeedsAnomalyProducer,
+  mapEventKindToCalc,
+  pickEventDamage,
+  canSelectTurbulenceDamageEvent,
+  formatDamageEventDisplayName,
+  getDamageEventSkipReason,
+} from '@/utils/damageEvent'
+import { resolveEventOwnerAgentId } from '@/utils/damageEventOwner'
+import { buildSkillContextFromDamageEvent, mergeExtraModsForEvent } from '@/utils/extraBuffCalc'
 import {
   computeMutationZone,
   findLuminousAgentInTeam,
-  isLuminousAgent,
+  isLuminousElement,
+  resolveLuminousEquivalentElement,
 } from '@/utils/remielUtils'
 import {
   computeFinalPanel,
+  convertSlotPartialToExternalPanel,
   resolveMainCAnomalyReleaseMultFields,
   type BuffSelectionState,
   type MultiSlotBuffSelection,
@@ -212,6 +224,8 @@ export interface OptimalEvalContext {
   mainAgentName: string
   /** 伤害事件列表：有则最优词条按事件总伤期望扫掠 */
   damageEvents?: DamageEvent[]
+  /** 额外 Buff（按事件 scope 匹配，与面板计算共用） */
+  extraGains?: ExtraBuffGain[]
   triggerAnomalyAgentId?: string | null
   slotBuffSelections?: MultiSlotBuffSelection | null
   resolveSubcategory?: (id: string | null) => SkillSubcategory | null
@@ -439,13 +453,67 @@ function computePiercePower(hp: number, atk: number, pierceMod = 0) {
 
 export type OptimalPanelBreakdown = ReturnType<typeof computeFinalPanel>
 
+function resolveOptimalBuffMatchElementForSlot(
+  ctx: OptimalEvalContext,
+  slotIndex: number,
+): string | undefined {
+  const agent = ctx.panelContext.agents.find(
+    (item) => item.id === ctx.panelContext.teamSlots[slotIndex]?.agentId,
+  )
+  const element = agent?.element
+  if (!element) return undefined
+  if (
+    ctx.panelContext.skillContext?.damageKind === 'direct' &&
+    isLuminousElement(element)
+  ) {
+    return resolveLuminousEquivalentElement(
+      ctx.panelContext.teamSlots,
+      ctx.panelContext.agents,
+      slotIndex,
+    )
+  }
+  return element
+}
+
+function buildOptimalExtraModsForEvent(
+  ctx: OptimalEvalContext,
+  event: DamageEvent,
+  slotAgentId: string,
+): BuffStatModifiers {
+  const gains = ctx.extraGains ?? []
+  if (!gains.length) return createEmptyBuffStatModifiers()
+  const ownerAgentId = resolveEventOwnerAgentId(event, ctx.mainAgentId)
+  const skillCtx = buildSkillContextFromDamageEvent(event, {
+    ownerAgentId,
+    agents: ctx.panelContext.agents,
+    skillSubcategories: ctx.skillSubcategories ?? [],
+    followUpSkillRules: ctx.followUpSkillRules ?? [],
+    resolveBuffElement: (agentId) => {
+      const slotIndex = ctx.panelContext.teamSlots.findIndex((slot) => slot.agentId === agentId)
+      if (slotIndex < 0) return undefined
+      return resolveOptimalBuffMatchElementForSlot(ctx, slotIndex)
+    },
+    resolveTriggerElement: (evt) => {
+      const raw = evt.triggerAgentId ?? ctx.triggerAnomalyAgentId
+      if (!raw || raw === '__at_calc__') return undefined
+      return ctx.panelContext.agents.find((item) => item.id === raw)?.element
+    },
+  })
+  return mergeExtraModsForEvent(gains, event, skillCtx, {
+    slotAgentId,
+    ownerAgentId,
+    staggerPhase: event.staggerPhase,
+  })
+}
+
 function buildPanelContextForSlot(
   ctx: OptimalEvalContext,
   slotIndex: number,
   externalForSlot: PanelStats,
   mainExternalPanel: PanelStats,
+  extraModsOverride?: BuffStatModifiers,
 ): PanelCalcContext {
-  const extraMods = ctx.panelContext.extraMods ?? createEmptyBuffStatModifiers()
+  const extraMods = extraModsOverride ?? ctx.panelContext.extraMods ?? createEmptyBuffStatModifiers()
   const level =
     slotIndex === ctx.panelContext.mainSlotIndex
       ? ctx.enemyInput.level
@@ -470,10 +538,19 @@ function buildPanelContextForSlot(
   }
 }
 
-function resolveEventTriggerId(ctx: OptimalEvalContext, event: DamageEvent): string | null {
-  const raw = event.triggerAgentId ?? ctx.triggerAnomalyAgentId
-  if (!raw || raw === '__at_calc__') return null
-  return raw
+
+function resolveExternalForAgent(
+  ctx: OptimalEvalContext,
+  agentId: string,
+  slotIndex: number,
+  mainExternal: PanelStats,
+): PanelStats {
+  if (slotIndex === ctx.panelContext.mainSlotIndex) return mainExternal
+  const anomaly = ctx.panelContext.anomalySlotPanels?.[agentId]
+  if (anomaly) return { ...anomaly }
+  const partial = ctx.panelContext.convertSlotPanels?.[agentId]
+  if (partial) return convertSlotPartialToExternalPanel(partial)
+  return createDefaultExternalPanel()
 }
 
 function resolveProducerExternal(ctx: OptimalEvalContext, agentId: string): PanelStats {
@@ -518,16 +595,13 @@ function applyEventMultOverrides(
 function resolveLuminousTeamModifiersForOptimal(
   ctx: OptimalEvalContext,
   mainExternal: PanelStats,
-  extraMods?: BuffStatModifiers,
 ): { mutationZone: number; radianceResPen: number } {
   const found = findLuminousAgentInTeam(ctx.panelContext.teamSlots, ctx.panelContext.agents)
   if (!found) return { mutationZone: 1, radianceResPen: 0 }
   const tSlotIndex = found.slotIndex
-  const producerExternal = resolveProducerExternal(ctx, found.id)
-  const mods = extraMods ?? ctx.panelContext.extraMods ?? createEmptyBuffStatModifiers()
+  const producerExternal = resolveExternalForAgent(ctx, found.id, tSlotIndex, mainExternal)
   const breakdown = computeFinalPanel(producerExternal, {
     ...buildPanelContextForSlot(ctx, tSlotIndex, producerExternal, mainExternal),
-    extraMods: mods,
     skillContext: {
       damageKind: 'anomaly',
       categoryId: 'basic',
@@ -549,171 +623,187 @@ export function evaluateOptimalEventDetail(
   ctx: OptimalEvalContext,
   mainExternal: PanelStats,
   event: DamageEvent,
-  extraMods?: BuffStatModifiers,
 ): OptimalEventEvalDetail | null {
-  const { damageKind, anomalySubKind } = mapEventKindToCalc(event.kind)
-  const eventNeedsTrigger =
-    event.kind === 'disorder' ||
-    event.kind === 'turbulence' ||
-    event.kind === 'anomalyRelease' ||
-    event.kind === 'radiance'
-  const triggerId = resolveEventTriggerId(ctx, event)
-  if (eventNeedsTrigger && !triggerId) return null
+  const turbulenceCalculable = canSelectTurbulenceDamageEvent(
+    ctx.panelContext.teamSlots,
+    ctx.panelContext.agents,
+    ctx.mainAgentElement,
+  )
   const skipReason = getDamageEventSkipReason(event, {
     teamSlots: ctx.panelContext.teamSlots,
     agents: ctx.panelContext.agents,
-    turbulenceCalculable: canSelectTurbulenceDamageEvent(
-      ctx.panelContext.teamSlots,
-      ctx.panelContext.agents,
-      ctx.mainAgentElement,
-    ),
+    turbulenceCalculable,
+    mainAgentId: ctx.mainAgentId,
   })
   if (skipReason) return null
-  if (
-    event.kind === 'turbulence' &&
-    !canSelectTurbulenceDamageEvent(
-      ctx.panelContext.teamSlots,
-      ctx.panelContext.agents,
-      ctx.mainAgentElement,
-    )
-  ) {
-    return null
-  }
 
-  const triggerAgent =
-    eventNeedsTrigger && triggerId
-      ? ctx.panelContext.agents.find((agent) => agent.id === triggerId)
-      : undefined
-  if (eventNeedsTrigger && triggerId && isLuminousAgent(triggerAgent)) return null
-  const triggerElement = eventNeedsTrigger ? triggerAgent?.element : ctx.mainAgentElement
-  const usesNonMainProducer = Boolean(
-    eventNeedsTrigger && triggerId && triggerId !== ctx.mainAgentId,
+  const { damageKind, anomalySubKind } = mapEventKindToCalc(event.kind)
+  const eventNeedsTrigger = eventNeedsAnomalyProducer(event.kind)
+  const mainSlotIndex = ctx.panelContext.mainSlotIndex
+  const ownerAgentId = resolveEventOwnerAgentId(event, ctx.mainAgentId)
+  const ownerSlotIndexRaw = ctx.panelContext.teamSlots.findIndex(
+    (slot) => slot.agentId === ownerAgentId,
   )
-  const mainlyProducerDriven =
-    usesNonMainProducer && (event.kind === 'disorder' || event.kind === 'turbulence' || event.kind === 'anomaly')
+  const ownerSlotIndex = ownerSlotIndexRaw >= 0 ? ownerSlotIndexRaw : mainSlotIndex
+
+  const rawTriggerId = event.triggerAgentId ?? ctx.triggerAnomalyAgentId
+  const evtTriggerAgentId =
+    rawTriggerId && rawTriggerId !== '__at_calc__' ? rawTriggerId : null
+  if (eventNeedsTrigger && !evtTriggerAgentId) return null
+
+  const ownerAgent = ctx.panelContext.agents.find((item) => item.id === ownerAgentId)
+  const evtOwnerIsMb = ownerAgent?.profession === MB_PROFESSION
+  const evtBaseDamageSource: BaseDamageSource = evtOwnerIsMb ? 'pierce' : ctx.baseDamageSource
+
+  const tAgent = evtTriggerAgentId
+    ? ctx.panelContext.agents.find((a) => a.id === evtTriggerAgentId)
+    : undefined
+  const evtTriggerElement = eventNeedsTrigger ? tAgent?.element : ctx.mainAgentElement
+  const evtTriggerIsMb = tAgent?.profession === MB_PROFESSION
 
   const skillBound = event.skillBound !== false || damageKind === 'direct'
-  const mainIsFollowUp = skillBound
+  const evtIsFollowUp = skillBound
     ? resolveIsFollowUp({
-        agentId: ctx.mainAgentId,
+        agentId: ownerAgentId,
         categoryId: event.categoryId,
         subcategoryId: event.skillSubcategoryId,
-        skillSubcategories: ctx.skillSubcategories,
-        followUpSkillRules: ctx.followUpSkillRules,
+        skillSubcategories: ctx.skillSubcategories ?? [],
+        followUpSkillRules: ctx.followUpSkillRules ?? [],
       })
     : false
 
-  const mods = extraMods ?? ctx.panelContext.extraMods ?? createEmptyBuffStatModifiers()
-  const mainSlotIndex = ctx.panelContext.mainSlotIndex
-  const mainPanelCtx = buildPanelContextForSlot(ctx, mainSlotIndex, mainExternal, mainExternal)
+  const ownerBuffElement =
+    damageKind === 'direct'
+      ? resolveOptimalBuffMatchElementForSlot(ctx, ownerSlotIndex)
+      : ownerAgent?.element
+
   const skillCtx = {
     damageKind,
-    categoryId: skillBound ? event.categoryId : 'basic',
-    subcategoryId: skillBound ? event.skillSubcategoryId : null,
-    element: eventNeedsTrigger ? (triggerElement ?? ctx.mainAgentElement) : ctx.mainAgentElement,
+    categoryId: skillBound ? event.categoryId : ('basic' as const),
+    subcategoryId: skillBound ? (event.skillSubcategoryId ?? null) : null,
+    element: eventNeedsTrigger ? evtTriggerElement : ownerBuffElement,
     staggerPhase: event.staggerPhase,
-    isFollowUp: mainIsFollowUp,
+    isFollowUp: evtIsFollowUp,
     anomalySubKind,
   }
 
-  const breakdown = computeFinalPanel(mainExternal, {
-    ...mainPanelCtx,
-    extraMods: mods,
+  const ownerExternal = resolveExternalForAgent(
+    ctx,
+    ownerAgentId,
+    ownerSlotIndex,
+    mainExternal,
+  )
+  const ownerExtraMods = buildOptimalExtraModsForEvent(ctx, event, ownerAgentId)
+  const evtPanelCtx = {
+    ...buildPanelContextForSlot(
+      ctx,
+      ownerSlotIndex,
+      ownerExternal,
+      mainExternal,
+      ownerExtraMods,
+    ),
     skillContext: skillCtx,
-  })
-
-  let finalPanel = applyEventMultOverrides(breakdown.finalPanel, event.multOverrides)
+  }
+  const evtBreakdown = computeFinalPanel(ownerExternal, evtPanelCtx)
+  let evtFinalPanel = applyEventMultOverrides(evtBreakdown.finalPanel, event.multOverrides)
 
   if (event.kind === 'anomalyRelease') {
     const releaseFields = resolveMainCAnomalyReleaseMultFields(
-      mainExternal,
-      {
-        ...mainPanelCtx,
-        extraMods: mods,
-        skillContext: skillCtx,
-      },
-      triggerElement,
+      ownerExternal,
+      evtPanelCtx,
+      evtTriggerElement,
     )
     if (event.multOverrides?.anomalyReleaseMult == null) {
-      finalPanel.anomalyReleaseMult = releaseFields.anomalyReleaseMult
+      evtFinalPanel.anomalyReleaseMult = releaseFields.anomalyReleaseMult
     }
     if (event.multOverrides?.anomalyReleaseMultFactor == null) {
-      finalPanel.anomalyReleaseMultFactor = releaseFields.anomalyReleaseMultFactor
+      evtFinalPanel.anomalyReleaseMultFactor = releaseFields.anomalyReleaseMultFactor
     }
   }
 
-  const piercePower = computePiercePower(
-    finalPanel.hp,
-    finalPanel.atk,
-    breakdown.totalMods.pierce,
+  const evtPierce = computePiercePower(
+    evtFinalPanel.hp,
+    evtFinalPanel.atk,
+    evtBreakdown.totalMods.pierce,
   )
 
-  let triggerFinalPanel: PanelStats | undefined
-  let triggerPiercePower: number | undefined
-  let triggerIsMb = false
-  let triggerBaseDamageSource: BaseDamageSource | undefined
+  let evtTriggerFinalPanel: PanelStats | undefined
+  let evtTriggerPierce: number | undefined
   let producerBreakdown: OptimalPanelBreakdown | undefined
   let producerExternalPanel: PanelStats | undefined
 
-  if (eventNeedsTrigger && triggerId) {
-    if (triggerId === ctx.mainAgentId) {
-      triggerFinalPanel = finalPanel
-      triggerPiercePower = piercePower
-      triggerIsMb = ctx.isMb
-      triggerBaseDamageSource = ctx.isMb ? 'pierce' : ctx.baseDamageSource
+  const usesNonMainProducer = Boolean(
+    eventNeedsTrigger && evtTriggerAgentId && evtTriggerAgentId !== ctx.mainAgentId,
+  )
+  const mainlyProducerDriven =
+    usesNonMainProducer &&
+    (event.kind === 'disorder' || event.kind === 'turbulence' || event.kind === 'anomaly')
+
+  if (eventNeedsTrigger && evtTriggerAgentId) {
+    const tSlotIndex = ctx.panelContext.teamSlots.findIndex(
+      (slot) => slot.agentId === evtTriggerAgentId,
+    )
+    if (tSlotIndex < 0) return null
+
+    if (evtTriggerAgentId === ownerAgentId) {
+      evtTriggerFinalPanel = evtFinalPanel
+      evtTriggerPierce = evtPierce
     } else {
-      const tSlotIndex = ctx.panelContext.teamSlots.findIndex((slot) => slot.agentId === triggerId)
-      if (tSlotIndex < 0) return null
-      triggerIsMb = triggerAgent?.profession === MB_PROFESSION
-      triggerBaseDamageSource = triggerIsMb ? 'pierce' : 'atk'
-      producerExternalPanel = resolveProducerExternal(ctx, triggerId)
-      const tIsFollowUp = resolveIsFollowUp({
-        agentId: triggerAgent?.id,
-        categoryId: skillBound ? event.categoryId : 'basic',
-        subcategoryId: skillBound ? event.skillSubcategoryId : null,
-        skillSubcategories: ctx.skillSubcategories,
-        followUpSkillRules: ctx.followUpSkillRules,
-      })
-      producerBreakdown = computeFinalPanel(producerExternalPanel, {
-        ...buildPanelContextForSlot(ctx, tSlotIndex, producerExternalPanel, mainExternal),
-        extraMods: mods,
+      const tExternal = resolveExternalForAgent(
+        ctx,
+        evtTriggerAgentId,
+        tSlotIndex,
+        mainExternal,
+      )
+      producerExternalPanel = tExternal
+      const tExtraMods = buildOptimalExtraModsForEvent(ctx, event, evtTriggerAgentId)
+      producerBreakdown = computeFinalPanel(tExternal, {
+        ...buildPanelContextForSlot(ctx, tSlotIndex, tExternal, mainExternal, tExtraMods),
         skillContext: {
           damageKind: 'anomaly',
           categoryId: skillBound ? event.categoryId : 'basic',
-          subcategoryId: skillBound ? event.skillSubcategoryId : null,
-          element: triggerAgent?.element,
+          subcategoryId: skillBound ? (event.skillSubcategoryId ?? null) : null,
+          element: tAgent?.element,
           staggerPhase: event.staggerPhase,
-          isFollowUp: tIsFollowUp,
+          isFollowUp: resolveIsFollowUp({
+            agentId: tAgent?.id,
+            categoryId: skillBound ? event.categoryId : 'basic',
+            subcategoryId: skillBound ? (event.skillSubcategoryId ?? null) : null,
+            skillSubcategories: ctx.skillSubcategories ?? [],
+            followUpSkillRules: ctx.followUpSkillRules ?? [],
+          }),
           anomalySubKind,
         },
       })
-      triggerFinalPanel = producerBreakdown.finalPanel
-      triggerPiercePower = computePiercePower(
+      evtTriggerFinalPanel = producerBreakdown.finalPanel
+      evtTriggerPierce = computePiercePower(
         producerBreakdown.finalPanel.hp,
         producerBreakdown.finalPanel.atk,
         producerBreakdown.totalMods.pierce,
       )
+    }
 
-      const overrides = event.multOverrides
+    const o = event.multOverrides
+    if (evtTriggerFinalPanel) {
       if (event.kind === 'disorder') {
-        if (overrides?.disorderBaseMult == null) {
-          finalPanel.disorderBaseMult = triggerFinalPanel.disorderBaseMult
+        if (o?.disorderBaseMult == null) {
+          evtFinalPanel.disorderBaseMult = evtTriggerFinalPanel.disorderBaseMult
         }
-        if (overrides?.disorderBaseMultFactor == null) {
-          finalPanel.disorderBaseMultFactor = triggerFinalPanel.disorderBaseMultFactor
+        if (o?.disorderBaseMultFactor == null) {
+          evtFinalPanel.disorderBaseMultFactor = evtTriggerFinalPanel.disorderBaseMultFactor
         }
-        if (overrides?.disorderCompMult == null) {
-          finalPanel.disorderCompMult = triggerFinalPanel.disorderCompMult
+        if (o?.disorderCompMult == null) {
+          evtFinalPanel.disorderCompMult = evtTriggerFinalPanel.disorderCompMult
         }
       } else if (event.kind === 'turbulence') {
-        if (overrides?.turbulenceBaseMult == null) {
-          finalPanel.turbulenceBaseMult = triggerFinalPanel.turbulenceBaseMult
+        if (o?.turbulenceBaseMult == null) {
+          evtFinalPanel.turbulenceBaseMult = evtTriggerFinalPanel.turbulenceBaseMult
         }
-        if (overrides?.turbulenceBaseMultFactor == null) {
-          finalPanel.turbulenceBaseMultFactor = triggerFinalPanel.turbulenceBaseMultFactor
+        if (o?.turbulenceBaseMultFactor == null) {
+          evtFinalPanel.turbulenceBaseMultFactor = evtTriggerFinalPanel.turbulenceBaseMultFactor
         }
-        if (overrides?.turbulenceCompMult == null) {
-          finalPanel.turbulenceCompMult = triggerFinalPanel.turbulenceCompMult
+        if (o?.turbulenceCompMult == null) {
+          evtFinalPanel.turbulenceCompMult = evtTriggerFinalPanel.turbulenceCompMult
         }
       }
     }
@@ -738,40 +828,56 @@ export function evaluateOptimalEventDetail(
         }
       : sub
 
-  const luminousMods = resolveLuminousTeamModifiersForOptimal(ctx, mainExternal, extraMods)
+  const luminousMods = resolveLuminousTeamModifiersForOptimal(ctx, mainExternal)
+
+  const mainCFinalPanel =
+    ownerAgentId === ctx.mainAgentId
+      ? evtFinalPanel
+      : computeFinalPanel(
+          mainExternal,
+          buildPanelContextForSlot(ctx, mainSlotIndex, mainExternal, mainExternal),
+        ).finalPanel
 
   const result = computeDamageResult({
-    finalPanel,
-    piercePower,
-    baseDamageSource: ctx.isMb ? 'pierce' : ctx.baseDamageSource,
-    isMbMainAgent: ctx.isMb,
+    finalPanel: evtFinalPanel,
+    mainCFinalPanel,
+    piercePower: evtPierce,
+    baseDamageSource: evtBaseDamageSource,
+    isMbMainAgent: evtOwnerIsMb,
     enemyInput: ctx.enemyInput,
-    combatVulnerable: breakdown.combatMods.vulnerable,
-    combatGlobalStaggerVulnerable: breakdown.combatMods.globalStaggerVulnerable,
-    combatStaggerVulnerable: breakdown.combatMods.staggerVulnerable,
-    combatStaggerVulnerableOnly: breakdown.combatMods.staggerVulnerableOnly,
-    combatSpecial: breakdown.combatMods.special,
-    combatPierceDmgBonus: breakdown.combatMods.pierceDmgBonus,
+    combatVulnerable: evtBreakdown.combatMods.vulnerable,
+    combatGlobalStaggerVulnerable: evtBreakdown.combatMods.globalStaggerVulnerable,
+    combatStaggerVulnerable: evtBreakdown.combatMods.staggerVulnerable,
+    combatStaggerVulnerableOnly: evtBreakdown.combatMods.staggerVulnerableOnly,
+    combatSpecial: evtBreakdown.combatMods.special,
+    combatPierceDmgBonus: evtBreakdown.combatMods.pierceDmgBonus,
     staggerPhase: event.staggerPhase,
     mainAgentElement: ctx.mainAgentElement,
     mainAgentId: ctx.mainAgentId,
     mainAgentName: ctx.mainAgentName,
     anomalySubKind,
-    triggerFinalPanel,
-    triggerAgentElement: eventNeedsTrigger ? triggerElement : undefined,
-    triggerPiercePower,
-    triggerBaseDamageSource,
-    triggerIsMb,
+    triggerFinalPanel: evtTriggerFinalPanel,
+    triggerAgentElement: eventNeedsTrigger ? evtTriggerElement : undefined,
+    triggerPiercePower: evtTriggerPierce,
+    triggerBaseDamageSource: evtTriggerIsMb ? 'pierce' : 'atk',
+    triggerIsMb: evtTriggerIsMb,
     skillSubcategory: effectiveSub,
     mainAgentLevel: ctx.enemyInput.level,
-    triggerAgentLevel: resolveProducerAgentLevel(ctx, triggerId),
+    ownerAgentLevel: resolveProducerAgentLevel(ctx, ownerAgentId),
+    triggerAgentLevel: evtTriggerAgentId
+      ? resolveProducerAgentLevel(ctx, evtTriggerAgentId)
+      : resolveProducerAgentLevel(ctx, ownerAgentId),
     mutationZone: luminousMods.mutationZone,
     remielRadianceResPen: event.kind === 'radiance' ? luminousMods.radianceResPen : 0,
   })
 
   const perHit = pickEventDamage(result, event.kind, event.critMode)
   const total = perHit * Math.max(0, event.count)
-  const displayName = formatDamageEventDisplayName(event, ctx.resolveSubcategory)
+  const displayName = formatDamageEventDisplayName(
+    event,
+    ctx.resolveSubcategory,
+    ownerAgent?.name,
+  )
 
   return {
     event,
@@ -783,15 +889,15 @@ export function evaluateOptimalEventDetail(
     usesNonMainProducer,
     mainlyProducerDriven,
     result,
-    finalPanel,
+    finalPanel: evtFinalPanel,
     external: mainExternal,
-    breakdown,
-    piercePower,
+    breakdown: evtBreakdown,
+    piercePower: evtPierce,
     anomalySubKind,
-    producerFinalPanel: usesNonMainProducer ? triggerFinalPanel : undefined,
+    producerFinalPanel: usesNonMainProducer ? evtTriggerFinalPanel : undefined,
     producerExternalPanel,
     producerBreakdown,
-    producerAgentLabel: usesNonMainProducer ? triggerAgent?.name : undefined,
+    producerAgentLabel: usesNonMainProducer ? tAgent?.name : undefined,
   }
 }
 
@@ -799,9 +905,8 @@ function evaluateOptimalDamageEvent(
   ctx: OptimalEvalContext,
   mainExternal: PanelStats,
   event: DamageEvent,
-  extraMods?: BuffStatModifiers,
 ): OptimalEventDamageLine | null {
-  const detail = evaluateOptimalEventDetail(ctx, mainExternal, event, extraMods)
+  const detail = evaluateOptimalEventDetail(ctx, mainExternal, event)
   if (!detail) return null
   return {
     eventId: detail.eventId,
@@ -817,7 +922,6 @@ function evaluateOptimalDamageEvent(
 function computeEventDamageLines(
   ctx: OptimalEvalContext,
   external: PanelStats,
-  extraMods?: BuffStatModifiers,
 ): {
   grandTotal: number
   eventLines: OptimalEventDamageLine[]
@@ -835,14 +939,13 @@ function computeEventDamageLines(
   let firstBreakdown: OptimalPanelBreakdown | null = null
 
   for (const event of events) {
-    const line = evaluateOptimalDamageEvent(ctx, external, event, extraMods)
+    const line = evaluateOptimalDamageEvent(ctx, external, event)
     if (!line) continue
     eventLines.push(line)
     grandTotal += line.total
     if (!firstResult) {
       firstBreakdown = computeFinalPanel(external, {
         ...buildPanelContextForSlot(ctx, ctx.panelContext.mainSlotIndex, external, external),
-        extraMods: extraMods ?? ctx.panelContext.extraMods ?? createEmptyBuffStatModifiers(),
         skillContext: ctx.panelContext.skillContext ?? undefined,
       })
       firstResult = computeDamageResult({
@@ -871,7 +974,6 @@ function computeEventDamageLines(
 function computeEventDamageLinesForSweep(
   ctx: OptimalEvalContext,
   external: PanelStats,
-  extraMods?: BuffStatModifiers,
 ): { grandTotal: number; eventLines: OptimalEventDamageLine[] } {
   const events = ctx.damageEvents ?? []
   if (!events.length) return { grandTotal: 0, eventLines: [] }
@@ -879,7 +981,7 @@ function computeEventDamageLinesForSweep(
   let grandTotal = 0
   const eventLines: OptimalEventDamageLine[] = []
   for (const event of events) {
-    const line = evaluateOptimalDamageEvent(ctx, external, event, extraMods)
+    const line = evaluateOptimalDamageEvent(ctx, external, event)
     if (!line) continue
     eventLines.push(line)
     grandTotal += line.total
@@ -917,8 +1019,8 @@ export function evaluateAffixCountsForSweep(
     payload = computeEventDamageLinesForSweep(ctx, external)
   } else {
     const breakdown = computeFinalPanel(external, {
-      ...ctx.panelContext,
-      extraMods: ctx.panelContext.extraMods ?? createEmptyBuffStatModifiers(),
+      ...buildPanelContextForSlot(ctx, ctx.panelContext.mainSlotIndex, external, external),
+      skillContext: ctx.panelContext.skillContext ?? undefined,
     })
     const piercePower = computePiercePower(
       breakdown.finalPanel.hp,
@@ -1008,7 +1110,9 @@ function affixEvalContextSignature(ctx: OptimalEvalContext): string {
     JSON.stringify(ctx.driveDiscMainStats),
     JSON.stringify(ctx.enemyInput),
     JSON.stringify(ctx.panelContext.skillContext),
-    JSON.stringify(ctx.panelContext.extraMods),
+    JSON.stringify(ctx.extraGains ?? []),
+    JSON.stringify(ctx.panelContext.anomalySlotPanels ?? {}),
+    JSON.stringify(ctx.panelContext.convertSlotPanels ?? {}),
     events,
     serializeMultiSlotBuffSelection(ctx.slotBuffSelections),
     ctx.triggerAnomalyAgentId ?? '',
@@ -1033,7 +1137,6 @@ export function clearAffixEvalCache() {
 function evaluateAffixCountsUncached(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
-  extraMods?: BuffStatModifiers,
 ): {
   finalPanel: PanelStats
   result: DamageCalcResult
@@ -1057,13 +1160,12 @@ function evaluateAffixCountsUncached(
     const { grandTotal, eventLines, firstResult, firstBreakdown } = computeEventDamageLines(
       ctx,
       external,
-      extraMods,
     )
     const breakdown =
       firstBreakdown ??
       computeFinalPanel(external, {
-        ...ctx.panelContext,
-        extraMods: extraMods ?? ctx.panelContext.extraMods ?? createEmptyBuffStatModifiers(),
+        ...buildPanelContextForSlot(ctx, ctx.panelContext.mainSlotIndex, external, external),
+        skillContext: ctx.panelContext.skillContext ?? undefined,
       })
     const piercePower = computePiercePower(
       breakdown.finalPanel.hp,
@@ -1097,8 +1199,8 @@ function evaluateAffixCountsUncached(
   }
 
   const breakdown = computeFinalPanel(external, {
-    ...ctx.panelContext,
-    extraMods: extraMods ?? ctx.panelContext.extraMods ?? createEmptyBuffStatModifiers(),
+    ...buildPanelContextForSlot(ctx, ctx.panelContext.mainSlotIndex, external, external),
+    skillContext: ctx.panelContext.skillContext ?? undefined,
   })
 
   const piercePower = computePiercePower(
@@ -1138,7 +1240,6 @@ function evaluateAffixCountsUncached(
 export function evaluateAffixCounts(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
-  extraMods?: BuffStatModifiers,
 ): {
   finalPanel: PanelStats
   result: DamageCalcResult
@@ -1149,11 +1250,11 @@ export function evaluateAffixCounts(
   eventLines: OptimalEventDamageLine[]
 } {
   resetAffixEvalCacheIfNeeded(ctx)
-  const cacheKey = `${affixCountsCacheKey(affixCounts)}|${extraMods ? JSON.stringify(extraMods) : ''}`
+  const cacheKey = affixCountsCacheKey(affixCounts)
   const cached = affixEvalCache.get(cacheKey)
   if (cached) return cached
 
-  const result = evaluateAffixCountsUncached(ctx, affixCounts, extraMods)
+  const result = evaluateAffixCountsUncached(ctx, affixCounts)
   if (affixEvalCache.size >= AFFIX_EVAL_CACHE_MAX) {
     const firstKey = affixEvalCache.keys().next().value
     if (firstKey) affixEvalCache.delete(firstKey)
@@ -1417,26 +1518,24 @@ export function computeDiffAnalysis(
   return { addOne, replace }
 }
 
-function eventAffixImpactReason(line: OptimalEventDamageLine, maxDelta: number): string {
+function eventAffixImpactReason(
+  ctx: OptimalEvalContext,
+  line: OptimalEventDamageLine,
+  maxDelta: number,
+): string {
   if (maxDelta > AFFIX_IMPACT_EPS) {
-    if (line.kind === 'anomalyRelease' && !line.usesNonMainProducer) {
-      return `产生角色为主C，主C副词条变化可影响该异放事件（最大变化 ${maxDelta.toFixed(2)}）`
+    const teamHasRemiel = Boolean(
+      findLuminousAgentInTeam(ctx.panelContext.teamSlots, ctx.panelContext.agents),
+    )
+    if (teamHasRemiel) {
+      return `主C副词条变化可影响该事件（含蕾米埃尔攻击转模等全队增益，最大变化 ${maxDelta.toFixed(2)}）`
     }
     return `主C副词条变化可影响该事件（最大变化 ${maxDelta.toFixed(2)}）`
   }
   if (line.kind === 'anomalyRelease' && line.total <= AFFIX_IMPACT_EPS) {
     return '异放倍率为 0 或未配置产生角色，当前无法计算异放伤害'
   }
-  if (line.usesNonMainProducer && line.mainlyProducerDriven) {
-    return '异常基础/紊乱/乱流倍率取产生角色面板，主C副词条不改变该事件'
-  }
-  if (line.kind === 'anomalyRelease' && line.usesNonMainProducer) {
-    return '异放异常基础取产生角色面板；异放倍率/增伤仍取主C，若词条无变化请检查异放倍率增益'
-  }
-  if (line.mainlyProducerDriven) {
-    return '该事件核心乘区不随主C局外面板词条变化'
-  }
-  return '当前词条分配下，各候选副词条 +1 均不改变该事件伤害'
+  return '不受主C副词条变化影响'
 }
 
 /** 各伤害事件对主C副词条变化的敏感度 */
@@ -1470,7 +1569,7 @@ export function computeEventAffixImpact(
       ...line,
       maxAffixDelta,
       affixSensitive,
-      reason: eventAffixImpactReason(line, maxAffixDelta),
+      reason: eventAffixImpactReason(ctx, line, maxAffixDelta),
     }
   })
 }
@@ -1539,11 +1638,12 @@ export function buildOptimalEvalContext(input: {
   driveDiscMainStats: AffixDriveDiscMainStats
   enemyInput: DamageEnemyInput
   baseDamageSource: BaseDamageSource
-  extraMods?: BuffStatModifiers
+  extraGains?: ExtraBuffGain[]
   skillContext?: SkillCalcContext | null
   buffSelection?: BuffSelectionState | null
   slotBuffSelections?: MultiSlotBuffSelection | null
   anomalySlotPanels?: Record<string, PanelStats>
+  convertSlotPanels?: import('@/utils/panelBuffCalc').ConvertSlotPanels
   damageEvents?: DamageEvent[]
   triggerAnomalyAgentId?: string | null
   resolveSubcategory?: (id: string | null) => SkillSubcategory | null
@@ -1576,10 +1676,10 @@ export function buildOptimalEvalContext(input: {
       bangbooRefine: input.bangbooRefine,
       mainSlotIndex: input.mainSlotIndex,
       driveDiscs: input.driveDiscs,
-      extraMods: input.extraMods,
       skillContext: input.skillContext,
       buffSelection: input.buffSelection,
       anomalySlotPanels: input.anomalySlotPanels,
+      convertSlotPanels: input.convertSlotPanels,
       baseAnomalyControl: mainAgent?.basePanel.anomalyControl ?? 0,
       baseEnergyRegen: mainAgent?.basePanel.energyRegen ?? 0,
     },
@@ -1589,6 +1689,7 @@ export function buildOptimalEvalContext(input: {
     mainAgentId: mainAgent?.id ?? '',
     mainAgentName: mainAgent?.name ?? '',
     damageEvents: input.damageEvents,
+    extraGains: input.extraGains,
     triggerAnomalyAgentId: input.triggerAnomalyAgentId,
     slotBuffSelections: input.slotBuffSelections,
     resolveSubcategory: input.resolveSubcategory,

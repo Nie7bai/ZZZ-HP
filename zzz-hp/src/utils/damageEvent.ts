@@ -11,10 +11,18 @@ import { SKILL_CATEGORY_OPTIONS, TRIGGER_AGENT_AT_CALC } from '@/types/calculato
 import { computeDamageResult, type DamageCalcInput, type DamageCalcResult } from '@/utils/damageCalc'
 import {
   canAgentBeAnomalyProducerForKind,
+  findLuminousAgentInTeam,
   isLegacyAnomalyEventKind,
   isLuminousAgent,
   isLuminousElement,
 } from '@/utils/remielUtils'
+import {
+  formatEventOwnerPrefix,
+  isRadianceOwnerValid,
+  resolveEventOwnerAgentId,
+  resolveRadianceOwnerAgentId,
+  RADIANCE_SELF_TRIGGER_HINT,
+} from '@/utils/damageEventOwner'
 
 export const DAMAGE_EVENT_KIND_OPTIONS: { id: DamageEventKind; label: string }[] = [
   { id: 'direct', label: '直伤' },
@@ -46,6 +54,7 @@ export function createEmptyDamageEvent(
     critMode: 'expected',
     // 计算页默认待选；管理端在编辑器里通过 allowCalcTimeTrigger 写入 __at_calc__
     triggerAgentId: null,
+    ownerAgentId: null,
     skillBound: !isAnomaly,
     multOverrides: null,
   }
@@ -130,19 +139,24 @@ export interface DamageEventLine {
 export function formatDamageEventDisplayName(
   event: DamageEvent,
   resolveSubcategory?: (id: string | null) => SkillSubcategory | null,
+  ownerName?: string,
 ): string {
+  let core: string
   if (event.skillBound === false) {
     const kindLabel =
       DAMAGE_EVENT_KIND_OPTIONS.find((item) => item.id === event.kind)?.label ?? event.kind
-    return kindLabel
+    core = kindLabel
+  } else {
+    const cat =
+      SKILL_CATEGORY_OPTIONS.find((item) => item.id === event.categoryId)?.label ??
+      (event.categoryId as SkillCategoryId)
+    const sub = event.skillSubcategoryId
+      ? resolveSubcategory?.(event.skillSubcategoryId)?.name
+      : null
+    core = sub ? `${cat} · ${sub}` : `${cat} · 整大类`
   }
-  const cat =
-    SKILL_CATEGORY_OPTIONS.find((item) => item.id === event.categoryId)?.label ??
-    (event.categoryId as SkillCategoryId)
-  const sub = event.skillSubcategoryId
-    ? resolveSubcategory?.(event.skillSubcategoryId)?.name
-    : null
-  return sub ? `${cat} · ${sub}` : `${cat} · 整大类`
+  const prefix = ownerName ? formatEventOwnerPrefix(ownerName) : ''
+  return prefix ? `${prefix}${core}` : core
 }
 
 export function eventNeedsAnomalyProducer(kind: DamageEventKind): boolean {
@@ -158,6 +172,7 @@ export interface DamageEventParticipationContext {
   teamSlots: Array<{ agentId: string; isMainC?: boolean }>
   agents: Array<{ id: string; element: string; name?: string }>
   turbulenceCalculable: boolean
+  mainAgentId?: string
 }
 
 /** 事件不参与汇总时的原因；null 表示可计算 */
@@ -166,27 +181,33 @@ export function getDamageEventSkipReason(
   ctx: DamageEventParticipationContext,
 ): string | null {
   const mainSlot = ctx.teamSlots.find((slot) => slot.isMainC) ?? ctx.teamSlots[0]
+  const mainAgentId = ctx.mainAgentId ?? mainSlot?.agentId ?? ''
   const mainAgent = ctx.agents.find((item) => item.id === mainSlot?.agentId)
-  const mainIsLuminous = isLuminousAgent(mainAgent)
+  const ownerId = resolveEventOwnerAgentId(event, mainAgentId)
+  const ownerAgent = ctx.agents.find((item) => item.id === ownerId)
+  const remielInTeam = findLuminousAgentInTeam(ctx.teamSlots, ctx.agents)
 
   if (event.kind === 'radiance') {
-    if (!mainIsLuminous) {
-      return '耀变事件仅主 C 为蕾米埃尔（流明）时可计算'
+    if (!remielInTeam) {
+      return '队伍需编入蕾米埃尔（流明）才可计算耀变'
+    }
+    if (!isRadianceOwnerValid(event, mainAgentId, ctx.agents)) {
+      return '耀变事件的产生角色必须是蕾米埃尔'
     }
     const rawId = event.triggerAgentId
     const triggerId = rawId && rawId !== TRIGGER_AGENT_AT_CALC ? rawId : null
     if (!triggerId) {
-      return '请先选择耀变异常产生角色（须为非蕾米埃尔队友）'
+      return '请先选择耀变异常产生角色'
     }
     const producer = ctx.agents.find((item) => item.id === triggerId)
     if (!canAgentBeAnomalyProducerForKind(producer, 'radiance')) {
-      return '耀变产生角色须为非蕾米埃尔队友'
+      return '耀变异常产生角色须为队内代理人'
     }
     return null
   }
 
-  if (mainIsLuminous && isLegacyAnomalyEventKind(event.kind)) {
-    return '蕾米埃尔为主 C 时，旧四类异常事件不参与计算（请改用耀变或切换主 C）'
+  if (isLuminousAgent(ownerAgent) && isLegacyAnomalyEventKind(event.kind)) {
+    return '蕾米埃尔产生的旧四类异常事件不参与计算（请改用耀变）'
   }
 
   const rawTriggerId = event.triggerAgentId
@@ -207,12 +228,32 @@ export function getDamageEventSkipReason(
   }
 
   if (event.kind === 'turbulence' && !ctx.turbulenceCalculable) {
-    if (mainAgent?.element !== '风') {
-      return '乱流伤害仅风属性代理人为主 C 时可计算'
+    const ownerElement = ownerAgent?.element ?? mainAgent?.element
+    if (ownerElement !== '风') {
+      return '乱流伤害仅事件产生角色为风属性时可计算'
     }
     return '乱流需队伍同时包含风属性与至少一个非风属性代理人'
   }
 
+  return null
+}
+
+export function getRadianceEventHint(event: DamageEvent, ctx: DamageEventParticipationContext): string | null {
+  if (event.kind !== 'radiance') return null
+  const mainSlot = ctx.teamSlots.find((slot) => slot.isMainC) ?? ctx.teamSlots[0]
+  const mainAgentId = ctx.mainAgentId ?? mainSlot?.agentId ?? ''
+  const remielId = resolveRadianceOwnerAgentId(ctx.teamSlots, ctx.agents)
+  const triggerId =
+    event.triggerAgentId && event.triggerAgentId !== TRIGGER_AGENT_AT_CALC
+      ? event.triggerAgentId
+      : null
+  if (remielId && triggerId === remielId) {
+    return RADIANCE_SELF_TRIGGER_HINT
+  }
+  const ownerId = resolveEventOwnerAgentId(event, mainAgentId)
+  if (remielId && ownerId === remielId && triggerId && triggerId !== remielId) {
+    return null
+  }
   return null
 }
 
@@ -222,6 +263,7 @@ export function filterAnomalyProducerAgentOptions<
   return agents.filter((agent) => canAgentBeAnomalyProducerForKind(agent, kind))
 }
 
+/** @deprecated 使用 getDamageEventKindOptionsForMode */
 export function filterDamageEventKindOptionsForMainAgent(
   options: { id: DamageEventKind; label: string }[],
   mainAgentElement: string | null | undefined,
@@ -266,6 +308,7 @@ export function summarizeDamageEvents(
   events: DamageEvent[],
   buildInput: (event: DamageEvent) => DamageCalcInput | null,
   resolveSubcategory?: (id: string | null) => SkillSubcategory | null,
+  resolveOwnerName?: (event: DamageEvent) => string | undefined,
 ): { lines: DamageEventLine[]; grandTotal: number } {
   const lines: DamageEventLine[] = []
   let grandTotal = 0
@@ -279,7 +322,8 @@ export function summarizeDamageEvents(
       DAMAGE_EVENT_KIND_OPTIONS.find((item) => item.id === event.kind)?.label ?? event.kind
     const disorderSuffix =
       event.kind === 'disorder' ? `（${disorderLabelFromResult(result)}）` : ''
-    const displayName = formatDamageEventDisplayName(event, resolveSubcategory)
+    const ownerName = resolveOwnerName?.(event)
+    const displayName = formatDamageEventDisplayName(event, resolveSubcategory, ownerName)
     lines.push({
       event,
       perHit,

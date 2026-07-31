@@ -8,6 +8,7 @@ import DamageEventModeModal from '@/components/calculator/DamageEventModeModal.v
 import DriveDiscPickerSection from '@/components/calculator/DriveDiscPickerSection.vue'
 import OptimalAffixAllocSection from '@/components/calculator/OptimalAffixAllocSection.vue'
 import PanelCalcSection from '@/components/calculator/PanelCalcSection.vue'
+import type { ExtraBuffGain } from '@/components/calculator/ExtraBuffGainEditor.vue'
 import PanelScreenshotUploadSection from '@/components/calculator/PanelScreenshotUploadSection.vue'
 import TeamBuilderSection from '@/components/calculator/TeamBuilderSection.vue'
 import type { DamageCalcSectionId } from '@/constants/damageCalcNav'
@@ -42,8 +43,9 @@ import {
   type ConvertSlotPanels,
 } from '@/utils/panelBuffCalc'
 import { resolveIsFollowUp } from '@/utils/buffEffect'
-import { canSelectTurbulenceDamageEvent, eventNeedsAnomalyProducer } from '@/utils/damageEvent'
-import { isLuminousAgent } from '@/utils/remielUtils'
+import { canSelectTurbulenceDamageEvent } from '@/utils/damageEvent'
+import { collectParticipantAgentIds } from '@/utils/damageEventOwner'
+import { findLuminousAgentInTeam } from '@/utils/remielUtils'
 import { createEmptyBuffStatModifiers, createEmptyRefinementMods } from '@/utils/calculatorUi'
 
 export interface TeamSlot {
@@ -102,6 +104,7 @@ const damageKind = ref<DamageCalcKind>('direct')
 const staggerPhase = ref<StaggerPhase>('stagger')
 const anomalySlotPanels = reactive<Record<string, PanelStats>>({})
 const convertSlotPanels = reactive<ConvertSlotPanels>({})
+const extraGains = ref<ExtraBuffGain[]>([])
 const directEventModeId = ref<string | null>(null)
 const directEventModeName = ref('')
 const directEventModalOpen = ref(false)
@@ -141,7 +144,7 @@ const anomalyTriggerOptions = computed(() =>
   teamSlots
     .map((slot) => {
       const agent = agents.value.find((item) => item.id === slot.agentId)
-      if (!agent || isLuminousAgent(agent)) return null
+      if (!agent) return null
       return {
         id: agent.id,
         label: `${agent.name}·${agent.element}`,
@@ -151,16 +154,24 @@ const anomalyTriggerOptions = computed(() =>
     .filter((item): item is { id: string; label: string; element: string } => Boolean(item)),
 )
 
-function getAnomalySlotAgentIds(): string[] {
-  const mainAgentId = teamSlots.find((slot) => slot.isMainC)?.agentId
-  const ids = new Set<string>()
-  for (const event of anomalyEvents.value) {
-    if (!eventNeedsAnomalyProducer(event.kind)) continue
-    const id = event.triggerAgentId
-    if (!id || id === '__at_calc__' || id === mainAgentId) continue
-    ids.add(id)
-  }
-  return [...ids]
+const teamHasRemiel = computed(() => Boolean(findLuminousAgentInTeam(teamSlots, agents.value)))
+
+const ownerAgentOptionsForEditor = computed(() =>
+  teamSlots
+    .map((slot) => {
+      const agent = agents.value.find((item) => item.id === slot.agentId)
+      if (!agent) return null
+      return { id: agent.id, name: agent.name, element: agent.element }
+    })
+    .filter((item): item is { id: string; name: string; element: string } => Boolean(item)),
+)
+
+function getParticipantAgentIds(): string[] {
+  const mainAgentId = teamSlots.find((slot) => slot.isMainC)?.agentId ?? ''
+  return collectParticipantAgentIds(
+    [...directEvents.value, ...anomalyEvents.value],
+    mainAgentId,
+  )
 }
 
 function ensureAnomalySlotPanel(agentId: string) {
@@ -233,13 +244,13 @@ watch(anomalyTriggerOptions, (opts) => {
 watch(
   () =>
     [
-      ...getAnomalySlotAgentIds(),
+      ...getParticipantAgentIds(),
       ...anomalyEvents.value.map(
         (event) => `${event.id}:${event.kind}:${event.triggerAgentId ?? ''}`,
       ),
     ].join(','),
   () => {
-    for (const agentId of getAnomalySlotAgentIds()) {
+    for (const agentId of getParticipantAgentIds()) {
       ensureAnomalySlotPanel(agentId)
     }
   },
@@ -407,7 +418,7 @@ const convertSupportSlots = computed(() =>
         anomalySubKind: damageKind.value === 'anomaly' ? anomalySubKind.value : undefined,
       },
     },
-    { excludeAnomalyAgentIds: getAnomalySlotAgentIds() },
+    { excludeAnomalyAgentIds: getParticipantAgentIds() },
   ),
 )
 
@@ -792,6 +803,9 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
             :agent-name="mainAgent?.name"
             :preset-modes="damageEventModes"
             :skill-subcategories="skillSubcategories"
+            :main-agent-id="mainAgent?.id"
+            :owner-agent-options="ownerAgentOptionsForEditor"
+            :team-has-remiel="teamHasRemiel"
             :trigger-agent-options="triggerAgentOptionsForEditor"
             :resolve-mult-defaults="resolveMultDefaultsForEvent"
             :turbulence-calculable="turbulenceCalculable"
@@ -812,6 +826,9 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
             :agent-name="mainAgent?.name"
             :preset-modes="damageEventModes"
             :skill-subcategories="skillSubcategories"
+            :main-agent-id="mainAgent?.id"
+            :owner-agent-options="ownerAgentOptionsForEditor"
+            :team-has-remiel="teamHasRemiel"
             :trigger-agent-options="triggerAgentOptionsForEditor"
             :resolve-mult-defaults="resolveMultDefaultsForEvent"
             :turbulence-calculable="turbulenceCalculable"
@@ -911,6 +928,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :slot-buff-selections="multiSlotBuffSelection"
       :stagger-phase="staggerPhase"
       :damage-events="damageEvents"
+      v-model:extra-gains="extraGains"
       @update:anomaly-slot-panels="Object.assign(anomalySlotPanels, $event)"
       @update:convert-slot-panels="Object.assign(convertSlotPanels, $event)"
     />
@@ -937,6 +955,10 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
         :slot-buff-selections="multiSlotBuffSelection"
         :stagger-phase="staggerPhase"
         :damage-events="damageEvents"
+        v-model:extra-gains="extraGains"
+        :convert-slot-panels="convertSlotPanels"
+        @update:anomaly-slot-panels="Object.assign(anomalySlotPanels, $event)"
+        @update:convert-slot-panels="Object.assign(convertSlotPanels, $event)"
       />
     </KeepAlive>
   </div>

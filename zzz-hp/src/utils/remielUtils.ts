@@ -68,14 +68,14 @@ export function findLuminousAgentInTeam(
   return null
 }
 
-/** 产生角色候选：耀变须非流明；旧四类亦不可选流明 */
+/** 产生角色候选：旧四类不可选流明；耀变异常产生角色可为全队（含蕾米埃尔） */
 export function canAgentBeAnomalyProducerForKind(
   agent: { element?: string | null } | null | undefined,
   kind: DamageEventKind,
 ): boolean {
   if (!agent) return false
-  if (isLuminousAgent(agent)) return false
   if (kind === 'radiance') return true
+  if (isLuminousAgent(agent)) return false
   return isLegacyAnomalyEventKind(kind)
 }
 

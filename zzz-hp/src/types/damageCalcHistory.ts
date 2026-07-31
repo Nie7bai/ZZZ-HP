@@ -45,6 +45,11 @@ export interface DamageCalcPanelSnapshot {
     stat: keyof BuffStatModifiers
     value: number
     applySituation?: import('@/types/calculator').BuffApplySituation
+    scope?: import('@/types/calculator').BuffScope
+    applyTarget?: import('@/types/calculator').BuffApplyTarget
+    skillCategory?: import('@/types/calculator').BuffSkillTargetId
+    skillSubcategoryId?: string | null
+    appliesToAnomaly?: boolean
   }>
   enemyInput: DamageCalcEnemyInputSnapshot
 }

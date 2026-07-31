@@ -304,6 +304,10 @@ function toggleCard(card: BuffCardGroup) {
   }
 }
 
+function toggleEffect(item: CollectedEffect) {
+  setEnabled(item, !isEnabled(item))
+}
+
 const filtered = computed(() => {
   const keyword = search.value.trim().toLowerCase()
   return props.effects.filter((item) => {
@@ -381,7 +385,7 @@ function close() {
               <h3>选择 Buff</h3>
               <button type="button" class="close-btn" aria-label="关闭" @click="close">×</button>
             </div>
-            <p>按增益块勾选；全队增益在一处取消后所有角色同步取消。</p>
+            <p>按增益块或块内单条效果勾选；全队增益在一处取消后所有角色同步取消。</p>
             <div v-if="slotOptions?.length" class="slot-tabs">
               <button
                 v-for="opt in slotOptions"
@@ -460,7 +464,15 @@ function close() {
 
             <div class="buff-effect-lines">
               <div v-for="item in card.items" :key="item.effect.id" class="buff-effect-row">
-                <span class="buff-effect-text">{{ effectResultText(item) }}</span>
+                <label class="buff-effect-check" @click.stop>
+                  <input
+                    type="checkbox"
+                    class="buff-check buff-check--inline"
+                    :checked="isEnabled(item)"
+                    @change="toggleEffect(item)"
+                  />
+                  <span class="buff-effect-text">{{ effectResultText(item) }}</span>
+                </label>
                 <label
                   v-if="isStackable(item)"
                   class="rule-coverage-control"
@@ -821,6 +833,18 @@ function close() {
   align-items: center;
   padding: 0.45rem 0;
   border-bottom: 1px solid #2d3646;
+}
+
+.buff-effect-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.buff-check--inline {
+  margin-top: 0.15rem;
 }
 
 .buff-effect-row:last-child {

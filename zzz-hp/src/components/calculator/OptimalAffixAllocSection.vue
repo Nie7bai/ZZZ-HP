@@ -14,12 +14,14 @@ import type {
   AnomalyDamageSubKind,
   BangbooBuffDoc,
   BaseDamageSource,
-  BuffStatKey,
+  CharacterAttrKey,
   DriveDiscBuffDoc,
   WengineBuffDoc,
 } from '@/types/calculator'
+import { CHARACTER_ATTR_OPTIONS } from '@/types/calculator'
 import {
   createDefaultAffixDriveDiscMainStats,
+  createDefaultExternalPanel,
   type AffixCounts,
   type AffixDriveDiscMainStats,
   type DriveDiscSlot4StatId,
@@ -39,7 +41,6 @@ import {
   buffStatFieldLabel,
   createEmptyBuffStatModifiers,
   createEmptyRefinementMods,
-  mergeBuffStatModifiers,
 } from '@/utils/calculatorUi'
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 import type { DamageCalcResult, EnemyResistanceType } from '@/utils/damageCalc'
@@ -77,6 +78,12 @@ import EnemyPresetCombo from '@/components/calculator/EnemyPresetCombo.vue'
 import EquipPickerModal from '@/components/calculator/EquipPickerModal.vue'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import { resolveIsFollowUp } from '@/utils/buffEffect'
+import {
+  collectConvertSupportSlots,
+  resolveBuffSelectionForSlot,
+  type ConvertSlotPanels,
+} from '@/utils/panelBuffCalc'
+import { collectParticipantAgentIds } from '@/utils/damageEventOwner'
 import {
   DAMAGE_EVENT_CRIT_MODE_OPTIONS,
   DAMAGE_EVENT_KIND_OPTIONS,
@@ -173,12 +180,20 @@ const props = defineProps<{
   anomalySubKind?: AnomalyDamageSubKind
   triggerAnomalyAgentId?: string | null
   anomalySlotPanels?: Record<string, PanelStats>
+  convertSlotPanels?: ConvertSlotPanels
   skillCategoryId?: import('@/types/calculator').SkillCategoryId
   skillSubcategoryId?: string | null
   buffSelection?: import('@/utils/panelBuffCalc').BuffSelectionState | null
   slotBuffSelections?: import('@/utils/panelBuffCalc').MultiSlotBuffSelection | null
   staggerPhase?: import('@/types/calculator').StaggerPhase
   damageEvents?: import('@/types/calculator').DamageEvent[]
+}>()
+
+const extraGains = defineModel<ExtraBuffGain[]>('extraGains', { default: () => [] })
+
+const emit = defineEmits<{
+  'update:anomalySlotPanels': [value: Record<string, PanelStats>]
+  'update:convertSlotPanels': [value: ConvertSlotPanels]
 }>()
 
 const emptyBangboo: BangbooBuffDoc = {
@@ -199,20 +214,6 @@ const damageKind = computed(() => props.damageKind ?? 'direct')
 const anomalySubKind = computed(() => props.anomalySubKind ?? 'anomaly')
 const baseDamageSource = ref<BaseDamageSource>('atk')
 const driveDiscMainStats = reactive(createDefaultAffixDriveDiscMainStats())
-const extraGains = ref<ExtraBuffGain[]>([])
-const extraMods = computed(() => {
-  let total = createEmptyBuffStatModifiers()
-  const phase = props.staggerPhase ?? 'stagger'
-  for (const gain of extraGains.value) {
-    const situation = gain.applySituation ?? 'global'
-    if (situation === 'stagger' && phase !== 'stagger') continue
-    if (situation === 'non_stagger' && phase !== 'normal') continue
-    const next = createEmptyBuffStatModifiers()
-    next[gain.stat as BuffStatKey] = gain.value
-    total = mergeBuffStatModifiers(total, next)
-  }
-  return total
-})
 const enemyInput = reactive({
   defense: 953,
   resistanceType: 'normal' as EnemyResistanceType,
@@ -255,6 +256,91 @@ const mainSlot = computed(() => props.teamSlots[mainSlotIndex.value]!)
 
 const mainAgent = computed(() => props.agents.find((item) => item.id === mainSlot.value.agentId))
 
+const anomalySupportSlots = computed(() => {
+  const mainId = mainSlot.value.agentId
+  const participantIds = collectParticipantAgentIds(props.damageEvents ?? [], mainId)
+  return props.teamSlots
+    .map((slot, index) => ({ slot, index }))
+    .filter(({ slot }) => Boolean(slot.agentId && participantIds.includes(slot.agentId)))
+})
+
+function buildBasePanelCalcContext() {
+  const slotIndex = mainSlotIndex.value
+  return {
+    teamSlots: props.teamSlots,
+    agents: props.agents,
+    wengines: props.wengines,
+    bangboo: selectedBangboo.value,
+    bangbooRefine: props.bangbooRefine,
+    mainSlotIndex: slotIndex,
+    driveDiscs: props.driveDiscs,
+    skillContext: {
+      damageKind: damageKind.value,
+      categoryId: props.skillCategoryId ?? 'basic',
+      subcategoryId: props.skillSubcategoryId ?? null,
+      element: mainAgent.value?.element,
+      staggerPhase: props.staggerPhase ?? 'stagger',
+      isFollowUp: skillIsFollowUp.value,
+      anomalySubKind: damageKind.value === 'anomaly' ? anomalySubKind.value : undefined,
+    },
+    buffSelection: resolveBuffSelectionForSlot(props.slotBuffSelections, slotIndex),
+    anomalySlotPanels: props.anomalySlotPanels,
+    convertSlotPanels: props.convertSlotPanels,
+  }
+}
+
+const anomalyProducerAgentIds = computed(() => {
+  const ids = new Set<string>()
+  for (const item of anomalySupportSlots.value) {
+    if (item.slot.agentId) ids.add(item.slot.agentId)
+  }
+  return ids
+})
+
+const convertSupportSlots = computed(() =>
+  collectConvertSupportSlots(buildBasePanelCalcContext(), {
+    excludeAnomalyAgentIds: anomalyProducerAgentIds.value,
+  }),
+)
+
+const convertSupportSlotsNeedingInput = computed(() =>
+  convertSupportSlots.value.filter((item) => !props.convertSlotPanels?.[item.agentId]),
+)
+
+function characterAttrLabel(key: CharacterAttrKey): string {
+  return CHARACTER_ATTR_OPTIONS.find((item) => item.id === key)?.label ?? key
+}
+
+function ensureAnomalySlotPanel(agentId: string): PanelStats {
+  const existing = props.anomalySlotPanels?.[agentId]
+  if (existing) return existing
+  return createDefaultExternalPanel()
+}
+
+function updateAnomalySlotPanel(agentId: string, key: keyof PanelStats, value: number) {
+  emit('update:anomalySlotPanels', {
+    ...(props.anomalySlotPanels ?? {}),
+    [agentId]: {
+      ...ensureAnomalySlotPanel(agentId),
+      [key]: value,
+    },
+  })
+}
+
+function ensureConvertSlotPartial(agentId: string): Partial<Record<CharacterAttrKey, number>> {
+  return props.convertSlotPanels?.[agentId] ?? {}
+}
+
+function updateConvertSlotAttr(agentId: string, key: CharacterAttrKey, value: number) {
+  emit('update:convertSlotPanels', {
+    ...(props.convertSlotPanels ?? {}),
+    [agentId]: {
+      ...ensureConvertSlotPartial(agentId),
+      [key]: value,
+    },
+  })
+}
+
 const { skillSubcategories, followUpSkillRules } = storeToRefs(useCalculatorBuffStore())
 
 const skillIsFollowUp = computed(() =>
@@ -289,7 +375,7 @@ const evalCtx = computed(() =>
     driveDiscMainStats: { ...driveDiscMainStats },
     enemyInput: { ...enemyInput },
     baseDamageSource: isMb.value ? 'pierce' : baseDamageSource.value,
-    extraMods: { ...extraMods.value },
+    extraGains: extraGains.value.map((item) => ({ ...item })),
     skillContext: {
       damageKind: damageKind.value,
       categoryId: props.skillCategoryId ?? 'basic',
@@ -302,6 +388,7 @@ const evalCtx = computed(() =>
     buffSelection: props.buffSelection ?? null,
     slotBuffSelections: props.slotBuffSelections ?? null,
     anomalySlotPanels: props.anomalySlotPanels,
+    convertSlotPanels: props.convertSlotPanels,
     triggerAnomalyAgentId: props.triggerAnomalyAgentId,
     damageEvents: props.damageEvents,
     resolveSubcategory: (id) => skillSubcategories.value.find((item) => item.id === id) ?? null,
@@ -394,11 +481,9 @@ const chartEventReferencePoint = computed(() => {
 function resolveChartEventProducerLabel(event: import('@/types/calculator').DamageEvent) {
   if (!eventNeedsAnomalyProducer(event.kind)) return null
   const raw = event.triggerAgentId ?? props.triggerAnomalyAgentId
-  if (!raw || raw === TRIGGER_AGENT_AT_CALC) return '产生角色未选'
+  if (!raw || raw === TRIGGER_AGENT_AT_CALC) return null
   const agent = props.agents.find((item) => item.id === raw)
-  const name = agent?.name ?? raw
-  if (raw === mainAgent.value?.id) return `产生 ${name}（主C）`
-  return `产生 ${name}${agent?.element ? ` · ${agent.element}` : ''}`
+  return agent?.name ?? raw
 }
 
 function resolveChartEventCritLabel(critMode: import('@/types/calculator').DamageEventCritMode) {
@@ -1465,7 +1550,95 @@ watch(
           <h3>额外 Buff 增益</h3>
           <p>补充增益按条添加，参与局内面板与乘区汇总。</p>
         </header>
-        <ExtraBuffGainEditor v-model="extraGains" />
+        <ExtraBuffGainEditor v-model="extraGains" :skill-subcategories="skillSubcategories" />
+      </section>
+
+      <section
+        v-if="anomalySupportSlots.length"
+        class="panel-block anomaly-support-panels"
+      >
+        <header class="panel-block-header">
+          <h3>伤害事件参与者 · 局外面板</h3>
+          <p>
+            事件产生角色（owner）与异常产生角色若为非主 C，需在此录入局外初始面板；局内最终面板按各自槽位 Buff 勾选汇总。
+          </p>
+        </header>
+        <details
+          v-for="item in anomalySupportSlots"
+          :key="item.slot.agentId"
+          class="anomaly-slot-details"
+        >
+          <summary>
+            {{ props.agents.find((a) => a.id === item.slot.agentId)?.name ?? item.slot.agentId }}
+            ·
+            {{ props.agents.find((a) => a.id === item.slot.agentId)?.element ?? '' }}
+          </summary>
+          <div class="grid four">
+            <label
+              v-for="field in EXTERNAL_PANEL_FIELDS"
+              :key="`${item.slot.agentId}-${field.key}`"
+              class="field"
+            >
+              <span>{{ field.label }}</span>
+              <input
+                type="number"
+                step="any"
+                :value="ensureAnomalySlotPanel(item.slot.agentId)[field.key]"
+                @change="
+                  updateAnomalySlotPanel(
+                    item.slot.agentId,
+                    field.key,
+                    Number(($event.target as HTMLInputElement).value) || 0,
+                  )
+                "
+              />
+            </label>
+          </div>
+        </details>
+      </section>
+
+      <section
+        v-if="convertSupportSlotsNeedingInput.length"
+        class="panel-block convert-support-panels"
+      >
+        <header class="panel-block-header">
+          <h3>转模增益角色 · 局外面板</h3>
+          <p>
+            已在「面板/词条计算」页填写的数据会自动沿用；此处仅补充尚未录入的转模来源属性。
+          </p>
+        </header>
+        <details
+          v-for="item in convertSupportSlotsNeedingInput"
+          :key="item.agentId"
+          class="anomaly-slot-details"
+        >
+          <summary>
+            {{ props.agents.find((a) => a.id === item.agentId)?.name ?? item.agentId }}
+            ·
+            {{ props.agents.find((a) => a.id === item.agentId)?.element ?? '' }}
+          </summary>
+          <div class="grid four">
+            <label
+              v-for="attr in item.requiredAttrs"
+              :key="`${item.agentId}-${attr}`"
+              class="field"
+            >
+              <span>{{ characterAttrLabel(attr) }}</span>
+              <input
+                type="number"
+                step="any"
+                :value="ensureConvertSlotPartial(item.agentId)[attr] ?? 0"
+                @change="
+                  updateConvertSlotAttr(
+                    item.agentId,
+                    attr,
+                    Number(($event.target as HTMLInputElement).value) || 0,
+                  )
+                "
+              />
+            </label>
+          </div>
+        </details>
       </section>
     </div>
 
