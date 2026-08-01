@@ -129,6 +129,16 @@ const content311 = `相对 3.1.0 的增量更新（流明角色、多产生者�
 · 产生者伤害占比：按事件 owner 汇总总伤占比，可展开查看各事件占比并联动选中详情
 · 危局困难模式 9–10 条血量系数修正`
 
+const content312 = `相对 3.1.1 的增量更新（蕾米埃尔本人耀变结算与敌方抗性配置为主）：
+
+· 蕾米埃尔本人耀变专用公式：异常基础（局内攻击×精通区÷100×特殊等级区×异化系数×等级区）× 防御区 × 抗性区 × 耀变综合增伤区 × 耀变倍率区 × 特殊倍率乘区 × 特殊乘区
+· 本人耀变局内攻/精仅含局外+音擎+驱动盘+自身转模，不含队友增益与邦布；公式展示不纳入通用乘区
+· 抗性区：按下一非流明队友属性取对应敌方抗性；无后续队友时敌方抗性固定为 0
+· 敌方抗性改为按风/火/电/物理/以太/冰六属性独立下拉配置（默认无弱点无抗性），兼容旧存档 resistanceType 回退
+· 新增「特殊倍率乘区」面板字段（specialMult / specialMultFactor，默认 ×1）；耀变事件倍率区可单独覆盖；仅本人耀变链路生效
+· 后端 Buff 字段白名单补全 specialMult / specialMultFactor，管理后台保存可正确入库
+· 最优词条与面板计算同步本人耀变输入；补充蕾米埃尔头像、荆棘玫瑰/羽化命运驱动盘图与 check-remiel.mjs 校验脚本`
+
 const conn = await mysql.createConnection({
   host: process.env.DB_HOST || '127.0.0.1',
   port: Number(process.env.DB_PORT || 3306),
@@ -230,6 +240,17 @@ await conn.query(
     '流明角色与多产生者事件结算',
     content311,
     '2026-07-31 18:30:00',
+  ],
+)
+
+await conn.query(`DELETE FROM changelog WHERE version = '3.1.2'`)
+await conn.query(
+  `INSERT INTO changelog (version, title, content, published_at) VALUES (?, ?, ?, ?)`,
+  [
+    '3.1.2',
+    '蕾米埃尔耀变结算与敌方抗性',
+    content312,
+    '2026-08-01 01:30:00',
   ],
 )
 
