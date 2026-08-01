@@ -55,19 +55,26 @@ defineProps<{
 .tooltip-glass {
   position: absolute;
   inset: 0;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(18px) saturate(170%);
-  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
 }
 
 [data-theme='dark'] .tooltip-glass {
-  background: rgba(18, 22, 32, 0.42);
+  background: rgba(12, 16, 26, 0.78);
 }
 
 .tooltip-content {
   position: relative;
   z-index: 1;
-  padding: 0.4rem 0.5rem 0.48rem;
+  padding: 0.45rem 0.52rem 0.52rem;
+  background: rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+[data-theme='dark'] .tooltip-content {
+  background: rgba(0, 0, 0, 0.18);
 }
 
 .tooltip-phase {
@@ -101,14 +108,17 @@ defineProps<{
   grid-template-columns: 0.55rem 1fr auto;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.22rem 0.3rem;
+  padding: 0.28rem 0.34rem;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 [data-theme='dark'] .tooltip-row {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .tooltip-swatch {
@@ -130,5 +140,10 @@ defineProps<{
   font-size: 0.64rem;
   font-weight: 700;
   white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+[data-theme='dark'] .tooltip-value {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
 }
 </style>

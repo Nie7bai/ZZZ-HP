@@ -29,9 +29,10 @@ export async function listPhases(req, res) {
   }
 }
 
-export async function listBossNames(_req, res) {
+export async function listBossNames(req, res) {
   try {
-    const data = await getBossNames()
+    const roomType = req.query.roomType
+    const data = await getBossNames({ roomType })
     return success(res, data)
   } catch (err) {
     return fail(res, '获取 Boss 列表失败', 500, { error: err.message })
@@ -46,7 +47,8 @@ export async function getBossChart(req, res) {
 
   try {
     const includeHidden = readIsSiteAdmin(req)
-    const data = await getBossChartHistory(bossName, { includeHidden })
+    const roomType = req.query.roomType
+    const data = await getBossChartHistory(bossName, { includeHidden, roomType })
     if (!data.length) {
       return fail(res, '未找到该 Boss 数据', 404)
     }

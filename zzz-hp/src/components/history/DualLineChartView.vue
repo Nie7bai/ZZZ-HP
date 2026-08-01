@@ -1637,16 +1637,17 @@ watch(phaseSearchQuery, () => {
                     :class="{ active: hoverIndex === point.index }"
                     :style="{ fill: series.marker.color, stroke: series.marker.color }"
                   />
-                  <text
-                    v-if="hoverIndex === point.index"
-                    :x="point.x"
-                    :y="point.y + 18"
-                    class="point-value point-value-score"
-                    text-anchor="middle"
-                    :style="{ fill: series.marker.color }"
-                  >
-                    {{ series.marker.shortLabel }} {{ formatPrimaryValue(point.value) }}
-                  </text>
+                  <g v-if="hoverIndex === point.index">
+                    <text
+                      :x="point.x"
+                      :y="point.y + 18"
+                      class="point-value point-value-score"
+                      text-anchor="middle"
+                      :style="{ fill: series.marker.color }"
+                    >
+                      {{ series.marker.shortLabel }} {{ formatPrimaryValue(point.value) }}
+                    </text>
+                  </g>
                 </g>
               </template>
 
@@ -1658,16 +1659,17 @@ watch(phaseSearchQuery, () => {
                   class="line-point line-point-hp"
                   :class="{ active: hoverIndex === point.index }"
                 />
-                <text
-                  v-if="shouldShowPointValue(point.index)"
-                  :x="point.x"
-                  :y="point.y - 16"
-                  class="point-value"
-                  :class="{ 'point-value-hp-active': hoverIndex === point.index }"
-                  text-anchor="middle"
-                >
-                  {{ formatPrimaryValue(point.value) }}
-                </text>
+                <g v-if="shouldShowPointValue(point.index)">
+                  <text
+                    :x="point.x"
+                    :y="point.y - 16"
+                    class="point-value"
+                    :class="{ 'point-value-hp-active': hoverIndex === point.index }"
+                    text-anchor="middle"
+                  >
+                    {{ formatPrimaryValue(point.value) }}
+                  </text>
+                </g>
               </g>
 
               <g
