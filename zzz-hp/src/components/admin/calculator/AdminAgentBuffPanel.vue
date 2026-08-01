@@ -190,7 +190,7 @@ async function saveAgent() {
 
   saving.value = true
   try {
-    const avatar_image = (await avatarFieldRef.value?.resolveAvatarImageOnSave()) ?? null
+    const avatar_image = (await avatarFieldRef.value?.resolveAvatarImageOnSave(id)) ?? null
     const doc: AgentBuffDoc = {
       id,
       name,
@@ -369,7 +369,7 @@ defineExpose({ scrollToSection, saveAgent, removeAgent, selectedId, saving })
         </label>
 
         <div id="admin-agent-avatar" class="editor-anchor">
-          <AdminCalculatorAvatarField ref="avatarFieldRef" />
+          <AdminCalculatorAvatarField ref="avatarFieldRef" kind="agent" />
         </div>
 
         <section id="admin-agent-base-panel" class="mindscape-section editor-anchor">

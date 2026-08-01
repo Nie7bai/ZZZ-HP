@@ -135,7 +135,7 @@ async function saveItem() {
 
   saving.value = true
   try {
-    const avatar_image = (await avatarFieldRef.value?.resolveAvatarImageOnSave()) ?? null
+    const avatar_image = (await avatarFieldRef.value?.resolveAvatarImageOnSave(id)) ?? null
     const twoPieceBlocks = normalizeBuffEffectBlocks(form.value.twoPieceBlocks)
     const twoPieceEffects = flattenEffectBlocks(twoPieceBlocks)
     const twoPieceMods = createEmptyBuffStatModifiers()
@@ -260,7 +260,7 @@ defineExpose({ scrollToSection, saveItem, removeItem, selectedId, saving })
         </div>
 
         <div id="admin-drive-disc-avatar" class="editor-anchor">
-          <AdminCalculatorAvatarField ref="avatarFieldRef" />
+          <AdminCalculatorAvatarField ref="avatarFieldRef" kind="drive_disc" />
         </div>
 
         <section id="admin-drive-disc-two-piece" class="mindscape-section editor-anchor">

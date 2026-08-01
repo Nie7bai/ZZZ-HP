@@ -200,7 +200,7 @@ async function saveItem() {
 
   saving.value = true
   try {
-    const avatar_image = (await avatarFieldRef.value?.resolveAvatarImageOnSave()) ?? null
+    const avatar_image = (await avatarFieldRef.value?.resolveAvatarImageOnSave(id)) ?? null
     const fixedPack = packFromBlocks(forceTeamBlocks(form.value.fixedBuffs.effectBlocks ?? []))
     const refinementPacks = buildRefinementPacks()
     const effectBlocks = fixedPack.effectBlocks
@@ -313,7 +313,7 @@ defineExpose({ scrollToSection, saveItem, removeItem, selectedId, saving })
             </label>
           </div>
           <div id="admin-bangboo-avatar" class="editor-anchor">
-            <AdminCalculatorAvatarField ref="avatarFieldRef" category="bangboo" />
+            <AdminCalculatorAvatarField ref="avatarFieldRef" kind="bangboo" />
           </div>
         </section>
 

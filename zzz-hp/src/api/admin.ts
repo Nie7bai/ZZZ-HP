@@ -167,6 +167,25 @@ export async function uploadCalculatorImage(file: File) {
   return parseResponse<UploadImageResult>(response)
 }
 
+export type CalculatorPublicAvatarKind = 'agent' | 'wengine' | 'drive_disc' | 'bangboo'
+
+export async function uploadCalculatorPublicImage(
+  file: File,
+  kind: CalculatorPublicAvatarKind,
+  entityId: string,
+) {
+  const formData = new FormData()
+  formData.append('image', file)
+  const query = new URLSearchParams({ kind, entityId: entityId.trim() })
+
+  const response = await fetch(`/api/upload/calculator-public?${query}`, {
+    method: 'POST',
+    body: formData,
+  })
+
+  return parseResponse<UploadImageResult>(response)
+}
+
 export async function lookupBossInfo(bossName: string) {
   const query = bossName.trim()
   if (!query) return null

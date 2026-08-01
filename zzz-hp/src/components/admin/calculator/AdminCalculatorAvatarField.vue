@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import AdminImagePicker from '@/components/admin/AdminImagePicker.vue'
 import { useCalculatorAvatarUpload } from '@/composables/useCalculatorAvatarUpload'
+import type { CalculatorPublicAvatarKind } from '@/api/admin'
 
-defineProps<{
+const props = defineProps<{
   label?: string
+  kind: CalculatorPublicAvatarKind
 }>()
 
 const {
@@ -14,7 +16,7 @@ const {
   clearAvatarImage,
   setAvatarImage,
   resolveAvatarImageOnSave,
-} = useCalculatorAvatarUpload()
+} = useCalculatorAvatarUpload(props.kind)
 
 defineExpose({
   avatarImage,
@@ -33,7 +35,7 @@ defineExpose({
       <button type="button" class="clear-btn" @click="clearAvatarImage">清除头像</button>
     </div>
     <p v-else-if="avatarImage" class="avatar-path">{{ avatarImage }}</p>
-    <p v-else class="avatar-hint">未上传头像时将显示名称首字</p>
+    <p v-else class="avatar-hint">未上传头像时将显示名称首字；保存后写入 public 固定路径（随 dist 上云）</p>
   </div>
 </template>
 

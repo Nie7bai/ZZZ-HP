@@ -1,9 +1,12 @@
 import { ref } from 'vue'
-import { uploadCalculatorImage } from '@/api/admin'
+import {
+  uploadCalculatorPublicImage,
+  type CalculatorPublicAvatarKind,
+} from '@/api/admin'
 import AdminImagePicker from '@/components/admin/AdminImagePicker.vue'
 import { resolveAssetUrl } from '@/utils/gameData'
 
-export function useCalculatorAvatarUpload() {
+export function useCalculatorAvatarUpload(kind: CalculatorPublicAvatarKind) {
   const imageFile = ref<File | null>(null)
   const imagePickerRef = ref<InstanceType<typeof AdminImagePicker> | null>(null)
   const avatarImage = ref<string | null>(null)
@@ -28,9 +31,13 @@ export function useCalculatorAvatarUpload() {
     imagePreview.value = ''
   }
 
-  async function resolveAvatarImageOnSave(): Promise<string | null> {
+  async function resolveAvatarImageOnSave(entityId: string): Promise<string | null> {
+    const id = entityId.trim()
     if (imageFile.value) {
-      const uploaded = await uploadCalculatorImage(imageFile.value)
+      if (!id) {
+        throw new Error('请先填写 ID 再上传头像')
+      }
+      const uploaded = await uploadCalculatorPublicImage(imageFile.value, kind, id)
       avatarImage.value = uploaded.url
       imageFile.value = null
       imagePickerRef.value?.reset()

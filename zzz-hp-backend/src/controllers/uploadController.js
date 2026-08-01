@@ -1,4 +1,5 @@
 import { success, fail } from '../utils/response.js'
+import { saveCalculatorPublicAvatar } from '../utils/calculatorPublicAsset.js'
 
 function buildImageUrl(type, filename) {
   return `/${type}_image/${filename}`
@@ -29,6 +30,27 @@ export function uploadCalculator(req, res) {
 
   const url = buildImageUrl('calculator', req.file.filename)
   return success(res, { url, filename: req.file.filename }, '计算器头像上传成功', 201)
+}
+
+export async function uploadCalculatorPublic(req, res) {
+  if (!req.file) {
+    return fail(res, '请上传图片文件，字段名为 image', 400)
+  }
+
+  const kind = req.query?.kind
+  const entityId = req.query?.entityId
+
+  try {
+    const saved = await saveCalculatorPublicAvatar(kind, entityId, req.file)
+    return success(
+      res,
+      { url: saved.url, filename: saved.filename },
+      '计算器头像已保存到 public 固定路径',
+      201,
+    )
+  } catch (err) {
+    return fail(res, err.message || '上传失败', 400)
+  }
 }
 
 export function uploadGuestbook(req, res) {

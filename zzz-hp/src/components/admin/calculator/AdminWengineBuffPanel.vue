@@ -195,7 +195,7 @@ async function saveItem() {
 
   saving.value = true
   try {
-    const avatar_image = (await avatarFieldRef.value?.resolveAvatarImageOnSave()) ?? null
+    const avatar_image = (await avatarFieldRef.value?.resolveAvatarImageOnSave(id)) ?? null
     const doc: WengineBuffDoc = {
       id,
       name,
@@ -358,7 +358,7 @@ defineExpose({ scrollToSection, saveItem, removeItem, selectedId, saving })
         </div>
 
         <div id="admin-wengine-avatar" class="editor-anchor">
-          <AdminCalculatorAvatarField ref="avatarFieldRef" />
+          <AdminCalculatorAvatarField ref="avatarFieldRef" kind="wengine" />
         </div>
 
         <section id="admin-wengine-base-stats" class="mindscape-section editor-anchor">

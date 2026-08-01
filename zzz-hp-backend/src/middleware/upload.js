@@ -60,4 +60,19 @@ export const uploadBuffImage = createUploader('buff').single('image')
 export const uploadCalculatorImage = createUploader('calculator').single('image')
 export const uploadGuestbookImage = createUploader('guestbook').single('image')
 
+const memoryUploader = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true)
+    } else {
+      cb(new Error('仅支持 jpg、png、gif、webp 格式图片'))
+    }
+  },
+})
+
+/** 计算器实体头像 → 前端 public 固定路径（kind、entityId 走 query） */
+export const uploadCalculatorPublicImage = memoryUploader.single('image')
+
 export { imageDirs }
