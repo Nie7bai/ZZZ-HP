@@ -1,22 +1,14 @@
 /**
- * Create admin table and seed hashed password on first run only.
- *
- * Requires ADMIN_PASSWORD in .env (never commit plaintext passwords to Git).
+ * Set or rotate admin password hash from ADMIN_PASSWORD in .env.
  *
  * Usage:
- *   node scripts/seed-admin.mjs
+ *   node scripts/set-admin-password.mjs
  */
 import dotenv from 'dotenv'
-import fs from 'fs'
-import path from 'path'
-import { fileURLToPath } from 'url'
 import mysql from 'mysql2/promise'
 import { hashAdminPassword } from '../src/utils/adminPasswordHash.js'
 
 dotenv.config()
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const CREATE_SQL = fs.readFileSync(path.join(__dirname, '..', 'create_admin_table.sql'), 'utf8')
 
 const plainPassword = process.env.ADMIN_PASSWORD?.trim()
 if (!plainPassword) {
@@ -30,21 +22,21 @@ const conn = await mysql.createConnection({
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '123456',
   database: process.env.DB_NAME || 'zzz',
-  multipleStatements: true,
 })
 
 try {
-  await conn.query(CREATE_SQL)
-  console.log('Ensured admin table exists')
-
+  const hash = await hashAdminPassword(plainPassword)
   const [rows] = await conn.query('SELECT id FROM `admin` ORDER BY id ASC LIMIT 1')
+
   if (!rows.length) {
-    const hash = await hashAdminPassword(plainPassword)
     await conn.execute('INSERT INTO `admin` (`password`) VALUES (?)', [hash])
-    console.log('Inserted admin with bcrypt password hash')
+    console.log('Created admin with bcrypt password hash')
   } else {
-    console.log(`Admin already exists (id=${rows[0].id}); skipped password update`)
-    console.log('To change password, run: node scripts/set-admin-password.mjs')
+    await conn.execute('UPDATE `admin` SET `password` = ? WHERE `id` = ?', [
+      hash,
+      rows[0].id,
+    ])
+    console.log(`Updated admin #${rows[0].id} password hash`)
   }
 
   console.log('Done.')
