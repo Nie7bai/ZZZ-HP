@@ -304,16 +304,58 @@
   color: var(--calc-text) !important;
 }
 
-/* 代理人槽位内：音擎 / 驱动盘信息框 */
-.calculator-page.theme-light .wengine-box,
-.calculator-page.theme-light .drive-disc-box {
+/* 代理人槽位卡片内：音擎 / 驱动盘子块 */
+.calculator-page.theme-light .gear-row,
+.calculator-page.theme-light .disc-item {
   border-color: var(--calc-border) !important;
   background: var(--calc-surface) !important;
   background-color: var(--calc-surface) !important;
 }
 
-.calculator-page.theme-light .wengine-title {
+.calculator-page.theme-light .gear-name,
+.calculator-page.theme-light .disc-name {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .gear-tag,
+.calculator-page.theme-light .disc-tag {
   color: #8a6d2e !important;
+  border-color: var(--calc-border) !important;
+}
+
+.calculator-page.theme-light .disc-text {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .row-label {
+  color: #8a6d2e !important;
+}
+
+.calculator-page.theme-light .rank-label {
+  color: #8a6d2e !important;
+}
+
+.calculator-page.theme-light .badge.role {
+  color: #8a6d2e !important;
+  background: #faf3e2 !important;
+  border-color: var(--calc-border) !important;
+}
+
+.calculator-page.theme-light .badge.element {
+  color: #2b5ca8 !important;
+  background: #eaf1fb !important;
+  border-color: var(--calc-border) !important;
+}
+
+.calculator-page.theme-light .main-c {
+  color: #8a6d2e !important;
+}
+
+.calculator-page.theme-light .remove-btn {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface-2) !important;
+  background-color: var(--calc-surface-2) !important;
+  color: #6b5a3a !important;
 }
 
 .calculator-page.theme-light .wengine-hint,
@@ -1740,4 +1782,252 @@ body:has(.calculator-page.theme-light) .preset-preview li,
 
 [data-theme='light'] .anomaly-producer-final-details > summary {
   color: #1c212a !important;
+}
+
+/*
+ * UnifiedPresetPicker：Teleport 到 body，用 [data-theme='light'] 覆盖。
+ * 配色与 EquipPickerModal 保持一致。
+ */
+[data-theme='light'] .unified-overlay {
+  background: rgba(15, 23, 42, 0.35) !important;
+}
+
+[data-theme='light'] .unified-modal {
+  border-color: #d5dae3 !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f6f8fb 100%) !important;
+  color: #1c212a !important;
+  box-shadow: 0 18px 48px rgba(16, 24, 40, 0.12) !important;
+}
+
+[data-theme='light'] .unified-modal .modal-header {
+  border-bottom-color: #e4e7ec !important;
+}
+
+[data-theme='light'] .unified-modal .modal-header h2 {
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .unified-modal .close-btn {
+  color: #667085 !important;
+}
+
+[data-theme='light'] .unified-modal .close-btn:hover {
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .unified-modal .tab-bar {
+  border-bottom-color: #e4e7ec !important;
+}
+
+[data-theme='light'] .unified-modal .tab-filters {
+  border-bottom-color: #e4e7ec !important;
+}
+
+[data-theme='light'] .unified-modal .tab-btn {
+  color: #667085 !important;
+}
+
+[data-theme='light'] .unified-modal .tab-btn.active {
+  color: #c9a55c !important;
+  border-bottom-color: #c9a55c !important;
+}
+
+[data-theme='light'] .unified-modal .chip-group-label {
+  color: #667085 !important;
+}
+
+[data-theme='light'] .unified-modal .chip {
+  border-color: #d5dae3 !important;
+  background: #f5f7fa !important;
+  color: #344054 !important;
+}
+
+[data-theme='light'] .unified-modal .chip.active,
+[data-theme='light'] .unified-modal .chip.highlight {
+  border-color: #c9a55c !important;
+  background: #fff8eb !important;
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .unified-modal .search {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+  color: #1c212a !important;
+  color-scheme: light;
+}
+
+[data-theme='light'] .unified-modal .search:focus {
+  border-color: #c9a55c !important;
+}
+
+[data-theme='light'] .unified-modal .item-cell {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .unified-modal .item-cell.active {
+  border-color: #c9a55c !important;
+  box-shadow: inset 0 0 0 1px rgba(201, 165, 92, 0.45) !important;
+  background: #fff8eb !important;
+}
+
+[data-theme='light'] .unified-modal .item-placeholder {
+  background: #eef1f5 !important;
+  color: #98a2b3 !important;
+}
+
+[data-theme='light'] .unified-modal .empty-hint {
+  color: #667085 !important;
+}
+
+[data-theme='light'] .unified-modal .rank-bar {
+  border-color: #e4e7ec !important;
+  background: #f6f8fb !important;
+}
+
+[data-theme='light'] .unified-modal .rank-label {
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .unified-modal .rank-slider {
+  accent-color: #c9a55c;
+  color-scheme: light;
+}
+
+[data-theme='light'] .unified-modal .rank-badge {
+  border-color: #e6d7b0 !important;
+  background: #fff8eb !important;
+  color: #5c4818 !important;
+}
+
+[data-theme='light'] .unified-modal .disc-col-header h3 {
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .unified-modal .disc-col-header p {
+  color: #667085 !important;
+}
+
+[data-theme='light'] .unified-modal .modal-footer {
+  border-top-color: #e4e7ec !important;
+  background: #f6f8fb !important;
+}
+
+[data-theme='light'] .unified-modal .summary-title {
+  color: #8a6d2e !important;
+}
+
+[data-theme='light'] .unified-modal .summary-text {
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .unified-modal .cancel-btn {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+  color: #344054 !important;
+}
+
+[data-theme='light'] .unified-modal .cancel-btn:hover {
+  background: #f5f7fa !important;
+}
+
+[data-theme='light'] .unified-modal .confirm-btn {
+  background: #c9a55c !important;
+  color: #ffffff !important;
+}
+
+[data-theme='light'] .unified-modal .confirm-btn:not(:disabled):hover {
+  background: #b8964e !important;
+}
+
+/* trigger button 在 .calculator-page 内 */
+.calculator-page.theme-light .unified-trigger {
+  border-color: #d5dae3 !important;
+  background: #f5f7fa !important;
+}
+
+.calculator-page.theme-light .unified-trigger:hover {
+  border-color: #c9a55c !important;
+  background: #fff8eb !important;
+}
+
+.calculator-page.theme-light .unified-trigger .trigger-label {
+  color: #8a6a2b !important;
+}
+
+.calculator-page.theme-light .unified-trigger .trigger-hint {
+  color: #667085 !important;
+}
+
+/*
+ * TeamBuilderSection.vue — 音擎已选/未选展示条
+ * 这些元素历史上由 EquipPickerModal 渲染（自带 light 覆盖），
+ * 改成组件自渲染后，scoped style 只有暗色默认值，需补 light 覆盖。
+ */
+.calculator-page.theme-light .wengine-selected-bar {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+}
+
+.calculator-page.theme-light .wengine-selected-bar .wengine-bar-name {
+  color: #1c212a !important;
+}
+
+.calculator-page.theme-light .wengine-selected-bar .wengine-bar-hint {
+  color: #667085 !important;
+}
+
+.calculator-page.theme-light .wengine-none-bar {
+  border-color: #d5dae3 !important;
+  background: #f5f7fa !important;
+  color: #667085 !important;
+}
+
+.calculator-page.theme-light .wengine-none-bar .wengine-bar-hint {
+  color: #98a2b3 !important;
+}
+
+/*
+ * DriveDiscPickerSection.vue — 驱动盘已选/未选展示条
+ * 同上，原本由 EquipPickerModal 渲染。
+ */
+.calculator-page.theme-light .disc-selected-bar {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+}
+
+.calculator-page.theme-light .disc-selected-bar .disc-bar-name {
+  color: #1c212a !important;
+}
+
+.calculator-page.theme-light .disc-none-bar {
+  border-color: #d5dae3 !important;
+  background: #f5f7fa !important;
+  color: #667085 !important;
+}
+
+/*
+ * DriveDiscPickerSection.vue — 团队驱动盘注释（team-disc-notes）
+ * 暗色默认是金黄渐变，light 模式改为浅金调以保持识别性但不过分。
+ */
+.calculator-page.theme-light .team-disc-notes {
+  border-color: #e6d7b0 !important;
+  background: #fff8eb !important;
+}
+
+.calculator-page.theme-light .team-disc-notes h4 {
+  color: #5c4818 !important;
+}
+
+.calculator-page.theme-light .disc-note-item + .disc-note-item {
+  border-top-color: #f0e3c4 !important;
+}
+
+.calculator-page.theme-light .disc-note-item strong {
+  color: #5c4818 !important;
+}
+
+.calculator-page.theme-light .disc-note-item p {
+  color: #344054 !important;
 }

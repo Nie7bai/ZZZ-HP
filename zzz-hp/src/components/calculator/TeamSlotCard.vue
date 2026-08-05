@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
-import type { AgentBuffDoc } from '@/types/calculator'
+import type { AgentBuffDoc, DriveDiscBuffDoc, WengineBuffDoc } from '@/types/calculator'
 
 defineProps<{
   index: number
   slot: TeamSlot
   agent?: AgentBuffDoc
-  wengineName?: string
-  driveDiscSummary?: string
+  wengine?: WengineBuffDoc
+  twoPieceDisc?: DriveDiscBuffDoc
+  fourPieceDisc?: DriveDiscBuffDoc
   isActive: boolean
 }>()
 
@@ -17,6 +18,7 @@ const emit = defineEmits<{
   remove: []
   toggleMainC: []
   'update:rank': [value: number]
+  'update:refine': [value: number]
 }>()
 </script>
 
@@ -40,6 +42,7 @@ const emit = defineEmits<{
       </header>
 
       <div class="rank-row" @click.stop>
+        <span class="row-label">影画</span>
         <input
           class="rank-slider"
           type="range"
@@ -52,16 +55,45 @@ const emit = defineEmits<{
         <span class="rank-label">{{ slot.rank }}影</span>
       </div>
 
-      <div class="wengine-box">
-        <p class="wengine-title">音擎</p>
-        <p class="wengine-hint">
-          {{ wengineName ? `已选：${wengineName}` : '请从下方选择音擎' }}
-        </p>
+      <div class="gear-row" @click.stop>
+        <CalculatorAvatar class="gear-avatar" :avatar-image="wengine?.avatar_image" :name="wengine?.name ?? '未佩戴'" />
+        <div class="gear-info">
+          <div class="gear-name">
+            <span class="gear-tag">音擎</span>
+            <span>{{ wengine ? wengine.name : '未佩戴' }}</span>
+          </div>
+          <div class="refine-row">
+            <span class="row-label">精炼</span>
+            <input
+              class="rank-slider"
+              type="range"
+              min="1"
+              max="5"
+              step="1"
+              :value="slot.wengineRefine"
+              :disabled="!wengine || wengine.id === 'none'"
+              @input="emit('update:refine', Number(($event.target as HTMLInputElement).value))"
+            />
+            <span class="rank-label">精{{ wengine ? slot.wengineRefine : '-' }}</span>
+          </div>
+        </div>
       </div>
 
-      <div class="wengine-box drive-disc-box">
-        <p class="wengine-title">驱动盘</p>
-        <p class="wengine-hint">{{ driveDiscSummary ?? '未选择' }}</p>
+      <div class="disc-row" @click.stop>
+        <div class="disc-item">
+          <CalculatorAvatar class="gear-avatar" :avatar-image="fourPieceDisc?.avatar_image" :name="fourPieceDisc?.name ?? '4件'" />
+          <div class="disc-text">
+            <span class="disc-tag">4件套</span>
+            <span class="disc-name">{{ fourPieceDisc ? fourPieceDisc.name : '未选' }}</span>
+          </div>
+        </div>
+        <div class="disc-item">
+          <CalculatorAvatar class="gear-avatar" :avatar-image="twoPieceDisc?.avatar_image" :name="twoPieceDisc?.name ?? '2件'" />
+          <div class="disc-text">
+            <span class="disc-tag">2件套</span>
+            <span class="disc-name">{{ twoPieceDisc ? twoPieceDisc.name : '未选' }}</span>
+          </div>
+        </div>
       </div>
 
       <footer class="slot-footer" @click.stop>
@@ -76,25 +108,25 @@ const emit = defineEmits<{
 
     <template v-else>
       <p class="empty-title">槽位 {{ index + 1 }}</p>
-      <p class="empty-hint">请从下方选择代理人。</p>
+      <p class="empty-hint">请点击下方「导入」选择代理人。</p>
     </template>
   </article>
 </template>
 
 <style scoped>
 .slot-card {
-  min-height: 260px;
+  min-height: 320px;
   border: 1px solid #3a342c;
   border-radius: 14px;
   background: linear-gradient(180deg, #1a1714 0%, #14120f 100%);
-  padding: 0.85rem;
+  padding: 1rem;
   cursor: pointer;
   transition:
     border-color 0.2s,
     box-shadow 0.2s;
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: 0.7rem;
 }
 
 .slot-card.active {
@@ -109,13 +141,14 @@ const emit = defineEmits<{
 .slot-header {
   display: grid;
   grid-template-columns: auto 1fr auto;
-  gap: 0.55rem;
+  gap: 0.6rem;
   align-items: center;
 }
 
 .slot-avatar :deep(.calculator-avatar) {
-  width: 52px;
-  height: 52px;
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
 }
 
 .slot-meta {
@@ -126,7 +159,7 @@ const emit = defineEmits<{
 }
 
 .slot-meta strong {
-  font-size: 1rem;
+  font-size: 1.05rem;
   color: #f2ead8;
 }
 
@@ -137,12 +170,14 @@ const emit = defineEmits<{
 
 .slot-badges {
   display: flex;
-  gap: 0.3rem;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: flex-end;
 }
 
 .badge {
   min-width: 24px;
-  height: 24px;
+  height: 22px;
   padding: 0 0.4rem;
   border-radius: 6px;
   border: 1px solid #4a4033;
@@ -164,10 +199,17 @@ const emit = defineEmits<{
   background: #1d2430;
 }
 
-.rank-row {
+.rank-row,
+.gear-row {
   display: flex;
   align-items: center;
   gap: 0.55rem;
+}
+
+.row-label {
+  font-size: 0.76rem;
+  color: #c9a55c;
+  min-width: 2rem;
 }
 
 .rank-slider {
@@ -175,34 +217,107 @@ const emit = defineEmits<{
   accent-color: #c9a55c;
 }
 
+.rank-slider:disabled {
+  opacity: 0.45;
+}
+
 .rank-label {
-  min-width: 2.4rem;
+  min-width: 2.6rem;
   text-align: right;
   font-size: 0.82rem;
   color: #d8c39a;
 }
 
-.wengine-box {
+.gear-row {
+  padding: 0.55rem 0.6rem;
   border: 1px solid #2f2a24;
   border-radius: 10px;
   background: #10100e;
-  padding: 0.55rem 0.65rem;
 }
 
-.wengine-title {
-  margin: 0;
-  font-size: 0.78rem;
+.gear-avatar :deep(.calculator-avatar) {
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+}
+
+.gear-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.gear-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.84rem;
+  color: #e4e8ef;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gear-tag {
+  flex-shrink: 0;
+  font-size: 0.68rem;
   color: #c9a55c;
+  border: 1px solid #4a4033;
+  border-radius: 5px;
+  padding: 0.05rem 0.35rem;
 }
 
-.wengine-hint {
-  margin: 0.25rem 0 0;
-  font-size: 0.76rem;
-  color: #8f8678;
+.refine-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.disc-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+}
+
+.disc-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid #2f2a24;
+  border-radius: 10px;
+  background: #10100e;
+  min-width: 0;
+}
+
+.disc-text {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  font-size: 0.84rem;
+  color: #e4e8ef;
+}
+
+.disc-tag {
+  flex-shrink: 0;
+  font-size: 0.66rem;
+  color: #c9a55c;
+  border: 1px solid #4a4033;
+  border-radius: 5px;
+  padding: 0.05rem 0.3rem;
+}
+
+.disc-name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .slot-footer {
-  margin-top: auto;
   display: flex;
   align-items: center;
   gap: 0.55rem;
@@ -258,27 +373,17 @@ const emit = defineEmits<{
 @media (max-width: 768px) {
   .slot-card {
     min-height: 0;
-    padding: 0.7rem;
-    gap: 0.55rem;
-  }
-
-  .slot-header {
-    grid-template-columns: auto 1fr;
-    align-items: start;
-  }
-
-  .slot-badges {
-    grid-column: 1 / -1;
-    flex-wrap: wrap;
+    padding: 0.8rem;
+    gap: 0.6rem;
   }
 
   .slot-avatar :deep(.calculator-avatar) {
-    width: 46px;
-    height: 46px;
+    width: 56px;
+    height: 56px;
   }
 
   .slot-meta strong {
-    font-size: 0.92rem;
+    font-size: 0.98rem;
   }
 
   .slot-footer {

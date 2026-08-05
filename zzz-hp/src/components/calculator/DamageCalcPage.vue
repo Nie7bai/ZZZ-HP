@@ -5,7 +5,6 @@ import BangbooPickerSection from '@/components/calculator/BangbooPickerSection.v
 import BuffEffectPickerModal from '@/components/calculator/BuffEffectPickerModal.vue'
 import DamageCalcHistorySection from '@/components/calculator/DamageCalcHistorySection.vue'
 import DamageEventModeModal from '@/components/calculator/DamageEventModeModal.vue'
-import DriveDiscPickerSection from '@/components/calculator/DriveDiscPickerSection.vue'
 import OptimalAffixAllocSection from '@/components/calculator/OptimalAffixAllocSection.vue'
 import PanelCalcSection from '@/components/calculator/PanelCalcSection.vue'
 import type { ExtraBuffGain } from '@/components/calculator/ExtraBuffGainEditor.vue'
@@ -751,14 +750,6 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       @clear-slot="clearSlot"
       @toggle-main-c="toggleMainC"
       @select-wengine="selectWengine"
-    />
-
-    <DriveDiscPickerSection
-      :drive-discs="driveDiscs"
-      :agents="agents"
-      :team-slots="teamSlots"
-      :active-slot="activeSlot"
-      :active-agent="activeAgent"
     />
 
     <BangbooPickerSection

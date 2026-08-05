@@ -103,18 +103,16 @@ const selectableWengines = computed(() => props.wengines.filter((w) => w.id !== 
 const filteredWengines = computed(() => {
   const kw = wengineSearch.value.trim().toLowerCase()
   return selectableWengines.value.filter((w) => {
+    // off-spec 音擎直接隐藏（与所选代理人职业不匹配时不出现在候选列表里）
+    if (selectedAgent.value && !isWengineProfessionMatch(selectedAgent.value.profession, w.profession)) {
+      return false
+    }
     const byRarity = !wengineRarityFilter.value || w.rarity === wengineRarityFilter.value
     const byRole = !wengineRoleFilter.value || w.profession === wengineRoleFilter.value
     const byKw = !kw || w.name.includes(kw)
     return byRarity && byRole && byKw
   })
 })
-
-function isOffSpecWengine(w: WengineBuffDoc) {
-  const agent = selectedAgent.value
-  if (!agent) return false
-  return !isWengineProfessionMatch(agent.profession, w.profession)
-}
 
 const wengineChipGroups = computed(() => [
   {
@@ -217,17 +215,22 @@ const canConfirm = computed(() => !!selected.value.agentId)
 <template>
   <!-- Summary trigger button -->
   <button type="button" class="unified-trigger" @click="open = true">
-    <span class="trigger-label">快速导入</span>
-    <span class="trigger-hint">一次性完成角色/武器/驱动盘选择</span>
+    <span class="trigger-label">导入</span>
+    <span class="trigger-hint">选择角色/武器/驱动盘</span>
   </button>
 
   <!-- Modal -->
   <Teleport to="body">
-    <div v-if="open" class="unified-overlay" role="presentation" @click.self="open = false">
-      <div class="unified-modal" role="dialog" aria-modal="true" aria-label="快速导入预设">
+    <div
+      v-if="open"
+      class="unified-overlay"
+      role="presentation"
+      @click.self="open = false"
+    >
+      <div class="unified-modal" role="dialog" aria-modal="true" aria-label="导入预设">
         <!-- Header -->
         <header class="modal-header">
-          <h2>快速导入预设</h2>
+          <h2>导入预设</h2>
           <button type="button" class="close-btn" aria-label="关闭" @click="open = false">&times;</button>
         </header>
 
@@ -261,178 +264,189 @@ const canConfirm = computed(() => !!selected.value.agentId)
 
         <!-- Tab: Agent -->
         <div v-if="activeTab === 'agent'" class="tab-panel">
-          <div class="tab-toolbar">
-            <input v-model="agentSearch" type="search" class="search" placeholder="搜索代理人…" />
-          </div>
-          <div v-for="group in agentChipGroups" :key="group.label" class="chip-group">
-            <p class="chip-group-label">{{ group.label }}</p>
-            <div class="chip-row">
-              <button
-                v-for="chip in group.chips"
-                :key="chip.id"
-                type="button"
-                class="chip"
-                :class="{ active: chip.active }"
-                @click="onAgentChip(chip.id)"
-              >
-                {{ chip.label }}
-              </button>
+          <div class="tab-filters">
+            <div class="tab-toolbar">
+              <input v-model="agentSearch" type="search" class="search" placeholder="搜索代理人…" />
+            </div>
+            <div v-for="group in agentChipGroups" :key="group.label" class="chip-group">
+              <p class="chip-group-label">{{ group.label }}</p>
+              <div class="chip-row">
+                <button
+                  v-for="chip in group.chips"
+                  :key="chip.id"
+                  type="button"
+                  class="chip"
+                  :class="{ active: chip.active }"
+                  @click="onAgentChip(chip.id)"
+                >
+                  {{ chip.label }}
+                </button>
+              </div>
+            </div>
+            <!-- Rank selector (always rendered; visibility hidden when no agent to hold row height) -->
+            <div class="rank-bar" :class="{ 'rank-bar-hidden': !selectedAgent }">
+              <span class="rank-label">{{ selectedAgent ? selectedAgent.name + ' · ' : '' }}影画</span>
+              <input
+                type="range"
+                min="0"
+                max="6"
+                step="1"
+                class="rank-slider"
+                :value="selected.rank"
+                @input="selected.rank = Number(($event.target as HTMLInputElement).value)"
+              />
+              <span class="rank-badge">{{ selected.rank }}影</span>
             </div>
           </div>
-          <!-- Agent grid -->
-          <div class="item-grid">
-            <button
-              v-for="item in filteredAgents"
-              :key="item.id"
-              type="button"
-              class="item-cell"
-              :class="{ active: selected.agentId === item.id }"
-              @click="pickAgent(item.id)"
-            >
-              <CalculatorAvatar class="item-avatar" :avatar-image="item.avatar_image" :name="item.name" />
-              <span class="item-name">{{ item.name }}</span>
-            </button>
-          </div>
-          <p v-if="!filteredAgents.length" class="empty-hint">无匹配角色</p>
-          <!-- Rank selector -->
-          <div v-if="selectedAgent" class="rank-bar">
-            <span class="rank-label">{{ selectedAgent.name }} · 影画</span>
-            <input
-              type="range"
-              min="0"
-              max="6"
-              step="1"
-              class="rank-slider"
-              :value="selected.rank"
-              @input="selected.rank = Number(($event.target as HTMLInputElement).value)"
-            />
-            <span class="rank-badge">{{ selected.rank }}影</span>
+          <div class="tab-grid-wrap">
+            <div class="item-grid">
+              <button
+                v-for="item in filteredAgents"
+                :key="item.id"
+                type="button"
+                class="item-cell"
+                :class="{ active: selected.agentId === item.id }"
+                @click="pickAgent(item.id)"
+              >
+                <CalculatorAvatar class="item-avatar" :avatar-image="item.avatar_image" :name="item.name" />
+                <span class="item-name">{{ item.name }}</span>
+              </button>
+            </div>
+            <p v-if="!filteredAgents.length" class="empty-hint">无匹配角色</p>
           </div>
         </div>
 
         <!-- Tab: Wengine -->
         <div v-if="activeTab === 'wengine'" class="tab-panel">
-          <div class="tab-toolbar">
-            <input v-model="wengineSearch" type="search" class="search" placeholder="搜索音擎…" />
-          </div>
-          <div v-for="group in wengineChipGroups" :key="group.label" class="chip-group">
-            <p class="chip-group-label">{{ group.label }}</p>
-            <div class="chip-row">
-              <button
-                v-for="chip in group.chips"
-                :key="chip.id"
-                type="button"
-                class="chip"
-                :class="{ active: chip.active, highlight: chip.highlight }"
-                @click="onWengineChip(chip.id)"
-              >
-                {{ chip.label }}
-              </button>
+          <div class="tab-filters">
+            <div class="tab-toolbar">
+              <input v-model="wengineSearch" type="search" class="search" placeholder="搜索音擎…" />
+            </div>
+            <div v-for="group in wengineChipGroups" :key="group.label" class="chip-group">
+              <p class="chip-group-label">{{ group.label }}</p>
+              <div class="chip-row">
+                <button
+                  v-for="chip in group.chips"
+                  :key="chip.id"
+                  type="button"
+                  class="chip"
+                  :class="{ active: chip.active, highlight: chip.highlight }"
+                  @click="onWengineChip(chip.id)"
+                >
+                  {{ chip.label }}
+                </button>
+              </div>
+            </div>
+            <!-- Refine selector (always rendered; visibility hidden when no wengine) -->
+            <div class="rank-bar" :class="{ 'rank-bar-hidden': !selectedWengine || selectedWengine.id === 'none' }">
+              <span class="rank-label">{{ selectedWengine && selectedWengine.id !== 'none' ? selectedWengine.name + ' · ' : '' }}精炼</span>
+              <input
+                type="range"
+                min="1"
+                max="5"
+                step="1"
+                class="rank-slider"
+                :value="selected.wengineRefine"
+                @input="selected.wengineRefine = Number(($event.target as HTMLInputElement).value)"
+              />
+              <span class="rank-badge">精{{ selected.wengineRefine }}</span>
             </div>
           </div>
-          <div class="item-grid">
-            <button
-              type="button"
-              class="item-cell"
-              :class="{ active: !selected.wengineId || selected.wengineId === 'none' }"
-              @click="pickWengine('none')"
-            >
-              <span class="item-placeholder">—</span>
-              <span class="item-name">不佩戴</span>
-            </button>
-            <button
-              v-for="item in filteredWengines"
-              :key="item.id"
-              type="button"
-              class="item-cell"
-              :class="{ active: selected.wengineId === item.id, 'off-spec': isOffSpecWengine(item) }"
-              @click="pickWengine(item.id)"
-            >
-              <CalculatorAvatar class="item-avatar" :avatar-image="item.avatar_image" :name="item.name" />
-              <span class="item-name">{{ item.name }}</span>
-            </button>
-          </div>
-          <p v-if="!filteredWengines.length" class="empty-hint">无匹配音擎</p>
-          <!-- Refine selector -->
-          <div v-if="selectedWengine && selectedWengine.id !== 'none'" class="rank-bar">
-            <span class="rank-label">{{ selectedWengine.name }} · 精炼</span>
-            <input
-              type="range"
-              min="1"
-              max="5"
-              step="1"
-              class="rank-slider"
-              :value="selected.wengineRefine"
-              @input="selected.wengineRefine = Number(($event.target as HTMLInputElement).value)"
-            />
-            <span class="rank-badge">精{{ selected.wengineRefine }}</span>
+          <div class="tab-grid-wrap">
+            <div class="item-grid">
+              <button
+                type="button"
+                class="item-cell"
+                :class="{ active: !selected.wengineId || selected.wengineId === 'none' }"
+                @click="pickWengine('none')"
+              >
+                <span class="item-placeholder">—</span>
+                <span class="item-name">不佩戴</span>
+              </button>
+              <button
+                v-for="item in filteredWengines"
+                :key="item.id"
+                type="button"
+                class="item-cell"
+                :class="{ active: selected.wengineId === item.id }"
+                @click="pickWengine(item.id)"
+              >
+                <CalculatorAvatar class="item-avatar" :avatar-image="item.avatar_image" :name="item.name" />
+                <span class="item-name">{{ item.name }}</span>
+              </button>
+            </div>
+            <p v-if="!filteredWengines.length" class="empty-hint">无匹配音擎</p>
           </div>
         </div>
 
         <!-- Tab: Drive Discs -->
         <div v-if="activeTab === 'disc'" class="tab-panel">
-          <div class="tab-toolbar">
-            <input v-model="discSearch" type="search" class="search" placeholder="搜索驱动盘…" />
-          </div>
-          <div class="disc-stack">
-            <div class="disc-col">
-              <header class="disc-col-header">
-                <h3>4 件套</h3>
-                <p>含该套装 2 件套效果</p>
-              </header>
-              <div class="item-grid">
-                <button
-                  type="button"
-                  class="item-cell"
-                  :class="{ active: !selected.fourPieceId || selected.fourPieceId === 'none' }"
-                  @click="pickFourPiece('none')"
-                >
-                  <span class="item-placeholder">—</span>
-                  <span class="item-name">不佩戴</span>
-                </button>
-                <button
-                  v-for="item in filteredDiscs"
-                  :key="item.id"
-                  type="button"
-                  class="item-cell"
-                  :class="{ active: selected.fourPieceId === item.id }"
-                  @click="pickFourPiece(item.id)"
-                >
-                  <CalculatorAvatar class="item-avatar" :avatar-image="item.avatar_image" :name="item.name" />
-                  <span class="item-name">{{ item.name }}</span>
-                </button>
-              </div>
-            </div>
-            <div class="disc-col">
-              <header class="disc-col-header">
-                <h3>2 件套</h3>
-                <p>额外 2 件套套装；与 4 件套同套时不重复计入</p>
-              </header>
-              <div class="item-grid">
-                <button
-                  type="button"
-                  class="item-cell"
-                  :class="{ active: !selected.twoPieceId || selected.twoPieceId === 'none' }"
-                  @click="pickTwoPiece('none')"
-                >
-                  <span class="item-placeholder">—</span>
-                  <span class="item-name">不佩戴</span>
-                </button>
-                <button
-                  v-for="item in filteredDiscs"
-                  :key="item.id"
-                  type="button"
-                  class="item-cell"
-                  :class="{ active: selected.twoPieceId === item.id }"
-                  @click="pickTwoPiece(item.id)"
-                >
-                  <CalculatorAvatar class="item-avatar" :avatar-image="item.avatar_image" :name="item.name" />
-                  <span class="item-name">{{ item.name }}</span>
-                </button>
-              </div>
+          <div class="tab-filters">
+            <div class="tab-toolbar">
+              <input v-model="discSearch" type="search" class="search" placeholder="搜索驱动盘…" />
             </div>
           </div>
-          <p v-if="!filteredDiscs.length" class="empty-hint">无匹配驱动盘</p>
+          <div class="tab-grid-wrap">
+            <div class="disc-stack">
+              <div class="disc-col">
+                <header class="disc-col-header">
+                  <h3>4 件套</h3>
+                  <p>含该套装 2 件套效果</p>
+                </header>
+                <div class="item-grid">
+                  <button
+                    type="button"
+                    class="item-cell"
+                    :class="{ active: !selected.fourPieceId || selected.fourPieceId === 'none' }"
+                    @click="pickFourPiece('none')"
+                  >
+                    <span class="item-placeholder">—</span>
+                    <span class="item-name">不佩戴</span>
+                  </button>
+                  <button
+                    v-for="item in filteredDiscs"
+                    :key="item.id"
+                    type="button"
+                    class="item-cell"
+                    :class="{ active: selected.fourPieceId === item.id }"
+                    @click="pickFourPiece(item.id)"
+                  >
+                    <CalculatorAvatar class="item-avatar" :avatar-image="item.avatar_image" :name="item.name" />
+                    <span class="item-name">{{ item.name }}</span>
+                  </button>
+                </div>
+              </div>
+              <div class="disc-col">
+                <header class="disc-col-header">
+                  <h3>2 件套</h3>
+                  <p>额外 2 件套套装；与 4 件套同套时不重复计入</p>
+                </header>
+                <div class="item-grid">
+                  <button
+                    type="button"
+                    class="item-cell"
+                    :class="{ active: !selected.twoPieceId || selected.twoPieceId === 'none' }"
+                    @click="pickTwoPiece('none')"
+                  >
+                    <span class="item-placeholder">—</span>
+                    <span class="item-name">不佩戴</span>
+                  </button>
+                  <button
+                    v-for="item in filteredDiscs"
+                    :key="item.id"
+                    type="button"
+                    class="item-cell"
+                    :class="{ active: selected.twoPieceId === item.id }"
+                    @click="pickTwoPiece(item.id)"
+                  >
+                    <CalculatorAvatar class="item-avatar" :avatar-image="item.avatar_image" :name="item.name" />
+                    <span class="item-name">{{ item.name }}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <p v-if="!filteredDiscs.length" class="empty-hint">无匹配驱动盘</p>
+          </div>
         </div>
 
         <!-- Bottom bar -->
@@ -454,7 +468,7 @@ const canConfirm = computed(() => !!selected.value.agentId)
 </template>
 
 <style scoped>
-/* Modal overlay */
+/* === Layout + dark default === */
 .unified-overlay {
   position: fixed;
   inset: 0;
@@ -466,17 +480,18 @@ const canConfirm = computed(() => !!selected.value.agentId)
 }
 
 .unified-modal {
-  width: 720px;
-  height: 600px;
+  width: 1100px;
+  height: 780px;
   max-width: calc(100vw - 2rem);
   max-height: calc(100vh - 2rem);
-  border: 1px solid #d5dae3;
-  border-radius: 12px;
-  background: #ffffff;
-  color: #1c212a;
+  border: 1px solid #2d323a;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #171a1f 0%, #12151a 100%);
+  color: #e4e8ef;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 12px 36px rgba(16, 24, 40, 0.18);
+  overflow: hidden;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
 }
 
 .modal-header {
@@ -484,34 +499,33 @@ const canConfirm = computed(() => !!selected.value.agentId)
   align-items: center;
   justify-content: space-between;
   padding: 0.85rem 1rem;
-  border-bottom: 1px solid #e6e9ef;
+  border-bottom: 1px solid #2d323a;
   flex-shrink: 0;
 }
 
 .modal-header h2 {
   margin: 0;
   font-size: 1rem;
-  color: #1c212a;
+  color: #f0f2f6;
 }
 
 .close-btn {
   border: none;
   background: transparent;
-  color: #667085;
+  color: #9aa3b0;
   font-size: 1.4rem;
   line-height: 1;
   cursor: pointer;
 }
 
 .close-btn:hover {
-  color: #1c212a;
+  color: #f0f2f6;
 }
 
-/* Tab bar */
 .tab-bar {
   display: flex;
   gap: 0;
-  border-bottom: 1px solid #e6e9ef;
+  border-bottom: 1px solid #2d323a;
   flex-shrink: 0;
 }
 
@@ -520,7 +534,7 @@ const canConfirm = computed(() => !!selected.value.agentId)
   padding: 0.55rem 0.75rem;
   border: none;
   background: transparent;
-  color: #667085;
+  color: #9aa3b0;
   font-size: 0.88rem;
   font-weight: 600;
   cursor: pointer;
@@ -543,26 +557,42 @@ const canConfirm = computed(() => !!selected.value.agentId)
   font-size: 0.75rem;
 }
 
-/* Tab panel */
+/* Tab panel: split into fixed top (filters) + scrollable bottom (grid) */
 .tab-panel {
-  padding: 0.75rem 1rem;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+}
+
+.tab-filters {
+  flex-shrink: 0;
+  padding: 0.95rem 1.1rem 0.7rem;
+  border-bottom: 1px solid #2d323a;
+}
+
+.tab-grid-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 0.85rem 1rem 1rem;
 }
 
 .tab-toolbar {
-  margin-bottom: 0.65rem;
+  margin-bottom: 0.55rem;
 }
 
 .search {
   width: 100%;
-  border: 1px solid #d5dae3;
+  border: 1px solid #343a44;
   border-radius: 8px;
-  background: #ffffff;
-  color: #1c212a;
-  padding: 0.5rem 0.7rem;
-  font-size: 0.86rem;
+  background: #0f1217;
+  color: #edf0f5;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.92rem;
 }
 
 .search:focus {
@@ -571,13 +601,13 @@ const canConfirm = computed(() => !!selected.value.agentId)
 }
 
 .chip-group {
-  margin-bottom: 0.65rem;
+  margin-bottom: 0.5rem;
 }
 
 .chip-group-label {
-  margin: 0 0 0.3rem;
+  margin: 0 0 0.25rem;
   font-size: 0.74rem;
-  color: #667085;
+  color: #9aa3b0;
 }
 
 .chip-row {
@@ -587,122 +617,136 @@ const canConfirm = computed(() => !!selected.value.agentId)
 }
 
 .chip {
-  border: 1px solid #d5dae3;
+  border: 1px solid #343a44;
   border-radius: 999px;
-  background: #ffffff;
-  color: #495867;
-  padding: 0.22rem 0.65rem;
-  font-size: 0.76rem;
+  background: #12161d;
+  color: #d5dae4;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.82rem;
+  line-height: 1;
   cursor: pointer;
 }
 
 .chip.active,
 .chip.highlight {
   border-color: #c9a55c;
-  background: #fff8eb;
-  color: #c9a55c;
+  background: rgba(201, 165, 92, 0.14);
+  color: #f0d7a2;
 }
 
-/* Item grid */
-.item-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
-  gap: 0.4rem;
-}
-
-.item-cell {
-  border: 1px solid #e6e9ef;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #1c212a;
-  padding: 0.4rem 0.3rem 0.3rem;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.item-cell.active {
-  border-color: #c9a55c;
-  background: #fff8eb;
-}
-
-.item-cell.off-spec {
-  opacity: 0.6;
-}
-
-.item-avatar :deep(.calculator-avatar) {
-  width: 50px;
-  height: 50px;
-  border-radius: 8px;
-}
-
-.item-placeholder {
-  width: 50px;
-  height: 50px;
-  display: grid;
-  place-items: center;
-  border-radius: 8px;
-  background: #f5f7fa;
-  color: #97a0ad;
-  font-size: 1.1rem;
-}
-
-.item-name {
-  font-size: 0.7rem;
-  text-align: center;
-  line-height: 1.2;
-}
-
-.empty-hint {
-  margin: 0.6rem 0 0;
-  font-size: 0.78rem;
-  color: #97a0ad;
-  text-align: center;
-}
-
-/* Rank / Refine bar */
+/* Rank / Refine bar (now in top-fixed area, always visible) */
 .rank-bar {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0.65rem;
-  margin-top: 0.85rem;
-  padding: 0.55rem 0.85rem;
-  border: 1px solid #e6e9ef;
+  gap: 0.55rem;
+  margin-top: 0.2rem;
+  margin-bottom: 0.2rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid #34302a;
   border-radius: 8px;
-  background: #f6f8fb;
+  background: #14120f;
+  width: auto;
+}
+
+.rank-bar-hidden {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .rank-label {
   font-size: 0.8rem;
-  color: #1c212a;
+  color: #d8c39a;
   font-weight: 600;
   white-space: nowrap;
 }
 
 .rank-slider {
-  flex: 1;
+  width: 110px;
   accent-color: #c9a55c;
 }
 
-.rank-badge {
-  min-width: 2.6rem;
-  text-align: center;
-  border: 1px solid #d5dae3;
-  border-radius: 999px;
-  padding: 0.18rem 0.5rem;
-  font-size: 0.76rem;
-  color: #c9a55c;
-  font-weight: 600;
-  background: #ffffff;
+.rank-slider:disabled {
+  opacity: 0.4;
 }
 
-/* Disc stacked layout (4 + 2 in single column, dev-style) */
+.rank-badge {
+  min-width: 2.4rem;
+  text-align: center;
+  border: 1px solid #5a4a31;
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.76rem;
+  color: #d8c39a;
+  font-weight: 600;
+  background: #1a1510;
+}
+
+/* Item grid (scrollable) */
+.item-grid {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 0.6rem;
+}
+
+.item-cell {
+  border: 1px solid #2d323a;
+  border-radius: 10px;
+  background: #10141a;
+  color: #e4e8ef;
+  padding: 0.7rem 0.4rem 0.55rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.4rem;
+}
+
+.item-cell.active {
+  border-color: #c9a55c;
+  background: rgba(201, 165, 92, 0.08);
+}
+
+.item-avatar :deep(.calculator-avatar) {
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+}
+
+.item-placeholder {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: #1a1f27;
+  color: #7d8796;
+  font-size: 0.75rem;
+}
+
+.item-name {
+  font-size: 0.85rem;
+  text-align: center;
+  line-height: 1.2;
+  max-width: 100px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.empty-hint {
+  margin: 0.6rem 0 0;
+  font-size: 0.78rem;
+  color: #9aa3b0;
+  text-align: center;
+}
+
+/* Disc tab stack */
 .disc-stack {
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: 0.95rem;
 }
 
 .disc-col-header {
@@ -711,27 +755,26 @@ const canConfirm = computed(() => !!selected.value.agentId)
 
 .disc-col-header h3 {
   margin: 0;
-  font-size: 0.88rem;
-  color: #1c212a;
+  font-size: 0.9rem;
+  color: #f0f2f6;
   font-weight: 700;
 }
 
 .disc-col-header p {
   margin: 0.18rem 0 0;
   font-size: 0.72rem;
-  color: #667085;
+  color: #9aa3b0;
 }
 
-/* Footer */
 .modal-footer {
-  border-top: 1px solid #e6e9ef;
+  border-top: 1px solid #2d323a;
   padding: 0.65rem 1rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
   flex-shrink: 0;
-  background: #f6f8fb;
+  background: #14171d;
 }
 
 .footer-summary {
@@ -748,8 +791,8 @@ const canConfirm = computed(() => !!selected.value.agentId)
 
 .summary-text {
   margin: 0;
-  font-size: 0.78rem;
-  color: #1c212a;
+  font-size: 0.8rem;
+  color: #d5dae4;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -763,24 +806,24 @@ const canConfirm = computed(() => !!selected.value.agentId)
 
 .cancel-btn {
   padding: 0.42rem 1rem;
-  border: 1px solid #d5dae3;
+  border: 1px solid #3a3e47;
   border-radius: 8px;
-  background: #ffffff;
-  color: #495867;
+  background: #12161d;
+  color: #d5dae4;
   font-size: 0.84rem;
   cursor: pointer;
 }
 
 .cancel-btn:hover {
-  background: #f6f8fb;
+  background: #1a1f27;
 }
 
 .confirm-btn {
   padding: 0.42rem 1.25rem;
   border: none;
   border-radius: 8px;
-  background: #c9a55c;
-  color: #ffffff;
+  background: linear-gradient(180deg, #c9a55c 0%, #a8863e 100%);
+  color: #1a1510;
   font-size: 0.84rem;
   font-weight: 700;
   cursor: pointer;
@@ -792,10 +835,9 @@ const canConfirm = computed(() => !!selected.value.agentId)
 }
 
 .confirm-btn:not(:disabled):hover {
-  background: #b8964e;
+  background: linear-gradient(180deg, #d8b56c 0%, #b8964e 100%);
 }
 
-/* Trigger button (light theme) */
 .unified-trigger {
   display: flex;
   align-items: center;
@@ -803,9 +845,9 @@ const canConfirm = computed(() => !!selected.value.agentId)
   gap: 0.65rem;
   width: 100%;
   padding: 0.65rem 1rem;
-  border: 1px dashed #c9a55c;
+  border: 1px dashed #3a3e47;
   border-radius: 12px;
-  background: #fff8eb;
+  background: #12161d;
   cursor: pointer;
   font: inherit;
   transition:
@@ -814,8 +856,8 @@ const canConfirm = computed(() => !!selected.value.agentId)
 }
 
 .unified-trigger:hover {
-  border-color: #b8964e;
-  background: #fff4dd;
+  border-color: #c9a55c;
+  background: #1a1f27;
 }
 
 .trigger-label {
@@ -826,7 +868,7 @@ const canConfirm = computed(() => !!selected.value.agentId)
 
 .trigger-hint {
   font-size: 0.78rem;
-  color: #667085;
+  color: #9aa3b0;
 }
 
 /* Responsive */

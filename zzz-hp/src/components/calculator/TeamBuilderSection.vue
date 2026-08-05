@@ -1,11 +1,9 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
+import { computed } from 'vue'
 import UnifiedPresetPicker from '@/components/calculator/UnifiedPresetPicker.vue'
 import TeamSlotCard from '@/components/calculator/TeamSlotCard.vue'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
 import type { AgentBuffDoc, DriveDiscBuffDoc, WengineBuffDoc } from '@/types/calculator'
-import { isWengineProfessionMatch } from '@/utils/calculatorUi'
 
 const props = defineProps<{
   agents: AgentBuffDoc[]
@@ -26,36 +24,18 @@ const emit = defineEmits<{
 
 const activeSlotData = computed(() => props.teamSlots[props.activeSlot]!)
 
-const selectedWengine = computed(() =>
-  props.wengines.find((item) => item.id === activeSlotData.value.wengineId),
-)
-
-const wengineBuffsDisabled = computed(() => {
-  if (!props.activeAgent || !selectedWengine.value || selectedWengine.value.id === 'none') {
-    return false
-  }
-  return !isWengineProfessionMatch(props.activeAgent.profession, selectedWengine.value.profession)
-})
-
-function isOffSpecWengine(wengine: WengineBuffDoc) {
-  if (!props.activeAgent) return false
-  return !isWengineProfessionMatch(props.activeAgent.profession, wengine.profession)
+function wengineById(id: string) {
+  if (id === 'none') return undefined
+  return props.wengines.find((item) => item.id === id)
 }
 
-function toggleAgentRoleFilter(role: string) {
-  agentRoleFilter.value = agentRoleFilter.value === role ? '' : role
+function discById(id: string) {
+  if (id === 'none') return undefined
+  return props.driveDiscs.find((item) => item.id === id)
 }
 
-function toggleAgentElementFilter(element: string) {
-  agentElementFilter.value = agentElementFilter.value === element ? '' : element
-}
-
-function toggleWengineRoleFilter(role: string) {
-  wengineRoleFilter.value = wengineRoleFilter.value === role ? '' : role
-}
-
-function toggleWengineRarityFilter(rarity: string) {
-  wengineRarityFilter.value = wengineRarityFilter.value === rarity ? '' : rarity
+function agentById(id: string) {
+  return props.agents.find((item) => item.id === id)
 }
 
 function updateSlotRank(index: number, rank: number) {
@@ -64,38 +44,6 @@ function updateSlotRank(index: number, rank: number) {
 
 function updateSlotRefine(value: number) {
   activeSlotData.value.wengineRefine = value
-}
-
-function agentById(id: string) {
-  return props.agents.find((item) => item.id === id)
-}
-
-function wengineNameById(id: string) {
-  return props.wengines.find((item) => item.id === id)?.name
-}
-
-function driveDiscNameById(id: string) {
-  if (id === 'none') return undefined
-  return props.driveDiscs.find((item) => item.id === id)?.name
-}
-
-function driveDiscSummary(slot: TeamSlot) {
-  const fourName = driveDiscNameById(slot.fourPieceDriveDiscId)
-  const twoName = driveDiscNameById(slot.twoPieceDriveDiscId)
-  if (!fourName && !twoName) return '未选择'
-  const parts: string[] = []
-  if (fourName) parts.push(`4件：${fourName}`)
-  if (twoName && twoName !== fourName) parts.push(`2件：${twoName}`)
-  return parts.join(' · ')
-}
-
-const activeAgentDoc = computed(() =>
-  activeSlotData.value.agentId ? agentById(activeSlotData.value.agentId) : undefined,
-)
-
-function onWengineChip(id: string) {
-  if (id.startsWith('role-')) toggleWengineRoleFilter(id.slice(5))
-  else if (id.startsWith('rar-')) toggleWengineRarityFilter(id.slice(4))
 }
 </script>
 
@@ -113,13 +61,15 @@ function onWengineChip(id: string) {
         :index="index"
         :slot="slot"
         :agent="slot.agentId ? agentById(slot.agentId) : undefined"
-        :wengine-name="slot.wengineId !== 'none' ? wengineNameById(slot.wengineId) : undefined"
-        :drive-disc-summary="driveDiscSummary(slot)"
+        :wengine="slot.wengineId !== 'none' ? wengineById(slot.wengineId) : undefined"
+        :two-piece-disc="discById(slot.twoPieceDriveDiscId)"
+        :four-piece-disc="discById(slot.fourPieceDriveDiscId)"
         :is-active="activeSlot === index"
         @select="emit('selectSlot', index)"
         @remove="emit('clearSlot', index)"
         @toggle-main-c="emit('toggleMainC', index)"
         @update:rank="updateSlotRank(index, $event)"
+        @update:refine="updateSlotRefine($event)"
       />
     </div>
 
@@ -130,64 +80,6 @@ function onWengineChip(id: string) {
       :team-slots="teamSlots"
       :active-slot="activeSlot"
     />
-  </section>
-
-  <section id="damage-wengine" class="section-card wengine-section damage-anchor">
-    <header class="section-header">
-      <div>
-        <h2>音擎选择</h2>
-        <p class="section-desc">为当前槽位代理人选择音擎；可不佩戴</p>
-      </div>
-    </header>
-
-    <template v-if="activeAgent">
-      <div class="wengine-toolbar">
-        <div class="toolbar-left">
-          <CalculatorAvatar
-            class="toolbar-avatar"
-            :avatar-image="activeAgent.avatar_image"
-            :name="activeAgent.name"
-          />
-          <div>
-            <p class="editing-label">正在编辑槽位 {{ activeSlot + 1 }}</p>
-            <h3>{{ activeAgent.name }} | 全部音擎</h3>
-          </div>
-        </div>
-        <div class="refine-row">
-          <span>精</span>
-          <input
-            class="refine-slider"
-            type="range"
-            min="1"
-            max="5"
-            step="1"
-            :value="activeSlotData.wengineRefine"
-            @input="updateSlotRefine(Number(($event.target as HTMLInputElement).value))"
-          />
-          <span class="refine-badge">精{{ activeSlotData.wengineRefine }}</span>
-        </div>
-      </div>
-
-      <p v-if="wengineBuffsDisabled" class="off-spec-hint">
-        异职音擎：仅基础属性生效，音擎增益不生效
-      </p>
-
-      <div v-if="selectedWengine && selectedWengine.id !== 'none'" class="wengine-selected-bar">
-        <CalculatorAvatar
-          class="wengine-bar-avatar"
-          :avatar-image="selectedWengine.avatar_image"
-          :name="selectedWengine.name"
-        />
-        <span class="wengine-bar-name">{{ selectedWengine.name }} · 精{{ activeSlotData.wengineRefine }}</span>
-        <span class="wengine-bar-hint">已选择（可通过「快速导入」更改）</span>
-      </div>
-      <div v-else class="wengine-none-bar">
-        <span>未佩戴音擎</span>
-        <span class="wengine-bar-hint">可通过「快速导入」选择</span>
-      </div>
-    </template>
-
-    <p v-else class="empty-panel">请先选择代理人。选定代理人后，此处会显示完整音擎列表。</p>
   </section>
 </template>
 
