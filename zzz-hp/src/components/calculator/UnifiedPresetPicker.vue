@@ -374,35 +374,7 @@ const canConfirm = computed(() => !!selected.value.agentId)
           <div class="tab-toolbar">
             <input v-model="discSearch" type="search" class="search" placeholder="搜索驱动盘…" />
           </div>
-          <div class="disc-columns">
-            <div class="disc-col">
-              <header class="disc-col-header">
-                <h3>2 件套</h3>
-                <p>额外 2 件套套装；与 4 件套同套时不重复计入</p>
-              </header>
-              <div class="item-grid">
-                <button
-                  type="button"
-                  class="item-cell"
-                  :class="{ active: !selected.twoPieceId || selected.twoPieceId === 'none' }"
-                  @click="pickTwoPiece('none')"
-                >
-                  <span class="item-placeholder">—</span>
-                  <span class="item-name">不佩戴</span>
-                </button>
-                <button
-                  v-for="item in filteredDiscs"
-                  :key="item.id"
-                  type="button"
-                  class="item-cell"
-                  :class="{ active: selected.twoPieceId === item.id }"
-                  @click="pickTwoPiece(item.id)"
-                >
-                  <CalculatorAvatar class="item-avatar" :avatar-image="item.avatar_image" :name="item.name" />
-                  <span class="item-name">{{ item.name }}</span>
-                </button>
-              </div>
-            </div>
+          <div class="disc-stack">
             <div class="disc-col">
               <header class="disc-col-header">
                 <h3>4 件套</h3>
@@ -425,6 +397,34 @@ const canConfirm = computed(() => !!selected.value.agentId)
                   class="item-cell"
                   :class="{ active: selected.fourPieceId === item.id }"
                   @click="pickFourPiece(item.id)"
+                >
+                  <CalculatorAvatar class="item-avatar" :avatar-image="item.avatar_image" :name="item.name" />
+                  <span class="item-name">{{ item.name }}</span>
+                </button>
+              </div>
+            </div>
+            <div class="disc-col">
+              <header class="disc-col-header">
+                <h3>2 件套</h3>
+                <p>额外 2 件套套装；与 4 件套同套时不重复计入</p>
+              </header>
+              <div class="item-grid">
+                <button
+                  type="button"
+                  class="item-cell"
+                  :class="{ active: !selected.twoPieceId || selected.twoPieceId === 'none' }"
+                  @click="pickTwoPiece('none')"
+                >
+                  <span class="item-placeholder">—</span>
+                  <span class="item-name">不佩戴</span>
+                </button>
+                <button
+                  v-for="item in filteredDiscs"
+                  :key="item.id"
+                  type="button"
+                  class="item-cell"
+                  :class="{ active: selected.twoPieceId === item.id }"
+                  @click="pickTwoPiece(item.id)"
                 >
                   <CalculatorAvatar class="item-avatar" :avatar-image="item.avatar_image" :name="item.name" />
                   <span class="item-name">{{ item.name }}</span>
@@ -454,40 +454,6 @@ const canConfirm = computed(() => !!selected.value.agentId)
 </template>
 
 <style scoped>
-/* Trigger button */
-.unified-trigger {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.65rem;
-  width: 100%;
-  padding: 0.65rem 1rem;
-  border: 1px dashed #c9a55c;
-  border-radius: 12px;
-  background: linear-gradient(180deg, #1a1713 0%, #14110e 100%);
-  cursor: pointer;
-  font: inherit;
-  transition:
-    border-color 0.2s,
-    background-color 0.2s;
-}
-
-.unified-trigger:hover {
-  border-color: #e8b84c;
-  background: linear-gradient(180deg, #1f1b16 0%, #191510 100%);
-}
-
-.trigger-label {
-  font-size: 0.92rem;
-  font-weight: 700;
-  color: #e8b84c;
-}
-
-.trigger-hint {
-  font-size: 0.78rem;
-  color: #9aa3b0;
-}
-
 /* Modal overlay */
 .unified-overlay {
   position: fixed;
@@ -500,45 +466,52 @@ const canConfirm = computed(() => !!selected.value.agentId)
 }
 
 .unified-modal {
-  width: min(800px, 100%);
-  max-height: min(90vh, 780px);
-  overflow: auto;
-  border: 1px solid #2d323a;
-  border-radius: 14px;
-  background: linear-gradient(180deg, #171a1f 0%, #12151a 100%);
+  width: 720px;
+  height: 600px;
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100vh - 2rem);
+  border: 1px solid #d5dae3;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #1c212a;
   display: flex;
   flex-direction: column;
+  box-shadow: 0 12px 36px rgba(16, 24, 40, 0.18);
 }
 
 .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem 1rem 0;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid #e6e9ef;
   flex-shrink: 0;
 }
 
 .modal-header h2 {
   margin: 0;
-  font-size: 1.05rem;
-  color: #f0f2f6;
+  font-size: 1rem;
+  color: #1c212a;
 }
 
 .close-btn {
   border: none;
   background: transparent;
-  color: #9aa3b0;
+  color: #667085;
   font-size: 1.4rem;
   line-height: 1;
   cursor: pointer;
+}
+
+.close-btn:hover {
+  color: #1c212a;
 }
 
 /* Tab bar */
 .tab-bar {
   display: flex;
   gap: 0;
-  border-bottom: 2px solid #2d323a;
-  margin: 0.75rem 1rem 0;
+  border-bottom: 1px solid #e6e9ef;
   flex-shrink: 0;
 }
 
@@ -546,14 +519,14 @@ const canConfirm = computed(() => !!selected.value.agentId)
   flex: 1;
   padding: 0.55rem 0.75rem;
   border: none;
-  border-bottom: 2px solid transparent;
   background: transparent;
-  color: #9aa3b0;
+  color: #667085;
   font-size: 0.88rem;
   font-weight: 600;
   cursor: pointer;
   transition: color 0.2s, border-color 0.2s;
-  margin-bottom: -2px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -574,6 +547,8 @@ const canConfirm = computed(() => !!selected.value.agentId)
 .tab-panel {
   padding: 0.75rem 1rem;
   overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .tab-toolbar {
@@ -582,12 +557,17 @@ const canConfirm = computed(() => !!selected.value.agentId)
 
 .search {
   width: 100%;
-  border: 1px solid #313640;
-  border-radius: 10px;
-  background: #0f1217;
-  color: #edf0f5;
-  padding: 0.55rem 0.75rem;
-  font-size: 0.88rem;
+  border: 1px solid #d5dae3;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1c212a;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.86rem;
+}
+
+.search:focus {
+  outline: none;
+  border-color: #c9a55c;
 }
 
 .chip-group {
@@ -595,90 +575,90 @@ const canConfirm = computed(() => !!selected.value.agentId)
 }
 
 .chip-group-label {
-  margin: 0 0 0.35rem;
-  font-size: 0.76rem;
-  color: #9aa3b0;
+  margin: 0 0 0.3rem;
+  font-size: 0.74rem;
+  color: #667085;
 }
 
 .chip-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: 0.35rem;
 }
 
 .chip {
-  border: 1px solid #343a44;
+  border: 1px solid #d5dae3;
   border-radius: 999px;
-  background: #12161d;
-  color: #d5dae4;
-  padding: 0.28rem 0.7rem;
-  font-size: 0.78rem;
+  background: #ffffff;
+  color: #495867;
+  padding: 0.22rem 0.65rem;
+  font-size: 0.76rem;
   cursor: pointer;
 }
 
 .chip.active,
 .chip.highlight {
   border-color: #c9a55c;
-  background: rgba(201, 165, 92, 0.14);
-  color: #f0d7a2;
+  background: #fff8eb;
+  color: #c9a55c;
 }
 
 /* Item grid */
 .item-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
-  gap: 0.45rem;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 0.4rem;
 }
 
 .item-cell {
-  border: 1px solid #2d323a;
-  border-radius: 10px;
-  background: #10141a;
-  color: #e4e8ef;
-  padding: 0.45rem 0.35rem 0.35rem;
+  border: 1px solid #e6e9ef;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1c212a;
+  padding: 0.4rem 0.3rem 0.3rem;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.25rem;
 }
 
 .item-cell.active {
   border-color: #c9a55c;
-  box-shadow: inset 0 0 0 1px rgba(201, 165, 92, 0.35);
+  background: #fff8eb;
 }
 
 .item-cell.off-spec {
-  opacity: 0.72;
+  opacity: 0.6;
 }
 
 .item-avatar :deep(.calculator-avatar) {
-  width: 56px;
-  height: 56px;
-  border-radius: 10px;
+  width: 50px;
+  height: 50px;
+  border-radius: 8px;
 }
 
 .item-placeholder {
-  width: 56px;
-  height: 56px;
+  width: 50px;
+  height: 50px;
   display: grid;
   place-items: center;
-  border-radius: 10px;
-  background: #1a1f27;
-  color: #7d8796;
-  font-size: 1.2rem;
+  border-radius: 8px;
+  background: #f5f7fa;
+  color: #97a0ad;
+  font-size: 1.1rem;
 }
 
 .item-name {
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   text-align: center;
   line-height: 1.2;
 }
 
 .empty-hint {
-  margin: 0.75rem 0 0;
-  font-size: 0.8rem;
-  color: #9aa3b0;
+  margin: 0.6rem 0 0;
+  font-size: 0.78rem;
+  color: #97a0ad;
   text-align: center;
 }
 
@@ -688,15 +668,15 @@ const canConfirm = computed(() => !!selected.value.agentId)
   align-items: center;
   gap: 0.65rem;
   margin-top: 0.85rem;
-  padding: 0.65rem 0.85rem;
-  border: 1px solid #34302a;
-  border-radius: 10px;
-  background: #14120f;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid #e6e9ef;
+  border-radius: 8px;
+  background: #f6f8fb;
 }
 
 .rank-label {
-  font-size: 0.82rem;
-  color: #d8c39a;
+  font-size: 0.8rem;
+  color: #1c212a;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -709,47 +689,49 @@ const canConfirm = computed(() => !!selected.value.agentId)
 .rank-badge {
   min-width: 2.6rem;
   text-align: center;
-  border: 1px solid #5a4a31;
+  border: 1px solid #d5dae3;
   border-radius: 999px;
-  padding: 0.2rem 0.55rem;
-  font-size: 0.78rem;
-  color: #d8c39a;
+  padding: 0.18rem 0.5rem;
+  font-size: 0.76rem;
+  color: #c9a55c;
   font-weight: 600;
+  background: #ffffff;
 }
 
-/* Disc columns */
-.disc-columns {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
+/* Disc stacked layout (4 + 2 in single column, dev-style) */
+.disc-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
 }
 
 .disc-col-header {
-  margin-bottom: 0.55rem;
+  margin-bottom: 0.4rem;
 }
 
 .disc-col-header h3 {
   margin: 0;
-  font-size: 0.92rem;
-  color: #e8ebf0;
+  font-size: 0.88rem;
+  color: #1c212a;
+  font-weight: 700;
 }
 
 .disc-col-header p {
-  margin: 0.2rem 0 0;
-  font-size: 0.74rem;
-  color: #8f98a8;
+  margin: 0.18rem 0 0;
+  font-size: 0.72rem;
+  color: #667085;
 }
 
 /* Footer */
 .modal-footer {
-  border-top: 1px solid #2d323a;
-  padding: 0.75rem 1rem;
+  border-top: 1px solid #e6e9ef;
+  padding: 0.65rem 1rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
   flex-shrink: 0;
-  background: #14171d;
+  background: #f6f8fb;
 }
 
 .footer-summary {
@@ -758,16 +740,16 @@ const canConfirm = computed(() => !!selected.value.agentId)
 }
 
 .summary-title {
-  margin: 0 0 0.2rem;
-  font-size: 0.74rem;
+  margin: 0 0 0.18rem;
+  font-size: 0.72rem;
   color: #c9a55c;
   font-weight: 600;
 }
 
 .summary-text {
   margin: 0;
-  font-size: 0.8rem;
-  color: #d5dae4;
+  font-size: 0.78rem;
+  color: #1c212a;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -780,25 +762,25 @@ const canConfirm = computed(() => !!selected.value.agentId)
 }
 
 .cancel-btn {
-  padding: 0.45rem 1rem;
-  border: 1px solid #3a3e47;
+  padding: 0.42rem 1rem;
+  border: 1px solid #d5dae3;
   border-radius: 8px;
-  background: #12161d;
-  color: #d5dae4;
+  background: #ffffff;
+  color: #495867;
   font-size: 0.84rem;
   cursor: pointer;
 }
 
 .cancel-btn:hover {
-  background: #1a1f27;
+  background: #f6f8fb;
 }
 
 .confirm-btn {
-  padding: 0.45rem 1.25rem;
+  padding: 0.42rem 1.25rem;
   border: none;
   border-radius: 8px;
-  background: linear-gradient(180deg, #c9a55c 0%, #a8863e 100%);
-  color: #1a1510;
+  background: #c9a55c;
+  color: #ffffff;
   font-size: 0.84rem;
   font-weight: 700;
   cursor: pointer;
@@ -810,18 +792,51 @@ const canConfirm = computed(() => !!selected.value.agentId)
 }
 
 .confirm-btn:not(:disabled):hover {
-  background: linear-gradient(180deg, #d8b56c 0%, #b8964e 100%);
+  background: #b8964e;
+}
+
+/* Trigger button (light theme) */
+.unified-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.65rem 1rem;
+  border: 1px dashed #c9a55c;
+  border-radius: 12px;
+  background: #fff8eb;
+  cursor: pointer;
+  font: inherit;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
+}
+
+.unified-trigger:hover {
+  border-color: #b8964e;
+  background: #fff4dd;
+}
+
+.trigger-label {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #c9a55c;
+}
+
+.trigger-hint {
+  font-size: 0.78rem;
+  color: #667085;
 }
 
 /* Responsive */
 @media (max-width: 768px) {
   .unified-modal {
-    max-height: 95vh;
+    width: 100vw;
+    height: 100vh;
+    max-width: 100vw;
+    max-height: 100vh;
     border-radius: 0;
-  }
-
-  .disc-columns {
-    grid-template-columns: 1fr;
   }
 
   .modal-footer {
