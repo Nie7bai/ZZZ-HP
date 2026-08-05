@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
-import EquipPickerModal from '@/components/calculator/EquipPickerModal.vue'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
 import type { AgentBuffDoc, DriveDiscBuffDoc } from '@/types/calculator'
 import { collectTeamDriveDiscNoteLines } from '@/utils/driveDiscNotes'
@@ -78,19 +77,11 @@ function selectFourPiece(id: string) {
             <h3>2 件套</h3>
             <p>额外 2 件套套装；与 4 件套同套时不重复计入</p>
           </header>
-          <EquipPickerModal
-            v-model:open="twoPiecePickerOpen"
-            title="选择 2 件套"
-            description="可不佩戴；与 4 件套同套时不重复计入"
-            search-placeholder="搜索驱动盘…"
-            :items="(driveDiscs as unknown as Array<Record<string, unknown>>)"
-            allow-none
-            none-label="不佩戴"
-            :selected-id="activeSlotData.twoPieceDriveDiscId"
-            :selected-label="selectedTwoPiece?.name"
-            :selected-avatar="selectedTwoPiece?.avatar_image"
-            @select="selectTwoPiece"
-          />
+          <div v-if="selectedTwoPiece" class="disc-selected-bar">
+            <CalculatorAvatar class="disc-bar-avatar" :avatar-image="selectedTwoPiece.avatar_image" :name="selectedTwoPiece.name" />
+            <span class="disc-bar-name">{{ selectedTwoPiece.name }}</span>
+          </div>
+          <div v-else class="disc-none-bar">未佩戴 · 可点击上方「快速导入」选择</div>
         </div>
 
         <div class="disc-group">
@@ -98,19 +89,11 @@ function selectFourPiece(id: string) {
             <h3>4 件套</h3>
             <p>含该套装 2 件套；主C 取自身增益，队友取队友增益</p>
           </header>
-          <EquipPickerModal
-            v-model:open="fourPiecePickerOpen"
-            title="选择 4 件套"
-            description="可不佩戴；含该套装 2 件套效果"
-            search-placeholder="搜索驱动盘…"
-            :items="(driveDiscs as unknown as Array<Record<string, unknown>>)"
-            allow-none
-            none-label="不佩戴"
-            :selected-id="activeSlotData.fourPieceDriveDiscId"
-            :selected-label="selectedFourPiece?.name"
-            :selected-avatar="selectedFourPiece?.avatar_image"
-            @select="selectFourPiece"
-          />
+          <div v-if="selectedFourPiece" class="disc-selected-bar">
+            <CalculatorAvatar class="disc-bar-avatar" :avatar-image="selectedFourPiece.avatar_image" :name="selectedFourPiece.name" />
+            <span class="disc-bar-name">{{ selectedFourPiece.name }}</span>
+          </div>
+          <div v-else class="disc-none-bar">未佩戴 · 可点击上方「快速导入」选择</div>
         </div>
       </div>
     </template>
@@ -229,6 +212,37 @@ function selectFourPiece(id: string) {
   text-align: center;
   color: #8f96a3;
   font-size: 0.88rem;
+}
+
+.disc-selected-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid #2d323a;
+  border-radius: 10px;
+  background: #0f1217;
+}
+
+.disc-bar-avatar :deep(.calculator-avatar) {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+}
+
+.disc-bar-name {
+  font-size: 0.84rem;
+  color: #e4e8ef;
+  font-weight: 600;
+}
+
+.disc-none-bar {
+  padding: 0.55rem 0.75rem;
+  border: 1px dashed #2d323a;
+  border-radius: 10px;
+  background: #0f1217;
+  color: #7d8796;
+  font-size: 0.8rem;
 }
 
 @media (max-width: 768px) {
