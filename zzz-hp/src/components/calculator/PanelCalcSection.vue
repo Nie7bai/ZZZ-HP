@@ -540,6 +540,9 @@ const anomalySupportSlots = computed(() => {
 })
 
 function resolveExternalPanelForSlotIndex(slotIndex: number): PanelStats {
+  if (slotIndex < 0 || slotIndex >= props.teamSlots.length) {
+    return createDefaultExternalPanel()
+  }
   if (slotIndex === mainSlotIndex.value) return effectiveExternalPanel.value
   const slot = props.teamSlots[slotIndex]
   const agentId = slot?.agentId
@@ -867,7 +870,8 @@ const triggerExternalPanel = computed<PanelStats | null>(() => {
   if (props.triggerAnomalyAgentId === mainAgent.value?.id) {
     return effectiveExternalPanel.value
   }
-  return ensureAnomalySlotPanel(props.triggerAnomalyAgentId)
+  if (triggerSlotIndex.value < 0) return null
+  return resolveExternalPanelForSlotIndex(triggerSlotIndex.value)
 })
 
 const producerPanelBreakdownByAgentId = computed(() => {
@@ -878,7 +882,7 @@ const producerPanelBreakdownByAgentId = computed(() => {
     const agentId = item.slot.agentId
     if (!agentId) continue
     map[agentId] = computeFinalPanel(
-      ensureAnomalySlotPanel(agentId),
+      resolveExternalPanelForSlotIndex(item.index),
       buildPanelCalcContextForSlot(item.index),
     )
   }
@@ -967,7 +971,9 @@ function formatPanelSlot(slot: PanelFieldSlot, scope: 'external' | 'final') {
 function formatAnomalyFinalPanel(agentId: string, slot: PanelFieldSlot) {
   if (slot.kind === 'spacer') return ''
   const breakdown = producerPanelBreakdownByAgentId.value[agentId]
-  const external = ensureAnomalySlotPanel(agentId)
+  const slotIndex = props.teamSlots.findIndex((item) => item.agentId === agentId)
+  const external =
+    slotIndex >= 0 ? resolveExternalPanelForSlotIndex(slotIndex) : ensureAnomalySlotPanel(agentId)
   const panel = breakdown?.finalPanel ?? external
   if (slot.kind === 'pierce') {
     const pierceMod = breakdown?.totalMods.pierce ?? 0
@@ -1245,9 +1251,9 @@ function buildHitPanelCalcContext(
 }
 
 function resolveOwnerExternalPanel(ownerSlotIndex: number, ownerAgentId: string): PanelStats {
-  // 主 C 只表示「面板计算正在编辑谁」。招式结算读该角色自己的局外面板：
-  // 正在编辑的人用 live 编辑器，其他人用各自存好的槽位面板。
-  if (ownerSlotIndex === mainSlotIndex.value) return effectiveExternalPanel.value
+  if (ownerSlotIndex >= 0) return resolveExternalPanelForSlotIndex(ownerSlotIndex)
+  const found = props.teamSlots.findIndex((slot) => slot.agentId === ownerAgentId)
+  if (found >= 0) return resolveExternalPanelForSlotIndex(found)
   return ensureAnomalySlotPanel(ownerAgentId)
 }
 
@@ -1255,10 +1261,7 @@ function resolveOwnerExternalPanel(ownerSlotIndex: number, ownerAgentId: string)
 function computeHitPanelForAgent(hit: ResolvedHit, agentId: string): PanelStats | null {
   const slotIndex = props.teamSlots.findIndex((slot) => slot.agentId === agentId)
   if (slotIndex < 0) return null
-  const external =
-    slotIndex === mainSlotIndex.value
-      ? effectiveExternalPanel.value
-      : ensureAnomalySlotPanel(agentId)
+  const external = resolveExternalPanelForSlotIndex(slotIndex)
   const element = props.agents.find((item) => item.id === agentId)?.element
   return computeHitBreakdownForAgent(hit, agentId, slotIndex, external, {
     ...buildPanelCalcContextForSlot(slotIndex, buildExtraModsForHit(hit, agentId)),
@@ -1323,7 +1326,7 @@ function buildHitCalcInput(hit: ResolvedHit): DamageCalcInput | null {
       evtTriggerFinalPanel = evtFinalPanel
       evtTriggerPierce = evtPierce
     } else {
-      const tExternal = ensureAnomalySlotPanel(evtPowerAgentId)
+      const tExternal = resolveExternalPanelForSlotIndex(tSlotIndex)
       const tBreakdown = computeHitBreakdownForAgent(
         hit,
         evtPowerAgentId,
@@ -3893,7 +3896,7 @@ defineExpose({
           <header class="panel-block-header">
             <h3>其他参与者 · 局外面板</h3>
             <p>
-              招式持有者 / 异常强度提供者 / 异常类触发者若不是当前正在编辑的槽位，可在此改他们的局外初始面板；也可以点选编队卡片切过去编辑。
+              词条模式：此处只读，显示该槽自己的词条/驱动盘算出的局外。面板模式：可改手填局外。也可以切到该槽编辑。
             </p>
           </header>
           <details
@@ -3916,13 +3919,16 @@ defineExpose({
                 <input
                   type="number"
                   step="any"
-                  :value="ensureAnomalySlotPanel(item.slot.agentId)[slot.key]"
+                  :value="resolveExternalPanelForSlotIndex(item.index)[slot.key]"
+                  :readonly="isAffixMode"
                   @change="
-                    updateAnomalySlotPanel(
-                      item.slot.agentId,
-                      slot.key,
-                      Number(($event.target as HTMLInputElement).value) || 0,
-                    )
+                    isAffixMode
+                      ? undefined
+                      : updateAnomalySlotPanel(
+                          item.slot.agentId,
+                          slot.key,
+                          Number(($event.target as HTMLInputElement).value) || 0,
+                        )
                   "
                 />
               </label>

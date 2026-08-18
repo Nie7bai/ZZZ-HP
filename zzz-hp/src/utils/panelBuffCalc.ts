@@ -1267,7 +1267,161 @@ export function collectAllBuffEffects(ctx: PanelCalcContext): CollectedEffect[] 
   return collected
 }
 
+function mergeModsFromSources(sources: BuffModSource[]): BuffStatModifiers {
+  let total = createEmptyBuffStatModifiers()
+  for (const source of sources) {
+    total = mergeBuffStatModifiers(total, source.mods)
+  }
+  return total
+}
+
+type BuffCatalogPackKind = 'slot' | 'bangboo' | 'env' | 'extra'
+
+type BuffCatalogPack = {
+  kind: BuffCatalogPackKind
+  key: string
+  label: string
+  note?: string
+  blockName?: string
+  effects: BuffEffect[]
+  slotIndex?: number
+}
+
+const buffCatalogCache = new Map<string, BuffCatalogPack[]>()
+const BUFF_CATALOG_CACHE_LIMIT = 32
+
+function buildBuffCatalogKey(ctx: PanelCalcContext): string {
+  return JSON.stringify({
+    slots: ctx.teamSlots.map((slot) => [
+      slot.agentId,
+      slot.rank,
+      slot.wengineId,
+      slot.wengineRefine,
+      slot.twoPieceDriveDiscId,
+      slot.fourPieceDriveDiscId,
+    ]),
+    bangboo: [ctx.bangboo?.id ?? '', ctx.bangbooRefine, Boolean(ctx.excludeBangboo)],
+    main: ctx.mainSlotIndex,
+    restrict: ctx.restrictToSlotIndex ?? null,
+    extra: ctx.extraMods ?? null,
+    sel: ctx.buffSelection ?? null,
+    skill: ctx.skillContext ?? null,
+    env: (ctx.environmentBuffs ?? []).map((item) => item.sourceKey),
+  })
+}
+
+function packsFromSources(sources: BuffModSource[]): BuffCatalogPack[] {
+  return sources.map((source) => {
+    if (source.key === 'extra') {
+      return { kind: 'extra', key: source.key, label: source.label, effects: [] }
+    }
+    if (source.key === 'bangboo') {
+      return {
+        kind: 'bangboo',
+        key: source.key,
+        label: source.label,
+        blockName: source.blockName,
+        effects: source.effects ?? [],
+      }
+    }
+    const slotIndex = parseSourceKeySlotIndex(source.key)
+    if (slotIndex != null) {
+      return {
+        kind: 'slot',
+        key: source.key,
+        label: source.label,
+        note: source.note,
+        blockName: source.blockName,
+        effects: source.effects ?? [],
+        slotIndex,
+      }
+    }
+    return {
+      kind: 'env',
+      key: source.key,
+      label: source.label,
+      note: source.note,
+      blockName: source.blockName,
+      effects: source.effects ?? [],
+    }
+  })
+}
+
+function materializeBuffCatalogPacks(
+  packs: BuffCatalogPack[],
+  ctx: PanelCalcContext,
+): BuffModSource[] {
+  const skillCtx = ctx.skillContext ?? defaultSkillContext('direct')
+  const mainIndex = ctx.mainSlotIndex
+  return packs.map((pack) => {
+    if (pack.kind === 'extra') {
+      return {
+        key: pack.key,
+        label: pack.label,
+        mods: ctx.extraMods ?? createEmptyBuffStatModifiers(),
+        effects: [],
+      }
+    }
+    if (pack.kind === 'bangboo') {
+      return {
+        key: pack.key,
+        label: pack.label,
+        blockName: pack.blockName,
+        effects: pack.effects,
+        mods: resolveEffectsToMods(pack.effects, {
+          ctx: skillCtx,
+          stacksByEffectId: ctx.buffSelection?.stacksByEffectId,
+          convertInputs: ctx.buffSelection?.convertInputs,
+          attrValues: ctx.attrValues,
+          panelSourceValues:
+            ctx.panelSourceValuesBySlot?.get(mainIndex) ?? ctx.panelSourceValues,
+          skipConvert: ctx.skipConvert,
+          selection: ctx.buffSelection,
+          resolveTeamProfessionCount: resolveTeamProfessionCountOption(ctx),
+        }),
+      }
+    }
+    if (pack.kind === 'env') {
+      return {
+        key: pack.key,
+        label: pack.label,
+        note: pack.note,
+        blockName: pack.blockName,
+        effects: pack.effects,
+        mods: resolvePackMods(pack.effects, true, { ...ctx, skillContext: skillCtx }),
+      }
+    }
+    const isMain = pack.slotIndex === mainIndex
+    return {
+      key: pack.key,
+      label: pack.label,
+      note: pack.note,
+      blockName: pack.blockName,
+      effects: pack.effects,
+      mods: pack.effects.length
+        ? resolvePackMods(pack.effects, isMain, { ...ctx, skillContext: skillCtx }, pack.slotIndex)
+        : createEmptyBuffStatModifiers(),
+    }
+  })
+}
+
+function rememberBuffCatalog(key: string, sources: BuffModSource[]) {
+  buffCatalogCache.set(key, packsFromSources(sources))
+  if (buffCatalogCache.size <= BUFF_CATALOG_CACHE_LIMIT) return
+  const oldest = buffCatalogCache.keys().next().value
+  if (oldest != null) buffCatalogCache.delete(oldest)
+}
+
 export function collectPanelBuffModSources(ctx: PanelCalcContext): BuffModSource[] {
+  const key = buildBuffCatalogKey(ctx)
+  const cached = buffCatalogCache.get(key)
+  if (cached) return materializeBuffCatalogPacks(cached, ctx)
+  const sources = collectPanelBuffModSourcesUncached(ctx)
+  rememberBuffCatalog(key, sources)
+  return sources
+}
+
+function collectPanelBuffModSourcesUncached(ctx: PanelCalcContext): BuffModSource[] {
   const sources: BuffModSource[] = []
   const mainIndex = ctx.mainSlotIndex
   const skillCtx = ctx.skillContext ?? defaultSkillContext('direct')
@@ -1553,12 +1707,7 @@ export function collectPanelBuffModSources(ctx: PanelCalcContext): BuffModSource
 }
 
 export function collectPanelBuffMods(ctx: PanelCalcContext): BuffStatModifiers {
-  let total = createEmptyBuffStatModifiers()
-  const sources = collectPanelBuffModSources(ctx)
-  for (const source of sources) {
-    total = mergeBuffStatModifiers(total, source.mods)
-  }
-  return total
+  return mergeModsFromSources(collectPanelBuffModSources(ctx))
 }
 
 export function applyBuffModsToPanel(
@@ -1809,7 +1958,8 @@ export function computeFinalPanel(
       final: finalAttrs,
     },
   }
-  const totalMods = collectPanelBuffMods(fullCtx)
+  const totalSources = collectPanelBuffModSources(fullCtx)
+  const totalMods = mergeModsFromSources(totalSources)
   return {
     totalMods,
     combatMods: extractCombatMods(totalMods),
@@ -1817,8 +1967,8 @@ export function computeFinalPanel(
       baseAnomalyControl,
       baseEnergyRegen,
     }),
-    sources: includeDetails ? collectPanelBuffModSources(fullCtx) : [],
-    collectedEffects: includeDetails ? collectAllBuffEffects(fullCtx) : [],
+    sources: includeDetails ? totalSources : [],
+    collectedEffects: [],
   }
 }
 

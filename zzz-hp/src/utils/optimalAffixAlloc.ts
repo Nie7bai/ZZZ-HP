@@ -58,7 +58,6 @@ import {
 import { mergeSkillSubcategoryMultOverrides } from '@/utils/skillSubcategoryMult'
 import {
   computeFinalPanel,
-  convertSlotPartialToExternalPanel,
   resolveAnomalyReleaseMultFields,
   type BuffSelectionState,
   type MultiSlotBuffSelection,
@@ -597,10 +596,10 @@ function resolveExternalForAgent(
   mainExternal: PanelStats,
 ): PanelStats {
   if (slotIndex === ctx.panelContext.mainSlotIndex) return mainExternal
+  const mapped = ctx.panelContext.slotExternalPanels?.[slotIndex]
+  if (mapped) return fillPanelStatsDefaults(mapped)
   const anomaly = ctx.panelContext.anomalySlotPanels?.[agentId]
   if (anomaly) return fillPanelStatsDefaults(anomaly)
-  const partial = ctx.panelContext.convertSlotPanels?.[agentId]
-  if (partial) return convertSlotPartialToExternalPanel(partial)
   return createDefaultExternalPanel()
 }
 
