@@ -10,19 +10,34 @@ export interface SkillFlowDamageRecord {
   team: number
   agentName: string
   schemeName: string
+  /** 记录当时三人全名，按下标对齐编队 */
+  agentNames: string[]
 }
 
 function isRecord(value: unknown): value is SkillFlowDamageRecord {
   if (!value || typeof value !== 'object') return false
   const item = value as Partial<SkillFlowDamageRecord>
-  return (
-    typeof item.id === 'string' &&
-    typeof item.savedAt === 'number' &&
-    typeof item.current === 'number' &&
-    typeof item.team === 'number' &&
-    typeof item.agentName === 'string' &&
-    typeof item.schemeName === 'string'
-  )
+  if (
+    typeof item.id !== 'string' ||
+    typeof item.savedAt !== 'number' ||
+    typeof item.current !== 'number' ||
+    typeof item.team !== 'number' ||
+    typeof item.agentName !== 'string' ||
+    typeof item.schemeName !== 'string'
+  ) {
+    return false
+  }
+  return true
+}
+
+function normalizeRecord(value: unknown): SkillFlowDamageRecord | null {
+  if (!isRecord(value)) return null
+  const agentNames = Array.isArray(value.agentNames)
+    ? value.agentNames.map((name) => String(name ?? '').trim() || '未选')
+    : value.agentName
+      ? [value.agentName]
+      : []
+  return { ...value, agentNames }
 }
 
 export function loadSkillFlowDamageRecords(): SkillFlowDamageRecord[] {
@@ -30,7 +45,7 @@ export function loadSkillFlowDamageRecords(): SkillFlowDamageRecord[] {
   try {
     const parsed = JSON.parse(localStorage.getItem(SKILL_FLOW_DAMAGE_RECORD_KEY) ?? '[]')
     if (!Array.isArray(parsed)) return []
-    return parsed.filter(isRecord).slice(0, MAX_SKILL_FLOW_DAMAGE_RECORDS)
+    return parsed.map(normalizeRecord).filter((item): item is SkillFlowDamageRecord => item != null).slice(0, MAX_SKILL_FLOW_DAMAGE_RECORDS)
   } catch {
     return []
   }

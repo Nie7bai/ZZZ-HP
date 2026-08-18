@@ -157,9 +157,26 @@ function formatRecordTime(savedAt: number) {
   return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
+function firstNameChar(name: string | undefined) {
+  const trimmed = (name ?? '').trim()
+  if (!trimmed || trimmed === '未选' || trimmed === '未知') return '·'
+  return Array.from(trimmed)[0] ?? '·'
+}
+
+function teamInitials(rec: SkillFlowDamageRecord) {
+  const names = rec.agentNames.length ? rec.agentNames : [rec.agentName]
+  return names.map(firstNameChar).join('')
+}
+
+function recordTip(rec: SkillFlowDamageRecord) {
+  const team = (rec.agentNames.length ? rec.agentNames : [rec.agentName]).join(' / ')
+  return `${rec.schemeName}\n队伍：${team}\n当前角色：${rec.agentName}`
+}
+
 function recordNow() {
   if (records.value.length >= MAX_RECORDS) return
   const now = Date.now()
+  const agentNames = props.teamSlots.map((slot) => agentName(slot.agentId))
   records.value.push({
     id: `rec-${now}-${Math.random().toString(36).slice(2, 7)}`,
     savedAt: now,
@@ -167,6 +184,7 @@ function recordNow() {
     team: teamTotal.value,
     agentName: agentName(props.teamSlots[props.activeSlotIndex]?.agentId),
     schemeName: currentSchemeLabel(),
+    agentNames,
   })
 }
 
@@ -270,14 +288,14 @@ function clearRecords() {
         </div>
       </div>
       <p class="sf-stats-hint">
-        最多 {{ MAX_RECORDS }} 条，存在本机，切方案不会换。长名字悬停可看全称。
+        最多 {{ MAX_RECORDS }} 条，存在本机，切方案不会换。悬停方案名可看全称、三人与当前角色。
       </p>
       <table v-if="records.length" class="sf-rec-table">
         <thead>
           <tr>
             <th class="sf-rec-num">#</th>
+            <th class="sf-rec-ctx">方案</th>
             <th class="sf-rec-time">时间</th>
-            <th class="sf-rec-ctx">方案 / 角色</th>
             <th>全队</th>
             <th>当前角色</th>
             <th>全队较上一条</th>
@@ -288,13 +306,18 @@ function clearRecords() {
         <tbody>
           <tr v-for="(rec, index) in records" :key="rec.id">
             <td class="sf-rec-num">{{ index + 1 }}</td>
-            <td class="sf-rec-time">{{ formatRecordTime(rec.savedAt) }}</td>
             <td class="sf-rec-ctx">
-              <span class="sf-rec-clip" :title="rec.schemeName">{{ rec.schemeName }}</span>
-              <span class="sf-rec-clip dim" :title="rec.agentName">{{ rec.agentName }}</span>
+              <span class="sf-rec-clip" :title="recordTip(rec)">{{ rec.schemeName }}</span>
             </td>
-            <td>{{ formatNum(rec.team) }}</td>
-            <td>{{ formatNum(rec.current) }}</td>
+            <td class="sf-rec-time">{{ formatRecordTime(rec.savedAt) }}</td>
+            <td class="sf-rec-dmg">
+              <span class="sf-rec-who">{{ teamInitials(rec) }}</span>
+              <span>{{ formatNum(rec.team) }}</span>
+            </td>
+            <td class="sf-rec-dmg">
+              <span class="sf-rec-who">{{ firstNameChar(rec.agentName) }}</span>
+              <span>{{ formatNum(rec.current) }}</span>
+            </td>
             <td>{{ teamDelta(index) }}</td>
             <td>{{ currentDelta(index) }}</td>
             <td class="sf-rec-actions">
@@ -491,8 +514,8 @@ function clearRecords() {
   white-space: nowrap;
 }
 .sf-rec-ctx {
-  width: 8.2rem;
-  max-width: 8.2rem;
+  width: 7.2rem;
+  max-width: 7.2rem;
 }
 .sf-rec-clip {
   display: block;
@@ -501,10 +524,14 @@ function clearRecords() {
   white-space: nowrap;
   cursor: default;
 }
-.sf-rec-clip.dim {
-  margin-top: 0.08rem;
-  font-size: 0.68rem;
+.sf-rec-dmg {
+  white-space: nowrap;
+}
+.sf-rec-who {
+  margin-right: 0.35rem;
   color: #8b93a0;
+  font-variant-numeric: normal;
+  letter-spacing: 0.04em;
 }
 .sf-rec-actions {
   width: 3.6rem;
