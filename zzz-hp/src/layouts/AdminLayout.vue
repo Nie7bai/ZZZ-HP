@@ -5,6 +5,7 @@ import AdminVisualMonsterPanel from '@/components/admin/AdminVisualMonsterPanel.
 import AdminMonsterPanel from '@/components/admin/AdminMonsterPanel.vue'
 import AdminBuffPanel from '@/components/admin/AdminBuffPanel.vue'
 import AdminSeasonDatePanel from '@/components/admin/AdminSeasonDatePanel.vue'
+import AdminSeasonImportExportPanel from '@/components/admin/AdminSeasonImportExportPanel.vue'
 import type { AdminPanel, AdminScope } from '@/types/admin'
 
 defineProps<{
@@ -39,7 +40,16 @@ async function onSeasonDatesChanged() {
       <AdminVisualMonsterPanel v-if="activePanel === 'monster'" ref="visualPanelRef" :scope="scope" />
       <AdminMonsterPanel v-else-if="activePanel === 'monster-form'" :scope="scope" />
       <AdminBuffPanel v-else-if="activePanel === 'buff-form'" :scope="scope" />
-      <AdminSeasonDatePanel v-else :scope="scope" @changed="onSeasonDatesChanged" />
+      <AdminSeasonDatePanel
+        v-else-if="activePanel === 'season-date'"
+        :scope="scope"
+        @changed="onSeasonDatesChanged"
+      />
+      <AdminSeasonImportExportPanel
+        v-else-if="activePanel === 'import-export'"
+        :scope="scope"
+        @imported="onSeasonDatesChanged"
+      />
     </main>
   </div>
 </template>

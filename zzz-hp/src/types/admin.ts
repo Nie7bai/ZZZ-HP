@@ -9,6 +9,7 @@ export type AdminPanel =
   | 'monster-form'
   | 'buff-form'
   | 'season-date'
+  | 'import-export'
 
 /** 可视化编辑 Buff 时传入的槽位上下文 */
 export interface AdminBuffSlotContext {

@@ -124,3 +124,31 @@ export async function deleteSeasonDate(id) {
   if (!result.affectedRows) throw new Error('记录不存在')
   return { id: Number(id) }
 }
+
+export async function upsertSeasonDate(payload) {
+  const mode = normalizeMode(payload.mode)
+  const version = String(payload.version ?? '').trim()
+  const phase = normalizePhase(payload.phase)
+  const startDate = String(payload.startDate ?? payload.start_date ?? '').trim()
+  const endDate = String(payload.endDate ?? payload.end_date ?? '').trim()
+
+  if (!version || !phase) throw new Error('版本与期数为必填项')
+  if (!startDate || !endDate) throw new Error('开始与结束日期为必填项')
+
+  const [existing] = await pool.query(
+    `SELECT id FROM \`date\` WHERE mode = ? AND version = ? AND phase = ? LIMIT 1`,
+    [mode, version, phase],
+  )
+  if (existing.length) {
+    const data = await updateSeasonDate(existing[0].id, {
+      mode,
+      version,
+      phase,
+      startDate,
+      endDate,
+    })
+    return { ...data, action: 'updated' }
+  }
+  const data = await createSeasonDate({ mode, version, phase, startDate, endDate })
+  return { ...data, action: 'created' }
+}

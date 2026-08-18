@@ -14,6 +14,7 @@ const panels: { id: AdminPanel; label: string }[] = [
   { id: 'monster-form', label: '表单添加怪物' },
   { id: 'buff-form', label: '表单添加 Buff' },
   { id: 'season-date', label: '版本日期管理' },
+  { id: 'import-export', label: '导入 / 导出' },
 ]
 </script>
 

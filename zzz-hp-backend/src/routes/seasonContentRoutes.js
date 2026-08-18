@@ -7,8 +7,16 @@ import {
   restoreSeasonContentHandler,
   cleanupSeasonContentHandler,
 } from '../controllers/seasonContentController.js'
+import {
+  exportSeasonSnapshotHandler,
+  handleSeasonSnapshotUpload,
+  importSeasonSnapshotHandler,
+} from '../controllers/seasonSnapshotController.js'
 
 const router = Router()
+
+router.get('/export', requireAdmin, exportSeasonSnapshotHandler)
+router.post('/import', requireAdmin, handleSeasonSnapshotUpload, importSeasonSnapshotHandler)
 
 router.post('/preview', requireAdmin, previewSeasonContentHandler)
 router.post('/soft-delete', requireAdmin, softDeleteSeasonContentHandler)

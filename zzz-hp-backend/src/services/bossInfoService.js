@@ -103,6 +103,27 @@ export async function findBossInfoByName(bossName) {
   return mapBossInfoRow(rows[0])
 }
 
+export async function listBossInfoByNames(names) {
+  await ensureBossStaggerSchema()
+  await ensureEnvironmentBuffSchema()
+  const unique = [...new Set((names || []).map((name) => String(name ?? '').trim()).filter(Boolean))]
+  if (!unique.length) return []
+
+  const items = []
+  for (let i = 0; i < unique.length; i += 80) {
+    const chunk = unique.slice(i, i + 80)
+    const placeholders = chunk.map(() => '?').join(',')
+    const [rows] = await pool.execute(
+      `SELECT ${BOSS_INFO_COLUMNS}
+       FROM boss_info
+       WHERE boss_name IN (${placeholders})`,
+      chunk,
+    )
+    items.push(...rows.map((row) => mapBossInfoRow(row)))
+  }
+  return items
+}
+
 export async function searchBossInfoNames(keyword, limit = 20) {
   await ensureBossStaggerSchema()
   const query = String(keyword ?? '').trim()

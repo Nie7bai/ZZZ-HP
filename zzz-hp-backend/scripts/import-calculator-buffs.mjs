@@ -21,6 +21,7 @@ import {
   upsertSkillSubcategory,
 } from '../src/services/skillSubcategoryService.js'
 import { upsertDamageEventMode } from '../src/services/damageEventModeService.js'
+import { upsertSkill } from '../src/services/skillLibraryService.js'
 
 dotenv.config()
 
@@ -173,6 +174,7 @@ async function main() {
   const skillSubcategories = Array.isArray(data.skillSubcategories) ? data.skillSubcategories : []
   const followUpSkillRules = Array.isArray(data.followUpSkillRules) ? data.followUpSkillRules : []
   const damageEventModes = Array.isArray(data.damageEventModes) ? data.damageEventModes : []
+  const skills = Array.isArray(data.skills) ? data.skills : []
 
   const conn = await mysql.createConnection({
     host: process.env.DB_HOST || 'localhost',
@@ -322,6 +324,11 @@ async function main() {
       await upsertDamageEventMode(doc)
       modeCount += 1
     }
+    let skillCount = 0
+    for (const doc of skills) {
+      await upsertSkill(doc)
+      skillCount += 1
+    }
 
     const [[c1]] = await conn.query('SELECT COUNT(*) AS c FROM `character`')
     const [[c2]] = await conn.query('SELECT COUNT(*) AS c FROM `bangboo`')
@@ -349,6 +356,7 @@ async function main() {
             skillSubcategories: skillSubCount,
             followUpSkillRules: followUpCount,
             damageEventModes: modeCount,
+            skills: skillCount,
           },
           tableCounts: {
             character: c1.c,

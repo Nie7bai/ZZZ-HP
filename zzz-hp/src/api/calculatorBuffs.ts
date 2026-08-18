@@ -2,6 +2,7 @@ import type {
   AgentBuffDoc,
   BangbooBuffDoc,
   CalculatorBuffData,
+  CalculatorBuffImportSummary,
   DamageEventMode,
   DriveDiscBuffDoc,
   FollowUpSkillRule,
@@ -17,16 +18,48 @@ interface ApiResponse<T> {
   data: T
 }
 
+export class CalculatorBuffApiError extends Error {
+  status: number
+  apiCode: string
+
+  constructor(message: string, status: number, apiCode = '') {
+    super(message)
+    this.name = 'CalculatorBuffApiError'
+    this.status = status
+    this.apiCode = apiCode
+  }
+}
+
+function readApiCode(data: unknown): string {
+  if (!data || typeof data !== 'object' || !('code' in data)) return ''
+  const code = (data as { code?: unknown }).code
+  return typeof code === 'string' ? code : ''
+}
+
 async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
-  const method = (init?.method || 'GET').toUpperCase()
-  const needsAdmin = method !== 'GET' && method !== 'HEAD'
-  const headers = needsAdmin ? withAdminAuthHeaders(init?.headers) : init?.headers
+  const headers = withAdminAuthHeaders(init?.headers)
   const response = await fetch(input, { ...init, headers })
-  const json = (await response.json()) as ApiResponse<T>
+  let json: ApiResponse<T>
+  try {
+    json = (await response.json()) as ApiResponse<T>
+  } catch {
+    throw new CalculatorBuffApiError(`请求失败: ${response.status}`, response.status)
+  }
   if (!response.ok || json.code !== 200) {
-    throw new Error(json.message || `请求失败: ${response.status}`)
+    throw new CalculatorBuffApiError(
+      json.message || `请求失败: ${response.status}`,
+      response.status,
+      readApiCode(json.data),
+    )
   }
   return json.data
+}
+
+export function isAdminAuthError(err: unknown): boolean {
+  return (
+    err instanceof CalculatorBuffApiError &&
+    (err.status === 401 || err.apiCode === 'ADMIN_AUTH_REQUIRED')
+  )
 }
 
 export async function fetchCalculatorBuffs(): Promise<CalculatorBuffData> {
@@ -161,5 +194,20 @@ export async function saveDriveDiscBuff(doc: DriveDiscBuffDoc): Promise<DriveDis
 export async function deleteDriveDiscBuff(id: string): Promise<void> {
   await requestJson<{ id: string }>(`/api/calculator-buffs/drive-discs/${encodeURIComponent(id)}`, {
     method: 'DELETE',
+  })
+}
+
+export async function fetchCalculatorBuffSnapshot(): Promise<CalculatorBuffData> {
+  return requestJson<CalculatorBuffData>('/api/calculator-buffs/export')
+}
+
+export async function importCalculatorBuffSnapshotFile(
+  file: File,
+): Promise<CalculatorBuffImportSummary> {
+  const form = new FormData()
+  form.append('file', file)
+  return requestJson<CalculatorBuffImportSummary>('/api/calculator-buffs/import', {
+    method: 'POST',
+    body: form,
   })
 }
