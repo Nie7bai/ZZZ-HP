@@ -2904,9 +2904,8 @@ body:has(.calculator-page.theme-light) .preset-preview li,
 [data-theme='light'] .sf-pie-legend li {
   color: #1c212a !important;
 }
-[data-theme='light'] .sf-rec-table th,
-[data-theme='light'] .sf-rec-table td {
-  border-bottom-color: #d5dae3 !important;
+[data-theme='light'] .sf-rec-clip.dim {
+  color: #5c6570 !important;
 }
 [data-theme='light'] .skill-flow-modal .col-head {
   border-bottom-color: #d5dae3 !important;

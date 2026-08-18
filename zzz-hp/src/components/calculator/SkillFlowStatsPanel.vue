@@ -1,10 +1,16 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
 import type { AgentBuffDoc } from '@/types/calculator'
 import type { SchemeSlot } from '@/types/damageCalcHistory'
 import { DAMAGE_EVENT_KIND_OPTIONS } from '@/utils/damageEvent'
 import type { ResolvedHit } from '@/utils/resolvedHit'
+import {
+  loadSkillFlowDamageRecords,
+  MAX_SKILL_FLOW_DAMAGE_RECORDS,
+  saveSkillFlowDamageRecords,
+  type SkillFlowDamageRecord,
+} from '@/utils/skillFlowDamageRecords'
 
 const PIE_COLORS = ['#c9a55c', '#5b8def', '#e08a3c', '#4caf8a', '#9b7ed9', '#d46a6a']
 
@@ -15,6 +21,8 @@ const props = defineProps<{
   hits?: ResolvedHit[]
   hitDamages?: Record<string, number>
   activeSlotIndex: number
+  /** 当前加载的方案名；未归档为空 */
+  schemeName?: string
 }>()
 
 interface PieSlice {
@@ -24,16 +32,18 @@ interface PieSlice {
   color: string
 }
 
-const MAX_RECORDS = 10
+const MAX_RECORDS = MAX_SKILL_FLOW_DAMAGE_RECORDS
+const UNSAVED_SCHEME_LABEL = '未保存'
 
-interface DamageRecord {
-  id: string
-  time: string
-  current: number
-  team: number
-}
+const records = ref<SkillFlowDamageRecord[]>(loadSkillFlowDamageRecords())
 
-const records = ref<DamageRecord[]>([])
+watch(
+  records,
+  (list) => {
+    saveSkillFlowDamageRecords(list)
+  },
+  { deep: true },
+)
 
 function hitAmount(hit: ResolvedHit) {
   const value = props.hitDamages?.[hit.id]
@@ -135,15 +145,28 @@ function pieBackground(slices: PieSlice[]) {
   return `conic-gradient(${stops.join(', ')})`
 }
 
+function currentSchemeLabel() {
+  const name = props.schemeName?.trim()
+  return name || UNSAVED_SCHEME_LABEL
+}
+
+function formatRecordTime(savedAt: number) {
+  const date = new Date(savedAt)
+  if (!Number.isFinite(date.getTime())) return '—'
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
 function recordNow() {
   if (records.value.length >= MAX_RECORDS) return
-  const now = new Date()
-  const pad = (n: number) => String(n).padStart(2, '0')
+  const now = Date.now()
   records.value.push({
-    id: `rec-${now.getTime()}-${Math.random().toString(36).slice(2, 7)}`,
-    time: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
+    id: `rec-${now}-${Math.random().toString(36).slice(2, 7)}`,
+    savedAt: now,
     current: currentTotal.value,
     team: teamTotal.value,
+    agentName: agentName(props.teamSlots[props.activeSlotIndex]?.agentId),
+    schemeName: currentSchemeLabel(),
   })
 }
 
@@ -246,12 +269,15 @@ function clearRecords() {
           </button>
         </div>
       </div>
-      <p class="sf-stats-hint">最多记录 {{ MAX_RECORDS }} 条。较上一条分别对比全队总伤和当前角色总伤。</p>
+      <p class="sf-stats-hint">
+        最多 {{ MAX_RECORDS }} 条，存在本机，切方案不会换。长名字悬停可看全称。
+      </p>
       <table v-if="records.length" class="sf-rec-table">
         <thead>
           <tr>
-            <th>#</th>
-            <th>时间</th>
+            <th class="sf-rec-num">#</th>
+            <th class="sf-rec-time">时间</th>
+            <th class="sf-rec-ctx">方案 / 角色</th>
             <th>全队</th>
             <th>当前角色</th>
             <th>全队较上一条</th>
@@ -261,8 +287,12 @@ function clearRecords() {
         </thead>
         <tbody>
           <tr v-for="(rec, index) in records" :key="rec.id">
-            <td>{{ index + 1 }}</td>
-            <td>{{ rec.time }}</td>
+            <td class="sf-rec-num">{{ index + 1 }}</td>
+            <td class="sf-rec-time">{{ formatRecordTime(rec.savedAt) }}</td>
+            <td class="sf-rec-ctx">
+              <span class="sf-rec-clip" :title="rec.schemeName">{{ rec.schemeName }}</span>
+              <span class="sf-rec-clip dim" :title="rec.agentName">{{ rec.agentName }}</span>
+            </td>
             <td>{{ formatNum(rec.team) }}</td>
             <td>{{ formatNum(rec.current) }}</td>
             <td>{{ teamDelta(index) }}</td>
@@ -437,6 +467,7 @@ function clearRecords() {
   width: 100%;
   margin-top: 0.45rem;
   border-collapse: collapse;
+  table-layout: fixed;
   font-size: 0.75rem;
   color: #d5dae4;
 }
@@ -446,12 +477,37 @@ function clearRecords() {
   border-bottom: 1px solid #2a3038;
   text-align: left;
   font-variant-numeric: tabular-nums;
+  vertical-align: middle;
 }
 .sf-rec-table th {
   color: #9aa3b0;
   font-weight: 600;
 }
+.sf-rec-num {
+  width: 2.1rem;
+}
+.sf-rec-time {
+  width: 7.4rem;
+  white-space: nowrap;
+}
+.sf-rec-ctx {
+  width: 8.2rem;
+  max-width: 8.2rem;
+}
+.sf-rec-clip {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
+.sf-rec-clip.dim {
+  margin-top: 0.08rem;
+  font-size: 0.68rem;
+  color: #8b93a0;
+}
 .sf-rec-actions {
+  width: 3.6rem;
   text-align: right;
   white-space: nowrap;
 }

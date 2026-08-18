@@ -142,6 +142,9 @@ const enemyInput = ref<DamageEnemyInput>(
 const historyEntries = ref<DamageCalcHistoryEntry[]>(listAllDamageCalcHistory())
 const activeHistoryId = ref('')
 const historyMessage = ref('')
+const currentSchemeName = computed(
+  () => historyEntries.value.find((entry) => entry.id === activeHistoryId.value)?.name ?? '',
+)
 
 const staggerPhase = ref<StaggerPhase>('stagger')
 const anomalySlotPanels = reactive<Record<string, PanelStats>>({})
@@ -1535,6 +1538,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
         :hits="hits"
         :hit-damages="hitDamages"
         :hit-calc-results="hitCalcResults"
+        :scheme-name="currentSchemeName"
         v-model:slots="schemeSlots"
       />
     </Teleport>

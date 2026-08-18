@@ -42,6 +42,8 @@ const props = defineProps<{
   hits?: ResolvedHit[]
   hitDamages?: Record<string, number>
   hitCalcResults?: Record<string, DamageCalcResult>
+  /** 当前加载的方案名；未归档为空 */
+  schemeName?: string
 }>()
 
 const slots = defineModel<SchemeSlot[]>('slots', { required: true })
@@ -1390,6 +1392,7 @@ defineExpose({ expand })
             :hits="hits"
             :hit-damages="hitDamages"
             :active-slot-index="activeSlotIndex"
+            :scheme-name="schemeName"
           />
         </div>
     </div>
