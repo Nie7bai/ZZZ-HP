@@ -2820,7 +2820,7 @@
         "mutationCoeff": 0
       },
       "profession": "命破",
-      "avatar_image": "/character/yixuan.webp",
+      "avatar_image": "/calculator_image/yixuan.webp",
       "supportNeeds": [],
       "mindscapeBuffs": [
         {
@@ -8662,7 +8662,7 @@
         "mutationCoeff": 0
       },
       "profession": "防护",
-      "avatar_image": "/character/caesar.webp",
+      "avatar_image": "/calculator_image/caesar.webp",
       "supportNeeds": [],
       "mindscapeBuffs": [
         {
@@ -10048,7 +10048,7 @@
         "mutationCoeff": 0
       },
       "profession": "支援",
-      "avatar_image": "/character/sunna.webp",
+      "avatar_image": "/calculator_image/sunna.webp",
       "supportNeeds": [],
       "mindscapeBuffs": [
         {
@@ -11642,6 +11642,7 @@
                   "maxStacks": 1,
                   "valuePerStack": 0,
                   "defaultStacks": 1,
+                  "appliesToAnomaly": true,
                   "enabledDefault": true,
                   "note": ""
                 },
@@ -11846,6 +11847,7 @@
               "maxStacks": 1,
               "valuePerStack": 0,
               "defaultStacks": 1,
+              "appliesToAnomaly": true,
               "enabledDefault": true,
               "note": ""
             },
@@ -12252,6 +12254,7 @@
                   "maxStacks": 1,
                   "valuePerStack": 0,
                   "defaultStacks": 1,
+                  "appliesToAnomaly": true,
                   "enabledDefault": true,
                   "note": ""
                 }
@@ -12330,6 +12333,7 @@
               "maxStacks": 1,
               "valuePerStack": 0,
               "defaultStacks": 1,
+              "appliesToAnomaly": true,
               "enabledDefault": true,
               "note": ""
             }
@@ -15932,7 +15936,7 @@
         "mutationCoeff": 0
       },
       "profession": "强攻",
-      "avatar_image": "/character/yeshunguang.webp",
+      "avatar_image": "/calculator_image/yeshunguang.webp",
       "supportNeeds": [],
       "mindscapeBuffs": [
         {
@@ -22054,7 +22058,7 @@
         "mutationCoeff": 0
       },
       "profession": "击破",
-      "avatar_image": "/character/anby.webp",
+      "avatar_image": "/calculator_image/anby.webp",
       "supportNeeds": [],
       "mindscapeBuffs": [
         {
@@ -24756,7 +24760,7 @@
         "mutationCoeff": 0
       },
       "profession": "强攻",
-      "avatar_image": "/character/xigelide.webp",
+      "avatar_image": "/calculator_image/1785241327714-x7g9nh.webp",
       "supportNeeds": [],
       "mindscapeBuffs": [
         {
@@ -32552,6 +32556,7 @@
                   "maxStacks": 1,
                   "valuePerStack": 0,
                   "defaultStacks": 1,
+                  "appliesToAnomaly": true,
                   "enabledDefault": true,
                   "note": ""
                 }
@@ -32608,6 +32613,7 @@
               "maxStacks": 1,
               "valuePerStack": 0,
               "defaultStacks": 1,
+              "appliesToAnomaly": true,
               "enabledDefault": true,
               "note": ""
             }
@@ -33146,6 +33152,7 @@
                   "maxStacks": 1,
                   "valuePerStack": 0,
                   "defaultStacks": 1,
+                  "appliesToAnomaly": true,
                   "enabledDefault": true,
                   "note": ""
                 },
@@ -33224,6 +33231,7 @@
               "maxStacks": 1,
               "valuePerStack": 0,
               "defaultStacks": 1,
+              "appliesToAnomaly": true,
               "enabledDefault": true,
               "note": ""
             },
@@ -35852,7 +35860,7 @@
         "mutationCoeff": 0
       },
       "profession": "异常",
-      "avatar_image": "/character/burnice.webp",
+      "avatar_image": "/calculator_image/burnice.webp",
       "supportNeeds": [],
       "mindscapeBuffs": [
         {
@@ -35926,6 +35934,7 @@
                   "maxStacks": 1,
                   "valuePerStack": 0,
                   "defaultStacks": 1,
+                  "appliesToAnomaly": true,
                   "enabledDefault": true,
                   "note": ""
                 }
@@ -36178,6 +36187,7 @@
               "maxStacks": 1,
               "valuePerStack": 0,
               "defaultStacks": 1,
+              "appliesToAnomaly": true,
               "enabledDefault": true,
               "note": ""
             },
@@ -39482,7 +39492,7 @@
         "mutationCoeff": 0
       },
       "profession": "异常",
-      "avatar_image": "/character/yanagi.webp",
+      "avatar_image": "/calculator_image/yanagi.webp",
       "supportNeeds": [],
       "mindscapeBuffs": [
         {
@@ -50136,7 +50146,7 @@
         "mutationCoeff": 0
       },
       "profession": "防护",
-      "avatar_image": "/character/zhao.webp",
+      "avatar_image": "/calculator_image/zhao.webp",
       "supportNeeds": [
         "hp"
       ],
@@ -57406,7 +57416,7 @@
         "mutationCoeff": 0
       },
       "profession": "击破",
-      "avatar_image": "/character/dialyn.webp",
+      "avatar_image": "/calculator_image/dialyn.webp",
       "supportNeeds": [],
       "mindscapeBuffs": [
         {
@@ -61937,7 +61947,7 @@
                 {
                   "id": "eff-ms4tpxkp-9jh4ly",
                   "origin": "",
-                  "scope": "general",
+                  "scope": "anomaly",
                   "applyTarget": "self",
                   "applySituation": "global",
                   "applyProfession": null,
@@ -62176,7 +62186,7 @@
             {
               "id": "eff-ms4tpxkp-9jh4ly",
               "origin": "",
-              "scope": "general",
+              "scope": "anomaly",
               "applyTarget": "self",
               "applySituation": "global",
               "applyProfession": null,
@@ -62304,7 +62314,7 @@
             "special": 0,
             "anomalyCritRate": 0,
             "anomalyCritDmg": 0,
-            "anomalyDmgBonus": 10,
+            "anomalyDmgBonus": 0,
             "anomalyReleaseDmgBonus": 0,
             "anomalyReleaseCritRate": 0,
             "anomalyReleaseCritDmg": 0,
@@ -66610,7 +66620,7 @@
         "mutationCoeff": 0
       },
       "profession": "强攻",
-      "avatar_image": "/character/ellen.webp",
+      "avatar_image": "/calculator_image/ellen.webp",
       "supportNeeds": [],
       "mindscapeBuffs": [
         {
@@ -70438,7 +70448,7 @@
         "mutationCoeff": 0
       },
       "profession": "击破",
-      "avatar_image": "/character/lighter.webp",
+      "avatar_image": "/calculator_image/lighter.webp",
       "supportNeeds": [],
       "mindscapeBuffs": [
         {
@@ -71953,7 +71963,7 @@
         "radianceDmgBonus": 0,
         "radianceResPen": 0,
         "specialMult": 100,
-        "mutationCoeff": 100
+        "mutationCoeff": 0
       },
       "profession": "异常",
       "avatar_image": "/character/remiel.webp",
@@ -72043,8 +72053,12 @@
                   "applyTarget": "team",
                   "applySituation": "global",
                   "applyProfession": null,
-                  "teamProfession": null,
-                  "teamProfessionValues": null,
+                  "teamProfession": "异常",
+                  "teamProfessionValues": [
+                    null,
+                    null,
+                    0
+                  ],
                   "teamProfessionMinCount": null,
                   "skillSubcategoryId": null,
                   "elementFilter": "all",
@@ -72074,8 +72088,12 @@
                   "applyTarget": "team",
                   "applySituation": "global",
                   "applyProfession": null,
-                  "teamProfession": null,
-                  "teamProfessionValues": null,
+                  "teamProfession": "异常",
+                  "teamProfessionValues": [
+                    null,
+                    null,
+                    0
+                  ],
                   "teamProfessionMinCount": null,
                   "skillSubcategoryId": null,
                   "elementFilter": "all",
@@ -72105,8 +72123,12 @@
                   "applyTarget": "team",
                   "applySituation": "global",
                   "applyProfession": null,
-                  "teamProfession": null,
-                  "teamProfessionValues": null,
+                  "teamProfession": "异常",
+                  "teamProfessionValues": [
+                    null,
+                    0,
+                    null
+                  ],
                   "teamProfessionMinCount": null,
                   "skillSubcategoryId": null,
                   "elementFilter": "all",
@@ -72136,8 +72158,12 @@
                   "applyTarget": "team",
                   "applySituation": "global",
                   "applyProfession": null,
-                  "teamProfession": null,
-                  "teamProfessionValues": null,
+                  "teamProfession": "异常",
+                  "teamProfessionValues": [
+                    0,
+                    null,
+                    null
+                  ],
                   "teamProfessionMinCount": null,
                   "skillSubcategoryId": null,
                   "elementFilter": "all",
@@ -72243,11 +72269,11 @@
                   "teamProfessionValues": null,
                   "teamProfessionMinCount": null,
                   "skillCategory": "ultimate",
-                  "skillSubcategoryId": "remiel-ultimate-msysi130",
+                  "skillSubcategoryId": "remiel-ultimate-mswz1sen",
                   "skillTargets": [
                     {
                       "category": "ultimate",
-                      "subcategoryId": "remiel-ultimate-msysi130"
+                      "subcategoryId": "remiel-ultimate-mswz1sen"
                     }
                   ],
                   "elementFilter": "all",
@@ -72367,8 +72393,12 @@
               "applyTarget": "team",
               "applySituation": "global",
               "applyProfession": null,
-              "teamProfession": null,
-              "teamProfessionValues": null,
+              "teamProfession": "异常",
+              "teamProfessionValues": [
+                null,
+                null,
+                0
+              ],
               "teamProfessionMinCount": null,
               "skillSubcategoryId": null,
               "elementFilter": "all",
@@ -72390,8 +72420,12 @@
               "applyTarget": "team",
               "applySituation": "global",
               "applyProfession": null,
-              "teamProfession": null,
-              "teamProfessionValues": null,
+              "teamProfession": "异常",
+              "teamProfessionValues": [
+                null,
+                null,
+                0
+              ],
               "teamProfessionMinCount": null,
               "skillSubcategoryId": null,
               "elementFilter": "all",
@@ -72421,8 +72455,12 @@
               "applyTarget": "team",
               "applySituation": "global",
               "applyProfession": null,
-              "teamProfession": null,
-              "teamProfessionValues": null,
+              "teamProfession": "异常",
+              "teamProfessionValues": [
+                null,
+                0,
+                null
+              ],
               "teamProfessionMinCount": null,
               "skillSubcategoryId": null,
               "elementFilter": "all",
@@ -72452,8 +72490,12 @@
               "applyTarget": "team",
               "applySituation": "global",
               "applyProfession": null,
-              "teamProfession": null,
-              "teamProfessionValues": null,
+              "teamProfession": "异常",
+              "teamProfessionValues": [
+                0,
+                null,
+                null
+              ],
               "teamProfessionMinCount": null,
               "skillSubcategoryId": null,
               "elementFilter": "all",
@@ -72551,11 +72593,11 @@
               "teamProfessionValues": null,
               "teamProfessionMinCount": null,
               "skillCategory": "ultimate",
-              "skillSubcategoryId": "remiel-ultimate-msysi130",
+              "skillSubcategoryId": "remiel-ultimate-mswz1sen",
               "skillTargets": [
                 {
                   "category": "ultimate",
-                  "subcategoryId": "remiel-ultimate-msysi130"
+                  "subcategoryId": "remiel-ultimate-mswz1sen"
                 }
               ],
               "elementFilter": "all",
@@ -72996,7 +73038,7 @@
             {
               "id": "blk-ms7tkhei-q0ipfu",
               "name": "影画2",
-              "note": "蕾米埃尔的[异化系数]提升20%；队伍中[异常]角色对[幻色]效果下的敌人造成属性异常伤害时，无视目标15%的防御力，[幻色]效果消失后该效果会额外持续8秒。（待测试）",
+              "note": "蕾米埃尔的[异化系数]提升20%；队伍中[异常]角色对[幻色]效果下的敌人造成属性异常伤害时，无视目标15%的防御力，[幻色]效果消失后该效果会额外持续8秒。",
               "effects": [
                 {
                   "id": "eff-ms7tkhei-lhivxl",
@@ -73301,11 +73343,11 @@
                   "teamProfessionValues": null,
                   "teamProfessionMinCount": null,
                   "skillCategory": "ultimate",
-                  "skillSubcategoryId": null,
+                  "skillSubcategoryId": "remiel-ultimate-mswz1sen",
                   "skillTargets": [
                     {
                       "category": "ultimate",
-                      "subcategoryId": null
+                      "subcategoryId": "remiel-ultimate-mswz1sen"
                     }
                   ],
                   "elementFilter": "all",
@@ -73423,11 +73465,11 @@
               "teamProfessionValues": null,
               "teamProfessionMinCount": null,
               "skillCategory": "ultimate",
-              "skillSubcategoryId": null,
+              "skillSubcategoryId": "remiel-ultimate-mswz1sen",
               "skillTargets": [
                 {
                   "category": "ultimate",
-                  "subcategoryId": null
+                  "subcategoryId": "remiel-ultimate-mswz1sen"
                 }
               ],
               "elementFilter": "all",
@@ -73867,11 +73909,11 @@
                   "teamProfessionValues": null,
                   "teamProfessionMinCount": null,
                   "skillCategory": "ultimate",
-                  "skillSubcategoryId": null,
+                  "skillSubcategoryId": "remiel-ultimate-mswz1sen",
                   "skillTargets": [
                     {
                       "category": "ultimate",
-                      "subcategoryId": null
+                      "subcategoryId": "remiel-ultimate-mswz1sen"
                     }
                   ],
                   "elementFilter": "all",
@@ -73989,11 +74031,11 @@
               "teamProfessionValues": null,
               "teamProfessionMinCount": null,
               "skillCategory": "ultimate",
-              "skillSubcategoryId": null,
+              "skillSubcategoryId": "remiel-ultimate-mswz1sen",
               "skillTargets": [
                 {
                   "category": "ultimate",
-                  "subcategoryId": null
+                  "subcategoryId": "remiel-ultimate-mswz1sen"
                 }
               ],
               "elementFilter": "all",
@@ -83424,7 +83466,7 @@
         "mutationCoeff": 0
       },
       "profession": "击破",
-      "avatar_image": "/character/qingyi.webp",
+      "avatar_image": "/calculator_image/qingyi.webp",
       "supportNeeds": [],
       "mindscapeBuffs": [
         {
@@ -99069,7 +99111,7 @@
       "name": "云霓弧光",
       "profession": "强攻",
       "rarity": "S",
-      "avatar_image": "/wengine/cloudcleave-radiance.webp",
+      "avatar_image": "/calculator_image/Cloudcleave_Radiance.webp",
       "note": "",
       "baseAtk": 743,
       "advancedStats": {
@@ -109927,11 +109969,11 @@
       ]
     },
     {
-      "id": "Weeping_Gemini",
+      "id": "Weapon_A_Common_08",
       "name": "双生泣星",
       "profession": "异常",
       "rarity": "A",
-      "avatar_image": "/wengine/Weeping_Gemini.webp",
+      "avatar_image": "/calculator_image/1785078176805-lqldwy.webp",
       "note": "",
       "baseAtk": 594,
       "advancedStats": {
@@ -131187,11 +131229,11 @@
       ]
     },
     {
-      "id": "The_Restrained",
+      "id": "Weapon_S_1141",
       "name": "拘缚者",
       "profession": "击破",
       "rarity": "S",
-      "avatar_image": "/wengine/The_Restrained.webp",
+      "avatar_image": "/calculator_image/1785081949704-9ipfh3.webp",
       "note": "",
       "baseAtk": 684,
       "advancedStats": {
@@ -139837,306 +139879,8 @@
       },
       "refinementBuffs": [
         {
-          "effectBlocks": [
-            {
-              "id": "blk-legacy",
-              "name": "效果块 1",
-              "note": "",
-              "effects": [
-                {
-                  "id": "legacy-self-directDmgMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "directDmgMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-anomalyMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "anomalyMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-anomalyReleaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "anomalyReleaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-disorderBaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "disorderBaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-turbulenceBaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "turbulenceBaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-radianceMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "radianceMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-specialMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "specialMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-mutationCoeffFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "mutationCoeffFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-directDmgMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "directDmgMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-anomalyMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "anomalyMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-anomalyReleaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "anomalyReleaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-disorderBaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "disorderBaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-turbulenceBaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "turbulenceBaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-radianceMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "radianceMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-specialMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "specialMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-mutationCoeffFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "mutationCoeffFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                }
-              ],
-              "enabledDefault": true
-            }
-          ],
-          "effects": [
-            {
-              "id": "legacy-self-directDmgMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "directDmgMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-anomalyMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "anomalyMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-anomalyReleaseMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "anomalyReleaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-disorderBaseMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "disorderBaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-turbulenceBaseMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "turbulenceBaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-radianceMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "radianceMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-specialMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "specialMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-mutationCoeffFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "mutationCoeffFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-directDmgMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "directDmgMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-anomalyMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "anomalyMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-anomalyReleaseMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "anomalyReleaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-disorderBaseMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "disorderBaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-turbulenceBaseMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "turbulenceBaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-radianceMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "radianceMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-specialMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "specialMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-mutationCoeffFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "mutationCoeffFactor",
-              "value": 1,
-              "enabledDefault": true
-            }
-          ],
+          "effectBlocks": [],
+          "effects": [],
           "selfMods": {
             "hp": 0,
             "inCombatHpPercent": 0,
@@ -140189,14 +139933,14 @@
             "mutationCoeff": 0,
             "skillDmgBonus": 0,
             "skillMultiplierBonus": 0,
-            "directDmgMultFactor": 1,
-            "anomalyMultFactor": 1,
-            "anomalyReleaseMultFactor": 1,
-            "disorderBaseMultFactor": 1,
-            "turbulenceBaseMultFactor": 1,
-            "radianceMultFactor": 1,
-            "specialMultFactor": 1,
-            "mutationCoeffFactor": 1
+            "directDmgMultFactor": 0,
+            "anomalyMultFactor": 0,
+            "anomalyReleaseMultFactor": 0,
+            "disorderBaseMultFactor": 0,
+            "turbulenceBaseMultFactor": 0,
+            "radianceMultFactor": 0,
+            "specialMultFactor": 0,
+            "mutationCoeffFactor": 0
           },
           "teamMods": {
             "hp": 0,
@@ -140250,317 +139994,19 @@
             "mutationCoeff": 0,
             "skillDmgBonus": 0,
             "skillMultiplierBonus": 0,
-            "directDmgMultFactor": 1,
-            "anomalyMultFactor": 1,
-            "anomalyReleaseMultFactor": 1,
-            "disorderBaseMultFactor": 1,
-            "turbulenceBaseMultFactor": 1,
-            "radianceMultFactor": 1,
-            "specialMultFactor": 1,
-            "mutationCoeffFactor": 1
+            "directDmgMultFactor": 0,
+            "anomalyMultFactor": 0,
+            "anomalyReleaseMultFactor": 0,
+            "disorderBaseMultFactor": 0,
+            "turbulenceBaseMultFactor": 0,
+            "radianceMultFactor": 0,
+            "specialMultFactor": 0,
+            "mutationCoeffFactor": 0
           }
         },
         {
-          "effectBlocks": [
-            {
-              "id": "blk-legacy",
-              "name": "效果块 1",
-              "note": "",
-              "effects": [
-                {
-                  "id": "legacy-self-directDmgMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "directDmgMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-anomalyMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "anomalyMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-anomalyReleaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "anomalyReleaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-disorderBaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "disorderBaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-turbulenceBaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "turbulenceBaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-radianceMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "radianceMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-specialMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "specialMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-mutationCoeffFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "mutationCoeffFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-directDmgMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "directDmgMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-anomalyMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "anomalyMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-anomalyReleaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "anomalyReleaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-disorderBaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "disorderBaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-turbulenceBaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "turbulenceBaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-radianceMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "radianceMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-specialMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "specialMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-mutationCoeffFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "mutationCoeffFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                }
-              ],
-              "enabledDefault": true
-            }
-          ],
-          "effects": [
-            {
-              "id": "legacy-self-directDmgMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "directDmgMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-anomalyMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "anomalyMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-anomalyReleaseMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "anomalyReleaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-disorderBaseMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "disorderBaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-turbulenceBaseMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "turbulenceBaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-radianceMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "radianceMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-specialMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "specialMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-mutationCoeffFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "mutationCoeffFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-directDmgMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "directDmgMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-anomalyMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "anomalyMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-anomalyReleaseMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "anomalyReleaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-disorderBaseMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "disorderBaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-turbulenceBaseMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "turbulenceBaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-radianceMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "radianceMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-specialMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "specialMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-mutationCoeffFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "mutationCoeffFactor",
-              "value": 1,
-              "enabledDefault": true
-            }
-          ],
+          "effectBlocks": [],
+          "effects": [],
           "selfMods": {
             "hp": 0,
             "inCombatHpPercent": 0,
@@ -140613,14 +140059,14 @@
             "mutationCoeff": 0,
             "skillDmgBonus": 0,
             "skillMultiplierBonus": 0,
-            "directDmgMultFactor": 1,
-            "anomalyMultFactor": 1,
-            "anomalyReleaseMultFactor": 1,
-            "disorderBaseMultFactor": 1,
-            "turbulenceBaseMultFactor": 1,
-            "radianceMultFactor": 1,
-            "specialMultFactor": 1,
-            "mutationCoeffFactor": 1
+            "directDmgMultFactor": 0,
+            "anomalyMultFactor": 0,
+            "anomalyReleaseMultFactor": 0,
+            "disorderBaseMultFactor": 0,
+            "turbulenceBaseMultFactor": 0,
+            "radianceMultFactor": 0,
+            "specialMultFactor": 0,
+            "mutationCoeffFactor": 0
           },
           "teamMods": {
             "hp": 0,
@@ -140674,317 +140120,19 @@
             "mutationCoeff": 0,
             "skillDmgBonus": 0,
             "skillMultiplierBonus": 0,
-            "directDmgMultFactor": 1,
-            "anomalyMultFactor": 1,
-            "anomalyReleaseMultFactor": 1,
-            "disorderBaseMultFactor": 1,
-            "turbulenceBaseMultFactor": 1,
-            "radianceMultFactor": 1,
-            "specialMultFactor": 1,
-            "mutationCoeffFactor": 1
+            "directDmgMultFactor": 0,
+            "anomalyMultFactor": 0,
+            "anomalyReleaseMultFactor": 0,
+            "disorderBaseMultFactor": 0,
+            "turbulenceBaseMultFactor": 0,
+            "radianceMultFactor": 0,
+            "specialMultFactor": 0,
+            "mutationCoeffFactor": 0
           }
         },
         {
-          "effectBlocks": [
-            {
-              "id": "blk-legacy",
-              "name": "效果块 1",
-              "note": "",
-              "effects": [
-                {
-                  "id": "legacy-self-directDmgMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "directDmgMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-anomalyMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "anomalyMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-anomalyReleaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "anomalyReleaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-disorderBaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "disorderBaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-turbulenceBaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "turbulenceBaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-radianceMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "radianceMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-specialMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "specialMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-mutationCoeffFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "mutationCoeffFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-directDmgMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "directDmgMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-anomalyMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "anomalyMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-anomalyReleaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "anomalyReleaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-disorderBaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "disorderBaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-turbulenceBaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "turbulenceBaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-radianceMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "radianceMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-specialMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "specialMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-mutationCoeffFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "mutationCoeffFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                }
-              ],
-              "enabledDefault": true
-            }
-          ],
-          "effects": [
-            {
-              "id": "legacy-self-directDmgMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "directDmgMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-anomalyMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "anomalyMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-anomalyReleaseMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "anomalyReleaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-disorderBaseMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "disorderBaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-turbulenceBaseMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "turbulenceBaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-radianceMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "radianceMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-specialMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "specialMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-mutationCoeffFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "mutationCoeffFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-directDmgMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "directDmgMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-anomalyMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "anomalyMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-anomalyReleaseMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "anomalyReleaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-disorderBaseMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "disorderBaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-turbulenceBaseMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "turbulenceBaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-radianceMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "radianceMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-specialMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "specialMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-mutationCoeffFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "mutationCoeffFactor",
-              "value": 1,
-              "enabledDefault": true
-            }
-          ],
+          "effectBlocks": [],
+          "effects": [],
           "selfMods": {
             "hp": 0,
             "inCombatHpPercent": 0,
@@ -141037,14 +140185,14 @@
             "mutationCoeff": 0,
             "skillDmgBonus": 0,
             "skillMultiplierBonus": 0,
-            "directDmgMultFactor": 1,
-            "anomalyMultFactor": 1,
-            "anomalyReleaseMultFactor": 1,
-            "disorderBaseMultFactor": 1,
-            "turbulenceBaseMultFactor": 1,
-            "radianceMultFactor": 1,
-            "specialMultFactor": 1,
-            "mutationCoeffFactor": 1
+            "directDmgMultFactor": 0,
+            "anomalyMultFactor": 0,
+            "anomalyReleaseMultFactor": 0,
+            "disorderBaseMultFactor": 0,
+            "turbulenceBaseMultFactor": 0,
+            "radianceMultFactor": 0,
+            "specialMultFactor": 0,
+            "mutationCoeffFactor": 0
           },
           "teamMods": {
             "hp": 0,
@@ -141098,317 +140246,19 @@
             "mutationCoeff": 0,
             "skillDmgBonus": 0,
             "skillMultiplierBonus": 0,
-            "directDmgMultFactor": 1,
-            "anomalyMultFactor": 1,
-            "anomalyReleaseMultFactor": 1,
-            "disorderBaseMultFactor": 1,
-            "turbulenceBaseMultFactor": 1,
-            "radianceMultFactor": 1,
-            "specialMultFactor": 1,
-            "mutationCoeffFactor": 1
+            "directDmgMultFactor": 0,
+            "anomalyMultFactor": 0,
+            "anomalyReleaseMultFactor": 0,
+            "disorderBaseMultFactor": 0,
+            "turbulenceBaseMultFactor": 0,
+            "radianceMultFactor": 0,
+            "specialMultFactor": 0,
+            "mutationCoeffFactor": 0
           }
         },
         {
-          "effectBlocks": [
-            {
-              "id": "blk-legacy",
-              "name": "效果块 1",
-              "note": "",
-              "effects": [
-                {
-                  "id": "legacy-self-directDmgMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "directDmgMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-anomalyMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "anomalyMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-anomalyReleaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "anomalyReleaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-disorderBaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "disorderBaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-turbulenceBaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "turbulenceBaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-radianceMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "radianceMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-specialMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "specialMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-mutationCoeffFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "mutationCoeffFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-directDmgMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "directDmgMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-anomalyMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "anomalyMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-anomalyReleaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "anomalyReleaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-disorderBaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "disorderBaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-turbulenceBaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "turbulenceBaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-radianceMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "radianceMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-specialMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "specialMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-mutationCoeffFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "mutationCoeffFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                }
-              ],
-              "enabledDefault": true
-            }
-          ],
-          "effects": [
-            {
-              "id": "legacy-self-directDmgMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "directDmgMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-anomalyMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "anomalyMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-anomalyReleaseMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "anomalyReleaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-disorderBaseMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "disorderBaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-turbulenceBaseMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "turbulenceBaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-radianceMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "radianceMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-specialMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "specialMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-mutationCoeffFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "mutationCoeffFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-directDmgMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "directDmgMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-anomalyMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "anomalyMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-anomalyReleaseMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "anomalyReleaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-disorderBaseMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "disorderBaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-turbulenceBaseMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "turbulenceBaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-radianceMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "radianceMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-specialMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "specialMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-mutationCoeffFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "mutationCoeffFactor",
-              "value": 1,
-              "enabledDefault": true
-            }
-          ],
+          "effectBlocks": [],
+          "effects": [],
           "selfMods": {
             "hp": 0,
             "inCombatHpPercent": 0,
@@ -141461,14 +140311,14 @@
             "mutationCoeff": 0,
             "skillDmgBonus": 0,
             "skillMultiplierBonus": 0,
-            "directDmgMultFactor": 1,
-            "anomalyMultFactor": 1,
-            "anomalyReleaseMultFactor": 1,
-            "disorderBaseMultFactor": 1,
-            "turbulenceBaseMultFactor": 1,
-            "radianceMultFactor": 1,
-            "specialMultFactor": 1,
-            "mutationCoeffFactor": 1
+            "directDmgMultFactor": 0,
+            "anomalyMultFactor": 0,
+            "anomalyReleaseMultFactor": 0,
+            "disorderBaseMultFactor": 0,
+            "turbulenceBaseMultFactor": 0,
+            "radianceMultFactor": 0,
+            "specialMultFactor": 0,
+            "mutationCoeffFactor": 0
           },
           "teamMods": {
             "hp": 0,
@@ -141522,317 +140372,19 @@
             "mutationCoeff": 0,
             "skillDmgBonus": 0,
             "skillMultiplierBonus": 0,
-            "directDmgMultFactor": 1,
-            "anomalyMultFactor": 1,
-            "anomalyReleaseMultFactor": 1,
-            "disorderBaseMultFactor": 1,
-            "turbulenceBaseMultFactor": 1,
-            "radianceMultFactor": 1,
-            "specialMultFactor": 1,
-            "mutationCoeffFactor": 1
+            "directDmgMultFactor": 0,
+            "anomalyMultFactor": 0,
+            "anomalyReleaseMultFactor": 0,
+            "disorderBaseMultFactor": 0,
+            "turbulenceBaseMultFactor": 0,
+            "radianceMultFactor": 0,
+            "specialMultFactor": 0,
+            "mutationCoeffFactor": 0
           }
         },
         {
-          "effectBlocks": [
-            {
-              "id": "blk-legacy",
-              "name": "效果块 1",
-              "note": "",
-              "effects": [
-                {
-                  "id": "legacy-self-directDmgMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "directDmgMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-anomalyMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "anomalyMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-anomalyReleaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "anomalyReleaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-disorderBaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "disorderBaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-turbulenceBaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "turbulenceBaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-radianceMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "radianceMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-specialMultFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "specialMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-self-mutationCoeffFactor",
-                  "scope": "general",
-                  "applyTarget": "self",
-                  "kind": "fixed",
-                  "stat": "mutationCoeffFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-directDmgMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "directDmgMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-anomalyMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "anomalyMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-anomalyReleaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "anomalyReleaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-disorderBaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "disorderBaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-turbulenceBaseMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "turbulenceBaseMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-radianceMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "radianceMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-specialMultFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "specialMultFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                },
-                {
-                  "id": "legacy-team-mutationCoeffFactor",
-                  "scope": "general",
-                  "applyTarget": "team",
-                  "kind": "fixed",
-                  "stat": "mutationCoeffFactor",
-                  "value": 1,
-                  "enabledDefault": true
-                }
-              ],
-              "enabledDefault": true
-            }
-          ],
-          "effects": [
-            {
-              "id": "legacy-self-directDmgMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "directDmgMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-anomalyMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "anomalyMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-anomalyReleaseMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "anomalyReleaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-disorderBaseMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "disorderBaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-turbulenceBaseMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "turbulenceBaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-radianceMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "radianceMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-specialMultFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "specialMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-self-mutationCoeffFactor",
-              "scope": "general",
-              "applyTarget": "self",
-              "kind": "fixed",
-              "stat": "mutationCoeffFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-directDmgMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "directDmgMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-anomalyMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "anomalyMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-anomalyReleaseMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "anomalyReleaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-disorderBaseMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "disorderBaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-turbulenceBaseMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "turbulenceBaseMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-radianceMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "radianceMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-specialMultFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "specialMultFactor",
-              "value": 1,
-              "enabledDefault": true
-            },
-            {
-              "id": "legacy-team-mutationCoeffFactor",
-              "scope": "general",
-              "applyTarget": "team",
-              "kind": "fixed",
-              "stat": "mutationCoeffFactor",
-              "value": 1,
-              "enabledDefault": true
-            }
-          ],
+          "effectBlocks": [],
+          "effects": [],
           "selfMods": {
             "hp": 0,
             "inCombatHpPercent": 0,
@@ -141885,14 +140437,14 @@
             "mutationCoeff": 0,
             "skillDmgBonus": 0,
             "skillMultiplierBonus": 0,
-            "directDmgMultFactor": 1,
-            "anomalyMultFactor": 1,
-            "anomalyReleaseMultFactor": 1,
-            "disorderBaseMultFactor": 1,
-            "turbulenceBaseMultFactor": 1,
-            "radianceMultFactor": 1,
-            "specialMultFactor": 1,
-            "mutationCoeffFactor": 1
+            "directDmgMultFactor": 0,
+            "anomalyMultFactor": 0,
+            "anomalyReleaseMultFactor": 0,
+            "disorderBaseMultFactor": 0,
+            "turbulenceBaseMultFactor": 0,
+            "radianceMultFactor": 0,
+            "specialMultFactor": 0,
+            "mutationCoeffFactor": 0
           },
           "teamMods": {
             "hp": 0,
@@ -141946,14 +140498,14 @@
             "mutationCoeff": 0,
             "skillDmgBonus": 0,
             "skillMultiplierBonus": 0,
-            "directDmgMultFactor": 1,
-            "anomalyMultFactor": 1,
-            "anomalyReleaseMultFactor": 1,
-            "disorderBaseMultFactor": 1,
-            "turbulenceBaseMultFactor": 1,
-            "radianceMultFactor": 1,
-            "specialMultFactor": 1,
-            "mutationCoeffFactor": 1
+            "directDmgMultFactor": 0,
+            "anomalyMultFactor": 0,
+            "anomalyReleaseMultFactor": 0,
+            "disorderBaseMultFactor": 0,
+            "turbulenceBaseMultFactor": 0,
+            "radianceMultFactor": 0,
+            "specialMultFactor": 0,
+            "mutationCoeffFactor": 0
           }
         }
       ]
@@ -166399,7 +164951,7 @@
       "name": "空羽复归之诗",
       "profession": "异常",
       "rarity": "S",
-      "avatar_image": "/wengine/Ode_Of_Resurrected_Wings.webp",
+      "avatar_image": "/calculator_image/1785470903734-6rjk4j.webp",
       "note": "",
       "baseAtk": 743,
       "advancedStats": {
@@ -197093,7 +195645,7 @@
     {
       "id": "snap",
       "name": "咔嚓仔",
-      "avatar_image": "/bangboo/snap.webp",
+      "avatar_image": "/calculator_image/snap.webp",
       "effectBlocks": [],
       "effects": [],
       "refinementEffectBlocks": [
@@ -197762,7 +196314,7 @@
     {
       "id": "biggest_fan",
       "name": "阿饭",
-      "avatar_image": "/bangboo/biggest_fan.webp",
+      "avatar_image": "/calculator_image/biggest_fan.webp",
       "effectBlocks": [],
       "effects": [],
       "refinementEffectBlocks": [
@@ -198431,7 +196983,7 @@
     {
       "id": "knightboo",
       "name": "骑士布",
-      "avatar_image": "/bangboo/knightboo.webp",
+      "avatar_image": "/calculator_image/knightboo.webp",
       "effectBlocks": [],
       "effects": [],
       "refinementEffectBlocks": [
@@ -199428,7 +197980,7 @@
     {
       "id": "SuitYunkuiTales",
       "name": "云岿如我",
-      "avatar_image": "/drive_disc/SuitYunkuiTales.webp",
+      "avatar_image": "/calculator_image/SuitYunkuiTales.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -199778,7 +198330,7 @@
     {
       "id": "SuitProtoPunk",
       "name": "原始朋克",
-      "avatar_image": "/drive_disc/SuitProtoPunk.webp",
+      "avatar_image": "/calculator_image/SuitProtoPunk.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffects": [],
@@ -200029,7 +198581,7 @@
     {
       "id": "SuitWutheringSalon",
       "name": "呼啸沙龙",
-      "avatar_image": "/drive_disc/SuitWutheringSalon.webp",
+      "avatar_image": "/calculator_image/SuitWutheringSalon.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -200387,7 +198939,7 @@
     {
       "id": "woodpecker",
       "name": "啄木鸟电音",
-      "avatar_image": "/drive_disc/woodpecker.webp",
+      "avatar_image": "/calculator_image/SuitWoodpeckerElectro.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -200693,7 +199245,7 @@
     {
       "id": "SuitNotesFromtheChained",
       "name": "囚徒手记",
-      "avatar_image": "/drive_disc/SuitNotesFromtheChained.webp",
+      "avatar_image": "/calculator_image/SuitNotesFromtheChained.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -201097,7 +199649,7 @@
     {
       "id": "SuitShadow",
       "name": "如影相随",
-      "avatar_image": "/drive_disc/SuitShadow.webp",
+      "avatar_image": "/calculator_image/SuitShadow.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -201493,7 +200045,7 @@
     {
       "id": "SuitKingoftheSummit",
       "name": "山大王",
-      "avatar_image": "/drive_disc/SuitKingoftheSummit.webp",
+      "avatar_image": "/calculator_image/SuitKingoftheSummit.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffects": [],
@@ -201742,7 +200294,7 @@
     {
       "id": "SuitBranch&BladeSong",
       "name": "折枝剑歌",
-      "avatar_image": "/drive_disc/SuitBranch&BladeSong.webp",
+      "avatar_image": "/calculator_image/SuitBranchBladeSong.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -202090,7 +200642,7 @@
     {
       "id": "SuitDawnsBloom",
       "name": "拂晓生花",
-      "avatar_image": "/drive_disc/SuitDawnsBloom.webp",
+      "avatar_image": "/calculator_image/SuitDawnsBloom.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -202398,7 +200950,7 @@
     {
       "id": "SuitTheSkyAblaze",
       "name": "拂晓行纪",
-      "avatar_image": "/drive_disc/SuitTheSkyAblaze.webp",
+      "avatar_image": "/calculator_image/SuitTheSkyAblaze.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -202754,7 +201306,7 @@
     {
       "id": "SuitSwingJazz",
       "name": "摇摆爵士",
-      "avatar_image": "/drive_disc/SuitSwingJazz.webp",
+      "avatar_image": "/calculator_image/SuitSwingJazz.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -203062,7 +201614,7 @@
     {
       "id": "SuitMoonlightLullaby",
       "name": "月光骑士颂",
-      "avatar_image": "/drive_disc/SuitMoonlightLullaby.webp",
+      "avatar_image": "/calculator_image/SuitMoonlightLullaby.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -203370,7 +201922,7 @@
     {
       "id": "polar",
       "name": "极地重金属",
-      "avatar_image": "/drive_disc/polar.webp",
+      "avatar_image": "/calculator_image/SuitPolarMetal.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -203728,7 +202280,7 @@
     {
       "id": "SuitWhiteWaterBallad",
       "name": "沧浪行歌",
-      "avatar_image": "/drive_disc/SuitWhiteWaterBallad.webp",
+      "avatar_image": "/calculator_image/SuitWhiteWaterBallad.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -204084,7 +202636,7 @@
     {
       "id": "SuitPufferElectro",
       "name": "河豚电音",
-      "avatar_image": "/drive_disc/SuitPufferElectro.webp",
+      "avatar_image": "/calculator_image/SuitPufferElectro.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -204440,7 +202992,7 @@
     {
       "id": "SuitSavior",
       "name": "法厄同之歌",
-      "avatar_image": "/drive_disc/SuitSavior.webp",
+      "avatar_image": "/calculator_image/SuitSavior.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -204798,7 +203350,7 @@
     {
       "id": "SuitShiningAria",
       "name": "流光咏叹",
-      "avatar_image": "/drive_disc/SuitShiningAria.webp",
+      "avatar_image": "/calculator_image/SuitShiningAria.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -205156,7 +203708,7 @@
     {
       "id": "chaos-jazz",
       "name": "混沌爵士",
-      "avatar_image": "/drive_disc/chaos-jazz.webp",
+      "avatar_image": "/calculator_image/SuitChaosJazz.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -205614,7 +204166,7 @@
     {
       "id": "SuitChaosMetal",
       "name": "混沌重金属",
-      "avatar_image": "/drive_disc/SuitChaosMetal.webp",
+      "avatar_image": "/calculator_image/SuitChaosMetal.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -205968,7 +204520,7 @@
     {
       "id": "hormone",
       "name": "激素朋克",
-      "avatar_image": "/drive_disc/hormone.webp",
+      "avatar_image": "/calculator_image/SuitHormonePunk.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -206276,7 +204828,7 @@
     {
       "id": "SuitSoulRock",
       "name": "灵魂摇滚",
-      "avatar_image": "/drive_disc/SuitSoulRock.webp",
+      "avatar_image": "/calculator_image/SuitSoulRock.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffects": [],
@@ -206471,7 +205023,7 @@
     {
       "id": "SuitInfernoMetal",
       "name": "炎狱重金属",
-      "avatar_image": "/drive_disc/SuitInfernoMetal.webp",
+      "avatar_image": "/calculator_image/SuitInfernoMetal.webp",
       "twoPieceNote": "火属性增伤。",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -206781,7 +205333,7 @@
     {
       "id": "fanged",
       "name": "獠牙重金属",
-      "avatar_image": "/drive_disc/fanged.webp",
+      "avatar_image": "/calculator_image/SuitFangedMetal.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -207093,7 +205645,7 @@
     {
       "id": "SuitFreedomBlues",
       "name": "自由蓝调",
-      "avatar_image": "/drive_disc/SuitFreedomBlues.webp",
+      "avatar_image": "/calculator_image/SuitFreedomBlues.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -207353,7 +205905,7 @@
     {
       "id": "SuitThornedRose",
       "name": "荆棘玫瑰",
-      "avatar_image": "/drive_disc/SuitThornedRose.webp",
+      "avatar_image": "/calculator_image/1784988104093-fl15ry.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -207751,7 +206303,7 @@
     {
       "id": "SuitFeatheredFate",
       "name": "谶羽之誓",
-      "avatar_image": "/drive_disc/SuitFeatheredFate.webp",
+      "avatar_image": "/calculator_image/1784988020273-odqdt6.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -208105,7 +206657,7 @@
     {
       "id": "SuitBunnyinWonderland",
       "name": "雪兔梦游仙境",
-      "avatar_image": "/drive_disc/SuitBunnyinWonderland.webp",
+      "avatar_image": "/calculator_image/SuitBunnyinWonderland.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -208411,7 +206963,7 @@
     {
       "id": "SuitThunderMetal",
       "name": "雷暴重金属",
-      "avatar_image": "/drive_disc/SuitThunderMetal.webp",
+      "avatar_image": "/calculator_image/SuitThunderMetal.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -208723,7 +207275,7 @@
     {
       "id": "SuitShockstarDisco",
       "name": "震星迪斯科",
-      "avatar_image": "/drive_disc/SuitShockstarDisco.webp",
+      "avatar_image": "/calculator_image/SuitShockstarDisco.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -208935,7 +207487,7 @@
     {
       "id": "SuitAstralVoice",
       "name": "静听嘉音",
-      "avatar_image": "/drive_disc/SuitAstralVoice.webp",
+      "avatar_image": "/calculator_image/SuitAstralVoice.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
@@ -210083,7 +208635,7 @@
       "disorderMultFactor": 100
     },
     {
-      "id": "remiel-ultimate-msysi130",
+      "id": "remiel-ultimate-mswz1sen",
       "agentId": "remiel",
       "categoryId": "ultimate",
       "name": "缭乱终幕",
@@ -210701,79 +209253,22 @@
       ]
     },
     {
-      "id": "aria-mode-ms37xcmv",
-      "agentId": "aria",
-      "name": "终结技与强化版[普通攻击：绝对音准]打满异常槽的异放",
+      "id": "remiel-mode-msdcsob6",
+      "agentId": "remiel",
+      "name": "耀变",
       "modeType": "anomaly",
       "events": [
         {
-          "id": "evt-local-ms37vzqn-0",
-          "kind": "anomalyRelease",
-          "categoryId": "ultimate",
-          "skillSubcategoryId": null,
-          "count": 1,
+          "id": "evt-local-msdcsddv-0",
+          "kind": "direct",
+          "categoryId": "basic",
+          "skillSubcategoryId": "remiel-basic-ms8ehm4k",
+          "count": 3,
           "staggerPhase": "stagger",
           "critMode": "expected",
           "ownerAgentId": null,
           "triggerAgentId": "__at_calc__",
           "skillBound": true,
-          "multOverrides": null
-        },
-        {
-          "id": "evt-local-ms380uki-1",
-          "kind": "anomalyRelease",
-          "categoryId": "basic",
-          "skillSubcategoryId": "aria-basic-ms37s4cm",
-          "count": 1,
-          "staggerPhase": "stagger",
-          "critMode": "expected",
-          "ownerAgentId": null,
-          "triggerAgentId": "__at_calc__",
-          "skillBound": true,
-          "multOverrides": null
-        }
-      ]
-    },
-    {
-      "id": "yeshunguang-mode-ms2qrp9q",
-      "agentId": "yeshunguang",
-      "name": "常规短轴",
-      "modeType": "direct",
-      "events": [
-        {
-          "id": "evt-local-ms2qr7x8-0",
-          "kind": "direct",
-          "categoryId": "special",
-          "skillSubcategoryId": "yeshunguang-special-ms0g7si1",
-          "count": 1,
-          "staggerPhase": "stagger",
-          "critMode": "expected",
-          "ownerAgentId": null,
-          "triggerAgentId": null,
-          "multOverrides": null
-        },
-        {
-          "id": "evt-local-ms2qrj3r-1",
-          "kind": "disorder",
-          "categoryId": "basic",
-          "skillSubcategoryId": null,
-          "count": 1,
-          "staggerPhase": "stagger",
-          "critMode": "expected",
-          "ownerAgentId": null,
-          "triggerAgentId": null,
-          "multOverrides": null
-        },
-        {
-          "id": "evt-local-ms2qrofo-2",
-          "kind": "direct",
-          "categoryId": "basic",
-          "skillSubcategoryId": null,
-          "count": 1,
-          "staggerPhase": "stagger",
-          "critMode": "expected",
-          "ownerAgentId": null,
-          "triggerAgentId": null,
           "multOverrides": null
         }
       ]
