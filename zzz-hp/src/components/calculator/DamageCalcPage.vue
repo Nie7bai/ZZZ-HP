@@ -14,13 +14,26 @@ import EnemyEnvironmentSection from '@/components/calculator/EnemyEnvironmentSec
 import BuffModSourcesDisplay from '@/components/calculator/BuffModSourcesDisplay.vue'
 import PanelScreenshotUploadSection from '@/components/calculator/PanelScreenshotUploadSection.vue'
 import TeamBuilderSection from '@/components/calculator/TeamBuilderSection.vue'
+import TeamSlotSwitcher from '@/components/calculator/TeamSlotSwitcher.vue'
 import type { DamageCalcSectionId } from '@/constants/damageCalcNav'
-import type { DamageCalcHistoryEntry, DamageCalcWorkingDraft, SchemeSlot } from '@/types/damageCalcHistory'
-import type { PanelCalcMode, PanelStats } from '@/types/calculatorPanel'
+import type {
+  DamageCalcHistoryEntry,
+  DamageCalcSchemePanelSnapshot,
+  DamageCalcWorkingDraft,
+  SchemeSlot,
+} from '@/types/damageCalcHistory'
+import type {
+  AffixCounts,
+  AffixDriveDiscMainStats,
+  PanelCalcMode,
+  PanelStats,
+} from '@/types/calculatorPanel'
 import {
   createDefaultExternalPanel,
   createExternalPanelFromAgentBase,
+  fillPanelStatsDefaults,
   isPlaceholderExternalPanel,
+  resetSchemeExcludedPanelFields,
 } from '@/types/calculatorPanel'
 import type { PanelScreenshotRecognition } from '@/types/panelScreenshot'
 import type {
@@ -91,6 +104,8 @@ export interface TeamSlot {
   isMainC: boolean
   twoPieceDriveDiscId: string
   fourPieceDriveDiscId: string
+  affixDriveDiscMainStats?: AffixDriveDiscMainStats
+  affixCounts?: AffixCounts
 }
 
 const calculatorBuffStore = useCalculatorBuffStore()
@@ -397,13 +412,17 @@ watch(defenseFrontierOptions, (options) => {
   }
 })
 
+function onPageHide() {
+  persistWorkingDraftNow()
+}
+
 onMounted(() => {
   void loadEnvironmentBuffCatalogs()
   // Teleport defer 可能比本组件 onMounted 更晚挂上招式流程；晚一拍再恢复，避免子组件把空 slots 写回。
   void nextTick(() => {
     restoreWorkingState()
   })
-  window.addEventListener('pagehide', persistWorkingDraftNow)
+  window.addEventListener('pagehide', onPageHide)
   document.addEventListener('visibilitychange', onDraftVisibilityChange)
 })
 
@@ -413,7 +432,7 @@ onDeactivated(() => {
 
 onUnmounted(() => {
   persistWorkingDraftNow()
-  window.removeEventListener('pagehide', persistWorkingDraftNow)
+  window.removeEventListener('pagehide', onPageHide)
   document.removeEventListener('visibilitychange', onDraftVisibilityChange)
   if (draftSaveTimer) clearTimeout(draftSaveTimer)
 })
@@ -464,7 +483,12 @@ function getParticipantAgentIds(): string[] {
 
 function ensureAnomalySlotPanel(agentId: string) {
   const existing = anomalySlotPanels[agentId]
-  if (existing && !isPlaceholderExternalPanel(existing)) return
+  if (existing && !isPlaceholderExternalPanel(existing)) {
+    if (!Number.isFinite(existing.mutationCoeff) || !Number.isFinite(existing.mutationCoeffFactor)) {
+      anomalySlotPanels[agentId] = fillPanelStatsDefaults(existing)
+    }
+    return
+  }
   const agent = agents.value.find((item) => item.id === agentId)
   anomalySlotPanels[agentId] = createExternalPanelFromAgentBase(agent?.basePanel)
 }
@@ -478,6 +502,7 @@ watch(
       )
       .join(','),
   () => {
+    if (restoringWorkingState) return
     for (const agentId of getParticipantAgentIds()) {
       ensureAnomalySlotPanel(agentId)
     }
@@ -505,9 +530,10 @@ const skillFlowTeleportTo = computed(() =>
 const panelCalcSectionRef = ref<InstanceType<typeof PanelCalcSection> | null>(null)
 const optimalAffixSectionRef = ref<InstanceType<typeof OptimalAffixAllocSection> | null>(null)
 
+const buffSelectionSignature = computed(() => JSON.stringify(multiSlotBuffSelection))
 const combatBuffBreakdown = computed(() => {
   void extraGains.value
-  void JSON.stringify(multiSlotBuffSelection)
+  void buffSelectionSignature.value
   void teamSlots.map((s) => s.agentId)
   void selectedBangbooId.value
   void bangbooRefine.value
@@ -525,8 +551,8 @@ const activeAgent = computed(() =>
 )
 
 const mainSlotIndex = computed(() => {
-  const index = teamSlots.findIndex((slot) => slot.isMainC)
-  return index >= 0 ? index : 0
+  const index = activeSlot.value
+  return index >= 0 && index < teamSlots.length ? index : 0
 })
 
 const selectedBangboo = computed(
@@ -574,7 +600,7 @@ const buffPickerSlotOptions = computed(() => {
     if (!agent) return
     options.push({
       index,
-      label: slot.isMainC ? `${agent.name}（主C）` : `${agent.name} · ${agent.element}`,
+      label: `${agent.name} · ${agent.element}`,
     })
   })
   return options
@@ -665,6 +691,7 @@ function ensureConvertSlotPanel(agentId: string, requiredAttrs: string[]) {
 watch(
   convertSupportSlots,
   (slots) => {
+    if (restoringWorkingState) return
     for (const slot of slots) {
       ensureConvertSlotPanel(slot.agentId, slot.requiredAttrs)
     }
@@ -746,6 +773,7 @@ watch(
 watch(
   () => panelCalcSectionRef.value?.convertAttrDefaults,
   () => {
+    if (restoringWorkingState) return
     for (const opt of buffPickerSlotOptions.value) {
       const effects = collectAllBuffEffects(buildBuffCollectContext(opt.index))
       for (const item of effects) {
@@ -857,7 +885,7 @@ watch(
 watch(
   () => enemyInput.value.bossName,
   (bossName) => {
-    if (syncingEnemyFromEnv || syncingBossFieldBuff) return
+    if (syncingEnemyFromEnv || syncingBossFieldBuff || restoringWorkingState) return
     const effects = collectAllBuffEffects(buildBuffCollectContext(buffPickerViewSlotIndex.value))
     const keepKey = bossName ? `boss-field-${bossName}` : null
     disableCollectedEffects(effects, (item) => {
@@ -884,18 +912,13 @@ function clearSlot(index: number) {
   slot.wengineRefine = 1
   slot.twoPieceDriveDiscId = 'none'
   slot.fourPieceDriveDiscId = 'none'
-  if (slot.isMainC) {
-    const fallback = teamSlots.find((item, idx) => idx !== index && item.agentId)
-    if (fallback) fallback.isMainC = true
-    else slot.isMainC = true
-  } else {
-    slot.isMainC = false
-  }
+  slot.affixDriveDiscMainStats = undefined
+  slot.affixCounts = undefined
 }
 
-function toggleMainC(index: number) {
+function syncMainCFlagToActiveSlot() {
   teamSlots.forEach((slot, idx) => {
-    slot.isMainC = idx === index
+    slot.isMainC = idx === activeSlot.value
   })
 }
 
@@ -936,29 +959,58 @@ function applyPanelRecognition(result: PanelScreenshotRecognition) {
 }
 
 function cloneTeamSlots(): DamageCalcHistoryEntry['teamSlots'] {
-  return teamSlots.map((slot) => ({ ...slot }))
-}
-
-function ensureExactlyOneMainC() {
-  const marked = teamSlots.findIndex((slot) => slot.isMainC)
-  const filled = teamSlots.findIndex((slot) => slot.agentId)
-  const index = marked >= 0 ? marked : Math.max(0, filled)
-  teamSlots.forEach((slot, idx) => {
-    slot.isMainC = idx === index
-  })
+  panelCalcSectionRef.value?.flushAffixOntoTeamSlots?.()
+  return teamSlots.map((slot) => ({
+    agentId: slot.agentId,
+    rank: slot.rank,
+    wengineId: slot.wengineId,
+    wengineRefine: slot.wengineRefine,
+    isMainC: slot.isMainC,
+    twoPieceDriveDiscId: slot.twoPieceDriveDiscId || 'none',
+    fourPieceDriveDiscId: slot.fourPieceDriveDiscId || 'none',
+    affixDriveDiscMainStats: slot.affixDriveDiscMainStats
+      ? { ...slot.affixDriveDiscMainStats }
+      : undefined,
+    affixCounts: slot.affixCounts ? { ...slot.affixCounts } : undefined,
+  }))
 }
 
 function applyTeamSlots(slots: DamageCalcHistoryEntry['teamSlots']) {
   slots.forEach((slot, index) => {
     const target = teamSlots[index]
     if (!target) return
-    Object.assign(target, slot)
+    // 先写装备/词条，再改 agentId：换人 watch 若仍跑到，读到的是方案里的盘，而不是空槽默认。
+    target.rank = slot.rank
+    target.wengineId = slot.wengineId
+    target.wengineRefine = slot.wengineRefine
+    target.isMainC = slot.isMainC
+    target.twoPieceDriveDiscId =
+      typeof slot.twoPieceDriveDiscId === 'string' && slot.twoPieceDriveDiscId
+        ? slot.twoPieceDriveDiscId
+        : 'none'
+    target.fourPieceDriveDiscId =
+      typeof slot.fourPieceDriveDiscId === 'string' && slot.fourPieceDriveDiscId
+        ? slot.fourPieceDriveDiscId
+        : 'none'
+    target.affixDriveDiscMainStats = slot.affixDriveDiscMainStats
+      ? { ...slot.affixDriveDiscMainStats }
+      : undefined
+    target.affixCounts = slot.affixCounts ? { ...slot.affixCounts } : undefined
+    target.agentId = slot.agentId
   })
-  ensureExactlyOneMainC()
+  syncMainCFlagToActiveSlot()
 }
 
 function cloneAnomalySlotPanels(): Record<string, PanelStats> {
   return JSON.parse(JSON.stringify(anomalySlotPanels)) as Record<string, PanelStats>
+}
+
+function captureSchemeAnomalySlotPanels(): Record<string, PanelStats> {
+  const cloned = cloneAnomalySlotPanels()
+  for (const [agentId, panel] of Object.entries(cloned)) {
+    cloned[agentId] = resetSchemeExcludedPanelFields(panel)
+  }
+  return cloned
 }
 
 function cloneConvertSlotPanels(): ConvertSlotPanels {
@@ -970,7 +1022,11 @@ function applyAnomalySlotPanels(panels?: Record<string, PanelStats>) {
     delete anomalySlotPanels[key]
   }
   if (!panels) return
-  Object.assign(anomalySlotPanels, JSON.parse(JSON.stringify(panels)))
+  const cloned = JSON.parse(JSON.stringify(panels)) as Record<string, PanelStats>
+  for (const [agentId, panel] of Object.entries(cloned)) {
+    cloned[agentId] = resetSchemeExcludedPanelFields(fillPanelStatsDefaults(panel))
+  }
+  Object.assign(anomalySlotPanels, cloned)
 }
 
 function applyConvertSlotPanels(panels?: ConvertSlotPanels) {
@@ -1006,13 +1062,15 @@ function applyWorkingState(entry: {
   envBuffVersion?: string
   envBuffPhaseId?: string
   envBuffFrontierId?: string
+  preserveBaseDamageSource?: boolean
 }) {
   restoringWorkingState = true
+  panelCalcSectionRef.value?.beginRestore()
   const restoredBuff = entry.multiSlotBuffSelection
     ? (JSON.parse(JSON.stringify(entry.multiSlotBuffSelection)) as MultiSlotBuffSelection)
     : createEmptyMultiSlotBuffSelection()
-  applyTeamSlots(entry.teamSlots)
   activeSlot.value = entry.activeSlot
+  applyTeamSlots(entry.teamSlots)
   selectedBangbooId.value = entry.selectedBangbooId
   bangbooRefine.value = entry.bangbooRefine
   panelCalcMode.value = entry.panelCalcMode === 'optimal' ? 'affix' : entry.panelCalcMode
@@ -1024,17 +1082,47 @@ function applyWorkingState(entry: {
   if (entry.envBuffVersion != null) envBuffVersion.value = entry.envBuffVersion
   if (entry.envBuffPhaseId != null) envBuffPhaseId.value = entry.envBuffPhaseId
   if (entry.envBuffFrontierId != null) envBuffFrontierId.value = entry.envBuffFrontierId
-  // 等队伍签名相关 watch 跑完后再写回 Buff / 怪物，避免被默认同步覆盖
+
+  const applyPanelSnapshot = () => {
+    if (!entry.panelState) return
+    const panelState = {
+      ...entry.panelState,
+      externalPanel: resetSchemeExcludedPanelFields({
+        ...entry.panelState.externalPanel,
+      }),
+    }
+    panelCalcSectionRef.value?.loadSnapshot(panelState, {
+      preserveBaseDamageSource: entry.preserveBaseDamageSource,
+    })
+  }
+  // 必须在换人 watch 同一轮里写回快照，不能拖到 nextTick：
+  // 否则默认 4/5/6（爆伤/攻击/生命）会先被 flush 进槽位，再被草稿 persist 写死。
+  applyPanelSnapshot()
+
+  // Buff 默认同步仍等队伍签名 watch 跑完再覆盖
   void nextTick(() => {
     multiSlotBuffSelection.team = restoredBuff.team
     multiSlotBuffSelection.bySlot = restoredBuff.bySlot
-    if (entry.panelState) {
-      panelCalcSectionRef.value?.loadSnapshot(entry.panelState)
-    }
+    applyPanelSnapshot()
     void nextTick(() => {
+      persistWorkingDraftNow(true)
       restoringWorkingState = false
+      panelCalcSectionRef.value?.endRestore()
     })
   })
+}
+
+function captureSchemePanelState(): DamageCalcSchemePanelSnapshot | null {
+  const snapshot = panelCalcSectionRef.value?.getSnapshot()
+  if (!snapshot) return null
+
+  // 方案快照白名单：只保留用户侧配置。
+  // 不跟方案走的内部字段：
+  // - 基础伤害来源开关
+  // - 异化系数乘区输入（mutationCoeff / mutationCoeffFactor）
+  const { baseDamageSource: _ignored, ...schemeSnapshot } = snapshot
+  const externalPanel = resetSchemeExcludedPanelFields({ ...schemeSnapshot.externalPanel })
+  return { ...schemeSnapshot, externalPanel }
 }
 
 function captureWorkingDraft(): DamageCalcWorkingDraft | null {
@@ -1048,7 +1136,7 @@ function captureWorkingDraft(): DamageCalcWorkingDraft | null {
     bangbooRefine: bangbooRefine.value,
     panelCalcMode: panelCalcMode.value,
     panelState,
-    anomalySlotPanels: cloneAnomalySlotPanels(),
+    anomalySlotPanels: captureSchemeAnomalySlotPanels(),
     convertSlotPanels: cloneConvertSlotPanels(),
     slots: JSON.parse(JSON.stringify(schemeSlots.value)),
     staggerPhase: staggerPhase.value,
@@ -1088,11 +1176,12 @@ function restoreWorkingState() {
     applyWorkingState({
       ...draft,
       loadedSchemeId: draft.loadedSchemeId || loadedId,
+      preserveBaseDamageSource: true,
     })
     if (draft.loadedSchemeId) activeHistoryId.value = draft.loadedSchemeId
   } else if (loadedId) {
     const entry = findDamageCalcHistory(loadedId)
-    if (entry) applyWorkingState(entry)
+    if (entry) applyWorkingState({ ...entry, preserveBaseDamageSource: false })
   }
   void nextTick(() => {
     void nextTick(() => {
@@ -1107,7 +1196,7 @@ function saveHistoryEntry(payload: { name: string; folder: string }) {
     historyMessage.value = '最优词条分配模式暂不支持写入历史，请切换到面板/词条计算后再保存'
     return
   }
-  const panelState = panelCalcSectionRef.value?.getSnapshot()
+  const panelState = captureSchemePanelState()
   if (!panelState) return
 
   const folder = payload.folder?.trim() || ''
@@ -1129,7 +1218,7 @@ function saveHistoryEntry(payload: { name: string; folder: string }) {
     bangbooRefine: bangbooRefine.value,
     panelCalcMode: panelCalcMode.value,
     panelState,
-    anomalySlotPanels: cloneAnomalySlotPanels(),
+    anomalySlotPanels: captureSchemeAnomalySlotPanels(),
     convertSlotPanels: cloneConvertSlotPanels(),
     slots: JSON.parse(JSON.stringify(schemeSlots.value)),
     staggerPhase: staggerPhase.value,
@@ -1146,11 +1235,10 @@ function saveHistoryEntry(payload: { name: string; folder: string }) {
 }
 
 function loadHistoryEntry(entry: DamageCalcHistoryEntry) {
-  applyWorkingState(entry)
+  applyWorkingState({ ...entry, preserveBaseDamageSource: false })
   activeHistoryId.value = entry.id
   setLoadedSchemeId(entry.id)
   historyMessage.value = `已加载「${entry.name}」`
-  persistWorkingDraftNow(true)
 }
 
 /** 用当前页面配置覆盖指定方案（保留其 id / 名称 / 目录） */
@@ -1159,7 +1247,7 @@ function overwriteHistoryEntry(id: string) {
     historyMessage.value = '最优词条分配模式暂不支持写入，请切换到面板/词条计算后再保存'
     return
   }
-  const panelState = panelCalcSectionRef.value?.getSnapshot()
+  const panelState = captureSchemePanelState()
   if (!panelState) return
   const existing = historyEntries.value.find((item) => item.id === id)
   if (!existing) return
@@ -1173,7 +1261,7 @@ function overwriteHistoryEntry(id: string) {
     bangbooRefine: bangbooRefine.value,
     panelCalcMode: panelCalcMode.value,
     panelState,
-    anomalySlotPanels: cloneAnomalySlotPanels(),
+    anomalySlotPanels: captureSchemeAnomalySlotPanels(),
     convertSlotPanels: cloneConvertSlotPanels(),
     slots: JSON.parse(JSON.stringify(schemeSlots.value)),
     staggerPhase: staggerPhase.value,
@@ -1266,8 +1354,15 @@ watch(
   { deep: true },
 )
 
+watch(activeSlot, syncMainCFlagToActiveSlot)
+
 const pageRootRef = ref<HTMLElement | null>(null)
 const skillFlowSectionRef = ref<InstanceType<typeof SkillFlowSection> | null>(null)
+const historySectionRef = ref<InstanceType<typeof DamageCalcHistorySection> | null>(null)
+
+function openSchemeLibrary() {
+  historySectionRef.value?.openModal()
+}
 
 async function scrollToSection(sectionId: DamageCalcSectionId) {
   await nextTick()
@@ -1317,8 +1412,18 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
 
 <template>
   <div ref="pageRootRef" class="damage-page">
+    <div class="team-slot-sticky">
+      <TeamSlotSwitcher
+        :team-slots="teamSlots"
+        :agents="agents"
+        :active-index="activeSlot"
+        @select="selectSlot"
+      />
+      <button type="button" class="scheme-lib-btn" @click="openSchemeLibrary">方案库</button>
+    </div>
     <!-- 构图：方案库 → 编队/邦布/上传 → 局内Buff → 敌方与环境 → 计算方式 → 面板/伤害 → 招式流程 -->
     <DamageCalcHistorySection
+      ref="historySectionRef"
       :entries="historyEntries"
       :agents="agents"
       :active-entry-id="activeHistoryId"
@@ -1340,7 +1445,6 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       @select-slot="selectSlot"
       @assign-agent="assignAgent"
       @clear-slot="clearSlot"
-      @toggle-main-c="toggleMainC"
       @select-wengine="selectWengine"
     />
 
@@ -1398,6 +1502,8 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       v-model:open="extraBuffModalOpen"
       v-model:gains="extraGains"
       :skill-subcategories="skillSubcategories"
+      :team-slots="teamSlots"
+      :agents="agents"
     />
 
     <BuffEffectPickerModal
@@ -1529,6 +1635,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
         :drive-discs="driveDiscs"
         :selected-bangboo-id="selectedBangbooId"
         :bangboo-refine="bangbooRefine"
+        :edited-slot-index="activeSlot"
         :damage-kind="damageKind"
         :anomaly-sub-kind="anomalySubKind"
         :trigger-anomaly-agent-id="triggerAnomalyAgentId"
@@ -1568,6 +1675,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
         :hit-calc-results="hitCalcResults"
         :scheme-name="currentSchemeName"
         v-model:slots="schemeSlots"
+        v-model:edited-slot-index="activeSlot"
       />
     </Teleport>
   </div>
@@ -1580,13 +1688,56 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
   gap: 1.35rem;
 }
 
+.team-slot-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: calc(100% + 2rem);
+  margin: 0 -1rem 0;
+  padding: 0.55rem 1rem;
+  border: none;
+  border-bottom: 2px solid #8eb9d8;
+  border-radius: 0;
+  background: #d5eaf8;
+  background-image: none;
+  box-shadow: 0 6px 14px rgba(90, 140, 180, 0.18);
+}
+
+.team-slot-sticky :deep(.team-slot-switcher) {
+  flex: 1;
+  min-width: 0;
+}
+
+.scheme-lib-btn {
+  flex-shrink: 0;
+  appearance: none;
+  border: 1px solid #6ea8d0;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #b5dff4, #8ec4e8);
+  color: #16324a;
+  padding: 0.42rem 0.9rem;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.3;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.scheme-lib-btn:hover {
+  filter: brightness(1.06);
+}
+
 .skill-flow-anchor {
   /* Teleport 挂载点：保持块级容器，避免 display:contents 在部分浏览器下丢子树 */
   min-height: 0;
 }
 
 .damage-page :deep(.damage-anchor) {
-  scroll-margin-top: 1rem;
+  scroll-margin-top: 4.2rem;
 }
 
 .calc-mode-section {

@@ -1,6 +1,9 @@
 import type { BuffStatModifiers, DriveDiscBuffDoc } from '@/types/calculator'
 import type { AffixCounts, AffixDriveDiscMainStats, PanelStats } from '@/types/calculatorPanel'
-import { createEmptyAffixCounts } from '@/types/calculatorPanel'
+import {
+  createDefaultAffixDriveDiscMainStats,
+  createEmptyAffixCounts,
+} from '@/types/calculatorPanel'
 import type { AgentBasePanel, WengineAdvancedStats } from '@/types/calculator'
 import {
   AFFIX_DRIVE_DISC_SLOT_1_HP,
@@ -111,6 +114,53 @@ function sumExternalPercents(
   }
 }
 
+export type TeamSlotAffixPanelInput = {
+  agentId?: string | null
+  wengineId?: string | null
+  twoPieceDriveDiscId?: string | null
+  fourPieceDriveDiscId?: string | null
+  affixCounts?: AffixCounts | null
+  affixDriveDiscMainStats?: AffixDriveDiscMainStats | null
+}
+
+/** 按编队槽位自己的角色 / 音擎 / 2+4 / 词条算出局外。全队转模必须按来源槽位取这份面板。 */
+export function computeExternalPanelFromTeamSlot(input: {
+  slot: TeamSlotAffixPanelInput
+  agents: Array<{ id: string; basePanel: AgentBasePanel }>
+  wengines: Array<{ id: string; baseAtk: number; advancedStats?: WengineAdvancedStats }>
+  driveDiscs: DriveDiscBuffDoc[]
+  overrideAffix?: {
+    affixCounts: AffixCounts
+    affixDriveDiscMainStats: AffixDriveDiscMainStats
+  }
+}): PanelStats {
+  const { slot } = input
+  const agent = slot.agentId ? input.agents.find((item) => item.id === slot.agentId) : undefined
+  const wengineId = slot.wengineId
+  const wengine =
+    wengineId && wengineId !== 'none'
+      ? input.wengines.find((item) => item.id === wengineId)
+      : undefined
+  return computeExternalPanelFromAffixes({
+    agentBase: agent?.basePanel ?? createEmptyAgentBasePanel(),
+    wengineBaseAtk: wengine?.baseAtk ?? 0,
+    wengineAdvanced: wengine?.advancedStats ?? createEmptyWengineAdvancedStats(),
+    affixCounts: {
+      ...createEmptyAffixCounts(),
+      ...(input.overrideAffix?.affixCounts ?? slot.affixCounts ?? undefined),
+    },
+    driveDiscSelection: {
+      twoPieceDriveDiscId: slot.twoPieceDriveDiscId ?? 'none',
+      fourPieceDriveDiscId: slot.fourPieceDriveDiscId ?? 'none',
+    },
+    driveDiscMainStats: {
+      ...createDefaultAffixDriveDiscMainStats(),
+      ...(input.overrideAffix?.affixDriveDiscMainStats ?? slot.affixDriveDiscMainStats ?? undefined),
+    },
+    driveDiscs: input.driveDiscs,
+  })
+}
+
 export function computeExternalPanelFromAffixes(input: AffixPanelCalcInput): PanelStats {
   const agentBase = input.agentBase ?? createEmptyAgentBasePanel()
   const wengineAdvanced = input.wengineAdvanced ?? createEmptyWengineAdvancedStats()
@@ -217,7 +267,8 @@ export function computeExternalPanelFromAffixes(input: AffixPanelCalcInput): Pan
     radianceDmgBonus: roundPanelValue(agentBase.radianceDmgBonus),
     radianceResPen: roundPanelValue(agentBase.radianceResPen),
     specialMult: roundPanelValue(agentBase.specialMult),
-    mutationCoeff: roundPanelValue(agentBase.mutationCoeff),
+    // 基数 1 只在乘区公式里加；词条重建不能把初始异化系数（常被写成 100%）再叠进去。
+    mutationCoeff: 0,
     directDmgMultFactor: 100,
     anomalyMultFactor: 100,
     anomalyReleaseMultFactor: 100,
@@ -283,7 +334,7 @@ export function inferAffixCountsFromExternalPanel(input: {
     counts.hpPercent = best.pct
     counts.hpFlat = best.flat
     if (best.err > 80) {
-      warnings.push(`生命反推残差较大（Δ${roundPanelValue(best.err)}），请核对主C基础面板与驱动盘主属性`)
+      warnings.push(`生命反推残差较大（Δ${roundPanelValue(best.err)}），请核对当前角色基础面板与驱动盘主属性`)
     }
   }
 

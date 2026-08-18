@@ -215,7 +215,7 @@ export function getDamageEventSkipReason(
   event: DamageEvent,
   ctx: DamageEventParticipationContext,
 ): string | null {
-  const mainSlot = ctx.teamSlots.find((slot) => slot.isMainC) ?? ctx.teamSlots[0]
+  const mainSlot = ctx.teamSlots[0]
   const mainAgentId = ctx.mainAgentId ?? mainSlot?.agentId ?? ''
   const ownerId = resolveEventOwnerAgentId(event, mainAgentId)
   const ownerAgent = ctx.agents.find((item) => item.id === ownerId)

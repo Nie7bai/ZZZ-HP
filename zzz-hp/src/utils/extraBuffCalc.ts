@@ -14,12 +14,64 @@ import {
   effectMatchesTeamProfessionGate,
 } from '@/utils/buffEffect'
 import { createEmptyBuffStatModifiers, mergeBuffStatModifiers } from '@/utils/calculatorUi'
+import { teamSlotDisplayLabel } from '@/utils/teamSlotLabel'
+
+export type ExtraBuffApplySlot = number | 'team'
+
+/**
+ * 额外 Buff 作用对象：全队，或固定槽位 0/1/2。
+ * 旧数据 `applyTarget: 'self'`（跟编辑中角色走）视为角色1，避免切编辑者带动流程伤害。
+ */
+export function resolveExtraGainApplySlot(
+  gain: Pick<ExtraBuffGain, 'applySlot' | 'applyTarget'>,
+): ExtraBuffApplySlot {
+  if (gain.applySlot === 'team' || gain.applyTarget === 'team') return 'team'
+  if (
+    typeof gain.applySlot === 'number' &&
+    Number.isInteger(gain.applySlot) &&
+    gain.applySlot >= 0 &&
+    gain.applySlot <= 2
+  ) {
+    return gain.applySlot
+  }
+  return 0
+}
+
+export function extraGainAppliesToSlot(
+  gain: Pick<ExtraBuffGain, 'applySlot' | 'applyTarget'>,
+  slotIndex: number,
+): boolean {
+  const applySlot = resolveExtraGainApplySlot(gain)
+  return applySlot === 'team' || applySlot === slotIndex
+}
+
+export function normalizeExtraGain<T extends ExtraBuffGain>(gain: T): T {
+  const applySlot = resolveExtraGainApplySlot(gain)
+  return {
+    ...gain,
+    applySlot,
+    applyTarget: applySlot === 'team' ? 'team' : 'self',
+  }
+}
+
+export function extraGainApplySlotLabel(
+  gain: Pick<ExtraBuffGain, 'applySlot' | 'applyTarget'>,
+  teamSlots: Array<{ agentId?: string | null }>,
+  agents: Array<{ id: string; name: string }>,
+): string {
+  const applySlot = resolveExtraGainApplySlot(gain)
+  if (applySlot === 'team') return '全队'
+  const slot = teamSlots[applySlot]
+  if (!slot) return `角色${applySlot + 1}`
+  return teamSlotDisplayLabel(slot, applySlot, agents)
+}
 
 export function extraGainToEffect(gain: ExtraBuffGain): BuffEffect {
+  const applySlot = resolveExtraGainApplySlot(gain)
   return {
     id: gain.id,
     scope: gain.scope ?? 'general',
-    applyTarget: gain.applyTarget ?? 'self',
+    applyTarget: applySlot === 'team' ? 'team' : 'self',
     applySituation: gain.applySituation ?? 'global',
     applyProfession: gain.applyProfession ?? null,
     teamProfession: gain.teamProfession ?? null,
@@ -81,14 +133,14 @@ export function mergeExtraModsForEvent(
   gains: ExtraBuffGain[],
   skillCtx: SkillCalcContext,
   options: {
+    /** 当前正在汇总面板的槽位 */
+    slotIndex: number
     /** 当前正在汇总面板的 agentId */
     slotAgentId: string
-    /** 编队里正在编辑的角色；「自身」打在这个人身上，不跟招式持有者走 */
-    editedAgentId: string
     staggerPhase: StaggerPhase
     resolveAgentProfession?: (agentId: string) => string | undefined
     teamSlots?: Array<{ agentId?: string | null }>
-    agents?: Array<{ id: string; profession?: string | null }>
+    agents?: Array<{ id: string; profession?: string | null; name?: string }>
   },
 ): BuffStatModifiers {
   let total = createEmptyBuffStatModifiers()
@@ -97,9 +149,7 @@ export function mergeExtraModsForEvent(
     if (situation === 'stagger' && options.staggerPhase !== 'stagger') continue
     if (situation === 'non_stagger' && options.staggerPhase !== 'normal') continue
     if (!extraGainMatchesEvent(gain, skillCtx)) continue
-
-    const applyTarget = gain.applyTarget ?? 'self'
-    if (applyTarget === 'self' && options.slotAgentId !== options.editedAgentId) continue
+    if (!extraGainAppliesToSlot(gain, options.slotIndex)) continue
 
     const beneficiaryProfession = options.resolveAgentProfession?.(options.slotAgentId)
     if (!extraGainMatchesProfession(gain, beneficiaryProfession)) continue

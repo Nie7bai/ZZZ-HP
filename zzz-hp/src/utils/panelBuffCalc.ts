@@ -12,7 +12,11 @@ import type {
   SkillCategoryId,
   WengineBuffDoc,
 } from '@/types/calculator'
-import { createDefaultExternalPanel, type PanelStats } from '@/types/calculatorPanel'
+import {
+  createDefaultExternalPanel,
+  fillPanelStatsDefaults,
+  type PanelStats,
+} from '@/types/calculatorPanel'
 import { combineMultFactorPercent } from '@/utils/multFactorPercent'
 import {
   cloneEffectInstance,
@@ -487,7 +491,7 @@ export interface PanelCalcContext {
   buffSelection?: BuffSelectionState | null
   attrValues?: Partial<Record<CharacterAttrKey, number>>
   panelSourceValues?: PanelSourceValues
-  /** 正在编辑局外面板的槽位（编队点选的「编辑中」）；live 面板跟这个人走，不跟主C勾选走 */
+  /** 正在编辑局外面板的槽位（编队点选的「编辑中」）；live 面板跟这个人走 */
   liveExternalSlotIndex?: number
   /** 正在编辑的那份局外面板（live） */
   mainExternalPanel?: PanelStats
@@ -495,6 +499,11 @@ export interface PanelCalcContext {
   anomalySlotPanels?: Record<string, PanelStats>
   /** 转模增益角色局外面板（仅转模来源属性） */
   convertSlotPanels?: ConvertSlotPanels
+  /**
+   * 各槽位完整局外。词条模式由该槽词条+驱动盘算出，面板模式为该槽手填值。
+   * 全队转模必须按来源槽位取这里，不能拿编辑中角色的面板去套队友。
+   */
+  slotExternalPanels?: Record<number, PanelStats>
   /** 各槽位局外/局内转模取值（按 effect 来源槽位解析） */
   panelSourceValuesBySlot?: Map<number, PanelSourceValues>
   /** 异常掌控% 的换算基数；缺省时取结算角色基础面板的初始异常掌控 */
@@ -574,15 +583,19 @@ function resolveExternalPanelForSlot(
 ): PanelStats {
   const liveIndex = resolveLiveExternalSlotIndex(ctx)
   if (slotIndex === liveIndex && ctx.mainExternalPanel) {
-    return ctx.mainExternalPanel
+    return fillPanelStatsDefaults(ctx.mainExternalPanel)
+  }
+  const mapped = ctx.slotExternalPanels?.[slotIndex]
+  if (mapped) {
+    return fillPanelStatsDefaults(mapped)
   }
   if (slotIndex === ctx.mainSlotIndex) {
-    return currentSlotExternalPanel
+    return fillPanelStatsDefaults(currentSlotExternalPanel)
   }
   const agentId = ctx.teamSlots[slotIndex]?.agentId
   if (!agentId) return createDefaultExternalPanel()
   const anomaly = ctx.anomalySlotPanels?.[agentId]
-  if (anomaly) return { ...anomaly }
+  if (anomaly) return fillPanelStatsDefaults(anomaly)
   const convertPartial = ctx.convertSlotPanels?.[agentId]
   if (convertPartial) {
     return convertSlotPartialToExternalPanel(convertPartial)
@@ -772,6 +785,10 @@ export interface PanelBuffBreakdown {
   collectedEffects: CollectedEffect[]
 }
 
+export interface ComputeFinalPanelOptions {
+  includeDetails?: boolean
+}
+
 export interface BuffModSource {
   key: string
   label: string
@@ -884,7 +901,7 @@ export function collectSlotDriveDiscEffects(
   }
 
   if (isMain) {
-    // 主 C：4 件套含其 2 件效果；另选的 2 件套也计入
+    // 当前结算角色：4 件套含其 2 件效果；另选的 2 件套也计入
     if (fourDisc) {
       pushTwoPiece(fourDisc)
       effects.push(...collectEffectsFromPack(fourDisc.fourPieceBuffs))
@@ -987,7 +1004,7 @@ export function collectAllBuffEffects(ctx: PanelCalcContext): CollectedEffect[] 
     if (!agent) return
 
     const isMain = index === mainIndex
-    const roleLabel = isMain ? '主C' : '辅助'
+    const roleLabel = isMain ? '自身' : '队友'
     const matchesTarget = (e: BuffEffect) =>
       isMain ? e.applyTarget === 'self' || e.applyTarget === 'team' : e.applyTarget === 'team'
     const clampedRank = Math.min(6, Math.max(0, Math.round(slot.rank)))
@@ -1263,7 +1280,7 @@ export function collectPanelBuffModSources(ctx: PanelCalcContext): BuffModSource
     if (!agent) return
 
     const isMain = index === mainIndex
-    const roleLabel = isMain ? '主C' : '辅助'
+    const roleLabel = isMain ? '自身' : '队友'
     const matchesTarget = (e: BuffEffect) =>
       isMain ? e.applyTarget === 'self' || e.applyTarget === 'team' : e.applyTarget === 'team'
     const clampedRank = Math.min(6, Math.max(0, Math.round(slot.rank)))
@@ -1597,7 +1614,7 @@ export function applyBuffModsToPanel(
     radianceDmgBonus: externalPanel.radianceDmgBonus + mods.radianceDmgBonus,
     radianceResPen: externalPanel.radianceResPen + mods.radianceResPen,
     specialMult: (externalPanel.specialMult ?? 100) + mods.specialMult,
-    mutationCoeff: externalPanel.mutationCoeff + mods.mutationCoeff,
+    mutationCoeff: (Number(externalPanel.mutationCoeff) || 0) + (mods.mutationCoeff || 0),
     directDmgMultFactor: combineMultFactorPercent(
       externalPanel.directDmgMultFactor,
       mods.directDmgMultFactor,
@@ -1739,9 +1756,12 @@ export function resolveAnomalyReleaseMultFields(
 }
 
 export function computeFinalPanel(
-  externalPanel: PanelStats,
+  rawExternalPanel: PanelStats,
   ctx: PanelCalcContext,
+  options?: ComputeFinalPanelOptions,
 ): PanelBuffBreakdown {
+  const externalPanel = fillPanelStatsDefaults(rawExternalPanel)
+  const includeDetails = options?.includeDetails !== false
   const liveIndex = resolveLiveExternalSlotIndex(ctx)
   const ctxForSources: PanelCalcContext = {
     ...ctx,
@@ -1797,8 +1817,8 @@ export function computeFinalPanel(
       baseAnomalyControl,
       baseEnergyRegen,
     }),
-    sources: collectPanelBuffModSources(fullCtx),
-    collectedEffects: collectAllBuffEffects(fullCtx),
+    sources: includeDetails ? collectPanelBuffModSources(fullCtx) : [],
+    collectedEffects: includeDetails ? collectAllBuffEffects(fullCtx) : [],
   }
 }
 

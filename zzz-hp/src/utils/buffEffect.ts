@@ -731,7 +731,7 @@ export function resolveEffectsToMods(
   effects: BuffEffect[],
   options: {
     applyTarget?: BuffApplyTarget
-    /** 主C 时同时吃 self + team */
+    /** 当前结算角色同时吃 self + team */
     applyTargets?: BuffApplyTarget[]
     ctx?: SkillCalcContext | null
     element?: string

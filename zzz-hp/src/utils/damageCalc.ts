@@ -636,7 +636,9 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const radianceExpectedNoCritRaw = radiancePreCrit
   const radianceExpectedFullCritRaw = radiancePreCrit
 
-  const mutationMult = input.mutationZone ?? 1
+  const mutationMultRaw = input.mutationZone
+  const mutationMult =
+    mutationMultRaw != null && Number.isFinite(mutationMultRaw) ? mutationMultRaw : 1
   const applyMutation = (value: number) =>
     remielSelfRadianceActive ? value : value * mutationMult
 

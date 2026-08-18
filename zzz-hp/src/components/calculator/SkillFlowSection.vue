@@ -36,6 +36,8 @@ import {
 } from '@/utils/skillSubcategoryMult'
 import { SKILL_TYPE_OPTIONS } from '@/utils/skillTypes'
 
+import { teamSlotDisplayLabel } from '@/utils/teamSlotLabel'
+
 const props = defineProps<{
   teamSlots: TeamSlot[]
   agents: AgentBuffDoc[]
@@ -47,6 +49,7 @@ const props = defineProps<{
 }>()
 
 const slots = defineModel<SchemeSlot[]>('slots', { required: true })
+const activeSlotIndex = defineModel<number>('editedSlotIndex', { default: 0 })
 
 function writeSlots(next: SchemeSlot[]) {
   slots.value = ensureSchemeSlots(next, Math.max(3, props.teamSlots.length))
@@ -55,7 +58,6 @@ function writeSlots(next: SchemeSlot[]) {
 const buffStore = useCalculatorBuffStore()
 const { skillSubcategories } = storeToRefs(buffStore)
 
-const activeSlotIndex = ref(0)
 const libraryQuery = ref('')
 /** 可选筛选，全不点 = 当前角色可见的全部招式（含本元素公共异常） */
 const libraryKindDirect = ref(false)
@@ -524,9 +526,7 @@ function preparedSkill(prepared: PreparedSkill): Skill | null {
 }
 
 function slotLabel(slot: TeamSlot, index: number) {
-  const agent = props.agents.find((item) => item.id === slot.agentId)
-  if (!agent) return `空位 ${index + 1}`
-  return agent.name
+  return teamSlotDisplayLabel(slot, index, props.agents)
 }
 
 function addPrepared(skill: Skill) {
@@ -593,11 +593,15 @@ function updatePrepared(preparedId: string, patch: Partial<PreparedSkill>) {
   slots.value = next
 }
 
+function getActiveSlot(): SchemeSlot | undefined {
+  return slots.value[activeSlotIndex.value]
+}
+
 function addToFlow(prepared: PreparedSkill) {
   const ownerId = currentAgentId.value
   if (!ownerId) return
-  const next = ensureSchemeSlots(slots.value)
-  const slot = next[activeSlotIndex.value]!
+  const slot = getActiveSlot()
+  if (!slot) return
   slot.flow.push({
     id: newLocalId('flow'),
     ownerAgentId: ownerId,
@@ -606,23 +610,20 @@ function addToFlow(prepared: PreparedSkill) {
     staggerPhase: 'stagger',
     critMode: 'expected',
   })
-  slots.value = next
 }
 
 function updateFlow(entryId: string, patch: Partial<FlowEntry>) {
-  const next = ensureSchemeSlots(slots.value)
-  const slot = next[activeSlotIndex.value]!
-  const index = slot.flow.findIndex((item) => item.id === entryId)
-  if (index < 0) return
-  slot.flow[index] = { ...slot.flow[index]!, ...patch }
-  slots.value = next
+  const entry = getActiveSlot()?.flow.find((item) => item.id === entryId)
+  if (!entry) return
+  Object.assign(entry, patch)
 }
 
 function removeFlow(entryId: string) {
-  const next = ensureSchemeSlots(slots.value)
-  const slot = next[activeSlotIndex.value]!
-  slot.flow = slot.flow.filter((item) => item.id !== entryId)
-  slots.value = next
+  const slot = getActiveSlot()
+  if (!slot) return
+  const index = slot.flow.findIndex((item) => item.id === entryId)
+  if (index < 0) return
+  slot.flow.splice(index, 1)
 }
 
 const FLOW_DRAG_IGNORE = 'button, input, label, select, textarea, a'
@@ -694,8 +695,8 @@ function onFlowDragEnd() {
 }
 
 function reorderFlowToIndex(fromId: string, toIndex: number) {
-  const next = ensureSchemeSlots(slots.value)
-  const slot = next[activeSlotIndex.value]!
+  const slot = getActiveSlot()
+  if (!slot) return
   const fromIndex = slot.flow.findIndex((item) => item.id === fromId)
   if (fromIndex < 0) return
   let dest = toIndex
@@ -704,7 +705,6 @@ function reorderFlowToIndex(fromId: string, toIndex: number) {
   if (dest < 0) dest = 0
   if (dest > slot.flow.length) dest = slot.flow.length
   slot.flow.splice(dest, 0, item!)
-  slots.value = next
 }
 
 function movePrepared(preparedId: string, delta: number) {

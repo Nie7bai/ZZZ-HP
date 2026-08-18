@@ -4,6 +4,7 @@ import ExtraBuffGainEditor, {
   type ExtraBuffGain,
 } from '@/components/calculator/ExtraBuffGainEditor.vue'
 import type { SkillCategoryId } from '@/types/calculator'
+import type { AgentBuffDoc } from '@/types/calculator'
 
 const open = defineModel<boolean>('open', { default: false })
 const gains = defineModel<ExtraBuffGain[]>('gains', { required: true })
@@ -15,6 +16,8 @@ defineProps<{
     categoryId: SkillCategoryId
     name: string
   }>
+  teamSlots?: Array<{ agentId?: string | null }>
+  agents?: AgentBuffDoc[]
 }>()
 
 const gainCount = computed(() => gains.value.length)
@@ -40,13 +43,18 @@ function close() {
               <button type="button" class="close-btn" aria-label="关闭" @click="close">×</button>
             </div>
             <p>
-              未录入角色/音擎/邦布数据时的补充增益。「自身」= 编队里正在编辑的角色，不跟招式持有者走。
+              未录入角色/音擎/邦布数据时的补充增益。目标按槽位固定（全队或角色1/2/3），不跟编辑中角色走。
             </p>
           </div>
         </header>
 
         <div class="extra-buff-modal-body">
-          <ExtraBuffGainEditor v-model="gains" :skill-subcategories="skillSubcategories" />
+          <ExtraBuffGainEditor
+            v-model="gains"
+            :skill-subcategories="skillSubcategories"
+            :team-slots="teamSlots"
+            :agents="agents"
+          />
         </div>
 
         <footer class="buff-picker-footer">

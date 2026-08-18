@@ -17,7 +17,6 @@ const emit = defineEmits<{
   selectSlot: [index: number]
   assignAgent: [agentId: string]
   clearSlot: [index: number]
-  toggleMainC: [index: number]
   selectWengine: [wengineId: string]
 }>()
 
@@ -64,7 +63,6 @@ function updateSlotRefine(index: number, value: number) {
         :is-active="activeSlot === index"
         @select="emit('selectSlot', index)"
         @remove="emit('clearSlot', index)"
-        @toggle-main-c="emit('toggleMainC', index)"
         @update:rank="updateSlotRank(index, $event)"
         @update:refine="updateSlotRefine(index, $event)"
       />
