@@ -49,7 +49,11 @@ import {
   isRemielSelfRadiancePowerProvider,
   resolveDamageCalcResistanceElements,
 } from '@/utils/remielUtils'
-import { resolveRemielSelfRadianceCalcInput } from '@/utils/remielSelfRadiancePanel'
+import {
+  collectRemielSelfRestrictedContributions,
+  computeRemielSelfInCombatPanel,
+  resolveRemielSelfRadianceCalcInput,
+} from '@/utils/remielSelfRadiancePanel'
 import { mergeSkillSubcategoryMultOverrides } from '@/utils/skillSubcategoryMult'
 import {
   computeFinalPanel,
@@ -142,6 +146,15 @@ export interface OptimalEventEvalDetail {
   bonusAgentLabel?: string
   /** 异化系数区角色名（蕾米埃尔） */
   mutationAgentLabel?: string
+  mutationFinalPanel?: PanelStats
+  mutationExternalPanel?: PanelStats
+  mutationSources?: OptimalPanelBreakdown['sources']
+  remielSelfAtkSourceItems?: string[]
+  remielSelfMasterySourceItems?: string[]
+  remielSelfExternalPanel?: PanelStats
+  remielSelfSources?: OptimalPanelBreakdown['sources']
+  remielSelfFinalPanel?: PanelStats
+  remielIsMb?: boolean
 }
 
 /** 受 4/5/6 主词条计数约束的副词条 */
@@ -606,7 +619,14 @@ function applyEventMultOverrides(
 function resolveLuminousTeamModifiersForOptimal(
   ctx: OptimalEvalContext,
   mainExternal: PanelStats,
-): { mutationZone: number; radianceResPen: number } {
+): {
+  mutationZone: number
+  radianceResPen: number
+  finalPanel?: PanelStats
+  external?: PanelStats
+  sources?: OptimalPanelBreakdown['sources']
+  remielIsMb?: boolean
+} {
   const found = findLuminousAgentInTeam(ctx.panelContext.teamSlots, ctx.panelContext.agents)
   if (!found) return { mutationZone: 1, radianceResPen: 0 }
   const tSlotIndex = found.slotIndex
@@ -624,9 +644,14 @@ function resolveLuminousTeamModifiersForOptimal(
     },
   })
   const panel = breakdown.finalPanel
+  const agent = ctx.panelContext.agents.find((item) => item.id === found.id)
   return {
     mutationZone: computeMutationZone(panel),
     radianceResPen: panel.radianceResPen,
+    finalPanel: panel,
+    external: producerExternal,
+    sources: breakdown.sources,
+    remielIsMb: agent?.profession === MB_PROFESSION,
   }
 }
 
@@ -953,6 +978,31 @@ export function evaluateOptimalEventDetail(
       ? formatAnomalyFormulaAgentLabel('mutation', remielName)
       : undefined
 
+  let remielSelfAtkSourceItems: string[] | undefined
+  let remielSelfMasterySourceItems: string[] | undefined
+  let remielSelfExternalPanel: PanelStats | undefined
+  let remielSelfSources: OptimalPanelBreakdown['sources'] | undefined
+  let remielSelfFinalPanel: PanelStats | undefined
+  if (result.remielSelfRadianceActive && remiel) {
+    const remielExternal = resolveExternalForAgent(ctx, remiel.id, remiel.slotIndex, mainExternal)
+    const remielCtx = buildPanelContextForSlot(ctx, remiel.slotIndex, remielExternal, mainExternal)
+    const restricted = collectRemielSelfRestrictedContributions(
+      remielExternal,
+      { ...remielCtx, skillContext: skillCtx },
+      remiel.slotIndex,
+    )
+    const selfBreakdown = computeRemielSelfInCombatPanel(
+      remielExternal,
+      remielCtx,
+      remiel.slotIndex,
+    )
+    remielSelfAtkSourceItems = restricted.atkItems
+    remielSelfMasterySourceItems = restricted.masteryItems
+    remielSelfExternalPanel = remielExternal
+    remielSelfSources = selfBreakdown.sources
+    remielSelfFinalPanel = selfBreakdown.finalPanel
+  }
+
   return {
     hit,
     eventId: hit.id,
@@ -982,6 +1032,15 @@ export function evaluateOptimalEventDetail(
     baseAgentLabel,
     bonusAgentLabel,
     mutationAgentLabel,
+    mutationFinalPanel: luminousMods.finalPanel,
+    mutationExternalPanel: luminousMods.external,
+    mutationSources: luminousMods.sources,
+    remielSelfAtkSourceItems,
+    remielSelfMasterySourceItems,
+    remielSelfExternalPanel,
+    remielSelfSources,
+    remielSelfFinalPanel,
+    remielIsMb: luminousMods.remielIsMb,
   }
 }
 

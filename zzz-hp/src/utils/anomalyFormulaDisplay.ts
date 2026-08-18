@@ -79,7 +79,7 @@ export function buildAlignedAnomalyFormulaGroups(
         {
           label: '特殊等级区',
           value: formatFormulaNumber(p.remielSelfSpecialLevelZone ?? 1),
-          tipsKey: 'levelZone',
+          tipsKey: 'remielSelfSpecialLevelZone',
         },
         {
           label: '异化系数区',
@@ -89,7 +89,7 @@ export function buildAlignedAnomalyFormulaGroups(
         {
           label: '等级区',
           value: formatFormulaNumber(p.remielSelfStandardLevelZone ?? 1),
-          tipsKey: 'levelZone',
+          tipsKey: 'remielSelfStandardLevelZone',
         },
       ]
     : [

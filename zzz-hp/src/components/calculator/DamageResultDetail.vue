@@ -12,6 +12,17 @@ import {
   buildStatSourceGroups,
   type StatSourceGroup,
 } from '@/utils/statSourceTips'
+import {
+  buildDefenseZoneFormulaItems,
+  buildDefenseZoneSourceGroups,
+  buildMutationZoneTipGroups,
+  buildPierceDmgZoneProcessItems,
+  buildRemielSelfAtkTipGroups,
+  buildRemielSelfMasteryTipGroups,
+  buildRemielSpecialLevelZoneGroups,
+  buildRemielStandardLevelZoneGroups,
+  buildResistanceZoneProcessItems,
+} from '@/utils/zoneSourceTips'
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 import {
   buildAlignedAnomalyFormulaGroups,
@@ -24,6 +35,7 @@ import {
   formatDirectDmgMultZoneFormula,
   formatSettlementDmgMultZoneFormula,
 } from '@/utils/directDamageDisplay'
+import { normalizeDamageEnemyInput, resolveEnemyResistanceForElement } from '@/utils/enemyResistance'
 
 const props = defineProps<{
   calcParts: DamageCalcResult
@@ -38,6 +50,8 @@ const props = defineProps<{
     staggerMultiplier: number
     specialMultiplier: number
     level: number
+    resistanceType?: import('@/utils/enemyResistance').EnemyResistanceType
+    elementResistance?: import('@/utils/enemyResistance').ElementResistanceMap
   }
   isMb: boolean
   /** direct=通用乘区+直伤；anomaly=通用乘区+异常子类 */
@@ -54,6 +68,17 @@ const props = defineProps<{
   bonusAgentLabel?: string
   /** 异化系数区角色名（蕾米埃尔） */
   mutationAgentLabel?: string
+  /** 蕾米埃尔局内最终面板（异化系数来源） */
+  mutationFinalPanel?: PanelStats
+  mutationExternalPanel?: PanelStats
+  mutationSources?: BuffModSource[]
+  /** 本人耀变局内攻/精逐条来源 */
+  remielSelfAtkSourceItems?: string[]
+  remielSelfMasterySourceItems?: string[]
+  remielSelfExternalPanel?: PanelStats
+  remielSelfSources?: BuffModSource[]
+  remielSelfFinalPanel?: PanelStats
+  remielIsMb?: boolean
   /** 类型增伤/倍率面板（异放/耀变=异常类触发者；缺省回落 finalPanel） */
   bonusFinalPanel?: PanelStats
   bonusExternalPanel?: PanelStats
@@ -78,11 +103,6 @@ function formatFormulaNumber(v: number, precision = 4) {
     return v.toLocaleString('en-US')
   }
   return formatCalcDecimal(v, precision)
-}
-
-function formatSigned(value: number) {
-  if (value > 0) return `+${value}`
-  return String(value)
 }
 
 const generalFormulaParts = computed(() => {
@@ -208,8 +228,13 @@ type ValueTipsKey =
   | 'radianceCombinedDmgBonusZone'
   | 'radianceMultZone'
   | 'mutationZone'
+  | 'pierceDmgMultiplier'
   | 'remielSelfInCombatAtk'
   | 'remielSelfInCombatMasteryZone'
+  | 'remielSelfSpecialLevelZone'
+  | 'remielSelfStandardLevelZone'
+  | 'remielSelfDefenseMultiplier'
+  | 'remielSelfResistanceMultiplier'
 
 interface AlignedFormulaTerm {
   label: string
@@ -337,10 +362,30 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
     sub === 'anomaly' || sub === 'anomalyRelease' || sub === 'radiance'
       ? bonusPanel
       : ownerPanel
+  const defTrigExternal =
+    sub === 'anomaly' || sub === 'anomalyRelease' || sub === 'radiance'
+      ? bonusExternal
+      : ownerExternal
+  const defTrigSources =
+    sub === 'anomaly' || sub === 'anomalyRelease' || sub === 'radiance'
+      ? bonusSources
+      : ownerSources
   const defTrigLabel =
     sub === 'anomaly' || sub === 'anomalyRelease' || sub === 'radiance'
       ? (props.bonusAgentLabel ?? '异常类触发者')
       : (props.bonusAgentLabel ?? '招式持有者')
+  const remielExt = props.remielSelfExternalPanel ?? (p.remielSelfRadianceActive ? props.producerExternalPanel ?? external : external)
+  const remielPanelForSelf = props.remielSelfFinalPanel ?? (p.remielSelfRadianceActive ? props.producerFinalPanel ?? panel : panel)
+  const remielSourcesForSelf = props.remielSelfSources ?? []
+  const remielResPenTotal =
+    (remielPanelForSelf.resPen ?? 0) + (remielPanelForSelf.radianceResPen ?? 0)
+  const remielEnemyRes =
+    p.remielSelfRadianceActive && p.remielSelfResistanceElement
+      ? resolveEnemyResistanceForElement(
+          normalizeDamageEnemyInput(props.enemyInput),
+          p.remielSelfResistanceElement,
+        )
+      : 0
   const atkGroups = buildStatSourceGroups({
     keys: ['inCombatAtkPercent', 'atk'],
     externalPanel: external,
@@ -433,53 +478,21 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
       }),
       `局内增伤 ${formatFormulaNumber(panel.dmgBonus, 2)}% → 增伤区 1 + ${formatFormulaNumber(panel.dmgBonus, 2)}% = ${formatFormulaNumber(p.dmgMultiplier)}`,
     ),
-    defenseMultiplier: props.isMb
-      ? [{ label: '命破招式持有者', items: ['防御区固定为 1'] }]
-      : withTotal(
-          buildStatSourceGroups({
-            keys: usesProducerBase ? ['penRate'] : ['reduceDefense', 'penRate'],
-            externalPanel: external,
-            sources,
-            finalValues: usesProducerBase
-              ? { penRate: panel.penRate }
-              : { reduceDefense: panel.reduceDefense, penRate: panel.penRate },
-            extraGroups: usesProducerBase
-              ? [
-                  {
-                    label: defTrigLabel,
-                    items: [
-                      `减防 ${formatFormulaNumber(defTrigPanel.reduceDefense, 2)}%`,
-                      `无视防御 ${formatFormulaNumber(defTrigPanel.ignoreDefense, 2)}%`,
-                    ],
-                  },
-                  {
-                    label: '敌方与环境 / 局外面板',
-                    items: [
-                      `敌方防御 ${formatFormulaNumber(enemy.defense, 2)}`,
-                      `穿透值 ${formatFormulaNumber(external.pen, 2)}`,
-                    ],
-                  },
-                ]
-              : [
-                  {
-                    label: '敌方与环境 / 局外面板',
-                    items: [
-                      `敌方防御 ${formatFormulaNumber(enemy.defense, 2)}`,
-                      `无视防御 ${formatFormulaNumber(external.ignoreDefense, 2)}%`,
-                      `穿透值 ${formatFormulaNumber(external.pen, 2)}`,
-                    ],
-                  },
-                ],
-            showAdditiveProcess: false,
-          }),
-          `有效防御 ${formatFormulaNumber(p.effectiveDefense, 2)} → 防御区 794 / (794 + ${formatFormulaNumber(p.effectiveDefense, 2)}) = ${formatFormulaNumber(p.defenseMultiplier)}`,
-          [
-            `穿透率 ${formatFormulaNumber(panel.penRate, 2)}%（${usesProducerBase ? '强度提供者' : '持有者'}）`,
-            `减防 ${formatFormulaNumber(defTrigPanel.reduceDefense, 2)}% + 无视 ${formatFormulaNumber(defTrigPanel.ignoreDefense, 2)}%（${usesProducerBase ? '触发者' : '持有者'}）`,
-            `有效防御 ${formatFormulaNumber(p.effectiveDefense, 2)}`,
-            `794 / (794 + ${formatFormulaNumber(p.effectiveDefense, 2)}) = ${formatFormulaNumber(p.defenseMultiplier)}`,
-          ],
-        ),
+    defenseMultiplier: buildDefenseZoneSourceGroups({
+      enemyDefense: enemy.defense,
+      penRatePanel: panel,
+      penRateExternal: external,
+      penRateSources: sources,
+      defCutPanel: defTrigPanel,
+      defCutExternal: defTrigExternal,
+      defCutSources: defTrigSources,
+      defCutLabel: defTrigLabel,
+      splitDefCut: usesProducerBase,
+      isMb: props.isMb,
+      mbLabel: '命破招式持有者',
+      penRateRole: usesProducerBase ? '强度提供者' : '持有者',
+      defCutRole: usesProducerBase ? '触发者' : '持有者',
+    }),
     resistanceMultiplier: withTotal(
       [
         {
@@ -491,22 +504,14 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
           externalPanel: external,
           sources,
           finalValues: { resPen: panel.resPen },
-          showAdditiveProcess: false,
         }),
       ],
       `抗性区 1 - ${formatFormulaNumber(p.enemyResistance)} + ${formatFormulaNumber(panel.resPen, 2)}% = ${formatFormulaNumber(p.resistanceMultiplier)}`,
-      [
-        `敌方抗性 ${formatFormulaNumber(p.enemyResistance)}`,
-        ...(panel.resPen || sources.some((s) => s.mods.resPen)
-          ? [
-              `局内抗穿 ${formatFormulaNumber(panel.resPen, 2)}%`,
-              ...sources
-                .filter((s) => s.mods.resPen)
-                .map((s) => `${s.label} ${formatSigned(s.mods.resPen)}%`),
-            ]
-          : []),
-        `1 - ${formatFormulaNumber(p.enemyResistance)} + ${formatFormulaNumber(panel.resPen, 2)}% = ${formatFormulaNumber(p.resistanceMultiplier)}`,
-      ],
+      buildResistanceZoneProcessItems({
+        enemyResistance: p.enemyResistance,
+        resPen: panel.resPen,
+        zone: p.resistanceMultiplier,
+      }),
     ),
     vulnerableMultiplier: withTotal(
       [
@@ -620,6 +625,29 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
         resultLabel: '特殊乘区',
       }),
     ),
+    pierceDmgMultiplier: withTotal(
+      [
+        {
+          label: '乘区说明',
+          items:
+            p.baseDamageSource === 'pierce'
+              ? ['基础伤害来源为贯穿力，贯穿增伤作为独立乘区生效']
+              : ['基础伤害来源非贯穿力，贯穿增伤区固定为 1'],
+        },
+        ...buildStatSourceGroups({
+          keys: ['pierceDmgBonus'],
+          externalPanel: external,
+          sources,
+          externalKeyMap: { pierceDmgBonus: null },
+        }),
+      ],
+      `贯穿增伤区 ${formatFormulaNumber(p.pierceDmgMultiplier)}`,
+      buildPierceDmgZoneProcessItems({
+        active: p.baseDamageSource === 'pierce',
+        bonusPercent: Math.max(0, (p.pierceDmgMultiplier - 1) * 100),
+        zone: p.pierceDmgMultiplier,
+      }),
+    ),
     directDmgMultZone: withTotal(
       buildStatSourceGroups({
         keys: ['directDmgMult', 'directDmgMultFactor'],
@@ -655,33 +683,42 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
     ),
     effectiveDefense: withTotal(
       buildStatSourceGroups({
-        keys: ['reduceDefense', 'penRate'],
+        keys: usesProducerBase ? ['penRate'] : ['reduceDefense', 'penRate'],
         externalPanel: external,
         sources,
-        finalValues: { reduceDefense: panel.reduceDefense, penRate: panel.penRate },
+        finalValues: usesProducerBase
+          ? { penRate: panel.penRate }
+          : { reduceDefense: panel.reduceDefense, penRate: panel.penRate },
         extraGroups: [
+          ...(usesProducerBase
+            ? buildStatSourceGroups({
+                keys: ['reduceDefense'],
+                externalPanel: defTrigExternal,
+                sources: defTrigSources,
+                finalValues: { reduceDefense: defTrigPanel.reduceDefense },
+              })
+            : []),
           {
             label: '敌方与环境 / 局外面板',
             items: [
               `敌方防御 ${formatFormulaNumber(enemy.defense, 2)}`,
-              `无视防御 ${formatFormulaNumber(external.ignoreDefense, 2)}%`,
-              `穿透值 ${formatFormulaNumber(external.pen, 2)}`,
+              `无视防御 ${formatFormulaNumber(defTrigExternal.ignoreDefense, 2)}%（局外，不受增益）`,
+              `穿透值 ${formatFormulaNumber(external.pen, 2)}（局外，不受增益）`,
             ],
           },
         ],
-        showAdditiveProcess: false,
       }),
       `有效防御 ${formatFormulaNumber(p.effectiveDefense, 2)}`,
-      [
-        `敌方防御 ${formatFormulaNumber(enemy.defense, 2)}`,
-        `无视防御 ${formatFormulaNumber(external.ignoreDefense, 2)}%`,
-        `减防 ${formatFormulaNumber(panel.reduceDefense, 2)}%`,
-        `穿透率 ${formatFormulaNumber(panel.penRate, 2)}%`,
-        `穿透值 ${formatFormulaNumber(external.pen, 2)}`,
-        `防御因子 ${formatFormulaNumber(p.defenseFactor)}`,
-        `折后防御 ${formatFormulaNumber(enemy.defense * p.defenseFactor * (1 - p.penRateRatio), 2)}`,
-        `折后防御 - 穿透值 = ${formatFormulaNumber(p.effectiveDefense, 2)}`,
-      ],
+      buildDefenseZoneFormulaItems({
+        enemyDefense: enemy.defense,
+        ignoreDefense: defTrigPanel.ignoreDefense,
+        reduceDefense: defTrigPanel.reduceDefense,
+        penRate: panel.penRate,
+        pen: external.pen,
+        isMb: props.isMb,
+        penRateRole: usesProducerBase ? '强度提供者' : '持有者',
+        defCutRole: usesProducerBase ? '触发者' : '持有者',
+      }),
     ),
     piercePower: withTotal(
       [
@@ -890,52 +927,26 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
           },
         ],
     remielSelfInCombatAtk: p.remielSelfRadianceActive
-      ? [
-          {
-            label: '本人耀变局内攻击（特殊口径）',
-            items: [
-              `局外攻击力 ${formatFormulaNumber(external.atk, 2)}`,
-              `+ 自身攻击力转模 ${formatFormulaNumber(
-                Math.max(0, (p.remielSelfInCombatAtk ?? 0) - external.atk),
-                2,
-              )}`,
-              `= ${formatFormulaNumber(p.remielSelfInCombatAtk ?? 0, 2)}`,
-              '仅：局外攻击 + 蕾米埃尔角色/影画「攻击力转模」',
-              '不含局内攻击%、队友/邦布、音擎/驱动盘其它攻击增益',
-            ],
-          },
-          {
-            label: '对照（本人耀变不用）',
-            items: [`完整局内攻击 ${formatFormulaNumber(panel.atk, 2)}`],
-          },
-        ]
+      ? buildRemielSelfAtkTipGroups({
+          externalAtk: remielExt.atk,
+          inCombatAtk: p.remielSelfInCombatAtk ?? 0,
+          sourceItems: props.remielSelfAtkSourceItems ?? [],
+          fullPanelAtk: remielPanelForSelf.atk,
+        })
       : [],
     remielSelfInCombatMasteryZone: p.remielSelfRadianceActive
-      ? [
-          {
-            label: '本人耀变局内精通（特殊口径）',
-            items: [
-              `局外精通 ${formatFormulaNumber(external.mastery, 2)}`,
-              `+ 四件套/音擎全局精通 ${formatFormulaNumber(
-                Math.max(
-                  0,
-                  (p.remielSelfInCombatMasteryZone ?? 0) * 100 - external.mastery,
-                ),
-                2,
-              )}`,
-              `局内精通 ${formatFormulaNumber((p.remielSelfInCombatMasteryZone ?? 0) * 100, 2)}`,
-              `局内精通区 ÷100 → ${formatFormulaNumber(p.remielSelfInCombatMasteryZone ?? 0)}`,
-              '仅：局外精通 + 驱动盘4件套全局精通 + 音擎全局精通',
-              '不含队友/邦布及其它精通增益',
-            ],
-          },
-          {
-            label: '对照（本人耀变不用）',
-            items: [
-              `完整局内精通 ${formatFormulaNumber(panel.mastery, 2)} → 区 ${formatFormulaNumber(p.masteryZone)}`,
-            ],
-          },
-        ]
+      ? buildRemielSelfMasteryTipGroups({
+          externalMastery: remielExt.mastery,
+          inCombatMasteryZone: p.remielSelfInCombatMasteryZone ?? 0,
+          sourceItems: props.remielSelfMasterySourceItems ?? [],
+          fullPanelMastery: remielPanelForSelf.mastery,
+        })
+      : [],
+    remielSelfSpecialLevelZone: p.remielSelfRadianceActive
+      ? buildRemielSpecialLevelZoneGroups(p.levelZoneAgentLevel, p.remielSelfSpecialLevelZone)
+      : [],
+    remielSelfStandardLevelZone: p.remielSelfRadianceActive
+      ? buildRemielStandardLevelZoneGroups(p.levelZoneAgentLevel, p.remielSelfStandardLevelZone)
       : [],
     anomalyExpected: [
       {
@@ -1205,22 +1216,68 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
         `= ${formatFormulaNumber(p.radianceMultZone)}`,
       ],
     ),
-    mutationZone: [
-      {
-        label: p.remielSelfRadianceActive ? '异化系数（本人耀变）' : '异化系数',
-        items: p.remielSelfRadianceActive
-          ? [
-              '取蕾米埃尔最终局内面板的异化系数与修正（含队友等）',
-              `异化系数区 ${formatFormulaNumber(p.remielSelfMutationZone ?? p.mutationZone)}`,
-            ]
-          : [
-              props.mutationAgentLabel
-                ? `由 ${props.mutationAgentLabel} 提供（取该角色局内最终面板的异化系数与修正）`
-                : '取队伍中蕾米埃尔局内最终面板的异化系数与修正',
-              `异化系数区 ${formatFormulaNumber(p.mutationZone)}`,
-            ],
-      },
-    ],
+    mutationZone: buildMutationZoneTipGroups({
+      zone: p.remielSelfRadianceActive
+        ? (p.remielSelfMutationZone ?? p.mutationZone)
+        : p.mutationZone,
+      title: p.remielSelfRadianceActive ? '异化系数（本人耀变）' : '异化系数',
+      noteItems: [
+        p.remielSelfRadianceActive
+          ? '取蕾米埃尔最终局内面板的异化系数与修正（含队友/邦布）'
+          : props.mutationAgentLabel
+            ? `由 ${props.mutationAgentLabel} 提供（取该角色局内最终面板的异化系数与修正）`
+            : '取队伍中蕾米埃尔局内最终面板的异化系数与修正',
+      ],
+      externalPanel: props.mutationExternalPanel,
+      sources: props.mutationSources,
+      finalPanel: props.mutationFinalPanel,
+    }),
+    remielSelfDefenseMultiplier: p.remielSelfRadianceActive
+      ? buildDefenseZoneSourceGroups({
+          enemyDefense: enemy.defense,
+          penRatePanel: remielPanelForSelf,
+          penRateExternal: remielExt,
+          penRateSources: remielSourcesForSelf,
+          defCutPanel: defTrigPanel,
+          defCutExternal: defTrigExternal,
+          defCutSources: defTrigSources,
+          defCutLabel: defTrigLabel,
+          splitDefCut: true,
+          isMb: Boolean(props.remielIsMb),
+          mbLabel: '蕾米埃尔',
+          penRateRole: '蕾米埃尔',
+          defCutRole: '触发者',
+        })
+      : [],
+    remielSelfResistanceMultiplier: p.remielSelfRadianceActive
+      ? withTotal(
+          [
+            {
+              label: '敌方与环境',
+              items: [
+                p.remielSelfResistanceElement
+                  ? `${p.remielSelfResistanceElement} 抗性 ${formatFormulaNumber(remielEnemyRes)}`
+                  : '无后续非流明队友，敌方抗性按无弱点无抗性（0）',
+              ],
+            },
+            ...buildStatSourceGroups({
+              keys: ['resPen', 'radianceResPen'],
+              externalPanel: remielExt,
+              sources: remielSourcesForSelf,
+              finalValues: {
+                resPen: remielPanelForSelf.resPen,
+                radianceResPen: remielPanelForSelf.radianceResPen,
+              },
+            }),
+          ],
+          `抗性区 1 - ${formatFormulaNumber(remielEnemyRes)} + ${formatFormulaNumber(remielResPenTotal, 2)}% = ${formatFormulaNumber(p.remielSelfResistanceMultiplier ?? 1)}`,
+          buildResistanceZoneProcessItems({
+            enemyResistance: remielEnemyRes,
+            resPen: remielResPenTotal,
+            zone: p.remielSelfResistanceMultiplier ?? 1,
+          }),
+        )
+      : [],
   }
 })
 </script>

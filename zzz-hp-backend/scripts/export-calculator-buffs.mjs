@@ -13,6 +13,7 @@ import { fileURLToPath } from 'url'
 import pool from '../src/config/db.js'
 import { listCalculatorBuffs } from '../src/services/calculatorBuffService.js'
 import { listDamageEventModes } from '../src/services/damageEventModeService.js'
+import { listSkills } from '../src/services/skillLibraryService.js'
 
 dotenv.config()
 
@@ -31,6 +32,7 @@ const outPath =
 try {
   const data = await listCalculatorBuffs()
   const damageEventModes = await listDamageEventModes()
+  const skills = await listSkills()
   let out
 
   if (agentsOnly && fs.existsSync(outPath)) {
@@ -45,6 +47,7 @@ try {
       skillSubcategories: data.skillSubcategories ?? [],
       followUpSkillRules: data.followUpSkillRules ?? [],
       damageEventModes,
+      skills,
     }
   }
 
@@ -56,7 +59,7 @@ try {
       `音擎 ${out.wengines.length} · 邦布 ${out.bangboos.length} · 驱动盘 ${out.driveDiscs.length}`,
     )
     console.log(
-      `招式小类 ${out.skillSubcategories.length} · 追击规则 ${out.followUpSkillRules.length} · 伤害事件模式 ${out.damageEventModes.length}`,
+      `招式小类 ${out.skillSubcategories.length} · 追击规则 ${out.followUpSkillRules.length} · 伤害事件模式 ${out.damageEventModes.length} · 招式 ${out.skills?.length ?? 0}`,
     )
   }
 } finally {

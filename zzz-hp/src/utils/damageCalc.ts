@@ -225,7 +225,7 @@ function round(value: number, precision = 2) {
   return Math.round(value * factor) / factor
 }
 
-function computeDefenseZone(options: {
+export function computeDefenseZone(options: {
   defensePanel: Pick<PanelStats, 'penRate' | 'pen' | 'ignoreDefense' | 'reduceDefense'>
   isMb: boolean
   enemyDefense: number
