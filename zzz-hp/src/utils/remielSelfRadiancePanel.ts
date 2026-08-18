@@ -42,11 +42,23 @@ export function computeRemielSelfInCombatPanel(
  * - 局内精通 = 局外精通 + 驱动盘4件套全局精通 + 音擎全局精通
  * 不含局内攻击%、队友/邦布，也不吃角色其它固定攻击/精通。
  */
-export function computeRemielSelfRestrictedAtkAndMastery(
+function formatSignedContribution(value: number) {
+  if (value > 0) return `+${value}`
+  return String(value)
+}
+
+export interface RemielSelfRestrictedContributions {
+  inCombatAtk: number
+  inCombatMastery: number
+  atkItems: string[]
+  masteryItems: string[]
+}
+
+export function collectRemielSelfRestrictedContributions(
   externalPanel: PanelStats,
   ctx: PanelCalcContext,
   remielSlotIndex: number,
-): { inCombatAtk: number; inCombatMastery: number } {
+): RemielSelfRestrictedContributions {
   const restrictedCtx: PanelCalcContext = {
     ...ctx,
     mainSlotIndex: remielSlotIndex,
@@ -73,6 +85,8 @@ export function computeRemielSelfRestrictedAtkAndMastery(
 
   let atkConvert = 0
   let masteryBonus = 0
+  const atkItems: string[] = []
+  const masteryItems: string[] = []
 
   for (const source of sources) {
     // extraMods 等来源可能只有 mods、没有 effects；不可直接 for…of undefined
@@ -86,12 +100,10 @@ export function computeRemielSelfRestrictedAtkAndMastery(
       const convertOverride = ctx.buffSelection?.convertInputs?.[effect.id]
 
       if (source.key.startsWith(agentPrefix) && effect.kind === 'convert' && effect.stat === 'atk') {
-        atkConvert += resolveConvertValue(
-          effect,
-          {},
-          convertOverride,
-          panelSourceValues,
-        )
+        const value = resolveConvertValue(effect, {}, convertOverride, panelSourceValues)
+        if (!value) continue
+        atkConvert += value
+        atkItems.push(`${source.label} 攻击力转模 ${formatSignedContribution(value)}`)
         continue
       }
 
@@ -100,22 +112,38 @@ export function computeRemielSelfRestrictedAtkAndMastery(
       const isWengine = source.key.startsWith(wenginePrefix)
       if (!(isFourPiece || isWengine) || effect.stat !== 'mastery') continue
 
-      if (effect.kind === 'convert') {
-        masteryBonus += resolveConvertValue(
-          effect,
-          {},
-          convertOverride,
-          panelSourceValues,
-        )
-      } else {
-        masteryBonus += resolveEffectBaseValue(effect, stacks)
-      }
+      const value =
+        effect.kind === 'convert'
+          ? resolveConvertValue(effect, {}, convertOverride, panelSourceValues)
+          : resolveEffectBaseValue(effect, stacks)
+      if (!value) continue
+      masteryBonus += value
+      const kindLabel = isFourPiece ? '四件套全局精通' : '音擎全局精通'
+      masteryItems.push(`${source.label} ${kindLabel} ${formatSignedContribution(value)}`)
     }
   }
 
   return {
     inCombatAtk: Math.max(0, externalPanel.atk + atkConvert),
     inCombatMastery: Math.max(0, externalPanel.mastery + masteryBonus),
+    atkItems,
+    masteryItems,
+  }
+}
+
+export function computeRemielSelfRestrictedAtkAndMastery(
+  externalPanel: PanelStats,
+  ctx: PanelCalcContext,
+  remielSlotIndex: number,
+): { inCombatAtk: number; inCombatMastery: number } {
+  const collected = collectRemielSelfRestrictedContributions(
+    externalPanel,
+    ctx,
+    remielSlotIndex,
+  )
+  return {
+    inCombatAtk: collected.inCombatAtk,
+    inCombatMastery: collected.inCombatMastery,
   }
 }
 

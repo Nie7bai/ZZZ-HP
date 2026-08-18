@@ -2353,6 +2353,15 @@ defineExpose({
             :base-agent-label="selectedProcessEventDetail.baseAgentLabel"
             :bonus-agent-label="selectedProcessEventDetail.bonusAgentLabel"
             :mutation-agent-label="selectedProcessEventDetail.mutationAgentLabel"
+            :mutation-final-panel="selectedProcessEventDetail.mutationFinalPanel"
+            :mutation-external-panel="selectedProcessEventDetail.mutationExternalPanel"
+            :mutation-sources="selectedProcessEventDetail.mutationSources"
+            :remiel-self-atk-source-items="selectedProcessEventDetail.remielSelfAtkSourceItems"
+            :remiel-self-mastery-source-items="selectedProcessEventDetail.remielSelfMasterySourceItems"
+            :remiel-self-external-panel="selectedProcessEventDetail.remielSelfExternalPanel"
+            :remiel-self-sources="selectedProcessEventDetail.remielSelfSources"
+            :remiel-self-final-panel="selectedProcessEventDetail.remielSelfFinalPanel"
+            :remiel-is-mb="selectedProcessEventDetail.remielIsMb"
           />
           <p v-else-if="processOwnerShareSummary || processSkippedEvents.length" class="hint">
             在上方「产生者伤害占比」中点选事件，查看该事件的详细计算过程。
