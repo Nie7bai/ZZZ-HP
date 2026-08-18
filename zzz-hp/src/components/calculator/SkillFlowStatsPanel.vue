@@ -288,7 +288,7 @@ function clearRecords() {
         </div>
       </div>
       <p class="sf-stats-hint">
-        最多 {{ MAX_RECORDS }} 条，存在本机，切方案不会换。悬停方案名可看全称、三人与当前角色。
+        最多 {{ MAX_RECORDS }} 条，全局存在浏览器，不会被方案记录。悬停在方案列可看全称、三人与当前角色。
       </p>
       <table v-if="records.length" class="sf-rec-table">
         <thead>
