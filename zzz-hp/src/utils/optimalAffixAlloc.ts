@@ -548,6 +548,7 @@ function buildPanelContextForSlot(
     mainSlotIndex: slotIndex,
     mainExternalPanel: mainExternalPanel,
     extraMods,
+    extraGains: ctx.extraGains,
     buffSelection: ctx.slotBuffSelections
       ? resolveBuffSelectionForSlot(ctx.slotBuffSelections, slotIndex)
       : ctx.panelContext.buffSelection,
@@ -2051,6 +2052,7 @@ export function buildOptimalEvalContext(input: {
       baseAnomalyControl: mainAgent?.basePanel.anomalyControl ?? 0,
       baseEnergyRegen: mainAgent?.basePanel.energyRegen ?? 0,
       environmentBuffs: input.environmentBuffs,
+      extraGains: input.extraGains,
     },
     enemyInput: input.enemyInput,
     baseDamageSource: input.baseDamageSource,

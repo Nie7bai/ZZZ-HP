@@ -652,6 +652,7 @@ function buildPanelCalcContextForSlot(
     liveExternalSlotIndex: mainSlotIndex.value,
     driveDiscs: props.driveDiscs,
     extraMods: extraModsOverride ?? extraMods.value,
+    extraGains: extraGains.value,
     skillContext: buildSkillContextForSlot(slotIndex),
     buffSelection: resolveBuffSelectionForSlot(props.slotBuffSelections, slotIndex),
     anomalySlotPanels: props.anomalySlotPanels,

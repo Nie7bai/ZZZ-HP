@@ -39,7 +39,11 @@ import {
   mergeBuffStatModifiers,
 } from '@/utils/calculatorUi'
 import type { EnvironmentBuffEntry } from '@/utils/environmentBuffCalc'
-import { extraGainMatchesProfession } from '@/utils/extraBuffCalc'
+import {
+  extraGainMatchesProfession,
+  mergeExtraModsForEvent,
+  type ExtraBuffGain,
+} from '@/utils/extraBuffCalc'
 
 function flattenBlocks(blocks: { effects?: BuffEffect[] }[]): BuffEffect[] {
   return blocks.flatMap((block) => block.effects ?? [])
@@ -487,6 +491,11 @@ export interface PanelCalcContext {
   mainSlotIndex: number
   driveDiscs: DriveDiscBuffDoc[]
   extraMods?: BuffStatModifiers
+  /**
+   * 额外 Buff 条目。转模按来源槽位取局内时，必须按该槽重算，
+   * 不能把当前结算角色的 extraMods 整包套到蕾米等人身上。
+   */
+  extraGains?: ExtraBuffGain[]
   skillContext?: SkillCalcContext | null
   buffSelection?: BuffSelectionState | null
   attrValues?: Partial<Record<CharacterAttrKey, number>>
@@ -839,6 +848,25 @@ function resolveBeneficiaryElement(ctx: PanelCalcContext): string | undefined {
 
 function resolveTeamProfessionCountOption(ctx: PanelCalcContext) {
   return (profession: string) => countTeamProfession(ctx.teamSlots, ctx.agents, profession)
+}
+
+/** 额外 Buff 按当前 mainSlotIndex 取值；有 extraGains 时不复用别人的 extraMods */
+function resolveContextExtraMods(ctx: PanelCalcContext): BuffStatModifiers {
+  if (ctx.extraGains?.length) {
+    const slotIndex = ctx.mainSlotIndex
+    const slotAgentId = ctx.teamSlots[slotIndex]?.agentId ?? ''
+    const skillCtx = ctx.skillContext ?? defaultSkillContext('direct')
+    return mergeExtraModsForEvent(ctx.extraGains, skillCtx, {
+      slotIndex,
+      slotAgentId,
+      staggerPhase: skillCtx.staggerPhase ?? 'stagger',
+      resolveAgentProfession: (agentId) =>
+        ctx.agents.find((item) => item.id === agentId)?.profession,
+      teamSlots: ctx.teamSlots,
+      agents: ctx.agents,
+    })
+  }
+  return ctx.extraMods ?? createEmptyBuffStatModifiers()
 }
 
 function resolvePackMods(
@@ -1303,7 +1331,7 @@ function buildBuffCatalogKey(ctx: PanelCalcContext): string {
     bangboo: [ctx.bangboo?.id ?? '', ctx.bangbooRefine, Boolean(ctx.excludeBangboo)],
     main: ctx.mainSlotIndex,
     restrict: ctx.restrictToSlotIndex ?? null,
-    extra: ctx.extraMods ?? null,
+    extra: ctx.extraGains ?? ctx.extraMods ?? null,
     sel: ctx.buffSelection ?? null,
     skill: ctx.skillContext ?? null,
     env: (ctx.environmentBuffs ?? []).map((item) => item.sourceKey),
@@ -1358,7 +1386,7 @@ function materializeBuffCatalogPacks(
       return {
         key: pack.key,
         label: pack.label,
-        mods: ctx.extraMods ?? createEmptyBuffStatModifiers(),
+        mods: resolveContextExtraMods(ctx),
         effects: [],
       }
     }
@@ -1694,11 +1722,11 @@ function collectPanelBuffModSourcesUncached(ctx: PanelCalcContext): BuffModSourc
     }
   }
 
-  if (ctx.extraMods) {
+  if (ctx.extraGains?.length || ctx.extraMods) {
     sources.push({
       key: 'extra',
       label: '额外 Buff',
-      mods: ctx.extraMods,
+      mods: resolveContextExtraMods(ctx),
       effects: [],
     })
   }

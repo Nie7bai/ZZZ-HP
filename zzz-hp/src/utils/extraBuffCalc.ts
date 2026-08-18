@@ -16,6 +16,8 @@ import {
 import { createEmptyBuffStatModifiers, mergeBuffStatModifiers } from '@/utils/calculatorUi'
 import { teamSlotDisplayLabel } from '@/utils/teamSlotLabel'
 
+export type { ExtraBuffGain }
+
 export type ExtraBuffApplySlot = number | 'team'
 
 /**
