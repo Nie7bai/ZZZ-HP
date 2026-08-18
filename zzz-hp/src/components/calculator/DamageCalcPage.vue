@@ -939,12 +939,22 @@ function cloneTeamSlots(): DamageCalcHistoryEntry['teamSlots'] {
   return teamSlots.map((slot) => ({ ...slot }))
 }
 
+function ensureExactlyOneMainC() {
+  const marked = teamSlots.findIndex((slot) => slot.isMainC)
+  const filled = teamSlots.findIndex((slot) => slot.agentId)
+  const index = marked >= 0 ? marked : Math.max(0, filled)
+  teamSlots.forEach((slot, idx) => {
+    slot.isMainC = idx === index
+  })
+}
+
 function applyTeamSlots(slots: DamageCalcHistoryEntry['teamSlots']) {
   slots.forEach((slot, index) => {
     const target = teamSlots[index]
     if (!target) return
     Object.assign(target, slot)
   })
+  ensureExactlyOneMainC()
 }
 
 function cloneAnomalySlotPanels(): Record<string, PanelStats> {

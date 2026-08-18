@@ -106,7 +106,12 @@ const wengineProfessionMatch = computed(() => {
 
       <footer class="slot-footer" @click.stop>
         <label class="main-c">
-          <input type="checkbox" :checked="slot.isMainC" @change="emit('toggleMainC')" />
+          <input
+            type="radio"
+            name="zzz-hp-team-main-c"
+            :checked="slot.isMainC"
+            @change="emit('toggleMainC')"
+          />
           <span>主C</span>
         </label>
         <button type="button" class="remove-btn" @click="emit('remove')">移除</button>
