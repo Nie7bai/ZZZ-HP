@@ -79,6 +79,7 @@ import {
   resolveFlow,
   resolveSkillPreviews,
   buildGenericPanelSkillContext,
+  schemeSlotsHaveContent,
 } from '@/utils/resolvedHit'
 import type { DamageCalcResult } from '@/utils/damageCalc'
 
@@ -398,7 +399,10 @@ watch(defenseFrontierOptions, (options) => {
 
 onMounted(() => {
   void loadEnvironmentBuffCatalogs()
-  restoreWorkingState()
+  // Teleport defer 可能比本组件 onMounted 更晚挂上招式流程；晚一拍再恢复，避免子组件把空 slots 写回。
+  void nextTick(() => {
+    restoreWorkingState()
+  })
   window.addEventListener('pagehide', persistWorkingDraftNow)
   document.addEventListener('visibilitychange', onDraftVisibilityChange)
 })
@@ -967,6 +971,14 @@ function applyConvertSlotPanels(panels?: ConvertSlotPanels) {
   Object.assign(convertSlotPanels, JSON.parse(JSON.stringify(panels)))
 }
 
+function pickSlotsToRestore(entry: { slots?: SchemeSlot[]; loadedSchemeId?: string }) {
+  if (schemeSlotsHaveContent(entry.slots)) return entry.slots
+  const schemeId = entry.loadedSchemeId || getLoadedSchemeId()
+  const scheme = findDamageCalcHistory(schemeId)
+  if (schemeSlotsHaveContent(scheme?.slots)) return scheme!.slots
+  return entry.slots
+}
+
 function applyWorkingState(entry: {
   teamSlots: DamageCalcHistoryEntry['teamSlots']
   activeSlot: number
@@ -976,6 +988,7 @@ function applyWorkingState(entry: {
   anomalySlotPanels?: Record<string, PanelStats>
   convertSlotPanels?: ConvertSlotPanels
   slots?: SchemeSlot[]
+  loadedSchemeId?: string
   staggerPhase?: StaggerPhase
   multiSlotBuffSelection?: MultiSlotBuffSelection
   panelState?: DamageCalcHistoryEntry['panelState'] | null
@@ -995,7 +1008,7 @@ function applyWorkingState(entry: {
   panelCalcMode.value = entry.panelCalcMode === 'optimal' ? 'affix' : entry.panelCalcMode
   applyAnomalySlotPanels(entry.anomalySlotPanels)
   applyConvertSlotPanels(entry.convertSlotPanels)
-  schemeSlots.value = ensureSchemeSlots(entry.slots, 3)
+  schemeSlots.value = ensureSchemeSlots(pickSlotsToRestore(entry), 3)
   staggerPhase.value = entry.staggerPhase ?? 'stagger'
   if (entry.envBuffMode != null) envBuffMode.value = entry.envBuffMode
   if (entry.envBuffVersion != null) envBuffVersion.value = entry.envBuffVersion
@@ -1037,15 +1050,15 @@ function captureWorkingDraft(): DamageCalcWorkingDraft | null {
   }
 }
 
-function persistWorkingDraftNow() {
-  if (!draftHydrated) return
+function persistWorkingDraftNow(force = false) {
+  if (!force && (!draftHydrated || restoringWorkingState)) return
   const draft = captureWorkingDraft()
   if (!draft) return
   saveWorkingDraft(draft)
 }
 
 function schedulePersistWorkingDraft() {
-  if (!draftHydrated) return
+  if (!draftHydrated || restoringWorkingState) return
   if (draftSaveTimer) clearTimeout(draftSaveTimer)
   draftSaveTimer = setTimeout(() => {
     draftSaveTimer = null
@@ -1062,7 +1075,10 @@ function restoreWorkingState() {
   activeHistoryId.value = loadedId
   const draft = loadWorkingDraft()
   if (draft) {
-    applyWorkingState(draft)
+    applyWorkingState({
+      ...draft,
+      loadedSchemeId: draft.loadedSchemeId || loadedId,
+    })
     if (draft.loadedSchemeId) activeHistoryId.value = draft.loadedSchemeId
   } else if (loadedId) {
     const entry = findDamageCalcHistory(loadedId)
@@ -1071,6 +1087,7 @@ function restoreWorkingState() {
   void nextTick(() => {
     void nextTick(() => {
       draftHydrated = true
+      persistWorkingDraftNow(true)
     })
   })
 }
@@ -1123,7 +1140,7 @@ function loadHistoryEntry(entry: DamageCalcHistoryEntry) {
   activeHistoryId.value = entry.id
   setLoadedSchemeId(entry.id)
   historyMessage.value = `已加载「${entry.name}」`
-  persistWorkingDraftNow()
+  persistWorkingDraftNow(true)
 }
 
 /** 用当前页面配置覆盖指定方案（保留其 id / 名称 / 目录） */
@@ -1217,6 +1234,7 @@ function onSchemeImported(loadedId: string) {
   })
   activeHistoryId.value = ''
   setLoadedSchemeId('')
+  persistWorkingDraftNow(true)
 }
 
 watch(

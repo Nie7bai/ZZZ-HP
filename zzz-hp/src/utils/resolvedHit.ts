@@ -52,6 +52,12 @@ export function ensureSchemeSlots(
   return next.slice(0, count)
 }
 
+export function schemeSlotsHaveContent(slots?: SchemeSlot[] | null): boolean {
+  return (slots ?? []).some(
+    (slot) => (slot.prepared?.length ?? 0) > 0 || (slot.flow?.length ?? 0) > 0,
+  )
+}
+
 /** 异常类伤害（含属性异常/异放/紊乱/乱流/耀变）都要选双代理人 */
 export function skillNeedsDualAgents(damageType: Skill['damageType']): boolean {
   return mapEventKindToCalc(damageType).damageKind === 'anomaly'

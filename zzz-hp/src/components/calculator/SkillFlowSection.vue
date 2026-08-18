@@ -80,9 +80,10 @@ const detail = ref<
 watch(
   () => props.teamSlots.length,
   (count) => {
-    slots.value = ensureSchemeSlots(slots.value, Math.max(3, count))
+    const need = Math.max(3, count)
+    if (slots.value.length === need) return
+    slots.value = ensureSchemeSlots(slots.value, need)
   },
-  { immediate: true },
 )
 
 watch(modalTab, () => {
