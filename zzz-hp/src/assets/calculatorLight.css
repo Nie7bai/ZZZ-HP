@@ -2887,6 +2887,9 @@ body:has(.calculator-page.theme-light) .preset-preview li,
 [data-theme='light'] .sf-stats-num {
   color: #24324a !important;
 }
+[data-theme='light'] .sf-stats-num.team {
+  color: #1c212a !important;
+}
 [data-theme='light'] .sf-stats-num.current {
   color: #5a3d9b !important;
 }

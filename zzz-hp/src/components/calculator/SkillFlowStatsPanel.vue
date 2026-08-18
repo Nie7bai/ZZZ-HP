@@ -24,7 +24,10 @@ interface PieSlice {
   color: string
 }
 
+const MAX_RECORDS = 10
+
 interface DamageRecord {
+  id: string
   time: string
   current: number
   team: number
@@ -133,24 +136,37 @@ function pieBackground(slices: PieSlice[]) {
 }
 
 function recordNow() {
-  if (records.value.length >= 5) return
+  if (records.value.length >= MAX_RECORDS) return
   const now = new Date()
   const pad = (n: number) => String(n).padStart(2, '0')
   records.value.push({
+    id: `rec-${now.getTime()}-${Math.random().toString(36).slice(2, 7)}`,
     time: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
     current: currentTotal.value,
     team: teamTotal.value,
   })
 }
 
-function recordDelta(index: number) {
-  if (index <= 0) return '—'
-  const prev = records.value[index - 1]?.current ?? 0
-  const cur = records.value[index]?.current ?? 0
-  if (!(prev > 0)) return '—'
-  const pct = ((cur - prev) / prev) * 100
+function recordDelta(prev: number | undefined, cur: number | undefined) {
+  if (!(prev != null && prev > 0)) return '—'
+  const next = cur ?? 0
+  const pct = ((next - prev) / prev) * 100
   const sign = pct >= 0 ? '+' : ''
   return `${sign}${pct.toFixed(2)}%`
+}
+
+function teamDelta(index: number) {
+  if (index <= 0) return '—'
+  return recordDelta(records.value[index - 1]?.team, records.value[index]?.team)
+}
+
+function currentDelta(index: number) {
+  if (index <= 0) return '—'
+  return recordDelta(records.value[index - 1]?.current, records.value[index]?.current)
+}
+
+function removeRecord(id: string) {
+  records.value = records.value.filter((item) => item.id !== id)
 }
 
 function clearRecords() {
@@ -166,9 +182,15 @@ function clearRecords() {
     </header>
 
     <div class="sf-stats-current">
-      <span class="sf-stats-label">当前角色</span>
-      <strong class="sf-stats-num current">{{ formatNum(currentTotal) }}</strong>
-      <span class="sf-stats-pct">{{ formatPct(currentTotal, teamTotal) }}</span>
+      <div class="sf-stats-metric">
+        <span class="sf-stats-label">全队</span>
+        <strong class="sf-stats-num team">{{ formatNum(teamTotal) }}</strong>
+      </div>
+      <div class="sf-stats-metric">
+        <span class="sf-stats-label">当前角色</span>
+        <strong class="sf-stats-num current">{{ formatNum(currentTotal) }}</strong>
+        <span class="sf-stats-pct">{{ formatPct(currentTotal, teamTotal) }}</span>
+      </div>
     </div>
 
     <div class="sf-stats-team">
@@ -216,7 +238,7 @@ function clearRecords() {
       <div class="sf-stats-lift-head">
         <h4>伤害记录</h4>
         <div class="sf-stats-lift-actions">
-          <button type="button" class="mini-btn" :disabled="records.length >= 5" @click="recordNow">
+          <button type="button" class="mini-btn" :disabled="records.length >= MAX_RECORDS" @click="recordNow">
             记录
           </button>
           <button type="button" class="mini-btn danger" :disabled="!records.length" @click="clearRecords">
@@ -224,24 +246,30 @@ function clearRecords() {
           </button>
         </div>
       </div>
-      <p class="sf-stats-hint">最多记录 5 条，对比当前角色总伤相对上一条的变化。</p>
+      <p class="sf-stats-hint">最多记录 {{ MAX_RECORDS }} 条。较上一条分别对比全队总伤和当前角色总伤。</p>
       <table v-if="records.length" class="sf-rec-table">
         <thead>
           <tr>
             <th>#</th>
             <th>时间</th>
-            <th>当前角色</th>
             <th>全队</th>
-            <th>较上一条</th>
+            <th>当前角色</th>
+            <th>全队较上一条</th>
+            <th>当前较上一条</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(rec, index) in records" :key="`${rec.time}-${index}`">
+          <tr v-for="(rec, index) in records" :key="rec.id">
             <td>{{ index + 1 }}</td>
             <td>{{ rec.time }}</td>
-            <td>{{ formatNum(rec.current) }}</td>
             <td>{{ formatNum(rec.team) }}</td>
-            <td>{{ recordDelta(index) }}</td>
+            <td>{{ formatNum(rec.current) }}</td>
+            <td>{{ teamDelta(index) }}</td>
+            <td>{{ currentDelta(index) }}</td>
+            <td class="sf-rec-actions">
+              <button type="button" class="mini-btn danger" @click="removeRecord(rec.id)">删除</button>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -275,6 +303,12 @@ function clearRecords() {
 .sf-stats-current {
   display: flex;
   align-items: baseline;
+  gap: 1.4rem;
+  flex-wrap: wrap;
+}
+.sf-stats-metric {
+  display: flex;
+  align-items: baseline;
   gap: 0.65rem;
   flex-wrap: wrap;
 }
@@ -288,8 +322,14 @@ function clearRecords() {
   color: #d7e4ff;
   font-variant-numeric: tabular-nums;
 }
+.sf-stats-num.team,
 .sf-stats-num.current {
   font-size: 1.55rem;
+}
+.sf-stats-num.team {
+  color: #e8edf5;
+}
+.sf-stats-num.current {
   color: #c4b4f0;
 }
 .sf-stats-pct {
@@ -410,6 +450,10 @@ function clearRecords() {
 .sf-rec-table th {
   color: #9aa3b0;
   font-weight: 600;
+}
+.sf-rec-actions {
+  text-align: right;
+  white-space: nowrap;
 }
 @media (max-width: 800px) {
   .sf-stats-team,
