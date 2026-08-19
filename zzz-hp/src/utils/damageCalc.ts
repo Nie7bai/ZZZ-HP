@@ -67,6 +67,7 @@ export interface DamageCalcInput {
   triggerAgentResistanceElement?: string | null
   /** 异常强度提供者 piercePower（命破等）；缺省用持有者 piercePower */
   triggerPiercePower?: number
+  /** 异常强度提供者基础来源；异角色提供者应显式传入，缺省沿用持有者 */
   triggerBaseDamageSource?: BaseDamageSource
   triggerIsMb?: boolean
   /** 当前招式小类（有则优先采用小类倍率） */
@@ -208,6 +209,22 @@ export interface DamageCalcResult {
   radianceExpected: number
   radianceExpectedNoCrit: number
   radianceExpectedFullCrit: number
+}
+
+/**
+ * 异常强度提供者与招式持有者相同时沿用本条招式来源；
+ * 异角色提供者没有独立选择器，命破固定使用贯穿力，其余职业使用攻击力。
+ */
+export function resolveAnomalyPowerBaseDamageSource(options: {
+  ownerAgentId: string
+  anomalyPowerAgentId: string | null | undefined
+  ownerBaseDamageSource: BaseDamageSource
+  anomalyPowerAgentIsMb: boolean | undefined
+}): BaseDamageSource {
+  if (!options.anomalyPowerAgentId || options.anomalyPowerAgentId === options.ownerAgentId) {
+    return options.ownerBaseDamageSource
+  }
+  return options.anomalyPowerAgentIsMb ? 'pierce' : 'atk'
 }
 
 function clamp(value: number, min: number, max: number) {

@@ -27,6 +27,7 @@ import {
 } from '@/utils/calculatorUi'
 import {
   computeDamageResult,
+  resolveAnomalyPowerBaseDamageSource,
   type DamageCalcResult,
   type DamageEnemyInput,
 } from '@/utils/damageCalc'
@@ -913,7 +914,12 @@ export function evaluateOptimalEventDetail(
     triggerFinalPanel: evtTriggerFinalPanel,
     triggerAgentElement: eventNeedsTrigger ? evtPowerElement : undefined,
     triggerPiercePower: evtTriggerPierce,
-    triggerBaseDamageSource: evtTriggerIsMb ? 'pierce' : 'atk',
+    triggerBaseDamageSource: resolveAnomalyPowerBaseDamageSource({
+      ownerAgentId,
+      anomalyPowerAgentId: evtPowerAgentId,
+      ownerBaseDamageSource: evtBaseDamageSource,
+      anomalyPowerAgentIsMb: evtTriggerIsMb,
+    }),
     triggerIsMb: evtTriggerIsMb,
     skillSubcategory: effectiveSub,
     mainAgentLevel: resolveProducerAgentLevel(ctx, ownerAgentId),

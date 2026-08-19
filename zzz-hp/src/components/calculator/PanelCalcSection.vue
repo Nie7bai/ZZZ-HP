@@ -70,7 +70,12 @@ import {
   type ConvertSlotPanels,
   type MultiSlotBuffSelection,
 } from '@/utils/panelBuffCalc'
-import { computeDamageResult, type DamageCalcInput, type DamageCalcResult } from '@/utils/damageCalc'
+import {
+  computeDamageResult,
+  resolveAnomalyPowerBaseDamageSource,
+  type DamageCalcInput,
+  type DamageCalcResult,
+} from '@/utils/damageCalc'
 import { mergeSkillSubcategoryMultOverrides } from '@/utils/skillSubcategoryMult'
 import {
   normalizeDamageEnemyInput,
@@ -1006,6 +1011,12 @@ const calcParts = computed(() =>
     triggerFinalPanel: triggerFinalPanel.value ?? undefined,
     triggerAgentElement: triggerAgent.value?.element,
     triggerPiercePower: triggerPiercePower.value,
+    triggerBaseDamageSource: resolveAnomalyPowerBaseDamageSource({
+      ownerAgentId: mainAgent.value?.id ?? '',
+      anomalyPowerAgentId: props.triggerAnomalyAgentId,
+      ownerBaseDamageSource: effectiveBaseDamageSource.value,
+      anomalyPowerAgentIsMb: triggerAgent.value?.profession === MB_PROFESSION,
+    }),
     triggerIsMb: triggerAgent.value?.profession === MB_PROFESSION,
     skillSubcategory: resolvedSkillSubcategory.value,
     mainAgentLevel: enemyInput.value.level,
@@ -1289,6 +1300,12 @@ function buildHitCalcInput(hit: ResolvedHit): DamageCalcInput | null {
     triggerFinalPanel: evtTriggerFinalPanel,
     triggerAgentElement: evtPowerElement,
     triggerPiercePower: evtTriggerPierce,
+    triggerBaseDamageSource: resolveAnomalyPowerBaseDamageSource({
+      ownerAgentId,
+      anomalyPowerAgentId: evtPowerAgentId,
+      ownerBaseDamageSource: evtBaseDamageSource,
+      anomalyPowerAgentIsMb: evtTriggerIsMb,
+    }),
     triggerIsMb: evtTriggerIsMb,
     skillSubcategory: effectiveSub,
     mainAgentLevel: resolveAgentLevel(ownerAgentId),
