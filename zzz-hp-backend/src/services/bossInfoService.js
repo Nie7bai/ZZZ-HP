@@ -141,18 +141,18 @@ export async function listBossInfoRecords({
   }
 
   const catalogKey = String(catalog || 'all').trim().toLowerCase()
-  // 防卫战 boss.id 为 9 位；危局为其它数字 ID
+  // 版块归属由 boss.mode 显式标注（crisis / defense / deduction），不再依赖 ID 位数
   if (catalogKey === 'crisis') {
     conditions.push(`boss_name IN (
       SELECT DISTINCT boss_name FROM boss
       WHERE boss_name IS NOT NULL AND boss_name <> ''
-        AND (id < 100000000 OR id >= 1000000000)
+        AND mode = 'crisis'
     )`)
   } else if (catalogKey === 'defense') {
     conditions.push(`boss_name IN (
       SELECT DISTINCT boss_name FROM boss
       WHERE boss_name IS NOT NULL AND boss_name <> ''
-        AND id >= 100000000 AND id < 1000000000
+        AND mode = 'defense'
     )`)
   }
 

@@ -174,9 +174,11 @@ export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
   await ensureCrisisSchema()
   await ensureEnvironmentBuffSchema()
   const [bossRowsRaw] = await pool.execute(
-    'SELECT * FROM boss ORDER BY version, phase, CAST(room AS UNSIGNED)',
+    "SELECT * FROM boss WHERE mode = 'crisis' ORDER BY version, phase, CAST(room AS UNSIGNED)",
   )
-  const [buffRowsRaw] = await pool.execute('SELECT * FROM buff ORDER BY version, phase, id')
+  const [buffRowsRaw] = await pool.execute(
+    "SELECT * FROM buff WHERE mode = 'crisis' ORDER BY version, phase, id",
+  )
   const bossRows = bossRowsRaw.filter((boss) => isCrisisBossId(boss.id))
   const buffRows = buffRowsRaw.filter((buff) => isCrisisBuffId(buff.id))
   const dateMap = await getSeasonDateMap('crisis')
@@ -279,7 +281,7 @@ export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
 export async function getBossNames({ roomType = 'all' } = {}) {
   const type = normalizeRoomType(roomType)
   const [rows] = await pool.execute(
-    'SELECT boss_name, boss_image, id, room FROM boss ORDER BY boss_name',
+    "SELECT boss_name, boss_image, id, room FROM boss WHERE mode = 'crisis' ORDER BY boss_name",
   )
 
   const seen = new Map()
@@ -309,7 +311,7 @@ export async function getBossChartHistory(
   const [bossRows] = await pool.execute(
     `SELECT *
      FROM boss
-     WHERE boss_name = ?
+     WHERE boss_name = ? AND mode = 'crisis'
      ORDER BY version, CAST(phase AS UNSIGNED)`,
     [bossName],
   )

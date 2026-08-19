@@ -14,7 +14,7 @@ function formatDateValue(value) {
 function mapRow(row) {
   return {
     id: row.id,
-    mode: row.mode === 'defense' ? 'defense' : 'crisis',
+    mode: row.mode === 'defense' || row.mode === 'deduction' ? row.mode : 'crisis',
     version: String(row.version),
     phase: String(row.phase),
     startDate: formatDateValue(row.start_date),
@@ -23,7 +23,9 @@ function mapRow(row) {
 }
 
 function normalizeMode(mode) {
-  return String(mode || 'crisis').trim() === 'defense' ? 'defense' : 'crisis'
+  const value = String(mode || 'crisis').trim()
+  if (value === 'defense' || value === 'deduction') return value
+  return 'crisis'
 }
 
 function normalizePhase(phase) {

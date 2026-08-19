@@ -1,7 +1,7 @@
 const NANOKA_SHIYU_PAGE = 'https://zzz.nanoka.cc/shiyu'
 const STATIC_BASE = 'https://static.nanoka.cc/zzz'
 
-async function fetchText(url, options = {}) {
+export async function fetchText(url, options = {}) {
   const res = await fetch(url, {
     ...options,
     headers: {
@@ -17,7 +17,7 @@ async function fetchText(url, options = {}) {
   return text
 }
 
-async function fetchJson(url) {
+export async function fetchJson(url) {
   const text = await fetchText(url)
   try {
     return JSON.parse(text)

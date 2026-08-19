@@ -12,6 +12,7 @@ import {
   type HpChartPoint,
 } from '@/api/crisisAssault'
 import { fetchDefensePhaseCompareChart } from '@/api/defense'
+import { fetchDeductionHpChart } from '@/api/deduction'
 import { usePhaseDetailModal } from '@/composables/usePhaseDetailModal'
 import { useCrisisAssaultCompareStore } from '@/stores/crisisAssaultCompare'
 import { useDefenseCompareStore } from '@/stores/defenseCompare'
@@ -56,12 +57,17 @@ const defenseVariant = computed<DefenseVariant>(() =>
 
 const selectedLabels = computed({
   get() {
+    if (props.mode === 'deduction') return deductionSelectedLabels.value
     if (props.mode === 'defense') return defenseCompareStore.selectedPhaseLabels
     return crisisHpMode.value === 'hard'
       ? crisisCompareStore.selectedHardPhaseLabels
       : crisisCompareStore.selectedPhaseLabels
   },
   set(value: string[]) {
+    if (props.mode === 'deduction') {
+      deductionSelectedLabels.value = value
+      return
+    }
     if (props.mode === 'defense') {
       defenseCompareStore.selectedPhaseLabels = value
       return
@@ -74,8 +80,11 @@ const selectedLabels = computed({
   },
 })
 
+const deductionSelectedLabels = ref<string[]>([])
+
 const pageTitle = computed(() => modeTitles[props.mode])
 
+const isDeductionMode = computed(() => props.mode === 'deduction')
 const isDefenseMode = computed(() => props.mode === 'defense')
 const isHardMode = computed(() => !isDefenseMode.value && crisisHpMode.value === 'hard')
 
@@ -84,6 +93,9 @@ const chartPoints = computed(() =>
 )
 
 const panelDesc = computed(() => {
+  if (props.mode === 'deduction') {
+    return '添加任意期数，对比各期推演总血量与相对膨胀变化'
+  }
   if (isDefenseMode.value) {
     return '添加任意期数，对比最后一防线总血量与相对膨胀变化；点击图表数据点可移除期数'
   }
@@ -113,10 +125,23 @@ const quickAddInlinePoints = computed(() => quickAddPoints.value.slice(0, QUICK_
 const quickAddDropdownPoints = computed(() => quickAddPoints.value.slice(QUICK_ADD_ROW_LIMIT))
 
 function formatPhaseDisplay(point: HpChartPoint) {
+  if (isDeductionMode.value) return point.label
   if (point.version && point.phase) {
     return `${point.version} 第 ${point.phase} 期`
   }
   return point.label
+}
+
+/** 推演模式：支持按期数名 / 期数号匹配 */
+function resolveDeductionPoint(query: string): HpChartPoint | null {
+  const trimmed = query.trim()
+  if (!trimmed) return null
+  const exact = allPoints.value.find((p) => p.label === trimmed)
+  if (exact) return exact
+  const byVersion = allPoints.value.find((p) => p.version === trimmed)
+  if (byVersion) return byVersion
+  const normalized = trimmed.toLowerCase()
+  return allPoints.value.find((p) => p.label.toLowerCase().includes(normalized)) ?? null
 }
 
 async function loadChartData() {
@@ -129,6 +154,8 @@ async function loadChartData() {
       data = await fetchDefensePhaseCompareChart(defenseVariant.value)
     } else if (props.mode === 'crisis-assault') {
       data = await fetchCrisisAssaultHpChart(crisisHpMode.value)
+    } else if (props.mode === 'deduction') {
+      data = await fetchDeductionHpChart()
     }
     if (!chartLoadEpoch.isCurrent(token)) return
     allPoints.value = data
@@ -151,9 +178,13 @@ function addPhaseFromSearch(rawInput?: string) {
   const query = (rawInput ?? phaseSearchInput.value).trim()
   if (!query) return
 
-  const point = resolvePhaseFromInput(allPoints.value, query)
+  const point = isDeductionMode.value
+    ? resolveDeductionPoint(query)
+    : resolvePhaseFromInput(allPoints.value, query)
   if (!point) {
-    inputError.value = '未找到该期数，可试 1.41 / 1.4第1期'
+    inputError.value = isDeductionMode.value
+      ? '未找到该期数，可输入期数名（如 歧路回响）或期数号（如 101）'
+      : '未找到该期数，可试 1.41 / 1.4第1期'
     return
   }
 
@@ -206,6 +237,7 @@ function confirmRemoveFromMenu() {
 }
 
 function onChartPointClick(point: HpChartPoint, _index: number, event?: MouseEvent) {
+  if (props.mode === 'deduction') return
   if (isDefenseMode.value) {
     if (event) event.stopPropagation()
 
@@ -295,7 +327,7 @@ watch(phaseSearchInput, () => {
               v-model="phaseSearchInput"
               type="text"
               class="phase-search-input"
-              placeholder="1.41 / 1.4第1期"
+              :placeholder="isDeductionMode ? '期数名 / 101' : '1.41 / 1.4第1期'"
               spellcheck="false"
             />
             <button type="submit" class="add-btn">添加</button>
@@ -312,9 +344,11 @@ watch(phaseSearchInput, () => {
               type="button"
               class="quick-add-btn"
               :title="formatPhaseDisplay(point)"
-              @click="addPhaseFromSearch(formatPhaseCompactCode(point))"
+              @click="
+                addPhaseFromSearch(isDeductionMode ? point.label : formatPhaseCompactCode(point))
+              "
             >
-              {{ formatPhaseCompactCode(point) }}
+              {{ isDeductionMode ? formatPhaseDisplay(point) : formatPhaseCompactCode(point) }}
             </button>
             <select
               v-if="quickAddDropdownPoints.length"
@@ -328,7 +362,7 @@ watch(phaseSearchInput, () => {
                 :key="point.label"
                 :value="point.label"
               >
-                {{ formatPhaseCompactCode(point) }} · {{ formatPhaseDisplay(point) }}
+                {{ isDeductionMode ? formatPhaseDisplay(point) : `${formatPhaseCompactCode(point)} · ${formatPhaseDisplay(point)}` }}
               </option>
             </select>
           </div>
@@ -363,18 +397,18 @@ watch(phaseSearchInput, () => {
         :points="chartPoints"
         show-when-empty
         borderless
-        :show-hp-mode-toggle="!isDefenseMode"
-        :enable-score-hp-overlays="!isDefenseMode"
+        :show-hp-mode-toggle="!isDefenseMode && props.mode !== 'deduction'"
+        :enable-score-hp-overlays="!isDefenseMode && props.mode !== 'deduction'"
         :hp-chart-title="isHardMode ? '困难期数对比 · 血量折线图' : '期数对比 · 血量折线图'"
         :expansion-chart-title="isHardMode ? '困难期数对比 · 血量相对膨胀折线图' : '期数对比 · 血量相对膨胀折线图'"
-        :hp-aria-label="isDefenseMode ? '式舆防卫战期数对比血量折线图' : `危局强袭战${isHardMode ? '困难' : ''}期数对比血量折线图`"
-        :expansion-aria-label="isDefenseMode ? '式舆防卫战期数对比血量相对膨胀折线图' : `危局强袭战${isHardMode ? '困难' : ''}期数对比血量相对膨胀折线图`"
-        :enable-point-click="isDefenseMode ? chartPoints.length > 0 : true"
+        :hp-aria-label="isDefenseMode ? '式舆防卫战期数对比血量折线图' : `${pageTitle}${isHardMode ? '困难' : ''}期数对比血量折线图`"
+        :expansion-aria-label="isDefenseMode ? '式舆防卫战期数对比血量相对膨胀折线图' : `${pageTitle}${isHardMode ? '困难' : ''}期数对比血量相对膨胀折线图`"
+        :enable-point-click="props.mode === 'deduction' ? false : isDefenseMode ? chartPoints.length > 0 : true"
         :point-click-hint="isDefenseMode && chartPoints.length > 0 ? defensePointClickHint : undefined"
         :show-remove-mode-toggle="isDefenseMode && chartPoints.length > 0"
         :boss-preview-mode="isDefenseMode ? 'embedded' : 'crisis'"
         :enable-boss-preview="false"
-        :enable-hp-converted953-toggle="!isDefenseMode"
+        :enable-hp-converted953-toggle="!isDefenseMode && props.mode !== 'deduction'"
         @point-click="onChartPointClick"
       />
 
@@ -413,7 +447,7 @@ watch(phaseSearchInput, () => {
       </Teleport>
 
       <PhaseDetailModal
-        v-if="!isDefenseMode"
+        v-if="!isDefenseMode && props.mode !== 'deduction'"
         :visible="detailVisible"
         :point="detailPoint"
         :mode="mode"

@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS boss (
   resistance VARCHAR(255) DEFAULT NULL COMMENT '抗性',
   boss_image VARCHAR(500) DEFAULT NULL COMMENT 'Boss图片',
   stagger_multiplier DECIMAL(5,3) NULL COMMENT '失衡易伤区基础乘数；空则回退 boss_info',
+  mode VARCHAR(20) NOT NULL DEFAULT 'crisis' COMMENT 'crisis|defense|deduction（版块归属）',
   PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Boss表';
 
@@ -41,6 +42,7 @@ CREATE TABLE IF NOT EXISTS buff (
   buff TEXT DEFAULT NULL COMMENT 'Buff效果描述',
   buff_image VARCHAR(500) DEFAULT NULL COMMENT 'Buff图片',
   effect_blocks JSON NULL COMMENT '计算器结构化效果块（BuffEffectBlock[]）',
+  mode VARCHAR(20) NOT NULL DEFAULT 'crisis' COMMENT 'crisis|defense|deduction（版块归属）',
   PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Buff表';
 
@@ -94,6 +96,27 @@ CREATE TABLE IF NOT EXISTS date (
   PRIMARY KEY (id),
   UNIQUE KEY uk_date_mode_version_phase (mode, version, phase)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='日期表';
+
+-- ---------------------------------------------------------------------------
+-- 临界推演（版块 mode='deduction'）
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS deduction_node (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  version VARCHAR(50) NOT NULL,
+  phase VARCHAR(50) NOT NULL DEFAULT '1',
+  node_id VARCHAR(20) NOT NULL,
+  node_name VARCHAR(100) NOT NULL DEFAULT '',
+  node_type INT NOT NULL DEFAULT 0,
+  prev_node VARCHAR(20) NOT NULL DEFAULT '',
+  story_text TEXT NULL,
+  layers_json JSON NULL,
+  buffs_json JSON NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  period_name VARCHAR(100) NOT NULL DEFAULT '' COMMENT '期数显示名，如 临界推演：歧路回响',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_dd_node (version, phase, node_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='临界推演节点（剧情/战斗）';
 
 -- ---------------------------------------------------------------------------
 -- 管理后台

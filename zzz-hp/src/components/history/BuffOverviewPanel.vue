@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { fetchCrisisAssaultPhases, formatPhaseCompactCode } from '@/api/crisisAssault'
 import { fetchDefenseSeasons } from '@/api/defense'
+import { deductionPhasesToPhaseData, fetchDeductionPhases } from '@/api/deduction'
 import { useCrisisAssaultCompareStore } from '@/stores/crisisAssaultCompare'
 import { useDefenseCompareStore } from '@/stores/defenseCompare'
 import type { DefenseVariant } from '@/types/defense'
@@ -62,11 +63,15 @@ const actionTarget = ref<BuffActionTarget | null>(null)
 const menuAnchor = ref<MenuAnchor | null>(null)
 
 const pageTitle = computed(() => modeTitles[props.mode])
-const panelDesc = computed(() =>
-  props.mode === 'defense'
+const isDeductionMode = computed(() => props.mode === 'deduction')
+const panelDesc = computed(() => {
+  if (props.mode === 'deduction') {
+    return '每期推演可选增益集中展示（战斗节点可选增益去重），便于快速浏览与对照'
+  }
+  return props.mode === 'defense'
     ? '每期各房间关卡增益集中展示，便于快速浏览与对照'
-    : '每期三个 Buff 集中展示，便于快速浏览与对照',
-)
+    : '每期三个 Buff 集中展示，便于快速浏览与对照'
+})
 const isHorizontalMode = computed(() => viewMode.value === 'horizontal')
 const isCardMode = computed(() => viewMode.value === 'card')
 
@@ -132,6 +137,9 @@ async function loadPhases() {
     } else if (props.mode === 'crisis-assault') {
       data = await fetchCrisisAssaultPhases()
       if (!phasesLoadEpoch.isCurrent(token)) return
+    } else if (props.mode === 'deduction') {
+      data = deductionPhasesToPhaseData(await fetchDeductionPhases())
+      if (!phasesLoadEpoch.isCurrent(token)) return
     }
     if (!phasesLoadEpoch.isCurrent(token)) return
     phases.value = data
@@ -146,6 +154,8 @@ async function loadPhases() {
 }
 
 function formatPhaseTitle(phase: PhaseData) {
+  // 推演：phase 已是期数名（如 临界推演：歧路回响），不再拼版本前缀
+  if (isDeductionMode.value) return phase.phase
   return `${phase.version} ${phase.phase}`
 }
 
@@ -224,7 +234,7 @@ function closeBuffMenu() {
 
 function openBuffMenu(phase: PhaseData, buffIndex: number, element: HTMLElement) {
   const buff = phase.buffs[buffIndex]
-  if (!buff || !isValidBuff(buff)) return
+  if (!buff || !isValidBuff(buff) || isDeductionMode.value) return
 
   const entryId = getBuffEntryId(phase, buffIndex)
   if (actionTarget.value?.entryId === entryId) {
@@ -259,7 +269,7 @@ function openBuffMenu(phase: PhaseData, buffIndex: number, element: HTMLElement)
 
 function onBuffClick(phase: PhaseData, buffIndex: number, event: MouseEvent) {
   const buff = phase.buffs[buffIndex]
-  if (!buff || !isValidBuff(buff)) return
+  if (!buff || !isValidBuff(buff) || isDeductionMode.value) return
 
   event.stopPropagation()
   openBuffMenu(phase, buffIndex, event.currentTarget as HTMLElement)
@@ -349,7 +359,7 @@ watch(buffSearchInput, () => {
           v-model="buffSearchInput"
           type="search"
           class="buff-search-input"
-          placeholder="Buff 名 / 期数"
+          :placeholder="isDeductionMode ? 'Buff 名 / 期数名' : 'Buff 名 / 期数'"
           spellcheck="false"
           aria-label="搜索 Buff 或期数"
         />
