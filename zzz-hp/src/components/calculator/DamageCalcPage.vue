@@ -12,9 +12,11 @@ import ExtraBuffGainModal from '@/components/calculator/ExtraBuffGainModal.vue'
 import type { ExtraBuffGain } from '@/components/calculator/ExtraBuffGainEditor.vue'
 import EnemyEnvironmentSection from '@/components/calculator/EnemyEnvironmentSection.vue'
 import BuffModSourcesDisplay from '@/components/calculator/BuffModSourcesDisplay.vue'
-import PanelScreenshotUploadSection from '@/components/calculator/PanelScreenshotUploadSection.vue'
 import TeamBuilderSection from '@/components/calculator/TeamBuilderSection.vue'
 import TeamSlotSwitcher from '@/components/calculator/TeamSlotSwitcher.vue'
+import UnifiedPresetPicker, {
+  type UnifiedPresetConfirmPayload,
+} from '@/components/calculator/UnifiedPresetPicker.vue'
 import type { DamageCalcSectionId } from '@/constants/damageCalcNav'
 import type {
   DamageCalcHistoryEntry,
@@ -29,13 +31,14 @@ import type {
   PanelStats,
 } from '@/types/calculatorPanel'
 import {
+  createDefaultAffixDriveDiscMainStats,
   createDefaultExternalPanel,
+  createEmptyAffixCounts,
   createExternalPanelFromAgentBase,
   fillPanelStatsDefaults,
   isPlaceholderExternalPanel,
   resetSchemeExcludedPanelFields,
 } from '@/types/calculatorPanel'
-import type { PanelScreenshotRecognition } from '@/types/panelScreenshot'
 import type {
   AnomalyDamageSubKind,
   BangbooBuffDoc,
@@ -62,16 +65,17 @@ import {
 import {
   buildDefaultBuffSelection,
   collectAllBuffEffects,
-  collectConvertSupportSlots,
   createEmptyMultiSlotBuffSelection,
   getBuffEffectEnabled,
   mergeDefaultBuffSelectionIntoMulti,
   resolveBuffSelectionForSlot,
   setBuffEffectEnabled,
+  slotHasPanelConvertEffect,
   syncTeamProfessionAutoEnabled,
   type MultiSlotBuffSelection,
   type ConvertSlotPanels,
 } from '@/utils/panelBuffCalc'
+import { computeExternalPanelFromTeamSlot } from '@/utils/affixPanelCalc'
 import {
   listCrisisEnvironmentBuffs,
   listDefenseEnvironmentBuffs,
@@ -203,6 +207,7 @@ const skillSubcategoryId = computed(() => firstHit.value?.coords[0]?.subcategory
 
 const buffPickerOpen = ref(false)
 const extraBuffModalOpen = ref(false)
+const teamPresetPickerOpen = ref(false)
 const buffPickerViewSlotIndex = ref(0)
 const multiSlotBuffSelection = reactive<MultiSlotBuffSelection>(createEmptyMultiSlotBuffSelection())
 
@@ -638,65 +643,39 @@ const buffEnabledCount = computed(() => {
   return Object.values(resolved.enabledIds).filter(Boolean).length
 })
 
-const convertSupportSlots = computed(() =>
-  collectConvertSupportSlots(
-    {
-      teamSlots,
-      agents: agents.value,
-      wengines: wengines.value,
-      bangboo: selectedBangboo.value,
-      bangbooRefine: bangbooRefine.value,
-      mainSlotIndex: activeSlot.value,
-      liveExternalSlotIndex: activeSlot.value,
-      driveDiscs: driveDiscs.value,
-      environmentBuffs: activeEnvironmentBuffs.value,
-      buffSelection: resolveBuffSelectionForSlot(multiSlotBuffSelection, activeSlot.value),
-      anomalySlotPanels,
-      convertSlotPanels,
-      skillContext: buildGenericPanelSkillContext({
-        element: damageElement.value,
-        staggerPhase: staggerPhase.value,
-      }),
-    },
-    { excludeAnomalyAgentIds: getParticipantAgentIds() },
-  ),
-)
-
-function ensureConvertSlotPanel(agentId: string, requiredAttrs: string[]) {
-  if (!convertSlotPanels[agentId]) {
-    convertSlotPanels[agentId] = {}
+/** 顶栏「转模」标签：该槽位影画/音擎/驱动盘含局外或局内转模 */
+const convertSlotIndexes = computed(() => {
+  void teamSlots.map(
+    (slot) =>
+      `${slot.agentId}:${slot.rank}:${slot.wengineId}:${slot.wengineRefine}:${slot.twoPieceDriveDiscId}:${slot.fourPieceDriveDiscId}`,
+  )
+  const indexes = new Set<number>()
+  for (let i = 0; i < teamSlots.length; i++) {
+    if (!teamSlots[i]?.agentId) continue
+    // 以该槽为主槽收集，才能看到其「自身」转模
+    const ctx = buildBuffCollectContext(i)
+    if (slotHasPanelConvertEffect(ctx, i)) indexes.add(i)
   }
-  const agent = agents.value.find((item) => item.id === agentId)
-  const partial = convertSlotPanels[agentId]!
-  for (const attr of requiredAttrs) {
-    if (partial[attr as keyof typeof partial] != null) continue
-    if (attr === 'level') {
-      partial.level = 60
-      continue
-    }
-    if (attr === 'impact') {
-      partial.impact = 0
-      continue
-    }
-    const base = agent?.basePanel
-    if (!base) continue
-    if (attr === 'hp' || attr === 'atk' || attr === 'def') {
-      partial[attr] = base[attr]
-    } else if (attr in base) {
-      partial[attr as 'mastery'] = (base as Record<string, number>)[attr] ?? 0
-    }
-  }
-}
+  return indexes
+})
 
 watch(
-  convertSupportSlots,
-  (slots) => {
+  panelCalcMode,
+  (mode) => {
+    emit('update:calcMode', mode)
+  },
+  { immediate: true },
+)
+
+watch(
+  () => teamSlots.map((slot) => slot.agentId).join(','),
+  () => {
     if (restoringWorkingState) return
-    for (const slot of slots) {
-      ensureConvertSlotPanel(slot.agentId, slot.requiredAttrs)
+    for (const slot of teamSlots) {
+      if (slot.agentId) ensureAgentExternalPanel(slot.agentId)
     }
   },
-  { immediate: true, deep: true },
+  { immediate: true },
 )
 
 function syncBuffDefaultsForSlot(slotIndex: number) {
@@ -900,12 +879,19 @@ function selectSlot(index: number) {
   activeSlot.value = index
 }
 
+function openTeamPresetPicker(index: number) {
+  activeSlot.value = index
+  teamPresetPickerOpen.value = true
+}
+
 function assignAgent(agentId: string) {
   activeSlotData.value.agentId = agentId
+  ensureAgentExternalPanel(agentId)
 }
 
 function clearSlot(index: number) {
   const slot = teamSlots[index]!
+  const oldId = slot.agentId
   slot.agentId = ''
   slot.rank = 0
   slot.wengineId = 'none'
@@ -914,6 +900,17 @@ function clearSlot(index: number) {
   slot.fourPieceDriveDiscId = 'none'
   slot.affixDriveDiscMainStats = undefined
   slot.affixCounts = undefined
+  if (oldId && !teamSlots.some((item) => item.agentId === oldId)) {
+    delete anomalySlotPanels[oldId]
+    delete convertSlotPanels[oldId]
+  }
+}
+
+function ensureAgentExternalPanel(agentId: string) {
+  if (!agentId) return
+  if (anomalySlotPanels[agentId] && !isPlaceholderExternalPanel(anomalySlotPanels[agentId]!)) return
+  const agent = agents.value.find((item) => item.id === agentId)
+  anomalySlotPanels[agentId] = createExternalPanelFromAgentBase(agent?.basePanel)
 }
 
 function syncMainCFlagToActiveSlot() {
@@ -944,18 +941,120 @@ function selectBangboo(bangbooId: string) {
   selectedBangbooId.value = bangbooId
 }
 
-function applyPanelRecognition(result: PanelScreenshotRecognition) {
-  const slotIndex = activeSlot.value
-  const slot = teamSlots[slotIndex]!
-  if (result.agentId) {
-    slot.agentId = result.agentId
+const stickySlotPanelPreviews = computed(() => {
+  // 显式依赖：增益/邦布/环境变化时必须重读子组件预览（template ref 不会自动串联子 computed）
+  void buffSelectionSignature.value
+  void extraGains.value
+  void selectedBangbooId.value
+  void bangbooRefine.value
+  void staggerPhase.value
+  void activeEnvironmentBuffs.value
+  void panelCalcMode.value
+  void anomalySlotPanels
+  void convertSlotPanels
+  void teamSlots.map((s) => [
+    s.agentId,
+    s.affixCounts,
+    s.affixDriveDiscMainStats,
+    s.wengineId,
+    s.twoPieceDriveDiscId,
+    s.fourPieceDriveDiscId,
+  ])
+
+  // 面板/词条模式：用 PanelCalcSection 的预览（含局内，随增益重算）
+  if (panelCalcMode.value !== 'optimal') {
+    const fromPanel = panelCalcSectionRef.value?.slotPanelPreviews
+    if (fromPanel) return fromPanel
   }
-  slot.rank = result.rank
-  if (result.wengineId) slot.wengineId = result.wengineId
-  slot.wengineRefine = result.wengineRefine
-  if (result.twoPieceDriveDiscId) slot.twoPieceDriveDiscId = result.twoPieceDriveDiscId
-  if (result.fourPieceDriveDiscId) slot.fourPieceDriveDiscId = result.fourPieceDriveDiscId
-  panelCalcSectionRef.value?.applyRecognitionToExternalPanel(result)
+
+  // 最优模式：用最优区预览（主 C 含局内；其余槽亦算局内）
+  if (panelCalcMode.value === 'optimal') {
+    const fromOptimal = optimalAffixSectionRef.value?.slotPanelPreviews
+    if (fromOptimal?.length) return fromOptimal
+  }
+
+  // 兜底：轻量局外（页级导入值）
+  return teamSlots.map((slot) => {
+    if (!slot.agentId) return null
+    const saved = anomalySlotPanels[slot.agentId]
+    const external =
+      saved && !isPlaceholderExternalPanel(saved)
+        ? fillPanelStatsDefaults(saved)
+        : computeExternalPanelFromTeamSlot({
+            slot,
+            agents: agents.value,
+            wengines: wengines.value,
+            driveDiscs: driveDiscs.value,
+          })
+    return { external, final: null as PanelStats | null }
+  })
+})
+
+/** 导入弹窗局内预览：随草稿局外 + 当前增益实时重算（对齐改前内嵌面板行为） */
+const importFinalPanelToken = computed(() =>
+  JSON.stringify({
+    buffs: buffSelectionSignature.value,
+    extra: extraGains.value,
+    bangboo: selectedBangbooId.value,
+    refine: bangbooRefine.value,
+    stagger: staggerPhase.value,
+    env: activeEnvironmentBuffs.value.map((e) => e.sourceKey),
+    mode: panelCalcMode.value,
+    slot: activeSlot.value,
+  }),
+)
+
+function resolveImportFinalPanel(external: PanelStats): PanelStats | null {
+  const slotIndex = activeSlot.value
+  if (panelCalcMode.value === 'optimal') {
+    return (
+      optimalAffixSectionRef.value?.previewFinalPanel?.(external, slotIndex) ??
+      panelCalcSectionRef.value?.previewFinalPanel?.(external, slotIndex) ??
+      null
+    )
+  }
+  return panelCalcSectionRef.value?.previewFinalPanel?.(external, slotIndex) ?? null
+}
+
+const activeFinalPanelPreview = computed(() => {
+  if (panelCalcMode.value === 'optimal') {
+    const evalResult = optimalAffixSectionRef.value?.displayEval as
+      | { finalPanel?: PanelStats }
+      | undefined
+    return evalResult?.finalPanel ?? null
+  }
+  return panelCalcSectionRef.value?.panelBreakdown?.finalPanel ?? null
+})
+
+watch(
+  teamSlots,
+  (slots) => {
+    for (const slot of slots) {
+      if (slot.agentId) ensureAgentExternalPanel(slot.agentId)
+    }
+  },
+  { deep: true, immediate: true },
+)
+
+function applyUnifiedImport(payload: UnifiedPresetConfirmPayload) {
+  const slot = teamSlots[activeSlot.value]
+  if (!slot) return
+  slot.rank = payload.rank
+  slot.wengineId = payload.wengineId
+  slot.wengineRefine = payload.wengineRefine
+  slot.twoPieceDriveDiscId = payload.twoPieceDriveDiscId
+  slot.fourPieceDriveDiscId = payload.fourPieceDriveDiscId
+  slot.affixCounts = { ...createEmptyAffixCounts(), ...payload.affixCounts }
+  slot.affixDriveDiscMainStats = {
+    ...createDefaultAffixDriveDiscMainStats(),
+    ...payload.affixDriveDiscMainStats,
+  }
+  anomalySlotPanels[payload.agentId] = fillPanelStatsDefaults(payload.externalPanel)
+  slot.agentId = payload.agentId
+  syncMainCFlagToActiveSlot()
+  nextTick(() => {
+    panelCalcSectionRef.value?.syncLivePanelFromCommitted?.()
+  })
 }
 
 function cloneTeamSlots(): DamageCalcHistoryEntry['teamSlots'] {
@@ -1364,6 +1463,16 @@ function openSchemeLibrary() {
   historySectionRef.value?.openModal()
 }
 
+function clearCurrentScheme() {
+  historySectionRef.value?.clearLoadedScheme()
+}
+
+function onClearLoadedScheme() {
+  activeHistoryId.value = ''
+  setLoadedSchemeId('')
+  persistWorkingDraftNow(true)
+}
+
 async function scrollToSection(sectionId: DamageCalcSectionId) {
   await nextTick()
   if (sectionId === 'damage-calc-panel') panelCalcMode.value = 'panel'
@@ -1416,12 +1525,44 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       <TeamSlotSwitcher
         :team-slots="teamSlots"
         :agents="agents"
+        :wengines="wengines"
+        :drive-discs="driveDiscs"
         :active-index="activeSlot"
+        :panel-previews="stickySlotPanelPreviews"
+        :convert-slot-indexes="convertSlotIndexes"
         @select="selectSlot"
+        @import="openTeamPresetPicker"
+        @clear="clearSlot"
       />
-      <button type="button" class="scheme-lib-btn" @click="openSchemeLibrary">方案库</button>
+      <div class="scheme-lib-actions">
+        <button type="button" class="scheme-lib-btn" @click="openSchemeLibrary">方案库</button>
+        <button
+          v-if="activeHistoryId"
+          type="button"
+          class="scheme-clear-btn"
+          title="取消当前已加载方案绑定，不删除方案库条目"
+          @click="clearCurrentScheme"
+        >
+          取消当前方案
+        </button>
+      </div>
     </div>
-    <!-- 构图：方案库 → 编队/邦布/上传 → 局内Buff → 敌方与环境 → 计算方式 → 面板/伤害 → 招式流程 -->
+    <UnifiedPresetPicker
+      v-model:open="teamPresetPickerOpen"
+      hide-trigger
+      :agents="agents"
+      :wengines="wengines"
+      :drive-discs="driveDiscs"
+      :team-slots="teamSlots"
+      :active-slot="activeSlot"
+      :preferred-entry-mode="panelCalcMode === 'affix' ? 'affix' : 'panel'"
+      :anomaly-slot-panels="anomalySlotPanels"
+      :final-panel-preview="activeFinalPanelPreview"
+      :final-panel-token="importFinalPanelToken"
+      :resolve-final-panel="resolveImportFinalPanel"
+      @confirm="applyUnifiedImport"
+    />
+    <!-- 构图：方案库 → 编队/邦布 → 局内Buff → 敌方与环境 → 计算方式 → 伤害 → 招式流程 -->
     <DamageCalcHistorySection
       ref="historySectionRef"
       :entries="historyEntries"
@@ -1433,6 +1574,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       @load="loadHistoryEntry"
       @changed="onSchemeLibraryChanged"
       @imported="onSchemeImported"
+      @clear-loaded="onClearLoadedScheme"
     />
 
     <TeamBuilderSection
@@ -1442,10 +1584,16 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :team-slots="teamSlots"
       :active-slot="activeSlot"
       :active-agent="activeAgent"
+      :preferred-entry-mode="panelCalcMode === 'affix' ? 'affix' : 'panel'"
+      :anomaly-slot-panels="anomalySlotPanels"
+      :final-panel-preview="activeFinalPanelPreview"
+      :final-panel-token="importFinalPanelToken"
+      :resolve-final-panel="resolveImportFinalPanel"
       @select-slot="selectSlot"
       @assign-agent="assignAgent"
       @clear-slot="clearSlot"
       @select-wengine="selectWengine"
+      @confirm-import="applyUnifiedImport"
     />
 
     <BangbooPickerSection
@@ -1454,13 +1602,6 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :refine="bangbooRefine"
       @select="selectBangboo"
       @update:refine="bangbooRefine = $event"
-    />
-
-    <PanelScreenshotUploadSection
-      :agents="agents"
-      :wengines="wengines"
-      :drive-discs="driveDiscs"
-      @apply-recognition="applyPanelRecognition"
     />
 
     <section
@@ -1545,7 +1686,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       <header class="calc-mode-header">
         <h2>计算方式</h2>
         <p class="calc-mode-desc">
-          面板计算直接录入局外面板；词条计算通过副词条条数推导局外面板；最优词条分配在约束下扫描分配并绘制期望伤害曲线。
+          局外 / 词条在「代理人 → 导入」的面板 Tab 录入（含截图识别）；面板计算用手填局外，词条计算用副词条推导；最优词条在约束下扫描并绘制期望伤害曲线。
         </p>
       </header>
       <div class="calc-mode-tabs" role="tablist" aria-label="面板计算方式">
@@ -1651,8 +1792,6 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
         v-model:enemy-input="enemyInput"
         v-model:extra-gains="extraGains"
         :convert-slot-panels="convertSlotPanels"
-        @update:anomaly-slot-panels="Object.assign(anomalySlotPanels, $event)"
-        @update:convert-slot-panels="Object.assign(convertSlotPanels, $event)"
         @update:hit-damages="hitDamages = $event"
         @update:hit-calc-results="hitCalcResults = $event"
       />
@@ -1692,18 +1831,20 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
   position: sticky;
   top: 0;
   z-index: 30;
+  overflow: visible;
   display: flex;
-  align-items: center;
-  gap: 0.55rem;
+  align-items: stretch;
+  gap: 0.65rem;
   width: calc(100% + 2rem);
   margin: 0 -1rem 0;
-  padding: 0.55rem 1rem;
+  padding: 0.55rem 1rem 0.6rem;
   border: none;
-  border-bottom: 2px solid #8eb9d8;
+  border-bottom: 1px solid rgba(201, 165, 92, 0.35);
   border-radius: 0;
-  background: #d5eaf8;
-  background-image: none;
-  box-shadow: 0 6px 14px rgba(90, 140, 180, 0.18);
+  background: linear-gradient(180deg, #1c222c 0%, #151920 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 8px 20px rgba(0, 0, 0, 0.28);
 }
 
 .team-slot-sticky :deep(.team-slot-switcher) {
@@ -1711,24 +1852,59 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
   min-width: 0;
 }
 
-.scheme-lib-btn {
+.scheme-lib-actions {
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+  gap: 0.28rem;
+  padding-left: 0.55rem;
+  border-left: 1px solid rgba(201, 165, 92, 0.22);
+}
+
+.scheme-lib-btn,
+.scheme-clear-btn {
   appearance: none;
-  border: 1px solid #6ea8d0;
-  border-radius: 10px;
-  background: linear-gradient(180deg, #b5dff4, #8ec4e8);
-  color: #16324a;
-  padding: 0.42rem 0.9rem;
+  border-radius: 8px;
   font: inherit;
-  font-size: 0.82rem;
-  font-weight: 700;
-  line-height: 1.3;
+  font-weight: 600;
+  line-height: 1.25;
   cursor: pointer;
   white-space: nowrap;
+  box-shadow: none;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+
+.scheme-lib-btn {
+  border: 1px solid #4a5363;
+  background: #222833;
+  color: #e8edf5;
+  padding: 0.38rem 0.8rem;
+  font-size: 0.78rem;
 }
 
 .scheme-lib-btn:hover {
-  filter: brightness(1.06);
+  border-color: rgba(201, 165, 92, 0.55);
+  background: #2a3140;
+  color: #f3e6c4;
+}
+
+.scheme-clear-btn {
+  border: 1px solid #4a5363;
+  background: transparent;
+  color: #b0b8c8;
+  padding: 0.38rem 0.8rem;
+  font-size: 0.78rem;
+}
+
+.scheme-clear-btn:hover {
+  border-color: #6a7385;
+  background: rgba(255, 255, 255, 0.04);
+  color: #e0e5ef;
 }
 
 .skill-flow-anchor {

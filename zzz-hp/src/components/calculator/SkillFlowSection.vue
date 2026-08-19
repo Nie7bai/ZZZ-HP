@@ -488,6 +488,8 @@ const detailSkipReason = computed(() => {
 })
 
 const detailZoneRows = computed(() => {
+  // 乘区/期望伤害仅流程详情展示；准备招式与招式库不算伤
+  if (detail.value?.kind !== 'flow') return []
   const skill = detailSkill.value
   const key = detailCalcKey.value
   if (!skill || !key || detailSkipReason.value) return []
@@ -1207,7 +1209,7 @@ defineExpose({ expand })
                 <p class="col-desc">
                   {{
                     modalTab === 'prep'
-                      ? '每种招式只准备一条。异常类在详情里选双代理人；名称和倍率请回招式库改。伤害为单次结算（不含失衡易伤）。'
+                      ? '每种招式只准备一条。异常类在详情里选双代理人；名称和倍率请回招式库改。伤害仅在流程中结算。'
                       : '同一准备招式可以多次加入流程。双代理人请在准备阶段的详情里选。'
                   }}
                 </p>
@@ -1229,7 +1231,6 @@ defineExpose({ expand })
                     :agent-pair="agentPairText(prepared, preparedSkill(prepared)!)"
                     :agent-title="agentPairTitle(prepared, preparedSkill(prepared)!)"
                     :skip="Boolean(dualAgentHint(prepared, preparedSkill(prepared)!))"
-                    :damage="formatDamage(hitDamages?.[prepared.id])"
                     @select-agents="openPreparedDetail(prepared.id)"
                   >
                     <template #actions>

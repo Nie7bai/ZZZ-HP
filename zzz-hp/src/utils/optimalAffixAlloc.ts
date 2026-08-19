@@ -14,7 +14,12 @@ import type {
   WengineBuffDoc,
 } from '@/types/calculator'
 import type { AffixCounts, AffixDriveDiscMainStats, PanelStats } from '@/types/calculatorPanel'
-import { createEmptyAffixCounts, createDefaultExternalPanel, fillPanelStatsDefaults } from '@/types/calculatorPanel'
+import {
+  createEmptyAffixCounts,
+  createDefaultExternalPanel,
+  fillPanelStatsDefaults,
+  isPlaceholderExternalPanel,
+} from '@/types/calculatorPanel'
 import {
   AFFIX_VALUE_PER_COUNT,
   computeExternalPanelFromAffixes,
@@ -136,10 +141,15 @@ export interface OptimalEventEvalDetail {
   producerExternalPanel?: PanelStats
   producerBreakdown?: OptimalPanelBreakdown
   producerAgentLabel?: string
-  /** 类型增伤/倍率面板（异放/耀变=异常类触发者；否则=招式持有者） */
+  /** 类型增伤/倍率面板（属性异常/异放/耀变=异常类触发者；紊乱/乱流=招式持有者） */
   bonusFinalPanel?: PanelStats
   bonusExternalPanel?: PanelStats
   bonusBreakdown?: OptimalPanelBreakdown
+  /** 减防/无视 tip（异常类触发者面板） */
+  defenseTriggerFinalPanel?: PanelStats
+  defenseTriggerExternalPanel?: PanelStats
+  defenseTriggerBreakdown?: OptimalPanelBreakdown
+  defenseTriggerAgentLabel?: string
   /** 异常基础乘区角色名 */
   baseAgentLabel?: string
   /** 增伤/倍率乘区角色名 */
@@ -281,8 +291,8 @@ export interface DirectSweepPoint {
   critDmg: number
   label: string
   affixCounts: AffixCounts
-  /** 扫掠时缓存完整评估，柱体切换时复用 */
-  evalSnapshot: {
+  /** 完整评估较重；扫掠默认不填，点柱/过程 Tab 再懒算 */
+  evalSnapshot?: {
     finalPanel: PanelStats
     result: DamageCalcResult
     piercePower: number
@@ -290,7 +300,7 @@ export interface DirectSweepPoint {
     breakdown: OptimalPanelBreakdown
     grandTotal: number
     eventLines: OptimalEventDamageLine[]
-  }
+  } | null
   directExpected: number
   eventLines: OptimalEventDamageLine[]
   grandTotal: number
@@ -803,7 +813,7 @@ export function evaluateOptimalEventDetail(
 
   const luminousMods = resolveLuminousTeamModifiersForOptimal(ctx, mainExternal)
 
-  // 异常增伤等乘区取异常类触发者；直伤用不到，回落 owner 自己的面板
+  // 属性异常/异放/耀变类型增伤取触发者；紊乱/乱流取持有者；直伤回落 owner
   let anomalyTriggerPanel = evtFinalPanel
   let bonusExternalPanel = ownerExternal
   let bonusBreakdown: OptimalPanelBreakdown = evtBreakdown
@@ -888,11 +898,9 @@ export function evaluateOptimalEventDetail(
     }
   }
 
+  // 耀变综合增伤/倍率/特殊倍率取异常类触发者
   if (damageType === 'radiance') {
     anomalyTriggerPanel = applyRadianceBonusMultOverrides(anomalyTriggerPanel, hit.multOverrides)
-    if (hit.triggerAgentId === ownerAgentId || !hit.triggerAgentId) {
-      evtFinalPanel = anomalyTriggerPanel
-    }
   }
 
   const usesTriggerBonus =
@@ -1029,6 +1037,12 @@ export function evaluateOptimalEventDetail(
     bonusFinalPanel,
     bonusExternalPanel: bonusExternalForTips,
     bonusBreakdown: bonusBreakdownForTips,
+    defenseTriggerFinalPanel: eventNeedsTrigger ? anomalyTriggerPanel : undefined,
+    defenseTriggerExternalPanel: eventNeedsTrigger ? bonusExternalPanel : undefined,
+    defenseTriggerBreakdown: eventNeedsTrigger ? bonusBreakdown : undefined,
+    defenseTriggerAgentLabel: eventNeedsTrigger
+      ? formatAnomalyFormulaAgentLabel('trigger', triggerName ?? ownerAgent?.name)
+      : undefined,
     baseAgentLabel,
     bonusAgentLabel,
     mutationAgentLabel,
@@ -1258,7 +1272,8 @@ function affixEvalContextSignature(ctx: OptimalEvalContext): string {
         (hit) =>
           `${hit.id}:${hit.skill.id}:${hit.count}:${hit.critMode}:${hit.staggerPhase}` +
           `:${hit.anomalyPowerAgentId ?? ''}:${hit.triggerAgentId ?? ''}` +
-          `:${JSON.stringify(hit.multOverrides ?? {})}`,
+          `:${JSON.stringify(hit.multOverrides ?? {})}` +
+          `:${JSON.stringify(hit.panelMods ?? {})}`,
       )
       .join(';') ?? ''
   return [
@@ -1435,7 +1450,7 @@ export function evaluateAffixCounts(
   return result
 }
 
-/** 使局内暴击率刚好 > 100% 的最小暴击条数 */
+/** 使局内暴击率刚好 > 100% 的最小暴击条数（只算面板，不算事件） */
 export function findMinCritRollsForOvercap(
   ctx: OptimalEvalContext,
   baseState: Omit<DirectAllocState, 'critRate' | 'totalRolls'>,
@@ -1443,6 +1458,7 @@ export function findMinCritRollsForOvercap(
 ): number {
   const critCap = affixRollCap(ctx.driveDiscMainStats, 'critRate')
   const limit = Math.min(maxSearch, Number.isFinite(critCap) ? critCap : maxSearch)
+  const panelOnlyCtx: OptimalEvalContext = { ...ctx, hits: undefined }
   for (let n = 0; n <= limit; n += 1) {
     const counts = buildDirectAffixCounts(
       ctx.isMb,
@@ -1450,7 +1466,7 @@ export function findMinCritRollsForOvercap(
       0,
       0,
     )
-    const { finalPanel } = evaluateAffixCounts(ctx, counts)
+    const { finalPanel } = evaluateAffixCounts(panelOnlyCtx, counts)
     if (finalPanel.critRate > 100) return n
   }
   return limit
@@ -1572,16 +1588,16 @@ export async function sweepDirectDamageAsync(
         hpPercent,
         critDmg,
       )
-      const evaled = evaluateAffixCounts(ctx, affixCounts)
+      const swept = evaluateAffixCountsForSweep(ctx, affixCounts)
       await pushPoint({
         outPercent: hpPercent,
         critDmg,
         label: `局外大生命${hpPercent}/爆伤${critDmg}`,
         affixCounts,
-        evalSnapshot: evaled,
-        directExpected: evaled.grandTotal,
-        eventLines: evaled.eventLines,
-        grandTotal: evaled.grandTotal,
+        evalSnapshot: null,
+        directExpected: swept.grandTotal,
+        eventLines: swept.eventLines,
+        grandTotal: swept.grandTotal,
       })
     }
     return points
@@ -1599,16 +1615,16 @@ export async function sweepDirectDamageAsync(
       outPercent,
       critDmg,
     )
-    const evaled = evaluateAffixCounts(ctx, affixCounts)
+    const swept = evaluateAffixCountsForSweep(ctx, affixCounts)
     await pushPoint({
       outPercent,
       critDmg,
       label: `${outLabel}${outPercent}/爆伤${critDmg}`,
       affixCounts,
-      evalSnapshot: evaled,
-      directExpected: evaled.grandTotal,
-      eventLines: evaled.eventLines,
-      grandTotal: evaled.grandTotal,
+      evalSnapshot: null,
+      directExpected: swept.grandTotal,
+      eventLines: swept.eventLines,
+      grandTotal: swept.grandTotal,
     })
   }
   return points
@@ -1667,21 +1683,39 @@ export async function sweepAnomalyDamageAsync(
     const mastery = total - outPercent
     if (outPercent > outCap || mastery > caps.mastery) continue
     const affixCounts = buildAnomalyAffixCounts(ctx.isMb, { ...state, totalRolls: total }, outPercent, mastery)
-    const evaled = evaluateAffixCounts(ctx, affixCounts)
-    points.push({
-      outPercent,
-      mastery,
-      label: `${outLabel}${outPercent}/精通${mastery}`,
-      affixCounts,
-      evalSnapshot: evaled,
-      anomalyExpected: evaled.grandTotal,
-      disorderExpected: evaled.result.disorderExpected,
-      turbulenceExpected: evaled.result.turbulenceExpected,
-      anomalyReleaseExpected: evaled.result.anomalyReleaseExpected,
-      radianceExpected: evaled.result.radianceExpected,
-      eventLines: evaled.eventLines,
-      grandTotal: evaled.grandTotal,
-    })
+    if (ctx.hits?.length) {
+      const swept = evaluateAffixCountsForSweep(ctx, affixCounts)
+      points.push({
+        outPercent,
+        mastery,
+        label: `${outLabel}${outPercent}/精通${mastery}`,
+        affixCounts,
+        evalSnapshot: null,
+        anomalyExpected: swept.grandTotal,
+        disorderExpected: swept.grandTotal,
+        turbulenceExpected: swept.grandTotal,
+        anomalyReleaseExpected: swept.grandTotal,
+        radianceExpected: swept.grandTotal,
+        eventLines: swept.eventLines,
+        grandTotal: swept.grandTotal,
+      })
+    } else {
+      const evaled = evaluateAffixCounts(ctx, affixCounts)
+      points.push({
+        outPercent,
+        mastery,
+        label: `${outLabel}${outPercent}/精通${mastery}`,
+        affixCounts,
+        evalSnapshot: null,
+        anomalyExpected: evaled.result.anomalyExpected,
+        disorderExpected: evaled.result.disorderExpected,
+        turbulenceExpected: evaled.result.turbulenceExpected,
+        anomalyReleaseExpected: evaled.result.anomalyReleaseExpected,
+        radianceExpected: evaled.result.radianceExpected,
+        eventLines: evaled.eventLines,
+        grandTotal: evaled.grandTotal,
+      })
+    }
     sinceYield += 1
     if (sinceYield >= chunkSize) {
       sinceYield = 0
@@ -1753,6 +1787,30 @@ function bumpAffix(counts: AffixCounts, key: OptimalAffixKey, delta: number): Af
   return next
 }
 
+function resolveSweepMetricDamage(
+  evaled: { grandTotal: number; eventLines: OptimalEventDamageLine[] },
+  selectedEventIds?: string[] | null,
+): number {
+  if (selectedEventIds?.length && evaled.eventLines.length) {
+    const ids = new Set(selectedEventIds)
+    return evaled.eventLines
+      .filter((line) => ids.has(line.eventId))
+      .reduce((sum, line) => sum + line.total, 0)
+  }
+  return evaled.grandTotal
+}
+
+/** 差异/曲线用：有事件走轻量扫掠口径；无事件仍走完整评估（要分子类伤害） */
+function evaluateAffixForDiffMetric(ctx: OptimalEvalContext, affixCounts: AffixCounts) {
+  if (ctx.hits?.length) return evaluateAffixCountsForSweep(ctx, affixCounts)
+  const full = evaluateAffixCounts(ctx, affixCounts)
+  return {
+    grandTotal: full.grandTotal,
+    eventLines: full.eventLines,
+    result: full.result,
+  }
+}
+
 export function computeDiffAnalysis(
   ctx: OptimalEvalContext,
   baseCounts: AffixCounts,
@@ -1761,9 +1819,34 @@ export function computeDiffAnalysis(
   selectedEventIds?: string[] | null,
 ): { addOne: AffixDiffRow[]; replace: AffixReplaceRow[] } {
   const candidates = kind === 'direct' ? directCandidateKeys(ctx.isMb) : anomalyCandidateKeys(ctx.isMb)
-  const base = evaluateAffixCounts(ctx, baseCounts)
-  const baseDmg = resolveEvalMetricDamage(base, kind, anomalyMetric, selectedEventIds)
+  const base = evaluateAffixForDiffMetric(ctx, baseCounts)
+  const baseDmg = ctx.hits?.length
+    ? resolveSweepMetricDamage(base, selectedEventIds)
+    : resolveEvalMetricDamage(
+        base as {
+          result: DamageCalcResult
+          grandTotal: number
+          eventLines: OptimalEventDamageLine[]
+        },
+        kind,
+        anomalyMetric,
+        selectedEventIds,
+      )
   const mainStats = ctx.driveDiscMainStats
+
+  const metricOf = (evaled: ReturnType<typeof evaluateAffixForDiffMetric>) =>
+    ctx.hits?.length
+      ? resolveSweepMetricDamage(evaled, selectedEventIds)
+      : resolveEvalMetricDamage(
+          evaled as {
+            result: DamageCalcResult
+            grandTotal: number
+            eventLines: OptimalEventDamageLine[]
+          },
+          kind,
+          anomalyMetric,
+          selectedEventIds,
+        )
 
   const addOne: AffixDiffRow[] = candidates.map((key) => {
     const nextCount = (baseCounts[key] ?? 0) + 1
@@ -1781,8 +1864,8 @@ export function computeDiffAnalysis(
       }
     }
     const bumped = bumpAffix(baseCounts, key, 1)
-    const next = evaluateAffixCounts(ctx, bumped)
-    const nextDmg = resolveEvalMetricDamage(next, kind, anomalyMetric, selectedEventIds)
+    const next = evaluateAffixForDiffMetric(ctx, bumped)
+    const nextDmg = metricOf(next)
     const delta = nextDmg - baseDmg
     return {
       key,
@@ -1796,14 +1879,13 @@ export function computeDiffAnalysis(
   })
 
   addOne.sort((a, b) => b.damageDelta - a.damageDelta)
-  const best = addOne.find((row) => !exceedsAffixCap(mainStats, row.key, (baseCounts[row.key] ?? 0) + 1)) ?? addOne[0]
 
   const ownedKeys = candidates.filter((key) => (baseCounts[key] ?? 0) > 0)
   const replace: AffixReplaceRow[] = ownedKeys.map((key) => {
     const without = bumpAffix(baseCounts, key, -1)
-    let bestReplaceKey = best?.key ?? key
+    let bestReplaceKey = key
     let bestDelta = -Infinity
-    let bestAdd = AFFIX_VALUE_PER_COUNT[bestReplaceKey]
+    let bestAdd = 0
     let found = false
 
     for (const cand of candidates) {
@@ -1811,8 +1893,8 @@ export function computeDiffAnalysis(
       const nextCount = (without[cand] ?? 0) + 1
       if (exceedsAffixCap(mainStats, cand, nextCount)) continue
       const swapped = bumpAffix(without, cand, 1)
-      const evaled = evaluateAffixCounts(ctx, swapped)
-      const dmg = resolveEvalMetricDamage(evaled, kind, anomalyMetric, selectedEventIds)
+      const evaled = evaluateAffixForDiffMetric(ctx, swapped)
+      const dmg = metricOf(evaled)
       const delta = dmg - baseDmg
       if (delta > bestDelta) {
         bestDelta = delta
@@ -1917,8 +1999,21 @@ export function computeBenefitCurves(
   selectedEventIds?: string[] | null,
 ): { series: BenefitCurveSeries[]; nextStep: AffixDiffRow[] } {
   const candidates = kind === 'direct' ? directCandidateKeys(ctx.isMb) : anomalyCandidateKeys(ctx.isMb)
-  const base = evaluateAffixCounts(ctx, baseCounts)
-  const baseDmg = resolveEvalMetricDamage(base, kind, anomalyMetric, selectedEventIds)
+  const metricOf = (evaled: ReturnType<typeof evaluateAffixForDiffMetric>) =>
+    ctx.hits?.length
+      ? resolveSweepMetricDamage(evaled, selectedEventIds)
+      : resolveEvalMetricDamage(
+          evaled as {
+            result: DamageCalcResult
+            grandTotal: number
+            eventLines: OptimalEventDamageLine[]
+          },
+          kind,
+          anomalyMetric,
+          selectedEventIds,
+        )
+  const base = evaluateAffixForDiffMetric(ctx, baseCounts)
+  const baseDmg = metricOf(base)
   const mainStats = ctx.driveDiscMainStats
 
   const series: BenefitCurveSeries[] = candidates.map((key) => {
@@ -1939,8 +2034,8 @@ export function computeBenefitCurves(
         continue
       }
       counts = bumpAffix(counts, key, 1)
-      const evaled = evaluateAffixCounts(ctx, counts)
-      const dmg = resolveEvalMetricDamage(evaled, kind, anomalyMetric, selectedEventIds)
+      const evaled = evaluateAffixForDiffMetric(ctx, counts)
+      const dmg = metricOf(evaled)
       const cum = baseDmg > 0 ? ((dmg - baseDmg) / baseDmg) * 100 : 0
       const mar = prevDmg > 0 ? ((dmg - prevDmg) / prevDmg) * 100 : 0
       cumulativePercent.push(cum)
@@ -2023,31 +2118,37 @@ export function buildOptimalEvalContext(input: {
       anomalySlotPanels: input.anomalySlotPanels,
       convertSlotPanels: input.convertSlotPanels,
       slotExternalPanels: Object.fromEntries(
-        input.teamSlots.flatMap((slot, index) =>
-          slot.agentId
-            ? [
-                [
-                  index,
-                  computeExternalPanelFromTeamSlot({
-                    slot,
-                    agents: input.agents,
-                    wengines: input.wengines,
-                    driveDiscs: input.driveDiscs,
-                    overrideAffix:
-                      index === input.mainSlotIndex
-                        ? {
-                            affixCounts: {
-                              ...createEmptyAffixCounts(),
-                              ...slot.affixCounts,
-                            },
-                            affixDriveDiscMainStats: input.driveDiscMainStats,
-                          }
-                        : undefined,
-                  }),
-                ],
-              ]
-            : [],
-        ),
+        input.teamSlots.flatMap((slot, index) => {
+          if (!slot.agentId) return []
+          // 主 C：由最优词条扫掠推导；队友：优先用手填局外，避免盖掉「导入」录入
+          if (index !== input.mainSlotIndex) {
+            const saved = input.anomalySlotPanels?.[slot.agentId]
+            if (saved && !isPlaceholderExternalPanel(saved)) {
+              return [[index, fillPanelStatsDefaults(saved)]]
+            }
+          }
+          return [
+            [
+              index,
+              computeExternalPanelFromTeamSlot({
+                slot,
+                agents: input.agents,
+                wengines: input.wengines,
+                driveDiscs: input.driveDiscs,
+                overrideAffix:
+                  index === input.mainSlotIndex
+                    ? {
+                        affixCounts: {
+                          ...createEmptyAffixCounts(),
+                          ...slot.affixCounts,
+                        },
+                        affixDriveDiscMainStats: input.driveDiscMainStats,
+                      }
+                    : undefined,
+              }),
+            ],
+          ]
+        }),
       ),
       baseAnomalyControl: mainAgent?.basePanel.anomalyControl ?? 0,
       baseEnergyRegen: mainAgent?.basePanel.energyRegen ?? 0,

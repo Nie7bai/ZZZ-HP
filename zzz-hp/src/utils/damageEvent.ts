@@ -334,7 +334,7 @@ export function isTriggerAgentAtCalc(id: string | null | undefined): boolean {
   return id === TRIGGER_AGENT_AT_CALC || id == null || id === ''
 }
 
-/** 耀变综合增伤/倍率/特殊倍率乘区取主 C 面板；覆写也应写入主 C 侧 */
+/** 耀变综合增伤/倍率/特殊倍率乘区取异常类触发者面板；覆写也应写入触发者侧 */
 export function applyRadianceBonusMultOverrides(
   panel: PanelStats,
   overrides: DamageEventMultOverrides | null | undefined,

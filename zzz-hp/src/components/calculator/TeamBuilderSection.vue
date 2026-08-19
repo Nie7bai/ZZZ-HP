@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import UnifiedPresetPicker from '@/components/calculator/UnifiedPresetPicker.vue'
+import UnifiedPresetPicker, {
+  type UnifiedPresetConfirmPayload,
+} from '@/components/calculator/UnifiedPresetPicker.vue'
 import TeamSlotCard from '@/components/calculator/TeamSlotCard.vue'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
 import type { AgentBuffDoc, DriveDiscBuffDoc, WengineBuffDoc } from '@/types/calculator'
+import type { PanelCalcMode, PanelStats } from '@/types/calculatorPanel'
 
 const props = defineProps<{
   agents: AgentBuffDoc[]
@@ -11,6 +14,11 @@ const props = defineProps<{
   teamSlots: TeamSlot[]
   activeSlot: number
   activeAgent?: AgentBuffDoc
+  preferredEntryMode?: Extract<PanelCalcMode, 'panel' | 'affix'>
+  anomalySlotPanels?: Record<string, PanelStats>
+  finalPanelPreview?: PanelStats | null
+  finalPanelToken?: string
+  resolveFinalPanel?: (external: PanelStats) => PanelStats | null
 }>()
 
 const emit = defineEmits<{
@@ -18,6 +26,7 @@ const emit = defineEmits<{
   assignAgent: [agentId: string]
   clearSlot: [index: number]
   selectWengine: [wengineId: string]
+  confirmImport: [payload: UnifiedPresetConfirmPayload]
 }>()
 
 function wengineById(id: string) {
@@ -47,7 +56,7 @@ function updateSlotRefine(index: number, value: number) {
   <section id="damage-team" class="section-card agent-section damage-anchor">
     <header class="section-header">
       <h2>代理人</h2>
-      <p class="section-desc">选择槽位后，为当前槽位指定代理人</p>
+      <p class="section-desc">选择槽位后，为当前槽位指定代理人；面板请在「导入」中录入</p>
     </header>
 
     <div class="team-slots">
@@ -74,6 +83,12 @@ function updateSlotRefine(index: number, value: number) {
       :drive-discs="driveDiscs"
       :team-slots="teamSlots"
       :active-slot="activeSlot"
+      :preferred-entry-mode="preferredEntryMode"
+      :anomaly-slot-panels="anomalySlotPanels"
+      :final-panel-preview="finalPanelPreview"
+      :final-panel-token="finalPanelToken"
+      :resolve-final-panel="resolveFinalPanel"
+      @confirm="emit('confirmImport', $event)"
     />
   </section>
 </template>

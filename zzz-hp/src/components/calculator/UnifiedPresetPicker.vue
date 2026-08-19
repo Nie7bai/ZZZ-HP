@@ -1,9 +1,60 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
+import PanelScreenshotUploadSection from '@/components/calculator/PanelScreenshotUploadSection.vue'
+import SlotPanelEntryForm from '@/components/calculator/SlotPanelEntryForm.vue'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
 import type { AgentBuffDoc, DriveDiscBuffDoc, WengineBuffDoc } from '@/types/calculator'
-import { AGENT_ELEMENTS, AGENT_ROLES, WENGINE_RARITIES, isWengineProfessionMatch } from '@/utils/calculatorUi'
+import type { PanelScreenshotRecognition } from '@/types/panelScreenshot'
+import {
+  createDefaultAffixDriveDiscMainStats,
+  createDefaultExternalPanel,
+  createEmptyAffixCounts,
+  createExternalPanelFromAgentBase,
+  fillPanelStatsDefaults,
+  type AffixCounts,
+  type AffixDriveDiscMainStats,
+  type PanelCalcMode,
+  type PanelStats,
+} from '@/types/calculatorPanel'
+import { inferAffixCountsFromExternalPanel, computeExternalPanelFromTeamSlot } from '@/utils/affixPanelCalc'
+import {
+  AGENT_ELEMENTS,
+  AGENT_ROLES,
+  WENGINE_RARITIES,
+  createEmptyAgentBasePanel,
+  createEmptyBuffStatModifiers,
+  createEmptyRefinementMods,
+  createEmptyWengineAdvancedStats,
+  isWengineProfessionMatch,
+} from '@/utils/calculatorUi'
+import {
+  collectConvertSourceMarksForSlot,
+  type ConvertSourceMark,
+} from '@/utils/panelBuffCalc'
+import type { BangbooBuffDoc } from '@/types/calculator'
+
+const EMPTY_BANGBOO: BangbooBuffDoc = {
+  id: 'none',
+  name: '未选择',
+  avatar_image: null,
+  effects: [],
+  refinementEffects: createEmptyRefinementMods().map(() => []),
+  fixedMods: createEmptyBuffStatModifiers(),
+  refinementMods: createEmptyRefinementMods(),
+}
+
+export type UnifiedPresetConfirmPayload = {
+  agentId: string
+  rank: number
+  wengineId: string
+  wengineRefine: number
+  twoPieceDriveDiscId: string
+  fourPieceDriveDiscId: string
+  externalPanel: PanelStats
+  affixCounts: AffixCounts
+  affixDriveDiscMainStats: AffixDriveDiscMainStats
+}
 
 const props = defineProps<{
   agents: AgentBuffDoc[]
@@ -11,14 +62,26 @@ const props = defineProps<{
   driveDiscs: DriveDiscBuffDoc[]
   teamSlots: TeamSlot[]
   activeSlot: number
+  /** 打开时的默认录入模式；用户可在弹窗内切换，不再跟随页面计算方式 */
+  preferredEntryMode?: Extract<PanelCalcMode, 'panel' | 'affix'>
+  anomalySlotPanels?: Record<string, PanelStats>
+  finalPanelPreview?: PanelStats | null
+  /** 父级增益/邦布等签名：变化时重算局内预览 */
+  finalPanelToken?: string
+  /** 用当前草稿局外 + 页级增益上下文实时算局内 */
+  resolveFinalPanel?: (external: PanelStats) => PanelStats | null
+  hideTrigger?: boolean
+}>()
+
+const emit = defineEmits<{
+  confirm: [payload: UnifiedPresetConfirmPayload]
 }>()
 
 const open = defineModel<boolean>('open', { default: false })
 
-type Tab = 'agent' | 'wengine' | 'disc'
+type Tab = 'agent' | 'wengine' | 'disc' | 'panel'
 const activeTab = ref<Tab>('agent')
 
-// --- Local selection state (pre-fill from current slot) ---
 const selected = ref({
   agentId: '',
   rank: 0,
@@ -28,8 +91,98 @@ const selected = ref({
   fourPieceId: 'none',
 })
 
+const draftExternalPanel = reactive<PanelStats>(createDefaultExternalPanel())
+const draftAffixCounts = reactive(createEmptyAffixCounts())
+const draftAffixMains = reactive(createDefaultAffixDriveDiscMainStats())
+/** 面板 Tab 独立切换：面板计算 / 词条计算 */
+const entryMode = ref<Extract<PanelCalcMode, 'panel' | 'affix'>>(
+  props.preferredEntryMode ?? 'panel',
+)
+
+/** 导入区局内：草稿局外/词条推导 + 当前增益实时结算（对齐改前内嵌面板） */
+const liveFinalPanel = computed(() => {
+  void props.finalPanelToken
+  void entryMode.value
+  void JSON.stringify(draftExternalPanel)
+  void JSON.stringify(draftAffixCounts)
+  void JSON.stringify(draftAffixMains)
+  void selected.value.agentId
+  void selected.value.wengineId
+  void selected.value.twoPieceId
+  void selected.value.fourPieceId
+  if (!props.resolveFinalPanel) return props.finalPanelPreview ?? null
+  const external =
+    entryMode.value === 'affix'
+      ? computeExternalPanelFromTeamSlot({
+          slot: {
+            agentId: selected.value.agentId,
+            wengineId: selected.value.wengineId,
+            twoPieceDriveDiscId: selected.value.twoPieceId,
+            fourPieceDriveDiscId: selected.value.fourPieceId,
+            affixCounts: { ...draftAffixCounts },
+            affixDriveDiscMainStats: { ...draftAffixMains },
+          },
+          agents: props.agents,
+          wengines: props.wengines,
+          driveDiscs: props.driveDiscs,
+        })
+      : fillPanelStatsDefaults({ ...draftExternalPanel })
+  return props.resolveFinalPanel(external) ?? props.finalPanelPreview ?? null
+})
+
+/** 按导入草稿装备，标出该槽位局外/局内转模会读哪些属性（不依赖 Buff 是否已勾选） */
+const draftConvertSourceMarks = computed((): ConvertSourceMark[] => {
+  if (!selected.value.agentId) return []
+  const slots = props.teamSlots.map((slot, index) => {
+    if (index !== props.activeSlot) return { ...slot }
+    return {
+      ...slot,
+      agentId: selected.value.agentId,
+      rank: selected.value.rank,
+      wengineId: selected.value.wengineId,
+      wengineRefine: selected.value.wengineRefine,
+      twoPieceDriveDiscId: selected.value.twoPieceId,
+      fourPieceDriveDiscId: selected.value.fourPieceId,
+    }
+  })
+  return collectConvertSourceMarksForSlot(
+    {
+      teamSlots: slots,
+      agents: props.agents,
+      wengines: props.wengines,
+      driveDiscs: props.driveDiscs,
+      mainSlotIndex: props.activeSlot,
+      bangboo: EMPTY_BANGBOO,
+      bangbooRefine: 1,
+    },
+    props.activeSlot,
+    { requireEnabled: false },
+  )
+})
+
+function resetDraftPanelFromSlot() {
+  const slot = props.teamSlots[props.activeSlot]
+  const agentId = selected.value.agentId || slot?.agentId || ''
+  const agent = props.agents.find((item) => item.id === agentId)
+  Object.assign(draftAffixCounts, createEmptyAffixCounts(), slot?.affixCounts)
+  Object.assign(
+    draftAffixMains,
+    createDefaultAffixDriveDiscMainStats(),
+    slot?.affixDriveDiscMainStats,
+  )
+  const saved = agentId ? props.anomalySlotPanels?.[agentId] : undefined
+  if (saved) {
+    Object.assign(draftExternalPanel, createDefaultExternalPanel(), saved)
+  } else if (agent) {
+    Object.assign(draftExternalPanel, createExternalPanelFromAgentBase(agent.basePanel))
+  } else {
+    Object.assign(draftExternalPanel, createDefaultExternalPanel())
+  }
+}
+
 watch(open, (isOpen) => {
   if (isOpen) {
+    entryMode.value = props.preferredEntryMode ?? 'panel'
     const slot = props.teamSlots[props.activeSlot]
     if (!slot) return
     selected.value = {
@@ -40,7 +193,6 @@ watch(open, (isOpen) => {
       twoPieceId: slot.twoPieceDriveDiscId,
       fourPieceId: slot.fourPieceDriveDiscId,
     }
-    // Reset filters and search
     agentRoleFilter.value = ''
     agentElementFilter.value = ''
     wengineRoleFilter.value = ''
@@ -49,8 +201,23 @@ watch(open, (isOpen) => {
     wengineSearch.value = ''
     discSearch.value = ''
     activeTab.value = 'agent'
+    resetDraftPanelFromSlot()
   }
 })
+
+watch(
+  () => selected.value.agentId,
+  (newId, oldId) => {
+    if (!open.value || !newId || newId === oldId) return
+    const agent = props.agents.find((item) => item.id === newId)
+    const saved = props.anomalySlotPanels?.[newId]
+    if (saved) {
+      Object.assign(draftExternalPanel, createDefaultExternalPanel(), saved)
+    } else if (agent) {
+      Object.assign(draftExternalPanel, createExternalPanelFromAgentBase(agent.basePanel))
+    }
+  },
+)
 
 // --- Agent tab ---
 const agentSearch = ref('')
@@ -185,6 +352,13 @@ const selectedWengine = computed(() => props.wengines.find((w) => w.id === selec
 const selectedTwoPiece = computed(() => props.driveDiscs.find((d) => d.id === selected.value.twoPieceId))
 const selectedFourPiece = computed(() => props.driveDiscs.find((d) => d.id === selected.value.fourPieceId))
 
+const panelTabFilled = computed(() => {
+  if (entryMode.value === 'affix') {
+    return Object.values(draftAffixCounts).some((n) => Number(n) > 0)
+  }
+  return draftExternalPanel.hp > 0 || draftExternalPanel.atk > 0
+})
+
 const summary = computed(() => {
   const parts: string[] = []
   if (selectedAgent.value) parts.push(`${selectedAgent.value.name}（${selected.value.rank}影）`)
@@ -198,21 +372,87 @@ const summary = computed(() => {
   }
   const discParts: string[] = []
   if (selectedFourPiece.value) discParts.push(`${selectedFourPiece.value.name}（4件）`)
-  if (selectedTwoPiece.value && selectedTwoPiece.value.id !== 'none') discParts.push(`${selectedTwoPiece.value.name}（2件）`)
+  if (selectedTwoPiece.value && selectedTwoPiece.value.id !== 'none') {
+    discParts.push(`${selectedTwoPiece.value.name}（2件）`)
+  }
   parts.push(discParts.join(' + ') || '未佩戴驱动盘')
+  if (entryMode.value === 'affix') {
+    const total = Object.values(draftAffixCounts).reduce((sum, n) => sum + (Number(n) || 0), 0)
+    parts.push(`词条 ${total} 条`)
+  } else {
+    parts.push(
+      `局外 生命${Math.round(draftExternalPanel.hp)} / 攻击${Math.round(draftExternalPanel.atk)}`,
+    )
+  }
   return parts.join('  |  ')
 })
 
-// --- Confirm ---
+function applyRecognitionToDraft(result: PanelScreenshotRecognition) {
+  if (result.agentId) selected.value.agentId = result.agentId
+  selected.value.rank = result.rank
+  if (result.wengineId) selected.value.wengineId = result.wengineId
+  selected.value.wengineRefine = result.wengineRefine
+  if (result.twoPieceDriveDiscId) selected.value.twoPieceId = result.twoPieceDriveDiscId
+  if (result.fourPieceDriveDiscId) selected.value.fourPieceId = result.fourPieceDriveDiscId
+
+  Object.assign(
+    draftExternalPanel,
+    createDefaultExternalPanel(),
+    fillPanelStatsDefaults(result.externalPanel),
+  )
+
+  const mains = result.driveDiscMainStats
+  if (mains?.slot4MainStat) draftAffixMains.slot4MainStat = mains.slot4MainStat
+  if (mains?.slot5MainStat) draftAffixMains.slot5MainStat = mains.slot5MainStat
+  if (mains?.slot6MainStat) draftAffixMains.slot6MainStat = mains.slot6MainStat
+
+  const agent = props.agents.find((item) => item.id === selected.value.agentId)
+  const wengine = props.wengines.find((item) => item.id === selected.value.wengineId)
+  const inferred = inferAffixCountsFromExternalPanel({
+    target: result.externalPanel,
+    agentBase: agent?.basePanel ?? createEmptyAgentBasePanel(),
+    wengineBaseAtk: wengine?.baseAtk ?? 0,
+    wengineAdvanced: wengine?.advancedStats ?? createEmptyWengineAdvancedStats(),
+    driveDiscSelection: {
+      twoPieceDriveDiscId: selected.value.twoPieceId,
+      fourPieceDriveDiscId: selected.value.fourPieceId,
+    },
+    driveDiscMainStats: { ...draftAffixMains },
+    driveDiscs: props.driveDiscs,
+  })
+  Object.assign(draftAffixCounts, createEmptyAffixCounts(), inferred.affixCounts)
+  activeTab.value = 'panel'
+}
+
 function confirm() {
-  const slot = props.teamSlots[props.activeSlot]
-  if (!slot) return
-  slot.agentId = selected.value.agentId
-  slot.rank = selected.value.rank
-  slot.wengineId = selected.value.wengineId
-  slot.wengineRefine = selected.value.wengineRefine
-  slot.twoPieceDriveDiscId = selected.value.twoPieceId
-  slot.fourPieceDriveDiscId = selected.value.fourPieceId
+  if (!selected.value.agentId) return
+  const external =
+    entryMode.value === 'affix'
+      ? computeExternalPanelFromTeamSlot({
+          slot: {
+            agentId: selected.value.agentId,
+            wengineId: selected.value.wengineId,
+            twoPieceDriveDiscId: selected.value.twoPieceId,
+            fourPieceDriveDiscId: selected.value.fourPieceId,
+            affixCounts: { ...draftAffixCounts },
+            affixDriveDiscMainStats: { ...draftAffixMains },
+          },
+          agents: props.agents,
+          wengines: props.wengines,
+          driveDiscs: props.driveDiscs,
+        })
+      : { ...draftExternalPanel }
+  emit('confirm', {
+    agentId: selected.value.agentId,
+    rank: selected.value.rank,
+    wengineId: selected.value.wengineId,
+    wengineRefine: selected.value.wengineRefine,
+    twoPieceDriveDiscId: selected.value.twoPieceId,
+    fourPieceDriveDiscId: selected.value.fourPieceId,
+    externalPanel: fillPanelStatsDefaults(external),
+    affixCounts: { ...draftAffixCounts },
+    affixDriveDiscMainStats: { ...draftAffixMains },
+  })
   open.value = false
 }
 
@@ -221,9 +461,9 @@ const canConfirm = computed(() => !!selected.value.agentId)
 
 <template>
   <!-- Summary trigger button -->
-  <button type="button" class="unified-trigger" @click="open = true">
+  <button v-if="!hideTrigger" type="button" class="unified-trigger" @click="open = true">
     <span class="trigger-label">导入</span>
-    <span class="trigger-hint">选择角色/武器/驱动盘</span>
+    <span class="trigger-hint">选择角色/武器/驱动盘/面板</span>
   </button>
 
   <!-- Modal -->
@@ -266,6 +506,14 @@ const canConfirm = computed(() => !!selected.value.agentId)
           >
             驱动盘
             <span v-if="selectedTwoPiece || selectedFourPiece" class="tab-check">&check;</span>
+          </button>
+          <button
+            class="tab-btn"
+            :class="{ active: activeTab === 'panel' }"
+            @click="activeTab = 'panel'"
+          >
+            面板
+            <span v-if="panelTabFilled" class="tab-check">&check;</span>
           </button>
         </nav>
 
@@ -470,6 +718,34 @@ const canConfirm = computed(() => !!selected.value.agentId)
           </div>
         </div>
 
+        <!-- Tab: Panel -->
+        <div v-if="activeTab === 'panel'" class="tab-panel tab-panel--panel">
+          <div class="tab-grid-wrap tab-grid-wrap--panel">
+            <PanelScreenshotUploadSection
+              embedded
+              :agents="agents"
+              :wengines="wengines"
+              :drive-discs="driveDiscs"
+              @apply-recognition="applyRecognitionToDraft"
+            />
+            <SlotPanelEntryForm
+              v-model:external-panel="draftExternalPanel"
+              v-model:affix-counts="draftAffixCounts"
+              v-model:affix-drive-disc-main-stats="draftAffixMains"
+              v-model:calc-mode="entryMode"
+              :agents="agents"
+              :wengines="wengines"
+              :drive-discs="driveDiscs"
+              :agent-id="selected.agentId"
+              :wengine-id="selected.wengineId"
+              :two-piece-id="selected.twoPieceId"
+              :four-piece-id="selected.fourPieceId"
+              :final-panel="liveFinalPanel"
+              :convert-source-marks="draftConvertSourceMarks"
+            />
+          </div>
+        </div>
+
         <!-- Bottom bar -->
         <footer class="modal-footer">
           <div class="footer-summary">
@@ -600,6 +876,12 @@ const canConfirm = computed(() => !!selected.value.agentId)
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
   padding: 0.85rem 1rem 1rem;
+}
+
+.tab-grid-wrap--panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .tab-toolbar {
@@ -901,6 +1183,87 @@ const canConfirm = computed(() => !!selected.value.agentId)
 .trigger-hint {
   font-size: 0.78rem;
   color: #9aa3b0;
+}
+
+:global([data-theme='light']) .unified-overlay {
+  background: rgba(40, 70, 95, 0.28);
+}
+
+:global([data-theme='light']) .unified-modal {
+  border-color: #b7d3e8;
+  background: linear-gradient(180deg, #f7fbfe 0%, #eaf4fb 100%);
+  color: #16324a;
+  box-shadow: 0 12px 36px rgba(22, 50, 74, 0.18);
+}
+
+:global([data-theme='light']) .modal-header,
+:global([data-theme='light']) .tab-bar,
+:global([data-theme='light']) .tab-filters,
+:global([data-theme='light']) .modal-footer {
+  border-color: #c5d7e8;
+}
+
+:global([data-theme='light']) .modal-header h2,
+:global([data-theme='light']) .disc-col-header h3 {
+  color: #16324a;
+}
+
+:global([data-theme='light']) .tab-btn {
+  color: #4d6a80;
+}
+
+:global([data-theme='light']) .tab-btn.active {
+  color: #8a6a2e;
+  border-bottom-color: #c9a55c;
+}
+
+:global([data-theme='light']) .search,
+:global([data-theme='light']) .item-cell,
+:global([data-theme='light']) .chip,
+:global([data-theme='light']) .cancel-btn {
+  border-color: #b7d3e8;
+  background: #ffffff;
+  color: #16324a;
+}
+
+:global([data-theme='light']) .item-cell.active,
+:global([data-theme='light']) .chip.active {
+  border-color: #c9a55c;
+  background: rgba(201, 165, 92, 0.14);
+  color: #6a4e1d;
+}
+
+:global([data-theme='light']) .rank-bar {
+  border-color: #e0c88a;
+  background: #fff8ea;
+}
+
+:global([data-theme='light']) .rank-label,
+:global([data-theme='light']) .rank-badge,
+:global([data-theme='light']) .summary-title {
+  color: #8a6a2e;
+}
+
+:global([data-theme='light']) .summary-text,
+:global([data-theme='light']) .chip-group-label,
+:global([data-theme='light']) .empty-hint,
+:global([data-theme='light']) .disc-col-header p,
+:global([data-theme='light']) .trigger-hint {
+  color: #4d6a80;
+}
+
+:global([data-theme='light']) .modal-footer {
+  background: #eef6fc;
+}
+
+:global([data-theme='light']) .unified-trigger {
+  border-color: #b7d3e8;
+  background: #f7fbfe;
+}
+
+:global([data-theme='light']) .unified-trigger:hover {
+  border-color: #c9a55c;
+  background: #fff8ea;
 }
 
 /* Responsive */

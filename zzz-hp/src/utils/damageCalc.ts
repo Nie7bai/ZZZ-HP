@@ -79,7 +79,8 @@ export interface DamageCalcInput {
   triggerAgentLevel?: number
   /**
    * 异常类触发者局内最终面板（与 triggerFinalPanel 不是同一角色语义）：
-   * 异放/耀变增伤与倍率，以及所有异常类的减防/无视防御。
+   * 属性异常/异放/耀变的类型增伤与倍率；以及所有异常类的减防/无视防御。
+   * 紊乱/乱流类型增伤取 finalPanel（招式持有者）。
    */
   anomalyTriggerPanel?: PanelStats
   /** 队伍有蕾米埃尔时的异化系数乘区（预计算） */
@@ -400,10 +401,10 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     input.ownerAgentResistanceElement ?? input.mainAgentResistanceElement ?? ownerElement
   const durationElement =
     input.anomalyTriggerElement ?? ownerElement ?? ''
-  /** 异放/耀变/属性异常：增伤与倍率取异常类触发者；紊乱/乱流增伤取持有者；异常基础取异常强度提供者 */
+  /** 属性异常/异放/耀变：类型增伤与倍率取异常类触发者；紊乱/乱流取招式持有者 */
   const bonusPanel =
     useTriggerBase &&
-    (subKind === 'anomalyRelease' || subKind === 'radiance' || subKind === 'anomaly')
+    (subKind === 'anomalyRelease' || subKind === 'anomaly' || subKind === 'radiance')
       ? triggerAgentPanel
       : panel
 
@@ -485,7 +486,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const settlementDamageExpected = directBaseChain * settlementDmgMultZone
   const directDamageExpected = directDamageFromDirectMult + settlementDamageExpected
 
-  // 异常乘区：属性异常/异放/耀变取异常类触发者（bonusPanel）；紊乱/乱流取持有者；基础期望取异常强度提供者
+  // 异常乘区：属性异常/异放/耀变取异常类触发者（bonusPanel）；紊乱/乱流取招式持有者；基础期望取异常强度提供者
   const anomalyDmgBonusZone = 1 + bonusPanel.anomalyDmgBonus / 100
   const anomalyMultZone =
     Math.max(0, bonusPanel.anomalyMult / 100) * readFactor(bonusPanel.anomalyMultFactor)
@@ -611,12 +612,9 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const turbulenceExpectedNoCrit = turbulencePreCrit * anomalyNoCritZone
   const turbulenceExpectedFullCrit = turbulencePreCrit * anomalyFullCritZone
 
-  const radianceDmgBonusForCombined = remielSelf
-    ? remielSelf.radianceDmgBonus
-    : bonusPanel.radianceDmgBonus
-  const anomalyDmgBonusForCombined = remielSelf
-    ? remielSelf.anomalyDmgBonus
-    : bonusPanel.anomalyDmgBonus
+  // 耀变综合增伤 = 耀变增伤 + 异常增伤，二者均取异常类触发者面板（含队友赋予的耀变增伤）
+  const radianceDmgBonusForCombined = bonusPanel.radianceDmgBonus
+  const anomalyDmgBonusForCombined = bonusPanel.anomalyDmgBonus
   const radianceCombinedDmgBonusZone =
     1 + (radianceDmgBonusForCombined + anomalyDmgBonusForCombined) / 100
   const radianceMultZone = computeRadianceMultZone(bonusPanel)
