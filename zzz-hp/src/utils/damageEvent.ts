@@ -123,6 +123,24 @@ export function pickEventDamage(
   return result.turbulenceExpected
 }
 
+/**
+ * 流程卡外侧汇总用暴击模式：
+ * 异常 / 乱流 / 异放固定必暴击；直伤、紊乱、耀变仍跟随条目 critMode。
+ */
+export function resolveFlowHitCritMode(
+  damageType: DamageEventKind,
+  entryCritMode: DamageEventCritMode,
+): DamageEventCritMode {
+  if (
+    damageType === 'anomaly' ||
+    damageType === 'turbulence' ||
+    damageType === 'anomalyRelease'
+  ) {
+    return 'fullCrit'
+  }
+  return entryCritMode
+}
+
 export function disorderLabelFromResult(result: DamageCalcResult): string {
   return result.hasPolarDisorder ? '极性紊乱' : '紊乱伤害'
 }

@@ -488,7 +488,8 @@ const detailSkipReason = computed(() => {
 })
 
 const detailZoneRows = computed(() => {
-  // 乘区/期望伤害仅流程详情展示；准备招式与招式库不算伤
+  // 乘区 / 最终伤害仅流程详情展示；准备招式与招式库不算伤
+  // 异常类：外侧汇总必暴击；详情内同时展示暴击 / 期望 / 不暴击。直伤仍为期望。
   if (detail.value?.kind !== 'flow') return []
   const skill = detailSkill.value
   const key = detailCalcKey.value

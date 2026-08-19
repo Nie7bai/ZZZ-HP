@@ -23,6 +23,7 @@ import {
   getTurbulenceParticipationFailureReason,
   mapEventKindToCalc,
   pickEventDamage,
+  resolveFlowHitCritMode,
 } from '@/utils/damageEvent'
 import {
   canAgentBeAnomalyProducerForKind,
@@ -190,7 +191,7 @@ function resolveOne(
     triggerAgentId: prepared.triggerAgentId?.trim() || defaults.triggerAgentId,
     count: Math.max(0, Number(entry.count) || 0),
     staggerPhase: entry.staggerPhase,
-    critMode: entry.critMode,
+    critMode: resolveFlowHitCritMode(skill.damageType, entry.critMode),
     damageKind,
     anomalySubKind,
     coords,

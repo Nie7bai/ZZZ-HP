@@ -24,6 +24,38 @@ function push(
   rows.push({ label, value: formatZoneValue(value, asDamage) })
 }
 
+/** 乘区是否实质参与（非恒等于 1） */
+function isActiveZone(value: number) {
+  return Number.isFinite(value) && Math.abs(value - 1) > 1e-6
+}
+
+/**
+ * 流程「计算过程」最终格（仅异常类）：
+ * - 有暴击区 → 同时展示暴击伤害 / 期望伤害 / 不暴击伤害
+ * - 无暴击区 → 只展示期望伤害
+ * 直伤仍始终展示期望暴击区 + 期望伤害。
+ * 流程卡外侧数字对异常类取必暴击，见 resolveFlowHitCritMode。
+ */
+function pushAnomalyFinalDamages(
+  rows: SkillCalcZoneRow[],
+  options: {
+    hasCritZone: boolean
+    critDamage: number
+    expectedDamage: number
+    noCritDamage?: number
+  },
+) {
+  if (options.hasCritZone) {
+    push(rows, '暴击伤害', options.critDamage, true)
+    push(rows, '期望伤害', options.expectedDamage, true)
+    if (options.noCritDamage != null) {
+      push(rows, '不暴击伤害', options.noCritDamage, true)
+    }
+  } else {
+    push(rows, '期望伤害', options.expectedDamage, true)
+  }
+}
+
 /** 计算过程用：该伤害类型对应的最终倍率区（紊乱/乱流含持续时间×补偿） */
 export function pickSkillMultZone(
   result: DamageCalcResult,
@@ -142,10 +174,18 @@ export function buildSkillCalcZoneRows(
   }
 
   if (damageType === 'anomaly') {
+    const hasCritZone = isActiveZone(result.anomalyFullCritZone)
     push(rows, '异常增伤区', result.anomalyDmgBonusZone)
     push(rows, '异常倍率区', result.anomalyMultZone)
-    push(rows, '异常暴击区', result.anomalyCritZone)
-    push(rows, '期望伤害', result.anomalyExpected, true)
+    if (hasCritZone) {
+      push(rows, '异常暴击区', result.anomalyFullCritZone)
+    }
+    pushAnomalyFinalDamages(rows, {
+      hasCritZone,
+      critDamage: result.anomalyExpectedFullCrit,
+      expectedDamage: result.anomalyExpected,
+      noCritDamage: result.anomalyExpectedNoCrit,
+    })
     return rows
   }
 
@@ -160,23 +200,38 @@ export function buildSkillCalcZoneRows(
   }
 
   if (damageType === 'turbulence') {
+    const hasCritZone =
+      result.turbulenceUsesAnomalyCrit && isActiveZone(result.anomalyFullCritZone)
     push(rows, '乱流基础倍率', result.turbulenceBaseMultRatio)
     push(rows, '异常持续时间', result.effectiveAnomalyDuration)
     push(rows, '乱流补偿倍率', result.turbulenceCompMultRatio)
     push(rows, '乱流倍率区', result.turbulenceZone)
     push(rows, '乱流综合增伤区', result.turbulenceCombinedDmgBonusZone)
-    if (result.turbulenceUsesAnomalyCrit) {
-      push(rows, '异常暴击区', result.anomalyCritZone)
+    if (hasCritZone) {
+      push(rows, '异常暴击区', result.anomalyFullCritZone)
     }
-    push(rows, '期望伤害', result.turbulenceExpected, true)
+    pushAnomalyFinalDamages(rows, {
+      hasCritZone,
+      critDamage: result.turbulenceExpectedFullCrit,
+      expectedDamage: result.turbulenceExpected,
+      noCritDamage: result.turbulenceExpectedNoCrit,
+    })
     return rows
   }
 
   if (damageType === 'anomalyRelease') {
+    const hasCritZone = isActiveZone(result.anomalyCombinedFullCritZone)
     push(rows, '异放综合增伤区', result.anomalyReleaseCombinedDmgBonusZone)
     push(rows, '异放倍率区', result.anomalyReleaseMultZone)
-    push(rows, '异常综合暴击区', result.anomalyCombinedCritZone)
-    push(rows, '期望伤害', result.anomalyReleaseExpected, true)
+    if (hasCritZone) {
+      push(rows, '异常综合暴击区', result.anomalyCombinedFullCritZone)
+    }
+    pushAnomalyFinalDamages(rows, {
+      hasCritZone,
+      critDamage: result.anomalyReleaseExpectedFullCrit,
+      expectedDamage: result.anomalyReleaseExpected,
+      noCritDamage: result.anomalyReleaseExpectedNoCrit,
+    })
     return rows
   }
 
