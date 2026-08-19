@@ -36,17 +36,9 @@ import {
   type PanelStats,
 } from '@/types/calculatorPanel'
 import {
-  AFFIX_COUNT_FIELDS,
   computeExternalPanelFromTeamSlot,
   inferAffixCountsFromExternalPanel,
 } from '@/utils/affixPanelCalc'
-import {
-  DRIVE_DISC_SLOT_4_OPTIONS,
-  DRIVE_DISC_SLOT_5_OPTIONS,
-  DRIVE_DISC_SLOT_6_OPTIONS,
-  AFFIX_DRIVE_DISC_SLOT_1_HP,
-  AFFIX_DRIVE_DISC_SLOT_2_ATK,
-} from '@/utils/affixDriveDiscConfig'
 import {
   BUFF_STAT_FIELDS,
   buffStatFieldLabel,
@@ -60,14 +52,11 @@ import {
 import {
   applyConvertPartialToExternalPanel,
   buildPanelSourceValuesBySlotRecord,
-  collectConvertSourceMarksForSlot,
   collectConvertSupportSlots,
   computeFinalPanel,
   computePiercePower,
   convertSlotPartialToExternalPanel,
-  convertSourceAttrSet,
   externalPanelToConvertPartial,
-  panelSlotUsesConvertSource,
   panelToConvertAttrValues,
   resolveBuffSelectionForSlot,
   resolveAnomalyReleaseMultFields,
@@ -174,6 +163,10 @@ const EXTERNAL_PANEL_SLOTS: PanelFieldSlot[] = [
   { id: 'anomalyControl', kind: 'stat', key: 'anomalyControl', label: '异常掌控' },
   { id: 'energyRegen', kind: 'stat', key: 'energyRegen', label: '能量回复效率%' },
   { id: 'anomalyDuration', kind: 'stat', key: 'anomalyDuration', label: '异常持续时间(s)' },
+  { id: 'disorderBaseMult', kind: 'stat', key: 'disorderBaseMult', label: '紊乱基础倍率%' },
+  { id: 'disorderCompMult', kind: 'stat', key: 'disorderCompMult', label: '紊乱补偿倍率%' },
+  { id: 'turbulenceBaseMult', kind: 'stat', key: 'turbulenceBaseMult', label: '乱流基础倍率%' },
+  { id: 'turbulenceCompMult', kind: 'stat', key: 'turbulenceCompMult', label: '乱流补偿倍率%' },
 ]
 
 /** 局内最终面板字段 — 倍率/factor/finalRate 移至伤害事件详情 */
@@ -263,11 +256,8 @@ const baseDamageSource = ref<BaseDamageSource>('atk')
 const showDetailedResults = ref(false)
 const selectedDamageEventId = ref<string | null>(null)
 const damageEventSummary = ref<{ lines: HitLine[]; grandTotal: number } | null>(null)
-const previewHitSummary = ref<{ lines: HitLine[]; grandTotal: number } | null>(null)
 const HIT_RESULT_DEBOUNCE_MS = 80
-const PREVIEW_HIT_DEBOUNCE_MS = 240
 let hitSummarySyncTimer: ReturnType<typeof setTimeout> | null = null
-let previewHitSummarySyncTimer: ReturnType<typeof setTimeout> | null = null
 /**
  * calcSuspended 解除后延后恢复伤害汇总，避免切回面板时同步卡死。
  * 首帧保持 false→true 与挂起态对齐：挂起时关闭，恢复时双 rAF 后再开。
@@ -490,24 +480,15 @@ function derivedExternalPanelForSlot(slotIndex: number): PanelStats {
 
 const derivedExternalPanel = computed(() => derivedExternalPanelForSlot(mainSlotIndex.value))
 
-function driveDiscNameById(id: string) {
-  if (!id || id === 'none') return null
-  return props.driveDiscs.find((item) => item.id === id)?.name ?? null
-}
-
-const mainDriveDiscSummary = computed(() => {
-  const slot = mainSlot.value
-  const fourName = driveDiscNameById(slot.fourPieceDriveDiscId)
-  const twoName = driveDiscNameById(slot.twoPieceDriveDiscId)
-  const parts: string[] = []
-  if (fourName) parts.push(`4件：${fourName}`)
-  if (twoName && twoName !== fourName) parts.push(`2件：${twoName}`)
-  return parts.length ? parts.join(' · ') : '未选择（请先点选编队槽位并配置驱动盘）'
+const effectiveExternalPanel = computed<PanelStats>(() => {
+  if (props.calcMode === 'affix') return derivedExternalPanel.value
+  const id = mainAgent.value?.id
+  const saved = id ? props.anomalySlotPanels?.[id] : undefined
+  if (saved && !isPlaceholderExternalPanel(saved)) {
+    return fillPanelStatsDefaults(saved)
+  }
+  return externalPanel
 })
-
-const effectiveExternalPanel = computed<PanelStats>(() =>
-  props.calcMode === 'affix' ? derivedExternalPanel.value : externalPanel,
-)
 
 const isAffixMode = computed(() => props.calcMode === 'affix')
 
@@ -546,15 +527,20 @@ function resolveExternalPanelForSlotIndex(slotIndex: number): PanelStats {
   if (slotIndex < 0 || slotIndex >= props.teamSlots.length) {
     return createDefaultExternalPanel()
   }
-  if (slotIndex === mainSlotIndex.value) return effectiveExternalPanel.value
   const slot = props.teamSlots[slotIndex]
   const agentId = slot?.agentId
   if (!agentId) return createDefaultExternalPanel()
   if (isAffixMode.value) {
     return derivedExternalPanelForSlot(slotIndex)
   }
+  // 局外以导入写入的 anomalySlotPanels 为准（含当前编辑槽），不再优先用可能过期的 live 编辑器
   const anomaly = props.anomalySlotPanels?.[agentId]
-  if (anomaly) return fillPanelStatsDefaults(anomaly)
+  if (anomaly && !isPlaceholderExternalPanel(anomaly)) {
+    return fillPanelStatsDefaults(anomaly)
+  }
+  if (slotIndex === mainSlotIndex.value) {
+    return fillPanelStatsDefaults(externalPanel)
+  }
   const partial = props.convertSlotPanels?.[agentId]
   if (partial) return convertSlotPartialToExternalPanel(partial)
   return createDefaultExternalPanel()
@@ -710,76 +696,6 @@ const convertSupportSlots = computed(() =>
 
 function characterAttrLabel(key: CharacterAttrKey): string {
   return CHARACTER_ATTR_OPTIONS.find((item) => item.id === key)?.label ?? key
-}
-
-const convertMarksBySlot = computed(() => {
-  const map = new Map<number, ReturnType<typeof collectConvertSourceMarksForSlot>>()
-  const ctx = buildBasePanelCalcContext()
-  const indexes = new Set<number>([mainSlotIndex.value])
-  for (const item of anomalySupportSlots.value) indexes.add(item.index)
-  for (const item of convertSupportSlots.value) indexes.add(item.slotIndex)
-  for (const index of indexes) {
-    map.set(index, collectConvertSourceMarksForSlot(ctx, index))
-  }
-  return map
-})
-
-const convertAttrsBySlot = computed(() => {
-  const map = new Map<number, { external: Set<CharacterAttrKey>; final: Set<CharacterAttrKey> }>()
-  for (const [index, marks] of convertMarksBySlot.value) {
-    map.set(index, {
-      external: convertSourceAttrSet(marks, 'external'),
-      final: convertSourceAttrSet(marks, 'final'),
-    })
-  }
-  return map
-})
-
-const editedSlotConvertAttrs = computed(
-  () =>
-    convertAttrsBySlot.value.get(mainSlotIndex.value) ?? {
-      external: new Set<CharacterAttrKey>(),
-      final: new Set<CharacterAttrKey>(),
-    },
-)
-
-const offPanelConvertHints = computed(() =>
-  (convertMarksBySlot.value.get(mainSlotIndex.value) ?? [])
-    .filter((item) => item.attr === 'impact' || item.attr === 'level')
-    .map((item) => `${item.panelSource === 'final' ? '局内' : '局外'}·${characterAttrLabel(item.attr)}`),
-)
-
-function slotConvertAttrs(teamSlotIndex?: number) {
-  return convertAttrsBySlot.value.get(teamSlotIndex ?? mainSlotIndex.value)
-}
-
-function panelFieldUsesConvert(
-  slot: PanelFieldSlot,
-  panel: 'external' | 'final',
-  teamSlotIndex?: number,
-): boolean {
-  const attrs = slotConvertAttrs(teamSlotIndex)?.[panel]
-  if (!attrs?.size) return false
-  return panelSlotUsesConvertSource(slot, attrs)
-}
-
-function externalConvertFieldClass(slot: PanelFieldSlot, teamSlotIndex?: number) {
-  const usesExternal = panelFieldUsesConvert(slot, 'external', teamSlotIndex)
-  const usesFinal = panelFieldUsesConvert(slot, 'final', teamSlotIndex)
-  return {
-    'is-convert-source': usesExternal,
-    'is-convert-source-via-final': !usesExternal && usesFinal,
-  }
-}
-
-function convertAttrFieldClass(attr: CharacterAttrKey, teamSlotIndex: number) {
-  const attrs = slotConvertAttrs(teamSlotIndex)
-  const usesExternal = attrs?.external.has(attr) ?? false
-  const usesFinal = attrs?.final.has(attr) ?? false
-  return {
-    'is-convert-source': usesExternal,
-    'is-convert-source-via-final': !usesExternal && usesFinal,
-  }
 }
 
 function ensureConvertSlotPartial(agentId: string): Partial<Record<CharacterAttrKey, number>> {
@@ -1096,6 +1012,17 @@ function applyRecognitionToExternalPanel(result: PanelScreenshotRecognition) {
   Object.assign(affixCounts, createEmptyAffixCounts(), inferred.affixCounts)
 }
 
+/** 导入确认后：按槽位已提交的词条 / anomaly 面板刷新 live 编辑器 */
+function syncLivePanelFromCommitted() {
+  loadAffixFromCurrentSlot()
+  const id = mainAgent.value?.id
+  if (!id || isAffixMode.value) return
+  const saved = props.anomalySlotPanels?.[id]
+  if (saved) {
+    Object.assign(externalPanel, createDefaultExternalPanel(), saved)
+  }
+}
+
 watch(
   isMbMainAgent,
   (isMb) => {
@@ -1129,9 +1056,21 @@ watch(
     if (oldIdx == null || oldIdx === newIdx) return
     const oldAgentId = props.teamSlots[oldIdx]?.agentId
     if (oldAgentId && !isAffixMode.value) {
-      emitAnomalySlotPanel(oldAgentId, { ...externalPanel })
+      const existing = props.anomalySlotPanels?.[oldAgentId]
+      // 与 flush 一致：已有导入局外时勿用可能未同步的 live 覆盖
+      if (!existing || isPlaceholderExternalPanel(existing)) {
+        emitAnomalySlotPanel(oldAgentId, { ...externalPanel })
+      }
     }
     loadAffixFromCurrentSlot()
+    // 换槽后立刻把当前槽已提交局外灌进 live，供快照/兼容路径使用
+    if (!isAffixMode.value) {
+      const newId = props.teamSlots[newIdx]?.agentId
+      const saved = newId ? props.anomalySlotPanels?.[newId] : undefined
+      if (saved && !isPlaceholderExternalPanel(saved)) {
+        Object.assign(externalPanel, createDefaultExternalPanel(), saved)
+      }
+    }
   },
 )
 
@@ -1140,7 +1079,11 @@ watch(
   (newId, oldId) => {
     if (suppressRestoreResets) return
     if (oldId && !isAffixMode.value) {
-      emitAnomalySlotPanel(oldId, { ...externalPanel })
+      const existing = props.anomalySlotPanels?.[oldId]
+      // 已有导入局外时勿用可能未同步的 live 覆盖
+      if (!existing || isPlaceholderExternalPanel(existing)) {
+        emitAnomalySlotPanel(oldId, { ...externalPanel })
+      }
       const convertSlot = convertSupportSlots.value.find((item) => item.agentId === oldId)
       if (convertSlot) {
         emitConvertSlotPanel(oldId, convertSlot.requiredAttrs, externalPanel)
@@ -1157,7 +1100,7 @@ watch(
     // 首次挂载不要覆盖方案/草稿里已经灌进编辑器的局外面板。
     if (!oldId) {
       const savedAnomaly = props.anomalySlotPanels?.[newId]
-      if (savedAnomaly && !isPlaceholderExternalPanel(savedAnomaly) && mainAgent.value.profession === '异常') {
+      if (savedAnomaly && !isPlaceholderExternalPanel(savedAnomaly)) {
         Object.assign(externalPanel, createDefaultExternalPanel(), savedAnomaly)
         return
       }
@@ -1210,6 +1153,9 @@ function flushCurrentPanelOntoAnomalyMap() {
   if (suppressRestoreResets) return
   const id = mainAgent.value?.id
   if (!id || isAffixMode.value) return
+  const existing = props.anomalySlotPanels?.[id]
+  // 已有导入/已存局外时勿用可能未同步的 live 覆盖
+  if (existing && !isPlaceholderExternalPanel(existing)) return
   emitAnomalySlotPanel(id, { ...externalPanel })
   const convertSlot = convertSupportSlots.value.find((item) => item.agentId === id)
   if (convertSlot) {
@@ -1466,7 +1412,7 @@ function buildHitCalcInput(hit: ResolvedHit): DamageCalcInput | null {
   const luminousMods = resolveLuminousTeamModifiers()
 
   const actualMainId = mainAgent.value?.id ?? ''
-  // 异常增伤/倍率等乘区取异常类触发者；直伤用不到，回落 owner 自己的面板
+  // 异常增伤/倍率等：属性异常/异放/耀变取触发者；紊乱/乱流类型增伤取持有者；直伤用不到
   let anomalyTriggerPanel = evtFinalPanel
   if (needsPowerAgent) {
     if (!hit.triggerAgentId) return null
@@ -1526,11 +1472,9 @@ function buildHitCalcInput(hit: ResolvedHit): DamageCalcInput | null {
     }
   }
 
+  // 耀变综合增伤/倍率/特殊倍率取异常类触发者
   if (damageType === 'radiance') {
     anomalyTriggerPanel = applyRadianceBonusMultOverrides(anomalyTriggerPanel, overrides)
-    if (hit.triggerAgentId === ownerAgentId || !hit.triggerAgentId) {
-      evtFinalPanel = anomalyTriggerPanel
-    }
   }
 
   const ownerResSlot = ownerSlotIndex >= 0 ? ownerSlotIndex : mainSlotIndex.value
@@ -1689,7 +1633,6 @@ type HitLineStore = {
 }
 
 const damageEventLineStore = reactive<HitLineStore>({ signatureById: {}, lineById: {} })
-const previewHitLineStore = reactive<HitLineStore>({ signatureById: {}, lineById: {} })
 
 const hitCalcGlobalSignature = computed(() =>
   JSON.stringify({
@@ -1708,6 +1651,7 @@ const hitCalcGlobalSignature = computed(() =>
     bangboo: [props.selectedBangbooId, props.bangbooRefine],
     edit: props.editedSlotIndex,
     mode: props.calcMode,
+    stagger: props.staggerPhase,
     kind: [
       props.triggerAnomalyAgentId,
       props.damageKind,
@@ -1717,6 +1661,7 @@ const hitCalcGlobalSignature = computed(() =>
     ],
     buffs: slotBuffSelectionsSignature.value,
     convert: convertSlotPanelsSignature.value,
+    // 局外以 anomaly 为准：必须进指纹，否则导入后流程/伤害可能不重算
     anomaly: props.anomalySlotPanels ?? {},
     env: (props.environmentBuffs ?? []).map((item) => item.id),
     extra: extraGains.value,
@@ -1736,7 +1681,7 @@ function syncHitSummary(
   hits: ResolvedHit[] | undefined,
   store: HitLineStore,
   resolveOwnerName?: (hit: ResolvedHit) => string | undefined,
-  options?: { usePerHit?: boolean; forceAll?: boolean },
+  options?: { usePerHit?: boolean; forceAll?: boolean; globalSignature?: string },
 ) {
   const list = hits ?? []
   if (options?.forceAll) clearHitLineStore(store)
@@ -1744,10 +1689,12 @@ function syncHitSummary(
   const nextSignatures: Record<string, string> = {}
   const lines: HitLine[] = []
   let grandTotal = 0
+  const globalSuffix = options?.globalSignature ? `|${options.globalSignature}` : ''
 
   withHitPanelMemo(() => {
     for (const hit of list) {
-      const signature = buildResolvedHitSignature(hit)
+      // 必须带上全局指纹：仅 hit 签名不变时，Buff/盘/局外变化也要失效，避免旧伤害残留
+      const signature = `${buildResolvedHitSignature(hit)}${globalSuffix}`
       nextSignatures[hit.id] = signature
 
       let line = store.lineById[hit.id]
@@ -1786,20 +1733,21 @@ function emitHitMaps() {
   if (props.calcSuspended || !damageCalcEnabled.value) return
   const map: Record<string, number> = {}
   const results: Record<string, DamageCalcResult> = {}
+  // 仅流程 hit 算伤；准备招式 / 招式库预览不算、不写入
   for (const line of damageEventSummary.value?.lines ?? []) {
     map[line.hit.id] = line.total
-    results[line.hit.id] = line.result
-  }
-  for (const line of previewHitSummary.value?.lines ?? []) {
-    map[line.hit.id] = line.perHit
     results[line.hit.id] = line.result
   }
   emit('update:hitDamages', map)
   emit('update:hitCalcResults', results)
 }
 
-let prevHitCalcGlobalSignature = ''
-let prevPreviewGlobalSignature = ''
+let lastSyncedHitGlobalSignature = ''
+let pendingHitForceAll = false
+/** 从挂起/禁用恢复时强制全量重算，避免用挂起前缓存盖掉最优区刚写出的结果 */
+let pendingResumeForceAll = false
+let wasHitCalcInactive = props.calcSuspended || !damageCalcEnabled.value
+
 watch(
   [
     () => props.hits,
@@ -1807,63 +1755,50 @@ watch(
     () => props.calcSuspended,
     () => damageCalcEnabled.value,
   ],
-  ([hits, globalSignature]) => {
+  ([, globalSignature]) => {
+    const inactive = props.calcSuspended || !damageCalcEnabled.value
+    // 挂起期间也要记下「全局已变」，恢复后必须 forceAll
+    if (globalSignature !== lastSyncedHitGlobalSignature) pendingHitForceAll = true
+    if (inactive) {
+      if (!wasHitCalcInactive) pendingResumeForceAll = true
+      wasHitCalcInactive = true
+      if (hitSummarySyncTimer) {
+        clearTimeout(hitSummarySyncTimer)
+        hitSummarySyncTimer = null
+      }
+      return
+    }
+    if (wasHitCalcInactive) {
+      pendingResumeForceAll = true
+      wasHitCalcInactive = false
+    }
     if (hitSummarySyncTimer) {
       clearTimeout(hitSummarySyncTimer)
       hitSummarySyncTimer = null
     }
-    if (props.calcSuspended || !damageCalcEnabled.value) {
-      damageEventSummary.value = null
-      emit('update:hitDamages', {})
-      emit('update:hitCalcResults', {})
-      return
-    }
-    const forceAll = prevHitCalcGlobalSignature !== globalSignature
-    prevHitCalcGlobalSignature = globalSignature
     hitSummarySyncTimer = setTimeout(() => {
       hitSummarySyncTimer = null
+      if (props.calcSuspended || !damageCalcEnabled.value) return
+      const currentSignature = hitCalcGlobalSignature.value
+      const forceAll =
+        pendingHitForceAll ||
+        pendingResumeForceAll ||
+        currentSignature !== lastSyncedHitGlobalSignature
+      pendingHitForceAll = false
+      pendingResumeForceAll = false
+      lastSyncedHitGlobalSignature = currentSignature
+      const hits = props.hits
       damageEventSummary.value = hits?.length
         ? syncHitSummary(
             hits,
             damageEventLineStore,
             (hit) => props.agents.find((item) => item.id === hit.ownerAgentId)?.name,
-            { forceAll },
+            { forceAll, globalSignature: currentSignature },
           )
         : { lines: [], grandTotal: 0 }
+      if (!hits?.length) clearHitLineStore(damageEventLineStore)
       emitHitMaps()
     }, HIT_RESULT_DEBOUNCE_MS)
-  },
-  { immediate: true },
-)
-
-watch(
-  [
-    () => props.previewHits,
-    hitCalcGlobalSignature,
-    () => props.calcSuspended,
-    () => damageCalcEnabled.value,
-  ],
-  ([previewHits, globalSignature]) => {
-    if (previewHitSummarySyncTimer) {
-      clearTimeout(previewHitSummarySyncTimer)
-      previewHitSummarySyncTimer = null
-    }
-    if (props.calcSuspended || !damageCalcEnabled.value) {
-      previewHitSummary.value = null
-      return
-    }
-    const forceAll = prevPreviewGlobalSignature !== globalSignature
-    prevPreviewGlobalSignature = globalSignature
-    previewHitSummarySyncTimer = setTimeout(() => {
-      previewHitSummarySyncTimer = null
-      previewHitSummary.value = previewHits?.length
-        ? syncHitSummary(previewHits, previewHitLineStore, undefined, {
-            usePerHit: true,
-            forceAll,
-          })
-        : { lines: [], grandTotal: 0 }
-      emitHitMaps()
-    }, PREVIEW_HIT_DEBOUNCE_MS)
   },
   { immediate: true },
 )
@@ -1872,10 +1807,6 @@ onUnmounted(() => {
   if (hitSummarySyncTimer) {
     clearTimeout(hitSummarySyncTimer)
     hitSummarySyncTimer = null
-  }
-  if (previewHitSummarySyncTimer) {
-    clearTimeout(previewHitSummarySyncTimer)
-    previewHitSummarySyncTimer = null
   }
   if (anomalyPanelEmitTimer) {
     clearTimeout(anomalyPanelEmitTimer)
@@ -2412,6 +2343,7 @@ const valueTips = computed(() => {
     const trigId = eventLine.hit.triggerAgentId
     if (trigId) {
       const damageType = eventLine.hit.skill.damageType
+      // 减防 tip：属性异常/异放/耀变的 bonus 即为触发者，可共用
       const bonusIsTrigger =
         damageType === 'anomaly' ||
         damageType === 'anomalyRelease' ||
@@ -2534,9 +2466,11 @@ const valueTips = computed(() => {
               ? [RADIANCE_SELF_TRIGGER_HINT]
               : usesProducerMult
                 ? [
-                    '异常基础乘区、紊乱/乱流倍率与异常持续时间取异常强度提供者面板；乱流/紊乱增伤与异常暴击取招式持有者；减防/无视防御取异常类触发者',
+                    '异常基础乘区（含通用增伤区）、紊乱/乱流倍率与异常持续时间取异常强度提供者面板；类型增伤（乱流/紊乱增伤）与异常暴击取招式持有者；减防/无视防御取异常类触发者',
                   ]
-                : ['异常基础乘区（含等级区）取异常强度提供者面板；减防/无视防御取异常类触发者'],
+                : [
+                    '异常基础乘区（含通用增伤区、等级区）取异常强度提供者面板；类型增伤/倍率取异常类触发者；减防/无视防御取异常类触发者',
+                  ],
         },
       ]
     : []
@@ -2644,15 +2578,39 @@ const valueTips = computed(() => {
               defProcessItems,
             )
           : pierceBaseDamageTips,
-    dmgMultiplier: withTotal(
-      buildStatSourceGroups({
+    dmgMultiplier: (() => {
+      const tipSkillBonus =
+        (usesProducerBase
+          ? eventPowerBreakdown!.totalMods.skillDmgBonus
+          : (ownerBreakdown?.totalMods ?? panelBreakdown.value.totalMods).skillDmgBonus) ?? 0
+      const tipGeneralBonus = tipPanel.dmgBonus - tipSkillBonus
+      const generalGroups = buildStatSourceGroups({
         keys: ['dmgBonus'],
         externalPanel: tipExternal,
         sources: tipSources,
-        finalValues: { dmgBonus: tipPanel.dmgBonus },
-      }),
-      `局内增伤 ${formatFormulaNumber(tipPanel.dmgBonus, 2)}% → 增伤区 1 + ${formatFormulaNumber(tipPanel.dmgBonus, 2)}% = ${formatFormulaNumber(p.dmgMultiplier)}`,
-    ),
+        finalValues: { dmgBonus: tipGeneralBonus },
+      }).map((group) => ({
+        ...group,
+        label: tipSkillBonus ? `通用 · ${group.label}` : group.label,
+      }))
+      const skillGroups = tipSkillBonus
+        ? buildStatSourceGroups({
+            keys: ['skillDmgBonus'],
+            externalPanel: tipExternal,
+            sources: tipSources,
+            finalValues: { skillDmgBonus: tipSkillBonus },
+          }).map((group) => ({
+            ...group,
+            label: `招式 · ${group.label}`,
+          }))
+        : []
+      return withTotal(
+        [...generalGroups, ...skillGroups],
+        tipSkillBonus
+          ? `增伤区 1 + ${formatFormulaNumber(tipGeneralBonus, 2)}% + ${formatFormulaNumber(tipSkillBonus, 2)}% = ${formatFormulaNumber(p.dmgMultiplier)}`
+          : `局内增伤 ${formatFormulaNumber(tipPanel.dmgBonus, 2)}% → 增伤区 1 + ${formatFormulaNumber(tipPanel.dmgBonus, 2)}% = ${formatFormulaNumber(p.dmgMultiplier)}`,
+      )
+    })(),
     defenseMultiplier: buildDefenseZoneSourceGroups({
       enemyDefense: enemy.defense,
       penRatePanel: tipPanel,
@@ -3390,25 +3348,33 @@ const valueTips = computed(() => {
         ],
       },
     ],
-    radianceCombinedDmgBonusZone: [
-      {
-        label: '乘区组成',
-        items: [
-          `耀变增伤区 1 + ${formatFormulaNumber(bonusPanel.radianceDmgBonus, 2)}% = ${formatFormulaNumber(1 + bonusPanel.radianceDmgBonus / 100)}`,
-          `异常增伤区 1 + ${formatFormulaNumber(bonusPanel.anomalyDmgBonus, 2)}% = ${formatFormulaNumber(p.anomalyDmgBonusZone)}`,
-          `耀变综合增伤区 1 + (${formatFormulaNumber(bonusPanel.radianceDmgBonus, 2)}% + ${formatFormulaNumber(bonusPanel.anomalyDmgBonus, 2)}%) = ${formatFormulaNumber(p.radianceCombinedDmgBonusZone)}`,
-        ],
-      },
-      ...buildStatSourceGroups({
-        keys: ['radianceDmgBonus', 'anomalyDmgBonus'],
-        externalPanel: bonusExternal,
-        sources: bonusSources,
-        finalValues: {
-          radianceDmgBonus: bonusPanel.radianceDmgBonus,
-          anomalyDmgBonus: bonusPanel.anomalyDmgBonus,
+    radianceCombinedDmgBonusZone: (() => {
+      // 耀变增伤与异常增伤均取异常类触发者（bonusPanel），本人耀变也不改走受限自身面板
+      const radianceBonus = bonusPanel.radianceDmgBonus
+      const anomalyBonus = bonusPanel.anomalyDmgBonus
+      return [
+        {
+          label: '乘区组成',
+          items: [
+            `耀变增伤区 1 + ${formatFormulaNumber(radianceBonus, 2)}% = ${formatFormulaNumber(1 + radianceBonus / 100)}`,
+            `异常增伤区 1 + ${formatFormulaNumber(anomalyBonus, 2)}% = ${formatFormulaNumber(p.anomalyDmgBonusZone)}`,
+            `耀变综合增伤区 1 + (${formatFormulaNumber(radianceBonus, 2)}% + ${formatFormulaNumber(anomalyBonus, 2)}%) = ${formatFormulaNumber(p.radianceCombinedDmgBonusZone)}`,
+          ],
         },
-      }),
-    ],
+        ...buildStatSourceGroups({
+          keys: ['radianceDmgBonus'],
+          externalPanel: bonusExternal,
+          sources: bonusSources,
+          finalValues: { radianceDmgBonus: radianceBonus },
+        }),
+        ...buildStatSourceGroups({
+          keys: ['anomalyDmgBonus'],
+          externalPanel: bonusExternal,
+          sources: bonusSources,
+          finalValues: { anomalyDmgBonus: anomalyBonus },
+        }),
+      ]
+    })(),
     radianceMultZone: withTotal(
       buildStatSourceGroups({
         keys: ['radianceMult', 'radianceMultFactor'],
@@ -3785,6 +3751,20 @@ function resolveMultDefaultsForEvent(
   return result
 }
 
+/** 导入草稿等场景：用指定局外 + 当前增益上下文实时算局内 */
+function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats | null {
+  const index = slotIndex ?? mainSlotIndex.value
+  if (index < 0 || index >= props.teamSlots.length) return null
+  try {
+    return computeFinalPanel(
+      fillPanelStatsDefaults(external),
+      buildPanelCalcContextForSlot(index),
+    ).finalPanel
+  } catch {
+    return null
+  }
+}
+
 defineExpose({
   getSnapshot,
   loadSnapshot,
@@ -3793,6 +3773,8 @@ defineExpose({
   flushAffixOntoTeamSlots,
   loadAffixFromCurrentSlot,
   applyRecognitionToExternalPanel,
+  syncLivePanelFromCommitted,
+  previewFinalPanel,
   convertAttrDefaults,
   convertPanelSourceValues,
   panelSourceValuesBySlot,
@@ -3801,6 +3783,28 @@ defineExpose({
   getPanelSourceValuesForSlot,
   panelBreakdown,
   enemyInput,
+  slotPanelPreviews: computed(() => {
+    void panelBreakdown.value
+    void slotBuffSelectionsSignature.value
+    void slotExternalPanelsMap.value
+    void props.anomalySlotPanels
+    void props.convertSlotPanels
+    void extraGains.value
+    void props.bangbooRefine
+    void selectedBangboo.value.id
+    void props.staggerPhase
+    void props.environmentBuffs
+    return props.teamSlots.map((slot, index) => {
+      if (!slot.agentId) return null
+      const external = resolveExternalPanelForSlotIndex(index)
+      try {
+        const breakdown = computeFinalPanel(external, buildPanelCalcContextForSlot(index))
+        return { external, final: breakdown.finalPanel }
+      } catch {
+        return { external, final: null }
+      }
+    })
+  }),
   applyEnemyInput(next: import('@/utils/enemyResistance').DamageEnemyInput) {
     Object.assign(enemyInput.value, normalizeDamageEnemyInput(next))
   },
@@ -3811,13 +3815,10 @@ defineExpose({
   <section :id="sectionId" class="section-card panel-section damage-anchor">
     <header class="section-header">
       <div>
-        <h2>面板录入与伤害计算</h2>
+        <h2>伤害计算</h2>
         <p class="section-desc">
-          {{
-            isAffixMode
-              ? '录入副词条条数，由角色/音擎基础属性推导局外面板；局内面板与伤害乘区逻辑与面板计算一致。'
-              : '录入当前槽位角色的局外面板（初始面板），局内面板由队伍增益、音擎、邦布与额外 Buff 自动汇总。'
-          }}
+          全队局外 / 词条 / 局内面板请在「导入」中录入与查看；悬停顶部槽位可预览局外与局内（随 Buff
+          增益实时更新）。此处仅结算伤害结果。
         </p>
       </div>
     </header>
@@ -3859,270 +3860,6 @@ defineExpose({
         <span>邦布精炼</span>
         <input :value="`精${bangbooRefine}`" type="text" readonly />
       </label>
-    </div>
-
-    <section v-if="isAffixMode" class="panel-block affix-input-block">
-      <header class="panel-block-header">
-        <h3>驱动盘主属性</h3>
-        <p>
-          2/4 件套沿用上方当前槽位的驱动盘选择（{{ mainDriveDiscSummary }}）；默认 6 盘均为 15 级，1 号
-          +{{ AFFIX_DRIVE_DISC_SLOT_1_HP }} 生命、2 号 +{{ AFFIX_DRIVE_DISC_SLOT_2_ATK }} 攻击。请选择
-          4/5/6 号盘主属性。
-        </p>
-      </header>
-      <div class="grid four">
-        <label class="field">
-          <span>4 号盘主属性</span>
-          <select v-model="affixDriveDiscMainStats.slot4MainStat">
-            <option v-for="option in DRIVE_DISC_SLOT_4_OPTIONS" :key="option.id" :value="option.id">
-              {{ option.label }}
-            </option>
-          </select>
-        </label>
-        <label class="field">
-          <span>5 号盘主属性</span>
-          <select v-model="affixDriveDiscMainStats.slot5MainStat">
-            <option v-for="option in DRIVE_DISC_SLOT_5_OPTIONS" :key="option.id" :value="option.id">
-              {{ option.label }}
-            </option>
-          </select>
-        </label>
-        <label class="field">
-          <span>6 号盘主属性</span>
-          <select v-model="affixDriveDiscMainStats.slot6MainStat">
-            <option v-for="option in DRIVE_DISC_SLOT_6_OPTIONS" :key="option.id" :value="option.id">
-              {{ option.label }}
-            </option>
-          </select>
-        </label>
-      </div>
-    </section>
-
-    <section v-if="isAffixMode" class="panel-block affix-input-block">
-      <header class="panel-block-header">
-        <h3>词条数</h3>
-        <p>
-          基于当前角色基础面板、音擎与驱动盘属性计算局外面板；每条副词条按固定数值折算（如生命 +112、攻击 +19、穿透 +9、双暴 +2.4%/+4.8%、精通 +9 等）。
-        </p>
-      </header>
-      <p v-if="!mainAgent" class="affix-hint">请先在编队中点选要编辑的角色，以加载其基础面板。</p>
-      <div class="grid four">
-        <label v-for="field in AFFIX_COUNT_FIELDS" :key="field.key" class="field">
-          <span>{{ field.label }}（{{ field.unitLabel }}）</span>
-          <input v-model.number="affixCounts[field.key]" type="number" min="0" step="1" />
-          <span class="field-hint">每条 +{{ field.perCount }}</span>
-        </label>
-      </div>
-      <div v-if="mainAgent" class="affix-base-summary">
-        <p>
-          基础来源：{{ mainAgent.name }}（生命 {{ mainAgent.basePanel.hp }} / 攻击
-          {{ mainAgent.basePanel.atk }}）
-          <template v-if="mainWengine">
-            · {{ mainWengine.name }}（音擎攻击 {{ mainWengine.baseAtk }}）
-          </template>
-        </p>
-      </div>
-    </section>
-
-    <div class="panel-layout">
-      <div class="panel-layout-left">
-        <section class="panel-block">
-          <header class="panel-block-header">
-            <h3>局外面板（初始）</h3>
-            <p>
-              {{
-                isAffixMode
-                  ? '由词条数、驱动盘与角色/音擎基础属性自动计算，不含战斗增益。'
-                  : '仅展示录入或上传的角色面板数据，不含任何战斗增益。'
-              }}
-              <template v-if="editedSlotConvertAttrs.external.size">
-                实线绿框为局外转模来源。
-              </template>
-              <template v-if="editedSlotConvertAttrs.final.size">
-                虚线绿框为局内转模对应的局外属性。
-              </template>
-            </p>
-            <p v-if="offPanelConvertHints.length" class="convert-source-hint">
-              另有转模来源未在本表展示：{{ offPanelConvertHints.join('、') }}
-            </p>
-          </header>
-          <div class="grid four">
-            <template v-for="slot in EXTERNAL_PANEL_SLOTS" :key="`external-${slot.id}`">
-              <div v-if="slot.kind === 'spacer'" class="field field-spacer" aria-hidden="true" />
-              <label
-                v-else-if="slot.kind === 'stat'"
-                class="field"
-                :class="externalConvertFieldClass(slot)"
-              >
-                <span class="field-label">{{ slot.label }}</span>
-                <input
-                  v-if="!isAffixMode"
-                  v-model.number="externalPanel[slot.key]"
-                  type="number"
-                  step="any"
-                />
-                <input
-                  v-else
-                  :value="formatPanelSlot(slot, 'external')"
-                  type="text"
-                  readonly
-                />
-              </label>
-              <label
-                v-else
-                class="field"
-                :class="externalConvertFieldClass(slot)"
-              >
-                <span class="field-label">{{ slot.label }}</span>
-                <input :value="formatPanelSlot(slot, 'external')" type="text" readonly />
-              </label>
-            </template>
-          </div>
-        </section>
-
-        <section
-          v-if="anomalySupportSlots.length"
-          class="panel-block anomaly-support-panels"
-        >
-          <header class="panel-block-header">
-            <h3>其他参与者 · 局外面板</h3>
-            <p>
-              词条模式：此处只读，显示该槽自己的词条/驱动盘算出的局外。面板模式：可改手填局外。也可以切到该槽编辑。
-            </p>
-          </header>
-          <details
-            v-for="item in anomalySupportSlots"
-            :key="item.slot.agentId"
-            class="anomaly-slot-details"
-          >
-            <summary>
-              {{ props.agents.find((a) => a.id === item.slot.agentId)?.name ?? item.slot.agentId }}
-              ·
-              {{ props.agents.find((a) => a.id === item.slot.agentId)?.element ?? '' }}
-            </summary>
-            <div class="grid four">
-              <label
-                v-for="slot in EXTERNAL_PANEL_SLOTS.filter((s) => s.kind === 'stat')"
-                :key="`${item.slot.agentId}-${slot.id}`"
-                class="field"
-                :class="externalConvertFieldClass(slot, item.index)"
-              >
-                <span class="field-label">{{ slot.label }}</span>
-                <input
-                  type="number"
-                  step="any"
-                  :value="resolveExternalPanelForSlotIndex(item.index)[slot.key]"
-                  :readonly="isAffixMode"
-                  @change="
-                    isAffixMode
-                      ? undefined
-                      : updateAnomalySlotPanel(
-                          item.slot.agentId,
-                          slot.key,
-                          Number(($event.target as HTMLInputElement).value) || 0,
-                        )
-                  "
-                />
-              </label>
-            </div>
-            <details class="anomaly-producer-final-details">
-              <summary>局内面板（只读）</summary>
-              <div class="grid four">
-                <label
-                  v-for="slot in FINAL_PANEL_SLOTS"
-                  :key="`${item.slot.agentId}-final-${slot.id}`"
-                  class="field"
-                  :class="{
-                    'field-spacer-wrap': slot.kind === 'spacer',
-                    'is-convert-source': panelFieldUsesConvert(slot, 'final', item.index),
-                  }"
-                >
-                  <span v-if="slot.kind !== 'spacer'" class="field-label">{{ slot.label }}</span>
-                  <input
-                    v-if="slot.kind !== 'spacer'"
-                    :value="formatAnomalyFinalPanel(item.slot.agentId, slot)"
-                    type="text"
-                    readonly
-                  />
-                </label>
-              </div>
-            </details>
-          </details>
-        </section>
-
-        <section
-          v-if="convertSupportSlots.length"
-          class="panel-block convert-support-panels"
-        >
-          <header class="panel-block-header">
-            <h3>转模增益角色 · 局外面板</h3>
-            <p>
-              队友增益含<strong>局外/局内转模</strong>且来源非主
-              C、非异常产生角色时，仅需录入该角色转模实际用到的来源属性；局内面板将在此基础上叠加其身上增益后参与转模计算。切换为主
-              C 后，已填属性会映射到主 C 局外面板。
-            </p>
-          </header>
-          <details
-            v-for="item in convertSupportSlots"
-            :key="item.agentId"
-            class="anomaly-slot-details"
-          >
-            <summary>
-              {{ props.agents.find((a) => a.id === item.agentId)?.name ?? item.agentId }}
-              ·
-              {{ props.agents.find((a) => a.id === item.agentId)?.element ?? '' }}
-            </summary>
-            <div class="grid four">
-              <label
-                v-for="attr in item.requiredAttrs"
-                :key="`${item.agentId}-${attr}`"
-                class="field"
-                :class="convertAttrFieldClass(attr, item.slotIndex)"
-              >
-                <span class="field-label">{{ characterAttrLabel(attr) }}</span>
-                <input
-                  type="number"
-                  step="any"
-                  :value="ensureConvertSlotPartial(item.agentId)[attr] ?? 0"
-                  @change="
-                    updateConvertSlotAttr(
-                      item.agentId,
-                      attr,
-                      Number(($event.target as HTMLInputElement).value) || 0,
-                    )
-                  "
-                />
-              </label>
-            </div>
-          </details>
-        </section>
-
-      </div>
-
-      <section class="panel-block panel-block--final panel-layout-right">
-        <header class="panel-block-header">
-          <h3>局内面板（最终）</h3>
-          <p>
-            叠加自身/队友/音擎/邦布/驱动盘/额外 Buff 后的战斗面板，仅展示。
-            <template v-if="editedSlotConvertAttrs.final.size">
-              实线绿框为局内转模来源。
-            </template>
-          </p>
-        </header>
-        <div class="grid four panel-grid-fill">
-          <template v-for="slot in FINAL_PANEL_SLOTS" :key="`final-${slot.id}`">
-            <div v-if="slot.kind === 'spacer'" class="field field-spacer" aria-hidden="true" />
-            <label
-              v-else
-              class="field"
-              :class="{ 'is-convert-source': panelFieldUsesConvert(slot, 'final') }"
-            >
-              <span class="field-label">{{ slot.label }}</span>
-              <input :value="formatPanelSlot(slot, 'final')" type="text" readonly />
-            </label>
-          </template>
-        </div>
-      </section>
     </div>
 
     <!-- 父页可插入招式流程等：构图上落在面板区与伤害结果之间 -->
@@ -4697,57 +4434,6 @@ defineExpose({
 .field span {
   font-size: 0.76rem;
   color: #aab2bf;
-}
-
-.field-label {
-  display: flex;
-  align-items: center;
-  gap: 0.28rem;
-  min-height: 1.05rem;
-}
-
-.field.is-convert-source,
-.field.is-convert-source-via-final {
-  padding: 0.3rem 0.34rem 0.36rem;
-  border-radius: 10px;
-  background: rgba(136, 171, 78, 0.18);
-}
-
-.field.is-convert-source {
-  border: 1px solid #4a6a38;
-}
-
-.field.is-convert-source-via-final {
-  border: 1px dashed #6a9450;
-  background: rgba(136, 171, 78, 0.1);
-}
-
-.field.is-convert-source .field-label,
-.field.is-convert-source > span,
-.field.is-convert-source-via-final .field-label,
-.field.is-convert-source-via-final > span {
-  color: #d6e8b5;
-}
-
-.field.is-convert-source > input,
-.field.is-convert-source > input:read-only,
-.field.is-convert-source-via-final > input,
-.field.is-convert-source-via-final > input:read-only {
-  border-color: #6a9450;
-  background: rgba(136, 171, 78, 0.16);
-  opacity: 1;
-}
-
-.field.is-convert-source-via-final > input,
-.field.is-convert-source-via-final > input:read-only {
-  border-style: dashed;
-  background: rgba(136, 171, 78, 0.08);
-}
-
-.convert-source-hint {
-  margin: -0.2rem 0 0.55rem !important;
-  font-size: 0.72rem;
-  color: #b8d88a;
 }
 
 .field > input,

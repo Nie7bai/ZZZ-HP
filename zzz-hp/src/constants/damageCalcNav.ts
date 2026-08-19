@@ -2,7 +2,6 @@ export const DAMAGE_CALC_SECTIONS = [
   { id: 'damage-calc-history', label: '方案库' },
   { id: 'damage-team', label: '队伍编组' },
   { id: 'damage-bangboo', label: '邦布' },
-  { id: 'damage-panel-upload', label: '图片录入' },
   { id: 'damage-combat-buff', label: '局内 Buff' },
   { id: 'damage-enemy', label: '敌方与环境' },
   { id: 'damage-calc-mode', label: '计算方式' },

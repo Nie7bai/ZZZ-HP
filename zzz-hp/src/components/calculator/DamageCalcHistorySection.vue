@@ -742,6 +742,7 @@ onUnmounted(() => {
 defineExpose({
   openModal,
   closeModal,
+  clearLoadedScheme,
   /** 打开方案库并带提示（例如：请先新建方案再保存事件）；层级高于事件弹窗 */
   openModalWithHint(hint: string) {
     modalOpen.value = true

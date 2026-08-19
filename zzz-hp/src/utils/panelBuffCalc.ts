@@ -677,6 +677,21 @@ export function buildPanelSourceValuesBySlotRecord(
   return Object.fromEntries(buildAllPanelSourceValuesBySlot(ctx, currentSlotExternalPanel).entries())
 }
 
+/** 该槽位装备/影画是否含局外或局内转模（不论当前是否勾选，供顶栏标记） */
+export function slotHasPanelConvertEffect(
+  ctx: PanelCalcContext,
+  slotIndex: number,
+): boolean {
+  for (const item of collectAllBuffEffects(ctx)) {
+    const effect = item.effect
+    if (effect.kind !== 'convert' || !effect.convert) continue
+    if ((effect.convert.panelSource ?? 'external') === 'manual') continue
+    const idx = parseSourceKeySlotIndex(item.sourceKey)
+    if (idx === slotIndex) return true
+  }
+  return false
+}
+
 /** 该槽位是否存在启用的局外/局内转模（非自行设置） */
 export function slotParticipatesInConvertBuff(
   ctx: PanelCalcContext,
@@ -691,6 +706,77 @@ export function slotParticipatesInConvertBuff(
     if (idx === slotIndex) return true
   }
   return false
+}
+
+export type ConvertSourceMark = {
+  attr: CharacterAttrKey
+  panelSource: 'external' | 'final'
+}
+
+/** 转模来源属性中不在常规面板网格上的（冲击力、等级等） */
+export const CONVERT_SOURCE_ATTRS_OFF_PANEL: readonly CharacterAttrKey[] = ['impact', 'level']
+
+/** 当前槽位作为转模来源时，涉及哪些属性、读局外还是局内 */
+export function collectConvertSourceMarksForSlot(
+  ctx: PanelCalcContext,
+  slotIndex: number,
+  options?: { requireEnabled?: boolean },
+): ConvertSourceMark[] {
+  const requireEnabled = options?.requireEnabled !== false
+  const marks = new Map<string, ConvertSourceMark>()
+  for (const item of collectAllBuffEffects(ctx)) {
+    const effect = item.effect
+    if (effect.kind !== 'convert' || !effect.convert) continue
+    const source = effect.convert.panelSource ?? 'external'
+    if (source !== 'external' && source !== 'final') continue
+    if (requireEnabled && !isEffectEnabled(effect, ctx.buffSelection)) continue
+    if (parseSourceKeySlotIndex(item.sourceKey) !== slotIndex) continue
+    const key = `${source}:${effect.convert.from}`
+    if (!marks.has(key)) {
+      marks.set(key, { attr: effect.convert.from, panelSource: source })
+    }
+  }
+  return [...marks.values()]
+}
+
+export function convertSourceAttrSet(
+  marks: ConvertSourceMark[],
+  panelSource: 'external' | 'final',
+): Set<CharacterAttrKey> {
+  return new Set(marks.filter((item) => item.panelSource === panelSource).map((item) => item.attr))
+}
+
+export function convertSourceAttrMatchesPanelSlot(
+  attr: CharacterAttrKey,
+  slot: { kind?: string; key?: string; id?: string },
+): boolean {
+  if (attr === 'pierce') {
+    return slot.kind === 'pierce' || slot.id === 'pierce' || slot.key === 'pierce'
+  }
+  if (CONVERT_SOURCE_ATTRS_OFF_PANEL.includes(attr)) return false
+  return slot.key === attr || slot.id === attr
+}
+
+export function panelSlotUsesConvertSource(
+  slot: { kind?: string; key?: string; id?: string },
+  attrs: Set<CharacterAttrKey>,
+): boolean {
+  for (const attr of attrs) {
+    if (convertSourceAttrMatchesPanelSlot(attr, slot)) return true
+  }
+  return false
+}
+
+export function externalConvertFieldClass(
+  field: { kind?: string; key?: string; id?: string },
+  attrs: { external: Set<CharacterAttrKey>; final: Set<CharacterAttrKey> },
+) {
+  const usesExternal = panelSlotUsesConvertSource(field, attrs.external)
+  const usesFinal = panelSlotUsesConvertSource(field, attrs.final)
+  return {
+    'is-convert-source': usesExternal,
+    'is-convert-source-via-final': !usesExternal && usesFinal,
+  }
 }
 
 /** 队伍是否存在需录入面板的转模增益角色 */

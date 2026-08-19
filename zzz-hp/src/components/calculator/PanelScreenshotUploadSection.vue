@@ -12,11 +12,16 @@ import {
 import { recognizePanelScreenshot } from '@/utils/panelScreenshotRecognize'
 import { recognizeFromOcrApiOutput } from '@/utils/panelTencentOcrRecognize'
 
-const props = defineProps<{
-  agents: AgentBuffDoc[]
-  wengines: WengineBuffDoc[]
-  driveDiscs: DriveDiscBuffDoc[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    agents: AgentBuffDoc[]
+    wengines: WengineBuffDoc[]
+    driveDiscs: DriveDiscBuffDoc[]
+    /** 嵌入导入弹窗等场景：收紧标题与外边距 */
+    embedded?: boolean
+  }>(),
+  { embedded: false },
+)
 
 const emit = defineEmits<{
   'apply-recognition': [result: PanelScreenshotRecognition]
@@ -229,13 +234,20 @@ async function onUploadTencentOcrJson(event: Event) {
 </script>
 
 <template>
-  <section id="damage-panel-upload" class="section-card upload-section damage-anchor">
+  <section
+    :id="embedded ? undefined : 'damage-panel-upload'"
+    class="upload-section"
+    :class="embedded ? 'upload-section--embedded' : 'section-card damage-anchor'"
+  >
     <header class="section-header">
       <div>
-        <h2>图片录入</h2>
+        <h2>{{ embedded ? '截图 / OCR 识别' : '图片录入' }}</h2>
         <p class="section-desc">
-          识别角色面板并填入当前正在编辑的槽位与局外面板；词条数由识别出的局外面板按换算公式反推。也可手动上传 OCR
-          JSON/文本对照。
+          {{
+            embedded
+              ? '识别结果先写入导入预览；点「确定导入」后才落到当前槽位。词条数由局外面板反推。'
+              : '识别角色面板并填入当前正在编辑的槽位与局外面板；词条数由识别出的局外面板按换算公式反推。也可手动上传 OCR JSON/文本对照。'
+          }}
         </p>
       </div>
       <label class="preview-toggle">
@@ -505,5 +517,39 @@ async function onUploadTencentOcrJson(event: Event) {
   .upload-preview img {
     max-height: 240px;
   }
+}
+
+.upload-section--embedded {
+  border: 1px solid #2d323a;
+  border-radius: 10px;
+  padding: 0.65rem 0.7rem;
+  background: rgba(0, 0, 0, 0.18);
+  margin: 0;
+}
+
+.upload-section--embedded .section-header {
+  margin-bottom: 0.45rem;
+}
+
+.upload-section--embedded .section-header h2 {
+  font-size: 0.88rem;
+}
+
+.upload-section--embedded .section-desc {
+  font-size: 0.72rem;
+}
+
+:global([data-theme='light']) .upload-section--embedded {
+  border-color: #c5d7e8;
+  background: #f7fbfe;
+}
+
+:global([data-theme='light']) .upload-section--embedded .section-header h2 {
+  color: #16324a;
+}
+
+:global([data-theme='light']) .upload-section--embedded .section-desc,
+:global([data-theme='light']) .upload-section--embedded .ocr-quota-hint {
+  color: #4d6a80;
 }
 </style>
