@@ -803,8 +803,15 @@ export function schemeStats(entry: DamageCalcHistoryEntry): {
   charN: number
   skillN: number
 } {
-  const charN = entry.teamSlots.filter((s) => s.agentId).length
-  const skillN = (entry.directEvents?.length ?? 0) + (entry.anomalyEvents?.length ?? 0)
+  const charN = entry.teamSlots.filter((slot) => !!slot?.agentId).length
+  const flowCount = Array.isArray(entry.slots)
+    ? entry.slots.reduce(
+        (total, slot) => total + (Array.isArray(slot?.flow) ? slot.flow.length : 0),
+        0,
+      )
+    : undefined
+  const legacyEventCount = (entry.directEvents?.length ?? 0) + (entry.anomalyEvents?.length ?? 0)
+  const skillN = flowCount ?? legacyEventCount
   return { charN, skillN }
 }
 
