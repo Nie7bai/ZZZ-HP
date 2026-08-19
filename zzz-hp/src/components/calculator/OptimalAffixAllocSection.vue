@@ -182,7 +182,8 @@ const props = defineProps<{
   driveDiscs: DriveDiscBuffDoc[]
   selectedBangbooId: string
   bangbooRefine: number
-  /** 是否为当前可见模块；隐藏时不因外部配置变更清空已算结果 */
+  /** 计算页正在编辑的编队槽位；局外面板 / 最优分配跟这个人走 */
+  editedSlotIndex?: number
   active?: boolean
   damageKind?: import('@/utils/optimalAffixAlloc').OptimalDamageKind
   anomalySubKind?: AnomalyDamageSubKind
@@ -270,8 +271,9 @@ const curveMode = ref<CurveMode>('cumulative')
 const anomalyHoverIndex = ref<number | null>(null)
 
 const mainSlotIndex = computed(() => {
-  const index = props.teamSlots.findIndex((slot) => slot.isMainC)
-  return index >= 0 ? index : 0
+  const index = props.editedSlotIndex
+  if (index != null && index >= 0 && index < props.teamSlots.length) return index
+  return 0
 })
 
 const mainSlot = computed(() => props.teamSlots[mainSlotIndex.value]!)
@@ -2229,7 +2231,7 @@ defineExpose({
       </p>
       <template v-else-if="filteredEventAffixImpact.length">
       <p class="hint">
-        对比当前分配下各候选副词条 +1 后，各事件伤害的最大变化。不受主C词条影响的事件（如非主C产生角色的紊乱/乱流）会单独标注。
+        对比当前分配下各候选副词条 +1 后，各事件伤害的最大变化。不受编辑中角色词条影响的事件（如非当前角色产生的紊乱/乱流）会单独标注。
       </p>
       <div class="table-wrap">
         <table>
@@ -2238,7 +2240,7 @@ defineExpose({
               <th>伤害事件</th>
               <th>当前期望</th>
               <th>词条最大变化</th>
-              <th>是否受主C词条影响</th>
+              <th>是否受编辑中角色词条影响</th>
               <th>说明</th>
             </tr>
           </thead>

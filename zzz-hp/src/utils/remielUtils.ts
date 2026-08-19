@@ -130,8 +130,10 @@ export function canAgentBeAnomalyProducerForKind(
 export function computeMutationZone(
   panel: Pick<PanelStats, 'mutationCoeff' | 'mutationCoeffFactor'>,
 ): number {
+  const coeff = Number(panel.mutationCoeff)
+  const safeCoeff = Number.isFinite(coeff) ? coeff : 0
   const ratio = multFactorPercentToRatio(panel.mutationCoeffFactor) || 1
-  return Math.max(0, 1 + panel.mutationCoeff / 100) * ratio
+  return Math.max(0, 1 + safeCoeff / 100) * ratio
 }
 
 export function computeRadianceMultZone(

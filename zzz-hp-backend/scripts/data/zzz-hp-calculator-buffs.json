@@ -61947,7 +61947,7 @@
                 {
                   "id": "eff-ms4tpxkp-9jh4ly",
                   "origin": "",
-                  "scope": "anomaly",
+                  "scope": "general",
                   "applyTarget": "self",
                   "applySituation": "global",
                   "applyProfession": null,
@@ -62186,7 +62186,7 @@
             {
               "id": "eff-ms4tpxkp-9jh4ly",
               "origin": "",
-              "scope": "anomaly",
+              "scope": "general",
               "applyTarget": "self",
               "applySituation": "global",
               "applyProfession": null,
@@ -62314,7 +62314,7 @@
             "special": 0,
             "anomalyCritRate": 0,
             "anomalyCritDmg": 0,
-            "anomalyDmgBonus": 0,
+            "anomalyDmgBonus": 10,
             "anomalyReleaseDmgBonus": 0,
             "anomalyReleaseCritRate": 0,
             "anomalyReleaseCritDmg": 0,

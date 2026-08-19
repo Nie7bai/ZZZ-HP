@@ -14,10 +14,11 @@ import type {
   WengineBuffDoc,
 } from '@/types/calculator'
 import type { AffixCounts, AffixDriveDiscMainStats, PanelStats } from '@/types/calculatorPanel'
-import { createEmptyAffixCounts, createDefaultExternalPanel } from '@/types/calculatorPanel'
+import { createEmptyAffixCounts, createDefaultExternalPanel, fillPanelStatsDefaults } from '@/types/calculatorPanel'
 import {
   AFFIX_VALUE_PER_COUNT,
   computeExternalPanelFromAffixes,
+  computeExternalPanelFromTeamSlot,
   type AffixPanelCalcInput,
 } from '@/utils/affixPanelCalc'
 import {
@@ -57,7 +58,6 @@ import {
 import { mergeSkillSubcategoryMultOverrides } from '@/utils/skillSubcategoryMult'
 import {
   computeFinalPanel,
-  convertSlotPartialToExternalPanel,
   resolveAnomalyReleaseMultFields,
   type BuffSelectionState,
   type MultiSlotBuffSelection,
@@ -519,11 +519,10 @@ function buildOptimalExtraModsForEvent(
   if (!gains.length) return createEmptyBuffStatModifiers()
   const ownerAgentId = hit.ownerAgentId
   const ownerElement = ctx.panelContext.agents.find((item) => item.id === ownerAgentId)?.element
-  const editedAgentId =
-    ctx.panelContext.teamSlots[ctx.panelContext.mainSlotIndex]?.agentId ?? ''
+  const slotIndex = ctx.panelContext.teamSlots.findIndex((slot) => slot.agentId === slotAgentId)
   return mergeExtraModsForEvent(gains, buildSkillContextFromHit(hit, ownerElement), {
+    slotIndex,
     slotAgentId,
-    editedAgentId,
     staggerPhase: hit.staggerPhase,
     resolveAgentProfession: (agentId) =>
       ctx.panelContext.agents.find((item) => item.id === agentId)?.profession,
@@ -549,6 +548,7 @@ function buildPanelContextForSlot(
     mainSlotIndex: slotIndex,
     mainExternalPanel: mainExternalPanel,
     extraMods,
+    extraGains: ctx.extraGains,
     buffSelection: ctx.slotBuffSelections
       ? resolveBuffSelectionForSlot(ctx.slotBuffSelections, slotIndex)
       : ctx.panelContext.buffSelection,
@@ -597,10 +597,10 @@ function resolveExternalForAgent(
   mainExternal: PanelStats,
 ): PanelStats {
   if (slotIndex === ctx.panelContext.mainSlotIndex) return mainExternal
+  const mapped = ctx.panelContext.slotExternalPanels?.[slotIndex]
+  if (mapped) return fillPanelStatsDefaults(mapped)
   const anomaly = ctx.panelContext.anomalySlotPanels?.[agentId]
-  if (anomaly) return { ...anomaly }
-  const partial = ctx.panelContext.convertSlotPanels?.[agentId]
-  if (partial) return convertSlotPartialToExternalPanel(partial)
+  if (anomaly) return fillPanelStatsDefaults(anomaly)
   return createDefaultExternalPanel()
 }
 
@@ -1862,17 +1862,17 @@ function eventAffixImpactReason(
       findLuminousAgentInTeam(ctx.panelContext.teamSlots, ctx.panelContext.agents),
     )
     if (teamHasRemiel) {
-      return `主C副词条变化可影响该事件（含蕾米埃尔攻击转模等全队增益，最大变化 ${maxDelta.toFixed(2)}）`
+      return `编辑中角色副词条变化可影响该事件（含蕾米埃尔攻击转模等全队增益，最大变化 ${maxDelta.toFixed(2)}）`
     }
-    return `主C副词条变化可影响该事件（最大变化 ${maxDelta.toFixed(2)}）`
+    return `编辑中角色副词条变化可影响该事件（最大变化 ${maxDelta.toFixed(2)}）`
   }
   if (line.kind === 'anomalyRelease' && line.total <= AFFIX_IMPACT_EPS) {
     return '异放倍率为 0 或未配置产生角色，当前无法计算异放伤害'
   }
-  return '不受主C副词条变化影响'
+  return '不受编辑中角色副词条变化影响'
 }
 
-/** 各伤害事件对主C副词条变化的敏感度 */
+/** 各伤害事件对编辑中角色副词条变化的敏感度 */
 export function computeEventAffixImpact(
   ctx: OptimalEvalContext,
   baseCounts: AffixCounts,
@@ -2022,9 +2022,37 @@ export function buildOptimalEvalContext(input: {
       buffSelection: input.buffSelection,
       anomalySlotPanels: input.anomalySlotPanels,
       convertSlotPanels: input.convertSlotPanels,
+      slotExternalPanels: Object.fromEntries(
+        input.teamSlots.flatMap((slot, index) =>
+          slot.agentId
+            ? [
+                [
+                  index,
+                  computeExternalPanelFromTeamSlot({
+                    slot,
+                    agents: input.agents,
+                    wengines: input.wengines,
+                    driveDiscs: input.driveDiscs,
+                    overrideAffix:
+                      index === input.mainSlotIndex
+                        ? {
+                            affixCounts: {
+                              ...createEmptyAffixCounts(),
+                              ...slot.affixCounts,
+                            },
+                            affixDriveDiscMainStats: input.driveDiscMainStats,
+                          }
+                        : undefined,
+                  }),
+                ],
+              ]
+            : [],
+        ),
+      ),
       baseAnomalyControl: mainAgent?.basePanel.anomalyControl ?? 0,
       baseEnergyRegen: mainAgent?.basePanel.energyRegen ?? 0,
       environmentBuffs: input.environmentBuffs,
+      extraGains: input.extraGains,
     },
     enemyInput: input.enemyInput,
     baseDamageSource: input.baseDamageSource,

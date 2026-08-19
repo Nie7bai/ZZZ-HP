@@ -334,7 +334,10 @@ const filteredDriveDiscDocs = computed(() =>
       <div class="sidebar-foot" aria-hidden="true">ZZZ-HP</div>
     </aside>
 
-    <section class="content">
+    <section
+      class="content"
+      :class="{ 'content--flush-top': activePage === 'damage' && loaded && !error }"
+    >
       <p v-if="loading || !loaded" class="load-hint">正在从数据库加载计算器数据...</p>
       <p v-else-if="error" class="load-error">{{ error }}</p>
       <template v-else>
@@ -942,6 +945,10 @@ const filteredDriveDiscDocs = computed(() =>
   min-height: 0;
   padding: 1rem;
   overflow-y: auto;
+}
+
+.content--flush-top {
+  padding-top: 0;
 }
 
 .calculator-page.theme-light .content {

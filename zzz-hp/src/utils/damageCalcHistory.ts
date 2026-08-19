@@ -4,11 +4,14 @@ import type {
   DamageCalcHistoryEntry,
   DamageCalcHistoryExport,
   DamageCalcHistoryImportResult,
+  DamageCalcSchemePanelSnapshot,
   DamageCalcWorkingDraft,
   SchemeFolderMeta,
   SchemeStore,
 } from '@/types/damageCalcHistory'
 import { SCHEME_STORE_VERSION } from '@/types/damageCalcHistory'
+import { resetSchemeExcludedPanelFields } from '@/types/calculatorPanel'
+import { normalizeExtraGain } from '@/utils/extraBuffCalc'
 
 const STORAGE_KEY = 'zzz-hp-damage-calc-history'
 const LOADED_KEY = 'zzz-hp-scheme-loaded'
@@ -242,6 +245,68 @@ function migrateStoreToV3(store: SchemeStore): void {
   store.version = SCHEME_STORE_VERSION
 }
 
+/**
+ * 方案快照白名单策略：
+ * - 方案只保存用户侧配置
+ * - 计算器内部派生 / 公式入口不保存，防止通过导入/导出静默改变结算口径
+ *
+ * 当前剔除/重置项（关键）：
+ * - 基础伤害来源开关：不随方案走
+ * - 异化系数乘区输入：mutationCoeff / mutationCoeffFactor 重置为 0 / 100，不 delete
+ *   （delete 后 `undefined + convert` 为 NaN，招式详情期望伤害显示为 —）
+ */
+function sanitizeSchemePanelState(
+  panelState: unknown,
+): DamageCalcSchemePanelSnapshot | null {
+  if (!panelState || typeof panelState !== 'object') return null
+  const ps = panelState as Record<string, any>
+  const { baseDamageSource: _ignored, externalPanel, ...rest } = ps
+  const nextExternalPanel = sanitizeSchemePanelLike(externalPanel)
+  const extraGains = Array.isArray(ps.extraGains)
+    ? ps.extraGains.map((item: unknown) => normalizeExtraGain(item as any))
+    : ps.extraGains
+
+  return {
+    ...rest,
+    extraGains,
+    externalPanel: nextExternalPanel ?? externalPanel,
+  } as DamageCalcSchemePanelSnapshot
+}
+
+function sanitizeSchemePanelLike(panel: unknown) {
+  if (!panel || typeof panel !== 'object') return null
+  return resetSchemeExcludedPanelFields(panel as Record<string, unknown>)
+}
+
+function sanitizeSchemeAnomalySlotPanels(
+  panels: DamageCalcHistoryEntry['anomalySlotPanels'],
+): DamageCalcHistoryEntry['anomalySlotPanels'] {
+  if (!panels || typeof panels !== 'object') return panels
+  const next: NonNullable<DamageCalcHistoryEntry['anomalySlotPanels']> = {}
+  for (const [agentId, panel] of Object.entries(panels)) {
+    const sanitized = sanitizeSchemePanelLike(panel)
+    if (sanitized) next[agentId] = sanitized as any
+  }
+  return next
+}
+
+/**
+ * 方案白名单适配层：
+ * - 保留：队伍、词条数、主属性、额外 Buff 增益、敌方配置、准备/流程、各角色录入面板
+ * - 丢弃：会直接改变工具内部结算口径的字段
+ *
+ * 当前明确不跟方案走：
+ * - panelState.baseDamageSource
+ * - 所有方案面板容器里的 mutationCoeff / mutationCoeffFactor（重置为 0 / 100，不 delete）
+ */
+function sanitizeSchemeEntry(entry: DamageCalcHistoryEntry): DamageCalcHistoryEntry {
+  return {
+    ...entry,
+    panelState: sanitizeSchemePanelState(entry.panelState) ?? entry.panelState,
+    anomalySlotPanels: sanitizeSchemeAnomalySlotPanels(entry.anomalySlotPanels),
+  }
+}
+
 function isValidEntry(item: unknown): item is DamageCalcHistoryEntry {
   if (!item || typeof item !== 'object') return false
   const c = item as Record<string, unknown>
@@ -278,7 +343,7 @@ function migrateFromLegacyArray(list: unknown[]): SchemeStore {
       folder,
       order: 0,
     }
-    store.schemes[key] = entry
+    store.schemes[key] = sanitizeSchemeEntry(entry)
   }
   ensureOrders(store)
   return store
@@ -325,6 +390,7 @@ function readStore(): SchemeStore {
         }
         delete store.schemes[key]
       }
+      store.schemes[entry.id] = sanitizeSchemeEntry(entry)
     }
     // 当前高亮方案 id 同步到新 key（兼容多层 s: 前缀污染）
     const loaded = getLoadedSchemeId()
@@ -335,6 +401,13 @@ function readStore(): SchemeStore {
     }
     ensureOrders(store)
     migrateStoreToV3(store)
+    // 本地历史 / 旧导入数据清洗：把不属于方案白名单的字段剥离掉
+    for (const key of Object.keys(store.schemes)) {
+      const entry = store.schemes[key]
+      if (!entry?.panelState) continue
+      const sanitized = sanitizeSchemePanelState(entry.panelState)
+      if (sanitized) entry.panelState = sanitized
+    }
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(store))
     } catch {
@@ -388,7 +461,7 @@ export function saveDamageCalcHistory(entry: DamageCalcHistoryEntry): DamageCalc
     name,
     order: entry.order ?? 0,
   }
-  store.schemes[key] = normalized
+  store.schemes[key] = sanitizeSchemeEntry(normalized)
   assignOrderFront(store, 'scheme', folder, key)
   writeStore(store)
   return listAllDamageCalcHistory()
@@ -794,7 +867,7 @@ export function formatDamageCalcAgentSelection(
     if (!slot.agentId) return `槽位${index + 1}未选`
     const agent = agents.find((item) => item.id === slot.agentId)
     const name = agent?.name ?? '未知角色'
-    return slot.isMainC ? `${name}（主C）` : name
+    return name
   })
   return labels.join(' / ')
 }
@@ -858,7 +931,7 @@ function ingestSchemes(
     }
     delete entry.directEvents
     delete entry.anomalyEvents
-    target.schemes[key] = entry
+    target.schemes[key] = sanitizeSchemeEntry(entry)
     added++
   }
   return { added, skipped }

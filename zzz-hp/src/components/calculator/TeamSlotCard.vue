@@ -18,7 +18,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   select: []
   remove: []
-  toggleMainC: []
   'update:rank': [value: number]
   'update:refine': [value: number]
 }>()
@@ -105,12 +104,8 @@ const wengineProfessionMatch = computed(() => {
       </div>
 
       <footer class="slot-footer" @click.stop>
-        <label class="main-c">
-          <input type="checkbox" :checked="slot.isMainC" @change="emit('toggleMainC')" />
-          <span>主C</span>
-        </label>
-        <button type="button" class="remove-btn" @click="emit('remove')">移除</button>
         <span v-if="isActive" class="editing-badge">编辑中</span>
+        <button type="button" class="remove-btn" @click="emit('remove')">移除</button>
       </footer>
     </template>
 
@@ -340,14 +335,6 @@ const wengineProfessionMatch = computed(() => {
   display: flex;
   align-items: center;
   gap: 0.55rem;
-}
-
-.main-c {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-size: 0.8rem;
-  color: #d8c39a;
 }
 
 .remove-btn {

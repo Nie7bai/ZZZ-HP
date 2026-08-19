@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onUnmounted, reactive, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { type ExtraBuffGain } from '@/components/calculator/ExtraBuffGainEditor.vue'
 import StatValueWithSources from '@/components/calculator/StatValueWithSources.vue'
@@ -21,13 +21,14 @@ import type {
   WengineBuffDoc,
 } from '@/types/calculator'
 import { CHARACTER_ATTR_OPTIONS } from '@/types/calculator'
-import type { DamageCalcPanelSnapshot } from '@/types/damageCalcHistory'
+import type { DamageCalcPanelSnapshot, DamageCalcSchemePanelSnapshot } from '@/types/damageCalcHistory'
 import {
   applyAgentBaseToPanelStats,
   createDefaultExternalPanel,
   createDefaultAffixDriveDiscMainStats,
   createEmptyAffixCounts,
   createExternalPanelFromAgentBase,
+  fillPanelStatsDefaults,
   isPlaceholderExternalPanel,
   type AffixCounts,
   type AffixDriveDiscMainStats,
@@ -36,7 +37,7 @@ import {
 } from '@/types/calculatorPanel'
 import {
   AFFIX_COUNT_FIELDS,
-  computeExternalPanelFromAffixes,
+  computeExternalPanelFromTeamSlot,
   inferAffixCountsFromExternalPanel,
 } from '@/utils/affixPanelCalc'
 import {
@@ -67,6 +68,7 @@ import {
   panelToConvertAttrValues,
   resolveBuffSelectionForSlot,
   resolveAnomalyReleaseMultFields,
+  type ComputeFinalPanelOptions,
   type ConvertSlotPanels,
   type MultiSlotBuffSelection,
 } from '@/utils/panelBuffCalc'
@@ -80,6 +82,8 @@ import {
   type EnemyResistanceElement,
 } from '@/utils/enemyResistance'
 import {
+  DAMAGE_EVENT_KIND_OPTIONS,
+  disorderLabelFromResult,
   mapEventKindToCalc,
   pickEventDamage,
   applyOwnerPanelMultOverrides,
@@ -92,13 +96,13 @@ import {
   getHitSkipReason,
   skillNeedsDualAgents,
   applyHitPanelMods,
-  summarizeHits,
   type HitLine,
   type ResolvedHit,
 } from '@/utils/resolvedHit'
 import { summarizeDamageByOwner, RADIANCE_SELF_TRIGGER_HINT } from '@/utils/damageEventOwner'
 import {
   mergeExtraModsForEvent,
+  normalizeExtraGain,
 } from '@/utils/extraBuffCalc'
 import {
   computeMutationZone,
@@ -214,7 +218,7 @@ const props = defineProps<{
   driveDiscs: DriveDiscBuffDoc[]
   selectedBangbooId: string
   bangbooRefine: number
-  /** 计算页正在编辑的编队槽位；局外面板跟这个人走，与主C无关 */
+  /** 计算页正在编辑的编队槽位；局外面板跟这个人走 */
   editedSlotIndex: number
   calcMode: PanelCalcMode
   sectionId?: string
@@ -255,6 +259,12 @@ const emit = defineEmits<{
 const baseDamageSource = ref<BaseDamageSource>('atk')
 const showDetailedResults = ref(false)
 const selectedDamageEventId = ref<string | null>(null)
+const damageEventSummary = ref<{ lines: HitLine[]; grandTotal: number } | null>(null)
+const previewHitSummary = ref<{ lines: HitLine[]; grandTotal: number } | null>(null)
+const HIT_RESULT_DEBOUNCE_MS = 80
+const PREVIEW_HIT_DEBOUNCE_MS = 240
+let hitSummarySyncTimer: ReturnType<typeof setTimeout> | null = null
+let previewHitSummarySyncTimer: ReturnType<typeof setTimeout> | null = null
 /**
  * calcSuspended 解除后延后恢复伤害汇总，避免切回面板时同步卡死。
  * 首帧保持 false→true 与挂起态对齐：挂起时关闭，恢复时双 rAF 后再开。
@@ -284,6 +294,8 @@ type AgentAffixState = {
   affixDriveDiscMainStats: AffixDriveDiscMainStats
 }
 const affixStateByAgent = reactive<Record<string, AgentAffixState>>({})
+/** 正在把槽位数据灌进编辑器时，禁止再写回槽位 */
+let applyingAffixState = false
 
 function captureAffixState(): AgentAffixState {
   return {
@@ -293,20 +305,97 @@ function captureAffixState(): AgentAffixState {
 }
 
 function applyAffixState(state: AgentAffixState | undefined) {
+  applyingAffixState = true
   Object.assign(affixCounts, createEmptyAffixCounts(), state?.affixCounts)
   Object.assign(
     affixDriveDiscMainStats,
     createDefaultAffixDriveDiscMainStats(),
     state?.affixDriveDiscMainStats,
   )
+  queueMicrotask(() => {
+    applyingAffixState = false
+  })
+}
+
+function flushAffixOntoSlot(slotIndex: number) {
+  if (suppressRestoreResets) return
+  const slot = props.teamSlots[slotIndex]
+  if (!slot?.agentId) return
+  slot.affixCounts = { ...affixCounts }
+  slot.affixDriveDiscMainStats = { ...affixDriveDiscMainStats }
+  affixStateByAgent[slot.agentId] = captureAffixState()
+}
+
+function flushAffixOntoTeamSlots() {
+  flushAffixOntoSlot(mainSlotIndex.value)
+}
+
+function persistAffixOntoCurrentSlot() {
+  if (suppressRestoreResets || applyingAffixState) return
+  flushAffixOntoSlot(mainSlotIndex.value)
+}
+
+function slotAffixState(slot: TeamSlot | undefined): AgentAffixState | undefined {
+  if (!slot) return undefined
+  if (!slot.affixDriveDiscMainStats && !slot.affixCounts) return undefined
+  return {
+    affixCounts: { ...createEmptyAffixCounts(), ...slot.affixCounts },
+    affixDriveDiscMainStats: {
+      ...createDefaultAffixDriveDiscMainStats(),
+      ...slot.affixDriveDiscMainStats,
+    },
+  }
+}
+
+function loadAffixFromCurrentSlot() {
+  const fromSlot = slotAffixState(props.teamSlots[mainSlotIndex.value])
+  if (fromSlot) {
+    applyAffixState(fromSlot)
+    return
+  }
+  if (suppressRestoreResets) return
+  applyAffixState(undefined)
+}
+
+function migrateSnapshotAffixOntoSlots(
+  snapshot: DamageCalcPanelSnapshot | DamageCalcSchemePanelSnapshot,
+) {
+  const map = snapshot.affixStateByAgent ?? {}
+  props.teamSlots.forEach((slot, index) => {
+    if (!slot.agentId) return
+    const fromMap = map[slot.agentId]
+    const useTopLevel = index === mainSlotIndex.value
+    // 槽位已有值（含「爆伤/攻击/生命」这种合法默认）一律保留；只补空。
+    if (!slot.affixDriveDiscMainStats) {
+      const mains =
+        fromMap?.affixDriveDiscMainStats ??
+        (useTopLevel ? snapshot.affixDriveDiscMainStats : undefined)
+      if (mains) {
+        slot.affixDriveDiscMainStats = {
+          ...createDefaultAffixDriveDiscMainStats(),
+          ...mains,
+        }
+      }
+    }
+    if (!slot.affixCounts) {
+      const counts = fromMap?.affixCounts ?? (useTopLevel ? snapshot.affixCounts : undefined)
+      if (counts) {
+        slot.affixCounts = { ...createEmptyAffixCounts(), ...counts }
+      }
+    }
+  })
+}
+
+function slotIndexForAgent(agentId: string) {
+  return props.teamSlots.findIndex((slot) => slot.agentId === agentId)
 }
 
 function buildExtraModsForHit(hit: ResolvedHit, slotAgentId: string) {
   if (!extraGains.value.length) return createEmptyBuffStatModifiers()
   const ownerElement = props.agents.find((item) => item.id === hit.ownerAgentId)?.element
   return mergeExtraModsForEvent(extraGains.value, buildSkillContextFromHit(hit, ownerElement), {
+    slotIndex: slotIndexForAgent(slotAgentId),
     slotAgentId,
-    editedAgentId: mainAgent.value?.id ?? '',
     staggerPhase: hit.staggerPhase,
     resolveAgentProfession: (agentId) =>
       props.agents.find((item) => item.id === agentId)?.profession,
@@ -327,8 +416,8 @@ function buildExtraModsForMainPanel(): BuffStatModifiers {
       staggerPhase: phase,
     }),
     {
+      slotIndex: mainSlotIndex.value,
       slotAgentId: mainId,
-      editedAgentId: mainId,
       staggerPhase: phase,
       resolveAgentProfession: (agentId) =>
         props.agents.find((item) => item.id === agentId)?.profession,
@@ -349,7 +438,7 @@ function ensureElementResistanceMap() {
   return enemyInput.value.elementResistance!
 }
 
-/** 当前正在编辑的编队槽位（点选代理人卡片），不是主C */
+/** 当前正在编辑的编队槽位（点选代理人卡片） */
 const mainSlotIndex = computed(() => {
   const index = props.editedSlotIndex
   if (index >= 0 && index < props.teamSlots.length) return index
@@ -381,20 +470,22 @@ const mainWengine = computed(() => {
   return props.wengines.find((item) => item.id === id) ?? null
 })
 
-const derivedExternalPanel = computed(() =>
-  computeExternalPanelFromAffixes({
-    agentBase: mainAgent.value?.basePanel ?? createEmptyAgentBasePanel(),
-    wengineBaseAtk: mainWengine.value?.baseAtk ?? 0,
-    wengineAdvanced: mainWengine.value?.advancedStats ?? createEmptyWengineAdvancedStats(),
-    affixCounts,
-    driveDiscSelection: {
-      twoPieceDriveDiscId: mainSlot.value.twoPieceDriveDiscId,
-      fourPieceDriveDiscId: mainSlot.value.fourPieceDriveDiscId,
-    },
-    driveDiscMainStats: affixDriveDiscMainStats,
+function derivedExternalPanelForSlot(slotIndex: number): PanelStats {
+  const slot = props.teamSlots[slotIndex]
+  if (!slot) return createDefaultExternalPanel()
+  const live = slotIndex === mainSlotIndex.value
+  return computeExternalPanelFromTeamSlot({
+    slot,
+    agents: props.agents,
+    wengines: props.wengines,
     driveDiscs: props.driveDiscs,
-  }),
-)
+    overrideAffix: live
+      ? { affixCounts, affixDriveDiscMainStats }
+      : undefined,
+  })
+}
+
+const derivedExternalPanel = computed(() => derivedExternalPanelForSlot(mainSlotIndex.value))
 
 function driveDiscNameById(id: string) {
   if (!id || id === 'none') return null
@@ -449,15 +540,32 @@ const anomalySupportSlots = computed(() => {
 })
 
 function resolveExternalPanelForSlotIndex(slotIndex: number): PanelStats {
+  if (slotIndex < 0 || slotIndex >= props.teamSlots.length) {
+    return createDefaultExternalPanel()
+  }
   if (slotIndex === mainSlotIndex.value) return effectiveExternalPanel.value
-  const agentId = props.teamSlots[slotIndex]?.agentId
+  const slot = props.teamSlots[slotIndex]
+  const agentId = slot?.agentId
   if (!agentId) return createDefaultExternalPanel()
+  if (isAffixMode.value) {
+    return derivedExternalPanelForSlot(slotIndex)
+  }
   const anomaly = props.anomalySlotPanels?.[agentId]
-  if (anomaly) return { ...anomaly }
+  if (anomaly) return fillPanelStatsDefaults(anomaly)
   const partial = props.convertSlotPanels?.[agentId]
   if (partial) return convertSlotPartialToExternalPanel(partial)
   return createDefaultExternalPanel()
 }
+
+/** 每人一份局外，供全队转模按来源槽位取值（不要拿编辑中角色的面板去套队友） */
+const slotExternalPanelsMap = computed<Record<number, PanelStats>>(() => {
+  const map: Record<number, PanelStats> = {}
+  props.teamSlots.forEach((slot, index) => {
+    if (!slot.agentId) return
+    map[index] = resolveExternalPanelForSlotIndex(index)
+  })
+  return map
+})
 
 function resolveRemielSelfRadianceCalcForPowerProvider(
   anomalyPowerAgentId: string | null | undefined,
@@ -485,27 +593,34 @@ function resolveBuffMatchElementForSlot(slotIndex: number): string | undefined {
   return agent?.element
 }
 
-function resolveLuminousMutationBreakdown(skillContext?: SkillCalcContext) {
+function resolveLuminousMutationBreakdown(
+  skillContext?: SkillCalcContext,
+  options?: ComputeFinalPanelOptions,
+) {
   const found = findLuminousAgentInTeam(props.teamSlots, props.agents)
   if (!found) return null
   const external = resolveExternalPanelForSlotIndex(found.slotIndex)
-  const breakdown = computeFinalPanel(external, {
-    ...buildPanelCalcContextForSlot(found.slotIndex),
-    skillContext: {
-      ...(skillContext ??
-        buildGenericPanelSkillContext({
-          element: found.element,
-          staggerPhase: props.staggerPhase ?? 'stagger',
-          damageKind: 'anomaly',
-        })),
-      damageKind: 'anomaly',
+  const breakdown = computeFinalPanel(
+    external,
+    {
+      ...buildPanelCalcContextForSlot(found.slotIndex),
+      skillContext: {
+        ...(skillContext ??
+          buildGenericPanelSkillContext({
+            element: found.element,
+            staggerPhase: props.staggerPhase ?? 'stagger',
+            damageKind: 'anomaly',
+          })),
+        damageKind: 'anomaly',
+      },
     },
-  })
+    options,
+  )
   return { found, external, breakdown, panel: breakdown.finalPanel }
 }
 
 function resolveLuminousTeamModifiers() {
-  const mutation = resolveLuminousMutationBreakdown()
+  const mutation = resolveLuminousMutationBreakdown(undefined, { includeDetails: false })
   if (!mutation) {
     return { mutationZone: 1, radianceResPen: 0 }
   }
@@ -537,10 +652,12 @@ function buildPanelCalcContextForSlot(
     liveExternalSlotIndex: mainSlotIndex.value,
     driveDiscs: props.driveDiscs,
     extraMods: extraModsOverride ?? extraMods.value,
+    extraGains: extraGains.value,
     skillContext: buildSkillContextForSlot(slotIndex),
     buffSelection: resolveBuffSelectionForSlot(props.slotBuffSelections, slotIndex),
     anomalySlotPanels: props.anomalySlotPanels,
     convertSlotPanels: props.convertSlotPanels,
+    slotExternalPanels: slotExternalPanelsMap.value,
     mainExternalPanel: resolveExternalPanelForSlotIndex(mainSlotIndex.value),
     attrValues: getAttrDefaultsForSlot(slotIndex),
     environmentBuffs: props.environmentBuffs,
@@ -620,7 +737,9 @@ function emitConvertSlotPanel(
 
 function ensureAnomalySlotPanel(agentId: string): PanelStats {
   const existing = props.anomalySlotPanels?.[agentId]
-  if (existing && !isPlaceholderExternalPanel(existing)) return existing
+  if (existing && !isPlaceholderExternalPanel(existing)) {
+    return fillPanelStatsDefaults(existing)
+  }
   const agent = props.agents.find((item) => item.id === agentId)
   return createExternalPanelFromAgentBase(agent?.basePanel)
 }
@@ -752,7 +871,8 @@ const triggerExternalPanel = computed<PanelStats | null>(() => {
   if (props.triggerAnomalyAgentId === mainAgent.value?.id) {
     return effectiveExternalPanel.value
   }
-  return ensureAnomalySlotPanel(props.triggerAnomalyAgentId)
+  if (triggerSlotIndex.value < 0) return null
+  return resolveExternalPanelForSlotIndex(triggerSlotIndex.value)
 })
 
 const producerPanelBreakdownByAgentId = computed(() => {
@@ -763,7 +883,7 @@ const producerPanelBreakdownByAgentId = computed(() => {
     const agentId = item.slot.agentId
     if (!agentId) continue
     map[agentId] = computeFinalPanel(
-      ensureAnomalySlotPanel(agentId),
+      resolveExternalPanelForSlotIndex(item.index),
       buildPanelCalcContextForSlot(item.index),
     )
   }
@@ -852,7 +972,9 @@ function formatPanelSlot(slot: PanelFieldSlot, scope: 'external' | 'final') {
 function formatAnomalyFinalPanel(agentId: string, slot: PanelFieldSlot) {
   if (slot.kind === 'spacer') return ''
   const breakdown = producerPanelBreakdownByAgentId.value[agentId]
-  const external = ensureAnomalySlotPanel(agentId)
+  const slotIndex = props.teamSlots.findIndex((item) => item.agentId === agentId)
+  const external =
+    slotIndex >= 0 ? resolveExternalPanelForSlotIndex(slotIndex) : ensureAnomalySlotPanel(agentId)
   const panel = breakdown?.finalPanel ?? external
   if (slot.kind === 'pierce') {
     const pierceMod = breakdown?.totalMods.pierce ?? 0
@@ -911,25 +1033,56 @@ watch(
   { immediate: true },
 )
 
+/** 读盘/恢复方案时禁止换人 watch 把词条主属性、局外面板冲成默认值 */
+let suppressRestoreResets = 0
+
+function beginRestore() {
+  suppressRestoreResets += 1
+  applyingAffixState = true
+  if (anomalyPanelEmitTimer) {
+    clearTimeout(anomalyPanelEmitTimer)
+    anomalyPanelEmitTimer = null
+  }
+}
+
+function endRestore() {
+  suppressRestoreResets = Math.max(0, suppressRestoreResets - 1)
+}
+
+watch(
+  () => props.editedSlotIndex,
+  (newIdx, oldIdx) => {
+    if (suppressRestoreResets) return
+    if (oldIdx == null || oldIdx === newIdx) return
+    const oldAgentId = props.teamSlots[oldIdx]?.agentId
+    if (oldAgentId && !isAffixMode.value) {
+      emitAnomalySlotPanel(oldAgentId, { ...externalPanel })
+    }
+    loadAffixFromCurrentSlot()
+  },
+)
+
 watch(
   () => mainAgent.value?.id,
   (newId, oldId) => {
-    if (oldId) {
-      affixStateByAgent[oldId] = captureAffixState()
+    if (suppressRestoreResets) return
+    if (oldId && !isAffixMode.value) {
+      emitAnomalySlotPanel(oldId, { ...externalPanel })
       const convertSlot = convertSupportSlots.value.find((item) => item.agentId === oldId)
       if (convertSlot) {
-        emitConvertSlotPanel(oldId, convertSlot.requiredAttrs, effectiveExternalPanel.value)
+        emitConvertSlotPanel(oldId, convertSlot.requiredAttrs, externalPanel)
       } else if (props.convertSlotPanels?.[oldId]) {
         const keys = Object.keys(props.convertSlotPanels[oldId]) as CharacterAttrKey[]
-        emitConvertSlotPanel(oldId, keys, effectiveExternalPanel.value)
+        emitConvertSlotPanel(oldId, keys, externalPanel)
       }
     }
 
     if (!mainAgent.value || !newId) return
 
+    loadAffixFromCurrentSlot()
+
     // 首次挂载不要覆盖方案/草稿里已经灌进编辑器的局外面板。
     if (!oldId) {
-      if (affixStateByAgent[newId]) applyAffixState(affixStateByAgent[newId])
       const savedAnomaly = props.anomalySlotPanels?.[newId]
       if (savedAnomaly && !isPlaceholderExternalPanel(savedAnomaly) && mainAgent.value.profession === '异常') {
         Object.assign(externalPanel, createDefaultExternalPanel(), savedAnomaly)
@@ -942,11 +1095,10 @@ watch(
         return
       }
       applyAgentBaseToExternalPanel(mainAgent.value.basePanel)
-      emitAnomalySlotPanel(newId, { ...effectiveExternalPanel.value })
+      if (!isAffixMode.value) emitAnomalySlotPanel(newId, { ...externalPanel })
       return
     }
 
-    applyAffixState(affixStateByAgent[newId])
     const savedAnomaly = props.anomalySlotPanels?.[newId]
     if (savedAnomaly && !isPlaceholderExternalPanel(savedAnomaly)) {
       Object.assign(externalPanel, createDefaultExternalPanel(), savedAnomaly)
@@ -961,22 +1113,47 @@ watch(
     }
 
     Object.assign(externalPanel, createExternalPanelFromAgentBase(mainAgent.value.basePanel))
-    emitAnomalySlotPanel(newId, { ...effectiveExternalPanel.value })
+    if (!isAffixMode.value) emitAnomalySlotPanel(newId, { ...externalPanel })
   },
   { immediate: true },
 )
 
 watch(
+  [affixCounts, affixDriveDiscMainStats],
+  () => {
+    if (suppressRestoreResets || applyingAffixState) return
+    persistAffixOntoCurrentSlot()
+  },
+  { deep: true },
+)
+
+let anomalyPanelEmitTimer: ReturnType<typeof setTimeout> | null = null
+
+function flushCurrentPanelOntoAnomalyMap() {
+  if (anomalyPanelEmitTimer) {
+    clearTimeout(anomalyPanelEmitTimer)
+    anomalyPanelEmitTimer = null
+  }
+  if (suppressRestoreResets) return
+  const id = mainAgent.value?.id
+  if (!id || isAffixMode.value) return
+  emitAnomalySlotPanel(id, { ...externalPanel })
+  const convertSlot = convertSupportSlots.value.find((item) => item.agentId === id)
+  if (convertSlot) {
+    emitConvertSlotPanel(id, convertSlot.requiredAttrs, externalPanel)
+  }
+}
+
+watch(
   effectiveExternalPanel,
   () => {
-    const id = mainAgent.value?.id
-    if (!id) return
-    emitAnomalySlotPanel(id, { ...effectiveExternalPanel.value })
-    if (isAffixMode.value) affixStateByAgent[id] = captureAffixState()
-    const convertSlot = convertSupportSlots.value.find((item) => item.agentId === id)
-    if (convertSlot) {
-      emitConvertSlotPanel(id, convertSlot.requiredAttrs, effectiveExternalPanel.value)
-    }
+    if (suppressRestoreResets) return
+    if (isAffixMode.value) return
+    if (anomalyPanelEmitTimer) clearTimeout(anomalyPanelEmitTimer)
+    anomalyPanelEmitTimer = setTimeout(() => {
+      anomalyPanelEmitTimer = null
+      flushCurrentPanelOntoAnomalyMap()
+    }, 200)
   },
   { deep: true },
 )
@@ -1075,9 +1252,9 @@ function buildHitPanelCalcContext(
 }
 
 function resolveOwnerExternalPanel(ownerSlotIndex: number, ownerAgentId: string): PanelStats {
-  // 主 C 只表示「面板计算正在编辑谁」。招式结算读该角色自己的局外面板：
-  // 正在编辑的人用 live 编辑器，其他人用各自存好的槽位面板。
-  if (ownerSlotIndex === mainSlotIndex.value) return effectiveExternalPanel.value
+  if (ownerSlotIndex >= 0) return resolveExternalPanelForSlotIndex(ownerSlotIndex)
+  const found = props.teamSlots.findIndex((slot) => slot.agentId === ownerAgentId)
+  if (found >= 0) return resolveExternalPanelForSlotIndex(found)
   return ensureAnomalySlotPanel(ownerAgentId)
 }
 
@@ -1085,12 +1262,9 @@ function resolveOwnerExternalPanel(ownerSlotIndex: number, ownerAgentId: string)
 function computeHitPanelForAgent(hit: ResolvedHit, agentId: string): PanelStats | null {
   const slotIndex = props.teamSlots.findIndex((slot) => slot.agentId === agentId)
   if (slotIndex < 0) return null
-  const external =
-    slotIndex === mainSlotIndex.value
-      ? effectiveExternalPanel.value
-      : ensureAnomalySlotPanel(agentId)
+  const external = resolveExternalPanelForSlotIndex(slotIndex)
   const element = props.agents.find((item) => item.id === agentId)?.element
-  return computeFinalPanel(external, {
+  return computeHitBreakdownForAgent(hit, agentId, slotIndex, external, {
     ...buildPanelCalcContextForSlot(slotIndex, buildExtraModsForHit(hit, agentId)),
     skillContext: buildSkillContextFromHit(hit, element),
   }).finalPanel
@@ -1123,7 +1297,13 @@ function buildHitCalcInput(hit: ResolvedHit): DamageCalcInput | null {
 
   const ownerExternal = resolveOwnerExternalPanel(ownerSlotIndex, ownerAgentId)
   const evtPanelCtx = buildHitPanelCalcContext(evtSkillCtx, ownerSlotIndex, hit)
-  const evtBreakdown = computeFinalPanel(ownerExternal, evtPanelCtx)
+  const evtBreakdown = computeHitBreakdownForAgent(
+    hit,
+    ownerAgentId,
+    ownerSlotIndex,
+    ownerExternal,
+    evtPanelCtx,
+  )
 
   const overrides = hit.multOverrides
   let evtFinalPanel = applyHitPanelMods(
@@ -1147,14 +1327,20 @@ function buildHitCalcInput(hit: ResolvedHit): DamageCalcInput | null {
       evtTriggerFinalPanel = evtFinalPanel
       evtTriggerPierce = evtPierce
     } else {
-      const tExternal = ensureAnomalySlotPanel(evtPowerAgentId)
-      const tBreakdown = computeFinalPanel(tExternal, {
-        ...buildPanelCalcContextForSlot(
-          tSlotIndex,
-          buildExtraModsForHit(hit, evtPowerAgentId),
-        ),
-        skillContext: buildSkillContextFromHit(hit, tAgent?.element),
-      })
+      const tExternal = resolveExternalPanelForSlotIndex(tSlotIndex)
+      const tBreakdown = computeHitBreakdownForAgent(
+        hit,
+        evtPowerAgentId,
+        tSlotIndex,
+        tExternal,
+        {
+          ...buildPanelCalcContextForSlot(
+            tSlotIndex,
+            buildExtraModsForHit(hit, evtPowerAgentId),
+          ),
+          skillContext: buildSkillContextFromHit(hit, tAgent?.element),
+        },
+      )
       // 招式倍率覆写：紊乱/乱流落到强度提供者面板
       evtTriggerFinalPanel = applyOwnerPanelMultOverrides(tBreakdown.finalPanel, {
         disorderBaseMult: overrides?.disorderBaseMult,
@@ -1326,39 +1512,303 @@ function buildHitCalcInput(hit: ResolvedHit): DamageCalcInput | null {
   }
 }
 
-const damageEventSummary = computed(() => {
-  if (props.calcSuspended || !damageCalcEnabled.value || !props.hits?.length) return null
-  return summarizeHits(
-    props.hits,
-    buildHitCalcInput,
-    (hit) => props.agents.find((item) => item.id === hit.ownerAgentId)?.name,
-  )
-})
+function buildResolvedHitSignature(hit: ResolvedHit) {
+  return JSON.stringify({
+    id: hit.id,
+    ownerAgentId: hit.ownerAgentId,
+    anomalyPowerAgentId: hit.anomalyPowerAgentId,
+    triggerAgentId: hit.triggerAgentId,
+    count: hit.count,
+    staggerPhase: hit.staggerPhase,
+    critMode: hit.critMode,
+    skillId: hit.skill.id,
+    damageType: hit.skill.damageType,
+    baseMult: hit.skill.baseMult,
+    baseMultFactor: hit.skill.baseMultFactor,
+    settlementMult: hit.skill.settlementMult,
+    skillTypes: hit.skill.skillTypes,
+    buffAnchorId: hit.skill.buffAnchorId,
+    multOverrides: hit.multOverrides,
+    panelMods: hit.panelMods,
+  })
+}
 
-const previewHitSummary = computed(() => {
-  if (props.calcSuspended || !damageCalcEnabled.value || !props.previewHits?.length) return null
-  return summarizeHits(props.previewHits, buildHitCalcInput)
-})
+function buildHitPanelMemoKey(
+  hit: ResolvedHit,
+  agentId: string,
+  slotIndex: number,
+  ctx: ReturnType<typeof buildPanelCalcContextForSlot>,
+) {
+  return JSON.stringify({
+    agentId,
+    slotIndex,
+    ownerAgentId: hit.ownerAgentId,
+    anomalyPowerAgentId: hit.anomalyPowerAgentId,
+    triggerAgentId: hit.triggerAgentId,
+    staggerPhase: hit.staggerPhase,
+    critMode: hit.critMode,
+    skillId: hit.skill.id,
+    damageType: hit.skill.damageType,
+    coords: hit.coords,
+    multOverrides: hit.multOverrides,
+    panelMods: hit.panelMods,
+    extraMods: ctx.extraMods,
+    skillContext: ctx.skillContext,
+  })
+}
 
+let activeHitPanelMemo: Map<string, ReturnType<typeof computeFinalPanel>> | null = null
+
+function computeHitBreakdownForAgent(
+  hit: ResolvedHit,
+  agentId: string,
+  slotIndex: number,
+  external: PanelStats,
+  ctx: ReturnType<typeof buildPanelCalcContextForSlot>,
+) {
+  if (!activeHitPanelMemo) return computeFinalPanel(external, ctx, { includeDetails: false })
+  const key = buildHitPanelMemoKey(hit, agentId, slotIndex, ctx)
+  const cached = activeHitPanelMemo.get(key)
+  if (cached) return cached
+  const value = computeFinalPanel(external, ctx, { includeDetails: false })
+  activeHitPanelMemo.set(key, value)
+  return value
+}
+
+function withHitPanelMemo<T>(runner: () => T): T {
+  const parent = activeHitPanelMemo
+  if (!parent) activeHitPanelMemo = new Map()
+  try {
+    return runner()
+  } finally {
+    if (!parent) activeHitPanelMemo = null
+  }
+}
+
+function resolveHitLine(
+  hit: ResolvedHit,
+  resolveOwnerName?: (hit: ResolvedHit) => string | undefined,
+): HitLine | null {
+  const input = buildHitCalcInput(hit)
+  if (!input) return null
+  const result = computeDamageResult(input)
+  const perHit = pickEventDamage(result, hit.skill.damageType, hit.critMode)
+  const total = perHit * hit.count
+  const kindLabel =
+    DAMAGE_EVENT_KIND_OPTIONS.find((item) => item.id === hit.skill.damageType)?.label ??
+    hit.skill.damageType
+  const suffix =
+    hit.skill.damageType === 'disorder' ? `（${disorderLabelFromResult(result)}）` : ''
+  const ownerName = resolveOwnerName?.(hit)
+  return {
+    hit,
+    perHit,
+    total,
+    label: `${kindLabel}${suffix}`,
+    displayName: `${ownerName ? `${ownerName} · ` : ''}${hit.skill.name}${suffix}`,
+    result,
+  }
+}
+
+type HitLineStore = {
+  signatureById: Record<string, string>
+  lineById: Record<string, HitLine>
+}
+
+const damageEventLineStore = reactive<HitLineStore>({ signatureById: {}, lineById: {} })
+const previewHitLineStore = reactive<HitLineStore>({ signatureById: {}, lineById: {} })
+
+const hitCalcGlobalSignature = computed(() =>
+  JSON.stringify({
+    src: baseDamageSource.value,
+    slots: props.teamSlots.map((slot, index) => [
+      slot.agentId,
+      slot.rank,
+      slot.wengineId,
+      slot.wengineRefine,
+      slot.twoPieceDriveDiscId,
+      slot.fourPieceDriveDiscId,
+      index === props.editedSlotIndex
+        ? ''
+        : `${JSON.stringify(slot.affixCounts ?? null)}|${JSON.stringify(slot.affixDriveDiscMainStats ?? null)}`,
+    ]),
+    bangboo: [props.selectedBangbooId, props.bangbooRefine],
+    edit: props.editedSlotIndex,
+    mode: props.calcMode,
+    kind: [
+      props.triggerAnomalyAgentId,
+      props.damageKind,
+      props.anomalySubKind,
+      props.skillCategoryId,
+      props.skillSubcategoryId,
+    ],
+    buffs: slotBuffSelectionsSignature.value,
+    convert: convertSlotPanelsSignature.value,
+    anomaly: props.anomalySlotPanels ?? {},
+    env: (props.environmentBuffs ?? []).map((item) => item.id),
+    extra: extraGains.value,
+    enemy: enemyInput.value,
+    ext: externalPanel,
+    affix: affixCounts,
+    mains: affixDriveDiscMainStats,
+  }),
+)
+
+function clearHitLineStore(store: HitLineStore) {
+  for (const key of Object.keys(store.signatureById)) delete store.signatureById[key]
+  for (const key of Object.keys(store.lineById)) delete store.lineById[key]
+}
+
+function syncHitSummary(
+  hits: ResolvedHit[] | undefined,
+  store: HitLineStore,
+  resolveOwnerName?: (hit: ResolvedHit) => string | undefined,
+  options?: { usePerHit?: boolean; forceAll?: boolean },
+) {
+  const list = hits ?? []
+  if (options?.forceAll) clearHitLineStore(store)
+
+  const nextSignatures: Record<string, string> = {}
+  const lines: HitLine[] = []
+  let grandTotal = 0
+
+  withHitPanelMemo(() => {
+    for (const hit of list) {
+      const signature = buildResolvedHitSignature(hit)
+      nextSignatures[hit.id] = signature
+
+      let line = store.lineById[hit.id]
+      if (!line || store.signatureById[hit.id] !== signature) {
+        try {
+          line = resolveHitLine(hit, resolveOwnerName) ?? undefined
+        } catch (error) {
+          console.error('[syncHitSummary] skip hit due to calc error', hit.skill?.name, error)
+          line = undefined
+        }
+        if (line) store.lineById[hit.id] = line
+        else delete store.lineById[hit.id]
+      } else if (line.hit !== hit) {
+        line = { ...line, hit }
+        store.lineById[hit.id] = line
+      }
+
+      if (!line) continue
+      lines.push(line)
+      grandTotal += options?.usePerHit ? line.perHit : line.total
+    }
+  })
+
+  for (const key of Object.keys(store.signatureById)) {
+    if (!(key in nextSignatures)) {
+      delete store.signatureById[key]
+      delete store.lineById[key]
+    }
+  }
+  Object.assign(store.signatureById, nextSignatures)
+
+  return { lines, grandTotal }
+}
+
+function emitHitMaps() {
+  if (props.calcSuspended || !damageCalcEnabled.value) return
+  const map: Record<string, number> = {}
+  const results: Record<string, DamageCalcResult> = {}
+  for (const line of damageEventSummary.value?.lines ?? []) {
+    map[line.hit.id] = line.total
+    results[line.hit.id] = line.result
+  }
+  for (const line of previewHitSummary.value?.lines ?? []) {
+    map[line.hit.id] = line.perHit
+    results[line.hit.id] = line.result
+  }
+  emit('update:hitDamages', map)
+  emit('update:hitCalcResults', results)
+}
+
+let prevHitCalcGlobalSignature = ''
+let prevPreviewGlobalSignature = ''
 watch(
-  [damageEventSummary, previewHitSummary],
-  () => {
-    if (props.calcSuspended || !damageCalcEnabled.value) return
-    const map: Record<string, number> = {}
-    const results: Record<string, DamageCalcResult> = {}
-    for (const line of damageEventSummary.value?.lines ?? []) {
-      map[line.hit.id] = line.total
-      results[line.hit.id] = line.result
+  [
+    () => props.hits,
+    hitCalcGlobalSignature,
+    () => props.calcSuspended,
+    () => damageCalcEnabled.value,
+  ],
+  ([hits, globalSignature]) => {
+    if (hitSummarySyncTimer) {
+      clearTimeout(hitSummarySyncTimer)
+      hitSummarySyncTimer = null
     }
-    for (const line of previewHitSummary.value?.lines ?? []) {
-      map[line.hit.id] = line.perHit
-      results[line.hit.id] = line.result
+    if (props.calcSuspended || !damageCalcEnabled.value) {
+      damageEventSummary.value = null
+      emit('update:hitDamages', {})
+      emit('update:hitCalcResults', {})
+      return
     }
-    emit('update:hitDamages', map)
-    emit('update:hitCalcResults', results)
+    const forceAll = prevHitCalcGlobalSignature !== globalSignature
+    prevHitCalcGlobalSignature = globalSignature
+    hitSummarySyncTimer = setTimeout(() => {
+      hitSummarySyncTimer = null
+      damageEventSummary.value = hits?.length
+        ? syncHitSummary(
+            hits,
+            damageEventLineStore,
+            (hit) => props.agents.find((item) => item.id === hit.ownerAgentId)?.name,
+            { forceAll },
+          )
+        : { lines: [], grandTotal: 0 }
+      emitHitMaps()
+    }, HIT_RESULT_DEBOUNCE_MS)
   },
   { immediate: true },
 )
+
+watch(
+  [
+    () => props.previewHits,
+    hitCalcGlobalSignature,
+    () => props.calcSuspended,
+    () => damageCalcEnabled.value,
+  ],
+  ([previewHits, globalSignature]) => {
+    if (previewHitSummarySyncTimer) {
+      clearTimeout(previewHitSummarySyncTimer)
+      previewHitSummarySyncTimer = null
+    }
+    if (props.calcSuspended || !damageCalcEnabled.value) {
+      previewHitSummary.value = null
+      return
+    }
+    const forceAll = prevPreviewGlobalSignature !== globalSignature
+    prevPreviewGlobalSignature = globalSignature
+    previewHitSummarySyncTimer = setTimeout(() => {
+      previewHitSummarySyncTimer = null
+      previewHitSummary.value = previewHits?.length
+        ? syncHitSummary(previewHits, previewHitLineStore, undefined, {
+            usePerHit: true,
+            forceAll,
+          })
+        : { lines: [], grandTotal: 0 }
+      emitHitMaps()
+    }, PREVIEW_HIT_DEBOUNCE_MS)
+  },
+  { immediate: true },
+)
+
+onUnmounted(() => {
+  if (hitSummarySyncTimer) {
+    clearTimeout(hitSummarySyncTimer)
+    hitSummarySyncTimer = null
+  }
+  if (previewHitSummarySyncTimer) {
+    clearTimeout(previewHitSummarySyncTimer)
+    previewHitSummarySyncTimer = null
+  }
+  if (anomalyPanelEmitTimer) {
+    clearTimeout(anomalyPanelEmitTimer)
+    anomalyPanelEmitTimer = null
+  }
+})
 
 const hasDamageEvents = computed(() => (props.hits?.length ?? 0) > 0)
 
@@ -3076,7 +3526,7 @@ const teamAgentNotes = computed(() =>
       if (!slot.agentId) return null
       const agent = props.agents.find((item) => item.id === slot.agentId)
       if (!agent) return null
-      const roleLabel = slot.isMainC ? '主C' : `槽位${index + 1}`
+      const roleLabel = `槽位${index + 1}`
       const note = agent.note?.trim() ?? ''
       const mindscapeNotes = getMindscapeNotesUpToRank(agent, slot.rank)
       return {
@@ -3098,7 +3548,7 @@ const teamWengineNotes = computed(() =>
       if (!agent || !wengine) return null
       const note = wengine.note?.trim() ?? ''
       if (!note) return null
-      const roleLabel = slot.isMainC ? '主C' : `槽位${index + 1}`
+      const roleLabel = `槽位${index + 1}`
       return {
         key: `${index}-${wengine.id}`,
         label: `${roleLabel} · ${agent.name} · ${wengine.name}（精${slot.wengineRefine}）`,
@@ -3109,6 +3559,8 @@ const teamWengineNotes = computed(() =>
 )
 
 function getSnapshot(): DamageCalcPanelSnapshot {
+  flushAffixOntoTeamSlots()
+  flushCurrentPanelOntoAnomalyMap()
   const id = mainAgent.value?.id
   if (id) affixStateByAgent[id] = captureAffixState()
   return {
@@ -3126,37 +3578,42 @@ function getSnapshot(): DamageCalcPanelSnapshot {
   }
 }
 
-function loadSnapshot(snapshot: DamageCalcPanelSnapshot) {
-  baseDamageSource.value = snapshot.baseDamageSource
+function loadSnapshot(
+  snapshot: DamageCalcPanelSnapshot | DamageCalcSchemePanelSnapshot,
+  options?: { preserveBaseDamageSource?: boolean },
+) {
+  // baseDamageSource 属于计算器内部公式入口；方案快照不应影响它。
+  // 只有在恢复“工作草稿”（需要沿用当前页运行时状态）时才保留。
+  if (options?.preserveBaseDamageSource && snapshot.baseDamageSource) {
+    baseDamageSource.value = snapshot.baseDamageSource
+  }
   Object.assign(externalPanel, createDefaultExternalPanel(), snapshot.externalPanel)
-  Object.assign(affixCounts, snapshot.affixCounts)
-  Object.assign(affixDriveDiscMainStats, snapshot.affixDriveDiscMainStats)
   for (const key of Object.keys(affixStateByAgent)) delete affixStateByAgent[key]
   if (snapshot.affixStateByAgent) {
     Object.assign(affixStateByAgent, JSON.parse(JSON.stringify(snapshot.affixStateByAgent)))
   }
-  const currentId = mainAgent.value?.id
-  if (currentId) {
-    affixStateByAgent[currentId] = captureAffixState()
-    applyAffixState(affixStateByAgent[currentId])
-  }
+  migrateSnapshotAffixOntoSlots(snapshot)
+  loadAffixFromCurrentSlot()
   if (snapshot.extraGains?.length) {
-    extraGains.value = snapshot.extraGains.map((item) => ({
-      id: item.id,
-      name: item.name,
-      stat: item.stat as BuffStatKey,
-      value: item.value,
-      applySituation: item.applySituation ?? 'global',
-      scope: item.scope,
-      applyTarget: item.applyTarget,
-      skillCategory: item.skillCategory,
-      skillSubcategoryId: item.skillSubcategoryId,
-      appliesToAnomaly: item.appliesToAnomaly,
-      applyProfession: item.applyProfession ?? null,
-      teamProfession: item.teamProfession ?? null,
-      teamProfessionValues: item.teamProfessionValues ?? null,
-      teamProfessionMinCount: item.teamProfessionMinCount ?? null,
-    }))
+    extraGains.value = snapshot.extraGains.map((item) =>
+      normalizeExtraGain({
+        id: item.id,
+        name: item.name,
+        stat: item.stat as BuffStatKey,
+        value: item.value,
+        applySituation: item.applySituation ?? 'global',
+        scope: item.scope,
+        applyTarget: item.applyTarget,
+        applySlot: item.applySlot,
+        skillCategory: item.skillCategory,
+        skillSubcategoryId: item.skillSubcategoryId,
+        appliesToAnomaly: item.appliesToAnomaly,
+        applyProfession: item.applyProfession ?? null,
+        teamProfession: item.teamProfession ?? null,
+        teamProfessionValues: item.teamProfessionValues ?? null,
+        teamProfessionMinCount: item.teamProfessionMinCount ?? null,
+      }),
+    )
   } else {
     const mods = { ...createEmptyBuffStatModifiers(), ...snapshot.extraMods }
     extraGains.value = BUFF_STAT_FIELDS.filter((field) => mods[field.key] !== 0).map(
@@ -3166,6 +3623,8 @@ function loadSnapshot(snapshot: DamageCalcPanelSnapshot) {
         stat: field.key,
         value: mods[field.key],
         applySituation: 'global' as const,
+        applySlot: 0,
+        applyTarget: 'self' as const,
       }),
     )
   }
@@ -3256,6 +3715,10 @@ function resolveMultDefaultsForEvent(
 defineExpose({
   getSnapshot,
   loadSnapshot,
+  beginRestore,
+  endRestore,
+  flushAffixOntoTeamSlots,
+  loadAffixFromCurrentSlot,
   applyRecognitionToExternalPanel,
   convertAttrDefaults,
   convertPanelSourceValues,
@@ -3434,7 +3897,7 @@ defineExpose({
           <header class="panel-block-header">
             <h3>其他参与者 · 局外面板</h3>
             <p>
-              招式持有者 / 异常强度提供者 / 异常类触发者若不是当前正在编辑的槽位，可在此改他们的局外初始面板；也可以点选编队卡片切过去编辑。
+              词条模式：此处只读，显示该槽自己的词条/驱动盘算出的局外。面板模式：可改手填局外。也可以切到该槽编辑。
             </p>
           </header>
           <details
@@ -3457,13 +3920,16 @@ defineExpose({
                 <input
                   type="number"
                   step="any"
-                  :value="ensureAnomalySlotPanel(item.slot.agentId)[slot.key]"
+                  :value="resolveExternalPanelForSlotIndex(item.index)[slot.key]"
+                  :readonly="isAffixMode"
                   @change="
-                    updateAnomalySlotPanel(
-                      item.slot.agentId,
-                      slot.key,
-                      Number(($event.target as HTMLInputElement).value) || 0,
-                    )
+                    isAffixMode
+                      ? undefined
+                      : updateAnomalySlotPanel(
+                          item.slot.agentId,
+                          slot.key,
+                          Number(($event.target as HTMLInputElement).value) || 0,
+                        )
                   "
                 />
               </label>

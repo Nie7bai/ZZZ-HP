@@ -5,7 +5,12 @@
  * Usage:
  *   node scripts/import-calculator-buffs.mjs
  *   node scripts/import-calculator-buffs.mjs --file path/to/cache.json
+ *   node scripts/import-calculator-buffs.mjs --replace
+ *
+ * `--replace`：先清空计算器相关表，再按 JSON 整份写入。
+ * 默认 ON DUPLICATE KEY 是增量，库里多出来的 id 不会消失。
  */
+import pool from '../src/config/db.js'
 import dotenv from 'dotenv'
 import fs from 'fs'
 import path from 'path'
@@ -33,6 +38,7 @@ function readArg(name) {
   return process.argv[index + 1] ?? null
 }
 
+const replaceAll = process.argv.includes('--replace')
 const filePath =
   readArg('--file') || path.join(__dirname, 'data', 'zzz-hp-calculator-buffs.json')
 
@@ -161,6 +167,29 @@ async function upsertMany(conn, sql, rows, mapParams) {
   return inserted
 }
 
+const CALCULATOR_REPLACE_TABLES = [
+  '`character`',
+  '`bangboo`',
+  '`drive_disc`',
+  '`W-Engine`',
+  '`calculator_skill_subcategories`',
+  '`calculator_follow_up_rules`',
+  '`calculator_damage_event_modes`',
+  '`calculator_skills`',
+]
+
+async function emptyCalculatorTables(conn) {
+  await conn.query('SET FOREIGN_KEY_CHECKS = 0')
+  for (const table of CALCULATOR_REPLACE_TABLES) {
+    try {
+      await conn.query(`DELETE FROM ${table}`)
+    } catch (err) {
+      if (err?.errno !== 1146 && err?.code !== 'ER_NO_SUCH_TABLE') throw err
+    }
+  }
+  await conn.query('SET FOREIGN_KEY_CHECKS = 1')
+}
+
 async function main() {
   if (!fs.existsSync(filePath)) {
     throw new Error(`Cache file not found: ${filePath}`)
@@ -176,6 +205,12 @@ async function main() {
   const damageEventModes = Array.isArray(data.damageEventModes) ? data.damageEventModes : []
   const skills = Array.isArray(data.skills) ? data.skills : []
 
+  if (replaceAll && agents.length < 20) {
+    throw new Error(
+      `--replace 拒绝执行：JSON 角色数过少（${agents.length}），避免把库清空。`,
+    )
+  }
+
   const conn = await mysql.createConnection({
     host: process.env.DB_HOST || 'localhost',
     port: Number(process.env.DB_PORT) || 3306,
@@ -190,9 +225,16 @@ async function main() {
 
     await conn.beginTransaction()
 
-    const remielMigration = await migrateRemielAliasIds(conn)
-    if (remielMigration.alias !== 'none' || remielMigration.avatarFixed) {
-      console.log(`蕾米埃尔迁移: ${JSON.stringify(remielMigration)}`)
+    if (replaceAll) {
+      await emptyCalculatorTables(conn)
+      console.log('已清空计算器相关表，按 JSON 整份写入')
+    }
+
+    if (!replaceAll) {
+      const remielMigration = await migrateRemielAliasIds(conn)
+      if (remielMigration.alias !== 'none' || remielMigration.avatarFixed) {
+        console.log(`蕾米埃尔迁移: ${JSON.stringify(remielMigration)}`)
+      }
     }
 
     const agentCount = await upsertMany(
@@ -334,6 +376,9 @@ async function main() {
     const [[c2]] = await conn.query('SELECT COUNT(*) AS c FROM `bangboo`')
     const [[c3]] = await conn.query('SELECT COUNT(*) AS c FROM `drive_disc`')
     const [[c4]] = await conn.query('SELECT COUNT(*) AS c FROM `W-Engine`')
+    const [[c5]] = await conn.query('SELECT COUNT(*) AS c FROM `calculator_skill_subcategories`')
+    const [[c6]] = await conn.query('SELECT COUNT(*) AS c FROM `calculator_damage_event_modes`')
+    const [[c7]] = await conn.query('SELECT COUNT(*) AS c FROM `calculator_skills`')
 
     // Round-trip check: raw_json equals source for a few samples
     const [[sampleAgent]] = await conn.query(
@@ -348,6 +393,7 @@ async function main() {
       JSON.stringify(
         {
           sourceFile: filePath,
+          mode: replaceAll ? 'replace' : 'upsert',
           imported: {
             character: agentCount,
             bangboo: bangbooCount,
@@ -363,6 +409,9 @@ async function main() {
             bangboo: c2.c,
             drive_disc: c3.c,
             'W-Engine': c4.c,
+            skillSubcategories: c5.c,
+            damageEventModes: c6.c,
+            skills: c7.c,
           },
           sampleAgent,
           sampleDisc,
@@ -376,6 +425,7 @@ async function main() {
     throw err
   } finally {
     await conn.end()
+    await pool.end()
   }
 }
 

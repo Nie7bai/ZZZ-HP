@@ -137,7 +137,9 @@ export function buildSkillCalcZoneRows(
 
   push(rows, '精通区', result.masteryZone)
   push(rows, '等级区', result.levelZone)
-  if (result.mutationZone > 1) push(rows, '异化系数', result.mutationZone)
+  if (Number.isFinite(result.mutationZone) && Math.abs(result.mutationZone - 1) > 1e-6) {
+    push(rows, '异化系数', result.mutationZone)
+  }
 
   if (damageType === 'anomaly') {
     push(rows, '异常增伤区', result.anomalyDmgBonusZone)
