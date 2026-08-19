@@ -11,6 +11,7 @@ const props = defineProps<{
   driveDiscs: DriveDiscBuffDoc[]
   teamSlots: TeamSlot[]
   activeSlot: number
+  hideTrigger?: boolean
 }>()
 
 const open = defineModel<boolean>('open', { default: false })
@@ -221,7 +222,7 @@ const canConfirm = computed(() => !!selected.value.agentId)
 
 <template>
   <!-- Summary trigger button -->
-  <button type="button" class="unified-trigger" @click="open = true">
+  <button v-if="!hideTrigger" type="button" class="unified-trigger" @click="open = true">
     <span class="trigger-label">导入</span>
     <span class="trigger-hint">选择角色/武器/驱动盘</span>
   </button>

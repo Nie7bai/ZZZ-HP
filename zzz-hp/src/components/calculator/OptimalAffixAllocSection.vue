@@ -80,9 +80,12 @@ import {
 import EquipPickerModal from '@/components/calculator/EquipPickerModal.vue'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import {
+  collectConvertSourceMarksForSlot,
   collectConvertSupportSlots,
+  convertSourceAttrSet,
   omitAgentFromAnomalySlotPanels,
   omitAgentFromConvertSlotPanels,
+  panelSlotUsesConvertSource,
   resolveBuffSelectionForSlot,
   slotParticipatesInConvertBuff,
   teamHasConvertSupportSlots,
@@ -336,6 +339,72 @@ const convertSupportSlots = computed(() =>
     excludeAnomalyAgentIds: anomalyProducerAgentIds.value,
   }),
 )
+
+const convertMarksBySlot = computed(() => {
+  const map = new Map<number, ReturnType<typeof collectConvertSourceMarksForSlot>>()
+  const ctx = buildBasePanelCalcContext()
+  const indexes = new Set<number>([mainSlotIndex.value])
+  for (const item of convertSupportSlots.value) indexes.add(item.slotIndex)
+  for (const index of indexes) {
+    map.set(index, collectConvertSourceMarksForSlot(ctx, index))
+  }
+  return map
+})
+
+const convertAttrsBySlot = computed(() => {
+  const map = new Map<number, { external: Set<CharacterAttrKey>; final: Set<CharacterAttrKey> }>()
+  for (const [index, marks] of convertMarksBySlot.value) {
+    map.set(index, {
+      external: convertSourceAttrSet(marks, 'external'),
+      final: convertSourceAttrSet(marks, 'final'),
+    })
+  }
+  return map
+})
+
+const editedSlotConvertAttrs = computed(
+  () =>
+    convertAttrsBySlot.value.get(mainSlotIndex.value) ?? {
+      external: new Set<CharacterAttrKey>(),
+      final: new Set<CharacterAttrKey>(),
+    },
+)
+
+const offPanelConvertHints = computed(() =>
+  (convertMarksBySlot.value.get(mainSlotIndex.value) ?? [])
+    .filter((item) => item.attr === 'impact' || item.attr === 'level')
+    .map((item) => {
+      const source = item.panelSource === 'final' ? '局内' : '局外'
+      const label = CHARACTER_ATTR_OPTIONS.find((opt) => opt.id === item.attr)?.label ?? item.attr
+      return `${source}·${label}`
+    }),
+)
+
+function panelFieldUsesConvert(
+  field: { key?: string; id?: string; kind?: string },
+  panel: 'external' | 'final',
+): boolean {
+  return panelSlotUsesConvertSource(field, editedSlotConvertAttrs.value[panel])
+}
+
+function externalConvertFieldClass(field: { key?: string; id?: string; kind?: string }) {
+  const usesExternal = panelFieldUsesConvert(field, 'external')
+  const usesFinal = panelFieldUsesConvert(field, 'final')
+  return {
+    'is-convert-source': usesExternal,
+    'is-convert-source-via-final': !usesExternal && usesFinal,
+  }
+}
+
+function convertAttrFieldClass(attr: CharacterAttrKey, teamSlotIndex: number) {
+  const attrs = convertAttrsBySlot.value.get(teamSlotIndex)
+  const usesExternal = attrs?.external.has(attr) ?? false
+  const usesFinal = attrs?.final.has(attr) ?? false
+  return {
+    'is-convert-source': usesExternal,
+    'is-convert-source-via-final': !usesExternal && usesFinal,
+  }
+}
 
 const convertSupportSlotsNeedingInput = computed(() =>
   convertSupportSlots.value.filter((item) => !props.convertSlotPanels?.[item.agentId]),
@@ -2046,8 +2115,9 @@ defineExpose({
               v-for="attr in item.requiredAttrs"
               :key="`${item.agentId}-${attr}`"
               class="field"
+              :class="convertAttrFieldClass(attr, item.slotIndex)"
             >
-              <span>{{ characterAttrLabel(attr) }}</span>
+              <span class="field-label">{{ characterAttrLabel(attr) }}</span>
               <input
                 type="number"
                 step="any"
@@ -2087,15 +2157,32 @@ defineExpose({
             <template v-if="optimalConvertModeActive">
               主 C 参与转模增益，此处不沿用「面板/词条计算」页录入的主 C 局外。
             </template>
+            <template v-if="editedSlotConvertAttrs.external.size">
+              实线绿框为局外转模来源。
+            </template>
+            <template v-if="editedSlotConvertAttrs.final.size">
+              虚线绿框为局内转模对应的局外属性。
+            </template>
+          </p>
+          <p v-if="offPanelConvertHints.length" class="convert-source-hint">
+            另有转模来源未在本表展示：{{ offPanelConvertHints.join('、') }}
           </p>
         </header>
         <div class="grid four">
-          <label v-for="field in EXTERNAL_PANEL_FIELDS" :key="`external-${field.key}`" class="field">
-            <span>{{ field.label }}</span>
+          <label
+            v-for="field in EXTERNAL_PANEL_FIELDS"
+            :key="`external-${field.key}`"
+            class="field"
+            :class="externalConvertFieldClass(field)"
+          >
+            <span class="field-label">{{ field.label }}</span>
             <input :value="formatPanelValue(field.key, displayEval.external[field.key])" type="text" readonly />
           </label>
-          <label class="field">
-            <span>贯穿力</span>
+          <label
+            class="field"
+            :class="externalConvertFieldClass({ kind: 'pierce', id: 'pierce' })"
+          >
+            <span class="field-label">贯穿力</span>
             <input :value="formatPanelValue('pierce', displayExternalPierce)" type="text" readonly />
           </label>
         </div>
@@ -2104,11 +2191,21 @@ defineExpose({
       <section class="panel-block panel-block--final">
         <header class="panel-block-header">
           <h3>局内面板（最终）</h3>
-          <p>叠加自身/队友/音擎/邦布/驱动盘/额外 Buff 后的战斗面板，仅展示。</p>
+          <p>
+            叠加自身/队友/音擎/邦布/驱动盘/额外 Buff 后的战斗面板，仅展示。
+            <template v-if="editedSlotConvertAttrs.final.size">
+              实线绿框为局内转模来源。
+            </template>
+          </p>
         </header>
         <div class="grid four">
-          <label v-for="field in FINAL_PANEL_FIELDS" :key="`final-${field.id}`" class="field">
-            <span>{{ field.label }}</span>
+          <label
+            v-for="field in FINAL_PANEL_FIELDS"
+            :key="`final-${field.id}`"
+            class="field"
+            :class="{ 'is-convert-source': panelFieldUsesConvert(field, 'final') }"
+          >
+            <span class="field-label">{{ field.label }}</span>
             <input :value="formatFinalPanelField(field)" type="text" readonly />
           </label>
         </div>
@@ -3193,6 +3290,55 @@ defineExpose({
   gap: 0.28rem;
   font-size: 0.8rem;
   color: #9aa3b0;
+}
+
+.field-label {
+  display: flex;
+  align-items: center;
+  gap: 0.28rem;
+  min-height: 1.05rem;
+}
+
+.field.is-convert-source,
+.field.is-convert-source-via-final {
+  padding: 0.3rem 0.34rem 0.36rem;
+  border-radius: 10px;
+  background: rgba(136, 171, 78, 0.18);
+}
+
+.field.is-convert-source {
+  border: 1px solid #4a6a38;
+}
+
+.field.is-convert-source-via-final {
+  border: 1px dashed #6a9450;
+  background: rgba(136, 171, 78, 0.1);
+}
+
+.field.is-convert-source .field-label,
+.field.is-convert-source-via-final .field-label {
+  color: #d6e8b5;
+}
+
+.field.is-convert-source > input,
+.field.is-convert-source > input:read-only,
+.field.is-convert-source-via-final > input,
+.field.is-convert-source-via-final > input:read-only {
+  border-color: #6a9450;
+  background: rgba(136, 171, 78, 0.16);
+  opacity: 1;
+}
+
+.field.is-convert-source-via-final > input,
+.field.is-convert-source-via-final > input:read-only {
+  border-style: dashed;
+  background: rgba(136, 171, 78, 0.08);
+}
+
+.convert-source-hint {
+  margin: -0.15rem 0 0.5rem !important;
+  font-size: 0.72rem;
+  color: #b8d88a;
 }
 
 .field > input,

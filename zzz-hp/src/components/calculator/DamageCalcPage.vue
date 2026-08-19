@@ -15,6 +15,7 @@ import BuffModSourcesDisplay from '@/components/calculator/BuffModSourcesDisplay
 import PanelScreenshotUploadSection from '@/components/calculator/PanelScreenshotUploadSection.vue'
 import TeamBuilderSection from '@/components/calculator/TeamBuilderSection.vue'
 import TeamSlotSwitcher from '@/components/calculator/TeamSlotSwitcher.vue'
+import UnifiedPresetPicker from '@/components/calculator/UnifiedPresetPicker.vue'
 import type { DamageCalcSectionId } from '@/constants/damageCalcNav'
 import type {
   DamageCalcHistoryEntry,
@@ -203,6 +204,7 @@ const skillSubcategoryId = computed(() => firstHit.value?.coords[0]?.subcategory
 
 const buffPickerOpen = ref(false)
 const extraBuffModalOpen = ref(false)
+const teamPresetPickerOpen = ref(false)
 const buffPickerViewSlotIndex = ref(0)
 const multiSlotBuffSelection = reactive<MultiSlotBuffSelection>(createEmptyMultiSlotBuffSelection())
 
@@ -900,6 +902,11 @@ function selectSlot(index: number) {
   activeSlot.value = index
 }
 
+function openTeamPresetPicker(index: number) {
+  activeSlot.value = index
+  teamPresetPickerOpen.value = true
+}
+
 function assignAgent(agentId: string) {
   activeSlotData.value.agentId = agentId
 }
@@ -1416,11 +1423,24 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       <TeamSlotSwitcher
         :team-slots="teamSlots"
         :agents="agents"
+        :wengines="wengines"
+        :drive-discs="driveDiscs"
         :active-index="activeSlot"
         @select="selectSlot"
+        @import="openTeamPresetPicker"
+        @clear="clearSlot"
       />
       <button type="button" class="scheme-lib-btn" @click="openSchemeLibrary">方案库</button>
     </div>
+    <UnifiedPresetPicker
+      v-model:open="teamPresetPickerOpen"
+      hide-trigger
+      :agents="agents"
+      :wengines="wengines"
+      :drive-discs="driveDiscs"
+      :team-slots="teamSlots"
+      :active-slot="activeSlot"
+    />
     <!-- 构图：方案库 → 编队/邦布/上传 → 局内Buff → 敌方与环境 → 计算方式 → 面板/伤害 → 招式流程 -->
     <DamageCalcHistorySection
       ref="historySectionRef"
@@ -1693,7 +1713,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
   top: 0;
   z-index: 30;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.55rem;
   width: calc(100% + 2rem);
   margin: 0 -1rem 0;
@@ -1725,6 +1745,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
   line-height: 1.3;
   cursor: pointer;
   white-space: nowrap;
+  margin-top: 0.15rem;
 }
 
 .scheme-lib-btn:hover {
@@ -1737,7 +1758,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
 }
 
 .damage-page :deep(.damage-anchor) {
-  scroll-margin-top: 4.2rem;
+  scroll-margin-top: 8.6rem;
 }
 
 .calc-mode-section {
