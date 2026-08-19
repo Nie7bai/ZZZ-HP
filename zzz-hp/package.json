@@ -13,6 +13,7 @@
     "test:release-mult": "npx vite-node scripts/test-release-mult.mjs",
     "test:skill-coords": "npx vite-node scripts/test-skill-match-coords.mjs",
     "test:skill-migration": "npx vite-node scripts/test-skill-library-migration.mjs",
+    "test:calculator-loading": "npx vite-node --options.transformMode.web=\"\\.[cm]?[jt]sx?$\" scripts/test-calculator-load-state.mjs",
     "test:crisis-hp-score": "npx vite-node scripts/test-crisis-hp-score-convert.mjs",
     "lint": "run-s \"lint:*\"",
     "lint:oxlint": "oxlint . --fix",
