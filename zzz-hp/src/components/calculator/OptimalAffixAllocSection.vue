@@ -284,6 +284,30 @@ const mainSlotIndex = computed(() => {
 
 const mainSlot = computed(() => props.teamSlots[mainSlotIndex.value]!)
 
+function applySlotDriveDiscMains() {
+  const mains = mainSlot.value.affixDriveDiscMainStats
+  if (!mains) return
+  if (mains.slot4MainStat) driveDiscMainStats.slot4MainStat = mains.slot4MainStat
+  if (mains.slot5MainStat) driveDiscMainStats.slot5MainStat = mains.slot5MainStat
+  if (mains.slot6MainStat) driveDiscMainStats.slot6MainStat = mains.slot6MainStat
+}
+
+watch(
+  () => ({
+    active: isSectionActive.value,
+    slot: mainSlotIndex.value,
+    agentId: mainSlot.value.agentId,
+    slot4: mainSlot.value.affixDriveDiscMainStats?.slot4MainStat,
+    slot5: mainSlot.value.affixDriveDiscMainStats?.slot5MainStat,
+    slot6: mainSlot.value.affixDriveDiscMainStats?.slot6MainStat,
+  }),
+  () => {
+    if (!isSectionActive.value) return
+    applySlotDriveDiscMains()
+  },
+  { immediate: true },
+)
+
 const mainAgent = computed(() => props.agents.find((item) => item.id === mainSlot.value.agentId))
 
 const { skillSubcategories, followUpSkillRules } = storeToRefs(useCalculatorBuffStore())

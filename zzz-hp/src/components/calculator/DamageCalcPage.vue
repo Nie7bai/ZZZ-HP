@@ -1499,9 +1499,9 @@ function onClearLoadedScheme() {
 
 async function scrollToSection(sectionId: DamageCalcSectionId) {
   await nextTick()
-  if (sectionId === 'damage-calc-panel') panelCalcMode.value = 'panel'
-  if (sectionId === 'damage-calc-affix') panelCalcMode.value = 'affix'
-  if (sectionId === 'damage-calc-optimal') panelCalcMode.value = 'optimal'
+  if (sectionId === 'damage-calc-panel') setCalcMode('panel')
+  if (sectionId === 'damage-calc-affix') setCalcMode('affix')
+  if (sectionId === 'damage-calc-optimal') setCalcMode('optimal')
   if (sectionId === 'skill-flow') {
     skillFlowSectionRef.value?.expand()
     await nextTick()
@@ -1518,6 +1518,9 @@ async function scrollToSection(sectionId: DamageCalcSectionId) {
 
 function setCalcMode(mode: PanelCalcMode) {
   if (panelCalcMode.value === mode) return
+  if (mode === 'optimal') {
+    panelCalcSectionRef.value?.flushAffixOntoTeamSlots?.()
+  }
   panelCalcMode.value = mode
 }
 
