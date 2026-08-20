@@ -843,63 +843,6 @@ export function collectConvertSupportSlots(
   }))
 }
 
-export type ConvertSourceMark = {
-  attr: CharacterAttrKey
-  panelSource: 'external' | 'final'
-}
-
-/** 转模来源属性中不在局外/局内主面板格子上的项 */
-export const CONVERT_SOURCE_ATTRS_OFF_PANEL: readonly CharacterAttrKey[] = ['impact', 'level']
-
-/** 当前槽位作为转模来源时，被哪些属性、局外还是局内用到 */
-export function collectConvertSourceMarksForSlot(
-  ctx: PanelCalcContext,
-  slotIndex: number,
-): ConvertSourceMark[] {
-  const marks = new Map<string, ConvertSourceMark>()
-  for (const item of collectAllBuffEffects(ctx)) {
-    const effect = item.effect
-    if (effect.kind !== 'convert' || !effect.convert) continue
-    const source = effect.convert.panelSource ?? 'external'
-    if (source !== 'external' && source !== 'final') continue
-    if (!isEffectEnabled(effect, ctx.buffSelection)) continue
-    if (parseSourceKeySlotIndex(item.sourceKey) !== slotIndex) continue
-    const key = `${source}:${effect.convert.from}`
-    if (!marks.has(key)) {
-      marks.set(key, { attr: effect.convert.from, panelSource: source })
-    }
-  }
-  return [...marks.values()]
-}
-
-export function convertSourceAttrSet(
-  marks: ConvertSourceMark[],
-  panelSource: 'external' | 'final',
-): Set<CharacterAttrKey> {
-  return new Set(marks.filter((item) => item.panelSource === panelSource).map((item) => item.attr))
-}
-
-export function convertSourceAttrMatchesPanelSlot(
-  attr: CharacterAttrKey,
-  slot: { kind?: string; key?: string; id?: string },
-): boolean {
-  if (attr === 'pierce') {
-    return slot.kind === 'pierce' || slot.id === 'pierce' || slot.key === 'pierce'
-  }
-  if (CONVERT_SOURCE_ATTRS_OFF_PANEL.includes(attr)) return false
-  return slot.key === attr || slot.id === attr
-}
-
-export function panelSlotUsesConvertSource(
-  slot: { kind?: string; key?: string; id?: string },
-  attrs: Set<CharacterAttrKey>,
-): boolean {
-  for (const attr of attrs) {
-    if (convertSourceAttrMatchesPanelSlot(attr, slot)) return true
-  }
-  return false
-}
-
 /** 异常掌控% 按结算角色（主 C 槽位）的初始异常掌控换算 */
 export function resolveBaseAnomalyControl(ctx: PanelCalcContext): number {
   if (ctx.baseAnomalyControl != null && Number.isFinite(ctx.baseAnomalyControl)) {
