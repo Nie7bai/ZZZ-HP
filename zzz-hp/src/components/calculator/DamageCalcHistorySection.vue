@@ -780,9 +780,6 @@ defineExpose({
             </template>
             <template v-else>共 {{ props.entries.length }} 个方案</template>
           </span>
-          <span class="history-summary-hint">
-            清空当前页面配置，不删除方案库中的条目
-          </span>
           <span v-if="message" class="history-summary-status">{{ message }}</span>
         </div>
         <button
@@ -1173,15 +1170,10 @@ defineExpose({
   text-overflow: ellipsis;
 }
 
-.history-summary-hint,
 .history-summary-status {
   font-size: 0.72rem;
   color: #8f96a3;
   line-height: 1.35;
-}
-
-.history-summary-status {
-  color: #9aa3b0;
 }
 
 .history-modal-overlay {
