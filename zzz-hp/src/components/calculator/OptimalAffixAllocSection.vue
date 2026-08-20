@@ -197,7 +197,7 @@ const props = defineProps<{
   slotBuffSelections?: import('@/utils/panelBuffCalc').MultiSlotBuffSelection | null
   staggerPhase?: import('@/types/calculator').StaggerPhase
   hits?: import('@/utils/resolvedHit').ResolvedHit[]
-  /** 招式流程准备态预览（与面板计算共用，用于技能卡伤害数字） */
+  /** 准备招式单次预览（与面板计算共用，用于技能卡伤害数字） */
   previewHits?: import('@/utils/resolvedHit').ResolvedHit[]
   environmentBuffs?: import('@/utils/environmentBuffCalc').EnvironmentBuffEntry[]
 }>()
@@ -1120,6 +1120,7 @@ const skillFlowHitFingerprint = computed(() => {
     context: skillFlowContextFingerprint.value,
     external: external ?? null,
     hits: (props.hits ?? []).map(hitFingerprint),
+    previews: (props.previewHits ?? []).map(hitFingerprint),
   })
 })
 
@@ -1137,8 +1138,8 @@ function recomputeSkillFlowHitMaps() {
     skillFlowHitMapState.value = { map, results }
     return
   }
-  // 仅流程 hit 算伤并预热参与者面板；准备/招式库预览不算
-  for (const hit of props.hits ?? []) {
+  // 流程计入总伤；准备招式只算单次预览。招式库不算。
+  for (const hit of [...(props.hits ?? []), ...(props.previewHits ?? [])]) {
     for (const id of [hit.ownerAgentId, hit.anomalyPowerAgentId, hit.triggerAgentId]) {
       if (id) seedOptimalParticipantPanel(id)
     }
@@ -1178,6 +1179,7 @@ function recomputeSkillFlowHitMaps() {
   }
 
   for (const hit of props.hits ?? []) resolveLine(hit, false)
+  for (const hit of props.previewHits ?? []) resolveLine(hit, true)
 
   for (const key of Object.keys(skillFlowLineStore.signatureById)) {
     if (!(key in nextSignatures)) {

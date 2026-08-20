@@ -187,10 +187,6 @@ const previewHits = computed(() =>
     slots: schemeSlots.value,
     teamSlots,
     findSkill: (id) => calculatorBuffStore.findSkill(id),
-    skillsForAgent: (agentId) => {
-      const agent = agents.value.find((item) => item.id === agentId)
-      return calculatorBuffStore.skillsForAgent(agentId, agent?.element)
-    },
     skillSubcategories: skillSubcategories.value,
   }),
 )
