@@ -248,9 +248,6 @@ onDeactivated(() => {
 const isSectionActive = computed(() => props.active !== false && keptAliveActive.value)
 const baseDamageSource = ref<BaseDamageSource>('atk')
 const driveDiscMainStats = reactive(createDefaultAffixDriveDiscMainStats())
-/** 点进最优时按人拍一份 4/5/6；之后只改当前这个人的这份，不跟词条页，也不拿 A 的去套 B */
-const frozenDriveDiscMainsByAgent = reactive<Record<string, AffixDriveDiscMainStats>>({})
-let applyingFrozenMains = false
 const enemyInput = defineModel<DamageEnemyInput>('enemyInput', { required: true })
 
 function setDamageKind(kind: OptimalDamageKind) {
@@ -290,50 +287,14 @@ const mainSlotIndex = computed(() => {
 
 const mainSlot = computed(() => props.teamSlots[mainSlotIndex.value]!)
 
-function cloneMains(mains?: AffixDriveDiscMainStats | null): AffixDriveDiscMainStats {
-  return { ...createDefaultAffixDriveDiscMainStats(), ...mains }
-}
-
-function snapshotFrozenDriveDiscMainsFromSlots() {
-  for (const key of Object.keys(frozenDriveDiscMainsByAgent)) {
-    delete frozenDriveDiscMainsByAgent[key]
-  }
-  for (const slot of props.teamSlots) {
-    if (!slot.agentId) continue
-    frozenDriveDiscMainsByAgent[slot.agentId] = cloneMains(slot.affixDriveDiscMainStats)
-  }
-}
-
-function bindDriveDiscMainsUiFromFrozen() {
-  applyingFrozenMains = true
-  const id = mainSlot.value.agentId
-  Object.assign(driveDiscMainStats, cloneMains(id ? frozenDriveDiscMainsByAgent[id] : undefined))
-  queueMicrotask(() => {
-    applyingFrozenMains = false
-  })
-}
-
-function persistUiMainsToFrozen() {
-  if (applyingFrozenMains) return
-  const id = mainSlot.value.agentId
-  if (!id) return
-  frozenDriveDiscMainsByAgent[id] = cloneMains(driveDiscMainStats)
-}
-
 watch(
   () => mainSlot.value.agentId,
-  (id) => {
+  () => {
     if (!isSectionActive.value) return
-    if (id && !frozenDriveDiscMainsByAgent[id]) {
-      frozenDriveDiscMainsByAgent[id] = cloneMains(mainSlot.value.affixDriveDiscMainStats)
-    }
-    bindDriveDiscMainsUiFromFrozen()
     // 换编辑角色：词条分配从零开始，不把 A 的分配套到 B
     resetEditedAffixAlloc()
   },
 )
-
-watch(driveDiscMainStats, persistUiMainsToFrozen, { deep: true })
 
 const mainAgent = computed(() => props.agents.find((item) => item.id === mainSlot.value.agentId))
 
@@ -544,7 +505,6 @@ const sweepConfigFingerprint = computed(() =>
   JSON.stringify({
     baseDamageSource: baseDamageSource.value,
     driveDiscMainStats: { ...driveDiscMainStats },
-    frozenMains: frozenDriveDiscMainsByAgent,
     enemy: enemyInput.value,
     extraGains: extraGains.value,
     convert: props.convertSlotPanels ?? {},
@@ -599,11 +559,9 @@ watch(
   isSectionActive,
   (active, wasActive) => {
     if (!active || wasActive === true) return
-    // 进入分配功能：456 按人拍初值（不维护），3 人面板快照全量重拍（冻结），编辑中词条清零
-    snapshotFrozenDriveDiscMainsFromSlots()
+    // 进入分配功能：3 人面板快照全量重拍（冻结），编辑中词条清零；4/5/6 不取页面初值
     snapshotParticipantPanelsFromPage()
     resetEditedAffixAlloc()
-    bindDriveDiscMainsUiFromFrozen()
   },
   { immediate: true },
 )
@@ -2122,7 +2080,7 @@ defineExpose({
   buffBreakdown: computed(() => displayEval.value?.breakdown ?? null),
   displayEval,
   previewFinalPanel,
-  /** 全槽局外 + 局内（随增益实时重算；主 C 优先用扫掠/预览结算） */
+  /** 全槽局外 + 局内：统一走进入时快照（冻结），主 C 不再跟当前分配预览 */
   slotPanelPreviews: computed(() => {
     void optimalParticipantPanels
     void extraGains.value
@@ -2131,16 +2089,8 @@ defineExpose({
     void props.bangbooRefine
     void selectedBangboo.value.id
     void props.environmentBuffs
-    void displayEval.value
-    const mainEval = displayEval.value
     return props.teamSlots.map((slot, index) => {
       if (!slot.agentId) return null
-      if (index === mainSlotIndex.value && mainEval) {
-        return {
-          external: mainEval.external,
-          final: mainEval.finalPanel,
-        }
-      }
       const seeded = optimalParticipantPanels[slot.agentId]
       if (!seeded) return null
       const external = fillPanelStatsDefaults(seeded)
