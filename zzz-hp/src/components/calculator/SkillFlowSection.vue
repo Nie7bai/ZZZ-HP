@@ -1210,8 +1210,8 @@ defineExpose({ expand })
                 <p class="col-desc">
                   {{
                     modalTab === 'prep'
-                      ? '每种招式只准备一条。异常类在详情里选双代理人；名称和倍率请回招式库改。伤害仅在流程中结算。'
-                      : '同一准备招式可以多次加入流程。双代理人请在准备阶段的详情里选。'
+                      ? '每种招式只准备一条。异常类在详情里选双代理人；名称和倍率请回招式库改。伤害为单次、不含失衡。'
+                      : '同一准备招式可以多次加入流程。双代理人请在准备阶段的详情里选。伤害为单次、不含失衡。'
                   }}
                 </p>
               </div>
@@ -1232,6 +1232,11 @@ defineExpose({ expand })
                     :agent-pair="agentPairText(prepared, preparedSkill(prepared)!)"
                     :agent-title="agentPairTitle(prepared, preparedSkill(prepared)!)"
                     :skip="Boolean(dualAgentHint(prepared, preparedSkill(prepared)!))"
+                    :damage="
+                      dualAgentHint(prepared, preparedSkill(prepared)!)
+                        ? ''
+                        : damageForFlow(prepared.id)
+                    "
                     @select-agents="openPreparedDetail(prepared.id)"
                   >
                     <template #actions>
