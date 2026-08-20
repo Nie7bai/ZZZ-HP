@@ -236,7 +236,7 @@ function downloadJson(filename: string, data: unknown) {
 
 function pickSnapshotSlice(snapshot: CalculatorBuffData, scope: SnapshotKey): CalculatorBuffData {
   const empty = emptySnapshot(snapshot.exportedAt)
-  empty[scope] = snapshot[scope] ?? []
+  empty[scope] = (snapshot[scope] ?? []) as never
   return empty
 }
 
