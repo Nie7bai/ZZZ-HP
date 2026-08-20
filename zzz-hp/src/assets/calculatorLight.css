@@ -1453,7 +1453,7 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear:hover 
   color: #1c212a !important;
 }
 
-/* Teleport 到 body 的「取消当前方案」也要亮色（不能只靠 .calculator-page 后代） */
+/* Teleport 到 body 的「清空当前配置」确认框也要亮色（不能只靠 .calculator-page 后代） */
 [data-theme='light'] .loaded-clear,
 body:has(.calculator-page.theme-light) .loaded-clear {
   border-color: #d5dae3 !important;

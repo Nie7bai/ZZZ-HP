@@ -1405,14 +1405,30 @@ function blankTeamSlots(): TeamSlot[] {
   ]
 }
 
-function onSchemeImported(loadedId: string) {
-  calculatorBuffStore.reloadCustomSkillsFromStorage()
-  historyEntries.value = listAllDamageCalcHistory()
-  const entry = loadedId ? findDamageCalcHistory(loadedId) : null
-  if (entry) {
-    loadHistoryEntry(entry)
-    return
+function defaultEnemyInput(): DamageEnemyInput {
+  return normalizeDamageEnemyInput({
+    defense: 953,
+    vulnerableMultiplier: 1,
+    staggerMultiplier: DEFAULT_ENEMY_STAGGER_MULTIPLIER,
+    specialMultiplier: 1,
+    level: 60,
+  })
+}
+
+/** 方案边界内的空白页：队伍/面板/额外 Buff/准备流程/敌方。不含方案库、自建招式、流程伤害记录、危局筛选、公式开关。 */
+function emptySchemePanelState(): DamageCalcSchemePanelSnapshot {
+  return {
+    externalPanel: resetSchemeExcludedPanelFields(createDefaultExternalPanel()),
+    affixCounts: createEmptyAffixCounts(),
+    affixDriveDiscMainStats: createDefaultAffixDriveDiscMainStats(),
+    affixStateByAgent: {},
+    extraMods: createEmptyBuffStatModifiers(),
+    extraGains: [],
+    enemyInput: defaultEnemyInput(),
   }
+}
+
+function resetPageSchemeConfig() {
   applyWorkingState({
     teamSlots: blankTeamSlots(),
     activeSlot: 0,
@@ -1424,10 +1440,24 @@ function onSchemeImported(loadedId: string) {
     slots: ensureSchemeSlots([], 3),
     staggerPhase: 'stagger',
     multiSlotBuffSelection: createEmptyMultiSlotBuffSelection(),
+    panelState: emptySchemePanelState(),
+    preserveBaseDamageSource: true,
   })
+  extraGains.value = []
+  enemyInput.value = defaultEnemyInput()
   activeHistoryId.value = ''
   setLoadedSchemeId('')
-  persistWorkingDraftNow(true)
+}
+
+function onSchemeImported(loadedId: string) {
+  calculatorBuffStore.reloadCustomSkillsFromStorage()
+  historyEntries.value = listAllDamageCalcHistory()
+  const entry = loadedId ? findDamageCalcHistory(loadedId) : null
+  if (entry) {
+    loadHistoryEntry(entry)
+    return
+  }
+  resetPageSchemeConfig()
 }
 
 watch(
@@ -1464,9 +1494,7 @@ function clearCurrentScheme() {
 }
 
 function onClearLoadedScheme() {
-  activeHistoryId.value = ''
-  setLoadedSchemeId('')
-  persistWorkingDraftNow(true)
+  resetPageSchemeConfig()
 }
 
 async function scrollToSection(sectionId: DamageCalcSectionId) {
@@ -1533,13 +1561,12 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       <div class="scheme-lib-actions">
         <button type="button" class="scheme-lib-btn" @click="openSchemeLibrary">方案库</button>
         <button
-          v-if="activeHistoryId"
           type="button"
           class="scheme-clear-btn"
-          title="取消当前已加载方案绑定，不删除方案库条目"
+          title="清空当前页面配置，不删除方案库里的存档"
           @click="clearCurrentScheme"
         >
-          取消当前方案
+          清空当前配置
         </button>
       </div>
     </div>
