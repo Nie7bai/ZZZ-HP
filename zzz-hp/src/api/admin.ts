@@ -10,6 +10,7 @@ interface ApiResult<T> {
 
 export interface CreateBossPayload {
   recordScheme?: RecordScheme
+  mode?: 'crisis' | 'defense' | 'deduction'
   id?: number
   version: string
   phase: string
@@ -35,6 +36,7 @@ export interface CreateBossPayload {
 
 export interface CreateBuffPayload {
   recordScheme?: RecordScheme
+  mode?: 'crisis' | 'defense' | 'deduction'
   id?: number
   version: string
   phase: string
@@ -56,6 +58,7 @@ export interface CreateBuffResult {
 export interface UploadImageResult {
   url: string
   filename: string
+  stable?: boolean
 }
 
 export interface BossInfoRecord {
@@ -137,8 +140,13 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return body.data
 }
 
-export async function uploadBossImage(file: File) {
+export async function uploadBossImage(
+  file: File,
+  opts: { bossName?: string; id?: string | number } = {},
+) {
   const formData = new FormData()
+  if (opts.bossName?.trim()) formData.append('bossName', opts.bossName.trim())
+  if (opts.id != null && String(opts.id).trim()) formData.append('id', String(opts.id).trim())
   formData.append('image', file)
 
   const response = await fetch('/api/upload/boss', {
@@ -150,8 +158,13 @@ export async function uploadBossImage(file: File) {
   return parseResponse<UploadImageResult>(response)
 }
 
-export async function uploadBuffImage(file: File) {
+export async function uploadBuffImage(
+  file: File,
+  opts: { buffName?: string; id?: string | number } = {},
+) {
   const formData = new FormData()
+  if (opts.id != null && String(opts.id).trim()) formData.append('id', String(opts.id).trim())
+  if (opts.buffName?.trim()) formData.append('buffName', opts.buffName.trim())
   formData.append('image', file)
 
   const response = await fetch('/api/upload/buff', {
@@ -285,7 +298,7 @@ export async function deleteBuffRecord(id: number) {
   return parseResponse<{ id: number }>(response)
 }
 
-export type SeasonDateMode = 'crisis' | 'defense'
+export type SeasonDateMode = 'crisis' | 'defense' | 'deduction'
 
 export interface SeasonDateRecord {
   id: number

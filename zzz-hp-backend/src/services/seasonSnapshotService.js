@@ -3,6 +3,7 @@ import { listBossInfoByNames, upsertBossInfo } from './bossInfoService.js'
 import { createBoss, createBuff } from './dataService.js'
 import { upsertSeasonDate } from './seasonDateService.js'
 import { ensureBossStaggerSchema } from '../utils/bossSchema.js'
+import { ensureContentModeColumns } from './contentModeService.js'
 import {
   decodeDefenseBossId,
   decodeDefenseBuffId,
@@ -48,16 +49,15 @@ function matchesVariant(version, variant) {
   return true
 }
 
-function bossIdSql(scheme) {
-  return scheme === 'defense'
-    ? 'CHAR_LENGTH(CAST(id AS CHAR)) = 9'
-    : 'CHAR_LENGTH(CAST(id AS CHAR)) <> 9'
+/** 危局 / 防卫战导出：按 mode 归属，显式排除临界推演 */
+function bossScopeSql(scheme) {
+  if (scheme === 'defense') return `mode = 'defense'`
+  return `(mode = 'crisis' OR mode IS NULL OR mode = '')`
 }
 
-function buffIdSql(scheme) {
-  return scheme === 'defense'
-    ? 'CHAR_LENGTH(CAST(id AS CHAR)) = 7'
-    : 'CHAR_LENGTH(CAST(id AS CHAR)) <> 7'
+function buffScopeSql(scheme) {
+  if (scheme === 'defense') return `mode = 'defense'`
+  return `(mode = 'crisis' OR mode IS NULL OR mode = '')`
 }
 
 function asArray(value) {
@@ -97,6 +97,7 @@ function mapBossRow(row) {
       row.stagger_multiplier == null || row.stagger_multiplier === ''
         ? null
         : Number(row.stagger_multiplier),
+    mode: row.mode === 'defense' || row.mode === 'deduction' || row.mode === 'crisis' ? row.mode : null,
   }
 }
 
@@ -109,6 +110,7 @@ function mapBuffRow(row) {
     buff: row.buff ?? null,
     buff_image: row.buff_image ?? null,
     effect_blocks: parseEffectBlocksJson(row.effect_blocks),
+    mode: row.mode === 'defense' || row.mode === 'deduction' || row.mode === 'crisis' ? row.mode : null,
   }
 }
 
@@ -195,20 +197,21 @@ export async function exportSeasonSnapshot(scheme, variant = null) {
 
   await ensureBossStaggerSchema()
   await ensureEnvironmentBuffSchema()
+  await ensureContentModeColumns(pool)
 
   const [bossRows] = await pool.query(
     `SELECT id, version, phase, boss_name, hp, hp_coeff_percent, defense, level, room,
-            weakness, resistance, boss_image, stagger_multiplier
+            weakness, resistance, boss_image, stagger_multiplier, mode
      FROM boss
-     WHERE ${bossIdSql(mode)}
+     WHERE ${bossScopeSql(mode)}
      ORDER BY CAST(REPLACE(version, '.', '') AS UNSIGNED) DESC,
               CAST(phase AS UNSIGNED) DESC,
               id ASC`,
   )
   const [buffRows] = await pool.query(
-    `SELECT id, version, phase, buff_name, buff, buff_image, effect_blocks
+    `SELECT id, version, phase, buff_name, buff, buff_image, effect_blocks, mode
      FROM buff
-     WHERE ${buffIdSql(mode)}
+     WHERE ${buffScopeSql(mode)}
      ORDER BY CAST(REPLACE(version, '.', '') AS UNSIGNED) DESC,
               CAST(phase AS UNSIGNED) DESC,
               id ASC`,
@@ -330,11 +333,25 @@ function bossImportPayload(row) {
     hp_coeff_manual: row.hp_coeff_percent != null && row.hp_coeff_percent !== '',
   }
 
-  if (isDefenseBossId(id) || row.recordScheme === 'defense' || row.monsterCategory) {
+  // 显式 mode / recordScheme 优先，避免临界 9 位 ID 被当成防卫战
+  if (row.mode === 'deduction' || row.recordScheme === 'deduction') {
+    return { ...base, recordScheme: 'deduction', mode: 'deduction' }
+  }
+  if (row.mode === 'crisis' || row.recordScheme === 'crisis') {
+    return { ...base, recordScheme: 'crisis', mode: 'crisis' }
+  }
+
+  if (
+    row.mode === 'defense' ||
+    row.recordScheme === 'defense' ||
+    row.monsterCategory ||
+    (row.mode == null && isDefenseBossId(id))
+  ) {
     const decoded = Number.isInteger(id) && isDefenseBossId(id) ? decodeDefenseBossId(id) : {}
     return {
       ...base,
       recordScheme: 'defense',
+      mode: 'defense',
       stage: row.stage ?? decoded.stage,
       roomInStage: row.roomInStage ?? decoded.roomInStage,
       wave: row.wave ?? decoded.wave,
@@ -344,7 +361,7 @@ function bossImportPayload(row) {
     }
   }
 
-  return { ...base, recordScheme: 'crisis' }
+  return { ...base, recordScheme: 'crisis', mode: 'crisis' }
 }
 
 function buffImportPayload(row) {
@@ -366,11 +383,29 @@ function buffImportPayload(row) {
     effect_blocks: row.effect_blocks ?? null,
   }
 
-  if (isDefenseBuffId(id) || row.recordScheme === 'defense' || row.stage != null) {
+  if (row.mode === 'deduction' || row.recordScheme === 'deduction') {
+    return { ...base, recordScheme: 'deduction', mode: 'deduction' }
+  }
+  if (row.mode === 'crisis' || row.recordScheme === 'crisis') {
+    return {
+      ...base,
+      recordScheme: 'crisis',
+      mode: 'crisis',
+      buffIndex: row.buffIndex ?? crisisBuffIndexFromId(id, version, phase),
+    }
+  }
+
+  if (
+    row.mode === 'defense' ||
+    row.recordScheme === 'defense' ||
+    row.stage != null ||
+    (row.mode == null && isDefenseBuffId(id))
+  ) {
     const decoded = Number.isInteger(id) && isDefenseBuffId(id) ? decodeDefenseBuffId(id) : {}
     return {
       ...base,
       recordScheme: 'defense',
+      mode: 'defense',
       stage: row.stage ?? decoded.stage,
       roomInStage: row.roomInStage ?? decoded.roomInStage,
       buffIndex: row.buffIndex ?? decoded.buffIndex,
@@ -380,6 +415,7 @@ function buffImportPayload(row) {
   return {
     ...base,
     recordScheme: 'crisis',
+    mode: 'crisis',
     buffIndex: row.buffIndex ?? crisisBuffIndexFromId(id, version, phase),
   }
 }
@@ -393,6 +429,9 @@ export async function importSeasonSnapshot(raw) {
     dates: emptyTypeResult(),
     bossInfos: emptyTypeResult(),
   }
+
+  const allowedMode =
+    snapshot.scheme === 'defense' ? 'defense' : snapshot.scheme === 'deduction' ? 'deduction' : 'crisis'
 
   for (const item of snapshot.bossInfos) {
     const name = String(item?.boss_name ?? '').trim()
@@ -414,7 +453,16 @@ export async function importSeasonSnapshot(raw) {
   for (const item of snapshot.bosses) {
     const id = item?.id ?? item?.boss_name ?? ''
     try {
-      const saved = await createBoss(bossImportPayload(item))
+      const payload = bossImportPayload(item)
+      // 危局/防卫快照跳过临界条目，避免 9 位 ID 误入防卫
+      if (
+        allowedMode !== 'deduction' &&
+        (payload.mode === 'deduction' || payload.recordScheme === 'deduction')
+      ) {
+        summary.bosses.skipped += 1
+        continue
+      }
+      const saved = await createBoss(payload)
       recordAction(summary.bosses, saved.action)
     } catch (err) {
       summary.bosses.errors.push({
@@ -427,7 +475,12 @@ export async function importSeasonSnapshot(raw) {
   for (const item of snapshot.buffs) {
     const id = item?.id ?? item?.buff_name ?? ''
     try {
-      const saved = await createBuff(buffImportPayload(item))
+      const payload = buffImportPayload(item)
+      if (allowedMode !== 'deduction' && (payload.mode === 'deduction' || payload.recordScheme === 'deduction')) {
+        summary.buffs.skipped += 1
+        continue
+      }
+      const saved = await createBuff(payload)
       recordAction(summary.buffs, saved.action)
     } catch (err) {
       summary.buffs.errors.push({

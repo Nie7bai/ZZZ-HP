@@ -45,6 +45,7 @@ const catalogTabs: { id: BossInfoCatalog; label: string; desc: string }[] = [
   { id: 'all', label: '总基础库', desc: '全部 boss_info 记录' },
   { id: 'crisis', label: '危局', desc: '在危局强袭战出现过的怪物' },
   { id: 'defense', label: '防卫战', desc: '在式舆防卫战出现过的怪物' },
+  { id: 'deduction', label: '临界', desc: '在临界推演出现过的怪物' },
 ]
 
 function createEmptyDraft(): BossInfoDraft {
@@ -190,7 +191,7 @@ onMounted(() => {
       <div>
         <h1>怪物基础库</h1>
         <p>
-          维护 boss_info：同名怪物在危局 / 防卫战 / 计算器中共用基础数据。危局 Boss 场地 Buff
+          维护 boss_info：同名怪物在危局 / 防卫战 / 临界 / 计算器中共用基础数据。危局 Boss 场地 Buff
           挂在此表（与 Boss 名一一对应）。
         </p>
       </div>

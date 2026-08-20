@@ -13,6 +13,11 @@ function validateBoss(body) {
       return `式舆防卫战缺少字段：${missing.join('、')}`
     }
   }
+  if (recordScheme === 'deduction' || body.mode === 'deduction') {
+    if (body.id == null || body.id === '') {
+      return '临界推演怪物须提供 id'
+    }
+  }
   return null
 }
 
@@ -29,6 +34,11 @@ function validateBuff(body) {
     const missing = required.filter((key) => body[key] == null || body[key] === '')
     if (missing.length) {
       return `式舆防卫战缺少字段：${missing.join('、')}`
+    }
+  }
+  if (recordScheme === 'deduction' || body.mode === 'deduction') {
+    if (body.id == null || body.id === '') {
+      return '临界推演 Buff 须提供 id'
     }
   }
   return null
@@ -56,9 +66,10 @@ export async function addBuff(req, res) {
 
   try {
     const data = await createBuff(req.body)
-    return success(res, data, 'Buff 添加成功', 201)
+    return success(res, data, 'Buff 添加成功', 200)
   } catch (err) {
-    return fail(res, 'Buff 添加失败', 500, { error: err.message })
+    const status = /不一致|必填|须为|冲突|异常/.test(err.message || '') ? 400 : 500
+    return fail(res, err.message || 'Buff 添加失败', status, { error: err.message })
   }
 }
 

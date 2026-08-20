@@ -12,7 +12,7 @@ import {
   type SeasonSnapshotVariant,
 } from '@/api/seasonSnapshot'
 import type { AdminScope } from '@/types/admin'
-import { adminScopeTitles, isDefenseScope } from '@/types/admin'
+import { adminScopeTitles, isDefenseScope, isDeductionScope } from '@/types/admin'
 import { clearAdminAuthenticated } from '@/utils/adminAuth'
 
 const props = defineProps<{
@@ -24,6 +24,8 @@ const emit = defineEmits<{
 }>()
 
 const router = useRouter()
+
+const unsupported = computed(() => isDeductionScope(props.scope))
 
 const scheme = computed<SeasonSnapshotScheme>(() =>
   isDefenseScope(props.scope) ? 'defense' : 'crisis',
@@ -166,7 +168,10 @@ function filterSnapshot(source: SeasonSnapshotData, keys: Set<string>): SeasonSn
 }
 
 async function loadSnapshot() {
-  loading.value = true
+  if (unsupported.value) {
+    snapshot.value = null
+    return
+  }  loading.value = true
   message.value = ''
   try {
     snapshot.value = await fetchSeasonSnapshot(scheme.value, variant.value)
@@ -322,14 +327,18 @@ const schemeMismatch = computed(() => {
 })
 
 onMounted(() => {
-  void loadSnapshot()
+  if (!unsupported.value) void loadSnapshot()
 })
 
 watch(
   () => props.scope,
   () => {
     selectedKeys.value = []
-    void loadSnapshot()
+    if (!unsupported.value) void loadSnapshot()
+    else {
+      snapshot.value = null
+      message.value = ''
+    }
   },
 )
 </script>
@@ -338,12 +347,17 @@ watch(
   <section class="io-panel">
     <header class="panel-header">
       <h2 class="panel-title">{{ scopeTitle }} · 导入 / 导出</h2>
-      <p class="panel-desc">
+      <p v-if="unsupported" class="panel-desc">
+        临界推演的期数快照导入导出尚未单独开通，避免与危局/防卫战数据互相覆盖。请继续使用危局或防卫战页的导入导出。
+      </p>
+      <p v-else class="panel-desc">
         按期数备份怪物、Buff、版本日期；危局还会带上对应怪物图鉴（含 Boss 场地 Buff）。导入按 ID
-        新增或覆盖，不会删除文件中没有的条目。
+        新增或覆盖，不会删除文件中没有的条目。JSON 只含图片路径、不含图片文件；若路径在服务器上不存在，会保留本机已有可用图片，避免再次裂图。新图仍需先放到
+        boss_image / buff_image 目录或管理端上传。
       </p>
     </header>
 
+    <template v-if="!unsupported">
     <div class="count-grid">
       <div v-for="item in counts" :key="item.label" class="count-card">
         <p class="count-label">{{ item.label }}</p>
@@ -483,6 +497,7 @@ watch(
         </template>
       </ul>
     </section>
+    </template>
 
     <AdminConfirmDialog
       :visible="importConfirmVisible"

@@ -12,7 +12,7 @@ import {
 } from '@/api/admin'
 import AdminImagePicker from '@/components/admin/AdminImagePicker.vue'
 import type { AdminScope, AdminMonsterSlotContext, DefenseMonsterCategory } from '@/types/admin'
-import { adminScopeTitles, isDefenseScope, recordSchemeFromScope } from '@/types/admin'
+import { adminScopeTitles, isDefenseScope, isDeductionScope, recordSchemeFromScope } from '@/types/admin'
 import { encodeDefenseBossId } from '@/utils/defenseId'
 import { calcCrisisHpCoeffPercent, getCrisisBaseHpByName } from '@/utils/crisisHpCoeff'
 import { CRISIS_HARD_ROOM_CODE, normalizeCrisisRoomCode } from '@/utils/crisisRoom'
@@ -33,8 +33,13 @@ const editingRecordId = computed(() =>
 )
 
 const isDefense = computed(() => isDefenseScope(props.scope))
+const isDeduction = computed(() => isDeductionScope(props.scope))
 const isDefenseNew = computed(() => props.scope === 'defense-new')
-const seasonMode = computed<SeasonDateMode>(() => (isDefense.value ? 'defense' : 'crisis'))
+const seasonMode = computed<SeasonDateMode>(() => {
+  if (isDefense.value) return 'defense'
+  if (isDeduction.value) return 'deduction'
+  return 'crisis'
+})
 
 const CRISIS_ROOM_OPTIONS = [
   { value: '1', label: '房间 1' },
@@ -476,7 +481,10 @@ async function submitForm() {
 
     let bossImage: string | null = imageUrl.value.trim() || null
     if (imageFile.value) {
-      const uploaded = await uploadBossImage(imageFile.value)
+      const uploaded = await uploadBossImage(imageFile.value, {
+        bossName: fieldText(bossName.value),
+        id: isDefense.value ? defenseBossId : editingRecordId.value ?? undefined,
+      })
       bossImage = uploaded.url
     }
 
@@ -500,7 +508,20 @@ async function submitForm() {
           monsterSubType: Number(monsterSubType.value),
           count: Number(count.value),
         }
-      : { recordScheme: 'crisis' as const }
+      : isDeduction.value
+        ? {
+            recordScheme: 'deduction' as const,
+            mode: 'deduction' as const,
+            id: editingRecordId.value ?? undefined,
+          }
+        : { recordScheme: 'crisis' as const }
+
+    if (isDeduction.value && (defensePayload as { id?: number }).id == null) {
+      error.value = '临界推演请先在已有记录上编辑，或提供怪物 ID（新建编码尚未开放）'
+      showFeedback('error')
+      submitting.value = false
+      return
+    }
 
     const result = await createBoss({
       version: resolvedVersion.value,
@@ -521,14 +542,14 @@ async function submitForm() {
         : 1.5,
       boss_image: bossImage,
       crisis_base_hp:
-        !isDefense.value && fieldText(crisisBaseHp.value)
+        !isDefense.value && !isDeduction.value && fieldText(crisisBaseHp.value)
           ? Number(crisisBaseHp.value)
           : undefined,
       hp_coeff_percent:
-        !isDefense.value && hpCoeffManual.value && fieldText(hpCoeffPercent.value)
+        !isDefense.value && !isDeduction.value && hpCoeffManual.value && fieldText(hpCoeffPercent.value)
           ? Number(hpCoeffPercent.value)
           : undefined,
-      hp_coeff_manual: !isDefense.value && hpCoeffManual.value,
+      hp_coeff_manual: !isDefense.value && !isDeduction.value && hpCoeffManual.value,
       ...defensePayload,
     })
 

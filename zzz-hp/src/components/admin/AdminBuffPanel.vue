@@ -6,7 +6,7 @@ import AdminBuffEffectEditor from '@/components/admin/calculator/AdminBuffEffect
 import { useAdminVersionPhaseSelect } from '@/composables/useAdminVersionPhaseSelect'
 import type { AdminBuffSlotContext, AdminScope } from '@/types/admin'
 import type { BuffEffectBlock } from '@/types/calculator'
-import { adminScopeTitles, isDefenseScope } from '@/types/admin'
+import { adminScopeTitles, isDefenseScope, isDeductionScope } from '@/types/admin'
 import { encodeCrisisBuffId, encodeDefenseBuffId } from '@/utils/defenseId'
 import { resolveAssetUrl } from '@/utils/gameData'
 import { normalizeBuffEffectBlocks, packFromBlocks } from '@/utils/buffEffect'
@@ -23,6 +23,7 @@ const emit = defineEmits<{ saved: [] }>()
 const slotLocked = computed(() => Boolean(props.slotContext))
 
 const isDefense = computed(() => isDefenseScope(props.scope))
+const isDeduction = computed(() => isDeductionScope(props.scope))
 
 const {
   version,
@@ -47,12 +48,20 @@ const previewId = ref('')
 const imageFile = ref<File | null>(null)
 const imagePickerRef = ref<InstanceType<typeof AdminImagePicker> | null>(null)
 const imagePreview = ref('')
+const imageUrl = ref('')
 const submitting = ref(false)
 const message = ref('')
 const error = ref('')
 
 function fieldText(value: string | number | null | undefined) {
   return String(value ?? '').trim()
+}
+
+function showFeedback(target: 'error' | 'message') {
+  requestAnimationFrame(() => {
+    const selector = target === 'error' ? '.form-error' : '.form-success'
+    document.querySelector(selector)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  })
 }
 
 function updatePreviewId() {
@@ -100,28 +109,25 @@ async function submitForm() {
   try {
     if (!resolvedVersion.value || !resolvedPhase.value || !fieldText(buffName.value)) {
       error.value = '版本、期数、Buff 名称为必填项'
+      showFeedback('error')
       return
     }
 
     if (!fieldText(buffIndex.value)) {
       error.value = 'Buff 序号为必填项'
+      showFeedback('error')
       return
     }
 
     if (isDefense.value) {
       if (!fieldText(stage.value) || !fieldText(roomInStage.value)) {
         error.value = '关卡、房间为必填项'
+        showFeedback('error')
         return
       }
     }
 
     submitting.value = true
-
-    let buffImage: string | null = imageUrl.value.trim() || null
-    if (imageFile.value) {
-      const uploaded = await uploadBuffImage(imageFile.value)
-      buffImage = uploaded.url
-    }
 
     const schemePayload = isDefense.value
       ? {
@@ -137,29 +143,62 @@ async function submitForm() {
           roomInStage: Number(roomInStage.value),
           buffIndex: Number(buffIndex.value),
         }
-      : {
-          recordScheme: 'crisis' as const,
-          id: encodeCrisisBuffId({
-            version: resolvedVersion.value,
-            phase: resolvedPhase.value,
+      : isDeduction.value
+        ? {
+            recordScheme: 'deduction' as const,
+            mode: 'deduction' as const,
+            id: props.slotContext?.recordId,
+            buffIndex: Number(buffIndex.value) || 1,
+          }
+        : {
+            recordScheme: 'crisis' as const,
+            id: encodeCrisisBuffId({
+              version: resolvedVersion.value,
+              phase: resolvedPhase.value,
+              buffIndex: Number(buffIndex.value),
+            }),
             buffIndex: Number(buffIndex.value),
-          }),
-          buffIndex: Number(buffIndex.value),
-        }
+          }
 
-    const packed = packFromBlocks(normalizeBuffEffectBlocks(effectBlocks.value))
-    const defaultName = fieldText(buffName.value)
-    const blocks = packed.effectBlocks
-      .filter((block) => block.effects?.length)
-      .map((block, index) => {
-        const name = block.name?.trim() || ''
-        const isGeneric = !name || /^效果块\s*\d+$/.test(name)
-        return {
-          ...block,
-          name: isGeneric ? defaultName || `效果块 ${index + 1}` : name,
-          note: block.note?.trim() || '',
-        }
+    if (isDeduction.value && schemePayload.id == null) {
+      error.value = '临界推演请先在已有 Buff 记录上编辑（新建编码尚未开放）'
+      showFeedback('error')
+      submitting.value = false
+      return
+    }
+
+    let buffImage: string | null = imageUrl.value.trim() || null
+    if (imageFile.value) {
+      const uploaded = await uploadBuffImage(imageFile.value, {
+        id: schemePayload.id,
+        buffName: fieldText(buffName.value),
       })
+      buffImage = uploaded.url
+    }
+
+    let blocks: ReturnType<typeof normalizeBuffEffectBlocks> = []
+    try {
+      const packed = packFromBlocks(normalizeBuffEffectBlocks(effectBlocks.value))
+      const defaultName = fieldText(buffName.value)
+      blocks = packed.effectBlocks
+        .filter((block) => block.effects?.length)
+        .map((block, index) => {
+          const name = block.name?.trim() || ''
+          const isGeneric = !name || /^效果块\s*\d+$/.test(name)
+          return {
+            ...block,
+            name: isGeneric ? defaultName || `效果块 ${index + 1}` : name,
+            note: block.note?.trim() || '',
+          }
+        })
+    } catch (packErr) {
+      error.value =
+        packErr instanceof Error
+          ? `结构化效果解析失败：${packErr.message}`
+          : '结构化效果解析失败'
+      showFeedback('error')
+      return
+    }
 
     const result = await createBuff({
       version: resolvedVersion.value,
@@ -185,16 +224,17 @@ async function submitForm() {
     imageFile.value = null
     imagePickerRef.value?.reset()
     imagePreview.value = ''
+    imageUrl.value = ''
     await loadVersionPhaseOptions()
     keepVersionPhaseAfterSubmit()
+    showFeedback('message')
   } catch (err) {
     error.value = err instanceof Error ? err.message : '提交失败'
+    showFeedback('error')
   } finally {
     submitting.value = false
   }
 }
-
-const imageUrl = ref('')
 
 function applySlotContext(ctx: AdminBuffSlotContext) {
   version.value = ctx.version

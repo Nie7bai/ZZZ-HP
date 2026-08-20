@@ -17,6 +17,7 @@ import {
   ensureEnvironmentBuffSchema,
   parseEffectBlocksJson,
 } from '../utils/environmentBuffSchema.js'
+import { ensureContentModeColumns } from './contentModeService.js'
 
 let schemaEnsured = false
 
@@ -64,7 +65,9 @@ function comparePhase(a, b) {
 }
 
 function seasonDateKey(version, phase) {
-  return `${String(version).trim()}-${String(phase).replace(/\D/g, '') || String(phase).trim()}`
+  const phaseNum = String(phase).replace(/\D/g, '')
+  const normalized = phaseNum ? String(Number(phaseNum)) : String(phase).trim()
+  return `${String(version).trim()}-${normalized}`
 }
 
 function formatDateValue(value) {
@@ -170,13 +173,22 @@ function normalizeRoomType(roomType) {
   return 'all'
 }
 
+function seasonPhaseKey(version, phase) {
+  const phaseNum = String(phase ?? '').replace(/\D/g, '')
+  const normalized = phaseNum ? String(Number(phaseNum)) : String(phase ?? '').trim()
+  return `${String(version).trim()}-${normalized}`
+}
+
 export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
   await ensureCrisisSchema()
   await ensureEnvironmentBuffSchema()
+  await ensureContentModeColumns(pool)
   const [bossRowsRaw] = await pool.execute(
-    'SELECT * FROM boss ORDER BY version, phase, CAST(room AS UNSIGNED)',
+    "SELECT * FROM boss WHERE mode = 'crisis' ORDER BY version, phase, CAST(room AS UNSIGNED)",
   )
-  const [buffRowsRaw] = await pool.execute('SELECT * FROM buff ORDER BY version, phase, id')
+  const [buffRowsRaw] = await pool.execute(
+    "SELECT * FROM buff WHERE mode = 'crisis' ORDER BY version, phase, id",
+  )
   const bossRows = bossRowsRaw.filter((boss) => isCrisisBossId(boss.id))
   const buffRows = buffRowsRaw.filter((buff) => isCrisisBuffId(buff.id))
   const dateMap = await getSeasonDateMap('crisis')
@@ -190,11 +202,11 @@ export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
   const phaseMap = new Map()
 
   for (const boss of bossRows) {
-    const key = `${boss.version}-${boss.phase}`
+    const key = seasonPhaseKey(boss.version, boss.phase)
     if (!phaseMap.has(key)) {
       phaseMap.set(key, {
-        version: boss.version,
-        phase: String(boss.phase),
+        version: String(boss.version).trim(),
+        phase: String(Number(String(boss.phase).replace(/\D/g, '') || boss.phase)),
         bosses: [],
         buffs: [],
       })
@@ -203,11 +215,11 @@ export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
   }
 
   for (const buff of buffRows) {
-    const key = `${buff.version}-${buff.phase}`
+    const key = seasonPhaseKey(buff.version, buff.phase)
     if (!phaseMap.has(key)) {
       phaseMap.set(key, {
-        version: buff.version,
-        phase: String(buff.phase),
+        version: String(buff.version).trim(),
+        phase: String(Number(String(buff.phase).replace(/\D/g, '') || buff.phase)),
         bosses: [],
         buffs: [],
       })
@@ -218,8 +230,10 @@ export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
   for (const [key, dateInfo] of dateMap.entries()) {
     if (phaseMap.has(key)) continue
     phaseMap.set(key, {
-      version: String(dateInfo.version),
-      phase: String(dateInfo.phase).replace(/\D/g, '') || String(dateInfo.phase),
+      version: String(dateInfo.version).trim(),
+      phase: String(dateInfo.phase).replace(/\D/g, '')
+        ? String(Number(String(dateInfo.phase).replace(/\D/g, '')))
+        : String(dateInfo.phase),
       bosses: [],
       buffs: [],
     })
@@ -277,9 +291,10 @@ export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
 }
 
 export async function getBossNames({ roomType = 'all' } = {}) {
+  await ensureContentModeColumns(pool)
   const type = normalizeRoomType(roomType)
   const [rows] = await pool.execute(
-    'SELECT boss_name, boss_image, id, room FROM boss ORDER BY boss_name',
+    "SELECT boss_name, boss_image, id, room FROM boss WHERE mode = 'crisis' ORDER BY boss_name",
   )
 
   const seen = new Map()
@@ -305,11 +320,12 @@ export async function getBossChartHistory(
   { roomType = 'all', includeHidden = false } = {},
 ) {
   await ensureCrisisSchema()
+  await ensureContentModeColumns(pool)
   const type = normalizeRoomType(roomType)
   const [bossRows] = await pool.execute(
     `SELECT *
      FROM boss
-     WHERE boss_name = ?
+     WHERE boss_name = ? AND mode = 'crisis'
      ORDER BY version, CAST(phase AS UNSIGNED)`,
     [bossName],
   )

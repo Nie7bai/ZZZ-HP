@@ -16,6 +16,7 @@ import {
   getSeasonContentTrashMap,
   seasonTrashKey,
 } from './seasonContentTrashService.js'
+import { ensureContentModeColumns } from './contentModeService.js'
 
 const CHINESE_STAGE = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十']
 
@@ -322,14 +323,17 @@ function applyRoomBuffFallback(room, buff, decoded) {
 
 export async function getDefenseSeasons(variant = 'new', { includeHidden = false } = {}) {
   await ensureEnvironmentBuffSchema()
+  await ensureContentModeColumns(pool)
   const [bossRows] = await pool.execute(
     `SELECT id, version, phase, boss_name, hp, defense, level, room, weakness, resistance, boss_image
      FROM boss
+     WHERE mode = 'defense'
      ORDER BY version, CAST(phase AS UNSIGNED), id`,
   )
   const [buffRows] = await pool.execute(
     `SELECT id, version, phase, buff_name, buff, buff_image, effect_blocks
      FROM buff
+     WHERE mode = 'defense'
      ORDER BY version, CAST(phase AS UNSIGNED), id`,
   )
   // 仅「防卫战日期」可生成空期骨架；危局日期只用于给已有防卫内容补 dateRange，避免 2.4 等无防卫数据期清不掉
