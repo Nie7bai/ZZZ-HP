@@ -284,26 +284,16 @@ const mainSlotIndex = computed(() => {
 
 const mainSlot = computed(() => props.teamSlots[mainSlotIndex.value]!)
 
-function applySlotDriveDiscMains() {
+function applyCurrentSlotDriveDiscMainsOnce() {
   const mains = mainSlot.value.affixDriveDiscMainStats
-  if (!mains) return
-  if (mains.slot4MainStat) driveDiscMainStats.slot4MainStat = mains.slot4MainStat
-  if (mains.slot5MainStat) driveDiscMainStats.slot5MainStat = mains.slot5MainStat
-  if (mains.slot6MainStat) driveDiscMainStats.slot6MainStat = mains.slot6MainStat
+  Object.assign(driveDiscMainStats, createDefaultAffixDriveDiscMainStats(), mains ?? {})
 }
 
 watch(
-  () => ({
-    active: isSectionActive.value,
-    slot: mainSlotIndex.value,
-    agentId: mainSlot.value.agentId,
-    slot4: mainSlot.value.affixDriveDiscMainStats?.slot4MainStat,
-    slot5: mainSlot.value.affixDriveDiscMainStats?.slot5MainStat,
-    slot6: mainSlot.value.affixDriveDiscMainStats?.slot6MainStat,
-  }),
-  () => {
-    if (!isSectionActive.value) return
-    applySlotDriveDiscMains()
+  isSectionActive,
+  (active, wasActive) => {
+    if (!active || wasActive === true) return
+    applyCurrentSlotDriveDiscMainsOnce()
   },
   { immediate: true },
 )
