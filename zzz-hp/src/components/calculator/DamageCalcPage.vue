@@ -1073,7 +1073,9 @@ function applyUnifiedImport(payload: UnifiedPresetConfirmPayload) {
     ...createDefaultAffixDriveDiscMainStats(),
     ...payload.affixDriveDiscMainStats,
   }
-  anomalySlotPanels[payload.agentId] = fillPanelStatsDefaults(payload.externalPanel)
+  if (slot.entryMode === 'panel') {
+    anomalySlotPanels[payload.agentId] = fillPanelStatsDefaults(payload.externalPanel)
+  }
   slot.agentId = payload.agentId
   syncMainCFlagToActiveSlot()
   nextTick(() => {

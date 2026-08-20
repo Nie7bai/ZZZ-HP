@@ -499,16 +499,6 @@ function flushLiveOntoBoundSlot() {
     slot.affixCounts = { ...affixCounts }
     slot.affixDriveDiscMainStats = { ...affixDriveDiscMainStats }
     affixStateByAgent[slot.agentId] = captureAffixState()
-    emitAnomalySlotPanel(
-      slot.agentId,
-      computeExternalPanelFromTeamSlot({
-        slot,
-        agents: props.agents,
-        wengines: props.wengines,
-        driveDiscs: props.driveDiscs,
-        overrideAffix: { affixCounts, affixDriveDiscMainStats },
-      }),
-    )
     return
   }
   emitAnomalySlotPanel(liveBoundAgentId, fillPanelStatsDefaults({ ...externalPanel }))
