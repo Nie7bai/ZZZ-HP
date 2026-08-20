@@ -270,16 +270,19 @@ function formatValue(key: keyof PanelStats, value: number) {
         >
           <span>{{ field.label }}</span>
           <input
-            v-if="!isAffixMode"
+            v-show="!isAffixMode"
+            :key="`panel-${field.key}`"
             v-model.number="externalPanel[field.key]"
             type="number"
             step="any"
           />
           <input
-            v-else
-            :value="formatValue(field.key, displayPanel[field.key])"
+            v-show="isAffixMode"
+            :key="`affix-${field.key}`"
+            :value="formatValue(field.key, derivedExternal[field.key])"
             type="text"
             readonly
+            tabindex="-1"
           />
         </label>
       </div>

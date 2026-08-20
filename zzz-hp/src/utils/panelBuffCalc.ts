@@ -590,13 +590,15 @@ function resolveExternalPanelForSlot(
   ctx: PanelCalcContext,
   currentSlotExternalPanel: PanelStats,
 ): PanelStats {
-  const liveIndex = resolveLiveExternalSlotIndex(ctx)
-  if (slotIndex === liveIndex && ctx.mainExternalPanel) {
-    return fillPanelStatsDefaults(ctx.mainExternalPanel)
-  }
+  // 每人局外以 slotExternalPanels 为准（面板手填 / 词条推导已按槽位拆开）。
+  // 不要先拿编辑中那份 mainExternalPanel，否则会把 A 的盘套到 B 的转模上。
   const mapped = ctx.slotExternalPanels?.[slotIndex]
   if (mapped) {
     return fillPanelStatsDefaults(mapped)
+  }
+  const liveIndex = resolveLiveExternalSlotIndex(ctx)
+  if (slotIndex === liveIndex && ctx.mainExternalPanel) {
+    return fillPanelStatsDefaults(ctx.mainExternalPanel)
   }
   if (slotIndex === ctx.mainSlotIndex) {
     return fillPanelStatsDefaults(currentSlotExternalPanel)

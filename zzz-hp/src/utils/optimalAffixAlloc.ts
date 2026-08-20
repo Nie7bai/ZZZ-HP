@@ -17,8 +17,9 @@ import type { AffixCounts, AffixDriveDiscMainStats, PanelStats } from '@/types/c
 import {
   createEmptyAffixCounts,
   createDefaultExternalPanel,
+  createExternalPanelFromAgentBase,
   fillPanelStatsDefaults,
-  isPlaceholderExternalPanel,
+  resolveSlotPanelEntryMode,
 } from '@/types/calculatorPanel'
 import {
   AFFIX_VALUE_PER_COUNT,
@@ -2120,12 +2121,27 @@ export function buildOptimalEvalContext(input: {
       slotExternalPanels: Object.fromEntries(
         input.teamSlots.flatMap((slot, index) => {
           if (!slot.agentId) return []
-          // 主 C：由最优词条扫掠推导；队友：优先用手填局外，避免盖掉「导入」录入
+          // 主 C：最优词条自己扫。队友按该人导入方式：词条用推导，面板用手填，互不顶替。
           if (index !== input.mainSlotIndex) {
+            if (resolveSlotPanelEntryMode(slot) === 'affix') {
+              return [
+                [
+                  index,
+                  computeExternalPanelFromTeamSlot({
+                    slot,
+                    agents: input.agents,
+                    wengines: input.wengines,
+                    driveDiscs: input.driveDiscs,
+                  }),
+                ],
+              ]
+            }
             const saved = input.anomalySlotPanels?.[slot.agentId]
-            if (saved && !isPlaceholderExternalPanel(saved)) {
+            if (saved) {
               return [[index, fillPanelStatsDefaults(saved)]]
             }
+            const agent = input.agents.find((item) => item.id === slot.agentId)
+            return [[index, createExternalPanelFromAgentBase(agent?.basePanel)]]
           }
           return [
             [
@@ -2135,16 +2151,13 @@ export function buildOptimalEvalContext(input: {
                 agents: input.agents,
                 wengines: input.wengines,
                 driveDiscs: input.driveDiscs,
-                overrideAffix:
-                  index === input.mainSlotIndex
-                    ? {
-                        affixCounts: {
-                          ...createEmptyAffixCounts(),
-                          ...slot.affixCounts,
-                        },
-                        affixDriveDiscMainStats: input.driveDiscMainStats,
-                      }
-                    : undefined,
+                overrideAffix: {
+                  affixCounts: {
+                    ...createEmptyAffixCounts(),
+                    ...slot.affixCounts,
+                  },
+                  affixDriveDiscMainStats: input.driveDiscMainStats,
+                },
               }),
             ],
           ]

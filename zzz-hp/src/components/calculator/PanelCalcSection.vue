@@ -514,20 +514,7 @@ function bindLiveToCurrentSlot() {
     Object.assign(externalPanel, createDefaultExternalPanel())
     return
   }
-  if (resolveSlotPanelEntryMode(slot) === 'affix') {
-    Object.assign(
-      externalPanel,
-      createDefaultExternalPanel(),
-      computeExternalPanelFromTeamSlot({
-        slot,
-        agents: props.agents,
-        wengines: props.wengines,
-        driveDiscs: props.driveDiscs,
-        overrideAffix: { affixCounts, affixDriveDiscMainStats },
-      }),
-    )
-    return
-  }
+  // live 只装手填局外。词条盘另算，换人/切词条都不许把推导值灌进来。
   const saved = props.anomalySlotPanels?.[slot.agentId]
   if (saved) {
     Object.assign(externalPanel, createDefaultExternalPanel(), saved)

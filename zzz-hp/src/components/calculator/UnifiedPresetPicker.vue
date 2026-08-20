@@ -96,6 +96,8 @@ const selected = ref({
 const draftExternalPanel = reactive<PanelStats>(createDefaultExternalPanel())
 const draftAffixCounts = reactive(createEmptyAffixCounts())
 const draftAffixMains = reactive(createDefaultAffixDriveDiscMainStats())
+/** 切到词条时把手当下手填冻一份，切回来/确定词条都用这份，不许被推导盘盖掉 */
+let handPanelBackup: PanelStats | null = null
 /** 面板 Tab：该角色选面板导入或词条计算，确定后记在槽位上 */
 const entryMode = ref<Extract<PanelCalcMode, 'panel' | 'affix'>>(
   props.preferredEntryMode ?? 'panel',
@@ -180,11 +182,22 @@ function resetDraftPanelFromSlot() {
   } else {
     Object.assign(draftExternalPanel, createDefaultExternalPanel())
   }
+  handPanelBackup = fillPanelStatsDefaults({ ...draftExternalPanel })
 }
+
+watch(entryMode, (mode, prev) => {
+  if (!open.value || prev === mode) return
+  if (prev === 'panel' && mode === 'affix') {
+    handPanelBackup = fillPanelStatsDefaults({ ...draftExternalPanel })
+    return
+  }
+  if (prev === 'affix' && mode === 'panel' && handPanelBackup) {
+    Object.assign(draftExternalPanel, createDefaultExternalPanel(), handPanelBackup)
+  }
+})
 
 watch(open, (isOpen) => {
   if (isOpen) {
-    entryMode.value = props.preferredEntryMode ?? 'panel'
     const slot = props.teamSlots[props.activeSlot]
     if (!slot) return
     selected.value = {
@@ -204,6 +217,7 @@ watch(open, (isOpen) => {
     discSearch.value = ''
     activeTab.value = 'agent'
     resetDraftPanelFromSlot()
+    entryMode.value = props.preferredEntryMode ?? 'panel'
   }
 })
 
@@ -218,6 +232,7 @@ watch(
     } else if (agent) {
       Object.assign(draftExternalPanel, createExternalPanelFromAgentBase(agent.basePanel))
     }
+    handPanelBackup = fillPanelStatsDefaults({ ...draftExternalPanel })
   },
 )
 
@@ -423,27 +438,12 @@ function applyRecognitionToDraft(result: PanelScreenshotRecognition) {
     driveDiscs: props.driveDiscs,
   })
   Object.assign(draftAffixCounts, createEmptyAffixCounts(), inferred.affixCounts)
+  handPanelBackup = fillPanelStatsDefaults({ ...draftExternalPanel })
   activeTab.value = 'panel'
 }
 
 function confirm() {
   if (!selected.value.agentId) return
-  const external =
-    entryMode.value === 'affix'
-      ? computeExternalPanelFromTeamSlot({
-          slot: {
-            agentId: selected.value.agentId,
-            wengineId: selected.value.wengineId,
-            twoPieceDriveDiscId: selected.value.twoPieceId,
-            fourPieceDriveDiscId: selected.value.fourPieceId,
-            affixCounts: { ...draftAffixCounts },
-            affixDriveDiscMainStats: { ...draftAffixMains },
-          },
-          agents: props.agents,
-          wengines: props.wengines,
-          driveDiscs: props.driveDiscs,
-        })
-      : { ...draftExternalPanel }
   emit('confirm', {
     agentId: selected.value.agentId,
     rank: selected.value.rank,
@@ -451,7 +451,13 @@ function confirm() {
     wengineRefine: selected.value.wengineRefine,
     twoPieceDriveDiscId: selected.value.twoPieceId,
     fourPieceDriveDiscId: selected.value.fourPieceId,
-    externalPanel: fillPanelStatsDefaults(external),
+    // 只交手填局外。词条盘当场算，不许写进手填表。
+    // 当前停在词条页时用切入前冻住的那份，避免草稿已被推导盘污染。
+    externalPanel: fillPanelStatsDefaults({
+      ...(entryMode.value === 'affix' && handPanelBackup
+        ? handPanelBackup
+        : draftExternalPanel),
+    }),
     affixCounts: { ...draftAffixCounts },
     affixDriveDiscMainStats: { ...draftAffixMains },
     entryMode: entryMode.value,

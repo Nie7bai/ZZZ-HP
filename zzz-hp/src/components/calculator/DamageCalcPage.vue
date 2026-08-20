@@ -37,7 +37,6 @@ import {
   createEmptyAffixCounts,
   createExternalPanelFromAgentBase,
   fillPanelStatsDefaults,
-  isPlaceholderExternalPanel,
   resetSchemeExcludedPanelFields,
   resolveDamagePageCalcMode,
   resolveSlotPanelEntryMode,
@@ -999,15 +998,10 @@ const stickySlotPanelPreviews = computed(() => {
       }
     }
     const saved = anomalySlotPanels[slot.agentId]
-    const external =
-      saved && !isPlaceholderExternalPanel(saved)
-        ? fillPanelStatsDefaults(saved)
-        : computeExternalPanelFromTeamSlot({
-            slot,
-            agents: agents.value,
-            wengines: wengines.value,
-            driveDiscs: driveDiscs.value,
-          })
+    const agent = agents.value.find((item) => item.id === slot.agentId)
+    const external = saved
+      ? fillPanelStatsDefaults(saved)
+      : createExternalPanelFromAgentBase(agent?.basePanel)
     return { external, final: null as PanelStats | null }
   })
 })
@@ -1073,9 +1067,8 @@ function applyUnifiedImport(payload: UnifiedPresetConfirmPayload) {
     ...createDefaultAffixDriveDiscMainStats(),
     ...payload.affixDriveDiscMainStats,
   }
-  if (slot.entryMode === 'panel') {
-    anomalySlotPanels[payload.agentId] = fillPanelStatsDefaults(payload.externalPanel)
-  }
+  // 手填局外跟人走，跟这次选面板还是词条无关。词条结算另算，不许拿推导盘盖这里。
+  anomalySlotPanels[payload.agentId] = fillPanelStatsDefaults(payload.externalPanel)
   slot.agentId = payload.agentId
   syncMainCFlagToActiveSlot()
   nextTick(() => {
