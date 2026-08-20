@@ -25,9 +25,11 @@ import type {
 import {
   createDefaultAffixDriveDiscMainStats,
   createDefaultExternalPanel,
+  createEmptyAffixCounts,
   createExternalPanelFromAgentBase,
   fillPanelStatsDefaults,
   isPlaceholderExternalPanel,
+  resolveSlotPanelEntryMode,
   type AffixCounts,
   type AffixDriveDiscMainStats,
   type DriveDiscSlot4StatId,
@@ -88,6 +90,7 @@ import {
   computeFinalPanel,
   type ConvertSlotPanels,
 } from '@/utils/panelBuffCalc'
+import { computeExternalPanelFromTeamSlot } from '@/utils/affixPanelCalc'
 import { summarizeDamageByOwner } from '@/utils/damageEventOwner'
 import DamageOwnerShareBlock from '@/components/calculator/DamageOwnerShareBlock.vue'
 import {
@@ -318,16 +321,6 @@ function persistUiMainsToFrozen() {
 }
 
 watch(
-  isSectionActive,
-  (active, wasActive) => {
-    if (!active || wasActive === true) return
-    snapshotFrozenDriveDiscMainsFromSlots()
-    bindDriveDiscMainsUiFromFrozen()
-  },
-  { immediate: true },
-)
-
-watch(
   () => mainSlot.value.agentId,
   (id) => {
     if (!isSectionActive.value) return
@@ -335,6 +328,8 @@ watch(
       frozenDriveDiscMainsByAgent[id] = cloneMains(mainSlot.value.affixDriveDiscMainStats)
     }
     bindDriveDiscMainsUiFromFrozen()
+    // 换编辑角色：词条分配从零开始，不把 A 的分配套到 B
+    resetEditedAffixAlloc()
   },
 )
 
@@ -397,26 +392,49 @@ const anomalyProducerAgentIds = computed(() => {
   return ids
 })
 
+function captureParticipantSnapshot(agentId: string): PanelStats {
+  const fromPage = props.anomalySlotPanels?.[agentId]
+  if (fromPage && !isPlaceholderExternalPanel(fromPage)) {
+    return fillPanelStatsDefaults({ ...fromPage })
+  }
+  // 词条方式角色：按进入时页级词条 + 4/5/6 拍一份完整面板进快照
+  const slot = props.teamSlots.find((item) => item.agentId === agentId)
+  if (slot && resolveSlotPanelEntryMode(slot) === 'affix') {
+    return computeExternalPanelFromTeamSlot({
+      slot,
+      agents: props.agents,
+      wengines: props.wengines,
+      driveDiscs: props.driveDiscs,
+      overrideAffix: {
+        affixCounts: { ...createEmptyAffixCounts(), ...slot.affixCounts },
+        affixDriveDiscMainStats: {
+          ...createDefaultAffixDriveDiscMainStats(),
+          ...slot.affixDriveDiscMainStats,
+        },
+      },
+    })
+  }
+  const agent = props.agents.find((item) => item.id === agentId)
+  return createExternalPanelFromAgentBase(agent?.basePanel)
+}
+
+/** 事件参与者缺快照时补拍（只补不覆盖，快照一旦拍下不被页级改动刷新） */
 function seedOptimalParticipantPanel(agentId: string): PanelStats {
   const existing = optimalParticipantPanels[agentId]
   if (existing) return existing
-  const fromPage = props.anomalySlotPanels?.[agentId]
-  if (fromPage && !isPlaceholderExternalPanel(fromPage)) {
-    const cloned = fillPanelStatsDefaults({ ...fromPage })
-    optimalParticipantPanels[agentId] = cloned
-    return cloned
-  }
-  const agent = props.agents.find((item) => item.id === agentId)
-  const seeded = createExternalPanelFromAgentBase(agent?.basePanel)
-  optimalParticipantPanels[agentId] = seeded
-  return seeded
+  const captured = captureParticipantSnapshot(agentId)
+  optimalParticipantPanels[agentId] = captured
+  return captured
 }
 
-/** 参与者局外 UI 已去掉：始终跟页级导入同步，避免面板改完进最优仍用旧副本 */
-function syncOptimalParticipantsFromPage() {
-  for (const [agentId, panel] of Object.entries(props.anomalySlotPanels ?? {})) {
-    if (!panel || isPlaceholderExternalPanel(panel)) continue
-    optimalParticipantPanels[agentId] = fillPanelStatsDefaults({ ...panel })
+/** 进入分配功能：3 人面板快照全量重拍，冻结到退出；期间页级改动不再同步进来 */
+function snapshotParticipantPanelsFromPage() {
+  for (const key of Object.keys(optimalParticipantPanels)) {
+    delete optimalParticipantPanels[key]
+  }
+  for (const slot of props.teamSlots) {
+    if (!slot.agentId) continue
+    optimalParticipantPanels[slot.agentId] = captureParticipantSnapshot(slot.agentId)
   }
 }
 
@@ -430,21 +448,21 @@ watch(
       .join('|'),
   () => {
     panelSeedReady.value = false
-    for (const slot of props.teamSlots) {
-      if (slot.agentId) seedOptimalParticipantPanel(slot.agentId)
+    if (isSectionActive.value) {
+      // 激活期间换人：新人按当时页级补拍快照，离场者清理；已有快照不动
+      const activeIds = new Set(
+        props.teamSlots.map((slot) => slot.agentId).filter((id): id is string => Boolean(id)),
+      )
+      for (const key of Object.keys(optimalParticipantPanels)) {
+        if (!activeIds.has(key)) delete optimalParticipantPanels[key]
+      }
+      for (const slot of props.teamSlots) {
+        if (slot.agentId) seedOptimalParticipantPanel(slot.agentId)
+      }
     }
-    syncOptimalParticipantsFromPage()
     panelSeedReady.value = true
   },
   { immediate: true },
-)
-
-watch(
-  () => JSON.stringify(props.anomalySlotPanels ?? {}),
-  () => {
-    if (!panelSeedReady.value) return
-    syncOptimalParticipantsFromPage()
-  },
 )
 
 /** 主 C 参与转模链或队伍存在转模增益角色时，主 C 局外由本模块词条推导，不沿用面板页主 C 局外 */
@@ -491,9 +509,6 @@ const evalCtx = computed(() =>
     driveDiscs: props.driveDiscs,
     mainSlotIndex: mainSlotIndex.value,
     driveDiscMainStats: { ...driveDiscMainStats },
-    driveDiscMainStatsByAgent: Object.fromEntries(
-      Object.entries(frozenDriveDiscMainsByAgent).map(([id, mains]) => [id, { ...mains }]),
-    ),
     enemyInput: { ...enemyInput.value },
     baseDamageSource: isMb.value ? 'pierce' : baseDamageSource.value,
     extraGains: extraGains.value.map((item) => ({ ...item })),
@@ -559,6 +574,40 @@ const SKILL_FLOW_EMIT_DEBOUNCE_MS = 200
 
 const directPoints = ref<DirectSweepPoint[]>([])
 const anomalyPoints = ref<AnomalySweepPoint[]>([])
+
+/** 编辑中角色词条清零：分配从零开始，不继承页级/上次的词条分配 */
+function resetEditedAffixAlloc() {
+  Object.assign(directAlloc, {
+    flatStat: 0,
+    hpFlat: 0,
+    atkPercent: 0,
+    pen: 0,
+    critRate: 0,
+    totalRolls: 0,
+  })
+  Object.assign(anomalyAlloc, {
+    flatStat: 0,
+    pen: 0,
+    totalRolls: 0,
+  })
+  directPoints.value = []
+  anomalyPoints.value = []
+  clearBarSelection()
+}
+
+watch(
+  isSectionActive,
+  (active, wasActive) => {
+    if (!active || wasActive === true) return
+    // 进入分配功能：456 按人拍初值（不维护），3 人面板快照全量重拍（冻结），编辑中词条清零
+    snapshotFrozenDriveDiscMainsFromSlots()
+    snapshotParticipantPanelsFromPage()
+    resetEditedAffixAlloc()
+    bindDriveDiscMainsUiFromFrozen()
+  },
+  { immediate: true },
+)
+
 const sweepComputing = ref(false)
 /** 配置（主属性/敌人/增益等）变更后需手动点开始计算 */
 const sweepNeedsCommit = ref(true)
@@ -1162,7 +1211,6 @@ const skillFlowContextFingerprint = computed(() =>
     buffSelection: props.buffSelection,
     slotBuffSelections: props.slotBuffSelections,
     convert: props.convertSlotPanels ?? {},
-    anomaly: props.anomalySlotPanels ?? {},
     participants: optimalParticipantPanels,
     env: (props.environmentBuffs ?? []).map((item) => item.id),
     bangboo: [props.selectedBangbooId, props.bangbooRefine],

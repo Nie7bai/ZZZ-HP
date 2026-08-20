@@ -16,11 +16,9 @@ import type {
 import type { AffixCounts, AffixDriveDiscMainStats, PanelStats } from '@/types/calculatorPanel'
 import {
   createEmptyAffixCounts,
-  createDefaultAffixDriveDiscMainStats,
   createDefaultExternalPanel,
   createExternalPanelFromAgentBase,
   fillPanelStatsDefaults,
-  resolveSlotPanelEntryMode,
 } from '@/types/calculatorPanel'
 import {
   AFFIX_VALUE_PER_COUNT,
@@ -2072,8 +2070,6 @@ export function buildOptimalEvalContext(input: {
   driveDiscs: DriveDiscBuffDoc[]
   mainSlotIndex: number
   driveDiscMainStats: AffixDriveDiscMainStats
-  /** 点进最优时按人拍下的 4/5/6；队友词条推导用自己的，不用当前编辑中那份 */
-  driveDiscMainStatsByAgent?: Record<string, AffixDriveDiscMainStats>
   enemyInput: DamageEnemyInput
   baseDamageSource: BaseDamageSource
   extraGains?: ExtraBuffGain[]
@@ -2124,34 +2120,9 @@ export function buildOptimalEvalContext(input: {
       slotExternalPanels: Object.fromEntries(
         input.teamSlots.flatMap((slot, index) => {
           if (!slot.agentId) return []
-          // 主 C：最优词条自己扫。队友按该人导入方式：词条用推导，面板用手填，互不顶替。
+          // 主 C：词条清零，伤害面板由本模块扫掠的 affixCounts 推导，不继承页级词条。
+          // 队友（非编辑）：统一看进入分配功能时拍的快照面板。
           if (index !== input.mainSlotIndex) {
-            if (resolveSlotPanelEntryMode(slot) === 'affix') {
-              const mains =
-                (slot.agentId && input.driveDiscMainStatsByAgent?.[slot.agentId]) ||
-                slot.affixDriveDiscMainStats
-              return [
-                [
-                  index,
-                  computeExternalPanelFromTeamSlot({
-                    slot,
-                    agents: input.agents,
-                    wengines: input.wengines,
-                    driveDiscs: input.driveDiscs,
-                    overrideAffix: {
-                      affixCounts: {
-                        ...createEmptyAffixCounts(),
-                        ...slot.affixCounts,
-                      },
-                      affixDriveDiscMainStats: {
-                        ...createDefaultAffixDriveDiscMainStats(),
-                        ...mains,
-                      },
-                    },
-                  }),
-                ],
-              ]
-            }
             const saved = input.anomalySlotPanels?.[slot.agentId]
             if (saved) {
               return [[index, fillPanelStatsDefaults(saved)]]
@@ -2168,10 +2139,7 @@ export function buildOptimalEvalContext(input: {
                 wengines: input.wengines,
                 driveDiscs: input.driveDiscs,
                 overrideAffix: {
-                  affixCounts: {
-                    ...createEmptyAffixCounts(),
-                    ...slot.affixCounts,
-                  },
+                  affixCounts: createEmptyAffixCounts(),
                   affixDriveDiscMainStats: input.driveDiscMainStats,
                 },
               }),
