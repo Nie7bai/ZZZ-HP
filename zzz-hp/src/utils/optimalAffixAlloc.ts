@@ -16,6 +16,7 @@ import type {
 import type { AffixCounts, AffixDriveDiscMainStats, PanelStats } from '@/types/calculatorPanel'
 import {
   createEmptyAffixCounts,
+  createDefaultAffixDriveDiscMainStats,
   createDefaultExternalPanel,
   createExternalPanelFromAgentBase,
   fillPanelStatsDefaults,
@@ -2071,6 +2072,8 @@ export function buildOptimalEvalContext(input: {
   driveDiscs: DriveDiscBuffDoc[]
   mainSlotIndex: number
   driveDiscMainStats: AffixDriveDiscMainStats
+  /** 点进最优时按人拍下的 4/5/6；队友词条推导用自己的，不用当前编辑中那份 */
+  driveDiscMainStatsByAgent?: Record<string, AffixDriveDiscMainStats>
   enemyInput: DamageEnemyInput
   baseDamageSource: BaseDamageSource
   extraGains?: ExtraBuffGain[]
@@ -2124,6 +2127,9 @@ export function buildOptimalEvalContext(input: {
           // 主 C：最优词条自己扫。队友按该人导入方式：词条用推导，面板用手填，互不顶替。
           if (index !== input.mainSlotIndex) {
             if (resolveSlotPanelEntryMode(slot) === 'affix') {
+              const mains =
+                (slot.agentId && input.driveDiscMainStatsByAgent?.[slot.agentId]) ||
+                slot.affixDriveDiscMainStats
               return [
                 [
                   index,
@@ -2132,6 +2138,16 @@ export function buildOptimalEvalContext(input: {
                     agents: input.agents,
                     wengines: input.wengines,
                     driveDiscs: input.driveDiscs,
+                    overrideAffix: {
+                      affixCounts: {
+                        ...createEmptyAffixCounts(),
+                        ...slot.affixCounts,
+                      },
+                      affixDriveDiscMainStats: {
+                        ...createDefaultAffixDriveDiscMainStats(),
+                        ...mains,
+                      },
+                    },
                   }),
                 ],
               ]

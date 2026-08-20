@@ -470,15 +470,11 @@ const mainWengine = computed(() => {
 function derivedExternalPanelForSlot(slotIndex: number): PanelStats {
   const slot = props.teamSlots[slotIndex]
   if (!slot) return createDefaultExternalPanel()
-  const live = slotIndex === mainSlotIndex.value
   return computeExternalPanelFromTeamSlot({
     slot,
     agents: props.agents,
     wengines: props.wengines,
     driveDiscs: props.driveDiscs,
-    overrideAffix: live
-      ? { affixCounts, affixDriveDiscMainStats }
-      : undefined,
   })
 }
 

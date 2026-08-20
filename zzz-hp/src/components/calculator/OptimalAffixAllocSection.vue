@@ -245,6 +245,9 @@ onDeactivated(() => {
 const isSectionActive = computed(() => props.active !== false && keptAliveActive.value)
 const baseDamageSource = ref<BaseDamageSource>('atk')
 const driveDiscMainStats = reactive(createDefaultAffixDriveDiscMainStats())
+/** 点进最优时按人拍一份 4/5/6；之后只改当前这个人的这份，不跟词条页，也不拿 A 的去套 B */
+const frozenDriveDiscMainsByAgent = reactive<Record<string, AffixDriveDiscMainStats>>({})
+let applyingFrozenMains = false
 const enemyInput = defineModel<DamageEnemyInput>('enemyInput', { required: true })
 
 function setDamageKind(kind: OptimalDamageKind) {
@@ -284,19 +287,58 @@ const mainSlotIndex = computed(() => {
 
 const mainSlot = computed(() => props.teamSlots[mainSlotIndex.value]!)
 
-function applyCurrentSlotDriveDiscMainsOnce() {
-  const mains = mainSlot.value.affixDriveDiscMainStats
-  Object.assign(driveDiscMainStats, createDefaultAffixDriveDiscMainStats(), mains ?? {})
+function cloneMains(mains?: AffixDriveDiscMainStats | null): AffixDriveDiscMainStats {
+  return { ...createDefaultAffixDriveDiscMainStats(), ...mains }
+}
+
+function snapshotFrozenDriveDiscMainsFromSlots() {
+  for (const key of Object.keys(frozenDriveDiscMainsByAgent)) {
+    delete frozenDriveDiscMainsByAgent[key]
+  }
+  for (const slot of props.teamSlots) {
+    if (!slot.agentId) continue
+    frozenDriveDiscMainsByAgent[slot.agentId] = cloneMains(slot.affixDriveDiscMainStats)
+  }
+}
+
+function bindDriveDiscMainsUiFromFrozen() {
+  applyingFrozenMains = true
+  const id = mainSlot.value.agentId
+  Object.assign(driveDiscMainStats, cloneMains(id ? frozenDriveDiscMainsByAgent[id] : undefined))
+  queueMicrotask(() => {
+    applyingFrozenMains = false
+  })
+}
+
+function persistUiMainsToFrozen() {
+  if (applyingFrozenMains) return
+  const id = mainSlot.value.agentId
+  if (!id) return
+  frozenDriveDiscMainsByAgent[id] = cloneMains(driveDiscMainStats)
 }
 
 watch(
   isSectionActive,
   (active, wasActive) => {
     if (!active || wasActive === true) return
-    applyCurrentSlotDriveDiscMainsOnce()
+    snapshotFrozenDriveDiscMainsFromSlots()
+    bindDriveDiscMainsUiFromFrozen()
   },
   { immediate: true },
 )
+
+watch(
+  () => mainSlot.value.agentId,
+  (id) => {
+    if (!isSectionActive.value) return
+    if (id && !frozenDriveDiscMainsByAgent[id]) {
+      frozenDriveDiscMainsByAgent[id] = cloneMains(mainSlot.value.affixDriveDiscMainStats)
+    }
+    bindDriveDiscMainsUiFromFrozen()
+  },
+)
+
+watch(driveDiscMainStats, persistUiMainsToFrozen, { deep: true })
 
 const mainAgent = computed(() => props.agents.find((item) => item.id === mainSlot.value.agentId))
 
@@ -449,6 +491,9 @@ const evalCtx = computed(() =>
     driveDiscs: props.driveDiscs,
     mainSlotIndex: mainSlotIndex.value,
     driveDiscMainStats: { ...driveDiscMainStats },
+    driveDiscMainStatsByAgent: Object.fromEntries(
+      Object.entries(frozenDriveDiscMainsByAgent).map(([id, mains]) => [id, { ...mains }]),
+    ),
     enemyInput: { ...enemyInput.value },
     baseDamageSource: isMb.value ? 'pierce' : baseDamageSource.value,
     extraGains: extraGains.value.map((item) => ({ ...item })),
@@ -484,6 +529,7 @@ const sweepConfigFingerprint = computed(() =>
   JSON.stringify({
     baseDamageSource: baseDamageSource.value,
     driveDiscMainStats: { ...driveDiscMainStats },
+    frozenMains: frozenDriveDiscMainsByAgent,
     enemy: enemyInput.value,
     extraGains: extraGains.value,
     convert: props.convertSlotPanels ?? {},
