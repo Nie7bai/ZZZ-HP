@@ -1635,7 +1635,9 @@ type HitLineStore = {
 const damageEventLineStore = reactive<HitLineStore>({ signatureById: {}, lineById: {} })
 
 const hitCalcGlobalSignature = computed(() =>
-  JSON.stringify({
+  props.calcSuspended
+    ? 'suspended'
+    : JSON.stringify({
     src: baseDamageSource.value,
     slots: props.teamSlots.map((slot, index) => [
       slot.agentId,
@@ -3813,6 +3815,7 @@ defineExpose({
 
 <template>
   <section :id="sectionId" class="section-card panel-section damage-anchor">
+    <template v-if="!calcSuspended">
     <header class="section-header">
       <div>
         <h2>伤害计算</h2>
@@ -4258,6 +4261,7 @@ defineExpose({
       </p>
       </template>
     </div>
+    </template>
     </template>
     </template>
   </section>

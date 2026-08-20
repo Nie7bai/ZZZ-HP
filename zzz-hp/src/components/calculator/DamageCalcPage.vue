@@ -1498,22 +1498,7 @@ function setCalcMode(mode: PanelCalcMode) {
 }
 
 function selectPanelCalcMode(mode: PanelCalcMode) {
-  const changed = panelCalcMode.value !== mode
-  if (changed) {
-    // 先让 Tab 高亮，把重 DOM 切换放到下一帧，避免点击瞬时卡死
-    panelCalcMode.value = mode
-  }
-  const anchor =
-    mode === 'panel'
-      ? 'damage-calc-panel'
-      : mode === 'affix'
-        ? 'damage-calc-affix'
-        : 'damage-calc-optimal'
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      void scrollToSection(anchor)
-    })
-  })
+  setCalcMode(mode)
 }
 
 defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
