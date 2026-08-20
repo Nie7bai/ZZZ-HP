@@ -597,21 +597,20 @@ function jumpToLoadedFolder() {
   if (e) currentFolder.value = normFolder(e.folder || '')
 }
 
-/** 取消「当前已加载方案」标记，回到未加载状态（不删方案库条目，也不重置计算页配置） */
+/** 清空当前页面上的方案配置（不删方案库条目） */
 function clearLoadedScheme() {
-  if (!loadedId.value) return
   confirmThen(
     {
-      title: '取消当前方案',
+      title: '清空当前配置',
       message:
-        '确认取消当前已加载方案？计算页配置与事件会保留，仅不再绑定「当前方案」。之后可重新加载或新建。',
-      confirmText: '取消当前方案',
+        '确认清空当前页面的队伍、面板、额外 Buff、准备/流程和敌方配置？方案库里已保存的条目不会删除。',
+      confirmText: '清空当前配置',
     },
     () => {
       loadedId.value = ''
       setLoadedSchemeId('')
       emit('clear-loaded')
-      formMessage.value = '已取消当前方案，现为未加载状态'
+      formMessage.value = '已清空当前页面配置'
     },
   )
 }
@@ -781,18 +780,17 @@ defineExpose({
             </template>
             <template v-else>共 {{ props.entries.length }} 个方案</template>
           </span>
-          <span v-if="loadedId" class="history-summary-hint">
-            取消「当前方案」绑定，不删除方案库中的条目
+          <span class="history-summary-hint">
+            清空当前页面配置，不删除方案库中的条目
           </span>
           <span v-if="message" class="history-summary-status">{{ message }}</span>
         </div>
         <button
-          v-if="loadedId"
           type="button"
           class="loaded-clear"
           @click.stop="clearLoadedScheme"
         >
-          取消当前方案
+          清空当前配置
         </button>
       </div>
     </div>
@@ -949,9 +947,9 @@ defineExpose({
               [跳转到目录]
             </button>
           </div>
-          <button type="button" class="loaded-clear" @click="clearLoadedScheme">
-            取消当前方案
-          </button>
+            <button type="button" class="loaded-clear" @click="clearLoadedScheme">
+              清空当前配置
+            </button>
         </div>
 
         <!-- 卡片网格 -->
@@ -1065,7 +1063,7 @@ defineExpose({
     </div>
   </Teleport>
 
-  <!-- 确认框独立 Teleport：外层「取消当前方案」时方案库未打开也能看见 -->
+  <!-- 确认框独立 Teleport：外层「清空当前配置」时方案库未打开也能看见 -->
   <Teleport to="body">
     <div
       v-if="pendingConfirm"
