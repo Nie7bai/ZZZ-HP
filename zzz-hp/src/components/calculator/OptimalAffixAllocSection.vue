@@ -354,12 +354,10 @@ const anomalyProducerAgentIds = computed(() => {
 })
 
 function captureParticipantSnapshot(agentId: string): PanelStats {
-  const fromPage = props.anomalySlotPanels?.[agentId]
-  if (fromPage && !isPlaceholderExternalPanel(fromPage)) {
-    return fillPanelStatsDefaults({ ...fromPage })
-  }
-  // 词条方式角色：按进入时页级词条 + 4/5/6 拍一份完整面板进快照
   const slot = props.teamSlots.find((item) => item.agentId === agentId)
+  // 词条方式角色：始终按进入时页级词条 + 4/5/6 推导完整面板进快照。
+  // 注意 anomalySlotPanels 里词条角色只存了命中参与者的兜底基面板（createExternalPanelFromAgentBase），
+  // 并非其真实词条面板，故词条角色必须先于 fromPage 分支处理，否则会抓到缺词条的基面板。
   if (slot && resolveSlotPanelEntryMode(slot) === 'affix') {
     return computeExternalPanelFromTeamSlot({
       slot,
@@ -374,6 +372,11 @@ function captureParticipantSnapshot(agentId: string): PanelStats {
         },
       },
     })
+  }
+  // 面板导入方式：优先用页级已导入的局外面板；无则回退到角色基础面板
+  const fromPage = props.anomalySlotPanels?.[agentId]
+  if (fromPage && !isPlaceholderExternalPanel(fromPage)) {
+    return fillPanelStatsDefaults({ ...fromPage })
   }
   const agent = props.agents.find((item) => item.id === agentId)
   return createExternalPanelFromAgentBase(agent?.basePanel)
