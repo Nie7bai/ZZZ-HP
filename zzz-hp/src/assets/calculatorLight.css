@@ -89,10 +89,17 @@
   color: #7a5a1f !important;
 }
 
-.calculator-page.theme-light .team-slot-sticky .convert-dot {
-  border-color: #9fc4df !important;
-  background: color-mix(in srgb, #e7f4fc 75%, #ffffff) !important;
-  color: #2f5f82 !important;
+.calculator-page.theme-light .team-slot-sticky .convert-dot,
+.calculator-page.theme-light .team-slot-sticky .entry-mode-dot.affix {
+  border-color: #7ea8c4 !important;
+  background: #e7f4fc !important;
+  color: #1e4a6a !important;
+}
+
+.calculator-page.theme-light .team-slot-sticky .entry-mode-dot {
+  border-color: #c9a55c !important;
+  background: #fff8ea !important;
+  color: #6a4e1d !important;
 }
 
 .calculator-page.theme-light .team-slot-sticky .import-btn,
@@ -555,6 +562,18 @@
   color: #3d4a63 !important;
   background: var(--calc-surface-3) !important;
   border-color: var(--calc-border) !important;
+}
+
+.calculator-page.theme-light .badge.entry-mode {
+  color: #6a4e1d !important;
+  background: #fff8ea !important;
+  border-color: #e6d7b0 !important;
+}
+
+.calculator-page.theme-light .badge.entry-mode.affix {
+  color: #1e4a6a !important;
+  background: #e7f4fc !important;
+  border-color: #9fc4df !important;
 }
 
 .calculator-page.theme-light .agent-name,
