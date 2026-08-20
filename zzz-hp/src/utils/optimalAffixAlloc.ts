@@ -1283,6 +1283,8 @@ function affixEvalContextSignature(ctx: OptimalEvalContext): string {
     ctx.wengineBaseAtk ?? 0,
     ctx.baseDamageSource ?? '',
     JSON.stringify(ctx.driveDiscMainStats),
+    // 主词条组合试算会改 2/4 件套；缺失会导致同词条数命中旧缓存，伤害不变
+    JSON.stringify(ctx.driveDiscSelection),
     JSON.stringify(ctx.enemyInput),
     JSON.stringify(ctx.panelContext.skillContext),
     JSON.stringify(ctx.extraGains ?? []),

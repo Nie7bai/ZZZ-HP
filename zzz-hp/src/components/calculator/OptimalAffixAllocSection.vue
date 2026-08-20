@@ -1581,9 +1581,17 @@ const combinedMainStatRankings = ref<
 
 function mainStatDiffBuilder() {
   const counts = analysisCounts.value
-  const base = analysisEval.value
-  if (!counts || !base) return null
-  const baseDmg = resolveAffixMetricDamage(base)
+  if (!counts || !analysisEval.value) return null
+  // 与组合试算同一口径：现场按当前主属性重算，避免扫掠快照/无 hits 面板口径错位
+  const baseDmg = evaluateMainStatComboDamage(
+    {
+      slot4MainStat: driveDiscMainStats.slot4MainStat,
+      slot5MainStat: driveDiscMainStats.slot5MainStat,
+      slot6MainStat: driveDiscMainStats.slot6MainStat,
+    },
+    counts,
+    currentTwoPieceId.value,
+  )
 
   return MAIN_STAT_SLOTS.map(({ key, title, options }) => {
     const currentId = driveDiscMainStats[key]
@@ -1591,15 +1599,13 @@ function mainStatDiffBuilder() {
     const rows = options
       .filter((o) => o.id !== currentId)
       .map((o) => {
-        const ctx2 = {
-          ...evalCtx.value,
-          driveDiscMainStats: {
-            ...evalCtx.value.driveDiscMainStats,
-            [key]: o.id,
-          } as AffixDriveDiscMainStats,
+        const nextStats: AffixDriveDiscMainStats = {
+          slot4MainStat: driveDiscMainStats.slot4MainStat,
+          slot5MainStat: driveDiscMainStats.slot5MainStat,
+          slot6MainStat: driveDiscMainStats.slot6MainStat,
+          [key]: o.id,
         }
-        const evaled = evaluateAffixCounts(ctx2, counts)
-        const dmg = resolveAffixMetricDamage(evaled)
+        const dmg = evaluateMainStatComboDamage(nextStats, counts, currentTwoPieceId.value)
         const delta = dmg - baseDmg
         return {
           id: o.id,
@@ -1614,8 +1620,16 @@ function mainStatDiffBuilder() {
 
 function buildCombinedMainStatRankings() {
   if (!analysisCounts.value || !analysisEval.value) return []
-  const baseDamage = resolveAffixMetricDamage(analysisEval.value)
-  const currentStats = driveDiscMainStats
+  const currentStats: AffixDriveDiscMainStats = {
+    slot4MainStat: driveDiscMainStats.slot4MainStat,
+    slot5MainStat: driveDiscMainStats.slot5MainStat,
+    slot6MainStat: driveDiscMainStats.slot6MainStat,
+  }
+  const baseDamage = evaluateMainStatComboDamage(
+    currentStats,
+    analysisCounts.value,
+    currentTwoPieceId.value,
+  )
   const rows: {
     slot4: string
     slot5: string
@@ -1804,6 +1818,8 @@ function applyCombinedMainStatRanking(row: {
   combinedMainStatDraft.slot4MainStat = row.slot4 as typeof combinedMainStatDraft.slot4MainStat
   combinedMainStatDraft.slot5MainStat = row.slot5 as typeof combinedMainStatDraft.slot5MainStat
   combinedMainStatDraft.slot6MainStat = row.slot6 as typeof combinedMainStatDraft.slot6MainStat
+  // 排行按「限定组合」里的 2 件套试算，套用时一并同步到组合试算草稿
+  combinedMainStatDraftTwoPieceId.value = rankingTwoPieceId.value
 }
 
 function evaluateMainStatComboDamage(
@@ -1830,7 +1846,6 @@ function evaluateMainStatComboDamage(
 
 const combinedMainStatPreview = computed(() => {
   if (!analysisCounts.value || !analysisEval.value) return null
-  const baseDamage = resolveAffixMetricDamage(analysisEval.value)
   const currentStats: AffixDriveDiscMainStats = {
     slot4MainStat: driveDiscMainStats.slot4MainStat,
     slot5MainStat: driveDiscMainStats.slot5MainStat,
@@ -1846,6 +1861,13 @@ const combinedMainStatPreview = computed(() => {
     draftStats.slot5MainStat === currentStats.slot5MainStat &&
     draftStats.slot6MainStat === currentStats.slot6MainStat &&
     combinedMainStatDraftTwoPieceId.value === currentTwoPieceId.value
+  // 基准必须与试算同一套 evaluate（含 hits）；不能用 analysisEval：
+  // 异步扫掠后 evalSnapshot 常为空，会落到「无 hits」面板口径，事件模式下差值会错一个数量级
+  const baseDamage = evaluateMainStatComboDamage(
+    currentStats,
+    analysisCounts.value,
+    currentTwoPieceId.value,
+  )
   const proposedDamage = unchanged
     ? baseDamage
     : evaluateMainStatComboDamage(
