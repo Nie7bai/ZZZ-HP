@@ -1489,10 +1489,6 @@ function openSchemeLibrary() {
   historySectionRef.value?.openModal()
 }
 
-function clearCurrentScheme() {
-  historySectionRef.value?.clearLoadedScheme()
-}
-
 function onClearLoadedScheme() {
   resetPageSchemeConfig()
 }
@@ -1548,14 +1544,6 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       />
       <div class="scheme-lib-actions">
         <button type="button" class="scheme-lib-btn" @click="openSchemeLibrary">方案库</button>
-        <button
-          type="button"
-          class="scheme-clear-btn"
-          title="清空当前页面配置，不删除方案库里的存档"
-          @click="clearCurrentScheme"
-        >
-          清空当前配置
-        </button>
       </div>
     </div>
     <UnifiedPresetPicker
@@ -1874,8 +1862,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
   border-left: 1px solid rgba(201, 165, 92, 0.22);
 }
 
-.scheme-lib-btn,
-.scheme-clear-btn {
+.scheme-lib-btn {
   appearance: none;
   border-radius: 8px;
   font: inherit;
@@ -1888,9 +1875,6 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
     background 0.12s ease,
     border-color 0.12s ease,
     color 0.12s ease;
-}
-
-.scheme-lib-btn {
   border: 1px solid #4a5363;
   background: #222833;
   color: #e8edf5;
@@ -1902,20 +1886,6 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
   border-color: rgba(201, 165, 92, 0.55);
   background: #2a3140;
   color: #f3e6c4;
-}
-
-.scheme-clear-btn {
-  border: 1px solid #4a5363;
-  background: transparent;
-  color: #b0b8c8;
-  padding: 0.38rem 0.8rem;
-  font-size: 0.78rem;
-}
-
-.scheme-clear-btn:hover {
-  border-color: #6a7385;
-  background: rgba(255, 255, 255, 0.04);
-  color: #e0e5ef;
 }
 
 .skill-flow-anchor {

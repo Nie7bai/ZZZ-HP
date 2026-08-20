@@ -111,8 +111,7 @@
   color: #16324a !important;
 }
 
-.calculator-page.theme-light .team-slot-sticky .clear-btn,
-.calculator-page.theme-light .scheme-clear-btn {
+.calculator-page.theme-light .team-slot-sticky .clear-btn {
   border-color: #b7d3e8 !important;
   background: transparent !important;
   color: #4d6a80 !important;
@@ -120,8 +119,7 @@
   filter: none !important;
 }
 
-.calculator-page.theme-light .team-slot-sticky .clear-btn:hover,
-.calculator-page.theme-light .scheme-clear-btn:hover {
+.calculator-page.theme-light .team-slot-sticky .clear-btn:hover {
   border-color: #8eb9d8 !important;
   background: color-mix(in srgb, #f7fbfe 70%, transparent) !important;
   color: #16324a !important;
