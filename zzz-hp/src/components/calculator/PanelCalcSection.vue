@@ -290,6 +290,9 @@ type AgentAffixState = {
 const affixStateByAgent = reactive<Record<string, AgentAffixState>>({})
 /** 正在把槽位数据灌进编辑器时，禁止再写回槽位 */
 let applyingAffixState = false
+/** live 编辑器当前绑着哪个人；换槽/存盘只准写回这个人，禁止拿 A 的局外去盖 B */
+let liveBoundSlotIndex: number | null = null
+let liveBoundAgentId: string | null = null
 
 function captureAffixState(): AgentAffixState {
   return {
@@ -312,21 +315,21 @@ function applyAffixState(state: AgentAffixState | undefined) {
 }
 
 function flushAffixOntoSlot(slotIndex: number) {
-  if (suppressRestoreResets) return
-  const slot = props.teamSlots[slotIndex]
-  if (!slot?.agentId) return
-  slot.affixCounts = { ...affixCounts }
-  slot.affixDriveDiscMainStats = { ...affixDriveDiscMainStats }
-  affixStateByAgent[slot.agentId] = captureAffixState()
+  flushLiveOntoBoundSlot()
+  if (liveBoundSlotIndex !== slotIndex) return
 }
 
 function flushAffixOntoTeamSlots() {
-  flushAffixOntoSlot(mainSlotIndex.value)
+  flushLiveOntoBoundSlot()
 }
 
 function persistAffixOntoCurrentSlot() {
   if (suppressRestoreResets || applyingAffixState) return
-  flushAffixOntoSlot(mainSlotIndex.value)
+  const slot =
+    liveBoundSlotIndex != null ? props.teamSlots[liveBoundSlotIndex] : undefined
+  if (!slot?.agentId || slot.agentId !== liveBoundAgentId) return
+  if (resolveSlotPanelEntryMode(slot) !== 'affix') return
+  flushLiveOntoBoundSlot()
 }
 
 function slotAffixState(slot: TeamSlot | undefined): AgentAffixState | undefined {
@@ -487,15 +490,67 @@ function isSlotAffixMode(slotIndex: number) {
 
 const isAffixMode = computed(() => isSlotAffixMode(props.editedSlotIndex))
 
-const effectiveExternalPanel = computed<PanelStats>(() => {
-  if (isAffixMode.value) return derivedExternalPanel.value
-  const id = mainAgent.value?.id
-  const saved = id ? props.anomalySlotPanels?.[id] : undefined
-  if (saved && !isPlaceholderExternalPanel(saved)) {
-    return fillPanelStatsDefaults(saved)
+function flushLiveOntoBoundSlot() {
+  if (suppressRestoreResets) return
+  if (liveBoundSlotIndex == null || !liveBoundAgentId) return
+  const slot = props.teamSlots[liveBoundSlotIndex]
+  if (!slot?.agentId || slot.agentId !== liveBoundAgentId) return
+  if (resolveSlotPanelEntryMode(slot) === 'affix') {
+    slot.affixCounts = { ...affixCounts }
+    slot.affixDriveDiscMainStats = { ...affixDriveDiscMainStats }
+    affixStateByAgent[slot.agentId] = captureAffixState()
+    emitAnomalySlotPanel(
+      slot.agentId,
+      computeExternalPanelFromTeamSlot({
+        slot,
+        agents: props.agents,
+        wengines: props.wengines,
+        driveDiscs: props.driveDiscs,
+        overrideAffix: { affixCounts, affixDriveDiscMainStats },
+      }),
+    )
+    return
   }
-  return externalPanel
-})
+  emitAnomalySlotPanel(liveBoundAgentId, fillPanelStatsDefaults({ ...externalPanel }))
+}
+
+function bindLiveToCurrentSlot() {
+  const idx = mainSlotIndex.value
+  const slot = props.teamSlots[idx]
+  liveBoundSlotIndex = idx
+  liveBoundAgentId = slot?.agentId || null
+  loadAffixFromCurrentSlot()
+  if (!slot?.agentId) {
+    Object.assign(externalPanel, createDefaultExternalPanel())
+    return
+  }
+  if (resolveSlotPanelEntryMode(slot) === 'affix') {
+    Object.assign(
+      externalPanel,
+      createDefaultExternalPanel(),
+      computeExternalPanelFromTeamSlot({
+        slot,
+        agents: props.agents,
+        wengines: props.wengines,
+        driveDiscs: props.driveDiscs,
+        overrideAffix: { affixCounts, affixDriveDiscMainStats },
+      }),
+    )
+    return
+  }
+  const saved = props.anomalySlotPanels?.[slot.agentId]
+  if (saved) {
+    Object.assign(externalPanel, createDefaultExternalPanel(), saved)
+    return
+  }
+  if (mainAgent.value?.basePanel) {
+    Object.assign(externalPanel, createExternalPanelFromAgentBase(mainAgent.value.basePanel))
+  }
+}
+
+const effectiveExternalPanel = computed<PanelStats>(() =>
+  resolveExternalPanelForSlotIndex(mainSlotIndex.value),
+)
 
 const isMbMainAgent = computed(() => mainAgent.value?.profession === MB_PROFESSION)
 
@@ -538,17 +593,17 @@ function resolveExternalPanelForSlotIndex(slotIndex: number): PanelStats {
   if (isSlotAffixMode(slotIndex)) {
     return derivedExternalPanelForSlot(slotIndex)
   }
-  // 局外以导入写入的 anomalySlotPanels 为准（含当前编辑槽），不再优先用可能过期的 live 编辑器
   const anomaly = props.anomalySlotPanels?.[agentId]
-  if (anomaly && !isPlaceholderExternalPanel(anomaly)) {
-    return fillPanelStatsDefaults(anomaly)
-  }
-  if (slotIndex === mainSlotIndex.value) {
+  if (anomaly) return fillPanelStatsDefaults(anomaly)
+  if (
+    slotIndex === mainSlotIndex.value &&
+    liveBoundAgentId === agentId &&
+    liveBoundSlotIndex === slotIndex
+  ) {
     return fillPanelStatsDefaults(externalPanel)
   }
-  const partial = props.convertSlotPanels?.[agentId]
-  if (partial) return convertSlotPartialToExternalPanel(partial)
-  return createDefaultExternalPanel()
+  const agent = props.agents.find((item) => item.id === agentId)
+  return createExternalPanelFromAgentBase(agent?.basePanel)
 }
 
 /** 每人一份局外，供全队转模按来源槽位取值（不要拿编辑中角色的面板去套队友） */
@@ -1017,15 +1072,9 @@ function applyRecognitionToExternalPanel(result: PanelScreenshotRecognition) {
   Object.assign(affixCounts, createEmptyAffixCounts(), inferred.affixCounts)
 }
 
-/** 导入确认后：按槽位已提交的词条 / anomaly 面板刷新 live 编辑器 */
+/** 导入确认后：按该槽已提交的词条 / 局外刷新 live，并绑到当前人 */
 function syncLivePanelFromCommitted() {
-  loadAffixFromCurrentSlot()
-  const id = mainAgent.value?.id
-  if (!id || isAffixMode.value) return
-  const saved = props.anomalySlotPanels?.[id]
-  if (saved) {
-    Object.assign(externalPanel, createDefaultExternalPanel(), saved)
-  }
+  bindLiveToCurrentSlot()
 }
 
 watch(
@@ -1044,6 +1093,8 @@ let suppressRestoreResets = 0
 function beginRestore() {
   suppressRestoreResets += 1
   applyingAffixState = true
+  liveBoundSlotIndex = null
+  liveBoundAgentId = null
   if (anomalyPanelEmitTimer) {
     clearTimeout(anomalyPanelEmitTimer)
     anomalyPanelEmitTimer = null
@@ -1052,6 +1103,10 @@ function beginRestore() {
 
 function endRestore() {
   suppressRestoreResets = Math.max(0, suppressRestoreResets - 1)
+  if (suppressRestoreResets === 0) {
+    applyingAffixState = false
+    bindLiveToCurrentSlot()
+  }
 }
 
 watch(
@@ -1059,24 +1114,8 @@ watch(
   (newIdx, oldIdx) => {
     if (suppressRestoreResets) return
     if (oldIdx == null || oldIdx === newIdx) return
-    const oldSlot = props.teamSlots[oldIdx]
-    const oldAgentId = oldSlot?.agentId
-    if (oldAgentId && !isSlotAffixMode(oldIdx)) {
-      const existing = props.anomalySlotPanels?.[oldAgentId]
-      // 与 flush 一致：已有导入局外时勿用可能未同步的 live 覆盖
-      if (!existing || isPlaceholderExternalPanel(existing)) {
-        emitAnomalySlotPanel(oldAgentId, { ...externalPanel })
-      }
-    }
-    loadAffixFromCurrentSlot()
-    // 换槽后立刻把当前槽已提交局外灌进 live，供快照/兼容路径使用
-    if (!isSlotAffixMode(newIdx)) {
-      const newId = props.teamSlots[newIdx]?.agentId
-      const saved = newId ? props.anomalySlotPanels?.[newId] : undefined
-      if (saved && !isPlaceholderExternalPanel(saved)) {
-        Object.assign(externalPanel, createDefaultExternalPanel(), saved)
-      }
-    }
+    flushLiveOntoBoundSlot()
+    bindLiveToCurrentSlot()
   },
 )
 
@@ -1084,65 +1123,8 @@ watch(
   () => mainAgent.value?.id,
   (newId, oldId) => {
     if (suppressRestoreResets) return
-    if (oldId && !isAffixMode.value) {
-      const oldStillOnOtherSlot = props.teamSlots.some(
-        (item, index) => item.agentId === oldId && index !== props.editedSlotIndex,
-      )
-      if (oldStillOnOtherSlot) {
-        // 换槽由 editedSlotIndex watch 写回；这里只处理同一槽换人
-      } else {
-        const existing = props.anomalySlotPanels?.[oldId]
-        // 已有导入局外时勿用可能未同步的 live 覆盖
-        if (!existing || isPlaceholderExternalPanel(existing)) {
-          emitAnomalySlotPanel(oldId, { ...externalPanel })
-        }
-        const convertSlot = convertSupportSlots.value.find((item) => item.agentId === oldId)
-        if (convertSlot) {
-          emitConvertSlotPanel(oldId, convertSlot.requiredAttrs, externalPanel)
-        } else if (props.convertSlotPanels?.[oldId]) {
-          const keys = Object.keys(props.convertSlotPanels[oldId]) as CharacterAttrKey[]
-          emitConvertSlotPanel(oldId, keys, externalPanel)
-        }
-      }
-    }
-
-    if (!mainAgent.value || !newId) return
-
-    loadAffixFromCurrentSlot()
-
-    // 首次挂载不要覆盖方案/草稿里已经灌进编辑器的局外面板。
-    if (!oldId) {
-      const savedAnomaly = props.anomalySlotPanels?.[newId]
-      if (savedAnomaly && !isPlaceholderExternalPanel(savedAnomaly)) {
-        Object.assign(externalPanel, createDefaultExternalPanel(), savedAnomaly)
-        return
-      }
-      const savedConvert = props.convertSlotPanels?.[newId]
-      if (savedConvert && Object.keys(savedConvert).length > 0) {
-        applyAgentBaseToExternalPanel(mainAgent.value.basePanel)
-        applyConvertPartialToExternalPanel(savedConvert, externalPanel)
-        return
-      }
-      applyAgentBaseToExternalPanel(mainAgent.value.basePanel)
-      if (!isAffixMode.value) emitAnomalySlotPanel(newId, { ...externalPanel })
-      return
-    }
-
-    const savedAnomaly = props.anomalySlotPanels?.[newId]
-    if (savedAnomaly && !isPlaceholderExternalPanel(savedAnomaly)) {
-      Object.assign(externalPanel, createDefaultExternalPanel(), savedAnomaly)
-      return
-    }
-
-    const savedConvert = props.convertSlotPanels?.[newId]
-    if (savedConvert && Object.keys(savedConvert).length > 0) {
-      Object.assign(externalPanel, createExternalPanelFromAgentBase(mainAgent.value.basePanel))
-      applyConvertPartialToExternalPanel(savedConvert, externalPanel)
-      return
-    }
-
-    Object.assign(externalPanel, createExternalPanelFromAgentBase(mainAgent.value.basePanel))
-    if (!isAffixMode.value) emitAnomalySlotPanel(newId, { ...externalPanel })
+    if (oldId && oldId !== newId) flushLiveOntoBoundSlot()
+    bindLiveToCurrentSlot()
   },
   { immediate: true },
 )
@@ -1163,32 +1145,8 @@ function flushCurrentPanelOntoAnomalyMap() {
     clearTimeout(anomalyPanelEmitTimer)
     anomalyPanelEmitTimer = null
   }
-  if (suppressRestoreResets) return
-  const id = mainAgent.value?.id
-  if (!id || isAffixMode.value) return
-  const existing = props.anomalySlotPanels?.[id]
-  // 已有导入/已存局外时勿用可能未同步的 live 覆盖
-  if (existing && !isPlaceholderExternalPanel(existing)) return
-  emitAnomalySlotPanel(id, { ...externalPanel })
-  const convertSlot = convertSupportSlots.value.find((item) => item.agentId === id)
-  if (convertSlot) {
-    emitConvertSlotPanel(id, convertSlot.requiredAttrs, externalPanel)
-  }
+  flushLiveOntoBoundSlot()
 }
-
-watch(
-  effectiveExternalPanel,
-  () => {
-    if (suppressRestoreResets) return
-    if (isAffixMode.value) return
-    if (anomalyPanelEmitTimer) clearTimeout(anomalyPanelEmitTimer)
-    anomalyPanelEmitTimer = setTimeout(() => {
-      anomalyPanelEmitTimer = null
-      flushCurrentPanelOntoAnomalyMap()
-    }, 200)
-  },
-  { deep: true },
-)
 
 const piercePower = computed(() =>
   computePiercePower(
@@ -3631,9 +3589,8 @@ const teamWengineNotes = computed(() =>
 )
 
 function getSnapshot(): DamageCalcPanelSnapshot {
-  flushAffixOntoTeamSlots()
-  flushCurrentPanelOntoAnomalyMap()
-  const id = mainAgent.value?.id
+  flushLiveOntoBoundSlot()
+  const id = liveBoundAgentId
   if (id) affixStateByAgent[id] = captureAffixState()
   return {
     baseDamageSource: baseDamageSource.value,
@@ -3659,13 +3616,11 @@ function loadSnapshot(
   if (options?.preserveBaseDamageSource && snapshot.baseDamageSource) {
     baseDamageSource.value = snapshot.baseDamageSource
   }
-  Object.assign(externalPanel, createDefaultExternalPanel(), snapshot.externalPanel)
   for (const key of Object.keys(affixStateByAgent)) delete affixStateByAgent[key]
   if (snapshot.affixStateByAgent) {
     Object.assign(affixStateByAgent, JSON.parse(JSON.stringify(snapshot.affixStateByAgent)))
   }
   migrateSnapshotAffixOntoSlots(snapshot)
-  loadAffixFromCurrentSlot()
   if (snapshot.extraGains?.length) {
     extraGains.value = snapshot.extraGains.map((item) =>
       normalizeExtraGain({
@@ -3704,6 +3659,7 @@ function loadSnapshot(
   if (!Number.isFinite(enemyInput.value.level) || enemyInput.value.level < 1) {
     enemyInput.value.level = 60
   }
+  bindLiveToCurrentSlot()
 }
 
 /**

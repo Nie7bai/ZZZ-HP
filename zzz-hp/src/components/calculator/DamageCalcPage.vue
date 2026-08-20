@@ -492,7 +492,7 @@ function getParticipantAgentIds(): string[] {
 
 function ensureAnomalySlotPanel(agentId: string) {
   const existing = anomalySlotPanels[agentId]
-  if (existing && !isPlaceholderExternalPanel(existing)) {
+  if (existing) {
     if (!Number.isFinite(existing.mutationCoeff) || !Number.isFinite(existing.mutationCoeffFactor)) {
       anomalySlotPanels[agentId] = fillPanelStatsDefaults(existing)
     }
@@ -913,7 +913,12 @@ function clearSlot(index: number) {
 
 function ensureAgentExternalPanel(agentId: string) {
   if (!agentId) return
-  if (anomalySlotPanels[agentId] && !isPlaceholderExternalPanel(anomalySlotPanels[agentId]!)) return
+  if (anomalySlotPanels[agentId]) {
+    if (!Number.isFinite(anomalySlotPanels[agentId]!.mutationCoeff) || !Number.isFinite(anomalySlotPanels[agentId]!.mutationCoeffFactor)) {
+      anomalySlotPanels[agentId] = fillPanelStatsDefaults(anomalySlotPanels[agentId])
+    }
+    return
+  }
   const agent = agents.value.find((item) => item.id === agentId)
   anomalySlotPanels[agentId] = createExternalPanelFromAgentBase(agent?.basePanel)
 }
@@ -1056,12 +1061,13 @@ watch(
 function applyUnifiedImport(payload: UnifiedPresetConfirmPayload) {
   const slot = teamSlots[activeSlot.value]
   if (!slot) return
+  panelCalcSectionRef.value?.flushAffixOntoTeamSlots?.()
   slot.rank = payload.rank
   slot.wengineId = payload.wengineId
   slot.wengineRefine = payload.wengineRefine
   slot.twoPieceDriveDiscId = payload.twoPieceDriveDiscId
   slot.fourPieceDriveDiscId = payload.fourPieceDriveDiscId
-  slot.entryMode = payload.entryMode
+  slot.entryMode = resolveSlotPanelEntryMode({ entryMode: payload.entryMode })
   slot.affixCounts = { ...createEmptyAffixCounts(), ...payload.affixCounts }
   slot.affixDriveDiscMainStats = {
     ...createDefaultAffixDriveDiscMainStats(),
