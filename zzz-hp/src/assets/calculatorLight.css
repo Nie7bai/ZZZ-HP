@@ -15,13 +15,13 @@
   --calc-input-bg: #ffffff;
 }
 
-/* 顶栏：淡蓝底，与下方纸面区分开一层层级 */
+/* 顶栏：淡蓝实心底，堵住槽位条/编辑条/方案库按钮之间的缝（不要写 background-image:none，会把渐变也清掉） */
 .calculator-page.theme-light .team-slot-sticky {
   border: none !important;
   border-bottom: 1px solid #8eb9d8 !important;
   border-radius: 0 !important;
-  background: linear-gradient(180deg, #e3f2fb 0%, #d5eaf8 100%) !important;
-  background-image: none !important;
+  background-color: #d5eaf8 !important;
+  background-image: linear-gradient(180deg, #e3f2fb 0%, #d5eaf8 100%) !important;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.55) inset,
     0 6px 14px rgba(90, 140, 180, 0.14) !important;
