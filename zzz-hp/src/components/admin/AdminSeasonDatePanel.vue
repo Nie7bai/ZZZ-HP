@@ -9,7 +9,7 @@ import {
   type SeasonDateRecord,
 } from '@/api/admin'
 import type { AdminScope } from '@/types/admin'
-import { isDefenseScope } from '@/types/admin'
+import { isDefenseScope, isDeductionScope } from '@/types/admin'
 
 const props = defineProps<{
   scope: AdminScope
@@ -19,13 +19,17 @@ const emit = defineEmits<{
   changed: []
 }>()
 
-const mode = computed<SeasonDateMode>(() =>
-  isDefenseScope(props.scope) ? 'defense' : 'crisis',
-)
+const mode = computed<SeasonDateMode>(() => {
+  if (isDefenseScope(props.scope)) return 'defense'
+  if (isDeductionScope(props.scope)) return 'deduction'
+  return 'crisis'
+})
 
-const modeTitle = computed(() =>
-  mode.value === 'defense' ? '式舆防卫战' : '危局强袭战',
-)
+const modeTitle = computed(() => {
+  if (mode.value === 'defense') return '式舆防卫战'
+  if (mode.value === 'deduction') return '临界推演'
+  return '危局强袭战'
+})
 
 const rows = ref<SeasonDateRecord[]>([])
 const loading = ref(false)

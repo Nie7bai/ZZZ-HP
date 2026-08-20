@@ -6,7 +6,7 @@ import {
   saveCalculatorPublicAvatar,
   syncEntityAvatarToPublic,
 } from '../utils/calculatorPublicAsset.js'
-import { imageDirs } from '../middleware/upload.js'
+import { imageDirs, persistTypedImageBuffer } from '../middleware/upload.js'
 import { detectImageKind, extForImageKind } from '../utils/imageMagic.js'
 
 const GUESTBOOK_DIR_MAX_BYTES =
@@ -64,21 +64,33 @@ function persistGuestbookBuffer(file) {
 }
 
 export function uploadBoss(req, res) {
-  if (!req.file) {
-    return fail(res, '请上传图片文件，字段名为 image', 400)
+  try {
+    const saved = persistTypedImageBuffer('boss', req, req.file)
+    const url = buildImageUrl('boss', saved.filename)
+    return success(
+      res,
+      { url, filename: saved.filename, stable: saved.stable },
+      saved.stable ? 'Boss 图片已按稳定文件名保存' : 'Boss 图片上传成功（未提供名称/ID，使用随机文件名）',
+      201,
+    )
+  } catch (err) {
+    return fail(res, err.message || 'Boss 图片上传失败', 400)
   }
-
-  const url = buildImageUrl('boss', req.file.filename)
-  return success(res, { url, filename: req.file.filename }, 'Boss 图片上传成功', 201)
 }
 
 export function uploadBuff(req, res) {
-  if (!req.file) {
-    return fail(res, '请上传图片文件，字段名为 image', 400)
+  try {
+    const saved = persistTypedImageBuffer('buff', req, req.file)
+    const url = buildImageUrl('buff', saved.filename)
+    return success(
+      res,
+      { url, filename: saved.filename, stable: saved.stable },
+      saved.stable ? 'Buff 图片已按稳定文件名保存' : 'Buff 图片上传成功（未提供 ID/名称，使用随机文件名）',
+      201,
+    )
+  } catch (err) {
+    return fail(res, err.message || 'Buff 图片上传失败', 400)
   }
-
-  const url = buildImageUrl('buff', req.file.filename)
-  return success(res, { url, filename: req.file.filename }, 'Buff 图片上传成功', 201)
 }
 
 export function uploadCalculator(req, res) {

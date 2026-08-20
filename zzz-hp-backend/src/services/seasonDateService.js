@@ -14,7 +14,7 @@ function formatDateValue(value) {
 function mapRow(row) {
   return {
     id: row.id,
-    mode: row.mode === 'defense' ? 'defense' : 'crisis',
+    mode: normalizeMode(row.mode),
     version: String(row.version),
     phase: String(row.phase),
     startDate: formatDateValue(row.start_date),
@@ -23,12 +23,16 @@ function mapRow(row) {
 }
 
 function normalizeMode(mode) {
-  return String(mode || 'crisis').trim() === 'defense' ? 'defense' : 'crisis'
+  const text = String(mode || 'crisis').trim()
+  if (text === 'defense') return 'defense'
+  if (text === 'deduction') return 'deduction'
+  return 'crisis'
 }
 
 function normalizePhase(phase) {
   const digits = String(phase ?? '').replace(/\D/g, '')
-  return digits || String(phase ?? '').trim()
+  if (!digits) return String(phase ?? '').trim()
+  return String(Number(digits))
 }
 
 export async function listSeasonDates(mode) {

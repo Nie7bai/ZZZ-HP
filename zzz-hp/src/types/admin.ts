@@ -55,15 +55,20 @@ export interface AdminMonsterSlotContext {
 
 export type DefenseMonsterCategory = 'minion' | 'elite' | 'boss'
 
-export type RecordScheme = 'crisis' | 'defense'
+export type RecordScheme = 'crisis' | 'defense' | 'deduction'
 
 export function isDefenseScope(scope: AdminScope): boolean {
   return scope === 'defense-old' || scope === 'defense-new'
 }
 
+export function isDeductionScope(scope: AdminScope): boolean {
+  return scope === 'deduction'
+}
+
 export function recordSchemeFromScope(scope: AdminScope): RecordScheme | null {
   if (scope === 'crisis-assault') return 'crisis'
   if (isDefenseScope(scope)) return 'defense'
+  if (scope === 'deduction') return 'deduction'
   return null
 }
 

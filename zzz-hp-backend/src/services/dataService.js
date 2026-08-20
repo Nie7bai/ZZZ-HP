@@ -1,5 +1,6 @@
 import pool from '../config/db.js'
-import { upsertBossInfo } from './bossInfoService.js'
+import { findBossInfoByName, upsertBossInfo } from './bossInfoService.js'
+import { ensureContentModeColumns } from './contentModeService.js'
 import {
   DEFAULT_BOSS_STAGGER_MULTIPLIER,
   ensureBossStaggerSchema,
@@ -15,19 +16,28 @@ import {
   encodeDefenseBossId,
   encodeDefenseBuffId,
   formatDefenseBossRoom,
-  isCrisisBossId,
-  isCrisisBuffId,
   isDefenseBossId,
   isDefenseBuffId,
 } from '../utils/defenseId.js'
 import { resolveCrisisHpCoeff } from '../utils/crisisHpCoeff.js'
 import { normalizeCrisisRoomCode } from '../utils/crisisRoom.js'
+import { pickBestImagePath } from '../utils/localImagePath.js'
+
+let contentModeEnsured = false
+
+async function ensureContentModeSchema() {
+  if (contentModeEnsured) return
+  await ensureContentModeColumns(pool)
+  contentModeEnsured = true
+}
 
 const MAX_UNSIGNED_INT = 4294967295
 
 function normalizePhase(phase) {
   const digits = String(phase).replace(/\D/g, '')
-  return digits || String(phase).trim()
+  if (!digits) return String(phase).trim()
+  // 去掉前导零，避免 "01" 与 "1" 分成两期导致加完看不见
+  return String(Number(digits))
 }
 
 function assertHpInRange(hp) {
@@ -57,6 +67,7 @@ function normalizeManualCoeff(raw) {
 
 export async function createBoss(payload) {
   await ensureBossStaggerSchema()
+  await ensureContentModeSchema()
   const {
     recordScheme = 'crisis',
     id = null,
@@ -80,20 +91,22 @@ export async function createBoss(payload) {
     hp_coeff_percent = null,
     hp_coeff_manual = false,
     stagger_multiplier = null,
+    mode = null,
   } = payload
 
   const versionValue = String(version).trim()
   const phaseValue = normalizePhase(phase)
+  const modeValue = resolveContentMode({ mode, recordScheme, id, kind: 'boss' })
   const hpValue = assertHpInRange(hp)
   const manualCoeff =
-    recordScheme === 'crisis' && (hp_coeff_manual === true || hp_coeff_manual === 'true')
+    modeValue === 'crisis' && (hp_coeff_manual === true || hp_coeff_manual === 'true')
       ? normalizeManualCoeff(hp_coeff_percent)
       : null
 
   let bossId = id
   let roomValue = room
 
-  if (recordScheme === 'defense') {
+  if (recordScheme === 'defense' || modeValue === 'defense') {
     const encodedId = encodeDefenseBossId({
       version: versionValue,
       phase: phaseValue,
@@ -109,6 +122,15 @@ export async function createBoss(payload) {
     }
     bossId = encodedId
     roomValue = formatDefenseBossRoom(stage, roomInStage)
+  } else if (recordScheme === 'deduction' || modeValue === 'deduction') {
+    // 临界：保留显式 ID / room，不走危局或防卫编码
+    if (bossId == null || bossId === '') {
+      throw new Error('临界推演怪物须提供 id')
+    }
+    bossId = Number(bossId)
+    if (!Number.isInteger(bossId) || bossId <= 0) {
+      throw new Error('无效的临界怪物 ID')
+    }
   } else if (bossId == null && room != null) {
     bossId = encodeCrisisBossId(versionValue, phaseValue, room)
     roomValue = normalizeCrisisRoomCode(room)
@@ -116,13 +138,24 @@ export async function createBoss(payload) {
     roomValue = normalizeCrisisRoomCode(room) || room
   }
 
+  let existingBossImage = null
+  if (bossId) {
+    const [existingImageRows] = await pool.execute(
+      'SELECT boss_image FROM boss WHERE id = ? LIMIT 1',
+      [bossId],
+    )
+    existingBossImage = existingImageRows[0]?.boss_image ?? null
+  }
+  const catalogImage = (await findBossInfoByName(boss_name))?.boss_image ?? null
+  const resolvedBossImage = pickBestImagePath(boss_image, existingBossImage, catalogImage)
+
   const bossInfoSync = await upsertBossInfo({
     boss_name,
     defense,
     level,
     weakness,
     resistance,
-    boss_image,
+    boss_image: resolvedBossImage,
     crisis_base_hp,
     stagger_multiplier:
       stagger_multiplier != null && stagger_multiplier !== ''
@@ -152,7 +185,7 @@ export async function createBoss(payload) {
     roomValue,
     weakness,
     resistance,
-    boss_image,
+    resolvedBossImage,
     staggerValue,
   ]
 
@@ -162,9 +195,9 @@ export async function createBoss(payload) {
       await pool.execute(
         `UPDATE boss
          SET version = ?, phase = ?, boss_name = ?, hp = ?, hp_coeff_percent = ?, defense = ?, level = ?,
-             room = ?, weakness = ?, resistance = ?, boss_image = ?, stagger_multiplier = ?
+             room = ?, weakness = ?, resistance = ?, boss_image = ?, stagger_multiplier = ?, mode = ?
          WHERE id = ?`,
-        [...bossValues, bossId],
+        [...bossValues, modeValue, bossId],
       )
       return {
         id: bossId,
@@ -180,16 +213,16 @@ export async function createBoss(payload) {
         room: roomValue,
         weakness,
         resistance,
-        boss_image,
+        boss_image: resolvedBossImage,
         bossInfoSync,
         action: 'updated',
       }
     }
 
     await pool.execute(
-      `INSERT INTO boss (id, version, phase, boss_name, hp, hp_coeff_percent, defense, level, room, weakness, resistance, boss_image, stagger_multiplier)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [bossId, ...bossValues],
+      `INSERT INTO boss (id, version, phase, boss_name, hp, hp_coeff_percent, defense, level, room, weakness, resistance, boss_image, stagger_multiplier, mode)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [bossId, ...bossValues, modeValue],
     )
     return {
       id: bossId,
@@ -205,16 +238,16 @@ export async function createBoss(payload) {
       room: roomValue,
       weakness,
       resistance,
-      boss_image,
+      boss_image: resolvedBossImage,
       bossInfoSync,
       action: 'created',
     }
   }
 
   const [result] = await pool.execute(
-    `INSERT INTO boss (version, phase, boss_name, hp, hp_coeff_percent, defense, level, room, weakness, resistance, boss_image, stagger_multiplier)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    bossValues,
+    `INSERT INTO boss (version, phase, boss_name, hp, hp_coeff_percent, defense, level, room, weakness, resistance, boss_image, stagger_multiplier, mode)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [...bossValues, modeValue],
   )
 
   return {
@@ -231,7 +264,7 @@ export async function createBoss(payload) {
     room: roomValue,
     weakness,
     resistance,
-    boss_image,
+    boss_image: resolvedBossImage,
     bossInfoSync,
     action: 'created',
   }
@@ -239,6 +272,7 @@ export async function createBoss(payload) {
 
 export async function createBuff(payload) {
   await ensureEnvironmentBuffSchema()
+  await ensureContentModeSchema()
   const {
     recordScheme = 'crisis',
     id = null,
@@ -251,15 +285,17 @@ export async function createBuff(payload) {
     stage = null,
     roomInStage = null,
     buffIndex = null,
+    mode = null,
   } = payload
 
   const versionValue = String(version).trim()
   const phaseValue = normalizePhase(phase)
   const effectBlocksJson = serializeEffectBlocks(effect_blocks)
+  const modeValue = resolveContentMode({ mode, recordScheme, id, kind: 'buff' })
   let buffId = id != null && id !== '' ? Number(id) : null
   let action = 'created'
 
-  if (recordScheme === 'defense') {
+  if (recordScheme === 'defense' || modeValue === 'defense') {
     const encodedId = encodeDefenseBuffId({
       version: versionValue,
       phase: phaseValue,
@@ -271,6 +307,10 @@ export async function createBuff(payload) {
       throw new Error('Buff ID 与填写信息不一致')
     }
     buffId = encodedId
+  } else if (recordScheme === 'deduction' || modeValue === 'deduction') {
+    if (buffId == null || !Number.isInteger(buffId) || buffId <= 0) {
+      throw new Error('临界推演 Buff 须提供有效 id')
+    }
   } else {
     // 危局必须按 31101 规则编码，禁止自增落入防卫战 7 位 ID 区间
     const index = buffIndex != null && buffIndex !== '' ? Number(buffIndex) : 1
@@ -285,20 +325,40 @@ export async function createBuff(payload) {
     buffId = encodedId
   }
 
+  let existingBuffImage = null
+  if (buffId) {
+    const [existingRows] = await pool.execute('SELECT id, buff_image FROM buff WHERE id = ? LIMIT 1', [
+      buffId,
+    ])
+    if (existingRows.length) {
+      existingBuffImage = existingRows[0].buff_image ?? null
+    }
+  }
+  const resolvedBuffImage = pickBestImagePath(buff_image, existingBuffImage)
+
   const [existing] = await pool.execute('SELECT id FROM buff WHERE id = ? LIMIT 1', [buffId])
   if (existing.length) {
     await pool.execute(
       `UPDATE buff
-       SET version = ?, phase = ?, buff_name = ?, buff = ?, buff_image = ?, effect_blocks = ?
+       SET version = ?, phase = ?, buff_name = ?, buff = ?, buff_image = ?, effect_blocks = ?, mode = ?
        WHERE id = ?`,
-      [versionValue, phaseValue, buff_name, buff, buff_image, effectBlocksJson, buffId],
+      [
+        versionValue,
+        phaseValue,
+        buff_name,
+        buff,
+        resolvedBuffImage,
+        effectBlocksJson,
+        modeValue,
+        buffId,
+      ],
     )
     action = 'updated'
   } else {
     await pool.execute(
-      `INSERT INTO buff (id, version, phase, buff_name, buff, buff_image, effect_blocks)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [buffId, versionValue, phaseValue, buff_name, buff, buff_image, effectBlocksJson],
+      `INSERT INTO buff (id, version, phase, buff_name, buff, buff_image, effect_blocks, mode)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [buffId, versionValue, phaseValue, buff_name, buff, resolvedBuffImage, effectBlocksJson, modeValue],
     )
   }
 
@@ -308,7 +368,7 @@ export async function createBuff(payload) {
     phase: phaseValue,
     buff_name,
     buff,
-    buff_image,
+    buff_image: resolvedBuffImage,
     effect_blocks: parseEffectBlocksJson(effectBlocksJson),
     action,
   }
@@ -316,6 +376,7 @@ export async function createBuff(payload) {
 
 export async function upsertBoss(payload) {
   await ensureBossStaggerSchema()
+  await ensureContentModeSchema()
   const {
     id,
     version,
@@ -329,11 +390,22 @@ export async function upsertBoss(payload) {
     resistance = null,
     boss_image = null,
     stagger_multiplier = null,
+    mode = null,
   } = payload
 
   if (!id) {
     return createBoss({ ...payload, recordScheme: 'defense' })
   }
+
+  const modeValue = resolveContentMode({ mode, id, kind: 'boss' })
+
+  const [existing] = await pool.execute('SELECT id, boss_image FROM boss WHERE id = ? LIMIT 1', [id])
+  const catalogImage = (await findBossInfoByName(boss_name))?.boss_image ?? null
+  const resolvedBossImage = pickBestImagePath(
+    boss_image,
+    existing[0]?.boss_image ?? null,
+    catalogImage,
+  )
 
   await upsertBossInfo({
     boss_name,
@@ -341,7 +413,7 @@ export async function upsertBoss(payload) {
     level,
     weakness,
     resistance,
-    boss_image,
+    boss_image: resolvedBossImage,
     stagger_multiplier,
   })
 
@@ -350,13 +422,11 @@ export async function upsertBoss(payload) {
       ? normalizeStaggerMultiplier(stagger_multiplier)
       : null
 
-  const [existing] = await pool.execute('SELECT id FROM boss WHERE id = ? LIMIT 1', [id])
-
   if (existing.length) {
     await pool.execute(
       `UPDATE boss
        SET version = ?, phase = ?, boss_name = ?, hp = ?, defense = ?, level = ?,
-           room = ?, weakness = ?, resistance = ?, boss_image = ?, stagger_multiplier = ?
+           room = ?, weakness = ?, resistance = ?, boss_image = ?, stagger_multiplier = ?, mode = ?
        WHERE id = ?`,
       [
         version,
@@ -368,17 +438,18 @@ export async function upsertBoss(payload) {
         room,
         weakness,
         resistance,
-        boss_image,
+        resolvedBossImage,
         staggerValue,
+        modeValue,
         id,
       ],
     )
-    return { id, action: 'updated', ...payload }
+    return { id, action: 'updated', ...payload, boss_image: resolvedBossImage }
   }
 
   await pool.execute(
-    `INSERT INTO boss (id, version, phase, boss_name, hp, defense, level, room, weakness, resistance, boss_image, stagger_multiplier)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO boss (id, version, phase, boss_name, hp, defense, level, room, weakness, resistance, boss_image, stagger_multiplier, mode)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       version,
@@ -390,16 +461,18 @@ export async function upsertBoss(payload) {
       room,
       weakness,
       resistance,
-      boss_image,
+      resolvedBossImage,
       staggerValue,
+      modeValue,
     ],
   )
 
-  return { id, action: 'created', ...payload }
+  return { id, action: 'created', ...payload, boss_image: resolvedBossImage }
 }
 
 export async function upsertBuff(payload) {
   await ensureEnvironmentBuffSchema()
+  await ensureContentModeSchema()
   const {
     id,
     version,
@@ -408,64 +481,96 @@ export async function upsertBuff(payload) {
     buff = null,
     buff_image = null,
     effect_blocks = null,
+    mode = null,
   } = payload
 
   if (!id) {
     return createBuff({ ...payload, recordScheme: 'defense' })
   }
 
+  const modeValue = resolveContentMode({ mode, id, kind: 'buff' })
   const effectBlocksJson = serializeEffectBlocks(effect_blocks)
-  const [existing] = await pool.execute('SELECT id FROM buff WHERE id = ? LIMIT 1', [id])
+  const [existing] = await pool.execute('SELECT id, buff_image FROM buff WHERE id = ? LIMIT 1', [id])
+  const resolvedBuffImage = pickBestImagePath(buff_image, existing[0]?.buff_image ?? null)
 
   if (existing.length) {
     await pool.execute(
       `UPDATE buff
-       SET version = ?, phase = ?, buff_name = ?, buff = ?, buff_image = ?, effect_blocks = ?
+       SET version = ?, phase = ?, buff_name = ?, buff = ?, buff_image = ?, effect_blocks = ?, mode = ?
        WHERE id = ?`,
-      [version, phase, buff_name, buff, buff_image, effectBlocksJson, id],
+      [version, phase, buff_name, buff, resolvedBuffImage, effectBlocksJson, modeValue, id],
     )
     return {
       id,
       action: 'updated',
       ...payload,
+      buff_image: resolvedBuffImage,
       effect_blocks: parseEffectBlocksJson(effectBlocksJson),
     }
   }
 
   await pool.execute(
-    `INSERT INTO buff (id, version, phase, buff_name, buff, buff_image, effect_blocks)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [id, version, phase, buff_name, buff, buff_image, effectBlocksJson],
+    `INSERT INTO buff (id, version, phase, buff_name, buff, buff_image, effect_blocks, mode)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, version, phase, buff_name, buff, resolvedBuffImage, effectBlocksJson, modeValue],
   )
 
   return {
     id,
     action: 'created',
     ...payload,
+    buff_image: resolvedBuffImage,
     effect_blocks: parseEffectBlocksJson(effectBlocksJson),
   }
+}
+
+function resolveContentMode({ mode = null, recordScheme = null, id = null, kind = 'boss' } = {}) {
+  if (mode === 'defense' || mode === 'crisis' || mode === 'deduction') return mode
+  if (recordScheme === 'defense' || recordScheme === 'crisis' || recordScheme === 'deduction') {
+    return recordScheme
+  }
+  if (kind === 'buff') {
+    return isDefenseBuffId(id) ? 'defense' : 'crisis'
+  }
+  return isDefenseBossId(id) ? 'defense' : 'crisis'
+}
+
+function bossModeSql(mode) {
+  if (mode === 'defense') return `mode = 'defense'`
+  if (mode === 'deduction') return `mode = 'deduction'`
+  // 危局：兼容旧库空 mode，且绝不碰 defense / deduction
+  return `(mode = 'crisis' OR mode IS NULL OR mode = '')`
+}
+
+function buffModeSql(mode) {
+  return bossModeSql(mode)
 }
 
 function clampLimit(limit, fallback = 50, max = 100) {
   return Math.min(Math.max(Number(limit) || fallback, 1), max)
 }
 
-function matchesRecordScheme(id, recordScheme) {
+function matchesRecordScheme(row, recordScheme) {
   if (!recordScheme || recordScheme === 'all') return true
-  if (recordScheme === 'defense') return isDefenseBossId(id)
-  if (recordScheme === 'crisis') return isCrisisBossId(id)
+  const mode = row.mode ?? (isDefenseBossId(row.id) ? 'defense' : 'crisis')
+  if (recordScheme === 'defense') return mode === 'defense'
+  if (recordScheme === 'crisis') return mode === 'crisis'
+  if (recordScheme === 'deduction') return mode === 'deduction'
   return true
 }
 
-function matchesBuffRecordScheme(id, recordScheme) {
+function matchesBuffRecordScheme(row, recordScheme) {
   if (!recordScheme || recordScheme === 'all') return true
-  if (recordScheme === 'defense') return isDefenseBuffId(id)
-  if (recordScheme === 'crisis') return isCrisisBuffId(id)
+  const mode = row.mode ?? (isDefenseBuffId(row.id) ? 'defense' : 'crisis')
+  if (recordScheme === 'defense') return mode === 'defense'
+  if (recordScheme === 'crisis') return mode === 'crisis'
+  if (recordScheme === 'deduction') return mode === 'deduction'
   return true
 }
 
 export async function searchBossRecords(filters = {}) {
   await ensureBossStaggerSchema()
+  await ensureContentModeSchema()
   const { version, phase, keyword, limit = 50, recordScheme = null } = filters
   const conditions = []
   const params = []
@@ -487,7 +592,7 @@ export async function searchBossRecords(filters = {}) {
   const safeLimit = clampLimit(limit)
 
   const [rows] = await pool.execute(
-    `SELECT id, version, phase, boss_name, hp, defense, level, room, weakness, resistance, boss_image, stagger_multiplier
+    `SELECT id, version, phase, boss_name, hp, defense, level, room, weakness, resistance, boss_image, stagger_multiplier, mode
      FROM boss
      ${where}
      ORDER BY version DESC, phase DESC, id DESC
@@ -495,7 +600,7 @@ export async function searchBossRecords(filters = {}) {
     params,
   )
 
-  return rows.filter((row) => matchesRecordScheme(row.id, recordScheme))
+  return rows.filter((row) => matchesRecordScheme(row, recordScheme))
 }
 
 export async function deleteBoss(id) {
@@ -514,6 +619,7 @@ export async function deleteBoss(id) {
 
 export async function searchBuffRecords(filters = {}) {
   await ensureEnvironmentBuffSchema()
+  await ensureContentModeSchema()
   const { version, phase, keyword, limit = 50, recordScheme = null } = filters
   const conditions = []
   const params = []
@@ -535,7 +641,7 @@ export async function searchBuffRecords(filters = {}) {
   const safeLimit = clampLimit(limit)
 
   const [rows] = await pool.execute(
-    `SELECT id, version, phase, buff_name, buff, buff_image, effect_blocks
+    `SELECT id, version, phase, buff_name, buff, buff_image, effect_blocks, mode
      FROM buff
      ${where}
      ORDER BY version DESC, phase DESC, id DESC
@@ -544,7 +650,7 @@ export async function searchBuffRecords(filters = {}) {
   )
 
   return rows
-    .filter((row) => matchesBuffRecordScheme(row.id, recordScheme))
+    .filter((row) => matchesBuffRecordScheme(row, recordScheme))
     .map((row) => ({
       ...row,
       effect_blocks: parseEffectBlocksJson(row.effect_blocks),
@@ -574,12 +680,12 @@ export async function deleteDefenseSeasonData(version, phase) {
 
   const [bossResult] = await pool.execute(
     `DELETE FROM boss
-     WHERE version = ? AND phase = ? AND CHAR_LENGTH(CAST(id AS CHAR)) = 9`,
+     WHERE version = ? AND phase = ? AND mode = 'defense'`,
     [versionStr, phaseStr],
   )
   const [buffResult] = await pool.execute(
     `DELETE FROM buff
-     WHERE version = ? AND phase = ? AND CHAR_LENGTH(CAST(id AS CHAR)) = 7`,
+     WHERE version = ? AND phase = ? AND mode = 'defense'`,
     [versionStr, phaseStr],
   )
 
@@ -592,7 +698,7 @@ export async function deleteDefenseSeasonData(version, phase) {
   }
 }
 
-/** 危局：同 version/phase，且排除防卫战专用 ID 长度（boss 9 位 / buff 7 位） */
+/** 危局：同 version/phase，仅删除危局 mode（不含防卫/临界） */
 export async function deleteCrisisSeasonData(version, phase) {
   const versionStr = String(version).trim()
   const phaseStr = String(phase).trim()
@@ -602,12 +708,12 @@ export async function deleteCrisisSeasonData(version, phase) {
 
   const [bossResult] = await pool.execute(
     `DELETE FROM boss
-     WHERE version = ? AND phase = ? AND CHAR_LENGTH(CAST(id AS CHAR)) <> 9`,
+     WHERE version = ? AND phase = ? AND ${bossModeSql('crisis')}`,
     [versionStr, phaseStr],
   )
   const [buffResult] = await pool.execute(
     `DELETE FROM buff
-     WHERE version = ? AND phase = ? AND CHAR_LENGTH(CAST(id AS CHAR)) <> 7`,
+     WHERE version = ? AND phase = ? AND ${buffModeSql('crisis')}`,
     [versionStr, phaseStr],
   )
 
@@ -631,21 +737,12 @@ export async function previewSeasonContent(scheme, version, phase) {
   }
   const mode = scheme === 'defense' ? 'defense' : 'crisis'
 
-  const bossFilter =
-    mode === 'defense'
-      ? 'CHAR_LENGTH(CAST(id AS CHAR)) = 9'
-      : 'CHAR_LENGTH(CAST(id AS CHAR)) <> 9'
-  const buffFilter =
-    mode === 'defense'
-      ? 'CHAR_LENGTH(CAST(id AS CHAR)) = 7'
-      : 'CHAR_LENGTH(CAST(id AS CHAR)) <> 7'
-
   const [[bossCount]] = await pool.execute(
-    `SELECT COUNT(*) AS cnt FROM boss WHERE version = ? AND phase = ? AND ${bossFilter}`,
+    `SELECT COUNT(*) AS cnt FROM boss WHERE version = ? AND phase = ? AND ${bossModeSql(mode)}`,
     [versionStr, phaseStr],
   )
   const [[buffCount]] = await pool.execute(
-    `SELECT COUNT(*) AS cnt FROM buff WHERE version = ? AND phase = ? AND ${buffFilter}`,
+    `SELECT COUNT(*) AS cnt FROM buff WHERE version = ? AND phase = ? AND ${buffModeSql(mode)}`,
     [versionStr, phaseStr],
   )
   const [[dateCount]] = await pool.execute(
@@ -796,14 +893,8 @@ export async function purgeSeasonContent(scheme, version, phase, _options = {}) 
 }
 
 export async function deleteAllDefenseData() {
-  const [bossResult] = await pool.execute(
-    `DELETE FROM boss
-     WHERE CHAR_LENGTH(CAST(id AS CHAR)) = 9`,
-  )
-  const [buffResult] = await pool.execute(
-    `DELETE FROM buff
-     WHERE CHAR_LENGTH(CAST(id AS CHAR)) = 7`,
-  )
+  const [bossResult] = await pool.execute(`DELETE FROM boss WHERE mode = 'defense'`)
+  const [buffResult] = await pool.execute(`DELETE FROM buff WHERE mode = 'defense'`)
 
   return {
     bossesDeleted: bossResult.affectedRows,

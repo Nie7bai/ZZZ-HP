@@ -5,11 +5,15 @@ import {
   ensureBossStaggerSchema,
   normalizeStaggerMultiplier,
 } from '../utils/bossSchema.js'
+import { ensureContentModeColumns } from './contentModeService.js'
+import { preferExistingImage } from '../utils/localImagePath.js'
 import {
   ensureEnvironmentBuffSchema,
   parseEffectBlocksJson,
   serializeEffectBlocks,
 } from '../utils/environmentBuffSchema.js'
+
+const BOSS_INFO_CATALOGS = new Set(['crisis', 'defense', 'deduction'])
 
 const BOSS_INFO_COLUMNS = `id, boss_name, defense, level, boss_image, weakness, resistance, crisis_base_hp, stagger_multiplier,
   field_buff_name, field_buff_text, field_buff_image, field_buff_effect_blocks`
@@ -151,6 +155,8 @@ export async function listBossInfoRecords({
 } = {}) {
   await ensureBossStaggerSchema()
   await ensureEnvironmentBuffSchema()
+  await ensureContentModeColumns(pool)
+
   const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500)
   const safeOffset = Math.max(Number(offset) || 0, 0)
   const conditions = []
@@ -162,19 +168,14 @@ export async function listBossInfoRecords({
   }
 
   const catalogKey = String(catalog || 'all').trim().toLowerCase()
-  // 防卫战 boss.id 为 9 位；危局为其它数字 ID
-  if (catalogKey === 'crisis') {
+  // 按 boss.mode 归属：危局 / 防卫战 / 临界推演（不再仅靠 ID 位数，避免推演混入危局）
+  if (BOSS_INFO_CATALOGS.has(catalogKey)) {
     conditions.push(`boss_name IN (
       SELECT DISTINCT boss_name FROM boss
       WHERE boss_name IS NOT NULL AND boss_name <> ''
-        AND (id < 100000000 OR id >= 1000000000)
+        AND mode = ?
     )`)
-  } else if (catalogKey === 'defense') {
-    conditions.push(`boss_name IN (
-      SELECT DISTINCT boss_name FROM boss
-      WHERE boss_name IS NOT NULL AND boss_name <> ''
-        AND id >= 100000000 AND id < 1000000000
-    )`)
+    params.push(catalogKey)
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
@@ -198,7 +199,7 @@ export async function listBossInfoRecords({
     total: Number(countRows[0]?.total ?? 0),
     limit: safeLimit,
     offset: safeOffset,
-    catalog: catalogKey === 'crisis' || catalogKey === 'defense' ? catalogKey : 'all',
+    catalog: BOSS_INFO_CATALOGS.has(catalogKey) ? catalogKey : 'all',
   }
 }
 
@@ -249,6 +250,9 @@ export async function updateBossInfoById(id, payload) {
   if (!('field_buff_effect_blocks' in payload) && existing.field_buff_effect_blocks != null) {
     info.field_buff_effect_blocks = serializeEffectBlocks(existing.field_buff_effect_blocks)
   }
+
+  info.boss_image = preferExistingImage(info.boss_image, existing.boss_image)
+  info.field_buff_image = preferExistingImage(info.field_buff_image, existing.field_buff_image)
 
   await pool.execute(
     `UPDATE boss_info
@@ -334,6 +338,10 @@ export async function upsertBossInfo(payload) {
     info.field_buff_image = existing.field_buff_image
     info.field_buff_effect_blocks = serializeEffectBlocks(existing.field_buff_effect_blocks)
   }
+
+  // JSON 导入只带路径不带文件：缺文件时保留已有图，避免再次裂图
+  info.boss_image = preferExistingImage(info.boss_image, existing.boss_image)
+  info.field_buff_image = preferExistingImage(info.field_buff_image, existing.field_buff_image)
 
   if (!bossInfoDiffers(existing, info)) {
     return {

@@ -21,10 +21,10 @@ export interface BossInfoListResult {
   total: number
   limit: number
   offset: number
-  catalog?: 'all' | 'crisis' | 'defense'
+  catalog?: BossInfoCatalog
 }
 
-export type BossInfoCatalog = 'all' | 'crisis' | 'defense'
+export type BossInfoCatalog = 'all' | 'crisis' | 'defense' | 'deduction'
 
 interface ApiResult<T> {
   code: number

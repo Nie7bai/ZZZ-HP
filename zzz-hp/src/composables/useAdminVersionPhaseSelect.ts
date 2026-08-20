@@ -6,7 +6,7 @@ import {
   type SeasonDateMode,
 } from '@/api/admin'
 import type { AdminScope } from '@/types/admin'
-import { isDefenseScope, recordSchemeFromScope } from '@/types/admin'
+import { isDefenseScope, isDeductionScope, recordSchemeFromScope } from '@/types/admin'
 
 export type AdminVersionPhaseSource = 'boss' | 'buff' | 'both'
 
@@ -43,9 +43,11 @@ export function useAdminVersionPhaseSelect(
   const knownVersionPhases = ref<Array<{ version: string; phase: string }>>([])
   const loadingOptions = ref(false)
 
-  const seasonMode = computed<SeasonDateMode>(() =>
-    isDefenseScope(scope.value) ? 'defense' : 'crisis',
-  )
+  const seasonMode = computed<SeasonDateMode>(() => {
+    if (isDefenseScope(scope.value)) return 'defense'
+    if (isDeductionScope(scope.value)) return 'deduction'
+    return 'crisis'
+  })
 
   const resolvedVersion = computed(() => customVersion.value.trim() || version.value.trim())
   const resolvedPhase = computed(() => customPhase.value.trim() || phase.value.trim())
