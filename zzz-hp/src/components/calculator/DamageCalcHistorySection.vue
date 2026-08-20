@@ -788,6 +788,7 @@ defineExpose({
         <button
           type="button"
           class="loaded-clear"
+          title="清空当前页面配置，不删除方案库里的存档"
           @click.stop="clearLoadedScheme"
         >
           清空当前配置
