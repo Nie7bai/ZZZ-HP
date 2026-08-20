@@ -102,6 +102,28 @@ export interface AffixCounts {
 }
 
 export type PanelCalcMode = 'panel' | 'affix' | 'optimal'
+/** 页面只切这两页：伤害计算 / 最优词条。旧存档里的 affix 会迁到每人导入方式 */
+export type DamagePageCalcMode = Extract<PanelCalcMode, 'panel' | 'optimal'>
+/** 每个角色导入时选择：手填局外 / 词条推导。与页面「伤害计算 | 最优词条」不是一回事 */
+export type SlotPanelEntryMode = Extract<PanelCalcMode, 'panel' | 'affix'>
+
+export function resolveDamagePageCalcMode(
+  mode: PanelCalcMode | null | undefined,
+): DamagePageCalcMode {
+  return mode === 'optimal' ? 'optimal' : 'panel'
+}
+
+export function resolveSlotPanelEntryMode(
+  slot: { entryMode?: SlotPanelEntryMode } | null | undefined,
+  fallback: SlotPanelEntryMode = 'panel',
+): SlotPanelEntryMode {
+  if (slot?.entryMode === 'affix' || slot?.entryMode === 'panel') return slot.entryMode
+  return fallback
+}
+
+export function slotPanelEntryModeLabel(mode: SlotPanelEntryMode): string {
+  return mode === 'affix' ? '词条计算' : '面板导入'
+}
 
 export type DriveDiscSlot4StatId =
   | 'critDmg'

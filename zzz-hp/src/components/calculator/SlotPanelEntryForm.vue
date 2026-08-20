@@ -180,7 +180,7 @@ function formatValue(key: keyof PanelStats, value: number) {
         :class="{ active: calcMode === 'panel' }"
         @click="calcMode = 'panel'"
       >
-        面板计算
+        面板导入
       </button>
       <button
         type="button"
@@ -190,7 +190,7 @@ function formatValue(key: keyof PanelStats, value: number) {
       >
         词条计算
       </button>
-      <p class="entry-mode-hint">仅影响本导入表单，不跟随页面「计算方式」。</p>
+      <p class="entry-mode-hint">确定导入后记在该角色上，三人可各选一种；与左侧「伤害计算 / 最优词条」无关。</p>
     </div>
 
     <section v-if="isAffixMode" class="panel-block">

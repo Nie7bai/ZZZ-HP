@@ -29,6 +29,7 @@ import type {
   AffixDriveDiscMainStats,
   PanelCalcMode,
   PanelStats,
+  SlotPanelEntryMode,
 } from '@/types/calculatorPanel'
 import {
   createDefaultAffixDriveDiscMainStats,
@@ -38,6 +39,8 @@ import {
   fillPanelStatsDefaults,
   isPlaceholderExternalPanel,
   resetSchemeExcludedPanelFields,
+  resolveDamagePageCalcMode,
+  resolveSlotPanelEntryMode,
 } from '@/types/calculatorPanel'
 import type {
   AnomalyDamageSubKind,
@@ -110,6 +113,8 @@ export interface TeamSlot {
   fourPieceDriveDiscId: string
   affixDriveDiscMainStats?: AffixDriveDiscMainStats
   affixCounts?: AffixCounts
+  /** 该角色导入方式：面板导入 / 词条计算 */
+  entryMode?: SlotPanelEntryMode
 }
 
 const calculatorBuffStore = useCalculatorBuffStore()
@@ -125,6 +130,7 @@ const teamSlots = reactive<TeamSlot[]>([
     isMainC: true,
     twoPieceDriveDiscId: 'none',
     fourPieceDriveDiscId: 'none',
+    entryMode: 'panel',
   },
   {
     agentId: '',
@@ -134,6 +140,7 @@ const teamSlots = reactive<TeamSlot[]>([
     isMainC: false,
     twoPieceDriveDiscId: 'none',
     fourPieceDriveDiscId: 'none',
+    entryMode: 'panel',
   },
   {
     agentId: '',
@@ -143,6 +150,7 @@ const teamSlots = reactive<TeamSlot[]>([
     isMainC: false,
     twoPieceDriveDiscId: 'none',
     fourPieceDriveDiscId: 'none',
+    entryMode: 'panel',
   },
 ])
 
@@ -894,6 +902,7 @@ function clearSlot(index: number) {
   slot.wengineRefine = 1
   slot.twoPieceDriveDiscId = 'none'
   slot.fourPieceDriveDiscId = 'none'
+  slot.entryMode = 'panel'
   slot.affixDriveDiscMainStats = undefined
   slot.affixCounts = undefined
   if (oldId && !teamSlots.some((item) => item.agentId === oldId)) {
@@ -955,6 +964,7 @@ const stickySlotPanelPreviews = computed(() => {
     s.wengineId,
     s.twoPieceDriveDiscId,
     s.fourPieceDriveDiscId,
+    s.entryMode,
   ])
 
   // 面板/词条模式：用 PanelCalcSection 的预览（含局内，随增益重算）
@@ -969,9 +979,20 @@ const stickySlotPanelPreviews = computed(() => {
     if (fromOptimal?.length) return fromOptimal
   }
 
-  // 兜底：轻量局外（页级导入值）
+  // 兜底：轻量局外（按该人导入方式）
   return teamSlots.map((slot) => {
     if (!slot.agentId) return null
+    if (resolveSlotPanelEntryMode(slot) === 'affix') {
+      return {
+        external: computeExternalPanelFromTeamSlot({
+          slot,
+          agents: agents.value,
+          wengines: wengines.value,
+          driveDiscs: driveDiscs.value,
+        }),
+        final: null as PanelStats | null,
+      }
+    }
     const saved = anomalySlotPanels[slot.agentId]
     const external =
       saved && !isPlaceholderExternalPanel(saved)
@@ -1040,6 +1061,7 @@ function applyUnifiedImport(payload: UnifiedPresetConfirmPayload) {
   slot.wengineRefine = payload.wengineRefine
   slot.twoPieceDriveDiscId = payload.twoPieceDriveDiscId
   slot.fourPieceDriveDiscId = payload.fourPieceDriveDiscId
+  slot.entryMode = payload.entryMode
   slot.affixCounts = { ...createEmptyAffixCounts(), ...payload.affixCounts }
   slot.affixDriveDiscMainStats = {
     ...createDefaultAffixDriveDiscMainStats(),
@@ -1063,6 +1085,7 @@ function cloneTeamSlots(): DamageCalcHistoryEntry['teamSlots'] {
     isMainC: slot.isMainC,
     twoPieceDriveDiscId: slot.twoPieceDriveDiscId || 'none',
     fourPieceDriveDiscId: slot.fourPieceDriveDiscId || 'none',
+    entryMode: resolveSlotPanelEntryMode(slot),
     affixDriveDiscMainStats: slot.affixDriveDiscMainStats
       ? { ...slot.affixDriveDiscMainStats }
       : undefined,
@@ -1070,7 +1093,11 @@ function cloneTeamSlots(): DamageCalcHistoryEntry['teamSlots'] {
   }))
 }
 
-function applyTeamSlots(slots: DamageCalcHistoryEntry['teamSlots']) {
+function applyTeamSlots(
+  slots: DamageCalcHistoryEntry['teamSlots'],
+  options?: { pageWasAffix?: boolean },
+) {
+  const fallback: SlotPanelEntryMode = options?.pageWasAffix ? 'affix' : 'panel'
   slots.forEach((slot, index) => {
     const target = teamSlots[index]
     if (!target) return
@@ -1087,6 +1114,7 @@ function applyTeamSlots(slots: DamageCalcHistoryEntry['teamSlots']) {
       typeof slot.fourPieceDriveDiscId === 'string' && slot.fourPieceDriveDiscId
         ? slot.fourPieceDriveDiscId
         : 'none'
+    target.entryMode = resolveSlotPanelEntryMode(slot, fallback)
     target.affixDriveDiscMainStats = slot.affixDriveDiscMainStats
       ? { ...slot.affixDriveDiscMainStats }
       : undefined
@@ -1165,10 +1193,11 @@ function applyWorkingState(entry: {
     ? (JSON.parse(JSON.stringify(entry.multiSlotBuffSelection)) as MultiSlotBuffSelection)
     : createEmptyMultiSlotBuffSelection()
   activeSlot.value = entry.activeSlot
-  applyTeamSlots(entry.teamSlots)
+  applyTeamSlots(entry.teamSlots, { pageWasAffix: entry.panelCalcMode === 'affix' })
   selectedBangbooId.value = entry.selectedBangbooId
   bangbooRefine.value = entry.bangbooRefine
-  panelCalcMode.value = entry.panelCalcMode === 'optimal' ? 'affix' : entry.panelCalcMode
+  // 方案/草稿不恢复进最优页；旧全页「词条计算」迁到每人 entryMode 后，页面落在伤害计算
+  panelCalcMode.value = 'panel'
   applyAnomalySlotPanels(entry.anomalySlotPanels)
   applyConvertSlotPanels(entry.convertSlotPanels)
   schemeSlots.value = ensureSchemeSlots(pickSlotsToRestore(entry), 3)
@@ -1288,7 +1317,7 @@ function restoreWorkingState() {
 
 function saveHistoryEntry(payload: { name: string; folder: string }) {
   if (panelCalcMode.value === 'optimal') {
-    historyMessage.value = '最优词条分配模式暂不支持写入历史，请切换到面板/词条计算后再保存'
+    historyMessage.value = '最优词条分配模式暂不支持写入历史，请切回伤害计算后再保存'
     return
   }
   const panelState = captureSchemePanelState()
@@ -1339,7 +1368,7 @@ function loadHistoryEntry(entry: DamageCalcHistoryEntry) {
 /** 用当前页面配置覆盖指定方案（保留其 id / 名称 / 目录） */
 function overwriteHistoryEntry(id: string) {
   if (panelCalcMode.value === 'optimal') {
-    historyMessage.value = '最优词条分配模式暂不支持写入，请切换到面板/词条计算后再保存'
+    historyMessage.value = '最优词条分配模式暂不支持写入，请切回伤害计算后再保存'
     return
   }
   const panelState = captureSchemePanelState()
@@ -1383,6 +1412,7 @@ function blankTeamSlots(): TeamSlot[] {
       isMainC: true,
       twoPieceDriveDiscId: 'none',
       fourPieceDriveDiscId: 'none',
+      entryMode: 'panel',
     },
     {
       agentId: '',
@@ -1392,6 +1422,7 @@ function blankTeamSlots(): TeamSlot[] {
       isMainC: false,
       twoPieceDriveDiscId: 'none',
       fourPieceDriveDiscId: 'none',
+      entryMode: 'panel',
     },
     {
       agentId: '',
@@ -1401,6 +1432,7 @@ function blankTeamSlots(): TeamSlot[] {
       isMainC: false,
       twoPieceDriveDiscId: 'none',
       fourPieceDriveDiscId: 'none',
+      entryMode: 'panel',
     },
   ]
 }
@@ -1496,16 +1528,13 @@ function onClearLoadedScheme() {
 async function scrollToSection(sectionId: DamageCalcSectionId) {
   await nextTick()
   if (sectionId === 'damage-calc-panel') setCalcMode('panel')
-  if (sectionId === 'damage-calc-affix') setCalcMode('affix')
   if (sectionId === 'damage-calc-optimal') setCalcMode('optimal')
   if (sectionId === 'skill-flow') {
     skillFlowSectionRef.value?.expand()
     await nextTick()
   }
   const anchorId =
-    sectionId === 'damage-calc-panel' ||
-    sectionId === 'damage-calc-affix' ||
-    sectionId === 'damage-calc-optimal'
+    sectionId === 'damage-calc-panel' || sectionId === 'damage-calc-optimal'
       ? 'damage-calc-mode'
       : sectionId
   const target = pageRootRef.value?.querySelector<HTMLElement>(`#${anchorId}`)
@@ -1513,16 +1542,21 @@ async function scrollToSection(sectionId: DamageCalcSectionId) {
 }
 
 function setCalcMode(mode: PanelCalcMode) {
-  if (panelCalcMode.value === mode) return
-  if (mode === 'optimal') {
+  const next = resolveDamagePageCalcMode(mode)
+  if (panelCalcMode.value === next) return
+  if (next === 'optimal') {
     panelCalcSectionRef.value?.flushAffixOntoTeamSlots?.()
   }
-  panelCalcMode.value = mode
+  panelCalcMode.value = next
 }
 
 function selectPanelCalcMode(mode: PanelCalcMode) {
   setCalcMode(mode)
 }
+
+const activeSlotEntryMode = computed(() =>
+  resolveSlotPanelEntryMode(teamSlots[activeSlot.value]),
+)
 
 defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
 </script>
@@ -1554,7 +1588,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :drive-discs="driveDiscs"
       :team-slots="teamSlots"
       :active-slot="activeSlot"
-      :preferred-entry-mode="panelCalcMode === 'affix' ? 'affix' : 'panel'"
+      :preferred-entry-mode="activeSlotEntryMode"
       :anomaly-slot-panels="anomalySlotPanels"
       :final-panel-preview="activeFinalPanelPreview"
       :final-panel-token="importFinalPanelToken"
@@ -1583,7 +1617,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :team-slots="teamSlots"
       :active-slot="activeSlot"
       :active-agent="activeAgent"
-      :preferred-entry-mode="panelCalcMode === 'affix' ? 'affix' : 'panel'"
+      :preferred-entry-mode="activeSlotEntryMode"
       :anomaly-slot-panels="anomalySlotPanels"
       :final-panel-preview="activeFinalPanelPreview"
       :final-panel-token="importFinalPanelToken"
@@ -1685,29 +1719,19 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       <header class="calc-mode-header">
         <h2>计算方式</h2>
         <p class="calc-mode-desc">
-          局外 / 词条在「代理人 → 导入」的面板 Tab 录入（含截图识别）；面板计算用手填局外，词条计算用副词条推导；最优词条在约束下扫描并绘制期望伤害曲线。
+          伤害计算按每个角色导入时选的「面板导入 / 词条计算」结算局外；最优词条是另一页，在约束下扫描并绘制期望伤害曲线。
         </p>
       </header>
-      <div class="calc-mode-tabs" role="tablist" aria-label="面板计算方式">
+      <div class="calc-mode-tabs" role="tablist" aria-label="计算页面">
         <button
           type="button"
           role="tab"
           class="calc-mode-tab"
-          :class="{ active: panelCalcMode === 'panel' }"
-          :aria-selected="panelCalcMode === 'panel'"
+          :class="{ active: panelCalcMode !== 'optimal' }"
+          :aria-selected="panelCalcMode !== 'optimal'"
           @click="selectPanelCalcMode('panel')"
         >
-          面板计算
-        </button>
-        <button
-          type="button"
-          role="tab"
-          class="calc-mode-tab"
-          :class="{ active: panelCalcMode === 'affix' }"
-          :aria-selected="panelCalcMode === 'affix'"
-          @click="selectPanelCalcMode('affix')"
-        >
-          词条计算
+          伤害计算
         </button>
         <button
           type="button"
@@ -1735,7 +1759,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :selected-bangboo-id="selectedBangbooId"
       :bangboo-refine="bangbooRefine"
       :edited-slot-index="activeSlot"
-      :calc-mode="panelCalcMode === 'optimal' ? 'panel' : panelCalcMode"
+      :calc-mode="activeSlotEntryMode"
       :damage-kind="damageKind"
       :anomaly-sub-kind="anomalySubKind"
       :trigger-anomaly-agent-id="triggerAnomalyAgentId"

@@ -2,6 +2,7 @@
 import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
 import type { AgentBuffDoc, DriveDiscBuffDoc, WengineBuffDoc } from '@/types/calculator'
+import { resolveSlotPanelEntryMode, slotPanelEntryModeLabel } from '@/types/calculatorPanel'
 import { isWengineProfessionMatch } from '@/utils/calculatorUi'
 import { computed } from 'vue'
 
@@ -44,6 +45,10 @@ const wengineProfessionMatch = computed(() => {
         <div class="slot-badges">
           <span class="badge role">{{ agent.profession }}</span>
           <span class="badge element">{{ agent.element }}</span>
+          <span
+            class="badge entry-mode"
+            :class="resolveSlotPanelEntryMode(slot)"
+          >{{ slotPanelEntryModeLabel(resolveSlotPanelEntryMode(slot)) }}</span>
         </div>
       </header>
 
@@ -199,6 +204,16 @@ const wengineProfessionMatch = computed(() => {
 
 .badge.element {
   color: #d8e4ff;
+  background: #1d2430;
+}
+
+.badge.entry-mode {
+  color: #e8d5a8;
+  background: #2a241b;
+}
+
+.badge.entry-mode.affix {
+  color: #c5d8ea;
   background: #1d2430;
 }
 

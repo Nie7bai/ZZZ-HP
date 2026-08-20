@@ -8,10 +8,9 @@ export const DAMAGE_CALC_SECTIONS = [
   { id: 'skill-flow', label: '招式流程' },
 ] as const
 
-/** 侧栏「计算方式」下的子项（面板 / 词条 / 最优分配） */
+/** 侧栏「计算方式」下的子项：伤害计算页 / 最优词条页（面板 vs 词条是每人导入方式，不是页面） */
 export const DAMAGE_CALC_MODE_ITEMS = [
-  { id: 'damage-calc-panel', label: '面板计算', calcMode: 'panel' as const },
-  { id: 'damage-calc-affix', label: '词条计算', calcMode: 'affix' as const },
+  { id: 'damage-calc-panel', label: '伤害计算', calcMode: 'panel' as const },
   { id: 'damage-calc-optimal', label: '最优词条分配', calcMode: 'optimal' as const },
 ] as const
 

@@ -16,6 +16,7 @@ import {
   type AffixDriveDiscMainStats,
   type PanelCalcMode,
   type PanelStats,
+  type SlotPanelEntryMode,
 } from '@/types/calculatorPanel'
 import { inferAffixCountsFromExternalPanel, computeExternalPanelFromTeamSlot } from '@/utils/affixPanelCalc'
 import {
@@ -54,6 +55,7 @@ export type UnifiedPresetConfirmPayload = {
   externalPanel: PanelStats
   affixCounts: AffixCounts
   affixDriveDiscMainStats: AffixDriveDiscMainStats
+  entryMode: SlotPanelEntryMode
 }
 
 const props = defineProps<{
@@ -62,7 +64,7 @@ const props = defineProps<{
   driveDiscs: DriveDiscBuffDoc[]
   teamSlots: TeamSlot[]
   activeSlot: number
-  /** 打开时的默认录入模式；用户可在弹窗内切换，不再跟随页面计算方式 */
+  /** 打开时默认用该槽位已选的录入方式 */
   preferredEntryMode?: Extract<PanelCalcMode, 'panel' | 'affix'>
   anomalySlotPanels?: Record<string, PanelStats>
   finalPanelPreview?: PanelStats | null
@@ -94,7 +96,7 @@ const selected = ref({
 const draftExternalPanel = reactive<PanelStats>(createDefaultExternalPanel())
 const draftAffixCounts = reactive(createEmptyAffixCounts())
 const draftAffixMains = reactive(createDefaultAffixDriveDiscMainStats())
-/** 面板 Tab 独立切换：面板计算 / 词条计算 */
+/** 面板 Tab：该角色选面板导入或词条计算，确定后记在槽位上 */
 const entryMode = ref<Extract<PanelCalcMode, 'panel' | 'affix'>>(
   props.preferredEntryMode ?? 'panel',
 )
@@ -452,6 +454,7 @@ function confirm() {
     externalPanel: fillPanelStatsDefaults(external),
     affixCounts: { ...draftAffixCounts },
     affixDriveDiscMainStats: { ...draftAffixMains },
+    entryMode: entryMode.value,
   })
   open.value = false
 }

@@ -30,6 +30,7 @@ import {
   createExternalPanelFromAgentBase,
   fillPanelStatsDefaults,
   isPlaceholderExternalPanel,
+  resolveSlotPanelEntryMode,
   type AffixCounts,
   type AffixDriveDiscMainStats,
   type PanelCalcMode,
@@ -480,8 +481,14 @@ function derivedExternalPanelForSlot(slotIndex: number): PanelStats {
 
 const derivedExternalPanel = computed(() => derivedExternalPanelForSlot(mainSlotIndex.value))
 
+function isSlotAffixMode(slotIndex: number) {
+  return resolveSlotPanelEntryMode(props.teamSlots[slotIndex]) === 'affix'
+}
+
+const isAffixMode = computed(() => isSlotAffixMode(props.editedSlotIndex))
+
 const effectiveExternalPanel = computed<PanelStats>(() => {
-  if (props.calcMode === 'affix') return derivedExternalPanel.value
+  if (isAffixMode.value) return derivedExternalPanel.value
   const id = mainAgent.value?.id
   const saved = id ? props.anomalySlotPanels?.[id] : undefined
   if (saved && !isPlaceholderExternalPanel(saved)) {
@@ -489,8 +496,6 @@ const effectiveExternalPanel = computed<PanelStats>(() => {
   }
   return externalPanel
 })
-
-const isAffixMode = computed(() => props.calcMode === 'affix')
 
 const isMbMainAgent = computed(() => mainAgent.value?.profession === MB_PROFESSION)
 
@@ -530,7 +535,7 @@ function resolveExternalPanelForSlotIndex(slotIndex: number): PanelStats {
   const slot = props.teamSlots[slotIndex]
   const agentId = slot?.agentId
   if (!agentId) return createDefaultExternalPanel()
-  if (isAffixMode.value) {
+  if (isSlotAffixMode(slotIndex)) {
     return derivedExternalPanelForSlot(slotIndex)
   }
   // 局外以导入写入的 anomalySlotPanels 为准（含当前编辑槽），不再优先用可能过期的 live 编辑器
@@ -1054,8 +1059,9 @@ watch(
   (newIdx, oldIdx) => {
     if (suppressRestoreResets) return
     if (oldIdx == null || oldIdx === newIdx) return
-    const oldAgentId = props.teamSlots[oldIdx]?.agentId
-    if (oldAgentId && !isAffixMode.value) {
+    const oldSlot = props.teamSlots[oldIdx]
+    const oldAgentId = oldSlot?.agentId
+    if (oldAgentId && !isSlotAffixMode(oldIdx)) {
       const existing = props.anomalySlotPanels?.[oldAgentId]
       // 与 flush 一致：已有导入局外时勿用可能未同步的 live 覆盖
       if (!existing || isPlaceholderExternalPanel(existing)) {
@@ -1064,7 +1070,7 @@ watch(
     }
     loadAffixFromCurrentSlot()
     // 换槽后立刻把当前槽已提交局外灌进 live，供快照/兼容路径使用
-    if (!isAffixMode.value) {
+    if (!isSlotAffixMode(newIdx)) {
       const newId = props.teamSlots[newIdx]?.agentId
       const saved = newId ? props.anomalySlotPanels?.[newId] : undefined
       if (saved && !isPlaceholderExternalPanel(saved)) {
@@ -1079,17 +1085,24 @@ watch(
   (newId, oldId) => {
     if (suppressRestoreResets) return
     if (oldId && !isAffixMode.value) {
-      const existing = props.anomalySlotPanels?.[oldId]
-      // 已有导入局外时勿用可能未同步的 live 覆盖
-      if (!existing || isPlaceholderExternalPanel(existing)) {
-        emitAnomalySlotPanel(oldId, { ...externalPanel })
-      }
-      const convertSlot = convertSupportSlots.value.find((item) => item.agentId === oldId)
-      if (convertSlot) {
-        emitConvertSlotPanel(oldId, convertSlot.requiredAttrs, externalPanel)
-      } else if (props.convertSlotPanels?.[oldId]) {
-        const keys = Object.keys(props.convertSlotPanels[oldId]) as CharacterAttrKey[]
-        emitConvertSlotPanel(oldId, keys, externalPanel)
+      const oldStillOnOtherSlot = props.teamSlots.some(
+        (item, index) => item.agentId === oldId && index !== props.editedSlotIndex,
+      )
+      if (oldStillOnOtherSlot) {
+        // 换槽由 editedSlotIndex watch 写回；这里只处理同一槽换人
+      } else {
+        const existing = props.anomalySlotPanels?.[oldId]
+        // 已有导入局外时勿用可能未同步的 live 覆盖
+        if (!existing || isPlaceholderExternalPanel(existing)) {
+          emitAnomalySlotPanel(oldId, { ...externalPanel })
+        }
+        const convertSlot = convertSupportSlots.value.find((item) => item.agentId === oldId)
+        if (convertSlot) {
+          emitConvertSlotPanel(oldId, convertSlot.requiredAttrs, externalPanel)
+        } else if (props.convertSlotPanels?.[oldId]) {
+          const keys = Object.keys(props.convertSlotPanels[oldId]) as CharacterAttrKey[]
+          emitConvertSlotPanel(oldId, keys, externalPanel)
+        }
       }
     }
 
@@ -1647,6 +1660,7 @@ const hitCalcGlobalSignature = computed(() =>
       slot.wengineRefine,
       slot.twoPieceDriveDiscId,
       slot.fourPieceDriveDiscId,
+      slot.entryMode ?? 'panel',
       index === props.editedSlotIndex
         ? ''
         : `${JSON.stringify(slot.affixCounts ?? null)}|${JSON.stringify(slot.affixDriveDiscMainStats ?? null)}`,

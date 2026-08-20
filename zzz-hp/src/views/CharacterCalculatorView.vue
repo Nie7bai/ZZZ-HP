@@ -53,7 +53,7 @@ const pageTitleMap: Record<CalcPage, string> = {
 
 const damageSubNav = DAMAGE_CALC_SECTIONS
 const damageCalcModeItems = DAMAGE_CALC_MODE_ITEMS
-const damageCalcModeHint = ref<'panel' | 'affix' | 'optimal'>('panel')
+const damageCalcModeHint = ref<'panel' | 'optimal'>('panel')
 const activePage = ref<CalcPage>('damage')
 const mobileNavOpen = ref(false)
 const damageCalcPageRef = ref<InstanceType<typeof DamageCalcPage> | null>(null)
@@ -344,7 +344,7 @@ const filteredDriveDiscDocs = computed(() =>
       <DamageCalcPage
         v-show="activePage === 'damage'"
         ref="damageCalcPageRef"
-        @update:calc-mode="damageCalcModeHint = $event"
+        @update:calc-mode="damageCalcModeHint = $event === 'optimal' ? 'optimal' : 'panel'"
       />
 
       <article v-if="activePage === 'role-buff'" class="card">

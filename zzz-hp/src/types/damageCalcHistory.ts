@@ -39,6 +39,8 @@ export interface DamageCalcTeamSlotSnapshot {
   affixDriveDiscMainStats?: AffixDriveDiscMainStats
   /** 该槽位副词条数 */
   affixCounts?: AffixCounts
+  /** 该槽位导入方式：面板导入 / 词条计算。缺省按面板导入；旧方案若当时全页是词条计算，加载时会补成词条 */
+  entryMode?: import('@/types/calculatorPanel').SlotPanelEntryMode
 }
 
 export interface DamageCalcPanelSnapshot {

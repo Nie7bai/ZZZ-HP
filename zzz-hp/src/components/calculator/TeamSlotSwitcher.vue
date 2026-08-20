@@ -4,6 +4,7 @@ import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
 import type { AgentBuffDoc, DriveDiscBuffDoc, WengineBuffDoc } from '@/types/calculator'
 import type { PanelStats } from '@/types/calculatorPanel'
+import { resolveSlotPanelEntryMode, slotPanelEntryModeLabel } from '@/types/calculatorPanel'
 import { isWengineProfessionMatch } from '@/utils/calculatorUi'
 import { teamSlotDisplayLabel } from '@/utils/teamSlotLabel'
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
@@ -191,6 +192,11 @@ const driveDiscLine = computed(() => {
             :name="agentOf(slot)!.name"
           />
           <span class="slot-name">{{ label(slot, index) }}</span>
+          <span
+            v-if="slot.agentId"
+            class="entry-mode-dot"
+            :class="resolveSlotPanelEntryMode(slot)"
+          >{{ slotPanelEntryModeLabel(resolveSlotPanelEntryMode(slot)) }}</span>
           <span v-if="isConvertSlot(index)" class="convert-dot" title="该角色影画/音擎/驱动盘含局外或局内转模">转模</span>
           <span v-if="activeIndex === index" class="editing-dot">编辑中</span>
         </button>
@@ -357,7 +363,8 @@ const driveDiscLine = computed(() => {
 }
 
 .editing-dot,
-.convert-dot {
+.convert-dot,
+.entry-mode-dot {
   flex-shrink: 0;
   border-radius: 6px;
   border: 1px solid transparent;
@@ -374,14 +381,26 @@ const driveDiscLine = computed(() => {
   color: #e8d5a8;
 }
 
-.convert-dot {
+.entry-mode-dot {
   margin-left: auto;
+  border-color: rgba(168, 148, 110, 0.4);
+  background: rgba(168, 148, 110, 0.14);
+  color: #d8cba8;
+}
+
+.entry-mode-dot.affix {
   border-color: rgba(126, 168, 200, 0.4);
   background: rgba(126, 168, 200, 0.14);
   color: #c5d8ea;
 }
 
-.slot-btn:not(:has(.convert-dot)) .editing-dot {
+.convert-dot {
+  border-color: rgba(126, 168, 200, 0.4);
+  background: rgba(126, 168, 200, 0.14);
+  color: #c5d8ea;
+}
+
+.slot-btn:not(:has(.entry-mode-dot)):not(:has(.convert-dot)) .editing-dot {
   margin-left: auto;
 }
 
