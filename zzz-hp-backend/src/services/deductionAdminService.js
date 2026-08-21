@@ -5,6 +5,24 @@
  * 推演不用危局 ID 编码：节点自增 id，期数用 version + phase 定位。
  */
 import pool from '../config/db.js'
+import {
+  fetchSeasonDetail,
+  fetchShiyuIndex,
+  resolveNanokaBuildTag,
+} from './nanoka/nanokaClient.js'
+
+const SHIYU_MINIONS_TTL_MS = 10 * 60 * 1000
+let shiyuMinionsCache = null
+let shiyuMinionsCachedAt = 0
+
+const SHIYU_ELEMENT_ZH = {
+  ice: '冰',
+  fire: '火',
+  electric: '电',
+  ether: '以太',
+  physical: '物理',
+  wind: '风',
+}
 
 function normalizePhase(phase) {
   const digits = String(phase ?? '').replace(/\D/g, '')
@@ -107,6 +125,66 @@ export async function listPickBosses() {
     }
   }
   return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+}
+
+/**
+ * shiyu（防卫战）数据源怪物候选：供推演「小怪层」（层名不含 STAGE）编辑使用。
+ * 数据源：nanoka shiyu JSON 的 layer_room[].monster_list[]（游戏 id → 中文名），
+ * 按名字去重聚合，取首次出现的 HP / 防御 / 等级 / 弱点 / 抗性；内存缓存 10 分钟。
+ */
+export async function listShiyuMinions() {
+  const now = Date.now()
+  if (shiyuMinionsCache && now - shiyuMinionsCachedAt < SHIYU_MINIONS_TTL_MS) {
+    return shiyuMinionsCache
+  }
+  const buildTag = await resolveNanokaBuildTag()
+  const index = await fetchShiyuIndex(buildTag)
+  const byName = new Map()
+  for (const seasonId of Object.keys(index)) {
+    const detail = await fetchSeasonDetail(buildTag, seasonId, 'zh')
+    const walk = (obj, level) => {
+      if (!obj || typeof obj !== 'object') return
+      if (obj.monster_list && typeof obj.monster_list === 'object') {
+        const roomLevel = Number(obj.monster_level) || Number(level) || 0
+        const weaknessNames = Object.values(obj.monster_weakness ?? {}).map((v) =>
+          String(v).trim(),
+        )
+        for (const monster of Object.values(obj.monster_list)) {
+          if (!monster || !monster.name) continue
+          const name = String(monster.name).trim()
+          if (!name) continue
+          const stats = monster.stats ?? {}
+          const element = monster.element ?? {}
+          const resistanceNames = Object.entries(element)
+            .filter(([, value]) => Number(value) === -1)
+            .map(([k]) => SHIYU_ELEMENT_ZH[k] ?? k)
+          const existing = byName.get(name)
+          if (existing) {
+            if (!existing.hp) existing.hp = Math.round(Number(stats.hp) || 0)
+            if (!existing.defense) existing.defense = Math.round(Number(stats.defence) || 0)
+            if (!existing.level) existing.level = roomLevel
+            if (!existing.weakness) existing.weakness = [...new Set(weaknessNames)].join('、') || null
+            if (!existing.resistance) existing.resistance = [...new Set(resistanceNames)].join('、') || null
+          } else {
+            byName.set(name, {
+              name,
+              hp: Math.round(Number(stats.hp) || 0),
+              defense: Math.round(Number(stats.defence) || 0),
+              level: roomLevel,
+              weakness: [...new Set(weaknessNames)].join('、') || null,
+              resistance: [...new Set(resistanceNames)].join('、') || null,
+            })
+          }
+        }
+        return
+      }
+      for (const value of Object.values(obj)) walk(value, level ?? obj.monster_level)
+    }
+    walk(detail, null)
+  }
+  shiyuMinionsCache = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+  shiyuMinionsCachedAt = Date.now()
+  return shiyuMinionsCache
 }
 
 /** 全部 Buff 去重（所有版块，供推演增益选择） */

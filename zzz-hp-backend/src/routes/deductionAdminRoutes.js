@@ -9,6 +9,7 @@ import {
   listDeductionPeriods,
   listPickBosses,
   listPickBuffs,
+  listShiyuMinions,
   renameDeductionPeriod,
   updateDeductionNode,
 } from '../services/deductionAdminService.js'
@@ -32,6 +33,15 @@ router.get('/picker/buffs', async (_req, res) => {
     success(res, await listPickBuffs())
   } catch (err) {
     fail(res, err.message || '获取 Buff 数据源失败', 500)
+  }
+})
+
+// 小怪数据源（shiyu 防卫战怪物名单，供推演非 STAGE 小怪层编辑使用）
+router.get('/picker/shiyu-minions', async (_req, res) => {
+  try {
+    success(res, await listShiyuMinions())
+  } catch (err) {
+    fail(res, err.message || '获取 shiyu 小怪数据源失败', 500)
   }
 })
 

@@ -65,6 +65,11 @@ export async function fetchDeductionPickBuffs(): Promise<AdminPickBuff[]> {
   return request('/api/admin/deduction/picker/buffs')
 }
 
+/** shiyu 小怪数据源（推演非 STAGE 小怪层编辑使用） */
+export async function fetchDeductionShiyuMinions(): Promise<AdminPickBoss[]> {
+  return request('/api/admin/deduction/picker/shiyu-minions')
+}
+
 // 期数
 export async function fetchDeductionAdminPeriods(): Promise<AdminDeductionPeriod[]> {
   return request('/api/admin/deduction/periods')

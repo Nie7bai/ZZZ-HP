@@ -10,6 +10,7 @@ import {
   fetchDeductionAdminPeriods,
   fetchDeductionPickBosses,
   fetchDeductionPickBuffs,
+  fetchDeductionShiyuMinions,
   renameDeductionAdminPeriod,
   updateDeductionAdminNode,
   type AdminDeductionNode,
@@ -37,6 +38,8 @@ const selectedNodeId = ref<number | null>(null)
 // 下拉数据源（全局去重）
 const pickBosses = ref<AdminPickBoss[]>([])
 const pickBuffs = ref<AdminPickBuff[]>([])
+/** shiyu 小怪候选：非 STAGE（小怪）层使用 */
+const shiyuMinions = ref<AdminPickBoss[]>([])
 
 const loading = ref(false)
 const message = ref('')
@@ -236,15 +239,22 @@ function toggleElement(list: string[], el: string): string[] {
 
 async function loadPickers() {
   try {
-    const [bosses, buffs] = await Promise.all([
+    const [bosses, buffs, minions] = await Promise.all([
       fetchDeductionPickBosses(),
       fetchDeductionPickBuffs(),
+      fetchDeductionShiyuMinions(),
     ])
     pickBosses.value = bosses
     pickBuffs.value = buffs
+    shiyuMinions.value = minions
   } catch (err) {
     flash(err instanceof Error ? err.message : '加载数据源失败', true)
   }
+}
+
+/** STAGE 层 = Boss 层（危局逻辑）；非 STAGE 层 = 小怪层（shiyu 数据源） */
+function isStageLayer(name: string | null | undefined): boolean {
+  return /STAGE|LAST/i.test(String(name ?? ''))
 }
 
 function onPickMonster(
@@ -442,10 +452,10 @@ onMounted(() => {
               <div v-for="(monster, mi) in layer.monsters" :key="mi" class="ad-monster">
                 <div class="ad-monster-row">
                   <AdminDeductionFuzzySelect
-                    :options="pickBosses"
+                    :options="isStageLayer(layer.name) ? pickBosses : shiyuMinions"
                     :model-value="monster.name"
                     label="名字"
-                    placeholder="搜索 Boss…"
+                    :placeholder="isStageLayer(layer.name) ? '搜索 Boss…' : '搜索小怪…'"
                     @update:model-value="monster.name = $event"
                     @select="onPickMonster(li, mi, $event)"
                   />
