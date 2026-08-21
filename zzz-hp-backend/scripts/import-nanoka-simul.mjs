@@ -8,7 +8,8 @@
  *   node scripts/import-nanoka-simul.mjs --all --locale en    # 英文数据（默认 zh）
  *
  * 期数 key：推演用自己的期数 id（version=期数id，phase 默认 '1'）。
- * 写入语义：每期「DELETE 该期 → INSERT」（整期刷新），幂等可重复执行。
+ * 写入语义：每期「DELETE 该期 → INSERT」（整期刷新），幂等可重复执行；
+ * 会保留该期既有的 period_name 与图片回填（boss_image/buff_image，enrich 脚本单独维护）。
  */
 import dotenv from 'dotenv'
 import mysql from 'mysql2/promise'
@@ -147,6 +148,27 @@ if (dryRun) {
         )
         const preservedPeriodName = String(existingPeriods[0]?.period_name ?? '').trim()
 
+        // 保留该期既有的图片回填（boss_image / buff_image 由 enrich 脚本单独维护，
+        // DELETE+INSERT 会清空，这里按同名快照并在插入后恢复）
+        const [imgRows] = await conn.execute(
+          `SELECT boss_name, boss_image FROM boss
+            WHERE mode = 'deduction' AND version = ? AND phase = ?
+              AND boss_image IS NOT NULL AND boss_image <> ''`,
+          [item.version, item.phase],
+        )
+        const preservedBossImages = new Map(
+          imgRows.map((row) => [String(row.boss_name).trim(), row.boss_image]),
+        )
+        const [buffImgRows] = await conn.execute(
+          `SELECT buff_name, buff_image FROM buff
+            WHERE mode = 'deduction' AND version = ? AND phase = ?
+              AND buff_image IS NOT NULL AND buff_image <> ''`,
+          [item.version, item.phase],
+        )
+        const preservedBuffImages = new Map(
+          buffImgRows.map((row) => [String(row.buff_name).trim(), row.buff_image]),
+        )
+
         const [delBoss] = await conn.execute(
           "DELETE FROM boss WHERE mode = 'deduction' AND version = ? AND phase = ?",
           [item.version, item.phase],
@@ -162,6 +184,7 @@ if (dryRun) {
 
         let bossInserted = 0
         for (const boss of item.bosses) {
+          const preservedImage = preservedBossImages.get(String(boss.boss_name).trim()) ?? null
           await conn.execute(
             `INSERT INTO boss (version, phase, boss_name, hp, defense, level, room, weakness, resistance, boss_image, mode)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'deduction')`,
@@ -175,7 +198,7 @@ if (dryRun) {
               boss.room,
               boss.weakness,
               boss.resistance,
-              boss.boss_image,
+              preservedImage,
             ],
           )
           bossInserted += 1
@@ -183,10 +206,11 @@ if (dryRun) {
 
         let buffInserted = 0
         for (const buff of item.buffs) {
+          const preservedImage = preservedBuffImages.get(String(buff.buff_name).trim()) ?? null
           await conn.execute(
             `INSERT INTO buff (version, phase, buff_name, buff, buff_image, mode)
              VALUES (?, ?, ?, ?, ?, 'deduction')`,
-            [buff.version, buff.phase, buff.buff_name, buff.buff, buff.buff_image],
+            [buff.version, buff.phase, buff.buff_name, buff.buff, preservedImage],
           )
           buffInserted += 1
         }
