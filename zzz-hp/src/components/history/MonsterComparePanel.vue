@@ -10,6 +10,10 @@ import {
   type HpChartPoint,
 } from '@/api/crisisAssault'
 import { fetchDefenseBossChart, fetchDefenseBossList } from '@/api/defense'
+import {
+  fetchDeductionBossChart,
+  fetchDeductionBossList,
+} from '@/api/deduction'
 import { usePhaseDetailModal } from '@/composables/usePhaseDetailModal'
 import type { DefenseVariant } from '@/types/defense'
 import { modeTitles, type ModeKey } from '@/types/history'
@@ -41,10 +45,14 @@ const defenseVariant = computed<DefenseVariant>(() =>
 )
 
 const isDefenseMode = computed(() => props.mode === 'defense')
+const isDeductionMode = computed(() => props.mode === 'deduction')
 
 const pageTitle = computed(() => modeTitles[props.mode])
 
 const panelDesc = computed(() => {
+  if (isDeductionMode.value) {
+    return '选择推演中出现过的怪物，查看其在各期出现的总血量与相对膨胀变化'
+  }
   if (isDefenseMode.value) {
     return '先选择精英或 Boss，再选择怪物，查看其在各期出现时的血量与相对膨胀变化'
   }
@@ -61,14 +69,16 @@ const categoryLabel = computed(() => (selectedCategory.value === 'elite' ? '精�
 
 async function loadBossList() {
   const token = bossListLoadEpoch.next()
-  if (props.mode !== 'crisis-assault' && props.mode !== 'defense') return
+  if (props.mode !== 'crisis-assault' && props.mode !== 'defense' && props.mode !== 'deduction') return
 
   listLoading.value = true
   listError.value = ''
   try {
-    const list = isDefenseMode.value
-      ? await fetchDefenseBossList(defenseVariant.value, selectedCategory.value)
-      : await fetchBossList(crisisRoomType.value)
+    const list = isDeductionMode.value
+      ? await fetchDeductionBossList()
+      : isDefenseMode.value
+        ? await fetchDefenseBossList(defenseVariant.value, selectedCategory.value)
+        : await fetchBossList(crisisRoomType.value)
     if (!bossListLoadEpoch.isCurrent(token)) return
 
     bossList.value = list
@@ -95,13 +105,15 @@ async function loadBossChart() {
   chartLoading.value = true
   chartError.value = ''
   try {
-    const chartPoints = isDefenseMode.value
-      ? await fetchDefenseBossChart(
-          defenseVariant.value,
-          selectedBoss.value,
-          selectedCategory.value,
-        )
-      : await fetchBossChart(selectedBoss.value, crisisRoomType.value)
+    const chartPoints = isDeductionMode.value
+      ? await fetchDeductionBossChart(selectedBoss.value)
+      : isDefenseMode.value
+        ? await fetchDefenseBossChart(
+            defenseVariant.value,
+            selectedBoss.value,
+            selectedCategory.value,
+          )
+        : await fetchBossChart(selectedBoss.value, crisisRoomType.value)
     if (!bossChartLoadEpoch.isCurrent(token)) return
     points.value = chartPoints
   } catch (error) {
@@ -202,22 +214,22 @@ watch(selectedBoss, () => {
         v-else-if="points.length"
         class="chart-view"
         v-model:hp-mode="crisisRoomType"
-        :show-hp-mode-toggle="!isDefenseMode"
-        :enable-hp-coeff-charts="!isDefenseMode"
+        :show-hp-mode-toggle="!isDefenseMode && !isDeductionMode"
+        :enable-hp-coeff-charts="!isDefenseMode && !isDeductionMode"
         :points="points"
         :hp-chart-title="`${selectedBoss} 血量折线图`"
         :expansion-chart-title="`${selectedBoss} 血量相对膨胀折线图`"
         :hp-aria-label="`${selectedBoss} 血量折线图`"
         :expansion-aria-label="`${selectedBoss} 血量相对膨胀折线图`"
-        :enable-point-click="!isDefenseMode"
+        :enable-point-click="!isDefenseMode && !isDeductionMode"
         :enable-boss-preview="false"
         :enable-room-buff-preview="isDefenseMode"
-        :enable-hp-converted953-toggle="!isDefenseMode"
+        :enable-hp-converted953-toggle="!isDefenseMode && !isDeductionMode"
         @point-click="openPhaseDetail"
       />
 
       <PhaseDetailModal
-        v-if="!isDefenseMode"
+        v-if="!isDefenseMode && !isDeductionMode"
         :visible="detailVisible"
         :point="detailPoint"
         :mode="mode"

@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import AdminSidebar from '@/components/admin/AdminSidebar.vue'
 import AdminVisualMonsterPanel from '@/components/admin/AdminVisualMonsterPanel.vue'
 import AdminMonsterPanel from '@/components/admin/AdminMonsterPanel.vue'
 import AdminBuffPanel from '@/components/admin/AdminBuffPanel.vue'
 import AdminSeasonDatePanel from '@/components/admin/AdminSeasonDatePanel.vue'
 import AdminSeasonImportExportPanel from '@/components/admin/AdminSeasonImportExportPanel.vue'
+import AdminDeductionPanel from '@/components/admin/AdminDeductionPanel.vue'
 import type { AdminPanel, AdminScope } from '@/types/admin'
 
-defineProps<{
+const props = defineProps<{
   title: string
   scope: AdminScope
   backTo: string
@@ -17,6 +18,9 @@ defineProps<{
 
 const activePanel = ref<AdminPanel>('monster')
 const visualPanelRef = ref<{ reload?: () => Promise<void> } | null>(null)
+
+/** 推演走专属节点管理面板（不落危局/防卫战的 boss/buff 表单） */
+const isDeduction = computed(() => props.scope === 'deduction')
 
 async function onSeasonDatesChanged() {
   await visualPanelRef.value?.reload?.()
@@ -30,6 +34,7 @@ async function onSeasonDatesChanged() {
       :title="title"
       :back-to="backTo"
       :back-label="backLabel"
+      :scope="scope"
     />
     <main
       class="admin-content"
@@ -37,7 +42,15 @@ async function onSeasonDatesChanged() {
         'admin-content--fill': activePanel === 'season-date' || activePanel === 'monster',
       }"
     >
-      <AdminVisualMonsterPanel v-if="activePanel === 'monster'" ref="visualPanelRef" :scope="scope" />
+      <AdminDeductionPanel
+        v-if="isDeduction && activePanel === 'monster'"
+        key="deduction-monster"
+      />
+      <AdminVisualMonsterPanel
+        v-else-if="activePanel === 'monster'"
+        ref="visualPanelRef"
+        :scope="scope"
+      />
       <AdminMonsterPanel v-else-if="activePanel === 'monster-form'" :scope="scope" />
       <AdminBuffPanel v-else-if="activePanel === 'buff-form'" :scope="scope" />
       <AdminSeasonDatePanel

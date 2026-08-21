@@ -85,9 +85,16 @@ const allBuffEntries = computed<BuffEntry[]>(() => {
     })
     // 推演：phase 已是期数名（如 临界推演：歧路回响），不拼版本前缀
     const phaseDisplay = isDeductionMode.value ? phase.phase : `${phase.version} ${phase.phase}`
+    // 推演 Buff 按节点细分后同名会跨节点重复，对比时按期去重
+    const seenTitles = new Set<string>()
 
     phase.buffs.forEach((buff, buffIndex) => {
       if (!buff.name || buff.name.startsWith('Buff ')) return
+      if (isDeductionMode.value) {
+        const key = `${phase.id}::${buff.name}`
+        if (seenTitles.has(key)) return
+        seenTitles.add(key)
+      }
       entries.push({
         id: `${phase.id}-buff-${buffIndex}`,
         phaseId: phase.id,

@@ -26,7 +26,7 @@ const allPanels: { id: SidebarPanel; label: string; crisisOnly?: boolean; deduct
   { id: 'history', label: '往期详细' },
   { id: 'hp-chart', label: '血量折线图' },
   { id: 'phase-compare', label: '期数对比折线图' },
-  { id: 'monster-compare', label: '单独怪物对比', deductionExclude: true },
+  { id: 'monster-compare', label: '单独怪物对比' },
   { id: 'buff-overview', label: 'Buff 总览' },
   { id: 'buff-compare', label: 'Buff 对比' },
   { id: 'score-hp-table', label: '分数与血量对应表', crisisOnly: true },

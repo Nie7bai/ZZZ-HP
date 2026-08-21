@@ -134,7 +134,10 @@ onUnmounted(() => {
           :mode="mode"
         />
         <MonsterComparePanel
-          v-else-if="activePanel === 'monster-compare' && (mode === 'crisis-assault' || mode === 'defense')"
+          v-else-if="
+            activePanel === 'monster-compare' &&
+            (mode === 'crisis-assault' || mode === 'defense' || mode === 'deduction')
+          "
           key="monster-compare"
           class="panel-fill"
           :mode="mode"

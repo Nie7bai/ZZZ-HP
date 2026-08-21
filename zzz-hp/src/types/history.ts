@@ -11,6 +11,8 @@ export interface BuffInfo {
   isEmpty?: boolean
   /** 计算器结构化效果块 */
   effectBlocks?: import('@/types/calculator').BuffEffectBlock[] | null
+  /** 归属分组（推演按节点细分时用，如节点名 STAGE 01） */
+  groupLabel?: string
 }
 
 export interface EnemySlot {

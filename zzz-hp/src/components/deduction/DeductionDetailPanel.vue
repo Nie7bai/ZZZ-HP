@@ -281,7 +281,7 @@ onMounted(load)
   height: 2.4rem;
   border: 1px solid var(--zzz-line, var(--color-border));
   border-radius: 8px;
-  background: var(--zzz-ink-2, var(--color-background-soft));
+  background: var(--zzz-card, var(--color-background-soft));
   color: var(--color-heading);
   font-size: 1.2rem;
   cursor: pointer;
@@ -299,7 +299,7 @@ onMounted(load)
   padding: 0 1.2rem;
   border: 1px solid var(--zzz-line, var(--color-border));
   border-radius: 8px;
-  background: var(--zzz-ink-2, var(--color-background-soft));
+  background: var(--zzz-card, var(--color-background-soft));
   color: var(--color-heading);
   font-size: 1.05rem;
   font-weight: 700;
@@ -685,5 +685,39 @@ onMounted(load)
   .dd-tab {
     flex-shrink: 0;
   }
+}
+
+/* ── 白天主题适配：强调色加深保证可读（--zzz-ink-* 在 light 下不切换） ── */
+[data-theme='light'] .dd-badge {
+  color: #6d28d9;
+}
+
+[data-theme='light'] .dd-badge--battle {
+  color: #b45309;
+}
+
+[data-theme='light'] .dd-buff-title {
+  color: #b45309;
+}
+
+[data-theme='light'] .dd-stat--weak {
+  color: #047857;
+}
+
+[data-theme='light'] .dd-stat--resist {
+  color: #b91c1c;
+}
+
+[data-theme='light'] .dd-picker-item--active {
+  border-color: #d97706;
+  color: #92400e;
+}
+
+[data-theme='light'] .dd-tab--story.dd-tab--active {
+  background: color-mix(in srgb, #a78bfa 18%, var(--color-background-mute));
+}
+
+[data-theme='light'] .dd-tab--battle.dd-tab--active {
+  background: color-mix(in srgb, #f59e0b 18%, var(--color-background-mute));
 }
 </style>

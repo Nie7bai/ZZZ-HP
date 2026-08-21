@@ -21,6 +21,7 @@ import authRoutes from './routes/authRoutes.js'
 import seasonDateRoutes from './routes/seasonDateRoutes.js'
 import seasonContentRoutes from './routes/seasonContentRoutes.js'
 import deductionRoutes from './routes/deductionRoutes.js'
+import deductionAdminRoutes from './routes/deductionAdminRoutes.js'
 import pool from './config/db.js'
 import { ensureRuntimeSchema } from './bootstrap/ensureRuntimeSchema.js'
 import { fail } from './utils/response.js'
@@ -143,6 +144,7 @@ app.use('/api/site-info', siteInfoRoutes)
 app.use('/api/guestbook', guestbookRoutes)
 app.use('/api/season-dates', seasonDateRoutes)
 app.use('/api/deduction', deductionRoutes)
+app.use('/api/admin/deduction', deductionAdminRoutes)
 
 app.use((_req, res) => {
   fail(res, '接口不存在', 404)

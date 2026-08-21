@@ -162,35 +162,89 @@ export function collectDeductionBuffs(periods: DeductionPeriod[]): DeductionBuff
 // BuffOverviewPanel / BuffComparePanel 渲染）
 // ---------------------------------------------------------------------------
 
-import type { HpChartPoint } from '@/api/crisisAssault'
+import type { BossOption, HpChartPoint } from '@/api/crisisAssault'
 import type { BuffInfo, PhaseData } from '@/types/history'
 import { splitBuffLines } from '@/utils/gameData'
 
-/** 推演各期总血量 → 危局折线图点（label 用期数名） */
+/** 推演各战斗节点总血量 → 折线图点（节点对比，而非整期汇总） */
 export async function fetchDeductionHpChart(): Promise<HpChartPoint[]> {
   const periods = await fetchDeductionPhases()
-  return periods.map((period) => {
-    const stats = deductionPeriodStats(period)
-    return {
-      label: deductionPeriodDisplay(period),
-      dateRange: '',
-      totalHp: stats.totalHp,
-      version: period.periodId,
-      phase: period.phase,
+  const points: HpChartPoint[] = []
+  for (const period of periods) {
+    for (const node of period.nodes) {
+      if (!isDeductionBattleNode(node.type)) continue
+      const nodeHp = node.layers.reduce(
+        (sum, layer) =>
+          sum + layer.monsters.reduce((s, m) => s + (Number(m.hp) || 0), 0),
+        0,
+      )
+      points.push({
+        label: `推演${period.periodId}·${node.name}`,
+        dateRange: '',
+        totalHp: nodeHp,
+        version: period.periodId,
+        phase: period.phase,
+      })
     }
-  })
+  }
+  return points
 }
 
-/** 推演期数 → 危局 PhaseData（buff 面板用；怪物不参与危局形状） */
+/** 推演中出现过的怪物（按节点数据去重），供单独怪物对比选择 */
+export async function fetchDeductionBossList(): Promise<BossOption[]> {
+  const periods = await fetchDeductionPhases()
+  const names = new Set<string>()
+  for (const period of periods) {
+    for (const node of period.nodes) {
+      for (const layer of node.layers) {
+        for (const monster of layer.monsters) {
+          if (monster.name) names.add(monster.name)
+        }
+      }
+    }
+  }
+  return [...names]
+    .sort((a, b) => a.localeCompare(b, 'zh'))
+    .map((name) => ({ boss_name: name, boss_image: null }))
+}
+
+/** 某怪物在推演各期出现的总血量（按期汇总） */
+export async function fetchDeductionBossChart(bossName: string): Promise<HpChartPoint[]> {
+  const periods = await fetchDeductionPhases()
+  const points: HpChartPoint[] = []
+  for (const period of periods) {
+    let hp = 0
+    for (const node of period.nodes) {
+      for (const layer of node.layers) {
+        for (const monster of layer.monsters) {
+          if (monster.name === bossName) hp += Number(monster.hp) || 0
+        }
+      }
+    }
+    if (hp > 0) {
+      points.push({
+        label: `推演${period.periodId}`,
+        dateRange: '',
+        totalHp: hp,
+        version: period.periodId,
+        phase: period.phase,
+      })
+    }
+  }
+  return points
+}
+
+/** 推演期数 → 危局 PhaseData（Buff 按节点细分，带 groupLabel） */
 export function deductionPhasesToPhaseData(periods: DeductionPeriod[]): PhaseData[] {
   return periods.map((period) => {
     const stats = deductionPeriodStats(period)
     const buffs: BuffInfo[] = []
-    const seen = new Set<string>()
     for (const node of period.nodes) {
+      if (!isDeductionBattleNode(node.type)) continue
+      const seenInNode = new Set<string>()
       for (const buff of node.buffs) {
-        if (seen.has(buff.title)) continue
-        seen.add(buff.title)
+        if (seenInNode.has(buff.title)) continue
+        seenInNode.add(buff.title)
         buffs.push({
           name: buff.title,
           icon: '✦',
@@ -198,6 +252,7 @@ export function deductionPhasesToPhaseData(periods: DeductionPeriod[]): PhaseDat
           imageUrl: buff.buff_image ?? undefined,
           buffIndex: buffs.length + 1,
           isEmpty: false,
+          groupLabel: node.name,
         })
       }
     }

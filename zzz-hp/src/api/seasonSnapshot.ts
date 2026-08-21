@@ -18,8 +18,22 @@ export class SeasonSnapshotApiError extends Error {
   }
 }
 
-export type SeasonSnapshotScheme = 'crisis' | 'defense'
+export type SeasonSnapshotScheme = 'crisis' | 'defense' | 'deduction'
 export type SeasonSnapshotVariant = 'old' | 'new'
+
+export interface SeasonSnapshotDeductionNode {
+  version: string
+  phase: string
+  node_id: string
+  node_name: string
+  node_type: number
+  prev_node: string
+  story_text: string | null
+  layers_json: string | null
+  buffs_json: string | null
+  sort_order: number
+  period_name: string
+}
 
 export interface SeasonSnapshotSeason {
   version: string
@@ -88,6 +102,7 @@ export interface SeasonSnapshotData {
   buffs: SeasonSnapshotBuff[]
   dates: SeasonSnapshotDate[]
   bossInfos: SeasonSnapshotBossInfo[]
+  deductionNodes: SeasonSnapshotDeductionNode[]
 }
 
 export interface SeasonSnapshotImportTypeResult {
@@ -103,6 +118,7 @@ export interface SeasonSnapshotImportSummary {
   buffs: SeasonSnapshotImportTypeResult
   dates: SeasonSnapshotImportTypeResult
   bossInfos: SeasonSnapshotImportTypeResult
+  deductionNodes: SeasonSnapshotImportTypeResult
 }
 
 function readApiCode(data: unknown): string {

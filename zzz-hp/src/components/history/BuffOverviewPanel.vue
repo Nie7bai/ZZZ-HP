@@ -210,6 +210,26 @@ function shouldShowBuff(phase: PhaseData, buff: BuffInfo, query: string) {
   return buffMatchesSearch(buff, query)
 }
 
+interface DeductionBuffGroup {
+  label: string
+  items: { buff: BuffInfo; index: number }[]
+}
+
+/** 推演：Buff 按节点（groupLabel）细分分组 */
+function deductionBuffGroups(phase: PhaseData): DeductionBuffGroup[] {
+  const groups: DeductionBuffGroup[] = []
+  phase.buffs.forEach((buff, index) => {
+    const label = buff.groupLabel ?? '未分组'
+    let group = groups.find((g) => g.label === label)
+    if (!group) {
+      group = { label, items: [] }
+      groups.push(group)
+    }
+    group.items.push({ buff, index })
+  })
+  return groups
+}
+
 function hasBuffContent(phase: PhaseData) {
   return phase.buffs.some((buff) => isValidBuff(buff))
 }
@@ -433,7 +453,50 @@ watch(buffSearchInput, () => {
           <p class="phase-card-date">{{ phase.dateRange }}</p>
         </header>
 
-        <div class="buff-grid" :class="`buff-grid--${viewMode}`">
+        <!-- 推演：Buff 按节点细分 -->
+        <template v-if="isDeductionMode">
+          <div
+            v-for="group in deductionBuffGroups(phase)"
+            :key="`${phase.id}-${group.label}`"
+            class="dd-buff-group"
+          >
+            <h4 class="dd-buff-group-title">{{ group.label }}</h4>
+            <div class="buff-grid" :class="`buff-grid--${viewMode}`">
+              <div
+                v-for="item in group.items"
+                :key="`${phase.id}-buff-${item.index}`"
+                class="buff-item"
+                :class="[
+                  `buff-item--${viewMode}`,
+                  {
+                    'buff-item--clickable': isValidBuff(item.buff),
+                    'buff-item--active': actionTarget?.entryId === getBuffEntryId(phase, item.index),
+                  },
+                ]"
+                :role="isValidBuff(item.buff) ? 'button' : undefined"
+                :tabindex="isValidBuff(item.buff) ? 0 : undefined"
+                @click="onBuffClick(phase, item.index, $event)"
+                @keydown.enter.prevent="openBuffMenu(phase, item.index, $event.currentTarget as HTMLElement)"
+                @keydown.space.prevent="openBuffMenu(phase, item.index, $event.currentTarget as HTMLElement)"
+              >
+                <div class="buff-item-head" :class="`buff-item-head--${viewMode}`">
+                  <div v-if="item.buff.imageUrl" class="buff-image">
+                    <img :src="item.buff.imageUrl" :alt="item.buff.name" />
+                  </div>
+                  <div v-else class="buff-icon">{{ item.buff.icon }}</div>
+                  <h3 class="buff-name">{{ item.buff.name }}</h3>
+                </div>
+                <ul class="buff-lines">
+                  <li v-for="(line, lineIndex) in item.buff.lines" :key="lineIndex">
+                    {{ line }}
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <div v-else class="buff-grid" :class="`buff-grid--${viewMode}`">
           <div
             v-for="(buff, index) in phase.buffs"
             :key="`${phase.id}-buff-${index}`"
@@ -704,6 +767,26 @@ watch(buffSearchInput, () => {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   min-height: 0;
+}
+
+/* 推演：Buff 按节点分组的组标题 */
+.dd-buff-group {
+  margin-bottom: 0.9rem;
+}
+
+.dd-buff-group-title {
+  margin: 0 0 0.45rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px dashed var(--color-border);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: #b45309;
+  font-family: var(--zzz-font-mono, monospace);
+}
+
+[data-theme='dark'] .dd-buff-group-title {
+  color: #fcd34d;
 }
 
 .buff-grid--horizontal {

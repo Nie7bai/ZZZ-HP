@@ -8,7 +8,12 @@ import { fail, success } from '../utils/response.js'
 
 export async function getSeasonDates(req, res) {
   try {
-    const mode = req.query.mode === 'defense' ? 'defense' : 'crisis'
+    const mode =
+      req.query.mode === 'defense'
+        ? 'defense'
+        : req.query.mode === 'deduction'
+          ? 'deduction'
+          : 'crisis'
     const data = await listSeasonDates(mode)
     return success(res, data)
   } catch (err) {
