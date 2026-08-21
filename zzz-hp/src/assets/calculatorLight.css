@@ -765,11 +765,18 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear:hover 
 }
 
 .calculator-page.theme-light .extra-buff-editor .field input,
-.calculator-page.theme-light .extra-buff-editor .field select {
+.calculator-page.theme-light .extra-buff-editor .field select,
+.calculator-page.theme-light .extra-buff-editor .item-slot-select {
   border-color: var(--calc-border) !important;
   background: var(--calc-input-bg) !important;
   color: var(--calc-text) !important;
   color-scheme: light;
+}
+
+.calculator-page.theme-light .extra-buff-editor .field select option,
+.calculator-page.theme-light .extra-buff-editor .item-slot-select option {
+  background: var(--calc-input-bg, #ffffff);
+  color: var(--calc-text, #1c212a);
 }
 
 .calculator-page.theme-light .extra-buff-editor .add-btn {
@@ -1686,6 +1693,8 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear,
   background: linear-gradient(180deg, #ffffff 0%, #f6f8fb 100%) !important;
   color: #1c212a !important;
   box-shadow: 0 18px 48px rgba(16, 24, 40, 0.12) !important;
+  /* 原生 select 展开列表跟随白天主题，避免黑底白字 */
+  color-scheme: light;
 }
 
 [data-theme='light'] .buff-picker-header {
@@ -1802,11 +1811,18 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear,
 }
 
 [data-theme='light'] .extra-buff-modal .extra-buff-editor .field input,
-[data-theme='light'] .extra-buff-modal .extra-buff-editor .field select {
+[data-theme='light'] .extra-buff-modal .extra-buff-editor .field select,
+[data-theme='light'] .extra-buff-modal .item-slot-select {
   border-color: #d5dae3 !important;
   background: #ffffff !important;
   color: #1c212a !important;
   color-scheme: light;
+}
+
+[data-theme='light'] .extra-buff-modal .extra-buff-editor .field select option,
+[data-theme='light'] .extra-buff-modal .item-slot-select option {
+  background: #ffffff;
+  color: #1c212a;
 }
 
 [data-theme='light'] .extra-buff-modal .extra-buff-editor .add-btn {
