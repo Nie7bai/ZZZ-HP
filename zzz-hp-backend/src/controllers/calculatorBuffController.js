@@ -23,6 +23,10 @@ import {
   upsertDamageEventMode,
 } from '../services/damageEventModeService.js'
 import { deleteSkill, listSkills, upsertSkill } from '../services/skillLibraryService.js'
+import {
+  exportCalculatorBuffSnapshot,
+  importCalculatorBuffSnapshot,
+} from '../services/calculatorBuffSnapshotService.js'
 import { fail, success } from '../utils/response.js'
 
 export async function getCalculatorBuffs(_req, res) {
@@ -211,5 +215,32 @@ export async function removeWengine(req, res) {
     return success(res, data, '音擎删除成功')
   } catch (err) {
     return fail(res, err.message || '音擎删除失败', 400, { error: err.message })
+  }
+}
+
+export async function exportCalculatorBuffs(_req, res) {
+  try {
+    const data = await exportCalculatorBuffSnapshot()
+    return success(res, data)
+  } catch (err) {
+    return fail(res, err.message || '导出计算器增益失败', 500, { error: err.message })
+  }
+}
+
+export async function importCalculatorBuffs(req, res) {
+  try {
+    let payload = req.body
+    if (req.file?.buffer) {
+      const text = req.file.buffer.toString('utf8').replace(/^\uFEFF/, '')
+      payload = JSON.parse(text)
+    }
+    if (payload && typeof payload === 'object' && payload.data && !payload.agents && !payload.id) {
+      payload = payload.data
+    }
+    const summary = await importCalculatorBuffSnapshot(payload)
+    return success(res, summary, '增益导入完成')
+  } catch (err) {
+    const message = err instanceof SyntaxError ? 'JSON 解析失败' : err.message
+    return fail(res, message || '增益导入失败', 400, { error: err.message })
   }
 }

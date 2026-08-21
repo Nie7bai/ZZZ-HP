@@ -12,17 +12,33 @@ import ExtraBuffGainModal from '@/components/calculator/ExtraBuffGainModal.vue'
 import type { ExtraBuffGain } from '@/components/calculator/ExtraBuffGainEditor.vue'
 import EnemyEnvironmentSection from '@/components/calculator/EnemyEnvironmentSection.vue'
 import BuffModSourcesDisplay from '@/components/calculator/BuffModSourcesDisplay.vue'
-import PanelScreenshotUploadSection from '@/components/calculator/PanelScreenshotUploadSection.vue'
 import TeamBuilderSection from '@/components/calculator/TeamBuilderSection.vue'
+import TeamSlotSwitcher from '@/components/calculator/TeamSlotSwitcher.vue'
+import UnifiedPresetPicker, {
+  type UnifiedPresetConfirmPayload,
+} from '@/components/calculator/UnifiedPresetPicker.vue'
 import type { DamageCalcSectionId } from '@/constants/damageCalcNav'
-import type { DamageCalcHistoryEntry, DamageCalcWorkingDraft, SchemeSlot } from '@/types/damageCalcHistory'
-import type { PanelCalcMode, PanelStats } from '@/types/calculatorPanel'
-import {
-  createDefaultExternalPanel,
-  createExternalPanelFromAgentBase,
-  isPlaceholderExternalPanel,
+import type {
+  DamageCalcHistoryEntry,
+  DamageCalcSchemePanelSnapshot,
+  DamageCalcWorkingDraft,
+  SchemeSlot,
+} from '@/types/damageCalcHistory'
+import type {
+  AffixCounts,
+  AffixDriveDiscMainStats,
+  PanelCalcMode,
+  PanelStats,
 } from '@/types/calculatorPanel'
-import type { PanelScreenshotRecognition } from '@/types/panelScreenshot'
+import {
+  createDefaultAffixDriveDiscMainStats,
+  createDefaultExternalPanel,
+  createEmptyAffixCounts,
+  createExternalPanelFromAgentBase,
+  fillPanelStatsDefaults,
+  isPlaceholderExternalPanel,
+  resetSchemeExcludedPanelFields,
+} from '@/types/calculatorPanel'
 import type {
   AnomalyDamageSubKind,
   BangbooBuffDoc,
@@ -49,16 +65,17 @@ import {
 import {
   buildDefaultBuffSelection,
   collectAllBuffEffects,
-  collectConvertSupportSlots,
   createEmptyMultiSlotBuffSelection,
   getBuffEffectEnabled,
   mergeDefaultBuffSelectionIntoMulti,
   resolveBuffSelectionForSlot,
   setBuffEffectEnabled,
+  slotHasPanelConvertEffect,
   syncTeamProfessionAutoEnabled,
   type MultiSlotBuffSelection,
   type ConvertSlotPanels,
 } from '@/utils/panelBuffCalc'
+import { computeExternalPanelFromTeamSlot } from '@/utils/affixPanelCalc'
 import {
   listCrisisEnvironmentBuffs,
   listDefenseEnvironmentBuffs,
@@ -79,6 +96,7 @@ import {
   resolveFlow,
   resolveSkillPreviews,
   buildGenericPanelSkillContext,
+  schemeSlotsHaveContent,
 } from '@/utils/resolvedHit'
 import type { DamageCalcResult } from '@/utils/damageCalc'
 
@@ -90,6 +108,8 @@ export interface TeamSlot {
   isMainC: boolean
   twoPieceDriveDiscId: string
   fourPieceDriveDiscId: string
+  affixDriveDiscMainStats?: AffixDriveDiscMainStats
+  affixCounts?: AffixCounts
 }
 
 const calculatorBuffStore = useCalculatorBuffStore()
@@ -142,6 +162,9 @@ const enemyInput = ref<DamageEnemyInput>(
 const historyEntries = ref<DamageCalcHistoryEntry[]>(listAllDamageCalcHistory())
 const activeHistoryId = ref('')
 const historyMessage = ref('')
+const currentSchemeName = computed(
+  () => historyEntries.value.find((entry) => entry.id === activeHistoryId.value)?.name ?? '',
+)
 
 const staggerPhase = ref<StaggerPhase>('stagger')
 const anomalySlotPanels = reactive<Record<string, PanelStats>>({})
@@ -164,10 +187,6 @@ const previewHits = computed(() =>
     slots: schemeSlots.value,
     teamSlots,
     findSkill: (id) => calculatorBuffStore.findSkill(id),
-    skillsForAgent: (agentId) => {
-      const agent = agents.value.find((item) => item.id === agentId)
-      return calculatorBuffStore.skillsForAgent(agentId, agent?.element)
-    },
     skillSubcategories: skillSubcategories.value,
   }),
 )
@@ -184,6 +203,7 @@ const skillSubcategoryId = computed(() => firstHit.value?.coords[0]?.subcategory
 
 const buffPickerOpen = ref(false)
 const extraBuffModalOpen = ref(false)
+const teamPresetPickerOpen = ref(false)
 const buffPickerViewSlotIndex = ref(0)
 const multiSlotBuffSelection = reactive<MultiSlotBuffSelection>(createEmptyMultiSlotBuffSelection())
 
@@ -352,20 +372,51 @@ const envBuffFilterHint = computed(() => {
 
 async function loadEnvironmentBuffCatalogs() {
   envBuffLoadError.value = ''
-  try {
-    const [crisis, defenseNew, defenseOld] = await Promise.all([
-      fetchCrisisAssaultPhases(),
-      fetchDefenseSeasons('new'),
-      fetchDefenseSeasons('old'),
-    ])
-    crisisPhases.value = crisis
-    defenseSeasons.value = [...defenseNew, ...defenseOld]
-    if (envBuffMode.value !== 'none' && !envBuffPhaseId.value) {
-      envBuffPhaseId.value = pickLatestEnvPhaseId(envBuffMode.value)
-      if (envBuffMode.value === 'defense') applyDefaultDefenseFrontier()
-    }
-  } catch (err) {
-    envBuffLoadError.value = err instanceof Error ? err.message : '场地 Buff 数据加载失败'
+  const errors: string[] = []
+
+  const crisisResult = await Promise.allSettled([fetchCrisisAssaultPhases()])
+  if (crisisResult[0]?.status === 'fulfilled') {
+    crisisPhases.value = crisisResult[0].value
+  } else {
+    crisisPhases.value = []
+    const reason = crisisResult[0]?.reason
+    errors.push(
+      `危局：${reason instanceof Error ? reason.message : '加载失败'}`,
+    )
+  }
+
+  const defenseResult = await Promise.allSettled([
+    fetchDefenseSeasons('new'),
+    fetchDefenseSeasons('old'),
+  ])
+  const defenseLoaded: import('@/types/defense').DefenseSeason[] = []
+  if (defenseResult[0]?.status === 'fulfilled') {
+    defenseLoaded.push(...defenseResult[0].value)
+  } else {
+    const reason = defenseResult[0]?.reason
+    errors.push(
+      `防卫(新)：${reason instanceof Error ? reason.message : '加载失败'}`,
+    )
+  }
+  if (defenseResult[1]?.status === 'fulfilled') {
+    defenseLoaded.push(...defenseResult[1].value)
+  } else {
+    const reason = defenseResult[1]?.reason
+    errors.push(
+      `防卫(旧)：${reason instanceof Error ? reason.message : '加载失败'}`,
+    )
+  }
+  defenseSeasons.value = defenseLoaded
+
+  if (errors.length && !crisisPhases.value.length && !defenseSeasons.value.length) {
+    envBuffLoadError.value = errors.join('；')
+  } else if (errors.length) {
+    envBuffLoadError.value = `部分数据加载失败：${errors.join('；')}`
+  }
+
+  if (envBuffMode.value !== 'none' && !envBuffPhaseId.value) {
+    envBuffPhaseId.value = pickLatestEnvPhaseId(envBuffMode.value)
+    if (envBuffMode.value === 'defense') applyDefaultDefenseFrontier()
   }
 }
 
@@ -393,10 +444,29 @@ watch(defenseFrontierOptions, (options) => {
   }
 })
 
+watch(buffPickerOpen, (open) => {
+  if (!open) return
+  if (crisisPhases.value.length || defenseSeasons.value.length) {
+    if (envBuffMode.value !== 'none' && !envBuffPhaseId.value) {
+      envBuffPhaseId.value = pickLatestEnvPhaseId(envBuffMode.value)
+      if (envBuffMode.value === 'defense') applyDefaultDefenseFrontier()
+    }
+    return
+  }
+  void loadEnvironmentBuffCatalogs()
+})
+
+function onPageHide() {
+  persistWorkingDraftNow()
+}
+
 onMounted(() => {
   void loadEnvironmentBuffCatalogs()
-  restoreWorkingState()
-  window.addEventListener('pagehide', persistWorkingDraftNow)
+  // Teleport defer 可能比本组件 onMounted 更晚挂上招式流程；晚一拍再恢复，避免子组件把空 slots 写回。
+  void nextTick(() => {
+    restoreWorkingState()
+  })
+  window.addEventListener('pagehide', onPageHide)
   document.addEventListener('visibilitychange', onDraftVisibilityChange)
 })
 
@@ -406,7 +476,7 @@ onDeactivated(() => {
 
 onUnmounted(() => {
   persistWorkingDraftNow()
-  window.removeEventListener('pagehide', persistWorkingDraftNow)
+  window.removeEventListener('pagehide', onPageHide)
   document.removeEventListener('visibilitychange', onDraftVisibilityChange)
   if (draftSaveTimer) clearTimeout(draftSaveTimer)
 })
@@ -457,7 +527,12 @@ function getParticipantAgentIds(): string[] {
 
 function ensureAnomalySlotPanel(agentId: string) {
   const existing = anomalySlotPanels[agentId]
-  if (existing && !isPlaceholderExternalPanel(existing)) return
+  if (existing && !isPlaceholderExternalPanel(existing)) {
+    if (!Number.isFinite(existing.mutationCoeff) || !Number.isFinite(existing.mutationCoeffFactor)) {
+      anomalySlotPanels[agentId] = fillPanelStatsDefaults(existing)
+    }
+    return
+  }
   const agent = agents.value.find((item) => item.id === agentId)
   anomalySlotPanels[agentId] = createExternalPanelFromAgentBase(agent?.basePanel)
 }
@@ -471,6 +546,7 @@ watch(
       )
       .join(','),
   () => {
+    if (restoringWorkingState) return
     for (const agentId of getParticipantAgentIds()) {
       ensureAnomalySlotPanel(agentId)
     }
@@ -498,9 +574,10 @@ const skillFlowTeleportTo = computed(() =>
 const panelCalcSectionRef = ref<InstanceType<typeof PanelCalcSection> | null>(null)
 const optimalAffixSectionRef = ref<InstanceType<typeof OptimalAffixAllocSection> | null>(null)
 
+const buffSelectionSignature = computed(() => JSON.stringify(multiSlotBuffSelection))
 const combatBuffBreakdown = computed(() => {
   void extraGains.value
-  void JSON.stringify(multiSlotBuffSelection)
+  void buffSelectionSignature.value
   void teamSlots.map((s) => s.agentId)
   void selectedBangbooId.value
   void bangbooRefine.value
@@ -518,8 +595,8 @@ const activeAgent = computed(() =>
 )
 
 const mainSlotIndex = computed(() => {
-  const index = teamSlots.findIndex((slot) => slot.isMainC)
-  return index >= 0 ? index : 0
+  const index = activeSlot.value
+  return index >= 0 && index < teamSlots.length ? index : 0
 })
 
 const selectedBangboo = computed(
@@ -567,7 +644,7 @@ const buffPickerSlotOptions = computed(() => {
     if (!agent) return
     options.push({
       index,
-      label: slot.isMainC ? `${agent.name}（主C）` : `${agent.name} · ${agent.element}`,
+      label: `${agent.name} · ${agent.element}`,
     })
   })
   return options
@@ -605,64 +682,39 @@ const buffEnabledCount = computed(() => {
   return Object.values(resolved.enabledIds).filter(Boolean).length
 })
 
-const convertSupportSlots = computed(() =>
-  collectConvertSupportSlots(
-    {
-      teamSlots,
-      agents: agents.value,
-      wengines: wengines.value,
-      bangboo: selectedBangboo.value,
-      bangbooRefine: bangbooRefine.value,
-      mainSlotIndex: activeSlot.value,
-      liveExternalSlotIndex: activeSlot.value,
-      driveDiscs: driveDiscs.value,
-      environmentBuffs: activeEnvironmentBuffs.value,
-      buffSelection: resolveBuffSelectionForSlot(multiSlotBuffSelection, activeSlot.value),
-      anomalySlotPanels,
-      convertSlotPanels,
-      skillContext: buildGenericPanelSkillContext({
-        element: damageElement.value,
-        staggerPhase: staggerPhase.value,
-      }),
-    },
-    { excludeAnomalyAgentIds: getParticipantAgentIds() },
-  ),
-)
-
-function ensureConvertSlotPanel(agentId: string, requiredAttrs: string[]) {
-  if (!convertSlotPanels[agentId]) {
-    convertSlotPanels[agentId] = {}
+/** 顶栏「转模」标签：该槽位影画/音擎/驱动盘含局外或局内转模 */
+const convertSlotIndexes = computed(() => {
+  void teamSlots.map(
+    (slot) =>
+      `${slot.agentId}:${slot.rank}:${slot.wengineId}:${slot.wengineRefine}:${slot.twoPieceDriveDiscId}:${slot.fourPieceDriveDiscId}`,
+  )
+  const indexes = new Set<number>()
+  for (let i = 0; i < teamSlots.length; i++) {
+    if (!teamSlots[i]?.agentId) continue
+    // 以该槽为主槽收集，才能看到其「自身」转模
+    const ctx = buildBuffCollectContext(i)
+    if (slotHasPanelConvertEffect(ctx, i)) indexes.add(i)
   }
-  const agent = agents.value.find((item) => item.id === agentId)
-  const partial = convertSlotPanels[agentId]!
-  for (const attr of requiredAttrs) {
-    if (partial[attr as keyof typeof partial] != null) continue
-    if (attr === 'level') {
-      partial.level = 60
-      continue
-    }
-    if (attr === 'impact') {
-      partial.impact = 0
-      continue
-    }
-    const base = agent?.basePanel
-    if (!base) continue
-    if (attr === 'hp' || attr === 'atk' || attr === 'def') {
-      partial[attr] = base[attr]
-    } else if (attr in base) {
-      partial[attr as 'mastery'] = (base as Record<string, number>)[attr] ?? 0
-    }
-  }
-}
+  return indexes
+})
 
 watch(
-  convertSupportSlots,
-  (slots) => {
-    for (const slot of slots) {
-      ensureConvertSlotPanel(slot.agentId, slot.requiredAttrs)
+  panelCalcMode,
+  (mode) => {
+    emit('update:calcMode', mode)
+  },
+  { immediate: true },
+)
+
+watch(
+  () => teamSlots.map((slot) => slot.agentId).join(','),
+  () => {
+    if (restoringWorkingState) return
+    for (const slot of teamSlots) {
+      if (slot.agentId) ensureAgentExternalPanel(slot.agentId)
     }
   },
-  { immediate: true, deep: true },
+  { immediate: true },
 )
 
 function syncBuffDefaultsForSlot(slotIndex: number) {
@@ -739,6 +791,7 @@ watch(
 watch(
   () => panelCalcSectionRef.value?.convertAttrDefaults,
   () => {
+    if (restoringWorkingState) return
     for (const opt of buffPickerSlotOptions.value) {
       const effects = collectAllBuffEffects(buildBuffCollectContext(opt.index))
       for (const item of effects) {
@@ -850,7 +903,7 @@ watch(
 watch(
   () => enemyInput.value.bossName,
   (bossName) => {
-    if (syncingEnemyFromEnv || syncingBossFieldBuff) return
+    if (syncingEnemyFromEnv || syncingBossFieldBuff || restoringWorkingState) return
     const effects = collectAllBuffEffects(buildBuffCollectContext(buffPickerViewSlotIndex.value))
     const keepKey = bossName ? `boss-field-${bossName}` : null
     disableCollectedEffects(effects, (item) => {
@@ -865,30 +918,43 @@ function selectSlot(index: number) {
   activeSlot.value = index
 }
 
+function openTeamPresetPicker(index: number) {
+  activeSlot.value = index
+  teamPresetPickerOpen.value = true
+}
+
 function assignAgent(agentId: string) {
   activeSlotData.value.agentId = agentId
+  ensureAgentExternalPanel(agentId)
 }
 
 function clearSlot(index: number) {
   const slot = teamSlots[index]!
+  const oldId = slot.agentId
   slot.agentId = ''
   slot.rank = 0
   slot.wengineId = 'none'
   slot.wengineRefine = 1
   slot.twoPieceDriveDiscId = 'none'
   slot.fourPieceDriveDiscId = 'none'
-  if (slot.isMainC) {
-    const fallback = teamSlots.find((item, idx) => idx !== index && item.agentId)
-    if (fallback) fallback.isMainC = true
-    else slot.isMainC = true
-  } else {
-    slot.isMainC = false
+  slot.affixDriveDiscMainStats = undefined
+  slot.affixCounts = undefined
+  if (oldId && !teamSlots.some((item) => item.agentId === oldId)) {
+    delete anomalySlotPanels[oldId]
+    delete convertSlotPanels[oldId]
   }
 }
 
-function toggleMainC(index: number) {
+function ensureAgentExternalPanel(agentId: string) {
+  if (!agentId) return
+  if (anomalySlotPanels[agentId] && !isPlaceholderExternalPanel(anomalySlotPanels[agentId]!)) return
+  const agent = agents.value.find((item) => item.id === agentId)
+  anomalySlotPanels[agentId] = createExternalPanelFromAgentBase(agent?.basePanel)
+}
+
+function syncMainCFlagToActiveSlot() {
   teamSlots.forEach((slot, idx) => {
-    slot.isMainC = idx === index
+    slot.isMainC = idx === activeSlot.value
   })
 }
 
@@ -914,34 +980,175 @@ function selectBangboo(bangbooId: string) {
   selectedBangbooId.value = bangbooId
 }
 
-function applyPanelRecognition(result: PanelScreenshotRecognition) {
-  const slotIndex = activeSlot.value
-  const slot = teamSlots[slotIndex]!
-  if (result.agentId) {
-    slot.agentId = result.agentId
+const stickySlotPanelPreviews = computed(() => {
+  // 显式依赖：增益/邦布/环境变化时必须重读子组件预览（template ref 不会自动串联子 computed）
+  void buffSelectionSignature.value
+  void extraGains.value
+  void selectedBangbooId.value
+  void bangbooRefine.value
+  void staggerPhase.value
+  void activeEnvironmentBuffs.value
+  void panelCalcMode.value
+  void anomalySlotPanels
+  void convertSlotPanels
+  void teamSlots.map((s) => [
+    s.agentId,
+    s.affixCounts,
+    s.affixDriveDiscMainStats,
+    s.wengineId,
+    s.twoPieceDriveDiscId,
+    s.fourPieceDriveDiscId,
+  ])
+
+  // 面板/词条模式：用 PanelCalcSection 的预览（含局内，随增益重算）
+  if (panelCalcMode.value !== 'optimal') {
+    const fromPanel = panelCalcSectionRef.value?.slotPanelPreviews
+    if (fromPanel) return fromPanel
   }
-  slot.rank = result.rank
-  if (result.wengineId) slot.wengineId = result.wengineId
-  slot.wengineRefine = result.wengineRefine
-  if (result.twoPieceDriveDiscId) slot.twoPieceDriveDiscId = result.twoPieceDriveDiscId
-  if (result.fourPieceDriveDiscId) slot.fourPieceDriveDiscId = result.fourPieceDriveDiscId
-  panelCalcSectionRef.value?.applyRecognitionToExternalPanel(result)
+
+  // 最优模式：用最优区预览（主 C 含局内；其余槽亦算局内）
+  if (panelCalcMode.value === 'optimal') {
+    const fromOptimal = optimalAffixSectionRef.value?.slotPanelPreviews
+    if (fromOptimal?.length) return fromOptimal
+  }
+
+  // 兜底：轻量局外（页级导入值）
+  return teamSlots.map((slot) => {
+    if (!slot.agentId) return null
+    const saved = anomalySlotPanels[slot.agentId]
+    const external =
+      saved && !isPlaceholderExternalPanel(saved)
+        ? fillPanelStatsDefaults(saved)
+        : computeExternalPanelFromTeamSlot({
+            slot,
+            agents: agents.value,
+            wengines: wengines.value,
+            driveDiscs: driveDiscs.value,
+          })
+    return { external, final: null as PanelStats | null }
+  })
+})
+
+/** 导入弹窗局内预览：随草稿局外 + 当前增益实时重算（对齐改前内嵌面板行为） */
+const importFinalPanelToken = computed(() =>
+  JSON.stringify({
+    buffs: buffSelectionSignature.value,
+    extra: extraGains.value,
+    bangboo: selectedBangbooId.value,
+    refine: bangbooRefine.value,
+    stagger: staggerPhase.value,
+    env: activeEnvironmentBuffs.value.map((e) => e.sourceKey),
+    mode: panelCalcMode.value,
+    slot: activeSlot.value,
+  }),
+)
+
+function resolveImportFinalPanel(external: PanelStats): PanelStats | null {
+  const slotIndex = activeSlot.value
+  if (panelCalcMode.value === 'optimal') {
+    return (
+      optimalAffixSectionRef.value?.previewFinalPanel?.(external, slotIndex) ??
+      panelCalcSectionRef.value?.previewFinalPanel?.(external, slotIndex) ??
+      null
+    )
+  }
+  return panelCalcSectionRef.value?.previewFinalPanel?.(external, slotIndex) ?? null
+}
+
+const activeFinalPanelPreview = computed(() => {
+  if (panelCalcMode.value === 'optimal') {
+    const evalResult = optimalAffixSectionRef.value?.displayEval as
+      | { finalPanel?: PanelStats }
+      | undefined
+    return evalResult?.finalPanel ?? null
+  }
+  return panelCalcSectionRef.value?.panelBreakdown?.finalPanel ?? null
+})
+
+watch(
+  teamSlots,
+  (slots) => {
+    for (const slot of slots) {
+      if (slot.agentId) ensureAgentExternalPanel(slot.agentId)
+    }
+  },
+  { deep: true, immediate: true },
+)
+
+function applyUnifiedImport(payload: UnifiedPresetConfirmPayload) {
+  const slot = teamSlots[activeSlot.value]
+  if (!slot) return
+  slot.rank = payload.rank
+  slot.wengineId = payload.wengineId
+  slot.wengineRefine = payload.wengineRefine
+  slot.twoPieceDriveDiscId = payload.twoPieceDriveDiscId
+  slot.fourPieceDriveDiscId = payload.fourPieceDriveDiscId
+  slot.affixCounts = { ...createEmptyAffixCounts(), ...payload.affixCounts }
+  slot.affixDriveDiscMainStats = {
+    ...createDefaultAffixDriveDiscMainStats(),
+    ...payload.affixDriveDiscMainStats,
+  }
+  anomalySlotPanels[payload.agentId] = fillPanelStatsDefaults(payload.externalPanel)
+  slot.agentId = payload.agentId
+  syncMainCFlagToActiveSlot()
+  nextTick(() => {
+    panelCalcSectionRef.value?.syncLivePanelFromCommitted?.()
+  })
 }
 
 function cloneTeamSlots(): DamageCalcHistoryEntry['teamSlots'] {
-  return teamSlots.map((slot) => ({ ...slot }))
+  panelCalcSectionRef.value?.flushAffixOntoTeamSlots?.()
+  return teamSlots.map((slot) => ({
+    agentId: slot.agentId,
+    rank: slot.rank,
+    wengineId: slot.wengineId,
+    wengineRefine: slot.wengineRefine,
+    isMainC: slot.isMainC,
+    twoPieceDriveDiscId: slot.twoPieceDriveDiscId || 'none',
+    fourPieceDriveDiscId: slot.fourPieceDriveDiscId || 'none',
+    affixDriveDiscMainStats: slot.affixDriveDiscMainStats
+      ? { ...slot.affixDriveDiscMainStats }
+      : undefined,
+    affixCounts: slot.affixCounts ? { ...slot.affixCounts } : undefined,
+  }))
 }
 
 function applyTeamSlots(slots: DamageCalcHistoryEntry['teamSlots']) {
   slots.forEach((slot, index) => {
     const target = teamSlots[index]
     if (!target) return
-    Object.assign(target, slot)
+    // 先写装备/词条，再改 agentId：换人 watch 若仍跑到，读到的是方案里的盘，而不是空槽默认。
+    target.rank = slot.rank
+    target.wengineId = slot.wengineId
+    target.wengineRefine = slot.wengineRefine
+    target.isMainC = slot.isMainC
+    target.twoPieceDriveDiscId =
+      typeof slot.twoPieceDriveDiscId === 'string' && slot.twoPieceDriveDiscId
+        ? slot.twoPieceDriveDiscId
+        : 'none'
+    target.fourPieceDriveDiscId =
+      typeof slot.fourPieceDriveDiscId === 'string' && slot.fourPieceDriveDiscId
+        ? slot.fourPieceDriveDiscId
+        : 'none'
+    target.affixDriveDiscMainStats = slot.affixDriveDiscMainStats
+      ? { ...slot.affixDriveDiscMainStats }
+      : undefined
+    target.affixCounts = slot.affixCounts ? { ...slot.affixCounts } : undefined
+    target.agentId = slot.agentId
   })
+  syncMainCFlagToActiveSlot()
 }
 
 function cloneAnomalySlotPanels(): Record<string, PanelStats> {
   return JSON.parse(JSON.stringify(anomalySlotPanels)) as Record<string, PanelStats>
+}
+
+function captureSchemeAnomalySlotPanels(): Record<string, PanelStats> {
+  const cloned = cloneAnomalySlotPanels()
+  for (const [agentId, panel] of Object.entries(cloned)) {
+    cloned[agentId] = resetSchemeExcludedPanelFields(panel)
+  }
+  return cloned
 }
 
 function cloneConvertSlotPanels(): ConvertSlotPanels {
@@ -953,7 +1160,11 @@ function applyAnomalySlotPanels(panels?: Record<string, PanelStats>) {
     delete anomalySlotPanels[key]
   }
   if (!panels) return
-  Object.assign(anomalySlotPanels, JSON.parse(JSON.stringify(panels)))
+  const cloned = JSON.parse(JSON.stringify(panels)) as Record<string, PanelStats>
+  for (const [agentId, panel] of Object.entries(cloned)) {
+    cloned[agentId] = resetSchemeExcludedPanelFields(fillPanelStatsDefaults(panel))
+  }
+  Object.assign(anomalySlotPanels, cloned)
 }
 
 function applyConvertSlotPanels(panels?: ConvertSlotPanels) {
@@ -962,6 +1173,14 @@ function applyConvertSlotPanels(panels?: ConvertSlotPanels) {
   }
   if (!panels) return
   Object.assign(convertSlotPanels, JSON.parse(JSON.stringify(panels)))
+}
+
+function pickSlotsToRestore(entry: { slots?: SchemeSlot[]; loadedSchemeId?: string }) {
+  if (schemeSlotsHaveContent(entry.slots)) return entry.slots
+  const schemeId = entry.loadedSchemeId || getLoadedSchemeId()
+  const scheme = findDamageCalcHistory(schemeId)
+  if (schemeSlotsHaveContent(scheme?.slots)) return scheme!.slots
+  return entry.slots
 }
 
 function applyWorkingState(entry: {
@@ -973,6 +1192,7 @@ function applyWorkingState(entry: {
   anomalySlotPanels?: Record<string, PanelStats>
   convertSlotPanels?: ConvertSlotPanels
   slots?: SchemeSlot[]
+  loadedSchemeId?: string
   staggerPhase?: StaggerPhase
   multiSlotBuffSelection?: MultiSlotBuffSelection
   panelState?: DamageCalcHistoryEntry['panelState'] | null
@@ -980,35 +1200,67 @@ function applyWorkingState(entry: {
   envBuffVersion?: string
   envBuffPhaseId?: string
   envBuffFrontierId?: string
+  preserveBaseDamageSource?: boolean
 }) {
   restoringWorkingState = true
+  panelCalcSectionRef.value?.beginRestore()
   const restoredBuff = entry.multiSlotBuffSelection
     ? (JSON.parse(JSON.stringify(entry.multiSlotBuffSelection)) as MultiSlotBuffSelection)
     : createEmptyMultiSlotBuffSelection()
-  applyTeamSlots(entry.teamSlots)
   activeSlot.value = entry.activeSlot
+  applyTeamSlots(entry.teamSlots)
   selectedBangbooId.value = entry.selectedBangbooId
   bangbooRefine.value = entry.bangbooRefine
   panelCalcMode.value = entry.panelCalcMode === 'optimal' ? 'affix' : entry.panelCalcMode
   applyAnomalySlotPanels(entry.anomalySlotPanels)
   applyConvertSlotPanels(entry.convertSlotPanels)
-  schemeSlots.value = ensureSchemeSlots(entry.slots, 3)
+  schemeSlots.value = ensureSchemeSlots(pickSlotsToRestore(entry), 3)
   staggerPhase.value = entry.staggerPhase ?? 'stagger'
   if (entry.envBuffMode != null) envBuffMode.value = entry.envBuffMode
   if (entry.envBuffVersion != null) envBuffVersion.value = entry.envBuffVersion
   if (entry.envBuffPhaseId != null) envBuffPhaseId.value = entry.envBuffPhaseId
   if (entry.envBuffFrontierId != null) envBuffFrontierId.value = entry.envBuffFrontierId
-  // 等队伍签名相关 watch 跑完后再写回 Buff / 怪物，避免被默认同步覆盖
+
+  const applyPanelSnapshot = () => {
+    if (!entry.panelState) return
+    const panelState = {
+      ...entry.panelState,
+      externalPanel: resetSchemeExcludedPanelFields({
+        ...entry.panelState.externalPanel,
+      }),
+    }
+    panelCalcSectionRef.value?.loadSnapshot(panelState, {
+      preserveBaseDamageSource: entry.preserveBaseDamageSource,
+    })
+  }
+  // 必须在换人 watch 同一轮里写回快照，不能拖到 nextTick：
+  // 否则默认 4/5/6（爆伤/攻击/生命）会先被 flush 进槽位，再被草稿 persist 写死。
+  applyPanelSnapshot()
+
+  // Buff 默认同步仍等队伍签名 watch 跑完再覆盖
   void nextTick(() => {
     multiSlotBuffSelection.team = restoredBuff.team
     multiSlotBuffSelection.bySlot = restoredBuff.bySlot
-    if (entry.panelState) {
-      panelCalcSectionRef.value?.loadSnapshot(entry.panelState)
-    }
+    applyPanelSnapshot()
     void nextTick(() => {
+      persistWorkingDraftNow(true)
       restoringWorkingState = false
+      panelCalcSectionRef.value?.endRestore()
     })
   })
+}
+
+function captureSchemePanelState(): DamageCalcSchemePanelSnapshot | null {
+  const snapshot = panelCalcSectionRef.value?.getSnapshot()
+  if (!snapshot) return null
+
+  // 方案快照白名单：只保留用户侧配置。
+  // 不跟方案走的内部字段：
+  // - 基础伤害来源开关
+  // - 异化系数乘区输入（mutationCoeff / mutationCoeffFactor）
+  const { baseDamageSource: _ignored, ...schemeSnapshot } = snapshot
+  const externalPanel = resetSchemeExcludedPanelFields({ ...schemeSnapshot.externalPanel })
+  return { ...schemeSnapshot, externalPanel }
 }
 
 function captureWorkingDraft(): DamageCalcWorkingDraft | null {
@@ -1022,7 +1274,7 @@ function captureWorkingDraft(): DamageCalcWorkingDraft | null {
     bangbooRefine: bangbooRefine.value,
     panelCalcMode: panelCalcMode.value,
     panelState,
-    anomalySlotPanels: cloneAnomalySlotPanels(),
+    anomalySlotPanels: captureSchemeAnomalySlotPanels(),
     convertSlotPanels: cloneConvertSlotPanels(),
     slots: JSON.parse(JSON.stringify(schemeSlots.value)),
     staggerPhase: staggerPhase.value,
@@ -1034,15 +1286,15 @@ function captureWorkingDraft(): DamageCalcWorkingDraft | null {
   }
 }
 
-function persistWorkingDraftNow() {
-  if (!draftHydrated) return
+function persistWorkingDraftNow(force = false) {
+  if (!force && (!draftHydrated || restoringWorkingState)) return
   const draft = captureWorkingDraft()
   if (!draft) return
   saveWorkingDraft(draft)
 }
 
 function schedulePersistWorkingDraft() {
-  if (!draftHydrated) return
+  if (!draftHydrated || restoringWorkingState) return
   if (draftSaveTimer) clearTimeout(draftSaveTimer)
   draftSaveTimer = setTimeout(() => {
     draftSaveTimer = null
@@ -1059,15 +1311,20 @@ function restoreWorkingState() {
   activeHistoryId.value = loadedId
   const draft = loadWorkingDraft()
   if (draft) {
-    applyWorkingState(draft)
+    applyWorkingState({
+      ...draft,
+      loadedSchemeId: draft.loadedSchemeId || loadedId,
+      preserveBaseDamageSource: true,
+    })
     if (draft.loadedSchemeId) activeHistoryId.value = draft.loadedSchemeId
   } else if (loadedId) {
     const entry = findDamageCalcHistory(loadedId)
-    if (entry) applyWorkingState(entry)
+    if (entry) applyWorkingState({ ...entry, preserveBaseDamageSource: false })
   }
   void nextTick(() => {
     void nextTick(() => {
       draftHydrated = true
+      persistWorkingDraftNow(true)
     })
   })
 }
@@ -1077,7 +1334,7 @@ function saveHistoryEntry(payload: { name: string; folder: string }) {
     historyMessage.value = '最优词条分配模式暂不支持写入历史，请切换到面板/词条计算后再保存'
     return
   }
-  const panelState = panelCalcSectionRef.value?.getSnapshot()
+  const panelState = captureSchemePanelState()
   if (!panelState) return
 
   const folder = payload.folder?.trim() || ''
@@ -1099,7 +1356,7 @@ function saveHistoryEntry(payload: { name: string; folder: string }) {
     bangbooRefine: bangbooRefine.value,
     panelCalcMode: panelCalcMode.value,
     panelState,
-    anomalySlotPanels: cloneAnomalySlotPanels(),
+    anomalySlotPanels: captureSchemeAnomalySlotPanels(),
     convertSlotPanels: cloneConvertSlotPanels(),
     slots: JSON.parse(JSON.stringify(schemeSlots.value)),
     staggerPhase: staggerPhase.value,
@@ -1116,11 +1373,10 @@ function saveHistoryEntry(payload: { name: string; folder: string }) {
 }
 
 function loadHistoryEntry(entry: DamageCalcHistoryEntry) {
-  applyWorkingState(entry)
+  applyWorkingState({ ...entry, preserveBaseDamageSource: false })
   activeHistoryId.value = entry.id
   setLoadedSchemeId(entry.id)
   historyMessage.value = `已加载「${entry.name}」`
-  persistWorkingDraftNow()
 }
 
 /** 用当前页面配置覆盖指定方案（保留其 id / 名称 / 目录） */
@@ -1129,7 +1385,7 @@ function overwriteHistoryEntry(id: string) {
     historyMessage.value = '最优词条分配模式暂不支持写入，请切换到面板/词条计算后再保存'
     return
   }
-  const panelState = panelCalcSectionRef.value?.getSnapshot()
+  const panelState = captureSchemePanelState()
   if (!panelState) return
   const existing = historyEntries.value.find((item) => item.id === id)
   if (!existing) return
@@ -1143,7 +1399,7 @@ function overwriteHistoryEntry(id: string) {
     bangbooRefine: bangbooRefine.value,
     panelCalcMode: panelCalcMode.value,
     panelState,
-    anomalySlotPanels: cloneAnomalySlotPanels(),
+    anomalySlotPanels: captureSchemeAnomalySlotPanels(),
     convertSlotPanels: cloneConvertSlotPanels(),
     slots: JSON.parse(JSON.stringify(schemeSlots.value)),
     staggerPhase: staggerPhase.value,
@@ -1192,14 +1448,30 @@ function blankTeamSlots(): TeamSlot[] {
   ]
 }
 
-function onSchemeImported(loadedId: string) {
-  calculatorBuffStore.reloadCustomSkillsFromStorage()
-  historyEntries.value = listAllDamageCalcHistory()
-  const entry = loadedId ? findDamageCalcHistory(loadedId) : null
-  if (entry) {
-    loadHistoryEntry(entry)
-    return
+function defaultEnemyInput(): DamageEnemyInput {
+  return normalizeDamageEnemyInput({
+    defense: 953,
+    vulnerableMultiplier: 1,
+    staggerMultiplier: DEFAULT_ENEMY_STAGGER_MULTIPLIER,
+    specialMultiplier: 1,
+    level: 60,
+  })
+}
+
+/** 方案边界内的空白页：队伍/面板/额外 Buff/准备流程/敌方。不含方案库、自建招式、流程伤害记录、危局筛选、公式开关。 */
+function emptySchemePanelState(): DamageCalcSchemePanelSnapshot {
+  return {
+    externalPanel: resetSchemeExcludedPanelFields(createDefaultExternalPanel()),
+    affixCounts: createEmptyAffixCounts(),
+    affixDriveDiscMainStats: createDefaultAffixDriveDiscMainStats(),
+    affixStateByAgent: {},
+    extraMods: createEmptyBuffStatModifiers(),
+    extraGains: [],
+    enemyInput: defaultEnemyInput(),
   }
+}
+
+function resetPageSchemeConfig() {
   applyWorkingState({
     teamSlots: blankTeamSlots(),
     activeSlot: 0,
@@ -1211,9 +1483,24 @@ function onSchemeImported(loadedId: string) {
     slots: ensureSchemeSlots([], 3),
     staggerPhase: 'stagger',
     multiSlotBuffSelection: createEmptyMultiSlotBuffSelection(),
+    panelState: emptySchemePanelState(),
+    preserveBaseDamageSource: true,
   })
+  extraGains.value = []
+  enemyInput.value = defaultEnemyInput()
   activeHistoryId.value = ''
   setLoadedSchemeId('')
+}
+
+function onSchemeImported(loadedId: string) {
+  calculatorBuffStore.reloadCustomSkillsFromStorage()
+  historyEntries.value = listAllDamageCalcHistory()
+  const entry = loadedId ? findDamageCalcHistory(loadedId) : null
+  if (entry) {
+    loadHistoryEntry(entry)
+    return
+  }
+  resetPageSchemeConfig()
 }
 
 watch(
@@ -1235,8 +1522,23 @@ watch(
   { deep: true },
 )
 
+watch(activeSlot, syncMainCFlagToActiveSlot)
+
 const pageRootRef = ref<HTMLElement | null>(null)
 const skillFlowSectionRef = ref<InstanceType<typeof SkillFlowSection> | null>(null)
+const historySectionRef = ref<InstanceType<typeof DamageCalcHistorySection> | null>(null)
+
+function openSchemeLibrary() {
+  historySectionRef.value?.openModal()
+}
+
+function clearCurrentScheme() {
+  historySectionRef.value?.clearLoadedScheme()
+}
+
+function onClearLoadedScheme() {
+  resetPageSchemeConfig()
+}
 
 async function scrollToSection(sectionId: DamageCalcSectionId) {
   await nextTick()
@@ -1286,8 +1588,49 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
 
 <template>
   <div ref="pageRootRef" class="damage-page">
-    <!-- 构图：方案库 → 编队/邦布/上传 → 局内Buff → 敌方与环境 → 计算方式 → 面板/伤害 → 招式流程 -->
+    <div class="team-slot-sticky">
+      <TeamSlotSwitcher
+        :team-slots="teamSlots"
+        :agents="agents"
+        :wengines="wengines"
+        :drive-discs="driveDiscs"
+        :active-index="activeSlot"
+        :panel-previews="stickySlotPanelPreviews"
+        :convert-slot-indexes="convertSlotIndexes"
+        @select="selectSlot"
+        @import="openTeamPresetPicker"
+        @clear="clearSlot"
+      />
+      <div class="scheme-lib-actions">
+        <button type="button" class="scheme-lib-btn" @click="openSchemeLibrary">方案库</button>
+        <button
+          type="button"
+          class="scheme-clear-btn"
+          title="清空当前页面配置，不删除方案库里的存档"
+          @click="clearCurrentScheme"
+        >
+          清空当前配置
+        </button>
+      </div>
+    </div>
+    <UnifiedPresetPicker
+      v-model:open="teamPresetPickerOpen"
+      hide-trigger
+      :agents="agents"
+      :wengines="wengines"
+      :drive-discs="driveDiscs"
+      :team-slots="teamSlots"
+      :active-slot="activeSlot"
+      :preferred-entry-mode="panelCalcMode === 'affix' ? 'affix' : 'panel'"
+      :anomaly-slot-panels="anomalySlotPanels"
+      :final-panel-preview="activeFinalPanelPreview"
+      :final-panel-token="importFinalPanelToken"
+      :resolve-final-panel="resolveImportFinalPanel"
+      @confirm="applyUnifiedImport"
+    />
+    <!-- 构图：方案库 → 编队/邦布 → 局内Buff → 敌方与环境 → 计算方式 → 伤害 → 招式流程 -->
     <DamageCalcHistorySection
+      ref="historySectionRef"
       :entries="historyEntries"
       :agents="agents"
       :active-entry-id="activeHistoryId"
@@ -1297,6 +1640,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       @load="loadHistoryEntry"
       @changed="onSchemeLibraryChanged"
       @imported="onSchemeImported"
+      @clear-loaded="onClearLoadedScheme"
     />
 
     <TeamBuilderSection
@@ -1306,11 +1650,16 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :team-slots="teamSlots"
       :active-slot="activeSlot"
       :active-agent="activeAgent"
+      :preferred-entry-mode="panelCalcMode === 'affix' ? 'affix' : 'panel'"
+      :anomaly-slot-panels="anomalySlotPanels"
+      :final-panel-preview="activeFinalPanelPreview"
+      :final-panel-token="importFinalPanelToken"
+      :resolve-final-panel="resolveImportFinalPanel"
       @select-slot="selectSlot"
       @assign-agent="assignAgent"
       @clear-slot="clearSlot"
-      @toggle-main-c="toggleMainC"
       @select-wengine="selectWengine"
+      @confirm-import="applyUnifiedImport"
     />
 
     <BangbooPickerSection
@@ -1319,13 +1668,6 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :refine="bangbooRefine"
       @select="selectBangboo"
       @update:refine="bangbooRefine = $event"
-    />
-
-    <PanelScreenshotUploadSection
-      :agents="agents"
-      :wengines="wengines"
-      :drive-discs="driveDiscs"
-      @apply-recognition="applyPanelRecognition"
     />
 
     <section
@@ -1367,6 +1709,8 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       v-model:open="extraBuffModalOpen"
       v-model:gains="extraGains"
       :skill-subcategories="skillSubcategories"
+      :team-slots="teamSlots"
+      :agents="agents"
     />
 
     <BuffEffectPickerModal
@@ -1408,7 +1752,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       <header class="calc-mode-header">
         <h2>计算方式</h2>
         <p class="calc-mode-desc">
-          面板计算直接录入局外面板；词条计算通过副词条条数推导局外面板；最优词条分配在约束下扫描分配并绘制期望伤害曲线。
+          局外 / 词条在「代理人 → 导入」的面板 Tab 录入（含截图识别）；面板计算用手填局外，词条计算用副词条推导；最优词条在约束下扫描并绘制期望伤害曲线。
         </p>
       </header>
       <div class="calc-mode-tabs" role="tablist" aria-label="面板计算方式">
@@ -1498,6 +1842,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
         :drive-discs="driveDiscs"
         :selected-bangboo-id="selectedBangbooId"
         :bangboo-refine="bangbooRefine"
+        :edited-slot-index="activeSlot"
         :damage-kind="damageKind"
         :anomaly-sub-kind="anomalySubKind"
         :trigger-anomaly-agent-id="triggerAnomalyAgentId"
@@ -1513,8 +1858,6 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
         v-model:enemy-input="enemyInput"
         v-model:extra-gains="extraGains"
         :convert-slot-panels="convertSlotPanels"
-        @update:anomaly-slot-panels="Object.assign(anomalySlotPanels, $event)"
-        @update:convert-slot-panels="Object.assign(convertSlotPanels, $event)"
         @update:hit-damages="hitDamages = $event"
         @update:hit-calc-results="hitCalcResults = $event"
       />
@@ -1535,7 +1878,9 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
         :hits="hits"
         :hit-damages="hitDamages"
         :hit-calc-results="hitCalcResults"
+        :scheme-name="currentSchemeName"
         v-model:slots="schemeSlots"
+        v-model:edited-slot-index="activeSlot"
       />
     </Teleport>
   </div>
@@ -1548,13 +1893,77 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
   gap: 1.35rem;
 }
 
+.team-slot-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  overflow: visible;
+  display: flex;
+  align-items: stretch;
+  gap: 0.65rem;
+  width: calc(100% + 2rem);
+  margin: 0 -1rem 0;
+  padding: 0.55rem 1rem 0.6rem;
+  border: none;
+  border-bottom: 1px solid rgba(201, 165, 92, 0.35);
+  border-radius: 0;
+  background: linear-gradient(180deg, #1c222c 0%, #151920 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 8px 20px rgba(0, 0, 0, 0.28);
+}
+
+.team-slot-sticky :deep(.team-slot-switcher) {
+  flex: 1;
+  min-width: 0;
+}
+
+.scheme-lib-actions {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+  gap: 0.28rem;
+  padding-left: 0.55rem;
+  border-left: 1px solid rgba(201, 165, 92, 0.22);
+}
+
+.scheme-lib-btn,
+.scheme-clear-btn {
+  appearance: none;
+  border-radius: 8px;
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: none;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+  padding: 0.38rem 0.8rem;
+  font-size: 0.78rem;
+  border: 1px solid #343a44;
+  background: #12161d;
+  color: #d5dae4;
+}
+
+.scheme-lib-btn:hover,
+.scheme-clear-btn:hover {
+  border-color: #c9a55c;
+  color: #f0d7a2;
+  background: #161b24;
+}
+
 .skill-flow-anchor {
   /* Teleport 挂载点：保持块级容器，避免 display:contents 在部分浏览器下丢子树 */
   min-height: 0;
 }
 
 .damage-page :deep(.damage-anchor) {
-  scroll-margin-top: 1rem;
+  scroll-margin-top: 4.2rem;
 }
 
 .calc-mode-section {

@@ -79,10 +79,15 @@ const props = defineProps<{
   remielSelfSources?: BuffModSource[]
   remielSelfFinalPanel?: PanelStats
   remielIsMb?: boolean
-  /** 类型增伤/倍率面板（异放/耀变=异常类触发者；缺省回落 finalPanel） */
+  /** 类型增伤/倍率面板（属性异常/异放/耀变=异常类触发者；缺省回落 finalPanel） */
   bonusFinalPanel?: PanelStats
   bonusExternalPanel?: PanelStats
   bonusSources?: BuffModSource[]
+  /** 减防/无视防御 tip（紊乱/乱流等：异常类触发者；缺省时属性异常/异放/耀变回落 bonus） */
+  defenseTriggerFinalPanel?: PanelStats
+  defenseTriggerExternalPanel?: PanelStats
+  defenseTriggerSources?: BuffModSource[]
+  defenseTriggerAgentLabel?: string
 }>()
 
 const anomalySubKind = computed(() => props.anomalySubKind ?? 'anomaly')
@@ -344,36 +349,38 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
           label: props.producerAgentLabel ?? '异常强度提供者',
           items: usesProducerMult
             ? [
-                '异常基础、紊乱/乱流倍率与持续时间取异常强度提供者；增伤/异常暴击取招式持有者；减防/无视取异常类触发者',
+                '异常基础乘区（含通用增伤区）、紊乱/乱流倍率与持续时间取异常强度提供者；类型增伤（紊乱/乱流增伤）与异常暴击取招式持有者；减防/无视取异常类触发者',
               ]
-            : [
-                '异常基础乘区（含通用增伤区）取异常强度提供者；类型增伤/倍率取异常类触发者；减防/无视取异常类触发者',
-              ],
+            : sub === 'radiance'
+              ? [
+                  '异常基础乘区（含通用增伤区）取异常强度提供者；耀变综合增伤/倍率取异常类触发者；减防/无视取异常类触发者',
+                ]
+              : [
+                  '异常基础乘区（含通用增伤区）取异常强度提供者；类型增伤/倍率取异常类触发者；减防/无视取异常类触发者',
+                ],
         },
       ]
     : []
 
-  // 类型增伤/倍率/暴击：属性异常/异放/耀变→触发者；紊乱/乱流→持有者
+  // 类型增伤/倍率/暴击：属性异常/异放/耀变→异常类触发者；紊乱/乱流→招式持有者
   const bonusPanel = props.bonusFinalPanel ?? ownerPanel
   const bonusExternal = props.bonusExternalPanel ?? ownerExternal
   const bonusSources = props.bonusSources ?? ownerSources
-  // Detail 暂无独立触发者面板 props：属性异常/异放/耀变时 bonus 即为触发者；紊乱/乱流减防 tip 回落持有者并注明
-  const defTrigPanel =
+  // 减防/无视：属性异常/异放/耀变可用 bonus（触发者）
+  const usesBonusAsDefTrig =
     sub === 'anomaly' || sub === 'anomalyRelease' || sub === 'radiance'
-      ? bonusPanel
-      : ownerPanel
-  const defTrigExternal =
-    sub === 'anomaly' || sub === 'anomalyRelease' || sub === 'radiance'
-      ? bonusExternal
-      : ownerExternal
-  const defTrigSources =
-    sub === 'anomaly' || sub === 'anomalyRelease' || sub === 'radiance'
-      ? bonusSources
-      : ownerSources
-  const defTrigLabel =
-    sub === 'anomaly' || sub === 'anomalyRelease' || sub === 'radiance'
-      ? (props.bonusAgentLabel ?? '异常类触发者')
-      : (props.bonusAgentLabel ?? '招式持有者')
+  const defTrigPanel = usesBonusAsDefTrig
+    ? bonusPanel
+    : (props.defenseTriggerFinalPanel ?? ownerPanel)
+  const defTrigExternal = usesBonusAsDefTrig
+    ? bonusExternal
+    : (props.defenseTriggerExternalPanel ?? ownerExternal)
+  const defTrigSources = usesBonusAsDefTrig
+    ? bonusSources
+    : (props.defenseTriggerSources ?? ownerSources)
+  const defTrigLabel = usesBonusAsDefTrig
+    ? (props.bonusAgentLabel ?? '异常类触发者')
+    : (props.defenseTriggerAgentLabel ?? (props.bonusAgentLabel ?? '招式持有者'))
   const remielExt = props.remielSelfExternalPanel ?? (p.remielSelfRadianceActive ? props.producerExternalPanel ?? external : external)
   const remielPanelForSelf = props.remielSelfFinalPanel ?? (p.remielSelfRadianceActive ? props.producerFinalPanel ?? panel : panel)
   const remielSourcesForSelf = props.remielSelfSources ?? []
@@ -469,15 +476,36 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
               defProcessItems,
             )
           : pierceBaseDamageTips,
-    dmgMultiplier: withTotal(
-      buildStatSourceGroups({
+    dmgMultiplier: (() => {
+      const skillBonus = sources.reduce((sum, s) => sum + (s.mods.skillDmgBonus ?? 0), 0)
+      const generalBonus = panel.dmgBonus - skillBonus
+      const generalGroups = buildStatSourceGroups({
         keys: ['dmgBonus'],
         externalPanel: external,
         sources,
-        finalValues: { dmgBonus: panel.dmgBonus },
-      }),
-      `局内增伤 ${formatFormulaNumber(panel.dmgBonus, 2)}% → 增伤区 1 + ${formatFormulaNumber(panel.dmgBonus, 2)}% = ${formatFormulaNumber(p.dmgMultiplier)}`,
-    ),
+        finalValues: { dmgBonus: generalBonus },
+      }).map((group) => ({
+        ...group,
+        label: skillBonus ? `通用 · ${group.label}` : group.label,
+      }))
+      const skillGroups = skillBonus
+        ? buildStatSourceGroups({
+            keys: ['skillDmgBonus'],
+            externalPanel: external,
+            sources,
+            finalValues: { skillDmgBonus: skillBonus },
+          }).map((group) => ({
+            ...group,
+            label: `招式 · ${group.label}`,
+          }))
+        : []
+      return withTotal(
+        [...generalGroups, ...skillGroups],
+        skillBonus
+          ? `增伤区 1 + ${formatFormulaNumber(generalBonus, 2)}% + ${formatFormulaNumber(skillBonus, 2)}% = ${formatFormulaNumber(p.dmgMultiplier)}`
+          : `局内增伤 ${formatFormulaNumber(panel.dmgBonus, 2)}% → 增伤区 1 + ${formatFormulaNumber(panel.dmgBonus, 2)}% = ${formatFormulaNumber(p.dmgMultiplier)}`,
+      )
+    })(),
     defenseMultiplier: buildDefenseZoneSourceGroups({
       enemyDefense: enemy.defense,
       penRatePanel: panel,
@@ -1179,25 +1207,32 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
         ],
       },
     ],
-    radianceCombinedDmgBonusZone: [
-      {
-        label: '乘区组成',
-        items: [
-          `耀变增伤区 1 + ${formatFormulaNumber(bonusPanel.radianceDmgBonus, 2)}% = ${formatFormulaNumber(1 + bonusPanel.radianceDmgBonus / 100)}`,
-          `异常增伤区 1 + ${formatFormulaNumber(bonusPanel.anomalyDmgBonus, 2)}% = ${formatFormulaNumber(p.anomalyDmgBonusZone)}`,
-          `耀变综合增伤区 1 + (${formatFormulaNumber(bonusPanel.radianceDmgBonus, 2)}% + ${formatFormulaNumber(bonusPanel.anomalyDmgBonus, 2)}%) = ${formatFormulaNumber(p.radianceCombinedDmgBonusZone)}`,
-        ],
-      },
-      ...buildStatSourceGroups({
-        keys: ['radianceDmgBonus', 'anomalyDmgBonus'],
-        externalPanel: bonusExternal,
-        sources: bonusSources,
-        finalValues: {
-          radianceDmgBonus: bonusPanel.radianceDmgBonus,
-          anomalyDmgBonus: bonusPanel.anomalyDmgBonus,
+    radianceCombinedDmgBonusZone: (() => {
+      const radianceBonus = bonusPanel.radianceDmgBonus
+      const anomalyBonus = bonusPanel.anomalyDmgBonus
+      return [
+        {
+          label: '乘区组成',
+          items: [
+            `耀变增伤区 1 + ${formatFormulaNumber(radianceBonus, 2)}% = ${formatFormulaNumber(1 + radianceBonus / 100)}`,
+            `异常增伤区 1 + ${formatFormulaNumber(anomalyBonus, 2)}% = ${formatFormulaNumber(p.anomalyDmgBonusZone)}`,
+            `耀变综合增伤区 1 + (${formatFormulaNumber(radianceBonus, 2)}% + ${formatFormulaNumber(anomalyBonus, 2)}%) = ${formatFormulaNumber(p.radianceCombinedDmgBonusZone)}`,
+          ],
         },
-      }),
-    ],
+        ...buildStatSourceGroups({
+          keys: ['radianceDmgBonus'],
+          externalPanel: bonusExternal,
+          sources: bonusSources,
+          finalValues: { radianceDmgBonus: radianceBonus },
+        }),
+        ...buildStatSourceGroups({
+          keys: ['anomalyDmgBonus'],
+          externalPanel: bonusExternal,
+          sources: bonusSources,
+          finalValues: { anomalyDmgBonus: anomalyBonus },
+        }),
+      ]
+    })(),
     radianceMultZone: withTotal(
       buildStatSourceGroups({
         keys: ['radianceMult', 'radianceMultFactor'],

@@ -35,6 +35,10 @@ export interface DamageCalcTeamSlotSnapshot {
   isMainC: boolean
   twoPieceDriveDiscId: string
   fourPieceDriveDiscId: string
+  /** 该槽位词条计算的 4/5/6 号盘主属性；跟 2/4 件套一起存，避免只活在编辑器里被换人冲掉 */
+  affixDriveDiscMainStats?: AffixDriveDiscMainStats
+  /** 该槽位副词条数 */
+  affixCounts?: AffixCounts
 }
 
 export interface DamageCalcPanelSnapshot {
@@ -57,6 +61,7 @@ export interface DamageCalcPanelSnapshot {
     applySituation?: import('@/types/calculator').BuffApplySituation
     scope?: import('@/types/calculator').BuffScope
     applyTarget?: import('@/types/calculator').BuffApplyTarget
+    applySlot?: number | 'team'
     skillCategory?: import('@/types/calculator').BuffSkillTargetId
     skillSubcategoryId?: string | null
     appliesToAnomaly?: boolean
@@ -67,6 +72,15 @@ export interface DamageCalcPanelSnapshot {
     teamProfessionMinCount?: number | null
   }>
   enemyInput: DamageCalcEnemyInputSnapshot
+}
+
+/**
+ * 命名方案 / 导出包允许持有的面板快照。
+ * `baseDamageSource` 属于计算器内部公式开关，不跟方案走；旧包即便带了也会被忽略。
+ */
+export type DamageCalcSchemePanelSnapshot = Omit<DamageCalcPanelSnapshot, 'baseDamageSource'> & {
+  /** @deprecated 兼容旧包读取；运行时忽略，不再导出 */
+  baseDamageSource?: DamageCalcPanelSnapshot['baseDamageSource']
 }
 
 // ===================== 准备阶段 / 流程（新架构，跟方案走） =====================
@@ -157,7 +171,7 @@ export interface DamageCalcHistoryEntry {
   selectedBangbooId: string
   bangbooRefine: number
   panelCalcMode: PanelCalcMode
-  panelState: DamageCalcPanelSnapshot
+  panelState: DamageCalcSchemePanelSnapshot
   /** 异常产生角色局外面板（按 agentId） */
   anomalySlotPanels?: Record<string, PanelStats>
   /** 转模增益角色局外面板（按 agentId） */

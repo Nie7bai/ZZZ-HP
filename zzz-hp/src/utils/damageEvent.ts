@@ -123,6 +123,24 @@ export function pickEventDamage(
   return result.turbulenceExpected
 }
 
+/**
+ * 流程卡外侧汇总用暴击模式：
+ * 异常 / 乱流 / 异放固定必暴击；直伤、紊乱、耀变仍跟随条目 critMode。
+ */
+export function resolveFlowHitCritMode(
+  damageType: DamageEventKind,
+  entryCritMode: DamageEventCritMode,
+): DamageEventCritMode {
+  if (
+    damageType === 'anomaly' ||
+    damageType === 'turbulence' ||
+    damageType === 'anomalyRelease'
+  ) {
+    return 'fullCrit'
+  }
+  return entryCritMode
+}
+
 export function disorderLabelFromResult(result: DamageCalcResult): string {
   return result.hasPolarDisorder ? '极性紊乱' : '紊乱伤害'
 }
@@ -215,7 +233,7 @@ export function getDamageEventSkipReason(
   event: DamageEvent,
   ctx: DamageEventParticipationContext,
 ): string | null {
-  const mainSlot = ctx.teamSlots.find((slot) => slot.isMainC) ?? ctx.teamSlots[0]
+  const mainSlot = ctx.teamSlots[0]
   const mainAgentId = ctx.mainAgentId ?? mainSlot?.agentId ?? ''
   const ownerId = resolveEventOwnerAgentId(event, mainAgentId)
   const ownerAgent = ctx.agents.find((item) => item.id === ownerId)
@@ -334,7 +352,7 @@ export function isTriggerAgentAtCalc(id: string | null | undefined): boolean {
   return id === TRIGGER_AGENT_AT_CALC || id == null || id === ''
 }
 
-/** 耀变综合增伤/倍率/特殊倍率乘区取主 C 面板；覆写也应写入主 C 侧 */
+/** 耀变综合增伤/倍率/特殊倍率乘区取异常类触发者面板；覆写也应写入触发者侧 */
 export function applyRadianceBonusMultOverrides(
   panel: PanelStats,
   overrides: DamageEventMultOverrides | null | undefined,

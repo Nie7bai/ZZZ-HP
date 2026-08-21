@@ -15,7 +15,7 @@ export function collectSlotDriveDiscNoteLines(
   driveDiscs: DriveDiscBuffDoc[],
 ): DriveDiscNoteLine[] {
   const lines: DriveDiscNoteLine[] = []
-  const roleLabel = slot.isMainC ? `主C · ${agentName}` : `辅助 · ${agentName}`
+  const roleLabel = `槽位${slotIndex + 1} · ${agentName}`
 
   const fourDisc =
     slot.fourPieceDriveDiscId !== 'none'

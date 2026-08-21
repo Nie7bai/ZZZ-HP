@@ -1,10 +1,16 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
 import type { AgentBuffDoc } from '@/types/calculator'
 import type { SchemeSlot } from '@/types/damageCalcHistory'
 import { DAMAGE_EVENT_KIND_OPTIONS } from '@/utils/damageEvent'
 import type { ResolvedHit } from '@/utils/resolvedHit'
+import {
+  loadSkillFlowDamageRecords,
+  MAX_SKILL_FLOW_DAMAGE_RECORDS,
+  saveSkillFlowDamageRecords,
+  type SkillFlowDamageRecord,
+} from '@/utils/skillFlowDamageRecords'
 
 const PIE_COLORS = ['#c9a55c', '#5b8def', '#e08a3c', '#4caf8a', '#9b7ed9', '#d46a6a']
 
@@ -15,6 +21,8 @@ const props = defineProps<{
   hits?: ResolvedHit[]
   hitDamages?: Record<string, number>
   activeSlotIndex: number
+  /** 当前加载的方案名；未归档为空 */
+  schemeName?: string
 }>()
 
 interface PieSlice {
@@ -24,13 +32,18 @@ interface PieSlice {
   color: string
 }
 
-interface DamageRecord {
-  time: string
-  current: number
-  team: number
-}
+const MAX_RECORDS = MAX_SKILL_FLOW_DAMAGE_RECORDS
+const UNSAVED_SCHEME_LABEL = '未保存'
 
-const records = ref<DamageRecord[]>([])
+const records = ref<SkillFlowDamageRecord[]>(loadSkillFlowDamageRecords())
+
+watch(
+  records,
+  (list) => {
+    saveSkillFlowDamageRecords(list)
+  },
+  { deep: true },
+)
 
 function hitAmount(hit: ResolvedHit) {
   const value = props.hitDamages?.[hit.id]
@@ -132,25 +145,69 @@ function pieBackground(slices: PieSlice[]) {
   return `conic-gradient(${stops.join(', ')})`
 }
 
-function recordNow() {
-  if (records.value.length >= 5) return
-  const now = new Date()
+function currentSchemeLabel() {
+  const name = props.schemeName?.trim()
+  return name || UNSAVED_SCHEME_LABEL
+}
+
+function formatRecordTime(savedAt: number) {
+  const date = new Date(savedAt)
+  if (!Number.isFinite(date.getTime())) return '—'
   const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+function firstNameChar(name: string | undefined) {
+  const trimmed = (name ?? '').trim()
+  if (!trimmed || trimmed === '未选' || trimmed === '未知') return '·'
+  return Array.from(trimmed)[0] ?? '·'
+}
+
+function teamInitials(rec: SkillFlowDamageRecord) {
+  const names = rec.agentNames.length ? rec.agentNames : [rec.agentName]
+  return names.map(firstNameChar).join('')
+}
+
+function recordTip(rec: SkillFlowDamageRecord) {
+  const team = (rec.agentNames.length ? rec.agentNames : [rec.agentName]).join(' / ')
+  return `${rec.schemeName}\n队伍：${team}\n当前角色：${rec.agentName}`
+}
+
+function recordNow() {
+  if (records.value.length >= MAX_RECORDS) return
+  const now = Date.now()
+  const agentNames = props.teamSlots.map((slot) => agentName(slot.agentId))
   records.value.push({
-    time: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
+    id: `rec-${now}-${Math.random().toString(36).slice(2, 7)}`,
+    savedAt: now,
     current: currentTotal.value,
     team: teamTotal.value,
+    agentName: agentName(props.teamSlots[props.activeSlotIndex]?.agentId),
+    schemeName: currentSchemeLabel(),
+    agentNames,
   })
 }
 
-function recordDelta(index: number) {
-  if (index <= 0) return '—'
-  const prev = records.value[index - 1]?.current ?? 0
-  const cur = records.value[index]?.current ?? 0
-  if (!(prev > 0)) return '—'
-  const pct = ((cur - prev) / prev) * 100
+function recordDelta(prev: number | undefined, cur: number | undefined) {
+  if (!(prev != null && prev > 0)) return '—'
+  const next = cur ?? 0
+  const pct = ((next - prev) / prev) * 100
   const sign = pct >= 0 ? '+' : ''
   return `${sign}${pct.toFixed(2)}%`
+}
+
+function teamDelta(index: number) {
+  if (index <= 0) return '—'
+  return recordDelta(records.value[index - 1]?.team, records.value[index]?.team)
+}
+
+function currentDelta(index: number) {
+  if (index <= 0) return '—'
+  return recordDelta(records.value[index - 1]?.current, records.value[index]?.current)
+}
+
+function removeRecord(id: string) {
+  records.value = records.value.filter((item) => item.id !== id)
 }
 
 function clearRecords() {
@@ -166,9 +223,15 @@ function clearRecords() {
     </header>
 
     <div class="sf-stats-current">
-      <span class="sf-stats-label">当前角色</span>
-      <strong class="sf-stats-num current">{{ formatNum(currentTotal) }}</strong>
-      <span class="sf-stats-pct">{{ formatPct(currentTotal, teamTotal) }}</span>
+      <div class="sf-stats-metric">
+        <span class="sf-stats-label">全队</span>
+        <strong class="sf-stats-num team">{{ formatNum(teamTotal) }}</strong>
+      </div>
+      <div class="sf-stats-metric">
+        <span class="sf-stats-label">当前角色</span>
+        <strong class="sf-stats-num current">{{ formatNum(currentTotal) }}</strong>
+        <span class="sf-stats-pct">{{ formatPct(currentTotal, teamTotal) }}</span>
+      </div>
     </div>
 
     <div class="sf-stats-team">
@@ -216,7 +279,7 @@ function clearRecords() {
       <div class="sf-stats-lift-head">
         <h4>伤害记录</h4>
         <div class="sf-stats-lift-actions">
-          <button type="button" class="mini-btn" :disabled="records.length >= 5" @click="recordNow">
+          <button type="button" class="mini-btn" :disabled="records.length >= MAX_RECORDS" @click="recordNow">
             记录
           </button>
           <button type="button" class="mini-btn danger" :disabled="!records.length" @click="clearRecords">
@@ -224,24 +287,42 @@ function clearRecords() {
           </button>
         </div>
       </div>
-      <p class="sf-stats-hint">最多记录 5 条，对比当前角色总伤相对上一条的变化。</p>
+      <p class="sf-stats-hint">
+        最多 {{ MAX_RECORDS }} 条，全局存在浏览器，不会被方案记录。悬停在方案列可看全称、三人与当前角色。
+      </p>
       <table v-if="records.length" class="sf-rec-table">
         <thead>
           <tr>
-            <th>#</th>
-            <th>时间</th>
-            <th>当前角色</th>
+            <th class="sf-rec-num">#</th>
+            <th class="sf-rec-ctx">方案</th>
+            <th class="sf-rec-time">时间</th>
             <th>全队</th>
-            <th>较上一条</th>
+            <th>当前角色</th>
+            <th>全队较上一条</th>
+            <th>当前较上一条</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(rec, index) in records" :key="`${rec.time}-${index}`">
-            <td>{{ index + 1 }}</td>
-            <td>{{ rec.time }}</td>
-            <td>{{ formatNum(rec.current) }}</td>
-            <td>{{ formatNum(rec.team) }}</td>
-            <td>{{ recordDelta(index) }}</td>
+          <tr v-for="(rec, index) in records" :key="rec.id">
+            <td class="sf-rec-num">{{ index + 1 }}</td>
+            <td class="sf-rec-ctx">
+              <span class="sf-rec-clip" :title="recordTip(rec)">{{ rec.schemeName }}</span>
+            </td>
+            <td class="sf-rec-time">{{ formatRecordTime(rec.savedAt) }}</td>
+            <td class="sf-rec-dmg">
+              <span class="sf-rec-who">{{ teamInitials(rec) }}</span>
+              <span>{{ formatNum(rec.team) }}</span>
+            </td>
+            <td class="sf-rec-dmg">
+              <span class="sf-rec-who">{{ firstNameChar(rec.agentName) }}</span>
+              <span>{{ formatNum(rec.current) }}</span>
+            </td>
+            <td>{{ teamDelta(index) }}</td>
+            <td>{{ currentDelta(index) }}</td>
+            <td class="sf-rec-actions">
+              <button type="button" class="mini-btn danger" @click="removeRecord(rec.id)">删除</button>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -275,6 +356,12 @@ function clearRecords() {
 .sf-stats-current {
   display: flex;
   align-items: baseline;
+  gap: 1.4rem;
+  flex-wrap: wrap;
+}
+.sf-stats-metric {
+  display: flex;
+  align-items: baseline;
   gap: 0.65rem;
   flex-wrap: wrap;
 }
@@ -288,8 +375,14 @@ function clearRecords() {
   color: #d7e4ff;
   font-variant-numeric: tabular-nums;
 }
+.sf-stats-num.team,
 .sf-stats-num.current {
   font-size: 1.55rem;
+}
+.sf-stats-num.team {
+  color: #e8edf5;
+}
+.sf-stats-num.current {
   color: #c4b4f0;
 }
 .sf-stats-pct {
@@ -397,6 +490,7 @@ function clearRecords() {
   width: 100%;
   margin-top: 0.45rem;
   border-collapse: collapse;
+  table-layout: fixed;
   font-size: 0.75rem;
   color: #d5dae4;
 }
@@ -406,10 +500,43 @@ function clearRecords() {
   border-bottom: 1px solid #2a3038;
   text-align: left;
   font-variant-numeric: tabular-nums;
+  vertical-align: middle;
 }
 .sf-rec-table th {
   color: #9aa3b0;
   font-weight: 600;
+}
+.sf-rec-num {
+  width: 2.1rem;
+}
+.sf-rec-time {
+  width: 7.4rem;
+  white-space: nowrap;
+}
+.sf-rec-ctx {
+  width: 7.2rem;
+  max-width: 7.2rem;
+}
+.sf-rec-clip {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
+.sf-rec-dmg {
+  white-space: nowrap;
+}
+.sf-rec-who {
+  margin-right: 0.35rem;
+  color: #8b93a0;
+  font-variant-numeric: normal;
+  letter-spacing: 0.04em;
+}
+.sf-rec-actions {
+  width: 3.6rem;
+  text-align: right;
+  white-space: nowrap;
 }
 @media (max-width: 800px) {
   .sf-stats-team,

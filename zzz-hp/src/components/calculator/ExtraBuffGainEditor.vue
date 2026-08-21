@@ -14,7 +14,15 @@ import {
 } from '@/types/calculator'
 import { BUFF_STAT_FIELDS, AGENT_ROLES, buffStatFieldLabel } from '@/utils/calculatorUi'
 import { formatTeamProfessionGateLabel } from '@/utils/buffEffect'
-import { scopeLabel } from '@/utils/extraBuffCalc'
+import {
+  extraGainApplySlotLabel,
+  normalizeExtraGain,
+  resolveExtraGainApplySlot,
+  scopeLabel,
+  type ExtraBuffApplySlot,
+} from '@/utils/extraBuffCalc'
+import { teamSlotDisplayLabel } from '@/utils/teamSlotLabel'
+import type { AgentBuffDoc } from '@/types/calculator'
 
 export interface ExtraBuffGain {
   id: string
@@ -25,8 +33,10 @@ export interface ExtraBuffGain {
   applySituation?: BuffApplySituation
   /** 作用域，默认通用 */
   scope?: BuffScope
-  /** 作用目标，默认自身 */
+  /** 作用目标；与 applySlot 同步，team=全队，self=指定槽位 */
   applyTarget?: BuffApplyTarget
+  /** 作用槽位：'team' = 全队；0/1/2 = 角色1/2/3。旧 self 视为 0 */
+  applySlot?: ExtraBuffApplySlot
   /** 受益职业；空 = 不限 */
   applyProfession?: string | null
   /** 队内职业人数条件；空 = 不限 */
@@ -50,6 +60,8 @@ const props = defineProps<{
     categoryId: SkillCategoryId
     name: string
   }>
+  teamSlots?: Array<{ agentId?: string | null }>
+  agents?: AgentBuffDoc[]
 }>()
 
 const gains = defineModel<ExtraBuffGain[]>({ required: true })
@@ -59,7 +71,7 @@ const draftStat = ref<BuffStatKey>('dmgBonus')
 const draftValue = ref(0)
 const draftSituation = ref<BuffApplySituation>('global')
 const draftScope = ref<BuffScope>('general')
-const draftApplyTarget = ref<BuffApplyTarget>('self')
+const draftApplySlot = ref<ExtraBuffApplySlot>(0)
 const draftApplyProfession = ref('')
 const draftTeamProfession = ref('')
 const draftTeamProfessionValues = ref<Array<number | null>>([null, null, null])
@@ -73,10 +85,14 @@ const SITUATION_LABELS: Record<BuffApplySituation, string> = {
   non_stagger: '非失衡期',
 }
 
-const APPLY_TARGET_LABELS: Record<BuffApplyTarget, string> = {
-  self: '自身（当前编辑角色）',
-  team: '全队（含自己）',
-}
+const slotOptions = computed(() => {
+  const slots = props.teamSlots ?? [{ agentId: '' }, { agentId: '' }, { agentId: '' }]
+  const agents = props.agents ?? []
+  return [0, 1, 2].map((index) => ({
+    value: index,
+    label: teamSlotDisplayLabel(slots[index] ?? { agentId: '' }, index, agents),
+  }))
+})
 
 const draftSubcategories = computed(() =>
   (props.skillSubcategories ?? []).filter(
@@ -109,7 +125,8 @@ function addGain() {
     value: Number.isFinite(draftValue.value) ? draftValue.value : 0,
     applySituation: draftSituation.value,
     scope: draftScope.value,
-    applyTarget: draftApplyTarget.value,
+    applySlot: draftApplySlot.value,
+    applyTarget: draftApplySlot.value === 'team' ? 'team' : 'self',
   }
   if (draftApplyProfession.value.trim()) {
     gain.applyProfession = draftApplyProfession.value.trim()
@@ -123,11 +140,11 @@ function addGain() {
     gain.skillSubcategoryId = draftSkillSubcategoryId.value || null
     if (draftAppliesToAnomaly.value) gain.appliesToAnomaly = true
   }
-  gains.value = [...gains.value, gain]
+  gains.value = [...gains.value, normalizeExtraGain(gain)]
   draftValue.value = 0
   draftSituation.value = 'global'
   draftScope.value = 'general'
-  draftApplyTarget.value = 'self'
+  draftApplySlot.value = 0
   draftApplyProfession.value = ''
   draftTeamProfession.value = ''
   draftTeamProfessionValues.value = [null, null, null]
@@ -137,6 +154,23 @@ function addGain() {
 
 function removeGain(id: string) {
   gains.value = gains.value.filter((item) => item.id !== id)
+}
+
+function parseApplySlot(value: string): ExtraBuffApplySlot {
+  return value === 'team' ? 'team' : Number(value)
+}
+
+function setGainApplySlot(id: string, value: string) {
+  const applySlot = parseApplySlot(value)
+  gains.value = gains.value.map((item) =>
+    item.id === id
+      ? normalizeExtraGain({
+          ...item,
+          applySlot,
+          applyTarget: applySlot === 'team' ? 'team' : 'self',
+        })
+      : item,
+  )
 }
 
 function situationLabel(value?: BuffApplySituation) {
@@ -157,7 +191,7 @@ function skillTargetSummary(item: ExtraBuffGain): string {
 function gainMeta(item: ExtraBuffGain): string {
   const parts = [
     scopeLabel(item.scope),
-    APPLY_TARGET_LABELS[item.applyTarget ?? 'self'],
+    extraGainApplySlotLabel(item, props.teamSlots ?? [], props.agents ?? []),
   ]
   if (item.applyProfession?.trim()) {
     parts.push(`职业·${item.applyProfession.trim()}`)
@@ -175,7 +209,7 @@ function gainMeta(item: ExtraBuffGain): string {
 <template>
   <div class="extra-buff-editor">
     <p class="extra-buff-hint">
-      额外 Buff 添加后立即参与计算。队内职业人数条件只限制何时生效，不改变数值本身。
+      额外 Buff 添加后立即参与计算。目标按槽位固定（全队或角色1/2/3），切换编辑中角色不会改作用对象。队内职业人数条件只限制何时生效，不改变数值本身。
     </p>
     <div class="extra-buff-form">
       <label class="field">
@@ -199,10 +233,15 @@ function gainMeta(item: ExtraBuffGain): string {
         </select>
       </label>
       <label class="field">
-        <span>目标</span>
-        <select v-model="draftApplyTarget">
-          <option value="self">自身（当前编辑角色）</option>
-          <option value="team">全队（含自己）</option>
+        <span>作用对象</span>
+        <select
+          :value="draftApplySlot"
+          @change="draftApplySlot = parseApplySlot(($event.target as HTMLSelectElement).value)"
+        >
+          <option value="team">全队</option>
+          <option v-for="opt in slotOptions" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </option>
         </select>
       </label>
       <label class="field">
@@ -295,6 +334,16 @@ function gainMeta(item: ExtraBuffGain): string {
             +{{ item.value }} · {{ gainMeta(item) }}
           </span>
         </div>
+        <select
+          class="item-slot-select"
+          :value="String(resolveExtraGainApplySlot(item))"
+          @change="setGainApplySlot(item.id, ($event.target as HTMLSelectElement).value)"
+        >
+          <option value="team">全队</option>
+          <option v-for="opt in slotOptions" :key="`item-${item.id}-${opt.value}`" :value="String(opt.value)">
+            {{ opt.label }}
+          </option>
+        </select>
         <button type="button" class="remove-btn" @click="removeGain(item.id)">移除</button>
       </li>
     </ul>
@@ -411,6 +460,17 @@ function gainMeta(item: ExtraBuffGain): string {
   border: 1px solid var(--calc-border, rgba(255, 255, 255, 0.1));
   border-radius: 10px;
   padding: 0.55rem 0.7rem;
+}
+
+.item-slot-select {
+  flex-shrink: 0;
+  max-width: 8.5rem;
+  border: 1px solid var(--calc-border, rgba(255, 255, 255, 0.12));
+  border-radius: 8px;
+  background: var(--calc-panel, #151922);
+  color: var(--calc-text, #edf1f7);
+  padding: 0.32rem 0.45rem;
+  font-size: 0.78rem;
 }
 
 .extra-buff-copy {

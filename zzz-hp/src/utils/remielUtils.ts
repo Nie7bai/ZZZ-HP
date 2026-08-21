@@ -130,8 +130,10 @@ export function canAgentBeAnomalyProducerForKind(
 export function computeMutationZone(
   panel: Pick<PanelStats, 'mutationCoeff' | 'mutationCoeffFactor'>,
 ): number {
+  const coeff = Number(panel.mutationCoeff)
+  const safeCoeff = Number.isFinite(coeff) ? coeff : 0
   const ratio = multFactorPercentToRatio(panel.mutationCoeffFactor) || 1
-  return Math.max(0, 1 + panel.mutationCoeff / 100) * ratio
+  return Math.max(0, 1 + safeCoeff / 100) * ratio
 }
 
 export function computeRadianceMultZone(
@@ -157,8 +159,9 @@ export interface RemielSelfRadianceCalcInput {
   pen: number
   resPen: number
   radianceResPen: number
-  /** 本人耀变综合增伤：仅含自身面板，不含队友赋予的属性异常增伤等 */
+  /** @deprecated 耀变综合增伤的耀变/异常增伤均取异常类触发者面板；保留字段供旧调用兼容 */
   radianceDmgBonus: number
+  /** @deprecated 同上 */
   anomalyDmgBonus: number
   /** 下一位非流明队友属性，用于敌方抗性基准 */
   resistanceElement: string | null

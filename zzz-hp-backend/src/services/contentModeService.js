@@ -40,47 +40,81 @@ async function columnExists(conn, table, column) {
   return Number(rows[0]?.c) > 0
 }
 
+async function ensureModeDefault(conn, table, actionsBucket) {
+  const [cols] = await conn.query(`SHOW COLUMNS FROM \`${table}\` LIKE 'mode'`)
+  const col = cols[0]
+  if (!col) return
+  if (col.Default == null || col.Default === '') {
+    await conn.query(
+      `ALTER TABLE \`${table}\`
+       MODIFY COLUMN mode VARCHAR(20) NOT NULL DEFAULT 'crisis'
+       COMMENT 'crisis|defense|deduction（版块归属）'`,
+    )
+    actionsBucket.push('restored-mode-default')
+  }
+}
+
+let ensured = false
+let ensuredPromise = null
+
 /**
  * 幂等：确保 boss / buff 有 mode 列，并按 ID 形状回填存量行。
  * 返回本次实际执行的动作统计。
  */
 export async function ensureContentModeColumns(conn) {
-  const actions = { boss: [], buff: [] }
+  if (ensured) return { boss: [], buff: [] }
+  if (ensuredPromise) return ensuredPromise
 
-  if (!(await columnExists(conn, 'boss', 'mode'))) {
-    await conn.query(
-      `ALTER TABLE boss
-       ADD COLUMN mode VARCHAR(20) NOT NULL DEFAULT 'crisis'
-       COMMENT 'crisis|defense|deduction（版块归属）'`,
+  ensuredPromise = (async () => {
+    const actions = { boss: [], buff: [] }
+
+    if (!(await columnExists(conn, 'boss', 'mode'))) {
+      await conn.query(
+        `ALTER TABLE boss
+         ADD COLUMN mode VARCHAR(20) NOT NULL DEFAULT 'crisis'
+         COMMENT 'crisis|defense|deduction（版块归属）'`,
+      )
+      actions.boss.push('added-mode-column')
+    } else {
+      await ensureModeDefault(conn, 'boss', actions.boss)
+    }
+
+    if (!(await columnExists(conn, 'buff', 'mode'))) {
+      await conn.query(
+        `ALTER TABLE buff
+         ADD COLUMN mode VARCHAR(20) NOT NULL DEFAULT 'crisis'
+         COMMENT 'crisis|defense|deduction（版块归属）'`,
+      )
+      actions.buff.push('added-mode-column')
+    } else {
+      await ensureModeDefault(conn, 'buff', actions.buff)
+    }
+
+    // 回填：仅处理仍为默认 crisis 的存量行（新写入的行由应用层显式带 mode）
+    const [bossBackfill] = await conn.query(
+      `UPDATE boss SET mode = 'defense'
+       WHERE mode = 'crisis' AND LENGTH(id) = 9`,
     )
-    actions.boss.push('added-mode-column')
-  }
+    if (Number(bossBackfill.affectedRows) > 0) {
+      actions.boss.push(`backfilled-defense=${bossBackfill.affectedRows}`)
+    }
 
-  if (!(await columnExists(conn, 'buff', 'mode'))) {
-    await conn.query(
-      `ALTER TABLE buff
-       ADD COLUMN mode VARCHAR(20) NOT NULL DEFAULT 'crisis'
-       COMMENT 'crisis|defense|deduction（版块归属）'`,
+    const [buffBackfill] = await conn.query(
+      `UPDATE buff SET mode = 'defense'
+       WHERE mode = 'crisis' AND LENGTH(id) = 7`,
     )
-    actions.buff.push('added-mode-column')
-  }
+    if (Number(buffBackfill.affectedRows) > 0) {
+      actions.buff.push(`backfilled-defense=${buffBackfill.affectedRows}`)
+    }
 
-  // 回填：仅处理仍为默认 crisis 的存量行（新写入的行由应用层显式带 mode）
-  const [bossBackfill] = await conn.query(
-    `UPDATE boss SET mode = 'defense'
-     WHERE mode = 'crisis' AND LENGTH(id) = 9`,
-  )
-  if (Number(bossBackfill.affectedRows) > 0) {
-    actions.boss.push(`backfilled-defense=${bossBackfill.affectedRows}`)
-  }
+    ensured = true
+    return actions
+  })()
 
-  const [buffBackfill] = await conn.query(
-    `UPDATE buff SET mode = 'defense'
-     WHERE mode = 'crisis' AND LENGTH(id) = 7`,
-  )
-  if (Number(buffBackfill.affectedRows) > 0) {
-    actions.buff.push(`backfilled-defense=${buffBackfill.affectedRows}`)
+  try {
+    return await ensuredPromise
+  } catch (err) {
+    ensuredPromise = null
+    throw err
   }
-
-  return actions
 }

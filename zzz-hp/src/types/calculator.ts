@@ -5,6 +5,7 @@ export type AdminCalculatorPanel =
   | 'drive-disc'
   | 'skill-subcategory'
   | 'skill-library'
+  | 'import-export'
 
 export type SupportStatNeed =
   | 'hp'
@@ -637,4 +638,25 @@ export interface CalculatorBuffData {
   driveDiscs: DriveDiscBuffDoc[]
   skillSubcategories?: SkillSubcategory[]
   followUpSkillRules?: FollowUpSkillRule[]
+  damageEventModes?: DamageEventMode[]
+  skills?: Skill[]
+  exportedAt?: string
+}
+
+export interface CalculatorBuffImportTypeSummary {
+  created: number
+  updated: number
+  skipped: number
+  errors: { id: string; message: string }[]
+}
+
+export interface CalculatorBuffImportSummary {
+  agents: CalculatorBuffImportTypeSummary
+  wengines: CalculatorBuffImportTypeSummary
+  bangboos: CalculatorBuffImportTypeSummary
+  driveDiscs: CalculatorBuffImportTypeSummary
+  skillSubcategories: CalculatorBuffImportTypeSummary
+  followUpSkillRules: CalculatorBuffImportTypeSummary
+  damageEventModes: CalculatorBuffImportTypeSummary
+  skills: CalculatorBuffImportTypeSummary
 }

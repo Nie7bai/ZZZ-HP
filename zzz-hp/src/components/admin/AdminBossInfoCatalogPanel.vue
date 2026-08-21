@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from 'vue'
 import {
+  deleteBossInfoRecord,
   fetchBossInfoList,
   updateBossInfoRecord,
   type BossInfoCatalog,
+  type BossInfoFieldBuffSet,
   type BossInfoRecord,
 } from '@/api/bossInfo'
 import AdminBuffEffectEditor from '@/components/admin/calculator/AdminBuffEffectEditor.vue'
+import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import type { BuffEffectBlock } from '@/types/calculator'
 import { normalizeBuffEffectBlocks, packFromBlocks } from '@/utils/buffEffect'
 import { resolveAssetUrl } from '@/utils/gameData'
@@ -21,23 +24,33 @@ interface BossInfoDraft {
   resistance: string
   crisis_base_hp: number | ''
   boss_image: string
-  field_buff_name: string
-  field_buff_text: string
-  field_buff_image: string
+}
+
+interface FieldBuffSetDraft {
+  id: string
+  label: string
+  name: string
+  text: string
+  image: string
+  blocks: BuffEffectBlock[]
 }
 
 const catalog = ref<BossInfoCatalog>('all')
 const keyword = ref('')
 const loading = ref(false)
 const savingId = ref<number | null>(null)
+const deletingId = ref<number | null>(null)
 const error = ref('')
 const message = ref('')
 const items = ref<BossInfoRecord[]>([])
 const total = ref(0)
 const editingId = ref<number | null>(null)
 const draft = ref<BossInfoDraft>(createEmptyDraft())
-const fieldBuffBlocks = ref<BuffEffectBlock[]>([])
+const fieldBuffSets = ref<FieldBuffSetDraft[]>([])
 const editPanelRef = ref<HTMLElement | null>(null)
+const confirmVisible = ref(false)
+const confirmMessage = ref('')
+const pendingDelete = ref<BossInfoRecord | null>(null)
 
 const calculatorBuffStore = useCalculatorBuffStore()
 
@@ -45,6 +58,7 @@ const catalogTabs: { id: BossInfoCatalog; label: string; desc: string }[] = [
   { id: 'all', label: '总基础库', desc: '全部 boss_info 记录' },
   { id: 'crisis', label: '危局', desc: '在危局强袭战出现过的怪物' },
   { id: 'defense', label: '防卫战', desc: '在式舆防卫战出现过的怪物' },
+  { id: 'deduction', label: '临界', desc: '在临界推演出现过的怪物' },
 ]
 
 function createEmptyDraft(): BossInfoDraft {
@@ -57,10 +71,64 @@ function createEmptyDraft(): BossInfoDraft {
     resistance: '',
     crisis_base_hp: '',
     boss_image: '',
-    field_buff_name: '',
-    field_buff_text: '',
-    field_buff_image: '',
   }
+}
+
+function makeSetId() {
+  return `set_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+function createEmptyFieldBuffSet(partial?: Partial<FieldBuffSetDraft>): FieldBuffSetDraft {
+  return {
+    id: partial?.id || makeSetId(),
+    label: partial?.label ?? '',
+    name: partial?.name ?? '',
+    text: partial?.text ?? '',
+    image: partial?.image ?? '',
+    blocks: partial?.blocks ? normalizeBuffEffectBlocks(partial.blocks) : [],
+  }
+}
+
+function setsFromRecord(row: BossInfoRecord): FieldBuffSetDraft[] {
+  const fromSets = Array.isArray(row.field_buff_sets) ? row.field_buff_sets : []
+  if (fromSets.length) {
+    return fromSets.map((set: BossInfoFieldBuffSet) =>
+      createEmptyFieldBuffSet({
+        id: set.id,
+        label: set.label ?? '',
+        name: set.name ?? '',
+        text: set.text ?? '',
+        image: set.image ?? '',
+        blocks: normalizeBuffEffectBlocks(set.effectBlocks ?? []),
+      }),
+    )
+  }
+  if (
+    row.field_buff_name ||
+    row.field_buff_text ||
+    row.field_buff_image ||
+    (row.field_buff_effect_blocks?.length ?? 0) > 0
+  ) {
+    return [
+      createEmptyFieldBuffSet({
+        id: 'legacy',
+        name: row.field_buff_name ?? '',
+        text: row.field_buff_text ?? '',
+        image: row.field_buff_image ?? '',
+        blocks: normalizeBuffEffectBlocks(row.field_buff_effect_blocks ?? []),
+      }),
+    ]
+  }
+  return []
+}
+
+function fieldBuffSummary(row: BossInfoRecord) {
+  const sets = Array.isArray(row.field_buff_sets) ? row.field_buff_sets : []
+  if (sets.length) {
+    if (sets.length === 1) return sets[0]!.name || sets[0]!.label || '1 套'
+    return `${sets.length} 套 · ${sets[0]!.name || sets[0]!.label || '未命名'}`
+  }
+  return row.field_buff_name || '—'
 }
 
 function toDraft(row: BossInfoRecord): BossInfoDraft {
@@ -76,9 +144,6 @@ function toDraft(row: BossInfoRecord): BossInfoDraft {
         ? Number(row.crisis_base_hp)
         : '',
     boss_image: row.boss_image ?? '',
-    field_buff_name: row.field_buff_name ?? '',
-    field_buff_text: row.field_buff_text ?? '',
-    field_buff_image: row.field_buff_image ?? '',
   }
 }
 
@@ -104,7 +169,7 @@ async function loadList() {
 async function startEdit(row: BossInfoRecord) {
   editingId.value = row.id
   draft.value = toDraft(row)
-  fieldBuffBlocks.value = normalizeBuffEffectBlocks(row.field_buff_effect_blocks ?? [])
+  fieldBuffSets.value = setsFromRecord(row)
   message.value = ''
   error.value = ''
   try {
@@ -119,7 +184,44 @@ async function startEdit(row: BossInfoRecord) {
 function cancelEdit() {
   editingId.value = null
   draft.value = createEmptyDraft()
-  fieldBuffBlocks.value = []
+  fieldBuffSets.value = []
+}
+
+function addFieldBuffSet() {
+  fieldBuffSets.value.push(createEmptyFieldBuffSet({ name: '场地 Buff' }))
+}
+
+function removeFieldBuffSet(index: number) {
+  fieldBuffSets.value.splice(index, 1)
+}
+
+function packFieldBuffSetsPayload(): BossInfoFieldBuffSet[] {
+  const out: BossInfoFieldBuffSet[] = []
+  for (const set of fieldBuffSets.value) {
+    const packed = packFromBlocks(normalizeBuffEffectBlocks(set.blocks))
+    const blocks = packed.effectBlocks
+      .filter((block) => block.effects?.length)
+      .map((block) => {
+        const name = block.name?.trim() || ''
+        const isGeneric = !name || /^效果块\s*\d+$/.test(name)
+        return {
+          ...block,
+          name: isGeneric ? set.name.trim() || '场地 Buff' : name,
+          note: block.note?.trim() || '',
+        }
+      })
+    const name = set.name.trim() || (blocks.length ? '场地 Buff' : '')
+    if (!name && !set.text.trim() && !set.image.trim() && !blocks.length) continue
+    out.push({
+      id: set.id || makeSetId(),
+      label: set.label.trim() || null,
+      name: name || '场地 Buff',
+      text: set.text.trim(),
+      image: set.image.trim() || null,
+      effectBlocks: blocks.length ? blocks : null,
+    })
+  }
+  return out
 }
 
 async function saveEdit() {
@@ -132,21 +234,8 @@ async function saveEdit() {
   message.value = ''
   error.value = ''
   try {
-    const packed = packFromBlocks(normalizeBuffEffectBlocks(fieldBuffBlocks.value))
     const bossName = draft.value.boss_name.trim()
-    const blocks = packed.effectBlocks
-      .filter((block) => block.effects?.length)
-      .map((block) => {
-        const name = block.name?.trim() || ''
-        const isGeneric = !name || /^效果块\s*\d+$/.test(name)
-        return {
-          ...block,
-          name: isGeneric ? draft.value.field_buff_name.trim() || '场地 Buff' : name,
-          note: block.note?.trim() || '',
-        }
-      })
-    const fieldBuffName =
-      draft.value.field_buff_name.trim() || (blocks.length ? '场地 Buff' : '') || null
+    const sets = packFieldBuffSetsPayload()
     await updateBossInfoRecord(editingId.value, {
       boss_name: bossName,
       defense: Number(draft.value.defense) || 0,
@@ -159,10 +248,7 @@ async function saveEdit() {
           ? null
           : Number(draft.value.crisis_base_hp),
       stagger_multiplier: Number(draft.value.stagger_multiplier) || 1.5,
-      field_buff_name: fieldBuffName,
-      field_buff_text: draft.value.field_buff_text.trim() || null,
-      field_buff_image: draft.value.field_buff_image.trim() || null,
-      field_buff_effect_blocks: blocks.length ? blocks : null,
+      field_buff_sets: sets,
     })
     message.value = '已保存'
     cancelEdit()
@@ -171,6 +257,61 @@ async function saveEdit() {
     error.value = err instanceof Error ? err.message : '保存失败'
   } finally {
     savingId.value = null
+  }
+}
+
+function askDelete(row: BossInfoRecord) {
+  pendingDelete.value = row
+  confirmMessage.value = `确定从怪物基础库删除「${row.boss_name}」吗？\n仅删除 boss_info 目录记录，不会删除各期已录入的怪物行。`
+  confirmVisible.value = true
+}
+
+function askDeleteCurrent() {
+  if (editingId.value == null) return
+  const row = items.value.find((item) => item.id === editingId.value)
+  if (row) {
+    askDelete(row)
+    return
+  }
+  askDelete({
+    id: editingId.value,
+    boss_name: draft.value.boss_name.trim() || '未命名',
+    defense: Number(draft.value.defense) || 0,
+    level: Number(draft.value.level) || 1,
+    boss_image: draft.value.boss_image.trim() || null,
+    weakness: draft.value.weakness.trim() || null,
+    resistance: draft.value.resistance.trim() || null,
+  })
+}
+
+function closeDeleteConfirm() {
+  if (deletingId.value != null) return
+  confirmVisible.value = false
+  pendingDelete.value = null
+  confirmMessage.value = ''
+}
+
+async function executeDelete() {
+  const row = pendingDelete.value
+  if (!row) return
+  deletingId.value = row.id
+  message.value = ''
+  error.value = ''
+  try {
+    const result = await deleteBossInfoRecord(row.id)
+    const hint =
+      result.referenced_count > 0
+        ? `（各期仍有 ${result.referenced_count} 条同名记录）`
+        : ''
+    message.value = `已删除「${result.boss_name}」${hint}`
+    if (editingId.value === row.id) cancelEdit()
+    confirmVisible.value = false
+    pendingDelete.value = null
+    await loadList()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '删除失败'
+  } finally {
+    deletingId.value = null
   }
 }
 
@@ -190,18 +331,19 @@ onMounted(() => {
       <div>
         <h1>怪物基础库</h1>
         <p>
-          维护 boss_info：同名怪物在危局 / 防卫战 / 计算器中共用基础数据。危局 Boss 场地 Buff
-          挂在此表（与 Boss 名一一对应）。
+          维护 boss_info：同名怪物在危局 / 防卫战 / 临界 / 计算器中共用基础数据。危局 Boss 场地 Buff
+          可配置多套，由各期怪物行绑定。
         </p>
       </div>
       <div class="search-row">
         <input
           v-model="keyword"
           type="search"
+          class="search-input"
           placeholder="按名称搜索"
           @keydown.enter.prevent="loadList"
         />
-        <button type="button" :disabled="loading" @click="loadList">
+        <button type="button" class="search-btn" :disabled="loading" @click="loadList">
           {{ loading ? '加载中…' : '搜索' }}
         </button>
       </div>
@@ -242,6 +384,14 @@ onMounted(() => {
             {{ savingId === editingId ? '保存中…' : '保存' }}
           </button>
           <button type="button" class="ghost" @click="cancelEdit">取消</button>
+          <button
+            type="button"
+            class="danger-btn"
+            :disabled="deletingId === editingId"
+            @click="askDeleteCurrent"
+          >
+            删除
+          </button>
         </div>
       </header>
 
@@ -281,34 +431,59 @@ onMounted(() => {
       </div>
 
       <div class="field-buff-section">
-        <h3>危局 Boss 场地 Buff</h3>
-        <p class="field-hint">
-          仅危局使用；与 Boss 名一一对应。文本仅作展示对照，计算器读取下方结构化效果。
-        </p>
-        <div class="edit-grid">
+        <header class="field-buff-header">
+          <div>
+            <h3>危局 Boss 场地 Buff</h3>
+            <p class="field-hint">
+              可配置多套，由危局每期怪物行绑定其中一套。文本仅作展示对照，计算器读取结构化效果。
+            </p>
+          </div>
+          <button type="button" class="ghost" @click="addFieldBuffSet">新增一套</button>
+        </header>
+
+        <p v-if="!fieldBuffSets.length" class="field-hint empty-sets">暂无场地 Buff，可点「新增一套」。</p>
+
+        <div
+          v-for="(set, setIndex) in fieldBuffSets"
+          :key="set.id"
+          class="field-buff-set"
+          :title="`套 id：${set.id}`"
+        >
+          <header class="field-buff-set-head">
+            <strong>套 {{ setIndex + 1 }}</strong>
+            <button type="button" class="danger-btn" @click="removeFieldBuffSet(setIndex)">
+              删除
+            </button>
+          </header>
+          <div class="edit-grid">
+            <label class="field">
+              <span>备注（可选）</span>
+              <input v-model="set.label" type="text" placeholder="如：3.1 第 2 期" />
+            </label>
+            <label class="field">
+              <span>场地 Buff 名称</span>
+              <input v-model="set.name" type="text" placeholder="留空且无效果则丢弃本套" />
+            </label>
+            <label class="field">
+              <span>场地 Buff 图片</span>
+              <input v-model="set.image" type="text" placeholder="/buff_image/..." />
+            </label>
+          </div>
           <label class="field">
-            <span>场地 Buff 名称</span>
-            <input v-model="draft.field_buff_name" type="text" placeholder="留空表示无场地 Buff" />
+            <span>场地 Buff 文本</span>
+            <textarea
+              v-model="set.text"
+              rows="3"
+              placeholder="每行一条效果描述（展示对照用）"
+            />
           </label>
-          <label class="field">
-            <span>场地 Buff 图片</span>
-            <input v-model="draft.field_buff_image" type="text" placeholder="/buff_image/..." />
-          </label>
-        </div>
-        <label class="field">
-          <span>场地 Buff 文本</span>
-          <textarea
-            v-model="draft.field_buff_text"
-            rows="4"
-            placeholder="每行一条效果描述（展示对照用）"
-          />
-        </label>
-        <div class="field field-blocks">
-          <span>结构化效果（可选）</span>
-          <AdminBuffEffectEditor
-            v-model="fieldBuffBlocks"
-            :default-first-block-name="draft.field_buff_name || '场地 Buff'"
-          />
+          <div class="field field-blocks">
+            <span>结构化效果（可选）</span>
+            <AdminBuffEffectEditor
+              v-model="set.blocks"
+              :default-first-block-name="set.name || '场地 Buff'"
+            />
+          </div>
         </div>
       </div>
     </section>
@@ -338,7 +513,7 @@ onMounted(() => {
             <td>{{ row.weakness || '—' }}</td>
             <td>{{ row.resistance || '—' }}</td>
             <td>{{ row.crisis_base_hp ?? '—' }}</td>
-            <td>{{ row.field_buff_name || '—' }}</td>
+            <td>{{ fieldBuffSummary(row) }}</td>
             <td>
               <img
                 v-if="row.boss_image"
@@ -352,12 +527,31 @@ onMounted(() => {
               <button type="button" @click="startEdit(row)">
                 {{ editingId === row.id ? '编辑中' : '编辑' }}
               </button>
+              <button
+                type="button"
+                class="danger-btn"
+                :disabled="deletingId === row.id"
+                @click="askDelete(row)"
+              >
+                {{ deletingId === row.id ? '删除中…' : '删除' }}
+              </button>
             </td>
           </tr>
         </tbody>
       </table>
       <p v-if="!loading && !items.length" class="empty-list">当前分类下暂无记录</p>
     </div>
+
+    <AdminConfirmDialog
+      :visible="confirmVisible"
+      title="确认删除怪物基础信息"
+      :message="confirmMessage"
+      confirm-text="删除"
+      :danger="true"
+      :loading="deletingId !== null"
+      @confirm="executeDelete"
+      @cancel="closeDeleteConfirm"
+    />
   </div>
 </template>
 
@@ -396,22 +590,57 @@ onMounted(() => {
   align-items: center;
 }
 
-.search-row input {
+.search-input {
   min-width: 220px;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-background);
+  color: var(--color-heading);
+  font: inherit;
+  font-size: 0.88rem;
+  outline: none;
+  transition: border-color 0.15s ease;
 }
 
-.search-row button,
-.actions button {
+.search-input:focus {
+  border-color: #c9a55c;
+}
+
+.search-btn,
+.actions button,
+.field-buff-header .ghost {
   border: 1px solid var(--color-border);
   border-radius: 8px;
   background: var(--color-background-soft);
   color: var(--color-heading);
-  padding: 0.35rem 0.75rem;
+  padding: 0.4rem 0.85rem;
   cursor: pointer;
+  font: inherit;
+  font-size: 0.84rem;
 }
 
-.actions button.ghost {
+.search-btn:hover:not(:disabled),
+.actions button:hover:not(:disabled) {
+  border-color: #c9a55c;
+  color: var(--color-heading);
+  background: color-mix(in srgb, #c9a55c 12%, var(--color-background-soft));
+}
+
+.search-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.actions button.ghost,
+.field-buff-header .ghost {
   background: transparent;
+}
+
+.field-buff-header .ghost:hover {
+  border-color: #c9a55c;
+  color: var(--color-heading);
+  background: color-mix(in srgb, #c9a55c 12%, transparent);
 }
 
 .catalog-tabs {
@@ -501,6 +730,13 @@ onMounted(() => {
   white-space: nowrap;
   display: flex;
   gap: 0.35rem;
+  align-items: center;
+}
+
+.actions .danger-btn {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.82rem;
+  background: var(--color-background);
 }
 
 .empty-list {
@@ -573,9 +809,12 @@ onMounted(() => {
 }
 
 .field-buff-section {
-  margin-top: 0.5rem;
+  margin-top: 0.25rem;
   padding-top: 1rem;
-  border-top: 1px dashed var(--color-border);
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .field-buff-section h3 {
@@ -584,10 +823,68 @@ onMounted(() => {
   color: var(--color-heading);
 }
 
+.field-buff-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.field-buff-set {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 0.85rem;
+  background: var(--color-background);
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.field-buff-set-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.field-buff-set-head strong {
+  font-size: 0.88rem;
+  color: var(--color-heading);
+}
+
+.danger-btn {
+  border: 1px solid rgba(196, 92, 92, 0.4);
+  border-radius: 8px;
+  background: var(--color-background-soft);
+  color: #c45c5c;
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.danger-btn:hover {
+  border-color: rgba(196, 92, 92, 0.65);
+  background: color-mix(in srgb, #c45c5c 10%, var(--color-background-soft));
+}
+
+.empty-sets {
+  margin: 0;
+}
+
 .field-hint {
-  margin: 0 0 0.75rem;
+  margin: 0;
   font-size: 0.8rem;
   opacity: 0.72;
   line-height: 1.45;
+}
+
+.field-buff-set .edit-grid {
+  margin-bottom: 0;
+}
+
+.field-buff-set .field-blocks {
+  margin-top: 0;
 }
 </style>

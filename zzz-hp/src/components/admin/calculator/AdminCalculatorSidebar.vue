@@ -58,6 +58,7 @@ const panels: { id: AdminCalculatorPanel; label: string }[] = [
   { id: 'drive-disc', label: '编辑驱动盘增益' },
   { id: 'skill-subcategory', label: '招式小类 / 增益锚点' },
   { id: 'skill-library', label: '招式库' },
+  { id: 'import-export', label: '导入 / 导出' },
 ]
 </script>
 

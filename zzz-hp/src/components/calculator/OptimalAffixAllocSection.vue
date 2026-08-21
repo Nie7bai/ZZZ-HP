@@ -19,14 +19,15 @@ import type {
   AnomalyDamageSubKind,
   BangbooBuffDoc,
   BaseDamageSource,
-  CharacterAttrKey,
   DriveDiscBuffDoc,
   WengineBuffDoc,
 } from '@/types/calculator'
-import { CHARACTER_ATTR_OPTIONS } from '@/types/calculator'
 import {
   createDefaultAffixDriveDiscMainStats,
   createDefaultExternalPanel,
+  createExternalPanelFromAgentBase,
+  fillPanelStatsDefaults,
+  isPlaceholderExternalPanel,
   type AffixCounts,
   type AffixDriveDiscMainStats,
   type DriveDiscSlot4StatId,
@@ -80,12 +81,11 @@ import {
 import EquipPickerModal from '@/components/calculator/EquipPickerModal.vue'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import {
-  collectConvertSupportSlots,
   omitAgentFromAnomalySlotPanels,
-  omitAgentFromConvertSlotPanels,
   resolveBuffSelectionForSlot,
   slotParticipatesInConvertBuff,
   teamHasConvertSupportSlots,
+  computeFinalPanel,
   type ConvertSlotPanels,
 } from '@/utils/panelBuffCalc'
 import { summarizeDamageByOwner } from '@/utils/damageEventOwner'
@@ -182,7 +182,8 @@ const props = defineProps<{
   driveDiscs: DriveDiscBuffDoc[]
   selectedBangbooId: string
   bangbooRefine: number
-  /** 是否为当前可见模块；隐藏时不因外部配置变更清空已算结果 */
+  /** 计算页正在编辑的编队槽位；局外面板 / 最优分配跟这个人走 */
+  editedSlotIndex?: number
   active?: boolean
   damageKind?: import('@/utils/optimalAffixAlloc').OptimalDamageKind
   anomalySubKind?: AnomalyDamageSubKind
@@ -196,7 +197,7 @@ const props = defineProps<{
   slotBuffSelections?: import('@/utils/panelBuffCalc').MultiSlotBuffSelection | null
   staggerPhase?: import('@/types/calculator').StaggerPhase
   hits?: import('@/utils/resolvedHit').ResolvedHit[]
-  /** 招式流程准备态预览（与面板计算共用，用于技能卡伤害数字） */
+  /** 准备招式单次预览（与面板计算共用，用于技能卡伤害数字） */
   previewHits?: import('@/utils/resolvedHit').ResolvedHit[]
   environmentBuffs?: import('@/utils/environmentBuffCalc').EnvironmentBuffEntry[]
 }>()
@@ -204,8 +205,6 @@ const props = defineProps<{
 const extraGains = defineModel<ExtraBuffGain[]>('extraGains', { default: () => [] })
 
 const emit = defineEmits<{
-  'update:anomalySlotPanels': [value: Record<string, PanelStats>]
-  'update:convertSlotPanels': [value: ConvertSlotPanels]
   'update:hitDamages': [value: Record<string, number>]
   'update:hitCalcResults': [value: Record<string, DamageCalcResult>]
 }>()
@@ -224,8 +223,16 @@ type DetailTab = 'diff' | 'process' | 'curve'
 type AnomalyMetric = 'anomaly' | 'disorder' | 'turbulence' | 'anomalyRelease' | 'radiance'
 type CurveMode = 'cumulative' | 'marginal'
 
-/** 本模块需手动选择直伤/异常；未选时只展示模式入口 */
+/** 本模块需手动选择直伤/异常；未选时只展示模式入口。默认跟随招式流程的首个伤害类型 */
 const damageKind = ref<OptimalDamageKind | null>(null)
+
+watch(
+  () => props.damageKind,
+  (kind) => {
+    if (kind === 'direct' || kind === 'anomaly') damageKind.value = kind
+  },
+  { immediate: true },
+)
 const anomalySubKind = computed(() => props.anomalySubKind ?? 'anomaly')
 /** KeepAlive 停用后仍会收到 props 变更；用 activated 门闩短路昂贵计算 */
 const keptAliveActive = ref(true)
@@ -270,8 +277,9 @@ const curveMode = ref<CurveMode>('cumulative')
 const anomalyHoverIndex = ref<number | null>(null)
 
 const mainSlotIndex = computed(() => {
-  const index = props.teamSlots.findIndex((slot) => slot.isMainC)
-  return index >= 0 ? index : 0
+  const index = props.editedSlotIndex
+  if (index != null && index >= 0 && index < props.teamSlots.length) return index
+  return 0
 })
 
 const mainSlot = computed(() => props.teamSlots[mainSlotIndex.value]!)
@@ -300,6 +308,10 @@ const anomalySupportSlots = computed(() => {
     .filter(({ slot }) => Boolean(slot.agentId && participantIds.has(slot.agentId)))
 })
 
+/**
+ * 最优模块独立局外 / 转模副本：编辑不写回「面板/词条计算」页。
+ */
+const optimalParticipantPanels = reactive<Record<string, PanelStats>>({})
 function buildBasePanelCalcContext() {
   const slotIndex = mainSlotIndex.value
   return {
@@ -315,7 +327,7 @@ function buildBasePanelCalcContext() {
       staggerPhase: props.staggerPhase ?? 'stagger',
     }),
     buffSelection: resolveBuffSelectionForSlot(props.slotBuffSelections, slotIndex),
-    anomalySlotPanels: props.anomalySlotPanels,
+    anomalySlotPanels: optimalParticipantPanels,
     convertSlotPanels: props.convertSlotPanels,
     environmentBuffs: props.environmentBuffs,
   }
@@ -329,142 +341,86 @@ const anomalyProducerAgentIds = computed(() => {
   return ids
 })
 
-const convertSupportSlots = computed(() =>
-  collectConvertSupportSlots(buildBasePanelCalcContext(), {
-    excludeAnomalyAgentIds: anomalyProducerAgentIds.value,
-  }),
+function seedOptimalParticipantPanel(agentId: string): PanelStats {
+  const existing = optimalParticipantPanels[agentId]
+  if (existing) return existing
+  const fromPage = props.anomalySlotPanels?.[agentId]
+  if (fromPage && !isPlaceholderExternalPanel(fromPage)) {
+    const cloned = fillPanelStatsDefaults({ ...fromPage })
+    optimalParticipantPanels[agentId] = cloned
+    return cloned
+  }
+  const agent = props.agents.find((item) => item.id === agentId)
+  const seeded = createExternalPanelFromAgentBase(agent?.basePanel)
+  optimalParticipantPanels[agentId] = seeded
+  return seeded
+}
+
+/** 参与者局外 UI 已去掉：始终跟页级导入同步，避免面板改完进最优仍用旧副本 */
+function syncOptimalParticipantsFromPage() {
+  for (const [agentId, panel] of Object.entries(props.anomalySlotPanels ?? {})) {
+    if (!panel || isPlaceholderExternalPanel(panel)) continue
+    optimalParticipantPanels[agentId] = fillPanelStatsDefaults({ ...panel })
+  }
+}
+
+const panelSeedReady = ref(false)
+
+watch(
+  () =>
+    props.teamSlots
+      .map((slot) => slot.agentId)
+      .filter((id): id is string => Boolean(id))
+      .join('|'),
+  () => {
+    panelSeedReady.value = false
+    for (const slot of props.teamSlots) {
+      if (slot.agentId) seedOptimalParticipantPanel(slot.agentId)
+    }
+    syncOptimalParticipantsFromPage()
+    panelSeedReady.value = true
+  },
+  { immediate: true },
 )
 
-const convertSupportSlotsNeedingInput = computed(() =>
-  convertSupportSlots.value.filter((item) => !props.convertSlotPanels?.[item.agentId]),
+watch(
+  () => JSON.stringify(props.anomalySlotPanels ?? {}),
+  () => {
+    if (!panelSeedReady.value) return
+    syncOptimalParticipantsFromPage()
+  },
 )
 
-/** 主 C 参与转模链或队伍存在转模增益角色时，主 C 与转模录入均不沿用面板计算页 */
+/** 主 C 参与转模链或队伍存在转模增益角色时，主 C 局外由本模块词条推导，不沿用面板页主 C 局外 */
 const optimalConvertModeActive = computed(() => {
-  const ctx = buildBasePanelCalcContext()
+  const ctx = {
+    teamSlots: props.teamSlots,
+    agents: props.agents,
+    wengines: props.wengines,
+    bangboo: selectedBangboo.value,
+    bangbooRefine: props.bangbooRefine,
+    mainSlotIndex: mainSlotIndex.value,
+    driveDiscs: props.driveDiscs,
+    buffSelection: props.buffSelection ?? null,
+    slotBuffSelections: props.slotBuffSelections ?? null,
+  }
   return (
     slotParticipatesInConvertBuff(ctx, mainSlotIndex.value) ||
     teamHasConvertSupportSlots(ctx, { excludeAnomalyAgentIds: anomalyProducerAgentIds.value })
   )
 })
 
-const optimalConvertSlotPanels = reactive<ConvertSlotPanels>({})
-
-function defaultConvertPartialForAgent(
-  agentId: string,
-  requiredAttrs: CharacterAttrKey[],
-): Partial<Record<CharacterAttrKey, number>> {
-  const agent = props.agents.find((item) => item.id === agentId)
-  const partial: Partial<Record<CharacterAttrKey, number>> = {}
-  for (const attr of requiredAttrs) {
-    if (attr === 'level') {
-      partial.level = 60
-      continue
-    }
-    if (attr === 'impact') {
-      partial.impact = 0
-      continue
-    }
-    const base = agent?.basePanel
-    if (!base) continue
-    if (attr === 'hp' || attr === 'atk' || attr === 'def') {
-      partial[attr] = base[attr]
-    } else if (attr in base) {
-      partial[attr] = (base as unknown as Record<string, number>)[attr] ?? 0
-    }
-  }
-  return partial
-}
-
-function ensureOptimalConvertPartial(
-  agentId: string,
-  requiredAttrs: CharacterAttrKey[],
-): Partial<Record<CharacterAttrKey, number>> {
-  const existing = optimalConvertSlotPanels[agentId]
-  if (existing && requiredAttrs.every((attr) => existing[attr] != null)) {
-    return existing
-  }
-  const next = {
-    ...defaultConvertPartialForAgent(agentId, requiredAttrs),
-    ...existing,
-  }
-  optimalConvertSlotPanels[agentId] = next
-  return next
-}
-
-function updateOptimalConvertSlotAttr(agentId: string, key: CharacterAttrKey, value: number) {
-  optimalConvertSlotPanels[agentId] = {
-    ...optimalConvertSlotPanels[agentId],
-    [key]: value,
-  }
-}
-
-watch(
-  [convertSupportSlots, optimalConvertModeActive],
-  ([slots, active]) => {
-    if (!active) return
-    const activeIds = new Set(slots.map((item) => item.agentId))
-    for (const id of Object.keys(optimalConvertSlotPanels)) {
-      if (!activeIds.has(id)) delete optimalConvertSlotPanels[id]
-    }
-    for (const item of slots) {
-      ensureOptimalConvertPartial(item.agentId, item.requiredAttrs)
-    }
-  },
-  { immediate: true },
-)
-
-const effectiveConvertSlotPanels = computed((): ConvertSlotPanels | undefined => {
-  if (!optimalConvertModeActive.value) return props.convertSlotPanels
-  return optimalConvertSlotPanels
-})
+/** 转模来源统一读各角色完整局外（导入/页级 anomalySlotPanels）；旧方案 convertSlotPanels 仅作兜底 */
+const evalConvertSlotPanels = computed((): ConvertSlotPanels => props.convertSlotPanels ?? {})
 
 const effectiveAnomalySlotPanels = computed(() => {
   const mainId = mainAgent.value?.id
-  if (!mainId || !optimalConvertModeActive.value) return props.anomalySlotPanels
-  return omitAgentFromAnomalySlotPanels(props.anomalySlotPanels, mainId)
+  const merged: Record<string, PanelStats> = { ...optimalParticipantPanels }
+  if (mainId && optimalConvertModeActive.value) {
+    return omitAgentFromAnomalySlotPanels(merged, mainId)
+  }
+  return merged
 })
-
-const evalConvertSlotPanels = computed(() => {
-  const mainId = mainAgent.value?.id
-  const panels = effectiveConvertSlotPanels.value
-  if (!mainId || !optimalConvertModeActive.value) return panels
-  return omitAgentFromConvertSlotPanels(panels, mainId)
-})
-
-function characterAttrLabel(key: CharacterAttrKey): string {
-  return CHARACTER_ATTR_OPTIONS.find((item) => item.id === key)?.label ?? key
-}
-
-function ensureAnomalySlotPanel(agentId: string): PanelStats {
-  const existing = props.anomalySlotPanels?.[agentId]
-  if (existing) return existing
-  return createDefaultExternalPanel()
-}
-
-function updateAnomalySlotPanel(agentId: string, key: keyof PanelStats, value: number) {
-  emit('update:anomalySlotPanels', {
-    ...props.anomalySlotPanels,
-    [agentId]: {
-      ...ensureAnomalySlotPanel(agentId),
-      [key]: value,
-    },
-  })
-}
-
-function ensureConvertSlotPartial(agentId: string): Partial<Record<CharacterAttrKey, number>> {
-  return props.convertSlotPanels?.[agentId] ?? {}
-}
-
-function updateConvertSlotAttr(agentId: string, key: CharacterAttrKey, value: number) {
-  emit('update:convertSlotPanels', {
-    ...props.convertSlotPanels,
-    [agentId]: {
-      ...ensureConvertSlotPartial(agentId),
-      [key]: value,
-    },
-  })
-}
 
 const isMb = computed(() => mainAgent.value?.profession === MB_PROFESSION)
 
@@ -506,12 +462,40 @@ const outLabel = computed(() => outPercentLabel(isMb.value))
 const directError = computed(() =>
   validateDirectAlloc(directAlloc, isMb.value, driveDiscMainStats),
 )
-const anomalyError = computed(() => validateAnomalyAlloc(anomalyAlloc, isMb.value))
+const anomalyError = computed(() =>
+  validateAnomalyAlloc(anomalyAlloc, isMb.value, driveDiscMainStats),
+)
+
+const sweepConfigFingerprint = computed(() =>
+  JSON.stringify({
+    baseDamageSource: baseDamageSource.value,
+    driveDiscMainStats: { ...driveDiscMainStats },
+    enemy: enemyInput.value,
+    extraGains: extraGains.value,
+    convert: props.convertSlotPanels ?? {},
+    participants: optimalParticipantPanels,
+    damageKind: damageKind.value,
+    buffSelection: props.buffSelection,
+    slotBuffSelections: props.slotBuffSelections,
+    agents: props.teamSlots.map((slot) => slot.agentId ?? ''),
+    trigger: props.triggerAnomalyAgentId ?? '',
+    hits: (props.hits ?? []).map(
+      (hit) =>
+        `${hit.id}:${hit.skill.id}:${hit.count}:${hit.critMode}:${hit.staggerPhase}` +
+        `:${hit.anomalyPowerAgentId ?? ''}:${hit.triggerAgentId ?? ''}:${hit.anomalySubKind ?? ''}` +
+        `:${JSON.stringify(hit.multOverrides ?? {})}:${JSON.stringify(hit.panelMods ?? {})}`,
+    ),
+    stagger: props.staggerPhase ?? '',
+    bangboo: props.selectedBangbooId ?? '',
+    bangbooRefine: props.bangbooRefine ?? 0,
+  }),
+)
 
 const SWEEP_DEBOUNCE_MS = 320
 const EVENT_SWEEP_DEBOUNCE_MS = 700
 const DIFF_DEBOUNCE_MS = 450
-const SKILL_FLOW_EMIT_DEBOUNCE_MS = 280
+const DIFF_EVENT_DEBOUNCE_MS = 900
+const SKILL_FLOW_EMIT_DEBOUNCE_MS = 200
 
 const directPoints = ref<DirectSweepPoint[]>([])
 const anomalyPoints = ref<AnomalySweepPoint[]>([])
@@ -532,26 +516,28 @@ let sweepGeneration = 0
 const pendingConfigDirty = ref(false)
 
 function markSweepConfigDirty() {
+  if (!panelSeedReady.value) return
+  // 配置变了（含切换异常强度提供者/触发者）时必须中止旧扫掠，否则会长时间卡在旧结果上
+  sweepGeneration += 1
+  sweepAbort?.abort()
+  sweepAbort = null
+  sweepComputing.value = false
   if (!isSectionActive.value) {
     pendingConfigDirty.value = true
     return
   }
+  pendingConfigDirty.value = false
   sweepNeedsCommit.value = true
   sweepCommitted.value = false
-  sweepAbort?.abort()
-  sweepAbort = null
-  directPoints.value = []
-  anomalyPoints.value = []
-  clearBarSelection()
-  diffAnalysis.value = null
-  mainStatDiff.value = null
-  showMainStatDiff.value = false
+  // 保留旧柱图与差异表；需重算时看上方提示
   benefitData.value = null
-  sweepComputing.value = false
 }
 
 function startCalculation() {
   if (!damageKind.value) return
+  if (damageKind.value === 'direct' && directError.value) return
+  if (damageKind.value === 'anomaly' && anomalyError.value) return
+  pendingConfigDirty.value = false
   sweepNeedsCommit.value = false
   sweepCommitted.value = true
   clearAffixEvalCache()
@@ -597,6 +583,15 @@ async function runSweepRecompute() {
       if (generation !== sweepGeneration) return
       directPoints.value = []
     }
+    // 扫掠完成后默认选中首柱，保证下方「词条差异计算」有基准分配
+    if (selectedIndex.value == null) {
+      const points = kind === 'direct' ? directPoints.value : anomalyPoints.value
+      if (points.length) {
+        selectedIndex.value = 0
+        selectedSweepKey.value = sweepKeyFromIndex(0)
+      }
+    }
+    scheduleDiffRecompute()
   } catch (err) {
     if ((err as DOMException)?.name === 'AbortError') return
     throw err
@@ -632,27 +627,7 @@ watch(isSectionActive, (active) => {
   }
 })
 
-watch(
-  [
-    baseDamageSource,
-    driveDiscMainStats,
-    enemyInput,
-    extraGains,
-    evalConvertSlotPanels,
-    effectiveAnomalySlotPanels,
-    damageKind,
-    () => props.buffSelection,
-    () => props.slotBuffSelections,
-    () => props.teamSlots,
-    () => props.triggerAnomalyAgentId,
-    () => props.hits,
-    () => props.staggerPhase,
-    () => props.bangbooRefine,
-    selectedBangboo,
-  ],
-  markSweepConfigDirty,
-  { deep: true },
-)
+watch(sweepConfigFingerprint, markSweepConfigDirty)
 
 watch(
   [directAlloc, anomalyAlloc, damageKind, directError, anomalyError],
@@ -664,6 +639,7 @@ onBeforeUnmount(() => {
   if (sweepTimer) clearTimeout(sweepTimer)
   if (diffTimer) clearTimeout(diffTimer)
   if (skillFlowEmitTimer) clearTimeout(skillFlowEmitTimer)
+  if (eventAffixImpactTimer) clearTimeout(eventAffixImpactTimer)
   sweepAbort?.abort()
 })
 
@@ -827,6 +803,8 @@ interface ProcessEventRow {
 }
 
 const eventAffixImpact = ref<OptimalEventAffixImpact[]>([])
+const eventAffixImpactStale = ref(false)
+let eventAffixImpactTimer: ReturnType<typeof setTimeout> | null = null
 
 function recomputeEventAffixImpact() {
   if (!hasEventMode.value || !analysisCounts.value || !damageKind.value) {
@@ -838,6 +816,7 @@ function recomputeEventAffixImpact() {
     analysisCounts.value,
     damageKind.value,
   )
+  eventAffixImpactStale.value = false
 }
 
 function loadEventAffixImpact() {
@@ -849,6 +828,40 @@ function loadEventAffixImpact() {
     eventAffixImpactLoading.value = false
   }, 0)
 }
+
+function scheduleEventAffixImpactRefresh() {
+  if (!showEventAffixImpact.value || !hasEventMode.value) return
+  eventAffixImpactStale.value = true
+  if (eventAffixImpactTimer) clearTimeout(eventAffixImpactTimer)
+  eventAffixImpactTimer = setTimeout(() => {
+    if (!showEventAffixImpact.value || sweepComputing.value) return
+    eventAffixImpactLoading.value = true
+    window.setTimeout(() => {
+      recomputeEventAffixImpact()
+      eventAffixImpactLoading.value = false
+    }, 0)
+  }, hasEventMode.value ? DIFF_EVENT_DEBOUNCE_MS : DIFF_DEBOUNCE_MS)
+}
+
+/** 仅事件结构/伤害模式变化时才清空；分配微调改为后台刷新，避免表格被刷掉 */
+const eventAffixImpactStructureKey = computed(() =>
+  JSON.stringify({
+    kind: damageKind.value,
+    hasEvent: hasEventMode.value,
+    hits: (props.hits ?? []).map(
+      (hit) =>
+        `${hit.id}:${hit.skill.id}:${hit.count}:${hit.critMode}` +
+        `:${hit.anomalyPowerAgentId ?? ''}:${hit.triggerAgentId ?? ''}:${hit.anomalySubKind ?? ''}`,
+    ),
+    mainAgent: mainAgent.value?.id ?? '',
+  }),
+)
+
+watch(eventAffixImpactStructureKey, () => {
+  showEventAffixImpact.value = false
+  eventAffixImpact.value = []
+  eventAffixImpactStale.value = false
+})
 
 const barLabels = computed(() =>
   damageKind.value === 'direct'
@@ -940,11 +953,28 @@ watch(
   { immediate: true },
 )
 
-/** 面板展示用：未选中柱体时按第一个扫掠点（分配全部给爆伤/精通）展示 */
+/** 面板展示用：未开算时按当前词条分配预览；已有扫掠点时优先用扫掠结果 */
 const displayCounts = computed(() => {
   if (selectedCounts.value) return selectedCounts.value
-  if (damageKind.value === 'direct') return directPoints.value[0]?.affixCounts ?? null
-  return anomalyPoints.value[0]?.affixCounts ?? null
+  if (damageKind.value === 'direct') {
+    if (directPoints.value[0]?.affixCounts) return directPoints.value[0].affixCounts
+    if (directError.value || !mainAgent.value?.id) return null
+    const crit = Math.round(directAlloc.critRate)
+    const total = Math.round(directAlloc.totalRolls)
+    const fixedAtk = isMb.value ? Math.round(directAlloc.atkPercent) : 0
+    const remain = isMb.value ? total - crit - fixedAtk : total - crit
+    if (remain < 0) return null
+    return buildDirectAffixCounts(
+      isMb.value,
+      { ...directAlloc, critRate: crit, totalRolls: total },
+      0,
+      remain,
+    )
+  }
+  if (anomalyPoints.value[0]?.affixCounts) return anomalyPoints.value[0].affixCounts
+  if (anomalyError.value || !damageKind.value || !mainAgent.value?.id) return null
+  const total = Math.round(anomalyAlloc.totalRolls)
+  return buildAnomalyAffixCounts(isMb.value, { ...anomalyAlloc, totalRolls: total }, 0, total)
 })
 
 const selectedEval = computed(() => {
@@ -952,16 +982,21 @@ const selectedEval = computed(() => {
   const point =
     damageKind.value === 'direct' ? selectedDirect.value : selectedAnomaly.value
   if (point?.evalSnapshot) return point.evalSnapshot
-  return evaluateAffixCounts(evalCtx.value, selectedCounts.value)
+  // 过程 Tab 需要完整事件明细；其余场景只算主 C 面板，避免点柱就卡一下
+  if (detailTab.value === 'process') {
+    return evaluateAffixCounts(evalCtx.value, selectedCounts.value)
+  }
+  return evaluateAffixCounts({ ...evalCtx.value, hits: undefined }, selectedCounts.value)
 })
 
-/** 面板展示用：未选中柱体时按第一个扫掠点展示 */
+/** 面板展示：优先复用选中/扫掠结果；否则只算主 C 面板（不算全部事件） */
 const displayEval = computed(() => {
   if (selectedEval.value) return selectedEval.value
   const point = sweepPoints.value[0]
   if (point?.evalSnapshot) return point.evalSnapshot
   if (!displayCounts.value) return null
-  return evaluateAffixCounts(evalCtx.value, displayCounts.value)
+  const panelOnlyCtx = { ...evalCtx.value, hits: undefined }
+  return evaluateAffixCounts(panelOnlyCtx, displayCounts.value)
 })
 
 const analysisCounts = computed(() => selectedCounts.value ?? displayCounts.value)
@@ -972,12 +1007,24 @@ const analysisEval = computed(() => {
   return displayEval.value
 })
 
+watch(
+  () =>
+    JSON.stringify({
+      counts: analysisCounts.value,
+      mains: { ...driveDiscMainStats },
+    }),
+  () => {
+    scheduleEventAffixImpactRefresh()
+  },
+)
+
 /**
  * 招式流程用的局外面板：优先当前选中/展示柱体的最优词条面板；
  * 尚未开始计算时，按「第一个扫掠点」规则（余量全给爆伤/精通）现场推导，避免残留面板计算数值。
  */
 const skillFlowExternal = computed(() => {
   if (analysisEval.value?.external) return analysisEval.value.external
+  if (!damageKind.value) return null
   if (damageKind.value === 'direct') {
     if (directError.value) return null
     const crit = Math.round(directAlloc.critRate)
@@ -991,54 +1038,183 @@ const skillFlowExternal = computed(() => {
       0,
       remain,
     )
-    return evaluateAffixCounts(evalCtx.value, counts).external
+    return evaluateAffixCounts({ ...evalCtx.value, hits: undefined }, counts).external
   }
   if (anomalyError.value) return null
   const total = Math.round(anomalyAlloc.totalRolls)
   const counts = buildAnomalyAffixCounts(isMb.value, { ...anomalyAlloc, totalRolls: total }, 0, total)
-  return evaluateAffixCounts(evalCtx.value, counts).external
+  return evaluateAffixCounts({ ...evalCtx.value, hits: undefined }, counts).external
 })
 
-/** 用最优词条面板重算流程/准备招式预览伤害，供招式流程展示 */
-const skillFlowHitMaps = computed(() => {
+/** 用最优词条面板重算流程/准备招式预览伤害，供招式流程展示（防抖 + per-hit 缓存） */
+const skillFlowHitMapState = ref<{
+  map: Record<string, number>
+  results: Record<string, DamageCalcResult>
+}>({ map: {}, results: {} })
+
+type SkillFlowLineCache = {
+  signatureById: Record<string, string>
+  lineById: Record<
+    string,
+    { total: number; perHit: number; result: DamageCalcResult }
+  >
+}
+const skillFlowLineStore: SkillFlowLineCache = { signatureById: {}, lineById: {} }
+let skillFlowCacheGlobalSig = ''
+let pendingSkillFlowEmit = false
+
+function clearSkillFlowLineStore() {
+  for (const key of Object.keys(skillFlowLineStore.signatureById)) {
+    delete skillFlowLineStore.signatureById[key]
+  }
+  for (const key of Object.keys(skillFlowLineStore.lineById)) {
+    delete skillFlowLineStore.lineById[key]
+  }
+}
+
+/** 对齐面板 buildResolvedHitSignature，避免改倍率覆写/panelMods 不刷新 */
+function hitFingerprint(hit: import('@/utils/resolvedHit').ResolvedHit) {
+  return JSON.stringify({
+    id: hit.id,
+    ownerAgentId: hit.ownerAgentId,
+    anomalyPowerAgentId: hit.anomalyPowerAgentId,
+    triggerAgentId: hit.triggerAgentId,
+    count: hit.count,
+    staggerPhase: hit.staggerPhase,
+    critMode: hit.critMode,
+    anomalySubKind: hit.anomalySubKind,
+    skillId: hit.skill.id,
+    damageType: hit.skill.damageType,
+    baseMult: hit.skill.baseMult,
+    baseMultFactor: hit.skill.baseMultFactor,
+    settlementMult: hit.skill.settlementMult,
+    skillTypes: hit.skill.skillTypes,
+    buffAnchorId: hit.skill.buffAnchorId,
+    multOverrides: hit.multOverrides,
+    panelMods: hit.panelMods,
+  })
+}
+
+const skillFlowContextFingerprint = computed(() =>
+  JSON.stringify({
+    enemy: enemyInput.value,
+    extraGains: extraGains.value,
+    buffSelection: props.buffSelection,
+    slotBuffSelections: props.slotBuffSelections,
+    convert: props.convertSlotPanels ?? {},
+    anomaly: props.anomalySlotPanels ?? {},
+    participants: optimalParticipantPanels,
+    env: (props.environmentBuffs ?? []).map((item) => item.id),
+    bangboo: [props.selectedBangbooId, props.bangbooRefine],
+    mains: { ...driveDiscMainStats },
+    baseDamageSource: baseDamageSource.value,
+    damageKind: damageKind.value,
+    stagger: props.staggerPhase,
+  }),
+)
+
+const skillFlowHitFingerprint = computed(() => {
+  if (!isSectionActive.value) return 'inactive'
+  const external = skillFlowExternal.value
+  return JSON.stringify({
+    context: skillFlowContextFingerprint.value,
+    external: external ?? null,
+    hits: (props.hits ?? []).map(hitFingerprint),
+    previews: (props.previewHits ?? []).map(hitFingerprint),
+  })
+})
+
+function recomputeSkillFlowHitMaps() {
   if (!isSectionActive.value) {
-    return { map: {} as Record<string, number>, results: {} as Record<string, DamageCalcResult> }
+    clearSkillFlowLineStore()
+    skillFlowCacheGlobalSig = ''
+    skillFlowHitMapState.value = { map: {}, results: {} }
+    return
   }
   const map: Record<string, number> = {}
   const results: Record<string, DamageCalcResult> = {}
   const external = skillFlowExternal.value
-  // 追踪准备招式与流程变更，避免预览残留面板计算数值
-  void (props.previewHits ?? []).map(
-    (hit) =>
-      `${hit.id}:${hit.ownerAgentId}:${hit.anomalyPowerAgentId ?? ''}:${hit.triggerAgentId ?? ''}`,
-  )
-  void (props.hits ?? []).map((hit) => hit.id)
-  if (!external) return { map, results }
+  if (!external) {
+    skillFlowHitMapState.value = { map, results }
+    return
+  }
+  // 流程计入总伤；准备招式只算单次预览。招式库不算。
+  for (const hit of [...(props.hits ?? []), ...(props.previewHits ?? [])]) {
+    for (const id of [hit.ownerAgentId, hit.anomalyPowerAgentId, hit.triggerAgentId]) {
+      if (id) seedOptimalParticipantPanel(id)
+    }
+  }
+
+  const globalSig = skillFlowContextFingerprint.value + '|' + JSON.stringify(external)
+  if (globalSig !== skillFlowCacheGlobalSig) {
+    clearSkillFlowLineStore()
+    skillFlowCacheGlobalSig = globalSig
+  }
+
   const ctx = evalCtx.value
-  for (const hit of props.hits ?? []) {
+  const nextSignatures: Record<string, string> = {}
+
+  const resolveLine = (hit: import('@/utils/resolvedHit').ResolvedHit, usePerHit: boolean) => {
+    const signature = `${hitFingerprint(hit)}|${globalSig}|${usePerHit ? '1' : '0'}`
+    nextSignatures[hit.id] = signature
+    const cached = skillFlowLineStore.lineById[hit.id]
+    if (cached && skillFlowLineStore.signatureById[hit.id] === signature) {
+      map[hit.id] = usePerHit ? cached.perHit : cached.total
+      results[hit.id] = cached.result
+      return
+    }
     const detail = evaluateOptimalEventDetail(ctx, external, hit)
-    if (!detail) continue
-    map[hit.id] = detail.total
+    if (!detail) {
+      delete skillFlowLineStore.lineById[hit.id]
+      return
+    }
+    skillFlowLineStore.lineById[hit.id] = {
+      total: detail.total,
+      perHit: detail.perHit,
+      result: detail.result,
+    }
+    skillFlowLineStore.signatureById[hit.id] = signature
+    map[hit.id] = usePerHit ? detail.perHit : detail.total
     results[hit.id] = detail.result
   }
-  for (const hit of props.previewHits ?? []) {
-    const detail = evaluateOptimalEventDetail(ctx, external, hit)
-    if (!detail) continue
-    // 准备招式/招式库预览：单次期望（次数固定为 1）
-    map[hit.id] = detail.perHit
-    results[hit.id] = detail.result
+
+  for (const hit of props.hits ?? []) resolveLine(hit, false)
+  for (const hit of props.previewHits ?? []) resolveLine(hit, true)
+
+  for (const key of Object.keys(skillFlowLineStore.signatureById)) {
+    if (!(key in nextSignatures)) {
+      delete skillFlowLineStore.signatureById[key]
+      delete skillFlowLineStore.lineById[key]
+    }
   }
-  return { map, results }
-})
+
+  skillFlowHitMapState.value = { map, results }
+}
+
+function emitSkillFlowHitMaps() {
+  if (!isSectionActive.value) return
+  if (sweepComputing.value) {
+    pendingSkillFlowEmit = true
+    return
+  }
+  pendingSkillFlowEmit = false
+  recomputeSkillFlowHitMaps()
+  emit('update:hitDamages', skillFlowHitMapState.value.map)
+  emit('update:hitCalcResults', skillFlowHitMapState.value.results)
+}
 
 watch(
-  skillFlowHitMaps,
-  (next) => {
-    if (!isSectionActive.value || sweepComputing.value) return
+  skillFlowHitFingerprint,
+  () => {
+    if (!isSectionActive.value) {
+      clearSkillFlowLineStore()
+      skillFlowCacheGlobalSig = ''
+      skillFlowHitMapState.value = { map: {}, results: {} }
+      return
+    }
     if (skillFlowEmitTimer) clearTimeout(skillFlowEmitTimer)
     skillFlowEmitTimer = setTimeout(() => {
-      emit('update:hitDamages', next.map)
-      emit('update:hitCalcResults', next.results)
+      emitSkillFlowHitMaps()
     }, SKILL_FLOW_EMIT_DEBOUNCE_MS)
   },
   { immediate: true },
@@ -1046,17 +1222,11 @@ watch(
 
 watch([sweepComputing, isSectionActive], ([computing, active]) => {
   if (computing || !active) return
-  const next = skillFlowHitMaps.value
+  if (!pendingSkillFlowEmit && !skillFlowEmitTimer) return
   if (skillFlowEmitTimer) clearTimeout(skillFlowEmitTimer)
   skillFlowEmitTimer = setTimeout(() => {
-    emit('update:hitDamages', next.map)
-    emit('update:hitCalcResults', next.results)
+    emitSkillFlowHitMaps()
   }, SKILL_FLOW_EMIT_DEBOUNCE_MS)
-})
-
-watch([analysisCounts, evalCtx, damageKind, hasEventMode], () => {
-  showEventAffixImpact.value = false
-  eventAffixImpact.value = []
 })
 
 const displayExternalPierce = computed(() => {
@@ -1413,9 +1583,17 @@ const combinedMainStatRankings = ref<
 
 function mainStatDiffBuilder() {
   const counts = analysisCounts.value
-  const base = analysisEval.value
-  if (!counts || !base) return null
-  const baseDmg = resolveAffixMetricDamage(base)
+  if (!counts || !analysisEval.value) return null
+  // 与组合试算同一口径：现场按当前主属性重算，避免扫掠快照/无 hits 面板口径错位
+  const baseDmg = evaluateMainStatComboDamage(
+    {
+      slot4MainStat: driveDiscMainStats.slot4MainStat,
+      slot5MainStat: driveDiscMainStats.slot5MainStat,
+      slot6MainStat: driveDiscMainStats.slot6MainStat,
+    },
+    counts,
+    currentTwoPieceId.value,
+  )
 
   return MAIN_STAT_SLOTS.map(({ key, title, options }) => {
     const currentId = driveDiscMainStats[key]
@@ -1423,15 +1601,13 @@ function mainStatDiffBuilder() {
     const rows = options
       .filter((o) => o.id !== currentId)
       .map((o) => {
-        const ctx2 = {
-          ...evalCtx.value,
-          driveDiscMainStats: {
-            ...evalCtx.value.driveDiscMainStats,
-            [key]: o.id,
-          } as AffixDriveDiscMainStats,
+        const nextStats: AffixDriveDiscMainStats = {
+          slot4MainStat: driveDiscMainStats.slot4MainStat,
+          slot5MainStat: driveDiscMainStats.slot5MainStat,
+          slot6MainStat: driveDiscMainStats.slot6MainStat,
+          [key]: o.id,
         }
-        const evaled = evaluateAffixCounts(ctx2, counts)
-        const dmg = resolveAffixMetricDamage(evaled)
+        const dmg = evaluateMainStatComboDamage(nextStats, counts, currentTwoPieceId.value)
         const delta = dmg - baseDmg
         return {
           id: o.id,
@@ -1446,8 +1622,16 @@ function mainStatDiffBuilder() {
 
 function buildCombinedMainStatRankings() {
   if (!analysisCounts.value || !analysisEval.value) return []
-  const baseDamage = resolveAffixMetricDamage(analysisEval.value)
-  const currentStats = driveDiscMainStats
+  const currentStats: AffixDriveDiscMainStats = {
+    slot4MainStat: driveDiscMainStats.slot4MainStat,
+    slot5MainStat: driveDiscMainStats.slot5MainStat,
+    slot6MainStat: driveDiscMainStats.slot6MainStat,
+  }
+  const baseDamage = evaluateMainStatComboDamage(
+    currentStats,
+    analysisCounts.value,
+    currentTwoPieceId.value,
+  )
   const rows: {
     slot4: string
     slot5: string
@@ -1522,7 +1706,8 @@ function loadMainStatDiff() {
 
 function scheduleDiffRecompute() {
   if (diffTimer) clearTimeout(diffTimer)
-  diffTimer = setTimeout(recomputeDiffAnalysis, DIFF_DEBOUNCE_MS)
+  const delay = hasEventMode.value ? DIFF_EVENT_DEBOUNCE_MS : DIFF_DEBOUNCE_MS
+  diffTimer = setTimeout(recomputeDiffAnalysis, delay)
 }
 
 function recomputeBenefitData() {
@@ -1561,24 +1746,38 @@ function expandCombinedMainStatRankings() {
   }
 }
 
-watch(
-  [analysisCounts, evalCtx, damageKind, anomalyChartMetric, detailTab, selectedChartEventIds],
-  () => {
-    scheduleDiffRecompute()
-    recomputeBenefitData()
-    showMainStatDiff.value = false
-    mainStatDiff.value = null
-    if (detailTab.value !== 'diff') {
-      showCombinedMainStatRankings.value = false
-      combinedMainStatRankings.value = []
-    }
-  },
-  { deep: true },
+const diffWatchFingerprint = computed(() =>
+  JSON.stringify({
+    counts: analysisCounts.value,
+    kind: damageKind.value,
+    metric: anomalyChartMetric.value,
+    tab: detailTab.value,
+    events: hasEventMode.value ? selectedChartEventIds.value : null,
+    mains: { ...driveDiscMainStats },
+    agents: props.teamSlots.map((s) => s.agentId ?? ''),
+    hits: (props.hits ?? []).map(
+      (h) =>
+        `${h.id}:${h.skill.id}:${h.count}:${h.critMode}` +
+        `:${h.anomalyPowerAgentId ?? ''}:${h.triggerAgentId ?? ''}:${h.anomalySubKind ?? ''}`,
+    ),
+  }),
 )
+
+watch(diffWatchFingerprint, () => {
+  if (detailTab.value === 'diff') scheduleDiffRecompute()
+  else if (detailTab.value === 'curve') recomputeBenefitData()
+  showMainStatDiff.value = false
+  mainStatDiff.value = null
+  if (detailTab.value !== 'diff') {
+    showCombinedMainStatRankings.value = false
+    combinedMainStatRankings.value = []
+  }
+})
 
 watch(detailTab, (tab) => {
   if (tab === 'diff') scheduleDiffRecompute()
   if (tab === 'curve') recomputeBenefitData()
+  if (tab === 'process') ensureSelectedEvalSnapshot()
 })
 
 const combinedMainStatDraft = reactive(createDefaultAffixDriveDiscMainStats())
@@ -1621,6 +1820,8 @@ function applyCombinedMainStatRanking(row: {
   combinedMainStatDraft.slot4MainStat = row.slot4 as typeof combinedMainStatDraft.slot4MainStat
   combinedMainStatDraft.slot5MainStat = row.slot5 as typeof combinedMainStatDraft.slot5MainStat
   combinedMainStatDraft.slot6MainStat = row.slot6 as typeof combinedMainStatDraft.slot6MainStat
+  // 排行按「限定组合」里的 2 件套试算，套用时一并同步到组合试算草稿
+  combinedMainStatDraftTwoPieceId.value = rankingTwoPieceId.value
 }
 
 function evaluateMainStatComboDamage(
@@ -1647,7 +1848,6 @@ function evaluateMainStatComboDamage(
 
 const combinedMainStatPreview = computed(() => {
   if (!analysisCounts.value || !analysisEval.value) return null
-  const baseDamage = resolveAffixMetricDamage(analysisEval.value)
   const currentStats: AffixDriveDiscMainStats = {
     slot4MainStat: driveDiscMainStats.slot4MainStat,
     slot5MainStat: driveDiscMainStats.slot5MainStat,
@@ -1663,6 +1863,13 @@ const combinedMainStatPreview = computed(() => {
     draftStats.slot5MainStat === currentStats.slot5MainStat &&
     draftStats.slot6MainStat === currentStats.slot6MainStat &&
     combinedMainStatDraftTwoPieceId.value === currentTwoPieceId.value
+  // 基准必须与试算同一套 evaluate（含 hits）；不能用 analysisEval：
+  // 异步扫掠后 evalSnapshot 常为空，会落到「无 hits」面板口径，事件模式下差值会错一个数量级
+  const baseDamage = evaluateMainStatComboDamage(
+    currentStats,
+    analysisCounts.value,
+    currentTwoPieceId.value,
+  )
   const proposedDamage = unchanged
     ? baseDamage
     : evaluateMainStatComboDamage(
@@ -1765,7 +1972,17 @@ function selectBar(index: number) {
   detailTab.value = 'diff'
 }
 
+function ensureSelectedEvalSnapshot() {
+  const idx = selectedIndex.value
+  if (idx == null) return
+  const points = damageKind.value === 'direct' ? directPoints.value : anomalyPoints.value
+  const point = points[idx]
+  if (!point || point.evalSnapshot) return
+  point.evalSnapshot = evaluateAffixCounts(evalCtx.value, point.affixCounts)
+}
+
 function applyDefaultCrit() {
+  if (!mainAgent.value?.id || damageKind.value !== 'direct') return
   const crit = findMinCritRollsForOvercap(evalCtx.value, {
     flatStat: directAlloc.flatStat,
     hpFlat: directAlloc.hpFlat,
@@ -1773,7 +1990,8 @@ function applyDefaultCrit() {
     pen: directAlloc.pen,
   })
   directAlloc.critRate = crit
-  directAlloc.totalRolls = crit
+  // 保留用户已填的更高总词条，避免每次重算默认暴击把总数打回 crit
+  directAlloc.totalRolls = Math.max(Math.round(directAlloc.totalRolls) || 0, crit)
   clearBarSelection()
 }
 
@@ -1816,7 +2034,73 @@ watch(
 
 defineExpose({
   buffBreakdown: computed(() => displayEval.value?.breakdown ?? null),
+  displayEval,
+  previewFinalPanel,
+  /** 全槽局外 + 局内（随增益实时重算；主 C 优先用扫掠/预览结算） */
+  slotPanelPreviews: computed(() => {
+    void optimalParticipantPanels
+    void extraGains.value
+    void JSON.stringify(props.slotBuffSelections ?? {})
+    void props.staggerPhase
+    void props.bangbooRefine
+    void selectedBangboo.value.id
+    void props.environmentBuffs
+    void displayEval.value
+    const mainEval = displayEval.value
+    return props.teamSlots.map((slot, index) => {
+      if (!slot.agentId) return null
+      if (index === mainSlotIndex.value && mainEval) {
+        return {
+          external: mainEval.external,
+          final: mainEval.finalPanel,
+        }
+      }
+      const seeded = optimalParticipantPanels[slot.agentId]
+      if (!seeded) return null
+      const external = fillPanelStatsDefaults(seeded)
+      return {
+        external,
+        final: previewFinalPanel(external, index),
+      }
+    })
+  }),
 })
+
+function buildPreviewPanelContext(slotIndex: number) {
+  const agent = props.agents.find((item) => item.id === props.teamSlots[slotIndex]?.agentId)
+  return {
+    teamSlots: props.teamSlots,
+    agents: props.agents,
+    wengines: props.wengines,
+    bangboo: selectedBangboo.value,
+    bangbooRefine: props.bangbooRefine,
+    mainSlotIndex: slotIndex,
+    liveExternalSlotIndex: mainSlotIndex.value,
+    driveDiscs: props.driveDiscs,
+    extraGains: extraGains.value,
+    skillContext: buildGenericPanelSkillContext({
+      element: agent?.element,
+      staggerPhase: props.staggerPhase ?? 'stagger',
+    }),
+    buffSelection: resolveBuffSelectionForSlot(props.slotBuffSelections, slotIndex),
+    anomalySlotPanels: effectiveAnomalySlotPanels.value,
+    convertSlotPanels: props.convertSlotPanels,
+    environmentBuffs: props.environmentBuffs,
+  }
+}
+
+function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats | null {
+  const index = slotIndex ?? mainSlotIndex.value
+  if (index < 0 || index >= props.teamSlots.length) return null
+  try {
+    return computeFinalPanel(
+      fillPanelStatsDefaults(external),
+      buildPreviewPanelContext(index),
+    ).finalPanel
+  } catch {
+    return null
+  }
+}
 </script>
 
 <template>
@@ -1971,109 +2255,6 @@ defineExpose({
         </template>
       </div>
 
-      <section
-        v-if="anomalySupportSlots.length"
-        class="panel-block anomaly-support-panels"
-      >
-        <header class="panel-block-header">
-          <h3>伤害事件参与者 · 局外面板</h3>
-          <p>
-            事件产生角色（owner）与异常产生角色若为非主 C，需在此录入局外初始面板；局内最终面板按各自槽位 Buff 勾选汇总。
-          </p>
-        </header>
-        <details
-          v-for="item in anomalySupportSlots"
-          :key="item.slot.agentId"
-          class="anomaly-slot-details"
-        >
-          <summary>
-            {{ props.agents.find((a) => a.id === item.slot.agentId)?.name ?? item.slot.agentId }}
-            ·
-            {{ props.agents.find((a) => a.id === item.slot.agentId)?.element ?? '' }}
-          </summary>
-          <div class="grid four">
-            <label
-              v-for="field in EXTERNAL_PANEL_FIELDS"
-              :key="`${item.slot.agentId}-${field.key}`"
-              class="field"
-            >
-              <span>{{ field.label }}</span>
-              <input
-                type="number"
-                step="any"
-                :value="ensureAnomalySlotPanel(item.slot.agentId)[field.key]"
-                @change="
-                  updateAnomalySlotPanel(
-                    item.slot.agentId,
-                    field.key,
-                    Number(($event.target as HTMLInputElement).value) || 0,
-                  )
-                "
-              />
-            </label>
-          </div>
-        </details>
-      </section>
-
-      <section
-        v-if="optimalConvertModeActive ? convertSupportSlots.length : convertSupportSlotsNeedingInput.length"
-        class="panel-block convert-support-panels"
-      >
-        <header class="panel-block-header">
-          <h3>转模增益角色 · 局外面板</h3>
-          <p v-if="optimalConvertModeActive">
-            当前主 C 参与转模增益链路：主 C 局外由上方词条分配推导，<strong>不沿用</strong>「面板/词条计算」页的主
-            C 面板；下方转模来源属性请在本页单独录入。
-          </p>
-          <p v-else>
-            已在「面板/词条计算」页填写的数据会自动沿用；此处仅补充尚未录入的转模来源属性。
-          </p>
-        </header>
-        <details
-          v-for="item in optimalConvertModeActive ? convertSupportSlots : convertSupportSlotsNeedingInput"
-          :key="item.agentId"
-          class="anomaly-slot-details"
-        >
-          <summary>
-            {{ props.agents.find((a) => a.id === item.agentId)?.name ?? item.agentId }}
-            ·
-            {{ props.agents.find((a) => a.id === item.agentId)?.element ?? '' }}
-          </summary>
-          <div class="grid four">
-            <label
-              v-for="attr in item.requiredAttrs"
-              :key="`${item.agentId}-${attr}`"
-              class="field"
-            >
-              <span>{{ characterAttrLabel(attr) }}</span>
-              <input
-                type="number"
-                step="any"
-                :value="
-                  optimalConvertModeActive
-                    ? (optimalConvertSlotPanels[item.agentId]?.[attr] ??
-                      defaultConvertPartialForAgent(item.agentId, item.requiredAttrs)[attr] ??
-                      0)
-                    : ensureConvertSlotPartial(item.agentId)[attr] ?? 0
-                "
-                @change="
-                  optimalConvertModeActive
-                    ? updateOptimalConvertSlotAttr(
-                        item.agentId,
-                        attr,
-                        Number(($event.target as HTMLInputElement).value) || 0,
-                      )
-                    : updateConvertSlotAttr(
-                        item.agentId,
-                        attr,
-                        Number(($event.target as HTMLInputElement).value) || 0,
-                      )
-                "
-              />
-            </label>
-          </div>
-        </details>
-      </section>
     </div>
 
     <div v-if="displayEval" class="panel-layout">
@@ -2081,9 +2262,9 @@ defineExpose({
         <header class="panel-block-header">
           <h3>局外面板（初始）</h3>
           <p>
-            {{ selectedCounts ? '跟随当前选中分配。' : '未选中柱体时按第一个扫掠点展示。' }}由词条分配与角色/音擎/驱动盘基础属性推导。
+            {{ selectedCounts ? '跟随当前选中分配。' : '按当前词条分配预览（未开算时余量暂记入爆伤/精通）。' }}由词条分配与角色/音擎/驱动盘基础属性推导，仅展示在最优模块。
             <template v-if="optimalConvertModeActive">
-              主 C 参与转模增益，此处不沿用「面板/词条计算」页录入的主 C 局外。
+              主 C 参与转模增益，此处主 C 局外由词条分配推导，不沿用面板页主 C 局外。
             </template>
           </p>
         </header>
@@ -2182,7 +2363,14 @@ defineExpose({
         {{ selectedIndex != null ? '当前选中柱体' : '首个扫掠点' }}的期望伤害。
       </p>
     </div>
-    <p v-if="!barLabels.length" class="empty">请先修正词条约束，或提高总词条数。</p>
+    <p v-if="!barLabels.length" class="empty">
+      <template v-if="damageKind === 'direct' && directError">{{ directError }}</template>
+      <template v-else-if="damageKind === 'anomaly' && anomalyError">{{ anomalyError }}</template>
+      <template v-else-if="!sweepCommitted || sweepNeedsCommit">
+        请点击上方「开始计算」生成柱状图。
+      </template>
+      <template v-else>当前约束下没有可用分配，请调整总词条数或 4/5/6 号主属性后再试。</template>
+    </p>
     <OptimalDamageBarChart
       v-else-if="hasEventMode && eventTotalBarSeries?.length"
       :labels="barLabels"
@@ -2228,8 +2416,11 @@ defineExpose({
         事件较多时自动计算较慢，需要时再点击「计算敏感度」。
       </p>
       <template v-else-if="filteredEventAffixImpact.length">
-      <p class="hint">
-        对比当前分配下各候选副词条 +1 后，各事件伤害的最大变化。不受主C词条影响的事件（如非主C产生角色的紊乱/乱流）会单独标注。
+      <p v-if="eventAffixImpactStale || eventAffixImpactLoading" class="hint">
+        分配已变更，表格保留中，正在按新分配刷新…
+      </p>
+      <p v-else class="hint">
+        对比当前分配下各候选副词条 +1 后，各事件伤害的最大变化。不受编辑中角色词条影响的事件（如非当前角色产生的紊乱/乱流）会单独标注。
       </p>
       <div class="table-wrap">
         <table>
@@ -2238,7 +2429,7 @@ defineExpose({
               <th>伤害事件</th>
               <th>当前期望</th>
               <th>词条最大变化</th>
-              <th>是否受主C词条影响</th>
+              <th>是否受编辑中角色词条影响</th>
               <th>说明</th>
             </tr>
           </thead>
@@ -2266,14 +2457,29 @@ defineExpose({
     <div v-if="analysisCounts && analysisEval" class="detail">
       <header class="detail-header">
         <h3>
-          选中分配：
-          <template v-if="damageKind === 'direct' && selectedDirect">
-            {{ outLabel }} {{ selectedDirect.outPercent }} · 爆伤 {{ selectedDirect.critDmg }} · 暴击
-            {{ directAlloc.critRate }}
-            <template v-if="isMb"> · 局外大攻击 {{ directAlloc.atkPercent }}</template>
+          {{ selectedIndex != null ? '选中分配' : '当前分配' }}：
+          <template v-if="damageKind === 'direct'">
+            <template v-if="selectedDirect">
+              {{ outLabel }} {{ selectedDirect.outPercent }} · 爆伤 {{ selectedDirect.critDmg }} · 暴击
+              {{ directAlloc.critRate }}
+              <template v-if="isMb"> · 局外大攻击 {{ directAlloc.atkPercent }}</template>
+            </template>
+            <template v-else-if="analysisCounts">
+              暴击 {{ analysisCounts.critRate }} · 爆伤 {{ analysisCounts.critDmg }} ·
+              {{ outLabel }}
+              {{ isMb ? analysisCounts.hpPercent : analysisCounts.atkPercent }}
+              <template v-if="isMb"> · 局外大攻击 {{ analysisCounts.atkPercent }}</template>
+              <span class="hint-inline">（未点柱时按预览/首柱）</span>
+            </template>
           </template>
           <template v-else-if="selectedAnomaly">
             {{ outLabel }} {{ selectedAnomaly.outPercent }} · 精通 {{ selectedAnomaly.mastery }}
+          </template>
+          <template v-else-if="analysisCounts">
+            {{ outLabel }}
+            {{ isMb ? analysisCounts.hpPercent : analysisCounts.atkPercent }} · 精通
+            {{ analysisCounts.mastery }}
+            <span class="hint-inline">（未点柱时按预览/首柱）</span>
           </template>
         </h3>
         <div class="detail-tabs">
@@ -2350,6 +2556,10 @@ defineExpose({
             :bonus-final-panel="selectedProcessEventDetail.bonusFinalPanel"
             :bonus-external-panel="selectedProcessEventDetail.bonusExternalPanel"
             :bonus-sources="selectedProcessEventDetail.bonusBreakdown?.sources"
+            :defense-trigger-final-panel="selectedProcessEventDetail.defenseTriggerFinalPanel"
+            :defense-trigger-external-panel="selectedProcessEventDetail.defenseTriggerExternalPanel"
+            :defense-trigger-sources="selectedProcessEventDetail.defenseTriggerBreakdown?.sources"
+            :defense-trigger-agent-label="selectedProcessEventDetail.defenseTriggerAgentLabel"
             :base-agent-label="selectedProcessEventDetail.baseAgentLabel"
             :bonus-agent-label="selectedProcessEventDetail.bonusAgentLabel"
             :mutation-agent-label="selectedProcessEventDetail.mutationAgentLabel"
@@ -2742,6 +2952,8 @@ defineExpose({
         </template>
       </template>
 
+      <p v-else-if="detailTab === 'diff'" class="hint">词条差异计算中…若长时间无结果，请再点一次「开始计算」。</p>
+
       <template v-else-if="detailTab === 'curve' && benefitData">
         <div class="curve-toolbar">
           <button
@@ -3096,6 +3308,31 @@ defineExpose({
   color: #8f96a3;
 }
 
+.anomaly-support-panels {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.anomaly-slot-details {
+  border: 1px solid #2d323a;
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem 0.55rem;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.anomaly-slot-details summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #d5dae4;
+  padding: 0.25rem 0;
+}
+
+.anomaly-slot-details .grid {
+  margin-top: 0.45rem;
+}
+
 .panel-block .field > input:read-only {
   opacity: 0.92;
   background: #0c1016;
@@ -3386,6 +3623,13 @@ defineExpose({
   margin: 0;
   font-size: 0.95rem;
   color: #f0f2f6;
+}
+
+.hint-inline {
+  margin-left: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: #8b929e;
 }
 
 .result-summary {

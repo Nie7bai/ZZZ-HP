@@ -312,6 +312,7 @@ function buildCrisisMonsterContext(
     crisisBaseHp: enemy.crisisBaseHp,
     hpCoeffPercent: enemy.hpCoeffPercent,
     hpCoeffManual: enemy.hpCoeffPercent != null,
+    fieldBuffSetId: enemy.fieldBuffSetId ?? null,
   }
 }
 

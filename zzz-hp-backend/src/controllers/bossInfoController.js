@@ -3,6 +3,7 @@ import {
   listBossInfoRecords,
   searchBossInfoNames,
   updateBossInfoById,
+  deleteBossInfoById,
 } from '../services/bossInfoService.js'
 import { success, fail } from '../utils/response.js'
 
@@ -54,5 +55,24 @@ export async function patchBossInfo(req, res) {
   } catch (err) {
     const status = err.message?.includes('不存在') ? 404 : 400
     return fail(res, err.message || 'Boss 基础信息更新失败', status, { error: err.message })
+  }
+}
+
+export async function removeBossInfo(req, res) {
+  const id = Number(req.params.id)
+  if (!Number.isInteger(id) || id <= 0) {
+    return fail(res, '无效的 boss_info ID', 400)
+  }
+
+  try {
+    const data = await deleteBossInfoById(id)
+    const hint =
+      data.referenced_count > 0
+        ? `（各期仍有 ${data.referenced_count} 条同名怪物记录，未一并删除）`
+        : ''
+    return success(res, data, `已删除 Boss 基础信息${hint}`)
+  } catch (err) {
+    const status = err.message?.includes('不存在') ? 404 : 400
+    return fail(res, err.message || 'Boss 基础信息删除失败', status, { error: err.message })
   }
 }

@@ -8,6 +8,7 @@ import AdminBangbooBuffPanel from '@/components/admin/calculator/AdminBangbooBuf
 import AdminDriveDiscBuffPanel from '@/components/admin/calculator/AdminDriveDiscBuffPanel.vue'
 import AdminSkillSubcategoryPanel from '@/components/admin/calculator/AdminSkillSubcategoryPanel.vue'
 import AdminSkillLibraryPanel from '@/components/admin/calculator/AdminSkillLibraryPanel.vue'
+import AdminBuffImportExportPanel from '@/components/admin/calculator/AdminBuffImportExportPanel.vue'
 import type { AgentBuffEditActionId, AgentBuffEditSectionId } from '@/constants/agentBuffEditNav'
 import type { BangbooBuffEditActionId, BangbooBuffEditSectionId } from '@/constants/bangbooBuffEditNav'
 import type { DriveDiscBuffEditActionId, DriveDiscBuffEditSectionId } from '@/constants/driveDiscBuffEditNav'
@@ -173,6 +174,7 @@ async function handleSkillLibraryAction(actionId: 'save' | 'delete') {
         <AdminDriveDiscBuffPanel v-show="activePanel === 'drive-disc'" ref="driveDiscPanelRef" />
         <AdminSkillSubcategoryPanel v-show="activePanel === 'skill-subcategory'" />
         <AdminSkillLibraryPanel v-show="activePanel === 'skill-library'" ref="skillLibraryPanelRef" />
+        <AdminBuffImportExportPanel v-show="activePanel === 'import-export'" />
       </template>
     </main>
   </div>

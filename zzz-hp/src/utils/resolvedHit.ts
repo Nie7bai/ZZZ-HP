@@ -23,6 +23,7 @@ import {
   getTurbulenceParticipationFailureReason,
   mapEventKindToCalc,
   pickEventDamage,
+  resolveFlowHitCritMode,
 } from '@/utils/damageEvent'
 import {
   canAgentBeAnomalyProducerForKind,
@@ -50,6 +51,12 @@ export function ensureSchemeSlots(
   }))
   while (next.length < count) next.push(createEmptySchemeSlot())
   return next.slice(0, count)
+}
+
+export function schemeSlotsHaveContent(slots?: SchemeSlot[] | null): boolean {
+  return (slots ?? []).some(
+    (slot) => (slot.prepared?.length ?? 0) > 0 || (slot.flow?.length ?? 0) > 0,
+  )
 }
 
 /** 异常类伤害（含属性异常/异放/紊乱/乱流/耀变）都要选双代理人 */
@@ -184,7 +191,7 @@ function resolveOne(
     triggerAgentId: prepared.triggerAgentId?.trim() || defaults.triggerAgentId,
     count: Math.max(0, Number(entry.count) || 0),
     staggerPhase: entry.staggerPhase,
-    critMode: entry.critMode,
+    critMode: resolveFlowHitCritMode(skill.damageType, entry.critMode),
     damageKind,
     anomalySubKind,
     coords,
@@ -237,12 +244,10 @@ function previewFlowEntry(id: string, ownerAgentId: string, preparedId: string):
 }
 
 /**
- * 招式库 / 准备招式主行预览：不进流程也算出单次伤害。
- * 次数=1、非失衡（失衡易伤区=1）。hit.id = 准备条目 id，或未准备时用 skill.id。不计入流程总伤。
+ * 准备招式主行预览：不进流程也算出单次伤害。
+ * 次数=1、非失衡（失衡易伤区=1）。hit.id = 准备条目 id。不计入流程总伤。
  */
-export function resolveSkillPreviews(
-  options: ResolveFlowOptions & { skillsForAgent: (agentId: string) => Skill[] },
-): ResolvedHit[] {
+export function resolveSkillPreviews(options: ResolveFlowOptions): ResolvedHit[] {
   const hits: ResolvedHit[] = []
 
   options.slots.forEach((slot, index) => {
@@ -250,36 +255,12 @@ export function resolveSkillPreviews(
     const ownerAgentId = options.teamSlots[index]?.agentId ?? ''
     if (!ownerAgentId) return
 
-    const preparedSkillIds = new Set<string>()
     for (const prepared of slot.prepared) {
       const skill = options.findSkill(prepared.skillId)
       if (!skill) continue
-      preparedSkillIds.add(skill.id)
       hits.push(
         resolveOne(
           previewFlowEntry(prepared.id, ownerAgentId, prepared.id),
-          prepared,
-          skill,
-          ownerAgentId,
-          options,
-        ),
-      )
-    }
-
-    for (const skill of options.skillsForAgent(ownerAgentId)) {
-      if (preparedSkillIds.has(skill.id)) continue
-      const agents = defaultAnomalyAgents(skill.damageType, ownerAgentId)
-      const prepared: PreparedSkill = {
-        id: skill.id,
-        skillId: skill.id,
-        skillSource: skill.source,
-        anomalyPowerAgentId: agents.anomalyPowerAgentId,
-        triggerAgentId: agents.triggerAgentId,
-        extraMods: null,
-      }
-      hits.push(
-        resolveOne(
-          previewFlowEntry(skill.id, ownerAgentId, prepared.id),
           prepared,
           skill,
           ownerAgentId,

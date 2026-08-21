@@ -29,6 +29,7 @@ interface ApiBoss {
   hp_coeff_manual?: boolean
   hp_coeff_label?: string | null
   field_buff?: ApiFieldBuff | null
+  field_buff_set_id?: string | null
 }
 
 interface ApiFieldBuff {
@@ -36,6 +37,7 @@ interface ApiFieldBuff {
   text?: string
   image?: string | null
   effectBlocks?: import('@/types/calculator').BuffEffectBlock[] | null
+  set_id?: string | null
 }
 
 interface ApiBuff {
@@ -156,6 +158,7 @@ function mapBossToEnemy(boss: ApiBoss): EnemySlot {
     isHardRoom: hard,
     recordId: boss.id,
     room: normalizeCrisisRoomCode(boss.room),
+    fieldBuffSetId: boss.field_buff_set_id ?? boss.field_buff?.set_id ?? null,
     fieldBuff: boss.field_buff
       ? {
           name: boss.field_buff.name,

@@ -10,6 +10,7 @@ interface ApiResult<T> {
 
 export interface CreateBossPayload {
   recordScheme?: RecordScheme
+  mode?: 'crisis' | 'defense' | 'deduction'
   id?: number
   version: string
   phase: string
@@ -31,10 +32,13 @@ export interface CreateBossPayload {
   hp_coeff_percent?: number
   hp_coeff_manual?: boolean
   stagger_multiplier?: number | null
+  /** 危局当期绑定的场地 Buff 套 id */
+  field_buff_set_id?: string | null
 }
 
 export interface CreateBuffPayload {
   recordScheme?: RecordScheme
+  mode?: 'crisis' | 'defense' | 'deduction'
   id?: number
   version: string
   phase: string
@@ -56,6 +60,7 @@ export interface CreateBuffResult {
 export interface UploadImageResult {
   url: string
   filename: string
+  stable?: boolean
 }
 
 export interface BossInfoRecord {
@@ -68,6 +73,15 @@ export interface BossInfoRecord {
   resistance: string | null
   crisis_base_hp?: number | null
   stagger_multiplier?: number | null
+  field_buff_sets?: Array<{
+    id: string
+    label?: string | null
+    name: string
+    text?: string
+    image?: string | null
+    effectBlocks?: unknown[] | null
+  }> | null
+  field_buff_name?: string | null
 }
 
 export interface BossInfoSyncResult {
@@ -100,6 +114,7 @@ export interface BossRecord {
   resistance: string | null
   boss_image: string | null
   stagger_multiplier?: number | null
+  field_buff_set_id?: string | null
 }
 
 export interface BuffRecord {
@@ -137,8 +152,13 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return body.data
 }
 
-export async function uploadBossImage(file: File) {
+export async function uploadBossImage(
+  file: File,
+  opts: { bossName?: string; id?: string | number } = {},
+) {
   const formData = new FormData()
+  if (opts.bossName?.trim()) formData.append('bossName', opts.bossName.trim())
+  if (opts.id != null && String(opts.id).trim()) formData.append('id', String(opts.id).trim())
   formData.append('image', file)
 
   const response = await fetch('/api/upload/boss', {
@@ -150,8 +170,13 @@ export async function uploadBossImage(file: File) {
   return parseResponse<UploadImageResult>(response)
 }
 
-export async function uploadBuffImage(file: File) {
+export async function uploadBuffImage(
+  file: File,
+  opts: { buffName?: string; id?: string | number } = {},
+) {
   const formData = new FormData()
+  if (opts.id != null && String(opts.id).trim()) formData.append('id', String(opts.id).trim())
+  if (opts.buffName?.trim()) formData.append('buffName', opts.buffName.trim())
   formData.append('image', file)
 
   const response = await fetch('/api/upload/buff', {
@@ -285,7 +310,7 @@ export async function deleteBuffRecord(id: number) {
   return parseResponse<{ id: number }>(response)
 }
 
-export type SeasonDateMode = 'crisis' | 'defense'
+export type SeasonDateMode = 'crisis' | 'defense' | 'deduction'
 
 export interface SeasonDateRecord {
   id: number

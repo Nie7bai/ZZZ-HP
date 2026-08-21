@@ -15,8 +15,12 @@ import {
 } from './seasonContentTrashService.js'
 import {
   ensureEnvironmentBuffSchema,
+  parseFieldBuffSetsJson,
+  resolveFieldBuffFromSets,
+  normalizeFieldBuffSet,
   parseEffectBlocksJson,
 } from '../utils/environmentBuffSchema.js'
+import { ensureContentModeColumns } from './contentModeService.js'
 
 let schemaEnsured = false
 
@@ -64,7 +68,9 @@ function comparePhase(a, b) {
 }
 
 function seasonDateKey(version, phase) {
-  return `${String(version).trim()}-${String(phase).replace(/\D/g, '') || String(phase).trim()}`
+  const phaseNum = String(phase).replace(/\D/g, '')
+  const normalized = phaseNum ? String(Number(phaseNum)) : String(phase).trim()
+  return `${String(version).trim()}-${normalized}`
 }
 
 function formatDateValue(value) {
@@ -81,7 +87,7 @@ function formatDateValue(value) {
   return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`
 }
 
-function enrichBoss(boss, baseHpByName, fieldBuffByName = new Map()) {
+function enrichBoss(boss, baseHpByName, fieldBuffSetsByName = new Map()) {
   const baseHp =
     baseHpByName.get(boss.boss_name) ??
     getCrisisBaseHpByName(boss.boss_name)
@@ -93,7 +99,17 @@ function enrichBoss(boss, baseHpByName, fieldBuffByName = new Map()) {
   const defense = Number(boss.defense)
   const hp = Number(boss.hp)
   const hpConverted = roundConvertedHp(convertHpToDefense953(hp, defense))
-  const fieldBuff = fieldBuffByName.get(boss.boss_name) ?? null
+  const sets = fieldBuffSetsByName.get(boss.boss_name) ?? []
+  const resolvedBuff = resolveFieldBuffFromSets(sets, boss.field_buff_set_id)
+  const fieldBuff = resolvedBuff
+    ? {
+        name: resolvedBuff.name,
+        text: resolvedBuff.text ?? '',
+        image: resolvedBuff.image ?? null,
+        effectBlocks: resolvedBuff.effectBlocks ?? null,
+        set_id: String(boss.field_buff_set_id ?? '').trim() || null,
+      }
+    : null
   return {
     id: boss.id,
     boss_name: boss.boss_name,
@@ -110,6 +126,7 @@ function enrichBoss(boss, baseHpByName, fieldBuffByName = new Map()) {
     hp_coeff_manual: resolved.manual,
     hp_coeff_label: formatCrisisHpCoeffPercent(resolved.percent),
     is_hard_room: isCrisisHardRoom(boss.room),
+    field_buff_set_id: String(boss.field_buff_set_id ?? '').trim() || null,
     field_buff: fieldBuff,
   }
 }
@@ -142,21 +159,26 @@ async function loadBossFieldBuffMap() {
   const map = new Map()
   try {
     const [rows] = await pool.execute(
-      `SELECT boss_name, field_buff_name, field_buff_text, field_buff_image, field_buff_effect_blocks
-       FROM boss_info
-       WHERE (field_buff_name IS NOT NULL AND field_buff_name <> '')
-          OR field_buff_effect_blocks IS NOT NULL`,
+      `SELECT boss_name, field_buff_name, field_buff_text, field_buff_image, field_buff_effect_blocks, field_buff_sets
+       FROM boss_info`,
     )
     for (const row of rows) {
-      const effectBlocks = parseEffectBlocksJson(row.field_buff_effect_blocks)
-      const name = String(row.field_buff_name ?? '').trim() || String(row.boss_name ?? '').trim()
-      if (!name && !(Array.isArray(effectBlocks) && effectBlocks.length)) continue
-      map.set(row.boss_name, {
-        name,
-        text: row.field_buff_text ?? '',
-        image: row.field_buff_image ?? null,
-        effectBlocks,
-      })
+      let sets = parseFieldBuffSetsJson(row.field_buff_sets)
+      if (!sets.length) {
+        const legacy = normalizeFieldBuffSet(
+          {
+            id: 'legacy',
+            name: row.field_buff_name,
+            text: row.field_buff_text,
+            image: row.field_buff_image,
+            effectBlocks: parseEffectBlocksJson(row.field_buff_effect_blocks),
+          },
+          'legacy',
+        )
+        if (legacy) sets = [legacy]
+      }
+      if (!sets.length) continue
+      map.set(row.boss_name, sets)
     }
   } catch (err) {
     console.warn('[crisis] loadBossFieldBuffMap fallback:', err.message)
@@ -170,9 +192,16 @@ function normalizeRoomType(roomType) {
   return 'all'
 }
 
+function seasonPhaseKey(version, phase) {
+  const phaseNum = String(phase ?? '').replace(/\D/g, '')
+  const normalized = phaseNum ? String(Number(phaseNum)) : String(phase ?? '').trim()
+  return `${String(version).trim()}-${normalized}`
+}
+
 export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
   await ensureCrisisSchema()
   await ensureEnvironmentBuffSchema()
+  await ensureContentModeColumns(pool)
   const [bossRowsRaw] = await pool.execute(
     "SELECT * FROM boss WHERE mode = 'crisis' ORDER BY version, phase, CAST(room AS UNSIGNED)",
   )
@@ -192,11 +221,11 @@ export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
   const phaseMap = new Map()
 
   for (const boss of bossRows) {
-    const key = `${boss.version}-${boss.phase}`
+    const key = seasonPhaseKey(boss.version, boss.phase)
     if (!phaseMap.has(key)) {
       phaseMap.set(key, {
-        version: boss.version,
-        phase: String(boss.phase),
+        version: String(boss.version).trim(),
+        phase: String(Number(String(boss.phase).replace(/\D/g, '') || boss.phase)),
         bosses: [],
         buffs: [],
       })
@@ -205,11 +234,11 @@ export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
   }
 
   for (const buff of buffRows) {
-    const key = `${buff.version}-${buff.phase}`
+    const key = seasonPhaseKey(buff.version, buff.phase)
     if (!phaseMap.has(key)) {
       phaseMap.set(key, {
-        version: buff.version,
-        phase: String(buff.phase),
+        version: String(buff.version).trim(),
+        phase: String(Number(String(buff.phase).replace(/\D/g, '') || buff.phase)),
         bosses: [],
         buffs: [],
       })
@@ -220,8 +249,10 @@ export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
   for (const [key, dateInfo] of dateMap.entries()) {
     if (phaseMap.has(key)) continue
     phaseMap.set(key, {
-      version: String(dateInfo.version),
-      phase: String(dateInfo.phase).replace(/\D/g, '') || String(dateInfo.phase),
+      version: String(dateInfo.version).trim(),
+      phase: String(dateInfo.phase).replace(/\D/g, '')
+        ? String(Number(String(dateInfo.phase).replace(/\D/g, '')))
+        : String(dateInfo.phase),
       bosses: [],
       buffs: [],
     })
@@ -279,6 +310,7 @@ export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
 }
 
 export async function getBossNames({ roomType = 'all' } = {}) {
+  await ensureContentModeColumns(pool)
   const type = normalizeRoomType(roomType)
   const [rows] = await pool.execute(
     "SELECT boss_name, boss_image, id, room FROM boss WHERE mode = 'crisis' ORDER BY boss_name",
@@ -307,6 +339,7 @@ export async function getBossChartHistory(
   { roomType = 'all', includeHidden = false } = {},
 ) {
   await ensureCrisisSchema()
+  await ensureContentModeColumns(pool)
   const type = normalizeRoomType(roomType)
   const [bossRows] = await pool.execute(
     `SELECT *

@@ -36,15 +36,20 @@ import {
 } from '@/utils/skillSubcategoryMult'
 import { SKILL_TYPE_OPTIONS } from '@/utils/skillTypes'
 
+import { teamSlotDisplayLabel } from '@/utils/teamSlotLabel'
+
 const props = defineProps<{
   teamSlots: TeamSlot[]
   agents: AgentBuffDoc[]
   hits?: ResolvedHit[]
   hitDamages?: Record<string, number>
   hitCalcResults?: Record<string, DamageCalcResult>
+  /** 当前加载的方案名；未归档为空 */
+  schemeName?: string
 }>()
 
 const slots = defineModel<SchemeSlot[]>('slots', { required: true })
+const activeSlotIndex = defineModel<number>('editedSlotIndex', { default: 0 })
 
 function writeSlots(next: SchemeSlot[]) {
   slots.value = ensureSchemeSlots(next, Math.max(3, props.teamSlots.length))
@@ -53,7 +58,6 @@ function writeSlots(next: SchemeSlot[]) {
 const buffStore = useCalculatorBuffStore()
 const { skillSubcategories } = storeToRefs(buffStore)
 
-const activeSlotIndex = ref(0)
 const libraryQuery = ref('')
 /** 可选筛选，全不点 = 当前角色可见的全部招式（含本元素公共异常） */
 const libraryKindDirect = ref(false)
@@ -78,9 +82,10 @@ const detail = ref<
 watch(
   () => props.teamSlots.length,
   (count) => {
-    slots.value = ensureSchemeSlots(slots.value, Math.max(3, count))
+    const need = Math.max(3, count)
+    if (slots.value.length === need) return
+    slots.value = ensureSchemeSlots(slots.value, need)
   },
-  { immediate: true },
 )
 
 watch(modalTab, () => {
@@ -483,6 +488,9 @@ const detailSkipReason = computed(() => {
 })
 
 const detailZoneRows = computed(() => {
+  // 乘区 / 最终伤害仅流程详情展示；准备招式与招式库不算伤
+  // 异常类：外侧汇总必暴击；详情内同时展示暴击 / 期望 / 不暴击。直伤仍为期望。
+  if (detail.value?.kind !== 'flow') return []
   const skill = detailSkill.value
   const key = detailCalcKey.value
   if (!skill || !key || detailSkipReason.value) return []
@@ -521,9 +529,7 @@ function preparedSkill(prepared: PreparedSkill): Skill | null {
 }
 
 function slotLabel(slot: TeamSlot, index: number) {
-  const agent = props.agents.find((item) => item.id === slot.agentId)
-  if (!agent) return `空位 ${index + 1}`
-  return agent.name
+  return teamSlotDisplayLabel(slot, index, props.agents)
 }
 
 function addPrepared(skill: Skill) {
@@ -590,11 +596,15 @@ function updatePrepared(preparedId: string, patch: Partial<PreparedSkill>) {
   slots.value = next
 }
 
+function getActiveSlot(): SchemeSlot | undefined {
+  return slots.value[activeSlotIndex.value]
+}
+
 function addToFlow(prepared: PreparedSkill) {
   const ownerId = currentAgentId.value
   if (!ownerId) return
-  const next = ensureSchemeSlots(slots.value)
-  const slot = next[activeSlotIndex.value]!
+  const slot = getActiveSlot()
+  if (!slot) return
   slot.flow.push({
     id: newLocalId('flow'),
     ownerAgentId: ownerId,
@@ -603,23 +613,20 @@ function addToFlow(prepared: PreparedSkill) {
     staggerPhase: 'stagger',
     critMode: 'expected',
   })
-  slots.value = next
 }
 
 function updateFlow(entryId: string, patch: Partial<FlowEntry>) {
-  const next = ensureSchemeSlots(slots.value)
-  const slot = next[activeSlotIndex.value]!
-  const index = slot.flow.findIndex((item) => item.id === entryId)
-  if (index < 0) return
-  slot.flow[index] = { ...slot.flow[index]!, ...patch }
-  slots.value = next
+  const entry = getActiveSlot()?.flow.find((item) => item.id === entryId)
+  if (!entry) return
+  Object.assign(entry, patch)
 }
 
 function removeFlow(entryId: string) {
-  const next = ensureSchemeSlots(slots.value)
-  const slot = next[activeSlotIndex.value]!
-  slot.flow = slot.flow.filter((item) => item.id !== entryId)
-  slots.value = next
+  const slot = getActiveSlot()
+  if (!slot) return
+  const index = slot.flow.findIndex((item) => item.id === entryId)
+  if (index < 0) return
+  slot.flow.splice(index, 1)
 }
 
 const FLOW_DRAG_IGNORE = 'button, input, label, select, textarea, a'
@@ -691,8 +698,8 @@ function onFlowDragEnd() {
 }
 
 function reorderFlowToIndex(fromId: string, toIndex: number) {
-  const next = ensureSchemeSlots(slots.value)
-  const slot = next[activeSlotIndex.value]!
+  const slot = getActiveSlot()
+  if (!slot) return
   const fromIndex = slot.flow.findIndex((item) => item.id === fromId)
   if (fromIndex < 0) return
   let dest = toIndex
@@ -701,7 +708,6 @@ function reorderFlowToIndex(fromId: string, toIndex: number) {
   if (dest < 0) dest = 0
   if (dest > slot.flow.length) dest = slot.flow.length
   slot.flow.splice(dest, 0, item!)
-  slots.value = next
 }
 
 function movePrepared(preparedId: string, delta: number) {
@@ -1055,7 +1061,7 @@ defineExpose({ expand })
       <span class="flow-summary-counts">
         {{ currentTeamSlotLabel }} · 已准备 {{ currentSlot.prepared.length }} 条 · 流程 {{ currentSlot.flow.length }} 项
       </span>
-      <button type="button" class="primary-btn" @click="expanded = !expanded">
+      <button type="button" class="sf-toggle-btn" @click="expanded = !expanded">
         {{ expanded ? '收起' : '展开' }}
       </button>
     </div>
@@ -1204,8 +1210,8 @@ defineExpose({ expand })
                 <p class="col-desc">
                   {{
                     modalTab === 'prep'
-                      ? '每种招式只准备一条。异常类在详情里选双代理人；名称和倍率请回招式库改。'
-                      : '同一准备招式可以多次加入流程。双代理人请在准备阶段的详情里选。'
+                      ? '每种招式只准备一条。异常类在详情里选双代理人；名称和倍率请回招式库改。伤害为单次、不含失衡。'
+                      : '同一准备招式可以多次加入流程。双代理人请在准备阶段的详情里选。伤害为单次、不含失衡。'
                   }}
                 </p>
               </div>
@@ -1226,6 +1232,11 @@ defineExpose({ expand })
                     :agent-pair="agentPairText(prepared, preparedSkill(prepared)!)"
                     :agent-title="agentPairTitle(prepared, preparedSkill(prepared)!)"
                     :skip="Boolean(dualAgentHint(prepared, preparedSkill(prepared)!))"
+                    :damage="
+                      dualAgentHint(prepared, preparedSkill(prepared)!)
+                        ? ''
+                        : damageForFlow(prepared.id)
+                    "
                     @select-agents="openPreparedDetail(prepared.id)"
                   >
                     <template #actions>
@@ -1390,6 +1401,7 @@ defineExpose({ expand })
             :hits="hits"
             :hit-damages="hitDamages"
             :active-slot-index="activeSlotIndex"
+            :scheme-name="schemeName"
           />
         </div>
     </div>
@@ -1600,8 +1612,31 @@ defineExpose({ expand })
   color: #9aa3b0;
   font-size: 0.85rem;
 }
-.primary-btn {
+.sf-toggle-btn {
   margin-left: auto;
+  appearance: none;
+  border: 1px solid #c9a55c;
+  background: #2c2410;
+  color: #f0d7a2;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.82rem;
+  line-height: 1.2;
+  padding: 0.4rem 0.95rem;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: none;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+.sf-toggle-btn:hover {
+  border-color: #dfc07a;
+  background: #3a3018;
+  color: #f7e7c0;
+}
+.primary-btn {
   border: 1px solid #c9a55c;
   background: linear-gradient(180deg, #d8b56a, #b88d3a);
   color: #1a1407;

@@ -9,6 +9,7 @@ export type AdminPanel =
   | 'monster-form'
   | 'buff-form'
   | 'season-date'
+  | 'import-export'
 
 /** 可视化编辑 Buff 时传入的槽位上下文 */
 export interface AdminBuffSlotContext {
@@ -50,19 +51,26 @@ export interface AdminMonsterSlotContext {
   crisisBaseHp?: string | number | null
   hpCoeffPercent?: string | number | null
   hpCoeffManual?: boolean
+  /** 危局当期绑定的场地 Buff 套 id */
+  fieldBuffSetId?: string | null
 }
 
 export type DefenseMonsterCategory = 'minion' | 'elite' | 'boss'
 
-export type RecordScheme = 'crisis' | 'defense'
+export type RecordScheme = 'crisis' | 'defense' | 'deduction'
 
 export function isDefenseScope(scope: AdminScope): boolean {
   return scope === 'defense-old' || scope === 'defense-new'
 }
 
+export function isDeductionScope(scope: AdminScope): boolean {
+  return scope === 'deduction'
+}
+
 export function recordSchemeFromScope(scope: AdminScope): RecordScheme | null {
   if (scope === 'crisis-assault') return 'crisis'
   if (isDefenseScope(scope)) return 'defense'
+  if (scope === 'deduction') return 'deduction'
   return null
 }
 

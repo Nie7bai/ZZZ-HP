@@ -51,6 +51,7 @@ import {
   AGENT_MINDSCAPE_RANKS,
   createEmptyMindscapeBuffs,
   createEmptyRefinementMods,
+  defaultDisorderStats,
   defaultTurbulenceStats,
   normalizeAgentBasePanel,
   normalizeBuffStatModifiers,
@@ -143,12 +144,34 @@ function normalizeAgent(item: Record<string, unknown>): AgentBuffDoc {
   let basePanel = normalizeAgentBasePanel(rawBase)
   if (rawBase && typeof rawBase === 'object' && !Array.isArray(rawBase)) {
     const entry = rawBase as Record<string, unknown>
+    const disorder = defaultDisorderStats(element, id)
     const turbulence = defaultTurbulenceStats(element, id)
+    if (entry.disorderBaseMult == null) {
+      basePanel = { ...basePanel, disorderBaseMult: disorder.disorderBaseMult }
+    }
+    if (entry.anomalyDuration == null || Number(entry.anomalyDuration) === 0) {
+      basePanel = { ...basePanel, anomalyDuration: disorder.anomalyDuration }
+    }
+    if (entry.disorderCompMult == null) {
+      basePanel = { ...basePanel, disorderCompMult: disorder.disorderCompMult }
+    }
     if (entry.turbulenceBaseMult == null) {
       basePanel = { ...basePanel, turbulenceBaseMult: turbulence.turbulenceBaseMult }
     }
     if (entry.turbulenceCompMult == null) {
       basePanel = { ...basePanel, turbulenceCompMult: turbulence.turbulenceCompMult }
+    }
+  } else {
+    // 无 basePanel 时也按属性补默认异常时间 / 乱流补偿，避免全 0
+    const disorder = defaultDisorderStats(element, id)
+    const turbulence = defaultTurbulenceStats(element, id)
+    basePanel = {
+      ...basePanel,
+      disorderBaseMult: disorder.disorderBaseMult,
+      anomalyDuration: disorder.anomalyDuration,
+      disorderCompMult: disorder.disorderCompMult,
+      turbulenceBaseMult: turbulence.turbulenceBaseMult,
+      turbulenceCompMult: turbulence.turbulenceCompMult,
     }
   }
   return {
