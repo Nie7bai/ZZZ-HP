@@ -218,7 +218,7 @@ function crisisBuffIndexFromId(id, version, phase) {
 
 export async function exportSeasonSnapshot(scheme, variant = null) {
   const mode = normalizeScheme(scheme)
-  if (!mode) throw new Error('scheme 须为 crisis 或 defense')
+  if (!mode) throw new Error('scheme 须为 crisis / defense / deduction')
   const variantValue = normalizeVariant(mode, variant)
 
   await ensureBossStaggerSchema()
@@ -550,34 +550,36 @@ export async function importSeasonSnapshot(raw) {
       continue
     }
     try {
-      await pool.execute(
-        `INSERT INTO deduction_node
-           (version, phase, node_id, node_name, node_type, prev_node, story_text, layers_json, buffs_json, sort_order, period_name)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE
-           node_name = VALUES(node_name),
-           node_type = VALUES(node_type),
-           prev_node = VALUES(prev_node),
-           story_text = VALUES(story_text),
-           layers_json = VALUES(layers_json),
-           buffs_json = VALUES(buffs_json),
-           sort_order = VALUES(sort_order),
-           period_name = VALUES(period_name)`,
-        [
-          version,
-          phase,
-          nodeId,
-          String(item.node_name ?? ''),
-          Number(item.node_type) || 0,
-          item.prev_node || '',
-          item.story_text ?? null,
-          item.layers_json ?? null,
-          item.buffs_json ?? null,
-          Number(item.sort_order) || 0,
-          item.period_name ?? '',
-        ],
+      const [existing] = await pool.execute(
+        'SELECT 1 FROM deduction_node WHERE version = ? AND phase = ? AND node_id = ? LIMIT 1',
+        [version, phase, nodeId],
       )
-      summary.deductionNodes.created += 1
+      const name = String(item.node_name ?? '')
+      const nodeType = Number(item.node_type) || 0
+      const prevNode = item.prev_node || ''
+      const storyText = item.story_text ?? null
+      const layersJson = item.layers_json ?? null
+      const buffsJson = item.buffs_json ?? null
+      const sortOrder = Number(item.sort_order) || 0
+      const periodName = item.period_name ?? ''
+      if (existing.length) {
+        await pool.execute(
+          `UPDATE deduction_node
+              SET node_name = ?, node_type = ?, prev_node = ?, story_text = ?,
+                  layers_json = ?, buffs_json = ?, sort_order = ?, period_name = ?
+            WHERE version = ? AND phase = ? AND node_id = ?`,
+          [name, nodeType, prevNode, storyText, layersJson, buffsJson, sortOrder, periodName, version, phase, nodeId],
+        )
+        summary.deductionNodes.updated += 1
+      } else {
+        await pool.execute(
+          `INSERT INTO deduction_node
+             (version, phase, node_id, node_name, node_type, prev_node, story_text, layers_json, buffs_json, sort_order, period_name)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [version, phase, nodeId, name, nodeType, prevNode, storyText, layersJson, buffsJson, sortOrder, periodName],
+        )
+        summary.deductionNodes.created += 1
+      }
     } catch (err) {
       summary.deductionNodes.errors.push({
         id: `${version}-${nodeId}`,

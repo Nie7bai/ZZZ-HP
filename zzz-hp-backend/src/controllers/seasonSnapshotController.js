@@ -7,7 +7,7 @@ import {
 
 function parseScheme(raw) {
   const value = String(raw || '').trim()
-  if (value === 'defense' || value === 'crisis') return value
+  if (value === 'defense' || value === 'crisis' || value === 'deduction') return value
   return null
 }
 
@@ -20,7 +20,7 @@ function parseVariant(raw) {
 export async function exportSeasonSnapshotHandler(req, res) {
   try {
     const scheme = parseScheme(req.query?.scheme)
-    if (!scheme) return fail(res, 'scheme 须为 crisis 或 defense', 400)
+    if (!scheme) return fail(res, 'scheme 须为 crisis / defense / deduction', 400)
     const data = await exportSeasonSnapshot(scheme, parseVariant(req.query?.variant))
     return success(res, data)
   } catch (err) {
@@ -37,7 +37,7 @@ export async function importSeasonSnapshotHandler(req, res) {
       payload = JSON.parse(text)
     }
     const summary = await importSeasonSnapshot(payload)
-    return success(res, summary, '危局 / 防卫战快照导入完成')
+    return success(res, summary, '危局 / 防卫战 / 临界推演快照导入完成')
   } catch (err) {
     const message = err instanceof SyntaxError ? 'JSON 解析失败' : err.message
     return fail(res, message || '导入失败', 400, { error: err.message })
