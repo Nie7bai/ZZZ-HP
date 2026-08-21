@@ -51,6 +51,8 @@ export interface AdminMonsterSlotContext {
   crisisBaseHp?: string | number | null
   hpCoeffPercent?: string | number | null
   hpCoeffManual?: boolean
+  /** 危局当期绑定的场地 Buff 套 id */
+  fieldBuffSetId?: string | null
 }
 
 export type DefenseMonsterCategory = 'minion' | 'elite' | 'boss'

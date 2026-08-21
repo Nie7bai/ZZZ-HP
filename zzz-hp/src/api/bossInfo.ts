@@ -1,5 +1,14 @@
 import { withAdminAuthHeaders } from '@/utils/adminAuth'
 
+export interface BossInfoFieldBuffSet {
+  id: string
+  label?: string | null
+  name: string
+  text?: string
+  image?: string | null
+  effectBlocks?: import('@/types/calculator').BuffEffectBlock[] | null
+}
+
 export interface BossInfoRecord {
   id: number
   boss_name: string
@@ -14,6 +23,7 @@ export interface BossInfoRecord {
   field_buff_text?: string | null
   field_buff_image?: string | null
   field_buff_effect_blocks?: import('@/types/calculator').BuffEffectBlock[] | null
+  field_buff_sets?: BossInfoFieldBuffSet[] | null
 }
 
 export interface BossInfoListResult {
@@ -91,4 +101,17 @@ export async function updateBossInfoRecord(
     body: JSON.stringify(payload),
   })
   return parseResponse<BossInfoRecord>(response)
+}
+
+export async function deleteBossInfoRecord(id: number) {
+  const response = await fetch(`/api/boss-info/${id}`, {
+    method: 'DELETE',
+    headers: withAdminAuthHeaders(),
+  })
+  return parseResponse<{
+    action: 'deleted'
+    id: number
+    boss_name: string
+    referenced_count: number
+  }>(response)
 }

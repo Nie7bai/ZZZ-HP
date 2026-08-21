@@ -96,7 +96,8 @@
 }
 
 .calculator-page.theme-light .team-slot-sticky .import-btn,
-.calculator-page.theme-light .scheme-lib-btn {
+.calculator-page.theme-light .scheme-lib-btn,
+.calculator-page.theme-light .scheme-clear-btn {
   border-color: #9fc4df !important;
   background: #f7fbfe !important;
   color: #1c3a52 !important;
@@ -105,7 +106,8 @@
 }
 
 .calculator-page.theme-light .team-slot-sticky .import-btn:hover,
-.calculator-page.theme-light .scheme-lib-btn:hover {
+.calculator-page.theme-light .scheme-lib-btn:hover,
+.calculator-page.theme-light .scheme-clear-btn:hover {
   border-color: #6ea8d0 !important;
   background: #e7f4fc !important;
   color: #16324a !important;
@@ -2385,6 +2387,37 @@ body:has(.calculator-page.theme-light) .preset-preview li,
   color: #667085 !important;
 }
 
+.calculator-page.theme-light .buff-open-btn {
+  border-color: #c9a55c !important;
+  background: #fff8eb !important;
+  color: #5c4818 !important;
+  box-shadow: none !important;
+  filter: none !important;
+}
+
+.calculator-page.theme-light .buff-open-btn:hover {
+  border-color: #b8944a !important;
+  background: #fff3d6 !important;
+  color: #3d2e0a !important;
+}
+
+.calculator-page.theme-light .combat-buff-section .buff-breakdown {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface-2) !important;
+}
+
+.calculator-page.theme-light .combat-buff-section .buff-breakdown summary {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .combat-buff-section .mods-summary li {
+  color: var(--calc-muted) !important;
+}
+
+.calculator-page.theme-light .combat-buff-section .mods-summary strong {
+  color: var(--calc-text) !important;
+}
+
 .calculator-page.theme-light .anomaly-support-panels,
 .calculator-page.theme-light .anomaly-slot-details {
   border-color: var(--calc-border) !important;
@@ -3175,6 +3208,22 @@ body:has(.calculator-page.theme-light) .preset-preview li,
 }
 [data-theme='light'] .flow-summary-counts {
   color: #667085 !important;
+}
+
+.calculator-page.theme-light .sf-toggle-btn,
+[data-theme='light'] .sf-toggle-btn {
+  border-color: #c9a55c !important;
+  background: #fff8eb !important;
+  color: #5c4818 !important;
+  box-shadow: none !important;
+  filter: none !important;
+}
+
+.calculator-page.theme-light .sf-toggle-btn:hover,
+[data-theme='light'] .sf-toggle-btn:hover {
+  border-color: #b8944a !important;
+  background: #fff3d6 !important;
+  color: #3d2e0a !important;
 }
 
 [data-theme='light'] .skill-flow-modal .modal-agent-row {

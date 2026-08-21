@@ -41,7 +41,9 @@ export interface EnemySlot {
   recordId?: number
   /** 危局房间码：1 / 2 / 3 / 4（困难） */
   room?: string
-  /** Boss 场地 Buff（挂 boss_info，与 Boss 名一一对应） */
+  /** 当期绑定的场地 Buff 套 id（管理端） */
+  fieldBuffSetId?: string | null
+  /** Boss 场地 Buff（API 已按当期绑定解析） */
   fieldBuff?: {
     name: string
     text?: string

@@ -71,6 +71,8 @@ const previewId = ref('')
 const weakness = ref('')
 const resistance = ref('')
 const staggerMultiplier = ref('1.5')
+const fieldBuffSetId = ref('')
+const fieldBuffSetOptions = ref<Array<{ id: string; label: string }>>([])
 const imageFile = ref<File | null>(null)
 const imagePickerRef = ref<InstanceType<typeof AdminImagePicker> | null>(null)
 const imagePreview = ref('')
@@ -163,6 +165,12 @@ function applyBossInfo(info: {
   boss_image: string | null
   crisis_base_hp?: number | null
   stagger_multiplier?: number | null
+  field_buff_sets?: Array<{
+    id: string
+    label?: string | null
+    name: string
+  }> | null
+  field_buff_name?: string | null
 }) {
   defense.value = String(info.defense ?? 0)
   level.value = String(info.level ?? 1)
@@ -182,6 +190,28 @@ function applyBossInfo(info: {
   imageFile.value = null
   imagePickerRef.value?.reset()
   syncAutoCoeff()
+  applyFieldBuffSetOptions(info.field_buff_sets, fieldBuffSetId.value)
+}
+
+function applyFieldBuffSetOptions(
+  sets: Array<{ id: string; label?: string | null; name: string }> | null | undefined,
+  preferredId?: string | null,
+) {
+  const list = Array.isArray(sets) ? sets : []
+  fieldBuffSetOptions.value = list.map((set) => ({
+    id: set.id,
+    label: set.label?.trim()
+      ? `${set.label.trim()} · ${set.name}`
+      : set.name || set.id,
+  }))
+  const preferred = String(preferredId ?? '').trim()
+  if (preferred && list.some((set) => set.id === preferred)) {
+    fieldBuffSetId.value = preferred
+    return
+  }
+  if (fieldBuffSetId.value && list.some((set) => set.id === fieldBuffSetId.value)) return
+  const fallback = list.find((set) => set.id === 'legacy') ?? list[0]
+  fieldBuffSetId.value = fallback?.id ?? ''
 }
 
 async function fetchBossInfoByName(name: string) {
@@ -189,6 +219,8 @@ async function fetchBossInfoByName(name: string) {
   if (!query) {
     lookupHint.value = ''
     nameSuggestions.value = []
+    fieldBuffSetOptions.value = []
+    fieldBuffSetId.value = ''
     return
   }
 
@@ -210,6 +242,8 @@ async function fetchBossInfoByName(name: string) {
       return
     }
 
+    fieldBuffSetOptions.value = []
+    fieldBuffSetId.value = ''
     lookupHint.value = '未找到已有 boss_info，提交时将新增基础信息'
   } catch (err) {
     lookupHint.value = err instanceof Error ? err.message : 'Boss 信息检索失败'
@@ -350,6 +384,7 @@ function applySlotContext(ctx: AdminMonsterSlotContext) {
   imagePickerRef.value?.reset()
   imageUrl.value = ''
   imagePreview.value = ''
+  fieldBuffSetId.value = ctx.fieldBuffSetId ?? ''
   if (ctx.bossImage) {
     const preview = resolveAssetUrl(ctx.bossImage) ?? ctx.bossImage
     imagePreview.value = preview
@@ -359,6 +394,9 @@ function applySlotContext(ctx: AdminMonsterSlotContext) {
   }
   updatePreviewId()
   syncAutoCoeff()
+  if (bossName.value.trim() && !isDefense.value && !isDeduction.value) {
+    void fetchBossInfoByName(bossName.value)
+  }
 }
 
 watch(
@@ -550,6 +588,10 @@ async function submitForm() {
           ? Number(hpCoeffPercent.value)
           : undefined,
       hp_coeff_manual: !isDefense.value && !isDeduction.value && hpCoeffManual.value,
+      field_buff_set_id:
+        !isDefense.value && !isDeduction.value && fieldText(fieldBuffSetId.value)
+          ? fieldText(fieldBuffSetId.value)
+          : null,
       ...defensePayload,
     })
 
@@ -581,6 +623,8 @@ async function submitForm() {
     weakness.value = ''
     resistance.value = ''
     staggerMultiplier.value = '1.5'
+    fieldBuffSetId.value = ''
+    fieldBuffSetOptions.value = []
     imageFile.value = null
     imagePickerRef.value?.reset()
     imagePreview.value = ''
@@ -810,6 +854,27 @@ watch(
       <label class="field">
         <span class="field-label">失衡易伤（乘数，1.5 = 150%）</span>
         <input v-model="staggerMultiplier" type="number" min="0" step="0.01" class="field-input" />
+      </label>
+
+      <label v-if="!isDefense && !isDeduction" class="field">
+        <span class="field-label">场地 Buff 套（本期绑定）</span>
+        <select
+          v-model="fieldBuffSetId"
+          class="field-input"
+          :disabled="!fieldBuffSetOptions.length"
+        >
+          <option value="">
+            {{ fieldBuffSetOptions.length ? '自动（默认 / 第一套）' : '请先在怪物库配置场地 Buff' }}
+          </option>
+          <option
+            v-for="opt in fieldBuffSetOptions"
+            :key="opt.id"
+            :value="opt.id"
+          >
+            {{ opt.label }}
+          </option>
+        </select>
+        <p class="field-hint">选项来自该 Boss 怪物库多套配置；详情与计算器只读本期绑定结果。</p>
       </label>
 
       <div class="field">

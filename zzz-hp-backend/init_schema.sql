@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS boss (
   resistance VARCHAR(255) DEFAULT NULL COMMENT '抗性',
   boss_image VARCHAR(500) DEFAULT NULL COMMENT 'Boss图片',
   stagger_multiplier DECIMAL(5,3) NULL COMMENT '失衡易伤区基础乘数；空则回退 boss_info',
+  field_buff_set_id VARCHAR(64) NULL COMMENT '危局当期绑定的场地 Buff 套 id（boss_info.field_buff_sets）',
   PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Boss表';
 
@@ -58,6 +59,7 @@ CREATE TABLE IF NOT EXISTS boss_info (
   field_buff_text TEXT NULL COMMENT 'Boss 场地 Buff 文本说明',
   field_buff_image VARCHAR(500) NULL COMMENT 'Boss 场地 Buff 图片',
   field_buff_effect_blocks JSON NULL COMMENT 'Boss 场地 Buff 结构化效果块',
+  field_buff_sets JSON NULL COMMENT '危局 Boss 场地 Buff 多套（id/name/text/image/effectBlocks）',
   PRIMARY KEY (id),
   UNIQUE KEY uk_boss_name (boss_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Boss基础信息表';

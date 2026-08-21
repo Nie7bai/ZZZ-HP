@@ -10,13 +10,42 @@ import { preferExistingImage } from '../utils/localImagePath.js'
 import {
   ensureEnvironmentBuffSchema,
   parseEffectBlocksJson,
-  serializeEffectBlocks,
+  parseFieldBuffSetsJson,
+  serializeFieldBuffSets,
+  mirrorFieldBuffLegacyColumns,
+  normalizeFieldBuffSet,
 } from '../utils/environmentBuffSchema.js'
 
 const BOSS_INFO_CATALOGS = new Set(['crisis', 'defense', 'deduction'])
 
 const BOSS_INFO_COLUMNS = `id, boss_name, defense, level, boss_image, weakness, resistance, crisis_base_hp, stagger_multiplier,
-  field_buff_name, field_buff_text, field_buff_image, field_buff_effect_blocks`
+  field_buff_name, field_buff_text, field_buff_image, field_buff_effect_blocks, field_buff_sets`
+
+function resolveIncomingFieldBuffSets(payload) {
+  if ('field_buff_sets' in payload) {
+    return parseFieldBuffSetsJson(payload.field_buff_sets)
+  }
+  // 仅传旧四列时合成一套，便于兼容旧管理端/导入
+  if (
+    'field_buff_name' in payload ||
+    'field_buff_text' in payload ||
+    'field_buff_image' in payload ||
+    'field_buff_effect_blocks' in payload
+  ) {
+    const one = normalizeFieldBuffSet(
+      {
+        id: 'legacy',
+        name: payload.field_buff_name,
+        text: payload.field_buff_text,
+        image: payload.field_buff_image,
+        effectBlocks: payload.field_buff_effect_blocks,
+      },
+      'legacy',
+    )
+    return one ? [one] : []
+  }
+  return null
+}
 
 function normalizeBossInfo(payload) {
   const crisisBaseHpRaw = payload.crisis_base_hp
@@ -35,6 +64,10 @@ function normalizeBossInfo(payload) {
     return text || null
   }
 
+  const setsOrNull = resolveIncomingFieldBuffSets(payload)
+  const sets = setsOrNull ?? []
+  const legacy = mirrorFieldBuffLegacyColumns(sets)
+
   return {
     boss_name: String(payload.boss_name ?? '').trim(),
     defense: Number(payload.defense ?? 0),
@@ -47,10 +80,12 @@ function normalizeBossInfo(payload) {
       payload.stagger_multiplier,
       DEFAULT_BOSS_STAGGER_MULTIPLIER,
     ),
-    field_buff_name: asText(payload.field_buff_name),
-    field_buff_text: asText(payload.field_buff_text),
-    field_buff_image: asText(payload.field_buff_image),
-    field_buff_effect_blocks: serializeEffectBlocks(payload.field_buff_effect_blocks),
+    field_buff_sets: serializeFieldBuffSets(sets),
+    field_buff_name: legacy.field_buff_name,
+    field_buff_text: legacy.field_buff_text,
+    field_buff_image: legacy.field_buff_image,
+    field_buff_effect_blocks: legacy.field_buff_effect_blocks,
+    _setsProvided: setsOrNull != null,
   }
 }
 
@@ -68,25 +103,57 @@ function bossInfoDiffers(existing, incoming) {
     existingBase !== incomingBase ||
     normalizeStaggerMultiplier(existing.stagger_multiplier) !==
       normalizeStaggerMultiplier(incoming.stagger_multiplier) ||
-    (existing.field_buff_name ?? '') !== (incoming.field_buff_name ?? '') ||
-    (existing.field_buff_text ?? '') !== (incoming.field_buff_text ?? '') ||
-    (existing.field_buff_image ?? '') !== (incoming.field_buff_image ?? '') ||
-    JSON.stringify(existing.field_buff_effect_blocks ?? null) !==
-      JSON.stringify(parseEffectBlocksJson(incoming.field_buff_effect_blocks))
+    JSON.stringify(existing.field_buff_sets ?? []) !==
+      JSON.stringify(parseFieldBuffSetsJson(incoming.field_buff_sets))
   )
 }
 
 function mapBossInfoRow(row) {
   if (!row) return null
+  let sets = parseFieldBuffSetsJson(row.field_buff_sets)
+  if (!sets.length) {
+    const legacy = normalizeFieldBuffSet(
+      {
+        id: 'legacy',
+        name: row.field_buff_name,
+        text: row.field_buff_text,
+        image: row.field_buff_image,
+        effectBlocks: parseEffectBlocksJson(row.field_buff_effect_blocks),
+      },
+      'legacy',
+    )
+    if (legacy) sets = [legacy]
+  }
+  const mirrored = mirrorFieldBuffLegacyColumns(sets)
   return {
     ...row,
     stagger_multiplier: normalizeStaggerMultiplier(row.stagger_multiplier),
     crisis_base_hp:
       row.crisis_base_hp == null ? getCrisisBaseHpByName(row.boss_name) : Number(row.crisis_base_hp),
-    field_buff_name: row.field_buff_name ?? null,
-    field_buff_text: row.field_buff_text ?? null,
-    field_buff_image: row.field_buff_image ?? null,
-    field_buff_effect_blocks: parseEffectBlocksJson(row.field_buff_effect_blocks),
+    field_buff_sets: sets,
+    field_buff_name: mirrored.field_buff_name,
+    field_buff_text: mirrored.field_buff_text,
+    field_buff_image: mirrored.field_buff_image,
+    field_buff_effect_blocks: parseEffectBlocksJson(mirrored.field_buff_effect_blocks),
+  }
+}
+
+function preferFieldBuffSetImages(nextSetsSerialized, existingSets) {
+  const next = parseFieldBuffSetsJson(nextSetsSerialized)
+  const prevById = new Map((existingSets || []).map((item) => [item.id, item]))
+  return next.map((set) => ({
+    ...set,
+    image: preferExistingImage(set.image, prevById.get(set.id)?.image ?? null),
+  }))
+}
+
+function mapBossInfoWriteResult(info) {
+  const sets = parseFieldBuffSetsJson(info.field_buff_sets)
+  return {
+    ...info,
+    field_buff_sets: sets,
+    field_buff_effect_blocks: parseEffectBlocksJson(info.field_buff_effect_blocks),
+    _setsProvided: undefined,
   }
 }
 
@@ -237,28 +304,32 @@ export async function updateBossInfoById(id, payload) {
     info.crisis_base_hp = Number(existing.crisis_base_hp)
   }
 
-  // 未传场地 Buff 字段时保留原值
-  if (!('field_buff_name' in payload) && existing.field_buff_name != null) {
-    info.field_buff_name = existing.field_buff_name
-  }
-  if (!('field_buff_text' in payload) && existing.field_buff_text != null) {
-    info.field_buff_text = existing.field_buff_text
-  }
-  if (!('field_buff_image' in payload) && existing.field_buff_image != null) {
-    info.field_buff_image = existing.field_buff_image
-  }
-  if (!('field_buff_effect_blocks' in payload) && existing.field_buff_effect_blocks != null) {
-    info.field_buff_effect_blocks = serializeEffectBlocks(existing.field_buff_effect_blocks)
+  // 未传场地 Buff（多套或旧四列）时保留原多套
+  if (!info._setsProvided) {
+    info.field_buff_sets = serializeFieldBuffSets(existing.field_buff_sets)
+    const legacy = mirrorFieldBuffLegacyColumns(existing.field_buff_sets)
+    info.field_buff_name = legacy.field_buff_name
+    info.field_buff_text = legacy.field_buff_text
+    info.field_buff_image = legacy.field_buff_image
+    info.field_buff_effect_blocks = legacy.field_buff_effect_blocks
+  } else {
+    const mergedSets = preferFieldBuffSetImages(info.field_buff_sets, existing.field_buff_sets)
+    info.field_buff_sets = serializeFieldBuffSets(mergedSets)
+    const legacy = mirrorFieldBuffLegacyColumns(mergedSets)
+    info.field_buff_name = legacy.field_buff_name
+    info.field_buff_text = legacy.field_buff_text
+    info.field_buff_image = legacy.field_buff_image
+    info.field_buff_effect_blocks = legacy.field_buff_effect_blocks
   }
 
   info.boss_image = preferExistingImage(info.boss_image, existing.boss_image)
-  info.field_buff_image = preferExistingImage(info.field_buff_image, existing.field_buff_image)
 
   await pool.execute(
     `UPDATE boss_info
      SET boss_name = ?, defense = ?, level = ?, boss_image = ?, weakness = ?, resistance = ?,
          crisis_base_hp = ?, stagger_multiplier = ?,
-         field_buff_name = ?, field_buff_text = ?, field_buff_image = ?, field_buff_effect_blocks = ?
+         field_buff_name = ?, field_buff_text = ?, field_buff_image = ?, field_buff_effect_blocks = ?,
+         field_buff_sets = ?
      WHERE id = ?`,
     [
       info.boss_name,
@@ -273,6 +344,7 @@ export async function updateBossInfoById(id, payload) {
       info.field_buff_text,
       info.field_buff_image,
       info.field_buff_effect_blocks,
+      info.field_buff_sets,
       bossId,
     ],
   )
@@ -280,8 +352,7 @@ export async function updateBossInfoById(id, payload) {
   return {
     action: 'updated',
     id: bossId,
-    ...info,
-    field_buff_effect_blocks: parseEffectBlocksJson(info.field_buff_effect_blocks),
+    ...mapBossInfoWriteResult(info),
   }
 }
 
@@ -299,9 +370,9 @@ export async function upsertBossInfo(payload) {
     const [result] = await pool.execute(
       `INSERT INTO boss_info (
          boss_name, defense, level, boss_image, weakness, resistance, crisis_base_hp, stagger_multiplier,
-         field_buff_name, field_buff_text, field_buff_image, field_buff_effect_blocks
+         field_buff_name, field_buff_text, field_buff_image, field_buff_effect_blocks, field_buff_sets
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         info.boss_name,
         info.defense,
@@ -315,14 +386,14 @@ export async function upsertBossInfo(payload) {
         info.field_buff_text,
         info.field_buff_image,
         info.field_buff_effect_blocks,
+        info.field_buff_sets,
       ],
     )
 
     return {
       action: 'created',
       id: result.insertId,
-      ...info,
-      field_buff_effect_blocks: parseEffectBlocksJson(info.field_buff_effect_blocks),
+      ...mapBossInfoWriteResult(info),
     }
   }
 
@@ -331,30 +402,45 @@ export async function upsertBossInfo(payload) {
     info.crisis_base_hp = Number(existing.crisis_base_hp)
   }
 
-  // 期数同步 upsert 通常不带场地 Buff：保留已有场地 Buff
-  if (!('field_buff_name' in payload)) {
-    info.field_buff_name = existing.field_buff_name
-    info.field_buff_text = existing.field_buff_text
-    info.field_buff_image = existing.field_buff_image
-    info.field_buff_effect_blocks = serializeEffectBlocks(existing.field_buff_effect_blocks)
+  // 期数同步 upsert 通常不带场地 Buff：保留已有多套
+  if (!info._setsProvided) {
+    info.field_buff_sets = serializeFieldBuffSets(existing.field_buff_sets)
+    const legacy = mirrorFieldBuffLegacyColumns(existing.field_buff_sets)
+    info.field_buff_name = legacy.field_buff_name
+    info.field_buff_text = legacy.field_buff_text
+    info.field_buff_image = legacy.field_buff_image
+    info.field_buff_effect_blocks = legacy.field_buff_effect_blocks
+  } else {
+    const mergedSets = preferFieldBuffSetImages(info.field_buff_sets, existing.field_buff_sets)
+    info.field_buff_sets = serializeFieldBuffSets(mergedSets)
+    const legacy = mirrorFieldBuffLegacyColumns(mergedSets)
+    info.field_buff_name = legacy.field_buff_name
+    info.field_buff_text = legacy.field_buff_text
+    info.field_buff_image = legacy.field_buff_image
+    info.field_buff_effect_blocks = legacy.field_buff_effect_blocks
   }
 
   // JSON 导入只带路径不带文件：缺文件时保留已有图，避免再次裂图
   info.boss_image = preferExistingImage(info.boss_image, existing.boss_image)
-  info.field_buff_image = preferExistingImage(info.field_buff_image, existing.field_buff_image)
 
   if (!bossInfoDiffers(existing, info)) {
     return {
       action: 'unchanged',
       id: existing.id,
-      ...mapBossInfoRow({ ...existing, ...info, field_buff_effect_blocks: info.field_buff_effect_blocks }),
+      ...mapBossInfoRow({
+        ...existing,
+        ...info,
+        field_buff_sets: info.field_buff_sets,
+        field_buff_effect_blocks: info.field_buff_effect_blocks,
+      }),
     }
   }
 
   await pool.execute(
     `UPDATE boss_info
      SET defense = ?, level = ?, boss_image = ?, weakness = ?, resistance = ?, crisis_base_hp = ?, stagger_multiplier = ?,
-         field_buff_name = ?, field_buff_text = ?, field_buff_image = ?, field_buff_effect_blocks = ?
+         field_buff_name = ?, field_buff_text = ?, field_buff_image = ?, field_buff_effect_blocks = ?,
+         field_buff_sets = ?
      WHERE id = ?`,
     [
       info.defense,
@@ -368,6 +454,7 @@ export async function upsertBossInfo(payload) {
       info.field_buff_text,
       info.field_buff_image,
       info.field_buff_effect_blocks,
+      info.field_buff_sets,
       existing.id,
     ],
   )
@@ -375,7 +462,40 @@ export async function upsertBossInfo(payload) {
   return {
     action: 'updated',
     id: existing.id,
-    ...info,
-    field_buff_effect_blocks: parseEffectBlocksJson(info.field_buff_effect_blocks),
+    ...mapBossInfoWriteResult(info),
+  }
+}
+
+export async function deleteBossInfoById(id) {
+  await ensureBossStaggerSchema()
+  await ensureEnvironmentBuffSchema()
+  const bossId = Number(id)
+  if (!Number.isInteger(bossId) || bossId <= 0) {
+    throw new Error('无效的 boss_info ID')
+  }
+
+  const [existingRows] = await pool.execute(
+    `SELECT ${BOSS_INFO_COLUMNS}
+     FROM boss_info WHERE id = ? LIMIT 1`,
+    [bossId],
+  )
+  const existing = mapBossInfoRow(existingRows[0])
+  if (!existing) {
+    throw new Error('boss_info 不存在')
+  }
+
+  const [refRows] = await pool.execute(
+    `SELECT COUNT(*) AS c FROM boss WHERE boss_name = ?`,
+    [existing.boss_name],
+  )
+  const referencedCount = Number(refRows[0]?.c ?? 0)
+
+  await pool.execute(`DELETE FROM boss_info WHERE id = ?`, [bossId])
+
+  return {
+    action: 'deleted',
+    id: bossId,
+    boss_name: existing.boss_name,
+    referenced_count: referencedCount,
   }
 }

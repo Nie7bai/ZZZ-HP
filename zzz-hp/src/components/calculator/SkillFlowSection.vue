@@ -1061,7 +1061,7 @@ defineExpose({ expand })
       <span class="flow-summary-counts">
         {{ currentTeamSlotLabel }} · 已准备 {{ currentSlot.prepared.length }} 条 · 流程 {{ currentSlot.flow.length }} 项
       </span>
-      <button type="button" class="primary-btn" @click="expanded = !expanded">
+      <button type="button" class="sf-toggle-btn" @click="expanded = !expanded">
         {{ expanded ? '收起' : '展开' }}
       </button>
     </div>
@@ -1612,8 +1612,31 @@ defineExpose({ expand })
   color: #9aa3b0;
   font-size: 0.85rem;
 }
-.primary-btn {
+.sf-toggle-btn {
   margin-left: auto;
+  appearance: none;
+  border: 1px solid #c9a55c;
+  background: #2c2410;
+  color: #f0d7a2;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.82rem;
+  line-height: 1.2;
+  padding: 0.4rem 0.95rem;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: none;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+.sf-toggle-btn:hover {
+  border-color: #dfc07a;
+  background: #3a3018;
+  color: #f7e7c0;
+}
+.primary-btn {
   border: 1px solid #c9a55c;
   background: linear-gradient(180deg, #d8b56a, #b88d3a);
   color: #1a1407;

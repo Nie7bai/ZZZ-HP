@@ -15,6 +15,9 @@ import {
 } from './seasonContentTrashService.js'
 import {
   ensureEnvironmentBuffSchema,
+  parseFieldBuffSetsJson,
+  resolveFieldBuffFromSets,
+  normalizeFieldBuffSet,
   parseEffectBlocksJson,
 } from '../utils/environmentBuffSchema.js'
 import { ensureContentModeColumns } from './contentModeService.js'
@@ -84,7 +87,7 @@ function formatDateValue(value) {
   return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`
 }
 
-function enrichBoss(boss, baseHpByName, fieldBuffByName = new Map()) {
+function enrichBoss(boss, baseHpByName, fieldBuffSetsByName = new Map()) {
   const baseHp =
     baseHpByName.get(boss.boss_name) ??
     getCrisisBaseHpByName(boss.boss_name)
@@ -96,7 +99,17 @@ function enrichBoss(boss, baseHpByName, fieldBuffByName = new Map()) {
   const defense = Number(boss.defense)
   const hp = Number(boss.hp)
   const hpConverted = roundConvertedHp(convertHpToDefense953(hp, defense))
-  const fieldBuff = fieldBuffByName.get(boss.boss_name) ?? null
+  const sets = fieldBuffSetsByName.get(boss.boss_name) ?? []
+  const resolvedBuff = resolveFieldBuffFromSets(sets, boss.field_buff_set_id)
+  const fieldBuff = resolvedBuff
+    ? {
+        name: resolvedBuff.name,
+        text: resolvedBuff.text ?? '',
+        image: resolvedBuff.image ?? null,
+        effectBlocks: resolvedBuff.effectBlocks ?? null,
+        set_id: String(boss.field_buff_set_id ?? '').trim() || null,
+      }
+    : null
   return {
     id: boss.id,
     boss_name: boss.boss_name,
@@ -113,6 +126,7 @@ function enrichBoss(boss, baseHpByName, fieldBuffByName = new Map()) {
     hp_coeff_manual: resolved.manual,
     hp_coeff_label: formatCrisisHpCoeffPercent(resolved.percent),
     is_hard_room: isCrisisHardRoom(boss.room),
+    field_buff_set_id: String(boss.field_buff_set_id ?? '').trim() || null,
     field_buff: fieldBuff,
   }
 }
@@ -145,21 +159,26 @@ async function loadBossFieldBuffMap() {
   const map = new Map()
   try {
     const [rows] = await pool.execute(
-      `SELECT boss_name, field_buff_name, field_buff_text, field_buff_image, field_buff_effect_blocks
-       FROM boss_info
-       WHERE (field_buff_name IS NOT NULL AND field_buff_name <> '')
-          OR field_buff_effect_blocks IS NOT NULL`,
+      `SELECT boss_name, field_buff_name, field_buff_text, field_buff_image, field_buff_effect_blocks, field_buff_sets
+       FROM boss_info`,
     )
     for (const row of rows) {
-      const effectBlocks = parseEffectBlocksJson(row.field_buff_effect_blocks)
-      const name = String(row.field_buff_name ?? '').trim() || String(row.boss_name ?? '').trim()
-      if (!name && !(Array.isArray(effectBlocks) && effectBlocks.length)) continue
-      map.set(row.boss_name, {
-        name,
-        text: row.field_buff_text ?? '',
-        image: row.field_buff_image ?? null,
-        effectBlocks,
-      })
+      let sets = parseFieldBuffSetsJson(row.field_buff_sets)
+      if (!sets.length) {
+        const legacy = normalizeFieldBuffSet(
+          {
+            id: 'legacy',
+            name: row.field_buff_name,
+            text: row.field_buff_text,
+            image: row.field_buff_image,
+            effectBlocks: parseEffectBlocksJson(row.field_buff_effect_blocks),
+          },
+          'legacy',
+        )
+        if (legacy) sets = [legacy]
+      }
+      if (!sets.length) continue
+      map.set(row.boss_name, sets)
     }
   } catch (err) {
     console.warn('[crisis] loadBossFieldBuffMap fallback:', err.message)

@@ -372,20 +372,51 @@ const envBuffFilterHint = computed(() => {
 
 async function loadEnvironmentBuffCatalogs() {
   envBuffLoadError.value = ''
-  try {
-    const [crisis, defenseNew, defenseOld] = await Promise.all([
-      fetchCrisisAssaultPhases(),
-      fetchDefenseSeasons('new'),
-      fetchDefenseSeasons('old'),
-    ])
-    crisisPhases.value = crisis
-    defenseSeasons.value = [...defenseNew, ...defenseOld]
-    if (envBuffMode.value !== 'none' && !envBuffPhaseId.value) {
-      envBuffPhaseId.value = pickLatestEnvPhaseId(envBuffMode.value)
-      if (envBuffMode.value === 'defense') applyDefaultDefenseFrontier()
-    }
-  } catch (err) {
-    envBuffLoadError.value = err instanceof Error ? err.message : '场地 Buff 数据加载失败'
+  const errors: string[] = []
+
+  const crisisResult = await Promise.allSettled([fetchCrisisAssaultPhases()])
+  if (crisisResult[0]?.status === 'fulfilled') {
+    crisisPhases.value = crisisResult[0].value
+  } else {
+    crisisPhases.value = []
+    const reason = crisisResult[0]?.reason
+    errors.push(
+      `危局：${reason instanceof Error ? reason.message : '加载失败'}`,
+    )
+  }
+
+  const defenseResult = await Promise.allSettled([
+    fetchDefenseSeasons('new'),
+    fetchDefenseSeasons('old'),
+  ])
+  const defenseLoaded: import('@/types/defense').DefenseSeason[] = []
+  if (defenseResult[0]?.status === 'fulfilled') {
+    defenseLoaded.push(...defenseResult[0].value)
+  } else {
+    const reason = defenseResult[0]?.reason
+    errors.push(
+      `防卫(新)：${reason instanceof Error ? reason.message : '加载失败'}`,
+    )
+  }
+  if (defenseResult[1]?.status === 'fulfilled') {
+    defenseLoaded.push(...defenseResult[1].value)
+  } else {
+    const reason = defenseResult[1]?.reason
+    errors.push(
+      `防卫(旧)：${reason instanceof Error ? reason.message : '加载失败'}`,
+    )
+  }
+  defenseSeasons.value = defenseLoaded
+
+  if (errors.length && !crisisPhases.value.length && !defenseSeasons.value.length) {
+    envBuffLoadError.value = errors.join('；')
+  } else if (errors.length) {
+    envBuffLoadError.value = `部分数据加载失败：${errors.join('；')}`
+  }
+
+  if (envBuffMode.value !== 'none' && !envBuffPhaseId.value) {
+    envBuffPhaseId.value = pickLatestEnvPhaseId(envBuffMode.value)
+    if (envBuffMode.value === 'defense') applyDefaultDefenseFrontier()
   }
 }
 
@@ -411,6 +442,18 @@ watch(defenseFrontierOptions, (options) => {
   if (!options.some((opt) => opt.id === envBuffFrontierId.value)) {
     envBuffFrontierId.value = options[0]?.id ?? ''
   }
+})
+
+watch(buffPickerOpen, (open) => {
+  if (!open) return
+  if (crisisPhases.value.length || defenseSeasons.value.length) {
+    if (envBuffMode.value !== 'none' && !envBuffPhaseId.value) {
+      envBuffPhaseId.value = pickLatestEnvPhaseId(envBuffMode.value)
+      if (envBuffMode.value === 'defense') applyDefaultDefenseFrontier()
+    }
+    return
+  }
+  void loadEnvironmentBuffCatalogs()
 })
 
 function onPageHide() {
@@ -1489,6 +1532,10 @@ function openSchemeLibrary() {
   historySectionRef.value?.openModal()
 }
 
+function clearCurrentScheme() {
+  historySectionRef.value?.clearLoadedScheme()
+}
+
 function onClearLoadedScheme() {
   resetPageSchemeConfig()
 }
@@ -1556,6 +1603,14 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       />
       <div class="scheme-lib-actions">
         <button type="button" class="scheme-lib-btn" @click="openSchemeLibrary">方案库</button>
+        <button
+          type="button"
+          class="scheme-clear-btn"
+          title="清空当前页面配置，不删除方案库里的存档"
+          @click="clearCurrentScheme"
+        >
+          清空当前配置
+        </button>
       </div>
     </div>
     <UnifiedPresetPicker
@@ -1874,12 +1929,13 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
   border-left: 1px solid rgba(201, 165, 92, 0.22);
 }
 
-.scheme-lib-btn {
+.scheme-lib-btn,
+.scheme-clear-btn {
   appearance: none;
   border-radius: 8px;
   font: inherit;
   font-weight: 600;
-  line-height: 1.25;
+  line-height: 1.2;
   cursor: pointer;
   white-space: nowrap;
   box-shadow: none;
@@ -1887,17 +1943,18 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
     background 0.12s ease,
     border-color 0.12s ease,
     color 0.12s ease;
-  border: 1px solid #4a5363;
-  background: #222833;
-  color: #e8edf5;
   padding: 0.38rem 0.8rem;
   font-size: 0.78rem;
+  border: 1px solid #343a44;
+  background: #12161d;
+  color: #d5dae4;
 }
 
-.scheme-lib-btn:hover {
-  border-color: rgba(201, 165, 92, 0.55);
-  background: #2a3140;
-  color: #f3e6c4;
+.scheme-lib-btn:hover,
+.scheme-clear-btn:hover {
+  border-color: #c9a55c;
+  color: #f0d7a2;
+  background: #161b24;
 }
 
 .skill-flow-anchor {

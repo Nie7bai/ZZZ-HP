@@ -281,7 +281,7 @@ function formatSigned(value: number) {
   return formatCalcSigned(value)
 }
 
-/** 参考站效果行：招式前缀 + 属性名 + 数值 */
+/** 参考站效果行：招式前缀 + 属性名 + 数值；非全局作用情况标在行首 */
 function effectResultText(item: CollectedEffect) {
   let amountText = ''
   if (item.effect.kind === 'stacked' || item.effect.stackable) {
@@ -293,10 +293,19 @@ function effectResultText(item: CollectedEffect) {
   } else {
     amountText = formatSigned(Number(item.effect.value) || 0)
   }
-  return formatBuffEffectResultText(item.effect, amountText, {
+  const body = formatBuffEffectResultText(item.effect, amountText, {
     statLabelFn: (stat) => statLabel(stat),
     skillSubcategories: props.skillSubcategories,
   })
+  const situation = situationLabel(item)
+  return situation === '全局' ? body : `[${situation}] ${body}`
+}
+
+function cardSituationLabels(card: BuffCardGroup) {
+  const labels = [
+    ...new Set(card.items.map((item) => situationLabel(item)).filter((label) => label !== '全局')),
+  ]
+  return labels
 }
 
 function isStackable(item: CollectedEffect) {
@@ -384,13 +393,12 @@ const filtered = computed(() => {
   })
 })
 
-/** 按来源块分组，一张卡多条效果（对齐参考站） */
+/** 按来源块分组，一张卡多条效果（对齐参考站；块内不同作用情况不拆卡） */
 const filteredCards = computed(() => {
   const map = new Map<string, BuffCardGroup>()
   for (const item of filtered.value) {
     const blockName = blockNameText(item)
-    const situation = situationLabel(item)
-    const key = `${item.sourceKey}::${item.blockId}::${blockName}::${situation}`
+    const key = `${item.sourceKey}::${item.blockId}::${blockName}`
     let card = map.get(key)
     if (!card) {
       card = {
@@ -616,10 +624,11 @@ function close() {
                 {{ statLabel(stat) }}
               </span>
               <span
-                v-if="situationLabel(card.items[0]!) !== '全局'"
+                v-for="label in cardSituationLabels(card)"
+                :key="label"
                 class="chip muted"
               >
-                {{ situationLabel(card.items[0]!) }}
+                {{ label }}
               </span>
             </div>
           </article>
