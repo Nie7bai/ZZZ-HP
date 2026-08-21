@@ -17,7 +17,7 @@ import {
   type AdminPickBoss,
   type AdminPickBuff,
 } from '@/api/deductionAdmin'
-import { deductionNodeTypeLabel, isDeductionBattleNode } from '@/api/deduction'
+import { deductionNodeTypeLabel, isDeductionBattleNode, isDeductionStoryNode } from '@/api/deduction'
 
 const NODE_TYPES = [
   { value: 1, label: '剧情' },
@@ -422,7 +422,8 @@ onMounted(() => {
               </option>
             </select>
           </div>
-          <div class="ad-field">
+          <!-- 剧情文本（仅剧情类节点：开场 / 剧情 / 剧情变体） -->
+          <div v-if="isDeductionStoryNode(draft.type)" class="ad-field">
             <label class="ad-label">剧情文本</label>
             <textarea v-model="draft.storyText" class="ad-textarea" rows="4"></textarea>
           </div>
