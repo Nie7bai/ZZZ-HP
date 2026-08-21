@@ -15,13 +15,13 @@
   --calc-input-bg: #ffffff;
 }
 
-/* 顶栏：淡蓝底，与下方纸面区分开一层层级 */
+/* 顶栏：淡蓝实心底，堵住槽位条/编辑条/方案库按钮之间的缝（不要写 background-image:none，会把渐变也清掉） */
 .calculator-page.theme-light .team-slot-sticky {
   border: none !important;
   border-bottom: 1px solid #8eb9d8 !important;
   border-radius: 0 !important;
-  background: linear-gradient(180deg, #e3f2fb 0%, #d5eaf8 100%) !important;
-  background-image: none !important;
+  background-color: #d5eaf8 !important;
+  background-image: linear-gradient(180deg, #e3f2fb 0%, #d5eaf8 100%) !important;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.55) inset,
     0 6px 14px rgba(90, 140, 180, 0.14) !important;
@@ -111,8 +111,7 @@
   color: #16324a !important;
 }
 
-.calculator-page.theme-light .team-slot-sticky .clear-btn,
-.calculator-page.theme-light .scheme-clear-btn {
+.calculator-page.theme-light .team-slot-sticky .clear-btn {
   border-color: #b7d3e8 !important;
   background: transparent !important;
   color: #4d6a80 !important;
@@ -120,8 +119,7 @@
   filter: none !important;
 }
 
-.calculator-page.theme-light .team-slot-sticky .clear-btn:hover,
-.calculator-page.theme-light .scheme-clear-btn:hover {
+.calculator-page.theme-light .team-slot-sticky .clear-btn:hover {
   border-color: #8eb9d8 !important;
   background: color-mix(in srgb, #f7fbfe 70%, transparent) !important;
   color: #16324a !important;
@@ -724,7 +722,6 @@
   color: #475467 !important;
 }
 
-.calculator-page.theme-light .history-summary-hint,
 .calculator-page.theme-light .history-summary-status {
   color: #667085 !important;
 }
@@ -1453,7 +1450,7 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear:hover 
   color: #1c212a !important;
 }
 
-/* Teleport 到 body 的「取消当前方案」也要亮色（不能只靠 .calculator-page 后代） */
+/* Teleport 到 body 的「清空当前配置」确认框也要亮色（不能只靠 .calculator-page 后代） */
 [data-theme='light'] .loaded-clear,
 body:has(.calculator-page.theme-light) .loaded-clear {
   border-color: #d5dae3 !important;

@@ -235,7 +235,7 @@ const props = defineProps<{
   staggerPhase?: import('@/types/calculator').StaggerPhase
   /** 流程展开后的结算列表，来自 resolveFlow */
   hits?: ResolvedHit[]
-  /** 招式库 / 准备招式的单次预览，不计入流程总伤 */
+  /** 准备招式的单次预览，不计入流程总伤 */
   previewHits?: ResolvedHit[]
   /** 为 true 时跳过伤害事件汇总等非必要重算（如最优词条模式） */
   calcSuspended?: boolean
@@ -1633,6 +1633,7 @@ type HitLineStore = {
 }
 
 const damageEventLineStore = reactive<HitLineStore>({ signatureById: {}, lineById: {} })
+const previewHitLineStore = reactive<HitLineStore>({ signatureById: {}, lineById: {} })
 
 const hitCalcGlobalSignature = computed(() =>
   JSON.stringify({
@@ -1733,9 +1734,13 @@ function emitHitMaps() {
   if (props.calcSuspended || !damageCalcEnabled.value) return
   const map: Record<string, number> = {}
   const results: Record<string, DamageCalcResult> = {}
-  // 仅流程 hit 算伤；准备招式 / 招式库预览不算、不写入
+  // 流程 hit 计入总伤；准备招式只发单次预览，不进伤害结果汇总
   for (const line of damageEventSummary.value?.lines ?? []) {
     map[line.hit.id] = line.total
+    results[line.hit.id] = line.result
+  }
+  for (const line of Object.values(previewHitLineStore.lineById)) {
+    map[line.hit.id] = line.perHit
     results[line.hit.id] = line.result
   }
   emit('update:hitDamages', map)
@@ -1751,11 +1756,12 @@ let wasHitCalcInactive = props.calcSuspended || !damageCalcEnabled.value
 watch(
   [
     () => props.hits,
+    () => props.previewHits,
     hitCalcGlobalSignature,
     () => props.calcSuspended,
     () => damageCalcEnabled.value,
   ],
-  ([, globalSignature]) => {
+  ([, , globalSignature]) => {
     const inactive = props.calcSuspended || !damageCalcEnabled.value
     // 挂起期间也要记下「全局已变」，恢复后必须 forceAll
     if (globalSignature !== lastSyncedHitGlobalSignature) pendingHitForceAll = true
@@ -1797,6 +1803,17 @@ watch(
           )
         : { lines: [], grandTotal: 0 }
       if (!hits?.length) clearHitLineStore(damageEventLineStore)
+      const previewHits = props.previewHits
+      if (previewHits?.length) {
+        syncHitSummary(
+          previewHits,
+          previewHitLineStore,
+          (hit) => props.agents.find((item) => item.id === hit.ownerAgentId)?.name,
+          { forceAll, globalSignature: currentSignature, usePerHit: true },
+        )
+      } else {
+        clearHitLineStore(previewHitLineStore)
+      }
       emitHitMaps()
     }, HIT_RESULT_DEBOUNCE_MS)
   },

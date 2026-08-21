@@ -187,10 +187,6 @@ const previewHits = computed(() =>
     slots: schemeSlots.value,
     teamSlots,
     findSkill: (id) => calculatorBuffStore.findSkill(id),
-    skillsForAgent: (agentId) => {
-      const agent = agents.value.find((item) => item.id === agentId)
-      return calculatorBuffStore.skillsForAgent(agentId, agent?.element)
-    },
     skillSubcategories: skillSubcategories.value,
   }),
 )
@@ -1409,14 +1405,30 @@ function blankTeamSlots(): TeamSlot[] {
   ]
 }
 
-function onSchemeImported(loadedId: string) {
-  calculatorBuffStore.reloadCustomSkillsFromStorage()
-  historyEntries.value = listAllDamageCalcHistory()
-  const entry = loadedId ? findDamageCalcHistory(loadedId) : null
-  if (entry) {
-    loadHistoryEntry(entry)
-    return
+function defaultEnemyInput(): DamageEnemyInput {
+  return normalizeDamageEnemyInput({
+    defense: 953,
+    vulnerableMultiplier: 1,
+    staggerMultiplier: DEFAULT_ENEMY_STAGGER_MULTIPLIER,
+    specialMultiplier: 1,
+    level: 60,
+  })
+}
+
+/** 方案边界内的空白页：队伍/面板/额外 Buff/准备流程/敌方。不含方案库、自建招式、流程伤害记录、危局筛选、公式开关。 */
+function emptySchemePanelState(): DamageCalcSchemePanelSnapshot {
+  return {
+    externalPanel: resetSchemeExcludedPanelFields(createDefaultExternalPanel()),
+    affixCounts: createEmptyAffixCounts(),
+    affixDriveDiscMainStats: createDefaultAffixDriveDiscMainStats(),
+    affixStateByAgent: {},
+    extraMods: createEmptyBuffStatModifiers(),
+    extraGains: [],
+    enemyInput: defaultEnemyInput(),
   }
+}
+
+function resetPageSchemeConfig() {
   applyWorkingState({
     teamSlots: blankTeamSlots(),
     activeSlot: 0,
@@ -1428,10 +1440,24 @@ function onSchemeImported(loadedId: string) {
     slots: ensureSchemeSlots([], 3),
     staggerPhase: 'stagger',
     multiSlotBuffSelection: createEmptyMultiSlotBuffSelection(),
+    panelState: emptySchemePanelState(),
+    preserveBaseDamageSource: true,
   })
+  extraGains.value = []
+  enemyInput.value = defaultEnemyInput()
   activeHistoryId.value = ''
   setLoadedSchemeId('')
-  persistWorkingDraftNow(true)
+}
+
+function onSchemeImported(loadedId: string) {
+  calculatorBuffStore.reloadCustomSkillsFromStorage()
+  historyEntries.value = listAllDamageCalcHistory()
+  const entry = loadedId ? findDamageCalcHistory(loadedId) : null
+  if (entry) {
+    loadHistoryEntry(entry)
+    return
+  }
+  resetPageSchemeConfig()
 }
 
 watch(
@@ -1463,14 +1489,8 @@ function openSchemeLibrary() {
   historySectionRef.value?.openModal()
 }
 
-function clearCurrentScheme() {
-  historySectionRef.value?.clearLoadedScheme()
-}
-
 function onClearLoadedScheme() {
-  activeHistoryId.value = ''
-  setLoadedSchemeId('')
-  persistWorkingDraftNow(true)
+  resetPageSchemeConfig()
 }
 
 async function scrollToSection(sectionId: DamageCalcSectionId) {
@@ -1536,15 +1556,6 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       />
       <div class="scheme-lib-actions">
         <button type="button" class="scheme-lib-btn" @click="openSchemeLibrary">方案库</button>
-        <button
-          v-if="activeHistoryId"
-          type="button"
-          class="scheme-clear-btn"
-          title="取消当前已加载方案绑定，不删除方案库条目"
-          @click="clearCurrentScheme"
-        >
-          取消当前方案
-        </button>
       </div>
     </div>
     <UnifiedPresetPicker
@@ -1863,8 +1874,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
   border-left: 1px solid rgba(201, 165, 92, 0.22);
 }
 
-.scheme-lib-btn,
-.scheme-clear-btn {
+.scheme-lib-btn {
   appearance: none;
   border-radius: 8px;
   font: inherit;
@@ -1877,9 +1887,6 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
     background 0.12s ease,
     border-color 0.12s ease,
     color 0.12s ease;
-}
-
-.scheme-lib-btn {
   border: 1px solid #4a5363;
   background: #222833;
   color: #e8edf5;
@@ -1891,20 +1898,6 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
   border-color: rgba(201, 165, 92, 0.55);
   background: #2a3140;
   color: #f3e6c4;
-}
-
-.scheme-clear-btn {
-  border: 1px solid #4a5363;
-  background: transparent;
-  color: #b0b8c8;
-  padding: 0.38rem 0.8rem;
-  font-size: 0.78rem;
-}
-
-.scheme-clear-btn:hover {
-  border-color: #6a7385;
-  background: rgba(255, 255, 255, 0.04);
-  color: #e0e5ef;
 }
 
 .skill-flow-anchor {
