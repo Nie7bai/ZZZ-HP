@@ -1,4 +1,11 @@
 import pool from '../config/db.js'
+import {
+  ensureEnvironmentBuffSchema,
+  normalizeFieldBuffSet,
+  parseEffectBlocksJson,
+  parseFieldBuffSetsJson,
+  resolveFieldBuffFromSets,
+} from '../utils/environmentBuffSchema.js'
 
 let schemaEnsured = false
 
@@ -51,6 +58,44 @@ function mapNode(row) {
   }
 }
 
+/** 怪物名 → boss_info 场地 Buff 套（与危局同源：危局 Boss 的场地逻辑在推演终局同样生效） */
+async function loadFieldBuffMap() {
+  await ensureEnvironmentBuffSchema()
+  const map = new Map()
+  try {
+    const [rows] = await pool.execute(
+      `SELECT boss_name, field_buff_name, field_buff_text, field_buff_image, field_buff_effect_blocks, field_buff_sets
+       FROM boss_info`,
+    )
+    for (const row of rows) {
+      let sets = parseFieldBuffSetsJson(row.field_buff_sets)
+      if (!sets.length) {
+        const legacy = normalizeFieldBuffSet(
+          {
+            id: 'legacy',
+            name: row.field_buff_name,
+            text: row.field_buff_text,
+            image: row.field_buff_image,
+            effectBlocks: parseEffectBlocksJson(row.field_buff_effect_blocks),
+          },
+          'legacy',
+        )
+        if (legacy) sets = [legacy]
+      }
+      if (!sets.length) continue
+      // 名字规范化：去「」/空格，兼容推演数据与怪物库的符号差异（如 太初梦魇·「始主」）
+      map.set(normalizeBossName(row.boss_name), sets)
+    }
+  } catch (err) {
+    console.warn('[deduction] loadFieldBuffMap fallback:', err.message)
+  }
+  return map
+}
+
+function normalizeBossName(name) {
+  return String(name ?? '').replace(/[「」\s]/g, '')
+}
+
 export async function getDeductionPhases() {
   await ensureDeductionSchema()
   const [rows] = await pool.execute(
@@ -83,6 +128,7 @@ export async function getDeductionPhases() {
   }
 
   const periodMap = new Map()
+  const fieldBuffMap = await loadFieldBuffMap()
   for (const row of rows) {
     const key = String(row.version)
     if (!periodMap.has(key)) {
@@ -98,6 +144,31 @@ export async function getDeductionPhases() {
     for (const layer of node.layers) {
       for (const monster of layer.monsters) {
         monster.boss_image = imageMap.get(`${key}::${monster.name}`) ?? null
+      }
+      // 区域增益：层内首个命中 boss_info 场地 Buff 的怪物（与危局同款解析）
+      if (!layer.fieldBuff) {
+        for (const monster of layer.monsters) {
+          const sets = fieldBuffMap.get(normalizeBossName(monster.name))
+          if (!sets?.length) continue
+          const resolved = resolveFieldBuffFromSets(sets, null)
+          if (resolved) {
+            // 场地 Buff 正文通常在效果块 note 里（field_buff_text 常为空），兜底拼接
+            let text = String(resolved.text ?? '').trim()
+            if (!text && Array.isArray(resolved.effectBlocks) && resolved.effectBlocks.length) {
+              text = resolved.effectBlocks
+                .map((block) => String(block?.note ?? '').trim())
+                .filter(Boolean)
+                .join('\n\n')
+            }
+            layer.fieldBuff = {
+              name: resolved.name,
+              text,
+              image: resolved.image ?? null,
+              effectBlocks: resolved.effectBlocks ?? null,
+            }
+            break
+          }
+        }
       }
     }
     // Buff 挂图片（按名匹配 buff 表）

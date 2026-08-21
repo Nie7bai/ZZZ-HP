@@ -6,10 +6,11 @@ import {
   fetchDeductionPhases,
   isDeductionBattleNode,
   isDeductionStoryNode,
+  type DeductionFieldBuff,
   type DeductionNode,
   type DeductionPeriod,
 } from '@/api/deduction'
-import { formatHp } from '@/utils/gameData'
+import { formatHp, splitBuffLines } from '@/utils/gameData'
 import { parseElementIcons } from '@/utils/elementIcons'
 
 const periods = ref<DeductionPeriod[]>([])
@@ -64,6 +65,11 @@ function selectNode(index: number) {
 
 function onImageError(event: Event) {
   ;(event.target as HTMLImageElement).style.display = 'none'
+}
+
+function fieldBuffLines(fieldBuff: DeductionFieldBuff | null | undefined) {
+  const text = fieldBuff?.text?.trim()
+  return text ? splitBuffLines(text) : []
 }
 
 onMounted(load)
@@ -159,6 +165,18 @@ onMounted(load)
             <h4 v-if="activeNode.layers.length" class="dd-section-title">关卡层</h4>
             <div v-for="layer in activeNode.layers" :key="layer.name" class="dd-layer">
               <h5 class="dd-layer-title">{{ layer.name }}</h5>
+              <div v-if="fieldBuffLines(layer.fieldBuff).length" class="dd-field-buff">
+                <h6 class="dd-field-buff-title">
+                  {{ layer.fieldBuff?.name || '区域增益' }}
+                </h6>
+                <p
+                  v-for="(line, lineIndex) in fieldBuffLines(layer.fieldBuff)"
+                  :key="lineIndex"
+                  class="dd-field-buff-line"
+                >
+                  {{ line }}
+                </p>
+              </div>
               <div v-if="layer.monsters.length" class="dd-monsters">
                 <div v-for="monster in layer.monsters" :key="monster.name" class="dd-monster">
                   <div class="dd-monster-main">
@@ -503,6 +521,36 @@ onMounted(load)
   opacity: 0.85;
   font-family: var(--zzz-font-mono, monospace);
   letter-spacing: 0.05em;
+}
+
+.dd-field-buff {
+  margin: 0 0 0.5rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, #f59e0b 35%, var(--zzz-line, var(--color-border)));
+  border-left: 3px solid #f59e0b;
+  background: color-mix(in srgb, #f59e0b 8%, var(--zzz-card, var(--color-background-soft)));
+}
+
+.dd-field-buff-title {
+  margin: 0 0 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #d97706;
+  letter-spacing: 0.06em;
+}
+
+.dd-field-buff-line {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: var(--color-text);
+  opacity: 0.9;
+  white-space: pre-line;
+}
+
+.dd-field-buff-line + .dd-field-buff-line {
+  margin-top: 0.15rem;
 }
 
 .dd-monsters {

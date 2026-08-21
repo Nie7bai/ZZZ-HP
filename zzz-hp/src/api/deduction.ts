@@ -9,9 +9,18 @@ export interface DeductionMonster {
   boss_image?: string | null
 }
 
+export interface DeductionFieldBuff {
+  name: string
+  text?: string
+  image?: string | null
+  effectBlocks?: import('@/types/calculator').BuffEffectBlock[] | null
+}
+
 export interface DeductionLayer {
   name: string
   monsters: DeductionMonster[]
+  /** 区域增益（boss_info 场地 Buff，与危局同源），仅 boss 层存在 */
+  fieldBuff?: DeductionFieldBuff | null
 }
 
 export interface DeductionBuff {
