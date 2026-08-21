@@ -229,7 +229,13 @@ if (dryRun) {
               node.type,
               node.prevNode,
               node.storyText,
-              JSON.stringify(node.layers),
+              // isBoss 开关默认按层名初始化：STAGE/LAST = Boss 关，其余 = 小怪关
+              JSON.stringify(
+                node.layers.map((l) => ({
+                  ...l,
+                  isBoss: /STAGE|LAST/i.test(String(l.name ?? '')),
+                })),
+              ),
               JSON.stringify(node.buffs),
               index,
               preservedPeriodName,

@@ -25,6 +25,22 @@ export interface AdminDeductionPeriod {
   nodeCount: number
 }
 
+export interface AdminDeductionMonster {
+  name: string
+  hp: number
+  defense: number
+  level: number
+  weakness: string | null
+  resistance: string | null
+}
+
+export interface AdminDeductionLayer {
+  name: string
+  monsters: AdminDeductionMonster[]
+  /** 是否 Boss 关：true=Boss 层（危局数据源），false/缺省=小怪层（shiyu 数据源） */
+  isBoss?: boolean
+}
+
 export interface AdminDeductionNode {
   id: number
   version: string
@@ -34,7 +50,7 @@ export interface AdminDeductionNode {
   type: number
   prevNode: string | null
   storyText: string | null
-  layers: { name: string; monsters: { name: string; hp: number; defense: number; level: number; weakness: string | null; resistance: string | null }[] }[]
+  layers: AdminDeductionLayer[]
   buffs: { title: string; desc: string | null }[]
   sortOrder: number
   periodName: string | null

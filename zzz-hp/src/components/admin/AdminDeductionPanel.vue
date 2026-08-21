@@ -252,9 +252,9 @@ async function loadPickers() {
   }
 }
 
-/** STAGE 层 = Boss 层（危局逻辑）；非 STAGE 层 = 小怪层（shiyu 数据源） */
-function isStageLayer(name: string | null | undefined): boolean {
-  return /STAGE|LAST/i.test(String(name ?? ''))
+/** Boss 关开关控制数据源：开 = 危局 Boss 候选；关（默认）= shiyu 小怪候选 */
+function isBossLayer(layer: { isBoss?: boolean } | null | undefined): boolean {
+  return layer?.isBoss === true
 }
 
 function onPickMonster(
@@ -279,7 +279,7 @@ function onPickBuff(buffIndex: number, option: { name: string; [key: string]: un
 
 function addLayer() {
   if (!draft.value) return
-  draft.value.layers.push({ name: '默认层', monsters: [] })
+  draft.value.layers.push({ name: '默认层', monsters: [], isBoss: false })
 }
 
 function removeLayer(index: number) {
@@ -289,8 +289,8 @@ function removeLayer(index: number) {
 
 function addMonster(layerIndex?: number) {
   if (!draft.value) return
-  // 不强制挂钩某一层：无层时自动建默认层
-  if (!draft.value.layers.length) draft.value.layers.push({ name: '默认层', monsters: [] })
+  // 不强制挂钩某一层：无层时自动建默认层（默认小怪层）
+  if (!draft.value.layers.length) draft.value.layers.push({ name: '默认层', monsters: [], isBoss: false })
   const index = layerIndex ?? 0
   const layer = draft.value.layers[index]
   if (!layer) return
@@ -445,6 +445,12 @@ onMounted(() => {
               <div class="ad-sub-head">
                 <span class="ad-mini-label">层名</span>
                 <input v-model="layer.name" class="ad-input ad-input--sm" placeholder="如 1-1" />
+                <label class="ad-toggle" :title="layer.isBoss ? 'Boss 关（危局数据源）' : '小怪关（shiyu 数据源）'">
+                  <input v-model="layer.isBoss" type="checkbox" />
+                  <span class="ad-toggle-label" :class="{ 'ad-toggle-label--on': layer.isBoss }">
+                    {{ layer.isBoss ? 'Boss' : '小怪' }}
+                  </span>
+                </label>
                 <button class="ad-btn ad-btn--sm ad-btn--danger" type="button" @click="removeLayer(li)">
                   删层
                 </button>
@@ -452,10 +458,10 @@ onMounted(() => {
               <div v-for="(monster, mi) in layer.monsters" :key="mi" class="ad-monster">
                 <div class="ad-monster-row">
                   <AdminDeductionFuzzySelect
-                    :options="isStageLayer(layer.name) ? pickBosses : shiyuMinions"
+                    :options="isBossLayer(layer) ? pickBosses : shiyuMinions"
                     :model-value="monster.name"
                     label="名字"
-                    :placeholder="isStageLayer(layer.name) ? '搜索 Boss…' : '搜索小怪…'"
+                    :placeholder="isBossLayer(layer) ? '搜索 Boss…' : '搜索小怪…'"
                     @update:model-value="monster.name = $event"
                     @select="onPickMonster(li, mi, $event)"
                   />
@@ -769,6 +775,59 @@ onMounted(() => {
   font-weight: 700;
   color: var(--color-text);
   opacity: 0.75;
+}
+
+.ad-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.ad-toggle input[type='checkbox'] {
+  width: 2rem;
+  height: 1.05rem;
+  appearance: none;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-text) 22%, transparent);
+  position: relative;
+  transition: background 0.15s ease;
+  cursor: pointer;
+  margin: 0;
+}
+
+.ad-toggle input[type='checkbox']::after {
+  content: '';
+  position: absolute;
+  top: 0.12rem;
+  left: 0.15rem;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 50%;
+  background: var(--color-background, #fff);
+  transition: left 0.15s ease;
+}
+
+.ad-toggle input[type='checkbox']:checked {
+  background: #f59e0b;
+}
+
+.ad-toggle input[type='checkbox']:checked::after {
+  left: 1.05rem;
+}
+
+.ad-toggle-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--color-text);
+  opacity: 0.7;
+  transition: color 0.15s ease;
+}
+
+.ad-toggle-label--on {
+  color: #f59e0b;
+  opacity: 1;
 }
 
 .ad-num-field {
