@@ -55,7 +55,7 @@ function flattenStoryEvents(storyEvent) {
   return parts.join('\n\n') || null
 }
 
-function collectMonsters(layerRoom) {
+function collectMonsters(layerRoom, layerMonsterLevel) {
   const monsters = []
   for (const room of Object.values(layerRoom)) {
     const monsterList = room?.monster_list ?? {}
@@ -73,7 +73,8 @@ function collectMonsters(layerRoom) {
         name: String(monster.name).trim(),
         hp: roundNum(stats.hp),
         defense: roundNum(stats.defence),
-        level: Number(room.monster_level) || 0,
+        // 房间级 monster_level 优先；源数据层级等级挂在 layer.monster_level
+        level: Number(room.monster_level) || Number(layerMonsterLevel) || 0,
         weakness: uniqueJoin(weaknessNames),
         resistance: uniqueJoin(resistanceNames),
       })
@@ -133,7 +134,7 @@ export function parseSimulPeriod(simulJson, { mode = 'deduction', phase = '1' } 
           ...(entry.layer_room && typeof entry.layer_room === 'object' ? entry.layer_room : {}),
         }
 
-        const monsters = collectMonsters(layerRoom)
+        const monsters = collectMonsters(layerRoom, layer.monster_level)
 
         // 怪物同时落入平铺 boss 行（每层一条，room=层名）
         for (const [key, monster] of Object.entries(monsterListOf(layerRoom))) {
