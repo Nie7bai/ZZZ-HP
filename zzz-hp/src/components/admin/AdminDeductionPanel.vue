@@ -435,7 +435,7 @@ onMounted(() => {
           <!-- 剧情文本（仅剧情类节点：开场 / 剧情 / 剧情变体） -->
           <div v-if="isDeductionStoryNode(draft.type)" class="ad-field">
             <label class="ad-label">剧情文本</label>
-            <textarea v-model="draft.storyText" class="ad-textarea" rows="4"></textarea>
+            <textarea v-model="draft.storyText" class="ad-textarea" rows="12"></textarea>
           </div>
 
           <!-- 层 / 怪物（仅战斗/最终战节点） -->
