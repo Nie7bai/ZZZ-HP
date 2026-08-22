@@ -30,6 +30,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
 const port = Number(process.env.PORT) || 3000
 
+// 反代（IIS / Nginx）会注入 X-Forwarded-For；须 trust proxy，否则 express-rate-limit 抛 ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+// TRUST_PROXY：未设或 true/1 → 信任 1 层；数字 → 跳数；false/0 → 关闭（本机直连调试）
+{
+  const raw = process.env.TRUST_PROXY?.trim().toLowerCase()
+  if (raw === 'false' || raw === '0') {
+    // leave default false
+  } else if (raw && /^\d+$/.test(raw)) {
+    app.set('trust proxy', Number(raw))
+  } else {
+    app.set('trust proxy', 1)
+  }
+}
+
 function parseCorsOrigins() {
   const raw = process.env.CORS_ORIGINS?.trim()
   if (!raw || raw === '*') return null
