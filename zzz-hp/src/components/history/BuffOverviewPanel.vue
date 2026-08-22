@@ -6,6 +6,7 @@ import { fetchDefenseSeasons } from '@/api/defense'
 import { deductionPhasesToPhaseData, fetchDeductionPhases } from '@/api/deduction'
 import { useCrisisAssaultCompareStore } from '@/stores/crisisAssaultCompare'
 import { useDefenseCompareStore } from '@/stores/defenseCompare'
+import { useDeductionCompareStore } from '@/stores/deductionCompare'
 import type { DefenseVariant } from '@/types/defense'
 import { modeTitles, type BuffInfo, type ModeKey, type PhaseData } from '@/types/history'
 import { defenseSeasonsToPhaseData } from '@/utils/defenseCompare'
@@ -48,6 +49,7 @@ const props = defineProps<{
 const route = useRoute()
 const crisisCompareStore = useCrisisAssaultCompareStore()
 const defenseCompareStore = useDefenseCompareStore()
+const deductionCompareStore = useDeductionCompareStore()
 
 const defenseVariant = computed<DefenseVariant>(() =>
   route.name === 'defense-new' ? 'new' : 'old',
@@ -66,7 +68,7 @@ const pageTitle = computed(() => modeTitles[props.mode])
 const isDeductionMode = computed(() => props.mode === 'deduction')
 const panelDesc = computed(() => {
   if (props.mode === 'deduction') {
-    return '每期推演可选增益集中展示（战斗节点可选增益去重），便于快速浏览与对照'
+    return '每期推演可选增益按战斗节点分组展示（节点内去重），便于快速浏览与对照'
   }
   return props.mode === 'defense'
     ? '每期各房间关卡增益集中展示，便于快速浏览与对照'
@@ -81,6 +83,9 @@ const actionAlreadyAdded = computed(() => {
   if (!actionTarget.value) return false
   if (props.mode === 'defense') {
     return defenseCompareStore.hasBuffId(actionTarget.value.entryId)
+  }
+  if (props.mode === 'deduction') {
+    return deductionCompareStore.hasBuffId(actionTarget.value.entryId)
   }
   return crisisCompareStore.hasBuffId(actionTarget.value.entryId)
 })
@@ -164,6 +169,8 @@ function normalizeQuery(value: string) {
 }
 
 function getPhaseCompactCode(phase: PhaseData) {
+  // 推演：每个 version 即一期，无子期号，代号直接用期数号
+  if (isDeductionMode.value) return phase.version
   const phaseNum = phase.phase.match(/\d+/)?.[0] ?? '1'
   const phaseLabel = `${phase.version}第${phaseNum}期`
   return formatPhaseCompactCode({
@@ -239,7 +246,14 @@ function isValidBuff(buff: BuffInfo) {
 }
 
 function getBuffEntryId(phase: PhaseData, buffIndex: number) {
-  return `${phase.id}-buff-${buffIndex}`
+  // 推演：跨节点同名 Buff 去重，条目 id 统一取该期同名首个出现的下标（与对比面板一致）
+  let index = buffIndex
+  if (isDeductionMode.value) {
+    const name = phase.buffs[buffIndex]?.name
+    const first = name ? phase.buffs.findIndex((b) => b.name === name) : -1
+    if (first >= 0) index = first
+  }
+  return `${phase.id}-buff-${index}`
 }
 
 function setViewMode(mode: BuffViewMode) {
@@ -254,7 +268,7 @@ function closeBuffMenu() {
 
 function openBuffMenu(phase: PhaseData, buffIndex: number, element: HTMLElement) {
   const buff = phase.buffs[buffIndex]
-  if (!buff || !isValidBuff(buff) || isDeductionMode.value) return
+  if (!buff || !isValidBuff(buff)) return
 
   const entryId = getBuffEntryId(phase, buffIndex)
   if (actionTarget.value?.entryId === entryId) {
@@ -289,7 +303,7 @@ function openBuffMenu(phase: PhaseData, buffIndex: number, element: HTMLElement)
 
 function onBuffClick(phase: PhaseData, buffIndex: number, event: MouseEvent) {
   const buff = phase.buffs[buffIndex]
-  if (!buff || !isValidBuff(buff) || isDeductionMode.value) return
+  if (!buff || !isValidBuff(buff)) return
 
   event.stopPropagation()
   openBuffMenu(phase, buffIndex, event.currentTarget as HTMLElement)
@@ -297,7 +311,9 @@ function onBuffClick(phase: PhaseData, buffIndex: number, event: MouseEvent) {
 
 function addCurrentBuffToCompare() {
   if (!actionTarget.value || actionAlreadyAdded.value) return
-  if (props.mode === 'defense') {
+  if (props.mode === 'deduction') {
+    deductionCompareStore.addBuffId(actionTarget.value.entryId)
+  } else if (props.mode === 'defense') {
     defenseCompareStore.addBuffId(actionTarget.value.entryId)
   } else {
     crisisCompareStore.addBuffId(actionTarget.value.entryId)
@@ -402,7 +418,7 @@ watch(buffSearchInput, () => {
         <header class="phase-card-header">
           <div class="phase-card-title-row">
             <h2 class="phase-card-title">{{ group.phaseDisplay }}</h2>
-            <span class="phase-card-id">ID: {{ group.tid }}</span>
+            <span v-if="!isDeductionMode" class="phase-card-id">ID: {{ group.tid }}</span>
           </div>
           <p class="phase-card-date">{{ group.dateRange }}</p>
         </header>
@@ -448,7 +464,7 @@ watch(buffSearchInput, () => {
         <header class="phase-card-header">
           <div class="phase-card-title-row">
             <h2 class="phase-card-title">{{ formatPhaseTitle(phase) }}</h2>
-            <span class="phase-card-id">ID: {{ phase.tid }}</span>
+            <span v-if="!isDeductionMode" class="phase-card-id">ID: {{ phase.tid }}</span>
           </div>
           <p class="phase-card-date">{{ phase.dateRange }}</p>
         </header>

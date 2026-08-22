@@ -6,6 +6,7 @@ import { fetchDefenseSeasons } from '@/api/defense'
 import { deductionPhasesToPhaseData, fetchDeductionPhases } from '@/api/deduction'
 import { useCrisisAssaultCompareStore } from '@/stores/crisisAssaultCompare'
 import { useDefenseCompareStore } from '@/stores/defenseCompare'
+import { useDeductionCompareStore } from '@/stores/deductionCompare'
 import type { DefenseVariant } from '@/types/defense'
 import { modeTitles, type BuffInfo, type ModeKey, type PhaseData } from '@/types/history'
 import { defenseSeasonsToPhaseData } from '@/utils/defenseCompare'
@@ -32,6 +33,7 @@ const props = defineProps<{
 const route = useRoute()
 const crisisCompareStore = useCrisisAssaultCompareStore()
 const defenseCompareStore = useDefenseCompareStore()
+const deductionCompareStore = useDeductionCompareStore()
 
 const defenseVariant = computed<DefenseVariant>(() =>
   route.name === 'defense-new' ? 'new' : 'old',
@@ -42,14 +44,14 @@ const phasesLoadEpoch = createRequestEpoch()
 
 const selectedIds = computed({
   get() {
-    if (props.mode === 'deduction') return deductionSelectedIds.value
+    if (props.mode === 'deduction') return deductionCompareStore.selectedBuffIds
     return props.mode === 'defense'
       ? defenseCompareStore.selectedBuffIds
       : crisisCompareStore.selectedBuffIds
   },
   set(value: string[]) {
     if (props.mode === 'deduction') {
-      deductionSelectedIds.value = value
+      deductionCompareStore.selectedBuffIds = value
       return
     }
     if (props.mode === 'defense') {
@@ -59,7 +61,6 @@ const selectedIds = computed({
     }
   },
 })
-const deductionSelectedIds = ref<string[]>([])
 const buffSearchInput = ref('')
 const inputError = ref('')
 const quickAddDropdownValue = ref('')
@@ -75,14 +76,19 @@ const allBuffEntries = computed<BuffEntry[]>(() => {
 
   for (const phase of allPhases.value) {
     const phaseNum = phase.phase.match(/\d+/)?.[0] ?? '1'
-    const phaseLabel = `${phase.version}第${phaseNum}期`
-    const phaseCode = formatPhaseCompactCode({
-      label: phaseLabel,
-      dateRange: phase.dateRange,
-      totalHp: phase.totalHp ?? 0,
-      version: phase.version,
-      phase: phaseNum,
-    })
+    // 推演：每个 version 即一期，没有子期号，代号直接用期数号（如 101），避免拼出 1011
+    const phaseLabel = isDeductionMode.value
+      ? phase.version
+      : `${phase.version}第${phaseNum}期`
+    const phaseCode = isDeductionMode.value
+      ? phase.version
+      : formatPhaseCompactCode({
+          label: phaseLabel,
+          dateRange: phase.dateRange,
+          totalHp: phase.totalHp ?? 0,
+          version: phase.version,
+          phase: phaseNum,
+        })
     // 推演：phase 已是期数名（如 临界推演：歧路回响），不拼版本前缀
     const phaseDisplay = isDeductionMode.value ? phase.phase : `${phase.version} ${phase.phase}`
     // 推演 Buff 按节点细分后同名会跨节点重复，对比时按期去重

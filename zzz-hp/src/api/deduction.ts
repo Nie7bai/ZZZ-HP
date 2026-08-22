@@ -199,22 +199,24 @@ export async function fetchDeductionHpChart(): Promise<HpChartPoint[]> {
   return points
 }
 
-/** 推演中出现过的怪物（按节点数据去重），供单独怪物对比选择 */
+/** 推演中出现过的怪物（按节点数据去重，带图片），供单独怪物对比选择 */
 export async function fetchDeductionBossList(): Promise<BossOption[]> {
   const periods = await fetchDeductionPhases()
-  const names = new Set<string>()
+  const byName = new Map<string, string | null>()
   for (const period of periods) {
     for (const node of period.nodes) {
       for (const layer of node.layers) {
         for (const monster of layer.monsters) {
-          if (monster.name) names.add(monster.name)
+          if (!monster.name) continue
+          // 首见即记录图片（展示侧已按节点JSON/boss表/boss_info 解析过 boss_image）
+          if (!byName.has(monster.name)) byName.set(monster.name, monster.boss_image ?? null)
         }
       }
     }
   }
-  return [...names]
-    .sort((a, b) => a.localeCompare(b, 'zh'))
-    .map((name) => ({ boss_name: name, boss_image: null }))
+  return [...byName.entries()]
+    .sort(([a], [b]) => a.localeCompare(b, 'zh'))
+    .map(([boss_name, boss_image]) => ({ boss_name, boss_image }))
 }
 
 /** 某怪物在推演各期出现的总血量（按期汇总） */

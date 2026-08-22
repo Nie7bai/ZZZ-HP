@@ -116,6 +116,17 @@ export async function getDeductionPhases() {
     if (!imageMap.has(key)) imageMap.set(key, row.boss_image)
   }
 
+  // 怪物基础库名 → 图片（兜底：新增/手输怪物未回填 boss 表时按名取图）
+  const [bossInfoImgRows] = await pool.execute(
+    `SELECT DISTINCT boss_name, boss_image
+     FROM boss_info
+     WHERE boss_image IS NOT NULL AND boss_image <> ''`,
+  )
+  const bossInfoImgMap = new Map()
+  for (const row of bossInfoImgRows) {
+    if (!bossInfoImgMap.has(row.boss_name)) bossInfoImgMap.set(row.boss_name, row.boss_image)
+  }
+
   // Buff 名 → 图片（匹配 buff 表，推演可选增益与危局/防卫战同名 Buff 共用图）
   const [buffImgRows] = await pool.execute(
     `SELECT DISTINCT buff_name, buff_image
@@ -140,10 +151,15 @@ export async function getDeductionPhases() {
       })
     }
     const node = mapNode(row)
-    // 层怪物挂图片（按当期同名匹配）
+    // 层怪物挂图片：优先节点内已存的 boss_image（管理端选中时写入），
+    // 其次按当期同名匹配 boss 表，最后回退 boss_info 基础库
     for (const layer of node.layers) {
       for (const monster of layer.monsters) {
-        monster.boss_image = imageMap.get(`${key}::${monster.name}`) ?? null
+        monster.boss_image =
+          monster.boss_image ||
+          imageMap.get(`${key}::${monster.name}`) ||
+          bossInfoImgMap.get(monster.name) ||
+          null
       }
       // 区域增益：层内首个命中 boss_info 场地 Buff 的怪物（与危局同款解析）
       if (!layer.fieldBuff) {
@@ -171,9 +187,9 @@ export async function getDeductionPhases() {
         }
       }
     }
-    // Buff 挂图片（按名匹配 buff 表）
+    // Buff 挂图片：优先节点内已存的 buff_image（管理端选中时写入），其次按名匹配 buff 表
     for (const buff of node.buffs) {
-      buff.buff_image = buffImgMap.get(buff.title) ?? null
+      buff.buff_image = buff.buff_image || buffImgMap.get(buff.title) || null
     }
     periodMap.get(key).nodes.push(node)
   }

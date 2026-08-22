@@ -94,7 +94,7 @@ const chartPoints = computed(() =>
 
 const panelDesc = computed(() => {
   if (props.mode === 'deduction') {
-    return '添加任意期数，对比各期推演总血量与相对膨胀变化'
+    return '添加任意战斗节点，对比各节点总血量与相对膨胀变化；输入期数号可一键添加该期全部节点'
   }
   if (isDefenseMode.value) {
     return '添加任意期数，对比最后一防线总血量与相对膨胀变化；点击图表数据点可移除期数'
@@ -104,9 +104,12 @@ const panelDesc = computed(() => {
     : '添加任意期数，对比总血量与相对膨胀变化；可勾选 953 防御换算（T）'
 })
 
-const panelHeading = computed(() =>
-  isHardMode.value ? `${pageTitle.value} · 困难期数对比折线图` : `${pageTitle.value} · 期数对比折线图`,
-)
+const panelHeading = computed(() => {
+  if (isDeductionMode.value) return `${pageTitle.value} · 节点对比折线图`
+  return isHardMode.value
+    ? `${pageTitle.value} · 困难期数对比折线图`
+    : `${pageTitle.value} · 期数对比折线图`
+})
 
 const defensePointClickHint = computed(() =>
   defenseRemoveMode.value === 'direct' ? '点击数据点移除该期' : '点击数据点选择是否移除',
@@ -132,16 +135,16 @@ function formatPhaseDisplay(point: HpChartPoint) {
   return point.label
 }
 
-/** 推演模式：支持按期数名 / 期数号匹配 */
-function resolveDeductionPoint(query: string): HpChartPoint | null {
+/** 推演模式（节点对比）：期数号返回该期全部战斗节点；否则按节点名模糊匹配（可多个） */
+function resolveDeductionPoints(query: string): string[] {
   const trimmed = query.trim()
-  if (!trimmed) return null
-  const exact = allPoints.value.find((p) => p.label === trimmed)
-  if (exact) return exact
-  const byVersion = allPoints.value.find((p) => p.version === trimmed)
-  if (byVersion) return byVersion
+  if (!trimmed) return []
+  const byVersion = allPoints.value.filter((p) => p.version === trimmed)
+  if (byVersion.length) return byVersion.map((p) => p.label)
   const normalized = trimmed.toLowerCase()
-  return allPoints.value.find((p) => p.label.toLowerCase().includes(normalized)) ?? null
+  return allPoints.value
+    .filter((p) => p.label.toLowerCase().includes(normalized))
+    .map((p) => p.label)
 }
 
 async function loadChartData() {
@@ -178,13 +181,26 @@ function addPhaseFromSearch(rawInput?: string) {
   const query = (rawInput ?? phaseSearchInput.value).trim()
   if (!query) return
 
-  const point = isDeductionMode.value
-    ? resolveDeductionPoint(query)
-    : resolvePhaseFromInput(allPoints.value, query)
+  if (isDeductionMode.value) {
+    const labels = resolveDeductionPoints(query)
+    if (!labels.length) {
+      inputError.value = '未找到该节点，可输入节点名（如 STAGE 01）或期数号（如 101）'
+      return
+    }
+    const fresh = labels.filter((label) => !selectedLabels.value.includes(label))
+    if (!fresh.length) {
+      inputError.value = '这些节点已添加'
+      return
+    }
+    selectedLabels.value = [...selectedLabels.value, ...fresh]
+    phaseSearchInput.value = ''
+    inputError.value = ''
+    return
+  }
+
+  const point = resolvePhaseFromInput(allPoints.value, query)
   if (!point) {
-    inputError.value = isDeductionMode.value
-      ? '未找到该期数，可输入期数名（如 歧路回响）或期数号（如 101）'
-      : '未找到该期数，可试 1.41 / 1.4第1期'
+    inputError.value = '未找到该期数，可试 1.41 / 1.4第1期'
     return
   }
 
@@ -327,7 +343,7 @@ watch(phaseSearchInput, () => {
               v-model="phaseSearchInput"
               type="text"
               class="phase-search-input"
-              :placeholder="isDeductionMode ? '期数名 / 101' : '1.41 / 1.4第1期'"
+              :placeholder="isDeductionMode ? '节点名 / 101' : '1.41 / 1.4第1期'"
               spellcheck="false"
             />
             <button type="submit" class="add-btn">添加</button>
@@ -370,7 +386,9 @@ watch(phaseSearchInput, () => {
 
         <div v-if="selectedPoints.length" class="selected-phases">
           <div class="selected-phases-header">
-            <span class="selected-label">已选期数（{{ selectedPoints.length }}）</span>
+            <span class="selected-label">
+              {{ isDeductionMode ? '已选节点' : '已选期数' }}（{{ selectedPoints.length }}）
+            </span>
             <button type="button" class="clear-btn" @click="clearPhases">清空</button>
           </div>
 

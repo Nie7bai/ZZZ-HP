@@ -173,6 +173,7 @@ export async function listShiyuMinions() {
               level: roomLevel,
               weakness: [...new Set(weaknessNames)].join('、') || null,
               resistance: [...new Set(resistanceNames)].join('、') || null,
+              boss_image: null,
             })
           }
         }
@@ -181,6 +182,27 @@ export async function listShiyuMinions() {
       for (const value of Object.values(obj)) walk(value, level ?? obj.monster_level)
     }
     walk(detail, null)
+  }
+  // 按名挂怪物基础库图片：shiyu 小怪与 Boss 同名时复用本地图，供管理端选中后写回节点
+  await ensureTable()
+  const [infoRows] = await pool.execute(
+    `SELECT DISTINCT boss_name, boss_image
+     FROM boss_info
+     WHERE boss_image IS NOT NULL AND boss_image <> ''`,
+  )
+  for (const row of infoRows) {
+    const target = byName.get(row.boss_name)
+    if (target && !target.boss_image) target.boss_image = row.boss_image
+  }
+  const [bossRows] = await pool.execute(
+    `SELECT boss_name, MAX(boss_image) AS boss_image
+     FROM boss
+     WHERE boss_image IS NOT NULL AND boss_image <> ''
+     GROUP BY boss_name`,
+  )
+  for (const row of bossRows) {
+    const target = byName.get(row.boss_name)
+    if (target && !target.boss_image) target.boss_image = row.boss_image
   }
   shiyuMinionsCache = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, 'zh'))
   shiyuMinionsCachedAt = Date.now()

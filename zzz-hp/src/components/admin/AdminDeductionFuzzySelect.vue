@@ -9,11 +9,17 @@ const props = withDefaults(
     label?: string
     /** 选中后是否保留搜索词还是回填 name */
     fillOnSelect?: boolean
+    /** 数据源加载中（尚未返回候选时显示加载态） */
+    loading?: boolean
+    /** 下拉最多展示条数，超出显示计数提示 */
+    maxResults?: number
   }>(),
   {
     placeholder: '搜索…',
     label: '',
     fillOnSelect: true,
+    loading: false,
+    maxResults: 50,
   },
 )
 
@@ -24,28 +30,47 @@ const emit = defineEmits<{
 
 const open = ref(false)
 const query = ref('')
+/** 用户是否已手动输入（区别于初始回填的已选名） */
+const dirty = ref(false)
 
 watch(
   () => props.modelValue,
   (value) => {
-    if (!open.value) query.value = value
+    if (!open.value) {
+      query.value = value ?? ''
+      dirty.value = false
+    }
   },
   { immediate: true },
 )
 
+/** 未输入时展示全部候选；输入后按名字模糊过滤 */
 const filtered = computed(() => {
-  const kw = query.value.trim().toLowerCase()
+  const kw = dirty.value ? query.value.trim().toLowerCase() : ''
   if (!kw) return props.options
   return props.options.filter((opt) => opt.name.toLowerCase().includes(kw))
 })
 
+const visible = computed(() => filtered.value.slice(0, props.maxResults))
+const totalCount = computed(() => filtered.value.length)
+
+function onFocus(event: FocusEvent) {
+  open.value = true
+  dirty.value = false
+  // 全选当前文字：直接输入即覆盖，不会残留旧名字过滤
+  const input = event.target as HTMLInputElement
+  window.setTimeout(() => input.select(), 0)
+}
+
 function onInput(event: Event) {
+  dirty.value = true
   query.value = (event.target as HTMLInputElement).value
   open.value = true
 }
 
 function selectOption(option: { name: string; [key: string]: unknown }) {
   if (props.fillOnSelect) query.value = option.name
+  dirty.value = false
   emit('update:modelValue', option.name)
   emit('select', option)
   open.value = false
@@ -54,7 +79,22 @@ function selectOption(option: { name: string; [key: string]: unknown }) {
 function onBlur() {
   window.setTimeout(() => {
     open.value = false
+    // 手动输入但未选中时回滚为当前真实值，避免输入框与数据脱节
+    if (dirty.value) {
+      query.value = props.modelValue ?? ''
+      dirty.value = false
+    }
   }, 150)
+}
+
+/** 候选详情（如 Lv / HP），帮助区分同名不同型 */
+function optionMeta(opt: { [key: string]: unknown }): string {
+  const parts: string[] = []
+  if (opt.level != null && opt.level !== '') parts.push(`Lv${opt.level}`)
+  if (opt.hp != null && opt.hp !== '' && Number(opt.hp) > 0) {
+    parts.push(`HP ${Number(opt.hp).toLocaleString()}`)
+  }
+  return parts.join(' · ')
 }
 </script>
 
@@ -68,20 +108,28 @@ function onBlur() {
         :value="query"
         :placeholder="placeholder"
         @input="onInput"
-        @focus="open = true"
+        @focus="onFocus"
         @blur="onBlur"
       />
-      <div v-if="open && filtered.length" class="adfs-list">
-        <button
-          v-for="opt in filtered"
-          :key="opt.name"
-          type="button"
-          class="adfs-item"
-          @mousedown.prevent
-          @click="selectOption(opt)"
-        >
-          {{ opt.name }}
-        </button>
+      <div v-if="open" class="adfs-list">
+        <div v-if="loading && !props.options.length" class="adfs-state">加载中…</div>
+        <div v-else-if="!visible.length" class="adfs-state">无匹配选项</div>
+        <template v-else>
+          <button
+            v-for="opt in visible"
+            :key="opt.name"
+            type="button"
+            class="adfs-item"
+            @mousedown.prevent
+            @click="selectOption(opt)"
+          >
+            <span class="adfs-item-name">{{ opt.name }}</span>
+            <span v-if="optionMeta(opt)" class="adfs-item-meta">{{ optionMeta(opt) }}</span>
+          </button>
+          <div v-if="totalCount > visible.length" class="adfs-more">
+            共 {{ totalCount }} 项，输入关键字过滤
+          </div>
+        </template>
       </div>
     </div>
   </div>
@@ -136,8 +184,19 @@ function onBlur() {
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
 }
 
+.adfs-state {
+  padding: 0.5rem 0.55rem;
+  color: var(--color-text);
+  opacity: 0.6;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
 .adfs-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   width: 100%;
   text-align: left;
   padding: 0.4rem 0.55rem;
@@ -151,5 +210,28 @@ function onBlur() {
 
 .adfs-item:hover {
   background: var(--color-background-mute);
+}
+
+.adfs-item-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adfs-item-meta {
+  flex-shrink: 0;
+  font-family: var(--zzz-font-mono, monospace);
+  font-size: 0.72rem;
+  color: var(--color-text);
+  opacity: 0.6;
+}
+
+.adfs-more {
+  padding: 0.4rem 0.55rem;
+  color: var(--color-text);
+  opacity: 0.55;
+  font-size: 0.75rem;
+  text-align: center;
 }
 </style>

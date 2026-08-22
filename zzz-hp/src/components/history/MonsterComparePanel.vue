@@ -175,11 +175,13 @@ watch(selectedBoss, () => {
         <div class="selector-field">
           <label class="selector-label" for="boss-select">
             {{
-              isDefenseMode
-                ? `选择${categoryLabel}`
-                : crisisRoomType === 'hard'
-                  ? '选择困难 Boss'
-                  : '选择正常 Boss'
+              isDeductionMode
+                ? '选择怪物'
+                : isDefenseMode
+                  ? `选择${categoryLabel}`
+                  : crisisRoomType === 'hard'
+                    ? '选择困难 Boss'
+                    : '选择正常 Boss'
             }}
           </label>
           <div class="selector-row">
@@ -196,7 +198,7 @@ watch(selectedBoss, () => {
               :disabled="!bossList.length"
             >
               <option v-if="!bossList.length" value="">
-                暂无{{ isDefenseMode ? categoryLabel : 'Boss' }}
+                暂无{{ isDeductionMode ? '怪物' : isDefenseMode ? categoryLabel : 'Boss' }}
               </option>
               <option v-for="boss in bossList" :key="boss.boss_name" :value="boss.boss_name">
                 {{ boss.boss_name }}

@@ -44,6 +44,8 @@ const shiyuMinions = ref<AdminPickBoss[]>([])
 const loading = ref(false)
 const message = ref('')
 const messageError = ref(false)
+/** 下拉数据源（Boss / Buff / shiyu 小怪）加载中标记，用于搜索框显示加载态 */
+const pickersLoading = ref(false)
 
 // 新建期数
 const newPeriodVersion = ref('')
@@ -238,17 +240,24 @@ function toggleElement(list: string[], el: string): string[] {
 }
 
 async function loadPickers() {
+  pickersLoading.value = true
   try {
-    const [bosses, buffs, minions] = await Promise.all([
+    // 各源独立加载：shiyu 小怪抓取 nanoka 较慢/偶发失败，不应拖累 Boss / Buff 数据源
+    const results = await Promise.allSettled([
       fetchDeductionPickBosses(),
       fetchDeductionPickBuffs(),
       fetchDeductionShiyuMinions(),
     ])
-    pickBosses.value = bosses
-    pickBuffs.value = buffs
-    shiyuMinions.value = minions
-  } catch (err) {
-    flash(err instanceof Error ? err.message : '加载数据源失败', true)
+    if (results[0].status === 'fulfilled') pickBosses.value = results[0].value
+    else console.warn('[deduction] Boss 数据源加载失败:', results[0].reason)
+    if (results[1].status === 'fulfilled') pickBuffs.value = results[1].value
+    else console.warn('[deduction] Buff 数据源加载失败:', results[1].reason)
+    if (results[2].status === 'fulfilled') shiyuMinions.value = results[2].value
+    else console.warn('[deduction] shiyu 小怪数据源加载失败:', results[2].reason)
+    const failed = results.filter((r) => r.status === 'rejected').length
+    if (failed) flash(`部分下拉数据源加载失败（${failed}/3），可刷新重试`, true)
+  } finally {
+    pickersLoading.value = false
   }
 }
 
@@ -269,12 +278,32 @@ function onPickMonster(
   monster.defense = Number(option.defense) || 0
   monster.weakness = option.weakness == null ? null : String(option.weakness)
   monster.resistance = option.resistance == null ? null : String(option.resistance)
+  // 候选自带图片则写入节点，展示侧优先使用（不依赖 boss 表回填）
+  if (option.boss_image) monster.boss_image = String(option.boss_image)
+}
+
+/** 名字变化（手输或下拉选择）：先清旧图，选择事件随后写入新候选图，避免手输残留旧图 */
+function onMonsterName(layerIndex: number, monsterIndex: number, name: string) {
+  const monster = draft.value?.layers[layerIndex]?.monsters[monsterIndex]
+  if (!monster) return
+  if (monster.name !== name) monster.boss_image = null
+  monster.name = name
 }
 
 function onPickBuff(buffIndex: number, option: { name: string; [key: string]: unknown }) {
   const buff = draft.value?.buffs[buffIndex]
   if (!buff) return
   buff.desc = option.desc == null ? '' : String(option.desc)
+  // 候选自带图片则写入节点，展示侧优先使用
+  if (option.buff_image) buff.buff_image = String(option.buff_image)
+}
+
+/** 增益名变化（手输或下拉选择）：先清旧图，选择事件随后写入新候选图 */
+function onBuffTitle(buffIndex: number, title: string) {
+  const buff = draft.value?.buffs[buffIndex]
+  if (!buff) return
+  if (buff.title !== title) buff.buff_image = null
+  buff.title = title
 }
 
 function addLayer() {
@@ -301,6 +330,7 @@ function addMonster(layerIndex?: number) {
     level: 1,
     weakness: null,
     resistance: null,
+    boss_image: null,
   })
 }
 
@@ -313,7 +343,7 @@ function removeMonster(layerIndex: number, monsterIndex: number) {
 
 function addBuff() {
   if (!draft.value) return
-  draft.value.buffs.push({ title: '', desc: '' })
+  draft.value.buffs.push({ title: '', desc: '', buff_image: null })
 }
 
 function removeBuff(index: number) {
@@ -462,7 +492,8 @@ onMounted(() => {
                     :model-value="monster.name"
                     label="名字"
                     :placeholder="isBossLayer(layer) ? '搜索 Boss…' : '搜索小怪…'"
-                    @update:model-value="monster.name = $event"
+                    :loading="pickersLoading"
+                    @update:model-value="onMonsterName(li, mi, $event)"
                     @select="onPickMonster(li, mi, $event)"
                   />
                   <span class="ad-badge-dd">临界</span>
@@ -521,7 +552,8 @@ onMounted(() => {
                   :model-value="buff.title"
                   label="增益名"
                   placeholder="搜索 Buff…"
-                  @update:model-value="buff.title = $event"
+                  :loading="pickersLoading"
+                  @update:model-value="onBuffTitle(bi, $event)"
                   @select="onPickBuff(bi, $event)"
                 />
                 <span class="ad-badge-dd">临界</span>
@@ -591,7 +623,9 @@ onMounted(() => {
 
 .ad-col--editor {
   position: sticky;
-  top: 3rem;
+  /* top 用 0：sticky 静止时与左右列顶部对齐（top: 3rem 会在静止状态把编辑器下推 3rem 造成错位） */
+  top: 0;
+  z-index: 5;
   max-height: calc(100vh - 8rem);
   overflow-y: auto;
 }
@@ -900,10 +934,16 @@ onMounted(() => {
     grid-template-columns: 1fr 1fr;
   }
 
+  /* 窄屏：编辑器移到最上并固定在视口顶部，浏览/点选列表时始终可见 */
   .ad-col--editor {
     grid-column: 1 / -1;
-    position: static;
-    max-height: none;
+    order: -1;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    max-height: 55vh;
+    overflow-y: auto;
+    background: var(--color-background-soft);
   }
 }
 

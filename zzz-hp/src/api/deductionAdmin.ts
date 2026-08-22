@@ -32,6 +32,8 @@ export interface AdminDeductionMonster {
   level: number
   weakness: string | null
   resistance: string | null
+  /** 管理端选中候选时写入的本地 Boss 图片路径（/boss_image/...），可能为空 */
+  boss_image?: string | null
 }
 
 export interface AdminDeductionLayer {
@@ -39,6 +41,13 @@ export interface AdminDeductionLayer {
   monsters: AdminDeductionMonster[]
   /** 是否 Boss 关：true=Boss 层（危局数据源），false/缺省=小怪层（shiyu 数据源） */
   isBoss?: boolean
+}
+
+export interface AdminDeductionBuff {
+  title: string
+  desc: string | null
+  /** 管理端选中候选时写入的本地 Buff 图片路径（/buff_image/...），可能为空 */
+  buff_image?: string | null
 }
 
 export interface AdminDeductionNode {
@@ -51,7 +60,7 @@ export interface AdminDeductionNode {
   prevNode: string | null
   storyText: string | null
   layers: AdminDeductionLayer[]
-  buffs: { title: string; desc: string | null }[]
+  buffs: AdminDeductionBuff[]
   sortOrder: number
   periodName: string | null
 }

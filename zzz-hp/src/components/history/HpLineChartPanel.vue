@@ -34,7 +34,7 @@ const panelTitle = computed(() =>
 
 const panelDesc = computed(() => {
   if (isDeductionMode.value) {
-    return '各期推演总血量（全部战斗节点怪物血量之和）与相对膨胀变化'
+    return '推演各期每个战斗节点的总血量（每点对应一个战斗节点）与相对膨胀变化'
   }
   return isHardMode.value
     ? '上方为困难模式血量与星级线，下方为相对膨胀；可勾选 953 防御换算（T）'
