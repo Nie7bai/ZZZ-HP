@@ -22,6 +22,7 @@ function normalizeScheme(value) {
   const text = String(value || '').trim()
   if (text === 'defense') return 'defense'
   if (text === 'crisis') return 'crisis'
+  if (text === 'deduction') return 'deduction'
   return null
 }
 
@@ -50,14 +51,16 @@ function matchesVariant(version, variant) {
   return true
 }
 
-/** 危局 / 防卫战导出：按 mode 归属，显式排除临界推演 */
+/** 危局 / 防卫战 / 推演导出：按 mode 归属 */
 function bossScopeSql(scheme) {
   if (scheme === 'defense') return `mode = 'defense'`
+  if (scheme === 'deduction') return `mode = 'deduction'`
   return `(mode = 'crisis' OR mode IS NULL OR mode = '')`
 }
 
 function buffScopeSql(scheme) {
   if (scheme === 'defense') return `mode = 'defense'`
+  if (scheme === 'deduction') return `mode = 'deduction'`
   return `(mode = 'crisis' OR mode IS NULL OR mode = '')`
 }
 
@@ -123,6 +126,26 @@ function mapDateRow(row, scheme) {
     phase: String(row.phase),
     startDate: formatDateValue(row.start_date),
     endDate: formatDateValue(row.end_date),
+  }
+}
+
+function mapDeductionNodeRow(row) {
+  const asJson = (value) => {
+    if (value == null) return null
+    return typeof value === 'string' ? value : JSON.stringify(value)
+  }
+  return {
+    version: String(row.version),
+    phase: String(row.phase),
+    node_id: String(row.node_id),
+    node_name: String(row.node_name ?? ''),
+    node_type: Number(row.node_type) || 0,
+    prev_node: row.prev_node || '',
+    story_text: row.story_text ?? null,
+    layers_json: asJson(row.layers_json),
+    buffs_json: asJson(row.buffs_json),
+    sort_order: Number(row.sort_order) || 0,
+    period_name: row.period_name ?? '',
   }
 }
 
@@ -195,7 +218,7 @@ function crisisBuffIndexFromId(id, version, phase) {
 
 export async function exportSeasonSnapshot(scheme, variant = null) {
   const mode = normalizeScheme(scheme)
-  if (!mode) throw new Error('scheme 须为 crisis 或 defense')
+  if (!mode) throw new Error('scheme 须为 crisis / defense / deduction')
   const variantValue = normalizeVariant(mode, variant)
 
   await ensureBossStaggerSchema()
@@ -227,13 +250,31 @@ export async function exportSeasonSnapshot(scheme, variant = null) {
          ORDER BY CAST(REPLACE(version, '.', '') AS UNSIGNED) DESC,
                   CAST(phase AS UNSIGNED) DESC,
                   id DESC`
-      : `SELECT version, phase, start_date, end_date
-         FROM \`date\`
-         WHERE mode = 'crisis' OR mode IS NULL OR mode = ''
-         ORDER BY CAST(REPLACE(version, '.', '') AS UNSIGNED) DESC,
-                  CAST(phase AS UNSIGNED) DESC,
-                  id DESC`
+      : mode === 'deduction'
+        ? `SELECT version, phase, start_date, end_date
+           FROM \`date\`
+           WHERE mode = 'deduction'
+           ORDER BY CAST(REPLACE(version, '.', '') AS UNSIGNED) DESC,
+                    CAST(phase AS UNSIGNED) DESC,
+                    id DESC`
+        : `SELECT version, phase, start_date, end_date
+           FROM \`date\`
+           WHERE mode = 'crisis' OR mode IS NULL OR mode = ''
+           ORDER BY CAST(REPLACE(version, '.', '') AS UNSIGNED) DESC,
+                    CAST(phase AS UNSIGNED) DESC,
+                    id DESC`
   const [dateRows] = await pool.query(dateSql)
+
+  let deductionNodes = []
+  if (mode === 'deduction') {
+    const [nodeRows] = await pool.query(
+      `SELECT version, phase, node_id, node_name, node_type, prev_node, story_text,
+              layers_json, buffs_json, sort_order, period_name
+       FROM deduction_node
+       ORDER BY CAST(version AS UNSIGNED), sort_order, id`,
+    )
+    deductionNodes = nodeRows.map(mapDeductionNodeRow)
+  }
 
   const bosses = bossRows.map(mapBossRow).filter((row) => matchesVariant(row.version, variantValue))
   const buffs = buffRows.map(mapBuffRow).filter((row) => matchesVariant(row.version, variantValue))
@@ -254,6 +295,7 @@ export async function exportSeasonSnapshot(scheme, variant = null) {
     buffs,
     dates,
     bossInfos,
+    deductionNodes,
   }
 }
 
@@ -267,14 +309,17 @@ export function coerceSeasonSnapshot(raw) {
     Array.isArray(data.bosses) ||
     Array.isArray(data.buffs) ||
     Array.isArray(data.dates) ||
-    Array.isArray(data.bossInfos)
+    Array.isArray(data.bossInfos) ||
+    Array.isArray(data.deductionNodes)
   if (hasKnownKey) {
     const inferred =
       normalizeScheme(data.scheme) ||
-      (asArray(data.bosses).some((row) => isDefenseBossId(row?.id)) ||
-      asArray(data.buffs).some((row) => isDefenseBuffId(row?.id))
-        ? 'defense'
-        : 'crisis')
+      (Array.isArray(data.deductionNodes) && data.deductionNodes.length
+        ? 'deduction'
+        : asArray(data.bosses).some((row) => isDefenseBossId(row?.id)) ||
+            asArray(data.buffs).some((row) => isDefenseBuffId(row?.id))
+          ? 'defense'
+          : 'crisis')
     return {
       kind: SEASON_SNAPSHOT_KIND,
       scheme: inferred,
@@ -283,6 +328,7 @@ export function coerceSeasonSnapshot(raw) {
       buffs: asArray(data.buffs),
       dates: asArray(data.dates),
       bossInfos: asArray(data.bossInfos),
+      deductionNodes: asArray(data.deductionNodes),
     }
   }
 
@@ -432,6 +478,7 @@ export async function importSeasonSnapshot(raw) {
     buffs: emptyTypeResult(),
     dates: emptyTypeResult(),
     bossInfos: emptyTypeResult(),
+    deductionNodes: emptyTypeResult(),
   }
 
   const allowedMode =
@@ -494,6 +541,53 @@ export async function importSeasonSnapshot(raw) {
     }
   }
 
+  for (const item of snapshot.deductionNodes) {
+    const version = String(item?.version ?? '').trim()
+    const phase = normalizePhase(item?.phase)
+    const nodeId = String(item?.node_id ?? '').trim()
+    if (!version || !phase || !nodeId) {
+      summary.deductionNodes.skipped += 1
+      continue
+    }
+    try {
+      const [existing] = await pool.execute(
+        'SELECT 1 FROM deduction_node WHERE version = ? AND phase = ? AND node_id = ? LIMIT 1',
+        [version, phase, nodeId],
+      )
+      const name = String(item.node_name ?? '')
+      const nodeType = Number(item.node_type) || 0
+      const prevNode = item.prev_node || ''
+      const storyText = item.story_text ?? null
+      const layersJson = item.layers_json ?? null
+      const buffsJson = item.buffs_json ?? null
+      const sortOrder = Number(item.sort_order) || 0
+      const periodName = item.period_name ?? ''
+      if (existing.length) {
+        await pool.execute(
+          `UPDATE deduction_node
+              SET node_name = ?, node_type = ?, prev_node = ?, story_text = ?,
+                  layers_json = ?, buffs_json = ?, sort_order = ?, period_name = ?
+            WHERE version = ? AND phase = ? AND node_id = ?`,
+          [name, nodeType, prevNode, storyText, layersJson, buffsJson, sortOrder, periodName, version, phase, nodeId],
+        )
+        summary.deductionNodes.updated += 1
+      } else {
+        await pool.execute(
+          `INSERT INTO deduction_node
+             (version, phase, node_id, node_name, node_type, prev_node, story_text, layers_json, buffs_json, sort_order, period_name)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [version, phase, nodeId, name, nodeType, prevNode, storyText, layersJson, buffsJson, sortOrder, periodName],
+        )
+        summary.deductionNodes.created += 1
+      }
+    } catch (err) {
+      summary.deductionNodes.errors.push({
+        id: `${version}-${nodeId}`,
+        message: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
   for (const item of snapshot.dates) {
     const version = String(item?.version ?? '').trim()
     const phase = normalizePhase(item?.phase)
@@ -502,8 +596,14 @@ export async function importSeasonSnapshot(raw) {
       continue
     }
     try {
+      const mode =
+        snapshot.scheme === 'deduction'
+          ? 'deduction'
+          : item.mode === 'defense' || snapshot.scheme === 'defense'
+            ? 'defense'
+            : 'crisis'
       const saved = await upsertSeasonDate({
-        mode: item.mode === 'defense' || snapshot.scheme === 'defense' ? 'defense' : 'crisis',
+        mode,
         version,
         phase,
         startDate: item.startDate ?? item.start_date,

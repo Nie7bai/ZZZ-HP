@@ -29,6 +29,10 @@ export default defineConfig({
         target: 'http://localhost:3010',
         changeOrigin: true,
       },
+      '/attribute_image': {
+        target: 'http://localhost:3010',
+        changeOrigin: true,
+      },
       '/calculator_image': {
         target: 'http://localhost:3010',
         changeOrigin: true,

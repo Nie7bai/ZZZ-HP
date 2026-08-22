@@ -162,60 +162,9 @@ const defensePhases: PhaseData[] = [
   },
 ]
 
-const deductionPhases: PhaseData[] = [
-  {
-    id: 'dd-1-4-1',
-    version: '1.4',
-    phase: '第 1 期',
-    dateRange: '2026/02/01 - 2026/02/28',
-    tid: '69004',
-    rawHp: '38,750,000',
-    buffs: [
-      {
-        name: '推演',
-        icon: '🧠',
-        lines: ['战斗开始时，随机获得 1 个额外增益效果。', '增益持续时间延长 50%。'],
-      },
-      {
-        name: '临界',
-        icon: '⚠️',
-        lines: ['代理人生命值低于 30% 时，全属性伤害提升 50%。', '治疗效果降低 50%。'],
-      },
-      {
-        name: '极限',
-        icon: '💥',
-        lines: ['每次击败敌人，全队攻击力永久提升 3%（最多 10 层）。', '层数达到上限后，暴击率额外提升 20%。'],
-      },
-    ],
-    enemies: [
-      {
-        label: 'Node A Lv72',
-        subStats: 'HP: 180% | 失衡: 110% | 异常: 105%',
-        hp: '9,500,000',
-        altHp: '9,500,000',
-        elements: ['⚡'],
-      },
-      {
-        label: 'Node B Lv75',
-        subStats: 'HP: 210% | 失衡: 125% | 异常: 115%',
-        hp: '14,200,000',
-        altHp: '14,200,000',
-        elements: ['🔥', '❄️'],
-        footer: 'Boss 伤害抗性 45%',
-      },
-      {
-        label: 'Node C Lv72',
-        subStats: 'HP: 180% | 失衡: 110% | 异常: 105%',
-        hp: '10,100,000',
-        altHp: '10,100,000',
-        elements: ['💨', '⚡'],
-      },
-    ],
-  },
-]
-
 export const historyData: Record<ModeKey, PhaseData[]> = {
   'crisis-assault': crisisAssaultPhases,
   defense: defensePhases,
-  deduction: deductionPhases,
+  // 临界推演数据由 /api/deduction/phases 提供（真实数据），此处不再维护 mock
+  deduction: [],
 }

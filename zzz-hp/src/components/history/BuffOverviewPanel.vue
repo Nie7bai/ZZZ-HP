@@ -3,8 +3,10 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { fetchCrisisAssaultPhases, formatPhaseCompactCode } from '@/api/crisisAssault'
 import { fetchDefenseSeasons } from '@/api/defense'
+import { deductionPhasesToPhaseData, fetchDeductionPhases } from '@/api/deduction'
 import { useCrisisAssaultCompareStore } from '@/stores/crisisAssaultCompare'
 import { useDefenseCompareStore } from '@/stores/defenseCompare'
+import { useDeductionCompareStore } from '@/stores/deductionCompare'
 import type { DefenseVariant } from '@/types/defense'
 import { modeTitles, type BuffInfo, type ModeKey, type PhaseData } from '@/types/history'
 import { defenseSeasonsToPhaseData } from '@/utils/defenseCompare'
@@ -47,6 +49,7 @@ const props = defineProps<{
 const route = useRoute()
 const crisisCompareStore = useCrisisAssaultCompareStore()
 const defenseCompareStore = useDefenseCompareStore()
+const deductionCompareStore = useDeductionCompareStore()
 
 const defenseVariant = computed<DefenseVariant>(() =>
   route.name === 'defense-new' ? 'new' : 'old',
@@ -62,11 +65,15 @@ const actionTarget = ref<BuffActionTarget | null>(null)
 const menuAnchor = ref<MenuAnchor | null>(null)
 
 const pageTitle = computed(() => modeTitles[props.mode])
-const panelDesc = computed(() =>
-  props.mode === 'defense'
+const isDeductionMode = computed(() => props.mode === 'deduction')
+const panelDesc = computed(() => {
+  if (props.mode === 'deduction') {
+    return '每期推演可选增益按战斗节点分组展示（节点内去重），便于快速浏览与对照'
+  }
+  return props.mode === 'defense'
     ? '每期各房间关卡增益集中展示，便于快速浏览与对照'
-    : '每期三个 Buff 集中展示，便于快速浏览与对照',
-)
+    : '每期三个 Buff 集中展示，便于快速浏览与对照'
+})
 const isHorizontalMode = computed(() => viewMode.value === 'horizontal')
 const isCardMode = computed(() => viewMode.value === 'card')
 
@@ -76,6 +83,9 @@ const actionAlreadyAdded = computed(() => {
   if (!actionTarget.value) return false
   if (props.mode === 'defense') {
     return defenseCompareStore.hasBuffId(actionTarget.value.entryId)
+  }
+  if (props.mode === 'deduction') {
+    return deductionCompareStore.hasBuffId(actionTarget.value.entryId)
   }
   return crisisCompareStore.hasBuffId(actionTarget.value.entryId)
 })
@@ -132,6 +142,9 @@ async function loadPhases() {
     } else if (props.mode === 'crisis-assault') {
       data = await fetchCrisisAssaultPhases()
       if (!phasesLoadEpoch.isCurrent(token)) return
+    } else if (props.mode === 'deduction') {
+      data = deductionPhasesToPhaseData(await fetchDeductionPhases())
+      if (!phasesLoadEpoch.isCurrent(token)) return
     }
     if (!phasesLoadEpoch.isCurrent(token)) return
     phases.value = data
@@ -146,6 +159,8 @@ async function loadPhases() {
 }
 
 function formatPhaseTitle(phase: PhaseData) {
+  // 推演：phase 已是期数名（如 临界推演：歧路回响），不再拼版本前缀
+  if (isDeductionMode.value) return phase.phase
   return `${phase.version} ${phase.phase}`
 }
 
@@ -154,6 +169,8 @@ function normalizeQuery(value: string) {
 }
 
 function getPhaseCompactCode(phase: PhaseData) {
+  // 推演：每个 version 即一期，无子期号，代号直接用期数号
+  if (isDeductionMode.value) return phase.version
   const phaseNum = phase.phase.match(/\d+/)?.[0] ?? '1'
   const phaseLabel = `${phase.version}第${phaseNum}期`
   return formatPhaseCompactCode({
@@ -200,6 +217,26 @@ function shouldShowBuff(phase: PhaseData, buff: BuffInfo, query: string) {
   return buffMatchesSearch(buff, query)
 }
 
+interface DeductionBuffGroup {
+  label: string
+  items: { buff: BuffInfo; index: number }[]
+}
+
+/** 推演：Buff 按节点（groupLabel）细分分组 */
+function deductionBuffGroups(phase: PhaseData): DeductionBuffGroup[] {
+  const groups: DeductionBuffGroup[] = []
+  phase.buffs.forEach((buff, index) => {
+    const label = buff.groupLabel ?? '未分组'
+    let group = groups.find((g) => g.label === label)
+    if (!group) {
+      group = { label, items: [] }
+      groups.push(group)
+    }
+    group.items.push({ buff, index })
+  })
+  return groups
+}
+
 function hasBuffContent(phase: PhaseData) {
   return phase.buffs.some((buff) => isValidBuff(buff))
 }
@@ -209,7 +246,14 @@ function isValidBuff(buff: BuffInfo) {
 }
 
 function getBuffEntryId(phase: PhaseData, buffIndex: number) {
-  return `${phase.id}-buff-${buffIndex}`
+  // 推演：跨节点同名 Buff 去重，条目 id 统一取该期同名首个出现的下标（与对比面板一致）
+  let index = buffIndex
+  if (isDeductionMode.value) {
+    const name = phase.buffs[buffIndex]?.name
+    const first = name ? phase.buffs.findIndex((b) => b.name === name) : -1
+    if (first >= 0) index = first
+  }
+  return `${phase.id}-buff-${index}`
 }
 
 function setViewMode(mode: BuffViewMode) {
@@ -267,7 +311,9 @@ function onBuffClick(phase: PhaseData, buffIndex: number, event: MouseEvent) {
 
 function addCurrentBuffToCompare() {
   if (!actionTarget.value || actionAlreadyAdded.value) return
-  if (props.mode === 'defense') {
+  if (props.mode === 'deduction') {
+    deductionCompareStore.addBuffId(actionTarget.value.entryId)
+  } else if (props.mode === 'defense') {
     defenseCompareStore.addBuffId(actionTarget.value.entryId)
   } else {
     crisisCompareStore.addBuffId(actionTarget.value.entryId)
@@ -349,7 +395,7 @@ watch(buffSearchInput, () => {
           v-model="buffSearchInput"
           type="search"
           class="buff-search-input"
-          placeholder="Buff 名 / 期数"
+          :placeholder="isDeductionMode ? 'Buff 名 / 期数名' : 'Buff 名 / 期数'"
           spellcheck="false"
           aria-label="搜索 Buff 或期数"
         />
@@ -372,7 +418,7 @@ watch(buffSearchInput, () => {
         <header class="phase-card-header">
           <div class="phase-card-title-row">
             <h2 class="phase-card-title">{{ group.phaseDisplay }}</h2>
-            <span class="phase-card-id">ID: {{ group.tid }}</span>
+            <span v-if="!isDeductionMode" class="phase-card-id">ID: {{ group.tid }}</span>
           </div>
           <p class="phase-card-date">{{ group.dateRange }}</p>
         </header>
@@ -418,12 +464,55 @@ watch(buffSearchInput, () => {
         <header class="phase-card-header">
           <div class="phase-card-title-row">
             <h2 class="phase-card-title">{{ formatPhaseTitle(phase) }}</h2>
-            <span class="phase-card-id">ID: {{ phase.tid }}</span>
+            <span v-if="!isDeductionMode" class="phase-card-id">ID: {{ phase.tid }}</span>
           </div>
           <p class="phase-card-date">{{ phase.dateRange }}</p>
         </header>
 
-        <div class="buff-grid" :class="`buff-grid--${viewMode}`">
+        <!-- 推演：Buff 按节点细分 -->
+        <template v-if="isDeductionMode">
+          <div
+            v-for="group in deductionBuffGroups(phase)"
+            :key="`${phase.id}-${group.label}`"
+            class="dd-buff-group"
+          >
+            <h4 class="dd-buff-group-title">{{ group.label }}</h4>
+            <div class="buff-grid" :class="`buff-grid--${viewMode}`">
+              <div
+                v-for="item in group.items"
+                :key="`${phase.id}-buff-${item.index}`"
+                class="buff-item"
+                :class="[
+                  `buff-item--${viewMode}`,
+                  {
+                    'buff-item--clickable': isValidBuff(item.buff),
+                    'buff-item--active': actionTarget?.entryId === getBuffEntryId(phase, item.index),
+                  },
+                ]"
+                :role="isValidBuff(item.buff) ? 'button' : undefined"
+                :tabindex="isValidBuff(item.buff) ? 0 : undefined"
+                @click="onBuffClick(phase, item.index, $event)"
+                @keydown.enter.prevent="openBuffMenu(phase, item.index, $event.currentTarget as HTMLElement)"
+                @keydown.space.prevent="openBuffMenu(phase, item.index, $event.currentTarget as HTMLElement)"
+              >
+                <div class="buff-item-head" :class="`buff-item-head--${viewMode}`">
+                  <div v-if="item.buff.imageUrl" class="buff-image">
+                    <img :src="item.buff.imageUrl" :alt="item.buff.name" />
+                  </div>
+                  <div v-else class="buff-icon">{{ item.buff.icon }}</div>
+                  <h3 class="buff-name">{{ item.buff.name }}</h3>
+                </div>
+                <ul class="buff-lines">
+                  <li v-for="(line, lineIndex) in item.buff.lines" :key="lineIndex">
+                    {{ line }}
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <div v-else class="buff-grid" :class="`buff-grid--${viewMode}`">
           <div
             v-for="(buff, index) in phase.buffs"
             :key="`${phase.id}-buff-${index}`"
@@ -694,6 +783,26 @@ watch(buffSearchInput, () => {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   min-height: 0;
+}
+
+/* 推演：Buff 按节点分组的组标题 */
+.dd-buff-group {
+  margin-bottom: 0.9rem;
+}
+
+.dd-buff-group-title {
+  margin: 0 0 0.45rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px dashed var(--color-border);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: #b45309;
+  font-family: var(--zzz-font-mono, monospace);
+}
+
+[data-theme='dark'] .dd-buff-group-title {
+  color: #fcd34d;
 }
 
 .buff-grid--horizontal {

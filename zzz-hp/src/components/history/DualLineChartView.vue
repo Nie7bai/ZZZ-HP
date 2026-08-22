@@ -126,6 +126,11 @@ const dragStartX = ref(0)
 const dragScrollLeft = ref(0)
 const phaseSearchQuery = ref('')
 const phaseSearchHint = ref('')
+/** 定位框占位：推演按期数号定位，危局/防卫按版本号 */
+const phaseSearchPlaceholder = computed(() => {
+  const sample = props.points[0]?.label ?? ''
+  return sample.startsWith('推演') ? '期数号，如 102' : '版本 1.4'
+})
 const tooltipPosition = ref({ left: '0px', top: '0px', transform: 'translate(-50%, -100%)' })
 const showSeriesTooltip = ref(false)
 const showRoomBuffTooltip = ref(false)
@@ -1262,7 +1267,10 @@ function onWheel(event: WheelEvent) {
 function findFirstPhaseIndexByVersion(version: string) {
   const normalized = version.trim()
   if (!normalized) return -1
-  return points.value.findIndex((point) => point.label.startsWith(`${normalized}第`))
+  // 危局/防卫 label 形如「1.4第1期」；推演 label 形如「推演102·STAGE 01」，需按 version 字段匹配
+  return points.value.findIndex(
+    (point) => point.version === normalized || point.label.startsWith(`${normalized}第`),
+  )
 }
 
 function getPhaseScrollLeft(index: number) {
@@ -1442,7 +1450,7 @@ watch(phaseSearchQuery, () => {
             v-model="phaseSearchQuery"
             type="text"
             class="phase-search-input"
-            placeholder="版本 1.4"
+            :placeholder="phaseSearchPlaceholder"
             aria-label="按版本定位期数"
             spellcheck="false"
           />
@@ -2517,7 +2525,7 @@ watch(phaseSearchQuery, () => {
 }
 
 .phase-search-input {
-  width: 6.5rem;
+  width: 9.5rem;
   padding: 0.32rem 0.55rem;
   border: 1px solid var(--color-border);
   border-radius: 6px;

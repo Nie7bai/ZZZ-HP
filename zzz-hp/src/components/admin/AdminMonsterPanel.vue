@@ -394,7 +394,7 @@ function applySlotContext(ctx: AdminMonsterSlotContext) {
   }
   updatePreviewId()
   syncAutoCoeff()
-  if (bossName.value.trim() && !isDefense.value && !isDeduction.value) {
+  if (bossName.value.trim() && !isDefense.value) {
     void fetchBossInfoByName(bossName.value)
   }
 }
@@ -553,13 +553,6 @@ async function submitForm() {
             id: editingRecordId.value ?? undefined,
           }
         : { recordScheme: 'crisis' as const }
-
-    if (isDeduction.value && (defensePayload as { id?: number }).id == null) {
-      error.value = '临界推演请先在已有记录上编辑，或提供怪物 ID（新建编码尚未开放）'
-      showFeedback('error')
-      submitting.value = false
-      return
-    }
 
     const result = await createBoss({
       version: resolvedVersion.value,

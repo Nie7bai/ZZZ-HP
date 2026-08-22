@@ -129,13 +129,12 @@ export async function createBoss(payload) {
     bossId = encodedId
     roomValue = formatDefenseBossRoom(stage, roomInStage)
   } else if (recordScheme === 'deduction' || modeValue === 'deduction') {
-    // 临界：保留显式 ID / room，不走危局或防卫编码
-    if (bossId == null || bossId === '') {
-      throw new Error('临界推演怪物须提供 id')
-    }
-    bossId = Number(bossId)
-    if (!Number.isInteger(bossId) || bossId <= 0) {
-      throw new Error('无效的临界怪物 ID')
+    // 临界：允许自增 id；显式 id 保留（不走危局/防卫编码）
+    if (bossId != null && bossId !== '') {
+      bossId = Number(bossId)
+      if (!Number.isInteger(bossId) || bossId <= 0) {
+        throw new Error('无效的临界怪物 ID')
+      }
     }
   } else if (bossId == null && room != null) {
     bossId = encodeCrisisBossId(versionValue, phaseValue, room)
@@ -319,8 +318,11 @@ export async function createBuff(payload) {
     }
     buffId = encodedId
   } else if (recordScheme === 'deduction' || modeValue === 'deduction') {
-    if (buffId == null || !Number.isInteger(buffId) || buffId <= 0) {
-      throw new Error('临界推演 Buff 须提供有效 id')
+    // 临界：允许自增 id；显式 id 保留（不走危局/防卫编码）
+    if (buffId != null) {
+      if (!Number.isInteger(buffId) || buffId <= 0) {
+        throw new Error('无效的临界 Buff ID')
+      }
     }
   } else {
     // 危局必须按 31101 规则编码，禁止自增落入防卫战 7 位 ID 区间
@@ -366,11 +368,12 @@ export async function createBuff(payload) {
     )
     action = 'updated'
   } else {
-    await pool.execute(
+    const [insertResult] = await pool.execute(
       `INSERT INTO buff (id, version, phase, buff_name, buff, buff_image, effect_blocks, mode)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [buffId, versionValue, phaseValue, buff_name, buff, resolvedBuffImage, effectBlocksJson, modeValue],
     )
+    if (buffId == null) buffId = insertResult.insertId
   }
 
   return {
@@ -557,7 +560,7 @@ function buffModeSql(mode) {
   return bossModeSql(mode)
 }
 
-function clampLimit(limit, fallback = 50, max = 100) {
+function clampLimit(limit, fallback = 50, max = 1000) {
   return Math.min(Math.max(Number(limit) || fallback, 1), max)
 }
 
@@ -597,6 +600,10 @@ export async function searchBossRecords(filters = {}) {
   if (String(keyword ?? '').trim()) {
     conditions.push('boss_name LIKE ?')
     params.push(`%${String(keyword).trim()}%`)
+  }
+  // 按版块在 SQL 层过滤，避免推演/危局互相挤掉 limit 名额
+  if (recordScheme === 'crisis' || recordScheme === 'defense' || recordScheme === 'deduction') {
+    conditions.push(bossModeSql(recordScheme))
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
@@ -646,6 +653,10 @@ export async function searchBuffRecords(filters = {}) {
   if (String(keyword ?? '').trim()) {
     conditions.push('buff_name LIKE ?')
     params.push(`%${String(keyword).trim()}%`)
+  }
+  // 按版块在 SQL 层过滤，避免推演/危局互相挤掉 limit 名额
+  if (recordScheme === 'crisis' || recordScheme === 'defense' || recordScheme === 'deduction') {
+    conditions.push(buffModeSql(recordScheme))
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''

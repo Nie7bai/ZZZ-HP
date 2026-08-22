@@ -13,11 +13,7 @@ function validateBoss(body) {
       return `式舆防卫战缺少字段：${missing.join('、')}`
     }
   }
-  if (recordScheme === 'deduction' || body.mode === 'deduction') {
-    if (body.id == null || body.id === '') {
-      return '临界推演怪物须提供 id'
-    }
-  }
+  // 临界：id 可空（后端自增），显式 id 交由 createBoss 校验
   return null
 }
 
@@ -36,11 +32,7 @@ function validateBuff(body) {
       return `式舆防卫战缺少字段：${missing.join('、')}`
     }
   }
-  if (recordScheme === 'deduction' || body.mode === 'deduction') {
-    if (body.id == null || body.id === '') {
-      return '临界推演 Buff 须提供 id'
-    }
-  }
+  // 临界：id 可空（后端自增），显式 id 交由 createBuff 校验
   return null
 }
 
