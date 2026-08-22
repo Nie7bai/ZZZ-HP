@@ -20,6 +20,8 @@ import guestbookRoutes from './routes/guestbookRoutes.js'
 import authRoutes from './routes/authRoutes.js'
 import seasonDateRoutes from './routes/seasonDateRoutes.js'
 import seasonContentRoutes from './routes/seasonContentRoutes.js'
+import deductionRoutes from './routes/deductionRoutes.js'
+import deductionAdminRoutes from './routes/deductionAdminRoutes.js'
 import pool from './config/db.js'
 import { ensureRuntimeSchema } from './bootstrap/ensureRuntimeSchema.js'
 import { fail } from './utils/response.js'
@@ -106,6 +108,7 @@ app.use('/api', generalApiLimiter)
 
 app.use('/boss_image', express.static(path.join(__dirname, '../boss_image')))
 app.use('/buff_image', express.static(path.join(__dirname, '../buff_image')))
+app.use('/attribute_image', express.static(path.join(__dirname, '../attribute_image')))
 app.use('/calculator_image', express.static(path.join(__dirname, '../calculator_image')))
 app.use('/guestbook_image', express.static(path.join(__dirname, '../guestbook_image')))
 // 计算器实体头像（管理端上传写入这些目录；IIS 需反代到 Node，与 boss_image 相同）
@@ -153,6 +156,8 @@ app.use('/api/changelog', changelogRoutes)
 app.use('/api/site-info', siteInfoRoutes)
 app.use('/api/guestbook', guestbookRoutes)
 app.use('/api/season-dates', seasonDateRoutes)
+app.use('/api/deduction', deductionRoutes)
+app.use('/api/admin/deduction', deductionAdminRoutes)
 
 app.use((_req, res) => {
   fail(res, '接口不存在', 404)

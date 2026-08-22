@@ -22,7 +22,7 @@ const props = defineProps<{
 const activePanel = defineModel<SidebarPanel>('activePanel', { default: 'history' })
 const mobileOpen = defineModel<boolean>('mobileOpen', { default: false })
 
-const allPanels: { id: SidebarPanel; label: string; crisisOnly?: boolean }[] = [
+const allPanels: { id: SidebarPanel; label: string; crisisOnly?: boolean; deductionExclude?: boolean }[] = [
   { id: 'history', label: '往期详细' },
   { id: 'hp-chart', label: '血量折线图' },
   { id: 'phase-compare', label: '期数对比折线图' },
@@ -34,7 +34,11 @@ const allPanels: { id: SidebarPanel; label: string; crisisOnly?: boolean }[] = [
 ]
 
 const panels = computed(() =>
-  allPanels.filter((panel) => !panel.crisisOnly || props.mode === 'crisis-assault'),
+  allPanels.filter(
+    (panel) =>
+      (!panel.crisisOnly || props.mode === 'crisis-assault') &&
+      (!panel.deductionExclude || props.mode !== 'deduction'),
+  ),
 )
 
 const backText = computed(() => (props.backLabel ?? '返回首页').replace(/^←\s*/, ''))

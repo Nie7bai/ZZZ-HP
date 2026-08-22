@@ -160,13 +160,6 @@ async function submitForm() {
             buffIndex: Number(buffIndex.value),
           }
 
-    if (isDeduction.value && schemePayload.id == null) {
-      error.value = '临界推演请先在已有 Buff 记录上编辑（新建编码尚未开放）'
-      showFeedback('error')
-      submitting.value = false
-      return
-    }
-
     let buffImage: string | null = imageUrl.value.trim() || null
     if (imageFile.value) {
       const uploaded = await uploadBuffImage(imageFile.value, {

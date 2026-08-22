@@ -11,6 +11,7 @@ import CrisisScoreHpTablePanel from '@/components/history/CrisisScoreHpTablePane
 import CrisisHpScoreConverterPanel from '@/components/history/CrisisHpScoreConverterPanel.vue'
 import DefenseDetailPanel from '@/components/defense/DefenseDetailPanel.vue'
 import DefenseHpLineChartPanel from '@/components/defense/DefenseHpLineChartPanel.vue'
+import DeductionDetailPanel from '@/components/deduction/DeductionDetailPanel.vue'
 import type { ModeKey } from '@/types/history'
 
 const props = defineProps<{
@@ -79,8 +80,11 @@ onUnmounted(() => {
       class="mode-content"
       :class="{
         'mode-content--page-scroll':
-          (activePanel === 'history' && (mode === 'defense' || mode === 'crisis-assault')) ||
-          (activePanel === 'phase-compare' && mode === 'defense') ||
+          (activePanel === 'history' &&
+            (mode === 'defense' || mode === 'crisis-assault' || mode === 'deduction')) ||
+          (activePanel === 'phase-compare' &&
+            (mode === 'defense' || mode === 'deduction')) ||
+          (activePanel === 'hp-chart' && mode === 'deduction') ||
           activePanel === 'buff-compare' ||
           activePanel === 'buff-overview' ||
           activePanel === 'score-hp-table' ||
@@ -92,6 +96,11 @@ onUnmounted(() => {
         <DefenseDetailPanel
           v-if="activePanel === 'history' && mode === 'defense'"
           key="defense-history"
+          class="panel-fill panel-fill--page"
+        />
+        <DeductionDetailPanel
+          v-else-if="activePanel === 'history' && mode === 'deduction'"
+          key="deduction-history"
           class="panel-fill panel-fill--page"
         />
         <HistoryDetailPanel
@@ -106,32 +115,47 @@ onUnmounted(() => {
           class="panel-fill"
         />
         <HpLineChartPanel
-          v-else-if="activePanel === 'hp-chart' && mode === 'crisis-assault'"
+          v-else-if="
+            activePanel === 'hp-chart' && (mode === 'crisis-assault' || mode === 'deduction')
+          "
           key="hp-chart"
           class="panel-fill"
+          :class="{ 'panel-fill--page': mode === 'deduction' }"
           :mode="mode"
         />
         <PhaseComparePanel
-          v-else-if="activePanel === 'phase-compare' && (mode === 'crisis-assault' || mode === 'defense')"
+          v-else-if="
+            activePanel === 'phase-compare' &&
+            (mode === 'crisis-assault' || mode === 'defense' || mode === 'deduction')
+          "
           key="phase-compare"
           class="panel-fill"
-          :class="{ 'panel-fill--page': mode === 'defense' }"
+          :class="{ 'panel-fill--page': mode === 'defense' || mode === 'deduction' }"
           :mode="mode"
         />
         <MonsterComparePanel
-          v-else-if="activePanel === 'monster-compare' && (mode === 'crisis-assault' || mode === 'defense')"
+          v-else-if="
+            activePanel === 'monster-compare' &&
+            (mode === 'crisis-assault' || mode === 'defense' || mode === 'deduction')
+          "
           key="monster-compare"
           class="panel-fill"
           :mode="mode"
         />
         <BuffOverviewPanel
-          v-else-if="activePanel === 'buff-overview' && (mode === 'crisis-assault' || mode === 'defense')"
+          v-else-if="
+            activePanel === 'buff-overview' &&
+            (mode === 'crisis-assault' || mode === 'defense' || mode === 'deduction')
+          "
           key="buff-overview"
           class="panel-fill panel-fill--page"
           :mode="mode"
         />
         <BuffComparePanel
-          v-else-if="activePanel === 'buff-compare' && (mode === 'crisis-assault' || mode === 'defense')"
+          v-else-if="
+            activePanel === 'buff-compare' &&
+            (mode === 'crisis-assault' || mode === 'defense' || mode === 'deduction')
+          "
           key="buff-compare"
           class="panel-fill panel-fill--page"
           :mode="mode"

@@ -1,21 +1,29 @@
 <script setup lang="ts">
-import type { AdminPanel } from '@/types/admin'
+import { computed } from 'vue'
+import type { AdminPanel, AdminScope } from '@/types/admin'
 
-defineProps<{
+const props = defineProps<{
   title: string
   backTo: string
   backLabel?: string
+  scope?: AdminScope
 }>()
 
 const activePanel = defineModel<AdminPanel>('activePanel', { default: 'monster' })
 
-const panels: { id: AdminPanel; label: string }[] = [
+const allPanels: { id: AdminPanel; label: string; deductionExclude?: boolean }[] = [
   { id: 'monster', label: '内容管理' },
   { id: 'monster-form', label: '表单添加怪物' },
   { id: 'buff-form', label: '表单添加 Buff' },
-  { id: 'season-date', label: '版本日期管理' },
+  { id: 'season-date', label: '版本日期管理', deductionExclude: true },
   { id: 'import-export', label: '导入 / 导出' },
 ]
+
+const panels = computed(() =>
+  allPanels.filter(
+    (panel) => !panel.deductionExclude || props.scope !== 'deduction',
+  ),
+)
 </script>
 
 <template>

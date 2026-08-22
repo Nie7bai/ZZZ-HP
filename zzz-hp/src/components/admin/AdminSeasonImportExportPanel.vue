@@ -25,11 +25,12 @@ const emit = defineEmits<{
 
 const router = useRouter()
 
-const unsupported = computed(() => isDeductionScope(props.scope))
+const unsupported = computed(() => false)
 
-const scheme = computed<SeasonSnapshotScheme>(() =>
-  isDefenseScope(props.scope) ? 'defense' : 'crisis',
-)
+const scheme = computed<SeasonSnapshotScheme>(() => {
+  if (isDeductionScope(props.scope)) return 'deduction'
+  return isDefenseScope(props.scope) ? 'defense' : 'crisis'
+})
 const variant = computed<SeasonSnapshotVariant | null>(() => {
   if (props.scope === 'defense-old') return 'old'
   if (props.scope === 'defense-new') return 'new'

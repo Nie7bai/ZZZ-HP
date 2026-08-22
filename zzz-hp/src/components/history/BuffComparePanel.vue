@@ -3,8 +3,10 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { fetchCrisisAssaultPhases, formatPhaseCompactCode } from '@/api/crisisAssault'
 import { fetchDefenseSeasons } from '@/api/defense'
+import { deductionPhasesToPhaseData, fetchDeductionPhases } from '@/api/deduction'
 import { useCrisisAssaultCompareStore } from '@/stores/crisisAssaultCompare'
 import { useDefenseCompareStore } from '@/stores/defenseCompare'
+import { useDeductionCompareStore } from '@/stores/deductionCompare'
 import type { DefenseVariant } from '@/types/defense'
 import { modeTitles, type BuffInfo, type ModeKey, type PhaseData } from '@/types/history'
 import { defenseSeasonsToPhaseData } from '@/utils/defenseCompare'
@@ -31,6 +33,7 @@ const props = defineProps<{
 const route = useRoute()
 const crisisCompareStore = useCrisisAssaultCompareStore()
 const defenseCompareStore = useDefenseCompareStore()
+const deductionCompareStore = useDeductionCompareStore()
 
 const defenseVariant = computed<DefenseVariant>(() =>
   route.name === 'defense-new' ? 'new' : 'old',
@@ -41,11 +44,16 @@ const phasesLoadEpoch = createRequestEpoch()
 
 const selectedIds = computed({
   get() {
+    if (props.mode === 'deduction') return deductionCompareStore.selectedBuffIds
     return props.mode === 'defense'
       ? defenseCompareStore.selectedBuffIds
       : crisisCompareStore.selectedBuffIds
   },
   set(value: string[]) {
+    if (props.mode === 'deduction') {
+      deductionCompareStore.selectedBuffIds = value
+      return
+    }
     if (props.mode === 'defense') {
       defenseCompareStore.selectedBuffIds = value
     } else {
@@ -61,24 +69,38 @@ const loadError = ref('')
 const hoveredBuffId = ref<string | null>(null)
 
 const pageTitle = computed(() => modeTitles[props.mode])
+const isDeductionMode = computed(() => props.mode === 'deduction')
 
 const allBuffEntries = computed<BuffEntry[]>(() => {
   const entries: BuffEntry[] = []
 
   for (const phase of allPhases.value) {
     const phaseNum = phase.phase.match(/\d+/)?.[0] ?? '1'
-    const phaseLabel = `${phase.version}第${phaseNum}期`
-    const phaseCode = formatPhaseCompactCode({
-      label: phaseLabel,
-      dateRange: phase.dateRange,
-      totalHp: phase.totalHp ?? 0,
-      version: phase.version,
-      phase: phaseNum,
-    })
-    const phaseDisplay = `${phase.version} ${phase.phase}`
+    // 推演：每个 version 即一期，没有子期号，代号直接用期数号（如 101），避免拼出 1011
+    const phaseLabel = isDeductionMode.value
+      ? phase.version
+      : `${phase.version}第${phaseNum}期`
+    const phaseCode = isDeductionMode.value
+      ? phase.version
+      : formatPhaseCompactCode({
+          label: phaseLabel,
+          dateRange: phase.dateRange,
+          totalHp: phase.totalHp ?? 0,
+          version: phase.version,
+          phase: phaseNum,
+        })
+    // 推演：phase 已是期数名（如 临界推演：歧路回响），不拼版本前缀
+    const phaseDisplay = isDeductionMode.value ? phase.phase : `${phase.version} ${phase.phase}`
+    // 推演 Buff 按节点细分后同名会跨节点重复，对比时按期去重
+    const seenTitles = new Set<string>()
 
     phase.buffs.forEach((buff, buffIndex) => {
       if (!buff.name || buff.name.startsWith('Buff ')) return
+      if (isDeductionMode.value) {
+        const key = `${phase.id}::${buff.name}`
+        if (seenTitles.has(key)) return
+        seenTitles.add(key)
+      }
       entries.push({
         id: `${phase.id}-buff-${buffIndex}`,
         phaseId: phase.id,
@@ -190,6 +212,9 @@ async function loadPhases() {
     } else if (props.mode === 'crisis-assault') {
       data = await fetchCrisisAssaultPhases()
       if (!phasesLoadEpoch.isCurrent(token)) return
+    } else if (props.mode === 'deduction') {
+      data = deductionPhasesToPhaseData(await fetchDeductionPhases())
+      if (!phasesLoadEpoch.isCurrent(token)) return
     }
     if (!phasesLoadEpoch.isCurrent(token)) return
     allPhases.value = data
@@ -214,7 +239,9 @@ function addBuffFromSearch(rawInput?: string) {
 
   const matched = availableEntries.value.filter((entry) => matchesEntry(entry, query))
   if (!matched.length) {
-    inputError.value = '未找到该 Buff，可试 Buff 名 / 3.01 / 3.0第1期'
+    inputError.value = isDeductionMode.value
+      ? '未找到该 Buff，可输入 Buff 名或期数名'
+      : '未找到该 Buff，可试 Buff 名 / 3.01 / 3.0第1期'
     return
   }
 
@@ -299,7 +326,7 @@ watch(
               v-model="buffSearchInput"
               type="text"
               class="buff-search-input"
-              placeholder="Buff 名 / 3.01朔风"
+              :placeholder="isDeductionMode ? 'Buff 名 / 期数名' : 'Buff 名 / 3.01朔风'"
               spellcheck="false"
             />
             <button type="submit" class="add-btn">添加</button>
