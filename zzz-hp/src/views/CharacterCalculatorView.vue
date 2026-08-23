@@ -1,8 +1,17 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  ref,
+  useTemplateRef,
+  watch,
+} from 'vue'
 import { storeToRefs } from 'pinia'
 import BuffEffectBlocksDisplay from '@/components/calculator/BuffEffectBlocksDisplay.vue'
 import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
+import CalculatorLoadStatus from '@/components/calculator/CalculatorLoadStatus.vue'
 import DamageCalcPage from '@/components/calculator/DamageCalcPage.vue'
 import { DAMAGE_CALC_SECTIONS, DAMAGE_CALC_MODE_ITEMS, type DamageCalcNavItem } from '@/constants/damageCalcNav'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
@@ -16,15 +25,51 @@ defineOptions({ name: 'CharacterCalculatorView' })
 
 type CalcPage = 'damage' | 'role-buff' | 'wengine-buff' | 'bangboo-buff' | 'drive-disc-buff'
 type MindscapeBuffMode = 'current' | 'cumulative'
+type CalculatorLoadState = 'loading' | 'error' | 'ready'
 
 const calculatorBuffStore = useCalculatorBuffStore()
 const themeStore = useThemeStore()
+const calculatorLoadStatusRef =
+  useTemplateRef<InstanceType<typeof CalculatorLoadStatus>>('calculatorLoadStatus')
+const calculatorContentRef = useTemplateRef<HTMLElement>('calculatorContent')
 const { mode: themeMode } = storeToRefs(themeStore)
 const { agents, wengines: wengineDocs, bangboos: bangbooDocs, driveDiscs: driveDiscDocs, skillSubcategories, loading, loaded, error } =
   storeToRefs(calculatorBuffStore)
 
+const calculatorLoadState = computed<CalculatorLoadState>(() => {
+  if (loading.value) return 'loading'
+  if (error.value) return 'error'
+  if (loaded.value) return 'ready'
+  return 'loading'
+})
+
+function ensureCalculatorData() {
+  void calculatorBuffStore.ensureLoaded().catch(() => {
+    // error 已写入 store，由页面错误态展示
+  })
+}
+
+async function retryCalculatorData() {
+  if (loading.value) return
+  const loadRequest = calculatorBuffStore.loadAll(true).catch(() => {
+    // error 已写入 store，由页面错误态展示
+  })
+  await nextTick()
+  calculatorLoadStatusRef.value?.focusStatusRegion()
+  await loadRequest
+  await nextTick()
+  if (!calculatorLoadStatusRef.value?.hasStatusFocus()) return
+  if (error.value) {
+    calculatorLoadStatusRef.value?.focusRetryButton()
+    return
+  }
+  if (loaded.value) {
+    calculatorContentRef.value?.focus({ preventScroll: true })
+  }
+}
+
 onMounted(() => {
-  void calculatorBuffStore.ensureLoaded()
+  ensureCalculatorData()
 })
 
 watch(loaded, (ready) => {
@@ -334,10 +379,19 @@ const filteredDriveDiscDocs = computed(() =>
       <div class="sidebar-foot" aria-hidden="true">ZZZ-HP</div>
     </aside>
 
-    <section class="content">
-      <p v-if="loading || !loaded" class="load-hint">正在从数据库加载计算器数据...</p>
-      <p v-else-if="error" class="load-error">{{ error }}</p>
-      <template v-else>
+    <section
+      ref="calculatorContent"
+      class="content"
+      aria-label="计算器内容"
+      tabindex="-1"
+    >
+      <CalculatorLoadStatus
+        ref="calculatorLoadStatus"
+        :state="calculatorLoadState"
+        :error="error"
+        @retry="retryCalculatorData"
+      />
+      <template v-if="calculatorLoadState === 'ready'">
       <DamageCalcPage
         v-show="activePage === 'damage'"
         ref="damageCalcPageRef"
@@ -939,35 +993,21 @@ const filteredDriveDiscDocs = computed(() =>
 }
 
 .content {
+  min-width: 0;
   min-height: 0;
   padding: 1rem;
   overflow-y: auto;
+}
+
+.content:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
 }
 
 .calculator-page.theme-light .content {
   background: transparent;
   background-image: var(--zzz-tex-dots);
   background-size: 14px 14px;
-}
-
-.load-hint,
-.load-error {
-  margin: 0 0 1rem;
-  padding: 0.85rem 1rem;
-  border-radius: 10px;
-  font-size: 0.9rem;
-}
-
-.load-hint {
-  border: 1px solid #34302a;
-  background: #14120f;
-  color: #d8c39a;
-}
-
-.load-error {
-  border: 1px solid #5a2f2f;
-  background: #241515;
-  color: #ffb4b4;
 }
 
 .card {
@@ -1292,12 +1332,6 @@ const filteredDriveDiscDocs = computed(() =>
   border-color: #c9a55c;
   background: #fff8eb;
   color: #5c4818;
-}
-
-.calculator-page.theme-light .load-hint {
-  border-color: #e6d7b0;
-  background: #fff9ef;
-  color: #6b5420;
 }
 
 @media (max-width: 768px) {
