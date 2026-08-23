@@ -4,7 +4,7 @@
  * 运行：npm run test:calculator-loading
  */
 
-import { createRenderer, defineComponent, h, nextTick } from 'vue'
+import { createRenderer, defineComponent, h, markRaw, nextTick } from 'vue'
 
 let failed = 0
 function check(name, actual, expected) {
@@ -19,9 +19,11 @@ globalThis.localStorage = {
   getItem: () => null,
   setItem: () => {},
 }
+const documentBody = { type: 'body', style: {} }
 globalThis.document = {
   documentElement: { dataset: {} },
-  body: { style: {} },
+  body: documentBody,
+  activeElement: documentBody,
 }
 
 const [
@@ -35,7 +37,15 @@ const [
 ])
 
 function createNode(type, text = '') {
-  return { type, text, props: {}, style: {}, children: [], parent: null }
+  const node = markRaw({ type, text, props: {}, style: {}, children: [], parent: null })
+  node.focus = () => {
+    globalThis.document.activeElement = node
+  }
+  return node
+}
+
+function containsNode(root, target) {
+  return root === target || root.children.some((child) => containsNode(child, target))
 }
 
 function insert(child, parent, anchor = null) {
@@ -48,6 +58,9 @@ function insert(child, parent, anchor = null) {
 
 function remove(child) {
   if (!child.parent) return
+  if (containsNode(child, globalThis.document.activeElement)) {
+    globalThis.document.activeElement = globalThis.document.body
+  }
   const index = child.parent.children.indexOf(child)
   if (index >= 0) child.parent.children.splice(index, 1)
   child.parent = null
@@ -109,7 +122,7 @@ store.error = ''
 
 let requestCount = 0
 let rejectRequest
-const failureMessages = ['首次加载失败', '重试仍然失败']
+const failureMessages = ['首次加载失败', '重试仍然失败', '再次重试失败', '点击空白处后失败']
 globalThis.fetch = () => {
   const message = failureMessages[requestCount] ?? '加载失败'
   requestCount++
@@ -151,6 +164,7 @@ store.loaded = true
 await nextTick()
 retryButton = findNode(root, (node) => node.type === 'button' && renderedText(node) === '重新加载')
 const requestsBeforeRetry = requestCount
+retryButton.focus()
 retryButton.props.onClick()
 retryButton.props.onClick()
 await nextTick()
@@ -160,6 +174,7 @@ check(
   renderedText(findNode(root, (node) => node.props.role === 'status')),
   '正在从数据库加载计算器数据...',
 )
+check('重试期间焦点移至加载状态', globalThis.document.activeElement?.props?.role, 'status')
 
 rejectRequest?.()
 await new Promise((resolve) => setTimeout(resolve, 0))
@@ -168,8 +183,40 @@ alert = findNode(root, (node) => node.props.role === 'alert')
 retryButton = findNode(root, (node) => node.type === 'button' && renderedText(node) === '重新加载')
 check('重试失败后显示新错误', renderedText(alert), '重试仍然失败')
 check('重试失败后仍可再次重试', Boolean(retryButton), true)
+check('重试失败后焦点返回重试按钮', globalThis.document.activeElement === retryButton, true)
+
+const requestsBeforeFocusMoveRetry = requestCount
+retryButton.props.onClick()
+await nextTick()
+check('移开焦点前已发起新重试', requestCount - requestsBeforeFocusMoveRetry, 1)
+check(
+  '移开焦点前显示加载态',
+  renderedText(findNode(root, (node) => node.props.role === 'status')),
+  '正在从数据库加载计算器数据...',
+)
+const sidebarButton = findNode(
+  root,
+  (node) => node.type === 'button' && String(node.props.class).includes('sidebar-btn'),
+)
+sidebarButton.focus()
+rejectRequest?.()
+await new Promise((resolve) => setTimeout(resolve, 0))
+await nextTick()
+check('用户移开焦点后不再强制抢回', globalThis.document.activeElement === sidebarButton, true)
+
+retryButton = findNode(root, (node) => node.type === 'button' && renderedText(node) === '重新加载')
+const requestsBeforeBodyFocusRetry = requestCount
+retryButton.focus()
+retryButton.props.onClick()
+await nextTick()
+check('点击空白处前已发起新重试', requestCount - requestsBeforeBodyFocusRetry, 1)
+globalThis.document.activeElement = globalThis.document.body
+rejectRequest?.()
+await new Promise((resolve) => setTimeout(resolve, 0))
+await nextTick()
+check('焦点落到页面空白后不再强制抢回', globalThis.document.activeElement === documentBody, true)
 
 app.unmount()
 console.log('')
 console.log(failed === 0 ? '全部通过' : `${failed} 项失败`)
-process.exit(failed === 0 ? 0 : 1)
+process.exitCode = failed === 0 ? 0 : 1

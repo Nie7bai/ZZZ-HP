@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useTemplateRef } from 'vue'
+
 interface Props {
   state: 'loading' | 'error' | 'ready'
   error: string
@@ -9,19 +11,49 @@ defineProps<Props>()
 const emit = defineEmits<{
   retry: []
 }>()
+
+const statusRegionRef = useTemplateRef<HTMLDivElement>('statusRegion')
+const retryButtonRef = useTemplateRef<HTMLButtonElement>('retryButton')
+
+function focusStatusRegion() {
+  statusRegionRef.value?.focus({ preventScroll: true })
+}
+
+function hasStatusFocus() {
+  return document.activeElement === statusRegionRef.value
+}
+
+function focusRetryButton() {
+  retryButtonRef.value?.focus({ preventScroll: true })
+}
+
+defineExpose({ focusStatusRegion, hasStatusFocus, focusRetryButton })
 </script>
 
 <template>
-  <p v-if="state === 'loading'" class="load-hint" role="status" aria-live="polite">
-    正在从数据库加载计算器数据...
-  </p>
-  <div v-else-if="state === 'error'" class="load-error">
-    <p role="alert">{{ error }}</p>
-    <button type="button" class="load-retry-btn" @click="emit('retry')">重新加载</button>
+  <div
+    ref="statusRegion"
+    class="load-status-region"
+    :role="state === 'loading' ? 'status' : undefined"
+    :aria-live="state === 'loading' ? 'polite' : undefined"
+    :aria-atomic="state === 'loading' ? 'true' : undefined"
+    tabindex="-1"
+  >
+    <p v-if="state === 'loading'" class="load-hint">正在从数据库加载计算器数据...</p>
+    <div v-else-if="state === 'error'" class="load-error">
+      <p class="load-error-message" role="alert">{{ error }}</p>
+      <button ref="retryButton" type="button" class="load-retry-btn" @click="emit('retry')">
+        重新加载
+      </button>
+    </div>
   </div>
 </template>
 
 <style scoped>
+.load-status-region {
+  min-width: 0;
+}
+
 .load-hint,
 .load-error {
   margin: 0 0 1rem;
@@ -36,8 +68,14 @@ const emit = defineEmits<{
   color: #d8c39a;
 }
 
+.load-status-region:focus-visible .load-hint {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
 .load-error {
   display: flex;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
@@ -47,8 +85,11 @@ const emit = defineEmits<{
   color: #ffb4b4;
 }
 
-.load-error p {
+.load-error-message {
+  flex: 1 1 16rem;
+  min-width: 0;
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .load-retry-btn {

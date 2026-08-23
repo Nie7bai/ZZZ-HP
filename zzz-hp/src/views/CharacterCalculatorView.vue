@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  ref,
+  useTemplateRef,
+  watch,
+} from 'vue'
 import { storeToRefs } from 'pinia'
 import BuffEffectBlocksDisplay from '@/components/calculator/BuffEffectBlocksDisplay.vue'
 import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
@@ -21,6 +29,9 @@ type CalculatorLoadState = 'loading' | 'error' | 'ready'
 
 const calculatorBuffStore = useCalculatorBuffStore()
 const themeStore = useThemeStore()
+const calculatorLoadStatusRef =
+  useTemplateRef<InstanceType<typeof CalculatorLoadStatus>>('calculatorLoadStatus')
+const calculatorContentRef = useTemplateRef<HTMLElement>('calculatorContent')
 const { mode: themeMode } = storeToRefs(themeStore)
 const { agents, wengines: wengineDocs, bangboos: bangbooDocs, driveDiscs: driveDiscDocs, skillSubcategories, loading, loaded, error } =
   storeToRefs(calculatorBuffStore)
@@ -38,11 +49,23 @@ function ensureCalculatorData() {
   })
 }
 
-function retryCalculatorData() {
+async function retryCalculatorData() {
   if (loading.value) return
-  void calculatorBuffStore.loadAll(true).catch(() => {
+  const loadRequest = calculatorBuffStore.loadAll(true).catch(() => {
     // error 已写入 store，由页面错误态展示
   })
+  await nextTick()
+  calculatorLoadStatusRef.value?.focusStatusRegion()
+  await loadRequest
+  await nextTick()
+  if (!calculatorLoadStatusRef.value?.hasStatusFocus()) return
+  if (error.value) {
+    calculatorLoadStatusRef.value?.focusRetryButton()
+    return
+  }
+  if (loaded.value) {
+    calculatorContentRef.value?.focus({ preventScroll: true })
+  }
 }
 
 onMounted(() => {
@@ -356,8 +379,14 @@ const filteredDriveDiscDocs = computed(() =>
       <div class="sidebar-foot" aria-hidden="true">ZZZ-HP</div>
     </aside>
 
-    <section class="content">
+    <section
+      ref="calculatorContent"
+      class="content"
+      aria-label="计算器内容"
+      tabindex="-1"
+    >
       <CalculatorLoadStatus
+        ref="calculatorLoadStatus"
         :state="calculatorLoadState"
         :error="error"
         @retry="retryCalculatorData"
@@ -964,9 +993,15 @@ const filteredDriveDiscDocs = computed(() =>
 }
 
 .content {
+  min-width: 0;
   min-height: 0;
   padding: 1rem;
   overflow-y: auto;
+}
+
+.content:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
 }
 
 .calculator-page.theme-light .content {
