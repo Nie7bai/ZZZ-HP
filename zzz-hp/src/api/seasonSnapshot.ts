@@ -29,6 +29,7 @@ export interface SeasonSnapshotDeductionNode {
   node_type: number
   prev_node: string
   story_text: string | null
+  story_options_json: string | null
   layers_json: string | null
   buffs_json: string | null
   sort_order: number
@@ -41,6 +42,8 @@ export interface SeasonSnapshotSeason {
   bossCount: number
   buffCount: number
   dateCount: number
+  /** 推演期数含节点数（推演以节点为周期来源，可能无 boss/buff/date 行） */
+  nodeCount?: number
 }
 
 export interface SeasonSnapshotBoss {

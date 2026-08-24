@@ -6,6 +6,7 @@ import {
   parseFieldBuffSetsJson,
   resolveFieldBuffFromSets,
 } from '../utils/environmentBuffSchema.js'
+import { ensureDeductionStoryOptionsColumn } from './deductionSchemaService.js'
 
 let schemaEnsured = false
 
@@ -19,6 +20,7 @@ CREATE TABLE IF NOT EXISTS deduction_node (
   node_type INT NOT NULL DEFAULT 0,
   prev_node VARCHAR(20) NOT NULL DEFAULT '',
   story_text TEXT NULL,
+  story_options_json JSON NULL,
   layers_json JSON NULL,
   buffs_json JSON NULL,
   sort_order INT NOT NULL DEFAULT 0,
@@ -31,6 +33,7 @@ CREATE TABLE IF NOT EXISTS deduction_node (
 async function ensureDeductionSchema() {
   if (schemaEnsured) return
   await pool.query(CREATE_NODE_SQL)
+  await ensureDeductionStoryOptionsColumn(pool)
   schemaEnsured = true
 }
 
@@ -53,6 +56,7 @@ function mapNode(row) {
     type: Number(row.node_type) || 0,
     prevNode: row.prev_node || null,
     storyText: row.story_text || null,
+    storyOptions: parseJson(row.story_options_json) ?? [],
     layers: parseJson(row.layers_json) ?? [],
     buffs: parseJson(row.buffs_json) ?? [],
   }
@@ -99,7 +103,7 @@ function normalizeBossName(name) {
 export async function getDeductionPhases() {
   await ensureDeductionSchema()
   const [rows] = await pool.execute(
-    `SELECT version, phase, node_id, node_name, node_type, prev_node, story_text, layers_json, buffs_json, period_name
+    `SELECT version, phase, node_id, node_name, node_type, prev_node, story_text, story_options_json, layers_json, buffs_json, period_name
      FROM deduction_node
      ORDER BY CAST(version AS UNSIGNED), sort_order, id`,
   )

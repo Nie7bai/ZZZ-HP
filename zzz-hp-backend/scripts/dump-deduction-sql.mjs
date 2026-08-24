@@ -53,6 +53,9 @@ const conn = await mysql.createConnection({
 })
 
 try {
+  // 跳过乱码/测试期数（如 ????2）：推演期数为纯数字（101/102/201）
+  const isCleanVersion = (version) => /^\d+$/.test(String(version ?? '').trim())
+
   const [bossRows] = await conn.execute(
     `SELECT id, version, phase, boss_name, hp, defense, level, room, weakness, resistance, boss_image, mode
      FROM boss WHERE mode = 'deduction' ORDER BY version, phase, id`,
@@ -62,34 +65,42 @@ try {
      FROM buff WHERE mode = 'deduction' ORDER BY version, phase, id`,
   )
   const [nodeRows] = await conn.execute(
-    `SELECT id, version, phase, node_id, node_name, node_type, prev_node, story_text, layers_json, buffs_json, sort_order, period_name
+    `SELECT id, version, phase, node_id, node_name, node_type, prev_node, story_text, story_options_json, layers_json, buffs_json, sort_order, period_name
      FROM deduction_node ORDER BY version, sort_order, id`,
   )
-  const normalizedNodes = nodeRows.map((row) => ({
+  const cleanBoss = bossRows.filter((row) => isCleanVersion(row.version))
+  const cleanBuff = buffRows.filter((row) => isCleanVersion(row.version))
+  const cleanNodes = nodeRows.filter((row) => isCleanVersion(row.version))
+
+  const normalizedNodes = cleanNodes.map((row) => ({
     ...row,
+    story_options_json:
+      typeof row.story_options_json === 'string'
+        ? row.story_options_json
+        : JSON.stringify(row.story_options_json ?? []),
     layers_json:
       typeof row.layers_json === 'string' ? row.layers_json : JSON.stringify(row.layers_json),
     buffs_json:
       typeof row.buffs_json === 'string' ? row.buffs_json : JSON.stringify(row.buffs_json),
   }))
 
-  if (!bossRows.length && !buffRows.length && !nodeRows.length) {
+  if (!cleanBoss.length && !cleanBuff.length && !cleanNodes.length) {
     console.log('没有 mode=deduction 的数据，跳过生成（请先执行 import-nanoka-simul.mjs）')
     process.exitCode = 1
   } else {
     const bossSql = renderInsert(
       'boss',
       ['id', 'version', 'phase', 'boss_name', 'hp', 'defense', 'level', 'room', 'weakness', 'resistance', 'boss_image', 'mode'],
-      bossRows,
+      cleanBoss,
     )
     const buffSql = renderInsert(
       'buff',
       ['id', 'version', 'phase', 'buff_name', 'buff', 'buff_image', 'mode'],
-      buffRows,
+      cleanBuff,
     )
     const nodeSql = renderInsert(
       'deduction_node',
-      ['id', 'version', 'phase', 'node_id', 'node_name', 'node_type', 'prev_node', 'story_text', 'layers_json', 'buffs_json', 'sort_order', 'period_name'],
+      ['id', 'version', 'phase', 'node_id', 'node_name', 'node_type', 'prev_node', 'story_text', 'story_options_json', 'layers_json', 'buffs_json', 'sort_order', 'period_name'],
       normalizedNodes,
     )
 
@@ -103,9 +114,14 @@ try {
     console.log(
       JSON.stringify(
         {
-          boss: { rows: bossRows.length, file: bossFile },
-          buff: { rows: buffRows.length, file: buffFile },
-          deduction_node: { rows: nodeRows.length, file: nodeFile },
+          boss: { rows: cleanBoss.length, file: bossFile },
+          buff: { rows: cleanBuff.length, file: buffFile },
+          deduction_node: { rows: cleanNodes.length, file: nodeFile },
+          skipped: {
+            boss: bossRows.length - cleanBoss.length,
+            buff: buffRows.length - cleanBuff.length,
+            node: nodeRows.length - cleanNodes.length,
+          },
         },
         null,
         2,

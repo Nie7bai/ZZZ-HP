@@ -86,7 +86,9 @@ const selectedSummary = computed(() => {
   const picked = seasons.value.filter((row) => keys.has(seasonKey(row.version, row.phase)))
   const bosses = picked.reduce((sum, row) => sum + row.bossCount, 0)
   const buffs = picked.reduce((sum, row) => sum + row.buffCount, 0)
-  return `${picked.length} 期 · 怪物 ${bosses} · Buff ${buffs}`
+  const nodes = picked.reduce((sum, row) => sum + (row.nodeCount ?? 0), 0)
+  const nodePart = nodes ? ` · 节点 ${nodes}` : ''
+  return `${picked.length} 期 · 怪物 ${bosses} · Buff ${buffs}${nodePart}`
 })
 
 function isPicked(version: string, phase: string) {
@@ -165,6 +167,9 @@ function filterSnapshot(source: SeasonSnapshotData, keys: Set<string>): SeasonSn
     buffs,
     dates,
     bossInfos: source.bossInfos.filter((row) => names.has(row.boss_name)),
+    deductionNodes: (source.deductionNodes ?? []).filter((row) =>
+      keys.has(seasonKey(row.version, row.phase)),
+    ),
   }
 }
 
@@ -405,7 +410,10 @@ watch(
             />
             <span class="pick-text">
               <span class="pick-title">{{ row.version }} · 第 {{ row.phase }} 期</span>
-              <span class="pick-hint">怪物 {{ row.bossCount }} · Buff {{ row.buffCount }} · 日期 {{ row.dateCount }}</span>
+              <span class="pick-hint">
+                怪物 {{ row.bossCount }} · Buff {{ row.buffCount }} · 日期 {{ row.dateCount
+                }}{{ row.nodeCount ? ` · 节点 ${row.nodeCount}` : '' }}
+              </span>
             </span>
           </label>
           <p v-if="loading" class="empty-hint">加载中...</p>

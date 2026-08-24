@@ -6,7 +6,7 @@ import AdminMonsterPanel from '@/components/admin/AdminMonsterPanel.vue'
 import AdminBuffPanel from '@/components/admin/AdminBuffPanel.vue'
 import AdminSeasonDatePanel from '@/components/admin/AdminSeasonDatePanel.vue'
 import AdminSeasonImportExportPanel from '@/components/admin/AdminSeasonImportExportPanel.vue'
-import AdminDeductionPanel from '@/components/admin/AdminDeductionPanel.vue'
+import AdminDeductionVisualPanel from '@/components/admin/AdminDeductionVisualPanel.vue'
 import type { AdminPanel, AdminScope } from '@/types/admin'
 
 const props = defineProps<{
@@ -42,7 +42,7 @@ async function onSeasonDatesChanged() {
         'admin-content--fill': activePanel === 'season-date' || activePanel === 'monster',
       }"
     >
-      <AdminDeductionPanel
+      <AdminDeductionVisualPanel
         v-if="isDeduction && activePanel === 'monster'"
         key="deduction-monster"
       />

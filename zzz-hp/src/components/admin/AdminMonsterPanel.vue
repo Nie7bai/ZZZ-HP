@@ -10,6 +10,7 @@ import {
   uploadBossImage,
   type SeasonDateMode,
 } from '@/api/admin'
+import { fetchDeductionAdminPeriods, createDeductionBossInfo } from '@/api/deductionAdmin'
 import AdminImagePicker from '@/components/admin/AdminImagePicker.vue'
 import type { AdminScope, AdminMonsterSlotContext, DefenseMonsterCategory } from '@/types/admin'
 import { adminScopeTitles, isDefenseScope, isDeductionScope, recordSchemeFromScope } from '@/types/admin'
@@ -54,6 +55,8 @@ const customVersion = ref('')
 const customPhase = ref('')
 const knownVersionPhases = ref<Array<{ version: string; phase: string }>>([])
 const bossName = ref('')
+/** 推演条目类型：shiyu=前战(小怪) 仅登记 boss_info；boss=终局(boss) 写 boss 表 */
+const deductionType = ref<'shiyu' | 'boss'>('shiyu')
 const hp = ref('')
 const crisisBaseHp = ref('')
 const hpCoeffPercent = ref('')
@@ -132,6 +135,16 @@ function applyDefaultVersionPhase() {
 
 async function loadVersionPhaseOptions() {
   try {
+    if (isDeduction.value) {
+      // 推演：期数以 deduction_node 为准（含刚新建的期数），phase 恒为 1
+      const periods = await fetchDeductionAdminPeriods()
+      knownVersionPhases.value = periods.map((row) => ({
+        version: String(row.version),
+        phase: String(row.phase ?? '1') || '1',
+      }))
+      applyDefaultVersionPhase()
+      return
+    }
     const scheme = recordSchemeFromScope(props.scope)
     const [dates, bosses] = await Promise.all([
       fetchSeasonDates(seasonMode.value),
@@ -554,6 +567,56 @@ async function submitForm() {
           }
         : { recordScheme: 'crisis' as const }
 
+    // 前战(小怪)：仅登记 boss_info 基础库，不写 boss 表
+    if (isDeduction.value && deductionType.value === 'shiyu') {
+      const info = await createDeductionBossInfo({
+        boss_name: fieldText(bossName.value),
+        defense: fieldText(defense.value) ? Number(defense.value) : 0,
+        level: fieldText(level.value) ? Number(level.value) : 70,
+        weakness: fieldText(weakness.value) || null,
+        resistance: fieldText(resistance.value) || null,
+        boss_image: bossImage,
+      })
+      message.value =
+        info.action === 'updated'
+          ? '怪物已登记基础库（boss_info），并更新了同名记录'
+          : '怪物已登记基础库（boss_info）'
+      if (props.dialogMode) {
+        emit('saved')
+        showFeedback('message')
+        return
+      }
+      const keptVersion = resolvedVersion.value
+      const keptPhase = resolvedPhase.value
+      version.value = keptVersion
+      phase.value = keptPhase
+      customVersion.value = ''
+      customPhase.value = ''
+      bossName.value = ''
+      hp.value = ''
+      defense.value = ''
+      level.value = '70'
+      room.value = '1'
+      resetDefenseFields()
+      resetCrisisCoeffFields()
+      weakness.value = ''
+      resistance.value = ''
+      staggerMultiplier.value = '1.5'
+      fieldBuffSetId.value = ''
+      fieldBuffSetOptions.value = []
+      imageFile.value = null
+      imagePickerRef.value?.reset()
+      imagePreview.value = ''
+      imageUrl.value = ''
+      lookupHint.value = ''
+      nameSuggestions.value = []
+      await loadVersionPhaseOptions()
+      version.value = keptVersion
+      phase.value = keptPhase
+      showFeedback('message')
+      return
+    }
+
     const result = await createBoss({
       version: resolvedVersion.value,
       phase: resolvedPhase.value,
@@ -669,41 +732,67 @@ watch(
     </header>
 
     <form class="admin-form" novalidate @submit.prevent="submitForm">
-      <label class="field">
-        <span class="field-label">版本 *</span>
+      <!-- 推演：期数即版本（如 101），无子期号；期数在「内容管理」新建 -->
+      <label v-if="isDeduction" class="field">
+        <span class="field-label">期数 *</span>
         <select v-model="version" class="field-input" :disabled="slotPositionLocked">
-          <option v-if="!availableVersions.length" value="" disabled>暂无可选版本</option>
+          <option v-if="!availableVersions.length" value="" disabled>
+            暂无可选期数，请先在「内容管理」新建期数
+          </option>
           <option v-for="item in availableVersions" :key="item" :value="item">
             {{ item }}
           </option>
         </select>
-        <input
-          v-model="customVersion"
-          type="text"
-          class="field-input"
-          placeholder="新版本（填写后覆盖上方选择）"
-          :disabled="slotPositionLocked"
-        />
       </label>
 
-      <label class="field">
-        <span class="field-label">期数 *</span>
-        <select v-model="phase" class="field-input" :disabled="slotPositionLocked">
-          <option v-if="!availablePhases.length" value="" disabled>
-            {{ resolvedVersion ? '该版本暂无期数，可在下方输入' : '请先选择版本' }}
-          </option>
-          <option v-for="item in availablePhases" :key="item" :value="item">
-            第 {{ item }} 期
-          </option>
+      <label v-if="isDeduction" class="field">
+        <span class="field-label">类型 *</span>
+        <select v-model="deductionType" class="field-input">
+          <option value="shiyu">前战(小怪)</option>
+          <option value="boss">终局(boss)</option>
         </select>
-        <input
-          v-model="customPhase"
-          type="text"
-          class="field-input"
-          placeholder="新期数（填写后覆盖上方选择）"
-          :disabled="slotPositionLocked"
-        />
+        <p class="field-hint">
+          前战(小怪)：仅登记 boss_info 基础库（下拉候选可选到）；终局(boss)：写入 boss 表。
+        </p>
       </label>
+
+      <template v-else>
+        <label class="field">
+          <span class="field-label">版本 *</span>
+          <select v-model="version" class="field-input" :disabled="slotPositionLocked">
+            <option v-if="!availableVersions.length" value="" disabled>暂无可选版本</option>
+            <option v-for="item in availableVersions" :key="item" :value="item">
+              {{ item }}
+            </option>
+          </select>
+          <input
+            v-model="customVersion"
+            type="text"
+            class="field-input"
+            placeholder="新版本（填写后覆盖上方选择）"
+            :disabled="slotPositionLocked"
+          />
+        </label>
+
+        <label class="field">
+          <span class="field-label">期数 *</span>
+          <select v-model="phase" class="field-input" :disabled="slotPositionLocked">
+            <option v-if="!availablePhases.length" value="" disabled>
+              {{ resolvedVersion ? '该版本暂无期数，可在下方输入' : '请先选择版本' }}
+            </option>
+            <option v-for="item in availablePhases" :key="item" :value="item">
+              第 {{ item }} 期
+            </option>
+          </select>
+          <input
+            v-model="customPhase"
+            type="text"
+            class="field-input"
+            placeholder="新期数（填写后覆盖上方选择）"
+            :disabled="slotPositionLocked"
+          />
+        </label>
+      </template>
 
       <label class="field">
         <span class="field-label">怪物名称 *</span>
@@ -733,7 +822,7 @@ watch(
         </label>
       </div>
 
-      <template v-if="!isDefense">
+      <template v-if="!isDefense && !isDeduction">
         <div class="field-row">
           <label class="field">
             <span class="field-label">怪物危局基础血量</span>
@@ -815,7 +904,7 @@ watch(
         </label>
       </div>
 
-      <label v-else class="field">
+      <label v-else-if="!isDeduction" class="field">
         <span class="field-label">房间 *</span>
         <select v-model="room" class="field-input" :disabled="slotPositionLocked">
           <option v-for="item in CRISIS_ROOM_OPTIONS" :key="item.value" :value="item.value">

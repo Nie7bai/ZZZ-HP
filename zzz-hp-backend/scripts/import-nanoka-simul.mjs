@@ -20,6 +20,7 @@ import {
 } from '../src/services/nanoka/nanokaSimulClient.js'
 import { parseSimulPeriod } from '../src/services/nanoka/nanokaSimulParser.js'
 import { ensureContentModeColumns } from '../src/services/contentModeService.js'
+import { ensureDeductionStoryOptionsColumn } from '../src/services/deductionSchemaService.js'
 
 dotenv.config()
 
@@ -68,6 +69,7 @@ CREATE TABLE IF NOT EXISTS deduction_node (
   node_type INT NOT NULL DEFAULT 0,
   prev_node VARCHAR(20) NOT NULL DEFAULT '',
   story_text TEXT NULL,
+  story_options_json JSON NULL,
   layers_json JSON NULL,
   buffs_json JSON NULL,
   sort_order INT NOT NULL DEFAULT 0,
@@ -135,6 +137,7 @@ if (dryRun) {
     console.log('mode 列保障:', JSON.stringify(actions))
 
     await conn.query(CREATE_NODE_SQL)
+    await ensureDeductionStoryOptionsColumn(conn)
     console.log('deduction_node 表已就绪')
 
     const summary = []
@@ -219,8 +222,8 @@ if (dryRun) {
         for (const [index, node] of item.nodes.entries()) {
           await conn.execute(
             `INSERT INTO deduction_node
-               (version, phase, node_id, node_name, node_type, prev_node, story_text, layers_json, buffs_json, sort_order, period_name)
-             VALUES (?, ?, ?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), ?, ?)`,
+               (version, phase, node_id, node_name, node_type, prev_node, story_text, story_options_json, layers_json, buffs_json, sort_order, period_name)
+             VALUES (?, ?, ?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?, ?)`,
             [
               item.version,
               item.phase,
@@ -229,6 +232,7 @@ if (dryRun) {
               node.type,
               node.prevNode,
               node.storyText,
+              JSON.stringify(node.storyOptions ?? []),
               // isBoss 开关默认按层名初始化：STAGE/LAST = Boss 关，其余 = 小怪关
               JSON.stringify(
                 node.layers.map((l) => ({

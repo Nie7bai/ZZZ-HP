@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 
 const props = withDefaults(
   defineProps<{
-    options: { name: string; [key: string]: unknown }[]
+    options: { name: string }[]
     modelValue: string
     placeholder?: string
     label?: string
@@ -64,15 +64,18 @@ function onFocus(event: FocusEvent) {
 
 function onInput(event: Event) {
   dirty.value = true
-  query.value = (event.target as HTMLInputElement).value
+  const value = (event.target as HTMLInputElement).value
+  query.value = value
   open.value = true
+  // 手动输入也同步回 modelValue：自定义名称可保存、空白校验才能准确判断
+  emit('update:modelValue', value)
 }
 
-function selectOption(option: { name: string; [key: string]: unknown }) {
+function selectOption(option: { name: string }) {
   if (props.fillOnSelect) query.value = option.name
   dirty.value = false
   emit('update:modelValue', option.name)
-  emit('select', option)
+  emit('select', option as { name: string; [key: string]: unknown })
   open.value = false
 }
 
@@ -88,11 +91,12 @@ function onBlur() {
 }
 
 /** 候选详情（如 Lv / HP），帮助区分同名不同型 */
-function optionMeta(opt: { [key: string]: unknown }): string {
+function optionMeta(opt: { name: string }): string {
+  const o = opt as { level?: unknown; hp?: unknown }
   const parts: string[] = []
-  if (opt.level != null && opt.level !== '') parts.push(`Lv${opt.level}`)
-  if (opt.hp != null && opt.hp !== '' && Number(opt.hp) > 0) {
-    parts.push(`HP ${Number(opt.hp).toLocaleString()}`)
+  if (o.level != null && o.level !== '') parts.push(`Lv${o.level}`)
+  if (o.hp != null && o.hp !== '' && Number(o.hp) > 0) {
+    parts.push(`HP ${Number(o.hp).toLocaleString()}`)
   }
   return parts.join(' · ')
 }
