@@ -1,5 +1,5 @@
 -- 临界推演（deduction）节点表
--- 节点图结构：剧情/开场节点含 story_text；战斗/最终战节点含 layers_json（层+怪物）与 buffs_json（可选增益）
+-- 节点图结构：剧情/开场节点含 story_text 与 story_options_json（选项）；战斗/最终战节点含 layers_json（层+怪物）与 buffs_json（可选增益）
 -- 怪物/增益的平铺数据在 boss / buff 表（mode='deduction'）
 
 USE zzz;
@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS deduction_node (
   node_type INT NOT NULL DEFAULT 0,
   prev_node VARCHAR(20) NOT NULL DEFAULT '',
   story_text TEXT NULL,
+  story_options_json JSON NULL COMMENT '剧情选项（choice 列表，[{name,desc}]）',
   layers_json JSON NULL,
   buffs_json JSON NULL,
   sort_order INT NOT NULL DEFAULT 0,

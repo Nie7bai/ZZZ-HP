@@ -5,6 +5,7 @@ import {
   searchBuffRecords,
   type SeasonDateMode,
 } from '@/api/admin'
+import { fetchDeductionAdminPeriods } from '@/api/deductionAdmin'
 import type { AdminScope } from '@/types/admin'
 import { isDefenseScope, isDeductionScope, recordSchemeFromScope } from '@/types/admin'
 
@@ -82,6 +83,16 @@ export function useAdminVersionPhaseSelect(
   async function loadVersionPhaseOptions() {
     loadingOptions.value = true
     try {
+      if (isDeductionScope(scope.value)) {
+        // 推演：期数以 deduction_node 为准（含刚新建的期数），phase 恒为 1
+        const periods = await fetchDeductionAdminPeriods()
+        knownVersionPhases.value = periods.map((row) => ({
+          version: String(row.version),
+          phase: String(row.phase ?? '1') || '1',
+        }))
+        applyDefaultVersionPhase()
+        return
+      }
       const scheme = recordSchemeFromScope(scope.value)
       const tasks: Array<Promise<Array<{ version: string; phase: string }>>> = [
         fetchSeasonDates(seasonMode.value).then((rows) =>

@@ -19,6 +19,8 @@ export interface DeductionFieldBuff {
 export interface DeductionLayer {
   name: string
   monsters: DeductionMonster[]
+  /** 是否 Boss 关：true=Boss 层（危局数据源），false/缺省=小怪层（shiyu 数据源） */
+  isBoss?: boolean
   /** 区域增益（boss_info 场地 Buff，与危局同源），仅 boss 层存在 */
   fieldBuff?: DeductionFieldBuff | null
 }
@@ -37,6 +39,8 @@ export interface DeductionNode {
   type: number
   prevNode: string | null
   storyText: string | null
+  /** 剧情选项（nanoka story_event.choice）：{ name, desc }，desc 常为解锁条件 */
+  storyOptions?: { name: string; desc: string | null }[]
   layers: DeductionLayer[]
   buffs: DeductionBuff[]
 }
@@ -68,20 +72,8 @@ export function isDeductionBattleNode(type: number): boolean {
 }
 
 export function deductionNodeTypeLabel(type: number): string {
-  switch (type) {
-    case 1:
-      return '剧情'
-    case 2:
-      return '战斗'
-    case 3:
-      return '最终战'
-    case 4:
-      return '开场'
-    case 5:
-      return '剧情'
-    default:
-      return `节点 ${type}`
-  }
+  // 类型已简化：战斗(2/3) / 剧情(1/4/5) 两种
+  return isDeductionBattleNode(type) ? '战斗' : '剧情'
 }
 
 export async function fetchDeductionPhases(): Promise<DeductionPeriod[]> {
@@ -199,24 +191,64 @@ export async function fetchDeductionHpChart(): Promise<HpChartPoint[]> {
   return points
 }
 
-/** 推演中出现过的怪物（按节点数据去重，带图片），供单独怪物对比选择 */
-export async function fetchDeductionBossList(): Promise<BossOption[]> {
+/** 推演单独怪物对比的类别 */
+export type DeductionBossCategory = 'elite' | 'boss'
+
+/** 小怪层中按命名特征判定的精英（不含 Boss 关怪物） */
+const DEDUCTION_ELITE_NAMED = new Set([
+  '护戍盾卫',
+  '秉火领颂',
+  '缄枢',
+  '索迪代斯',
+  '装甲哈提',
+  '骇鸟',
+  '牲鬼·卫律使者',
+  '牲鬼·凶魁愚者',
+  '秽息蚀者·阿瓦鲁斯',
+  '秽息行者·蝎骸',
+])
+
+function isDeductionEliteMonster(name: string): boolean {
+  const s = String(name)
+  return (
+    /^(多佩冈亚·|秽蚀·|恶名·|离子体·|初生·)/.test(s) ||
+    /(·蓄能型|·超频型|·挑战者型|·重击者型|Ⅱ型|Ⅲ型)$/.test(s) ||
+    DEDUCTION_ELITE_NAMED.has(s)
+  )
+}
+
+/** 推演中出现过的怪物（带图片），可按 精英 / Boss 分类；小怪一律排除 */
+export async function fetchDeductionBossList(
+  category?: DeductionBossCategory,
+): Promise<BossOption[]> {
   const periods = await fetchDeductionPhases()
-  const byName = new Map<string, string | null>()
+  const byName = new Map<string, { image: string | null; boss: boolean }>()
   for (const period of periods) {
     for (const node of period.nodes) {
+      if (!isDeductionBattleNode(node.type)) continue
       for (const layer of node.layers) {
+        const isBossLayer = layer.isBoss === true
         for (const monster of layer.monsters) {
           if (!monster.name) continue
-          // 首见即记录图片（展示侧已按节点JSON/boss表/boss_info 解析过 boss_image）
-          if (!byName.has(monster.name)) byName.set(monster.name, monster.boss_image ?? null)
+          const name = String(monster.name)
+          const rec = byName.get(name) ?? { image: null, boss: isBossLayer }
+          if (!rec.image && monster.boss_image) rec.image = monster.boss_image
+          if (isBossLayer) rec.boss = true
+          byName.set(name, rec)
         }
       }
     }
   }
   return [...byName.entries()]
+    .filter(([name, rec]) => {
+      const isBoss = rec.boss
+      const isElite = !rec.boss && isDeductionEliteMonster(name)
+      if (category === 'boss') return isBoss
+      if (category === 'elite') return isElite
+      return isBoss || isElite
+    })
     .sort(([a], [b]) => a.localeCompare(b, 'zh'))
-    .map(([boss_name, boss_image]) => ({ boss_name, boss_image }))
+    .map(([boss_name, rec]) => ({ boss_name, boss_image: rec.image }))
 }
 
 /** 某怪物在推演各期出现的总血量（按期汇总） */

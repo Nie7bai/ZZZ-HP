@@ -55,6 +55,36 @@ function flattenStoryEvents(storyEvent) {
   return parts.join('\n\n') || null
 }
 
+/**
+ * 收集 story_event 中的「选项」（choice 数组，元素形如 { id, name, desc }）。
+ * 同一节点多个剧情页共享选项，按 name 去重；desc 通常为解锁条件（如得分要求）。
+ */
+function collectStoryOptions(storyEvent) {
+  const options = []
+  const seen = new Set()
+  const walk = (obj) => {
+    if (!obj || typeof obj !== 'object') return
+    if (Array.isArray(obj)) {
+      for (const item of obj) {
+        if (item && typeof item === 'object' && typeof item.name === 'string') {
+          const name = stripColorTags(item.name)
+          if (name && !seen.has(name)) {
+            seen.add(name)
+            options.push({
+              name,
+              desc: stripColorTags(item.desc) || null,
+            })
+          }
+        }
+      }
+      return
+    }
+    for (const value of Object.values(obj)) walk(value)
+  }
+  walk(storyEvent)
+  return options
+}
+
 function collectMonsters(layerRoom, layerMonsterLevel) {
   const monsters = []
   for (const room of Object.values(layerRoom)) {
@@ -118,6 +148,7 @@ export function parseSimulPeriod(simulJson, { mode = 'deduction', phase = '1' } 
       type: nodeType,
       prevNode: node.prev_node != null ? String(node.prev_node) : '',
       storyText: flattenStoryEvents(node.story_event),
+      storyOptions: collectStoryOptions(node.story_event),
       layers: [],
       buffs: [],
     }

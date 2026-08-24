@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { requireAdmin } from '../middleware/requireAdmin.js'
 import {
+  createDeductionBossInfo,
   createDeductionNode,
   createDeductionPeriod,
   deleteDeductionNode,
@@ -11,6 +12,7 @@ import {
   listPickBuffs,
   listShiyuMinions,
   renameDeductionPeriod,
+  reorderDeductionNodes,
   updateDeductionNode,
 } from '../services/deductionAdminService.js'
 import { success, fail } from '../utils/response.js'
@@ -92,6 +94,24 @@ router.post('/periods/:version/nodes', async (req, res) => {
     success(res, await createDeductionNode(req.params.version, req.body ?? {}), '已创建节点', 201)
   } catch (err) {
     fail(res, err.message || '创建节点失败', 400)
+  }
+})
+
+// 整期节点重排
+router.put('/periods/:version/reorder', async (req, res) => {
+  try {
+    success(res, await reorderDeductionNodes(req.params.version, req.body?.nodeIds))
+  } catch (err) {
+    fail(res, err.message || '节点排序失败', 400)
+  }
+})
+
+// 前战(小怪)怪物：仅登记 boss_info 基础库
+router.post('/boss-info', async (req, res) => {
+  try {
+    success(res, await createDeductionBossInfo(req.body ?? {}), '已登记怪物基础库')
+  } catch (err) {
+    fail(res, err.message || '登记怪物基础库失败', 400)
   }
 })
 

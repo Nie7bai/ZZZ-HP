@@ -66,6 +66,11 @@ function showFeedback(target: 'error' | 'message') {
 
 function updatePreviewId() {
   try {
+    if (isDeduction.value) {
+      // 推演：buff 行按 期数+名称 识别，无危局/防卫 ID 编码
+      previewId.value = ''
+      return
+    }
     if (isDefense.value) {
       previewId.value = String(
         encodeDefenseBuffId({
@@ -280,41 +285,56 @@ watch([isDefense, resolvedVersion, resolvedPhase, stage, roomInStage, buffIndex]
     </header>
 
     <form class="admin-form" novalidate @submit.prevent="submitForm">
-      <label class="field">
-        <span class="field-label">版本 *</span>
+      <!-- 推演：期数即版本（如 101），无子期号；期数在「内容管理」新建 -->
+      <label v-if="isDeduction" class="field">
+        <span class="field-label">期数 *</span>
         <select v-model="version" class="field-input" :disabled="slotLocked">
-          <option v-if="!availableVersions.length" value="" disabled>暂无可选版本</option>
+          <option v-if="!availableVersions.length" value="" disabled>
+            暂无可选期数，请先在「内容管理」新建期数
+          </option>
           <option v-for="item in availableVersions" :key="item" :value="item">
             {{ item }}
           </option>
         </select>
-        <input
-          v-model="customVersion"
-          type="text"
-          class="field-input"
-          placeholder="新版本（填写后覆盖上方选择）"
-          :disabled="slotLocked"
-        />
       </label>
 
-      <label class="field">
-        <span class="field-label">期数 *</span>
-        <select v-model="phase" class="field-input" :disabled="slotLocked">
-          <option v-if="!availablePhases.length" value="" disabled>
-            {{ resolvedVersion ? '该版本暂无期数，可在下方输入' : '请先选择版本' }}
-          </option>
-          <option v-for="item in availablePhases" :key="item" :value="item">
-            第 {{ item }} 期
-          </option>
-        </select>
-        <input
-          v-model="customPhase"
-          type="text"
-          class="field-input"
-          placeholder="新期数（填写后覆盖上方选择）"
-          :disabled="slotLocked"
-        />
-      </label>
+      <template v-else>
+        <label class="field">
+          <span class="field-label">版本 *</span>
+          <select v-model="version" class="field-input" :disabled="slotLocked">
+            <option v-if="!availableVersions.length" value="" disabled>暂无可选版本</option>
+            <option v-for="item in availableVersions" :key="item" :value="item">
+              {{ item }}
+            </option>
+          </select>
+          <input
+            v-model="customVersion"
+            type="text"
+            class="field-input"
+            placeholder="新版本（填写后覆盖上方选择）"
+            :disabled="slotLocked"
+          />
+        </label>
+
+        <label class="field">
+          <span class="field-label">期数 *</span>
+          <select v-model="phase" class="field-input" :disabled="slotLocked">
+            <option v-if="!availablePhases.length" value="" disabled>
+              {{ resolvedVersion ? '该版本暂无期数，可在下方输入' : '请先选择版本' }}
+            </option>
+            <option v-for="item in availablePhases" :key="item" :value="item">
+              第 {{ item }} 期
+            </option>
+          </select>
+          <input
+            v-model="customPhase"
+            type="text"
+            class="field-input"
+            placeholder="新期数（填写后覆盖上方选择）"
+            :disabled="slotLocked"
+          />
+        </label>
+      </template>
 
       <label class="field">
         <span class="field-label">Buff 名称 *</span>
@@ -340,7 +360,7 @@ watch([isDefense, resolvedVersion, resolvedPhase, stage, roomInStage, buffIndex]
         </label>
       </div>
 
-      <label class="field">
+      <label v-if="!isDeduction" class="field">
         <span class="field-label">Buff 序号 *</span>
         <input
           v-model="buffIndex"

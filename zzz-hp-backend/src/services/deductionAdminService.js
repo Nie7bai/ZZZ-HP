@@ -10,6 +10,8 @@ import {
   fetchShiyuIndex,
   resolveNanokaBuildTag,
 } from './nanoka/nanokaClient.js'
+import { ensureDeductionStoryOptionsColumn } from './deductionSchemaService.js'
+import { upsertBossInfo } from './bossInfoService.js'
 
 const SHIYU_MINIONS_TTL_MS = 10 * 60 * 1000
 let shiyuMinionsCache = null
@@ -56,6 +58,7 @@ async function ensureTable() {
       node_type INT NOT NULL DEFAULT 0,
       prev_node VARCHAR(20) NOT NULL DEFAULT '',
       story_text TEXT NULL,
+      story_options_json JSON NULL,
       layers_json JSON NULL,
       buffs_json JSON NULL,
       sort_order INT NOT NULL DEFAULT 0,
@@ -64,6 +67,7 @@ async function ensureTable() {
       UNIQUE KEY uk_dd_node (version, phase, node_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='临界推演节点（剧情/战斗）'
   `)
+  await ensureDeductionStoryOptionsColumn(pool)
 }
 
 // ── 下拉数据源（全局去重，不按期数挂钩） ──────────────────
@@ -307,7 +311,7 @@ export async function deleteDeductionPeriod(version) {
 export async function listDeductionNodes(version) {
   await ensureTable()
   const [rows] = await pool.execute(
-    `SELECT id, version, phase, node_id, node_name, node_type, prev_node, story_text, layers_json, buffs_json, sort_order, period_name
+    `SELECT id, version, phase, node_id, node_name, node_type, prev_node, story_text, story_options_json, layers_json, buffs_json, sort_order, period_name
      FROM deduction_node
      WHERE version = ?
      ORDER BY sort_order, id`,
@@ -322,6 +326,7 @@ export async function listDeductionNodes(version) {
     type: Number(row.node_type) || 0,
     prevNode: row.prev_node || null,
     storyText: row.story_text || null,
+    storyOptions: parseJson(row.story_options_json) ?? [],
     layers: parseJson(row.layers_json) ?? [],
     buffs: parseJson(row.buffs_json) ?? [],
     sortOrder: Number(row.sort_order) || 0,
@@ -381,13 +386,14 @@ export async function updateDeductionNode(id, payload) {
   if (!Number.isInteger(nodeId) || nodeId <= 0) throw new Error('无效的节点 ID')
   const [res] = await pool.execute(
     `UPDATE deduction_node
-     SET node_name = ?, node_type = ?, story_text = ?, layers_json = CAST(? AS JSON),
-         buffs_json = CAST(? AS JSON), sort_order = ?
+     SET node_name = ?, node_type = ?, story_text = ?, story_options_json = CAST(? AS JSON),
+         layers_json = CAST(? AS JSON), buffs_json = CAST(? AS JSON), sort_order = ?
      WHERE id = ?`,
     [
       String(payload.name ?? '').trim(),
       Number(payload.type) || 0,
       payload.storyText ?? '',
+      toJson(payload.storyOptions ?? []),
       toJson(payload.layers),
       toJson(payload.buffs),
       Number(payload.sortOrder) ?? 0,
@@ -404,4 +410,46 @@ export async function deleteDeductionNode(id) {
   const [res] = await pool.execute('DELETE FROM deduction_node WHERE id = ?', [nodeId])
   if (!res.affectedRows) throw new Error(`节点 ${nodeId} 不存在`)
   return { id: nodeId }
+}
+
+/** 整期节点重排：按 nodeIds 顺序重写 sort_order（nodeIds 为管理端自增 id） */
+export async function reorderDeductionNodes(version, orderedIds) {
+  const versionValue = String(version ?? '').trim()
+  if (!versionValue) throw new Error('期数编号（version）必填')
+  if (!Array.isArray(orderedIds) || !orderedIds.length) throw new Error('排序列表不能为空')
+  const ids = orderedIds.map((v) => Number(v))
+  if (ids.some((v) => !Number.isInteger(v) || v <= 0)) throw new Error('无效的节点 ID')
+
+  await pool.query('START TRANSACTION')
+  try {
+    for (let i = 0; i < ids.length; i++) {
+      const [res] = await pool.execute(
+        'UPDATE deduction_node SET sort_order = ? WHERE id = ? AND version = ?',
+        [i, ids[i], versionValue],
+      )
+      if (!res.affectedRows) throw new Error(`节点 ${ids[i]} 不存在或不属于该期数`)
+    }
+    await pool.query('COMMIT')
+  } catch (err) {
+    await pool.query('ROLLBACK')
+    throw err
+  }
+  return { version: versionValue, count: ids.length }
+}
+
+/**
+ * 前战(小怪)怪物：仅登记到 boss_info 基础库（按名 upsert），不写 boss 表。
+ * 与危局（boss）走 createBoss（写 boss 表）区分。
+ */
+export async function createDeductionBossInfo(payload) {
+  const name = String(payload?.boss_name ?? '').trim()
+  if (!name) throw new Error('怪物名称不能为空')
+  return upsertBossInfo({
+    boss_name: name,
+    defense: Number(payload.defense) || 0,
+    level: Number(payload.level) || 1,
+    weakness: payload.weakness ?? null,
+    resistance: payload.resistance ?? null,
+    boss_image: payload.boss_image ?? null,
+  })
 }

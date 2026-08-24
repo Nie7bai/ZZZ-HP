@@ -142,6 +142,7 @@ function mapDeductionNodeRow(row) {
     node_type: Number(row.node_type) || 0,
     prev_node: row.prev_node || '',
     story_text: row.story_text ?? null,
+    story_options_json: asJson(row.story_options_json),
     layers_json: asJson(row.layers_json),
     buffs_json: asJson(row.buffs_json),
     sort_order: Number(row.sort_order) || 0,
@@ -168,7 +169,7 @@ function mapBossInfoExport(row) {
   }
 }
 
-function buildSeasons(bosses, buffs, dates) {
+function buildSeasons(bosses, buffs, dates, nodes = []) {
   const map = new Map()
   const ensure = (version, phase) => {
     const key = seasonKey(version, phase)
@@ -179,6 +180,7 @@ function buildSeasons(bosses, buffs, dates) {
         bossCount: 0,
         buffCount: 0,
         dateCount: 0,
+        nodeCount: 0,
       })
     }
     return map.get(key)
@@ -191,6 +193,9 @@ function buildSeasons(bosses, buffs, dates) {
   }
   for (const row of dates) {
     ensure(row.version, row.phase).dateCount += 1
+  }
+  for (const row of nodes) {
+    ensure(row.version, row.phase).nodeCount += 1
   }
   return [...map.values()].sort((a, b) => {
     const versionDiff = Number(b.version) - Number(a.version)
@@ -268,7 +273,7 @@ export async function exportSeasonSnapshot(scheme, variant = null) {
   let deductionNodes = []
   if (mode === 'deduction') {
     const [nodeRows] = await pool.query(
-      `SELECT version, phase, node_id, node_name, node_type, prev_node, story_text,
+      `SELECT version, phase, node_id, node_name, node_type, prev_node, story_text, story_options_json,
               layers_json, buffs_json, sort_order, period_name
        FROM deduction_node
        ORDER BY CAST(version AS UNSIGNED), sort_order, id`,
@@ -290,7 +295,7 @@ export async function exportSeasonSnapshot(scheme, variant = null) {
     scheme: mode,
     variant: variantValue,
     exportedAt: new Date().toISOString(),
-    seasons: buildSeasons(bosses, buffs, dates),
+    seasons: buildSeasons(bosses, buffs, dates, deductionNodes),
     bosses,
     buffs,
     dates,
@@ -558,6 +563,7 @@ export async function importSeasonSnapshot(raw) {
       const nodeType = Number(item.node_type) || 0
       const prevNode = item.prev_node || ''
       const storyText = item.story_text ?? null
+      const storyOptionsJson = item.story_options_json ?? null
       const layersJson = item.layers_json ?? null
       const buffsJson = item.buffs_json ?? null
       const sortOrder = Number(item.sort_order) || 0
@@ -566,17 +572,18 @@ export async function importSeasonSnapshot(raw) {
         await pool.execute(
           `UPDATE deduction_node
               SET node_name = ?, node_type = ?, prev_node = ?, story_text = ?,
-                  layers_json = ?, buffs_json = ?, sort_order = ?, period_name = ?
+                  story_options_json = ?, layers_json = ?, buffs_json = ?,
+                  sort_order = ?, period_name = ?
             WHERE version = ? AND phase = ? AND node_id = ?`,
-          [name, nodeType, prevNode, storyText, layersJson, buffsJson, sortOrder, periodName, version, phase, nodeId],
+          [name, nodeType, prevNode, storyText, storyOptionsJson, layersJson, buffsJson, sortOrder, periodName, version, phase, nodeId],
         )
         summary.deductionNodes.updated += 1
       } else {
         await pool.execute(
           `INSERT INTO deduction_node
-             (version, phase, node_id, node_name, node_type, prev_node, story_text, layers_json, buffs_json, sort_order, period_name)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [version, phase, nodeId, name, nodeType, prevNode, storyText, layersJson, buffsJson, sortOrder, periodName],
+             (version, phase, node_id, node_name, node_type, prev_node, story_text, story_options_json, layers_json, buffs_json, sort_order, period_name)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [version, phase, nodeId, name, nodeType, prevNode, storyText, storyOptionsJson, layersJson, buffsJson, sortOrder, periodName],
         )
         summary.deductionNodes.created += 1
       }

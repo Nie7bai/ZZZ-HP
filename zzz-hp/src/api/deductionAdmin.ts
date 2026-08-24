@@ -59,6 +59,8 @@ export interface AdminDeductionNode {
   type: number
   prevNode: string | null
   storyText: string | null
+  /** 剧情选项（nanoka story_event.choice）：{ name, desc } */
+  storyOptions?: { name: string; desc: string | null }[]
   layers: AdminDeductionLayer[]
   buffs: AdminDeductionBuff[]
   sortOrder: number
@@ -81,6 +83,12 @@ export interface AdminPickBuff {
   desc: string | null
   buff_image: string | null
 }
+
+/** 管理端新增后自动进入编辑状态的定位目标 */
+export type AdminEditFocus =
+  | { kind: 'monster'; layer: number; index: number }
+  | { kind: 'buff'; index: number }
+  | { kind: 'storyOption'; index: number }
 
 export async function fetchDeductionPickBosses(): Promise<AdminPickBoss[]> {
   return request('/api/admin/deduction/picker/bosses')
@@ -158,6 +166,7 @@ export async function updateDeductionAdminNode(
     name: string
     type: number
     storyText?: string | null
+    storyOptions?: { name: string; desc: string | null }[]
     layers?: AdminDeductionNode['layers']
     buffs?: AdminDeductionNode['buffs']
     sortOrder?: number
@@ -172,4 +181,32 @@ export async function updateDeductionAdminNode(
 
 export async function deleteDeductionAdminNode(id: number): Promise<{ id: number }> {
   return request(`/api/admin/deduction/nodes/${id}`, { method: 'DELETE' })
+}
+
+/** 整期节点重排：按 nodeIds 顺序（管理端 id 列表）重写 sort_order */
+export async function reorderDeductionAdminNodes(
+  version: string,
+  nodeIds: number[],
+): Promise<{ version: string; count: number }> {
+  return request(`/api/admin/deduction/periods/${encodeURIComponent(version)}/reorder`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nodeIds }),
+  })
+}
+
+/** 前战(小怪)怪物：仅登记 boss_info 基础库（按名 upsert，不写 boss 表） */
+export async function createDeductionBossInfo(payload: {
+  boss_name: string
+  defense?: number
+  level?: number
+  weakness?: string | null
+  resistance?: string | null
+  boss_image?: string | null
+}): Promise<{ action: string; id: number }> {
+  return request('/api/admin/deduction/boss-info', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
 }
