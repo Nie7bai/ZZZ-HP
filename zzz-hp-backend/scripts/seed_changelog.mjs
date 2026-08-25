@@ -366,12 +366,20 @@ const content3171 = `相对 3.1.7 的增量更新（槽位顶栏与算伤口径�
 · 算伤口径：仅流程结算伤害（准备招式 / 招式库不算）；耀变综合增伤 = 耀变增伤 + 异常增伤，按异常类触发者面板取值（非招式持有者）
 · 局外取值：转模与招式结算按每人局外；额外精通按槽位，不套进蕾米异化转模；面板挂起后强制重算，避免旧伤害残留`
 
+const content3172 = `相对 3.1.7.1 的增量更新（临界推演与危局转换器续更为主）：
+
+· 临界推演：管理端录入 / 剧情选项 / 节点数据完善；环境 Buff 与 Boss 场地套；同名 Buff 同步；换期清空环境勾选；修复临界页加载失败
+· 临界图表：血量折线按 Boss 均血；节点对比（下拉补选、节点名显示不全修复）；详情 / 图表支持 953 防御换算
+· 临界血量分数转换器：复用危局换算曲线，无正常/绝境区分；怪物仅接临界 Boss；操作分填写乘总倍率后的值；最终分 = 战斗分×总倍率 + 操作分
+· 危局：转换器增加操作分（总分上限 65k）；展示「困难」统一为「绝境」；正常快捷均2w / 绝境 1w·2w·3w（含操作分）
+· 图表小窗：血量相对上一点变化；膨胀图相对百分比变化`
+
 await conn.query(
-  // 本线不维护 3.1.7.2（该条目只在 3.1.7.2 分支 seed）；避免残留条目把版本顺序搅乱
   `DELETE FROM changelog WHERE version IN ('3.1.6', '3.1.6.1', '3.1.6.2', '3.1.6.3', '3.1.7', '3.1.7.1', '3.1.7.2')`,
 )
 await conn.query(
   `INSERT INTO changelog (version, title, content, published_at) VALUES
+   (?, ?, ?, ?),
    (?, ?, ?, ?),
    (?, ?, ?, ?),
    (?, ?, ?, ?),
@@ -403,11 +411,15 @@ await conn.query(
     '槽位顶栏、仅流程算伤与耀变综合口径',
     content3171,
     '2026-08-20 00:50:00',
+    '3.1.7.2',
+    '临界推演、节点对比与血量分数转换器',
+    content3172,
+    '2026-08-25 20:30:00',
   ],
 )
 
 const [rowsAfter] = await conn.query(
-  `SELECT id, version, title, CHAR_LENGTH(content) AS len FROM changelog ORDER BY published_at DESC LIMIT 5`,
+  `SELECT id, version, title, CHAR_LENGTH(content) AS len FROM changelog ORDER BY published_at DESC LIMIT 7`,
 )
 console.log(rowsAfter)
 await conn.end()

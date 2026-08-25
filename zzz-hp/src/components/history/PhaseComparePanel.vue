@@ -21,6 +21,8 @@ import { modeTitles, type ModeKey } from '@/types/history'
 import { createRequestEpoch } from '@/utils/requestEpoch'
 
 const QUICK_ADD_ROW_LIMIT = 10
+/** 临界节点名较长：少放快捷按钮，其余（及全部）走下拉，避免被裁切 */
+const QUICK_ADD_ROW_LIMIT_DEDUCTION = 6
 
 type DefenseRemoveMode = 'direct' | 'menu'
 
@@ -123,9 +125,26 @@ const quickAddPoints = computed(() =>
   allPoints.value.filter((point) => !selectedLabels.value.includes(point.label)),
 )
 
-const quickAddInlinePoints = computed(() => quickAddPoints.value.slice(0, QUICK_ADD_ROW_LIMIT))
+const quickAddInlineLimit = computed(() =>
+  isDeductionMode.value ? QUICK_ADD_ROW_LIMIT_DEDUCTION : QUICK_ADD_ROW_LIMIT,
+)
 
-const quickAddDropdownPoints = computed(() => quickAddPoints.value.slice(QUICK_ADD_ROW_LIMIT))
+const quickAddInlinePoints = computed(() =>
+  quickAddPoints.value.slice(0, quickAddInlineLimit.value),
+)
+
+/** 临界：下拉列出全部未选节点（不依赖「更多」切片，避免按钮被裁切后无法选） */
+const quickAddDropdownPoints = computed(() =>
+  isDeductionMode.value
+    ? quickAddPoints.value
+    : quickAddPoints.value.slice(QUICK_ADD_ROW_LIMIT),
+)
+
+const showQuickAddDropdown = computed(
+  () =>
+    quickAddDropdownPoints.value.length > 0 &&
+    (isDeductionMode.value || quickAddPoints.value.length > QUICK_ADD_ROW_LIMIT),
+)
 
 function formatPhaseDisplay(point: HpChartPoint) {
   if (isDeductionMode.value) return point.label
@@ -133,6 +152,13 @@ function formatPhaseDisplay(point: HpChartPoint) {
     return `${point.version} 第 ${point.phase} 期`
   }
   return point.label
+}
+
+/** 临界快捷按钮短标签：期号 + 节点名，完整文案放 title */
+function formatDeductionQuickLabel(point: HpChartPoint) {
+  const sep = point.label.indexOf('·')
+  const nodeName = sep >= 0 ? point.label.slice(sep + 1) : point.label
+  return point.version ? `${point.version} ${nodeName}` : nodeName
 }
 
 /** 推演模式（节点对比）：期数号返回该期全部战斗节点；否则按节点名模糊匹配（可多个） */
@@ -352,33 +378,42 @@ watch(phaseSearchInput, () => {
         </form>
 
         <div v-if="quickAddPoints.length" class="quick-add">
-          <span class="quick-add-label">快捷添加</span>
-          <div class="quick-add-row">
-            <button
-              v-for="point in quickAddInlinePoints"
-              :key="point.label"
-              type="button"
-              class="quick-add-btn"
-              :title="formatPhaseDisplay(point)"
-              @click="
-                addPhaseFromSearch(isDeductionMode ? point.label : formatPhaseCompactCode(point))
-              "
-            >
-              {{ isDeductionMode ? formatPhaseDisplay(point) : formatPhaseCompactCode(point) }}
-            </button>
+          <span class="quick-add-label">{{ isDeductionMode ? '快捷 / 下拉添加节点' : '快捷添加' }}</span>
+          <div class="quick-add-row" :class="{ 'quick-add-row--nodes': isDeductionMode }">
+            <div class="quick-add-btns">
+              <button
+                v-for="point in quickAddInlinePoints"
+                :key="point.label"
+                type="button"
+                class="quick-add-btn"
+                :class="{ 'quick-add-btn--node': isDeductionMode }"
+                :title="formatPhaseDisplay(point)"
+                @click="
+                  addPhaseFromSearch(isDeductionMode ? point.label : formatPhaseCompactCode(point))
+                "
+              >
+                {{ isDeductionMode ? formatDeductionQuickLabel(point) : formatPhaseCompactCode(point) }}
+              </button>
+            </div>
             <select
-              v-if="quickAddDropdownPoints.length"
+              v-if="showQuickAddDropdown"
               v-model="quickAddDropdownValue"
               class="quick-add-select"
+              :class="{ 'quick-add-select--nodes': isDeductionMode }"
+              :aria-label="isDeductionMode ? '下拉添加节点' : '更多期数'"
               @change="onQuickAddDropdownChange"
             >
-              <option value="">更多期数</option>
+              <option value="">{{ isDeductionMode ? '选择节点添加…' : '更多期数' }}</option>
               <option
                 v-for="point in quickAddDropdownPoints"
                 :key="point.label"
                 :value="point.label"
               >
-                {{ isDeductionMode ? formatPhaseDisplay(point) : `${formatPhaseCompactCode(point)} · ${formatPhaseDisplay(point)}` }}
+                {{
+                  isDeductionMode
+                    ? formatPhaseDisplay(point)
+                    : `${formatPhaseCompactCode(point)} · ${formatPhaseDisplay(point)}`
+                }}
               </option>
             </select>
           </div>
@@ -638,10 +673,38 @@ watch(phaseSearchInput, () => {
   overflow: hidden;
 }
 
+.quick-add-row--nodes {
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: nowrap;
+  overflow: visible;
+  gap: 0.65rem;
+}
+
+.quick-add-btns {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.quick-add-row--nodes .quick-add-btns {
+  flex: 1 1 auto;
+  justify-content: flex-start;
+}
+
 .quick-add-btn {
   flex-shrink: 0;
   min-width: 3.2rem;
   padding-inline: 0.55rem;
+}
+
+.quick-add-btn--node {
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .quick-add-select {
@@ -657,6 +720,14 @@ watch(phaseSearchInput, () => {
   cursor: pointer;
   outline: none;
   transition: border-color 0.2s;
+}
+
+.quick-add-select--nodes {
+  flex: 0 0 auto;
+  margin-left: auto;
+  min-width: 14rem;
+  max-width: 22rem;
+  width: 16rem;
 }
 
 .quick-add-select:hover,
@@ -791,6 +862,15 @@ watch(phaseSearchInput, () => {
     scrollbar-width: thin;
   }
 
+  .quick-add-row--nodes {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+
+  .quick-add-btns {
+    width: 100%;
+  }
+
   .quick-add-btn {
     min-height: 2.2rem;
   }
@@ -798,6 +878,13 @@ watch(phaseSearchInput, () => {
   .quick-add-select {
     min-width: 7rem;
     max-width: 9.5rem;
+  }
+
+  .quick-add-select--nodes {
+    margin-left: 0;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
   }
 
   .selected-phases {

@@ -26,7 +26,8 @@ const allPanels: {
   id: SidebarPanel
   label: string
   deductionLabel?: string
-  crisisOnly?: boolean
+  /** 仅这些模式显示；未设则除 deductionExclude 外都显示 */
+  modes?: ModeKey[]
   deductionExclude?: boolean
 }[] = [
   { id: 'history', label: '往期详细' },
@@ -35,15 +36,19 @@ const allPanels: {
   { id: 'monster-compare', label: '单独怪物对比' },
   { id: 'buff-overview', label: 'Buff 总览' },
   { id: 'buff-compare', label: 'Buff 对比' },
-  { id: 'score-hp-table', label: '分数与血量对应表', crisisOnly: true },
-  { id: 'hp-score-converter', label: '血量分数转换器', crisisOnly: true },
+  { id: 'score-hp-table', label: '分数与血量对应表', modes: ['crisis-assault'] },
+  {
+    id: 'hp-score-converter',
+    label: '血量分数转换器',
+    modes: ['crisis-assault', 'deduction'],
+  },
 ]
 
 const panels = computed(() =>
   allPanels
     .filter(
       (panel) =>
-        (!panel.crisisOnly || props.mode === 'crisis-assault') &&
+        (!panel.modes || (props.mode != null && panel.modes.includes(props.mode))) &&
         (!panel.deductionExclude || props.mode !== 'deduction'),
     )
     .map((panel) => ({

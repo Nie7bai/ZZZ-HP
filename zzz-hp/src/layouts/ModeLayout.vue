@@ -166,9 +166,13 @@ onUnmounted(() => {
           class="panel-fill panel-fill--page"
         />
         <CrisisHpScoreConverterPanel
-          v-else-if="activePanel === 'hp-score-converter' && mode === 'crisis-assault'"
+          v-else-if="
+            activePanel === 'hp-score-converter' &&
+            (mode === 'crisis-assault' || mode === 'deduction')
+          "
           key="hp-score-converter"
           class="panel-fill panel-fill--page"
+          :mode="mode"
         />
         <p v-else key="placeholder" class="placeholder">
           {{ panelLabels[activePanel] }} — 内容开发中...

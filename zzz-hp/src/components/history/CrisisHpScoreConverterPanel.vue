@@ -6,6 +6,7 @@ import {
   type BossOption,
   type HpChartPoint,
 } from '@/api/crisisAssault'
+import { fetchDeductionBossChart, fetchDeductionBossList } from '@/api/deduction'
 import {
   CRISIS_OPERATION_SCORE_DEFAULT,
   CRISIS_OPERATION_SCORE_MAX,
@@ -24,6 +25,7 @@ import {
   type CrisisScoreMarker,
   type CrisisScoreTableMode,
 } from '@/data/crisisScoreHpTable'
+import { modeTitles, type ModeKey } from '@/types/history'
 import { formatHp, resolveAssetUrl } from '@/utils/gameData'
 
 type EditSource = 'hp' | 'score' | 'scorePct' | 'abs'
@@ -50,6 +52,7 @@ interface ModeDraft {
   selectedPhaseLabel: string
   records: ConvertRecord[]
   keptHpRatio: number | null
+  totalMultiplierInput: string
 }
 
 function emptyDraft(): ModeDraft {
@@ -66,16 +69,39 @@ function emptyDraft(): ModeDraft {
     selectedPhaseLabel: '',
     records: [],
     keptHpRatio: null,
+    totalMultiplierInput: '1',
   }
 }
 
+const props = withDefaults(
+  defineProps<{
+    /** 危局 / 临界：换算表相同，怪物数据源不同 */
+    mode?: ModeKey
+  }>(),
+  { mode: 'crisis-assault' },
+)
+
+const isDeductionMode = computed(() => props.mode === 'deduction')
+const pageTitle = computed(() =>
+  isDeductionMode.value
+    ? `${modeTitles.deduction} · 血量分数转换器`
+    : `${modeTitles['crisis-assault']} · 血量分数转换器`,
+)
+
 const tableMode = ref<CrisisScoreTableMode>('normal')
+/** 临界无正常/绝境之分，换算表固定用正常曲线 */
+const convertTableMode = computed<CrisisScoreTableMode>(() =>
+  isDeductionMode.value ? 'normal' : tableMode.value,
+)
 const editing = ref<EditSource>('hp')
 const lastHpAbs = ref<HpAbsField>(null)
 const hpPercentInput = ref('')
 const scorePercentInput = ref('')
 const scoreInput = ref('')
 const operationScoreInput = ref(String(CRISIS_OPERATION_SCORE_DEFAULT))
+/** 临界：前战/选战累计总倍率；操作分填写/展示为已乘倍率后的值 */
+const totalMultiplierInput = ref('1')
+const lastTotalMultiplier = ref(1)
 const totalHpInput = ref('')
 const dealtHpInput = ref('')
 const keptHpRatio = ref<number | null>(null)
@@ -97,10 +123,11 @@ const bossChartLoading = ref(false)
 const bossError = ref('')
 const applyingBossHp = ref(false)
 
-const markers = computed(() => getScoreMarkers(tableMode.value))
+const markers = computed(() => getScoreMarkers(convertTableMode.value))
 
-/** 转换器快捷键：均为「含操作分的总分」；折线图仍用 getScoreMarkers */
+/** 转换器快捷键：仅危局；临界无正常/绝境区分，不提供快捷 */
 const converterMarkers = computed((): CrisisScoreMarker[] => {
+  if (isDeductionMode.value) return []
   if (tableMode.value === 'hard') {
     return [
       {
@@ -154,7 +181,9 @@ async function loadBossList(options?: { preserveSelection?: boolean }) {
     selectedPhaseLabel.value = ''
   }
   try {
-    bossList.value = await fetchBossList(tableMode.value)
+    bossList.value = isDeductionMode.value
+      ? await fetchDeductionBossList('boss')
+      : await fetchBossList(tableMode.value)
     if (preservedBoss && bossList.value.some((boss) => boss.boss_name === preservedBoss)) {
       selectedBoss.value = preservedBoss
     } else if (options?.preserveSelection) {
@@ -179,7 +208,9 @@ async function loadBossPhases(options?: { preservePhase?: boolean }) {
   bossChartLoading.value = true
   bossError.value = ''
   try {
-    const points = await fetchBossChart(selectedBoss.value, tableMode.value)
+    const points = isDeductionMode.value
+      ? await fetchDeductionBossChart(selectedBoss.value)
+      : await fetchBossChart(selectedBoss.value, tableMode.value)
     phasePoints.value = [...points].reverse()
     if (options?.preservePhase) {
       const match = phasePoints.value.find((item) => item.label === selectedPhaseLabel.value)
@@ -283,34 +314,82 @@ function clampPercentField(raw: string): string {
 function clampOperationScoreField(raw: string): string {
   const value = parseLocaleNumber(raw)
   if (value == null) return raw
+  const max = operationScoreFieldMax()
   if (value < 0) return '0'
-  if (value > CRISIS_OPERATION_SCORE_MAX) return String(CRISIS_OPERATION_SCORE_MAX)
+  if (value > max) return String(Math.round(max))
   return raw
 }
 
-/** 当前操作分（额外分，不参与占比插值） */
-function currentOperationScore(): number {
-  const value = parseLocaleNumber(operationScoreInput.value)
-  if (value == null || !Number.isFinite(value)) return CRISIS_OPERATION_SCORE_DEFAULT
-  return Math.min(CRISIS_OPERATION_SCORE_MAX, Math.max(0, value))
+/** 操作分填写上限：危局=基础满分；临界=基础满分×总倍率（填写乘完后的值） */
+function operationScoreFieldMax(): number {
+  return CRISIS_OPERATION_SCORE_MAX * currentTotalMultiplier()
 }
 
-/** 填写总分上限 = 战斗分满分 + 操作分上限 */
+/** 操作分填写默认：危局=基础默认；临界=默认×总倍率 */
+function operationScoreFieldDefault(): number {
+  return Math.round(CRISIS_OPERATION_SCORE_DEFAULT * currentTotalMultiplier())
+}
+
+/**
+ * 当前操作分（填写框原值）。
+ * 危局：未乘倍率的基础操作分；临界：已乘总倍率后的操作分贡献。
+ */
+function currentOperationScore(): number {
+  const value = parseLocaleNumber(operationScoreInput.value)
+  const fallback = operationScoreFieldDefault()
+  const max = operationScoreFieldMax()
+  if (value == null || !Number.isFinite(value)) return fallback
+  return Math.min(max, Math.max(0, value))
+}
+
+/** 临界总倍率（危局固定为 1） */
+function currentTotalMultiplier(): number {
+  if (!isDeductionMode.value) return 1
+  const value = parseLocaleNumber(totalMultiplierInput.value)
+  if (value == null || !Number.isFinite(value) || value <= 0) return 1
+  return Math.min(99, Math.max(0.01, value))
+}
+
+/** 填写总分上限 = 战斗满分×倍率 + 操作分上限（临界操作分上限已含倍率） */
 function clampScoreField(raw: string): string {
   const value = parseLocaleNumber(raw)
   if (value == null) return raw
+  const max = CRISIS_SCORE_MAX * currentTotalMultiplier() + operationScoreFieldMax()
   if (value < 0) return '0'
-  if (value > CRISIS_TOTAL_SCORE_MAX) return String(CRISIS_TOTAL_SCORE_MAX)
+  if (value > max) return String(Math.round(max))
   return raw
 }
 
-/** 填写总分 → 战斗分（扣掉操作分后再换算占比） */
+function clampTotalMultiplierField(raw: string): string {
+  const value = parseLocaleNumber(raw)
+  if (value == null) return raw
+  if (value < 0.01) return '0.01'
+  if (value > 99) return '99'
+  return raw
+}
+
+/**
+ * 填写框分数 → 战斗分。
+ * 危局：最终 = 战斗 + 操作 → 战斗 = 最终 − 操作
+ * 临界：最终 = 战斗×倍率 + 操作(已乘倍率) → 战斗 = (最终 − 操作) / 倍率
+ */
 function combatScoreFromTotal(totalScore: number): number {
+  if (isDeductionMode.value) {
+    const mult = currentTotalMultiplier()
+    const combat = (totalScore - currentOperationScore()) / mult
+    return Math.min(CRISIS_SCORE_MAX, Math.max(0, combat))
+  }
   return Math.min(CRISIS_SCORE_MAX, Math.max(0, totalScore - currentOperationScore()))
 }
 
-/** 战斗分 → 填写总分（加回操作分） */
+/**
+ * 战斗分 → 填写框分数。
+ * 危局 = 战斗 + 操作；临界 = 战斗×倍率 + 操作(填写已是乘完后)
+ */
 function totalScoreFromCombat(combatScore: number): number {
+  if (isDeductionMode.value) {
+    return Math.round(Math.round(combatScore) * currentTotalMultiplier() + currentOperationScore())
+  }
   return Math.round(combatScore) + currentOperationScore()
 }
 
@@ -331,7 +410,7 @@ function onScorePercentEdit() {
   scorePercentInput.value = clampPercentField(scorePercentInput.value)
   const percent = parseLocaleNumber(scorePercentInput.value)
   if (percent != null) {
-    rememberHpRatio(convertScoreToHpRatio(tableMode.value, (percent / 100) * CRISIS_SCORE_MAX).hpRatio)
+    rememberHpRatio(convertScoreToHpRatio(convertTableMode.value, (percent / 100) * CRISIS_SCORE_MAX).hpRatio)
   }
 }
 
@@ -340,7 +419,7 @@ function onScoreEdit() {
   scoreInput.value = clampScoreField(scoreInput.value)
   const score = parseLocaleNumber(scoreInput.value)
   if (score != null) {
-    rememberHpRatio(convertScoreToHpRatio(tableMode.value, combatScoreFromTotal(score)).hpRatio)
+    rememberHpRatio(convertScoreToHpRatio(convertTableMode.value, combatScoreFromTotal(score)).hpRatio)
   }
 }
 
@@ -356,26 +435,61 @@ function onOperationScoreEdit() {
   }
 }
 
+function onTotalMultiplierEdit() {
+  const prevMult = lastTotalMultiplier.value
+  // 先记下当前战斗分，倍率/操作分变化后用它重算最终分，避免「锁死旧最终分」反推错战斗分
+  const combatBefore =
+    result.value && Number.isFinite(result.value.score) ? Math.round(result.value.score) : null
+  totalMultiplierInput.value = clampTotalMultiplierField(totalMultiplierInput.value)
+  const nextMult = currentTotalMultiplier()
+  lastTotalMultiplier.value = nextMult
+  // 倍率变化：按比例把「已乘完」的操作分跟着缩放，再按新上限夹紧
+  if (isDeductionMode.value && prevMult > 0 && nextMult !== prevMult) {
+    const scaled = parseLocaleNumber(operationScoreInput.value)
+    if (scaled != null) {
+      operationScoreInput.value = clampOperationScoreField(
+        String(Math.round((scaled * nextMult) / prevMult)),
+      )
+    } else {
+      operationScoreInput.value = String(operationScoreFieldDefault())
+    }
+  } else {
+    operationScoreInput.value = clampOperationScoreField(operationScoreInput.value)
+  }
+  if (combatBefore != null) {
+    scoreInput.value = String(totalScoreFromCombat(combatBefore))
+    if (editing.value === 'score') {
+      rememberHpRatio(
+        convertScoreToHpRatio(convertTableMode.value, combatBefore).hpRatio,
+      )
+    }
+    return
+  }
+  if (editing.value === 'score') {
+    onScoreEdit()
+  }
+}
+
 const result = computed<CrisisHpScoreConvertResult | null>(() => {
   if (editing.value === 'score') {
     const score = parseLocaleNumber(scoreInput.value)
     if (score == null) return null
-    return convertScoreToHpRatio(tableMode.value, combatScoreFromTotal(score))
+    return convertScoreToHpRatio(convertTableMode.value, combatScoreFromTotal(score))
   }
   if (editing.value === 'scorePct') {
     const percent = parseLocaleNumber(scorePercentInput.value)
     if (percent == null) return null
-    return convertScoreToHpRatio(tableMode.value, (percent / 100) * CRISIS_SCORE_MAX)
+    return convertScoreToHpRatio(convertTableMode.value, (percent / 100) * CRISIS_SCORE_MAX)
   }
   if (editing.value === 'abs') {
     const total = parseLocaleNumber(totalHpInput.value)
     const dealt = parseLocaleNumber(dealtHpInput.value)
     if (total == null || total <= 0 || dealt == null) return null
-    return convertHpRatioToScore(tableMode.value, dealt / total)
+    return convertHpRatioToScore(convertTableMode.value, dealt / total)
   }
   const percent = parseLocaleNumber(hpPercentInput.value)
   if (percent == null) return null
-  return convertHpRatioToScore(tableMode.value, percent / 100)
+  return convertHpRatioToScore(convertTableMode.value, percent / 100)
 })
 
 watch(result, (next) => {
@@ -398,12 +512,12 @@ function hpRatioFromLeft(): number | null {
   if (editing.value === 'score') {
     const score = parseLocaleNumber(scoreInput.value)
     if (score == null) return null
-    return convertScoreToHpRatio(tableMode.value, combatScoreFromTotal(score)).hpRatio
+    return convertScoreToHpRatio(convertTableMode.value, combatScoreFromTotal(score)).hpRatio
   }
   if (editing.value === 'scorePct') {
     const percent = parseLocaleNumber(scorePercentInput.value)
     if (percent == null) return null
-    return convertScoreToHpRatio(tableMode.value, (percent / 100) * CRISIS_SCORE_MAX).hpRatio
+    return convertScoreToHpRatio(convertTableMode.value, (percent / 100) * CRISIS_SCORE_MAX).hpRatio
   }
   const hpPercent = parseLocaleNumber(hpPercentInput.value)
   if (hpPercent == null) return null
@@ -473,7 +587,9 @@ function clearInputs() {
   hpPercentInput.value = ''
   scorePercentInput.value = ''
   scoreInput.value = ''
-  operationScoreInput.value = String(CRISIS_OPERATION_SCORE_DEFAULT)
+  totalMultiplierInput.value = '1'
+  lastTotalMultiplier.value = 1
+  operationScoreInput.value = String(operationScoreFieldDefault())
   totalHpInput.value = ''
   dealtHpInput.value = ''
   selectedBoss.value = ''
@@ -494,9 +610,33 @@ const nextMarker = computed(() => {
 /** 战斗分（表插值结果，不含操作分） */
 const roundedCombatScore = computed(() => (result.value ? Math.round(result.value.score) : null))
 
-/** 填写总分 = 战斗分 + 操作分 */
+/** 操作分贡献：临界填写框已是乘完后的值；危局为原值 */
+const scaledOperationScore = computed(() => Math.round(currentOperationScore()))
+
+const scaledOperationScoreLabel = computed(() =>
+  scaledOperationScore.value.toLocaleString('zh-CN'),
+)
+
+const operationScoreMaxLabel = computed(() =>
+  Math.round(operationScoreFieldMax()).toLocaleString('zh-CN'),
+)
+
+/** 战斗分 × 总倍率 */
+const scaledCombatScore = computed(() =>
+  roundedCombatScore.value == null
+    ? null
+    : Math.round(roundedCombatScore.value * currentTotalMultiplier()),
+)
+
+/** 填写/展示总分：危局=战斗+操作；临界=战斗×倍率 + 已乘倍率的操作分 */
 const roundedTotalScore = computed(() =>
   roundedCombatScore.value == null ? null : totalScoreFromCombat(roundedCombatScore.value),
+)
+
+const scoreFieldMaxLabel = computed(() =>
+  Math.round(
+    CRISIS_SCORE_MAX * currentTotalMultiplier() + operationScoreFieldMax(),
+  ).toLocaleString('zh-CN'),
 )
 
 const formulaText = computed(() => {
@@ -508,14 +648,14 @@ const formulaText = computed(() => {
 })
 
 /** 对应表当前插值附近最多 3 管（含节点行） */
-const contextTable = computed(() => getConvertContextTableRows(tableMode.value, result.value))
+const contextTable = computed(() => getConvertContextTableRows(convertTableMode.value, result.value))
 
 function applyMarker(marker: CrisisScoreMarker) {
-  // 转换器快捷键：marker.score 均为含操作分的总分；换算用总分 − 操作分
+  // 危局快捷：marker.score 为含操作分的总分
   editing.value = 'score'
   scoreInput.value = String(marker.score)
   rememberHpRatio(
-    convertScoreToHpRatio(tableMode.value, combatScoreFromTotal(marker.score)).hpRatio,
+    convertScoreToHpRatio(convertTableMode.value, combatScoreFromTotal(marker.score)).hpRatio,
   )
 }
 
@@ -603,6 +743,7 @@ function snapshotCurrent(): ModeDraft {
     selectedPhaseLabel: selectedPhaseLabel.value,
     records: records.value.map((row) => ({ ...row })),
     keptHpRatio: keptHpRatio.value,
+    totalMultiplierInput: totalMultiplierInput.value,
   }
 }
 
@@ -613,7 +754,9 @@ function applyDraft(draft: ModeDraft) {
   scorePercentInput.value = draft.scorePercentInput
   scoreInput.value = draft.scoreInput
   operationScoreInput.value =
-    draft.operationScoreInput?.trim() || String(CRISIS_OPERATION_SCORE_DEFAULT)
+    draft.operationScoreInput?.trim() || String(operationScoreFieldDefault())
+  totalMultiplierInput.value = draft.totalMultiplierInput?.trim() || '1'
+  lastTotalMultiplier.value = currentTotalMultiplier()
   totalHpInput.value = draft.totalHpInput
   dealtHpInput.value = draft.dealtHpInput
   selectedBoss.value = draft.selectedBoss
@@ -696,20 +839,28 @@ const recordRows = computed(() =>
 
 const emptyRecordCount = computed(() => Math.max(0, RECORD_EMPTY_ROWS - records.value.length))
 
-const panelDesc = computed(() =>
-  tableMode.value === 'hard'
+const panelDesc = computed(() => {
+  if (isDeductionMode.value) {
+    return `临界单一换算：战斗分满分 ${CRISIS_SCORE_MAX.toLocaleString('zh-CN')}；操作分填写乘总倍率后的值（基础默认 ${CRISIS_OPERATION_SCORE_DEFAULT.toLocaleString('zh-CN')}）；最终分 = 战斗分×总倍率 + 操作分；怪物仅接入临界 Boss`
+  }
+  return tableMode.value === 'hard'
     ? `绝境：战斗分满分 ${CRISIS_SCORE_MAX.toLocaleString('zh-CN')} + 操作分（最高 ${CRISIS_OPERATION_SCORE_MAX.toLocaleString('zh-CN')}）＝总分最高 ${CRISIS_TOTAL_SCORE_MAX.toLocaleString('zh-CN')}；1w/2w/3w 为含操作分的总分快捷`
-    : `战斗分满分 ${CRISIS_SCORE_MAX.toLocaleString('zh-CN')} + 操作分（默认 ${CRISIS_OPERATION_SCORE_DEFAULT.toLocaleString('zh-CN')}）＝总分最高 ${CRISIS_TOTAL_SCORE_MAX.toLocaleString('zh-CN')}；均2w 为含操作分的总分（满星 S）`,
-)
+    : `战斗分满分 ${CRISIS_SCORE_MAX.toLocaleString('zh-CN')} + 操作分（默认 ${CRISIS_OPERATION_SCORE_DEFAULT.toLocaleString('zh-CN')}）＝总分最高 ${CRISIS_TOTAL_SCORE_MAX.toLocaleString('zh-CN')}；均2w 为含操作分的总分（满星 S）`
+})
 </script>
 
 <template>
   <div class="score-convert-panel">
     <header class="panel-header">
-      <h1 class="page-title">危局强袭战 · 血量分数转换器</h1>
+      <h1 class="page-title">{{ pageTitle }}</h1>
       <p class="panel-desc">{{ panelDesc }}</p>
       <div class="header-actions">
-        <div class="mode-toggle" role="group" aria-label="转换器模式">
+        <div
+          v-if="!isDeductionMode"
+          class="mode-toggle"
+          role="group"
+          aria-label="转换器模式"
+        >
           <button
             type="button"
             class="mode-btn"
@@ -762,25 +913,48 @@ const panelDesc = computed(() =>
             <span class="suffix">%</span>
           </span>
         </label>
+        <label v-if="isDeductionMode" class="field">
+          <span>总倍率</span>
+          <span class="field-input score-short">
+            <input
+              v-model="totalMultiplierInput"
+              class="score-input-short"
+              type="text"
+              inputmode="decimal"
+              maxlength="6"
+              aria-label="总倍率"
+              @focus="onTotalMultiplierEdit"
+              @input="onTotalMultiplierEdit"
+            />
+            <span class="suffix">×</span>
+          </span>
+        </label>
         <label class="field">
-          <span>操作分</span>
+          <span>{{ isDeductionMode ? '操作分（已×倍率）' : '操作分' }}</span>
           <span class="field-input score-short">
             <input
               v-model="operationScoreInput"
               class="score-input-short"
               type="text"
               inputmode="numeric"
-              maxlength="4"
-              aria-label="操作分"
+              :maxlength="isDeductionMode ? 7 : 4"
+              :aria-label="isDeductionMode ? '操作分（已乘总倍率）' : '操作分'"
               @focus="onOperationScoreEdit"
               @input="onOperationScoreEdit"
             />
-            <span class="suffix">/ {{ CRISIS_OPERATION_SCORE_MAX.toLocaleString('zh-CN') }}</span>
+            <span class="suffix">/ {{ operationScoreMaxLabel }}</span>
           </span>
         </label>
-        <p class="field-hint">操作分额外计入总分，不参与分数占比；换算时先加减操作分再插值</p>
+        <p class="field-hint">
+          <template v-if="isDeductionMode">
+            操作分直接填乘完总倍率后的值；最终分 = 战斗分×倍率 + 操作分
+          </template>
+          <template v-else>
+            操作分额外计入总分，不参与分数占比；换算时先加减操作分再插值
+          </template>
+        </p>
         <label class="field">
-          <span>分数</span>
+          <span>{{ isDeductionMode ? '最终分数' : '分数' }}</span>
           <div class="score-line">
             <span class="field-input score-short">
               <input
@@ -788,14 +962,19 @@ const panelDesc = computed(() =>
                 class="score-input-short"
                 type="text"
                 inputmode="numeric"
-                maxlength="5"
-                aria-label="分数"
+                :maxlength="isDeductionMode ? 7 : 5"
+                :aria-label="isDeductionMode ? '最终分数' : '分数'"
                 @focus="onScoreEdit"
                 @input="onScoreEdit"
               />
-              <span class="suffix">/ {{ CRISIS_TOTAL_SCORE_MAX.toLocaleString('zh-CN') }}</span>
+              <span class="suffix">/ {{ scoreFieldMaxLabel }}</span>
             </span>
-            <div class="marker-row" role="group" aria-label="快捷填入节点分数">
+            <div
+              v-if="converterMarkers.length"
+              class="marker-row"
+              role="group"
+              aria-label="快捷填入节点分数"
+            >
               <button
                 v-for="marker in converterMarkers"
                 :key="marker.id"
@@ -809,7 +988,13 @@ const panelDesc = computed(() =>
             </div>
           </div>
         </label>
-        <p class="field-hint">占比三项填 1；分数为总分（战斗分+操作分）</p>
+        <p class="field-hint">
+          占比三项填 1
+          <template v-if="isDeductionMode">
+            ；分数为最终分（战斗×倍率 + 已乘倍率的操作分）
+          </template>
+          <template v-else>；分数为总分（战斗分+操作分）</template>
+        </p>
       </section>
 
       <section class="convert-card">
@@ -826,10 +1011,18 @@ const panelDesc = computed(() =>
             <select
               v-model="selectedBoss"
               class="boss-select"
-              aria-label="从数据库选择怪物"
+              :aria-label="isDeductionMode ? '选择临界 Boss' : '从数据库选择怪物'"
               :disabled="bossListLoading || !bossList.length"
             >
-              <option value="">{{ bossListLoading ? '加载中…' : '从数据库选择' }}</option>
+              <option value="">
+                {{
+                  bossListLoading
+                    ? '加载中…'
+                    : isDeductionMode
+                      ? '选择临界 Boss'
+                      : '从数据库选择'
+                }}
+              </option>
               <option v-for="boss in bossList" :key="boss.boss_name" :value="boss.boss_name">
                 {{ boss.boss_name }}
               </option>
@@ -837,11 +1030,11 @@ const panelDesc = computed(() =>
           </span>
         </label>
         <label class="field">
-          <span>期数</span>
+          <span>{{ isDeductionMode ? '出现期数' : '期数' }}</span>
           <select
             v-model="selectedPhaseLabel"
             class="boss-select"
-            aria-label="选择怪物出现期数"
+            :aria-label="isDeductionMode ? '选择 Boss 出现期数' : '选择怪物出现期数'"
             :disabled="!phasePoints.length || bossChartLoading"
             @change="onPhaseChange"
           >
@@ -897,8 +1090,16 @@ const panelDesc = computed(() =>
         <p class="status-main">{{ describeConvertSegment(result) }}</p>
         <p class="status-line">
           已打血量 {{ formatPercent(result.hpRatio, 4) }} · 战斗
-          {{ (roundedCombatScore ?? 0).toLocaleString('zh-CN') }} 分 · 总分
-          {{ (roundedTotalScore ?? 0).toLocaleString('zh-CN') }} 分
+          {{ (roundedCombatScore ?? 0).toLocaleString('zh-CN') }} 分
+          <template v-if="isDeductionMode">
+            · 总倍率 {{ currentTotalMultiplier() }} · 战斗×倍率
+            {{ (scaledCombatScore ?? 0).toLocaleString('zh-CN') }} · 操作分
+            {{ scaledOperationScoreLabel }} · 最终
+            {{ (roundedTotalScore ?? 0).toLocaleString('zh-CN') }} 分
+          </template>
+          <template v-else>
+            · 总分 {{ (roundedTotalScore ?? 0).toLocaleString('zh-CN') }} 分
+          </template>
           <template v-if="result.row">
             · 本段进度 {{ (result.progressInSegment * 100).toFixed(2) }}%
           </template>
@@ -935,7 +1136,7 @@ const panelDesc = computed(() =>
               <tbody>
                 <tr
                   v-for="(row, index) in contextTable.rows"
-                  :key="`${tableMode}-${formatCrisisScoreBarLabel(row)}-${row.cumulativeScore}-${index}`"
+                  :key="`${convertTableMode}-${formatCrisisScoreBarLabel(row)}-${row.cumulativeScore}-${index}`"
                   :class="{
                     'is-current': index === contextTable.currentIndex,
                     'is-milestone': row.isMilestone,
