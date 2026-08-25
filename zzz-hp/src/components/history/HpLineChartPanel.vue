@@ -7,7 +7,7 @@ import {
   type CrisisHpChartMode,
   type HpChartPoint,
 } from '@/api/crisisAssault'
-import { fetchDeductionHpChart } from '@/api/deduction'
+import { fetchDeductionPeriodHpChart } from '@/api/deduction'
 import { usePhaseDetailModal } from '@/composables/usePhaseDetailModal'
 import { modeTitles, type ModeKey } from '@/types/history'
 import { createRequestEpoch } from '@/utils/requestEpoch'
@@ -29,15 +29,15 @@ const isHardMode = computed(() => hpMode.value === 'hard')
 const isDeductionMode = computed(() => props.mode === 'deduction')
 
 const panelTitle = computed(() =>
-  isHardMode.value ? `${pageTitle.value} · 困难血量折线图` : `${pageTitle.value} · 血量折线图`,
+  isHardMode.value ? `${pageTitle.value} · 绝境血量折线图` : `${pageTitle.value} · 血量折线图`,
 )
 
 const panelDesc = computed(() => {
   if (isDeductionMode.value) {
-    return '推演各期每个战斗节点的总血量（每点对应一个战斗节点）与相对膨胀变化'
+    return '每期一点：当期全部节点总血量 ÷ 当期 Boss 数（含各 STAGE，不限终局）；可勾选 953 防御换算（T）'
   }
   return isHardMode.value
-    ? '上方为困难模式血量与星级线，下方为相对膨胀；可勾选 953 防御换算（T）'
+    ? '上方为绝境模式血量与星级线，下方为相对膨胀；可勾选 953 防御换算（T）'
     : '上方为血量与分数线，下方为相对膨胀；可勾选 953 防御换算（T）'
 })
 
@@ -51,7 +51,7 @@ async function loadChartData() {
     const data =
       props.mode === 'crisis-assault'
         ? await fetchCrisisAssaultHpChart(hpMode.value)
-        : await fetchDeductionHpChart()
+        : await fetchDeductionPeriodHpChart()
     if (!chartLoadEpoch.isCurrent(token)) return
     points.value = data
   } catch (error) {
@@ -81,7 +81,7 @@ onMounted(loadChartData)
     <p v-if="loading" class="status-text">加载中...</p>
     <p v-else-if="loadError" class="status-text error">{{ loadError }}</p>
     <p v-else-if="!points.length" class="status-text">
-      {{ isHardMode ? '暂无困难模式数据' : '暂无数据' }}
+      {{ isHardMode ? '暂无绝境模式数据' : '暂无数据' }}
     </p>
 
     <DualLineChartView
@@ -92,11 +92,11 @@ onMounted(loadChartData)
       :enable-score-hp-overlays="props.mode === 'crisis-assault'"
       :enable-boss-preview="false"
       :points="points"
-      :hp-chart-title="isHardMode ? '困难血量折线图' : '血量折线图'"
-      :expansion-chart-title="isHardMode ? '困难血量相对膨胀折线图' : '血量相对膨胀折线图'"
-      :hp-aria-label="`${pageTitle}${isHardMode ? '困难' : ''}血量折线图`"
-      :expansion-aria-label="`${pageTitle}${isHardMode ? '困难' : ''}血量相对膨胀折线图`"
-      :enable-hp-converted953-toggle="props.mode === 'crisis-assault'"
+      :hp-chart-title="isHardMode ? '绝境血量折线图' : '血量折线图'"
+      :expansion-chart-title="isHardMode ? '绝境血量相对膨胀折线图' : '血量相对膨胀折线图'"
+      :hp-aria-label="`${pageTitle}${isHardMode ? '绝境' : ''}血量折线图`"
+      :expansion-aria-label="`${pageTitle}${isHardMode ? '绝境' : ''}血量相对膨胀折线图`"
+      :enable-hp-converted953-toggle="props.mode === 'crisis-assault' || props.mode === 'deduction'"
       :enable-point-click="props.mode !== 'deduction'"
       @point-click="openPhaseDetail"
     />

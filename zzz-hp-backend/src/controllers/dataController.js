@@ -1,4 +1,4 @@
-import { createBoss, createBuff, deleteBoss, deleteBuff, searchBossRecords, searchBuffRecords } from '../services/dataService.js'
+import { createBoss, createBuff, deleteBoss, deleteBuff, listBuffNameTemplates, searchBossRecords, searchBuffRecords } from '../services/dataService.js'
 import { success, fail } from '../utils/response.js'
 
 function validateBoss(body) {
@@ -102,6 +102,15 @@ export async function queryBuff(req, res) {
     return success(res, data)
   } catch (err) {
     return fail(res, 'Buff 检索失败', 500, { error: err.message })
+  }
+}
+
+export async function queryBuffTemplates(req, res) {
+  try {
+    const data = await listBuffNameTemplates(req.query.recordScheme ?? req.query.scheme ?? null)
+    return success(res, data)
+  } catch (err) {
+    return fail(res, 'Buff 名称模板加载失败', 500, { error: err.message })
   }
 }
 

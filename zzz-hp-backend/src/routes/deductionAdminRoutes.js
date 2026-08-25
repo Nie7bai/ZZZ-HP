@@ -10,16 +10,37 @@ import {
   listDeductionPeriods,
   listPickBosses,
   listPickBuffs,
+  listPickBuffTemplates,
   listShiyuMinions,
   renameDeductionPeriod,
   reorderDeductionNodes,
   updateDeductionNode,
 } from '../services/deductionAdminService.js'
+import { importNanokaSimulPeriods } from '../services/nanokaSimulImportService.js'
 import { success, fail } from '../utils/response.js'
 
 const router = Router()
 
 router.use(requireAdmin)
+
+// 从 nanoka 拉取 simul 更新临界推演（整期刷新，保留期数名与已回填图片）
+router.post('/import/nanoka', async (req, res) => {
+  try {
+    const { simulIds = 'all', locale = 'zh', phase = '1', dryRun = false, buildTag = null } =
+      req.body ?? {}
+    const data = await importNanokaSimulPeriods({
+      simulIds,
+      locale,
+      phase,
+      dryRun: Boolean(dryRun),
+      buildTag,
+    })
+    const message = data.dryRun ? 'nanoka 临界数据解析完成（未写入）' : 'nanoka 临界推演更新完成'
+    return success(res, data, message, data.dryRun ? 200 : 201)
+  } catch (err) {
+    fail(res, err.message || 'nanoka 临界导入失败', 500)
+  }
+})
 
 // 下拉数据源（全局去重）
 router.get('/picker/bosses', async (_req, res) => {
@@ -38,12 +59,20 @@ router.get('/picker/buffs', async (_req, res) => {
   }
 })
 
-// 小怪数据源（shiyu 防卫战怪物名单，供推演非 STAGE 小怪层编辑使用）
+router.get('/picker/buff-templates', async (_req, res) => {
+  try {
+    success(res, await listPickBuffTemplates())
+  } catch (err) {
+    fail(res, err.message || '获取 Buff 模板失败', 500)
+  }
+})
+
+// 小怪数据源（本地式舆防卫战小怪，供推演前战层编辑）
 router.get('/picker/shiyu-minions', async (_req, res) => {
   try {
     success(res, await listShiyuMinions())
   } catch (err) {
-    fail(res, err.message || '获取 shiyu 小怪数据源失败', 500)
+    fail(res, err.message || '获取防卫战小怪数据源失败', 500)
   }
 })
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { provide, ref } from 'vue'
 import DeductionDetailPanel from '@/components/deduction/DeductionDetailPanel.vue'
 import {
   createDeductionAdminNode,
@@ -10,6 +10,8 @@ import {
   reorderDeductionAdminNodes,
   renameDeductionAdminPeriod,
   updateDeductionAdminNode,
+  importDeductionFromNanoka,
+  DEDUCTION_NODE_PERSIST_KEY,
   type AdminDeductionNode,
 } from '@/api/deductionAdmin'
 import type { DeductionMonster, DeductionNode, DeductionPeriod } from '@/api/deduction'
@@ -31,6 +33,51 @@ const renameDraft = ref('')
 const renameTarget = ref<DeductionPeriod | null>(null)
 
 const acting = ref(false)
+
+const nanokaSimulIds = ref('')
+const nanokaImporting = ref(false)
+
+async function runNanokaImport(dryRun: boolean) {
+  if (
+    !dryRun &&
+    !window.confirm(
+      '将从 nanoka 刷新指定期数的节点、怪物与 Buff（整期覆盖）。期数显示名与已上传图片会保留。继续？',
+    )
+  ) {
+    return
+  }
+  nanokaImporting.value = true
+  actionError.value = ''
+  actionMessage.value = ''
+  try {
+    const raw = nanokaSimulIds.value.trim()
+    const simulIds = raw
+      ? raw
+          .split(/[,，\s]+/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : 'all'
+    const result = await importDeductionFromNanoka({ simulIds, dryRun })
+    if (dryRun) {
+      const parts =
+        result.periods?.map((p) => `${p.periodId}（${p.nodes} 节点 / ${p.bosses} 怪 / ${p.buffs} Buff）`) ??
+        []
+      actionMessage.value = parts.length
+        ? `预览：${parts.join('；')}`
+        : '预览完成（无数据）'
+    } else {
+      const parts = result.summary?.map((s) => s.periodId) ?? []
+      actionMessage.value = parts.length
+        ? `已从 nanoka 更新期数：${parts.join('、')}`
+        : '更新完成'
+      await reloadDetail()
+    }
+  } catch (error) {
+    actionError.value = error instanceof Error ? error.message : 'nanoka 更新失败'
+  } finally {
+    nanokaImporting.value = false
+  }
+}
 
 async function reloadDetail(target?: { periodId?: string; nodeId?: string }) {
   try {
@@ -62,6 +109,7 @@ async function applyNodeUpdate(
       name: admin.name,
       type: admin.type,
       storyText: admin.storyText,
+      prevNode: admin.prevNode,
       storyOptions: admin.storyOptions ?? [],
       layers: admin.layers,
       buffs: admin.buffs,
@@ -71,13 +119,16 @@ async function applyNodeUpdate(
     await reloadDetail()
   } catch (error) {
     actionError.value = error instanceof Error ? error.message : '保存失败'
+    throw error
   }
 }
+
+provide(DEDUCTION_NODE_PERSIST_KEY, applyNodeUpdate)
 
 function onSaveInfo(
   version: string,
   nodeId: string,
-  payload: { name: string; type: number; storyText: string },
+  payload: { name: string; type: number; storyText: string; prevNode?: string | null },
 ) {
   void applyNodeUpdate(
     version,
@@ -86,6 +137,7 @@ function onSaveInfo(
       node.name = payload.name
       node.type = payload.type
       node.storyText = payload.storyText
+      if (payload.prevNode !== undefined) node.prevNode = payload.prevNode
     },
     '节点信息已保存',
   )
@@ -95,7 +147,12 @@ function onSaveBuff(
   version: string,
   nodeId: string,
   index: number,
-  payload: { title: string; desc: string; buff_image?: string | null },
+  payload: {
+    title: string
+    desc: string
+    buff_image?: string | null
+    effect_blocks?: AdminDeductionNode['buffs'][number]['effect_blocks']
+  },
 ) {
   void applyNodeUpdate(version, nodeId, (node) => {
     node.buffs[index] = { ...node.buffs[index], ...payload }
@@ -107,21 +164,28 @@ function onCreateBuff(
   version: string,
   nodeId: string,
   index: number,
-  payload: { title: string; desc: string; buff_image?: string | null },
+  payload: {
+    title: string
+    desc: string
+    buff_image?: string | null
+    effect_blocks?: AdminDeductionNode['buffs'][number]['effect_blocks']
+  },
 ) {
   void applyNodeUpdate(version, nodeId, (node) => {
     node.buffs.splice(Math.min(index, node.buffs.length), 0, {
       title: payload.title,
       desc: payload.desc,
       buff_image: payload.buff_image ?? null,
+      effect_blocks: payload.effect_blocks ?? null,
     })
   }, '增益已保存')
 }
 
+/** 仅从本节点增益列表移除，不删除 buff 表记录 */
 function onRemoveBuff(version: string, nodeId: string, index: number) {
   void applyNodeUpdate(version, nodeId, (node) => {
     node.buffs.splice(index, 1)
-  }, '增益已删除')
+  }, '已从本节点移除增益')
 }
 
 function onSaveStoryOption(
@@ -165,7 +229,7 @@ function onSaveLayer(
   version: string,
   nodeId: string,
   index: number,
-  payload: { name: string; isBoss: boolean },
+  payload: { name: string; isBoss: boolean; fieldBuffSetId?: string | null },
 ) {
   void applyNodeUpdate(version, nodeId, (node) => {
     const layer = node.layers[index]
@@ -173,6 +237,12 @@ function onSaveLayer(
     layer.name = payload.name
     // 前战=false（shiyu 数据源）/ 终局=true（危局数据源）
     layer.isBoss = payload.isBoss
+    if (payload.fieldBuffSetId !== undefined) {
+      layer.fieldBuffSetId =
+        payload.fieldBuffSetId == null || String(payload.fieldBuffSetId).trim() === ''
+          ? null
+          : String(payload.fieldBuffSetId).trim()
+    }
   }, '层已保存')
 }
 
@@ -385,6 +455,36 @@ async function onAdminDeletePeriod(period: DeductionPeriod) {
 
 <template>
   <div class="admin-deduction-visual">
+    <p class="adv-hint">
+      临界推演在节点内直接编辑：战斗节点可「+ 新增增益」「+ 怪物」「+ 新增层」；选中战斗层后点编辑即可改怪物属性，增益支持按名搜索复用历史 Buff。无需使用危局/防卫的单独表单页。
+    </p>
+    <div class="adv-nanoka">
+      <label class="adv-nanoka-label" for="adv-nanoka-ids">nanoka 更新</label>
+      <input
+        id="adv-nanoka-ids"
+        v-model="nanokaSimulIds"
+        class="adv-nanoka-input"
+        type="text"
+        placeholder="期数 id：201 或 101,102（留空=全部）"
+      />
+      <button
+        type="button"
+        class="adv-btn adv-btn--primary adv-btn--sm"
+        :disabled="nanokaImporting"
+        @click="runNanokaImport(false)"
+      >
+        {{ nanokaImporting ? '更新中…' : '从 nanoka 更新' }}
+      </button>
+      <button
+        type="button"
+        class="adv-btn adv-btn--sm"
+        :disabled="nanokaImporting"
+        @click="runNanokaImport(true)"
+      >
+        预览
+      </button>
+      <span class="adv-nanoka-note">拉取 simul 数据写入本地；前战小怪编辑仍用本地防卫战库。</span>
+    </div>
     <p v-if="actionError" class="adv-error">{{ actionError }}</p>
     <p v-if="actionMessage" class="adv-ok">{{ actionMessage }}</p>
 
@@ -518,6 +618,51 @@ async function onAdminDeletePeriod(period: DeductionPeriod) {
 .admin-deduction-visual {
   min-height: 100%;
   width: 100%;
+}
+
+.adv-hint {
+  margin: 0;
+  padding: 0.55rem 0.85rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-background-soft);
+  color: var(--color-text);
+  opacity: 0.85;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.adv-nanoka {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.65rem;
+  padding: 0.55rem 0.85rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-background-mute);
+}
+
+.adv-nanoka-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-heading);
+}
+
+.adv-nanoka-input {
+  flex: 1;
+  min-width: 140px;
+  max-width: 280px;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 0.82rem;
+  background: var(--color-background);
+  color: var(--color-text);
+}
+
+.adv-nanoka-note {
+  font-size: 0.75rem;
+  color: var(--color-text);
+  opacity: 0.65;
 }
 
 .adv-error {

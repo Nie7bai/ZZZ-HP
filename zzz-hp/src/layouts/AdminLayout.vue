@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import AdminSidebar from '@/components/admin/AdminSidebar.vue'
 import AdminVisualMonsterPanel from '@/components/admin/AdminVisualMonsterPanel.vue'
 import AdminMonsterPanel from '@/components/admin/AdminMonsterPanel.vue'
@@ -21,6 +21,19 @@ const visualPanelRef = ref<{ reload?: () => Promise<void> } | null>(null)
 
 /** 推演走专属节点管理面板（不落危局/防卫战的 boss/buff 表单） */
 const isDeduction = computed(() => props.scope === 'deduction')
+
+watch(
+  isDeduction,
+  (deduction) => {
+    if (
+      deduction &&
+      (activePanel.value === 'monster-form' || activePanel.value === 'buff-form')
+    ) {
+      activePanel.value = 'monster'
+    }
+  },
+  { immediate: true },
+)
 
 async function onSeasonDatesChanged() {
   await visualPanelRef.value?.reload?.()

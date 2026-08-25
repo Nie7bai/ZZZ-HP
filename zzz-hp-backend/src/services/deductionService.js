@@ -1,12 +1,15 @@
 import pool from '../config/db.js'
 import {
-  ensureEnvironmentBuffSchema,
-  normalizeFieldBuffSet,
-  parseEffectBlocksJson,
-  parseFieldBuffSetsJson,
-  resolveFieldBuffFromSets,
-} from '../utils/environmentBuffSchema.js'
+  loadGlobalBuffEffectMap,
+  resolveEffectBlocksForName,
+} from '../utils/sameNameBuffEffects.js'
+import {
+  attachFieldBuffToDeductionLayers,
+  loadBossFieldBuffSetsMap,
+  normalizeBossNameKey,
+} from '../utils/bossFieldBuff.js'
 import { ensureDeductionStoryOptionsColumn } from './deductionSchemaService.js'
+import { applyBossFallbackToPeriodNodes } from '../utils/deductionLayerFallback.js'
 
 let schemaEnsured = false
 
@@ -49,6 +52,11 @@ function parseJson(value) {
   return value
 }
 
+function parseJsonArray(value) {
+  const parsed = parseJson(value)
+  return Array.isArray(parsed) ? parsed : []
+}
+
 function mapNode(row) {
   return {
     nodeId: String(row.node_id),
@@ -56,48 +64,26 @@ function mapNode(row) {
     type: Number(row.node_type) || 0,
     prevNode: row.prev_node || null,
     storyText: row.story_text || null,
-    storyOptions: parseJson(row.story_options_json) ?? [],
-    layers: parseJson(row.layers_json) ?? [],
-    buffs: parseJson(row.buffs_json) ?? [],
+    storyOptions: parseJsonArray(row.story_options_json),
+    layers: parseJsonArray(row.layers_json),
+    buffs: parseJsonArray(row.buffs_json),
   }
 }
 
 /** 怪物名 → boss_info 场地 Buff 套（与危局同源：危局 Boss 的场地逻辑在推演终局同样生效） */
 async function loadFieldBuffMap() {
-  await ensureEnvironmentBuffSchema()
-  const map = new Map()
-  try {
-    const [rows] = await pool.execute(
-      `SELECT boss_name, field_buff_name, field_buff_text, field_buff_image, field_buff_effect_blocks, field_buff_sets
-       FROM boss_info`,
-    )
-    for (const row of rows) {
-      let sets = parseFieldBuffSetsJson(row.field_buff_sets)
-      if (!sets.length) {
-        const legacy = normalizeFieldBuffSet(
-          {
-            id: 'legacy',
-            name: row.field_buff_name,
-            text: row.field_buff_text,
-            image: row.field_buff_image,
-            effectBlocks: parseEffectBlocksJson(row.field_buff_effect_blocks),
-          },
-          'legacy',
-        )
-        if (legacy) sets = [legacy]
-      }
-      if (!sets.length) continue
-      // 名字规范化：去「」/空格，兼容推演数据与怪物库的符号差异（如 太初梦魇·「始主」）
-      map.set(normalizeBossName(row.boss_name), sets)
-    }
-  } catch (err) {
-    console.warn('[deduction] loadFieldBuffMap fallback:', err.message)
-  }
-  return map
+  return loadBossFieldBuffSetsMap()
 }
 
 function normalizeBossName(name) {
-  return String(name ?? '').replace(/[「」\s]/g, '')
+  return normalizeBossNameKey(name)
+}
+
+function putImageAlias(map, key, value) {
+  if (!key || !value || map.has(key)) return
+  // 跳过游戏包内路径，本地静态站只托管 /boss_image/
+  if (String(value).startsWith('/UI/')) return
+  map.set(key, value)
 }
 
 export async function getDeductionPhases() {
@@ -116,8 +102,9 @@ export async function getDeductionPhases() {
   )
   const imageMap = new Map()
   for (const row of bossRows) {
-    const key = `${row.version}::${row.boss_name}`
-    if (!imageMap.has(key)) imageMap.set(key, row.boss_image)
+    const img = row.boss_image
+    putImageAlias(imageMap, `${row.version}::${row.boss_name}`, img)
+    putImageAlias(imageMap, `${row.version}::${normalizeBossName(row.boss_name)}`, img)
   }
 
   // 怪物基础库名 → 图片（兜底：新增/手输怪物未回填 boss 表时按名取图）
@@ -128,7 +115,8 @@ export async function getDeductionPhases() {
   )
   const bossInfoImgMap = new Map()
   for (const row of bossInfoImgRows) {
-    if (!bossInfoImgMap.has(row.boss_name)) bossInfoImgMap.set(row.boss_name, row.boss_image)
+    putImageAlias(bossInfoImgMap, row.boss_name, row.boss_image)
+    putImageAlias(bossInfoImgMap, normalizeBossName(row.boss_name), row.boss_image)
   }
 
   // Buff 名 → 图片（匹配 buff 表，推演可选增益与危局/防卫战同名 Buff 共用图）
@@ -140,6 +128,21 @@ export async function getDeductionPhases() {
   const buffImgMap = new Map()
   for (const row of buffImgRows) {
     if (!buffImgMap.has(row.buff_name)) buffImgMap.set(row.buff_name, row.buff_image)
+  }
+
+  const buffEffectMap = await loadGlobalBuffEffectMap()
+
+  // layers_json 损坏/为空时，从 boss 表按 room 回退重建（与 nanoka 导入的平铺 boss 行一致）
+  const [bossStatRows] = await pool.execute(
+    `SELECT version, room, boss_name, hp, defense, level, weakness, resistance, boss_image
+     FROM boss
+     WHERE mode = 'deduction'`,
+  )
+  const bossStatsByVersion = new Map()
+  for (const row of bossStatRows) {
+    const v = String(row.version)
+    if (!bossStatsByVersion.has(v)) bossStatsByVersion.set(v, [])
+    bossStatsByVersion.get(v).push(row)
   }
 
   const periodMap = new Map()
@@ -155,50 +158,43 @@ export async function getDeductionPhases() {
       })
     }
     const node = mapNode(row)
-    // 层怪物挂图片：优先节点内已存的 boss_image（管理端选中时写入），
-    // 其次按当期同名匹配 boss 表，最后回退 boss_info 基础库
-    for (const layer of node.layers) {
-      for (const monster of layer.monsters) {
-        monster.boss_image =
-          monster.boss_image ||
-          imageMap.get(`${key}::${monster.name}`) ||
-          bossInfoImgMap.get(monster.name) ||
-          null
-      }
-      // 区域增益：层内首个命中 boss_info 场地 Buff 的怪物（与危局同款解析）
-      if (!layer.fieldBuff) {
-        for (const monster of layer.monsters) {
-          const sets = fieldBuffMap.get(normalizeBossName(monster.name))
-          if (!sets?.length) continue
-          const resolved = resolveFieldBuffFromSets(sets, null)
-          if (resolved) {
-            // 场地 Buff 正文通常在效果块 note 里（field_buff_text 常为空），兜底拼接
-            let text = String(resolved.text ?? '').trim()
-            if (!text && Array.isArray(resolved.effectBlocks) && resolved.effectBlocks.length) {
-              text = resolved.effectBlocks
-                .map((block) => String(block?.note ?? '').trim())
-                .filter(Boolean)
-                .join('\n\n')
-            }
-            layer.fieldBuff = {
-              name: resolved.name,
-              text,
-              image: resolved.image ?? null,
-              effectBlocks: resolved.effectBlocks ?? null,
-            }
-            break
-          }
-        }
-      }
-    }
-    // Buff 挂图片：优先节点内已存的 buff_image（管理端选中时写入），其次按名匹配 buff 表
-    for (const buff of node.buffs) {
-      buff.buff_image = buff.buff_image || buffImgMap.get(buff.title) || null
-    }
     periodMap.get(key).nodes.push(node)
   }
 
-  return [...periodMap.values()].map((period) => ({
+  const periods = [...periodMap.values()]
+  for (const period of periods) {
+    applyBossFallbackToPeriodNodes(
+      period.nodes,
+      bossStatsByVersion.get(period.periodId) ?? [],
+    )
+    for (const node of period.nodes) {
+      for (const layer of node.layers) {
+        if (!Array.isArray(layer.monsters)) layer.monsters = []
+        for (const monster of layer.monsters) {
+          // 优先 boss / boss_info 权威路径，避免 layers_json 里过期的「按中文名.webp」404
+          const fromTable =
+            imageMap.get(`${period.periodId}::${monster.name}`) ||
+            imageMap.get(`${period.periodId}::${normalizeBossName(monster.name)}`) ||
+            bossInfoImgMap.get(monster.name) ||
+            bossInfoImgMap.get(normalizeBossName(monster.name)) ||
+            null
+          monster.boss_image = fromTable || monster.boss_image || null
+        }
+      }
+      attachFieldBuffToDeductionLayers(node.layers, fieldBuffMap)
+      for (const buff of node.buffs) {
+        buff.buff_image = buff.buff_image || buffImgMap.get(buff.title) || null
+        const mergedBlocks = resolveEffectBlocksForName(
+          buff.effect_blocks,
+          buff.title,
+          buffEffectMap,
+        )
+        if (mergedBlocks?.length) buff.effect_blocks = mergedBlocks
+      }
+    }
+  }
+
+  return periods.map((period) => ({
     ...period,
     nodes: period.nodes.map((node, index) => ({ ...node, sortOrder: index })),
   }))

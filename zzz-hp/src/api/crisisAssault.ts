@@ -138,7 +138,7 @@ function mapBossToEnemy(boss: ApiBoss): EnemySlot {
 
   return {
     label: hard
-      ? `困难 Lv${boss.level}`
+      ? `绝境 Lv${boss.level}`
       : `房间 ${formatCrisisRoomLabel(boss.room)} Lv${boss.level}`,
     subStats: boss.boss_name,
     bossName: boss.boss_name,
@@ -192,7 +192,7 @@ function toPhaseData(phase: ApiPhase): PhaseData {
     enemies.push(
       hardBoss
         ? mapBossToEnemy(hardBoss)
-        : emptyEnemySlot('困难', true, CRISIS_HARD_ROOM_CODE),
+        : emptyEnemySlot('绝境', true, CRISIS_HARD_ROOM_CODE),
     )
   }
 

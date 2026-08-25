@@ -21,6 +21,12 @@ export interface DeductionLayer {
   monsters: DeductionMonster[]
   /** 是否 Boss 关：true=Boss 层（危局数据源），false/缺省=小怪层（shiyu 数据源） */
   isBoss?: boolean
+  /** 多结局标签（如 结局1），nanoka 按可选 Buff 包归并 */
+  ending?: string | null
+  /** 绑定的 boss_info 场地 Buff 套 id；空则自动取默认/第一套 */
+  fieldBuffSetId?: string | null
+  /** 可选场地 Buff 套列表（管理端选择器用，由后端按 Boss 名解析） */
+  fieldBuffSets?: Array<{ id: string; label?: string | null; name: string }> | null
   /** 区域增益（boss_info 场地 Buff，与危局同源），仅 boss 层存在 */
   fieldBuff?: DeductionFieldBuff | null
 }
@@ -30,6 +36,8 @@ export interface DeductionBuff {
   desc: string | null
   /** 与 buff 表同名匹配的图标（/buff_image/...），可能为空 */
   buff_image?: string | null
+  /** 计算器结构化效果（可选，同步写入 buff 表 effect_blocks） */
+  effect_blocks?: import('@/types/calculator').BuffEffectBlock[] | null
 }
 
 export interface DeductionNode {
@@ -128,6 +136,36 @@ export function deductionPeriodStats(period: DeductionPeriod): DeductionPeriodSt
   }
 }
 
+/**
+ * 是否 Boss 层（与后端 layerNameIsBoss / resolveLayerIsBoss 对齐）：
+ * - isBoss===true
+ * - 或层名含 STAGE / LAST
+ * - 或「结局N · Boss名」（排除「结局N · 4-1」这类前战波次）
+ * 前战节点（STAGE 01 等）同样可能是 Boss，不只 LAST STAGE。
+ */
+export function isDeductionBossLayer(layer: {
+  isBoss?: boolean
+  name?: string | null
+}): boolean {
+  if (layer.isBoss === true) return true
+  const s = String(layer.name ?? '').trim()
+  if (!s) return false
+  const endingWave = s.match(/^结局\d+\s*·\s*(.+)$/)
+  if (endingWave) {
+    return !/^\d+-\d+$/.test(endingWave[1].trim())
+  }
+  return /STAGE|LAST/i.test(s)
+}
+
+/** 节点内 Boss 层；若都未标出，回退为最后一层（该关仍有 Boss） */
+export function deductionNodeBossLayers(node: DeductionNode): DeductionLayer[] {
+  const layers = node.layers ?? []
+  const marked = layers.filter((layer) => isDeductionBossLayer(layer))
+  if (marked.length) return marked
+  if (!layers.length) return []
+  return [layers[layers.length - 1]!]
+}
+
 export interface DeductionBuffOverview {
   title: string
   desc: string | null
@@ -165,30 +203,96 @@ export function collectDeductionBuffs(periods: DeductionPeriod[]): DeductionBuff
 
 import type { BossOption, HpChartPoint } from '@/api/crisisAssault'
 import type { BuffInfo, PhaseData } from '@/types/history'
+import { convertHpToDefense953, roundConvertedHp } from '@/utils/defenseHpConvert'
 import { splitBuffLines } from '@/utils/gameData'
 
-/** 推演各战斗节点总血量 → 折线图点（节点对比，而非整期汇总） */
-export async function fetchDeductionHpChart(): Promise<HpChartPoint[]> {
+function monsterHpConverted953(monster: DeductionMonster): number {
+  return roundConvertedHp(convertHpToDefense953(Number(monster.hp) || 0, Number(monster.defense) || 0))
+}
+
+/** 当期 Boss 怪物数：各战斗节点的 Boss 层（含 STAGE 01 等前序节点，不限 LAST STAGE） */
+function deductionPeriodBossCount(period: DeductionPeriod): number {
+  let count = 0
+  for (const node of period.nodes) {
+    if (!isDeductionBattleNode(node.type)) continue
+    for (const layer of deductionNodeBossLayers(node)) {
+      count += layer.monsters.length
+    }
+  }
+  return count
+}
+
+function deductionPeriodHpTotals(period: DeductionPeriod): {
+  totalHp: number
+  totalHpConverted953: number
+  bossCount: number
+} {
+  let totalHp = 0
+  let totalHpConverted953 = 0
+  for (const node of period.nodes) {
+    for (const layer of node.layers) {
+      for (const monster of layer.monsters) {
+        totalHp += Number(monster.hp) || 0
+        totalHpConverted953 += monsterHpConverted953(monster)
+      }
+    }
+  }
+  return { totalHp, totalHpConverted953, bossCount: deductionPeriodBossCount(period) }
+}
+
+/**
+ * 血量折线图：每期一点 = 当期全部节点总血量 / 当期 Boss 总数
+ *（含 953 防御换算均值）
+ */
+export async function fetchDeductionPeriodHpChart(): Promise<HpChartPoint[]> {
+  const periods = await fetchDeductionPhases()
+  const points: HpChartPoint[] = []
+  for (const period of periods) {
+    const { totalHp, totalHpConverted953, bossCount } = deductionPeriodHpTotals(period)
+    if (bossCount <= 0) continue
+    points.push({
+      label: deductionPeriodDisplay(period),
+      dateRange: '',
+      totalHp: Math.round(totalHp / bossCount),
+      totalHpConverted953: Math.round(totalHpConverted953 / bossCount),
+      version: period.periodId,
+      phase: period.phase,
+    })
+  }
+  return points
+}
+
+/** 节点对比折线图：各战斗节点总血量（含 953 换算） */
+export async function fetchDeductionNodeHpChart(): Promise<HpChartPoint[]> {
   const periods = await fetchDeductionPhases()
   const points: HpChartPoint[] = []
   for (const period of periods) {
     for (const node of period.nodes) {
       if (!isDeductionBattleNode(node.type)) continue
-      const nodeHp = node.layers.reduce(
-        (sum, layer) =>
-          sum + layer.monsters.reduce((s, m) => s + (Number(m.hp) || 0), 0),
-        0,
-      )
+      let nodeHp = 0
+      let nodeHp953 = 0
+      for (const layer of node.layers) {
+        for (const monster of layer.monsters) {
+          nodeHp += Number(monster.hp) || 0
+          nodeHp953 += monsterHpConverted953(monster)
+        }
+      }
       points.push({
         label: `推演${period.periodId}·${node.name}`,
         dateRange: '',
         totalHp: nodeHp,
+        totalHpConverted953: nodeHp953,
         version: period.periodId,
         phase: period.phase,
       })
     }
   }
   return points
+}
+
+/** @deprecated 使用 fetchDeductionNodeHpChart；保留别名以免旧引用断裂 */
+export async function fetchDeductionHpChart(): Promise<HpChartPoint[]> {
+  return fetchDeductionNodeHpChart()
 }
 
 /** 推演单独怪物对比的类别 */
@@ -226,8 +330,9 @@ export async function fetchDeductionBossList(
   for (const period of periods) {
     for (const node of period.nodes) {
       if (!isDeductionBattleNode(node.type)) continue
+      const bossLayers = new Set(deductionNodeBossLayers(node))
       for (const layer of node.layers) {
-        const isBossLayer = layer.isBoss === true
+        const isBossLayer = bossLayers.has(layer)
         for (const monster of layer.monsters) {
           if (!monster.name) continue
           const name = String(monster.name)
@@ -251,16 +356,20 @@ export async function fetchDeductionBossList(
     .map(([boss_name, rec]) => ({ boss_name, boss_image: rec.image }))
 }
 
-/** 某怪物在推演各期出现的总血量（按期汇总） */
+/** 某怪物在推演各期出现的总血量（按期汇总，含 953 换算） */
 export async function fetchDeductionBossChart(bossName: string): Promise<HpChartPoint[]> {
   const periods = await fetchDeductionPhases()
   const points: HpChartPoint[] = []
   for (const period of periods) {
     let hp = 0
+    let hp953 = 0
     for (const node of period.nodes) {
       for (const layer of node.layers) {
         for (const monster of layer.monsters) {
-          if (monster.name === bossName) hp += Number(monster.hp) || 0
+          if (monster.name === bossName) {
+            hp += Number(monster.hp) || 0
+            hp953 += monsterHpConverted953(monster)
+          }
         }
       }
     }
@@ -269,6 +378,7 @@ export async function fetchDeductionBossChart(bossName: string): Promise<HpChart
         label: `推演${period.periodId}`,
         dateRange: '',
         totalHp: hp,
+        totalHpConverted953: hp953,
         version: period.periodId,
         phase: period.phase,
       })
@@ -296,6 +406,8 @@ export function deductionPhasesToPhaseData(periods: DeductionPeriod[]): PhaseDat
           buffIndex: buffs.length + 1,
           isEmpty: false,
           groupLabel: node.name,
+          effectBlocks: buff.effect_blocks ?? null,
+          buffText: buff.desc ?? undefined,
         })
       }
     }

@@ -37,11 +37,11 @@ export interface EnemySlot {
   hpCoeffPercent?: number | null
   /** 危局血量系数展示，如 150% */
   hpCoeffLabel?: string | null
-  /** 是否为困难房间（3.1+） */
+  /** 是否为绝境房间（3.1+） */
   isHardRoom?: boolean
   /** boss 表记录 ID（管理端编辑用） */
   recordId?: number
-  /** 危局房间码：1 / 2 / 3 / 4（困难） */
+  /** 危局房间码：1 / 2 / 3 / 4（绝境） */
   room?: string
   /** 当期绑定的场地 Buff 套 id（管理端） */
   fieldBuffSetId?: string | null
@@ -69,7 +69,7 @@ export interface PhaseData {
   /** 换算到 953 防御的总血量文案 */
   rawHpConverted953?: string
   totalHpConverted953?: number
-  /** 困难模式总血量（不计入普通总血量） */
+  /** 绝境模式总血量（不计入普通总血量） */
   rawHardHp?: string
   hardTotalHp?: number
   rawHardHpConverted953?: string

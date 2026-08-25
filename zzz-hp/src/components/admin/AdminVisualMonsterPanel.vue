@@ -114,14 +114,21 @@ async function onDeleteMonster(recordId: number, label: string) {
   }
 }
 
-async function onDeleteBuff(recordId: number, label: string) {
+/** 从本期内容移除该条（本期不再展示）；不是环境 Buff 管理里的「删除 Buff 本身」 */
+async function onRemovePeriodBuff(recordId: number, label: string) {
   actionError.value = ''
-  if (!window.confirm(`确认删除 Buff「${label}」？此操作不可恢复。`)) return
+  if (
+    !window.confirm(
+      `确认从本期移除「${label}」？\n仅使本期不再使用该条；请到「环境 Buff 管理」删除 Buff 本身。`,
+    )
+  ) {
+    return
+  }
   try {
     await deleteBuffRecord(recordId)
     await detailRef.value?.reload?.()
   } catch (error) {
-    actionError.value = error instanceof Error ? error.message : '删除 Buff 失败'
+    actionError.value = error instanceof Error ? error.message : '从本期移除失败'
   }
 }
 
@@ -360,7 +367,7 @@ defineExpose({ reload: reloadDetail })
       @admin-monster="openMonsterEdit"
       @admin-delete-monster="onDeleteMonster"
       @admin-buff="openBuffEdit"
-      @admin-delete-buff="onDeleteBuff"
+      @admin-remove-period-buff="onRemovePeriodBuff"
     />
 
     <DefenseDetailPanel
@@ -371,7 +378,7 @@ defineExpose({ reload: reloadDetail })
       @admin-monster="openMonsterEdit"
       @admin-delete-monster="onDeleteMonster"
       @admin-buff="openBuffEdit"
-      @admin-delete-buff="onDeleteBuff"
+      @admin-remove-period-buff="onRemovePeriodBuff"
     />
 
     <p v-else class="admin-visual-empty">当前模式暂不支持可视化管理</p>

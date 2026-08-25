@@ -28,7 +28,8 @@ const emit = defineEmits<{
   'admin-monster': [context: AdminMonsterSlotContext]
   'admin-delete-monster': [recordId: number, label: string]
   'admin-buff': [context: AdminBuffSlotContext]
-  'admin-delete-buff': [recordId: number, label: string]
+  /** 从本期移除该条（本期槽位），不是环境 Buff 管理里的「删除 Buff 本身」 */
+  'admin-remove-period-buff': [recordId: number, label: string]
 }>()
 
 const route = useRoute()
@@ -509,8 +510,8 @@ function onAdminAddZoneBuff(
   if (ctx) emit('admin-buff', ctx)
 }
 
-function onAdminDeleteBuff(recordId: number, label: string) {
-  emit('admin-delete-buff', recordId, label)
+function onAdminRemovePeriodBuff(recordId: number, label: string) {
+  emit('admin-remove-period-buff', recordId, label)
 }
 
 defineExpose({
@@ -784,9 +785,9 @@ function formatEnemyResistance(value?: string) {
                     <button
                       type="button"
                       class="enemy-admin-btn enemy-admin-btn--danger"
-                      @click="onAdminDeleteBuff(record.recordId, `区域 Buff ${record.buffIndex}`)"
+                      @click="onAdminRemovePeriodBuff(record.recordId, `区域 Buff ${record.buffIndex}`)"
                     >
-                      删除
+                      从本期移除
                     </button>
                   </div>
                 </div>
@@ -808,9 +809,9 @@ function formatEnemyResistance(value?: string) {
                       v-if="room.roomBuff.recordId"
                       type="button"
                       class="enemy-admin-btn enemy-admin-btn--danger"
-                      @click="onAdminDeleteBuff(room.roomBuff.recordId!, room.roomBuff.name)"
+                      @click="onAdminRemovePeriodBuff(room.roomBuff.recordId!, room.roomBuff.name)"
                     >
-                      删除
+                      从本期移除
                     </button>
                     <button
                       v-if="!room.roomBuff.recordId"

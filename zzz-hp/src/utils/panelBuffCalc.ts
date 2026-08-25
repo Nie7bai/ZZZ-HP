@@ -39,8 +39,8 @@ import {
   mergeBuffStatModifiers,
 } from '@/utils/calculatorUi'
 import type { EnvironmentBuffEntry } from '@/utils/environmentBuffCalc'
+import { resolveAssetUrl } from '@/utils/gameData'
 import {
-  extraGainMatchesProfession,
   mergeExtraModsForEvent,
   type ExtraBuffGain,
 } from '@/utils/extraBuffCalc'
@@ -64,8 +64,13 @@ function mergeBuffDisplayNotes(...parts: Array<string | null | undefined>): stri
   return unique.join('\n')
 }
 
-/** 危局 / Boss 场地 / 防线 Buff 分组 */
-export const ENVIRONMENT_BUFF_GROUPS = new Set(['危局 Buff', 'Boss 场地 Buff', '防线 Buff'])
+/** 危局 / Boss 场地 / 防线 / 临界 Buff 分组 */
+export const ENVIRONMENT_BUFF_GROUPS = new Set([
+  '危局 Buff',
+  'Boss 场地 Buff',
+  '防线 Buff',
+  '临界 Buff',
+])
 
 export function isEnvironmentBuffGroup(group: string) {
   return ENVIRONMENT_BUFF_GROUPS.has(group)
@@ -75,8 +80,41 @@ export function isEnvironmentBuffSourceKey(sourceKey: string) {
   return (
     sourceKey.startsWith('crisis-buff-') ||
     sourceKey.startsWith('boss-field-') ||
-    sourceKey.startsWith('defense-buff-')
+    sourceKey.startsWith('defense-buff-') ||
+    sourceKey.startsWith('deduction-buff-') ||
+    sourceKey.startsWith('deduction-field-')
   )
+}
+
+function isBossFieldEnvironmentKind(kind: import('@/utils/environmentBuffCalc').EnvironmentBuffKind) {
+  return kind === 'boss-field' || kind === 'deduction-field'
+}
+
+function environmentBuffKindLabel(
+  kind: import('@/utils/environmentBuffCalc').EnvironmentBuffKind,
+): string {
+  if (kind === 'crisis') return '危局 Buff'
+  if (isBossFieldEnvironmentKind(kind)) return 'Boss 场地 Buff'
+  if (kind === 'deduction-node') return '临界 Buff'
+  return '防线 Buff'
+}
+
+function mapEnvBuffBlockDisplayName(
+  env: EnvironmentBuffEntry,
+  block: { name?: string },
+): string {
+  if (isBossFieldEnvironmentKind(env.kind)) return '场地 Buff'
+  if (env.kind === 'defense-room' && env.roomIndex != null) {
+    return `第${env.roomIndex}间`
+  }
+  if (env.kind === 'deduction-node' && env.nodeLabel) {
+    const blockName = block.name?.trim() || ''
+    if (blockName && blockName !== env.name) {
+      return `${env.nodeLabel} · ${blockName}`
+    }
+    return env.nodeLabel
+  }
+  return block.name?.trim() || '增益'
 }
 
 /** 2 件套：优先按效果块（保留名称/注释），否则回退扁平效果 */
@@ -970,11 +1008,15 @@ function resolvePackMods(
     slotIndex != null
       ? ctx.agents.find((item) => item.id === ctx.teamSlots[slotIndex]?.agentId)?.element
       : undefined
+  const beneficiaryProfession = ctx.agents.find(
+    (item) => item.id === ctx.teamSlots[ctx.mainSlotIndex]?.agentId,
+  )?.profession
   return resolveEffectsToMods(effects, {
     applyTargets: isMain ? ['self', 'team'] : ['team'],
     ctx: skillCtx,
     element: isMain ? skillCtx.element : slotElement,
     beneficiaryElement: resolveBeneficiaryElement(ctx),
+    beneficiaryProfession,
     stacksByEffectId: ctx.buffSelection?.stacksByEffectId,
     convertInputs: ctx.buffSelection?.convertInputs,
     attrValues: ctx.attrValues,
@@ -1314,34 +1356,24 @@ export function collectAllBuffEffects(ctx: PanelCalcContext): CollectedEffect[] 
     )
   }
 
-  const beneficiaryAgent = ctx.agents.find(
-    (item) => item.id === ctx.teamSlots[mainIndex]?.agentId,
-  )
-  const beneficiaryProfession = beneficiaryAgent?.profession
-
   for (const env of ctx.environmentBuffs ?? []) {
     if (!env.effectBlocks?.length) continue
     const pack = {
       effectBlocks: env.effectBlocks,
       effects: [] as BuffEffect[],
     }
-    const kindLabel =
-      env.kind === 'crisis'
-        ? '危局 Buff'
-        : env.kind === 'boss-field'
-          ? 'Boss 场地 Buff'
-          : '防线 Buff'
+    const kindLabel = environmentBuffKindLabel(env.kind)
     // Boss 场地：卡片写 Boss 名，效果块名固定「场地 Buff」
     // 防卫战：卡片写「buff名 | 第x间」
-    const providerName =
-      env.kind === 'boss-field' ? env.bossName || env.name || 'Boss 场地 Buff' : env.name
-    const defenseRoomTitle =
-      env.kind === 'defense-room' && env.roomIndex != null ? `第${env.roomIndex}间` : ''
+    const providerName = isBossFieldEnvironmentKind(env.kind)
+      ? env.bossName || env.name || 'Boss 场地 Buff'
+      : env.name
     const sourceLabel = [
       kindLabel,
       env.version && env.phase ? `${env.version}第${env.phase}期` : '',
-      env.kind === 'boss-field' ? '' : env.roomLabel || '',
-      env.kind === 'boss-field' ? providerName : '',
+      env.kind === 'deduction-node' && env.nodeLabel ? env.nodeLabel : '',
+      isBossFieldEnvironmentKind(env.kind) ? '' : env.roomLabel || '',
+      isBossFieldEnvironmentKind(env.kind) ? providerName : '',
     ]
       .filter(Boolean)
       .join(' · ')
@@ -1353,25 +1385,17 @@ export function collectAllBuffEffects(ctx: PanelCalcContext): CollectedEffect[] 
     pushPack(
       {
         ...pack,
-        effectBlocks:
-          env.kind === 'boss-field'
-            ? pack.effectBlocks.map((block) => ({
-                ...block,
-                name: '场地 Buff',
-              }))
-            : env.kind === 'defense-room' && defenseRoomTitle
-              ? pack.effectBlocks.map((block) => ({
-                  ...block,
-                  name: defenseRoomTitle,
-                }))
-              : pack.effectBlocks,
+        effectBlocks: pack.effectBlocks.map((block) => ({
+          ...block,
+          name: mapEnvBuffBlockDisplayName(env, block),
+        })),
       },
       env.sourceKey,
       sourceLabel,
       providerName,
-      env.imageUrl,
+      env.imageUrl ? (resolveAssetUrl(env.imageUrl) ?? env.imageUrl) : null,
       () => kindLabel,
-      (effect) => extraGainMatchesProfession(effect, beneficiaryProfession),
+      () => true,
       noteParts.filter(Boolean).join('\n'),
     )
     // 保留数据里的 enabledDefault，供首次勾选效果块时只开「默认启用」项；
@@ -1755,10 +1779,6 @@ function collectPanelBuffModSourcesUncached(ctx: PanelCalcContext): BuffModSourc
     })
   }
 
-  const beneficiaryProfession = ctx.agents.find(
-    (item) => item.id === ctx.teamSlots[mainIndex]?.agentId,
-  )?.profession
-
   for (const env of ctx.environmentBuffs ?? []) {
     if (!env.effectBlocks?.length) continue
     const defenseRoomTitle =
@@ -1766,37 +1786,27 @@ function collectPanelBuffModSourcesUncached(ctx: PanelCalcContext): BuffModSourc
     for (const entry of collectBlockEntriesFromPack({
       effectBlocks: env.effectBlocks.map((block) => ({
         ...block,
-        name:
-          env.kind === 'boss-field'
-            ? '场地 Buff'
-            : defenseRoomTitle || block.name,
+        name: mapEnvBuffBlockDisplayName(env, block),
       })),
       effects: [],
     })) {
-      const effects = entry.effects
-        .filter((effect) => extraGainMatchesProfession(effect, beneficiaryProfession))
-        .map((effect) => ({
-          ...cloneEffectInstance(effect, env.sourceKey, entry.blockId),
-        }))
+      const effects = entry.effects.map((effect) => ({
+        ...cloneEffectInstance(effect, env.sourceKey, entry.blockId),
+      }))
       if (!effects.length) continue
       const mods = resolvePackMods(effects, true, { ...ctx, skillContext: skillCtx })
-      const kindLabel =
-        env.kind === 'crisis'
-          ? '危局 Buff'
-          : env.kind === 'boss-field'
-            ? 'Boss 场地 Buff'
-            : '防线 Buff'
-      const bossLabel =
-        env.kind === 'boss-field' ? env.bossName || env.name : env.name
+      const kindLabel = environmentBuffKindLabel(env.kind)
+      const bossLabel = isBossFieldEnvironmentKind(env.kind)
+        ? env.bossName || env.name
+        : env.name
       sources.push({
         key: `${env.sourceKey}-${entry.blockId}`,
         label: [kindLabel, bossLabel, defenseRoomTitle].filter(Boolean).join(' · '),
         mods,
         effects,
-        blockName:
-          env.kind === 'boss-field'
-            ? '场地 Buff'
-            : defenseRoomTitle || entry.blockName || env.name,
+        blockName: mapEnvBuffBlockDisplayName(env, {
+          name: entry.blockName || env.name,
+        }),
         note: mergeBuffDisplayNotes(
           env.text,
           env.kind === 'defense-room' && env.roomBosses?.length

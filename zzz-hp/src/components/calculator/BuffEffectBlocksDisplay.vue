@@ -2,7 +2,9 @@
 import type { BuffEffect, BuffEffectBlock, SkillSubcategory } from '@/types/calculator'
 import { effectSummaryLabel } from '@/utils/buffEffect'
 import { buffStatFieldLabel, BUFF_STAT_FIELDS } from '@/utils/calculatorUi'
-import { computed } from 'vue'
+import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
+import { storeToRefs } from 'pinia'
+import { computed, onMounted } from 'vue'
 
 const props = defineProps<{
   blocks?: BuffEffectBlock[] | null
@@ -16,6 +18,21 @@ const props = defineProps<{
   /** 往期详情等：无套卡、紧凑单行效果 */
   compact?: boolean
 }>()
+
+const buffStore = useCalculatorBuffStore()
+const { skillSubcategories: storeSkillSubcategories } = storeToRefs(buffStore)
+
+/** 优先用父组件传入；否则用计算器缓存，便于解析招式小类名 */
+const resolvedSkillSubcategories = computed(
+  () => props.skillSubcategories ?? storeSkillSubcategories.value,
+)
+
+onMounted(() => {
+  if (props.skillSubcategories?.length) return
+  void buffStore.ensureLoaded().catch(() => {
+    /* 无缓存时仍按大类展示 */
+  })
+})
 
 const displayBlocks = computed(() => {
   if (props.blocks?.length) {
@@ -89,7 +106,7 @@ function showBlockHead(block: BuffEffectBlock) {
             situationLabel(effect)
           }}</span>
           <strong class="effect-summary">{{
-            effectSummaryLabel(effect, (s) => statLabel(s), props.skillSubcategories)
+            effectSummaryLabel(effect, (s) => statLabel(s), resolvedSkillSubcategories)
           }}</strong>
         </li>
       </ul>

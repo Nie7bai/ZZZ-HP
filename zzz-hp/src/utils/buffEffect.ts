@@ -688,6 +688,26 @@ export function formatTeamProfessionGateLabel(
   return `队内·${required}`
 }
 
+/** 受益代理人职业限制（谁能吃到这条效果） */
+export function formatApplyProfessionLabel(
+  effect: Pick<BuffEffect, 'applyProfession'>,
+): string {
+  const required = effect.applyProfession?.trim()
+  if (!required) return ''
+  return `[${required}]`
+}
+
+/** 属性限定（非「全部属性」时标出生效属性，如 `[电]` / `[电、火]`） */
+export function formatElementFilterLabel(
+  effect: Pick<BuffEffect, 'elementFilter'>,
+): string {
+  const filter = effect.elementFilter
+  if (!filter || filter === 'all' || !Array.isArray(filter)) return ''
+  const names = filter.map((item) => String(item).trim()).filter(Boolean)
+  if (!names.length) return ''
+  return `[${names.join('、')}]`
+}
+
 export function filterEffects(
   effects: BuffEffect[],
   options: {
@@ -722,6 +742,16 @@ export function isEffectEnabled(
   if (!selection?.enabledIds || !(effect.id in selection.enabledIds)) {
     // 有队内职业人数条件：未同步前默认不启用，避免条件未满足却全开
     if (effect.teamProfession?.trim()) return false
+    // 危局 / Boss 场地 / 防线 / 临界：目录默认不勾；缺省勿回退 enabledDefault（否则换期清空后会「全选」）
+    if (
+      effect.id.startsWith('crisis-buff-') ||
+      effect.id.startsWith('boss-field-') ||
+      effect.id.startsWith('defense-buff-') ||
+      effect.id.startsWith('deduction-buff-') ||
+      effect.id.startsWith('deduction-field-')
+    ) {
+      return false
+    }
     return effect.enabledDefault !== false
   }
   return Boolean(selection.enabledIds[effect.id])
@@ -749,6 +779,8 @@ export function resolveEffectsToMods(
     selection?: { enabledIds?: Record<string, boolean> } | null
     /** 队内某职业人数；有人数条件的效果必须传入，否则带条件效果一律不结算 */
     resolveTeamProfessionCount?: (profession: string) => number
+    /** 当前结算主槽角色职业（防线 Buff 等 applyProfession 条件） */
+    beneficiaryProfession?: string | null
   } = {},
 ): BuffStatModifiers {
   let total = emptyMods()
@@ -769,6 +801,11 @@ export function resolveEffectsToMods(
       if (!options.resolveTeamProfessionCount) continue
       const count = options.resolveTeamProfessionCount(effect.teamProfession.trim())
       if (!effectMatchesTeamProfessionGate(effect, count)) continue
+    }
+    if (effect.applyProfession?.trim()) {
+      const required = effect.applyProfession.trim()
+      const beneficiary = String(options.beneficiaryProfession ?? '').trim()
+      if (beneficiary !== required) continue
     }
     if (options.skipConvert && effect.kind === 'convert') continue
 
@@ -1030,7 +1067,11 @@ export function wrapEffectsAsBlocks(effects: BuffEffect[]): BuffEffectBlock[] {
 }
 
 export function normalizeBuffEffectBlocks(value: unknown): BuffEffectBlock[] {
-  if (!Array.isArray(value)) return []
+  if (value == null) return []
+  if (!Array.isArray(value)) {
+    if (typeof value === 'object') return normalizeBuffEffectBlocks([value])
+    return []
+  }
   return value
     .filter((item) => item && typeof item === 'object' && !Array.isArray(item))
     .map((item, index) => {
@@ -1198,7 +1239,7 @@ export function convertSummaryLabel(convert: BuffEffectConvert | null | undefine
   return `${convertSourceAttrLabel(convert)}转模${formatCalcDecimal(convert.ratioPercent ?? 0)}%${initial}`
 }
 
-/** 招式目标展示：`[终结技：斩妄开天]`；找不到名称时只显示大类，不露内部 id */
+/** 招式目标展示：有小类名则只显示小类 `[斩妄开天]`；否则显示大类 `[终结技]`（不露内部 id） */
 export function formatSkillTargetBracket(
   target: BuffSkillTarget,
   skillSubcategories?: SkillSubcategory[] | null,
@@ -1208,7 +1249,7 @@ export function formatSkillTargetBracket(
     return `[${catLabel}]`
   }
   const name = skillSubcategories?.find((item) => item.id === target.subcategoryId)?.name?.trim()
-  if (name) return `[${catLabel}：${name}]`
+  if (name) return `[${name}]`
   return `[${catLabel}]`
 }
 
@@ -1238,6 +1279,8 @@ export function effectSummaryLabel(
       : (BUFF_SCOPE_LABELS[effect.scope] ?? '通用')
   const situation =
     APPLY_SITUATION_LABELS[effect.applySituation ?? 'global'] ?? '全局'
+  const applyProf = formatApplyProfessionLabel(effect)
+  const elementLabel = formatElementFilterLabel(effect)
   const gate = formatTeamProfessionGateLabel(effect)
   const statText = statLabelFn?.(effect.stat) ?? effect.stat
   const kind =
@@ -1247,12 +1290,15 @@ export function effectSummaryLabel(
         ? convertSummaryLabel(effect.convert)
         : `${effect.value ?? 0}`
   const parts = [target, scope, situation]
+  if (applyProf) parts.splice(0, 0, applyProf)
+  // 属性限制：全局之后、效果之前
+  if (elementLabel) parts.push(elementLabel)
   if (gate) parts.push(gate)
   parts.push(`${statText} ${kind}`)
   return parts.join(' · ')
 }
 
-/** 局内 Buff 卡片效果行：`[终结技：斩妄开天]无视防御/减防% +40` */
+/** 局内 Buff 卡片效果行：`[强攻][斩妄开天] [电] 增伤 +40` */
 export function formatBuffEffectResultText(
   effect: BuffEffect,
   amountText: string,
@@ -1263,9 +1309,13 @@ export function formatBuffEffectResultText(
 ): string {
   const skillPrefix = formatSkillTargetsPrefix(effect, options?.skillSubcategories)
   const label = options?.statLabelFn?.(effect.stat) ?? effect.stat
+  const applyProf = formatApplyProfessionLabel(effect)
+  const elementLabel = formatElementFilterLabel(effect)
   const gate = formatTeamProfessionGateLabel(effect)
-  const gatePrefix = gate ? `${gate} ` : ''
-  return `${skillPrefix}${gatePrefix}${label} ${amountText}`
+  const head = [applyProf, skillPrefix].filter(Boolean).join('')
+  const mid = gate ? `${gate} ` : ''
+  const el = elementLabel ? `${elementLabel} ` : ''
+  return `${head}${head ? ' ' : ''}${mid}${el}${label} ${amountText}`
 }
 
 export { BUFF_STAT_KEYS }

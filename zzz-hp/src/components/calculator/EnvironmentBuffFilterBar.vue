@@ -17,19 +17,37 @@ export interface EnvironmentBuffFrontierOption {
   label: string
 }
 
+export interface EnvironmentBuffNodeOption {
+  id: string
+  label: string
+}
+
 const mode = defineModel<EnvironmentBuffFilterMode>('mode', { default: 'none' })
 const version = defineModel<string>('version', { default: '' })
 const phaseId = defineModel<string>('phaseId', { default: '' })
 const frontierId = defineModel<string>('frontierId', { default: '' })
+const nodeId = defineModel<string>('nodeId', { default: '' })
 
 const props = defineProps<{
   phaseOptions: EnvironmentBuffFilterOption[]
   frontierOptions?: EnvironmentBuffFrontierOption[]
+  nodeOptions?: EnvironmentBuffNodeOption[]
+  /** 临界推演：期数下拉显示完整期名而非「第 N 期」 */
+  phaseLabelMode?: 'default' | 'deduction'
   hint?: string
 }>()
 
-const showModeFilters = computed(() => mode.value === 'crisis' || mode.value === 'defense')
+const showModeFilters = computed(
+  () => mode.value === 'crisis' || mode.value === 'defense' || mode.value === 'deduction',
+)
+const showVersionFilter = computed(() => mode.value === 'crisis' || mode.value === 'defense')
 const showDefenseFrontier = computed(() => mode.value === 'defense' && Boolean(phaseId.value))
+const showDeductionNode = computed(() => mode.value === 'deduction' && Boolean(phaseId.value))
+
+const phaseSelectLabel = (opt: EnvironmentBuffFilterOption) => {
+  if (props.phaseLabelMode === 'deduction' || mode.value === 'deduction') return opt.label
+  return `第${opt.phase || opt.label}期${opt.isHidden ? '（未公开）' : ''}`
+}
 
 const versionOptions = computed(() => {
   const map = new Map<string, string>()
@@ -41,7 +59,15 @@ const versionOptions = computed(() => {
   return [...map.keys()].sort((a, b) => compareVersionDesc(a, b))
 })
 
-const phaseOptionsForVersion = computed(() => {
+/** 危局/防卫：按版本筛期；临界：直接列全部期数 */
+const phaseOptionsForSelect = computed(() => {
+  if (mode.value === 'deduction') {
+    return props.phaseOptions.slice().sort((a, b) => {
+      const versionDiff = compareVersionDesc(a.version || '', b.version || '')
+      if (versionDiff !== 0) return versionDiff
+      return Number(b.phase || 0) - Number(a.phase || 0)
+    })
+  }
   if (!version.value) return []
   return props.phaseOptions
     .filter((opt) => opt.version === version.value)
@@ -62,11 +88,15 @@ function compareVersionDesc(a: string, b: string) {
   return 0
 }
 
-/** 期数由父级在切换模式时设为最新公开期；此处只做版本↔期数联动 */
+/** 期数由父级在切换模式时设为最新公开期；危局/防卫做版本↔期数联动 */
 watch(
-  () => [phaseId.value, props.phaseOptions] as const,
+  () => [phaseId.value, props.phaseOptions, mode.value] as const,
   () => {
     if (!showModeFilters.value) {
+      version.value = ''
+      return
+    }
+    if (mode.value === 'deduction') {
       version.value = ''
       return
     }
@@ -82,12 +112,12 @@ watch(
 )
 
 watch(version, (next, prev) => {
-  if (!showModeFilters.value || next === prev) return
+  if (!showVersionFilter.value || next === prev) return
   if (!next) {
     phaseId.value = ''
     return
   }
-  const matched = phaseOptionsForVersion.value
+  const matched = phaseOptionsForSelect.value
   if (!matched.some((opt) => opt.id === phaseId.value)) {
     const publicMatched = matched.find((opt) => !opt.isHidden)
     phaseId.value = publicMatched?.id ?? matched[0]?.id ?? ''
@@ -95,11 +125,11 @@ watch(version, (next, prev) => {
 })
 
 watch(
-  () => props.frontierOptions,
+  () => props.nodeOptions,
   (options) => {
-    if (!frontierId.value) return
-    if (!(options ?? []).some((opt) => opt.id === frontierId.value)) {
-      frontierId.value = ''
+    if (!nodeId.value) return
+    if (!(options ?? []).some((opt) => opt.id === nodeId.value)) {
+      nodeId.value = ''
     }
   },
 )
@@ -114,10 +144,11 @@ watch(
           <option value="none">默认</option>
           <option value="crisis">危局强袭战</option>
           <option value="defense">式舆防卫战</option>
+          <option value="deduction">临界推演</option>
         </select>
       </label>
       <template v-if="showModeFilters">
-        <label class="env-field env-field--sm">
+        <label v-if="showVersionFilter" class="env-field env-field--sm">
           <span>版本</span>
           <select v-model="version">
             <option value="">请选择</option>
@@ -126,12 +157,15 @@ watch(
             </option>
           </select>
         </label>
-        <label class="env-field env-field--sm">
+        <label
+          class="env-field"
+          :class="mode === 'deduction' ? 'env-field--period' : 'env-field--sm'"
+        >
           <span>期数</span>
           <select v-model="phaseId">
             <option value="">请选择</option>
-            <option v-for="opt in phaseOptionsForVersion" :key="opt.id" :value="opt.id">
-              第{{ opt.phase || opt.label }}期{{ opt.isHidden ? '（未公开）' : '' }}
+            <option v-for="opt in phaseOptionsForSelect" :key="opt.id" :value="opt.id">
+              {{ phaseSelectLabel(opt) }}
             </option>
           </select>
         </label>
@@ -140,6 +174,15 @@ watch(
           <select v-model="frontierId">
             <option value="">请选择</option>
             <option v-for="opt in frontierOptions ?? []" :key="opt.id" :value="opt.id">
+              {{ opt.label }}
+            </option>
+          </select>
+        </label>
+        <label v-if="showDeductionNode" class="env-field env-field--sm">
+          <span>节点</span>
+          <select v-model="nodeId">
+            <option value="">全部战斗节点</option>
+            <option v-for="opt in nodeOptions ?? []" :key="opt.id" :value="opt.id">
               {{ opt.label }}
             </option>
           </select>
@@ -174,6 +217,10 @@ watch(
 
 .env-field--sm {
   min-width: 6.5rem;
+}
+
+.env-field--period {
+  min-width: 11rem;
 }
 
 .env-field span {

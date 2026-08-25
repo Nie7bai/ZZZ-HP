@@ -125,6 +125,112 @@ function collectBuffs(selectable) {
   return buffs
 }
 
+/** 可选 Buff 包指纹：同结局下终局/前战/选战共用同一套 title 集合 */
+export function buffPackageKey(selectable) {
+  return Object.values(selectable ?? {})
+    .map((buff) => String(buff?.title ?? '').trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, 'zh'))
+    .join('|')
+}
+
+function isLastStageNode(node) {
+  const type = Number(node?.type) || 0
+  if (type === 3) return true
+  return /LAST\s*STAGE/i.test(String(node?.name ?? ''))
+}
+
+function isFinaleBattle(entry) {
+  const tagType = Number(entry?.tag_type)
+  if (tagType === 1) return true
+  const tag = stripColorTags(entry?.tag)
+  if (tag === '终局') return true
+  return /LAST\s*STAGE/i.test(String(entry?.name ?? '').trim())
+}
+
+function primaryMonsterName(monsters) {
+  const names = (monsters ?? []).map((m) => String(m?.name ?? '').trim()).filter(Boolean)
+  return names[0] || ''
+}
+
+/**
+ * 多结局：按 Buff 包把终局/前战/选战归到同一结局，并生成唯一层名。
+ * - 终局层：结局N · Boss名
+ * - 前战/选战：结局N · 原层名（如 4-1）
+ */
+function assignEndingLayerNames(battleDrafts) {
+  const endingOrder = []
+  const endingIndexByKey = new Map()
+
+  for (const draft of battleDrafts) {
+    if (!draft.isFinale || !draft.buffKey) continue
+    if (endingIndexByKey.has(draft.buffKey)) continue
+    endingIndexByKey.set(draft.buffKey, endingOrder.length + 1)
+    endingOrder.push(draft.buffKey)
+  }
+
+  // 无「终局」标记时：每个 Buff 包仍算一条结局（兼容缺 tag 的数据）
+  if (!endingOrder.length) {
+    for (const draft of battleDrafts) {
+      if (!draft.buffKey || endingIndexByKey.has(draft.buffKey)) continue
+      endingIndexByKey.set(draft.buffKey, endingOrder.length + 1)
+      endingOrder.push(draft.buffKey)
+    }
+  }
+
+  const usedNames = new Set()
+  for (const draft of battleDrafts) {
+    const endingNo = draft.buffKey ? endingIndexByKey.get(draft.buffKey) : null
+    const endingLabel = endingNo != null ? `结局${endingNo}` : null
+    let baseName
+    if (endingLabel && draft.isFinale) {
+      const bossName = primaryMonsterName(draft.monsters) || draft.rawName || draft.battleId
+      baseName = `${endingLabel} · ${bossName}`
+    } else if (endingLabel) {
+      baseName = `${endingLabel} · ${draft.rawName || draft.battleId}`
+    } else {
+      baseName = draft.rawName || draft.battleId
+    }
+
+    let unique = baseName
+    let suffix = 2
+    while (usedNames.has(unique)) {
+      unique = `${baseName} (${suffix})`
+      suffix += 1
+    }
+    usedNames.add(unique)
+    draft.layerName = unique
+    draft.endingLabel = endingLabel
+    draft.isBoss = draft.isFinale
+  }
+}
+
+function buildBattleDraft(entry) {
+  const layer = entry.layer && typeof entry.layer === 'object' ? entry.layer : {}
+  const layerRoom = {
+    ...(layer.layer_room && typeof layer.layer_room === 'object' ? layer.layer_room : {}),
+    ...(entry.layer_room && typeof entry.layer_room === 'object' ? entry.layer_room : {}),
+  }
+  const selectable = entry.selectable_buff ?? layer.selectable_buff ?? {}
+  const monsters = collectMonsters(layerRoom, layer.monster_level)
+  const rawName = String(entry.name ?? entry.id ?? '').trim()
+  const battleId = String(entry.id ?? '').trim()
+  return {
+    entry,
+    layer,
+    layerRoom,
+    selectable,
+    monsters,
+    rawName,
+    battleId: battleId || rawName,
+    buffKey: buffPackageKey(selectable),
+    isFinale: isFinaleBattle(entry),
+    layerName: rawName,
+    endingLabel: null,
+    isBoss: isFinaleBattle(entry) || /STAGE|LAST/i.test(rawName),
+  }
+}
+
 export function parseSimulPeriod(simulJson, { mode = 'deduction', phase = '1' } = {}) {
   const periodId = String(simulJson?.id ?? '')
   if (!periodId) throw new Error('simul 数据缺少 id')
@@ -154,20 +260,32 @@ export function parseSimulPeriod(simulJson, { mode = 'deduction', phase = '1' } 
     }
 
     if (node.battle && typeof node.battle === 'object') {
-      for (const entry of Object.values(node.battle)) {
-        if (!entry || typeof entry !== 'object') continue
-        const roomName = String(entry.name ?? entry.id ?? '').trim()
-        const layer = entry.layer && typeof entry.layer === 'object' ? entry.layer : {}
+      const battleDrafts = Object.values(node.battle)
+        .filter((entry) => entry && typeof entry === 'object')
+        .map((entry) => buildBattleDraft(entry))
 
-        // layer_room 可能挂在 layer 下或 entry 顶层（合并取并集）
-        const layerRoom = {
-          ...(layer.layer_room && typeof layer.layer_room === 'object' ? layer.layer_room : {}),
-          ...(entry.layer_room && typeof entry.layer_room === 'object' ? entry.layer_room : {}),
+      if (isLastStageNode(node) && battleDrafts.length > 1) {
+        assignEndingLayerNames(battleDrafts)
+        battleDrafts.sort((a, b) => {
+          const ea = Number(String(a.endingLabel ?? '').replace(/\D/g, '')) || 999
+          const eb = Number(String(b.endingLabel ?? '').replace(/\D/g, '')) || 999
+          if (ea !== eb) return ea - eb
+          if (a.isBoss !== b.isBoss) return a.isBoss ? -1 : 1
+          return String(a.layerName).localeCompare(String(b.layerName), 'zh')
+        })
+      } else {
+        // 普通关：层名保持 nanoka 原名；STAGE 主层视为终局层
+        for (const draft of battleDrafts) {
+          draft.layerName = draft.rawName || draft.battleId
+          draft.isBoss =
+            draft.isFinale || /^(STAGE|LAST)\b/i.test(draft.layerName) || /LAST/i.test(draft.layerName)
         }
+      }
 
-        const monsters = collectMonsters(layerRoom, layer.monster_level)
+      for (const draft of battleDrafts) {
+        const roomName = draft.layerName
+        const { layer, layerRoom, monsters, selectable } = draft
 
-        // 怪物同时落入平铺 boss 行（每层一条，room=层名）
         for (const [key, monster] of Object.entries(monsterListOf(layerRoom))) {
           if (!monster || !monster.name) continue
           const stats = monster.stats ?? {}
@@ -194,11 +312,11 @@ export function parseSimulPeriod(simulJson, { mode = 'deduction', phase = '1' } 
 
         nodeRecord.layers.push({
           name: roomName,
+          isBoss: draft.isBoss === true,
+          ending: draft.endingLabel || null,
           monsters,
         })
 
-        // 可选 Buff：同节点各层共享同一批，节点级去重；同时去重进平铺 buff 行
-        const selectable = entry.selectable_buff ?? layer.selectable_buff ?? {}
         for (const [buffId, buffDoc] of Object.entries(selectable)) {
           if (!buffDoc || !buffDoc.title) continue
           if (!nodeRecord.buffs.some((b) => b.title === buffDoc.title)) {

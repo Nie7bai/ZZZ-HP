@@ -49,6 +49,11 @@ import type { DefenseSeason } from '@/types/defense'
 import type { PhaseData } from '@/types/history'
 import { fetchCrisisAssaultPhases } from '@/api/crisisAssault'
 import { fetchDefenseSeasons } from '@/api/defense'
+import {
+  deductionPeriodDisplay,
+  fetchDeductionPhases,
+  type DeductionPeriod,
+} from '@/api/deduction'
 import { lookupBossInfo } from '@/api/bossInfo'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import {
@@ -67,6 +72,7 @@ import {
   collectAllBuffEffects,
   createEmptyMultiSlotBuffSelection,
   getBuffEffectEnabled,
+  isEnvironmentBuffSourceKey,
   mergeDefaultBuffSelectionIntoMulti,
   resolveBuffSelectionForSlot,
   setBuffEffectEnabled,
@@ -74,11 +80,14 @@ import {
   syncTeamProfessionAutoEnabled,
   type MultiSlotBuffSelection,
   type ConvertSlotPanels,
+  type BuffSelectionState,
 } from '@/utils/panelBuffCalc'
 import { computeExternalPanelFromTeamSlot } from '@/utils/affixPanelCalc'
 import {
   listCrisisEnvironmentBuffs,
   listDefenseEnvironmentBuffs,
+  listDeductionEnvironmentBuffs,
+  listDeductionEnvNodeFilterOptions,
   listDefenseEnvFrontierFilterOptions,
   parseBossFieldBossName,
   type EnvironmentBuffEntry,
@@ -211,8 +220,10 @@ const envBuffMode = ref<EnvironmentBuffFilterMode>('none')
 const envBuffVersion = ref('')
 const envBuffPhaseId = ref('')
 const envBuffFrontierId = ref('')
+const envBuffNodeId = ref('')
 const crisisPhases = ref<PhaseData[]>([])
 const defenseSeasons = ref<DefenseSeason[]>([])
+const deductionPeriods = ref<DeductionPeriod[]>([])
 const envBuffLoadError = ref('')
 let syncingBossFieldBuff = false
 let syncingEnemyFromEnv = false
@@ -222,6 +233,8 @@ let restoringWorkingState = false
 let draftSaveTimer: ReturnType<typeof setTimeout> | null = null
 const prevEnabledBossFieldKeys = ref<string[]>([])
 const prevEnabledDefenseKeys = ref<string[]>([])
+/** 临界节点 Buff（deduction-buff-*）单选：记录上一轮已勾选 sourceKey */
+const prevEnabledDeductionNodeKeys = ref<string[]>([])
 
 function compareVersionDesc(a: string, b: string) {
   const parse = (value: string) =>
@@ -288,15 +301,40 @@ const defensePhaseOptions = computed(() =>
   ),
 )
 
+const deductionPhaseOptions = computed(() =>
+  sortPhaseOptionsDesc(
+    deductionPeriods.value.map((period) => {
+      const pid = period.periodId
+      const versionKey =
+        pid.length >= 3 ? pid.slice(0, pid.length - 2) : pid
+      const phaseNum =
+        pid.length >= 2 ? pid.slice(-2) : period.phase.replace(/\D/g, '') || period.phase
+      return {
+        id: pid,
+        label: deductionPeriodDisplay(period),
+        version: versionKey,
+        phase: phaseNum,
+        isHidden: false,
+      }
+    }),
+  ),
+)
+
+const deductionNodeOptions = computed(() =>
+  listDeductionEnvNodeFilterOptions(selectedDeductionPeriod.value),
+)
+
 const envPhaseOptions = computed(() => {
   if (envBuffMode.value === 'crisis') return crisisPhaseOptions.value
   if (envBuffMode.value === 'defense') return defensePhaseOptions.value
+  if (envBuffMode.value === 'deduction') return deductionPhaseOptions.value
   return []
 })
 
 function pickLatestEnvPhaseId(mode: EnvironmentBuffFilterMode) {
   if (mode === 'crisis') return pickLatestPublicOptionId(crisisPhaseOptions.value)
   if (mode === 'defense') return pickLatestPublicOptionId(defensePhaseOptions.value)
+  if (mode === 'deduction') return pickLatestPublicOptionId(deductionPhaseOptions.value)
   return ''
 }
 
@@ -315,12 +353,25 @@ function applyDefaultDefenseFrontier() {
   envBuffFrontierId.value = options[0]?.id ?? ''
 }
 
+function applyDefaultDeductionNode() {
+  const options = deductionNodeOptions.value
+  if (!options.length) {
+    envBuffNodeId.value = ''
+    return
+  }
+  envBuffNodeId.value = options[0]?.id ?? ''
+}
+
 const selectedCrisisPhase = computed(
   () => crisisPhases.value.find((phase) => phase.id === envBuffPhaseId.value) ?? null,
 )
 
 const selectedDefenseSeason = computed(
   () => defenseSeasons.value.find((season) => season.seasonId === envBuffPhaseId.value) ?? null,
+)
+
+const selectedDeductionPeriod = computed(
+  () => deductionPeriods.value.find((period) => period.periodId === envBuffPhaseId.value) ?? null,
 )
 
 const defenseFrontierOptions = computed(() =>
@@ -334,6 +385,13 @@ const activeEnvironmentBuffs = computed<EnvironmentBuffEntry[]>(() => {
     if (!phase) return []
     return listCrisisEnvironmentBuffs(phase)
   }
+  if (envBuffMode.value === 'deduction') {
+    const period = selectedDeductionPeriod.value
+    if (!period) return []
+    return listDeductionEnvironmentBuffs(period, {
+      nodeId: envBuffNodeId.value || undefined,
+    })
+  }
   if (!envBuffFrontierId.value) return []
   const season = selectedDefenseSeason.value
   if (!season) return []
@@ -346,22 +404,34 @@ const activeEnvironmentBuffs = computed<EnvironmentBuffEntry[]>(() => {
 const envBuffForceGroups = computed(() => {
   if (envBuffMode.value === 'crisis') return ['危局 Buff', 'Boss 场地 Buff']
   if (envBuffMode.value === 'defense') return ['防线 Buff']
+  if (envBuffMode.value === 'deduction') return ['临界 Buff', 'Boss 场地 Buff']
   return []
 })
 
 const envBuffFilterHint = computed(() => {
   if (envBuffLoadError.value) return envBuffLoadError.value
   if (envBuffMode.value === 'none') {
-    return '默认不显示危局 / Boss 场地 / 防线 Buff。选择模式后出现对应分组。'
+    return '默认不显示危局 / Boss 场地 / 防线 / 临界 Buff。选择模式后出现对应分组。'
   }
   if (!envBuffPhaseId.value) {
-    return '请选择版本与期数（默认已公开最新一期）。'
+    return envBuffMode.value === 'deduction'
+      ? '请选择期数（默认最新一期）。'
+      : '请选择版本与期数（默认已公开最新一期）。'
   }
   if (envBuffMode.value === 'crisis') {
     const list = activeEnvironmentBuffs.value
     const crisisCount = list.filter((item) => item.kind === 'crisis').length
     const bossCount = list.filter((item) => item.kind === 'boss-field').length
     return `危局 Buff ${crisisCount} 条 · Boss 场地 Buff ${bossCount} 条（默认不勾选；勾选 Boss 场地会联动敌方）。`
+  }
+  if (envBuffMode.value === 'deduction') {
+    const list = activeEnvironmentBuffs.value
+    const nodeCount = list.filter((item) => item.kind === 'deduction-node').length
+    const fieldCount = list.filter((item) => item.kind === 'deduction-field').length
+    const nodeHint = envBuffNodeId.value
+      ? deductionNodeOptions.value.find((opt) => opt.id === envBuffNodeId.value)?.label ?? ''
+      : '全部战斗节点'
+    return `节点：${nodeHint} · 临界 Buff ${nodeCount} 条 · Boss 场地 Buff ${fieldCount} 条（仅含已录入结构化效果；默认不勾选；临界 / Boss 场地均为单选）。`
   }
   if (!envBuffFrontierId.value) return '请选择防线后显示该防线全部房间 Buff。'
   const count = activeEnvironmentBuffs.value.length
@@ -408,7 +478,23 @@ async function loadEnvironmentBuffCatalogs() {
   }
   defenseSeasons.value = defenseLoaded
 
-  if (errors.length && !crisisPhases.value.length && !defenseSeasons.value.length) {
+  const deductionResult = await Promise.allSettled([fetchDeductionPhases()])
+  if (deductionResult[0]?.status === 'fulfilled') {
+    deductionPeriods.value = deductionResult[0].value
+  } else {
+    deductionPeriods.value = []
+    const reason = deductionResult[0]?.reason
+    errors.push(
+      `临界：${reason instanceof Error ? reason.message : '加载失败'}`,
+    )
+  }
+
+  if (
+    errors.length &&
+    !crisisPhases.value.length &&
+    !defenseSeasons.value.length &&
+    !deductionPeriods.value.length
+  ) {
     envBuffLoadError.value = errors.join('；')
   } else if (errors.length) {
     envBuffLoadError.value = `部分数据加载失败：${errors.join('；')}`
@@ -417,12 +503,15 @@ async function loadEnvironmentBuffCatalogs() {
   if (envBuffMode.value !== 'none' && !envBuffPhaseId.value) {
     envBuffPhaseId.value = pickLatestEnvPhaseId(envBuffMode.value)
     if (envBuffMode.value === 'defense') applyDefaultDefenseFrontier()
+    if (envBuffMode.value === 'deduction') applyDefaultDeductionNode()
   }
 }
 
 watch(envBuffMode, (mode) => {
   if (restoringWorkingState) return
+  clearEnvironmentBuffSelections()
   envBuffFrontierId.value = ''
+  envBuffNodeId.value = ''
   if (mode === 'none') {
     envBuffVersion.value = ''
     envBuffPhaseId.value = ''
@@ -430,11 +519,25 @@ watch(envBuffMode, (mode) => {
   }
   envBuffPhaseId.value = pickLatestEnvPhaseId(mode)
   if (mode === 'defense') applyDefaultDefenseFrontier()
+  if (mode === 'deduction') applyDefaultDeductionNode()
 })
 
 watch(envBuffPhaseId, () => {
   if (restoringWorkingState) return
+  clearEnvironmentBuffSelections()
   if (envBuffMode.value === 'defense') applyDefaultDefenseFrontier()
+  if (envBuffMode.value === 'deduction') applyDefaultDeductionNode()
+})
+
+watch(envBuffNodeId, () => {
+  if (restoringWorkingState) return
+  // 临界换节点：上一节点勾选的局内环境 Buff 清空
+  clearEnvironmentBuffSelections()
+})
+
+watch(envBuffFrontierId, () => {
+  if (restoringWorkingState) return
+  clearEnvironmentBuffSelections()
 })
 
 watch(defenseFrontierOptions, (options) => {
@@ -446,10 +549,11 @@ watch(defenseFrontierOptions, (options) => {
 
 watch(buffPickerOpen, (open) => {
   if (!open) return
-  if (crisisPhases.value.length || defenseSeasons.value.length) {
+  if (crisisPhases.value.length || defenseSeasons.value.length || deductionPeriods.value.length) {
     if (envBuffMode.value !== 'none' && !envBuffPhaseId.value) {
       envBuffPhaseId.value = pickLatestEnvPhaseId(envBuffMode.value)
       if (envBuffMode.value === 'defense') applyDefaultDefenseFrontier()
+      if (envBuffMode.value === 'deduction') applyDefaultDeductionNode()
     }
     return
   }
@@ -498,6 +602,42 @@ function disableCollectedEffects(
   }
 }
 
+/** 切换模式 / 期数 / 节点 / 防线时清空已勾环境 Buff（含全队 store 残留） */
+function clearEnvironmentBuffSelections() {
+  const clearStore = (store: BuffSelectionState | undefined) => {
+    if (!store) return
+    for (const id of Object.keys(store.enabledIds)) {
+      if (!isEnvironmentBuffSourceKey(id)) continue
+      delete store.enabledIds[id]
+    }
+    for (const id of Object.keys(store.stacksByEffectId)) {
+      if (!isEnvironmentBuffSourceKey(id)) continue
+      delete store.stacksByEffectId[id]
+    }
+    for (const id of Object.keys(store.convertInputs)) {
+      if (!isEnvironmentBuffSourceKey(id)) continue
+      delete store.convertInputs[id]
+    }
+    if (store.manualTouchedIds) {
+      for (const id of Object.keys(store.manualTouchedIds)) {
+        if (!isEnvironmentBuffSourceKey(id)) continue
+        delete store.manualTouchedIds[id]
+      }
+    }
+  }
+  clearStore(multiSlotBuffSelection.team)
+  for (const store of Object.values(multiSlotBuffSelection.bySlot)) {
+    clearStore(store)
+  }
+  prevEnabledBossFieldKeys.value = []
+  prevEnabledDefenseKeys.value = []
+  prevEnabledDeductionNodeKeys.value = []
+  // 立刻写入环境 Buff 默认「未勾选」，避免缺省回退 enabledDefault 造成全选观感
+  for (const opt of buffPickerSlotOptions.value) {
+    syncBuffDefaultsForSlot(opt.index)
+  }
+}
+
 async function applyEnemyBossByName(bossName: string, meta?: { version?: string; phase?: string }) {
   const name = bossName.trim()
   if (!name || syncingEnemyFromEnv) return
@@ -511,6 +651,8 @@ async function applyEnemyBossByName(bossName: string, meta?: { version?: string;
     }
     Object.assign(enemyInput.value, normalizeDamageEnemyInput(next))
   } finally {
+    // pre-flush 的 bossName watch 在本函数返回后才跑；须拖到 nextTick 再清标志，避免刚勾选的场地 Buff 被清掉
+    await nextTick()
     syncingEnemyFromEnv = false
   }
 }
@@ -829,7 +971,7 @@ watch(
         buffPickerViewSlotIndex.value,
         item.effect.id,
         item.effect.applyTarget,
-        item.effect.enabledDefault !== false,
+        false,
       )
       if (enabled) enabledBossFieldKeys.add(item.sourceKey)
     }
@@ -851,6 +993,32 @@ watch(
       }
     }
     prevEnabledBossFieldKeys.value = [...enabledBossFieldKeys]
+
+    // 临界节点 Buff：只能勾选一个（后点覆盖先前）
+    const enabledDeductionNodeKeys = new Set<string>()
+    for (const item of effects) {
+      if (!item.sourceKey.startsWith('deduction-buff-')) continue
+      const enabled = getBuffEffectEnabled(
+        multiSlotBuffSelection,
+        buffPickerViewSlotIndex.value,
+        item.effect.id,
+        item.effect.applyTarget,
+        false,
+      )
+      if (enabled) enabledDeductionNodeKeys.add(item.sourceKey)
+    }
+    if (enabledDeductionNodeKeys.size > 1) {
+      const current = [...enabledDeductionNodeKeys]
+      const newly = current.filter((key) => !prevEnabledDeductionNodeKeys.value.includes(key))
+      const keepKey = newly[0] ?? current[current.length - 1]!
+      disableCollectedEffects(
+        effects,
+        (item) => item.sourceKey.startsWith('deduction-buff-') && item.sourceKey !== keepKey,
+      )
+      enabledDeductionNodeKeys.clear()
+      enabledDeductionNodeKeys.add(keepKey)
+    }
+    prevEnabledDeductionNodeKeys.value = [...enabledDeductionNodeKeys]
 
     if (enabledBossFieldKeys.size === 1) {
       const sourceKey = [...enabledBossFieldKeys][0]!
@@ -875,7 +1043,7 @@ watch(
             buffPickerViewSlotIndex.value,
             item.effect.id,
             item.effect.applyTarget,
-            item.effect.enabledDefault !== false,
+            false,
           )
         })
       })
@@ -905,11 +1073,11 @@ watch(
   (bossName) => {
     if (syncingEnemyFromEnv || syncingBossFieldBuff || restoringWorkingState) return
     const effects = collectAllBuffEffects(buildBuffCollectContext(buffPickerViewSlotIndex.value))
-    const keepKey = bossName ? `boss-field-${bossName}` : null
+    // 按 Boss 名匹配，兼容危局 boss-field-* 与临界 deduction-field-*
     disableCollectedEffects(effects, (item) => {
       const fieldBoss = parseBossFieldBossName(item.sourceKey)
       if (!fieldBoss) return false
-      return !keepKey || item.sourceKey !== keepKey
+      return !bossName || fieldBoss !== bossName
     })
   },
 )
@@ -1200,6 +1368,7 @@ function applyWorkingState(entry: {
   envBuffVersion?: string
   envBuffPhaseId?: string
   envBuffFrontierId?: string
+  envBuffNodeId?: string
   preserveBaseDamageSource?: boolean
 }) {
   restoringWorkingState = true
@@ -1220,6 +1389,7 @@ function applyWorkingState(entry: {
   if (entry.envBuffVersion != null) envBuffVersion.value = entry.envBuffVersion
   if (entry.envBuffPhaseId != null) envBuffPhaseId.value = entry.envBuffPhaseId
   if (entry.envBuffFrontierId != null) envBuffFrontierId.value = entry.envBuffFrontierId
+  if (entry.envBuffNodeId != null) envBuffNodeId.value = entry.envBuffNodeId
 
   const applyPanelSnapshot = () => {
     if (!entry.panelState) return
@@ -1283,6 +1453,7 @@ function captureWorkingDraft(): DamageCalcWorkingDraft | null {
     envBuffVersion: envBuffVersion.value,
     envBuffPhaseId: envBuffPhaseId.value,
     envBuffFrontierId: envBuffFrontierId.value,
+    envBuffNodeId: envBuffNodeId.value,
   }
 }
 
@@ -1733,8 +1904,11 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
           v-model:version="envBuffVersion"
           v-model:phase-id="envBuffPhaseId"
           v-model:frontier-id="envBuffFrontierId"
+          v-model:node-id="envBuffNodeId"
           :phase-options="envPhaseOptions"
+          :phase-label-mode="envBuffMode === 'deduction' ? 'deduction' : 'default'"
           :frontier-options="defenseFrontierOptions"
+          :node-options="deductionNodeOptions"
           :hint="envBuffFilterHint"
         />
       </template>

@@ -1,11 +1,18 @@
 import type { BuffEffectBlock } from '@/types/calculator'
 import type { DefenseSeason } from '@/types/defense'
+import type { DeductionPeriod } from '@/api/deduction'
+import { isDeductionBattleNode } from '@/api/deduction'
 import type { BuffInfo, EnemySlot, PhaseData } from '@/types/history'
 import { normalizeBuffEffectBlocks } from '@/utils/buffEffect'
 import { resolveAssetUrl } from '@/utils/gameData'
 
-export type EnvironmentBuffMode = 'crisis' | 'defense'
-export type EnvironmentBuffKind = 'crisis' | 'boss-field' | 'defense-room'
+export type EnvironmentBuffMode = 'crisis' | 'defense' | 'deduction'
+export type EnvironmentBuffKind =
+  | 'crisis'
+  | 'boss-field'
+  | 'defense-room'
+  | 'deduction-node'
+  | 'deduction-field'
 
 export interface EnvironmentBuffRoomBoss {
   name: string
@@ -35,21 +42,32 @@ export interface EnvironmentBuffEntry {
   roomLabel?: string
   /** 防卫战：该防线内房间序号（1-based），展示用「第x间」 */
   roomIndex?: number
+  /** 临界推演：所属战斗节点名 */
+  nodeLabel?: string
 }
 
 export function environmentBuffSourceKey(kind: EnvironmentBuffKind, id: string): string {
   if (kind === 'crisis') return `crisis-buff-${id}`
   if (kind === 'boss-field') return `boss-field-${id}`
+  if (kind === 'deduction-node') return `deduction-buff-${id}`
+  if (kind === 'deduction-field') return `deduction-field-${id}`
   return `defense-buff-${id}`
 }
 
 export function isBossFieldSourceKey(sourceKey: string): boolean {
-  return sourceKey.startsWith('boss-field-')
+  return sourceKey.startsWith('boss-field-') || sourceKey.startsWith('deduction-field-')
 }
 
 export function parseBossFieldBossName(sourceKey: string): string | null {
-  if (!isBossFieldSourceKey(sourceKey)) return null
-  return sourceKey.slice('boss-field-'.length) || null
+  if (sourceKey.startsWith('boss-field-')) {
+    return sourceKey.slice('boss-field-'.length) || null
+  }
+  if (sourceKey.startsWith('deduction-field-')) {
+    const raw = sourceKey.slice('deduction-field-'.length)
+    const sep = raw.lastIndexOf('::')
+    return sep >= 0 ? raw.slice(sep + 2) || null : raw || null
+  }
+  return null
 }
 
 function hasStructuredBlocks(blocks: BuffEffectBlock[] | null | undefined): boolean {
@@ -154,13 +172,24 @@ export function listDefenseEnvironmentBuffs(
       }> = []
 
       if (room.roomBuff?.name && !room.roomBuff.isEmpty) {
+        let effectBlocks = room.roomBuff.effectBlocks
+        if (
+          !effectBlocks?.length &&
+          room.roomBuff.recordId != null &&
+          room.zoneBuffRecords?.length
+        ) {
+          const zoneMatch = room.zoneBuffRecords.find(
+            (zone) => zone.recordId === room.roomBuff.recordId && zone.effectBlocks?.length,
+          )
+          if (zoneMatch) effectBlocks = zoneMatch.effectBlocks
+        }
         candidates.push({
           recordId: room.roomBuff.recordId,
           name: room.roomBuff.name,
           imageUrl: room.roomBuff.imageUrl,
           text: room.roomBuff.buffText,
           lines: room.roomBuff.lines,
-          effectBlocks: room.roomBuff.effectBlocks,
+          effectBlocks,
         })
       }
       for (const zone of room.zoneBuffRecords ?? []) {
@@ -197,6 +226,110 @@ export function listDefenseEnvironmentBuffs(
   }
 
   return entries
+}
+
+function fromDeductionNodeBuff(
+  buff: DeductionPeriod['nodes'][number]['buffs'][number],
+  version: string,
+  phase: string,
+  nodeId: string,
+  nodeLabel: string,
+  index: number,
+): EnvironmentBuffEntry | null {
+  const effectBlocks = normalizeBuffEffectBlocks(buff.effect_blocks ?? [])
+  if (!hasStructuredBlocks(effectBlocks)) return null
+  const id = `${version}-${nodeId}-${index}`
+  const imageUrl = buff.buff_image ? resolveAssetUrl(buff.buff_image) : null
+  return {
+    kind: 'deduction-node',
+    id,
+    sourceKey: environmentBuffSourceKey('deduction-node', id),
+    name: buff.title,
+    imageUrl,
+    text: buff.desc ?? '',
+    effectBlocks,
+    version,
+    phase,
+    nodeLabel,
+  }
+}
+
+function fromDeductionFieldBuff(
+  layer: DeductionPeriod['nodes'][number]['layers'][number],
+  version: string,
+  phase: string,
+  nodeId: string,
+): EnvironmentBuffEntry | null {
+  const fieldBuff = layer.fieldBuff
+  if (!fieldBuff) return null
+  const effectBlocks = normalizeBuffEffectBlocks(fieldBuff.effectBlocks ?? [])
+  if (!hasStructuredBlocks(effectBlocks)) return null
+  const bossName = layer.monsters?.[0]?.name || layer.name
+  const id = `${version}::${nodeId}::${layer.name}::${bossName}`
+  const bossMonster = layer.monsters?.[0]
+  const imageUrl = fieldBuff.image
+    ? resolveAssetUrl(fieldBuff.image)
+    : bossMonster?.boss_image
+      ? resolveAssetUrl(bossMonster.boss_image)
+      : null
+  return {
+    kind: 'deduction-field',
+    id,
+    sourceKey: environmentBuffSourceKey('deduction-field', id),
+    name: fieldBuff.name?.trim() || '场地 Buff',
+    imageUrl,
+    text: fieldBuff.text ?? '',
+    effectBlocks,
+    version,
+    phase,
+    bossName,
+  }
+}
+
+/** 临界推演：当期战斗节点的节点 Buff + Boss 层场地 Buff（仅含已录入 effect_blocks 的项） */
+export function listDeductionEnvironmentBuffs(
+  period: DeductionPeriod,
+  options?: { nodeId?: string },
+): EnvironmentBuffEntry[] {
+  const phaseNum = period.phase.replace(/\D/g, '') || period.phase
+  const version = period.periodId
+  const nodeBuffs: EnvironmentBuffEntry[] = []
+  const fieldBuffs: EnvironmentBuffEntry[] = []
+
+  for (const node of period.nodes) {
+    if (!isDeductionBattleNode(node.type)) continue
+    if (options?.nodeId && node.nodeId !== options.nodeId) continue
+    node.buffs.forEach((buff, index) => {
+      const entry = fromDeductionNodeBuff(
+        buff,
+        version,
+        phaseNum,
+        node.nodeId,
+        node.name,
+        index,
+      )
+      if (entry) nodeBuffs.push(entry)
+    })
+    for (const layer of node.layers) {
+      const entry = fromDeductionFieldBuff(layer, version, phaseNum, node.nodeId)
+      if (entry) fieldBuffs.push(entry)
+    }
+  }
+
+  return [...nodeBuffs, ...fieldBuffs]
+}
+
+/** 局内筛选：临界推演战斗节点列表 */
+export function listDeductionEnvNodeFilterOptions(
+  period: DeductionPeriod | null | undefined,
+): { id: string; label: string }[] {
+  if (!period?.nodes.length) return []
+  return period.nodes
+    .filter((node) => isDeductionBattleNode(node.type))
+    .map((node) => ({
+      id: node.nodeId,
+      label: `${node.name}（${node.nodeId}）`,
+    }))
 }
 
 /** 局内筛选：按防线列出选项（选中后展示该防线全部房间 Buff） */

@@ -12,6 +12,11 @@ import {
   serializeEffectBlocks,
 } from '../utils/environmentBuffSchema.js'
 import {
+  loadGlobalBuffEffectMap,
+  propagateSameNameEffectBlocks,
+  resolveEffectBlocksForName,
+} from '../utils/sameNameBuffEffects.js'
+import {
   encodeCrisisBuffId,
   encodeDefenseBossId,
   encodeDefenseBuffId,
@@ -280,6 +285,82 @@ export async function createBoss(payload) {
   }
 }
 
+/** 危局 / 防卫战录入：按名称在既有 Buff 行里找模板（跨期、跨模式） */
+function buffTemplateModesForScheme(recordScheme) {
+  if (recordScheme === 'defense') return ['defense', 'crisis']
+  if (recordScheme === 'crisis') return ['crisis', 'defense']
+  if (recordScheme === 'deduction') return ['deduction', 'crisis', 'defense']
+  return ['crisis', 'defense', 'deduction']
+}
+
+async function findBuffTemplateByName(buffName, options = {}) {
+  const name = String(buffName ?? '').trim()
+  if (!name) return null
+  const modes = options.modes ?? ['crisis', 'defense']
+  const placeholders = modes.map(() => '?').join(', ')
+  const params = [name, ...modes]
+  let excludeClause = ''
+  if (options.excludeId != null) {
+    excludeClause = ' AND id <> ?'
+    params.push(Number(options.excludeId))
+  }
+  const [rows] = await pool.execute(
+    `SELECT buff, buff_image, effect_blocks
+     FROM buff
+     WHERE buff_name = ? AND mode IN (${placeholders})${excludeClause}
+     ORDER BY
+       (effect_blocks IS NOT NULL AND JSON_LENGTH(effect_blocks) > 0) DESC,
+       (buff IS NOT NULL AND TRIM(buff) <> '') DESC,
+       (buff_image IS NOT NULL AND TRIM(buff_image) <> '') DESC,
+       id DESC
+     LIMIT 1`,
+    params,
+  )
+  if (!rows.length) return null
+  const row = rows[0]
+  return {
+    buff: row.buff ?? null,
+    buff_image: row.buff_image ?? null,
+    effect_blocks: parseEffectBlocksJson(row.effect_blocks),
+  }
+}
+
+/** 管理端 Buff 名称候选：同名去重，优先带结构化效果 / 正文 / 图片的记录 */
+export async function listBuffNameTemplates(recordScheme = null) {
+  await ensureEnvironmentBuffSchema()
+  await ensureContentModeSchema()
+  const modes =
+    recordScheme === 'defense' || recordScheme === 'crisis'
+      ? ['crisis', 'defense']
+      : recordScheme === 'deduction'
+        ? ['deduction', 'crisis', 'defense']
+        : ['crisis', 'defense', 'deduction']
+  const placeholders = modes.map(() => '?').join(', ')
+  const [rows] = await pool.execute(
+    `SELECT buff_name, buff, buff_image, effect_blocks
+     FROM buff
+     WHERE buff_name IS NOT NULL AND TRIM(buff_name) <> '' AND mode IN (${placeholders})
+     ORDER BY buff_name ASC,
+       (effect_blocks IS NOT NULL AND JSON_LENGTH(effect_blocks) > 0) DESC,
+       (buff IS NOT NULL AND TRIM(buff) <> '') DESC,
+       (buff_image IS NOT NULL AND TRIM(buff_image) <> '') DESC,
+       id DESC`,
+    modes,
+  )
+  const byName = new Map()
+  for (const row of rows) {
+    const name = String(row.buff_name).trim()
+    if (!name || byName.has(name)) continue
+    byName.set(name, {
+      name,
+      desc: row.buff ?? null,
+      buff_image: row.buff_image ?? null,
+      effect_blocks: parseEffectBlocksJson(row.effect_blocks),
+    })
+  }
+  return [...byName.values()]
+}
+
 export async function createBuff(payload) {
   await ensureEnvironmentBuffSchema()
   await ensureContentModeSchema()
@@ -300,7 +381,8 @@ export async function createBuff(payload) {
 
   const versionValue = String(version).trim()
   const phaseValue = normalizePhase(phase)
-  const effectBlocksJson = serializeEffectBlocks(effect_blocks)
+  let buffValue = buff
+  let effectBlocksJson = serializeEffectBlocks(effect_blocks)
   const modeValue = resolveContentMode({ mode, recordScheme, id, kind: 'buff' })
   let buffId = id != null && id !== '' ? Number(id) : null
   let action = 'created'
@@ -338,28 +420,63 @@ export async function createBuff(payload) {
     buffId = encodedId
   }
 
+  const clientProvidedBlocks = Boolean(effectBlocksJson)
   let existingBuffImage = null
+  let existingEffectBlocksJson = null
   if (buffId) {
-    const [existingRows] = await pool.execute('SELECT id, buff_image FROM buff WHERE id = ? LIMIT 1', [
-      buffId,
-    ])
+    const [existingRows] = await pool.execute(
+      'SELECT id, buff_image, effect_blocks FROM buff WHERE id = ? LIMIT 1',
+      [buffId],
+    )
     if (existingRows.length) {
       existingBuffImage = existingRows[0].buff_image ?? null
+      existingEffectBlocksJson = serializeEffectBlocks(
+        parseEffectBlocksJson(existingRows[0].effect_blocks),
+      )
     }
   }
-  const resolvedBuffImage = pickBestImagePath(buff_image, existingBuffImage)
+  let resolvedBuffImage = pickBestImagePath(buff_image, existingBuffImage)
 
   const [existing] = await pool.execute('SELECT id FROM buff WHERE id = ? LIMIT 1', [buffId])
+  let reusedFromName = false
+
+  // 新建或本行仍无结构时：从同名模板（危局/防卫/临界）补齐
+  const needsTemplateBlocks = !effectBlocksJson && !existingEffectBlocksJson
+  const needsTemplateText = buffValue == null || String(buffValue).trim() === ''
+  const needsTemplateImage = buff_image == null || String(buff_image).trim() === ''
+  if (!existing.length || needsTemplateBlocks || needsTemplateText || needsTemplateImage) {
+    const template = await findBuffTemplateByName(buff_name, {
+      excludeId: buffId,
+      modes: buffTemplateModesForScheme(recordScheme),
+    })
+    if (template) {
+      if (needsTemplateText && template.buff) {
+        buffValue = template.buff
+        reusedFromName = true
+      }
+      if (needsTemplateBlocks && template.effect_blocks?.length) {
+        effectBlocksJson = serializeEffectBlocks(template.effect_blocks)
+        reusedFromName = true
+      }
+      if (needsTemplateImage && template.buff_image) {
+        resolvedBuffImage = pickBestImagePath(template.buff_image, resolvedBuffImage)
+        reusedFromName = true
+      }
+    }
+  }
+
   if (existing.length) {
+    // effect_blocks 传入 null 时保留原结构化效果，避免临界节点同步把已模块化增益冲掉
     await pool.execute(
       `UPDATE buff
-       SET version = ?, phase = ?, buff_name = ?, buff = ?, buff_image = ?, effect_blocks = ?, mode = ?
+       SET version = ?, phase = ?, buff_name = ?, buff = ?, buff_image = ?,
+           effect_blocks = COALESCE(?, effect_blocks), mode = ?
        WHERE id = ?`,
       [
         versionValue,
         phaseValue,
         buff_name,
-        buff,
+        buffValue,
         resolvedBuffImage,
         effectBlocksJson,
         modeValue,
@@ -371,9 +488,21 @@ export async function createBuff(payload) {
     const [insertResult] = await pool.execute(
       `INSERT INTO buff (id, version, phase, buff_name, buff, buff_image, effect_blocks, mode)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [buffId, versionValue, phaseValue, buff_name, buff, resolvedBuffImage, effectBlocksJson, modeValue],
+      [buffId, versionValue, phaseValue, buff_name, buffValue, resolvedBuffImage, effectBlocksJson, modeValue],
     )
     if (buffId == null) buffId = insertResult.insertId
+  }
+
+  let finalBlocks = parseEffectBlocksJson(effectBlocksJson)
+  if (!finalBlocks?.length && buffId) {
+    const [cur] = await pool.execute('SELECT effect_blocks FROM buff WHERE id = ? LIMIT 1', [buffId])
+    finalBlocks = parseEffectBlocksJson(cur[0]?.effect_blocks)
+  }
+  // 本次显式写入结构 → 同名全库对齐；仅复用补齐 → 只填空行
+  if (finalBlocks?.length) {
+    await propagateSameNameEffectBlocks(buff_name, finalBlocks, {
+      overwrite: clientProvidedBlocks,
+    })
   }
 
   return {
@@ -381,10 +510,11 @@ export async function createBuff(payload) {
     version: versionValue,
     phase: phaseValue,
     buff_name,
-    buff,
+    buff: buffValue,
     buff_image: resolvedBuffImage,
-    effect_blocks: parseEffectBlocksJson(effectBlocksJson),
+    effect_blocks: finalBlocks,
     action,
+    reusedFromName,
   }
 }
 
@@ -503,9 +633,32 @@ export async function upsertBuff(payload) {
   }
 
   const modeValue = resolveContentMode({ mode, id, kind: 'buff' })
-  const effectBlocksJson = serializeEffectBlocks(effect_blocks)
-  const [existing] = await pool.execute('SELECT id, buff_image FROM buff WHERE id = ? LIMIT 1', [id])
+  const clientProvidedBlocks = Boolean(serializeEffectBlocks(effect_blocks))
+  let effectBlocksJson = serializeEffectBlocks(effect_blocks)
+  const [existing] = await pool.execute(
+    'SELECT id, buff_image, effect_blocks FROM buff WHERE id = ? LIMIT 1',
+    [id],
+  )
   const resolvedBuffImage = pickBestImagePath(buff_image, existing[0]?.buff_image ?? null)
+
+  if (!effectBlocksJson) {
+    const existingBlocks = parseEffectBlocksJson(existing[0]?.effect_blocks)
+    if (existingBlocks?.length) {
+      effectBlocksJson = serializeEffectBlocks(existingBlocks)
+    } else {
+      const template = await findBuffTemplateByName(buff_name, {
+        excludeId: id,
+        modes: buffTemplateModesForScheme(
+          modeValue === 'deduction' ? 'deduction' : modeValue === 'defense' ? 'defense' : 'crisis',
+        ),
+      })
+      if (template?.effect_blocks?.length) {
+        effectBlocksJson = serializeEffectBlocks(template.effect_blocks)
+      }
+    }
+  }
+
+  const finalBlocks = parseEffectBlocksJson(effectBlocksJson)
 
   if (existing.length) {
     await pool.execute(
@@ -514,12 +667,17 @@ export async function upsertBuff(payload) {
        WHERE id = ?`,
       [version, phase, buff_name, buff, resolvedBuffImage, effectBlocksJson, modeValue, id],
     )
+    if (finalBlocks?.length) {
+      await propagateSameNameEffectBlocks(buff_name, finalBlocks, {
+        overwrite: clientProvidedBlocks,
+      })
+    }
     return {
       id,
       action: 'updated',
       ...payload,
       buff_image: resolvedBuffImage,
-      effect_blocks: parseEffectBlocksJson(effectBlocksJson),
+      effect_blocks: finalBlocks,
     }
   }
 
@@ -529,12 +687,18 @@ export async function upsertBuff(payload) {
     [id, version, phase, buff_name, buff, resolvedBuffImage, effectBlocksJson, modeValue],
   )
 
+  if (finalBlocks?.length) {
+    await propagateSameNameEffectBlocks(buff_name, finalBlocks, {
+      overwrite: clientProvidedBlocks,
+    })
+  }
+
   return {
     id,
     action: 'created',
     ...payload,
     buff_image: resolvedBuffImage,
-    effect_blocks: parseEffectBlocksJson(effectBlocksJson),
+    effect_blocks: finalBlocks,
   }
 }
 
@@ -671,11 +835,12 @@ export async function searchBuffRecords(filters = {}) {
     params,
   )
 
+  const globalEffectMap = await loadGlobalBuffEffectMap()
   return rows
     .filter((row) => matchesBuffRecordScheme(row, recordScheme))
     .map((row) => ({
       ...row,
-      effect_blocks: parseEffectBlocksJson(row.effect_blocks),
+      effect_blocks: resolveEffectBlocksForName(row.effect_blocks, row.buff_name, globalEffectMap),
     }))
 }
 
@@ -685,12 +850,52 @@ export async function deleteBuff(id) {
     throw new Error('无效的 Buff ID')
   }
 
+  const [rows] = await pool.execute(
+    `SELECT id, buff_name, version, phase, mode FROM buff WHERE id = ? LIMIT 1`,
+    [buffId],
+  )
+  if (!rows.length) {
+    throw new Error('Buff 不存在或已删除')
+  }
+  const row = rows[0]
+  const buffName = String(row.buff_name ?? '').trim()
+  const version = String(row.version ?? '').trim()
+  const phase = String(row.phase ?? '').trim()
+  const mode = String(row.mode ?? '').trim()
+
   const [result] = await pool.execute('DELETE FROM buff WHERE id = ?', [buffId])
   if (result.affectedRows === 0) {
     throw new Error('Buff 不存在或已删除')
   }
 
-  return { id: buffId }
+  let cleanedNodes = 0
+  // 临界：从同期节点 buffs_json 按名摘掉，避免表删了节点还挂着
+  if (mode === 'deduction' && buffName && version) {
+    const [nodes] = await pool.execute(
+      `SELECT id, buffs_json FROM deduction_node WHERE version = ? AND phase = ?`,
+      [version, phase || '1'],
+    )
+    for (const node of nodes) {
+      let buffs = node.buffs_json
+      if (typeof buffs === 'string') {
+        try {
+          buffs = JSON.parse(buffs)
+        } catch {
+          continue
+        }
+      }
+      if (!Array.isArray(buffs) || !buffs.length) continue
+      const next = buffs.filter((b) => String(b?.title ?? '').trim() !== buffName)
+      if (next.length === buffs.length) continue
+      await pool.execute(
+        `UPDATE deduction_node SET buffs_json = CAST(? AS JSON) WHERE id = ?`,
+        [JSON.stringify(next), node.id],
+      )
+      cleanedNodes += 1
+    }
+  }
+
+  return { id: buffId, buff_name: buffName, mode, cleanedNodes }
 }
 
 export async function deleteDefenseSeasonData(version, phase) {

@@ -5,26 +5,25 @@
  * 推演不用危局 ID 编码：节点自增 id，期数用 version + phase 定位。
  */
 import pool from '../config/db.js'
-import {
-  fetchSeasonDetail,
-  fetchShiyuIndex,
-  resolveNanokaBuildTag,
-} from './nanoka/nanokaClient.js'
 import { ensureDeductionStoryOptionsColumn } from './deductionSchemaService.js'
+import { createBuff } from './dataService.js'
+import { ensureEnvironmentBuffSchema } from '../utils/environmentBuffSchema.js'
+import { parseEffectBlocksJson } from '../utils/environmentBuffSchema.js'
+import {
+  loadGlobalBuffEffectMap,
+  resolveEffectBlocksForName,
+} from '../utils/sameNameBuffEffects.js'
+import {
+  attachFieldBuffToDeductionLayers,
+  loadBossFieldBuffSetsMap,
+} from '../utils/bossFieldBuff.js'
 import { upsertBossInfo } from './bossInfoService.js'
+import { applyBossFallbackToPeriodNodes } from '../utils/deductionLayerFallback.js'
+import { decodeDefenseBossId, isDefenseBossId } from '../utils/defenseId.js'
 
-const SHIYU_MINIONS_TTL_MS = 10 * 60 * 1000
-let shiyuMinionsCache = null
-let shiyuMinionsCachedAt = 0
-
-const SHIYU_ELEMENT_ZH = {
-  ice: '冰',
-  fire: '火',
-  electric: '电',
-  ether: '以太',
-  physical: '物理',
-  wind: '风',
-}
+const DEFENSE_MINIONS_TTL_MS = 10 * 60 * 1000
+let defenseMinionsCache = null
+let defenseMinionsCachedAt = 0
 
 function normalizePhase(phase) {
   const digits = String(phase ?? '').replace(/\D/g, '')
@@ -41,6 +40,11 @@ function parseJson(value) {
     }
   }
   return value
+}
+
+function parseJsonArray(value) {
+  const parsed = parseJson(value)
+  return Array.isArray(parsed) ? parsed : []
 }
 
 function toJson(value) {
@@ -132,62 +136,10 @@ export async function listPickBosses() {
 }
 
 /**
- * shiyu（防卫战）数据源怪物候选：供推演「小怪层」（层名不含 STAGE）编辑使用。
- * 数据源：nanoka shiyu JSON 的 layer_room[].monster_list[]（游戏 id → 中文名），
- * 按名字去重聚合，取首次出现的 HP / 防御 / 等级 / 弱点 / 抗性；内存缓存 10 分钟。
+ * 防卫战小怪候选：供推演「前战」层编辑。优先读本地 boss 表 mode=defense（与式舆防卫战同源），
+ * 不含防卫战 Boss 关大怪；无防卫数据时回退 boss_info + 全模式 boss 聚合。
  */
-export async function listShiyuMinions() {
-  const now = Date.now()
-  if (shiyuMinionsCache && now - shiyuMinionsCachedAt < SHIYU_MINIONS_TTL_MS) {
-    return shiyuMinionsCache
-  }
-  const buildTag = await resolveNanokaBuildTag()
-  const index = await fetchShiyuIndex(buildTag)
-  const byName = new Map()
-  for (const seasonId of Object.keys(index)) {
-    const detail = await fetchSeasonDetail(buildTag, seasonId, 'zh')
-    const walk = (obj, level) => {
-      if (!obj || typeof obj !== 'object') return
-      if (obj.monster_list && typeof obj.monster_list === 'object') {
-        const roomLevel = Number(obj.monster_level) || Number(level) || 0
-        const weaknessNames = Object.values(obj.monster_weakness ?? {}).map((v) =>
-          String(v).trim(),
-        )
-        for (const monster of Object.values(obj.monster_list)) {
-          if (!monster || !monster.name) continue
-          const name = String(monster.name).trim()
-          if (!name) continue
-          const stats = monster.stats ?? {}
-          const element = monster.element ?? {}
-          const resistanceNames = Object.entries(element)
-            .filter(([, value]) => Number(value) === -1)
-            .map(([k]) => SHIYU_ELEMENT_ZH[k] ?? k)
-          const existing = byName.get(name)
-          if (existing) {
-            if (!existing.hp) existing.hp = Math.round(Number(stats.hp) || 0)
-            if (!existing.defense) existing.defense = Math.round(Number(stats.defence) || 0)
-            if (!existing.level) existing.level = roomLevel
-            if (!existing.weakness) existing.weakness = [...new Set(weaknessNames)].join('、') || null
-            if (!existing.resistance) existing.resistance = [...new Set(resistanceNames)].join('、') || null
-          } else {
-            byName.set(name, {
-              name,
-              hp: Math.round(Number(stats.hp) || 0),
-              defense: Math.round(Number(stats.defence) || 0),
-              level: roomLevel,
-              weakness: [...new Set(weaknessNames)].join('、') || null,
-              resistance: [...new Set(resistanceNames)].join('、') || null,
-              boss_image: null,
-            })
-          }
-        }
-        return
-      }
-      for (const value of Object.values(obj)) walk(value, level ?? obj.monster_level)
-    }
-    walk(detail, null)
-  }
-  // 按名挂怪物基础库图片：shiyu 小怪与 Boss 同名时复用本地图，供管理端选中后写回节点
+async function attachBossImagesToMinionMap(byName) {
   await ensureTable()
   const [infoRows] = await pool.execute(
     `SELECT DISTINCT boss_name, boss_image
@@ -208,26 +160,295 @@ export async function listShiyuMinions() {
     const target = byName.get(row.boss_name)
     if (target && !target.boss_image) target.boss_image = row.boss_image
   }
-  shiyuMinionsCache = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, 'zh'))
-  shiyuMinionsCachedAt = Date.now()
-  return shiyuMinionsCache
+}
+
+async function listShiyuMinionsFromLocal() {
+  const byName = new Map()
+  const [infoRows] = await pool.execute(
+    `SELECT boss_name, defense, level, boss_image, weakness, resistance
+     FROM boss_info
+     WHERE boss_name IS NOT NULL AND TRIM(boss_name) <> ''`,
+  )
+  for (const info of infoRows) {
+    byName.set(info.boss_name, {
+      name: info.boss_name,
+      hp: 0,
+      defense: Number(info.defense) || 0,
+      level: Number(info.level) || 0,
+      weakness: info.weakness ?? null,
+      resistance: info.resistance ?? null,
+      boss_image: info.boss_image ?? null,
+    })
+  }
+  const [bossRows] = await pool.execute(
+    `SELECT boss_name,
+            MAX(hp) AS hp,
+            MAX(defense) AS defense,
+            MAX(level) AS level,
+            MAX(weakness) AS weakness,
+            MAX(resistance) AS resistance,
+            MAX(boss_image) AS boss_image
+     FROM boss
+     WHERE boss_name IS NOT NULL AND TRIM(boss_name) <> ''
+     GROUP BY boss_name`,
+  )
+  for (const b of bossRows) {
+    const existing = byName.get(b.boss_name)
+    if (existing) {
+      if (!existing.hp) existing.hp = Math.round(Number(b.hp) || 0)
+      if (!existing.defense) existing.defense = Number(b.defense) || 0
+      if (!existing.level) existing.level = Number(b.level) || 0
+      if (!existing.weakness) existing.weakness = b.weakness
+      if (!existing.resistance) existing.resistance = b.resistance
+      if (!existing.boss_image) existing.boss_image = b.boss_image
+    } else {
+      byName.set(b.boss_name, {
+        name: b.boss_name,
+        hp: Math.round(Number(b.hp) || 0),
+        defense: Number(b.defense) || 0,
+        level: Number(b.level) || 0,
+        weakness: b.weakness ?? null,
+        resistance: b.resistance ?? null,
+        boss_image: b.boss_image ?? null,
+      })
+    }
+  }
+  await attachBossImagesToMinionMap(byName)
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+}
+
+/** 本地式舆防卫战小怪/精英（boss 表 mode=defense，按 ID 解码排除 Boss 关大怪） */
+async function listDefenseMinionsFromDb() {
+  await ensureTable()
+  const [rows] = await pool.execute(
+    `SELECT id, boss_name, hp, defense, level, weakness, resistance, boss_image
+     FROM boss
+     WHERE mode = 'defense'`,
+  )
+  const byName = new Map()
+  for (const row of rows) {
+    const id = Number(row.id)
+    if (!isDefenseBossId(id)) continue
+    try {
+      const decoded = decodeDefenseBossId(id)
+      if (decoded.monsterCategory === 'boss') continue
+    } catch {
+      continue
+    }
+    const name = String(row.boss_name).trim()
+    if (!name) continue
+    const hp = Math.round(Number(row.hp) || 0)
+    const defense = Number(row.defense) || 0
+    const level = Number(row.level) || 0
+    const existing = byName.get(name)
+    if (existing) {
+      if (!existing.hp || hp > existing.hp) existing.hp = hp
+      if (!existing.defense) existing.defense = defense
+      if (!existing.level) existing.level = level
+      if (!existing.weakness) existing.weakness = row.weakness
+      if (!existing.resistance) existing.resistance = row.resistance
+      if (!existing.boss_image) existing.boss_image = row.boss_image
+    } else {
+      byName.set(name, {
+        name,
+        hp,
+        defense,
+        level,
+        weakness: row.weakness ?? null,
+        resistance: row.resistance ?? null,
+        boss_image: row.boss_image ?? null,
+      })
+    }
+  }
+  await attachBossImagesToMinionMap(byName)
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+}
+
+export async function listShiyuMinions() {
+  const now = Date.now()
+  if (defenseMinionsCache && now - defenseMinionsCachedAt < DEFENSE_MINIONS_TTL_MS) {
+    return defenseMinionsCache
+  }
+  const defenseRows = await listDefenseMinionsFromDb()
+  if (defenseRows.length > 0) {
+    defenseMinionsCache = defenseRows
+    defenseMinionsCachedAt = now
+    return defenseRows
+  }
+  console.warn('[deduction] 本地防卫战小怪为空，回退通用怪物库')
+  const fallback = await listShiyuMinionsFromLocal()
+  defenseMinionsCache = fallback
+  defenseMinionsCachedAt = now
+  return fallback
 }
 
 /** 全部 Buff 去重（所有版块，供推演增益选择） */
 export async function listPickBuffs() {
   await ensureTable()
+  await ensureEnvironmentBuffSchema()
   const [rows] = await pool.execute(
-    `SELECT buff_name, MAX(buff) AS buff, MAX(buff_image) AS buff_image
+    `SELECT buff_name, buff, buff_image, effect_blocks
      FROM buff
-     WHERE buff_name IS NOT NULL AND buff_name <> ''
-     GROUP BY buff_name
-     ORDER BY buff_name`,
+     WHERE buff_name IS NOT NULL AND TRIM(buff_name) <> ''
+     ORDER BY buff_name ASC,
+       (effect_blocks IS NOT NULL AND JSON_LENGTH(effect_blocks) > 0) DESC,
+       (buff IS NOT NULL AND TRIM(buff) <> '') DESC,
+       id DESC`,
   )
-  return rows.map((row) => ({
-    name: String(row.buff_name),
-    desc: row.buff ?? null,
-    buff_image: row.buff_image ?? null,
+  const byName = new Map()
+  for (const row of rows) {
+    const name = String(row.buff_name).trim()
+    if (!name || byName.has(name)) continue
+    byName.set(name, {
+      name,
+      desc: row.buff ?? null,
+      buff_image: row.buff_image ?? null,
+      effect_blocks: parseEffectBlocksJson(row.effect_blocks),
+    })
+  }
+
+  // 节点 buffs_json 里已模块化、但尚未同步进 buff 表的条目也纳入复用
+  const [nodeRows] = await pool.execute(
+    `SELECT buffs_json FROM deduction_node WHERE buffs_json IS NOT NULL`,
+  )
+  for (const row of nodeRows) {
+    let buffs = row.buffs_json
+    if (typeof buffs === 'string') {
+      try {
+        buffs = JSON.parse(buffs)
+      } catch {
+        continue
+      }
+    }
+    if (!Array.isArray(buffs)) continue
+    for (const buff of buffs) {
+      const name = String(buff?.title ?? '').trim()
+      if (!name) continue
+      const blocks = parseEffectBlocksJson(buff.effect_blocks)
+      const existing = byName.get(name)
+      if (!existing) {
+        byName.set(name, {
+          name,
+          desc: buff.desc ?? null,
+          buff_image: buff.buff_image ?? null,
+          effect_blocks: blocks,
+        })
+        continue
+      }
+      if (!existing.effect_blocks?.length && blocks?.length) {
+        existing.effect_blocks = blocks
+        if (!existing.desc && buff.desc) existing.desc = buff.desc
+        if (!existing.buff_image && buff.buff_image) existing.buff_image = buff.buff_image
+      }
+    }
+  }
+
+  return [...byName.values()]
+}
+
+/** 危局/防卫/临界 Buff 模板（同名去重，供推演增益复用） */
+export async function listPickBuffTemplates() {
+  // 与全库 picker 同源：含节点 buffs_json 中已模块化、表内尚未同步的条目
+  return listPickBuffs()
+}
+
+async function sanitizeLayersForSave(layers) {
+  if (!Array.isArray(layers)) return []
+  return layers.map((layer) => ({
+    name: String(layer?.name ?? '').trim() || '未命名层',
+    isBoss: layer?.isBoss === true,
+    ending: layer?.ending == null || layer?.ending === '' ? null : String(layer.ending),
+    fieldBuffSetId:
+      layer?.fieldBuffSetId == null || String(layer.fieldBuffSetId).trim() === ''
+        ? null
+        : String(layer.fieldBuffSetId).trim(),
+    monsters: Array.isArray(layer?.monsters)
+      ? layer.monsters.map((m) => ({
+          name: String(m?.name ?? '').trim(),
+          hp: Number(m?.hp) || 0,
+          defense: Number(m?.defense) || 0,
+          level: Number(m?.level) || 0,
+          weakness: m?.weakness == null ? null : String(m.weakness),
+          resistance: m?.resistance == null ? null : String(m.resistance),
+          boss_image: m?.boss_image == null ? null : String(m.boss_image),
+        }))
+      : [],
   }))
+}
+
+function sanitizeBuffsForSave(buffs) {
+  if (!Array.isArray(buffs)) return []
+  return buffs
+    .map((buff) => ({
+      title: String(buff?.title ?? '').trim(),
+      desc: buff?.desc == null ? null : String(buff.desc),
+      buff_image: buff?.buff_image == null ? null : String(buff.buff_image),
+      effect_blocks: buff?.effect_blocks ?? null,
+    }))
+    .filter((buff) => buff.title)
+}
+
+async function enrichBuffsWithSameNameEffects(buffs) {
+  const sanitized = sanitizeBuffsForSave(buffs)
+  if (!sanitized.length) return sanitized
+  const map = await loadGlobalBuffEffectMap()
+  return sanitized.map((buff) => {
+    const blocks = resolveEffectBlocksForName(buff.effect_blocks, buff.title, map)
+    return {
+      ...buff,
+      effect_blocks: blocks?.length ? blocks : null,
+    }
+  })
+}
+
+async function syncDeductionBuffsToTable(version, phase, buffs) {
+  if (!Array.isArray(buffs)) return
+  const versionValue = String(version ?? '').trim()
+  const phaseValue = normalizePhase(phase)
+  if (!versionValue) return
+  for (let i = 0; i < buffs.length; i++) {
+    const title = String(buffs[i]?.title ?? '').trim()
+    if (!title) continue
+    try {
+      const [existing] = await pool.execute(
+        `SELECT id, effect_blocks FROM buff WHERE mode = 'deduction' AND version = ? AND phase = ? AND buff_name = ? LIMIT 1`,
+        [versionValue, phaseValue, title],
+      )
+      const existingId = existing[0]?.id != null ? Number(existing[0].id) : null
+      let effectBlocks = parseEffectBlocksJson(buffs[i].effect_blocks)
+      if (!effectBlocks?.length && existing[0]?.effect_blocks != null) {
+        effectBlocks = parseEffectBlocksJson(existing[0].effect_blocks)
+      }
+      if (!effectBlocks?.length) {
+        // 同名危局/防卫/其他期临界已有结构化效果时一并带上
+        const [named] = await pool.execute(
+          `SELECT effect_blocks FROM buff
+           WHERE buff_name = ?
+             AND effect_blocks IS NOT NULL AND JSON_LENGTH(effect_blocks) > 0
+           ORDER BY mode = 'deduction' DESC, id DESC
+           LIMIT 1`,
+          [title],
+        )
+        if (named[0]?.effect_blocks != null) {
+          effectBlocks = parseEffectBlocksJson(named[0].effect_blocks)
+        }
+      }
+      await createBuff({
+        recordScheme: 'deduction',
+        mode: 'deduction',
+        id: existingId,
+        version: versionValue,
+        phase: phaseValue,
+        buff_name: title,
+        buff: buffs[i].desc ?? null,
+        buff_image: buffs[i].buff_image ?? null,
+        effect_blocks: effectBlocks,
+        buffIndex: i + 1,
+      })
+    } catch (err) {
+      console.warn(`[deduction] 同步 Buff「${title}」到 buff 表失败:`, err?.message ?? err)
+    }
+  }
 }
 
 // ── 期数 ──────────────────────────────────────────────
@@ -310,14 +531,15 @@ export async function deleteDeductionPeriod(version) {
 
 export async function listDeductionNodes(version) {
   await ensureTable()
+  const versionValue = String(version ?? '').trim()
   const [rows] = await pool.execute(
     `SELECT id, version, phase, node_id, node_name, node_type, prev_node, story_text, story_options_json, layers_json, buffs_json, sort_order, period_name
      FROM deduction_node
      WHERE version = ?
      ORDER BY sort_order, id`,
-    [String(version ?? '').trim()],
+    [versionValue],
   )
-  return rows.map((row) => ({
+  const nodes = rows.map((row) => ({
     id: Number(row.id),
     version: String(row.version),
     phase: String(row.phase),
@@ -326,12 +548,39 @@ export async function listDeductionNodes(version) {
     type: Number(row.node_type) || 0,
     prevNode: row.prev_node || null,
     storyText: row.story_text || null,
-    storyOptions: parseJson(row.story_options_json) ?? [],
-    layers: parseJson(row.layers_json) ?? [],
-    buffs: parseJson(row.buffs_json) ?? [],
+    storyOptions: parseJsonArray(row.story_options_json),
+    layers: parseJsonArray(row.layers_json),
+    buffs: parseJsonArray(row.buffs_json),
     sortOrder: Number(row.sort_order) || 0,
     periodName: String(row.period_name ?? '').trim() || null,
   }))
+
+  const [bossStatRows] = await pool.execute(
+    `SELECT room, boss_name, hp, defense, level, weakness, resistance, boss_image
+     FROM boss
+     WHERE mode = 'deduction' AND version = ?`,
+    [versionValue],
+  )
+  applyBossFallbackToPeriodNodes(nodes, bossStatRows)
+
+  const globalBuffEffectMap = await loadGlobalBuffEffectMap()
+  const fieldBuffMap = await loadBossFieldBuffSetsMap()
+  for (const node of nodes) {
+    if (Array.isArray(node.layers)) {
+      attachFieldBuffToDeductionLayers(node.layers, fieldBuffMap)
+    }
+    if (!Array.isArray(node.buffs)) continue
+    node.buffs = node.buffs.map((buff) => {
+      const title = String(buff?.title ?? '').trim()
+      const blocks = resolveEffectBlocksForName(buff?.effect_blocks, title, globalBuffEffectMap)
+      return {
+        ...buff,
+        effect_blocks: blocks?.length ? blocks : buff?.effect_blocks ?? null,
+      }
+    })
+  }
+
+  return nodes
 }
 
 export async function createDeductionNode(version, payload) {
@@ -360,6 +609,7 @@ export async function createDeductionNode(version, payload) {
     [versionValue],
   )
   const sortOrder = Number(maxSort?.m) + 1
+  const enrichedBuffs = await enrichBuffsWithSameNameEffects(payload.buffs)
 
   const [res] = await pool.execute(
     `INSERT INTO deduction_node
@@ -373,34 +623,49 @@ export async function createDeductionNode(version, payload) {
       Number(payload.type) || 0,
       payload.storyText ?? '',
       toJson(payload.layers),
-      toJson(payload.buffs),
+      toJson(enrichedBuffs),
       sortOrder,
       periodName,
     ],
   )
+  if (enrichedBuffs.length) {
+    await syncDeductionBuffsToTable(versionValue, phaseValue, enrichedBuffs)
+  }
   return { id: Number(res.insertId), nodeId, sortOrder }
 }
 
 export async function updateDeductionNode(id, payload) {
+  await ensureTable()
   const nodeId = Number(id)
   if (!Number.isInteger(nodeId) || nodeId <= 0) throw new Error('无效的节点 ID')
+  const sortOrder = Number.isFinite(Number(payload.sortOrder)) ? Number(payload.sortOrder) : 0
+  const layersJson = toJson(sanitizeLayersForSave(payload.layers))
+  const enrichedBuffs = await enrichBuffsWithSameNameEffects(payload.buffs)
+  const buffsJson = toJson(enrichedBuffs)
   const [res] = await pool.execute(
     `UPDATE deduction_node
-     SET node_name = ?, node_type = ?, story_text = ?, story_options_json = CAST(? AS JSON),
+     SET node_name = ?, node_type = ?, prev_node = ?, story_text = ?, story_options_json = CAST(? AS JSON),
          layers_json = CAST(? AS JSON), buffs_json = CAST(? AS JSON), sort_order = ?
      WHERE id = ?`,
     [
-      String(payload.name ?? '').trim(),
+      String(payload.name ?? '').trim() || '未命名节点',
       Number(payload.type) || 0,
+      String(payload.prevNode ?? '').trim(),
       payload.storyText ?? '',
       toJson(payload.storyOptions ?? []),
-      toJson(payload.layers),
-      toJson(payload.buffs),
-      Number(payload.sortOrder) ?? 0,
+      layersJson,
+      buffsJson,
+      sortOrder,
       nodeId,
     ],
   )
   if (!res.affectedRows) throw new Error(`节点 ${nodeId} 不存在`)
+  const [meta] = await pool.execute('SELECT version, phase FROM deduction_node WHERE id = ? LIMIT 1', [
+    nodeId,
+  ])
+  if (meta[0]) {
+    await syncDeductionBuffsToTable(meta[0].version, meta[0].phase, enrichedBuffs)
+  }
   return { id: nodeId }
 }
 

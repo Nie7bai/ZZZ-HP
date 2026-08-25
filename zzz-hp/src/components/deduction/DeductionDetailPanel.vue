@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onMounted, ref, watch } from 'vue'
 import {
   deductionNodeTypeLabel,
   deductionPeriodDisplay,
   fetchDeductionPhases,
   isDeductionBattleNode,
+  isDeductionBossLayer,
   isDeductionStoryNode,
   type DeductionFieldBuff,
   type DeductionMonster,
@@ -14,13 +15,24 @@ import {
 import {
   fetchDeductionPickBosses,
   fetchDeductionPickBuffs,
+  fetchDeductionPickBuffTemplates,
   fetchDeductionShiyuMinions,
+  DEDUCTION_NODE_PERSIST_KEY,
   type AdminEditFocus,
   type AdminPickBoss,
   type AdminPickBuff,
 } from '@/api/deductionAdmin'
 import AdminDeductionFuzzySelect from '@/components/admin/AdminDeductionFuzzySelect.vue'
-import { formatHp, splitBuffLines } from '@/utils/gameData'
+import AdminImagePicker from '@/components/admin/AdminImagePicker.vue'
+import AdminBuffEffectEditor from '@/components/admin/calculator/AdminBuffEffectEditor.vue'
+import BuffEffectBlocksDisplay from '@/components/calculator/BuffEffectBlocksDisplay.vue'
+import { uploadBossImage, uploadBuffImage, type BuffNameTemplate } from '@/api/admin'
+import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
+import type { BuffEffectBlock } from '@/types/calculator'
+import { applyReusedMonsterLevel } from '@/utils/adminMonsterReuse'
+import { normalizeBuffEffectBlocks, packFromBlocks } from '@/utils/buffEffect'
+import { formatHp, resolveAssetUrl, splitBuffLines } from '@/utils/gameData'
+import { convertHpToDefense953, roundConvertedHp, REFERENCE_DEFENSE_953 } from '@/utils/defenseHpConvert'
 import { parseElementIcons } from '@/utils/elementIcons'
 
 const props = withDefaults(
@@ -31,15 +43,46 @@ const props = withDefaults(
   { adminMode: false },
 )
 
+const persistNodeUpdate = inject(DEDUCTION_NODE_PERSIST_KEY, null)
+
 const emit = defineEmits<{
-  'admin-save-info': [version: string, nodeId: string, payload: { name: string; type: number; storyText: string }]
-  'admin-save-buff': [version: string, nodeId: string, index: number, payload: { title: string; desc: string; buff_image?: string | null }]
-  'admin-create-buff': [version: string, nodeId: string, index: number, payload: { title: string; desc: string; buff_image?: string | null }]
+  'admin-save-info': [
+    version: string,
+    nodeId: string,
+    payload: { name: string; type: number; storyText: string; prevNode?: string | null },
+  ]
+  'admin-save-buff': [
+    version: string,
+    nodeId: string,
+    index: number,
+    payload: {
+      title: string
+      desc: string
+      buff_image?: string | null
+      effect_blocks?: BuffEffectBlock[] | null
+    },
+  ]
+  'admin-create-buff': [
+    version: string,
+    nodeId: string,
+    index: number,
+    payload: {
+      title: string
+      desc: string
+      buff_image?: string | null
+      effect_blocks?: BuffEffectBlock[] | null
+    },
+  ]
   'admin-remove-buff': [version: string, nodeId: string, index: number]
   'admin-save-story-option': [version: string, nodeId: string, index: number, payload: { name: string; desc: string }]
   'admin-create-story-option': [version: string, nodeId: string, index: number, payload: { name: string; desc: string }]
   'admin-remove-story-option': [version: string, nodeId: string, index: number]
-  'admin-save-layer': [version: string, nodeId: string, index: number, payload: { name: string; isBoss: boolean }]
+  'admin-save-layer': [
+    version: string,
+    nodeId: string,
+    index: number,
+    payload: { name: string; isBoss: boolean; fieldBuffSetId?: string | null },
+  ]
   'admin-add-layer': [version: string, nodeId: string, isBoss: boolean]
   'admin-remove-layer': [version: string, nodeId: string, index: number]
   'admin-save-monster': [version: string, nodeId: string, layer: number, index: number, payload: DeductionMonster]
@@ -64,14 +107,32 @@ type InlineTarget =
 /** 管理端内联编辑：当前正在就地编辑的目标 */
 const editing = ref<InlineTarget | null>(null)
 const editError = ref('')
+const buffEditSaving = ref(false)
+const monsterEditSaving = ref(false)
 /** 新增后尚未保存的条目：点击取消时回滚删除，避免空数据残留 */
 const pendingNewItem = ref<AdminEditFocus | null>(null)
-const infoDraft = ref({ name: '', type: 0, story: '' })
-const buffDraft = ref<{ title: string; desc: string; buff_image: string | null }>({
+const infoDraft = ref({ name: '', type: 0, story: '', prevNode: '' })
+const buffDraft = ref<{
+  title: string
+  desc: string
+  buff_image: string | null
+  effectBlocks: BuffEffectBlock[]
+}>({
   title: '',
   desc: '',
   buff_image: null,
+  effectBlocks: [],
 })
+const buffImageFile = ref<File | null>(null)
+const buffImagePickerRef = ref<
+  InstanceType<typeof AdminImagePicker> | InstanceType<typeof AdminImagePicker>[] | null
+>(null)
+const monsterImageFile = ref<File | null>(null)
+const monsterImagePickerRef = ref<
+  InstanceType<typeof AdminImagePicker> | InstanceType<typeof AdminImagePicker>[] | null
+>(null)
+const buffImageLocalPreview = ref('')
+const monsterImageLocalPreview = ref('')
 const storyOptionDraft = ref({ name: '', desc: '' })
 const layerDraft = ref<{ name: string }>({ name: '' })
 const monsterDraft = ref<DeductionMonster>({
@@ -94,6 +155,7 @@ function beginEditInfo() {
     name: activeNode.value.name,
     type: normalizeNodeType(activeNode.value.type),
     story: activeNode.value.storyText ?? '',
+    prevNode: activeNode.value.prevNode ?? '',
   }
   editing.value = { kind: 'info' }
 }
@@ -104,18 +166,69 @@ function beginEditStory() {
     name: activeNode.value.name,
     type: activeNode.value.type,
     story: activeNode.value.storyText ?? '',
+    prevNode: activeNode.value.prevNode ?? '',
   }
   editing.value = { kind: 'story' }
+}
+
+/** v-for 内的 ref 在 Vue 3 会变成数组，需统一取实例再 reset */
+function resetImagePickerRef(
+  pickerRef: typeof buffImagePickerRef | typeof monsterImagePickerRef,
+) {
+  const raw = pickerRef.value
+  if (!raw) return
+  const pickers = Array.isArray(raw) ? raw : [raw]
+  for (const picker of pickers) {
+    if (picker && typeof picker.reset === 'function') picker.reset()
+  }
+}
+
+function resetBuffImagePicker() {
+  buffImageFile.value = null
+  buffImageLocalPreview.value = ''
+  resetImagePickerRef(buffImagePickerRef)
+}
+
+function resetMonsterImagePicker() {
+  monsterImageFile.value = null
+  monsterImageLocalPreview.value = ''
+  resetImagePickerRef(monsterImagePickerRef)
+}
+
+function buffImagePreviewUrl() {
+  if (buffImageFile.value) return null
+  const url = buffDraft.value.buff_image
+  return url ? resolveAssetUrl(url) ?? url : null
+}
+
+function monsterImagePreviewUrl() {
+  if (monsterImageFile.value) return null
+  const url = monsterDraft.value.boss_image
+  return url ? resolveAssetUrl(url) ?? url : null
+}
+
+function onBuffImageChange(file: File | null) {
+  buffImageFile.value = file
+  buffImageLocalPreview.value = file ? URL.createObjectURL(file) : ''
+  if (file) buffDraft.value.buff_image = null
+}
+
+function onMonsterImageChange(file: File | null) {
+  monsterImageFile.value = file
+  monsterImageLocalPreview.value = file ? URL.createObjectURL(file) : ''
+  if (file) monsterDraft.value.boss_image = null
 }
 
 function beginEditBuff(index: number) {
   const buff = activeNode.value?.buffs[index]
   if (!buff) return
   editError.value = ''
+  resetBuffImagePicker()
   buffDraft.value = {
     title: buff.title,
     desc: buff.desc ?? '',
     buff_image: buff.buff_image ?? null,
+    effectBlocks: normalizeBuffEffectBlocks(buff.effect_blocks ?? []),
   }
   editing.value = { kind: 'buff', index }
 }
@@ -131,6 +244,7 @@ function beginEditMonster(layer: number, index: number) {
   const m = activeNode.value?.layers[layer]?.monsters[index]
   if (!m) return
   editError.value = ''
+  resetMonsterImagePicker()
   monsterDraft.value = JSON.parse(JSON.stringify(m)) as DeductionMonster
   editing.value = { kind: 'monster', layer, index }
 }
@@ -158,7 +272,9 @@ async function refreshAfterPendingDiscard() {
 function onAddBuff() {
   if (!activeNode.value) return
   const index = activeNode.value.buffs.length
-  activeNode.value.buffs.push({ title: '', desc: '', buff_image: null })
+  activeNode.value.buffs.push({ title: '', desc: '', buff_image: null, effect_blocks: null })
+  resetBuffImagePicker()
+  buffDraft.value = { title: '', desc: '', buff_image: null, effectBlocks: [] }
   editing.value = { kind: 'buff', index }
   pendingNewItem.value = { kind: 'buff', index }
   editError.value = ''
@@ -183,7 +299,7 @@ function onAddMonster(layer: number) {
     name: '',
     hp: 0,
     defense: 0,
-    level: 1,
+    level: 0,
     weakness: null,
     resistance: null,
     boss_image: null,
@@ -199,6 +315,7 @@ function saveInfo() {
     name: infoDraft.value.name.trim() || activeNode.value.name,
     type: infoDraft.value.type,
     storyText: infoDraft.value.story,
+    prevNode: infoDraft.value.prevNode.trim() || null,
   })
   editing.value = null
 }
@@ -213,27 +330,89 @@ function saveStory() {
   editing.value = null
 }
 
-function saveBuff() {
+async function saveBuff() {
   if (!activeNode.value || editing.value?.kind !== 'buff') return
   const title = buffDraft.value.title.trim()
   if (!title) {
     editError.value = '增益名称不能为空'
     return
   }
+  const template = resolveBuffPickerTemplate(title)
+  if (template && !buffDraft.value.effectBlocks.length && template.effect_blocks?.length) {
+    applyBuffPickerTemplate(template)
+  }
   editError.value = ''
-  const pending = pendingNewItem.value
-  pendingNewItem.value = null
-  const payload = {
-    title,
-    desc: buffDraft.value.desc,
-    buff_image: buffDraft.value.buff_image,
+  buffEditSaving.value = true
+  try {
+    let buffImage: string | null = buffDraft.value.buff_image
+    if (buffImageFile.value) {
+      const uploaded = await uploadBuffImage(buffImageFile.value, { buffName: title })
+      buffImage = uploaded.url
+    }
+
+    let blocks: BuffEffectBlock[] = []
+    try {
+      const packed = packFromBlocks(normalizeBuffEffectBlocks(buffDraft.value.effectBlocks))
+      blocks = packed.effectBlocks
+        .filter((block) => block.effects?.length)
+        .map((block, index) => {
+          const name = block.name?.trim() || ''
+          const isGeneric = !name || /^效果块\s*\d+$/.test(name)
+          return {
+            ...block,
+            name: isGeneric ? title || `效果块 ${index + 1}` : name,
+            note: block.note?.trim() || '',
+          }
+        })
+    } catch (packErr) {
+      editError.value =
+        packErr instanceof Error ? `结构化效果解析失败：${packErr.message}` : '结构化效果解析失败'
+      return
+    }
+
+    const pending = pendingNewItem.value
+    pendingNewItem.value = null
+    const payload = {
+      title,
+      desc: buffDraft.value.desc,
+      buff_image: buffImage,
+      effect_blocks: blocks.length ? blocks : null,
+    }
+    const version = currentVersion()
+    const nodeId = activeNode.value.nodeId
+    const buffIndex = editing.value.index
+
+    if (persistNodeUpdate) {
+      await persistNodeUpdate(
+        version,
+        nodeId,
+        (node) => {
+          if (pending?.kind === 'buff') {
+            node.buffs.splice(Math.min(pending.index, node.buffs.length), 0, {
+              title: payload.title,
+              desc: payload.desc,
+              buff_image: payload.buff_image ?? null,
+              effect_blocks: payload.effect_blocks ?? null,
+            })
+          } else {
+            node.buffs[buffIndex] = { ...node.buffs[buffIndex], ...payload }
+          }
+        },
+        '增益已保存',
+      )
+    } else if (pending?.kind === 'buff') {
+      emit('admin-create-buff', version, nodeId, pending.index, payload)
+    } else {
+      emit('admin-save-buff', version, nodeId, buffIndex, payload)
+    }
+    resetBuffImagePicker()
+    editing.value = null
+    void loadPickers()
+  } catch (err) {
+    editError.value = err instanceof Error ? err.message : '保存失败'
+  } finally {
+    buffEditSaving.value = false
   }
-  if (pending?.kind === 'buff') {
-    emit('admin-create-buff', currentVersion(), activeNode.value.nodeId, pending.index, payload)
-  } else {
-    emit('admin-save-buff', currentVersion(), activeNode.value.nodeId, editing.value.index, payload)
-  }
-  editing.value = null
 }
 
 function beginEditStoryOption(index: number) {
@@ -271,6 +450,7 @@ function saveLayer() {
     name: layerDraft.value.name.trim() || `层 ${editing.value.layer + 1}`,
     // 编辑层名不改前战/终局类型，isBoss 由行内开关即时保存
     isBoss: layer.isBoss === true,
+    fieldBuffSetId: layer.fieldBuffSetId ?? null,
   })
   editing.value = null
 }
@@ -284,10 +464,54 @@ function onToggleLayerBoss(layerIndex: number, event: Event) {
   emit('admin-save-layer', currentVersion(), activeNode.value.nodeId, layerIndex, {
     name: layer.name,
     isBoss,
+    fieldBuffSetId: isBoss ? layer.fieldBuffSetId ?? null : null,
   })
 }
 
-function saveMonster() {
+const layerFieldBuffOptions = ref<Record<number, Array<{ id: string; label: string }>>>({})
+
+function layerFieldBuffOptionList(layerIndex: number) {
+  const fromState = layerFieldBuffOptions.value[layerIndex]
+  if (fromState?.length) return fromState
+  const layer = activeNode.value?.layers[layerIndex]
+  const sets = layer?.fieldBuffSets
+  if (!Array.isArray(sets) || !sets.length) return []
+  return sets.map((set) => ({
+    id: set.id,
+    label: set.label?.trim() ? `${set.label.trim()} · ${set.name}` : set.name || set.id,
+  }))
+}
+
+function syncLayerFieldBuffOptionsFromNode() {
+  if (!props.adminMode || !activeNode.value) {
+    layerFieldBuffOptions.value = {}
+    return
+  }
+  const next: Record<number, Array<{ id: string; label: string }>> = {}
+  activeNode.value.layers.forEach((layer, index) => {
+    if (layer.isBoss !== true) return
+    const sets = Array.isArray(layer.fieldBuffSets) ? layer.fieldBuffSets : []
+    next[index] = sets.map((set) => ({
+      id: set.id,
+      label: set.label?.trim() ? `${set.label.trim()} · ${set.name}` : set.name || set.id,
+    }))
+  })
+  layerFieldBuffOptions.value = next
+}
+
+function onLayerFieldBuffSetChange(layerIndex: number, event: Event) {
+  if (!activeNode.value) return
+  const layer = activeNode.value.layers[layerIndex]
+  if (!layer) return
+  const value = (event.target as HTMLSelectElement).value
+  emit('admin-save-layer', currentVersion(), activeNode.value.nodeId, layerIndex, {
+    name: layer.name,
+    isBoss: true,
+    fieldBuffSetId: value.trim() ? value.trim() : null,
+  })
+}
+
+async function saveMonster() {
   if (!activeNode.value || editing.value?.kind !== 'monster') return
   const name = monsterDraft.value.name.trim()
   if (!name) {
@@ -295,15 +519,47 @@ function saveMonster() {
     return
   }
   editError.value = ''
-  const pending = pendingNewItem.value
-  pendingNewItem.value = null
-  const payload = monsterDraft.value
-  if (pending?.kind === 'monster') {
-    emit('admin-create-monster', currentVersion(), activeNode.value.nodeId, pending.layer, pending.index, payload)
-  } else {
-    emit('admin-save-monster', currentVersion(), activeNode.value.nodeId, editing.value.layer, editing.value.index, payload)
+  monsterEditSaving.value = true
+  try {
+    const payload = { ...monsterDraft.value, name }
+    if (monsterImageFile.value) {
+      const uploaded = await uploadBossImage(monsterImageFile.value, { bossName: name })
+      payload.boss_image = uploaded.url
+    }
+    const pending = pendingNewItem.value
+    pendingNewItem.value = null
+    const version = currentVersion()
+    const nodeId = activeNode.value.nodeId
+    const layerIndex = editing.value.layer
+    const monsterIndex = editing.value.index
+
+    if (persistNodeUpdate) {
+      await persistNodeUpdate(
+        version,
+        nodeId,
+        (node) => {
+          const monsters = node.layers[layerIndex]?.monsters
+          if (!monsters) return
+          if (pending?.kind === 'monster') {
+            monsters.splice(Math.min(pending.index, monsters.length), 0, payload)
+          } else {
+            monsters[monsterIndex] = payload
+          }
+        },
+        '怪物已保存',
+      )
+    } else if (pending?.kind === 'monster') {
+      emit('admin-create-monster', version, nodeId, pending.layer, pending.index, payload)
+    } else {
+      emit('admin-save-monster', version, nodeId, layerIndex, monsterIndex, payload)
+    }
+    resetMonsterImagePicker()
+    editing.value = null
+  } catch (err) {
+    editError.value = err instanceof Error ? err.message : '保存失败'
+  } finally {
+    monsterEditSaving.value = false
   }
-  editing.value = null
 }
 
 function isEditingBuff(index: number) {
@@ -351,9 +607,87 @@ function toggleElement(list: string[], el: string): string[] {
 // ── 下拉数据源（怪物 / Buff） ──────────────────────
 
 const pickBosses = ref<AdminPickBoss[]>([])
+const buffTemplates = ref<BuffNameTemplate[]>([])
 const pickBuffs = ref<AdminPickBuff[]>([])
 const shiyuMinions = ref<AdminPickBoss[]>([])
-const pickersLoading = ref(false)
+const bossPickersLoading = ref(false)
+const buffPickersLoading = ref(false)
+const shiyuPickersLoading = ref(false)
+const buffPickersError = ref('')
+const monsterPickersError = ref('')
+
+type BuffPickerOption = AdminPickBuff & { effect_blocks?: BuffEffectBlock[] | null }
+
+const buffPickerOptions = computed<BuffPickerOption[]>(() => {
+  const map = new Map<string, BuffPickerOption>()
+
+  const upsert = (item: BuffPickerOption) => {
+    const name = item.name.trim()
+    if (!name) return
+    const blocks = item.effect_blocks ?? null
+    const existing = map.get(name)
+    if (!existing) {
+      map.set(name, {
+        name,
+        desc: item.desc ?? null,
+        buff_image: item.buff_image ?? null,
+        effect_blocks: blocks,
+      })
+      return
+    }
+    // 优先保留带结构化效果的条目
+    if (!existing.effect_blocks?.length && blocks?.length) {
+      existing.effect_blocks = blocks
+    }
+    if (!existing.desc && item.desc) existing.desc = item.desc
+    if (!existing.buff_image && item.buff_image) existing.buff_image = item.buff_image
+  }
+
+  for (const t of buffTemplates.value) {
+    upsert({
+      name: t.name,
+      desc: t.desc,
+      buff_image: t.buff_image,
+      effect_blocks: t.effect_blocks ?? null,
+    })
+  }
+  for (const b of pickBuffs.value) {
+    upsert({
+      name: b.name,
+      desc: b.desc,
+      buff_image: b.buff_image,
+      effect_blocks: b.effect_blocks ?? null,
+    })
+  }
+  // 当前已加载各节点里的模块化 Buff，保存后立即可复用，不必等接口刷新
+  for (const period of periods.value) {
+    for (const node of period.nodes ?? []) {
+      for (const buff of node.buffs ?? []) {
+        const name = String(buff?.title ?? '').trim()
+        if (!name) continue
+        upsert({
+          name,
+          desc: buff.desc ?? null,
+          buff_image: buff.buff_image ?? null,
+          effect_blocks: buff.effect_blocks ?? null,
+        })
+      }
+      for (const layer of node.layers ?? []) {
+        const fb = layer.fieldBuff
+        const name = String(fb?.name ?? '').trim()
+        if (!name) continue
+        upsert({
+          name,
+          desc: fb?.text ?? null,
+          buff_image: null,
+          effect_blocks: fb?.effectBlocks ?? null,
+        })
+      }
+    }
+  }
+
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+})
 
 /** 终局（Boss）层 → 危局数据源；前战（小怪）层 → shiyu 数据源 */
 function isBossLayer(layerIndex: number): boolean {
@@ -362,6 +696,10 @@ function isBossLayer(layerIndex: number): boolean {
 
 function monsterPickerOptions(layerIndex: number): AdminPickBoss[] {
   return isBossLayer(layerIndex) ? pickBosses.value : shiyuMinions.value
+}
+
+function monsterPickerLoading(layerIndex: number): boolean {
+  return isBossLayer(layerIndex) ? bossPickersLoading.value : shiyuPickersLoading.value
 }
 
 function onMonsterName(value: string) {
@@ -374,7 +712,7 @@ function onPickMonster(option: { name: string; [key: string]: unknown }) {
   monsterDraft.value.name = option.name
   monsterDraft.value.hp = Number(option.hp) || 0
   monsterDraft.value.defense = Number(option.defense) || 0
-  monsterDraft.value.level = Number(option.level) || monsterDraft.value.level
+  monsterDraft.value.level = applyReusedMonsterLevel(monsterDraft.value.level, option.level)
   monsterDraft.value.weakness =
     option.weakness == null ? null : String(option.weakness)
   monsterDraft.value.resistance =
@@ -382,28 +720,77 @@ function onPickMonster(option: { name: string; [key: string]: unknown }) {
   if (option.boss_image) monsterDraft.value.boss_image = String(option.boss_image)
 }
 
-function onPickBuff(option: { name: string; [key: string]: unknown }) {
-  buffDraft.value.title = option.name
-  buffDraft.value.desc = option.desc == null ? '' : String(option.desc)
-  if (option.buff_image) buffDraft.value.buff_image = String(option.buff_image)
+function applyBuffPickerTemplate(option: BuffPickerOption) {
+  const desc = option.desc
+  if (desc != null && String(desc).trim()) {
+    buffDraft.value.desc = String(desc)
+  }
+  const blocks = option.effect_blocks
+  if (blocks?.length) {
+    buffDraft.value.effectBlocks = normalizeBuffEffectBlocks(blocks)
+  }
+  if (option.buff_image) {
+    buffImageFile.value = null
+    buffImageLocalPreview.value = ''
+    resetImagePickerRef(buffImagePickerRef)
+    buffDraft.value.buff_image = String(option.buff_image)
+  }
+}
+
+function resolveBuffPickerTemplate(title: string): BuffPickerOption | null {
+  const key = title.trim()
+  if (!key) return null
+  return buffPickerOptions.value.find((item) => item.name === key) ?? null
+}
+
+function onPickBuff(option: BuffPickerOption | { name: string; [key: string]: unknown }) {
+  const picked = option as BuffPickerOption
+  buffDraft.value.title = picked.name
+  applyBuffPickerTemplate(picked)
 }
 
 async function loadPickers() {
   if (!props.adminMode) return
-  pickersLoading.value = true
-  // 各源独立加载：shiyu 小怪抓 nanoka 较慢/偶发失败，不应拖累 Boss / Buff 数据源
-  const results = await Promise.allSettled([
+  buffPickersError.value = ''
+  monsterPickersError.value = ''
+  bossPickersLoading.value = true
+  buffPickersLoading.value = true
+
+  const fastResults = await Promise.allSettled([
     fetchDeductionPickBosses(),
+    fetchDeductionPickBuffTemplates(),
     fetchDeductionPickBuffs(),
-    fetchDeductionShiyuMinions(),
   ])
-  if (results[0].status === 'fulfilled') pickBosses.value = results[0].value
-  else console.warn('[deduction] Boss 数据源加载失败:', results[0].reason)
-  if (results[1].status === 'fulfilled') pickBuffs.value = results[1].value
-  else console.warn('[deduction] Buff 数据源加载失败:', results[1].reason)
-  if (results[2].status === 'fulfilled') shiyuMinions.value = results[2].value
-  else console.warn('[deduction] shiyu 小怪数据源加载失败:', results[2].reason)
-  pickersLoading.value = false
+  if (fastResults[0].status === 'fulfilled') pickBosses.value = fastResults[0].value
+  else {
+    console.warn('[deduction] Boss 数据源加载失败:', fastResults[0].reason)
+    monsterPickersError.value = 'Boss 数据源加载失败，可刷新页面重试'
+  }
+  if (fastResults[1].status === 'fulfilled') buffTemplates.value = fastResults[1].value
+  else {
+    console.warn('[deduction] Buff 模板加载失败:', fastResults[1].reason)
+    buffPickersError.value = 'Buff 模板加载失败，可刷新页面重试'
+  }
+  if (fastResults[2]?.status === 'fulfilled') pickBuffs.value = fastResults[2].value
+  else if (fastResults[2]?.status === 'rejected') {
+    console.warn('[deduction] Buff 全库加载失败:', fastResults[2].reason)
+  }
+  bossPickersLoading.value = false
+  buffPickersLoading.value = false
+
+  void loadShiyuMinions()
+}
+
+async function loadShiyuMinions() {
+  shiyuPickersLoading.value = true
+  try {
+    shiyuMinions.value = await fetchDeductionShiyuMinions()
+  } catch (reason) {
+    console.warn('[deduction] shiyu 小怪数据源加载失败:', reason)
+    monsterPickersError.value = '小怪数据源加载失败，可刷新页面重试'
+  } finally {
+    shiyuPickersLoading.value = false
+  }
 }
 
 // ── 新增层：前战 / 终局 选择 ──────────────────────
@@ -430,6 +817,21 @@ const currentPeriod = computed<DeductionPeriod | null>(
 
 const activeNode = computed<DeductionNode | null>(
   () => currentPeriod.value?.nodes[activeNodeIndex.value] ?? null,
+)
+
+/** 须在 activeNode 定义之后：immediate watch 会立刻读 activeNode，提前声明会 TDZ 崩页 */
+watch(
+  () =>
+    [
+      props.adminMode ? 1 : 0,
+      activeNode.value?.nodeId ?? '',
+      ...(activeNode.value?.layers?.map(
+        (layer) =>
+          `${layer.isBoss === true ? 1 : 0}:${layer.monsters?.[0]?.name ?? ''}:${(layer.fieldBuffSets ?? []).map((s) => s.id).join(',')}`,
+      ) ?? []),
+    ].join('|'),
+  () => syncLayerFieldBuffOptionsFromNode(),
+  { immediate: true },
 )
 
 const suppressNodeReset = ref(false)
@@ -518,7 +920,25 @@ async function selectNode(index: number) {
 }
 
 function onImageError(event: Event) {
-  ;(event.target as HTMLImageElement).style.display = 'none'
+  const el = event.target as HTMLImageElement
+  // 加载失败时卸掉，避免 display:none 残留到后续复用节点
+  el.removeAttribute('src')
+  el.alt = ''
+}
+
+function monsterListImageSrc(monster: DeductionMonster) {
+  return resolveAssetUrl(monster.boss_image) ?? null
+}
+
+/** Boss 层（含各 STAGE / 终局，不限 LAST STAGE）：防御非 953 时展示危局同款换算血量 */
+function monsterHpConverted953Text(monster: DeductionMonster): string | null {
+  const defense = Number(monster.defense)
+  const hp = Number(monster.hp)
+  if (!Number.isFinite(hp) || hp <= 0) return null
+  if (!Number.isFinite(defense) || defense === REFERENCE_DEFENSE_953) return null
+  const converted = roundConvertedHp(convertHpToDefense953(hp, defense))
+  if (converted === Math.round(hp)) return null
+  return formatHp(converted)
 }
 
 function fieldBuffLines(fieldBuff: DeductionFieldBuff | null | undefined) {
@@ -526,7 +946,29 @@ function fieldBuffLines(fieldBuff: DeductionFieldBuff | null | undefined) {
   return text ? splitBuffLines(text) : []
 }
 
+/** 展示用：效果块注释与正文相同时去掉，避免重复 */
+function blocksForDisplay(
+  blocks: BuffEffectBlock[] | null | undefined,
+  content: string,
+) {
+  const normalized = normalizeBuffEffectBlocks(blocks ?? []).filter((b) => b.effects?.length)
+  if (!normalized.length) return null
+  const text = content.trim()
+  return normalized.map((block) => ({
+    ...block,
+    note: block.note?.trim() && block.note.trim() !== text ? block.note : '',
+  }))
+}
+
+const calculatorBuffStore = useCalculatorBuffStore()
+const calculatorBuffLoadError = computed(() => calculatorBuffStore.error)
+
 onMounted(() => {
+  if (props.adminMode) {
+    void calculatorBuffStore.ensureLoaded().catch((err) => {
+      console.warn('[deduction] 计算器 Buff 缓存加载失败:', err)
+    })
+  }
   load()
   loadPickers()
 })
@@ -630,12 +1072,18 @@ onMounted(() => {
 
             <!-- 信息内联编辑 -->
             <template v-if="adminMode && editing?.kind === 'info'">
+              <span class="dd-node-id">ID {{ activeNode.nodeId }}</span>
               <input v-model="infoDraft.name" class="dd-inline dd-inline--name" placeholder="节点名称" />
               <select v-model="infoDraft.type" class="dd-inline dd-inline--select">
                 <option v-for="t in NODE_TYPES" :key="t.value" :value="t.value">
                   {{ t.label }}
                 </option>
               </select>
+              <input
+                v-model="infoDraft.prevNode"
+                class="dd-inline dd-inline--prev"
+                placeholder="前置节点 ID"
+              />
               <button class="dd-admin-btn dd-admin-btn--primary" type="button" @click="saveInfo">
                 保存
               </button>
@@ -643,8 +1091,10 @@ onMounted(() => {
             </template>
             <template v-else>
               <h3 class="dd-card-title">{{ activeNode.name }}</h3>
+              <span class="dd-node-meta">ID {{ activeNode.nodeId }}</span>
+              <span v-if="activeNode.prevNode" class="dd-node-meta">前置 {{ activeNode.prevNode }}</span>
               <button v-if="adminMode" class="dd-admin-btn" type="button" @click="beginEditInfo">
-                编辑名称/类型
+                编辑节点信息
               </button>
             </template>
           </header>
@@ -742,23 +1192,49 @@ onMounted(() => {
               <template v-if="adminMode && isEditingBuff(bi)">
                 <div class="dd-inline-block">
                   <AdminDeductionFuzzySelect
-                    :options="pickBuffs"
+                    :options="buffPickerOptions"
                     :model-value="buffDraft.title"
                     label="增益名"
-                    placeholder="搜索 Buff…"
-                    :loading="pickersLoading"
+                    placeholder="搜索 Buff（含危局/防卫同名）…"
+                    :loading="buffPickersLoading"
                     @update:model-value="buffDraft.title = $event"
                     @select="onPickBuff"
                   />
+                  <p class="dd-inline-hint">选中历史同名 Buff 将覆盖描述、图片与结构化效果。</p>
                   <textarea
                     v-model="buffDraft.desc"
                     class="dd-inline dd-inline--textarea"
                     rows="3"
-                    placeholder="效果描述"
+                    placeholder="效果描述（展示对照用，可与结构化效果并存）"
                   ></textarea>
+                  <div class="dd-inline-media">
+                    <span class="dd-mini-label">图片</span>
+                    <AdminImagePicker ref="buffImagePickerRef" @change="onBuffImageChange" />
+                    <img
+                      v-if="buffImageLocalPreview || buffImagePreviewUrl()"
+                      class="dd-inline-preview"
+                      :src="buffImageLocalPreview || buffImagePreviewUrl() || ''"
+                      alt="Buff 预览"
+                    />
+                  </div>
+                  <div class="dd-effect-editor">
+                    <span class="dd-mini-label">结构化效果（计算器局内可选）</span>
+                    <p v-if="calculatorBuffLoadError" class="dd-edit-error">
+                      计算器 Buff 缓存未加载：{{ calculatorBuffLoadError }}（仍可保存描述文本）
+                    </p>
+                    <AdminBuffEffectEditor v-model="buffDraft.effectBlocks" />
+                  </div>
+                  <p v-if="buffPickersError" class="dd-inline-hint dd-inline-hint--warn">{{ buffPickersError }}</p>
                   <p v-if="editError" class="dd-edit-error">{{ editError }}</p>
                   <div class="dd-inline-actions">
-                    <button class="dd-admin-btn dd-admin-btn--primary" type="button" @click="saveBuff">保存</button>
+                    <button
+                      class="dd-admin-btn dd-admin-btn--primary"
+                      type="button"
+                      :disabled="buffEditSaving"
+                      @click="saveBuff"
+                    >
+                      {{ buffEditSaving ? '保存中…' : '保存' }}
+                    </button>
                     <button class="dd-admin-btn" type="button" @click="cancelEdit">取消</button>
                   </div>
                 </div>
@@ -768,7 +1244,8 @@ onMounted(() => {
                   <img
                     v-if="buff.buff_image"
                     class="dd-buff-img"
-                    :src="buff.buff_image"
+                    :key="resolveAssetUrl(buff.buff_image) || buff.buff_image"
+                    :src="resolveAssetUrl(buff.buff_image) || buff.buff_image"
                     :alt="buff.title"
                     loading="lazy"
                     @error="onImageError"
@@ -779,13 +1256,22 @@ onMounted(() => {
                     <button
                       class="dd-admin-btn dd-admin-btn--danger"
                       type="button"
+                      title="仅从本节点移除，不删除 Buff 表记录"
                       @click="emit('admin-remove-buff', currentVersion(), activeNode?.nodeId ?? '', bi)"
                     >
-                      删
+                      从本节点移除
                     </button>
                   </template>
                 </div>
                 <p v-if="buff.desc" class="dd-buff-desc">{{ buff.desc }}</p>
+                <BuffEffectBlocksDisplay
+                  v-if="blocksForDisplay(buff.effect_blocks, buff.desc ?? '')?.length"
+                  compact
+                  class="dd-buff-effects"
+                  :blocks="blocksForDisplay(buff.effect_blocks, buff.desc ?? '')"
+                  :title="buff.title"
+                  empty-text=""
+                />
               </template>
             </div>
             <button
@@ -836,7 +1322,44 @@ onMounted(() => {
                 </template>
               </div>
 
-              <div v-if="fieldBuffLines(layer.fieldBuff).length" class="dd-field-buff">
+              <div
+                v-if="adminMode && layer.isBoss === true"
+                class="dd-field-buff-select"
+              >
+                <span class="dd-mini-label">场地 Buff 套</span>
+                <select
+                  class="dd-inline dd-inline--select"
+                  :value="layer.fieldBuffSetId ?? ''"
+                  :disabled="!layerFieldBuffOptionList(li).length"
+                  @change="onLayerFieldBuffSetChange(li, $event)"
+                >
+                  <option value="">
+                    {{
+                      layerFieldBuffOptionList(li).length
+                        ? '自动（默认 / 第一套）'
+                        : '请先在怪物库配置场地 Buff'
+                    }}
+                  </option>
+                  <option
+                    v-for="opt in layerFieldBuffOptionList(li)"
+                    :key="opt.id"
+                    :value="opt.id"
+                  >
+                    {{ opt.label }}
+                  </option>
+                </select>
+                <p class="dd-inline-hint">
+                  选项来自该 Boss 怪物库多套配置；与危局同源，切换后即时保存。
+                </p>
+              </div>
+
+              <div
+                v-if="
+                  fieldBuffLines(layer.fieldBuff).length ||
+                  blocksForDisplay(layer.fieldBuff?.effectBlocks, layer.fieldBuff?.text ?? '')?.length
+                "
+                class="dd-field-buff"
+              >
                 <h6 class="dd-field-buff-title">{{ layer.fieldBuff?.name || '区域增益' }}</h6>
                 <p
                   v-for="(line, lineIndex) in fieldBuffLines(layer.fieldBuff)"
@@ -845,6 +1368,14 @@ onMounted(() => {
                 >
                   {{ line }}
                 </p>
+                <BuffEffectBlocksDisplay
+                  v-if="blocksForDisplay(layer.fieldBuff?.effectBlocks, layer.fieldBuff?.text ?? '')?.length"
+                  compact
+                  class="dd-buff-effects"
+                  :blocks="blocksForDisplay(layer.fieldBuff?.effectBlocks, layer.fieldBuff?.text ?? '')"
+                  :title="layer.fieldBuff?.name || '区域增益'"
+                  empty-text=""
+                />
               </div>
               <div v-if="layer.monsters.length" class="dd-monsters">
                 <div v-for="(monster, mi) in layer.monsters" :key="mi" class="dd-monster">
@@ -855,10 +1386,11 @@ onMounted(() => {
                         :model-value="monsterDraft.name"
                         label="名字"
                         :placeholder="isBossLayer(li) ? '搜索 Boss…' : '搜索小怪…'"
-                        :loading="pickersLoading"
+                        :loading="monsterPickerLoading(li)"
                         @update:model-value="onMonsterName"
                         @select="onPickMonster"
                       />
+                      <p v-if="monsterPickersError" class="dd-inline-hint dd-inline-hint--warn">{{ monsterPickersError }}</p>
                       <div class="dd-inline-row">
                         <label class="dd-num-inline">Lv <input v-model.number="monsterDraft.level" type="number" class="dd-inline dd-inline--num" /></label>
                         <label class="dd-num-inline">HP <input v-model.number="monsterDraft.hp" type="number" class="dd-inline dd-inline--num dd-inline--num-lg" /></label>
@@ -890,9 +1422,26 @@ onMounted(() => {
                           {{ el }}
                         </button>
                       </div>
+                      <div class="dd-inline-media">
+                        <span class="dd-mini-label">图片</span>
+                        <AdminImagePicker ref="monsterImagePickerRef" @change="onMonsterImageChange" />
+                        <img
+                          v-if="monsterImageLocalPreview || monsterImagePreviewUrl()"
+                          class="dd-inline-preview"
+                          :src="monsterImageLocalPreview || monsterImagePreviewUrl() || ''"
+                          alt="怪物预览"
+                        />
+                      </div>
                       <p v-if="editError" class="dd-edit-error">{{ editError }}</p>
                       <div class="dd-inline-actions">
-                        <button class="dd-admin-btn dd-admin-btn--primary" type="button" @click="saveMonster">保存</button>
+                        <button
+                          class="dd-admin-btn dd-admin-btn--primary"
+                          type="button"
+                          :disabled="monsterEditSaving"
+                          @click="saveMonster"
+                        >
+                          {{ monsterEditSaving ? '保存中…' : '保存' }}
+                        </button>
                         <button class="dd-admin-btn" type="button" @click="cancelEdit">取消</button>
                       </div>
                     </div>
@@ -900,9 +1449,10 @@ onMounted(() => {
                   <template v-else>
                     <div class="dd-monster-main">
                       <img
-                        v-if="monster.boss_image"
+                        v-if="monsterListImageSrc(monster)"
+                        :key="monsterListImageSrc(monster)!"
                         class="dd-monster-img"
-                        :src="monster.boss_image"
+                        :src="monsterListImageSrc(monster)!"
                         alt=""
                         loading="lazy"
                         @error="onImageError"
@@ -914,6 +1464,13 @@ onMounted(() => {
                         </div>
                         <div class="dd-monster-stats">
                           <span class="dd-stat">HP {{ formatHp(monster.hp) }}</span>
+                          <span
+                            v-if="isDeductionBossLayer(layer) && monsterHpConverted953Text(monster)"
+                            class="dd-stat dd-stat--converted"
+                            title="953防御换算"
+                          >
+                            953 {{ monsterHpConverted953Text(monster) }}
+                          </span>
                           <span class="dd-stat">防御 {{ formatHp(monster.defense) }}</span>
                           <span v-if="parseElementIcons(monster.weakness).length" class="dd-stat dd-stat--weak">
                             弱
@@ -1488,6 +2045,19 @@ onMounted(() => {
   letter-spacing: 0.03em;
 }
 
+.dd-node-meta,
+.dd-node-id {
+  font-size: 0.72rem;
+  font-family: var(--zzz-font-mono, monospace);
+  color: var(--color-text);
+  opacity: 0.65;
+}
+
+.dd-inline--prev {
+  min-width: 5.5rem;
+  max-width: 8rem;
+}
+
 /* 剧情文本 */
 .dd-story-text {
   margin: 0;
@@ -1623,6 +2193,50 @@ onMounted(() => {
   opacity: 0.9;
 }
 
+.dd-buff-effects {
+  margin-top: 0.4rem;
+}
+
+.dd-inline-media {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.dd-inline-hint {
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  color: var(--color-text);
+  opacity: 0.65;
+  line-height: 1.4;
+}
+
+.dd-inline-hint--warn {
+  color: #c0392b;
+  opacity: 1;
+}
+
+.dd-inline-preview {
+  max-width: 72px;
+  max-height: 72px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  object-fit: contain;
+  background: var(--color-background-mute);
+}
+
+.dd-effect-editor {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-background-soft);
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 /* 战斗层 */
 .dd-layers {
   display: flex;
@@ -1653,6 +2267,24 @@ onMounted(() => {
   border: 1px solid color-mix(in srgb, #f59e0b 35%, var(--zzz-line, var(--color-border)));
   border-left: 3px solid #f59e0b;
   background: color-mix(in srgb, #f59e0b 8%, var(--zzz-card, var(--color-background-soft)));
+}
+
+.dd-field-buff-select {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.65rem;
+  margin: 0 0 0.45rem;
+}
+
+.dd-field-buff-select .dd-inline-hint {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+.dd-inline--select {
+  min-width: 12rem;
+  max-width: min(100%, 22rem);
 }
 
 .dd-field-buff-title {
@@ -1739,6 +2371,11 @@ onMounted(() => {
   font-size: 0.78rem;
   color: var(--color-text);
   opacity: 0.85;
+}
+
+.dd-stat--converted {
+  color: #e8a838;
+  opacity: 0.95;
 }
 
 .dd-stat--weak {

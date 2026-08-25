@@ -7,7 +7,10 @@ import {
   type HpChartPoint,
 } from '@/api/crisisAssault'
 import {
+  CRISIS_OPERATION_SCORE_DEFAULT,
+  CRISIS_OPERATION_SCORE_MAX,
   CRISIS_SCORE_MAX,
+  CRISIS_TOTAL_SCORE_MAX,
   convertHpRatioToScore,
   convertScoreToHpRatio,
   describeConvertSegment,
@@ -40,6 +43,7 @@ interface ModeDraft {
   hpPercentInput: string
   scorePercentInput: string
   scoreInput: string
+  operationScoreInput: string
   totalHpInput: string
   dealtHpInput: string
   selectedBoss: string
@@ -55,6 +59,7 @@ function emptyDraft(): ModeDraft {
     hpPercentInput: '',
     scorePercentInput: '',
     scoreInput: '',
+    operationScoreInput: String(CRISIS_OPERATION_SCORE_DEFAULT),
     totalHpInput: '',
     dealtHpInput: '',
     selectedBoss: '',
@@ -70,6 +75,7 @@ const lastHpAbs = ref<HpAbsField>(null)
 const hpPercentInput = ref('')
 const scorePercentInput = ref('')
 const scoreInput = ref('')
+const operationScoreInput = ref(String(CRISIS_OPERATION_SCORE_DEFAULT))
 const totalHpInput = ref('')
 const dealtHpInput = ref('')
 const keptHpRatio = ref<number | null>(null)
@@ -92,6 +98,48 @@ const bossError = ref('')
 const applyingBossHp = ref(false)
 
 const markers = computed(() => getScoreMarkers(tableMode.value))
+
+/** 转换器快捷键：均为「含操作分的总分」；折线图仍用 getScoreMarkers */
+const converterMarkers = computed((): CrisisScoreMarker[] => {
+  if (tableMode.value === 'hard') {
+    return [
+      {
+        id: '10k',
+        score: 10000,
+        label: '1w分（总分含操作分）',
+        shortLabel: '1w',
+        hpRatio: 0,
+        color: '#6bbf7a',
+      },
+      {
+        id: '20k',
+        score: 20000,
+        label: '2w分（总分含操作分）',
+        shortLabel: '2w',
+        hpRatio: 0,
+        color: '#5b9bd5',
+      },
+      {
+        id: '30k',
+        score: 30000,
+        label: '3w分（总分含操作分）',
+        shortLabel: '3w',
+        hpRatio: 0,
+        color: '#e8a838',
+      },
+    ]
+  }
+  return [
+    {
+      id: '20k',
+      score: 20000,
+      label: '均2w分（总分含操作分）',
+      shortLabel: '均2w',
+      hpRatio: 0.2196,
+      color: '#e8a838',
+    },
+  ]
+})
 const selectedBossInfo = computed(() =>
   bossList.value.find((boss) => boss.boss_name === selectedBoss.value),
 )
@@ -232,12 +280,38 @@ function clampPercentField(raw: string): string {
   return raw
 }
 
+function clampOperationScoreField(raw: string): string {
+  const value = parseLocaleNumber(raw)
+  if (value == null) return raw
+  if (value < 0) return '0'
+  if (value > CRISIS_OPERATION_SCORE_MAX) return String(CRISIS_OPERATION_SCORE_MAX)
+  return raw
+}
+
+/** 当前操作分（额外分，不参与占比插值） */
+function currentOperationScore(): number {
+  const value = parseLocaleNumber(operationScoreInput.value)
+  if (value == null || !Number.isFinite(value)) return CRISIS_OPERATION_SCORE_DEFAULT
+  return Math.min(CRISIS_OPERATION_SCORE_MAX, Math.max(0, value))
+}
+
+/** 填写总分上限 = 战斗分满分 + 操作分上限 */
 function clampScoreField(raw: string): string {
   const value = parseLocaleNumber(raw)
   if (value == null) return raw
   if (value < 0) return '0'
-  if (value > CRISIS_SCORE_MAX) return String(CRISIS_SCORE_MAX)
+  if (value > CRISIS_TOTAL_SCORE_MAX) return String(CRISIS_TOTAL_SCORE_MAX)
   return raw
+}
+
+/** 填写总分 → 战斗分（扣掉操作分后再换算占比） */
+function combatScoreFromTotal(totalScore: number): number {
+  return Math.min(CRISIS_SCORE_MAX, Math.max(0, totalScore - currentOperationScore()))
+}
+
+/** 战斗分 → 填写总分（加回操作分） */
+function totalScoreFromCombat(combatScore: number): number {
+  return Math.round(combatScore) + currentOperationScore()
 }
 
 function rememberHpRatio(ratio: number | null) {
@@ -265,14 +339,28 @@ function onScoreEdit() {
   editing.value = 'score'
   scoreInput.value = clampScoreField(scoreInput.value)
   const score = parseLocaleNumber(scoreInput.value)
-  if (score != null) rememberHpRatio(convertScoreToHpRatio(tableMode.value, score).hpRatio)
+  if (score != null) {
+    rememberHpRatio(convertScoreToHpRatio(tableMode.value, combatScoreFromTotal(score)).hpRatio)
+  }
+}
+
+function onOperationScoreEdit() {
+  operationScoreInput.value = clampOperationScoreField(operationScoreInput.value)
+  // 操作分变更：若正在填总分，按新操作分重算；否则用当前占比反推总分
+  if (editing.value === 'score') {
+    onScoreEdit()
+    return
+  }
+  if (result.value) {
+    scoreInput.value = String(totalScoreFromCombat(result.value.score))
+  }
 }
 
 const result = computed<CrisisHpScoreConvertResult | null>(() => {
   if (editing.value === 'score') {
     const score = parseLocaleNumber(scoreInput.value)
     if (score == null) return null
-    return convertScoreToHpRatio(tableMode.value, score)
+    return convertScoreToHpRatio(tableMode.value, combatScoreFromTotal(score))
   }
   if (editing.value === 'scorePct') {
     const percent = parseLocaleNumber(scorePercentInput.value)
@@ -296,7 +384,7 @@ watch(result, (next) => {
     hpPercentInput.value = formatHpPercent(next.hpRatio)
   }
   if (editing.value !== 'score') {
-    scoreInput.value = String(Math.round(next.score))
+    scoreInput.value = String(totalScoreFromCombat(next.score))
   }
   if (editing.value !== 'scorePct') {
     scorePercentInput.value = formatHpPercent(next.score / CRISIS_SCORE_MAX)
@@ -310,7 +398,7 @@ function hpRatioFromLeft(): number | null {
   if (editing.value === 'score') {
     const score = parseLocaleNumber(scoreInput.value)
     if (score == null) return null
-    return convertScoreToHpRatio(tableMode.value, score).hpRatio
+    return convertScoreToHpRatio(tableMode.value, combatScoreFromTotal(score)).hpRatio
   }
   if (editing.value === 'scorePct') {
     const percent = parseLocaleNumber(scorePercentInput.value)
@@ -385,6 +473,7 @@ function clearInputs() {
   hpPercentInput.value = ''
   scorePercentInput.value = ''
   scoreInput.value = ''
+  operationScoreInput.value = String(CRISIS_OPERATION_SCORE_DEFAULT)
   totalHpInput.value = ''
   dealtHpInput.value = ''
   selectedBoss.value = ''
@@ -402,7 +491,13 @@ const nextMarker = computed(() => {
   return markers.value.find((marker) => result.value!.hpRatio + 1e-9 < marker.hpRatio) ?? null
 })
 
-const roundedScore = computed(() => (result.value ? Math.round(result.value.score) : null))
+/** 战斗分（表插值结果，不含操作分） */
+const roundedCombatScore = computed(() => (result.value ? Math.round(result.value.score) : null))
+
+/** 填写总分 = 战斗分 + 操作分 */
+const roundedTotalScore = computed(() =>
+  roundedCombatScore.value == null ? null : totalScoreFromCombat(roundedCombatScore.value),
+)
 
 const formulaText = computed(() => {
   const current = result.value
@@ -416,9 +511,12 @@ const formulaText = computed(() => {
 const contextTable = computed(() => getConvertContextTableRows(tableMode.value, result.value))
 
 function applyMarker(marker: CrisisScoreMarker) {
+  // 转换器快捷键：marker.score 均为含操作分的总分；换算用总分 − 操作分
   editing.value = 'score'
   scoreInput.value = String(marker.score)
-  rememberHpRatio(convertScoreToHpRatio(tableMode.value, marker.score).hpRatio)
+  rememberHpRatio(
+    convertScoreToHpRatio(tableMode.value, combatScoreFromTotal(marker.score)).hpRatio,
+  )
 }
 
 const RECORD_LIMIT = 10
@@ -498,6 +596,7 @@ function snapshotCurrent(): ModeDraft {
     hpPercentInput: hpPercentInput.value,
     scorePercentInput: scorePercentInput.value,
     scoreInput: scoreInput.value,
+    operationScoreInput: operationScoreInput.value,
     totalHpInput: totalHpInput.value,
     dealtHpInput: dealtHpInput.value,
     selectedBoss: selectedBoss.value,
@@ -513,6 +612,8 @@ function applyDraft(draft: ModeDraft) {
   hpPercentInput.value = draft.hpPercentInput
   scorePercentInput.value = draft.scorePercentInput
   scoreInput.value = draft.scoreInput
+  operationScoreInput.value =
+    draft.operationScoreInput?.trim() || String(CRISIS_OPERATION_SCORE_DEFAULT)
   totalHpInput.value = draft.totalHpInput
   dealtHpInput.value = draft.dealtHpInput
   selectedBoss.value = draft.selectedBoss
@@ -547,7 +648,7 @@ function recordNow() {
     dealtHp: parseLocaleNumber(dealtHpInput.value),
     hpRatio: result.value.hpRatio,
     scoreRatio: result.value.score / CRISIS_SCORE_MAX,
-    score: Math.round(result.value.score),
+    score: totalScoreFromCombat(result.value.score),
   })
 }
 
@@ -597,8 +698,8 @@ const emptyRecordCount = computed(() => Math.max(0, RECORD_EMPTY_ROWS - records.
 
 const panelDesc = computed(() =>
   tableMode.value === 'hard'
-    ? `满分 ${CRISIS_SCORE_MAX.toLocaleString('zh-CN')} 分（困难）`
-    : `满分 ${CRISIS_SCORE_MAX.toLocaleString('zh-CN')} 分（正常）；2 万分为满星 S（FS-HP）`,
+    ? `绝境：战斗分满分 ${CRISIS_SCORE_MAX.toLocaleString('zh-CN')} + 操作分（最高 ${CRISIS_OPERATION_SCORE_MAX.toLocaleString('zh-CN')}）＝总分最高 ${CRISIS_TOTAL_SCORE_MAX.toLocaleString('zh-CN')}；1w/2w/3w 为含操作分的总分快捷`
+    : `战斗分满分 ${CRISIS_SCORE_MAX.toLocaleString('zh-CN')} + 操作分（默认 ${CRISIS_OPERATION_SCORE_DEFAULT.toLocaleString('zh-CN')}）＝总分最高 ${CRISIS_TOTAL_SCORE_MAX.toLocaleString('zh-CN')}；均2w 为含操作分的总分（满星 S）`,
 )
 </script>
 
@@ -623,7 +724,7 @@ const panelDesc = computed(() =>
             :class="{ active: tableMode === 'hard' }"
             @click="setTableMode('hard')"
           >
-            困难
+            绝境
           </button>
         </div>
         <button type="button" class="clear-btn" @click="clearInputs">清空</button>
@@ -662,6 +763,23 @@ const panelDesc = computed(() =>
           </span>
         </label>
         <label class="field">
+          <span>操作分</span>
+          <span class="field-input score-short">
+            <input
+              v-model="operationScoreInput"
+              class="score-input-short"
+              type="text"
+              inputmode="numeric"
+              maxlength="4"
+              aria-label="操作分"
+              @focus="onOperationScoreEdit"
+              @input="onOperationScoreEdit"
+            />
+            <span class="suffix">/ {{ CRISIS_OPERATION_SCORE_MAX.toLocaleString('zh-CN') }}</span>
+          </span>
+        </label>
+        <p class="field-hint">操作分额外计入总分，不参与分数占比；换算时先加减操作分再插值</p>
+        <label class="field">
           <span>分数</span>
           <div class="score-line">
             <span class="field-input score-short">
@@ -675,11 +793,11 @@ const panelDesc = computed(() =>
                 @focus="onScoreEdit"
                 @input="onScoreEdit"
               />
-              <span class="suffix">/ {{ CRISIS_SCORE_MAX.toLocaleString('zh-CN') }}</span>
+              <span class="suffix">/ {{ CRISIS_TOTAL_SCORE_MAX.toLocaleString('zh-CN') }}</span>
             </span>
             <div class="marker-row" role="group" aria-label="快捷填入节点分数">
               <button
-                v-for="marker in markers"
+                v-for="marker in converterMarkers"
                 :key="marker.id"
                 type="button"
                 class="marker-chip"
@@ -691,7 +809,7 @@ const panelDesc = computed(() =>
             </div>
           </div>
         </label>
-        <p class="field-hint">3项填1</p>
+        <p class="field-hint">占比三项填 1；分数为总分（战斗分+操作分）</p>
       </section>
 
       <section class="convert-card">
@@ -778,8 +896,9 @@ const panelDesc = computed(() =>
       <template v-if="result">
         <p class="status-main">{{ describeConvertSegment(result) }}</p>
         <p class="status-line">
-          已打血量 {{ formatPercent(result.hpRatio, 4) }} · 对应
-          {{ (roundedScore ?? 0).toLocaleString('zh-CN') }} 分
+          已打血量 {{ formatPercent(result.hpRatio, 4) }} · 战斗
+          {{ (roundedCombatScore ?? 0).toLocaleString('zh-CN') }} 分 · 总分
+          {{ (roundedTotalScore ?? 0).toLocaleString('zh-CN') }} 分
           <template v-if="result.row">
             · 本段进度 {{ (result.progressInSegment * 100).toFixed(2) }}%
           </template>

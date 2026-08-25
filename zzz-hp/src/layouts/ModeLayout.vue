@@ -24,18 +24,18 @@ const props = defineProps<{
 const activePanel = ref<SidebarPanel>('history')
 const mobileNavOpen = ref(false)
 
-const panelLabels: Record<SidebarPanel, string> = {
+const panelLabels = computed<Record<SidebarPanel, string>>(() => ({
   history: '往期详细',
   'hp-chart': '血量折线图',
-  'phase-compare': '期数对比折线图',
+  'phase-compare': props.mode === 'deduction' ? '节点对比折线图' : '期数对比折线图',
   'monster-compare': '单独怪物对比',
   'buff-overview': 'Buff 总览',
   'buff-compare': 'Buff 对比',
   'score-hp-table': '分数与血量对应表',
   'hp-score-converter': '血量分数转换器',
-}
+}))
 
-const mobileSubtitle = computed(() => panelLabels[activePanel.value])
+const mobileSubtitle = computed(() => panelLabels.value[activePanel.value])
 
 watch(activePanel, () => {
   mobileNavOpen.value = false

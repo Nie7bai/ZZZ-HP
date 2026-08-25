@@ -20,6 +20,8 @@ type ExpansionMode = 'ratio' | 'delta'
 const COEFF_LINE_COLOR = '#9b6bff'
 const COEFF_CHART_TITLE = '血量系数'
 const COEFF_EXPANSION_CHART_TITLE = '血量系数增长'
+/** 小窗「相对上一点」标记色（避开危局 1.5w 蓝 / 总血量红 / 2w 金） */
+const RELATIVE_CHANGE_COLOR = '#e879f9'
 
 const props = withDefaults(
   defineProps<{
@@ -41,7 +43,7 @@ const props = withDefaults(
     expansionMode?: ExpansionMode
     /** 显示「953防御换算」勾选（按 T 切换） */
     enableHpConverted953Toggle?: boolean
-    /** 显示正常/困难切换（样式同详细/总览，位于其左侧） */
+    /** 显示正常/绝境切换（样式同详细/总览，位于其左侧） */
     showHpModeToggle?: boolean
     /** 联动组：同组折线图同步详细/总览期数聚焦与横向滚动 */
     syncGroup?: string
@@ -348,6 +350,20 @@ function formatExpansionValue(value: number) {
   return formatHpDelta(value)
 }
 
+/** 相对膨胀小窗：倍率 → 百分比变化（两位小数） */
+function formatRelativePercentChange(ratioOrDelta: number) {
+  if (isExpansionDelta.value) {
+    if (props.valueFormat === 'percent') {
+      return `${ratioOrDelta >= 0 ? '+' : ''}${ratioOrDelta.toFixed(2)}%`
+    }
+    // 血量差模式的相对图仍用血量差
+    return formatHpDelta(Math.round(ratioOrDelta))
+  }
+  const percent = (ratioOrDelta - 1) * 100
+  if (!Number.isFinite(percent) || Math.abs(percent) < 1e-9) return '0.00%'
+  return `${percent >= 0 ? '+' : ''}${percent.toFixed(2)}%`
+}
+
 function formatExpansionTick(value: number) {
   if (!isExpansionDelta.value) return formatExpansion(value)
   if (props.valueFormat === 'percent') return `${Math.round(value)}%`
@@ -616,7 +632,33 @@ const seriesTooltipRows = computed((): ChartSeriesTooltipRow[] => {
         numericValue: point.value,
       })
     }
-    return sortByValueDesc(rows)
+    const sorted = sortByValueDesc(rows)
+    // 血量折线图：总血量 / 1.5w / 2w 各线相对上一点的血量变化（蓝色）
+    if (index > 0) {
+      const prevHp = hpChartPoints.value[index - 1]
+      if (prevHp) {
+        const delta = hpPoint.value - prevHp.value
+        sorted.push({
+          label: '相对·总血量',
+          value: formatHpDelta(Math.round(delta)),
+          color: RELATIVE_CHANGE_COLOR,
+          numericValue: delta,
+        })
+      }
+      for (const series of scoreOverlaySeries.value) {
+        const curr = series.chartPoints[index]
+        const prev = series.chartPoints[index - 1]
+        if (!curr || !prev) continue
+        const delta = curr.value - prev.value
+        sorted.push({
+          label: `相对·${series.marker.shortLabel}`,
+          value: formatHpDelta(Math.round(delta)),
+          color: RELATIVE_CHANGE_COLOR,
+          numericValue: delta,
+        })
+      }
+    }
+    return sorted
   }
 
   if (id === 'exp') {
@@ -624,9 +666,9 @@ const seriesTooltipRows = computed((): ChartSeriesTooltipRow[] => {
     if (!point) return []
     return [
       {
-        label: '膨胀',
-        value: formatExpansionValue(point.value),
-        color: '#e85d4c',
+        label: '相对上一点',
+        value: formatRelativePercentChange(point.value),
+        color: RELATIVE_CHANGE_COLOR,
         numericValue: point.value,
       },
     ]
@@ -639,9 +681,9 @@ const seriesTooltipRows = computed((): ChartSeriesTooltipRow[] => {
     if (!series || !point) return []
     return [
       {
-        label: `${series.marker.shortLabel}膨胀`,
-        value: formatExpansionValue(point.value),
-        color: series.marker.color,
+        label: `相对·${series.marker.shortLabel}`,
+        value: formatRelativePercentChange(point.value),
+        color: RELATIVE_CHANGE_COLOR,
         numericValue: point.value,
       },
     ]
@@ -1408,7 +1450,7 @@ watch(phaseSearchQuery, () => {
           v-if="showHpModeToggle"
           class="mode-toggle"
           role="group"
-          aria-label="正常或困难模式"
+          aria-label="正常或绝境模式"
         >
           <button
             type="button"
@@ -1424,7 +1466,7 @@ watch(phaseSearchQuery, () => {
             :class="{ active: hpMode === 'hard' }"
             @click="hpMode = 'hard'"
           >
-            困难
+            绝境
           </button>
         </div>
         <div class="mode-toggle" role="group" aria-label="折线图显示模式">

@@ -1,3 +1,4 @@
+import type { InjectionKey } from 'vue'
 import { withAdminAuthHeaders } from '@/utils/adminAuth'
 
 interface ApiResult<T> {
@@ -17,6 +18,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   return json.data
 }
+
+export type DeductionNodePersistFn = (
+  version: string,
+  nodeId: string,
+  mutate: (node: AdminDeductionNode) => void,
+  okMessage?: string,
+) => Promise<void>
+
+/** 管理端内联编辑：由 AdminDeductionVisualPanel provide，供 DeductionDetailPanel 等待持久化结果 */
+export const DEDUCTION_NODE_PERSIST_KEY: InjectionKey<DeductionNodePersistFn> = Symbol('deductionNodePersist')
 
 export interface AdminDeductionPeriod {
   version: string
@@ -41,6 +52,17 @@ export interface AdminDeductionLayer {
   monsters: AdminDeductionMonster[]
   /** 是否 Boss 关：true=Boss 层（危局数据源），false/缺省=小怪层（shiyu 数据源） */
   isBoss?: boolean
+  /** 多结局标签（如 结局1），nanoka 按可选 Buff 包归并 */
+  ending?: string | null
+  /** 绑定的 boss_info 场地 Buff 套 id；空则自动取默认/第一套 */
+  fieldBuffSetId?: string | null
+  fieldBuffSets?: Array<{ id: string; label?: string | null; name: string }> | null
+  fieldBuff?: {
+    name: string
+    text?: string
+    image?: string | null
+    effectBlocks?: import('@/types/calculator').BuffEffectBlock[] | null
+  } | null
 }
 
 export interface AdminDeductionBuff {
@@ -48,6 +70,7 @@ export interface AdminDeductionBuff {
   desc: string | null
   /** 管理端选中候选时写入的本地 Buff 图片路径（/buff_image/...），可能为空 */
   buff_image?: string | null
+  effect_blocks?: import('@/types/calculator').BuffEffectBlock[] | null
 }
 
 export interface AdminDeductionNode {
@@ -82,6 +105,7 @@ export interface AdminPickBuff {
   name: string
   desc: string | null
   buff_image: string | null
+  effect_blocks?: import('@/types/calculator').BuffEffectBlock[] | null
 }
 
 /** 管理端新增后自动进入编辑状态的定位目标 */
@@ -96,6 +120,17 @@ export async function fetchDeductionPickBosses(): Promise<AdminPickBoss[]> {
 
 export async function fetchDeductionPickBuffs(): Promise<AdminPickBuff[]> {
   return request('/api/admin/deduction/picker/buffs')
+}
+
+export async function fetchDeductionPickBuffTemplates(): Promise<
+  Array<{
+    name: string
+    desc: string | null
+    buff_image: string | null
+    effect_blocks?: import('@/types/calculator').BuffEffectBlock[] | null
+  }>
+> {
+  return request('/api/admin/deduction/picker/buff-templates')
 }
 
 /** shiyu 小怪数据源（推演非 STAGE 小怪层编辑使用） */
@@ -166,6 +201,7 @@ export async function updateDeductionAdminNode(
     name: string
     type: number
     storyText?: string | null
+    prevNode?: string | null
     storyOptions?: { name: string; desc: string | null }[]
     layers?: AdminDeductionNode['layers']
     buffs?: AdminDeductionNode['buffs']
@@ -192,6 +228,40 @@ export async function reorderDeductionAdminNodes(
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ nodeIds }),
+  })
+}
+
+export interface NanokaSimulImportResult {
+  dryRun?: boolean
+  buildTag: string
+  locale: string
+  summary?: Array<{
+    periodId: string
+    bosses: { deleted: number; inserted: number }
+    buffs: { deleted: number; inserted: number }
+    nodes: { deleted: number; inserted: number }
+  }>
+  periods?: Array<{
+    periodId: string
+    bosses: number
+    buffs: number
+    nodes: number
+    nodeSamples?: Array<{ nodeId: string; name: string; type: number; layers: number; buffs: number }>
+  }>
+}
+
+/** 从 nanoka simul 拉取并更新临界推演（整期 DELETE+INSERT，保留期数名与图片） */
+export async function importDeductionFromNanoka(payload: {
+  simulIds?: string[] | string
+  locale?: string
+  phase?: string
+  dryRun?: boolean
+  buildTag?: string | null
+}): Promise<NanokaSimulImportResult> {
+  return request('/api/admin/deduction/import/nanoka', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
   })
 }
 

@@ -12,6 +12,7 @@ import {
   ensureEnvironmentBuffSchema,
   parseEffectBlocksJson,
 } from '../utils/environmentBuffSchema.js'
+import { loadGlobalBuffEffectMap } from '../utils/sameNameBuffEffects.js'
 import {
   getSeasonContentTrashMap,
   seasonTrashKey,
@@ -215,6 +216,7 @@ function finalizeBattleRoom(battleRoom) {
 }
 
 function finalizeRoom(room) {
+  reconcileDefenseRoomBuff(room)
   const battleRooms = [...room.battleRooms.values()].map(finalizeBattleRoom)
   return {
     id: room.id,
@@ -269,12 +271,20 @@ function finalizeSeason(season) {
   }
 }
 
-function applyBuffToRoom(room, buff, decoded) {
+function resolveBuffEffectBlocks(buff, globalEffectMap) {
+  let effectBlocks = parseEffectBlocksJson(buff.effect_blocks)
+  if (!effectBlocks?.length && buff.buff_name) {
+    effectBlocks = globalEffectMap.get(buff.buff_name) ?? null
+  }
+  return effectBlocks
+}
+
+function applyBuffToRoom(room, buff, decoded, globalEffectMap) {
   const lines = String(buff.buff ?? '')
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
-  const effectBlocks = parseEffectBlocksJson(buff.effect_blocks)
+  const effectBlocks = resolveBuffEffectBlocks(buff, globalEffectMap)
 
   if (decoded.buffIndex <= 2) {
     if (!room.zoneBuffRecords) room.zoneBuffRecords = []
@@ -302,7 +312,23 @@ function applyBuffToRoom(room, buff, decoded) {
   }
 }
 
-function applyRoomBuffFallback(room, buff, decoded) {
+function reconcileDefenseRoomBuff(room) {
+  const zones = room.zoneBuffRecords ?? []
+  const roomBuff = room.roomBuff
+  if (!roomBuff?.recordId) return
+  const zoneMatch = zones.find((zone) => zone.recordId === roomBuff.recordId)
+  if (!zoneMatch) return
+  if (zoneMatch.effectBlocks?.length && !roomBuff.effectBlocks?.length) {
+    roomBuff.effectBlocks = zoneMatch.effectBlocks
+  }
+  // 区域 Buff（序号 1/2）曾被 fallback 误写入 roomBuff，且不带结构化效果时清掉
+  if (zoneMatch.buffIndex <= 2 && !roomBuff.effectBlocks?.length) {
+    room.roomBuff = { name: '', lines: [] }
+  }
+}
+
+function applyRoomBuffFallback(room, buff, decoded, globalEffectMap) {
+  if (decoded.buffIndex <= 2) return
   if (room.roomBuff.name) return
   if (!buff.buff_name) return
 
@@ -318,6 +344,7 @@ function applyRoomBuffFallback(room, buff, decoded) {
     recordId: buff.id,
     buffIndex: decoded.buffIndex,
     buffText: buff.buff ?? '',
+    effectBlocks: resolveBuffEffectBlocks(buff, globalEffectMap),
   }
 }
 
@@ -336,6 +363,7 @@ export async function getDefenseSeasons(variant = 'new', { includeHidden = false
      WHERE mode = 'defense'
      ORDER BY version, CAST(phase AS UNSIGNED), id`,
   )
+  const globalBuffEffectMap = await loadGlobalBuffEffectMap()
   // 仅「防卫战日期」可生成空期骨架；危局日期只用于给已有防卫内容补 dateRange，避免 2.4 等无防卫数据期清不掉
   const [defenseDateRows] = await pool.execute(
     `SELECT version, phase, start_date, end_date FROM \`date\` WHERE mode = 'defense'`,
@@ -424,7 +452,7 @@ export async function getDefenseSeasons(variant = 'new', { includeHidden = false
     const season = seasons.get(key)
     const frontier = ensureFrontier(season, decoded.stage)
     const room = ensureRoom(frontier, decoded.stage, decoded.roomInStage)
-    applyBuffToRoom(room, buff, decoded)
+    applyBuffToRoom(room, buff, decoded, globalBuffEffectMap)
   }
 
   for (const buff of buffRows) {
@@ -447,7 +475,7 @@ export async function getDefenseSeasons(variant = 'new', { includeHidden = false
 
     const room = frontier.rooms.get(`${decoded.stage}-${decoded.roomInStage}`)
     if (!room) continue
-    applyRoomBuffFallback(room, buff, decoded)
+    applyRoomBuffFallback(room, buff, decoded, globalBuffEffectMap)
   }
 
   for (const [key, dateInfo] of defenseDateMap.entries()) {

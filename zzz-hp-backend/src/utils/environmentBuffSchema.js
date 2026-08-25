@@ -196,12 +196,14 @@ export async function ensureEnvironmentBuffSchema() {
 
 export function parseEffectBlocksJson(value) {
   if (value == null || value === '') return null
-  if (Array.isArray(value)) return value
-  if (typeof value === 'object') return value
+  if (Array.isArray(value)) return value.length ? value : null
+  if (typeof value === 'object') return [value]
   if (typeof value !== 'string') return null
   try {
     const parsed = JSON.parse(value)
-    return Array.isArray(parsed) ? parsed : null
+    if (Array.isArray(parsed)) return parsed.length ? parsed : null
+    if (parsed && typeof parsed === 'object') return [parsed]
+    return null
   } catch {
     return null
   }
@@ -214,7 +216,13 @@ export function serializeEffectBlocks(value) {
     if (!trimmed) return null
     try {
       const parsed = JSON.parse(trimmed)
-      return Array.isArray(parsed) && parsed.length ? JSON.stringify(parsed) : null
+      if (Array.isArray(parsed)) {
+        return parsed.length ? JSON.stringify(parsed) : null
+      }
+      if (parsed && typeof parsed === 'object') {
+        return JSON.stringify([parsed])
+      }
+      return null
     } catch {
       return null
     }
@@ -224,6 +232,13 @@ export function serializeEffectBlocks(value) {
     try {
       // 去掉 undefined / 不可序列化字段，避免写入 JSON 列失败
       return JSON.stringify(JSON.parse(JSON.stringify(value)))
+    } catch {
+      return null
+    }
+  }
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify([JSON.parse(JSON.stringify(value))])
     } catch {
       return null
     }

@@ -21,6 +21,11 @@ import {
 import { parseSimulPeriod } from '../src/services/nanoka/nanokaSimulParser.js'
 import { ensureContentModeColumns } from '../src/services/contentModeService.js'
 import { ensureDeductionStoryOptionsColumn } from '../src/services/deductionSchemaService.js'
+import { resolveLayerIsBoss } from '../src/utils/deductionLayerFallback.js'
+import {
+  parseEffectBlocksJson,
+  serializeEffectBlocks,
+} from '../src/utils/environmentBuffSchema.js'
 
 dotenv.config()
 
@@ -162,15 +167,48 @@ if (dryRun) {
         const preservedBossImages = new Map(
           imgRows.map((row) => [String(row.boss_name).trim(), row.boss_image]),
         )
-        const [buffImgRows] = await conn.execute(
-          `SELECT buff_name, buff_image FROM buff
-            WHERE mode = 'deduction' AND version = ? AND phase = ?
-              AND buff_image IS NOT NULL AND buff_image <> ''`,
+        const [buffPreserveRows] = await conn.execute(
+          `SELECT buff_name, buff_image, effect_blocks FROM buff
+            WHERE mode = 'deduction' AND version = ? AND phase = ?`,
           [item.version, item.phase],
         )
-        const preservedBuffImages = new Map(
-          buffImgRows.map((row) => [String(row.buff_name).trim(), row.buff_image]),
+        const preservedBuffImages = new Map()
+        const preservedBuffBlocks = new Map()
+        for (const row of buffPreserveRows) {
+          const name = String(row.buff_name ?? '').trim()
+          if (!name) continue
+          if (row.buff_image != null && String(row.buff_image).trim() !== '') {
+            preservedBuffImages.set(name, row.buff_image)
+          }
+          const blocks = parseEffectBlocksJson(row.effect_blocks)
+          if (blocks?.length) preservedBuffBlocks.set(name, blocks)
+        }
+
+        const [nodeBuffRows] = await conn.execute(
+          `SELECT buffs_json FROM deduction_node
+            WHERE version = ? AND phase = ? AND buffs_json IS NOT NULL`,
+          [item.version, item.phase],
         )
+        for (const row of nodeBuffRows) {
+          let buffs = row.buffs_json
+          if (typeof buffs === 'string') {
+            try {
+              buffs = JSON.parse(buffs)
+            } catch {
+              continue
+            }
+          }
+          if (!Array.isArray(buffs)) continue
+          for (const buff of buffs) {
+            const name = String(buff?.title ?? '').trim()
+            if (!name || preservedBuffBlocks.has(name)) continue
+            const blocks = parseEffectBlocksJson(buff.effect_blocks)
+            if (blocks?.length) preservedBuffBlocks.set(name, blocks)
+            if (!preservedBuffImages.has(name) && buff.buff_image) {
+              preservedBuffImages.set(name, buff.buff_image)
+            }
+          }
+        }
 
         const [delBoss] = await conn.execute(
           "DELETE FROM boss WHERE mode = 'deduction' AND version = ? AND phase = ?",
@@ -209,17 +247,30 @@ if (dryRun) {
 
         let buffInserted = 0
         for (const buff of item.buffs) {
-          const preservedImage = preservedBuffImages.get(String(buff.buff_name).trim()) ?? null
+          const name = String(buff.buff_name).trim()
+          const preservedImage = preservedBuffImages.get(name) ?? null
+          const preservedBlocks = preservedBuffBlocks.get(name) ?? null
+          const effectBlocksJson = serializeEffectBlocks(preservedBlocks)
           await conn.execute(
-            `INSERT INTO buff (version, phase, buff_name, buff, buff_image, mode)
-             VALUES (?, ?, ?, ?, ?, 'deduction')`,
-            [buff.version, buff.phase, buff.buff_name, buff.buff, preservedImage],
+            `INSERT INTO buff (version, phase, buff_name, buff, buff_image, effect_blocks, mode)
+             VALUES (?, ?, ?, ?, ?, ?, 'deduction')`,
+            [buff.version, buff.phase, buff.buff_name, buff.buff, preservedImage, effectBlocksJson],
           )
           buffInserted += 1
         }
 
         let nodeInserted = 0
         for (const [index, node] of item.nodes.entries()) {
+          const nodeBuffs = (node.buffs ?? []).map((buff) => {
+            const title = String(buff?.title ?? '').trim()
+            const blocks = preservedBuffBlocks.get(title) ?? parseEffectBlocksJson(buff?.effect_blocks)
+            return {
+              title,
+              desc: buff?.desc ?? null,
+              buff_image: preservedBuffImages.get(title) ?? buff?.buff_image ?? null,
+              effect_blocks: blocks?.length ? blocks : null,
+            }
+          })
           await conn.execute(
             `INSERT INTO deduction_node
                (version, phase, node_id, node_name, node_type, prev_node, story_text, story_options_json, layers_json, buffs_json, sort_order, period_name)
@@ -233,14 +284,15 @@ if (dryRun) {
               node.prevNode,
               node.storyText,
               JSON.stringify(node.storyOptions ?? []),
-              // isBoss 开关默认按层名初始化：STAGE/LAST = Boss 关，其余 = 小怪关
               JSON.stringify(
                 node.layers.map((l) => ({
-                  ...l,
-                  isBoss: /STAGE|LAST/i.test(String(l.name ?? '')),
+                  name: l.name,
+                  isBoss: resolveLayerIsBoss(l),
+                  ending: l.ending ?? null,
+                  monsters: l.monsters ?? [],
                 })),
               ),
-              JSON.stringify(node.buffs),
+              JSON.stringify(nodeBuffs),
               index,
               preservedPeriodName,
             ],

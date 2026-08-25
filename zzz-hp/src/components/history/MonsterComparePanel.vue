@@ -57,7 +57,7 @@ const panelDesc = computed(() => {
     return '先选择精英或 Boss，再选择怪物，查看其在各期出现时的血量与相对膨胀变化'
   }
   return crisisRoomType.value === 'hard'
-    ? '选择困难模式 Boss 后，查看其在各期出现时的血量、危局血量系数与相对变化'
+    ? '选择绝境模式 Boss 后，查看其在各期出现时的血量、危局血量系数与相对变化'
     : '选择正常模式 Boss（房间 1/2/3）后，查看其在各期出现时的血量、危局血量系数与相对变化'
 })
 
@@ -178,7 +178,7 @@ watch(selectedBoss, () => {
               isDeductionMode || isDefenseMode
                 ? `选择${categoryLabel}`
                 : crisisRoomType === 'hard'
-                  ? '选择困难 Boss'
+                  ? '选择绝境 Boss'
                   : '选择正常 Boss'
             }}
           </label>
@@ -224,7 +224,7 @@ watch(selectedBoss, () => {
         :enable-point-click="!isDefenseMode && !isDeductionMode"
         :enable-boss-preview="false"
         :enable-room-buff-preview="isDefenseMode"
-        :enable-hp-converted953-toggle="!isDefenseMode && !isDeductionMode"
+        :enable-hp-converted953-toggle="!isDefenseMode"
         @point-click="openPhaseDetail"
       />
 

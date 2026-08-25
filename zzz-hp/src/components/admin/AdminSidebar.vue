@@ -11,13 +11,23 @@ const props = defineProps<{
 
 const activePanel = defineModel<AdminPanel>('activePanel', { default: 'monster' })
 
-const allPanels: { id: AdminPanel; label: string; deductionExclude?: boolean }[] = [
-  { id: 'monster', label: '内容管理' },
-  { id: 'monster-form', label: '表单添加怪物' },
-  { id: 'buff-form', label: '表单添加 Buff' },
+const allPanels: {
+  id: AdminPanel
+  label: string
+  deductionLabel?: string
+  deductionExclude?: boolean
+}[] = [
+  { id: 'monster', label: '内容管理', deductionLabel: '节点编辑（怪物 / Buff）' },
+  { id: 'monster-form', label: '表单添加怪物', deductionExclude: true },
+  { id: 'buff-form', label: '表单添加 Buff', deductionExclude: true },
   { id: 'season-date', label: '版本日期管理', deductionExclude: true },
   { id: 'import-export', label: '导入 / 导出' },
 ]
+
+function panelLabel(panel: { label: string; deductionLabel?: string }) {
+  if (props.scope === 'deduction' && panel.deductionLabel) return panel.deductionLabel
+  return panel.label
+}
 
 const panels = computed(() =>
   allPanels.filter(
@@ -41,7 +51,7 @@ const panels = computed(() =>
         :class="{ active: activePanel === panel.id }"
         @click="activePanel = panel.id"
       >
-        {{ panel.label }}
+        {{ panelLabel(panel) }}
       </button>
     </nav>
   </aside>

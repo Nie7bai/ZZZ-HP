@@ -12,7 +12,7 @@ import {
   type HpChartPoint,
 } from '@/api/crisisAssault'
 import { fetchDefensePhaseCompareChart } from '@/api/defense'
-import { fetchDeductionHpChart } from '@/api/deduction'
+import { fetchDeductionNodeHpChart } from '@/api/deduction'
 import { usePhaseDetailModal } from '@/composables/usePhaseDetailModal'
 import { useCrisisAssaultCompareStore } from '@/stores/crisisAssaultCompare'
 import { useDefenseCompareStore } from '@/stores/defenseCompare'
@@ -94,20 +94,20 @@ const chartPoints = computed(() =>
 
 const panelDesc = computed(() => {
   if (props.mode === 'deduction') {
-    return '添加任意战斗节点，对比各节点总血量与相对膨胀变化；输入期数号可一键添加该期全部节点'
+    return '添加任意战斗节点，对比各节点总血量与相对膨胀；可勾选 953 防御换算（T）；输入期数号可一键添加该期全部节点'
   }
   if (isDefenseMode.value) {
     return '添加任意期数，对比最后一防线总血量与相对膨胀变化；点击图表数据点可移除期数'
   }
   return isHardMode.value
-    ? '添加任意期数，对比困难模式总血量与相对膨胀变化；可勾选 953 防御换算（T）'
+    ? '添加任意期数，对比绝境模式总血量与相对膨胀变化；可勾选 953 防御换算（T）'
     : '添加任意期数，对比总血量与相对膨胀变化；可勾选 953 防御换算（T）'
 })
 
 const panelHeading = computed(() => {
   if (isDeductionMode.value) return `${pageTitle.value} · 节点对比折线图`
   return isHardMode.value
-    ? `${pageTitle.value} · 困难期数对比折线图`
+    ? `${pageTitle.value} · 绝境期数对比折线图`
     : `${pageTitle.value} · 期数对比折线图`
 })
 
@@ -158,7 +158,7 @@ async function loadChartData() {
     } else if (props.mode === 'crisis-assault') {
       data = await fetchCrisisAssaultHpChart(crisisHpMode.value)
     } else if (props.mode === 'deduction') {
-      data = await fetchDeductionHpChart()
+      data = await fetchDeductionNodeHpChart()
     }
     if (!chartLoadEpoch.isCurrent(token)) return
     allPoints.value = data
@@ -417,16 +417,40 @@ watch(phaseSearchInput, () => {
         borderless
         :show-hp-mode-toggle="!isDefenseMode && props.mode !== 'deduction'"
         :enable-score-hp-overlays="!isDefenseMode && props.mode !== 'deduction'"
-        :hp-chart-title="isHardMode ? '困难期数对比 · 血量折线图' : '期数对比 · 血量折线图'"
-        :expansion-chart-title="isHardMode ? '困难期数对比 · 血量相对膨胀折线图' : '期数对比 · 血量相对膨胀折线图'"
-        :hp-aria-label="isDefenseMode ? '式舆防卫战期数对比血量折线图' : `${pageTitle}${isHardMode ? '困难' : ''}期数对比血量折线图`"
-        :expansion-aria-label="isDefenseMode ? '式舆防卫战期数对比血量相对膨胀折线图' : `${pageTitle}${isHardMode ? '困难' : ''}期数对比血量相对膨胀折线图`"
+        :hp-chart-title="
+          isDeductionMode
+            ? '节点对比 · 血量折线图'
+            : isHardMode
+              ? '绝境期数对比 · 血量折线图'
+              : '期数对比 · 血量折线图'
+        "
+        :expansion-chart-title="
+          isDeductionMode
+            ? '节点对比 · 血量相对膨胀折线图'
+            : isHardMode
+              ? '绝境期数对比 · 血量相对膨胀折线图'
+              : '期数对比 · 血量相对膨胀折线图'
+        "
+        :hp-aria-label="
+          isDefenseMode
+            ? '式舆防卫战期数对比血量折线图'
+            : isDeductionMode
+              ? `${pageTitle}节点对比血量折线图`
+              : `${pageTitle}${isHardMode ? '绝境' : ''}期数对比血量折线图`
+        "
+        :expansion-aria-label="
+          isDefenseMode
+            ? '式舆防卫战期数对比血量相对膨胀折线图'
+            : isDeductionMode
+              ? `${pageTitle}节点对比血量相对膨胀折线图`
+              : `${pageTitle}${isHardMode ? '绝境' : ''}期数对比血量相对膨胀折线图`
+        "
         :enable-point-click="props.mode === 'deduction' ? false : isDefenseMode ? chartPoints.length > 0 : true"
         :point-click-hint="isDefenseMode && chartPoints.length > 0 ? defensePointClickHint : undefined"
         :show-remove-mode-toggle="isDefenseMode && chartPoints.length > 0"
         :boss-preview-mode="isDefenseMode ? 'embedded' : 'crisis'"
         :enable-boss-preview="false"
-        :enable-hp-converted953-toggle="!isDefenseMode && props.mode !== 'deduction'"
+        :enable-hp-converted953-toggle="!isDefenseMode"
         @point-click="onChartPointClick"
       />
 

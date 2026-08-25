@@ -35,7 +35,14 @@ export interface CrisisScoreMarker {
 
 export const CRISIS_SCORE_MAX = 60000
 
-/** 正常模式：满星 S（2 万分）所需累计血量占比 → FS-HP */
+/** 操作分上限 / 默认（额外分，不计入分数占比与血量表插值） */
+export const CRISIS_OPERATION_SCORE_MAX = 5000
+export const CRISIS_OPERATION_SCORE_DEFAULT = 5000
+
+/** 填写总分上限 = 战斗分满分 + 操作分上限 */
+export const CRISIS_TOTAL_SCORE_MAX = CRISIS_SCORE_MAX + CRISIS_OPERATION_SCORE_MAX
+
+/** 正常模式：满星 S（2 万分战斗分）所需累计血量占比 → FS-HP */
 export const FS_HP_RATIO_NORMAL = 0.2812
 
 export const crisisScoreHpTableNormal: CrisisScoreHpRow[] = [
@@ -75,7 +82,7 @@ export const crisisScoreHpTableNormal: CrisisScoreHpRow[] = [
 /** @deprecated 使用 crisisScoreHpTableNormal */
 export const crisisScoreHpTable = crisisScoreHpTableNormal
 
-/** 困难模式：与《分数与血量.xlsx》「困难」表一致；节点为 0.5万(第6管) / 1.5万 / 2.5万 */
+/** 绝境模式：与《分数与血量.xlsx》「困难」表一致；折线节点仍为 0.5万 / 1.5万 / 2.5万 */
 export const crisisScoreHpTableHard: CrisisScoreHpRow[] = [
   { bar: 1, score: 750, scoreRatio: 0.0125, hpRatio: 0.02278, scorePerHp: 0.548245, cumulativeScore: 750, cumulativeHp: 0.0228, isMilestone: false },
   { bar: 2, score: 750, scoreRatio: 0.0125, hpRatio: 0.02278, scorePerHp: 0.548245, cumulativeScore: 1500, cumulativeHp: 0.0456, isMilestone: false },
@@ -105,7 +112,7 @@ export const crisisScoreHpTableHard: CrisisScoreHpRow[] = [
   { bar: 24, score: 4000, scoreRatio: 0.0667, hpRatio: 0.06329, scorePerHp: 1.05371, cumulativeScore: 60000, cumulativeHp: 1, isMilestone: false },
 ]
 
-/** 正常模式折线叠加：均 1.5w / 均 2w（FS） */
+/** 正常模式折线叠加：均 1.5w / 均 2w（FS）；转换器快捷键另有逻辑 */
 export const NORMAL_SCORE_MARKERS: CrisisScoreMarker[] = [
   {
     id: '15k',
@@ -125,7 +132,7 @@ export const NORMAL_SCORE_MARKERS: CrisisScoreMarker[] = [
   },
 ]
 
-/** 困难模式折线叠加：0.5w / 1.5w / 2.5w（无「均」前缀） */
+/** 绝境折线叠加：0.5w / 1.5w / 2.5w（转换器快捷键另为 1w/2w/3w 总分） */
 export const HARD_SCORE_MARKERS: CrisisScoreMarker[] = [
   {
     id: '5k',

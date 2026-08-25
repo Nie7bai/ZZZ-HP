@@ -17,6 +17,7 @@ import { adminScopeTitles, isDefenseScope, isDeductionScope, recordSchemeFromSco
 import { encodeDefenseBossId } from '@/utils/defenseId'
 import { calcCrisisHpCoeffPercent, getCrisisBaseHpByName } from '@/utils/crisisHpCoeff'
 import { CRISIS_HARD_ROOM_CODE, normalizeCrisisRoomCode } from '@/utils/crisisRoom'
+import { applyReusedMonsterLevel } from '@/utils/adminMonsterReuse'
 import { resolveAssetUrl } from '@/utils/gameData'
 
 const props = defineProps<{
@@ -46,7 +47,7 @@ const CRISIS_ROOM_OPTIONS = [
   { value: '1', label: '房间 1' },
   { value: '2', label: '房间 2' },
   { value: '3', label: '房间 3' },
-  { value: CRISIS_HARD_ROOM_CODE, label: '困难' },
+  { value: CRISIS_HARD_ROOM_CODE, label: '绝境' },
 ] as const
 
 const version = ref('')
@@ -186,7 +187,7 @@ function applyBossInfo(info: {
   field_buff_name?: string | null
 }) {
   defense.value = String(info.defense ?? 0)
-  level.value = String(info.level ?? 1)
+  level.value = String(applyReusedMonsterLevel(level.value, info.level ?? 0))
   weakness.value = info.weakness ?? ''
   resistance.value = info.resistance ?? ''
   if (info.stagger_multiplier != null && Number.isFinite(Number(info.stagger_multiplier))) {
@@ -496,7 +497,7 @@ async function submitForm() {
         return
       }
     } else if (!normalizeCrisisRoomCode(room.value)) {
-      error.value = '危局强袭战须选择房间（1 / 2 / 3 / 困难）'
+      error.value = '危局强袭战须选择房间（1 / 2 / 3 / 绝境）'
       showFeedback('error')
       return
     }

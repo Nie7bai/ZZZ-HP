@@ -50,7 +50,20 @@ export function splitBuffLines(text: string | null): string[] {
 export function resolveAssetUrl(path?: string | null): string | undefined {
   if (!path) return undefined
   if (path.startsWith('http://') || path.startsWith('https://')) return path
+  // 分段编码：中文 / 「」/ 罗马数字等文件名才能稳定走静态资源
   return path
+    .split('/')
+    .map((segment) => {
+      if (!segment) return segment
+      try {
+        // 已编码则保持，避免二次 encode
+        if (segment !== decodeURIComponent(segment)) return segment
+      } catch {
+        /* 非法 % 序列：按原文编码 */
+      }
+      return encodeURIComponent(segment)
+    })
+    .join('/')
 }
 
 export function hasBossDisplayImage(image?: string | null): boolean {

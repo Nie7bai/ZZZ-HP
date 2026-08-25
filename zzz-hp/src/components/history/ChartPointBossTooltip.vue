@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ChartBossPreview } from '@/api/crisisAssault'
+import { formatCrisisRoomLabel, isCrisisHardRoom } from '@/utils/crisisRoom'
 
 defineProps<{
   visible: boolean
@@ -32,7 +33,7 @@ defineProps<{
           </div>
           <div class="tooltip-boss-meta">
             <span class="tooltip-boss-room">
-              {{ boss.room === '困难' ? '困难' : `房间 ${boss.room}` }}
+              {{ isCrisisHardRoom(boss.room) ? formatCrisisRoomLabel(boss.room) : `房间 ${boss.room}` }}
             </span>
             <span class="tooltip-boss-name">{{ boss.bossName }}</span>
             <span class="tooltip-boss-hp">{{ boss.hp }}</span>

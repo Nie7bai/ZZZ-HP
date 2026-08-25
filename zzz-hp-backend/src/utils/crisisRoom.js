@@ -1,12 +1,19 @@
+/** 危局绝境（原困难）房间编码（ID 末位 / room 字段） */
 export const CRISIS_HARD_ROOM_CODE = '4'
+
+/** 用户可见名称：绝境（内部 mode/key 仍为 hard） */
+export const CRISIS_HARD_MODE_LABEL = '绝境'
 
 export function isCrisisHardRoom(room) {
   const text = String(room ?? '').trim()
   if (!text) return false
-  if (text === '困难' || text.toLowerCase() === 'hard') return true
+  if (text === '困难' || text === CRISIS_HARD_MODE_LABEL || text.toLowerCase() === 'hard') {
+    return true
+  }
   return text.replace(/\D/g, '') === CRISIS_HARD_ROOM_CODE
 }
 
+/** 管理端/入库用房间码：绝境/困难 → 4 */
 export function normalizeCrisisRoomCode(room) {
   const text = String(room ?? '').trim()
   if (!text) return ''
@@ -15,7 +22,7 @@ export function normalizeCrisisRoomCode(room) {
 }
 
 export function formatCrisisRoomLabel(room) {
-  if (isCrisisHardRoom(room)) return '困难'
+  if (isCrisisHardRoom(room)) return CRISIS_HARD_MODE_LABEL
   const text = String(room ?? '').trim()
   return text || '—'
 }

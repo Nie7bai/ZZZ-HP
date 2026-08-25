@@ -16,7 +16,7 @@ const rows = computed(() => getCrisisScoreTable(tableMode.value))
 
 const panelDesc = computed(() =>
   tableMode.value === 'hard'
-    ? `满分 ${CRISIS_SCORE_MAX.toLocaleString('zh-CN')} 分（困难）；第6管标为「6/节点」（0.5万）；另有 1.5万 / 2.5万 节点；节点已得分数已高亮`
+    ? `满分 ${CRISIS_SCORE_MAX.toLocaleString('zh-CN')} 分（绝境）；第6管标为「6/节点」（0.5万）；另有 1.5万 / 2.5万 节点；节点已得分数已高亮`
     : `满分 ${CRISIS_SCORE_MAX.toLocaleString('zh-CN')} 分（正常）；「节点」为阶段分数节点；2万节点对应满星 S（FS-HP）；节点已得分数已高亮`,
 )
 
@@ -45,7 +45,7 @@ function barLabel(row: CrisisScoreHpRow): string {
           :class="{ active: tableMode === 'hard' }"
           @click="tableMode = 'hard'"
         >
-          困难
+          绝境
         </button>
       </div>
     </header>

@@ -8,6 +8,7 @@ const modes = [
   { title: '危局强袭战', path: '/admin/crisis-assault', color: '#ff6b35' },
   { title: '式舆防卫战', path: '/admin/defense', color: '#4ecdc4' },
   { title: '临界推演', path: '/admin/deduction', color: '#a78bfa' },
+  { title: '环境 Buff 管理', path: '/admin/buffs', color: '#c4a35a' },
   { title: '怪物基础库', path: '/admin/boss-info', color: '#d97757' },
   { title: '角色计算器', path: '/admin/character-calculator', color: '#3f8cff' },
   { title: '更新日志', path: '/admin/changelog', color: '#c4a35a' },

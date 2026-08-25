@@ -20,6 +20,10 @@ import {
   normalizeFieldBuffSet,
   parseEffectBlocksJson,
 } from '../utils/environmentBuffSchema.js'
+import {
+  loadGlobalBuffEffectMap,
+  resolveEffectBlocksForName,
+} from '../utils/sameNameBuffEffects.js'
 import { ensureContentModeColumns } from './contentModeService.js'
 
 let schemaEnsured = false
@@ -215,6 +219,7 @@ export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
   const [idRows] = await pool.execute('SELECT id, tid FROM id_table')
   const baseHpByName = await loadCrisisBaseHpMap()
   const fieldBuffByName = await loadBossFieldBuffMap()
+  const globalBuffEffectMap = await loadGlobalBuffEffectMap()
 
   const tidMap = new Map(idRows.map((row) => [Number(row.id), Number(row.tid)]))
 
@@ -295,7 +300,11 @@ export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
           buff_name: buff.buff_name,
           buff: buff.buff,
           buff_image: buff.buff_image,
-          effect_blocks: parseEffectBlocksJson(buff.effect_blocks),
+          effect_blocks: resolveEffectBlocksForName(
+            buff.effect_blocks,
+            buff.buff_name,
+            globalBuffEffectMap,
+          ),
         })),
       }
     })

@@ -134,6 +134,12 @@ const router = createRouter({
       meta: { requiresAdmin: true, title: '怪物基础库' },
     },
     {
+      path: '/admin/buffs',
+      name: 'admin-buffs',
+      component: () => import('../views/admin/AdminBuffCatalogView.vue'),
+      meta: { requiresAdmin: true, title: '环境 Buff 管理' },
+    },
+    {
       path: '/admin/character-calculator',
       name: 'admin-character-calculator',
       component: () => import('../layouts/AdminCalculatorLayout.vue'),

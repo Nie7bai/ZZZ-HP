@@ -13,6 +13,7 @@ import {
   getBuffEffectEnabled,
   getBuffEffectStacks,
   isEnvironmentBuffGroup,
+  isEnvironmentBuffSourceKey,
   parseSourceKeySlotIndex,
   resolveEnvironmentBlockItemEnabled,
   setBuffEffectConvertInput,
@@ -20,7 +21,7 @@ import {
   setBuffEffectStacks,
   isTeamBuffApplyTarget,
 } from '@/utils/panelBuffCalc'
-import { formatBuffEffectResultText, resolveConvertValue } from '@/utils/buffEffect'
+import { formatBuffEffectResultText, formatApplyProfessionLabel, resolveConvertValue } from '@/utils/buffEffect'
 import { formatCalcSigned } from '@/utils/calcNumberFormat'
 import { buffStatFieldLabel, BUFF_STAT_FIELDS } from '@/utils/calculatorUi'
 import { CHARACTER_ATTR_OPTIONS } from '@/types/calculator'
@@ -72,6 +73,7 @@ const groupOrder = [
   '危局 Buff',
   'Boss 场地 Buff',
   '防线 Buff',
+  '临界 Buff',
 ]
 
 interface BuffCardGroup {
@@ -115,9 +117,11 @@ function isManualConvert(item: CollectedEffect) {
 }
 
 function isEnabled(item: CollectedEffect) {
-  const fallback = item.effect.teamProfession?.trim()
-    ? false
-    : item.effect.enabledDefault !== false
+  // 环境 Buff：未写入勾选时一律视为未选（与危局/防卫一致，勿用 enabledDefault）
+  const fallback =
+    isEnvironmentBuffSourceKey(item.sourceKey) || item.effect.teamProfession?.trim()
+      ? false
+      : item.effect.enabledDefault !== false
   return getBuffEffectEnabled(
     multiSelection.value,
     viewSlotIndex.value,
@@ -298,7 +302,14 @@ function effectResultText(item: CollectedEffect) {
     skillSubcategories: props.skillSubcategories,
   })
   const situation = situationLabel(item)
-  return situation === '全局' ? body : `[${situation}] ${body}`
+  if (situation === '全局') return body
+  // [强攻] 放最前，作用情况紧随其后
+  const applyProf = formatApplyProfessionLabel(item.effect)
+  if (applyProf && body.startsWith(applyProf)) {
+    const rest = body.slice(applyProf.length).trimStart()
+    return `${applyProf}[${situation}] ${rest}`
+  }
+  return `[${situation}] ${body}`
 }
 
 function cardSituationLabels(card: BuffCardGroup) {
@@ -348,8 +359,15 @@ function cardPartial(card: BuffCardGroup) {
   return on > 0 && on < states.length
 }
 
+function disableOtherCardsInGroup(group: string, keepKey: string) {
+  for (const other of filteredCards.value) {
+    if (other.group !== group || other.key === keepKey) continue
+    for (const item of other.items) setEnabled(item, false, { manual: false })
+  }
+}
+
 function toggleCard(card: BuffCardGroup) {
-  // 危局 / Boss 场地 / 防线：按「默认启用」+ 队内职业人数条件开启；无任何应开项则点选不生效
+  // 危局 / Boss 场地 / 防线 / 临界：按「默认启用」+ 队内职业人数条件开启；无任何应开项则点选不生效
   if (isEnvironmentBuffGroup(card.group)) {
     const anyOn = card.items.some((item) => isEnabled(item))
     if (anyOn) {
@@ -358,6 +376,10 @@ function toggleCard(card: BuffCardGroup) {
     }
     const toEnable = card.items.filter((item) => desiredEnvironmentOn(item))
     if (!toEnable.length) return
+    // 临界 Buff：单选；Boss 场地：单选（后点覆盖）
+    if (card.group === '临界 Buff' || card.group === 'Boss 场地 Buff') {
+      disableOtherCardsInGroup(card.group, card.key)
+    }
     for (const item of card.items) {
       setEnabled(item, desiredEnvironmentOn(item), { manual: false })
     }
@@ -370,7 +392,17 @@ function toggleCard(card: BuffCardGroup) {
 }
 
 function toggleEffect(item: CollectedEffect) {
-  setEnabled(item, !isEnabled(item))
+  const next = !isEnabled(item)
+  // 临界 Buff 单项开启时，关掉其他临界卡片（保持单选）
+  if (next && item.group === '临界 Buff') {
+    const card = filteredCards.value.find((c) => c.items.some((x) => x.effect.id === item.effect.id))
+    if (card) disableOtherCardsInGroup('临界 Buff', card.key)
+  }
+  if (next && item.group === 'Boss 场地 Buff') {
+    const card = filteredCards.value.find((c) => c.items.some((x) => x.effect.id === item.effect.id))
+    if (card) disableOtherCardsInGroup('Boss 场地 Buff', card.key)
+  }
+  setEnabled(item, next)
 }
 
 const filtered = computed(() => {

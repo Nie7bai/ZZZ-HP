@@ -6,10 +6,13 @@ import { ensureUserSecurityColumns } from '../services/userAuthService.js'
 import { ensureGuestbookSchema } from '../services/guestbookService.js'
 import { ensureGuestbookSocialSchema } from '../services/guestbookSocialService.js'
 import { ensureSeasonContentTrashTable } from '../services/seasonContentTrashService.js'
+import { ensureSameNameBuffEffectConsistency } from '../utils/sameNameBuffEffects.js'
 
 export async function ensureRuntimeSchema() {
   await ensureUserSecurityColumns()
   await ensureGuestbookSchema()
   await ensureGuestbookSocialSchema()
   await ensureSeasonContentTrashTable()
+  // 跨期同名环境 Buff 结构化增益补齐（进程内只跑一次）
+  await ensureSameNameBuffEffectConsistency()
 }

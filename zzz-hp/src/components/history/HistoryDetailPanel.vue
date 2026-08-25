@@ -25,7 +25,8 @@ const emit = defineEmits<{
   'admin-monster': [context: AdminMonsterSlotContext]
   'admin-delete-monster': [recordId: number, label: string]
   'admin-buff': [context: AdminBuffSlotContext]
-  'admin-delete-buff': [recordId: number, label: string]
+  /** 从本期移除（不视为「删除 Buff 本身」；实际去掉本期该条记录） */
+  'admin-remove-period-buff': [recordId: number, label: string]
 }>()
 
 const crisisPhases = ref<PhaseData[]>([])
@@ -361,9 +362,9 @@ function onAdminAddBuff(buff: PhaseData['buffs'][number]) {
   if (ctx) emit('admin-buff', { ...ctx, buffName: '', buffText: '' })
 }
 
-function onAdminDeleteBuff(buff: PhaseData['buffs'][number]) {
+function onAdminRemovePeriodBuff(buff: PhaseData['buffs'][number]) {
   if (!buff.recordId) return
-  emit('admin-delete-buff', buff.recordId, buff.name)
+  emit('admin-remove-period-buff', buff.recordId, buff.name)
 }
 
 defineExpose({
@@ -619,7 +620,7 @@ function onPickerWheel(event: WheelEvent) {
             </div>
 
             <div v-if="showHardTotalHp" class="hp-summary hp-summary--hard">
-              <span class="hp-label">困难总血量</span>
+              <span class="hp-label">绝境总血量</span>
               <div class="hp-metrics">
                 <div class="hp-metric-row">
                   <span class="hp-tag hp-tag--hard">H-HP</span>
@@ -736,9 +737,9 @@ function onPickerWheel(event: WheelEvent) {
                 v-if="!buff.isEmpty && buff.recordId"
                 type="button"
                 class="enemy-admin-btn enemy-admin-btn--danger"
-                @click.stop="onAdminDeleteBuff(buff)"
+                @click.stop="onAdminRemovePeriodBuff(buff)"
               >
-                删除
+                从本期移除
               </button>
               <button
                 v-if="buff.isEmpty"

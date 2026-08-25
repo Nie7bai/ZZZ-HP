@@ -55,6 +55,14 @@ export interface CreateBuffPayload {
 export interface CreateBuffResult {
   id: number
   action?: 'created' | 'updated'
+  reusedFromName?: boolean
+}
+
+export interface BuffNameTemplate {
+  name: string
+  desc: string | null
+  buff_image: string | null
+  effect_blocks?: import('@/types/calculator').BuffEffectBlock[] | null
 }
 
 export interface UploadImageResult {
@@ -124,6 +132,8 @@ export interface BuffRecord {
   buff_name: string
   buff: string | null
   buff_image: string | null
+  effect_blocks?: import('@/types/calculator').BuffEffectBlock[] | null
+  mode?: 'crisis' | 'defense' | 'deduction' | string | null
 }
 
 export interface AdminSearchParams {
@@ -302,12 +312,20 @@ export async function searchBuffRecords(params: AdminSearchParams = {}) {
   return parseResponse<BuffRecord[]>(response)
 }
 
+export async function fetchBuffNameTemplates(recordScheme?: RecordScheme) {
+  const query = recordScheme ? `?recordScheme=${encodeURIComponent(recordScheme)}` : ''
+  const response = await fetch(`/api/buff/templates${query}`)
+  return parseResponse<BuffNameTemplate[]>(response)
+}
+
 export async function deleteBuffRecord(id: number) {
   const response = await fetch(`/api/buff/${id}`, {
     method: 'DELETE',
     headers: withAdminAuthHeaders(),
   })
-  return parseResponse<{ id: number }>(response)
+  return parseResponse<{ id: number; buff_name?: string; mode?: string; cleanedNodes?: number }>(
+    response,
+  )
 }
 
 export type SeasonDateMode = 'crisis' | 'defense' | 'deduction'

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, toRef, watch } from 'vue'
-import { createBuff, uploadBuffImage } from '@/api/admin'
+import { createBuff, fetchBuffNameTemplates, uploadBuffImage, type BuffNameTemplate } from '@/api/admin'
 import AdminImagePicker from '@/components/admin/AdminImagePicker.vue'
 import AdminBuffEffectEditor from '@/components/admin/calculator/AdminBuffEffectEditor.vue'
+import AdminDeductionFuzzySelect from '@/components/admin/AdminDeductionFuzzySelect.vue'
 import { useAdminVersionPhaseSelect } from '@/composables/useAdminVersionPhaseSelect'
 import type { AdminBuffSlotContext, AdminScope } from '@/types/admin'
 import type { BuffEffectBlock } from '@/types/calculator'
-import { adminScopeTitles, isDefenseScope, isDeductionScope } from '@/types/admin'
+import { adminScopeTitles, isDefenseScope, isDeductionScope, recordSchemeFromScope } from '@/types/admin'
 import { encodeCrisisBuffId, encodeDefenseBuffId } from '@/utils/defenseId'
 import { resolveAssetUrl } from '@/utils/gameData'
 import { normalizeBuffEffectBlocks, packFromBlocks } from '@/utils/buffEffect'
@@ -52,9 +53,47 @@ const imageUrl = ref('')
 const submitting = ref(false)
 const message = ref('')
 const error = ref('')
+const buffTemplates = ref<BuffNameTemplate[]>([])
+const buffTemplatesLoading = ref(false)
 
 function fieldText(value: string | number | null | undefined) {
   return String(value ?? '').trim()
+}
+
+function applyBuffTemplate(option: BuffNameTemplate | { name: string; [key: string]: unknown }) {
+  const desc = option.desc
+  if (desc != null && String(desc).trim()) {
+    buffText.value = String(desc)
+  }
+  const blocks = option.effect_blocks
+  if (Array.isArray(blocks) && blocks.length) {
+    effectBlocks.value = normalizeBuffEffectBlocks(blocks)
+  }
+  const image = option.buff_image
+  if (image) {
+    imageFile.value = null
+    imagePickerRef.value?.reset()
+    imageUrl.value = String(image)
+    imagePreview.value = resolveAssetUrl(String(image)) ?? String(image)
+  }
+}
+
+function onPickBuffName(option: BuffNameTemplate | { name: string; [key: string]: unknown }) {
+  buffName.value = option.name
+  applyBuffTemplate(option as BuffNameTemplate)
+}
+
+async function loadBuffTemplates() {
+  buffTemplatesLoading.value = true
+  try {
+    buffTemplates.value = await fetchBuffNameTemplates(
+      recordSchemeFromScope(props.scope) ?? undefined,
+    )
+  } catch {
+    buffTemplates.value = []
+  } finally {
+    buffTemplatesLoading.value = false
+  }
 }
 
 function showFeedback(target: 'error' | 'message') {
@@ -209,7 +248,8 @@ async function submitForm() {
     })
 
     const actionHint = result.action === 'updated' ? '（已覆盖同 ID 记录）' : ''
-    message.value = `Buff 添加成功（ID ${result.id}）${actionHint}`
+    const reuseHint = result.reusedFromName ? '（已按同名复用文案/效果/图片）' : ''
+    message.value = `Buff 添加成功（ID ${result.id}）${actionHint}${reuseHint}`
     if (props.dialogMode) {
       emit('saved')
       return
@@ -262,6 +302,7 @@ const calculatorBuffStore = useCalculatorBuffStore()
 
 onMounted(() => {
   void calculatorBuffStore.ensureLoaded().catch(() => {})
+  void loadBuffTemplates()
 })
 
 watch(
@@ -338,7 +379,24 @@ watch([isDefense, resolvedVersion, resolvedPhase, stage, roomInStage, buffIndex]
 
       <label class="field">
         <span class="field-label">Buff 名称 *</span>
-        <input v-model="buffName" type="text" class="field-input" placeholder="Buff 名称" />
+        <AdminDeductionFuzzySelect
+          v-if="!isDeduction"
+          v-model="buffName"
+          :options="buffTemplates"
+          :loading="buffTemplatesLoading"
+          placeholder="搜索或输入 Buff 名称（可选历史同名自动带出）"
+          @select="onPickBuffName"
+        />
+        <input
+          v-else
+          v-model="buffName"
+          type="text"
+          class="field-input"
+          placeholder="Buff 名称"
+        />
+        <p v-if="!isDeduction" class="field-hint">
+          选中历史同名 Buff 将自动填入正文、结构化效果与图片；提交时若仅填名称也会按同名复用。
+        </p>
       </label>
 
       <div v-if="isDefense" class="field-row">

@@ -154,11 +154,12 @@ export interface DamageCalcWorkingDraft {
   slots?: SchemeSlot[]
   staggerPhase?: StaggerPhase
   multiSlotBuffSelection?: MultiSlotBuffSelection
-  /** 危局/防卫场地 Buff 筛选（跟草稿走，避免返回页面后重置并反写怪物） */
-  envBuffMode?: 'none' | 'crisis' | 'defense'
+  /** 危局/防卫/临界场地 Buff 筛选（跟草稿走，避免返回页面后重置并反写怪物） */
+  envBuffMode?: 'none' | 'crisis' | 'defense' | 'deduction'
   envBuffVersion?: string
   envBuffPhaseId?: string
   envBuffFrontierId?: string
+  envBuffNodeId?: string
 }
 
 export interface DamageCalcHistoryEntry {
