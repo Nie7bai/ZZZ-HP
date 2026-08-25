@@ -15,6 +15,10 @@ ZZZ-HP 3.1.5 云上数据导入（随更新包 / 补丁包）
   npm run import:buff -- --replace   → 清空后整表写入（可加 --mode crisis）
   npm run export:field-buff-sets / import:field-buff-sets  → 场地 Buff 多套
 
+完整 JSON 导入导出说明（管理端 + 2026-08-25 备份）：
+  仓库根目录 json备份/导入导出说明.md
+  快照副本：scripts/data/snapshots/2026-08-25/
+
 计算器角色/影画（含蕾米）：
   node scripts/import-calculator-buffs.mjs
 
