@@ -136,6 +136,38 @@ export interface BuffRecord {
   mode?: 'crisis' | 'defense' | 'deduction' | string | null
 }
 
+export type BuffTableMode = 'crisis' | 'defense' | 'deduction'
+
+export interface BuffTableSnapshotRow {
+  id: number
+  version: string
+  phase: string
+  buffName: string
+  buff: string | null
+  buffImage: string | null
+  effectBlocks?: import('@/types/calculator').BuffEffectBlock[] | null
+  mode: BuffTableMode | string
+}
+
+export interface BuffTableSnapshot {
+  kind?: string
+  version?: number
+  exportedAt?: string
+  modeFilter?: BuffTableMode | null
+  count: number
+  byMode?: Record<string, number>
+  rows: BuffTableSnapshotRow[]
+}
+
+export interface BuffTableImportSummary {
+  total: number
+  inserted: number
+  updated: number
+  skipped: number
+  replaced: boolean
+  modeFilter: BuffTableMode | null
+}
+
 export interface AdminSearchParams {
   version?: string
   phase?: string
@@ -316,6 +348,34 @@ export async function fetchBuffNameTemplates(recordScheme?: RecordScheme) {
   const query = recordScheme ? `?recordScheme=${encodeURIComponent(recordScheme)}` : ''
   const response = await fetch(`/api/buff/templates${query}`)
   return parseResponse<BuffNameTemplate[]>(response)
+}
+
+export async function fetchBuffTableSnapshot(mode?: BuffTableMode | null) {
+  const query = new URLSearchParams()
+  if (mode) query.set('mode', mode)
+  const qs = query.toString()
+  const response = await fetch(`/api/buff/export${qs ? `?${qs}` : ''}`, {
+    headers: withAdminAuthHeaders(),
+  })
+  return parseResponse<BuffTableSnapshot>(response)
+}
+
+export async function importBuffTableSnapshotFile(
+  file: File,
+  options?: { replace?: boolean; mode?: BuffTableMode | null },
+) {
+  const form = new FormData()
+  form.append('file', file)
+  const query = new URLSearchParams()
+  if (options?.replace) query.set('replace', '1')
+  if (options?.mode) query.set('mode', options.mode)
+  const qs = query.toString()
+  const response = await fetch(`/api/buff/import${qs ? `?${qs}` : ''}`, {
+    method: 'POST',
+    headers: withAdminAuthHeaders(),
+    body: form,
+  })
+  return parseResponse<BuffTableImportSummary>(response)
 }
 
 export async function deleteBuffRecord(id: number) {

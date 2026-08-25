@@ -4,6 +4,7 @@ import {
   searchBossInfoNames,
   updateBossInfoById,
   deleteBossInfoById,
+  syncBossInfoFromBoss,
 } from '../services/bossInfoService.js'
 import { success, fail } from '../utils/response.js'
 
@@ -74,5 +75,19 @@ export async function removeBossInfo(req, res) {
   } catch (err) {
     const status = err.message?.includes('不存在') ? 404 : 400
     return fail(res, err.message || 'Boss 基础信息删除失败', status, { error: err.message })
+  }
+}
+
+export async function syncBossInfoFromBossHandler(req, res) {
+  try {
+    const mode = req.body?.mode ?? req.query?.mode ?? null
+    const data = await syncBossInfoFromBoss({ mode })
+    return success(
+      res,
+      data,
+      `已从 boss 同步：新建 ${data.created} · 更新图片 ${data.updatedImage} · 未变 ${data.unchanged}`,
+    )
+  } catch (err) {
+    return fail(res, err.message || '从 boss 同步失败', 500, { error: err.message })
   }
 }

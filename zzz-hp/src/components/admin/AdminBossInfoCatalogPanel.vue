@@ -3,11 +3,13 @@ import { nextTick, onMounted, ref, watch } from 'vue'
 import {
   deleteBossInfoRecord,
   fetchBossInfoList,
+  syncBossInfoFromBoss,
   updateBossInfoRecord,
   type BossInfoCatalog,
   type BossInfoFieldBuffSet,
   type BossInfoRecord,
 } from '@/api/bossInfo'
+import AdminBossInfoImportExportPanel from '@/components/admin/AdminBossInfoImportExportPanel.vue'
 import AdminBuffEffectEditor from '@/components/admin/calculator/AdminBuffEffectEditor.vue'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import type { BuffEffectBlock } from '@/types/calculator'
@@ -36,8 +38,10 @@ interface FieldBuffSetDraft {
 }
 
 const catalog = ref<BossInfoCatalog>('all')
+const pageTab = ref<'list' | 'io'>('list')
 const keyword = ref('')
 const loading = ref(false)
+const syncing = ref(false)
 const savingId = ref<number | null>(null)
 const deletingId = ref<number | null>(null)
 const error = ref('')
@@ -315,6 +319,25 @@ async function executeDelete() {
   }
 }
 
+async function syncFromBoss() {
+  if (syncing.value) return
+  syncing.value = true
+  message.value = ''
+  error.value = ''
+  try {
+    const mode = catalog.value === 'all' ? null : catalog.value
+    const result = await syncBossInfoFromBoss(mode)
+    const scopeLabel =
+      mode == null ? '全部模式' : catalogTabs.find((tab) => tab.id === mode)?.label || mode
+    message.value = `已从 ${scopeLabel} boss 表同步：扫描 ${result.scanned} · 新建 ${result.created} · 更新图片 ${result.updatedImage} · 未变 ${result.unchanged}`
+    await loadList()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '同步失败'
+  } finally {
+    syncing.value = false
+  }
+}
+
 watch(catalog, () => {
   cancelEdit()
   void loadList()
@@ -332,10 +355,32 @@ onMounted(() => {
         <h1>怪物基础库</h1>
         <p>
           维护 boss_info：同名怪物在危局 / 防卫战 / 临界 / 计算器中共用基础数据。危局 Boss 场地 Buff
-          可配置多套，由各期怪物行绑定。
+          可配置多套，由各期怪物行绑定。临界有图而基础库缺图时，可用「从 boss 同步」。
         </p>
+        <div class="page-tabs" role="tablist">
+          <button
+            type="button"
+            class="page-tab"
+            :class="{ active: pageTab === 'list' }"
+            role="tab"
+            :aria-selected="pageTab === 'list'"
+            @click="pageTab = 'list'"
+          >
+            列表管理
+          </button>
+          <button
+            type="button"
+            class="page-tab"
+            :class="{ active: pageTab === 'io' }"
+            role="tab"
+            :aria-selected="pageTab === 'io'"
+            @click="pageTab = 'io'"
+          >
+            导入 / 导出
+          </button>
+        </div>
       </div>
-      <div class="search-row">
+      <div v-if="pageTab === 'list'" class="search-row">
         <input
           v-model="keyword"
           type="search"
@@ -346,9 +391,25 @@ onMounted(() => {
         <button type="button" class="search-btn" :disabled="loading" @click="loadList">
           {{ loading ? '加载中…' : '搜索' }}
         </button>
+        <button
+          type="button"
+          class="search-btn sync-btn"
+          :disabled="syncing || loading"
+          :title="
+            catalog === 'all'
+              ? '从全部模式 boss 表回填缺失怪物，并把 /UI/ 路径换成可用本地图'
+              : `从当前分类（${catalogTabs.find((tab) => tab.id === catalog)?.label}）boss 表同步`
+          "
+          @click="syncFromBoss"
+        >
+          {{ syncing ? '同步中…' : '从 boss 同步' }}
+        </button>
       </div>
     </header>
 
+    <AdminBossInfoImportExportPanel v-if="pageTab === 'io'" @imported="loadList" />
+
+    <template v-else>
     <div class="catalog-tabs" role="tablist" aria-label="怪物库分类">
       <button
         v-for="tab in catalogTabs"
@@ -552,6 +613,7 @@ onMounted(() => {
       @confirm="executeDelete"
       @cancel="closeDeleteConfirm"
     />
+    </template>
   </div>
 </template>
 
@@ -584,10 +646,33 @@ onMounted(() => {
   max-width: 640px;
 }
 
+.page-tabs {
+  display: inline-flex;
+  gap: 0.4rem;
+  margin-top: 0.55rem;
+}
+
+.page-tab {
+  padding: 0.4rem 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-background-soft);
+  color: var(--color-heading);
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.page-tab.active {
+  border-color: #c4a35a;
+  background: hsla(40, 50%, 55%, 0.16);
+}
+
 .search-row {
   display: flex;
   gap: 0.5rem;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .search-input {
@@ -625,6 +710,11 @@ onMounted(() => {
   border-color: #c9a55c;
   color: var(--color-heading);
   background: color-mix(in srgb, #c9a55c 12%, var(--color-background-soft));
+}
+
+.sync-btn {
+  border-color: hsla(200, 70%, 45%, 0.45);
+  background: hsla(200, 70%, 45%, 0.1);
 }
 
 .search-btn:disabled {

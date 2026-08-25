@@ -9,6 +9,12 @@ ZZZ-HP 3.1.5 云上数据导入（随更新包 / 补丁包）
   boss.sql       — 危局 + 式舆「期数怪物」排表（式舆主要靠这张）
   date.sql       — 危局 / 式舆期数起止日期（mode=crisis|defense）
 
+推荐（JSON，与本地库同步，含临界）：
+  npm run export:buff          → scripts/data/buff.json
+  npm run import:buff          → 按 id / (mode+version+phase+name) 增量 upsert
+  npm run import:buff -- --replace   → 清空后整表写入（可加 --mode crisis）
+  npm run export:field-buff-sets / import:field-buff-sets  → 场地 Buff 多套
+
 计算器角色/影画（含蕾米）：
   node scripts/import-calculator-buffs.mjs
 

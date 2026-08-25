@@ -115,3 +115,75 @@ export async function deleteBossInfoRecord(id: number) {
     referenced_count: number
   }>(response)
 }
+
+export interface BossInfoSnapshotRow {
+  id: number
+  bossName: string
+  defense: number
+  level: number
+  bossImage: string | null
+  weakness: string | null
+  resistance: string | null
+  crisisBaseHp: number | null
+  staggerMultiplier: number
+  fieldBuffSets?: BossInfoFieldBuffSet[]
+  fieldBuffName?: string | null
+  fieldBuffText?: string | null
+  fieldBuffImage?: string | null
+  fieldBuffEffectBlocks?: import('@/types/calculator').BuffEffectBlock[] | null
+}
+
+export interface BossInfoSnapshot {
+  kind?: string
+  version?: number
+  exportedAt?: string
+  count: number
+  rows: BossInfoSnapshotRow[]
+}
+
+export interface BossInfoImportSummary {
+  total: number
+  inserted: number
+  updated: number
+  skipped: number
+  replaced: boolean
+}
+
+export interface BossInfoFromBossSyncResult {
+  mode: BossInfoCatalog | null
+  scanned: number
+  created: number
+  updatedImage: number
+  unchanged: number
+}
+
+export async function fetchBossInfoSnapshot() {
+  const response = await fetch('/api/boss-info/export', {
+    headers: withAdminAuthHeaders(),
+  })
+  return parseResponse<BossInfoSnapshot>(response)
+}
+
+export async function importBossInfoSnapshotFile(file: File, options?: { replace?: boolean }) {
+  const form = new FormData()
+  form.append('file', file)
+  const query = new URLSearchParams()
+  if (options?.replace) query.set('replace', '1')
+  const qs = query.toString()
+  const response = await fetch(`/api/boss-info/import${qs ? `?${qs}` : ''}`, {
+    method: 'POST',
+    headers: withAdminAuthHeaders(),
+    body: form,
+  })
+  return parseResponse<BossInfoImportSummary>(response)
+}
+
+export async function syncBossInfoFromBoss(mode?: Exclude<BossInfoCatalog, 'all'> | null) {
+  const response = await fetch('/api/boss-info/sync-from-boss', {
+    method: 'POST',
+    headers: withAdminAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ mode: mode || null }),
+  })
+  return parseResponse<BossInfoFromBossSyncResult>(response)
+}
+

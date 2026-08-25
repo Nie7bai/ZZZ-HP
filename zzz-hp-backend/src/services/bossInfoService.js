@@ -6,7 +6,7 @@ import {
   normalizeStaggerMultiplier,
 } from '../utils/bossSchema.js'
 import { ensureContentModeColumns } from './contentModeService.js'
-import { preferExistingImage } from '../utils/localImagePath.js'
+import { preferExistingImage, pickBestImagePath } from '../utils/localImagePath.js'
 import {
   ensureEnvironmentBuffSchema,
   parseEffectBlocksJson,
@@ -497,5 +497,91 @@ export async function deleteBossInfoById(id) {
     id: bossId,
     boss_name: existing.boss_name,
     referenced_count: referencedCount,
+  }
+}
+
+/**
+ * 从 boss 表回填 / 修正 boss_info：
+ * - 临界等模式里有、基础库没有的名字 → 新建
+ * - 基础库仍是游戏包 /UI/ 路径、boss 表已有本地 /boss_image/ → 改成可用路径
+ *
+ * @param {{ mode?: string|null }} [options]
+ */
+export async function syncBossInfoFromBoss({ mode = null } = {}) {
+  await ensureBossStaggerSchema()
+  await ensureEnvironmentBuffSchema()
+  await ensureContentModeColumns(pool)
+
+  const modeKey = String(mode || '').trim().toLowerCase()
+  const modeFilter =
+    modeKey === 'crisis' || modeKey === 'defense' || modeKey === 'deduction' ? modeKey : null
+
+  const params = []
+  let sql = `
+    SELECT boss_name,
+           MAX(hp) AS hp,
+           MAX(defense) AS defense,
+           MAX(level) AS level,
+           MAX(weakness) AS weakness,
+           MAX(resistance) AS resistance,
+           GROUP_CONCAT(DISTINCT NULLIF(TRIM(boss_image), '') ORDER BY boss_image SEPARATOR '\\n') AS images
+    FROM boss
+    WHERE boss_name IS NOT NULL AND TRIM(boss_name) <> ''
+  `
+  if (modeFilter) {
+    sql += ` AND mode = ?`
+    params.push(modeFilter)
+  }
+  sql += ` GROUP BY boss_name ORDER BY boss_name`
+
+  const [rows] = await pool.execute(sql, params)
+  let created = 0
+  let updatedImage = 0
+  let unchanged = 0
+
+  for (const row of rows) {
+    const name = String(row.boss_name).trim()
+    if (!name) continue
+    const imageCandidates = String(row.images || '')
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean)
+
+    const existing = await findBossInfoByName(name)
+    const bestImage = pickBestImagePath(...imageCandidates, existing?.boss_image)
+
+    if (!existing) {
+      await upsertBossInfo({
+        boss_name: name,
+        defense: Number(row.defense) || 0,
+        level: Number(row.level) || 1,
+        weakness: row.weakness ?? null,
+        resistance: row.resistance ?? null,
+        boss_image: bestImage,
+      })
+      created += 1
+      continue
+    }
+
+    const prevImage = existing.boss_image ?? null
+    const nextImage = pickBestImagePath(...imageCandidates, prevImage)
+    if (nextImage && nextImage !== prevImage) {
+      await pool.execute(`UPDATE boss_info SET boss_image = ? WHERE id = ?`, [
+        nextImage,
+        existing.id,
+      ])
+      updatedImage += 1
+      continue
+    }
+
+    unchanged += 1
+  }
+
+  return {
+    mode: modeFilter,
+    scanned: rows.length,
+    created,
+    updatedImage,
+    unchanged,
   }
 }

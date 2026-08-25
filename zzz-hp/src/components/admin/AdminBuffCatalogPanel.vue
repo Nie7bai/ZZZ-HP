@@ -6,6 +6,7 @@ import {
   type BuffRecord,
 } from '@/api/admin'
 import AdminBuffEditModal from '@/components/admin/AdminBuffEditModal.vue'
+import AdminBuffTableImportExportPanel from '@/components/admin/AdminBuffTableImportExportPanel.vue'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import BuffEffectBlocksDisplay from '@/components/calculator/BuffEffectBlocksDisplay.vue'
 import { useAdminVersionPhaseSelect } from '@/composables/useAdminVersionPhaseSelect'
@@ -31,7 +32,9 @@ function blocksForDisplay(
 }
 
 type CatalogTab = RecordScheme
+type PageTab = 'list' | 'io'
 
+const pageTab = ref<PageTab>('list')
 const catalog = ref<CatalogTab>('crisis')
 
 const scope = computed<AdminScope>(() => {
@@ -220,8 +223,33 @@ async function executeDelete() {
         管理危局 / 防卫战 / 临界的环境 Buff（含结构化效果）。Boss 场地 Buff 请到「怪物基础库」。
         各模式内容页的「从本期/本节点移除」只是去掉当期使用；在本页删除才是删除 Buff 记录本身。
       </p>
+      <div class="page-tabs" role="tablist">
+        <button
+          type="button"
+          class="page-tab"
+          :class="{ active: pageTab === 'list' }"
+          role="tab"
+          :aria-selected="pageTab === 'list'"
+          @click="pageTab = 'list'"
+        >
+          列表管理
+        </button>
+        <button
+          type="button"
+          class="page-tab"
+          :class="{ active: pageTab === 'io' }"
+          role="tab"
+          :aria-selected="pageTab === 'io'"
+          @click="pageTab = 'io'"
+        >
+          导入 / 导出
+        </button>
+      </div>
     </header>
 
+    <AdminBuffTableImportExportPanel v-if="pageTab === 'io'" @imported="searchRecords" />
+
+    <template v-else>
     <div class="catalog-tabs" role="tablist">
       <button
         v-for="tab in catalogTabs"
@@ -317,6 +345,7 @@ async function executeDelete() {
         </div>
       </li>
     </ul>
+    </template>
 
     <AdminBuffEditModal v-model:open="editOpen" :scope="scope" :context="editContext" @saved="onEditSaved" />
     <AdminConfirmDialog
@@ -356,6 +385,28 @@ async function executeDelete() {
   font-size: 0.9rem;
   line-height: 1.45;
   max-width: 52rem;
+}
+
+.page-tabs {
+  display: inline-flex;
+  gap: 0.4rem;
+  margin-top: 0.55rem;
+}
+
+.page-tab {
+  padding: 0.4rem 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-background-soft);
+  color: var(--color-heading);
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.page-tab.active {
+  border-color: #c4a35a;
+  background: hsla(40, 50%, 55%, 0.16);
 }
 
 .catalog-tabs {

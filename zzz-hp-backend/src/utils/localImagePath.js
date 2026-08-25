@@ -40,14 +40,10 @@ export function localImageExists(url) {
 export function preferExistingImage(incoming, existing) {
   const next = incoming == null || incoming === '' ? null : String(incoming).trim() || null
   const prev = existing == null || existing === '' ? null : String(existing).trim() || null
-
-  if (localImageExists(next)) return next
-  if (localImageExists(prev)) return prev
-  if (prev) return prev
-  return next
+  return pickBestImagePath(next, prev)
 }
 
-/** 在多个候选路径中选：优先磁盘存在，其次第一个非空 */
+/** 在多个候选路径中选：优先磁盘存在，其次本地托管路径，再次第一个非空（跳过游戏包 /UI/） */
 export function pickBestImagePath(...candidates) {
   const normalized = candidates.map((value) => {
     if (value == null || value === '') return null
@@ -58,7 +54,25 @@ export function pickBestImagePath(...candidates) {
     if (localImageExists(value)) return value
   }
   for (const value of normalized) {
+    if (value && isLocalHostedImagePath(value)) return value
+  }
+  for (const value of normalized) {
+    if (value && !isGamePackageImagePath(value)) return value
+  }
+  for (const value of normalized) {
     if (value) return value
   }
   return null
+}
+
+/** 本地静态站托管的相对路径 */
+export function isLocalHostedImagePath(url) {
+  const text = String(url ?? '').trim().replace(/^\/+/, '')
+  return ALLOWED_PREFIXES.some((prefix) => text.startsWith(prefix))
+}
+
+/** 游戏包内路径（前端静态站无法直接托管） */
+export function isGamePackageImagePath(url) {
+  const text = String(url ?? '').trim()
+  return text.startsWith('/UI/') || text.startsWith('UI/')
 }
