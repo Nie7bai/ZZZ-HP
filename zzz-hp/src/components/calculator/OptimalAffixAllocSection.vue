@@ -58,6 +58,7 @@ import {
   computeDiffAnalysis,
   computeEventAffixImpact,
   evaluateAffixCounts,
+  evaluateAffixCountsForSweep,
   clearAffixEvalCache,
   findMinCritRollsForOvercap,
   evaluateOptimalEventDetail,
@@ -257,6 +258,7 @@ const directAlloc = reactive<DirectAllocState>({
   hpFlat: 0,
   atkPercent: 0,
   pen: 0,
+  mastery: 0,
   critRate: 0,
   totalRolls: 0,
 })
@@ -496,6 +498,8 @@ const EVENT_SWEEP_DEBOUNCE_MS = 700
 const DIFF_DEBOUNCE_MS = 450
 const DIFF_EVENT_DEBOUNCE_MS = 900
 const SKILL_FLOW_EMIT_DEBOUNCE_MS = 200
+/** 词条输入时面板预览防抖，避免每个按键都同步全量算伤 */
+const PANEL_PREVIEW_DEBOUNCE_MS = 180
 
 const directPoints = ref<DirectSweepPoint[]>([])
 const anomalyPoints = ref<AnomalySweepPoint[]>([])
@@ -510,6 +514,7 @@ const hasEventMode = computed(() => (props.hits?.length ?? 0) > 0)
 let sweepTimer: ReturnType<typeof setTimeout> | null = null
 let diffTimer: ReturnType<typeof setTimeout> | null = null
 let skillFlowEmitTimer: ReturnType<typeof setTimeout> | null = null
+let panelPreviewTimer: ReturnType<typeof setTimeout> | null = null
 let sweepAbort: AbortController | null = null
 let sweepGeneration = 0
 /** 隐藏期间外部配置有变，回到本模块时再提示重算，不清空已有柱图 */
@@ -561,6 +566,17 @@ async function runSweepRecompute() {
     if (kind === 'direct') {
       if (directError.value) {
         directPoints.value = []
+      } else if (
+        directPoints.value.length > 0 &&
+        canReuseDirectSweepStructure(directPoints.value, directAlloc, isMb.value)
+      ) {
+        // 仅固定词条（精通/穿透/小攻等）变化：复用扫掠结构，只重算各点伤害
+        directPoints.value = await refreshDirectSweepFixedStats(
+          evalCtx.value,
+          directAlloc,
+          directPoints.value,
+          { signal: controller.signal, chunkSize },
+        )
       } else {
         directPoints.value = await sweepDirectDamageAsync(
           evalCtx.value,
@@ -602,9 +618,59 @@ async function runSweepRecompute() {
   }
 }
 
+function canReuseDirectSweepStructure(
+  points: DirectSweepPoint[],
+  state: DirectAllocState,
+  mb: boolean,
+) {
+  const crit = Math.round(state.critRate)
+  const total = Math.round(state.totalRolls)
+  const fixedAtk = mb ? Math.round(state.atkPercent) : 0
+  const remain = mb ? total - crit - fixedAtk : total - crit
+  if (remain < 0 || !points.length) return false
+  // 结构仍是「局外大% + 爆伤 = remain」时才能原地刷新
+  return points.every((p) => p.outPercent + p.critDmg === remain)
+}
+
+async function refreshDirectSweepFixedStats(
+  ctx: ReturnType<typeof buildOptimalEvalContext>,
+  state: DirectAllocState,
+  points: DirectSweepPoint[],
+  options: { signal: AbortSignal; chunkSize: number },
+) {
+  const next: DirectSweepPoint[] = []
+  let sinceYield = 0
+  for (const point of points) {
+    if (options.signal.aborted) throw new DOMException('Aborted', 'AbortError')
+    const affixCounts = buildDirectAffixCounts(
+      ctx.isMb,
+      { ...state },
+      point.outPercent,
+      point.critDmg,
+    )
+    const swept = evaluateAffixCountsForSweep(ctx, affixCounts)
+    next.push({
+      ...point,
+      affixCounts,
+      evalSnapshot: null,
+      directExpected: swept.grandTotal,
+      eventLines: swept.eventLines,
+      grandTotal: swept.grandTotal,
+    })
+    sinceYield += 1
+    if (sinceYield >= options.chunkSize) {
+      sinceYield = 0
+      await new Promise<void>((resolve) => {
+        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => resolve())
+        else setTimeout(resolve, 0)
+      })
+    }
+  }
+  return next
+}
+
 function scheduleSweepRecompute() {
   if (!isSectionActive.value || !sweepCommitted.value || !damageKind.value) return
-  sweepComputing.value = true
   if (sweepTimer) clearTimeout(sweepTimer)
   const delay = hasEventMode.value ? EVENT_SWEEP_DEBOUNCE_MS : SWEEP_DEBOUNCE_MS
   sweepTimer = setTimeout(() => {
@@ -619,6 +685,10 @@ watch(isSectionActive, (active) => {
       clearTimeout(skillFlowEmitTimer)
       skillFlowEmitTimer = null
     }
+    if (panelPreviewTimer) {
+      clearTimeout(panelPreviewTimer)
+      panelPreviewTimer = null
+    }
     return
   }
   if (pendingConfigDirty.value) {
@@ -629,16 +699,24 @@ watch(isSectionActive, (active) => {
 
 watch(sweepConfigFingerprint, markSweepConfigDirty)
 
-watch(
-  [directAlloc, anomalyAlloc, damageKind, directError, anomalyError],
-  scheduleSweepRecompute,
-  { deep: true },
+/** 用指纹代替 deep watch，避免响应式遍历放大开销 */
+const allocSweepFingerprint = computed(() =>
+  JSON.stringify({
+    kind: damageKind.value,
+    direct: { ...directAlloc },
+    anomaly: { ...anomalyAlloc },
+    directError: directError.value,
+    anomalyError: anomalyError.value,
+  }),
 )
+
+watch(allocSweepFingerprint, scheduleSweepRecompute)
 
 onBeforeUnmount(() => {
   if (sweepTimer) clearTimeout(sweepTimer)
   if (diffTimer) clearTimeout(diffTimer)
   if (skillFlowEmitTimer) clearTimeout(skillFlowEmitTimer)
+  if (panelPreviewTimer) clearTimeout(panelPreviewTimer)
   if (eventAffixImpactTimer) clearTimeout(eventAffixImpactTimer)
   sweepAbort?.abort()
 })
@@ -954,10 +1032,10 @@ watch(
 )
 
 /** 面板展示用：未开算时按当前词条分配预览；已有扫掠点时优先用扫掠结果 */
-const displayCounts = computed(() => {
-  if (selectedCounts.value) return selectedCounts.value
+const allocPreviewCounts = computed(() => {
+  if (selectedCounts.value) return null
   if (damageKind.value === 'direct') {
-    if (directPoints.value[0]?.affixCounts) return directPoints.value[0].affixCounts
+    if (directPoints.value[0]?.affixCounts) return null
     if (directError.value || !mainAgent.value?.id) return null
     const crit = Math.round(directAlloc.critRate)
     const total = Math.round(directAlloc.totalRolls)
@@ -971,10 +1049,39 @@ const displayCounts = computed(() => {
       remain,
     )
   }
-  if (anomalyPoints.value[0]?.affixCounts) return anomalyPoints.value[0].affixCounts
+  if (anomalyPoints.value[0]?.affixCounts) return null
   if (anomalyError.value || !damageKind.value || !mainAgent.value?.id) return null
   const total = Math.round(anomalyAlloc.totalRolls)
   return buildAnomalyAffixCounts(isMb.value, { ...anomalyAlloc, totalRolls: total }, 0, total)
+})
+
+/** 防抖后的预览词条，避免输入时每个按键都同步 evaluate */
+const debouncedAllocPreviewCounts = ref<AffixCounts | null>(null)
+
+watch(
+  allocPreviewCounts,
+  (counts) => {
+    if (panelPreviewTimer) clearTimeout(panelPreviewTimer)
+    if (!counts) {
+      debouncedAllocPreviewCounts.value = null
+      return
+    }
+    panelPreviewTimer = setTimeout(() => {
+      debouncedAllocPreviewCounts.value = counts
+    }, PANEL_PREVIEW_DEBOUNCE_MS)
+  },
+  { immediate: true },
+)
+
+const displayCounts = computed(() => {
+  if (selectedCounts.value) return selectedCounts.value
+  if (damageKind.value === 'direct' && directPoints.value[0]?.affixCounts) {
+    return directPoints.value[0].affixCounts
+  }
+  if (damageKind.value === 'anomaly' && anomalyPoints.value[0]?.affixCounts) {
+    return anomalyPoints.value[0].affixCounts
+  }
+  return debouncedAllocPreviewCounts.value
 })
 
 const selectedEval = computed(() => {
@@ -1988,6 +2095,7 @@ function applyDefaultCrit() {
     hpFlat: directAlloc.hpFlat,
     atkPercent: directAlloc.atkPercent,
     pen: directAlloc.pen,
+    mastery: directAlloc.mastery,
   })
   directAlloc.critRate = crit
   // 保留用户已填的更高总词条，避免每次重算默认暴击把总数打回 crit
@@ -2108,7 +2216,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
     <header class="opt-header">
       <h2>词条分配与伤害曲线</h2>
       <p>
-        先选择直伤或异常模式，在约束内设置固定词条与总词条数后开始计算；点击柱体查看差异与收益曲线。柱状图在固定小词条与穿透等前提下扫掠，并非全词条穷举最优。
+        先选择直伤或异常模式，在约束内设置固定词条与总词条数后开始计算；点击柱体查看差异与收益曲线。柱状图在固定小词条、穿透与精通等前提下扫掠，并非全词条穷举最优。
       </p>
     </header>
 
@@ -2184,13 +2292,13 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           <h3 class="block-title">直伤词条分配</h3>
           <p class="constraint-hint">
             <template v-if="isMb">
-              总词条数 = 暴击 + 爆伤 + 局外大生命 + 局外大攻击；约束：总 ≤
-              {{ DIRECT_CONSTRAINTS.maxTotalRolls }}，且 攻击力 + 生命值 + 穿透 + 总 ≤
+              总词条数 = 暴击 + 爆伤 + 局外大生命 + 局外大攻击（不含精通）；约束：总 ≤
+              {{ DIRECT_CONSTRAINTS.maxTotalRolls }}，且 精通 + 攻击力 + 生命值 + 穿透 + 总 ≤
               {{ DIRECT_CONSTRAINTS.maxAtkPenTotal }}
             </template>
             <template v-else>
-              总词条数 = 暴击 + 爆伤 + {{ outLabel }}；约束：总 ≤
-              {{ DIRECT_CONSTRAINTS.maxTotalRolls }}，且 {{ flatLabel }} + 穿透 + 总 ≤
+              总词条数 = 暴击 + 爆伤 + {{ outLabel }}（不含精通）；约束：总 ≤
+              {{ DIRECT_CONSTRAINTS.maxTotalRolls }}，且 精通 + {{ flatLabel }} + 穿透 + 总 ≤
               {{ DIRECT_CONSTRAINTS.maxAtkPenTotal }}
             </template>
           </p>
@@ -2206,6 +2314,11 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
             <label class="field">
               <span>穿透值</span>
               <input v-model.number="directAlloc.pen" type="number" min="0" step="1" />
+            </label>
+            <label class="field">
+              <span>精通</span>
+              <input v-model.number="directAlloc.mastery" type="number" min="0" step="1" />
+              <small class="hint">固定填写，不计入总词条分配</small>
             </label>
             <label v-if="isMb" class="field">
               <span>局外大攻击</span>
@@ -2461,13 +2574,14 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           <template v-if="damageKind === 'direct'">
             <template v-if="selectedDirect">
               {{ outLabel }} {{ selectedDirect.outPercent }} · 爆伤 {{ selectedDirect.critDmg }} · 暴击
-              {{ directAlloc.critRate }}
+              {{ directAlloc.critRate }} · 精通 {{ directAlloc.mastery }}
               <template v-if="isMb"> · 局外大攻击 {{ directAlloc.atkPercent }}</template>
             </template>
             <template v-else-if="analysisCounts">
               暴击 {{ analysisCounts.critRate }} · 爆伤 {{ analysisCounts.critDmg }} ·
               {{ outLabel }}
-              {{ isMb ? analysisCounts.hpPercent : analysisCounts.atkPercent }}
+              {{ isMb ? analysisCounts.hpPercent : analysisCounts.atkPercent }} · 精通
+              {{ analysisCounts.mastery }}
               <template v-if="isMb"> · 局外大攻击 {{ analysisCounts.atkPercent }}</template>
               <span class="hint-inline">（未点柱时按预览/首柱）</span>
             </template>

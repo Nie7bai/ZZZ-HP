@@ -244,8 +244,10 @@ export interface DirectAllocState {
   /** 命破：局外大攻击条数（固定填写，不参与扫掠） */
   atkPercent: number
   pen: number
+  /** 精通条数（固定填写，不参与总词条扫掠） */
+  mastery: number
   critRate: number
-  /** 非命破 = 暴击 + 爆伤 + 局外大攻击；命破 = 暴击 + 爆伤 + 局外大生命 + 局外大攻击 */
+  /** 非命破 = 暴击 + 爆伤 + 局外大攻击；命破 = 暴击 + 爆伤 + 局外大生命 + 局外大攻击（不含精通） */
   totalRolls: number
 }
 
@@ -409,6 +411,7 @@ export function validateDirectAlloc(
   const atkFlat = clampInt(state.flatStat, 0, 99)
   const hpFlat = clampInt(state.hpFlat, 0, 99)
   const pen = clampInt(state.pen, 0, 99)
+  const mastery = clampInt(state.mastery, 0, 99)
   const crit = clampInt(state.critRate, 0, DIRECT_CONSTRAINTS.maxTotalRolls)
   const total = clampInt(state.totalRolls, 0, DIRECT_CONSTRAINTS.maxTotalRolls)
   const fixedAtkPercent = isMb ? clampInt(state.atkPercent, 0, 99) : 0
@@ -420,15 +423,18 @@ export function validateDirectAlloc(
     return `总词条数不能超过 ${DIRECT_CONSTRAINTS.maxTotalRolls}`
   }
   const flatPenTotal = isMb
-    ? atkFlat + hpFlat + pen + total
-    : atkFlat + pen + total
+    ? mastery + atkFlat + hpFlat + pen + total
+    : mastery + atkFlat + pen + total
   if (flatPenTotal > DIRECT_CONSTRAINTS.maxAtkPenTotal) {
     return isMb
-      ? `攻击力+生命值+穿透+总词条数不能超过 ${DIRECT_CONSTRAINTS.maxAtkPenTotal}`
-      : `${flatStatLabel(isMb)}+穿透+总词条数不能超过 ${DIRECT_CONSTRAINTS.maxAtkPenTotal}`
+      ? `精通+攻击力+生命值+穿透+总词条数不能超过 ${DIRECT_CONSTRAINTS.maxAtkPenTotal}`
+      : `精通+${flatStatLabel(isMb)}+穿透+总词条数不能超过 ${DIRECT_CONSTRAINTS.maxAtkPenTotal}`
   }
   if (mainStats) {
     const caps = getAffixRollCaps(mainStats)
+    if (mastery > caps.mastery) {
+      return `精通条数不能超过主词条约束上限 ${caps.mastery}`
+    }
     if (crit > caps.critRate) {
       return `暴击条数不能超过主词条约束上限 ${caps.critRate}`
     }
@@ -484,6 +490,7 @@ export function buildDirectAffixCounts(
 ): AffixCounts {
   const counts = createEmptyAffixCounts()
   counts.pen = clampInt(state.pen, 0, 99)
+  counts.mastery = clampInt(state.mastery, 0, 99)
   counts.critRate = clampInt(state.critRate, 0, 99)
   counts.critDmg = clampInt(critDmg, 0, 99)
   if (isMb) {
@@ -1763,9 +1770,9 @@ function resolveEvalMetricDamage(
 
 export function directCandidateKeys(isMb: boolean): OptimalAffixKey[] {
   if (isMb) {
-    return ['atkFlat', 'hpFlat', 'hpPercent', 'atkPercent', 'pen', 'critRate', 'critDmg']
+    return ['atkFlat', 'hpFlat', 'hpPercent', 'atkPercent', 'pen', 'mastery', 'critRate', 'critDmg']
   }
-  return ['atkFlat', 'atkPercent', 'pen', 'critRate', 'critDmg']
+  return ['atkFlat', 'atkPercent', 'pen', 'mastery', 'critRate', 'critDmg']
 }
 
 export function anomalyCandidateKeys(isMb: boolean): OptimalAffixKey[] {
