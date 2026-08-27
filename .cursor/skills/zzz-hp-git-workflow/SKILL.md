@@ -9,6 +9,28 @@ description: >-
 
 权威来源：[docs/policies/git-workflow.md](../../docs/policies/git-workflow.md)。冲突时以政策为准。
 
+用法索引：[docs/index.md § Cursor Skills](../../docs/index.md#cursor-skills)。
+
+## 对话指令示例
+
+形态：`/zzz-hp-git-workflow` + 一句具体任务。后面宜写清分支名、目标（提交 / 推送 / PR / 直接合）、范围；少写发版号与打 tag。
+
+```text
+/zzz-hp-git-workflow 从最新 main 拉 chore/skills-docs
+```
+
+```text
+/zzz-hp-git-workflow 把当前改动提交并推送，开 PR 到 main
+```
+
+```text
+/zzz-hp-git-workflow 能不能直接合进 main？按政策说明一下
+```
+
+```text
+/zzz-hp-git-workflow 同步 main，创建 fix/calc-disorder-mult，只改计算器相关文件
+```
+
 ## 分支模型（现行）
 
 | 分支 | 用途 |
