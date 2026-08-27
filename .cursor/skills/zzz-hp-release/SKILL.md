@@ -10,6 +10,24 @@ description: >-
 
 权威来源：[docs/policies/git-workflow.md](../../docs/policies/git-workflow.md) §版本与发布。
 
+用法索引：[docs/index.md § Cursor Skills](../../docs/index.md#cursor-skills)。
+
+## 对话指令示例
+
+形态：`/zzz-hp-release` + 一句具体任务。后面宜写清版本号、要不要 changelog、要不要 tag、是否已合入；少写日常功能开发细节。
+
+```text
+/zzz-hp-release 准备 3.1.9：写 changelog、bump 版本、开 PR
+```
+
+```text
+/zzz-hp-release 3.1.8 已合入 main，在 merge commit 上打 v3.1.8 并推送
+```
+
+```text
+/zzz-hp-release 只更新 seed_changelog 里 3.1.9 的条目文案，不 bump 版本
+```
+
 ## 何时发版
 
 功能已合入 `main`（或准备在 `release/x.y.z` 收拢版本号与 changelog 后一次性 PR 合入）。
