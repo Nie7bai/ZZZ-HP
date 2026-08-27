@@ -375,11 +375,19 @@ const content3172 = `相对 3.1.7.1 的增量更新（临界推演与危局转�
 · 图表小窗：血量相对上一点变化；膨胀图相对百分比变化
 · 数据同步：环境 Buff 表 / 怪物基础库支持管理端导入导出；可从各期 boss 回填基础库并优先使用本地怪物图；提供 2026-08-25 JSON 备份与导入说明`
 
+const content318 = `相对 3.1.7.2 的增量更新（计算器倍率口径与协作流程为主）：
+
+· 紊乱 / 乱流：招式「倍率%」按最终倍率区填写与结算，不再误当作基础倍率再叠时间与补偿
+· 火 / 以太异常：持续时间按强度提供者属性正确 ×2，与公式说明对齐
+· 协作与发版：统一 main + 短期分支与 SemVer 发版；站点更新日志与版本号随 release 流程维护
+· 运维：提交 / 打包密钥扫描闸门与后端安全相关测试补强`
+
 await conn.query(
-  `DELETE FROM changelog WHERE version IN ('3.1.6', '3.1.6.1', '3.1.6.2', '3.1.6.3', '3.1.7', '3.1.7.1', '3.1.7.2')`,
+  `DELETE FROM changelog WHERE version IN ('3.1.6', '3.1.6.1', '3.1.6.2', '3.1.6.3', '3.1.7', '3.1.7.1', '3.1.7.2', '3.1.8')`,
 )
 await conn.query(
   `INSERT INTO changelog (version, title, content, published_at) VALUES
+   (?, ?, ?, ?),
    (?, ?, ?, ?),
    (?, ?, ?, ?),
    (?, ?, ?, ?),
@@ -416,11 +424,15 @@ await conn.query(
     '临界推演、转换器与数据导入导出',
     content3172,
     '2026-08-25 21:40:00',
+    '3.1.8',
+    '紊乱乱流倍率口径与火以太持续时间修正',
+    content318,
+    '2026-08-28 01:30:00',
   ],
 )
 
 const [rowsAfter] = await conn.query(
-  `SELECT id, version, title, CHAR_LENGTH(content) AS len FROM changelog ORDER BY published_at DESC LIMIT 7`,
+  `SELECT id, version, title, CHAR_LENGTH(content) AS len FROM changelog ORDER BY published_at DESC LIMIT 8`,
 )
 console.log(rowsAfter)
 await conn.end()
