@@ -209,7 +209,7 @@ function Invoke-RobocopySafe {
   foreach ($f in $ExcludeFiles) {
     $argsList += $f
   }
-  $argsList += @('*.pem', '*.key', '*.log')
+  $argsList += @('*.pem', '*.key', '*.pfx', '*.log')
 
   & robocopy @argsList | Out-Null
   if ($LASTEXITCODE -ge 8) {
@@ -275,28 +275,30 @@ else {
 
 $serverSteps = if ($FullPack) {
   @(
-    '1. Extract over install dir; KEEP cloud .env (do not copy local .env)',
-    '2. In server .env set ADMIN_PASSWORD, keep DB/OCR keys',
-    '3. cd zzz-hp-backend && npm install',
-    '4. node scripts/set-admin-password.mjs',
-    '5. node scripts/seed_changelog.mjs',
-    '6. node scripts/import-calculator-buffs.mjs',
-    '7. (optional) node scripts/check-remiel.mjs',
-    '8. Restart backend: npm start (dist already in zip — skip frontend build)',
-    '9. Hard refresh browser; admin login; spot-check calculator + OCR'
+    '1. Stop backend; confirm the admin login endpoint is no longer serving requests',
+    '2. Extract over install dir; KEEP cloud .env (do not copy local .env)',
+    '3. In server .env set ADMIN_PASSWORD, keep DB/OCR keys',
+    '4. cd zzz-hp-backend && npm install',
+    '5. node scripts/set-admin-password.mjs (rotates password and revokes all admin sessions)',
+    '6. node scripts/seed_changelog.mjs',
+    '7. node scripts/import-calculator-buffs.mjs',
+    '8. (optional) node scripts/check-remiel.mjs',
+    '9. Restart backend: npm start (dist already in zip — skip frontend build)',
+    '10. Hard refresh browser; admin login; spot-check calculator + OCR'
   )
 }
 else {
   @(
-    '1. Extract over install dir; KEEP cloud .env',
-    '2. In server .env set ADMIN_PASSWORD, keep DB/OCR keys',
-    '3. cd zzz-hp-backend && npm install',
-    '4. node scripts/set-admin-password.mjs',
-    '5. node scripts/seed_changelog.mjs',
-    '6. node scripts/import-calculator-buffs.mjs',
-    '7. cd ../zzz-hp && npm install && npm run build',
-    '8. cd ../zzz-hp-backend && npm start',
-    '9. Hard refresh browser; admin login'
+    '1. Stop backend; confirm the admin login endpoint is no longer serving requests',
+    '2. Extract over install dir; KEEP cloud .env',
+    '3. In server .env set ADMIN_PASSWORD, keep DB/OCR keys',
+    '4. cd zzz-hp-backend && npm install',
+    '5. node scripts/set-admin-password.mjs (rotates password and revokes all admin sessions)',
+    '6. node scripts/seed_changelog.mjs',
+    '7. node scripts/import-calculator-buffs.mjs',
+    '8. cd ../zzz-hp && npm install && npm run build',
+    '9. cd ../zzz-hp-backend && npm start',
+    '10. Hard refresh browser; admin login'
   )
 }
 
@@ -307,7 +309,7 @@ $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine('')
 [void]$sb.AppendLine('[Included / excluded]')
 [void]$sb.AppendLine('- .env and secrets excluded')
-[void]$sb.AppendLine('- Plaintext admin password forbidden (business SQL data allowed)')
+[void]$sb.AppendLine('- Plaintext admin password forbidden; business data still requires manual policy review')
 [void]$sb.AppendLine('- Admin password must NOT appear in pack; set via cloud .env + set-admin-password.mjs')
 [void]$sb.AppendLine('- node_modules, .git excluded')
 [void]$sb.AppendLine('- backend data/*.json runtime files excluded')
@@ -334,7 +336,7 @@ Get-ChildItem -LiteralPath $StageRoot -Recurse -Force -File -ErrorAction Silentl
   if ($n -ieq '.env') { $bad = $true }
   elseif ($n.StartsWith('.env.')) { $bad = $true }
   elseif ($n -match 'SecretKey') { $bad = $true }
-  elseif ($n -match '\.(pem|key)$') { $bad = $true }
+  elseif ($n -match '\.(pem|key|pfx)$') { $bad = $true }
 
   if ($bad) {
     $rel = $_.FullName.Substring($StageRoot.Length)
@@ -386,7 +388,7 @@ else {
   Write-Host 'Quick pack — no dist inside; build on server.' -ForegroundColor Yellow
 }
 Write-Host 'Upload zip only. Do not copy local .env over cloud .env.'
-Write-Host 'Do not ship plaintext admin passwords; set ADMIN_PASSWORD on server then run set-admin-password.mjs.'
+Write-Host 'Do not ship plaintext admin passwords; stop backend, set ADMIN_PASSWORD, then run set-admin-password.mjs.'
 
 if (-not $NoOpen) {
   try {

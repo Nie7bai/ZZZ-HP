@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test": "node --test scripts/security-hardening.test.mjs",
     "start": "node src/app.js",
     "dev": "node --watch src/app.js",
     "import:nanoka": "node scripts/import-nanoka.mjs",
@@ -11,10 +12,6 @@
     "import:nanoka:range": "node scripts/import-nanoka-range.mjs",
     "delete:defense-season": "node scripts/delete-defense-season.mjs",
     "export:calculator-buffs": "node scripts/export-calculator-buffs.mjs",
-    "export:buff": "node scripts/export-buff.mjs",
-    "import:buff": "node scripts/import-buff.mjs",
-    "export:field-buff-sets": "node scripts/export-field-buff-sets.mjs",
-    "import:field-buff-sets": "node scripts/import-field-buff-sets.mjs",
     "sync:calculator-avatars": "node scripts/sync-calculator-public-avatars.mjs",
     "upsert:agent": "node scripts/upsert-agent.mjs",
     "export:guestbook": "node scripts/export-guestbook.mjs",

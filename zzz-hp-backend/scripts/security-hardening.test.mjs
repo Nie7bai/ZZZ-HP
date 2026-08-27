@@ -1,5 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
+import fs from 'node:fs'
+import os from 'node:os'
+import { fileURLToPath } from 'node:url'
+import { revokeAllAdminSessions } from '../src/services/adminSessionService.js'
+import { runAdminPasswordRotation } from './set-admin-password.mjs'
 import {
   normalizeAvatarSourceUrl,
   resolveExistingAvatarFile,
@@ -25,4 +31,138 @@ test('魔数识别与空 Buff factor 默认为 0', () => {
   assert.equal(empty.directDmgMultFactor, 0)
   assert.equal(empty.radianceMultFactor, 0)
   assert.equal(empty.specialMultFactor, 0)
+})
+
+test('批量撤销管理员会话会写入空会话存储', (t) => {
+  const writes = []
+
+  t.mock.method(fs, 'existsSync', () => true)
+  t.mock.method(fs, 'writeFileSync', (...args) => writes.push(args))
+
+  revokeAllAdminSessions()
+
+  assert.equal(writes.length, 1)
+  assert.match(writes[0][0], /admin-sessions\.json$/)
+  assert.deepEqual(JSON.parse(writes[0][1]), { sessions: {} })
+  assert.equal(writes[0][2], 'utf8')
+})
+
+test('密码更新成功后才撤销会话并关闭数据库连接', async () => {
+  const events = []
+  const connection = {
+    async query() {
+      events.push('query')
+      return [[{ id: 7 }]]
+    },
+    async execute() {
+      events.push('execute')
+    },
+    async end() {
+      events.push('end')
+    },
+  }
+
+  const exitCode = await runAdminPasswordRotation({
+    plainPassword: ' test-password-not-a-secret ',
+    environment: {},
+    async createConnection() {
+      events.push('connect')
+      return connection
+    },
+    async hashPassword(password) {
+      assert.equal(password, 'test-password-not-a-secret')
+      events.push('hash')
+      return '$2b$12$test-only-hash'
+    },
+    revokeSessions() {
+      events.push('revoke')
+    },
+    logger: {
+      log() {
+        events.push('log')
+      },
+      error() {
+        events.push('error')
+      },
+    },
+  })
+
+  assert.equal(exitCode, 0)
+  assert.deepEqual(events, ['connect', 'hash', 'query', 'execute', 'revoke', 'log', 'end'])
+})
+
+test('数据库写入失败时不撤销会话', async () => {
+  let revoked = false
+  const errors = []
+  const connection = {
+    async query() {
+      return [[{ id: 7 }]]
+    },
+    async execute() {
+      const error = new Error('sensitive database detail')
+      error.code = 'ER_TEST_FAILURE'
+      throw error
+    },
+    async end() {},
+  }
+
+  const exitCode = await runAdminPasswordRotation({
+    plainPassword: 'test-password-not-a-secret',
+    environment: {},
+    createConnection: async () => connection,
+    hashPassword: async () => '$2b$12$test-only-hash',
+    revokeSessions() {
+      revoked = true
+    },
+    logger: { log() {}, error: (message) => errors.push(message) },
+  })
+
+  assert.equal(exitCode, 1)
+  assert.equal(revoked, false)
+  assert.deepEqual(errors, ['设置管理员密码失败（ER_TEST_FAILURE）。'])
+})
+
+test('数据库写入后撤销失败会报告部分成功并返回失败', async () => {
+  const errors = []
+  let connectionClosed = false
+  const connection = {
+    async query() {
+      return [[]]
+    },
+    async execute() {},
+    async end() {
+      connectionClosed = true
+    },
+  }
+
+  const exitCode = await runAdminPasswordRotation({
+    plainPassword: 'test-password-not-a-secret',
+    environment: {},
+    createConnection: async () => connection,
+    hashPassword: async () => '$2b$12$test-only-hash',
+    revokeSessions() {
+      const error = new Error('sensitive filesystem detail')
+      error.code = 'EACCES'
+      throw error
+    },
+    logger: { log() {}, error: (message) => errors.push(message) },
+  })
+
+  assert.equal(exitCode, 1)
+  assert.equal(connectionClosed, true)
+  assert.deepEqual(errors, [
+    '管理员密码已写入数据库，但撤销现有管理员会话失败（EACCES）。请保持后端停服并检查 data 目录写权限。',
+  ])
+})
+
+test('命令行入口缺少 ADMIN_PASSWORD 时会失败且不会连接数据库', () => {
+  const scriptPath = fileURLToPath(new URL('./set-admin-password.mjs', import.meta.url))
+  const result = spawnSync(process.execPath, [scriptPath], {
+    cwd: os.tmpdir(),
+    env: { ...process.env, ADMIN_PASSWORD: '' },
+    encoding: 'utf8',
+  })
+
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /请先在 .env 中设置 ADMIN_PASSWORD/)
 })
