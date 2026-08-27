@@ -376,6 +376,61 @@ export function applyRadianceBonusMultOverrides(
   return next
 }
 
+export interface SkillZoneMultResolved {
+  panelOverrides: DamageEventMultOverrides | null | undefined
+  disorderZoneMult?: number | null
+  disorderZoneMultFactor?: number | null
+  turbulenceZoneMult?: number | null
+  turbulenceZoneMultFactor?: number | null
+}
+
+/**
+ * 招式倍率填写（紊乱/乱流）语义为最终倍率区%，不是面板基础倍率。
+ * 拆出 zone 覆写，并剥离会误入面板的 base 字段（含旧存档 disorderBaseMult）。
+ */
+export function splitSkillZoneMultOverrides(
+  damageType: DamageEventKind,
+  overrides: DamageEventMultOverrides | null | undefined,
+): SkillZoneMultResolved {
+  if (!overrides) return { panelOverrides: overrides }
+
+  if (damageType === 'disorder') {
+    const zone = overrides.disorderZoneMult ?? overrides.disorderBaseMult
+    if (zone != null) {
+      const {
+        disorderZoneMult: _zone,
+        disorderBaseMult: _base,
+        disorderBaseMultFactor: _factor,
+        ...rest
+      } = overrides
+      return {
+        panelOverrides: Object.keys(rest).length ? rest : null,
+        disorderZoneMult: zone,
+        disorderZoneMultFactor: overrides.disorderBaseMultFactor ?? 100,
+      }
+    }
+  }
+
+  if (damageType === 'turbulence') {
+    const zone = overrides.turbulenceZoneMult ?? overrides.turbulenceBaseMult
+    if (zone != null) {
+      const {
+        turbulenceZoneMult: _zone,
+        turbulenceBaseMult: _base,
+        turbulenceBaseMultFactor: _factor,
+        ...rest
+      } = overrides
+      return {
+        panelOverrides: Object.keys(rest).length ? rest : null,
+        turbulenceZoneMult: zone,
+        turbulenceZoneMultFactor: overrides.turbulenceBaseMultFactor ?? 100,
+      }
+    }
+  }
+
+  return { panelOverrides: overrides }
+}
+
 /** 事件倍率覆写（不含耀变主 C _bonus 字段） */
 export function applyOwnerPanelMultOverrides(
   panel: PanelStats,

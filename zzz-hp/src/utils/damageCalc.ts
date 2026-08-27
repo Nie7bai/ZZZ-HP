@@ -43,7 +43,7 @@ export interface DamageCalcInput {
   ownerAgentElement?: string
   /** 招式持有者抗性区基准属性（流明则取下一位非流明队友） */
   ownerAgentResistanceElement?: string | null
-  /** 异常类触发者属性，用于火/以太异常持续时间 ÷0.5 */
+  /** 异常类触发者属性（展示等）；火/以太持续时间倍算优先用 triggerAgentElement */
   anomalyTriggerElement?: string
   /** @deprecated 结算不再取主C；未传 owner/触发者时的页级预览回落 */
   mainAgentElement?: string
@@ -89,6 +89,12 @@ export interface DamageCalcInput {
   remielRadianceResPen?: number
 /** 耀变：蕾米埃尔本人作异常强度提供者时的专用结算输入 */
   remielSelfRadianceCalc?: RemielSelfRadianceCalcInput | null
+  /** 招式填写紊乱最终倍率区%（有则直接作为倍率区，不再叠持续时间×补偿） */
+  disorderZoneMultOverride?: number | null
+  disorderZoneMultFactorOverride?: number | null
+  /** 招式填写乱流最终倍率区%（有则直接作为倍率区，不再叠持续时间×补偿） */
+  turbulenceZoneMultOverride?: number | null
+  turbulenceZoneMultFactorOverride?: number | null
 }
 
 export interface DamageCalcResult {
@@ -399,8 +405,10 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const ownerElement = input.ownerAgentElement ?? input.mainAgentElement
   const ownerResistanceElement =
     input.ownerAgentResistanceElement ?? input.mainAgentResistanceElement ?? ownerElement
+  // 火/以太有效时间按「异常属性」倍算：与持续时间面板同源，取异常强度提供者属性
+  // （乱流触发者固定为风，若误用触发者属性会导致火/以太补偿永远不 ×2）
   const durationElement =
-    input.anomalyTriggerElement ?? ownerElement ?? ''
+    input.triggerAgentElement ?? input.anomalyTriggerElement ?? ownerElement ?? ''
   /** 属性异常/异放/耀变：类型增伤与倍率取异常类触发者；紊乱/乱流取招式持有者 */
   const bonusPanel =
     useTriggerBase &&
@@ -581,29 +589,57 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   )
 
   const disorderDmgBonusZone = 1 + bonusPanel.disorderDmgBonus / 100
-  const disorderBaseMultRatio = skillMults
-    ? skillMults.disorderMultZone
-    : Math.max(0, multPanel.disorderBaseMult / 100) *
-        readFactor(multPanel.disorderBaseMultFactor)
   const disorderCompMultRatio = multPanel.disorderCompMult / 100
-  const disorderZone = Math.max(
-    0,
-    disorderBaseMultRatio + effectiveDuration * disorderCompMultRatio,
-  )
+  let disorderBaseMultRatio: number
+  let disorderZone: number
+  if (input.disorderZoneMultOverride != null) {
+    disorderZone = Math.max(
+      0,
+      (input.disorderZoneMultOverride / 100) *
+        readFactor(input.disorderZoneMultFactorOverride),
+    )
+    disorderBaseMultRatio = Math.max(
+      0,
+      disorderZone - effectiveDuration * disorderCompMultRatio,
+    )
+  } else {
+    disorderBaseMultRatio = skillMults
+      ? skillMults.disorderMultZone
+      : Math.max(0, multPanel.disorderBaseMult / 100) *
+          readFactor(multPanel.disorderBaseMultFactor)
+    disorderZone = Math.max(
+      0,
+      disorderBaseMultRatio + effectiveDuration * disorderCompMultRatio,
+    )
+  }
   const disorderBase = useTriggerBase ? triggerParts.anomalyBaseExpected : mainParts.anomalyBaseExpected
   const disorderExpected = disorderBase * disorderZone * disorderDmgBonusZone
 
   const turbulenceDmgBonusZone = 1 + bonusPanel.turbulenceDmgBonus / 100
   const turbulenceCombinedDmgBonusZone =
     1 + (bonusPanel.turbulenceDmgBonus + bonusPanel.anomalyDmgBonus) / 100
-  const turbulenceBaseMultRatio =
-    Math.max(0, multPanel.turbulenceBaseMult / 100) *
-      readFactor(multPanel.turbulenceBaseMultFactor)
   const turbulenceCompMultRatio = multPanel.turbulenceCompMult / 100
-  const turbulenceZone = Math.max(
-    0,
-    turbulenceBaseMultRatio + effectiveDuration * turbulenceCompMultRatio,
-  )
+  let turbulenceBaseMultRatio: number
+  let turbulenceZone: number
+  if (input.turbulenceZoneMultOverride != null) {
+    turbulenceZone = Math.max(
+      0,
+      (input.turbulenceZoneMultOverride / 100) *
+        readFactor(input.turbulenceZoneMultFactorOverride),
+    )
+    turbulenceBaseMultRatio = Math.max(
+      0,
+      turbulenceZone - effectiveDuration * turbulenceCompMultRatio,
+    )
+  } else {
+    turbulenceBaseMultRatio =
+      Math.max(0, multPanel.turbulenceBaseMult / 100) *
+        readFactor(multPanel.turbulenceBaseMultFactor)
+    turbulenceZone = Math.max(
+      0,
+      turbulenceBaseMultRatio + effectiveDuration * turbulenceCompMultRatio,
+    )
+  }
   // 有普通异常暴击区则乘算，否则 anomalyCritZone 本身为 1
   const useTurbulenceAnomalyCrit = Math.abs(anomalyCritZone - 1) > 1e-9
   const turbulencePreCrit =

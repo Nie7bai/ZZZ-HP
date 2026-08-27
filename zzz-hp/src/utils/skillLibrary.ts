@@ -128,9 +128,9 @@ function readBaseMult(event: DamageEvent): { baseMult: number; baseMultFactor?: 
     case 'anomalyRelease':
       return pick(o.anomalyReleaseMult, o.anomalyReleaseMultFactor)
     case 'disorder':
-      return pick(o.disorderBaseMult, o.disorderBaseMultFactor)
+      return pick(o.disorderZoneMult ?? o.disorderBaseMult, o.disorderBaseMultFactor)
     case 'turbulence':
-      return pick(o.turbulenceBaseMult, o.turbulenceBaseMultFactor)
+      return pick(o.turbulenceZoneMult ?? o.turbulenceBaseMult, o.turbulenceBaseMultFactor)
     case 'radiance':
       return pick(o.radianceMult, o.radianceMultFactor)
     default:

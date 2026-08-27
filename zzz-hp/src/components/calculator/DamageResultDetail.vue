@@ -1014,7 +1014,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
       [
         `面板持续时间 ${formatFormulaNumber(multPanel.anomalyDuration, 2)}s（强度提供者）`,
         Math.abs(p.effectiveAnomalyDuration - multPanel.anomalyDuration) > 1e-6
-          ? `火/以太触发：有效时间 = 面板 / 0.5 → ${formatFormulaNumber(p.effectiveAnomalyDuration)}s`
+          ? `火/以太（强度提供者）：有效时间 = 面板 / 0.5（×2）→ ${formatFormulaNumber(p.effectiveAnomalyDuration)}s`
           : `有效时间 = 面板 → ${formatFormulaNumber(p.effectiveAnomalyDuration)}s`,
       ],
     ),

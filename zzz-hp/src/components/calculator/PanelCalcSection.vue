@@ -81,6 +81,7 @@ import {
   applyOwnerPanelMultOverrides,
   applyRadianceBonusMultOverrides,
   resolveRadianceBonusMultDefaults,
+  splitSkillZoneMultOverrides,
 } from '@/utils/damageEvent'
 import {
   buildGenericPanelSkillContext,
@@ -1325,8 +1326,10 @@ function buildHitCalcInput(hit: ResolvedHit): DamageCalcInput | null {
   )
 
   const overrides = hit.multOverrides
+  const zoneMultResolved = splitSkillZoneMultOverrides(damageType, overrides)
+  const panelOverrides = zoneMultResolved.panelOverrides
   let evtFinalPanel = applyHitPanelMods(
-    applyOwnerPanelMultOverrides(evtBreakdown.finalPanel, overrides),
+    applyOwnerPanelMultOverrides(evtBreakdown.finalPanel, panelOverrides),
     hit.panelMods,
   )
 
@@ -1360,14 +1363,14 @@ function buildHitCalcInput(hit: ResolvedHit): DamageCalcInput | null {
           skillContext: buildSkillContextFromHit(hit, tAgent?.element),
         },
       )
-      // 招式倍率覆写：紊乱/乱流落到强度提供者面板
+      // 招式倍率覆写：紊乱/乱流落到强度提供者面板（最终倍率区填写不进面板基础字段）
       evtTriggerFinalPanel = applyOwnerPanelMultOverrides(tBreakdown.finalPanel, {
-        disorderBaseMult: overrides?.disorderBaseMult,
-        disorderBaseMultFactor: overrides?.disorderBaseMultFactor,
-        disorderCompMult: overrides?.disorderCompMult,
-        turbulenceBaseMult: overrides?.turbulenceBaseMult,
-        turbulenceBaseMultFactor: overrides?.turbulenceBaseMultFactor,
-        turbulenceCompMult: overrides?.turbulenceCompMult,
+        disorderBaseMult: panelOverrides?.disorderBaseMult,
+        disorderBaseMultFactor: panelOverrides?.disorderBaseMultFactor,
+        disorderCompMult: panelOverrides?.disorderCompMult,
+        turbulenceBaseMult: panelOverrides?.turbulenceBaseMult,
+        turbulenceBaseMultFactor: panelOverrides?.turbulenceBaseMultFactor,
+        turbulenceCompMult: panelOverrides?.turbulenceCompMult,
       })
       evtTriggerPierce = computePiercePower(
         evtTriggerFinalPanel.hp,
@@ -1381,20 +1384,20 @@ function buildHitCalcInput(hit: ResolvedHit): DamageCalcInput | null {
     if (evtTriggerFinalPanel) {
       const o = overrides
       if (damageType === 'disorder') {
-        if (o?.disorderBaseMult == null) {
+        if (o?.disorderZoneMult == null && o?.disorderBaseMult == null) {
           evtFinalPanel.disorderBaseMult = evtTriggerFinalPanel.disorderBaseMult
         }
-        if (o?.disorderBaseMultFactor == null) {
+        if (o?.disorderZoneMult == null && o?.disorderBaseMultFactor == null) {
           evtFinalPanel.disorderBaseMultFactor = evtTriggerFinalPanel.disorderBaseMultFactor
         }
         if (o?.disorderCompMult == null) {
           evtFinalPanel.disorderCompMult = evtTriggerFinalPanel.disorderCompMult
         }
       } else if (damageType === 'turbulence') {
-        if (o?.turbulenceBaseMult == null) {
+        if (o?.turbulenceZoneMult == null && o?.turbulenceBaseMult == null) {
           evtFinalPanel.turbulenceBaseMult = evtTriggerFinalPanel.turbulenceBaseMult
         }
-        if (o?.turbulenceBaseMultFactor == null) {
+        if (o?.turbulenceZoneMult == null && o?.turbulenceBaseMultFactor == null) {
           evtFinalPanel.turbulenceBaseMultFactor = evtTriggerFinalPanel.turbulenceBaseMultFactor
         }
         if (o?.turbulenceCompMult == null) {
@@ -1407,7 +1410,7 @@ function buildHitCalcInput(hit: ResolvedHit): DamageCalcInput | null {
   // 增益锚点即旧招式小类，小类倍率仍作为未填倍率时的兜底（倍率修正只写面板，避免双重相乘）
   const sub = resolveSubcategoryById(hit.skill.buffAnchorId ?? null)
   const effectiveSub =
-    sub && overrides ? mergeSkillSubcategoryMultOverrides(sub, overrides) : sub
+    sub && panelOverrides ? mergeSkillSubcategoryMultOverrides(sub, panelOverrides) : sub
 
   const luminousMods = resolveLuminousTeamModifiers()
 
@@ -1526,6 +1529,10 @@ function buildHitCalcInput(hit: ResolvedHit): DamageCalcInput | null {
       evtPowerAgentId,
       buildSkillContextFromHit(hit, ownerAgent?.element),
     ),
+    disorderZoneMultOverride: zoneMultResolved.disorderZoneMult,
+    disorderZoneMultFactorOverride: zoneMultResolved.disorderZoneMultFactor,
+    turbulenceZoneMultOverride: zoneMultResolved.turbulenceZoneMult,
+    turbulenceZoneMultFactorOverride: zoneMultResolved.turbulenceZoneMultFactor,
   }
 }
 
@@ -3146,23 +3153,18 @@ const valueTips = computed(() => {
       ],
       `异常持续时间 ${formatFormulaNumber(durationPanel.anomalyDuration, 2)}s → 有效 ${formatFormulaNumber(p.effectiveAnomalyDuration)}s`,
       (() => {
-        const trigEl =
-          (eventLine?.hit.triggerAgentId
-            ? props.agents.find((item) => item.id === eventLine.hit.triggerAgentId)?.element
-            : null) ||
-          eventPowerAgent?.element ||
-          ''
+        const powerEl = eventPowerAgent?.element || ''
         const items = [
           `面板持续时间 ${formatFormulaNumber(durationPanel.anomalyDuration, 2)}s（强度提供者）`,
         ]
-        if (trigEl === '火' || trigEl === '以太') {
+        if (powerEl === '火' || powerEl === '以太') {
           items.push(
-            `触发者属性 ${trigEl}：有效时间 = 面板 / 0.5`,
+            `强度提供者属性 ${powerEl}：有效时间 = 面板 / 0.5（×2）`,
             `${formatFormulaNumber(durationPanel.anomalyDuration, 2)} / 0.5 = ${formatFormulaNumber(p.effectiveAnomalyDuration)}s`,
           )
         } else {
           items.push(
-            trigEl ? `触发者属性 ${trigEl}：有效时间 = 面板` : '有效时间 = 面板',
+            powerEl ? `强度提供者属性 ${powerEl}：有效时间 = 面板` : '有效时间 = 面板',
             `= ${formatFormulaNumber(p.effectiveAnomalyDuration)}s`,
           )
         }

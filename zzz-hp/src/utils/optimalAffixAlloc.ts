@@ -40,6 +40,7 @@ import {
   pickEventDamage,
   applyOwnerPanelMultOverrides,
   applyRadianceBonusMultOverrides,
+  splitSkillZoneMultOverrides,
 } from '@/utils/damageEvent'
 import {
   buildSkillContextFromHit,
@@ -726,8 +727,10 @@ export function evaluateOptimalEventDetail(
     skillContext: skillCtx,
   }
   const evtBreakdown = computeFinalPanel(ownerExternal, evtPanelCtx)
+  const zoneMultResolved = splitSkillZoneMultOverrides(damageType, hit.multOverrides)
+  const panelOverrides = zoneMultResolved.panelOverrides
   let evtFinalPanel = applyHitPanelMods(
-    applyEventMultOverrides(evtBreakdown.finalPanel, hit.multOverrides),
+    applyEventMultOverrides(evtBreakdown.finalPanel, panelOverrides),
     hit.panelMods,
   )
 
@@ -770,14 +773,14 @@ export function evaluateOptimalEventDetail(
         ...buildPanelContextForSlot(ctx, tSlotIndex, tExternal, mainExternal, tExtraMods),
         skillContext: buildSkillContextFromHit(hit, tAgent?.element),
       })
-      // 招式倍率覆写：紊乱/乱流落到强度提供者面板
+      // 招式倍率覆写：紊乱/乱流落到强度提供者面板（最终倍率区填写不进面板基础字段）
       evtTriggerFinalPanel = applyEventMultOverrides(producerBreakdown.finalPanel, {
-        disorderBaseMult: hit.multOverrides?.disorderBaseMult,
-        disorderBaseMultFactor: hit.multOverrides?.disorderBaseMultFactor,
-        disorderCompMult: hit.multOverrides?.disorderCompMult,
-        turbulenceBaseMult: hit.multOverrides?.turbulenceBaseMult,
-        turbulenceBaseMultFactor: hit.multOverrides?.turbulenceBaseMultFactor,
-        turbulenceCompMult: hit.multOverrides?.turbulenceCompMult,
+        disorderBaseMult: panelOverrides?.disorderBaseMult,
+        disorderBaseMultFactor: panelOverrides?.disorderBaseMultFactor,
+        disorderCompMult: panelOverrides?.disorderCompMult,
+        turbulenceBaseMult: panelOverrides?.turbulenceBaseMult,
+        turbulenceBaseMultFactor: panelOverrides?.turbulenceBaseMultFactor,
+        turbulenceCompMult: panelOverrides?.turbulenceCompMult,
       })
       evtTriggerPierce = computePiercePower(
         evtTriggerFinalPanel.hp,
@@ -789,20 +792,20 @@ export function evaluateOptimalEventDetail(
     const o = hit.multOverrides
     if (evtTriggerFinalPanel) {
       if (damageType === 'disorder') {
-        if (o?.disorderBaseMult == null) {
+        if (o?.disorderZoneMult == null && o?.disorderBaseMult == null) {
           evtFinalPanel.disorderBaseMult = evtTriggerFinalPanel.disorderBaseMult
         }
-        if (o?.disorderBaseMultFactor == null) {
+        if (o?.disorderZoneMult == null && o?.disorderBaseMultFactor == null) {
           evtFinalPanel.disorderBaseMultFactor = evtTriggerFinalPanel.disorderBaseMultFactor
         }
         if (o?.disorderCompMult == null) {
           evtFinalPanel.disorderCompMult = evtTriggerFinalPanel.disorderCompMult
         }
       } else if (damageType === 'turbulence') {
-        if (o?.turbulenceBaseMult == null) {
+        if (o?.turbulenceZoneMult == null && o?.turbulenceBaseMult == null) {
           evtFinalPanel.turbulenceBaseMult = evtTriggerFinalPanel.turbulenceBaseMult
         }
-        if (o?.turbulenceBaseMultFactor == null) {
+        if (o?.turbulenceZoneMult == null && o?.turbulenceBaseMultFactor == null) {
           evtFinalPanel.turbulenceBaseMultFactor = evtTriggerFinalPanel.turbulenceBaseMultFactor
         }
         if (o?.turbulenceCompMult == null) {
@@ -816,7 +819,7 @@ export function evaluateOptimalEventDetail(
   const overrides = hit.multOverrides
   // 倍率修正只写面板，避免与 resolveSkillMults 双重相乘
   const effectiveSub =
-    sub && overrides ? mergeSkillSubcategoryMultOverrides(sub, overrides) : sub
+    sub && panelOverrides ? mergeSkillSubcategoryMultOverrides(sub, panelOverrides) : sub
 
   const luminousMods = resolveLuminousTeamModifiersForOptimal(ctx, mainExternal)
 
@@ -969,6 +972,10 @@ export function evaluateOptimalEventDetail(
       mainExternal,
       skillCtx,
     ),
+    disorderZoneMultOverride: zoneMultResolved.disorderZoneMult,
+    disorderZoneMultFactorOverride: zoneMultResolved.disorderZoneMultFactor,
+    turbulenceZoneMultOverride: zoneMultResolved.turbulenceZoneMult,
+    turbulenceZoneMultFactorOverride: zoneMultResolved.turbulenceZoneMultFactor,
   })
 
   const perHit = pickEventDamage(result, damageType, hit.critMode)

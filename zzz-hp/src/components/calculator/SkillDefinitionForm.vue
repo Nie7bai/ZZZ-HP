@@ -207,6 +207,12 @@ const readonlySettlementDisplay = computed(() => {
   return ''
 })
 
+const multFieldLabel = computed(() => {
+  const type = draft.value.damageType
+  if (type === 'disorder' || type === 'turbulence') return '最终倍率%'
+  return '倍率%'
+})
+
 function toggleSkillType(id: SkillTypeId) {
   if (props.readonly) return
   const index = draft.value.skillTypes.indexOf(id)
@@ -270,7 +276,7 @@ function toggleSkillType(id: SkillTypeId) {
       </select>
     </label>
     <label>
-      <span>倍率%</span>
+      <span>{{ multFieldLabel }}</span>
       <input
         v-if="readonly"
         :value="readonlyBaseMultDisplay"

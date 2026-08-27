@@ -414,9 +414,13 @@ export interface DamageEventMultOverrides {
   disorderBaseMult?: number | null
   disorderBaseMultFactor?: number | null
   disorderCompMult?: number | null
+  /** 招式填写紊乱最终倍率区%（含持续时间×补偿；与 disorderBaseMult 互斥） */
+  disorderZoneMult?: number | null
   turbulenceBaseMult?: number | null
   turbulenceBaseMultFactor?: number | null
   turbulenceCompMult?: number | null
+  /** 招式填写乱流最终倍率区%（含持续时间×补偿；与 turbulenceBaseMult 互斥） */
+  turbulenceZoneMult?: number | null
   radianceMult?: number | null
   radianceMultFactor?: number | null
   specialMult?: number | null
