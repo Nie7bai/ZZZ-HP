@@ -15,9 +15,11 @@
 ## Test plan
 
 - [ ] `cd zzz-hp && npm run type-check`
+- [ ] `cd zzz-hp-backend && npm test`
 - [ ] 相关页面 / API 本地手测通过
 - [ ] 未误提交 `.env`、上传图、会话文件、明文管理员密码
-- [ ] 已跑：`powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-no-secrets.ps1 -StagedOnly`
+- [ ] 已核对：`git diff --cached --check` 和 `git diff --cached`
+- [ ] 已跑暂存区辅助扫描：`powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-no-secrets.ps1 -StagedOnly`
 
 ## Notes
 

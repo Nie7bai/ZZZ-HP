@@ -80,3 +80,7 @@ export function revokeAdminSession(token) {
     writeStore(store)
   }
 }
+
+export function revokeAllAdminSessions() {
+  writeStore({ sessions: {} })
+}

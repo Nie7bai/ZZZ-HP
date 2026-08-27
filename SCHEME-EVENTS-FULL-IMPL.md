@@ -1,9 +1,10 @@
 # 伤害事件「完全跟随方案」— 实现方案
 
-> 目标分支：`3.1.6.3`（已并入 `3.1.6.4` 现有半成品）  
-> `3.1.6.4` 保持不动  
+> 历史目标分支：`3.1.6.3`（当时基于已并入的 `3.1.6.4` 半成品）
+> 当时约束：`3.1.6.4` 保持不动
 > 日期：2026-08-12（落地更新：2026-08-13）  
-> 对照说明：`78291f2` 写的「由全局存储改为跟随方案」目前只实现了一半
+> 对照说明：当时 `78291f2` 写的「由全局存储改为跟随方案」只实现了一半
+> 文档状态：历史实现记录，不定义当前分支或提交方向；现行规则见 [`docs/policies/git-workflow.md`](./docs/policies/git-workflow.md)。
 
 ---
 
@@ -16,7 +17,7 @@
 - 「取消当前方案」解除绑定；确认框独立 Teleport；方案库 z-index 高于事件窗
 - 摘要条 / 去向弹窗 / 取消钮白天主题对齐
 
-详见根目录 `BRANCH_CHANGELOG.md` → `3.1.6.3`。
+历史合入说明见 [`docs/branch-history.md`](./docs/branch-history.md) 中的 `3.1.6.3` 记录。
 
 ---
 
@@ -171,7 +172,7 @@ anomalyEventModeName?: string | null
 | `zzz-hp/src/utils/damageCalcHistory.ts` | 重写迁移；禁止合并灌入 |
 | `zzz-hp/src/types/damageCalcHistory.ts` | 可选 modeRef 字段 |
 | `zzz-hp/src/utils/customDamageEventModes.ts` | 保持；仅被显式另存/更新调用 |
-| `BRANCH_CHANGELOG.md` | 记录本分支「事件完全跟方案」 |
+| `docs/branch-history.md` | 保留原 `3.1.6.3` 分支的历史合入说明 |
 
 ---
 
@@ -194,17 +195,17 @@ anomalyEventModeName?: string | null
 
 ---
 
-## 7. 提交建议（在 `3.1.6.3` 上）
+## 7. 历史提交拆分
 
-拆开提交，便于审：
+以下是 2026-08-12 原计划在 `3.1.6.3` 上采用的提交拆分：
 
 1. `fix(calculator): 事件编辑默认不自动写回全局模式库`  
 2. `fix(calculator): 迁移不再合并灌入空方案`  
 3. `feat(calculator): 方案内直接维护事件与摘要文案`  
 4. `feat(calculator): 方案可选记录事件模板引用`（若做 P1-1）  
-5. `docs: BRANCH_CHANGELOG 事件完全跟随方案`
+5. `docs: 更新方案事件实现说明`
 
-**不要改 `3.1.6.4` 分支。** 合入方向保持：`3.1.6.4` 内容已在 `3.1.6.3`；后续完整实现只提交到 `3.1.6.3`。
+当时的合入方向是保留 `3.1.6.4`，并将后续完整实现提交到 `3.1.6.3`。该安排只用于理解历史，不再约束当前开发。
 
 ---
 

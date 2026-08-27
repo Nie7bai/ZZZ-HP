@@ -44,7 +44,9 @@ try {
     console.log('Inserted admin with bcrypt password hash')
   } else {
     console.log(`Admin already exists (id=${rows[0].id}); skipped password update`)
-    console.log('To change password, run: node scripts/set-admin-password.mjs')
+    console.log(
+      'To change password, stop the backend first; run node scripts/set-admin-password.mjs, then restart only after it succeeds.',
+    )
   }
 
   console.log('Done.')

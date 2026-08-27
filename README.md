@@ -108,16 +108,15 @@ npm run build
 
 ## 协作与发版
 
-分支、提交信息、SemVer 与 PR 约定见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
+提交改动前先阅读 [贡献指南](https://github.com/Nie7bai/ZZZ-HP/blob/main/CONTRIBUTING.md)。Git 层面的分支、提交、PR、合并、版本号和 tag 规则见 [Git 协作与发布政策](https://github.com/Nie7bai/ZZZ-HP/blob/main/docs/policies/git-workflow.md)。
 
-各分支用途、内容介绍与版本更新日志见 [BRANCH_CHANGELOG.md](./BRANCH_CHANGELOG.md)。
+项目文档从 [文档索引](https://github.com/Nie7bai/ZZZ-HP/blob/main/docs/index.md) 进入。旧版本线和专题分支见 [历史分支记录](https://github.com/Nie7bai/ZZZ-HP/blob/main/docs/branch-history.md)，该记录不代表当前远程分支状态。
 
 站点首页「更新日志」由 `zzz-hp-backend/scripts/seed_changelog.mjs` 写入数据库。
 
 ## 说明
 
-- **不要提交** `.env`、`node_modules`、`dist`、运行时 `uploads` / `guestbook_image` 用户上传、明文管理员密码
-- 提交 / 打包前可跑：`powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-no-secrets.ps1`（只拦明文管理员密码；业务 SQL 放行）
+- 提交和打包前遵守 [暂存与安全规则](https://github.com/Nie7bai/ZZZ-HP/blob/main/docs/policies/git-workflow.md#暂存与安全)，检查敏感文件、运行时数据和用户上传内容。
 - 数据库内容不在 Git 中；clone 后先跑 `init_schema.sql` 建表，再用 SQL / 导入脚本写入数据
 - 旧的 `init_tables.sql`、`create_*.sql`、`alter_*.sql` 仍保留作参考，新环境请优先使用 `init_schema.sql`
 - 图片等静态资源位于后端各资源目录，以及前端 `public` / `boss_image` 等目录；用户上传图需运维备份，Git 不会保存
