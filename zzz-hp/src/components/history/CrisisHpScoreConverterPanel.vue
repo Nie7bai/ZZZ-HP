@@ -182,7 +182,7 @@ async function loadBossList(options?: { preserveSelection?: boolean }) {
   }
   try {
     bossList.value = isDeductionMode.value
-      ? await fetchDeductionBossList('boss')
+      ? await fetchDeductionBossList()
       : await fetchBossList(tableMode.value)
     if (preservedBoss && bossList.value.some((boss) => boss.boss_name === preservedBoss)) {
       selectedBoss.value = preservedBoss

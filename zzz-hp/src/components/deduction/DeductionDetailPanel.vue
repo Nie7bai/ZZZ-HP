@@ -299,11 +299,21 @@ function onAddMonster(layer: number) {
     name: '',
     hp: 0,
     defense: 0,
-    level: 0,
+    level: 1,
     weakness: null,
     resistance: null,
     boss_image: null,
   })
+  resetMonsterImagePicker()
+  monsterDraft.value = {
+    name: '',
+    hp: 0,
+    defense: 0,
+    level: 1,
+    weakness: null,
+    resistance: null,
+    boss_image: null,
+  }
   editing.value = { kind: 'monster', layer, index }
   pendingNewItem.value = { kind: 'monster', layer, index }
   editError.value = ''
@@ -541,7 +551,11 @@ async function saveMonster() {
           const monsters = node.layers[layerIndex]?.monsters
           if (!monsters) return
           if (pending?.kind === 'monster') {
-            monsters.splice(Math.min(pending.index, monsters.length), 0, payload)
+            if (pending.index < monsters.length) {
+              monsters[pending.index] = payload
+            } else {
+              monsters.push(payload)
+            }
           } else {
             monsters[monsterIndex] = payload
           }

@@ -363,17 +363,81 @@ async function sanitizeLayersForSave(layers) {
         ? null
         : String(layer.fieldBuffSetId).trim(),
     monsters: Array.isArray(layer?.monsters)
-      ? layer.monsters.map((m) => ({
-          name: String(m?.name ?? '').trim(),
-          hp: Number(m?.hp) || 0,
-          defense: Number(m?.defense) || 0,
-          level: Number(m?.level) || 0,
-          weakness: m?.weakness == null ? null : String(m.weakness),
-          resistance: m?.resistance == null ? null : String(m.resistance),
-          boss_image: m?.boss_image == null ? null : String(m.boss_image),
-        }))
+      ? layer.monsters
+          .map((m) => ({
+            name: String(m?.name ?? '').trim(),
+            hp: Number(m?.hp) || 0,
+            defense: Number(m?.defense) || 0,
+            level: Number(m?.level) || 0,
+            weakness: m?.weakness == null ? null : String(m.weakness),
+            resistance: m?.resistance == null ? null : String(m.resistance),
+            boss_image: m?.boss_image == null ? null : String(m.boss_image),
+          }))
+          .filter((m) => m.name)
       : [],
   }))
+}
+
+/** 节点 layers 中的怪物同步到 boss_info 与 boss 表（mode=deduction），供下拉与回退层使用 */
+async function syncDeductionMonstersToTables(version, phase, layers) {
+  const versionValue = String(version ?? '').trim()
+  const phaseValue = normalizePhase(phase)
+  if (!versionValue) return
+
+  const sanitized = await sanitizeLayersForSave(layers)
+  for (const layer of sanitized) {
+    const room = String(layer.name ?? '').trim()
+    if (!room) continue
+    for (const monster of layer.monsters) {
+      const name = String(monster.name ?? '').trim()
+      if (!name) continue
+      try {
+        await upsertBossInfo({
+          boss_name: name,
+          defense: monster.defense,
+          level: monster.level || 1,
+          weakness: monster.weakness,
+          resistance: monster.resistance,
+          boss_image: monster.boss_image,
+        })
+        const [existing] = await pool.execute(
+          `SELECT id FROM boss
+           WHERE mode = 'deduction' AND version = ? AND phase = ? AND room = ? AND boss_name = ?
+           LIMIT 1`,
+          [versionValue, phaseValue, room, name],
+        )
+        const bossValues = [
+          versionValue,
+          phaseValue,
+          name,
+          monster.hp,
+          monster.defense,
+          monster.level || 1,
+          room,
+          monster.weakness,
+          monster.resistance,
+          monster.boss_image,
+        ]
+        if (existing.length) {
+          await pool.execute(
+            `UPDATE boss
+             SET version = ?, phase = ?, boss_name = ?, hp = ?, defense = ?, level = ?,
+                 room = ?, weakness = ?, resistance = ?, boss_image = ?, mode = 'deduction'
+             WHERE id = ?`,
+            [...bossValues, existing[0].id],
+          )
+        } else {
+          await pool.execute(
+            `INSERT INTO boss (version, phase, boss_name, hp, defense, level, room, weakness, resistance, boss_image, mode)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'deduction')`,
+            bossValues,
+          )
+        }
+      } catch (err) {
+        console.warn(`[deduction] 同步怪物「${name}」到 boss 表失败:`, err?.message ?? err)
+      }
+    }
+  }
 }
 
 function sanitizeBuffsForSave(buffs) {
@@ -610,6 +674,7 @@ export async function createDeductionNode(version, payload) {
   )
   const sortOrder = Number(maxSort?.m) + 1
   const enrichedBuffs = await enrichBuffsWithSameNameEffects(payload.buffs)
+  const sanitizedLayers = await sanitizeLayersForSave(payload.layers)
 
   const [res] = await pool.execute(
     `INSERT INTO deduction_node
@@ -622,7 +687,7 @@ export async function createDeductionNode(version, payload) {
       String(payload.name ?? '').trim() || '未命名节点',
       Number(payload.type) || 0,
       payload.storyText ?? '',
-      toJson(payload.layers),
+      toJson(sanitizedLayers),
       toJson(enrichedBuffs),
       sortOrder,
       periodName,
@@ -631,6 +696,7 @@ export async function createDeductionNode(version, payload) {
   if (enrichedBuffs.length) {
     await syncDeductionBuffsToTable(versionValue, phaseValue, enrichedBuffs)
   }
+  await syncDeductionMonstersToTables(versionValue, phaseValue, sanitizedLayers)
   return { id: Number(res.insertId), nodeId, sortOrder }
 }
 
@@ -639,7 +705,8 @@ export async function updateDeductionNode(id, payload) {
   const nodeId = Number(id)
   if (!Number.isInteger(nodeId) || nodeId <= 0) throw new Error('无效的节点 ID')
   const sortOrder = Number.isFinite(Number(payload.sortOrder)) ? Number(payload.sortOrder) : 0
-  const layersJson = toJson(sanitizeLayersForSave(payload.layers))
+  const sanitizedLayers = await sanitizeLayersForSave(payload.layers)
+  const layersJson = toJson(sanitizedLayers)
   const enrichedBuffs = await enrichBuffsWithSameNameEffects(payload.buffs)
   const buffsJson = toJson(enrichedBuffs)
   const [res] = await pool.execute(
@@ -665,6 +732,7 @@ export async function updateDeductionNode(id, payload) {
   ])
   if (meta[0]) {
     await syncDeductionBuffsToTable(meta[0].version, meta[0].phase, enrichedBuffs)
+    await syncDeductionMonstersToTables(meta[0].version, meta[0].phase, sanitizedLayers)
   }
   return { id: nodeId }
 }

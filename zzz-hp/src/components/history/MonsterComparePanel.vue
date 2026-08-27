@@ -51,7 +51,7 @@ const pageTitle = computed(() => modeTitles[props.mode])
 
 const panelDesc = computed(() => {
   if (isDeductionMode.value) {
-    return '先选择精英或 Boss，查看其在各期出现的总血量与相对膨胀变化'
+    return '选择终局 Boss，查看其在各期出现的总血量与相对膨胀变化'
   }
   if (isDefenseMode.value) {
     return '先选择精英或 Boss，再选择怪物，查看其在各期出现时的血量与相对膨胀变化'
@@ -75,7 +75,7 @@ async function loadBossList() {
   listError.value = ''
   try {
     const list = isDeductionMode.value
-      ? await fetchDeductionBossList(selectedCategory.value)
+      ? await fetchDeductionBossList()
       : isDefenseMode.value
         ? await fetchDefenseBossList(defenseVariant.value, selectedCategory.value)
         : await fetchBossList(crisisRoomType.value)
@@ -136,7 +136,7 @@ watch(defenseVariant, () => {
 })
 
 watch(selectedCategory, () => {
-  if (!isDefenseMode.value && !isDeductionMode.value) return
+  if (!isDefenseMode.value) return
   selectedBoss.value = ''
   loadBossList()
 })
@@ -163,8 +163,8 @@ watch(selectedBoss, () => {
     <p v-else-if="listError" class="status-text error">{{ listError }}</p>
 
     <template v-else>
-      <div class="selector-toolbar" :class="{ 'selector-toolbar--defense': isDefenseMode || isDeductionMode }">
-        <div v-if="isDefenseMode || isDeductionMode" class="selector-field">
+      <div class="selector-toolbar" :class="{ 'selector-toolbar--defense': isDefenseMode }">
+        <div v-if="isDefenseMode" class="selector-field">
           <label class="selector-label" for="category-select">怪物类型</label>
           <select id="category-select" v-model="selectedCategory" class="boss-select">
             <option value="elite">精英</option>
@@ -175,11 +175,13 @@ watch(selectedBoss, () => {
         <div class="selector-field">
           <label class="selector-label" for="boss-select">
             {{
-              isDeductionMode || isDefenseMode
-                ? `选择${categoryLabel}`
-                : crisisRoomType === 'hard'
-                  ? '选择绝境 Boss'
-                  : '选择正常 Boss'
+              isDeductionMode
+                ? '选择 Boss'
+                : isDefenseMode
+                  ? `选择${categoryLabel}`
+                  : crisisRoomType === 'hard'
+                    ? '选择绝境 Boss'
+                    : '选择正常 Boss'
             }}
           </label>
           <div class="selector-row">
@@ -196,7 +198,7 @@ watch(selectedBoss, () => {
               :disabled="!bossList.length"
             >
               <option v-if="!bossList.length" value="">
-                暂无{{ isDeductionMode || isDefenseMode ? categoryLabel : 'Boss' }}
+                暂无{{ isDeductionMode ? 'Boss' : isDefenseMode ? categoryLabel : 'Boss' }}
               </option>
               <option v-for="boss in bossList" :key="boss.boss_name" :value="boss.boss_name">
                 {{ boss.boss_name }}

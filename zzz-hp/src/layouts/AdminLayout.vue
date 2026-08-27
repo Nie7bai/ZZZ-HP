@@ -19,7 +19,7 @@ const props = defineProps<{
 const activePanel = ref<AdminPanel>('monster')
 const visualPanelRef = ref<{ reload?: () => Promise<void> } | null>(null)
 
-/** 推演走专属节点管理面板（不落危局/防卫战的 boss/buff 表单） */
+/** 推演主面板为节点内联编辑；不展示侧栏怪物/Buff 表单页 */
 const isDeduction = computed(() => props.scope === 'deduction')
 
 watch(

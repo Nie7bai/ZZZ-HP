@@ -456,7 +456,7 @@ async function onAdminDeletePeriod(period: DeductionPeriod) {
 <template>
   <div class="admin-deduction-visual">
     <p class="adv-hint">
-      临界推演在节点内直接编辑：战斗节点可「+ 新增增益」「+ 怪物」「+ 新增层」；选中战斗层后点编辑即可改怪物属性，增益支持按名搜索复用历史 Buff。无需使用危局/防卫的单独表单页。
+      临界推演在节点内直接编辑：战斗节点可「+ 新增增益」「+ 怪物」「+ 新增层」；选中战斗层后点编辑即可改怪物属性，增益支持按名搜索复用历史 Buff。
     </p>
     <div class="adv-nanoka">
       <label class="adv-nanoka-label" for="adv-nanoka-ids">nanoka 更新</label>

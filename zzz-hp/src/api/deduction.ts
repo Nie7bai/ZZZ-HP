@@ -295,63 +295,25 @@ export async function fetchDeductionHpChart(): Promise<HpChartPoint[]> {
   return fetchDeductionNodeHpChart()
 }
 
-/** 推演单独怪物对比的类别 */
-export type DeductionBossCategory = 'elite' | 'boss'
-
-/** 小怪层中按命名特征判定的精英（不含 Boss 关怪物） */
-const DEDUCTION_ELITE_NAMED = new Set([
-  '护戍盾卫',
-  '秉火领颂',
-  '缄枢',
-  '索迪代斯',
-  '装甲哈提',
-  '骇鸟',
-  '牲鬼·卫律使者',
-  '牲鬼·凶魁愚者',
-  '秽息蚀者·阿瓦鲁斯',
-  '秽息行者·蝎骸',
-])
-
-function isDeductionEliteMonster(name: string): boolean {
-  const s = String(name)
-  return (
-    /^(多佩冈亚·|秽蚀·|恶名·|离子体·|初生·)/.test(s) ||
-    /(·蓄能型|·超频型|·挑战者型|·重击者型|Ⅱ型|Ⅲ型)$/.test(s) ||
-    DEDUCTION_ELITE_NAMED.has(s)
-  )
-}
-
-/** 推演中出现过的怪物（带图片），可按 精英 / Boss 分类；小怪一律排除 */
-export async function fetchDeductionBossList(
-  category?: DeductionBossCategory,
-): Promise<BossOption[]> {
+/** 推演终局 Boss 列表（单独怪物对比用） */
+export async function fetchDeductionBossList(): Promise<BossOption[]> {
   const periods = await fetchDeductionPhases()
-  const byName = new Map<string, { image: string | null; boss: boolean }>()
+  const byName = new Map<string, { image: string | null }>()
   for (const period of periods) {
     for (const node of period.nodes) {
       if (!isDeductionBattleNode(node.type)) continue
-      const bossLayers = new Set(deductionNodeBossLayers(node))
-      for (const layer of node.layers) {
-        const isBossLayer = bossLayers.has(layer)
+      for (const layer of deductionNodeBossLayers(node)) {
         for (const monster of layer.monsters) {
           if (!monster.name) continue
           const name = String(monster.name)
-          const rec = byName.get(name) ?? { image: null, boss: isBossLayer }
+          const rec = byName.get(name) ?? { image: null }
           if (!rec.image && monster.boss_image) rec.image = monster.boss_image
-          if (isBossLayer) rec.boss = true
           byName.set(name, rec)
         }
       }
     }
   }
   return [...byName.entries()]
-    .filter(([name, rec]) => {
-      const isBoss = rec.boss
-      const isElite = !rec.boss && isDeductionEliteMonster(name)
-      if (category === 'boss') return isBoss
-      if (category === 'elite') return isElite
-      return isBoss || isElite
-    })
     .sort(([a], [b]) => a.localeCompare(b, 'zh'))
     .map(([boss_name, rec]) => ({ boss_name, boss_image: rec.image }))
 }
@@ -364,7 +326,8 @@ export async function fetchDeductionBossChart(bossName: string): Promise<HpChart
     let hp = 0
     let hp953 = 0
     for (const node of period.nodes) {
-      for (const layer of node.layers) {
+      if (!isDeductionBattleNode(node.type)) continue
+      for (const layer of deductionNodeBossLayers(node)) {
         for (const monster of layer.monsters) {
           if (monster.name === bossName) {
             hp += Number(monster.hp) || 0
