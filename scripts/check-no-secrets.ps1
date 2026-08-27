@@ -3,9 +3,10 @@
 .SYNOPSIS
   Fail if plaintext admin passwords or common credential files leak into commit/pack.
 
-  Business DB data is allowed (character / w-engine / drive_disc / bangboo /
-  boss / buff / boss_info / date / changelog / site_info_section, etc.).
-  Only admin plaintext password is blocked.
+  This scanner does not classify business DB data (character / w-engine /
+  drive_disc / bangboo / boss / buff / boss_info / date / changelog /
+  site_info_section, etc.); that content still requires policy review.
+  The content gate only blocks plaintext admin passwords.
 
 .EXAMPLE
   .\scripts\check-no-secrets.ps1
@@ -13,6 +14,8 @@
   .\scripts\check-no-secrets.ps1 -Path .\packages\stage
 .EXAMPLE
   .\scripts\check-no-secrets.ps1 -StagedOnly
+.PARAMETER StagedOnly
+  Scan ACMR entries from the Git index, not their working-tree versions.
 #>
 [CmdletBinding()]
 param(
@@ -23,16 +26,29 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
+$ExplicitPath = $PSBoundParameters.ContainsKey('Path')
 if (-not $Path) { $Path = $RepoRoot }
 $Path = (Resolve-Path -LiteralPath $Path).Path
 
-$SkipDirNames = [System.Collections.Generic.HashSet[string]]::new(
-  [string[]]@(
-    'node_modules', '.git', 'dist', 'dist-ssr', 'coverage', 'packages',
+$skipDirectories = @(
+  'node_modules', '.git'
+)
+
+# The default workspace scan skips generated and large resource directories.
+# An explicit -Path (used for the assembled package stage) scans them so copied
+# or built text files cannot bypass the content gate. StagedOnly reads every
+# staged path directly.
+if (-not $ExplicitPath) {
+  $skipDirectories += @(
+    'dist', 'dist-ssr', 'coverage', 'packages',
     'guestbook_image', 'boss_image', 'buff_image', 'calculator_image',
     'uploads', 'character', 'wengine', 'drive_disc', 'bangboo',
     '.cursor', '.idea', '.vscode', '__screenshots__'
-  ),
+  )
+}
+
+$SkipDirNames = [System.Collections.Generic.HashSet[string]]::new(
+  [string[]]$skipDirectories,
   [StringComparer]::OrdinalIgnoreCase
 )
 
@@ -50,7 +66,7 @@ function Test-IsBcryptOrPlaceholder {
   if ([string]::IsNullOrWhiteSpace($Password)) { return $true }
   if ($Password -eq 'REDACTED_ADMIN_PASSWORD') { return $true }
   if ($Password -eq 'CHANGE_ME') { return $true }
-  if ($Password -match '^\$2[aby]\$') { return $true }
+  if ($Password -match '^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$') { return $true }
   return $false
 }
 
@@ -61,22 +77,84 @@ function Add-Finding {
   [void]$findings.Add($Message)
 }
 
+function Invoke-GitText {
+  param([string]$Arguments)
+
+  $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+  $startInfo.FileName = 'git'
+  $startInfo.Arguments = $Arguments
+  $startInfo.WorkingDirectory = $RepoRoot
+  $startInfo.UseShellExecute = $false
+  $startInfo.CreateNoWindow = $true
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  $startInfo.StandardOutputEncoding = [System.Text.UTF8Encoding]::new($false)
+
+  $process = New-Object System.Diagnostics.Process
+  $process.StartInfo = $startInfo
+  try {
+    [void]$process.Start()
+    $stdout = $process.StandardOutput.ReadToEnd()
+    [void]$process.StandardError.ReadToEnd()
+    $process.WaitForExit()
+    if ($process.ExitCode -ne 0) {
+      throw "git command failed (exit $($process.ExitCode))"
+    }
+    return $stdout
+  }
+  finally {
+    $process.Dispose()
+  }
+}
+
+function Get-StagedBlobId {
+  param([string]$Rel)
+
+  Push-Location $RepoRoot
+  try {
+    $blobId = & git rev-parse --verify ":$Rel" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+      throw "cannot resolve staged blob for: $Rel"
+    }
+    $blobId = ([string]$blobId).Trim()
+    if ($blobId -notmatch '^[0-9a-fA-F]{40,64}$') {
+      throw "invalid staged blob id for: $Rel"
+    }
+    return $blobId
+  }
+  finally {
+    Pop-Location
+  }
+}
+
 function Get-ScanFiles {
   if ($StagedOnly) {
-    Push-Location $RepoRoot
-    try {
-      $names = & git diff --cached --name-only --diff-filter=ACMR
-      if ($LASTEXITCODE -ne 0) { throw 'git diff --cached failed' }
-      foreach ($rel in $names) {
-        if (-not $rel) { continue }
-        $full = Join-Path $RepoRoot $rel
-        if (Test-Path -LiteralPath $full -PathType Leaf) {
-          Get-Item -LiteralPath $full
-        }
+    # NUL delimiters preserve staged paths containing spaces and other special characters.
+    [string]$rawNames = Invoke-GitText '-c core.quotepath=false diff --cached --name-only --no-ext-diff --diff-filter=ACMR -z --'
+    $names = $rawNames.Split(
+      [char[]]@([char]0),
+      [System.StringSplitOptions]::RemoveEmptyEntries
+    )
+    foreach ($rel in $names) {
+      # Resolve the stage-0 blob so unstaged working-tree edits cannot affect the scan.
+      $blobId = Get-StagedBlobId -Rel $rel
+      $objectType = (Invoke-GitText "cat-file -t $blobId").Trim()
+      if ($objectType -ne 'blob') { continue }
+      $lengthText = (Invoke-GitText "cat-file -s $blobId").Trim()
+      $length = 0L
+      if (-not [long]::TryParse($lengthText, [ref]$length)) {
+        throw "cannot determine staged blob size for: $rel"
       }
-    }
-    finally {
-      Pop-Location
+
+      [pscustomobject]@{
+        Name      = ($rel -split '/')[-1]
+        Extension = [System.IO.Path]::GetExtension($rel)
+        Rel       = $rel
+        FullName  = $null
+        Length    = $length
+        BlobId    = $blobId
+        FromIndex = $true
+      }
     }
     return
   }
@@ -94,6 +172,11 @@ function Get-ScanFiles {
     }
 }
 
+function Get-StagedBlobText {
+  param([string]$BlobId)
+  return Invoke-GitText "cat-file blob $BlobId"
+}
+
 function Test-IsGitIgnored {
   param([string]$FullPath)
   if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot '.git'))) { return $false }
@@ -107,20 +190,20 @@ function Test-IsGitIgnored {
   }
 }
 
+$adminInsertLinePattern = 'INSERT\s+INTO\s+[`'']?admin[`'']?\s+VALUES'
+$adminInsertValuePattern = 'INSERT\s+INTO\s+[`'']?admin[`'']?\s+VALUES\s*\(\s*\d+\s*,\s*''([^'']*)'''
+
 function Test-FileForPlainAdminPassword {
   param(
     [System.IO.FileInfo]$File,
     [string]$Rel
   )
 
-  $linePattern = 'INSERT\s+INTO\s+[`'']?admin[`'']?\s+VALUES'
-  $valuePattern = 'INSERT\s+INTO\s+[`'']?admin[`'']?\s+VALUES\s*\(\s*\d+\s*,\s*''([^'']*)'''
-
-  $hits = Select-String -LiteralPath $File.FullName -Pattern $linePattern -AllMatches -ErrorAction SilentlyContinue
+  $hits = Select-String -LiteralPath $File.FullName -Pattern $adminInsertLinePattern -AllMatches -ErrorAction SilentlyContinue
   foreach ($hit in $hits) {
     $m = [regex]::Match(
       $hit.Line,
-      $valuePattern,
+      $adminInsertValuePattern,
       [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
     )
     if ($m.Success -and -not (Test-IsBcryptOrPlaceholder $m.Groups[1].Value)) {
@@ -129,13 +212,35 @@ function Test-FileForPlainAdminPassword {
   }
 }
 
-$adminPasswordLinePattern = '(?m)^\s*ADMIN_PASSWORD\s*=\s*(.+)\s*$'
+function Test-TextForPlainAdminPassword {
+  param(
+    [string]$Text,
+    [string]$Rel
+  )
+
+  foreach ($line in ($Text -split '\r?\n')) {
+    if ($line -notmatch $adminInsertLinePattern) { continue }
+    $m = [regex]::Match(
+      $line,
+      $adminInsertValuePattern,
+      [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+    )
+    if ($m.Success -and -not (Test-IsBcryptOrPlaceholder $m.Groups[1].Value)) {
+      Add-Finding "plaintext admin password in $Rel (value redacted in report)"
+    }
+  }
+}
+
+$adminPasswordLinePattern = '(?m)^[\t ]*ADMIN_PASSWORD[\t ]*=[\t ]*([^\r\n]*?)[\t ]*\r?$'
 
 Write-Host ">> check-no-secrets  path=$Path  stagedOnly=$StagedOnly  (admin-password only)"
 
 foreach ($file in Get-ScanFiles) {
   $name = $file.Name
-  if ($file.FullName.StartsWith($Path, [System.StringComparison]::OrdinalIgnoreCase)) {
+  if ($file.FromIndex) {
+    $rel = $file.Rel
+  }
+  elseif ($file.FullName.StartsWith($Path, [System.StringComparison]::OrdinalIgnoreCase)) {
     $rel = $file.FullName.Substring($Path.Length).TrimStart('\')
   }
   else {
@@ -144,8 +249,9 @@ foreach ($file in Get-ScanFiles) {
 
   $isEnvName = ($name -ieq '.env') -or ($name.StartsWith('.env.') -and $name -ine '.env.example')
 
-  # Working tree: ignored local .env is OK. Staged .env still fails.
-  if (-not $StagedOnly -and $isEnvName -and (Test-IsGitIgnored $file.FullName)) {
+  # An ignored local .env inside the working tree is expected. Staged files and
+  # assembled package paths outside the repository still fail this gate.
+  if (-not $file.FromIndex -and $isEnvName -and (Test-IsGitIgnored $file.FullName)) {
     continue
   }
 
@@ -153,7 +259,7 @@ foreach ($file in Get-ScanFiles) {
     Add-Finding "secret env file: $rel"
     continue
   }
-  if ($name -match '(?i)SecretKey' -or $name -match '(?i)\.(pem|key)$') {
+  if ($name -match '(?i)SecretKey' -or $name -match '(?i)\.(pem|key|pfx)$') {
     Add-Finding "credential/key file: $rel"
     continue
   }
@@ -162,9 +268,17 @@ foreach ($file in Get-ScanFiles) {
   $scanText = $TextExt.Contains($ext) -or $name -ieq '.env.example'
   if (-not $scanText) { continue }
 
-  # SQL dumps: only inspect admin INSERT lines (business tables are allowed)
+  # SQL content gate: inspect admin INSERT lines; business-data policy remains a manual review.
   if ($ext -ieq '.sql') {
-    Test-FileForPlainAdminPassword -File $file -Rel $rel
+    if ($file.FromIndex) {
+      $text = Get-StagedBlobText -BlobId $file.BlobId
+      if ($text) {
+        Test-TextForPlainAdminPassword -Text $text -Rel $rel
+      }
+    }
+    else {
+      Test-FileForPlainAdminPassword -File $file -Rel $rel
+    }
     continue
   }
 
@@ -172,22 +286,31 @@ foreach ($file in Get-ScanFiles) {
 
   $text = $null
   try {
-    $text = Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8 -ErrorAction Stop
+    if ($file.FromIndex) {
+      $text = Get-StagedBlobText -BlobId $file.BlobId
+    }
+    else {
+      $text = Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8 -ErrorAction Stop
+    }
   }
   catch {
+    if ($file.FromIndex) { throw }
     continue
   }
   if (-not $text) { continue }
 
-  Test-FileForPlainAdminPassword -File $file -Rel $rel
+  if ($file.FromIndex) {
+    Test-TextForPlainAdminPassword -Text $text -Rel $rel
+  }
+  else {
+    Test-FileForPlainAdminPassword -File $file -Rel $rel
+  }
 
-  if ($name -ine '.env.example') {
-    $envMatches = [regex]::Matches($text, $adminPasswordLinePattern)
-    foreach ($m in $envMatches) {
-      $val = $m.Groups[1].Value.Trim().Trim('"').Trim("'")
-      if ($val -and $val -notmatch '^(CHANGE_ME|your-|<.*>|xxx)$') {
-        Add-Finding "ADMIN_PASSWORD assignment in $rel"
-      }
+  $envMatches = [regex]::Matches($text, $adminPasswordLinePattern)
+  foreach ($m in $envMatches) {
+    $val = $m.Groups[1].Value.Trim().Trim('"').Trim("'")
+    if ($val -and -not (Test-IsBcryptOrPlaceholder $val) -and $val -notmatch '^(your-|<.*>|xxx)$') {
+      Add-Finding "ADMIN_PASSWORD assignment in $rel"
     }
   }
 }
@@ -199,7 +322,7 @@ if ($findings.Count -gt 0) {
     Write-Host "  - $f" -ForegroundColor Red
   }
   Write-Host ''
-  Write-Host 'Rule: block plaintext admin password only. Calculator/crisis/defense/site SQL data is allowed.' -ForegroundColor Yellow
+  Write-Host 'Scanner scope: block plaintext admin passwords; business data still requires policy review.' -ForegroundColor Yellow
   Write-Host 'Admin password belongs in cloud .env + set-admin-password.mjs (bcrypt in DB).' -ForegroundColor Yellow
   exit 1
 }

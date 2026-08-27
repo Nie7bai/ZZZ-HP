@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test": "node --test scripts/security-hardening.test.mjs",
     "start": "node src/app.js",
     "dev": "node --watch src/app.js",
     "import:nanoka": "node scripts/import-nanoka.mjs",
