@@ -38,9 +38,11 @@ defineExpose({
     </div>
     <p v-if="avatarImage" class="avatar-path">当前：{{ avatarImage }}</p>
     <p v-else class="avatar-hint">
-      未上传时列表显示名称首字。选择图片后点「保存」写入
+      未上传时列表显示名称首字。选择图片后点「保存」写入固定路径（如
       <code>/character/角色ID.webp</code>
-      （音擎/驱动盘/邦布同理）。勿在未选新图时误点「清除」。
+      ）。ID 含 <code>&amp;</code> 时文件名会写成下划线形式（如
+      <code>orphie_magus.webp</code>
+      ）。勿在未选新图时误点「清除」。
     </p>
   </div>
 </template>
