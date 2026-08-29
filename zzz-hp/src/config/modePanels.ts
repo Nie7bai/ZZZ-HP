@@ -1,4 +1,5 @@
 import type { ModeKey } from '@/types/history'
+import type { RouteLocationGeneric, RouteLocationRaw } from 'vue-router'
 
 const allModes: readonly ModeKey[] = ['crisis-assault', 'defense', 'deduction']
 
@@ -74,4 +75,16 @@ export function getModePanelLabel(mode: ModeKey, panelId: ModePanelId): string {
 
 export function getModePanelPath(basePath: string, panelId: ModePanelId): string {
   return `${basePath.replace(/\/+$/, '')}/${panelId}`
+}
+
+export function getModePanelLocation(
+  basePath: string,
+  panelId: ModePanelId,
+  routeState: Pick<RouteLocationGeneric, 'query' | 'hash'>,
+): RouteLocationRaw {
+  return {
+    path: getModePanelPath(basePath, panelId),
+    query: { ...routeState.query },
+    hash: routeState.hash,
+  }
 }

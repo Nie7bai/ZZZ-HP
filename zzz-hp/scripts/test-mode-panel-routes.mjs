@@ -3,6 +3,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import {
   getFirstModePanelId,
   getModePanelDefinitions,
+  getModePanelLocation,
   getModePanelPath,
   MODE_PANEL_IDS,
 } from '../src/config/modePanels'
@@ -98,5 +99,14 @@ for (const routeGroup of routeGroups) {
   assert.equal(router.currentRoute.value.query.source, 'test')
   assert.equal(router.currentRoute.value.hash, '#details')
 }
+
+await router.push('/crisis-assault/score-hp-table?mode=hard&source=test#details')
+await router.push(
+  getModePanelLocation('/crisis-assault', 'hp-chart', router.currentRoute.value),
+)
+assert.equal(router.currentRoute.value.path, '/crisis-assault/hp-chart')
+assert.equal(router.currentRoute.value.query.mode, 'hard')
+assert.equal(router.currentRoute.value.query.source, 'test')
+assert.equal(router.currentRoute.value.hash, '#details')
 
 console.log('Mode panel route contract checks passed.')

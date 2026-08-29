@@ -94,6 +94,7 @@ const CONTENT_MAX = 10000
 const IMAGE_MAX = 9
 const DRAFT_MAX = 9
 const DRAFT_KEY_PREFIX = 'zzz-hp-guestbook-drafts-v1'
+const GUESTBOOK_ROUTE_QUERY_KEYS = ['guestbook', 'post', 'profile', 'account'] as const
 const marqueeLine = 'ZZZ HP '.repeat(4)
 
 const open = ref(false)
@@ -2048,13 +2049,16 @@ function closeDrawer() {
   showingAccount.value = false
   showingModeration.value = false
   showingNotifications.value = false
-  if (
-    route.query.guestbook ||
-    route.query.post ||
-    route.query.profile ||
-    route.query.account
-  ) {
-    void router.replace({ path: route.path, query: {} })
+  const nextQuery = { ...route.query }
+  let hasGuestbookRouteQuery = false
+  for (const queryKey of GUESTBOOK_ROUTE_QUERY_KEYS) {
+    if (nextQuery[queryKey] === undefined) continue
+    delete nextQuery[queryKey]
+    hasGuestbookRouteQuery = true
+  }
+
+  if (hasGuestbookRouteQuery) {
+    void router.replace({ path: route.path, query: nextQuery, hash: route.hash })
   }
 }
 

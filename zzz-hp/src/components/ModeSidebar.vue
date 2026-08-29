@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import {
   getModePanelDefinitions,
   getModePanelLabel,
-  getModePanelPath,
+  getModePanelLocation,
   type ModePanelId,
 } from '@/config/modePanels'
 import type { ModeKey } from '@/types/history'
@@ -18,12 +19,13 @@ const props = defineProps<{
 }>()
 
 const mobileOpen = defineModel<boolean>('mobileOpen', { default: false })
+const route = useRoute()
 
 const panels = computed(() =>
   getModePanelDefinitions(props.mode).map((panel) => ({
     id: panel.id,
     label: getModePanelLabel(props.mode, panel.id),
-    to: getModePanelPath(props.modePanelBasePath, panel.id),
+    to: getModePanelLocation(props.modePanelBasePath, panel.id, route),
   })),
 )
 
