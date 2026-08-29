@@ -382,11 +382,19 @@ const content318 = `相对 3.1.7.2 的增量更新（计算器倍率口径与协
 · 协作与发版：统一 main + 短期分支与 SemVer 发版；站点更新日志与版本号随 release 流程维护
 · 运维：提交 / 打包密钥扫描闸门与后端安全相关测试补强`
 
+const content319 = `相对 3.1.8 的增量更新（构建稳定性与头像路径为主）：
+
+· 临界推演：修复 type-check 报错，前端生产构建可完整通过
+· 计算器头像：实体 ID 含「&」时（如 orphie&magus、折枝剑歌）上传与落盘改用安全文件名，避免 URL 被拆开
+· 资源路径：seed / 默认数据中的头像 URL 统一为下划线安全路径，并补充对应图片资源
+· 开发：Vite 代理 /character、/wengine 等目录，与后端落盘一致`
+
 await conn.query(
-  `DELETE FROM changelog WHERE version IN ('3.1.6', '3.1.6.1', '3.1.6.2', '3.1.6.3', '3.1.7', '3.1.7.1', '3.1.7.2', '3.1.8')`,
+  `DELETE FROM changelog WHERE version IN ('3.1.6', '3.1.6.1', '3.1.6.2', '3.1.6.3', '3.1.7', '3.1.7.1', '3.1.7.2', '3.1.8', '3.1.9')`,
 )
 await conn.query(
   `INSERT INTO changelog (version, title, content, published_at) VALUES
+   (?, ?, ?, ?),
    (?, ?, ?, ?),
    (?, ?, ?, ?),
    (?, ?, ?, ?),
@@ -428,11 +436,15 @@ await conn.query(
     '紊乱乱流倍率口径与火以太持续时间修正',
     content318,
     '2026-08-28 01:30:00',
+    '3.1.9',
+    '构建通过与含 & 头像路径安全化',
+    content319,
+    '2026-08-29 22:10:00',
   ],
 )
 
 const [rowsAfter] = await conn.query(
-  `SELECT id, version, title, CHAR_LENGTH(content) AS len FROM changelog ORDER BY published_at DESC LIMIT 8`,
+  `SELECT id, version, title, CHAR_LENGTH(content) AS len FROM changelog ORDER BY published_at DESC LIMIT 9`,
 )
 console.log(rowsAfter)
 await conn.end()
