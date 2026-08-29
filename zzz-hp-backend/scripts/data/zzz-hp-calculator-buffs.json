@@ -18134,7 +18134,7 @@
         "mutationCoeff": 0
       },
       "profession": "强攻",
-      "avatar_image": "/character/orphie&magus.webp",
+      "avatar_image": "/character/orphie_magus.webp",
       "supportNeeds": [],
       "mindscapeBuffs": [
         {
@@ -201060,7 +201060,7 @@
     {
       "id": "SuitBranch&BladeSong",
       "name": "折枝剑歌",
-      "avatar_image": "/drive_disc/SuitBranch&BladeSong.webp",
+      "avatar_image": "/drive_disc/SuitBranch_BladeSong.webp",
       "twoPieceNote": "",
       "fourPieceNote": "",
       "twoPieceEffectBlocks": [
