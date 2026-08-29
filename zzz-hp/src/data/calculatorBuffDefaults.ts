@@ -335,7 +335,7 @@ export const defaultAgentBuffDocs: AgentBuffDoc[] = [
     name: 'orphie&magus',
     profession: '',
     element: '',
-    avatar_image: '/character/orphie&magus.webp',
+    avatar_image: '/character/orphie_magus.webp',
   }),
   agentDoc({
     id: 'panyinhu',
