@@ -14,10 +14,22 @@ const FIXED_AVATAR_PREFIX: Record<CalculatorPublicAvatarKind, string> = {
   bangboo: '/bangboo/',
 }
 
+/** 与后端 calculatorAvatarFileBaseName 对齐：ID 可含 `&`，文件名不能直接用 */
+export function calculatorAvatarFileBaseName(entityId: string) {
+  return entityId.trim().replace(/[&<>:"/\\|?*\u0000-\u001f]/g, '_')
+}
+
 function isFixedAvatarUrl(kind: CalculatorPublicAvatarKind, url: string, entityId: string) {
   const prefix = FIXED_AVATAR_PREFIX[kind]
-  const base = `${prefix}${entityId.trim()}`
-  return url === base || url.startsWith(`${base}.`)
+  const id = entityId.trim()
+  const safeBase = `${prefix}${calculatorAvatarFileBaseName(id)}`
+  const legacyBase = `${prefix}${id}`
+  return (
+    url === safeBase ||
+    url.startsWith(`${safeBase}.`) ||
+    url === legacyBase ||
+    url.startsWith(`${legacyBase}.`)
+  )
 }
 
 export function useCalculatorAvatarUpload(kind: CalculatorPublicAvatarKind) {
@@ -87,7 +99,7 @@ export function useCalculatorAvatarUpload(kind: CalculatorPublicAvatarKind) {
         return ensured.url
       } catch {
         // 旧文件找不到时仍写回固定路径，便于之后补文件
-        const fixed = `${FIXED_AVATAR_PREFIX[kind]}${id}.webp`
+        const fixed = `${FIXED_AVATAR_PREFIX[kind]}${calculatorAvatarFileBaseName(id)}.webp`
         avatarImage.value = fixed
         imagePreview.value = resolveAssetUrl(fixed) ?? ''
         return fixed

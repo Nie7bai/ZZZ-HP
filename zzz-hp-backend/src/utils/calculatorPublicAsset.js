@@ -21,6 +21,24 @@ export const CALCULATOR_PUBLIC_AVATAR_KINDS = {
 const SAFE_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9._&'-]*$/
 const ALLOWED_EXT = new Set(['.webp', '.jpg', '.jpeg', '.png', '.gif'])
 
+/**
+ * 实体 ID 可含 `&`（如 orphie&magus），但不宜直接作 URL/文件名：
+ * `&` 在查询串与未编码路径里会被拆成参数。磁盘与对外 URL 使用安全化 basename。
+ */
+export function calculatorAvatarFileBaseName(entityId) {
+  const id = normalizeCalculatorEntityId(entityId)
+  return id.replace(/[&<>:"/\\|?*\x00-\x1f]/g, '_')
+}
+
+export function calculatorAvatarPublicUrl(kind, entityId, ext = '.webp') {
+  const normalizedKind = normalizeCalculatorPublicKind(kind)
+  const { urlPrefix } = CALCULATOR_PUBLIC_AVATAR_KINDS[normalizedKind]
+  const safeExt = ALLOWED_EXT.has(String(ext || '').toLowerCase())
+    ? String(ext).toLowerCase()
+    : '.webp'
+  return `${urlPrefix}/${calculatorAvatarFileBaseName(entityId)}${safeExt}`
+}
+
 const ALLOWED_URL_PREFIXES = [
   ...Object.values(CALCULATOR_PUBLIC_AVATAR_KINDS).map((item) => item.urlPrefix),
   '/calculator_image',
@@ -148,7 +166,8 @@ export async function saveCalculatorPublicAvatar(kind, entityId, file) {
   const normalizedId = normalizeCalculatorEntityId(entityId)
   const { folder, urlPrefix } = CALCULATOR_PUBLIC_AVATAR_KINDS[normalizedKind]
   const ext = resolveExtension(file.originalname, file.mimetype, buffer)
-  const filename = `${normalizedId}${ext}`
+  const fileBase = calculatorAvatarFileBaseName(normalizedId)
+  const filename = `${fileBase}${ext}`
   const relativePath = `${folder}/${filename}`
 
   const publicDir = path.join(publicRoot, folder)
@@ -213,10 +232,14 @@ export function syncEntityAvatarToPublic(kind, entityId, avatarUrl) {
 
   const normalizedKind = normalizeCalculatorPublicKind(kind)
   const normalizedId = normalizeCalculatorEntityId(entityId)
+  const fileBase = calculatorAvatarFileBaseName(normalizedId)
   const { folder, urlPrefix } = CALCULATOR_PUBLIC_AVATAR_KINDS[normalizedKind]
 
   const source =
     resolveExistingAvatarFile(avatarUrl) ||
+    resolveExistingAvatarFile(`${urlPrefix}/${fileBase}.webp`) ||
+    resolveExistingAvatarFile(`${urlPrefix}/${fileBase}.png`) ||
+    // 兼容旧文件名（ID 含 & 时曾直接当文件名）
     resolveExistingAvatarFile(`${urlPrefix}/${normalizedId}.webp`) ||
     resolveExistingAvatarFile(`${urlPrefix}/${normalizedId}.png`)
 
@@ -225,7 +248,7 @@ export function syncEntityAvatarToPublic(kind, entityId, avatarUrl) {
   }
 
   const ext = extFromUrlOrFile(source)
-  const filename = `${normalizedId}${ext}`
+  const filename = `${fileBase}${ext}`
   const targetUrl = `${urlPrefix}/${filename}`
   const publicDir = path.join(publicRoot, folder)
   const publicFile = path.join(publicDir, filename)

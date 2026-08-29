@@ -152,7 +152,8 @@ export function isDeductionBossLayer(layer: {
   if (!s) return false
   const endingWave = s.match(/^结局\d+\s*·\s*(.+)$/)
   if (endingWave) {
-    return !/^\d+-\d+$/.test(endingWave[1].trim())
+    const endingBossName = endingWave[1] ?? ''
+    return !/^\d+-\d+$/.test(endingBossName.trim())
   }
   return /STAGE|LAST/i.test(s)
 }

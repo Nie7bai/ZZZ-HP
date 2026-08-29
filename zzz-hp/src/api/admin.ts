@@ -252,9 +252,11 @@ export async function uploadCalculatorPublicImage(
 ) {
   const formData = new FormData()
   formData.append('image', file)
-  const query = new URLSearchParams({ kind, entityId: entityId.trim() })
+  // kind / entityId 放 multipart，避免 ID 含 `&`（如 orphie&magus）被 query 拆开
+  formData.append('kind', kind)
+  formData.append('entityId', entityId.trim())
 
-  const response = await fetch(`/api/upload/calculator-public?${query}`, {
+  const response = await fetch('/api/upload/calculator-public', {
     method: 'POST',
     headers: withAdminAuthHeaders(),
     body: formData,
@@ -269,11 +271,10 @@ export async function ensureCalculatorPublicAvatar(
   entityId: string,
   url: string,
 ) {
-  const query = new URLSearchParams({ kind, entityId: entityId.trim() })
-  const response = await fetch(`/api/upload/calculator-public/ensure?${query}`, {
+  const response = await fetch('/api/upload/calculator-public/ensure', {
     method: 'POST',
     headers: withAdminAuthHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ kind, entityId: entityId.trim(), url }),
   })
   return parseResponse<{ url: string; action: string }>(response)
 }

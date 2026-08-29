@@ -111,8 +111,9 @@ export async function uploadCalculatorPublic(req, res) {
     return fail(res, '请上传图片文件，字段名为 image', 400)
   }
 
-  const kind = req.query?.kind
-  const entityId = req.query?.entityId
+  // 优先读 multipart 字段：ID 含 `&`（如 orphie&magus）时放 query 易被拆成多个参数
+  const kind = req.body?.kind ?? req.query?.kind
+  const entityId = req.body?.entityId ?? req.query?.entityId
 
   try {
     const saved = await saveCalculatorPublicAvatar(kind, entityId, req.file)
@@ -129,8 +130,8 @@ export async function uploadCalculatorPublic(req, res) {
 
 /** 将已有头像（含旧 /calculator_image/哈希）迁移为 /character/{id}.webp 等固定路径 */
 export async function ensureCalculatorPublic(req, res) {
-  const kind = req.query?.kind ?? req.body?.kind
-  const entityId = req.query?.entityId ?? req.body?.entityId
+  const kind = req.body?.kind ?? req.query?.kind
+  const entityId = req.body?.entityId ?? req.query?.entityId
   const currentUrl =
     typeof req.body?.url === 'string'
       ? req.body.url

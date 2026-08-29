@@ -726,7 +726,10 @@ function onPickMonster(option: { name: string; [key: string]: unknown }) {
   monsterDraft.value.name = option.name
   monsterDraft.value.hp = Number(option.hp) || 0
   monsterDraft.value.defense = Number(option.defense) || 0
-  monsterDraft.value.level = applyReusedMonsterLevel(monsterDraft.value.level, option.level)
+  monsterDraft.value.level = applyReusedMonsterLevel(
+    monsterDraft.value.level,
+    option.level as string | number | null | undefined,
+  )
   monsterDraft.value.weakness =
     option.weakness == null ? null : String(option.weakness)
   monsterDraft.value.resistance =
