@@ -302,6 +302,26 @@ else {
   )
 }
 
+$optionalSeasonDataSteps = @(
+  '日常发版通常不必重复执行；云上已有业务数据的实例跳过本节。',
+  '快照目录（随包）：zzz-hp-backend/scripts/data/snapshots/2026-08-25/',
+  '完整说明：json备份/导入导出说明.md',
+  '',
+  '推荐顺序（整库与备份对齐）：',
+  '1. 怪物基础库 — 管理端「怪物基础库」→ 导入 zzz-hp-boss-info.json',
+  '   导入后缺图：选「临界」分类 →「从 boss 同步」补本地 /boss_image/ 路径',
+  '2. 环境 Buff 表 — 在 zzz-hp-backend 目录：',
+  '   node scripts/import-buff.mjs --file scripts/data/snapshots/2026-08-25/zzz-hp-buff-table.json',
+  '   或管理端「环境 Buff 管理」→ 导入/导出',
+  '3. 赛季内容 — 管理端各模式内容页 → 导入对应 JSON：',
+  '   危局 zzz-hp-crisis-all.json | 新·防卫战 zzz-hp-defense-new-all.json | 临界 zzz-hp-deduction-all.json',
+  '   临界亦可从 nanoka 抓取（需网络，与 JSON 快照二选一）：',
+  '   node scripts/import-nanoka-simul.mjs --all',
+  '',
+  '图片：JSON 不含图片文件；路径为 /boss_image/... 时需目标环境有对应文件。',
+  'full pack 且未使用 -SkipImages 时已含 boss_image，通常无需另拷。'
+)
+
 $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine("ZZZ-HP update package $Ver")
 [void]$sb.AppendLine("Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')")
@@ -319,6 +339,11 @@ $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine('')
 [void]$sb.AppendLine('[Server steps]')
 foreach ($step in $serverSteps) {
+  [void]$sb.AppendLine($step)
+}
+[void]$sb.AppendLine('')
+[void]$sb.AppendLine('[Optional: 临界 / Buff / 怪物库 — 新库或需与备份对齐时]')
+foreach ($step in $optionalSeasonDataSteps) {
   [void]$sb.AppendLine($step)
 }
 
