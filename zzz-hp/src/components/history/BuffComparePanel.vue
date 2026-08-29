@@ -36,7 +36,7 @@ const defenseCompareStore = useDefenseCompareStore()
 const deductionCompareStore = useDeductionCompareStore()
 
 const defenseVariant = computed<DefenseVariant>(() =>
-  route.name === 'defense-new' ? 'new' : 'old',
+  route.meta.defenseVariant === 'new' ? 'new' : 'old',
 )
 
 const allPhases = ref<PhaseData[]>([])

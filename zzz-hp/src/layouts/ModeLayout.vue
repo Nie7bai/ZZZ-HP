@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
-import ModeSidebar, { type SidebarPanel } from '@/components/ModeSidebar.vue'
+import { computed, onUnmounted, shallowRef, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import ModeSidebar from '@/components/ModeSidebar.vue'
 import HistoryDetailPanel from '@/components/history/HistoryDetailPanel.vue'
 import HpLineChartPanel from '@/components/history/HpLineChartPanel.vue'
 import PhaseComparePanel from '@/components/history/PhaseComparePanel.vue'
@@ -12,6 +13,12 @@ import CrisisHpScoreConverterPanel from '@/components/history/CrisisHpScoreConve
 import DefenseDetailPanel from '@/components/defense/DefenseDetailPanel.vue'
 import DefenseHpLineChartPanel from '@/components/defense/DefenseHpLineChartPanel.vue'
 import DeductionDetailPanel from '@/components/deduction/DeductionDetailPanel.vue'
+import {
+  getFirstModePanelId,
+  getModePanelLabel,
+  isModePanelAvailable,
+  type ModePanelId,
+} from '@/config/modePanels'
 import type { ModeKey } from '@/types/history'
 
 const props = defineProps<{
@@ -21,21 +28,25 @@ const props = defineProps<{
   backLabel?: string
 }>()
 
-const activePanel = ref<SidebarPanel>('history')
-const mobileNavOpen = ref(false)
+const route = useRoute()
+const mobileNavOpen = shallowRef(false)
 
-const panelLabels = computed<Record<SidebarPanel, string>>(() => ({
-  history: '往期详细',
-  'hp-chart': '血量折线图',
-  'phase-compare': props.mode === 'deduction' ? '节点对比折线图' : '期数对比折线图',
-  'monster-compare': '单独怪物对比',
-  'buff-overview': 'Buff 总览',
-  'buff-compare': 'Buff 对比',
-  'score-hp-table': '分数与血量对应表',
-  'hp-score-converter': '血量分数转换器',
-}))
+const activePanel = computed<ModePanelId>(() => {
+  const routePanelId = route.meta.modePanelId
+  return isModePanelAvailable(props.mode, routePanelId)
+    ? routePanelId
+    : getFirstModePanelId(props.mode)
+})
 
-const mobileSubtitle = computed(() => panelLabels.value[activePanel.value])
+const modePanelBasePath = computed(() => {
+  const basePath = route.meta.modePanelBasePath
+  if (typeof basePath !== 'string') {
+    throw new Error(`Mode route "${String(route.name)}" is missing modePanelBasePath metadata`)
+  }
+  return basePath
+})
+
+const mobileSubtitle = computed(() => getModePanelLabel(props.mode, activePanel.value))
 
 watch(activePanel, () => {
   mobileNavOpen.value = false
@@ -69,10 +80,11 @@ onUnmounted(() => {
     </header>
 
     <ModeSidebar
-      v-model:active-panel="activePanel"
       v-model:mobile-open="mobileNavOpen"
+      :active-panel="activePanel"
       :title="title"
       :mode="mode"
+      :mode-panel-base-path="modePanelBasePath"
       :back-to="backTo"
       :back-label="backLabel"
     />
@@ -82,8 +94,7 @@ onUnmounted(() => {
         'mode-content--page-scroll':
           (activePanel === 'history' &&
             (mode === 'defense' || mode === 'crisis-assault' || mode === 'deduction')) ||
-          (activePanel === 'phase-compare' &&
-            (mode === 'defense' || mode === 'deduction')) ||
+          (activePanel === 'phase-compare' && (mode === 'defense' || mode === 'deduction')) ||
           (activePanel === 'hp-chart' && mode === 'deduction') ||
           activePanel === 'buff-compare' ||
           activePanel === 'buff-overview' ||
@@ -174,9 +185,7 @@ onUnmounted(() => {
           class="panel-fill panel-fill--page"
           :mode="mode"
         />
-        <p v-else key="placeholder" class="placeholder">
-          {{ panelLabels[activePanel] }} — 内容开发中...
-        </p>
+        <p v-else key="placeholder" class="placeholder">{{ mobileSubtitle }} — 内容开发中...</p>
       </KeepAlive>
     </main>
   </div>

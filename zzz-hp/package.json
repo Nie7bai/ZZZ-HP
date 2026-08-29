@@ -15,6 +15,7 @@
     "test:skill-migration": "npx vite-node scripts/test-skill-library-migration.mjs",
     "test:history-stats": "npx vite-node scripts/test-damage-calc-history-stats.mjs",
     "test:crisis-hp-score": "npx vite-node scripts/test-crisis-hp-score-convert.mjs",
+    "test:mode-routes": "npx vite-node scripts/test-mode-panel-routes.mjs",
     "lint": "run-s \"lint:*\"",
     "lint:oxlint": "oxlint . --fix",
     "lint:eslint": "eslint . --fix --cache",

@@ -41,7 +41,7 @@ const { visible: detailVisible, point: detailPoint, open: openPhaseDetail, close
   usePhaseDetailModal()
 
 const defenseVariant = computed<DefenseVariant>(() =>
-  route.name === 'defense-new' ? 'new' : 'old',
+  route.meta.defenseVariant === 'new' ? 'new' : 'old',
 )
 
 const isDefenseMode = computed(() => props.mode === 'defense')

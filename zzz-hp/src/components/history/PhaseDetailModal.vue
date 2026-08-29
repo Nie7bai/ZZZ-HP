@@ -37,7 +37,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <Teleport to="#mode-content-portal">
+  <Teleport defer to="#mode-content-portal">
     <div v-if="visible && point" class="phase-detail-overlay" @click="emit('close')">
       <div
         class="phase-detail-modal"
