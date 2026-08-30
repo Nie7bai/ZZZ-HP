@@ -5,6 +5,8 @@ export interface DeductionMonster {
   level: number
   weakness: string | null
   resistance: string | null
+  /** 失衡时间（秒） */
+  stagger_time?: number | null
   /** 本地 Boss 图片路径（/boss_image/...），可能为空 */
   boss_image?: string | null
 }

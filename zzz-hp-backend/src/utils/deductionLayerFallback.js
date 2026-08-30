@@ -61,6 +61,7 @@ function bossRowToMonster(row) {
     level: Number(row.level) || 0,
     weakness: row.weakness ?? null,
     resistance: row.resistance ?? null,
+    stagger_time: Number.isFinite(Number(row.stagger_time)) ? Number(row.stagger_time) : null,
     boss_image: row.boss_image ?? null,
   }
 }

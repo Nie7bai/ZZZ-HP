@@ -18,6 +18,7 @@ import {
   seasonTrashKey,
 } from './seasonContentTrashService.js'
 import { ensureContentModeColumns } from './contentModeService.js'
+import { ensureBossStaggerSchema, normalizeStaggerTime } from '../utils/bossSchema.js'
 
 const CHINESE_STAGE = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十']
 
@@ -351,8 +352,9 @@ function applyRoomBuffFallback(room, buff, decoded, globalEffectMap) {
 export async function getDefenseSeasons(variant = 'new', { includeHidden = false } = {}) {
   await ensureEnvironmentBuffSchema()
   await ensureContentModeColumns(pool)
+  await ensureBossStaggerSchema()
   const [bossRows] = await pool.execute(
-    `SELECT id, version, phase, boss_name, hp, defense, level, room, weakness, resistance, boss_image
+    `SELECT id, version, phase, boss_name, hp, defense, level, room, weakness, resistance, boss_image, stagger_time
      FROM boss
      WHERE mode = 'defense'
      ORDER BY version, CAST(phase AS UNSIGNED), id`,
@@ -363,6 +365,18 @@ export async function getDefenseSeasons(variant = 'new', { includeHidden = false
      WHERE mode = 'defense'
      ORDER BY version, CAST(phase AS UNSIGNED), id`,
   )
+  const staggerTimeByName = new Map()
+  try {
+    const [infoRows] = await pool.execute(
+      'SELECT boss_name, stagger_time FROM boss_info WHERE stagger_time IS NOT NULL',
+    )
+    for (const row of infoRows) {
+      const value = normalizeStaggerTime(row.stagger_time)
+      if (value != null) staggerTimeByName.set(row.boss_name, value)
+    }
+  } catch (err) {
+    console.warn('[defense] loadBossStaggerTimeMap fallback:', err.message)
+  }
   const globalBuffEffectMap = await loadGlobalBuffEffectMap()
   // 仅「防卫战日期」可生成空期骨架；危局日期只用于给已有防卫内容补 dateRange，避免 2.4 等无防卫数据期清不掉
   const [defenseDateRows] = await pool.execute(
@@ -430,6 +444,8 @@ export async function getDefenseSeasons(variant = 'new', { includeHidden = false
       hpValue: Number(boss.hp),
       defense: Number(boss.defense),
       weakness: boss.weakness,
+      staggerTime:
+        normalizeStaggerTime(boss.stagger_time) ?? staggerTimeByName.get(boss.boss_name) ?? null,
       resistance: normalizeResistanceText(boss.resistance),
       isBoss: decoded.monsterCategory === 'boss',
     })

@@ -25,6 +25,7 @@ import {
   resolveEffectBlocksForName,
 } from '../utils/sameNameBuffEffects.js'
 import { ensureContentModeColumns } from './contentModeService.js'
+import { ensureBossStaggerSchema, normalizeStaggerTime } from '../utils/bossSchema.js'
 
 let schemaEnsured = false
 
@@ -91,7 +92,7 @@ function formatDateValue(value) {
   return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`
 }
 
-function enrichBoss(boss, baseHpByName, fieldBuffSetsByName = new Map()) {
+function enrichBoss(boss, baseHpByName, fieldBuffSetsByName = new Map(), staggerTimeByName = new Map()) {
   const baseHp =
     baseHpByName.get(boss.boss_name) ??
     getCrisisBaseHpByName(boss.boss_name)
@@ -114,6 +115,9 @@ function enrichBoss(boss, baseHpByName, fieldBuffSetsByName = new Map()) {
         set_id: String(boss.field_buff_set_id ?? '').trim() || null,
       }
     : null
+  const rowStaggerTime = normalizeStaggerTime(boss.stagger_time)
+  const stagger_time =
+    rowStaggerTime ?? staggerTimeByName.get(boss.boss_name) ?? null
   return {
     id: boss.id,
     boss_name: boss.boss_name,
@@ -124,6 +128,7 @@ function enrichBoss(boss, baseHpByName, fieldBuffSetsByName = new Map()) {
     room: boss.room,
     weakness: boss.weakness,
     resistance: boss.resistance,
+    stagger_time,
     boss_image: boss.boss_image,
     crisis_base_hp: baseHp == null ? null : Number(baseHp),
     hp_coeff_percent: resolved.percent,
@@ -137,6 +142,23 @@ function enrichBoss(boss, baseHpByName, fieldBuffSetsByName = new Map()) {
 
 function sumHp(bosses, key = 'hp') {
   return bosses.reduce((sum, boss) => sum + Number(boss[key] || 0), 0)
+}
+
+async function loadBossStaggerTimeMap() {
+  await ensureBossStaggerSchema()
+  const map = new Map()
+  try {
+    const [rows] = await pool.execute(
+      'SELECT boss_name, stagger_time FROM boss_info WHERE stagger_time IS NOT NULL',
+    )
+    for (const row of rows) {
+      const value = normalizeStaggerTime(row.stagger_time)
+      if (value != null) map.set(row.boss_name, value)
+    }
+  } catch (err) {
+    console.warn('[crisis] loadBossStaggerTimeMap fallback:', err.message)
+  }
+  return map
 }
 
 async function loadCrisisBaseHpMap() {
@@ -219,6 +241,7 @@ export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
   const [idRows] = await pool.execute('SELECT id, tid FROM id_table')
   const baseHpByName = await loadCrisisBaseHpMap()
   const fieldBuffByName = await loadBossFieldBuffMap()
+  const staggerTimeByName = await loadBossStaggerTimeMap()
   const globalBuffEffectMap = await loadGlobalBuffEffectMap()
 
   const tidMap = new Map(idRows.map((row) => [Number(row.id), Number(row.tid)]))
@@ -267,7 +290,9 @@ export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
     .filter((item) => item.bosses.length > 0 || includeHidden)
     .sort(comparePhase)
     .map((item) => {
-      const bosses = item.bosses.map((boss) => enrichBoss(boss, baseHpByName, fieldBuffByName))
+      const bosses = item.bosses.map((boss) =>
+        enrichBoss(boss, baseHpByName, fieldBuffByName, staggerTimeByName),
+      )
       const normalBosses = bosses.filter((boss) => !boss.is_hard_room)
       const hardBosses = bosses.filter((boss) => boss.is_hard_room)
       const dateInfo = dateMap.get(seasonDateKey(item.version, item.phase))

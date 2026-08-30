@@ -28,6 +28,7 @@ interface ApiBoss {
   hp_coeff_percent?: number | null
   hp_coeff_manual?: boolean
   hp_coeff_label?: string | null
+  stagger_time?: number | null
   field_buff?: ApiFieldBuff | null
   field_buff_set_id?: string | null
 }
@@ -151,6 +152,7 @@ function mapBossToEnemy(boss: ApiBoss): EnemySlot {
     defense: boss.defense,
     elements: parseWeaknessElements(boss.weakness),
     weakness: boss.weakness || undefined,
+    staggerTime: boss.stagger_time ?? null,
     resistance: boss.resistance || undefined,
     crisisBaseHp: boss.crisis_base_hp ?? null,
     hpCoeffPercent: boss.hp_coeff_percent ?? null,

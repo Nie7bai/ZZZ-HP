@@ -353,7 +353,7 @@ function close() {
                 @error="markCatalogImageBroken(item.id)"
               />
               <span class="boss-name">{{ item.boss_name }}</span>
-              <span class="boss-meta">防御 {{ item.defense }} · 失衡 {{ item.stagger_multiplier ?? 1.5 }} · 失衡时间 {{ item.stagger_time ?? '—' }}s</span>
+              <span class="boss-meta">防御 {{ item.defense }} · 失衡 {{ item.stagger_multiplier ?? 1.5 }}</span>
               <span v-if="item.weakness" class="boss-trait weak">弱 {{ item.weakness }}</span>
               <span v-if="item.resistance" class="boss-trait res">抗 {{ item.resistance }}</span>
             </button>
