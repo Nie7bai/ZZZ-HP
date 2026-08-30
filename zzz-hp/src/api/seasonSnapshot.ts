@@ -60,6 +60,7 @@ export interface SeasonSnapshotBoss {
   resistance: string | null
   boss_image: string | null
   stagger_multiplier: number | null
+  stagger_time: number | null
 }
 
 export interface SeasonSnapshotBuff {
@@ -89,6 +90,7 @@ export interface SeasonSnapshotBossInfo {
   boss_image: string | null
   crisis_base_hp: number | null
   stagger_multiplier: number | null
+  stagger_time: number | null
   field_buff_name: string | null
   field_buff_text: string | null
   field_buff_image: string | null

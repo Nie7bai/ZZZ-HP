@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS boss (
   resistance VARCHAR(255) DEFAULT NULL COMMENT '抗性',
   boss_image VARCHAR(500) DEFAULT NULL COMMENT 'Boss图片',
   stagger_multiplier DECIMAL(5,3) NULL COMMENT '失衡易伤区基础乘数；空则回退 boss_info',
+  stagger_time DECIMAL(8,2) NULL COMMENT '失衡时间（秒）；空则回退 boss_info',
   mode VARCHAR(20) NOT NULL DEFAULT 'crisis' COMMENT 'crisis|defense|deduction（版块归属）',
   field_buff_set_id VARCHAR(64) NULL COMMENT '危局当期绑定的场地 Buff 套 id（boss_info.field_buff_sets）',
   PRIMARY KEY (id)
@@ -57,6 +58,7 @@ CREATE TABLE IF NOT EXISTS boss_info (
   resistance VARCHAR(255) DEFAULT NULL COMMENT '抗性',
   crisis_base_hp DOUBLE NULL COMMENT '怪物危局基础血量',
   stagger_multiplier DECIMAL(5,3) NOT NULL DEFAULT 1.500 COMMENT '失衡易伤区基础乘数（1.5=150%）',
+  stagger_time DECIMAL(8,2) NULL COMMENT '失衡时间（秒）',
   field_buff_name VARCHAR(100) NULL COMMENT 'Boss 场地 Buff 名称',
   field_buff_text TEXT NULL COMMENT 'Boss 场地 Buff 文本说明',
   field_buff_image VARCHAR(500) NULL COMMENT 'Boss 场地 Buff 图片',

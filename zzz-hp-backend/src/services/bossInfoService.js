@@ -4,6 +4,7 @@ import {
   DEFAULT_BOSS_STAGGER_MULTIPLIER,
   ensureBossStaggerSchema,
   normalizeStaggerMultiplier,
+  normalizeStaggerTime,
 } from '../utils/bossSchema.js'
 import { ensureContentModeColumns } from './contentModeService.js'
 import { preferExistingImage, pickBestImagePath } from '../utils/localImagePath.js'
@@ -18,7 +19,7 @@ import {
 
 const BOSS_INFO_CATALOGS = new Set(['crisis', 'defense', 'deduction'])
 
-const BOSS_INFO_COLUMNS = `id, boss_name, defense, level, boss_image, weakness, resistance, crisis_base_hp, stagger_multiplier,
+const BOSS_INFO_COLUMNS = `id, boss_name, defense, level, boss_image, weakness, resistance, crisis_base_hp, stagger_multiplier, stagger_time,
   field_buff_name, field_buff_text, field_buff_image, field_buff_effect_blocks, field_buff_sets`
 
 function resolveIncomingFieldBuffSets(payload) {
@@ -80,6 +81,7 @@ function normalizeBossInfo(payload) {
       payload.stagger_multiplier,
       DEFAULT_BOSS_STAGGER_MULTIPLIER,
     ),
+    stagger_time: normalizeStaggerTime(payload.stagger_time),
     field_buff_sets: serializeFieldBuffSets(sets),
     field_buff_name: legacy.field_buff_name,
     field_buff_text: legacy.field_buff_text,
@@ -103,6 +105,7 @@ function bossInfoDiffers(existing, incoming) {
     existingBase !== incomingBase ||
     normalizeStaggerMultiplier(existing.stagger_multiplier) !==
       normalizeStaggerMultiplier(incoming.stagger_multiplier) ||
+    normalizeStaggerTime(existing.stagger_time) !== normalizeStaggerTime(incoming.stagger_time) ||
     JSON.stringify(existing.field_buff_sets ?? []) !==
       JSON.stringify(parseFieldBuffSetsJson(incoming.field_buff_sets))
   )
@@ -128,6 +131,7 @@ function mapBossInfoRow(row) {
   return {
     ...row,
     stagger_multiplier: normalizeStaggerMultiplier(row.stagger_multiplier),
+    stagger_time: normalizeStaggerTime(row.stagger_time),
     crisis_base_hp:
       row.crisis_base_hp == null ? getCrisisBaseHpByName(row.boss_name) : Number(row.crisis_base_hp),
     field_buff_sets: sets,
@@ -303,6 +307,9 @@ export async function updateBossInfoById(id, payload) {
   if (info.crisis_base_hp == null && existing.crisis_base_hp != null) {
     info.crisis_base_hp = Number(existing.crisis_base_hp)
   }
+  if (info.stagger_time == null && existing.stagger_time != null) {
+    info.stagger_time = normalizeStaggerTime(existing.stagger_time)
+  }
 
   // 未传场地 Buff（多套或旧四列）时保留原多套
   if (!info._setsProvided) {
@@ -327,7 +334,7 @@ export async function updateBossInfoById(id, payload) {
   await pool.execute(
     `UPDATE boss_info
      SET boss_name = ?, defense = ?, level = ?, boss_image = ?, weakness = ?, resistance = ?,
-         crisis_base_hp = ?, stagger_multiplier = ?,
+         crisis_base_hp = ?, stagger_multiplier = ?, stagger_time = ?,
          field_buff_name = ?, field_buff_text = ?, field_buff_image = ?, field_buff_effect_blocks = ?,
          field_buff_sets = ?
      WHERE id = ?`,
@@ -340,6 +347,7 @@ export async function updateBossInfoById(id, payload) {
       info.resistance,
       info.crisis_base_hp,
       info.stagger_multiplier,
+      info.stagger_time,
       info.field_buff_name,
       info.field_buff_text,
       info.field_buff_image,
@@ -369,10 +377,10 @@ export async function upsertBossInfo(payload) {
   if (!existing) {
     const [result] = await pool.execute(
       `INSERT INTO boss_info (
-         boss_name, defense, level, boss_image, weakness, resistance, crisis_base_hp, stagger_multiplier,
+         boss_name, defense, level, boss_image, weakness, resistance, crisis_base_hp, stagger_multiplier, stagger_time,
          field_buff_name, field_buff_text, field_buff_image, field_buff_effect_blocks, field_buff_sets
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         info.boss_name,
         info.defense,
@@ -382,6 +390,7 @@ export async function upsertBossInfo(payload) {
         info.resistance,
         info.crisis_base_hp,
         info.stagger_multiplier,
+        info.stagger_time,
         info.field_buff_name,
         info.field_buff_text,
         info.field_buff_image,
@@ -400,6 +409,9 @@ export async function upsertBossInfo(payload) {
   // Keep existing base HP if incoming didn't provide one
   if (info.crisis_base_hp == null && existing.crisis_base_hp != null) {
     info.crisis_base_hp = Number(existing.crisis_base_hp)
+  }
+  if (info.stagger_time == null && existing.stagger_time != null) {
+    info.stagger_time = normalizeStaggerTime(existing.stagger_time)
   }
 
   // 期数同步 upsert 通常不带场地 Buff：保留已有多套
@@ -438,7 +450,7 @@ export async function upsertBossInfo(payload) {
 
   await pool.execute(
     `UPDATE boss_info
-     SET defense = ?, level = ?, boss_image = ?, weakness = ?, resistance = ?, crisis_base_hp = ?, stagger_multiplier = ?,
+     SET defense = ?, level = ?, boss_image = ?, weakness = ?, resistance = ?, crisis_base_hp = ?, stagger_multiplier = ?, stagger_time = ?,
          field_buff_name = ?, field_buff_text = ?, field_buff_image = ?, field_buff_effect_blocks = ?,
          field_buff_sets = ?
      WHERE id = ?`,
@@ -450,6 +462,7 @@ export async function upsertBossInfo(payload) {
       info.resistance,
       info.crisis_base_hp,
       info.stagger_multiplier,
+      info.stagger_time,
       info.field_buff_name,
       info.field_buff_text,
       info.field_buff_image,

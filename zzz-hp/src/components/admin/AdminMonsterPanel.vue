@@ -75,6 +75,7 @@ const previewId = ref('')
 const weakness = ref('')
 const resistance = ref('')
 const staggerMultiplier = ref('1.5')
+const staggerTime = ref('')
 const fieldBuffSetId = ref('')
 const fieldBuffSetOptions = ref<Array<{ id: string; label: string }>>([])
 const imageFile = ref<File | null>(null)
@@ -179,6 +180,7 @@ function applyBossInfo(info: {
   boss_image: string | null
   crisis_base_hp?: number | null
   stagger_multiplier?: number | null
+  stagger_time?: number | null
   field_buff_sets?: Array<{
     id: string
     label?: string | null
@@ -192,6 +194,11 @@ function applyBossInfo(info: {
   resistance.value = info.resistance ?? ''
   if (info.stagger_multiplier != null && Number.isFinite(Number(info.stagger_multiplier))) {
     staggerMultiplier.value = String(info.stagger_multiplier)
+  }
+  if (info.stagger_time != null && Number.isFinite(Number(info.stagger_time))) {
+    staggerTime.value = String(info.stagger_time)
+  } else {
+    staggerTime.value = ''
   }
   if (info.crisis_base_hp != null && Number.isFinite(Number(info.crisis_base_hp))) {
     crisisBaseHp.value = String(info.crisis_base_hp)
@@ -603,6 +610,7 @@ async function submitForm() {
       weakness.value = ''
       resistance.value = ''
       staggerMultiplier.value = '1.5'
+      staggerTime.value = ''
       fieldBuffSetId.value = ''
       fieldBuffSetOptions.value = []
       imageFile.value = null
@@ -635,6 +643,7 @@ async function submitForm() {
       stagger_multiplier: fieldText(staggerMultiplier.value)
         ? Number(staggerMultiplier.value)
         : 1.5,
+      stagger_time: fieldText(staggerTime.value) ? Number(staggerTime.value) : null,
       boss_image: bossImage,
       crisis_base_hp:
         !isDefense.value && !isDeduction.value && fieldText(crisisBaseHp.value)
@@ -680,6 +689,7 @@ async function submitForm() {
     weakness.value = ''
     resistance.value = ''
     staggerMultiplier.value = '1.5'
+    staggerTime.value = ''
     fieldBuffSetId.value = ''
     fieldBuffSetOptions.value = []
     imageFile.value = null
@@ -937,6 +947,18 @@ watch(
       <label class="field">
         <span class="field-label">失衡易伤（乘数，1.5 = 150%）</span>
         <input v-model="staggerMultiplier" type="number" min="0" step="0.01" class="field-input" />
+      </label>
+
+      <label class="field">
+        <span class="field-label">失衡时间（秒）</span>
+        <input
+          v-model="staggerTime"
+          type="number"
+          min="0"
+          step="0.1"
+          class="field-input"
+          placeholder="可空，回退怪物库"
+        />
       </label>
 
       <label v-if="!isDefense && !isDeduction" class="field">

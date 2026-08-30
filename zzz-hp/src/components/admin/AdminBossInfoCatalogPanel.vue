@@ -22,6 +22,7 @@ interface BossInfoDraft {
   defense: number
   level: number
   stagger_multiplier: number
+  stagger_time: number | ''
   weakness: string
   resistance: string
   crisis_base_hp: number | ''
@@ -71,6 +72,7 @@ function createEmptyDraft(): BossInfoDraft {
     defense: 0,
     level: 1,
     stagger_multiplier: 1.5,
+    stagger_time: '',
     weakness: '',
     resistance: '',
     crisis_base_hp: '',
@@ -141,6 +143,10 @@ function toDraft(row: BossInfoRecord): BossInfoDraft {
     defense: Number(row.defense) || 0,
     level: Number(row.level) || 1,
     stagger_multiplier: Number(row.stagger_multiplier) || 1.5,
+    stagger_time:
+      row.stagger_time != null && Number.isFinite(Number(row.stagger_time))
+        ? Number(row.stagger_time)
+        : '',
     weakness: row.weakness ?? '',
     resistance: row.resistance ?? '',
     crisis_base_hp:
@@ -252,6 +258,10 @@ async function saveEdit() {
           ? null
           : Number(draft.value.crisis_base_hp),
       stagger_multiplier: Number(draft.value.stagger_multiplier) || 1.5,
+      stagger_time:
+        draft.value.stagger_time === '' || draft.value.stagger_time == null
+          ? null
+          : Number(draft.value.stagger_time),
       field_buff_sets: sets,
     })
     message.value = '已保存'
@@ -431,7 +441,7 @@ onMounted(() => {
 
     <p v-if="message" class="catalog-message">{{ message }}</p>
     <p v-if="error" class="catalog-error">{{ error }}</p>
-    <p class="catalog-meta">共 {{ total }} 条 · 失衡易伤默认 150%（1.5）</p>
+    <p class="catalog-meta">共 {{ total }} 条 · 失衡易伤默认 150%（1.5）· 失衡时间单位秒（可空）</p>
 
     <section
       v-if="editingId != null"
@@ -472,6 +482,10 @@ onMounted(() => {
         <label class="field">
           <span>失衡易伤</span>
           <input v-model.number="draft.stagger_multiplier" type="number" min="0" step="0.01" />
+        </label>
+        <label class="field">
+          <span>失衡时间（秒）</span>
+          <input v-model="draft.stagger_time" type="number" min="0" step="0.1" />
         </label>
         <label class="field">
           <span>弱点</span>
@@ -557,6 +571,7 @@ onMounted(() => {
             <th>防御</th>
             <th>等级</th>
             <th>失衡易伤</th>
+            <th>失衡时间</th>
             <th>弱点</th>
             <th>抗性</th>
             <th>危局基础血量</th>
@@ -571,6 +586,7 @@ onMounted(() => {
             <td>{{ row.defense }}</td>
             <td>{{ row.level }}</td>
             <td>{{ row.stagger_multiplier ?? 1.5 }}</td>
+            <td>{{ row.stagger_time ?? '—' }}</td>
             <td>{{ row.weakness || '—' }}</td>
             <td>{{ row.resistance || '—' }}</td>
             <td>{{ row.crisis_base_hp ?? '—' }}</td>
