@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   CRISIS_SCORE_MAX,
   formatCrisisScoreBarLabel,
@@ -10,7 +11,14 @@ import {
   type CrisisScoreTableMode,
 } from '@/data/crisisScoreHpTable'
 
-const tableMode = ref<CrisisScoreTableMode>('normal')
+const TABLE_MODE_QUERY_KEY = 'mode'
+
+const route = useRoute()
+const router = useRouter()
+
+const tableMode = computed<CrisisScoreTableMode>(() =>
+  route.query[TABLE_MODE_QUERY_KEY] === 'hard' ? 'hard' : 'normal',
+)
 
 const rows = computed(() => getCrisisScoreTable(tableMode.value))
 
@@ -22,6 +30,29 @@ const panelDesc = computed(() =>
 
 function barLabel(row: CrisisScoreHpRow): string {
   return formatCrisisScoreBarLabel(row)
+}
+
+function setTableMode(nextMode: CrisisScoreTableMode) {
+  const currentQueryValue = route.query[TABLE_MODE_QUERY_KEY]
+  if (
+    (nextMode === 'hard' && currentQueryValue === 'hard') ||
+    (nextMode === 'normal' && currentQueryValue === undefined)
+  ) {
+    return
+  }
+
+  const nextQuery = { ...route.query }
+  if (nextMode === 'hard') {
+    nextQuery[TABLE_MODE_QUERY_KEY] = 'hard'
+  } else {
+    delete nextQuery[TABLE_MODE_QUERY_KEY]
+  }
+
+  void router.push({
+    path: route.path,
+    query: nextQuery,
+    hash: route.hash,
+  })
 }
 </script>
 
@@ -35,7 +66,7 @@ function barLabel(row: CrisisScoreHpRow): string {
           type="button"
           class="mode-btn"
           :class="{ active: tableMode === 'normal' }"
-          @click="tableMode = 'normal'"
+          @click="setTableMode('normal')"
         >
           正常
         </button>
@@ -43,7 +74,7 @@ function barLabel(row: CrisisScoreHpRow): string {
           type="button"
           class="mode-btn"
           :class="{ active: tableMode === 'hard' }"
-          @click="tableMode = 'hard'"
+          @click="setTableMode('hard')"
         >
           绝境
         </button>

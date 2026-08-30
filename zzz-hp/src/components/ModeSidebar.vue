@@ -1,69 +1,35 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+import {
+  getModePanelDefinitions,
+  getModePanelLabel,
+  getModePanelLocation,
+  type ModePanelId,
+} from '@/config/modePanels'
 import type { ModeKey } from '@/types/history'
 
-export type SidebarPanel =
-  | 'history'
-  | 'hp-chart'
-  | 'phase-compare'
-  | 'monster-compare'
-  | 'buff-overview'
-  | 'buff-compare'
-  | 'score-hp-table'
-  | 'hp-score-converter'
-
 const props = defineProps<{
+  activePanel: ModePanelId
   title: string
   backTo?: string
   backLabel?: string
-  mode?: ModeKey
+  mode: ModeKey
+  modePanelBasePath: string
 }>()
 
-const activePanel = defineModel<SidebarPanel>('activePanel', { default: 'history' })
 const mobileOpen = defineModel<boolean>('mobileOpen', { default: false })
-
-const allPanels: {
-  id: SidebarPanel
-  label: string
-  deductionLabel?: string
-  /** 仅这些模式显示；未设则除 deductionExclude 外都显示 */
-  modes?: ModeKey[]
-  deductionExclude?: boolean
-}[] = [
-  { id: 'history', label: '往期详细' },
-  { id: 'hp-chart', label: '血量折线图' },
-  { id: 'phase-compare', label: '期数对比折线图', deductionLabel: '节点对比折线图' },
-  { id: 'monster-compare', label: '单独怪物对比' },
-  { id: 'buff-overview', label: 'Buff 总览' },
-  { id: 'buff-compare', label: 'Buff 对比' },
-  { id: 'score-hp-table', label: '分数与血量对应表', modes: ['crisis-assault'] },
-  {
-    id: 'hp-score-converter',
-    label: '血量分数转换器',
-    modes: ['crisis-assault', 'deduction'],
-  },
-]
+const route = useRoute()
 
 const panels = computed(() =>
-  allPanels
-    .filter(
-      (panel) =>
-        (!panel.modes || (props.mode != null && panel.modes.includes(props.mode))) &&
-        (!panel.deductionExclude || props.mode !== 'deduction'),
-    )
-    .map((panel) => ({
-      ...panel,
-      label:
-        props.mode === 'deduction' && panel.deductionLabel ? panel.deductionLabel : panel.label,
-    })),
+  getModePanelDefinitions(props.mode).map((panel) => ({
+    id: panel.id,
+    label: getModePanelLabel(props.mode, panel.id),
+    to: getModePanelLocation(props.modePanelBasePath, panel.id, route),
+  })),
 )
 
 const backText = computed(() => (props.backLabel ?? '返回首页').replace(/^←\s*/, ''))
-
-function selectPanel(id: SidebarPanel) {
-  activePanel.value = id
-  mobileOpen.value = false
-}
 
 function closeMobileNav() {
   mobileOpen.value = false
@@ -90,17 +56,17 @@ function closeMobileNav() {
       </h2>
 
       <nav class="sidebar-nav">
-        <button
+        <RouterLink
           v-for="panel in panels"
           :key="panel.id"
-          type="button"
+          :to="panel.to"
           class="nav-btn"
-          :class="{ active: activePanel === panel.id }"
-          @click="selectPanel(panel.id)"
+          :class="{ active: props.activePanel === panel.id }"
+          @click="closeMobileNav"
         >
           <span class="nav-btn-tick" aria-hidden="true" />
           <span class="nav-btn-label">{{ panel.label }}</span>
-        </button>
+        </RouterLink>
       </nav>
 
       <div class="sidebar-foot" aria-hidden="true">ZZZ-HP</div>
@@ -201,6 +167,7 @@ function closeMobileNav() {
   font-size: 0.92rem;
   font-weight: 600;
   text-align: left;
+  text-decoration: none;
   cursor: pointer;
   box-shadow:
     inset 0 1px 2px rgba(255, 255, 255, 0.14),

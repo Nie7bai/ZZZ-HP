@@ -35,7 +35,7 @@ const emit = defineEmits<{
 const route = useRoute()
 
 const defenseVariant = computed<DefenseVariant>(() =>
-  props.variantOverride ?? (route.name === 'defense-new' ? 'new' : 'old'),
+  props.variantOverride ?? (route.meta.defenseVariant === 'new' ? 'new' : 'old'),
 )
 
 const seasons = ref<DefenseSeason[]>([])

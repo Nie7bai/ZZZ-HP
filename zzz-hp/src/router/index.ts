@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
 import { useCrisisAssaultCompareStore } from '../stores/crisisAssaultCompare'
 import AdminLayout from '../layouts/AdminLayout.vue'
+import { publicModePanelRouteRecords } from './modePanelRoutes'
 import type { AdminScope } from '../types/admin'
 import { isAdminAuthenticated } from '../utils/adminAuth'
 
@@ -25,32 +26,11 @@ const router = createRouter({
       component: () => import('../views/SiteInfoView.vue'),
       meta: { title: '网站说明' },
     },
-    {
-      path: '/crisis-assault',
-      name: 'crisis-assault',
-      component: () => import('../views/CrisisAssaultView.vue'),
-    },
+    ...publicModePanelRouteRecords,
     {
       path: '/defense',
       name: 'defense-select',
       component: () => import('../views/DefenseSelectView.vue'),
-    },
-    {
-      path: '/defense/old',
-      name: 'defense-old',
-      component: () => import('../views/DefenseView.vue'),
-      meta: { title: '旧·式舆防卫战' },
-    },
-    {
-      path: '/defense/new',
-      name: 'defense-new',
-      component: () => import('../views/DefenseView.vue'),
-      meta: { title: '新·式舆防卫战' },
-    },
-    {
-      path: '/deduction',
-      name: 'deduction',
-      component: () => import('../views/DeductionView.vue'),
     },
     {
       path: '/character-calculator',
@@ -189,8 +169,12 @@ router.beforeEach((to) => {
   }
 })
 
-router.afterEach((to, from) => {
-  if (from.name === 'crisis-assault' && to.name !== 'crisis-assault') {
+router.afterEach((to, from, failure) => {
+  if (
+    !failure &&
+    from.meta.modePanelMode === 'crisis-assault' &&
+    to.meta.modePanelMode !== 'crisis-assault'
+  ) {
     useCrisisAssaultCompareStore().clear()
   }
 })

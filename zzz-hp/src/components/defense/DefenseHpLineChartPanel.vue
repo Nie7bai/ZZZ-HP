@@ -18,7 +18,7 @@ import { createRequestEpoch } from '@/utils/requestEpoch'
 const route = useRoute()
 
 const defenseVariant = computed<DefenseVariant>(() =>
-  route.name === 'defense-new' ? 'new' : 'old',
+  route.meta.defenseVariant === 'new' ? 'new' : 'old',
 )
 
 const pageTitle = computed(() =>
