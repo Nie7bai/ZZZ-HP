@@ -41,20 +41,21 @@ export default defineConfig({
         target: 'http://localhost:3010',
         changeOrigin: true,
       },
-      // 与后端上传落盘目录一致；含 `&` 的旧文件名也能由 Express 正确提供
-      '/character': {
+      // 与后端上传落盘目录一致；含 `&` 的旧文件名也能由 Express 正确提供。
+      // 必须带尾部斜杠，否则会误匹配前端路由 /character-calculator（刷新整页时）。
+      '/character/': {
         target: 'http://localhost:3010',
         changeOrigin: true,
       },
-      '/wengine': {
+      '/wengine/': {
         target: 'http://localhost:3010',
         changeOrigin: true,
       },
-      '/drive_disc': {
+      '/drive_disc/': {
         target: 'http://localhost:3010',
         changeOrigin: true,
       },
-      '/bangboo': {
+      '/bangboo/': {
         target: 'http://localhost:3010',
         changeOrigin: true,
       },
