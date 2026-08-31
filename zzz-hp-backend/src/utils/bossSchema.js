@@ -14,7 +14,7 @@ async function columnExists(table, column) {
   return Number(rows[0]?.c) > 0
 }
 
-/** boss / boss_info 失衡易伤乘区（1.5 = 150%） */
+/** boss / boss_info：失衡易伤 + 失衡时间 */
 export async function ensureBossStaggerSchema() {
   if (staggerSchemaEnsured) return
 
@@ -33,6 +33,20 @@ export async function ensureBossStaggerSchema() {
     )
   }
 
+  if (!(await columnExists('boss_info', 'stagger_time'))) {
+    await pool.query(
+      `ALTER TABLE boss_info
+       ADD COLUMN stagger_time DECIMAL(8,2) NULL COMMENT '失衡时间（秒）'`,
+    )
+  }
+
+  if (!(await columnExists('boss', 'stagger_time'))) {
+    await pool.query(
+      `ALTER TABLE boss
+       ADD COLUMN stagger_time DECIMAL(8,2) NULL COMMENT '失衡时间（秒）；空则回退 boss_info'`,
+    )
+  }
+
   staggerSchemaEnsured = true
 }
 
@@ -42,4 +56,12 @@ export function normalizeStaggerMultiplier(value, fallback = DEFAULT_BOSS_STAGGE
   const num = Number(value)
   if (!Number.isFinite(num) || num <= 0) return fallback
   return Math.round(num * 1000) / 1000
+}
+
+/** 失衡时间（秒）；空 / 非法 → null */
+export function normalizeStaggerTime(value) {
+  if (value == null || value === '') return null
+  const num = Number(value)
+  if (!Number.isFinite(num) || num < 0) return null
+  return Math.round(num * 100) / 100
 }

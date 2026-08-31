@@ -19,6 +19,7 @@ export interface BossInfoRecord {
   resistance: string | null
   crisis_base_hp?: number | null
   stagger_multiplier?: number | null
+  stagger_time?: number | null
   field_buff_name?: string | null
   field_buff_text?: string | null
   field_buff_image?: string | null
@@ -126,6 +127,7 @@ export interface BossInfoSnapshotRow {
   resistance: string | null
   crisisBaseHp: number | null
   staggerMultiplier: number
+  staggerTime: number | null
   fieldBuffSets?: BossInfoFieldBuffSet[]
   fieldBuffName?: string | null
   fieldBuffText?: string | null

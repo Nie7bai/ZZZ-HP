@@ -862,6 +862,9 @@ function onPickerWheel(event: WheelEvent) {
                   <p v-if="enemy.defense !== undefined" class="enemy-defense">防御：{{ enemy.defense }}</p>
                   <p v-if="enemy.weakness" class="enemy-weakness">弱点：{{ enemy.weakness }}</p>
                   <p v-if="enemy.resistance" class="enemy-resistance">抗性：{{ enemy.resistance }}</p>
+                  <p v-if="enemy.staggerTime != null" class="enemy-stagger-time">
+                    失衡时间：{{ enemy.staggerTime }} 秒
+                  </p>
                 </div>
               </div>
               <div
@@ -986,6 +989,9 @@ function onPickerWheel(event: WheelEvent) {
                   <p v-if="enemy.defense !== undefined" class="enemy-defense">防御：{{ enemy.defense }}</p>
                   <p v-if="enemy.weakness" class="enemy-weakness">弱点：{{ enemy.weakness }}</p>
                   <p v-if="enemy.resistance" class="enemy-resistance">抗性：{{ enemy.resistance }}</p>
+                  <p v-if="enemy.staggerTime != null" class="enemy-stagger-time">
+                    失衡时间：{{ enemy.staggerTime }} 秒
+                  </p>
                 </div>
               </div>
               <div
@@ -1215,6 +1221,7 @@ function onPickerWheel(event: WheelEvent) {
 
 .content-grid--embedded .enemy-defense,
 .content-grid--embedded .enemy-weakness,
+.content-grid--embedded .enemy-stagger-time,
 .content-grid--embedded .enemy-resistance {
   font-size: clamp(0.72rem, 1.2vh, 0.84rem);
   line-height: 1.35;
@@ -1908,6 +1915,7 @@ function onPickerWheel(event: WheelEvent) {
 
 .enemy-defense,
 .enemy-weakness,
+.enemy-stagger-time,
 .enemy-resistance {
   margin: 0;
   font-size: clamp(0.74rem, 1.35vw, 0.84rem);

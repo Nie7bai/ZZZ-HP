@@ -29,6 +29,8 @@ export interface EnemySlot {
   elements: string[]
   defense?: number
   weakness?: string
+  /** 失衡时间（秒） */
+  staggerTime?: number | null
   resistance?: string
   footer?: string
   /** 怪物危局基础血量 */

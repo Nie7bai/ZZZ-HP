@@ -101,6 +101,8 @@ function mapBossRow(row) {
       row.stagger_multiplier == null || row.stagger_multiplier === ''
         ? null
         : Number(row.stagger_multiplier),
+    stagger_time:
+      row.stagger_time == null || row.stagger_time === '' ? null : Number(row.stagger_time),
     field_buff_set_id: row.field_buff_set_id ? String(row.field_buff_set_id) : null,
     mode: row.mode === 'defense' || row.mode === 'deduction' || row.mode === 'crisis' ? row.mode : null,
   }
@@ -161,6 +163,7 @@ function mapBossInfoExport(row) {
     boss_image: row.boss_image ?? null,
     crisis_base_hp: row.crisis_base_hp == null ? null : Number(row.crisis_base_hp),
     stagger_multiplier: row.stagger_multiplier == null ? null : Number(row.stagger_multiplier),
+    stagger_time: row.stagger_time == null ? null : Number(row.stagger_time),
     field_buff_name: row.field_buff_name ?? null,
     field_buff_text: row.field_buff_text ?? null,
     field_buff_image: row.field_buff_image ?? null,
@@ -232,7 +235,7 @@ export async function exportSeasonSnapshot(scheme, variant = null) {
 
   const [bossRows] = await pool.query(
     `SELECT id, version, phase, boss_name, hp, hp_coeff_percent, defense, level, room,
-            weakness, resistance, boss_image, stagger_multiplier, mode
+            weakness, resistance, boss_image, stagger_multiplier, stagger_time, mode
      FROM boss
      WHERE ${bossScopeSql(mode)}
      ORDER BY CAST(REPLACE(version, '.', '') AS UNSIGNED) DESC,
@@ -382,6 +385,7 @@ function bossImportPayload(row) {
     resistance: row.resistance ?? null,
     boss_image: row.boss_image ?? null,
     stagger_multiplier: row.stagger_multiplier ?? null,
+    stagger_time: row.stagger_time ?? null,
     crisis_base_hp: row.crisis_base_hp ?? null,
     hp_coeff_percent: row.hp_coeff_percent ?? null,
     hp_coeff_manual: row.hp_coeff_percent != null && row.hp_coeff_percent !== '',

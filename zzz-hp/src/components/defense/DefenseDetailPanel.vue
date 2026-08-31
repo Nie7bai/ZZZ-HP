@@ -950,6 +950,9 @@ function formatEnemyResistance(value?: string) {
                         <p v-if="formatEnemyResistance(enemy.resistance)" class="enemy-chip-trait">
                           <span class="trait-label">抗性</span>{{ formatEnemyResistance(enemy.resistance) }}
                         </p>
+                        <p v-if="enemy.staggerTime != null" class="enemy-chip-trait">
+                          <span class="trait-label">失衡时间</span>{{ enemy.staggerTime }} 秒
+                        </p>
                       </div>
                     </article>
                   </div>

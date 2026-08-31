@@ -10,6 +10,7 @@ import {
 } from '../utils/bossFieldBuff.js'
 import { ensureDeductionStoryOptionsColumn } from './deductionSchemaService.js'
 import { applyBossFallbackToPeriodNodes } from '../utils/deductionLayerFallback.js'
+import { ensureBossStaggerSchema, normalizeStaggerTime } from '../utils/bossSchema.js'
 
 let schemaEnsured = false
 
@@ -88,6 +89,7 @@ function putImageAlias(map, key, value) {
 
 export async function getDeductionPhases() {
   await ensureDeductionSchema()
+  await ensureBossStaggerSchema()
   const [rows] = await pool.execute(
     `SELECT version, phase, node_id, node_name, node_type, prev_node, story_text, story_options_json, layers_json, buffs_json, period_name
      FROM deduction_node
@@ -119,6 +121,22 @@ export async function getDeductionPhases() {
     putImageAlias(bossInfoImgMap, normalizeBossName(row.boss_name), row.boss_image)
   }
 
+  const staggerTimeByName = new Map()
+  try {
+    const [staggerRows] = await pool.execute(
+      'SELECT boss_name, stagger_time FROM boss_info WHERE stagger_time IS NOT NULL',
+    )
+    for (const row of staggerRows) {
+      const value = normalizeStaggerTime(row.stagger_time)
+      if (value == null) continue
+      if (!staggerTimeByName.has(row.boss_name)) staggerTimeByName.set(row.boss_name, value)
+      const key = normalizeBossName(row.boss_name)
+      if (key && !staggerTimeByName.has(key)) staggerTimeByName.set(key, value)
+    }
+  } catch (err) {
+    console.warn('[deduction] loadBossStaggerTimeMap fallback:', err.message)
+  }
+
   // Buff 名 → 图片（匹配 buff 表，推演可选增益与危局/防卫战同名 Buff 共用图）
   const [buffImgRows] = await pool.execute(
     `SELECT DISTINCT buff_name, buff_image
@@ -134,7 +152,7 @@ export async function getDeductionPhases() {
 
   // layers_json 损坏/为空时，从 boss 表按 room 回退重建（与 nanoka 导入的平铺 boss 行一致）
   const [bossStatRows] = await pool.execute(
-    `SELECT version, room, boss_name, hp, defense, level, weakness, resistance, boss_image
+    `SELECT version, room, boss_name, hp, defense, level, weakness, resistance, boss_image, stagger_time
      FROM boss
      WHERE mode = 'deduction'`,
   )
@@ -179,6 +197,12 @@ export async function getDeductionPhases() {
             bossInfoImgMap.get(normalizeBossName(monster.name)) ||
             null
           monster.boss_image = fromTable || monster.boss_image || null
+          const ownStagger = normalizeStaggerTime(monster.stagger_time)
+          monster.stagger_time =
+            ownStagger ??
+            staggerTimeByName.get(monster.name) ??
+            staggerTimeByName.get(normalizeBossName(monster.name)) ??
+            null
         }
       }
       attachFieldBuffToDeductionLayers(node.layers, fieldBuffMap)

@@ -1523,6 +1523,13 @@ onMounted(() => {
                               <span class="dd-elem-name">{{ elem.name }}</span>
                             </span>
                           </span>
+                          <span
+                            v-if="monster.stagger_time != null"
+                            class="dd-stat"
+                            title="失衡时间"
+                          >
+                            失衡 {{ monster.stagger_time }}s
+                          </span>
                         </div>
                       </div>
                       <template v-if="adminMode">

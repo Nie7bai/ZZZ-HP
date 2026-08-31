@@ -9,6 +9,8 @@ export interface DefenseEnemy {
   hpValue?: number
   defense?: number
   weakness?: string
+  /** 失衡时间（秒） */
+  staggerTime?: number | null
   resistance?: string
   isBoss?: boolean
 }
