@@ -26,6 +26,7 @@ export interface AlignedDirectFormulaGroup {
 export function computeDirectBaseChain(p: DamageCalcResult): number {
   return (
     p.generalMultiplier *
+    Math.max(0, p.directVulnerableMultiplier) *
     p.critMultiplier *
     Math.max(0, p.specialMultiplier) *
     Math.max(0, p.pierceDmgMultiplier)
@@ -35,6 +36,7 @@ export function computeDirectBaseChain(p: DamageCalcResult): number {
 export function buildDirectBaseChainFactorLabels(p: DamageCalcResult): string[] {
   const parts = [
     String(p.generalMultiplier),
+    String(p.directVulnerableMultiplier),
     String(p.critMultiplier),
     String(p.specialMultiplier),
   ]
@@ -55,6 +57,11 @@ export function buildAlignedDirectFormulaGroup(
       label: '通用乘区',
       value: formatFormulaNumber(p.generalMultiplier, 2),
       tipsKey: 'generalMultiplier',
+    },
+    {
+      label: '直伤易伤区',
+      value: formatFormulaNumber(p.directVulnerableMultiplier),
+      tipsKey: 'directVulnerableMultiplier',
     },
     { label: '暴击区', value: formatFormulaNumber(p.critMultiplier), tipsKey: 'critMultiplier' },
     {

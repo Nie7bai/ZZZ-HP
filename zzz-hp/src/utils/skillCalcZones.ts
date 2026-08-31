@@ -114,7 +114,6 @@ function pushCommon(rows: SkillCalcZoneRow[], result: DamageCalcResult) {
   push(rows, '基础伤害', result.baseDamage, true)
   push(rows, '防御区', result.defenseMultiplier)
   push(rows, '抗性区', result.resistanceMultiplier)
-  push(rows, '易伤区', result.vulnerableMultiplier)
   push(rows, '失衡易伤区', result.staggerMultiplier)
   push(rows, '通用乘区', result.generalMultiplier)
   push(rows, '特殊乘区', result.specialMultiplier)
@@ -130,7 +129,7 @@ function pushRemielSelfRadianceRows(rows: SkillCalcZoneRow[], result: DamageCalc
   push(rows, '蕾米埃尔异常基础', result.anomalyBaseExpected, true)
   push(rows, '防御区', result.remielSelfDefenseMultiplier ?? result.defenseMultiplier)
   push(rows, '抗性区', result.remielSelfResistanceMultiplier ?? result.resistanceMultiplier)
-  push(rows, '易伤区', result.vulnerableMultiplier)
+  push(rows, '易伤区', result.anomalyVulnerableMultiplier)
   push(rows, '失衡易伤区', result.staggerMultiplier)
   push(rows, '耀变综合增伤区', result.radianceCombinedDmgBonusZone)
   push(rows, '耀变倍率区', result.radianceMultZone)
@@ -154,6 +153,7 @@ export function buildSkillCalcZoneRows(
   pushCommon(rows, result)
 
   if (damageType === 'direct') {
+    push(rows, '直伤易伤区', result.directVulnerableMultiplier)
     push(rows, '暴击区', result.critMultiplier)
     push(rows, '增伤', result.dmgMultiplier)
     if (result.baseDamageSource === 'pierce') {
@@ -167,6 +167,7 @@ export function buildSkillCalcZoneRows(
     return rows
   }
 
+  push(rows, '非直伤易伤区', result.anomalyVulnerableMultiplier)
   push(rows, '精通区', result.masteryZone)
   push(rows, '等级区', result.levelZone)
   if (Number.isFinite(result.mutationZone) && Math.abs(result.mutationZone - 1) > 1e-6) {

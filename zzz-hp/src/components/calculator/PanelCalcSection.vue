@@ -1205,6 +1205,11 @@ const calcParts = computed(() =>
     isMbMainAgent: isMbMainAgent.value,
     enemyInput: enemyInput.value,
     combatVulnerable: panelBreakdown.value.combatMods.vulnerable,
+    combatDirectVulnerable: panelBreakdown.value.combatMods.directVulnerable,
+    combatAnomalyVulnerable: panelBreakdown.value.combatMods.anomalyVulnerable,
+    combatDmgReduction: panelBreakdown.value.combatMods.dmgReduction,
+    combatDirectDmgReduction: panelBreakdown.value.combatMods.directDmgReduction,
+    combatAnomalyDmgReduction: panelBreakdown.value.combatMods.anomalyDmgReduction,
     combatGlobalStaggerVulnerable: panelBreakdown.value.combatMods.globalStaggerVulnerable,
     combatStaggerVulnerable: panelBreakdown.value.combatMods.staggerVulnerable,
     combatStaggerVulnerableOnly: panelBreakdown.value.combatMods.staggerVulnerableOnly,
@@ -1499,6 +1504,11 @@ function buildHitCalcInput(hit: ResolvedHit): DamageCalcInput | null {
     isMbMainAgent: evtOwnerIsMb,
     enemyInput: enemyInput.value,
     combatVulnerable: evtBreakdown.combatMods.vulnerable,
+    combatDirectVulnerable: evtBreakdown.combatMods.directVulnerable,
+    combatAnomalyVulnerable: evtBreakdown.combatMods.anomalyVulnerable,
+    combatDmgReduction: evtBreakdown.combatMods.dmgReduction,
+    combatDirectDmgReduction: evtBreakdown.combatMods.directDmgReduction,
+    combatAnomalyDmgReduction: evtBreakdown.combatMods.anomalyDmgReduction,
     combatGlobalStaggerVulnerable: evtBreakdown.combatMods.globalStaggerVulnerable,
     combatStaggerVulnerable: evtBreakdown.combatMods.staggerVulnerable,
     combatStaggerVulnerableOnly: evtBreakdown.combatMods.staggerVulnerableOnly ?? 0,
@@ -1929,15 +1939,22 @@ const generalFormulaParts = computed(() => {
     formatFormulaNumber(p.dmgMultiplier),
     formatFormulaNumber(p.defenseMultiplier),
     formatFormulaNumber(p.resistanceMultiplier),
-    formatFormulaNumber(p.vulnerableMultiplier),
     formatFormulaNumber(p.staggerMultiplier),
   ]
+})
+
+const displayVulnerableMultiplier = computed(() => {
+  const p = displayCalcParts.value
+  return props.damageKind === 'anomaly'
+    ? p.anomalyVulnerableMultiplier
+    : p.directVulnerableMultiplier
 })
 
 const directFormulaParts = computed(() => {
   const p = calcParts.value
   const parts = [
     formatFormulaNumber(p.generalMultiplier, 2),
+    formatFormulaNumber(p.directVulnerableMultiplier),
     formatFormulaNumber(p.critMultiplier),
     formatFormulaNumber(p.specialMultiplier),
   ]
@@ -1961,8 +1978,10 @@ const anomalyFormulaParts = computed(() => {
   }
   return [
     formatFormulaNumber(p.generalMultiplier, 2),
+    formatFormulaNumber(p.anomalyVulnerableMultiplier),
     formatFormulaNumber(p.masteryZone),
     formatFormulaNumber(p.levelZone),
+    formatFormulaNumber(p.specialMultiplier),
   ]
 })
 
@@ -2008,6 +2027,8 @@ type ValueTipsKey =
   | 'defenseMultiplier'
   | 'resistanceMultiplier'
   | 'vulnerableMultiplier'
+  | 'directVulnerableMultiplier'
+  | 'anomalyVulnerableMultiplier'
   | 'staggerMultiplier'
   | 'generalMultiplier'
   | 'critRateRatio'
@@ -2098,7 +2119,6 @@ const alignedGeneralFormula = computed((): AlignedFormulaGroup => {
       { label: '增伤区', value: formatFormulaNumber(p.dmgMultiplier), tipsKey: 'dmgMultiplier' },
       { label: '防御区', value: formatFormulaNumber(p.defenseMultiplier), tipsKey: 'defenseMultiplier' },
       { label: '抗性区', value: formatFormulaNumber(p.resistanceMultiplier), tipsKey: 'resistanceMultiplier' },
-      { label: '易伤区', value: formatFormulaNumber(p.vulnerableMultiplier), tipsKey: 'vulnerableMultiplier' },
       { label: '失衡易伤区', value: formatFormulaNumber(p.staggerMultiplier), tipsKey: 'staggerMultiplier' },
     ],
     result: formatFormulaNumber(p.generalMultiplier, 2),
@@ -2679,47 +2699,141 @@ const valueTips = computed(() => {
           items: [`易伤基础 ${formatFormulaNumber(enemy.vulnerableMultiplier)}`],
         },
         ...buildStatSourceGroups({
-          keys: ['vulnerable'],
+          keys:
+            props.damageKind === 'anomaly'
+              ? ['vulnerable', 'anomalyVulnerable', 'dmgReduction', 'anomalyDmgReduction']
+              : ['vulnerable', 'directVulnerable', 'dmgReduction', 'directDmgReduction'],
           externalPanel: tipExternal,
           sources: tipSources,
-          externalKeyMap: { vulnerable: null },
+          externalKeyMap: {
+            vulnerable: null,
+            directVulnerable: null,
+            anomalyVulnerable: null,
+            dmgReduction: null,
+            directDmgReduction: null,
+            anomalyDmgReduction: null,
+          },
           showAdditiveProcess: false,
         }),
       ],
-      `易伤区 ${formatFormulaNumber(p.vulnerableMultiplier)}`,
+      `易伤区 ${formatFormulaNumber(displayVulnerableMultiplier.value)}`,
       buildEnemyCombatProcessItems({
         baseLabel: '易伤基础',
         baseValue: enemy.vulnerableMultiplier,
         sources: tipSources,
-        buffKey: 'vulnerable',
-        finalValue: p.vulnerableMultiplier,
-        resultLabel: '易伤区',
+        buffKeys:
+          props.damageKind === 'anomaly'
+            ? ['vulnerable', 'anomalyVulnerable']
+            : ['vulnerable', 'directVulnerable'],
+        subtractKeys:
+          props.damageKind === 'anomaly'
+            ? ['dmgReduction', 'anomalyDmgReduction']
+            : ['dmgReduction', 'directDmgReduction'],
+        finalValue: displayVulnerableMultiplier.value,
+        resultLabel: props.damageKind === 'anomaly' ? '非直伤易伤区' : '直伤易伤区',
       }),
     ),
-    staggerMultiplier: withTotal(
+    directVulnerableMultiplier: withTotal(
       [
         {
           label: '敌方与环境',
-          items: [`失衡易伤基础 ${formatFormulaNumber(enemy.staggerMultiplier)}`],
+          items: [`易伤基础 ${formatFormulaNumber(enemy.vulnerableMultiplier)}`],
         },
         ...buildStatSourceGroups({
-          keys: ['staggerVulnerable'],
+          keys: ['vulnerable', 'directVulnerable', 'dmgReduction', 'directDmgReduction'],
           externalPanel: tipExternal,
           sources: tipSources,
-          externalKeyMap: { staggerVulnerable: null },
+          externalKeyMap: {
+            vulnerable: null,
+            directVulnerable: null,
+            dmgReduction: null,
+            directDmgReduction: null,
+          },
           showAdditiveProcess: false,
         }),
       ],
-      `失衡易伤区 ${formatFormulaNumber(p.staggerMultiplier)}`,
+      `直伤易伤区 ${formatFormulaNumber(p.directVulnerableMultiplier)}`,
       buildEnemyCombatProcessItems({
-        baseLabel: '失衡易伤基础',
-        baseValue: enemy.staggerMultiplier,
+        baseLabel: '易伤基础',
+        baseValue: enemy.vulnerableMultiplier,
         sources: tipSources,
-        buffKey: 'staggerVulnerable',
-        finalValue: p.staggerMultiplier,
-        resultLabel: '失衡易伤区',
+        buffKeys: ['vulnerable', 'directVulnerable'],
+        subtractKeys: ['dmgReduction', 'directDmgReduction'],
+        finalValue: p.directVulnerableMultiplier,
+        resultLabel: '直伤易伤区',
       }),
     ),
+    anomalyVulnerableMultiplier: withTotal(
+      [
+        {
+          label: '敌方与环境',
+          items: [`易伤基础 ${formatFormulaNumber(enemy.vulnerableMultiplier)}`],
+        },
+        ...buildStatSourceGroups({
+          keys: ['vulnerable', 'anomalyVulnerable', 'dmgReduction', 'anomalyDmgReduction'],
+          externalPanel: tipExternal,
+          sources: tipSources,
+          externalKeyMap: {
+            vulnerable: null,
+            anomalyVulnerable: null,
+            dmgReduction: null,
+            anomalyDmgReduction: null,
+          },
+          showAdditiveProcess: false,
+        }),
+      ],
+      `非直伤易伤区 ${formatFormulaNumber(p.anomalyVulnerableMultiplier)}`,
+      buildEnemyCombatProcessItems({
+        baseLabel: '易伤基础',
+        baseValue: enemy.vulnerableMultiplier,
+        sources: tipSources,
+        buffKeys: ['vulnerable', 'anomalyVulnerable'],
+        subtractKeys: ['dmgReduction', 'anomalyDmgReduction'],
+        finalValue: p.anomalyVulnerableMultiplier,
+        resultLabel: '非直伤易伤区',
+      }),
+    ),
+    staggerMultiplier: (() => {
+      const tipPhase =
+        selectedEventDetailLine.value?.hit.staggerPhase ?? props.staggerPhase ?? 'stagger'
+      const isStagger = tipPhase === 'stagger'
+      const staggerBase = isStagger ? enemy.staggerMultiplier : 1
+      const staggerBuffKeys = isStagger
+        ? (['globalStaggerVulnerable', 'staggerVulnerable', 'staggerVulnerableOnly'] as const)
+        : (['globalStaggerVulnerable'] as const)
+      return withTotal(
+        [
+          {
+            label: '敌方与环境',
+            items: [
+              isStagger
+                ? `失衡易伤基础 ${formatFormulaNumber(enemy.staggerMultiplier)}`
+                : '非失衡期基础 1',
+            ],
+          },
+          ...buildStatSourceGroups({
+            keys: [...staggerBuffKeys],
+            externalPanel: tipExternal,
+            sources: tipSources,
+            externalKeyMap: {
+              globalStaggerVulnerable: null,
+              staggerVulnerable: null,
+              staggerVulnerableOnly: null,
+            },
+            showAdditiveProcess: false,
+          }),
+        ],
+        `失衡易伤区 ${formatFormulaNumber(p.staggerMultiplier)}`,
+        buildEnemyCombatProcessItems({
+          baseLabel: isStagger ? '失衡易伤基础' : '非失衡期基础',
+          baseValue: staggerBase,
+          sources: tipSources,
+          buffKeys: [...staggerBuffKeys],
+          finalValue: p.staggerMultiplier,
+          resultLabel: '失衡易伤区',
+        }),
+      )
+    })(),
     generalMultiplier: [
       {
         label: '乘区组成',
@@ -2728,16 +2842,15 @@ const valueTips = computed(() => {
           `增伤区 ${generalFormulaParts.value[1]}`,
           `防御区 ${generalFormulaParts.value[2]}`,
           `抗性区 ${generalFormulaParts.value[3]}`,
-          `易伤区 ${generalFormulaParts.value[4]}`,
-          `失衡易伤区 ${generalFormulaParts.value[5]}`,
-          `合计 ${formatFormulaNumber(p.generalMultiplier, 2)}`,
+          `失衡易伤区 ${generalFormulaParts.value[4]}`,
+          `合计 ${formatFormulaNumber(p.generalMultiplier, 2)}（不含易伤区）`,
         ],
       },
       {
         label: '加减过程',
         fullWidth: true,
         items: [
-          `${generalFormulaParts.value[0]} × ${generalFormulaParts.value[1]} × ${generalFormulaParts.value[2]} × ${generalFormulaParts.value[3]} × ${generalFormulaParts.value[4]} × ${generalFormulaParts.value[5]}`,
+          `${generalFormulaParts.value[0]} × ${generalFormulaParts.value[1]} × ${generalFormulaParts.value[2]} × ${generalFormulaParts.value[3]} × ${generalFormulaParts.value[4]}`,
           `= ${formatFormulaNumber(p.generalMultiplier, 2)}`,
         ],
       },
@@ -3339,7 +3452,7 @@ const valueTips = computed(() => {
               `抗性区 ${formatFormulaNumber(p.remielSelfResistanceMultiplier ?? 1)}${
                 p.remielSelfResistanceElement ? `（基准属性 ${p.remielSelfResistanceElement}）` : ''
               }`,
-              `易伤区 ${formatFormulaNumber(p.vulnerableMultiplier)}`,
+              `易伤区 ${formatFormulaNumber(p.anomalyVulnerableMultiplier)}`,
               `失衡易伤区 ${formatFormulaNumber(p.staggerMultiplier)}`,
               `耀变综合增伤区 ${formatFormulaNumber(p.radianceCombinedDmgBonusZone)}（耀变增伤+异常增伤）`,
               `耀变倍率区 ${formatFormulaNumber(p.radianceMultZone)}`,
@@ -3965,7 +4078,7 @@ defineExpose({
       <p>增伤区：<StatValueWithSources :value="displayCalcParts.dmgMultiplier" :groups="selectedEventDmgMultiplierTips" /></p>
       <p>防御区：<StatValueWithSources :value="displayCalcParts.defenseMultiplier" :groups="valueTips.defenseMultiplier" /></p>
       <p>抗性区：<StatValueWithSources :value="displayCalcParts.resistanceMultiplier" :groups="valueTips.resistanceMultiplier" /></p>
-      <p>易伤区（含增益）：<StatValueWithSources :value="displayCalcParts.vulnerableMultiplier" :groups="valueTips.vulnerableMultiplier" /></p>
+      <p>易伤区（含增益）：<StatValueWithSources :value="formatFormulaNumber(displayVulnerableMultiplier)" :groups="valueTips.vulnerableMultiplier" /></p>
       <p>失衡易伤区（含增益）：<StatValueWithSources :value="displayCalcParts.staggerMultiplier" :groups="valueTips.staggerMultiplier" /></p>
       <p class="result-subtotal">通用乘区：<StatValueWithSources :value="formatFormulaNumber(displayCalcParts.generalMultiplier, 2)" :groups="valueTips.generalMultiplier" /></p>
     </div>

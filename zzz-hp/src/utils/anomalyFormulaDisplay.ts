@@ -94,6 +94,11 @@ export function buildAlignedAnomalyFormulaGroups(
       ]
     : [
         { label: '通用乘区', value: formatFormulaNumber(p.generalMultiplier, 2), tipsKey: 'generalMultiplier' },
+        {
+          label: '非直伤易伤区',
+          value: formatFormulaNumber(p.anomalyVulnerableMultiplier),
+          tipsKey: 'anomalyVulnerableMultiplier',
+        },
         { label: '精通区', value: formatFormulaNumber(p.masteryZone), tipsKey: 'masteryZone' },
         { label: '等级区', value: formatFormulaNumber(p.levelZone), tipsKey: 'levelZone' },
         { label: '特殊乘区', value: formatFormulaNumber(p.specialMultiplier), tipsKey: 'specialMultiplier' },
@@ -218,8 +223,8 @@ export function buildAlignedAnomalyFormulaGroups(
           },
           {
             label: '易伤区',
-            value: formatFormulaNumber(p.vulnerableMultiplier),
-            tipsKey: 'vulnerableMultiplier',
+            value: formatFormulaNumber(p.anomalyVulnerableMultiplier),
+            tipsKey: 'anomalyVulnerableMultiplier',
           },
           {
             label: '失衡易伤区',

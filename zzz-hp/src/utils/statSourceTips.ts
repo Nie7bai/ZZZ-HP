@@ -192,21 +192,37 @@ export function buildEnemyCombatProcessItems(options: {
   baseLabel: string
   baseValue: number
   sources: BuffModSource[]
-  buffKey: BuffStatKey
+  buffKey?: BuffStatKey
+  /** 多个 Buff 字段按顺序加算（易伤/减伤分路径） */
+  buffKeys?: BuffStatKey[]
+  /** 从合计中扣减的字段（减伤类，过程里显示为负） */
+  subtractKeys?: BuffStatKey[]
   finalValue: number
   resultLabel?: string
 }): string[] {
   const steps: string[] = []
   const terms: string[] = []
+  const addKeys = options.buffKeys ?? (options.buffKey ? [options.buffKey] : [])
+  const subKeys = options.subtractKeys ?? []
 
   steps.push(`${options.baseLabel} ${formatProcessNumber(options.baseValue)}`)
   terms.push(formatProcessNumber(options.baseValue))
 
-  for (const source of options.sources) {
-    const value = source.mods[options.buffKey]
-    if (!value) continue
-    steps.push(`${source.label} ${formatSigned(value)}%`)
-    terms.push(`${formatSigned(value)}%`)
+  for (const key of addKeys) {
+    for (const source of options.sources) {
+      const value = source.mods[key]
+      if (!value) continue
+      steps.push(`${source.label}·${fieldLabel(key)} ${formatSigned(value)}%`)
+      terms.push(`${formatSigned(value)}%`)
+    }
+  }
+  for (const key of subKeys) {
+    for (const source of options.sources) {
+      const value = source.mods[key]
+      if (!value) continue
+      steps.push(`${source.label}·${fieldLabel(key)} ${formatSigned(-value)}%`)
+      terms.push(`${formatSigned(-value)}%`)
+    }
   }
 
   if (terms.length <= 1) return []

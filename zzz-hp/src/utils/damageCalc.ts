@@ -28,6 +28,16 @@ export interface DamageCalcInput {
   isMbMainAgent: boolean
   enemyInput: DamageEnemyInput
   combatVulnerable: number
+  /** 直伤易伤%（仅直伤） */
+  combatDirectVulnerable?: number
+  /** 非直伤易伤%（异常类） */
+  combatAnomalyVulnerable?: number
+  /** 减伤%（全类型，从易伤区扣减） */
+  combatDmgReduction?: number
+  /** 直伤减伤% */
+  combatDirectDmgReduction?: number
+  /** 非直伤减伤% */
+  combatAnomalyDmgReduction?: number
   /** 全局失衡易伤%（失衡/非失衡均生效） */
   combatGlobalStaggerVulnerable?: number
   /** 失衡易伤%（仅失衡期生效） */
@@ -87,7 +97,7 @@ export interface DamageCalcInput {
   mutationZone?: number
   /** 耀变：蕾米埃尔耀变抗性穿透（非本人耀变时并入产生角色抗性区） */
   remielRadianceResPen?: number
-/** 耀变：蕾米埃尔本人作异常强度提供者时的专用结算输入 */
+  /** 耀变：蕾米埃尔本人作异常强度提供者时的专用结算输入 */
   remielSelfRadianceCalc?: RemielSelfRadianceCalcInput | null
   /** 招式填写紊乱最终倍率区%（有则直接作为倍率区，不再叠持续时间×补偿） */
   disorderZoneMultOverride?: number | null
@@ -112,11 +122,20 @@ export interface DamageCalcResult {
   effectiveDefense: number
   defenseMultiplier: number
   resistanceMultiplier: number
+  /** 当前结算路径使用的易伤区（直伤或非直伤） */
   vulnerableMultiplier: number
+  /** 直伤易伤区 */
+  directVulnerableMultiplier: number
+  /** 非直伤（异常类）易伤区 */
+  anomalyVulnerableMultiplier: number
   staggerMultiplier: number
   specialMultiplier: number
   /** 贯穿增伤乘区（非贯穿基础时为 1） */
   pierceDmgMultiplier: number
+  /**
+   * 通用乘区（不含易伤区）：
+   * 基础伤害 × 增伤区 × 防御区 × 抗性区 × 失衡易伤区
+   */
   generalMultiplier: number
   directDmgMultZone: number
   /** 决算倍率区（直伤大类下的独立伤害分量） */
@@ -257,7 +276,30 @@ export function computeDefenseZone(options: {
 
 export function computeLevelZone(level: number) {
   const safeLevel = clamp(Math.round(level), 1, 60)
-  return 1 + (safeLevel - 1) / 59
+  const raw = 1 + (safeLevel - 1) / 59
+  // trunc(..., 4)：对照站保留小数函数
+  return Math.trunc(raw * 10000) / 10000
+}
+
+/**
+ * 易伤区 = max(0, 敌人易伤基础 + 通用易伤% + 路径易伤% − 通用减伤% − 路径减伤%)
+ * 敌人易伤基础为通用基础；路径差异由 Buff 解决。
+ */
+export function computeVulnerableZone(options: {
+  enemyVulnerableBase: number
+  generalVulnerablePercent: number
+  pathVulnerablePercent: number
+  generalReductionPercent: number
+  pathReductionPercent: number
+}) {
+  return Math.max(
+    0,
+    options.enemyVulnerableBase +
+      options.generalVulnerablePercent / 100 +
+      options.pathVulnerablePercent / 100 -
+      options.generalReductionPercent / 100 -
+      options.pathReductionPercent / 100,
+  )
 }
 
 function resolveBaseDamageParts(options: {
@@ -282,6 +324,11 @@ function computeGeneralAndAnomalyBase(options: {
   isMb: boolean
   enemyInput: DamageEnemyInput
   combatVulnerable: number
+  combatDirectVulnerable: number
+  combatAnomalyVulnerable: number
+  combatDmgReduction: number
+  combatDirectDmgReduction: number
+  combatAnomalyDmgReduction: number
   combatGlobalStaggerVulnerable: number
   combatStaggerVulnerable: number
   combatStaggerVulnerableOnly: number
@@ -326,25 +373,42 @@ function computeGeneralAndAnomalyBase(options: {
   const defenseMultiplier = options.isMb ? 1 : 794 / (794 + effectiveDefense)
   const resistanceMultiplier = 1 - enemyRes + clamp((panel.resPen + extraResPen) / 100, -2, 2)
 
-  const vulnerableMultiplier =
-    options.enemyInput.vulnerableMultiplier + options.combatVulnerable / 100
+  const enemyVulnerableBase = options.enemyInput.vulnerableMultiplier
+  const directVulnerableMultiplier = computeVulnerableZone({
+    enemyVulnerableBase,
+    generalVulnerablePercent: options.combatVulnerable,
+    pathVulnerablePercent: options.combatDirectVulnerable,
+    generalReductionPercent: options.combatDmgReduction,
+    pathReductionPercent: options.combatDirectDmgReduction,
+  })
+  const anomalyVulnerableMultiplier = computeVulnerableZone({
+    enemyVulnerableBase,
+    generalVulnerablePercent: options.combatVulnerable,
+    pathVulnerablePercent: options.combatAnomalyVulnerable,
+    generalReductionPercent: options.combatDmgReduction,
+    pathReductionPercent: options.combatAnomalyDmgReduction,
+  })
+
   const globalStagger = options.combatGlobalStaggerVulnerable / 100
   const phaseStagger =
     (options.combatStaggerVulnerable + options.combatStaggerVulnerableOnly) / 100
-  /** 非失衡：乘区固定为 1。失衡易伤只在流程勾了失衡时进入。 */
+  /**
+   * 失衡期：怪物失衡易伤 + 全局常驻 + 失衡易伤 + 失衡易伤（仅失衡）
+   * 非失衡期：100% + 全局常驻失衡易伤
+   */
   const staggerMultiplier =
     options.staggerPhase === 'stagger'
       ? options.enemyInput.staggerMultiplier + globalStagger + phaseStagger
-      : 1
+      : 1 + globalStagger
   const specialMultiplier = options.enemyInput.specialMultiplier + options.combatSpecial / 100
   const pierceDmgBonusRatio = options.combatPierceDmgBonus / 100
 
+  /** 通用乘区不含易伤：易伤按直伤/非直伤路径分别乘入 */
   const generalMultiplier =
     baseDamage *
     dmgMultiplier *
     defenseMultiplier *
     resistanceMultiplier *
-    Math.max(0, vulnerableMultiplier) *
     Math.max(0, staggerMultiplier)
 
   const pierceDmgMultiplier =
@@ -353,7 +417,11 @@ function computeGeneralAndAnomalyBase(options: {
   const masteryZone = panel.mastery / 100
   const levelZone = computeLevelZone(options.agentLevel)
   const anomalyBaseExpected =
-    generalMultiplier * masteryZone * levelZone * Math.max(0, specialMultiplier)
+    generalMultiplier *
+    Math.max(0, anomalyVulnerableMultiplier) *
+    masteryZone *
+    levelZone *
+    Math.max(0, specialMultiplier)
 
   return {
     baseDamage,
@@ -370,7 +438,8 @@ function computeGeneralAndAnomalyBase(options: {
     effectiveDefense,
     defenseMultiplier,
     resistanceMultiplier,
-    vulnerableMultiplier,
+    directVulnerableMultiplier,
+    anomalyVulnerableMultiplier,
     staggerMultiplier,
     specialMultiplier,
     pierceDmgMultiplier,
@@ -431,6 +500,11 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     isMb: input.isMbMainAgent,
     enemyInput: input.enemyInput,
     combatVulnerable: input.combatVulnerable,
+    combatDirectVulnerable: input.combatDirectVulnerable ?? 0,
+    combatAnomalyVulnerable: input.combatAnomalyVulnerable ?? 0,
+    combatDmgReduction: input.combatDmgReduction ?? 0,
+    combatDirectDmgReduction: input.combatDirectDmgReduction ?? 0,
+    combatAnomalyDmgReduction: input.combatAnomalyDmgReduction ?? 0,
     combatGlobalStaggerVulnerable: input.combatGlobalStaggerVulnerable ?? 0,
     combatStaggerVulnerable: input.combatStaggerVulnerable,
     combatStaggerVulnerableOnly: input.combatStaggerVulnerableOnly ?? 0,
@@ -455,6 +529,11 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
         isMb: input.triggerIsMb ?? false,
         enemyInput: input.enemyInput,
         combatVulnerable: input.combatVulnerable,
+        combatDirectVulnerable: input.combatDirectVulnerable ?? 0,
+        combatAnomalyVulnerable: input.combatAnomalyVulnerable ?? 0,
+        combatDmgReduction: input.combatDmgReduction ?? 0,
+        combatDirectDmgReduction: input.combatDirectDmgReduction ?? 0,
+        combatAnomalyDmgReduction: input.combatAnomalyDmgReduction ?? 0,
         combatGlobalStaggerVulnerable: input.combatGlobalStaggerVulnerable ?? 0,
         combatStaggerVulnerable: input.combatStaggerVulnerable,
         combatStaggerVulnerableOnly: input.combatStaggerVulnerableOnly ?? 0,
@@ -487,6 +566,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     : Math.max(0, panel.settlementDmgMult / 100) * readFactor(panel.directDmgMultFactor)
   const directBaseChain =
     mainParts.generalMultiplier *
+    Math.max(0, mainParts.directVulnerableMultiplier) *
     mainParts.critMultiplier *
     Math.max(0, mainParts.specialMultiplier) *
     Math.max(0, mainParts.pierceDmgMultiplier)
@@ -506,6 +586,12 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
 
   const remielSelf = subKind === 'radiance' ? (input.remielSelfRadianceCalc ?? null) : null
   const remielSelfRadianceActive = Boolean(remielSelf)
+  /** 展示用：异常路径（含耀变本人）用非直伤易伤区，否则用直伤易伤区 */
+  const pathVulnerableMultiplier = remielSelfRadianceActive
+    ? mainParts.anomalyVulnerableMultiplier
+    : useTriggerBase
+      ? baseParts.anomalyVulnerableMultiplier
+      : mainParts.directVulnerableMultiplier
 
   let remielSelfDefenseMultiplier = 1
   let remielSelfResistanceMultiplier = 1
@@ -659,7 +745,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     ? anomalyBaseExpected *
       remielSelfDefenseMultiplier *
       remielSelfResistanceMultiplier *
-      Math.max(0, mainParts.vulnerableMultiplier) *
+      Math.max(0, mainParts.anomalyVulnerableMultiplier) *
       Math.max(0, mainParts.staggerMultiplier) *
       radianceCombinedDmgBonusZone *
       radianceMultZone *
@@ -691,7 +777,14 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     effectiveDefense: round(baseParts.effectiveDefense, 2),
     defenseMultiplier: round(baseParts.defenseMultiplier, 4),
     resistanceMultiplier: round(baseParts.resistanceMultiplier, 4),
-    vulnerableMultiplier: round(mainParts.vulnerableMultiplier, 4),
+    vulnerableMultiplier: round(pathVulnerableMultiplier, 4),
+    directVulnerableMultiplier: round(mainParts.directVulnerableMultiplier, 4),
+    anomalyVulnerableMultiplier: round(
+      useTriggerBase
+        ? triggerParts.anomalyVulnerableMultiplier
+        : mainParts.anomalyVulnerableMultiplier,
+      4,
+    ),
     staggerMultiplier: round(mainParts.staggerMultiplier, 4),
     specialMultiplier: round(mainParts.specialMultiplier, 4),
     pierceDmgMultiplier: round(mainParts.pierceDmgMultiplier, 4),
