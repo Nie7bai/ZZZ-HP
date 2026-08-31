@@ -861,10 +861,10 @@ function onPickerWheel(event: WheelEvent) {
                   </div>
                   <p v-if="enemy.defense !== undefined" class="enemy-defense">防御：{{ enemy.defense }}</p>
                   <p v-if="enemy.weakness" class="enemy-weakness">弱点：{{ enemy.weakness }}</p>
+                  <p v-if="enemy.resistance" class="enemy-resistance">抗性：{{ enemy.resistance }}</p>
                   <p v-if="enemy.staggerTime != null" class="enemy-stagger-time">
                     失衡时间：{{ enemy.staggerTime }} 秒
                   </p>
-                  <p v-if="enemy.resistance" class="enemy-resistance">抗性：{{ enemy.resistance }}</p>
                 </div>
               </div>
               <div
@@ -988,10 +988,10 @@ function onPickerWheel(event: WheelEvent) {
                   </div>
                   <p v-if="enemy.defense !== undefined" class="enemy-defense">防御：{{ enemy.defense }}</p>
                   <p v-if="enemy.weakness" class="enemy-weakness">弱点：{{ enemy.weakness }}</p>
+                  <p v-if="enemy.resistance" class="enemy-resistance">抗性：{{ enemy.resistance }}</p>
                   <p v-if="enemy.staggerTime != null" class="enemy-stagger-time">
                     失衡时间：{{ enemy.staggerTime }} 秒
                   </p>
-                  <p v-if="enemy.resistance" class="enemy-resistance">抗性：{{ enemy.resistance }}</p>
                 </div>
               </div>
               <div
