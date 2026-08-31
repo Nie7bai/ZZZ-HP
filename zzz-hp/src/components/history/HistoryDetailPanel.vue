@@ -275,6 +275,12 @@ function fieldBuffLines(enemy: PhaseData['enemies'][number]) {
   return []
 }
 
+function fieldBuffTitle(enemy: PhaseData['enemies'][number]) {
+  const name = enemy.fieldBuff?.name?.trim()
+  if (name && name !== '场地 Buff') return name
+  return '场地 Buff'
+}
+
 /** 往期详情：原文照常展示；效果块注释与原文相同时去掉，避免重复 */
 function blocksForHistoryDisplay(
   blocks: NonNullable<PhaseData['buffs'][number]['effectBlocks']> | null | undefined,
@@ -773,7 +779,6 @@ function onPickerWheel(event: WheelEvent) {
         <div
           v-if="normalEnemyEntries.length"
           class="enemy-row enemy-row--normal"
-          :style="{ '--enemy-cols': String(Math.max(normalEnemyEntries.length, 1)) }"
         >
           <article
             v-for="{ enemy, index } in normalEnemyEntries"
@@ -859,22 +864,29 @@ function onPickerWheel(event: WheelEvent) {
                       </span>
                     </p>
                   </div>
-                  <p v-if="enemy.defense !== undefined" class="enemy-defense">防御：{{ enemy.defense }}</p>
-                  <p v-if="enemy.weakness" class="enemy-weakness">弱点：{{ enemy.weakness }}</p>
-                  <p v-if="enemy.resistance" class="enemy-resistance">抗性：{{ enemy.resistance }}</p>
-                  <p v-if="enemy.staggerTime != null" class="enemy-stagger-time">
-                    失衡时间：{{ enemy.staggerTime }} 秒
-                  </p>
+                  <div
+                    v-if="
+                      enemy.defense !== undefined ||
+                      enemy.weakness ||
+                      enemy.resistance ||
+                      enemy.staggerTime != null
+                    "
+                    class="enemy-traits"
+                  >
+                    <p v-if="enemy.defense !== undefined" class="enemy-defense">防御：{{ enemy.defense }}</p>
+                    <p v-if="enemy.weakness" class="enemy-weakness">弱点：{{ enemy.weakness }}</p>
+                    <p v-if="enemy.resistance" class="enemy-resistance">抗性：{{ enemy.resistance }}</p>
+                    <p v-if="enemy.staggerTime != null" class="enemy-stagger-time">
+                      失衡时间：{{ enemy.staggerTime }} 秒
+                    </p>
+                  </div>
                 </div>
               </div>
               <div
                 v-if="enemy.fieldBuff?.name || enemy.fieldBuff?.text || enemy.fieldBuff?.effectBlocks?.length"
                 class="enemy-field-buff"
               >
-                <p class="enemy-field-buff-title">
-                  场地 Buff
-                  <span v-if="enemy.fieldBuff?.name">· {{ enemy.fieldBuff.name }}</span>
-                </p>
+                <p class="enemy-field-buff-title">{{ fieldBuffTitle(enemy) }}</p>
                 <ul
                   v-if="fieldBuffLines(enemy).length"
                   class="enemy-field-buff-lines"
@@ -986,22 +998,29 @@ function onPickerWheel(event: WheelEvent) {
                       </span>
                     </p>
                   </div>
-                  <p v-if="enemy.defense !== undefined" class="enemy-defense">防御：{{ enemy.defense }}</p>
-                  <p v-if="enemy.weakness" class="enemy-weakness">弱点：{{ enemy.weakness }}</p>
-                  <p v-if="enemy.resistance" class="enemy-resistance">抗性：{{ enemy.resistance }}</p>
-                  <p v-if="enemy.staggerTime != null" class="enemy-stagger-time">
-                    失衡时间：{{ enemy.staggerTime }} 秒
-                  </p>
+                  <div
+                    v-if="
+                      enemy.defense !== undefined ||
+                      enemy.weakness ||
+                      enemy.resistance ||
+                      enemy.staggerTime != null
+                    "
+                    class="enemy-traits"
+                  >
+                    <p v-if="enemy.defense !== undefined" class="enemy-defense">防御：{{ enemy.defense }}</p>
+                    <p v-if="enemy.weakness" class="enemy-weakness">弱点：{{ enemy.weakness }}</p>
+                    <p v-if="enemy.resistance" class="enemy-resistance">抗性：{{ enemy.resistance }}</p>
+                    <p v-if="enemy.staggerTime != null" class="enemy-stagger-time">
+                      失衡时间：{{ enemy.staggerTime }} 秒
+                    </p>
+                  </div>
                 </div>
               </div>
               <div
                 v-if="enemy.fieldBuff?.name || enemy.fieldBuff?.text || enemy.fieldBuff?.effectBlocks?.length"
                 class="enemy-field-buff"
               >
-                <p class="enemy-field-buff-title">
-                  场地 Buff
-                  <span v-if="enemy.fieldBuff?.name">· {{ enemy.fieldBuff.name }}</span>
-                </p>
+                <p class="enemy-field-buff-title">{{ fieldBuffTitle(enemy) }}</p>
                 <ul
                   v-if="fieldBuffLines(enemy).length"
                   class="enemy-field-buff-lines"
@@ -1225,6 +1244,8 @@ function onPickerWheel(event: WheelEvent) {
 .content-grid--embedded .enemy-resistance {
   font-size: clamp(0.72rem, 1.2vh, 0.84rem);
   line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .content-grid--embedded .enemy-field-buff-title,
@@ -1632,9 +1653,8 @@ function onPickerWheel(event: WheelEvent) {
 
 .enemy-row--normal {
   display: grid;
-  grid-template-columns: repeat(var(--enemy-cols, 3), minmax(0, 1fr));
-  width: max-content;
-  max-width: 100%;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  width: 100%;
   margin-inline: auto;
   gap: 0.85rem;
   align-items: stretch;
@@ -1662,23 +1682,31 @@ function onPickerWheel(event: WheelEvent) {
 }
 
 .enemy-main--hard {
-  flex-direction: row;
+  flex-direction: column;
   align-items: stretch;
-  gap: 0.85rem;
+  gap: 0.55rem;
   width: 100%;
 }
 
 .enemy-main--hard .enemy-body {
-  flex: 0 0 auto;
+  flex: none;
+  width: 100%;
   min-width: 0;
 }
 
 .enemy-main--hard .enemy-field-buff {
-  flex: 1 1 auto;
+  flex: none;
+  width: 100%;
   margin-top: 0;
   min-width: 0;
   max-width: none;
   align-self: stretch;
+}
+
+.enemy-card--hard .enemy-field-buff :deep(.effect-blocks-display--compact .effect-block-list) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 0.25rem 0.85rem;
 }
 
 .buff-card {
@@ -1753,6 +1781,8 @@ function onPickerWheel(event: WheelEvent) {
 .enemy-card {
   display: flex;
   flex-direction: column;
+  container-type: inline-size;
+  container-name: enemy-card;
   padding: 0.75rem 0.85rem 0.9rem;
   border-radius: 12px;
   border: 1px solid var(--color-border);
@@ -1856,13 +1886,16 @@ function onPickerWheel(event: WheelEvent) {
 .enemy-hp-row {
   display: flex;
   align-items: baseline;
-  gap: 0;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.25rem;
   margin: 0;
+  width: 100%;
+  min-width: 0;
 }
 
 .enemy-hp-prefix {
   flex-shrink: 0;
-  min-width: 2.6rem;
+  min-width: 0;
   font-size: clamp(0.84rem, 1.6vw, 0.95rem);
   font-weight: 700;
   color: #e85d4c;
@@ -1906,11 +1939,20 @@ function onPickerWheel(event: WheelEvent) {
 }
 
 .enemy-hp-expansion {
-  margin-left: 0.3rem;
+  margin-left: 0;
   font-size: clamp(0.7rem, 1.3vw, 0.8rem);
   font-weight: 600;
   color: #4d9fff;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.enemy-traits {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  width: 100%;
+  min-width: 0;
 }
 
 .enemy-defense,
@@ -1922,6 +1964,8 @@ function onPickerWheel(event: WheelEvent) {
   color: var(--color-heading);
   opacity: 0.88;
   line-height: 1.4;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .enemy-field-buff {
@@ -1960,19 +2004,36 @@ function onPickerWheel(event: WheelEvent) {
   border-top: 1px dashed color-mix(in srgb, var(--color-border) 65%, transparent);
 }
 
+@container enemy-card (max-width: 520px) {
+  .enemy-body {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .enemy-image {
+    width: min(200px, 72%);
+    max-width: 220px;
+  }
+
+  .enemy-info {
+    width: 100%;
+    align-items: center;
+    text-align: center;
+  }
+
+  .enemy-name {
+    margin-inline: auto;
+  }
+
+  .enemy-hp-row {
+    justify-content: center;
+  }
+}
+
 @media (max-width: 1100px) {
   .enemy-row--normal {
     grid-template-columns: 1fr;
     width: 100%;
-  }
-
-  .enemy-main--hard {
-    flex-direction: column;
-  }
-
-  .enemy-main--hard .enemy-field-buff {
-    min-width: 0;
-    max-width: none;
   }
 
   .enemy-card--hard {
@@ -2063,15 +2124,6 @@ function onPickerWheel(event: WheelEvent) {
     width: 100%;
     min-width: 0;
     max-width: 100%;
-  }
-
-  .enemy-main--hard {
-    flex-direction: column;
-  }
-
-  .enemy-main--hard .enemy-field-buff {
-    min-width: 0;
-    max-width: none;
   }
 
   .enemy-body {

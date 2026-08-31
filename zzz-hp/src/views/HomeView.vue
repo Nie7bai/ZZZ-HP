@@ -124,15 +124,16 @@ const modes: ModeCard[] = [
 .home {
   position: relative;
   min-height: 100vh;
-  overflow-x: hidden;
+  min-height: 100dvh;
   background: var(--zzz-bg);
   color: var(--zzz-fg);
 }
 
 /* ── 背景：拼贴画 + 极慢漂浮 ─────────────── */
 .home-bg {
-  position: absolute;
+  position: fixed;
   inset: -6%;
+  z-index: 0;
   pointer-events: none;
   background: url('/zzz-assets/bg-collage.webp') center / cover no-repeat;
   animation: bg-drift 14s ease-in-out infinite alternate;
