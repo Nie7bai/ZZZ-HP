@@ -175,8 +175,18 @@ export interface BuffStatModifiers {
   pierce: number
   /** 贯穿增伤% */
   pierceDmgBonus: number
-  /** 易伤%（独立易伤区，常驻） */
+  /** 易伤%（全伤害类型，与直伤/非直伤易伤加算进同一易伤区） */
   vulnerable: number
+  /** 直伤易伤%（仅直伤） */
+  directVulnerable: number
+  /** 非直伤易伤%（异常/紊乱/乱流/异放/耀变） */
+  anomalyVulnerable: number
+  /** 减伤%（全伤害类型，从易伤区加算扣减） */
+  dmgReduction: number
+  /** 直伤减伤%（仅直伤） */
+  directDmgReduction: number
+  /** 非直伤减伤%（异常类） */
+  anomalyDmgReduction: number
   /** 全局失衡易伤%（失衡/非失衡均生效） */
   globalStaggerVulnerable: number
   /** 失衡易伤%（全局存在，仅失衡期生效） */

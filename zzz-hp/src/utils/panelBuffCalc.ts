@@ -903,6 +903,11 @@ export function resolveBaseEnergyRegen(ctx: PanelCalcContext): number {
 
 export interface CombatBuffMods {
   vulnerable: number
+  directVulnerable: number
+  anomalyVulnerable: number
+  dmgReduction: number
+  directDmgReduction: number
+  anomalyDmgReduction: number
   globalStaggerVulnerable: number
   staggerVulnerable: number
   staggerVulnerableOnly: number
@@ -1953,6 +1958,11 @@ export function panelToConvertAttrValues(
 export function extractCombatMods(mods: BuffStatModifiers): CombatBuffMods {
   return {
     vulnerable: mods.vulnerable,
+    directVulnerable: mods.directVulnerable,
+    anomalyVulnerable: mods.anomalyVulnerable,
+    dmgReduction: mods.dmgReduction,
+    directDmgReduction: mods.directDmgReduction,
+    anomalyDmgReduction: mods.anomalyDmgReduction,
     globalStaggerVulnerable: mods.globalStaggerVulnerable,
     staggerVulnerable: mods.staggerVulnerable,
     staggerVulnerableOnly: mods.staggerVulnerableOnly,

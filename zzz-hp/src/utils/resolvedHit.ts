@@ -245,7 +245,7 @@ function previewFlowEntry(id: string, ownerAgentId: string, preparedId: string):
 
 /**
  * 准备招式主行预览：不进流程也算出单次伤害。
- * 次数=1、非失衡（失衡易伤区=1）。hit.id = 准备条目 id。不计入流程总伤。
+ * 次数=1、非失衡（失衡易伤区 = 100% + 全局常驻失衡易伤）。hit.id = 准备条目 id。不计入流程总伤。
  */
 export function resolveSkillPreviews(options: ResolveFlowOptions): ResolvedHit[] {
   const hits: ResolvedHit[] = []

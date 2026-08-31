@@ -135,12 +135,47 @@ export const BUFF_STAT_FIELDS: {
     unit: 'flat',
     hint: '固定数值直接累加；能量回复请优先用上方百分比字段',
   },
-  { key: 'vulnerable', label: '易伤', unit: 'percent', hint: '独立易伤区，常驻加算（如 1.5 + 30% = 1.8）' },
+  {
+    key: 'vulnerable',
+    label: '易伤',
+    unit: 'percent',
+    hint: '全伤害类型；与直伤/非直伤易伤加算进同一易伤区（如 1 + 30% = 1.3）',
+  },
+  {
+    key: 'directVulnerable',
+    label: '直伤易伤',
+    unit: 'percent',
+    hint: '仅直伤；与通用易伤加算进直伤易伤区',
+  },
+  {
+    key: 'anomalyVulnerable',
+    label: '非直伤易伤',
+    unit: 'percent',
+    hint: '仅异常类（异常/紊乱/乱流/异放/耀变）；与通用易伤加算进非直伤易伤区',
+  },
+  {
+    key: 'dmgReduction',
+    label: '减伤',
+    unit: 'percent',
+    hint: '全伤害类型；从易伤区加算扣减（1 + 易伤% − 减伤%）',
+  },
+  {
+    key: 'directDmgReduction',
+    label: '直伤减伤',
+    unit: 'percent',
+    hint: '仅直伤；从直伤易伤区加算扣减',
+  },
+  {
+    key: 'anomalyDmgReduction',
+    label: '非直伤减伤',
+    unit: 'percent',
+    hint: '仅异常类；从非直伤易伤区加算扣减',
+  },
   {
     key: 'globalStaggerVulnerable',
     label: '全局失衡易伤',
     unit: 'percent',
-    hint: '失衡期与非失衡期均生效',
+    hint: '失衡期与非失衡期均生效；非失衡期失衡易伤区 = 100% + 本值',
   },
   {
     key: 'staggerVulnerable',
@@ -209,7 +244,7 @@ export const BUFF_STAT_FIELDS: {
     key: 'anomalyDuration',
     label: '异常持续时间',
     unit: 'flat',
-    hint: '秒；火/以太计算时有效时间 = 持续时间 ÷ 0.5',
+    hint: '秒；火/以太先 ÷ 0.5 再向下取整；其他属性直接向下取整秒数',
   },
   {
     key: 'disorderCompMult',
@@ -442,10 +477,14 @@ export function defaultTurbulenceStats(
   }
 }
 
-/** 火/以太计算时异常持续时间 ÷ 0.5 */
+/**
+ * 紊乱/乱流有效持续时间：先按属性换算（火/以太 ÷ 0.5），再向下取整。
+ * 与对照站 ⌊t⌋ / ⌊t/0.5⌋ 口径一致。
+ */
 export function effectiveAnomalyDuration(duration: number, element: string): number {
-  if (element === '火' || element === '以太') return duration / 0.5
-  return duration
+  const safe = Number.isFinite(duration) ? Math.max(0, duration) : 0
+  if (element === '火' || element === '以太') return Math.floor(safe / 0.5)
+  return Math.floor(safe)
 }
 
 export function buffStatFieldLabel(field: (typeof BUFF_STAT_FIELDS)[number]) {
@@ -510,6 +549,11 @@ export function createEmptyBuffStatModifiers(): BuffStatModifiers {
     pierce: 0,
     pierceDmgBonus: 0,
     vulnerable: 0,
+    directVulnerable: 0,
+    anomalyVulnerable: 0,
+    dmgReduction: 0,
+    directDmgReduction: 0,
+    anomalyDmgReduction: 0,
     globalStaggerVulnerable: 0,
     staggerVulnerable: 0,
     staggerVulnerableOnly: 0,
