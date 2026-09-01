@@ -1185,8 +1185,27 @@ function onPickerWheel(event: WheelEvent) {
 
 .content-grid--embedded .enemy-card--hard {
   width: 100%;
-  max-width: 100%;
+  max-width: min(780px, 100%);
   min-width: 0;
+  margin-inline: auto;
+  padding: 0.7rem 0.9rem 0.85rem;
+}
+
+.content-grid--embedded .enemy-card--hard .enemy-image {
+  max-width: min(280px, 48%);
+  max-height: min(380px, 48vh);
+}
+
+.content-grid--embedded .enemy-main--hard .enemy-body {
+  justify-content: center;
+}
+
+.content-grid--embedded .enemy-main--hard .enemy-info {
+  flex: 0 1 auto;
+  width: max-content;
+  max-width: min(28rem, 100%);
+  align-items: flex-start;
+  text-align: left;
 }
 
 .content-grid--embedded .enemy-label {
@@ -1670,8 +1689,10 @@ function onPickerWheel(event: WheelEvent) {
 
 .enemy-card--hard {
   width: 100%;
-  max-width: 100%;
+  max-width: min(780px, 100%);
   min-width: 0;
+  margin-inline: auto;
+  padding: 0.95rem 1.05rem 1.1rem;
 }
 
 .enemy-main {
@@ -1682,42 +1703,44 @@ function onPickerWheel(event: WheelEvent) {
 }
 
 .enemy-main--hard {
-  flex-direction: row;
+  flex-direction: column;
   align-items: stretch;
-  gap: 0.85rem;
+  gap: 0.65rem;
   width: 100%;
 }
 
 .enemy-main--hard .enemy-body {
-  flex: 0 1 auto;
-  width: auto;
+  flex: none;
+  width: 100%;
   min-width: 0;
-}
-
-.enemy-main--hard:has(.enemy-field-buff) .enemy-body {
-  max-width: min(560px, 52%);
+  justify-content: center;
+  align-items: flex-start;
+  gap: clamp(0.85rem, 2.2vw, 1.35rem);
 }
 
 .enemy-main--hard .enemy-info {
   flex: 0 1 auto;
+  width: max-content;
+  max-width: min(28rem, 100%);
 }
 
 .enemy-main--hard .enemy-field-buff {
-  flex: 1 1 0;
-  width: auto;
+  flex: none;
+  width: 100%;
   margin-top: 0;
-  min-width: min(260px, 100%);
+  min-width: 0;
   max-width: none;
   align-self: stretch;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
+}
+
+.enemy-card--hard .enemy-image {
+  width: clamp(160px, 34%, 300px);
 }
 
 .enemy-card--hard .enemy-field-buff :deep(.effect-blocks-display--compact .effect-block-list) {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
-  gap: 0.25rem 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 0.25rem 0.85rem;
 }
 
 .buff-card {
@@ -2050,26 +2073,15 @@ function onPickerWheel(event: WheelEvent) {
   .enemy-card--hard {
     width: 100%;
     min-width: 0;
-  }
-
-  .enemy-main--hard {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.55rem;
-  }
-
-  .enemy-main--hard .enemy-body {
-    width: 100%;
-    max-width: none;
-  }
-
-  .enemy-main--hard .enemy-field-buff {
-    width: 100%;
-    min-width: 0;
+    max-width: min(780px, 100%);
   }
 
   .enemy-image {
     width: clamp(140px, 42vw, 220px);
+  }
+
+  .enemy-card--hard .enemy-image {
+    width: clamp(150px, 40vw, 260px);
   }
 }
 
@@ -2272,18 +2284,7 @@ function onPickerWheel(event: WheelEvent) {
   .content-grid--embedded .enemy-card--hard {
     width: 100%;
     min-width: 0;
-  }
-
-  .content-grid--embedded .enemy-main--hard {
-    flex-direction: column;
-    gap: 0.55rem;
-  }
-
-  .content-grid--embedded .enemy-main--hard .enemy-body,
-  .content-grid--embedded .enemy-main--hard .enemy-field-buff {
-    width: 100%;
-    max-width: none;
-    min-width: 0;
+    max-width: 100%;
   }
 
   .content-grid--embedded .buff-card,
