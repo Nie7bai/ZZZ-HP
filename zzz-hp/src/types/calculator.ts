@@ -175,6 +175,16 @@ export interface BuffStatModifiers {
   pierce: number
   /** 贯穿增伤% */
   pierceDmgBonus: number
+  /**
+   * 锐爆伤害加成%（仅锐化）：锐爆伤害 B = 1.2 + 本值/100，
+   * 替换常规暴伤区。
+   */
+  sharpenCritDmgBonus: number
+  /**
+   * 弱伤%：直伤 / 命破 / 锐化增伤区 = 1 + (增伤% − 弱伤%)/100；
+   * 仅 Buff，不进异常链。
+   */
+  dmgPenalty: number
   /** 易伤%（全伤害类型，与直伤/非直伤易伤加算进同一易伤区） */
   vulnerable: number
   /** 直伤易伤%（仅直伤） */
@@ -382,6 +392,7 @@ export type DamageEventCritMode = 'expected' | 'noCrit' | 'fullCrit'
 /** 单条伤害事件种类 */
 export type DamageEventKind =
   | 'direct'
+  | 'sharpen'
   | 'anomaly'
   | 'disorder'
   | 'anomalyRelease'

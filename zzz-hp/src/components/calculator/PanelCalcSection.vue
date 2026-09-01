@@ -140,6 +140,7 @@ import type { PanelScreenshotRecognition } from '@/types/panelScreenshot'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 
 const MB_PROFESSION = '命破'
+const FENGYU_PROFESSION = '锋御'
 
 type PanelFieldSlot =
   | { id: string; kind: 'stat'; key: keyof PanelStats; label: string }
@@ -494,6 +495,7 @@ const effectiveExternalPanel = computed<PanelStats>(() => {
 const isAffixMode = computed(() => props.calcMode === 'affix')
 
 const isMbMainAgent = computed(() => mainAgent.value?.profession === MB_PROFESSION)
+const isFengYuMainAgent = computed(() => mainAgent.value?.profession === FENGYU_PROFESSION)
 
 const selectedBangboo = computed(
   () =>
@@ -502,9 +504,11 @@ const selectedBangboo = computed(
     emptyBangboo,
 )
 
-const effectiveBaseDamageSource = computed<BaseDamageSource>(() =>
-  isMbMainAgent.value ? 'pierce' : baseDamageSource.value,
-)
+const effectiveBaseDamageSource = computed<BaseDamageSource>(() => {
+  if (isMbMainAgent.value) return 'pierce'
+  if (isFengYuMainAgent.value) return 'def'
+  return baseDamageSource.value
+})
 
 const convertAttrDefaults = computed<Partial<Record<CharacterAttrKey, number>>>(() =>
   panelToConvertAttrValues(effectiveExternalPanel.value, { level: 60, pierceMod: 0 }),
@@ -1034,6 +1038,16 @@ watch(
   { immediate: true },
 )
 
+watch(
+  isFengYuMainAgent,
+  (isFengYu) => {
+    if (isFengYu) {
+      baseDamageSource.value = 'def'
+    }
+  },
+  { immediate: true },
+)
+
 /** 读盘/恢复方案时禁止换人 watch 把词条主属性、局外面板冲成默认值 */
 let suppressRestoreResets = 0
 
@@ -1215,6 +1229,9 @@ const calcParts = computed(() =>
     combatStaggerVulnerableOnly: panelBreakdown.value.combatMods.staggerVulnerableOnly,
     combatSpecial: panelBreakdown.value.combatMods.special,
     combatPierceDmgBonus: panelBreakdown.value.combatMods.pierceDmgBonus,
+    combatSharpenCritDmgBonus: panelBreakdown.value.combatMods.sharpenCritDmgBonus,
+    combatDmgPenalty: panelBreakdown.value.combatMods.dmgPenalty,
+    useSharpenFormula: isFengYuMainAgent.value,
     staggerPhase: props.staggerPhase ?? 'stagger',
     mainAgentElement: mainAgent.value?.element ?? '',
     ...resolveDamageCalcResistanceElements(
@@ -1308,7 +1325,14 @@ function buildHitCalcInput(hit: ResolvedHit): DamageCalcInput | null {
 
   const ownerAgent = props.agents.find((item) => item.id === ownerAgentId)
   const evtOwnerIsMb = ownerAgent?.profession === MB_PROFESSION
-  const evtBaseDamageSource: BaseDamageSource = evtOwnerIsMb ? 'pierce' : baseDamageSource.value
+  const evtOwnerIsFengYu = ownerAgent?.profession === FENGYU_PROFESSION
+  const evtBaseDamageSource: BaseDamageSource = evtOwnerIsMb
+    ? 'pierce'
+    : evtOwnerIsFengYu
+      ? 'def'
+      : baseDamageSource.value
+  const evtUseSharpen =
+    evtOwnerIsFengYu || damageType === 'sharpen'
 
   const evtPowerAgentId = hit.anomalyPowerAgentId
   if (needsPowerAgent && !evtPowerAgentId) return null
@@ -1514,6 +1538,9 @@ function buildHitCalcInput(hit: ResolvedHit): DamageCalcInput | null {
     combatStaggerVulnerableOnly: evtBreakdown.combatMods.staggerVulnerableOnly ?? 0,
     combatSpecial: evtBreakdown.combatMods.special,
     combatPierceDmgBonus: evtBreakdown.combatMods.pierceDmgBonus,
+    combatSharpenCritDmgBonus: evtBreakdown.combatMods.sharpenCritDmgBonus,
+    combatDmgPenalty: evtBreakdown.combatMods.dmgPenalty,
+    useSharpenFormula: evtUseSharpen,
     staggerPhase: hit.staggerPhase,
     ownerAgentElement: ownerAgent?.element ?? '',
     ownerAgentResistanceElement: ownerResistance.mainAgentResistanceElement,
@@ -3959,6 +3986,10 @@ defineExpose({
     <p v-if="isMbMainAgent" class="mb-hint">
       当前角色为命破：基础伤害来源固定为贯穿力，防御区固定为 1。
     </p>
+    <p v-else-if="isFengYuMainAgent" class="mb-hint">
+      当前角色为锋御：基础伤害来源固定为防御力，走锐化公式（锐爆区，暴击率可至
+      200%）。
+    </p>
 
     <details v-if="teamWengineNotes.length" class="team-notes team-wengine-notes">
       <summary class="team-notes-title">查看队伍音擎注释</summary>
@@ -3974,7 +4005,7 @@ defineExpose({
     <div class="grid four meta-grid">
       <label class="field">
         <span>基础伤害来源</span>
-        <select v-model="baseDamageSource" :disabled="isMbMainAgent">
+        <select v-model="baseDamageSource" :disabled="isMbMainAgent || isFengYuMainAgent">
           <option value="atk">攻击力</option>
           <option value="def">防御力</option>
           <option value="pierce">贯穿力</option>

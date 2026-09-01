@@ -63,6 +63,7 @@ export function pickSkillMultZone(
 ): number | null {
   switch (damageType) {
     case 'direct':
+    case 'sharpen':
       return result.directDmgMultZone
     case 'anomaly':
       return result.anomalyMultZone
@@ -152,15 +153,19 @@ export function buildSkillCalcZoneRows(
 
   pushCommon(rows, result)
 
-  if (damageType === 'direct') {
+  if (damageType === 'direct' || damageType === 'sharpen') {
     push(rows, '直伤易伤区', result.directVulnerableMultiplier)
-    push(rows, '暴击区', result.critMultiplier)
+    if (result.useSharpenFormula) {
+      push(rows, '锐爆区', result.sharpenCritZone)
+    } else {
+      push(rows, '暴击区', result.critMultiplier)
+    }
     push(rows, '增伤', result.dmgMultiplier)
-    if (result.baseDamageSource === 'pierce') {
+    if (!result.useSharpenFormula && result.baseDamageSource === 'pierce') {
       push(rows, '贯穿增伤区', result.pierceDmgMultiplier)
     }
-    push(rows, '直伤倍率区', result.directDmgMultZone)
-    if (result.settlementDmgMultZone > 0) {
+    push(rows, result.useSharpenFormula ? '技能倍率区' : '直伤倍率区', result.directDmgMultZone)
+    if (!result.useSharpenFormula && result.settlementDmgMultZone > 0) {
       push(rows, '决算倍率区', result.settlementDmgMultZone)
     }
     push(rows, '期望伤害', result.directDamageExpected, true)

@@ -47,6 +47,17 @@ export interface DamageCalcInput {
   combatSpecial: number
   /** 贯穿增伤%（独立乘区，仅贯穿力基础直伤生效） */
   combatPierceDmgBonus?: number
+  /** 锐爆伤害加成%（仅锐化路径） */
+  combatSharpenCritDmgBonus?: number
+  /**
+   * 弱伤%：仅直伤 / 命破 / 锐化终链从增伤区扣减；不进异常 general。
+   */
+  combatDmgPenalty?: number
+  /**
+   * 锐化路径：防御力基础 + 锐爆区（可溢出）+ 不乘决算/贯穿增伤；
+   * 锋御职业或招式 damageType=sharpen 时为 true。
+   */
+  useSharpenFormula?: boolean
   /** 当前是否处于失衡期 */
   staggerPhase?: 'normal' | 'stagger'
   /** 招式持有者属性（直伤抗性区回落） */
@@ -132,6 +143,16 @@ export interface DamageCalcResult {
   specialMultiplier: number
   /** 贯穿增伤乘区（非贯穿基础时为 1） */
   pierceDmgMultiplier: number
+  /** 是否走锐化公式 */
+  useSharpenFormula: boolean
+  /** 锐爆伤害 B（= 1.2 + 锐爆伤害加成） */
+  sharpenCritDmgRatio: number
+  /** 锐爆期望区 */
+  sharpenCritZone: number
+  /** 锐爆区（不暴击 = 1） */
+  sharpenCritZoneNoCrit: number
+  /** 锐爆区（必暴击：首段必中，溢出段仍按超出期望） */
+  sharpenCritZoneFullCrit: number
   /**
    * 通用乘区（不含易伤区）：
    * 基础伤害 × 增伤区 × 防御区 × 抗性区 × 失衡易伤区
@@ -302,12 +323,44 @@ export function computeVulnerableZone(options: {
   )
 }
 
+/**
+ * 锐爆期望区。
+ * B = 1.2 + 锐爆伤害加成%/100；r = clamp(暴击率%/100, 0, 2)（锋御上限 200%）。
+ * r ≤ 1: 1 + r×B
+ * r > 1: (1+B) × [1 + B×(r−1)]（首段必暴 + 超出部分再判一次）
+ */
+export function computeSharpenCritExpectedZone(
+  critRatePercent: number,
+  sharpenCritDmgBonusPercent: number,
+): number {
+  const B = 1.2 + sharpenCritDmgBonusPercent / 100
+  const r = clamp(critRatePercent / 100, 0, 2)
+  if (r <= 1) return 1 + r * B
+  return (1 + B) * (1 + B * (r - 1))
+}
+
+/** 锐爆必暴击区：首段强制暴击；溢出段仍按 (r−1) 期望 */
+export function computeSharpenCritFullCritZone(
+  critRatePercent: number,
+  sharpenCritDmgBonusPercent: number,
+): number {
+  const B = 1.2 + sharpenCritDmgBonusPercent / 100
+  const r = clamp(critRatePercent / 100, 0, 2)
+  if (r <= 1) return 1 + B
+  return (1 + B) * (1 + B * (r - 1))
+}
+
 function resolveBaseDamageParts(options: {
   panel: PanelStats
   piercePower: number
   baseDamageSource: BaseDamageSource
   isMb: boolean
+  useSharpenFormula?: boolean
 }) {
+  // 锋御/锐化优先于手动 baseDamageSource；命破优先于锐化不应同时成立
+  if (options.useSharpenFormula) {
+    return { baseDamage: options.panel.def, usedBaseSource: 'def' as const }
+  }
   if (options.isMb || options.baseDamageSource === 'pierce') {
     return { baseDamage: options.piercePower, usedBaseSource: 'pierce' as const }
   }
@@ -322,6 +375,7 @@ function computeGeneralAndAnomalyBase(options: {
   piercePower: number
   baseDamageSource: BaseDamageSource
   isMb: boolean
+  useSharpenFormula?: boolean
   enemyInput: DamageEnemyInput
   combatVulnerable: number
   combatDirectVulnerable: number
@@ -357,8 +411,10 @@ function computeGeneralAndAnomalyBase(options: {
     piercePower: options.piercePower,
     baseDamageSource: options.baseDamageSource,
     isMb: options.isMb,
+    useSharpenFormula: options.useSharpenFormula,
   })
 
+  // 异常链用纯增伤；直伤/锐化终链再扣弱伤（见 computeDamageResult）
   const dmgMultiplier = 1 + clamp(panel.dmgBonus / 100, -0.95, 20)
   const critRateRatio = clamp(panel.critRate / 100, 0, 1)
   const critDmgRatio = clamp(panel.critDmg / 100, 0, 20)
@@ -453,6 +509,7 @@ function computeGeneralAndAnomalyBase(options: {
 export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const panel = input.finalPanel
   const staggerPhase = input.staggerPhase ?? 'stagger'
+  const useSharpenFormula = Boolean(input.useSharpenFormula) && !input.isMbMainAgent
   const subKind = input.anomalySubKind ?? 'anomaly'
   const useTriggerBase =
     (subKind === 'anomaly' ||
@@ -498,6 +555,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     piercePower: input.piercePower,
     baseDamageSource: input.baseDamageSource,
     isMb: input.isMbMainAgent,
+    useSharpenFormula,
     enemyInput: input.enemyInput,
     combatVulnerable: input.combatVulnerable,
     combatDirectVulnerable: input.combatDirectVulnerable ?? 0,
@@ -564,15 +622,55 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   const settlementDmgMultZone = skillMults
     ? skillMults.settlementDmgMultZone
     : Math.max(0, panel.settlementDmgMult / 100) * readFactor(panel.directDmgMultFactor)
-  const directBaseChain =
-    mainParts.generalMultiplier *
-    Math.max(0, mainParts.directVulnerableMultiplier) *
-    mainParts.critMultiplier *
-    Math.max(0, mainParts.specialMultiplier) *
-    Math.max(0, mainParts.pierceDmgMultiplier)
-  const directDamageFromDirectMult = directBaseChain * directDmgMultZone
-  const settlementDamageExpected = directBaseChain * settlementDmgMultZone
-  const directDamageExpected = directDamageFromDirectMult + settlementDamageExpected
+
+  /** 直伤/命破/锐化终链增伤区（含弱伤）；异常 general 仍用未扣弱伤的 dmgMultiplier */
+  const combatDmgPenalty = input.combatDmgPenalty ?? 0
+  const directDmgMultiplier = 1 + clamp((panel.dmgBonus - combatDmgPenalty) / 100, -0.95, 20)
+  const directDmgPenaltyFactor =
+    mainParts.dmgMultiplier > 0 ? directDmgMultiplier / mainParts.dmgMultiplier : 1
+
+  const combatSharpenCritDmgBonus = input.combatSharpenCritDmgBonus ?? 0
+  const sharpenCritDmgRatio = 1.2 + combatSharpenCritDmgBonus / 100
+  const sharpenCritZone = computeSharpenCritExpectedZone(panel.critRate, combatSharpenCritDmgBonus)
+  const sharpenCritZoneNoCrit = 1
+  const sharpenCritZoneFullCrit = computeSharpenCritFullCritZone(
+    panel.critRate,
+    combatSharpenCritDmgBonus,
+  )
+
+  let directDamageFromDirectMult: number
+  let settlementDamageExpected: number
+  let directDamageExpected: number
+  let reportedDmgMultiplier = mainParts.dmgMultiplier
+  let reportedCritMultiplier = mainParts.critMultiplier
+  let reportedPierceDmg = mainParts.pierceDmgMultiplier
+
+  if (useSharpenFormula) {
+    reportedDmgMultiplier = directDmgMultiplier
+    reportedCritMultiplier = sharpenCritZone
+    reportedPierceDmg = 1
+    const sharpenBaseChain =
+      mainParts.generalMultiplier *
+      directDmgPenaltyFactor *
+      Math.max(0, mainParts.directVulnerableMultiplier) *
+      sharpenCritZone *
+      Math.max(0, mainParts.specialMultiplier)
+    directDamageFromDirectMult = sharpenBaseChain * directDmgMultZone
+    settlementDamageExpected = 0
+    directDamageExpected = directDamageFromDirectMult
+  } else {
+    reportedDmgMultiplier = directDmgMultiplier
+    const directBaseChain =
+      mainParts.generalMultiplier *
+      directDmgPenaltyFactor *
+      Math.max(0, mainParts.directVulnerableMultiplier) *
+      mainParts.critMultiplier *
+      Math.max(0, mainParts.specialMultiplier) *
+      Math.max(0, mainParts.pierceDmgMultiplier)
+    directDamageFromDirectMult = directBaseChain * directDmgMultZone
+    settlementDamageExpected = directBaseChain * settlementDmgMultZone
+    directDamageExpected = directDamageFromDirectMult + settlementDamageExpected
+  }
 
   // 异常乘区：属性异常/异放/耀变取异常类触发者（bonusPanel）；紊乱/乱流取招式持有者；基础期望取异常强度提供者
   const anomalyDmgBonusZone = 1 + bonusPanel.anomalyDmgBonus / 100
@@ -765,10 +863,13 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   return {
     baseDamage: round(baseParts.baseDamage, 2),
     baseDamageSource: baseParts.usedBaseSource,
-    dmgMultiplier: round(baseParts.dmgMultiplier, 4),
-    critRateRatio: round(mainParts.critRateRatio, 4),
+    dmgMultiplier: round(reportedDmgMultiplier, 4),
+    critRateRatio: round(
+      useSharpenFormula ? clamp(panel.critRate / 100, 0, 2) : mainParts.critRateRatio,
+      4,
+    ),
     critDmgRatio: round(mainParts.critDmgRatio, 4),
-    critMultiplier: round(mainParts.critMultiplier, 4),
+    critMultiplier: round(reportedCritMultiplier, 4),
     penRateRatio: round(baseParts.penRateRatio, 4),
     ignoreDefenseRatio: round(baseParts.ignoreDefenseRatio, 4),
     reduceDefenseRatio: round(baseParts.reduceDefenseRatio, 4),
@@ -787,13 +888,18 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     ),
     staggerMultiplier: round(mainParts.staggerMultiplier, 4),
     specialMultiplier: round(mainParts.specialMultiplier, 4),
-    pierceDmgMultiplier: round(mainParts.pierceDmgMultiplier, 4),
+    pierceDmgMultiplier: round(reportedPierceDmg, 4),
+    useSharpenFormula,
+    sharpenCritDmgRatio: round(sharpenCritDmgRatio, 4),
+    sharpenCritZone: round(sharpenCritZone, 4),
+    sharpenCritZoneNoCrit: round(sharpenCritZoneNoCrit, 4),
+    sharpenCritZoneFullCrit: round(sharpenCritZoneFullCrit, 4),
     generalMultiplier: round(
       useTriggerBase ? triggerParts.generalMultiplier : mainParts.generalMultiplier,
       2,
     ),
     directDmgMultZone: round(directDmgMultZone, 4),
-    settlementDmgMultZone: round(settlementDmgMultZone, 4),
+    settlementDmgMultZone: round(useSharpenFormula ? 0 : settlementDmgMultZone, 4),
     directDamageFromDirectMult: round(directDamageFromDirectMult, 0),
     settlementDamageExpected: round(settlementDamageExpected, 0),
     directDamageExpected: round(directDamageExpected, 0),

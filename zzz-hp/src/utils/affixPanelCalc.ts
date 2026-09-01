@@ -8,6 +8,7 @@ import type { AgentBasePanel, WengineAdvancedStats } from '@/types/calculator'
 import {
   AFFIX_DRIVE_DISC_SLOT_1_HP,
   AFFIX_DRIVE_DISC_SLOT_2_ATK,
+  AFFIX_DRIVE_DISC_SLOT_3_DEF,
   collectAffixDriveDiscMainStatContribution,
   type AffixDriveDiscMainStatContribution,
 } from '@/utils/affixDriveDiscConfig'
@@ -25,6 +26,8 @@ export const AFFIX_VALUE_PER_COUNT = {
   hpPercent: 3,
   atkFlat: 19,
   atkPercent: 3,
+  defFlat: 15,
+  defPercent: 4.8,
   pen: 9,
   critRate: 2.4,
   critDmg: 4.8,
@@ -91,6 +94,7 @@ export function collectAffixTwoPieceMods(
 function sumExternalPercents(
   affixHpPercent: number,
   affixAtkPercent: number,
+  affixDefPercent: number,
   wengineAdvanced: WengineAdvancedStats,
   twoPieceMods: BuffStatModifiers,
   mainStats: AffixDriveDiscMainStatContribution,
@@ -108,6 +112,7 @@ function sumExternalPercents(
       twoPieceExternal.externalAtkPercent +
       mainStats.externalAtkPercent,
     defPercent:
+      affixDefPercent +
       wengineAdvanced.externalDefPercent +
       twoPieceExternal.externalDefPercent +
       mainStats.externalDefPercent,
@@ -172,10 +177,13 @@ export function computeExternalPanelFromAffixes(input: AffixPanelCalcInput): Pan
   const hpPercentFromAffix = affixStatTotal(counts.hpPercent, AFFIX_VALUE_PER_COUNT.hpPercent)
   const atkFlatFromAffix = affixStatTotal(counts.atkFlat, AFFIX_VALUE_PER_COUNT.atkFlat)
   const atkPercentFromAffix = affixStatTotal(counts.atkPercent, AFFIX_VALUE_PER_COUNT.atkPercent)
+  const defFlatFromAffix = affixStatTotal(counts.defFlat, AFFIX_VALUE_PER_COUNT.defFlat)
+  const defPercentFromAffix = affixStatTotal(counts.defPercent, AFFIX_VALUE_PER_COUNT.defPercent)
 
   const externalPercents = sumExternalPercents(
     hpPercentFromAffix,
     atkPercentFromAffix,
+    defPercentFromAffix,
     wengineAdvanced,
     twoPieceMods,
     mainStats,
@@ -191,7 +199,10 @@ export function computeExternalPanelFromAffixes(input: AffixPanelCalcInput): Pan
     atkFlatFromAffix +
     AFFIX_DRIVE_DISC_SLOT_2_ATK
 
-  const def = agentBase.def * (1 + externalPercents.defPercent / 100)
+  const def =
+    agentBase.def * (1 + externalPercents.defPercent / 100) +
+    defFlatFromAffix +
+    AFFIX_DRIVE_DISC_SLOT_3_DEF
 
   return {
     hp: roundPanelValue(hp),
@@ -427,6 +438,13 @@ export const AFFIX_COUNT_FIELDS: {
     label: '局外大攻击',
     unitLabel: '条',
     perCount: AFFIX_VALUE_PER_COUNT.atkPercent,
+  },
+  { key: 'defFlat', label: '防御力', unitLabel: '条', perCount: AFFIX_VALUE_PER_COUNT.defFlat },
+  {
+    key: 'defPercent',
+    label: '局外大防御',
+    unitLabel: '条',
+    perCount: AFFIX_VALUE_PER_COUNT.defPercent,
   },
   { key: 'pen', label: '穿透值', unitLabel: '条', perCount: AFFIX_VALUE_PER_COUNT.pen },
   { key: 'critRate', label: '暴击', unitLabel: '条', perCount: AFFIX_VALUE_PER_COUNT.critRate },

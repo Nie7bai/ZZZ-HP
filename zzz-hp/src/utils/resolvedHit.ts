@@ -111,6 +111,7 @@ const MULT_FIELDS: Record<
   { mult: keyof DamageEventMultOverrides; factor: keyof DamageEventMultOverrides }
 > = {
   direct: { mult: 'directDmgMult', factor: 'directDmgMultFactor' },
+  sharpen: { mult: 'directDmgMult', factor: 'directDmgMultFactor' },
   anomaly: { mult: 'anomalyMult', factor: 'anomalyMultFactor' },
   anomalyRelease: { mult: 'anomalyReleaseMult', factor: 'anomalyReleaseMultFactor' },
   disorder: { mult: 'disorderZoneMult', factor: 'disorderBaseMultFactor' },

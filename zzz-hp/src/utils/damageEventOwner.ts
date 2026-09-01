@@ -158,7 +158,10 @@ export function getDamageEventKindOptionsForMode(
   teamHasRemiel: boolean,
 ): DamageEventKindOption[] {
   if (modeType === 'direct') {
-    return [{ id: 'direct', label: '直伤' }]
+    return [
+      { id: 'direct', label: '直伤' },
+      { id: 'sharpen', label: '锐化' },
+    ]
   }
   return [
     { id: 'anomaly', label: '异常' },

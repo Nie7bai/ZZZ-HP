@@ -95,6 +95,8 @@ export interface AffixCounts {
   hpPercent: number
   atkFlat: number
   atkPercent: number
+  defFlat: number
+  defPercent: number
   pen: number
   critRate: number
   critDmg: number
@@ -146,6 +148,8 @@ export function createEmptyAffixCounts(): AffixCounts {
     hpPercent: 0,
     atkFlat: 0,
     atkPercent: 0,
+    defFlat: 0,
+    defPercent: 0,
     pen: 0,
     critRate: 0,
     critDmg: 0,

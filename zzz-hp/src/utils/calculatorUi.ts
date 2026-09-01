@@ -15,7 +15,7 @@ import {
 } from '@/utils/buffEffect'
 import { normalizeBuffMultFactorDelta } from '@/utils/multFactorPercent'
 
-export const AGENT_ROLES = ['强攻', '击破', '异常', '支援', '防护', '命破'] as const
+export const AGENT_ROLES = ['强攻', '击破', '异常', '支援', '防护', '命破', '锋御'] as const
 export const AGENT_ELEMENTS = ['风', '火', '电', '物理', '以太', '冰', '霜', '流明'] as const
 export const WENGINE_RARITIES = ['S', 'A', 'B'] as const
 export type WengineRarity = (typeof WENGINE_RARITIES)[number]
@@ -338,6 +338,18 @@ export const BUFF_STAT_FIELDS: {
     hint: '独立乘区，仅当直伤基础来源为贯穿力时生效，不进增伤区',
   },
   {
+    key: 'sharpenCritDmgBonus',
+    label: '锐爆伤害加成',
+    unit: 'percent',
+    hint: '仅锐化：锐爆伤害 B = 120% + 本值；替换常规暴伤区',
+  },
+  {
+    key: 'dmgPenalty',
+    label: '弱伤',
+    unit: 'percent',
+    hint: '直伤/命破/锐化增伤区扣减：1 + 增伤% − 弱伤%；不进异常链',
+  },
+  {
     key: 'anomalyReleaseDmgBonus',
     label: '异放增伤',
     unit: 'percent',
@@ -548,6 +560,8 @@ export function createEmptyBuffStatModifiers(): BuffStatModifiers {
     energyRegenFlat: 0,
     pierce: 0,
     pierceDmgBonus: 0,
+    sharpenCritDmgBonus: 0,
+    dmgPenalty: 0,
     vulnerable: 0,
     directVulnerable: 0,
     anomalyVulnerable: 0,
@@ -944,6 +958,7 @@ export function roleShort(role: string) {
     支援: '援',
     防护: '防',
     命破: '命',
+    锋御: '锋',
   }
   return map[role] ?? role.slice(0, 1)
 }

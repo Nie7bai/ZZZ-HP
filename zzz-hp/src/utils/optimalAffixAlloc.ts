@@ -81,8 +81,10 @@ export type OptimalAnomalyMetric = 'anomaly' | 'disorder' | 'turbulence' | 'anom
 export type OptimalAffixKey =
   | 'atkFlat'
   | 'hpFlat'
+  | 'defFlat'
   | 'atkPercent'
   | 'hpPercent'
+  | 'defPercent'
   | 'pen'
   | 'critRate'
   | 'critDmg'
@@ -169,7 +171,13 @@ export interface OptimalEventEvalDetail {
 }
 
 /** 受 4/5/6 主词条计数约束的副词条 */
-export type CappedAffixKey = 'atkPercent' | 'hpPercent' | 'critRate' | 'critDmg' | 'mastery'
+export type CappedAffixKey =
+  | 'atkPercent'
+  | 'hpPercent'
+  | 'defPercent'
+  | 'critRate'
+  | 'critDmg'
+  | 'mastery'
 
 export type AffixRollCaps = Record<CappedAffixKey, number>
 
@@ -177,6 +185,7 @@ export type AffixRollCaps = Record<CappedAffixKey, number>
 const CAPPED_AFFIX_TO_MAIN_STAT: Record<CappedAffixKey, string> = {
   atkPercent: 'externalAtkPercent',
   hpPercent: 'externalHpPercent',
+  defPercent: 'externalDefPercent',
   critRate: 'critRate',
   critDmg: 'critDmg',
   mastery: 'mastery',
@@ -208,6 +217,7 @@ export function getAffixRollCaps(mainStats: AffixDriveDiscMainStats): AffixRollC
   return {
     atkPercent: affixRollCap(mainStats, 'atkPercent'),
     hpPercent: affixRollCap(mainStats, 'hpPercent'),
+    defPercent: affixRollCap(mainStats, 'defPercent'),
     critRate: affixRollCap(mainStats, 'critRate'),
     critDmg: affixRollCap(mainStats, 'critDmg'),
     mastery: affixRollCap(mainStats, 'mastery'),
@@ -367,20 +377,31 @@ function clampInt(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.round(value)))
 }
 
-export function flatStatKey(isMb: boolean): 'atkFlat' | 'hpFlat' {
-  return isMb ? 'hpFlat' : 'atkFlat'
+export function flatStatKey(isMb: boolean, isFengYu = false): 'atkFlat' | 'hpFlat' | 'defFlat' {
+  if (isMb) return 'hpFlat'
+  if (isFengYu) return 'defFlat'
+  return 'atkFlat'
 }
 
-export function outPercentKey(isMb: boolean): 'atkPercent' | 'hpPercent' {
-  return isMb ? 'hpPercent' : 'atkPercent'
+export function outPercentKey(
+  isMb: boolean,
+  isFengYu = false,
+): 'atkPercent' | 'hpPercent' | 'defPercent' {
+  if (isMb) return 'hpPercent'
+  if (isFengYu) return 'defPercent'
+  return 'atkPercent'
 }
 
-export function flatStatLabel(isMb: boolean) {
-  return isMb ? '生命值' : '攻击力'
+export function flatStatLabel(isMb: boolean, isFengYu = false) {
+  if (isMb) return '生命值'
+  if (isFengYu) return '防御力'
+  return '攻击力'
 }
 
-export function outPercentLabel(isMb: boolean) {
-  return isMb ? '局外大生命' : '局外大攻击'
+export function outPercentLabel(isMb: boolean, isFengYu = false) {
+  if (isMb) return '局外大生命'
+  if (isFengYu) return '局外大防御'
+  return '局外大攻击'
 }
 
 export function affixKeyLabel(key: OptimalAffixKey, _isMb: boolean): string {
@@ -389,10 +410,14 @@ export function affixKeyLabel(key: OptimalAffixKey, _isMb: boolean): string {
       return '攻击力'
     case 'hpFlat':
       return '生命值'
+    case 'defFlat':
+      return '防御力'
     case 'atkPercent':
       return '局外大攻击'
     case 'hpPercent':
       return '局外大生命'
+    case 'defPercent':
+      return '局外大防御'
     case 'pen':
       return '穿透值'
     case 'critRate':
@@ -699,7 +724,13 @@ export function evaluateOptimalEventDetail(
 
   const ownerAgent = ctx.panelContext.agents.find((item) => item.id === ownerAgentId)
   const evtOwnerIsMb = ownerAgent?.profession === MB_PROFESSION
-  const evtBaseDamageSource: BaseDamageSource = evtOwnerIsMb ? 'pierce' : ctx.baseDamageSource
+  const evtOwnerIsFengYu = ownerAgent?.profession === '锋御'
+  const evtBaseDamageSource: BaseDamageSource = evtOwnerIsMb
+    ? 'pierce'
+    : evtOwnerIsFengYu
+      ? 'def'
+      : ctx.baseDamageSource
+  const evtUseSharpen = evtOwnerIsFengYu || damageType === 'sharpen'
 
   const tAgent = evtPowerAgentId
     ? ctx.panelContext.agents.find((a) => a.id === evtPowerAgentId)
@@ -949,6 +980,9 @@ export function evaluateOptimalEventDetail(
     combatStaggerVulnerableOnly: evtBreakdown.combatMods.staggerVulnerableOnly,
     combatSpecial: evtBreakdown.combatMods.special,
     combatPierceDmgBonus: evtBreakdown.combatMods.pierceDmgBonus,
+    combatSharpenCritDmgBonus: evtBreakdown.combatMods.sharpenCritDmgBonus,
+    combatDmgPenalty: evtBreakdown.combatMods.dmgPenalty,
+    useSharpenFormula: evtUseSharpen,
     staggerPhase: hit.staggerPhase,
     ownerAgentElement: ownerAgent?.element ?? '',
     ownerAgentResistanceElement: ownerResistance.mainAgentResistanceElement,
@@ -1145,6 +1179,8 @@ function computeEventDamageLines(
         combatStaggerVulnerableOnly: firstBreakdown.combatMods.staggerVulnerableOnly,
         combatSpecial: firstBreakdown.combatMods.special,
         combatPierceDmgBonus: firstBreakdown.combatMods.pierceDmgBonus,
+        combatSharpenCritDmgBonus: firstBreakdown.combatMods.sharpenCritDmgBonus,
+        combatDmgPenalty: firstBreakdown.combatMods.dmgPenalty,
         mainAgentElement: ctx.mainAgentElement,
         ...resolveDamageCalcResistanceElements(
           ctx.panelContext.teamSlots,
@@ -1234,6 +1270,8 @@ export function evaluateAffixCountsForSweep(
       combatStaggerVulnerableOnly: breakdown.combatMods.staggerVulnerableOnly,
       combatSpecial: breakdown.combatMods.special,
       combatPierceDmgBonus: breakdown.combatMods.pierceDmgBonus,
+      combatSharpenCritDmgBonus: breakdown.combatMods.sharpenCritDmgBonus,
+      combatDmgPenalty: breakdown.combatMods.dmgPenalty,
       mainAgentElement: ctx.mainAgentElement,
       ...resolveDamageCalcResistanceElements(
         ctx.panelContext.teamSlots,
@@ -1403,6 +1441,8 @@ function evaluateAffixCountsUncached(
         combatStaggerVulnerableOnly: breakdown.combatMods.staggerVulnerableOnly,
         combatSpecial: breakdown.combatMods.special,
         combatPierceDmgBonus: breakdown.combatMods.pierceDmgBonus,
+      combatSharpenCritDmgBonus: breakdown.combatMods.sharpenCritDmgBonus,
+      combatDmgPenalty: breakdown.combatMods.dmgPenalty,
         mainAgentElement: ctx.mainAgentElement,
         ...resolveDamageCalcResistanceElements(
           ctx.panelContext.teamSlots,
@@ -1452,6 +1492,8 @@ function evaluateAffixCountsUncached(
     combatStaggerVulnerableOnly: breakdown.combatMods.staggerVulnerableOnly,
     combatSpecial: breakdown.combatMods.special,
     combatPierceDmgBonus: breakdown.combatMods.pierceDmgBonus,
+    combatSharpenCritDmgBonus: breakdown.combatMods.sharpenCritDmgBonus,
+    combatDmgPenalty: breakdown.combatMods.dmgPenalty,
     mainAgentElement: ctx.mainAgentElement,
     ...resolveDamageCalcResistanceElements(
       ctx.panelContext.teamSlots,
@@ -1812,9 +1854,12 @@ function resolveEvalMetricDamage(
   return damageMetric(evaled.result, kind, anomalyMetric, evaled.grandTotal)
 }
 
-export function directCandidateKeys(isMb: boolean): OptimalAffixKey[] {
+export function directCandidateKeys(isMb: boolean, isFengYu = false): OptimalAffixKey[] {
   if (isMb) {
     return ['atkFlat', 'hpFlat', 'hpPercent', 'atkPercent', 'pen', 'mastery', 'critRate', 'critDmg']
+  }
+  if (isFengYu) {
+    return ['defFlat', 'defPercent', 'pen', 'critRate', 'critDmg']
   }
   return ['atkFlat', 'atkPercent', 'pen', 'mastery', 'critRate', 'critDmg']
 }

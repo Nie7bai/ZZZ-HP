@@ -6,6 +6,8 @@ import type {
 
 export const AFFIX_DRIVE_DISC_SLOT_1_HP = 2200
 export const AFFIX_DRIVE_DISC_SLOT_2_ATK = 316
+/** S 级满级 3 号位固定防御力 */
+export const AFFIX_DRIVE_DISC_SLOT_3_DEF = 184
 
 export const DRIVE_DISC_SLOT_4_OPTIONS: {
   id: DriveDiscSlot4StatId

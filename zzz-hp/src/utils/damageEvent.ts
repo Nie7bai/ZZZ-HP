@@ -28,6 +28,7 @@ import {
 
 export const DAMAGE_EVENT_KIND_OPTIONS: { id: DamageEventKind; label: string }[] = [
   { id: 'direct', label: '直伤' },
+  { id: 'sharpen', label: '锐化' },
   { id: 'anomaly', label: '异常' },
   { id: 'disorder', label: '紊乱' },
   { id: 'anomalyRelease', label: '异放' },
@@ -45,7 +46,7 @@ export function createEmptyDamageEvent(
   index = 0,
   kind: DamageEventKind = 'direct',
 ): DamageEvent {
-  const isAnomaly = kind !== 'direct'
+  const isAnomaly = kind !== 'direct' && kind !== 'sharpen'
   return {
     id: `evt-local-${Date.now().toString(36)}-${index}`,
     kind,
@@ -65,7 +66,7 @@ export function createEmptyDamageEvent(
 export function mapEventKindToCalc(
   kind: DamageEventKind,
 ): { damageKind: DamageCalcKind; anomalySubKind: AnomalyDamageSubKind } {
-  if (kind === 'direct') {
+  if (kind === 'direct' || kind === 'sharpen') {
     return { damageKind: 'direct', anomalySubKind: 'anomaly' }
   }
   if (kind === 'anomaly') {
@@ -88,18 +89,22 @@ export function pickEventDamage(
   kind: DamageEventKind,
   critMode: DamageEventCritMode,
 ): number {
-  if (kind === 'direct') {
-    const baseChain =
-      result.generalMultiplier *
-      result.specialMultiplier *
-      result.pierceDmgMultiplier
-    const multSum = result.directDmgMultZone + result.settlementDmgMultZone
-    if (critMode === 'noCrit') {
-      return baseChain * multSum
+  if (kind === 'direct' || kind === 'sharpen') {
+    if (result.useSharpenFormula) {
+      const perZone =
+        result.sharpenCritZone > 0
+          ? result.directDamageExpected / result.sharpenCritZone
+          : result.directDamageExpected
+      if (critMode === 'noCrit') return perZone * result.sharpenCritZoneNoCrit
+      if (critMode === 'fullCrit') return perZone * result.sharpenCritZoneFullCrit
+      return result.directDamageExpected
     }
-    if (critMode === 'fullCrit') {
-      return baseChain * multSum * (1 + result.critDmgRatio)
-    }
+    const perCrit =
+      result.critMultiplier > 0
+        ? result.directDamageExpected / result.critMultiplier
+        : result.directDamageExpected
+    if (critMode === 'noCrit') return perCrit
+    if (critMode === 'fullCrit') return perCrit * (1 + result.critDmgRatio)
     return result.directDamageExpected
   }
   if (kind === 'anomaly') {

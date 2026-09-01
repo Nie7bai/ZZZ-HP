@@ -913,6 +913,8 @@ export interface CombatBuffMods {
   staggerVulnerableOnly: number
   special: number
   pierceDmgBonus: number
+  sharpenCritDmgBonus: number
+  dmgPenalty: number
 }
 
 export interface PanelBuffBreakdown {
@@ -1968,6 +1970,8 @@ export function extractCombatMods(mods: BuffStatModifiers): CombatBuffMods {
     staggerVulnerableOnly: mods.staggerVulnerableOnly,
     special: mods.special,
     pierceDmgBonus: mods.pierceDmgBonus,
+    sharpenCritDmgBonus: mods.sharpenCritDmgBonus,
+    dmgPenalty: mods.dmgPenalty,
   }
 }
 
