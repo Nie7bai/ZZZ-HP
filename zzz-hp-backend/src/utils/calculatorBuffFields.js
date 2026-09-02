@@ -79,6 +79,7 @@ export const AGENT_BASE_PANEL_KEYS = [
   'def',
   'critRate',
   'critDmg',
+  'sharpenCritDmgBonus',
   'mastery',
   'anomalyControl',
   'energyRegen',
