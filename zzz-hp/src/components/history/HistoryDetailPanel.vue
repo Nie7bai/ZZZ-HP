@@ -950,7 +950,7 @@ function onPickerWheel(event: WheelEvent) {
                 添加怪物
               </button>
             </div>
-            <div class="enemy-main enemy-main--hard">
+            <div class="enemy-main">
               <div class="enemy-body">
                 <div class="enemy-image">
                   <img v-if="enemy.imageUrl" :src="enemy.imageUrl" :alt="enemy.label" />
@@ -1181,31 +1181,6 @@ function onPickerWheel(event: WheelEvent) {
   min-height: 0;
   overflow: visible;
   padding: 0.55rem 0.75rem 0.65rem;
-}
-
-.content-grid--embedded .enemy-card--hard {
-  width: 100%;
-  max-width: min(780px, 100%);
-  min-width: 0;
-  margin-inline: auto;
-  padding: 0.7rem 0.9rem 0.85rem;
-}
-
-.content-grid--embedded .enemy-card--hard .enemy-image {
-  max-width: min(280px, 48%);
-  max-height: min(380px, 48vh);
-}
-
-.content-grid--embedded .enemy-main--hard .enemy-body {
-  justify-content: center;
-}
-
-.content-grid--embedded .enemy-main--hard .enemy-info {
-  flex: 0 1 auto;
-  width: max-content;
-  max-width: min(28rem, 100%);
-  align-items: flex-start;
-  text-align: left;
 }
 
 .content-grid--embedded .enemy-label {
@@ -1692,7 +1667,24 @@ function onPickerWheel(event: WheelEvent) {
   max-width: min(780px, 100%);
   min-width: 0;
   margin-inline: auto;
-  padding: 0.95rem 1.05rem 1.1rem;
+  border-width: 2px;
+  border-style: solid;
+  border-color: color-mix(in srgb, #e8a838 88%, #c47a10);
+  box-shadow: 0 0 0 1px color-mix(in srgb, #e8a838 38%, transparent);
+  background: color-mix(in srgb, #e8a838 5%, var(--color-background-soft));
+}
+
+[data-theme='dark'] .enemy-card--hard {
+  border-width: 1.5px;
+  border-color: color-mix(in srgb, #e8a838 48%, var(--color-border));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #e8a838 14%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #e8a838 8%, transparent);
+  background: color-mix(in srgb, #e8a838 6%, var(--color-background-soft));
+}
+
+.enemy-card--hard.enemy-card--empty {
+  border-style: dashed;
 }
 
 .enemy-main {
@@ -1700,47 +1692,6 @@ function onPickerWheel(event: WheelEvent) {
   flex-direction: column;
   gap: 0.55rem;
   min-width: 0;
-}
-
-.enemy-main--hard {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.65rem;
-  width: 100%;
-}
-
-.enemy-main--hard .enemy-body {
-  flex: none;
-  width: 100%;
-  min-width: 0;
-  justify-content: center;
-  align-items: flex-start;
-  gap: clamp(0.85rem, 2.2vw, 1.35rem);
-}
-
-.enemy-main--hard .enemy-info {
-  flex: 0 1 auto;
-  width: max-content;
-  max-width: min(28rem, 100%);
-}
-
-.enemy-main--hard .enemy-field-buff {
-  flex: none;
-  width: 100%;
-  margin-top: 0;
-  min-width: 0;
-  max-width: none;
-  align-self: stretch;
-}
-
-.enemy-card--hard .enemy-image {
-  width: clamp(160px, 34%, 300px);
-}
-
-.enemy-card--hard .enemy-field-buff :deep(.effect-blocks-display--compact .effect-block-list) {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
-  gap: 0.25rem 0.85rem;
 }
 
 .buff-card {
@@ -2071,17 +2022,11 @@ function onPickerWheel(event: WheelEvent) {
   }
 
   .enemy-card--hard {
-    width: 100%;
-    min-width: 0;
-    max-width: min(780px, 100%);
+    max-width: 100%;
   }
 
   .enemy-image {
     width: clamp(140px, 42vw, 220px);
-  }
-
-  .enemy-card--hard .enemy-image {
-    width: clamp(150px, 40vw, 260px);
   }
 }
 
@@ -2157,12 +2102,6 @@ function onPickerWheel(event: WheelEvent) {
 
   .enemy-row--hard {
     margin-top: 0.65rem;
-  }
-
-  .enemy-card--hard {
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
   }
 
   .enemy-body {
@@ -2279,12 +2218,6 @@ function onPickerWheel(event: WheelEvent) {
     grid-template-columns: 1fr;
     width: 100%;
     overflow: visible;
-  }
-
-  .content-grid--embedded .enemy-card--hard {
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
   }
 
   .content-grid--embedded .buff-card,
