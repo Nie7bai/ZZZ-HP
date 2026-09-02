@@ -901,6 +901,19 @@ export function resolveBaseEnergyRegen(ctx: PanelCalcContext): number {
   return ctx.agents.find((item) => item.id === agentId)?.basePanel.energyRegen ?? 0
 }
 
+function resolveMainAgent(ctx: PanelCalcContext) {
+  const agentId = ctx.teamSlots[ctx.mainSlotIndex]?.agentId
+  if (!agentId) return undefined
+  return ctx.agents.find((item) => item.id === agentId)
+}
+
+/** 锋御：仅角色基础面板的初始锐爆计入锐爆区；音擎/驱动盘/Buff 的爆伤仍走面板爆伤 */
+function applyFengYuSharpenCritMods(combatMods: CombatBuffMods, ctx: PanelCalcContext) {
+  const mainAgent = resolveMainAgent(ctx)
+  if (mainAgent?.profession !== '锋御') return
+  combatMods.sharpenCritDmgBonus += mainAgent.basePanel.sharpenCritDmgBonus
+}
+
 export interface CombatBuffMods {
   vulnerable: number
   directVulnerable: number
@@ -2098,13 +2111,16 @@ export function computeFinalPanel(
   }
   const totalSources = collectPanelBuffModSources(fullCtx)
   const totalMods = mergeModsFromSources(totalSources)
+  const finalPanel = applyBuffModsToPanel(externalPanel, totalMods, {
+    baseAnomalyControl,
+    baseEnergyRegen,
+  })
+  const combatMods = extractCombatMods(totalMods)
+  applyFengYuSharpenCritMods(combatMods, fullCtx)
   return {
     totalMods,
-    combatMods: extractCombatMods(totalMods),
-    finalPanel: applyBuffModsToPanel(externalPanel, totalMods, {
-      baseAnomalyControl,
-      baseEnergyRegen,
-    }),
+    combatMods,
+    finalPanel,
     sources: includeDetails ? totalSources : [],
     collectedEffects: [],
   }

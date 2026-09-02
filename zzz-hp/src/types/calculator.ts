@@ -546,6 +546,8 @@ export interface AgentBasePanel {
   def: number
   critRate: number
   critDmg: number
+  /** 初始锐爆伤害加成%（锋御）；锐爆 B = 1.2 + 本值/100，与初始爆伤独立 */
+  sharpenCritDmgBonus: number
   mastery: number
   /** 异常掌控（不进伤害乘区） */
   anomalyControl: number

@@ -38,6 +38,7 @@ import {
 import {
   AFFIX_DRIVE_DISC_SLOT_1_HP,
   AFFIX_DRIVE_DISC_SLOT_2_ATK,
+  AFFIX_DRIVE_DISC_SLOT_3_DEF,
   DRIVE_DISC_SLOT_4_OPTIONS,
   DRIVE_DISC_SLOT_5_OPTIONS,
   DRIVE_DISC_SLOT_6_OPTIONS,
@@ -67,6 +68,7 @@ import {
   type OptimalEventEvalDetail,
   flatStatLabel,
   outPercentLabel,
+  outPercentFromAffixCounts,
   sweepAnomalyDamageAsync,
   sweepDirectDamageAsync,
   validateAnomalyAlloc,
@@ -99,10 +101,12 @@ import {
 import { getHitSkipReason, buildGenericPanelSkillContext } from '@/utils/resolvedHit'
 
 const MB_PROFESSION = '命破'
+const FENGYU_PROFESSION = '锋御'
 
 const PANEL_FIELDS: { key: keyof PanelStats; label: string }[] = [
   { key: 'hp', label: '生命值' },
   { key: 'atk', label: '攻击力' },
+  { key: 'def', label: '防御力' },
   { key: 'critRate', label: '暴击率%' },
   { key: 'critDmg', label: '暴伤%' },
   { key: 'dmgBonus', label: '增伤%' },
@@ -425,10 +429,12 @@ const effectiveAnomalySlotPanels = computed(() => {
 })
 
 const isMb = computed(() => mainAgent.value?.profession === MB_PROFESSION)
+const isFengYu = computed(() => mainAgent.value?.profession === FENGYU_PROFESSION)
 
 const evalCtx = computed(() =>
   buildOptimalEvalContext({
     isMb: isMb.value,
+    isFengYu: isFengYu.value,
     teamSlots: props.teamSlots,
     agents: props.agents,
     wengines: props.wengines,
@@ -438,7 +444,7 @@ const evalCtx = computed(() =>
     mainSlotIndex: mainSlotIndex.value,
     driveDiscMainStats: { ...driveDiscMainStats },
     enemyInput: { ...enemyInput.value },
-    baseDamageSource: isMb.value ? 'pierce' : baseDamageSource.value,
+    baseDamageSource: isMb.value ? 'pierce' : isFengYu.value ? 'def' : baseDamageSource.value,
     extraGains: extraGains.value.map((item) => ({ ...item })),
     skillContext: buildGenericPanelSkillContext({
       element: mainAgent.value?.element,
@@ -458,14 +464,14 @@ const evalCtx = computed(() =>
   }),
 )
 
-const flatLabel = computed(() => flatStatLabel(isMb.value))
-const outLabel = computed(() => outPercentLabel(isMb.value))
+const flatLabel = computed(() => flatStatLabel(isMb.value, isFengYu.value))
+const outLabel = computed(() => outPercentLabel(isMb.value, isFengYu.value))
 
 const directError = computed(() =>
-  validateDirectAlloc(directAlloc, isMb.value, driveDiscMainStats),
+  validateDirectAlloc(directAlloc, isMb.value, driveDiscMainStats, isFengYu.value),
 )
 const anomalyError = computed(() =>
-  validateAnomalyAlloc(anomalyAlloc, isMb.value, driveDiscMainStats),
+  validateAnomalyAlloc(anomalyAlloc, isMb.value, driveDiscMainStats, isFengYu.value),
 )
 
 const sweepConfigFingerprint = computed(() =>
@@ -647,6 +653,7 @@ async function refreshDirectSweepFixedStats(
       { ...state },
       point.outPercent,
       point.critDmg,
+      ctx.isFengYu,
     )
     const swept = evaluateAffixCountsForSweep(ctx, affixCounts)
     next.push({
@@ -1047,12 +1054,19 @@ const allocPreviewCounts = computed(() => {
       { ...directAlloc, critRate: crit, totalRolls: total },
       0,
       remain,
+      isFengYu.value,
     )
   }
   if (anomalyPoints.value[0]?.affixCounts) return null
   if (anomalyError.value || !damageKind.value || !mainAgent.value?.id) return null
   const total = Math.round(anomalyAlloc.totalRolls)
-  return buildAnomalyAffixCounts(isMb.value, { ...anomalyAlloc, totalRolls: total }, 0, total)
+  return buildAnomalyAffixCounts(
+    isMb.value,
+    { ...anomalyAlloc, totalRolls: total },
+    0,
+    total,
+    isFengYu.value,
+  )
 })
 
 /** 防抖后的预览词条，避免输入时每个按键都同步 evaluate */
@@ -1144,12 +1158,19 @@ const skillFlowExternal = computed(() => {
       { ...directAlloc, critRate: crit, totalRolls: total },
       0,
       remain,
+      isFengYu.value,
     )
     return evaluateAffixCounts({ ...evalCtx.value, hits: undefined }, counts).external
   }
   if (anomalyError.value) return null
   const total = Math.round(anomalyAlloc.totalRolls)
-  const counts = buildAnomalyAffixCounts(isMb.value, { ...anomalyAlloc, totalRolls: total }, 0, total)
+  const counts = buildAnomalyAffixCounts(
+    isMb.value,
+    { ...anomalyAlloc, totalRolls: total },
+    0,
+    total,
+    isFengYu.value,
+  )
   return evaluateAffixCounts({ ...evalCtx.value, hits: undefined }, counts).external
 })
 
@@ -2105,9 +2126,17 @@ function applyDefaultCrit() {
 
 // 调整 4/5/6 号盘主属性时不重置暴击/总词条数，仅在切换角色时重算默认值
 watch(
-  () => [mainAgent.value?.id, isMb.value],
+  () => [mainAgent.value?.id, isMb.value, isFengYu.value],
   () => {
     if (damageKind.value === 'direct') applyDefaultCrit()
+  },
+  { immediate: true },
+)
+
+watch(
+  isFengYu,
+  (fengYu) => {
+    if (fengYu) baseDamageSource.value = 'def'
   },
   { immediate: true },
 )
@@ -2250,12 +2279,13 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
     <div class="grid three">
       <label class="field">
         <span>基础伤害来源</span>
-        <select v-model="baseDamageSource" :disabled="isMb">
+        <select v-model="baseDamageSource" :disabled="isMb || isFengYu">
           <option value="atk">攻击力</option>
           <option value="def">防御力</option>
           <option value="pierce">贯穿力</option>
         </select>
         <small v-if="isMb" class="hint">命破角色固定使用贯穿力</small>
+        <small v-else-if="isFengYu" class="hint">锋御角色固定使用防御力（锐化公式）</small>
       </label>
       <label class="field">
         <span>4号主属性</span>
@@ -2282,7 +2312,8 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         </select>
       </label>
       <p class="hint span-2">
-        1号固定生命 {{ AFFIX_DRIVE_DISC_SLOT_1_HP }} · 2号固定攻击 {{ AFFIX_DRIVE_DISC_SLOT_2_ATK }}（已计入词条推导）
+        1号固定生命 {{ AFFIX_DRIVE_DISC_SLOT_1_HP }} · 2号固定攻击 {{ AFFIX_DRIVE_DISC_SLOT_2_ATK }} · 3号固定防御
+        {{ AFFIX_DRIVE_DISC_SLOT_3_DEF }}（已计入词条推导）
       </p>
     </div>
 
@@ -2580,7 +2611,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
             <template v-else-if="analysisCounts">
               暴击 {{ analysisCounts.critRate }} · 爆伤 {{ analysisCounts.critDmg }} ·
               {{ outLabel }}
-              {{ isMb ? analysisCounts.hpPercent : analysisCounts.atkPercent }} · 精通
+              {{ outPercentFromAffixCounts(analysisCounts, isMb, isFengYu) }} · 精通
               {{ analysisCounts.mastery }}
               <template v-if="isMb"> · 局外大攻击 {{ analysisCounts.atkPercent }}</template>
               <span class="hint-inline">（未点柱时按预览/首柱）</span>
@@ -2591,7 +2622,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           </template>
           <template v-else-if="analysisCounts">
             {{ outLabel }}
-            {{ isMb ? analysisCounts.hpPercent : analysisCounts.atkPercent }} · 精通
+            {{ outPercentFromAffixCounts(analysisCounts, isMb, isFengYu) }} · 精通
             {{ analysisCounts.mastery }}
             <span class="hint-inline">（未点柱时按预览/首柱）</span>
           </template>

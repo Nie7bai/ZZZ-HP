@@ -271,6 +271,8 @@ export interface AnomalyAllocState {
 
 export interface OptimalEvalContext {
   isMb: boolean
+  /** 主 C 为锋御：直伤扫盘用防御副词条，评估走锐化公式 */
+  isFengYu: boolean
   agentBase: AffixPanelCalcInput['agentBase']
   wengineBaseAtk: number
   wengineAdvanced: AffixPanelCalcInput['wengineAdvanced']
@@ -377,6 +379,20 @@ function clampInt(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.round(value)))
 }
 
+function resolveAffixOutPercentCap(caps: AffixRollCaps, isMb: boolean, isFengYu: boolean): number {
+  if (isMb) return caps.hpPercent
+  if (isFengYu) return caps.defPercent
+  return caps.atkPercent
+}
+
+function resolvePanelOnlyDamageCalcBase(ctx: OptimalEvalContext) {
+  return {
+    baseDamageSource: ctx.isMb ? ('pierce' as const) : ctx.isFengYu ? ('def' as const) : ctx.baseDamageSource,
+    isMbMainAgent: ctx.isMb,
+    useSharpenFormula: Boolean(ctx.isFengYu),
+  }
+}
+
 export function flatStatKey(isMb: boolean, isFengYu = false): 'atkFlat' | 'hpFlat' | 'defFlat' {
   if (isMb) return 'hpFlat'
   if (isFengYu) return 'defFlat'
@@ -433,6 +449,7 @@ export function validateDirectAlloc(
   state: DirectAllocState,
   isMb = false,
   mainStats?: AffixDriveDiscMainStats,
+  isFengYu = false,
 ): string | null {
   const atkFlat = clampInt(state.flatStat, 0, 99)
   const hpFlat = clampInt(state.hpFlat, 0, 99)
@@ -454,7 +471,7 @@ export function validateDirectAlloc(
   if (flatPenTotal > DIRECT_CONSTRAINTS.maxAtkPenTotal) {
     return isMb
       ? `精通+攻击力+生命值+穿透+总词条数不能超过 ${DIRECT_CONSTRAINTS.maxAtkPenTotal}`
-      : `精通+${flatStatLabel(isMb)}+穿透+总词条数不能超过 ${DIRECT_CONSTRAINTS.maxAtkPenTotal}`
+      : `精通+${flatStatLabel(isMb, isFengYu)}+穿透+总词条数不能超过 ${DIRECT_CONSTRAINTS.maxAtkPenTotal}`
   }
   if (mainStats) {
     const caps = getAffixRollCaps(mainStats)
@@ -473,8 +490,8 @@ export function validateDirectAlloc(
         return `局外大生命+爆伤可分配余量 ${remain} 超出主词条约束上限（局外大生命≤${caps.hpPercent}，爆伤≤${caps.critDmg}）`
       }
     } else {
-      const outCap = caps.atkPercent
-      const outName = outPercentLabel(isMb)
+      const outCap = resolveAffixOutPercentCap(caps, isMb, isFengYu)
+      const outName = outPercentLabel(isMb, isFengYu)
       if (remain > outCap + caps.critDmg) {
         return `${outName}+爆伤可分配余量 ${remain} 超出主词条约束上限（${outName}≤${outCap}，爆伤≤${caps.critDmg}）`
       }
@@ -487,6 +504,7 @@ export function validateAnomalyAlloc(
   state: AnomalyAllocState,
   isMb: boolean,
   mainStats?: AffixDriveDiscMainStats,
+  isFengYu = false,
 ): string | null {
   const flat = clampInt(state.flatStat, 0, 99)
   const pen = clampInt(state.pen, 0, 99)
@@ -495,12 +513,12 @@ export function validateAnomalyAlloc(
     return `总词条数不能超过 ${ANOMALY_CONSTRAINTS.maxTotalRolls}`
   }
   if (flat + pen + total > ANOMALY_CONSTRAINTS.maxAtkPenTotal) {
-    return `${flatStatLabel(isMb)}+穿透+总词条数不能超过 ${ANOMALY_CONSTRAINTS.maxAtkPenTotal}`
+    return `${flatStatLabel(isMb, isFengYu)}+穿透+总词条数不能超过 ${ANOMALY_CONSTRAINTS.maxAtkPenTotal}`
   }
   if (mainStats) {
     const caps = getAffixRollCaps(mainStats)
-    const outCap = isMb ? caps.hpPercent : caps.atkPercent
-    const outName = outPercentLabel(isMb)
+    const outCap = resolveAffixOutPercentCap(caps, isMb, isFengYu)
+    const outName = outPercentLabel(isMb, isFengYu)
     if (total > outCap + caps.mastery) {
       return `总词条数 ${total} 超出主词条约束上限（${outName}≤${outCap}，精通≤${caps.mastery}）`
     }
@@ -513,6 +531,7 @@ export function buildDirectAffixCounts(
   state: DirectAllocState,
   outPercent: number,
   critDmg: number,
+  isFengYu = false,
 ): AffixCounts {
   const counts = createEmptyAffixCounts()
   counts.pen = clampInt(state.pen, 0, 99)
@@ -524,6 +543,9 @@ export function buildDirectAffixCounts(
     counts.hpFlat = clampInt(state.hpFlat, 0, 99)
     counts.hpPercent = clampInt(outPercent, 0, 99)
     counts.atkPercent = clampInt(state.atkPercent, 0, 99)
+  } else if (isFengYu) {
+    counts.defFlat = clampInt(state.flatStat, 0, 99)
+    counts.defPercent = clampInt(outPercent, 0, 99)
   } else {
     counts.atkFlat = clampInt(state.flatStat, 0, 99)
     counts.atkPercent = clampInt(outPercent, 0, 99)
@@ -536,10 +558,11 @@ export function buildAnomalyAffixCounts(
   state: AnomalyAllocState,
   outPercent: number,
   mastery: number,
+  isFengYu = false,
 ): AffixCounts {
   const counts = createEmptyAffixCounts()
-  const flatKey = flatStatKey(isMb)
-  const percentKey = outPercentKey(isMb)
+  const flatKey = flatStatKey(isMb, isFengYu)
+  const percentKey = outPercentKey(isMb, isFengYu)
   counts[flatKey] = clampInt(state.flatStat, 0, 99)
   counts.pen = clampInt(state.pen, 0, 99)
   counts[percentKey] = clampInt(outPercent, 0, 99)
@@ -1165,8 +1188,7 @@ function computeEventDamageLines(
           firstBreakdown.finalPanel.atk,
           firstBreakdown.totalMods.pierce,
         ),
-        baseDamageSource: ctx.isMb ? 'pierce' : ctx.baseDamageSource,
-        isMbMainAgent: ctx.isMb,
+        ...resolvePanelOnlyDamageCalcBase(ctx),
         enemyInput: ctx.enemyInput,
         combatVulnerable: firstBreakdown.combatMods.vulnerable,
         combatDirectVulnerable: firstBreakdown.combatMods.directVulnerable,
@@ -1256,8 +1278,7 @@ export function evaluateAffixCountsForSweep(
     const result = computeDamageResult({
       finalPanel: breakdown.finalPanel,
       piercePower,
-      baseDamageSource: ctx.isMb ? 'pierce' : ctx.baseDamageSource,
-      isMbMainAgent: ctx.isMb,
+      ...resolvePanelOnlyDamageCalcBase(ctx),
       enemyInput: ctx.enemyInput,
       combatVulnerable: breakdown.combatMods.vulnerable,
       combatDirectVulnerable: breakdown.combatMods.directVulnerable,
@@ -1353,6 +1374,7 @@ function affixEvalContextSignature(ctx: OptimalEvalContext): string {
     ctx.mainAgentId ?? '',
     ctx.mainAgentElement ?? '',
     ctx.isMb ? '1' : '0',
+    ctx.isFengYu ? '1' : '0',
     ctx.wengineBaseAtk ?? 0,
     ctx.baseDamageSource ?? '',
     JSON.stringify(ctx.driveDiscMainStats),
@@ -1427,8 +1449,7 @@ function evaluateAffixCountsUncached(
       computeDamageResult({
         finalPanel: breakdown.finalPanel,
         piercePower,
-        baseDamageSource: ctx.isMb ? 'pierce' : ctx.baseDamageSource,
-        isMbMainAgent: ctx.isMb,
+        ...resolvePanelOnlyDamageCalcBase(ctx),
         enemyInput: ctx.enemyInput,
         combatVulnerable: breakdown.combatMods.vulnerable,
         combatDirectVulnerable: breakdown.combatMods.directVulnerable,
@@ -1478,8 +1499,7 @@ function evaluateAffixCountsUncached(
   const result = computeDamageResult({
     finalPanel: breakdown.finalPanel,
     piercePower,
-    baseDamageSource: ctx.isMb ? 'pierce' : ctx.baseDamageSource,
-    isMbMainAgent: ctx.isMb,
+    ...resolvePanelOnlyDamageCalcBase(ctx),
     enemyInput: ctx.enemyInput,
     combatVulnerable: breakdown.combatMods.vulnerable,
     combatDirectVulnerable: breakdown.combatMods.directVulnerable,
@@ -1560,6 +1580,7 @@ export function findMinCritRollsForOvercap(
       { ...baseState, critRate: n, totalRolls: n },
       0,
       0,
+      ctx.isFengYu,
     )
     const { finalPanel } = evaluateAffixCounts(panelOnlyCtx, counts)
     if (finalPanel.critRate > 100) return n
@@ -1605,16 +1626,17 @@ export function sweepDirectDamage(
   }
 
   const remain = total - crit
-  const outLabel = outPercentLabel(false)
-  const outCap = caps.atkPercent
+  const outLabel = outPercentLabel(ctx.isMb, ctx.isFengYu)
+  const outCap = resolveAffixOutPercentCap(caps, ctx.isMb, ctx.isFengYu)
   for (let outPercent = 0; outPercent <= remain; outPercent += 1) {
     const critDmg = remain - outPercent
     if (outPercent > outCap || critDmg > caps.critDmg || crit > caps.critRate) continue
     const affixCounts = buildDirectAffixCounts(
-      false,
+      ctx.isMb,
       { ...state, critRate: crit, totalRolls: total },
       outPercent,
       critDmg,
+      ctx.isFengYu,
     )
     const evaled = evaluateAffixCounts(ctx, affixCounts)
     points.push({
@@ -1699,16 +1721,17 @@ export async function sweepDirectDamageAsync(
   }
 
   const remain = total - crit
-  const outLabel = outPercentLabel(false)
-  const outCap = caps.atkPercent
+  const outLabel = outPercentLabel(ctx.isMb, ctx.isFengYu)
+  const outCap = resolveAffixOutPercentCap(caps, ctx.isMb, ctx.isFengYu)
   for (let outPercent = 0; outPercent <= remain; outPercent += 1) {
     const critDmg = remain - outPercent
     if (outPercent > outCap || critDmg > caps.critDmg || crit > caps.critRate) continue
     const affixCounts = buildDirectAffixCounts(
-      false,
+      ctx.isMb,
       { ...state, critRate: crit, totalRolls: total },
       outPercent,
       critDmg,
+      ctx.isFengYu,
     )
     const swept = evaluateAffixCountsForSweep(ctx, affixCounts)
     await pushPoint({
@@ -1730,15 +1753,21 @@ export function sweepAnomalyDamage(
   state: AnomalyAllocState,
 ): AnomalySweepPoint[] {
   const total = clampInt(state.totalRolls, 0, ANOMALY_CONSTRAINTS.maxTotalRolls)
-  const outLabel = outPercentLabel(ctx.isMb)
+  const outLabel = outPercentLabel(ctx.isMb, ctx.isFengYu)
   const caps = getAffixRollCaps(ctx.driveDiscMainStats)
-  const outCap = ctx.isMb ? caps.hpPercent : caps.atkPercent
+  const outCap = resolveAffixOutPercentCap(caps, ctx.isMb, ctx.isFengYu)
   const points: AnomalySweepPoint[] = []
 
   for (let outPercent = 0; outPercent <= total; outPercent += 1) {
     const mastery = total - outPercent
     if (outPercent > outCap || mastery > caps.mastery) continue
-    const affixCounts = buildAnomalyAffixCounts(ctx.isMb, { ...state, totalRolls: total }, outPercent, mastery)
+    const affixCounts = buildAnomalyAffixCounts(
+      ctx.isMb,
+      { ...state, totalRolls: total },
+      outPercent,
+      mastery,
+      ctx.isFengYu,
+    )
     const evaled = evaluateAffixCounts(ctx, affixCounts)
     points.push({
       outPercent,
@@ -1767,9 +1796,9 @@ export async function sweepAnomalyDamageAsync(
   const chunkSize = Math.max(1, options?.chunkSize ?? 6)
   const signal = options?.signal
   const total = clampInt(state.totalRolls, 0, ANOMALY_CONSTRAINTS.maxTotalRolls)
-  const outLabel = outPercentLabel(ctx.isMb)
+  const outLabel = outPercentLabel(ctx.isMb, ctx.isFengYu)
   const caps = getAffixRollCaps(ctx.driveDiscMainStats)
-  const outCap = ctx.isMb ? caps.hpPercent : caps.atkPercent
+  const outCap = resolveAffixOutPercentCap(caps, ctx.isMb, ctx.isFengYu)
   const points: AnomalySweepPoint[] = []
   let sinceYield = 0
 
@@ -1777,7 +1806,13 @@ export async function sweepAnomalyDamageAsync(
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
     const mastery = total - outPercent
     if (outPercent > outCap || mastery > caps.mastery) continue
-    const affixCounts = buildAnomalyAffixCounts(ctx.isMb, { ...state, totalRolls: total }, outPercent, mastery)
+    const affixCounts = buildAnomalyAffixCounts(
+      ctx.isMb,
+      { ...state, totalRolls: total },
+      outPercent,
+      mastery,
+      ctx.isFengYu,
+    )
     if (ctx.hits?.length) {
       const swept = evaluateAffixCountsForSweep(ctx, affixCounts)
       points.push({
@@ -1864,8 +1899,8 @@ export function directCandidateKeys(isMb: boolean, isFengYu = false): OptimalAff
   return ['atkFlat', 'atkPercent', 'pen', 'mastery', 'critRate', 'critDmg']
 }
 
-export function anomalyCandidateKeys(isMb: boolean): OptimalAffixKey[] {
-  return [flatStatKey(isMb), outPercentKey(isMb), 'pen', 'mastery']
+export function anomalyCandidateKeys(isMb: boolean, isFengYu = false): OptimalAffixKey[] {
+  return [flatStatKey(isMb, isFengYu), outPercentKey(isMb, isFengYu), 'pen', 'mastery']
 }
 
 const SERIES_COLORS: Record<string, string> = {
@@ -1916,7 +1951,7 @@ export function computeDiffAnalysis(
   anomalyMetric: OptimalAnomalyMetric = 'anomaly',
   selectedEventIds?: string[] | null,
 ): { addOne: AffixDiffRow[]; replace: AffixReplaceRow[] } {
-  const candidates = kind === 'direct' ? directCandidateKeys(ctx.isMb) : anomalyCandidateKeys(ctx.isMb)
+  const candidates = kind === 'direct' ? directCandidateKeys(ctx.isMb, ctx.isFengYu) : anomalyCandidateKeys(ctx.isMb, ctx.isFengYu)
   const base = evaluateAffixForDiffMetric(ctx, baseCounts)
   const baseDmg = ctx.hits?.length
     ? resolveSweepMetricDamage(base, selectedEventIds)
@@ -2061,7 +2096,7 @@ export function computeEventAffixImpact(
   if (!ctx.hits?.length) return []
   const base = evaluateAffixCounts(ctx, baseCounts)
   const baseById = new Map(base.eventLines.map((line) => [line.eventId, line.total]))
-  const candidates = kind === 'direct' ? directCandidateKeys(ctx.isMb) : anomalyCandidateKeys(ctx.isMb)
+  const candidates = kind === 'direct' ? directCandidateKeys(ctx.isMb, ctx.isFengYu) : anomalyCandidateKeys(ctx.isMb, ctx.isFengYu)
   const maxDeltaByEvent = new Map<string, number>()
 
   for (const key of candidates) {
@@ -2096,7 +2131,7 @@ export function computeBenefitCurves(
   maxAdded = BENEFIT_CURVE_MAX_ADDED,
   selectedEventIds?: string[] | null,
 ): { series: BenefitCurveSeries[]; nextStep: AffixDiffRow[] } {
-  const candidates = kind === 'direct' ? directCandidateKeys(ctx.isMb) : anomalyCandidateKeys(ctx.isMb)
+  const candidates = kind === 'direct' ? directCandidateKeys(ctx.isMb, ctx.isFengYu) : anomalyCandidateKeys(ctx.isMb, ctx.isFengYu)
   const metricOf = (evaled: ReturnType<typeof evaluateAffixForDiffMetric>) =>
     ctx.hits?.length
       ? resolveSweepMetricDamage(evaled, selectedEventIds)
@@ -2158,8 +2193,19 @@ export function computeBenefitCurves(
   return { series, nextStep }
 }
 
+export function outPercentFromAffixCounts(
+  counts: AffixCounts,
+  isMb: boolean,
+  isFengYu = false,
+): number {
+  if (isMb) return counts.hpPercent
+  if (isFengYu) return counts.defPercent
+  return counts.atkPercent
+}
+
 export function buildOptimalEvalContext(input: {
   isMb: boolean
+  isFengYu?: boolean
   teamSlots: TeamSlot[]
   agents: AgentBuffDoc[]
   wengines: WengineBuffDoc[]
@@ -2193,6 +2239,7 @@ export function buildOptimalEvalContext(input: {
 
   return {
     isMb: input.isMb,
+    isFengYu: Boolean(input.isFengYu),
     agentBase: mainAgent?.basePanel ?? createEmptyAgentBasePanel(),
     wengineBaseAtk: mainWengine?.baseAtk ?? 0,
     wengineAdvanced: mainWengine?.advancedStats ?? createEmptyWengineAdvancedStats(),
