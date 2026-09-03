@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import type { HpChartPoint } from '@/api/crisisAssault'
 import { fetchDefenseSeasons } from '@/api/defense'
-import type { DefenseEnemy, DefenseSeason, DefenseVariant, DefenseZoneBuffRecord } from '@/types/defense'
+import type { DefenseEnemy, DefenseSeason, DefenseVariant } from '@/types/defense'
 import type { AdminBuffSlotContext, AdminMonsterSlotContext } from '@/types/admin'
 import { decodeDefenseBossId } from '@/utils/defenseId'
 import {
@@ -461,7 +461,7 @@ function onAdminEditRoomBuff(
 ) {
   const slot = resolveDefenseRoomParts(frontier, room)
   if (!slot) return
-  const buffIndex = room.roomBuff.buffIndex ?? 3
+  const buffIndex = room.roomBuff.buffIndex ?? 1
   const ctx = buildDefenseBuffContext(
     slot,
     buffIndex,
@@ -475,38 +475,6 @@ function onAdminEditRoomBuff(
     },
     room.roomBuff.recordId ? 'edit' : 'create',
   )
-  if (ctx) emit('admin-buff', ctx)
-}
-
-function onAdminEditZoneBuff(
-  frontier: { id: string },
-  room: { id: string },
-  record: DefenseZoneBuffRecord,
-) {
-  const slot = resolveDefenseRoomParts(frontier, room)
-  if (!slot) return
-  const ctx = buildDefenseBuffContext(
-    slot,
-    record.buffIndex,
-    {
-      recordId: record.recordId,
-      buffName: record.buffName,
-      buffText: record.buffText,
-      effectBlocks: record.effectBlocks,
-    },
-    'edit',
-  )
-  if (ctx) emit('admin-buff', ctx)
-}
-
-function onAdminAddZoneBuff(
-  frontier: { id: string },
-  room: { id: string },
-  buffIndex: number,
-) {
-  const slot = resolveDefenseRoomParts(frontier, room)
-  if (!slot) return
-  const ctx = buildDefenseBuffContext(slot, buffIndex, null, 'create')
   if (ctx) emit('admin-buff', ctx)
 }
 
@@ -738,60 +706,6 @@ function formatEnemyResistance(value?: string) {
                   <p class="rank-line">B: {{ room.rankRequirements.b }}</p>
                 </div>
               </header>
-
-              <div
-                v-if="adminMode || room.zoneBuffs.length || (room.zoneBuffRecords?.length ?? 0)"
-                class="room-zone-buff-section"
-              >
-                <div class="block-label-row">
-                  <p class="block-label">区域 Buff</p>
-                  <div v-if="adminMode" class="enemy-admin-bar enemy-admin-bar--inline">
-                    <button
-                      type="button"
-                      class="enemy-admin-btn enemy-admin-btn--primary"
-                      @click="onAdminAddZoneBuff(frontier, room, 1)"
-                    >
-                      + Buff 1
-                    </button>
-                    <button
-                      type="button"
-                      class="enemy-admin-btn enemy-admin-btn--primary"
-                      @click="onAdminAddZoneBuff(frontier, room, 2)"
-                    >
-                      + Buff 2
-                    </button>
-                  </div>
-                </div>
-                <ul v-if="room.zoneBuffs.length" class="zone-buff-lines">
-                  <li v-for="(line, index) in room.zoneBuffs" :key="index">{{ line }}</li>
-                </ul>
-                <div
-                  v-if="adminMode && room.zoneBuffRecords?.length"
-                  class="zone-buff-records"
-                >
-                  <div
-                    v-for="record in room.zoneBuffRecords"
-                    :key="record.recordId"
-                    class="zone-buff-record"
-                  >
-                    <span>序号 {{ record.buffIndex }}</span>
-                    <button
-                      type="button"
-                      class="enemy-admin-btn"
-                      @click="onAdminEditZoneBuff(frontier, room, record)"
-                    >
-                      编辑
-                    </button>
-                    <button
-                      type="button"
-                      class="enemy-admin-btn enemy-admin-btn--danger"
-                      @click="onAdminRemovePeriodBuff(record.recordId, `区域 Buff ${record.buffIndex}`)"
-                    >
-                      从本期移除
-                    </button>
-                  </div>
-                </div>
-              </div>
 
               <div class="room-buff-section">
                 <div class="block-label-row">
@@ -2021,32 +1935,6 @@ function formatEnemyResistance(value?: string) {
 
 .enemy-admin-bar--inline {
   margin-bottom: 0;
-}
-
-.room-zone-buff-section {
-  margin-bottom: 0.65rem;
-}
-
-.zone-buff-lines {
-  margin: 0;
-  padding-left: 1.1rem;
-  font-size: 0.78rem;
-  color: var(--color-text);
-}
-
-.zone-buff-records {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  margin-top: 0.45rem;
-}
-
-.zone-buff-record {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.75rem;
-  color: #9aa3b0;
 }
 
 .room-buff-empty {

@@ -217,17 +217,17 @@ function finalizeBattleRoom(battleRoom) {
 }
 
 function finalizeRoom(room) {
-  reconcileDefenseRoomBuff(room)
   const battleRooms = [...room.battleRooms.values()].map(finalizeBattleRoom)
   return {
     id: room.id,
     label: room.label,
     level: room.level,
-    zoneBuffs: room.zoneBuffs,
-    zoneBuffRecords: room.zoneBuffRecords ?? [],
+    // 兼容旧前端字段：区域 Buff 已废弃，统一走关卡增益 roomBuff
+    zoneBuffs: [],
+    zoneBuffRecords: [],
     roomBuff: room.roomBuff.name
       ? room.roomBuff
-      : { name: '—', lines: room.zoneBuffs.length ? [] : ['暂无 Buff 数据'] },
+      : { name: '—', lines: ['暂无 Buff 数据'] },
     battleRooms,
   }
 }
@@ -281,71 +281,25 @@ function resolveBuffEffectBlocks(buff, globalEffectMap) {
 }
 
 function applyBuffToRoom(room, buff, decoded, globalEffectMap) {
+  if (!buff.buff_name) return
   const lines = String(buff.buff ?? '')
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
   const effectBlocks = resolveBuffEffectBlocks(buff, globalEffectMap)
-
-  if (decoded.buffIndex <= 2) {
-    if (!room.zoneBuffRecords) room.zoneBuffRecords = []
-    room.zoneBuffRecords.push({
-      recordId: buff.id,
-      buffIndex: decoded.buffIndex,
-      buffText: buff.buff ?? '',
-      buffName: buff.buff_name ?? '',
-      effectBlocks,
-    })
-    if (lines.length) room.zoneBuffs.push(...lines)
-    return
-  }
-
-  if (buff.buff_name) {
-    room.roomBuff = {
-      name: buff.buff_name,
-      imageUrl: buff.buff_image,
-      lines: lines.length ? lines : [buff.buff_name],
-      recordId: buff.id,
-      buffIndex: decoded.buffIndex,
-      buffText: buff.buff ?? '',
-      effectBlocks,
-    }
-  }
-}
-
-function reconcileDefenseRoomBuff(room) {
-  const zones = room.zoneBuffRecords ?? []
-  const roomBuff = room.roomBuff
-  if (!roomBuff?.recordId) return
-  const zoneMatch = zones.find((zone) => zone.recordId === roomBuff.recordId)
-  if (!zoneMatch) return
-  if (zoneMatch.effectBlocks?.length && !roomBuff.effectBlocks?.length) {
-    roomBuff.effectBlocks = zoneMatch.effectBlocks
-  }
-  // 区域 Buff（序号 1/2）曾被 fallback 误写入 roomBuff，且不带结构化效果时清掉
-  if (zoneMatch.buffIndex <= 2 && !roomBuff.effectBlocks?.length) {
-    room.roomBuff = { name: '', lines: [] }
-  }
-}
-
-function applyRoomBuffFallback(room, buff, decoded, globalEffectMap) {
-  if (decoded.buffIndex <= 2) return
-  if (room.roomBuff.name) return
-  if (!buff.buff_name) return
-
-  const lines = String(buff.buff ?? '')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-
-  room.roomBuff = {
+  const next = {
     name: buff.buff_name,
     imageUrl: buff.buff_image,
     lines: lines.length ? lines : [buff.buff_name],
     recordId: buff.id,
     buffIndex: decoded.buffIndex,
     buffText: buff.buff ?? '',
-    effectBlocks: resolveBuffEffectBlocks(buff, globalEffectMap),
+    effectBlocks,
+  }
+  // 同房间若有多条，保留序号更大的（历史关卡增益多为 3+；nanoka 现多为 1）
+  const currentIndex = room.roomBuff?.buffIndex ?? 0
+  if (!room.roomBuff?.name || decoded.buffIndex >= currentIndex) {
+    room.roomBuff = next
   }
 }
 
@@ -469,29 +423,6 @@ export async function getDefenseSeasons(variant = 'new', { includeHidden = false
     const frontier = ensureFrontier(season, decoded.stage)
     const room = ensureRoom(frontier, decoded.stage, decoded.roomInStage)
     applyBuffToRoom(room, buff, decoded, globalBuffEffectMap)
-  }
-
-  for (const buff of buffRows) {
-    if (!isDefenseBuffId(buff.id)) continue
-    if (!matchesVariant(buff.version, variant)) continue
-
-    let decoded
-    try {
-      decoded = decodeDefenseBuffId(buff.id)
-    } catch {
-      continue
-    }
-
-    const key = seasonKey(buff.version, buff.phase)
-    if (!seasons.has(key)) continue
-
-    const season = seasons.get(key)
-    const frontier = season.frontiers.get(decoded.stage)
-    if (!frontier) continue
-
-    const room = frontier.rooms.get(`${decoded.stage}-${decoded.roomInStage}`)
-    if (!room) continue
-    applyRoomBuffFallback(room, buff, decoded, globalBuffEffectMap)
   }
 
   for (const [key, dateInfo] of defenseDateMap.entries()) {

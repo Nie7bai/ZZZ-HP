@@ -172,33 +172,13 @@ export function listDefenseEnvironmentBuffs(
       }> = []
 
       if (room.roomBuff?.name && !room.roomBuff.isEmpty) {
-        let effectBlocks = room.roomBuff.effectBlocks
-        if (
-          !effectBlocks?.length &&
-          room.roomBuff.recordId != null &&
-          room.zoneBuffRecords?.length
-        ) {
-          const zoneMatch = room.zoneBuffRecords.find(
-            (zone) => zone.recordId === room.roomBuff.recordId && zone.effectBlocks?.length,
-          )
-          if (zoneMatch) effectBlocks = zoneMatch.effectBlocks
-        }
         candidates.push({
           recordId: room.roomBuff.recordId,
           name: room.roomBuff.name,
           imageUrl: room.roomBuff.imageUrl,
           text: room.roomBuff.buffText,
           lines: room.roomBuff.lines,
-          effectBlocks,
-        })
-      }
-      for (const zone of room.zoneBuffRecords ?? []) {
-        if (!zone.buffName && !zone.buffText) continue
-        candidates.push({
-          recordId: zone.recordId,
-          name: zone.buffName || `区域 Buff ${zone.buffIndex}`,
-          text: zone.buffText,
-          effectBlocks: zone.effectBlocks,
+          effectBlocks: room.roomBuff.effectBlocks,
         })
       }
 
