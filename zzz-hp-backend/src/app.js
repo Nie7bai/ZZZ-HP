@@ -28,6 +28,12 @@ import { fail, failInternal } from './utils/response.js'
 
 dotenv.config()
 
+if (!process.env.NODE_ENV) {
+  console.warn(
+    '[security] NODE_ENV 未设置：500 级响应将附带 err.message 详情；生产部署请在 .env 或进程环境设置 NODE_ENV=production',
+  )
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
 const port = Number(process.env.PORT) || 3000
