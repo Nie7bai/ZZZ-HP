@@ -762,6 +762,13 @@ export async function uploadGuestbookImage(file: File): Promise<{ url: string; f
   })
   const json = (await response.json()) as ApiResponse<{ url: string; filename: string }>
   if (!response.ok || (json.code !== 200 && json.code !== 201)) {
+    // 会话失效：清理本地登录态并引导重新登录（与 requestJson 的 403 封禁处理同模式）
+    if (response.status === 401) {
+      const { useUserAuthStore } = await import('@/stores/userAuth')
+      const auth = useUserAuthStore()
+      auth.clearSession()
+      auth.openLoginDialog()
+    }
     throw new Error(json.message || `上传失败: ${response.status}`)
   }
   return json.data
