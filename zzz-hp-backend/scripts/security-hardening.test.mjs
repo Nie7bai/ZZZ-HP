@@ -14,7 +14,10 @@ import { detectImageKind } from '../src/utils/imageMagic.js'
 import { createEmptyBuffStatModifiers } from '../src/utils/calculatorBuffFields.js'
 import { failInternal } from '../src/utils/response.js'
 
-test('failInternal 生产环境不回传内部错误详情', () => {
+test('failInternal 生产环境不回传内部错误详情，且服务端始终记录', (t) => {
+  const errorLogs = []
+  t.mock.method(console, 'error', (...args) => errorLogs.push(args))
+
   const makeRes = () => {
     const recorded = {}
     return {
@@ -60,6 +63,11 @@ test('failInternal 生产环境不回传内部错误详情', () => {
     assert.deepEqual(res.recorded.body.data, {
       error: 'sensitive database detail (ER_DUP_ENTRY)',
     })
+
+    // 服务端记录不受环境开关影响：三种环境各记录一次，均携带稳定文案与原始错误
+    assert.equal(errorLogs.length, 3)
+    assert.ok(errorLogs.every((args) => args[0] === '[failInternal] 获取留言失败'))
+    assert.ok(errorLogs.every((args) => args[1] === err))
   } finally {
     if (originalNodeEnv === undefined) delete process.env.NODE_ENV
     else process.env.NODE_ENV = originalNodeEnv
