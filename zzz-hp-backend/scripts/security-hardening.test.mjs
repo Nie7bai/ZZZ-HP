@@ -12,6 +12,69 @@ import {
 } from '../src/utils/calculatorPublicAsset.js'
 import { detectImageKind } from '../src/utils/imageMagic.js'
 import { createEmptyBuffStatModifiers } from '../src/utils/calculatorBuffFields.js'
+import { failInternal } from '../src/utils/response.js'
+
+test('failInternal 生产环境不回传内部错误详情，且服务端始终记录', (t) => {
+  const errorLogs = []
+  t.mock.method(console, 'error', (...args) => errorLogs.push(args))
+
+  const makeRes = () => {
+    const recorded = {}
+    return {
+      recorded,
+      status(code) {
+        recorded.code = code
+        return this
+      },
+      json(body) {
+        recorded.body = body
+        return this
+      },
+    }
+  }
+
+  const err = new Error('sensitive database detail (ER_DUP_ENTRY)')
+  const originalNodeEnv = process.env.NODE_ENV
+  const originalExpose = process.env.EXPOSE_ERROR_DETAIL
+
+  try {
+    // 生产环境：message 为稳定文案，data 不携带内部详情
+    process.env.NODE_ENV = 'production'
+    delete process.env.EXPOSE_ERROR_DETAIL
+    let res = makeRes()
+    failInternal(res, err, '获取留言失败')
+    assert.equal(res.recorded.code, 500)
+    assert.equal(res.recorded.body.message, '获取留言失败')
+    assert.equal(res.recorded.body.data, null)
+
+    // 生产 + 显式 EXPOSE_ERROR_DETAIL=1：附带详情便于排查
+    process.env.EXPOSE_ERROR_DETAIL = '1'
+    res = makeRes()
+    failInternal(res, err, '获取留言失败')
+    assert.deepEqual(res.recorded.body.data, {
+      error: 'sensitive database detail (ER_DUP_ENTRY)',
+    })
+
+    // 非生产环境：附带详情
+    delete process.env.NODE_ENV
+    delete process.env.EXPOSE_ERROR_DETAIL
+    res = makeRes()
+    failInternal(res, err, '获取留言失败')
+    assert.deepEqual(res.recorded.body.data, {
+      error: 'sensitive database detail (ER_DUP_ENTRY)',
+    })
+
+    // 服务端记录不受环境开关影响：三种环境各记录一次，均携带稳定文案与原始错误
+    assert.equal(errorLogs.length, 3)
+    assert.ok(errorLogs.every((args) => args[0] === '[failInternal] 获取留言失败'))
+    assert.ok(errorLogs.every((args) => args[1] === err))
+  } finally {
+    if (originalNodeEnv === undefined) delete process.env.NODE_ENV
+    else process.env.NODE_ENV = originalNodeEnv
+    if (originalExpose === undefined) delete process.env.EXPOSE_ERROR_DETAIL
+    else process.env.EXPOSE_ERROR_DETAIL = originalExpose
+  }
+})
 
 test('avatar URL 拒绝穿越与未知前缀', () => {
   assert.equal(normalizeAvatarSourceUrl('/character/foo.webp'), '/character/foo.webp')

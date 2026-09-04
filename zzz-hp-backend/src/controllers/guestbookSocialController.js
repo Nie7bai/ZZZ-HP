@@ -10,7 +10,7 @@ import {
   unfollowUser,
 } from '../services/guestbookSocialService.js'
 import { extractBearerToken, getUserByToken } from '../services/userAuthService.js'
-import { fail, success } from '../utils/response.js'
+import { fail, success, failInternal } from '../utils/response.js'
 
 async function resolveAuthUser(req) {
   const token = extractBearerToken(req)
@@ -49,7 +49,7 @@ export async function getGuestbookUserProfile(req, res) {
     if (data.error === 'blocked') return fail(res, '无法查看该用户主页', 403)
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取用户主页失败', 500, { error: err.message })
+    return failInternal(res, err, '获取用户主页失败')
   }
 }
 
@@ -69,7 +69,7 @@ export async function getGuestbookUserFollowers(req, res) {
     const data = await listFollowers(id)
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取粉丝列表失败', 500, { error: err.message })
+    return failInternal(res, err, '获取粉丝列表失败')
   }
 }
 
@@ -89,7 +89,7 @@ export async function getGuestbookUserFollowing(req, res) {
     const data = await listFollowing(id)
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取关注列表失败', 500, { error: err.message })
+    return failInternal(res, err, '获取关注列表失败')
   }
 }
 
@@ -107,7 +107,7 @@ export async function followGuestbookUser(req, res) {
     if (result?.error === 'blocked') return fail(res, '无法关注该用户', 403)
     return success(res, result, '已关注')
   } catch (err) {
-    return fail(res, '关注失败', 500, { error: err.message })
+    return failInternal(res, err, '关注失败')
   }
 }
 
@@ -122,7 +122,7 @@ export async function unfollowGuestbookUser(req, res) {
     const result = await unfollowUser(authUser.id, id)
     return success(res, result, '已取消关注')
   } catch (err) {
-    return fail(res, '取消关注失败', 500, { error: err.message })
+    return failInternal(res, err, '取消关注失败')
   }
 }
 
@@ -139,7 +139,7 @@ export async function blockGuestbookUser(req, res) {
     if (result?.error === 'self') return fail(res, '不能拉黑自己', 400)
     return success(res, result, '已拉黑')
   } catch (err) {
-    return fail(res, '拉黑失败', 500, { error: err.message })
+    return failInternal(res, err, '拉黑失败')
   }
 }
 
@@ -154,7 +154,7 @@ export async function unblockGuestbookUser(req, res) {
     const result = await unblockUser(authUser.id, id)
     return success(res, result, '已取消拉黑')
   } catch (err) {
-    return fail(res, '取消拉黑失败', 500, { error: err.message })
+    return failInternal(res, err, '取消拉黑失败')
   }
 }
 
@@ -166,7 +166,7 @@ export async function getMyBlockedUsers(req, res) {
     const data = await listBlockedUsers(authUser.id)
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取黑名单失败', 500, { error: err.message })
+    return failInternal(res, err, '获取黑名单失败')
   }
 }
 
@@ -179,6 +179,6 @@ export async function searchGuestbookUsers(req, res) {
     const data = await searchUsers(q, 20)
     return success(res, data)
   } catch (err) {
-    return fail(res, '搜索用户失败', 500, { error: err.message })
+    return failInternal(res, err, '搜索用户失败')
   }
 }

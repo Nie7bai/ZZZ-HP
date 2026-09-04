@@ -16,6 +16,7 @@ import {
   handleUploadError,
 } from '../controllers/uploadController.js'
 import { requireAdmin } from '../middleware/requireAdmin.js'
+import { requireUser } from '../middleware/requireUser.js'
 
 const router = Router()
 
@@ -30,7 +31,7 @@ router.post(
   uploadCalculatorPublic,
 )
 router.post('/calculator-public/ensure', requireAdmin, ensureCalculatorPublic)
-// 留言板图片：限流在 app.js；内存接收 + 魔数校验后再落盘
-router.post('/guestbook', uploadGuestbookImage, handleUploadError, uploadGuestbook)
+// 留言板图片：限流在 app.js；requireUser 放在 Multer 之前，未登录不落盘；内存接收 + 魔数校验后再落盘
+router.post('/guestbook', requireUser, uploadGuestbookImage, handleUploadError, uploadGuestbook)
 
 export default router

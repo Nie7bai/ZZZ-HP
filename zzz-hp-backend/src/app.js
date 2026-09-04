@@ -24,9 +24,15 @@ import deductionRoutes from './routes/deductionRoutes.js'
 import deductionAdminRoutes from './routes/deductionAdminRoutes.js'
 import pool from './config/db.js'
 import { ensureRuntimeSchema } from './bootstrap/ensureRuntimeSchema.js'
-import { fail } from './utils/response.js'
+import { fail, failInternal } from './utils/response.js'
 
 dotenv.config()
+
+if (!process.env.NODE_ENV) {
+  console.warn(
+    '[security] NODE_ENV 未设置：500 级响应将附带 err.message 详情；生产部署请在 .env 或进程环境设置 NODE_ENV=production',
+  )
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -167,12 +173,7 @@ app.use((err, _req, res, _next) => {
   if (err?.message?.startsWith('CORS blocked')) {
     return fail(res, '跨域请求被拒绝', 403)
   }
-  const expose =
-    process.env.NODE_ENV !== 'production' || process.env.EXPOSE_ERROR_DETAIL === '1'
-  if (expose && err?.message) {
-    return fail(res, '服务器内部错误', 500, { error: err.message })
-  }
-  return fail(res, '服务器内部错误', 500)
+  return failInternal(res, err, '服务器内部错误')
 })
 
 app.listen(port, () => {

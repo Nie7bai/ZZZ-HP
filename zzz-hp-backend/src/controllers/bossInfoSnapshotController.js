@@ -1,5 +1,5 @@
 import multer from 'multer'
-import { fail, success } from '../utils/response.js'
+import { fail, success, failInternal } from '../utils/response.js'
 import {
   exportBossInfoSnapshot,
   importBossInfoSnapshot,
@@ -10,7 +10,7 @@ export async function exportBossInfoHandler(_req, res) {
     const data = await exportBossInfoSnapshot()
     return success(res, data)
   } catch (err) {
-    return fail(res, err.message || '导出怪物基础库失败', 500, { error: err.message })
+    return failInternal(res, err, '导出怪物基础库失败')
   }
 }
 

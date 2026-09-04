@@ -1,5 +1,5 @@
 import multer from 'multer'
-import { fail, success } from '../utils/response.js'
+import { fail, success, failInternal } from '../utils/response.js'
 import {
   exportBuffTableSnapshot,
   importBuffTableSnapshot,
@@ -20,7 +20,7 @@ export async function exportBuffTableHandler(req, res) {
     const data = await exportBuffTableSnapshot(mode)
     return success(res, data)
   } catch (err) {
-    return fail(res, err.message || '导出 Buff 表失败', 500, { error: err.message })
+    return failInternal(res, err, '导出 Buff 表失败')
   }
 }
 

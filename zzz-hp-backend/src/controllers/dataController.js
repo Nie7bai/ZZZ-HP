@@ -1,5 +1,5 @@
 import { createBoss, createBuff, deleteBoss, deleteBuff, listBuffNameTemplates, searchBossRecords, searchBuffRecords } from '../services/dataService.js'
-import { success, fail } from '../utils/response.js'
+import { success, fail, failInternal } from '../utils/response.js'
 
 function validateBoss(body) {
   const { version, phase, boss_name, recordScheme } = body
@@ -60,8 +60,10 @@ export async function addBuff(req, res) {
     const data = await createBuff(req.body)
     return success(res, data, 'Buff 添加成功', 200)
   } catch (err) {
-    const status = /不一致|必填|须为|冲突|异常/.test(err.message || '') ? 400 : 500
-    return fail(res, err.message || 'Buff 添加失败', status, { error: err.message })
+    if (/不一致|必填|须为|冲突|异常/.test(err.message || '')) {
+      return fail(res, err.message || 'Buff 添加失败', 400, { error: err.message })
+    }
+    return failInternal(res, err, 'Buff 添加失败')
   }
 }
 
@@ -76,7 +78,7 @@ export async function queryBoss(req, res) {
     })
     return success(res, data)
   } catch (err) {
-    return fail(res, 'Boss 检索失败', 500, { error: err.message })
+    return failInternal(res, err, 'Boss 检索失败')
   }
 }
 
@@ -101,7 +103,7 @@ export async function queryBuff(req, res) {
     })
     return success(res, data)
   } catch (err) {
-    return fail(res, 'Buff 检索失败', 500, { error: err.message })
+    return failInternal(res, err, 'Buff 检索失败')
   }
 }
 
@@ -110,7 +112,7 @@ export async function queryBuffTemplates(req, res) {
     const data = await listBuffNameTemplates(req.query.recordScheme ?? req.query.scheme ?? null)
     return success(res, data)
   } catch (err) {
-    return fail(res, 'Buff 名称模板加载失败', 500, { error: err.message })
+    return failInternal(res, err, 'Buff 名称模板加载失败')
   }
 }
 

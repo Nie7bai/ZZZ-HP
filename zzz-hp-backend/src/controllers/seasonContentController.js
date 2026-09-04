@@ -26,8 +26,10 @@ export async function previewSeasonContentHandler(req, res) {
     const data = await previewSeasonContent(scheme, version, phase)
     return success(res, data)
   } catch (err) {
-    const status = /必填|须为/i.test(err.message) ? 400 : 500
-    return fail(res, err.message || '预览失败', status)
+    if (/必填|须为/i.test(err.message)) {
+      return fail(res, err.message || '预览失败', 400)
+    }
+    return failInternal(res, err, '预览失败')
   }
 }
 
@@ -58,8 +60,10 @@ export async function softDeleteSeasonContentHandler(req, res) {
         : `已标记删除 ${label} ${data.version} 第 ${data.phase} 期（前台隐藏，数据保留至清理）`
     return success(res, data, msg)
   } catch (err) {
-    const status = /必填|须为|没有可/i.test(err.message) ? 400 : 500
-    return fail(res, err.message || '软删除失败', status)
+    if (/必填|须为|没有可/i.test(err.message)) {
+      return fail(res, err.message || '软删除失败', 400)
+    }
+    return failInternal(res, err, '软删除失败')
   }
 }
 
@@ -95,8 +99,10 @@ export async function restoreSeasonContentHandler(req, res) {
       `已恢复 ${label} ${data.version} 第 ${data.phase} 期（取消「已删除未清理」）`,
     )
   } catch (err) {
-    const status = /必填|须为|无需恢复|不在/i.test(err.message) ? 400 : 500
-    return fail(res, err.message || '恢复失败', status)
+    if (/必填|须为|无需恢复|不在/i.test(err.message)) {
+      return fail(res, err.message || '恢复失败', 400)
+    }
+    return failInternal(res, err, '恢复失败')
   }
 }
 
@@ -128,7 +134,9 @@ export async function cleanupSeasonContentHandler(req, res) {
       `已清理 ${label} ${data.version} 第 ${data.phase} 期（怪物 ${data.bossesDeleted} · Buff ${data.buffsDeleted}${alsoDeleteDates ? ` · 日期 ${data.datesDeleted}` : ''}）`,
     )
   } catch (err) {
-    const status = /必填|须为/i.test(err.message) ? 400 : 500
-    return fail(res, err.message || '清理失败', status)
+    if (/必填|须为/i.test(err.message)) {
+      return fail(res, err.message || '清理失败', 400)
+    }
+    return failInternal(res, err, '清理失败')
   }
 }

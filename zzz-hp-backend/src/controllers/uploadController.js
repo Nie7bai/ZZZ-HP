@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
-import { success, fail } from '../utils/response.js'
+import { success, fail, failInternal } from '../utils/response.js'
 import {
   saveCalculatorPublicAvatar,
   syncEntityAvatarToPublic,
@@ -162,8 +162,10 @@ export function uploadGuestbook(req, res) {
     return success(res, { url, filename }, '留言板图片上传成功', 201)
   } catch (err) {
     const msg = err.message || '图片上传失败'
-    const status = /满|支持|上传图片/.test(msg) ? 400 : 500
-    return fail(res, msg, status)
+    if (/满|支持|上传图片/.test(msg)) {
+      return fail(res, msg, 400)
+    }
+    return failInternal(res, err, '图片上传失败')
   }
 }
 

@@ -6,7 +6,7 @@ import {
 } from '../services/adminGuestbookUserService.js'
 import { isValidAdminSession } from '../services/adminSessionService.js'
 import { extractBearerToken, getUserByToken } from '../services/userAuthService.js'
-import { fail, success } from '../utils/response.js'
+import { fail, success, failInternal } from '../utils/response.js'
 
 async function readIsPasswordAdmin(req) {
   const headerToken = req.headers['x-admin-token']
@@ -43,7 +43,7 @@ export async function getGuestbookUsers(req, res) {
     })
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取账号列表失败', 500, { error: err.message })
+    return failInternal(res, err, '获取账号列表失败')
   }
 }
 
@@ -56,7 +56,7 @@ export async function getGuestbookUser(req, res) {
     if (!data) return fail(res, '用户不存在', 404)
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取账号失败', 500, { error: err.message })
+    return failInternal(res, err, '获取账号失败')
   }
 }
 
@@ -91,7 +91,7 @@ export async function editGuestbookUser(req, res) {
     if (data?.error) return fail(res, data.error, 400)
     return success(res, data, '账号资料已更新')
   } catch (err) {
-    return fail(res, '更新账号失败', 500, { error: err.message })
+    return failInternal(res, err, '更新账号失败')
   }
 }
 
@@ -113,6 +113,6 @@ export async function banGuestbookUser(req, res) {
     if (data?.error) return fail(res, data.error, 400)
     return success(res, data, banned ? '账号已封禁' : '账号已解封')
   } catch (err) {
-    return fail(res, '更新封禁状态失败', 500, { error: err.message })
+    return failInternal(res, err, '更新封禁状态失败')
   }
 }
