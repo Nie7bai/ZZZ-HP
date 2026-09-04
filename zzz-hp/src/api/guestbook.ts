@@ -756,6 +756,8 @@ export async function uploadGuestbookImage(file: File): Promise<{ url: string; f
   formData.append('image', file)
   const response = await fetch('/api/upload/guestbook', {
     method: 'POST',
+    // 后端 requireUser 鉴权；FormData 不手动设置 Content-Type，保留浏览器边界
+    headers: withAuthHeaders(),
     body: formData,
   })
   const json = (await response.json()) as ApiResponse<{ url: string; filename: string }>
