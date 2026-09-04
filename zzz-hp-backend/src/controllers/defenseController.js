@@ -1,7 +1,7 @@
 import { getDefenseSeasons } from '../services/defenseService.js'
 import { getDefenseSeasonIdTable } from '../utils/defenseSeasonId.js'
 import { isValidAdminSession } from '../services/adminSessionService.js'
-import { success, fail } from '../utils/response.js'
+import { success, failInternal } from '../utils/response.js'
 
 function readIsSiteAdmin(req) {
   const auth = req.headers.authorization
@@ -24,7 +24,7 @@ export async function listDefenseSeasons(req, res) {
     const data = await getDefenseSeasons(variant, { includeHidden })
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取式舆防卫战数据失败', 500, { error: err.message })
+    return failInternal(res, err, '获取式舆防卫战数据失败')
   }
 }
 
@@ -33,6 +33,6 @@ export async function listDefenseSeasonIdMap(_req, res) {
     const data = getDefenseSeasonIdTable()
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取防卫战 ID 转换表失败', 500, { error: err.message })
+    return failInternal(res, err, '获取防卫战 ID 转换表失败')
   }
 }

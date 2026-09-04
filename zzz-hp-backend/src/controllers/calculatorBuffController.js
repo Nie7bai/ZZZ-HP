@@ -27,14 +27,14 @@ import {
   exportCalculatorBuffSnapshot,
   importCalculatorBuffSnapshot,
 } from '../services/calculatorBuffSnapshotService.js'
-import { fail, success } from '../utils/response.js'
+import { fail, success, failInternal } from '../utils/response.js'
 
 export async function getCalculatorBuffs(_req, res) {
   try {
     const data = await listCalculatorBuffs()
     return success(res, data)
   } catch (err) {
-    return fail(res, err.message || '获取计算器增益数据失败', 500, { error: err.message })
+    return failInternal(res, err, '获取计算器增益数据失败')
   }
 }
 
@@ -43,7 +43,7 @@ export async function getSkillSubcategories(_req, res) {
     const data = await listSkillSubcategories()
     return success(res, data)
   } catch (err) {
-    return fail(res, err.message || '获取招式小类失败', 500, { error: err.message })
+    return failInternal(res, err, '获取招式小类失败')
   }
 }
 
@@ -70,7 +70,7 @@ export async function getFollowUpSkillRules(_req, res) {
     const data = await listFollowUpSkillRules()
     return success(res, data)
   } catch (err) {
-    return fail(res, err.message || '获取追加攻击规则失败', 500, { error: err.message })
+    return failInternal(res, err, '获取追加攻击规则失败')
   }
 }
 
@@ -97,7 +97,7 @@ export async function getSkills(_req, res) {
     const data = await listSkills()
     return success(res, data)
   } catch (err) {
-    return fail(res, err.message || '获取招式库失败', 500, { error: err.message })
+    return failInternal(res, err, '获取招式库失败')
   }
 }
 
@@ -124,7 +124,7 @@ export async function getDamageEventModes(_req, res) {
     const data = await listDamageEventModes()
     return success(res, data)
   } catch (err) {
-    return fail(res, err.message || '获取伤害事件模式失败', 500, { error: err.message })
+    return failInternal(res, err, '获取伤害事件模式失败')
   }
 }
 
@@ -223,7 +223,7 @@ export async function exportCalculatorBuffs(_req, res) {
     const data = await exportCalculatorBuffSnapshot()
     return success(res, data)
   } catch (err) {
-    return fail(res, err.message || '导出计算器增益失败', 500, { error: err.message })
+    return failInternal(res, err, '导出计算器增益失败')
   }
 }
 

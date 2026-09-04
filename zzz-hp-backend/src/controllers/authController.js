@@ -16,7 +16,7 @@ import {
   sendPhoneCode,
   setPassword,
 } from '../services/accountSecurityService.js'
-import { fail, success } from '../utils/response.js'
+import { fail, success, failInternal } from '../utils/response.js'
 import { persistGuestbookBuffer } from './uploadController.js'
 
 function buildImageUrl(filename) {
@@ -42,7 +42,7 @@ async function requireUser(req, res) {
       fail(res, err.message || '账号已被封禁', 403)
       return null
     }
-    fail(res, err.message || '获取用户信息失败', 500)
+    failInternal(res, err, '获取用户信息失败')
     return null
   }
 }
@@ -52,7 +52,7 @@ export async function createQr(req, res) {
     const data = await createMihoyoQr()
     return success(res, data)
   } catch (err) {
-    return fail(res, err.message || '创建二维码失败', 500)
+    return failInternal(res, err, '创建二维码失败')
   }
 }
 
@@ -67,7 +67,7 @@ export async function pollQr(req, res) {
     if (err?.code === 'USER_BANNED' || /封禁/.test(err?.message || '')) {
       return fail(res, err.message || '账号已被封禁', 403)
     }
-    return fail(res, err.message || '查询二维码状态失败', 500)
+    return failInternal(res, err, '查询二维码状态失败')
   }
 }
 
@@ -102,8 +102,10 @@ export async function updateMe(req, res) {
     return success(res, user, '资料已更新')
   } catch (err) {
     const msg = err.message || '更新资料失败'
-    const status = /不能|无效|不存在/.test(msg) ? 400 : 500
-    return fail(res, msg, status)
+    if (/不能|无效|不存在/.test(msg)) {
+      return fail(res, msg, 400)
+    }
+    return failInternal(res, err, '更新资料失败')
   }
 }
 
@@ -119,8 +121,10 @@ export async function uploadAvatar(req, res) {
     return success(res, { url, filename, user }, '上传成功', 201)
   } catch (err) {
     const msg = err.message || '上传失败'
-    const status = /满|支持|上传图片/.test(msg) ? 400 : 500
-    return fail(res, msg, status)
+    if (/满|支持|上传图片/.test(msg)) {
+      return fail(res, msg, 400)
+    }
+    return failInternal(res, err, '上传失败')
   }
 }
 
@@ -131,7 +135,7 @@ export async function getSecurity(req, res) {
     const data = await getSecurityByUserId(current.id)
     return success(res, data)
   } catch (err) {
-    return fail(res, err.message || '获取账号安全信息失败', 500)
+    return failInternal(res, err, '获取账号安全信息失败')
   }
 }
 
@@ -145,8 +149,10 @@ export async function sendBindPhoneCode(req, res) {
     return success(res, data, '验证码已发送')
   } catch (err) {
     const msg = err.message || '发送失败'
-    const status = /请|正确|已被|秒/.test(msg) ? 400 : 500
-    return fail(res, msg, status)
+    if (/请|正确|已被|秒/.test(msg)) {
+      return fail(res, msg, 400)
+    }
+    return failInternal(res, err, '发送失败')
   }
 }
 
@@ -160,8 +166,10 @@ export async function bindPhoneHandler(req, res) {
     return success(res, data, '手机号绑定成功')
   } catch (err) {
     const msg = err.message || '绑定失败'
-    const status = /请|正确|已被|过期|错误/.test(msg) ? 400 : 500
-    return fail(res, msg, status)
+    if (/请|正确|已被|过期|错误/.test(msg)) {
+      return fail(res, msg, 400)
+    }
+    return failInternal(res, err, '绑定失败')
   }
 }
 
@@ -186,8 +194,10 @@ export async function setPasswordHandler(req, res) {
     return success(res, data, '密码已保存')
   } catch (err) {
     const msg = err.message || '设置密码失败'
-    const status = /请|正确|长度|过期|错误/.test(msg) ? 400 : 500
-    return fail(res, msg, status)
+    if (/请|正确|长度|过期|错误/.test(msg)) {
+      return fail(res, msg, 400)
+    }
+    return failInternal(res, err, '设置密码失败')
   }
 }
 
@@ -202,8 +212,10 @@ export async function loginPassword(req, res) {
     if (err?.code === 'USER_BANNED' || /封禁/.test(msg)) {
       return fail(res, msg, 403)
     }
-    const status = /请|正确|错误/.test(msg) ? 400 : 500
-    return fail(res, msg, status)
+    if (/请|正确|错误/.test(msg)) {
+      return fail(res, msg, 400)
+    }
+    return failInternal(res, err, '登录失败')
   }
 }
 

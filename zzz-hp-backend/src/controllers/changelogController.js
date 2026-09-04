@@ -5,7 +5,7 @@ import {
   listChangelogs,
   updateChangelog,
 } from '../services/changelogService.js'
-import { fail, success } from '../utils/response.js'
+import { fail, success, failInternal } from '../utils/response.js'
 
 function normalizePayload(body = {}) {
   const version = typeof body.version === 'string' ? body.version.trim() : ''
@@ -28,7 +28,7 @@ export async function getChangelogs(_req, res) {
     const data = await listChangelogs()
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取更新日志失败', 500, { error: err.message })
+    return failInternal(res, err, '获取更新日志失败')
   }
 }
 
@@ -43,7 +43,7 @@ export async function getChangelog(req, res) {
     if (!data) return fail(res, '更新日志不存在', 404)
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取更新日志失败', 500, { error: err.message })
+    return failInternal(res, err, '获取更新日志失败')
   }
 }
 
@@ -55,7 +55,7 @@ export async function addChangelog(req, res) {
     const data = await createChangelog(payload)
     return success(res, data, '更新日志已创建')
   } catch (err) {
-    return fail(res, '创建更新日志失败', 500, { error: err.message })
+    return failInternal(res, err, '创建更新日志失败')
   }
 }
 
@@ -73,7 +73,7 @@ export async function editChangelog(req, res) {
     if (!data) return fail(res, '更新日志不存在', 404)
     return success(res, data, '更新日志已保存')
   } catch (err) {
-    return fail(res, '保存更新日志失败', 500, { error: err.message })
+    return failInternal(res, err, '保存更新日志失败')
   }
 }
 
@@ -88,6 +88,6 @@ export async function removeChangelog(req, res) {
     if (!ok) return fail(res, '更新日志不存在', 404)
     return success(res, { id }, '更新日志已删除')
   } catch (err) {
-    return fail(res, '删除更新日志失败', 500, { error: err.message })
+    return failInternal(res, err, '删除更新日志失败')
   }
 }

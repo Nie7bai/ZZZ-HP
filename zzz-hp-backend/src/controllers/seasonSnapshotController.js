@@ -1,5 +1,5 @@
 import multer from 'multer'
-import { fail, success } from '../utils/response.js'
+import { fail, failInternal, success } from '../utils/response.js'
 import {
   exportSeasonSnapshot,
   importSeasonSnapshot,
@@ -24,8 +24,10 @@ export async function exportSeasonSnapshotHandler(req, res) {
     const data = await exportSeasonSnapshot(scheme, parseVariant(req.query?.variant))
     return success(res, data)
   } catch (err) {
-    const status = /须为|必填/i.test(err.message) ? 400 : 500
-    return fail(res, err.message || '导出失败', status, { error: err.message })
+    if (/须为|必填/i.test(err.message)) {
+      return fail(res, err.message || '导出失败', 400, { error: err.message })
+    }
+    return failInternal(res, err, '导出失败')
   }
 }
 

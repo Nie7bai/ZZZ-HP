@@ -7,7 +7,7 @@ import {
   sendMessage,
 } from '../services/guestbookDmService.js'
 import { extractBearerToken, getUserByToken } from '../services/userAuthService.js'
-import { fail, success } from '../utils/response.js'
+import { fail, success, failInternal } from '../utils/response.js'
 
 async function resolveAuthUser(req) {
   const token = extractBearerToken(req)
@@ -42,7 +42,7 @@ export async function getMyDmConversations(req, res) {
     const data = await listConversations(authUser.id)
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取会话失败', 500, { error: err.message })
+    return failInternal(res, err, '获取会话失败')
   }
 }
 
@@ -61,7 +61,7 @@ export async function createMyDmConversation(req, res) {
     if (result?.error === 'invalid') return fail(res, '无效的用户 ID', 400)
     return success(res, result, '会话已创建')
   } catch (err) {
-    return fail(res, '创建会话失败', 500, { error: err.message })
+    return failInternal(res, err, '创建会话失败')
   }
 }
 
@@ -78,7 +78,7 @@ export async function getMyDmMessages(req, res) {
     await markConversationRead(conversationId, authUser.id)
     return success(res, result)
   } catch (err) {
-    return fail(res, '获取消息失败', 500, { error: err.message })
+    return failInternal(res, err, '获取消息失败')
   }
 }
 
@@ -103,7 +103,7 @@ export async function sendMyDmMessage(req, res) {
     if (result?.error === 'too_long') return fail(res, '消息过长', 400)
     return success(res, result, '已发送')
   } catch (err) {
-    return fail(res, '发送失败', 500, { error: err.message })
+    return failInternal(res, err, '发送失败')
   }
 }
 
@@ -119,6 +119,6 @@ export async function markMyDmConversationRead(req, res) {
     const conversation = await getConversationById(conversationId, authUser.id)
     return success(res, { updated, conversation })
   } catch (err) {
-    return fail(res, '标记已读失败', 500, { error: err.message })
+    return failInternal(res, err, '标记已读失败')
   }
 }

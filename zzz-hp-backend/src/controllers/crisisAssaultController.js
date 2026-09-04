@@ -4,7 +4,7 @@ import {
   getCrisisAssaultPhases,
 } from '../services/crisisAssaultService.js'
 import { isValidAdminSession } from '../services/adminSessionService.js'
-import { success, fail } from '../utils/response.js'
+import { success, fail, failInternal } from '../utils/response.js'
 
 function readIsSiteAdmin(req) {
   const auth = req.headers.authorization
@@ -25,7 +25,7 @@ export async function listPhases(req, res) {
     const data = await getCrisisAssaultPhases({ includeHidden })
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取危局强袭战数据失败', 500, { error: err.message })
+    return failInternal(res, err, '获取危局强袭战数据失败')
   }
 }
 
@@ -35,7 +35,7 @@ export async function listBossNames(req, res) {
     const data = await getBossNames({ roomType })
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取 Boss 列表失败', 500, { error: err.message })
+    return failInternal(res, err, '获取 Boss 列表失败')
   }
 }
 
@@ -54,6 +54,6 @@ export async function getBossChart(req, res) {
     }
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取 Boss 折线图数据失败', 500, { error: err.message })
+    return failInternal(res, err, '获取 Boss 折线图数据失败')
   }
 }

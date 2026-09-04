@@ -42,7 +42,7 @@ import { checkInGuestbook } from '../services/guestbookExpService.js'
 import { isValidAdminSession } from '../services/adminSessionService.js'
 import { extractBearerToken, getUserByToken, assertUserCanPost } from '../services/userAuthService.js'
 import { submitUnbanRequest } from '../services/guestbookBanService.js'
-import { fail, success } from '../utils/response.js'
+import { fail, success, failInternal } from '../utils/response.js'
 
 const NICKNAME_MAX = 40
 const TITLE_MAX = 120
@@ -101,7 +101,7 @@ async function resolveGuestbookStaff(req, res) {
     return { authUser, isSiteAdmin, isModerator, canManagePosts: isSiteAdmin || isModerator }
   } catch (err) {
     // DB 抖动时兜底，避免 try 外 await 触发 unhandled rejection
-    fail(res, '身份校验失败，请稍后重试', 500, { error: err?.message })
+    failInternal(res, err, '身份校验失败，请稍后重试')
     return null
   }
 }
@@ -229,7 +229,7 @@ export async function getGuestbookEntries(req, res) {
     })
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取留言失败', 500, { error: err.message })
+    return failInternal(res, err, '获取留言失败')
   }
 }
 
@@ -250,7 +250,7 @@ export async function getManageGuestbookEntries(req, res) {
     })
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取管理列表失败', 500, { error: err.message })
+    return failInternal(res, err, '获取管理列表失败')
   }
 }
 
@@ -259,7 +259,7 @@ export async function getGuestbookSensitiveVisibility(req, res) {
     const hidden = await getHideSensitivePosts()
     return success(res, { hidden })
   } catch (err) {
-    return fail(res, '获取敏感内容设置失败', 500, { error: err.message })
+    return failInternal(res, err, '获取敏感内容设置失败')
   }
 }
 
@@ -271,7 +271,7 @@ export async function updateGuestbookSensitiveVisibility(req, res) {
     const hidden = await setHideSensitivePosts(Boolean(req.body?.hidden))
     return success(res, { hidden }, hidden ? '已屏蔽所有敏感内容' : '已恢复展示敏感内容')
   } catch (err) {
-    return fail(res, '更新敏感内容设置失败', 500, { error: err.message })
+    return failInternal(res, err, '更新敏感内容设置失败')
   }
 }
 
@@ -303,7 +303,7 @@ export async function getGuestbookEntry(req, res) {
     }
     return success(res, viewed)
   } catch (err) {
-    return fail(res, '获取留言失败', 500, { error: err.message })
+    return failInternal(res, err, '获取留言失败')
   }
 }
 
@@ -328,7 +328,7 @@ export async function addGuestbookEntry(req, res) {
     if (detail.includes('Data too long')) {
       return fail(res, '标题或正文过长，请缩短后再试', 400, { error: detail })
     }
-    return fail(res, detail ? `发布失败：${detail}` : '发布失败', 500, { error: detail })
+    return failInternal(res, err, '发布失败')
   }
 }
 
@@ -363,7 +363,7 @@ export async function editGuestbookEntry(req, res) {
     if (result?.error === 'forbidden') return fail(res, '无权修改此帖子', 403)
     return success(res, result, '帖子已更新')
   } catch (err) {
-    return fail(res, '更新帖子失败', 500, { error: err.message })
+    return failInternal(res, err, '更新帖子失败')
   }
 }
 
@@ -378,7 +378,7 @@ export async function pinGuestbookEntry(req, res) {
     if (!data) return fail(res, '留言不存在', 404)
     return success(res, data, isPinned ? '帖子已置顶' : '已取消置顶')
   } catch (err) {
-    return fail(res, '置顶操作失败', 500, { error: err.message })
+    return failInternal(res, err, '置顶操作失败')
   }
 }
 
@@ -396,7 +396,7 @@ export async function profilePinGuestbookEntry(req, res) {
     if (result?.error === 'forbidden') return fail(res, '只能置顶自己的委托', 403)
     return success(res, result, isPinned ? '已在个人主页置顶' : '已取消个人置顶')
   } catch (err) {
-    return fail(res, '个人置顶操作失败', 500, { error: err.message })
+    return failInternal(res, err, '个人置顶操作失败')
   }
 }
 
@@ -412,7 +412,7 @@ export async function likeGuestbookEntry(req, res) {
     if (result?.error === 'not_found') return fail(res, '留言不存在', 404)
     return success(res, result, result.liked ? '已点赞' : '已取消点赞')
   } catch (err) {
-    return fail(res, '点赞操作失败', 500, { error: err.message })
+    return failInternal(res, err, '点赞操作失败')
   }
 }
 
@@ -428,7 +428,7 @@ export async function favoriteGuestbookEntry(req, res) {
     if (result?.error === 'not_found') return fail(res, '留言不存在', 404)
     return success(res, result, result.favorited ? '已收藏' : '已取消收藏')
   } catch (err) {
-    return fail(res, '收藏操作失败', 500, { error: err.message })
+    return failInternal(res, err, '收藏操作失败')
   }
 }
 
@@ -440,7 +440,7 @@ export async function getMyFavoriteEntries(req, res) {
     const data = await listFavoritePosts(authUser.id)
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取收藏失败', 500, { error: err.message })
+    return failInternal(res, err, '获取收藏失败')
   }
 }
 
@@ -452,7 +452,7 @@ export async function getMyLikedEntries(req, res) {
     const data = await listLikedPosts(authUser.id)
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取点赞列表失败', 500, { error: err.message })
+    return failInternal(res, err, '获取点赞列表失败')
   }
 }
 
@@ -464,7 +464,7 @@ export async function getMyCommentEntries(req, res) {
     const data = await listCommentsByUser(authUser.id)
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取评论列表失败', 500, { error: err.message })
+    return failInternal(res, err, '获取评论列表失败')
   }
 }
 
@@ -483,7 +483,7 @@ export async function hideGuestbookEntry(req, res) {
     if (!data) return fail(res, '留言不存在', 404)
     return success(res, data, isHidden ? '留言已隐藏' : '留言已恢复展示')
   } catch (err) {
-    return fail(res, '更新留言状态失败', 500, { error: err.message })
+    return failInternal(res, err, '更新留言状态失败')
   }
 }
 
@@ -501,7 +501,7 @@ export async function setGuestbookSensitiveEntry(req, res) {
     if (!data) return fail(res, '留言不存在', 404)
     return success(res, data, isSensitive ? '已标记为敏感内容' : '已取消敏感标记')
   } catch (err) {
-    return fail(res, '更新敏感标记失败', 500, { error: err.message })
+    return failInternal(res, err, '更新敏感标记失败')
   }
 }
 
@@ -519,7 +519,7 @@ export async function removeGuestbookEntry(req, res) {
     if (!ok) return fail(res, '留言不存在', 404)
     return success(res, { id }, '留言已删除')
   } catch (err) {
-    return fail(res, '删除留言失败', 500, { error: err.message })
+    return failInternal(res, err, '删除留言失败')
   }
 }
 
@@ -547,7 +547,7 @@ export async function getGuestbookComments(req, res) {
     })
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取评论失败', 500, { error: err.message })
+    return failInternal(res, err, '获取评论失败')
   }
 }
 
@@ -566,7 +566,7 @@ export async function addGuestbookComment(req, res) {
     if (!data) return fail(res, '留言不存在', 404)
     return success(res, data, '评论已发布')
   } catch (err) {
-    return fail(res, '发布评论失败', 500, { error: err.message })
+    return failInternal(res, err, '发布评论失败')
   }
 }
 
@@ -591,7 +591,7 @@ export async function removeGuestbookComment(req, res) {
     if (result?.error === 'forbidden') return fail(res, '无权删除该评论', 403)
     return success(res, { id, postId: result.postId }, '评论已删除')
   } catch (err) {
-    return fail(res, '删除评论失败', 500, { error: err.message })
+    return failInternal(res, err, '删除评论失败')
   }
 }
 
@@ -617,7 +617,7 @@ export async function blockGuestbookComment(req, res) {
           : '已取消屏蔽'
     return success(res, result, msg)
   } catch (err) {
-    return fail(res, '屏蔽评论失败', 500, { error: err.message })
+    return failInternal(res, err, '屏蔽评论失败')
   }
 }
 
@@ -636,7 +636,7 @@ export async function requestRestoreGuestbookEntry(req, res) {
     const msg = result.alreadyRequested ? '已提交恢复申请，请等待管理员处理' : '恢复申请已提交'
     return success(res, result.post, msg)
   } catch (err) {
-    return fail(res, '提交恢复申请失败', 500, { error: err.message })
+    return failInternal(res, err, '提交恢复申请失败')
   }
 }
 
@@ -653,7 +653,7 @@ export async function restoreGuestbookEntry(req, res) {
     if (!data) return fail(res, '留言不存在', 404)
     return success(res, data, '帖子已恢复')
   } catch (err) {
-    return fail(res, '恢复帖子失败', 500, { error: err.message })
+    return failInternal(res, err, '恢复帖子失败')
   }
 }
 
@@ -665,7 +665,7 @@ export async function getMyNotifications(req, res) {
     const data = await listGuestbookNotifications(authUser.id)
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取通知失败', 500, { error: err.message })
+    return failInternal(res, err, '获取通知失败')
   }
 }
 
@@ -677,7 +677,7 @@ export async function getMyNotificationUnreadCount(req, res) {
     const count = await countUnreadNotifications(authUser.id)
     return success(res, { count })
   } catch (err) {
-    return fail(res, '获取通知失败', 500, { error: err.message })
+    return failInternal(res, err, '获取通知失败')
   }
 }
 
@@ -690,7 +690,7 @@ export async function markMyNotificationsRead(req, res) {
     const updated = await markNotificationsRead(authUser.id, ids)
     return success(res, { updated }, '已标记为已读')
   } catch (err) {
-    return fail(res, '更新通知失败', 500, { error: err.message })
+    return failInternal(res, err, '更新通知失败')
   }
 }
 
@@ -708,7 +708,7 @@ export async function likeGuestbookComment(req, res) {
     if (result?.error === 'not_found') return fail(res, '评论不存在', 404)
     return success(res, result, result.liked ? '已点赞' : '已取消点赞')
   } catch (err) {
-    return fail(res, '点赞操作失败', 500, { error: err.message })
+    return failInternal(res, err, '点赞操作失败')
   }
 }
 
@@ -730,7 +730,7 @@ export async function reportGuestbookEntry(req, res) {
     const msg = result.duplicate ? '今日已举报过该委托' : '举报已提交，管理员会尽快处理'
     return success(res, result, msg)
   } catch (err) {
-    return fail(res, '举报失败', 500, { error: err.message })
+    return failInternal(res, err, '举报失败')
   }
 }
 
@@ -754,7 +754,7 @@ export async function reportGuestbookComment(req, res) {
     const msg = result.duplicate ? '今日已举报过该评论' : '举报已提交，管理员会尽快处理'
     return success(res, result, msg)
   } catch (err) {
-    return fail(res, '举报失败', 500, { error: err.message })
+    return failInternal(res, err, '举报失败')
   }
 }
 
@@ -777,7 +777,7 @@ export async function getGuestbookReports(req, res) {
         : data.filter((r) => r.targetType !== 'user')
     return success(res, filtered)
   } catch (err) {
-    return fail(res, '加载举报失败', 500, { error: err.message })
+    return failInternal(res, err, '加载举报失败')
   }
 }
 
@@ -800,7 +800,7 @@ export async function handleGuestbookReport(req, res) {
     if (!result.ok) return fail(res, '处理失败', 400)
     return success(res, { id }, '已标记为已处理，已通知举报人')
   } catch (err) {
-    return fail(res, '处理举报失败', 500, { error: err.message })
+    return failInternal(res, err, '处理举报失败')
   }
 }
 
@@ -824,7 +824,7 @@ export async function reportGuestbookUser(req, res) {
     const msg = result.duplicate ? '今日已举报过该用户' : '举报已提交，管理员会尽快处理'
     return success(res, result, msg)
   } catch (err) {
-    return fail(res, '举报失败', 500, { error: err.message })
+    return failInternal(res, err, '举报失败')
   }
 }
 
@@ -841,7 +841,7 @@ export async function requestGuestbookUnban(req, res) {
     if (result?.error) return fail(res, '申请失败', 400)
     return success(res, result, '解封申请已提交')
   } catch (err) {
-    return fail(res, '申请解封失败', 500, { error: err.message })
+    return failInternal(res, err, '申请解封失败')
   }
 }
 
@@ -861,6 +861,6 @@ export async function checkInGuestbookEntry(req, res) {
     if (result.error) return fail(res, '打卡失败', 400)
     return success(res, result, '打卡成功')
   } catch (err) {
-    return fail(res, '打卡失败', 500, { error: err.message })
+    return failInternal(res, err, '打卡失败')
   }
 }

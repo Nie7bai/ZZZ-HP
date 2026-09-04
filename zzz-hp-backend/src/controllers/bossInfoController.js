@@ -6,7 +6,7 @@ import {
   deleteBossInfoById,
   syncBossInfoFromBoss,
 } from '../services/bossInfoService.js'
-import { success, fail } from '../utils/response.js'
+import { success, fail, failInternal } from '../utils/response.js'
 
 export async function lookupBossInfo(req, res) {
   const bossName = req.query.boss_name ?? req.query.name ?? ''
@@ -15,7 +15,7 @@ export async function lookupBossInfo(req, res) {
     const data = await findBossInfoByName(bossName)
     return success(res, data, data ? '已找到 Boss 基础信息' : '未找到 Boss 基础信息')
   } catch (err) {
-    return fail(res, 'Boss 基础信息查询失败', 500, { error: err.message })
+    return failInternal(res, err, 'Boss 基础信息查询失败')
   }
 }
 
@@ -26,7 +26,7 @@ export async function searchBossInfo(req, res) {
     const data = await searchBossInfoNames(keyword)
     return success(res, data)
   } catch (err) {
-    return fail(res, 'Boss 名称检索失败', 500, { error: err.message })
+    return failInternal(res, err, 'Boss 名称检索失败')
   }
 }
 
@@ -40,7 +40,7 @@ export async function listBossInfo(req, res) {
     const data = await listBossInfoRecords({ keyword, limit, offset, catalog })
     return success(res, data)
   } catch (err) {
-    return fail(res, 'Boss 基础库列表查询失败', 500, { error: err.message })
+    return failInternal(res, err, 'Boss 基础库列表查询失败')
   }
 }
 
@@ -88,6 +88,6 @@ export async function syncBossInfoFromBossHandler(req, res) {
       `已从 boss 同步：新建 ${data.created} · 更新图片 ${data.updatedImage} · 未变 ${data.unchanged}`,
     )
   } catch (err) {
-    return fail(res, err.message || '从 boss 同步失败', 500, { error: err.message })
+    return failInternal(res, err, '从 boss 同步失败')
   }
 }

@@ -3,14 +3,14 @@ import {
   listSiteInfoSections,
   updateSiteInfoSection,
 } from '../services/siteInfoService.js'
-import { fail, success } from '../utils/response.js'
+import { fail, success, failInternal } from '../utils/response.js'
 
 export async function getSiteInfoSections(_req, res) {
   try {
     const data = await listSiteInfoSections()
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取网站说明失败', 500, { error: err.message })
+    return failInternal(res, err, '获取网站说明失败')
   }
 }
 
@@ -21,7 +21,7 @@ export async function getSiteInfoSectionByKey(req, res) {
     if (!data) return fail(res, '栏目不存在', 404)
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取网站说明失败', 500, { error: err.message })
+    return failInternal(res, err, '获取网站说明失败')
   }
 }
 
@@ -36,6 +36,6 @@ export async function editSiteInfoSection(req, res) {
     if (!data) return fail(res, '栏目不存在', 404)
     return success(res, data, '网站说明已保存')
   } catch (err) {
-    return fail(res, '保存网站说明失败', 500, { error: err.message })
+    return failInternal(res, err, '保存网站说明失败')
   }
 }

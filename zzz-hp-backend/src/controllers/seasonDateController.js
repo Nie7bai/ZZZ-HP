@@ -4,7 +4,7 @@ import {
   listSeasonDates,
   updateSeasonDate,
 } from '../services/seasonDateService.js'
-import { fail, success } from '../utils/response.js'
+import { fail, success, failInternal } from '../utils/response.js'
 
 export async function getSeasonDates(req, res) {
   try {
@@ -17,7 +17,7 @@ export async function getSeasonDates(req, res) {
     const data = await listSeasonDates(mode)
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取版本日期失败', 500, { error: err.message })
+    return failInternal(res, err, '获取版本日期失败')
   }
 }
 
@@ -26,8 +26,10 @@ export async function postSeasonDate(req, res) {
     const data = await createSeasonDate(req.body || {})
     return success(res, data, '版本日期已创建')
   } catch (err) {
-    const status = /必填|不存在|Duplicate/i.test(err.message) ? 400 : 500
-    return fail(res, err.message || '创建失败', status)
+    if (/必填|不存在|Duplicate/i.test(err.message)) {
+      return fail(res, err.message || '创建失败', 400)
+    }
+    return failInternal(res, err, '创建失败')
   }
 }
 
@@ -38,8 +40,10 @@ export async function putSeasonDate(req, res) {
     const data = await updateSeasonDate(id, req.body || {})
     return success(res, data, '版本日期已更新')
   } catch (err) {
-    const status = /必填|不存在|Duplicate/i.test(err.message) ? 400 : 500
-    return fail(res, err.message || '更新失败', status)
+    if (/必填|不存在|Duplicate/i.test(err.message)) {
+      return fail(res, err.message || '更新失败', 400)
+    }
+    return failInternal(res, err, '更新失败')
   }
 }
 
@@ -50,7 +54,9 @@ export async function removeSeasonDate(req, res) {
     const data = await deleteSeasonDate(id)
     return success(res, data, '版本日期已删除')
   } catch (err) {
-    const status = /不存在/i.test(err.message) ? 404 : 500
-    return fail(res, err.message || '删除失败', status)
+    if (/不存在/i.test(err.message)) {
+      return fail(res, err.message || '删除失败', 404)
+    }
+    return failInternal(res, err, '删除失败')
   }
 }

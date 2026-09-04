@@ -1,5 +1,5 @@
 import { importNanokaDefenseSeason, importNanokaDefenseSeasonBatch } from '../services/nanokaDefenseImportService.js'
-import { success, fail } from '../utils/response.js'
+import { success, failInternal } from '../utils/response.js'
 
 export async function importFromNanoka(req, res) {
   try {
@@ -40,6 +40,6 @@ export async function importFromNanoka(req, res) {
     const message = data.dryRun ? 'nanoka 数据解析完成（未写入）' : 'nanoka 式舆数据导入完成'
     return success(res, data, message, data.dryRun ? 200 : 201)
   } catch (err) {
-    return fail(res, 'nanoka 导入失败', 500, { error: err.message })
+    return failInternal(res, err, 'nanoka 导入失败')
   }
 }

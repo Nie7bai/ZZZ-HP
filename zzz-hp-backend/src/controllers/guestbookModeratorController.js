@@ -5,7 +5,7 @@ import {
   setGuestbookModeratorEnabled,
 } from '../services/guestbookModeratorService.js'
 import { isValidAdminSession } from '../services/adminSessionService.js'
-import { fail, success } from '../utils/response.js'
+import { fail, success, failInternal } from '../utils/response.js'
 
 function readIsSiteAdmin(req) {
   const auth = req.headers.authorization
@@ -26,7 +26,7 @@ export async function getGuestbookModerators(req, res) {
     const data = await listGuestbookModerators()
     return success(res, data)
   } catch (err) {
-    return fail(res, '获取留言板管理员失败', 500, { error: err.message })
+    return failInternal(res, err, '获取留言板管理员失败')
   }
 }
 
@@ -41,7 +41,7 @@ export async function createGuestbookModerator(req, res) {
     if (result?.error) return fail(res, result.error, 400)
     return success(res, result, '已添加留言板管理员')
   } catch (err) {
-    return fail(res, '添加留言板管理员失败', 500, { error: err.message })
+    return failInternal(res, err, '添加留言板管理员失败')
   }
 }
 
@@ -55,7 +55,7 @@ export async function deleteGuestbookModerator(req, res) {
     if (!ok) return fail(res, '管理员不存在', 404)
     return success(res, { id }, '已移除留言板管理员')
   } catch (err) {
-    return fail(res, '移除留言板管理员失败', 500, { error: err.message })
+    return failInternal(res, err, '移除留言板管理员失败')
   }
 }
 
@@ -72,6 +72,6 @@ export async function toggleGuestbookModerator(req, res) {
     if (!data) return fail(res, '管理员不存在', 404)
     return success(res, data, enabled ? '管理员已启用' : '管理员已停用')
   } catch (err) {
-    return fail(res, '更新管理员状态失败', 500, { error: err.message })
+    return failInternal(res, err, '更新管理员状态失败')
   }
 }

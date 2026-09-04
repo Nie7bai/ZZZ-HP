@@ -1,5 +1,5 @@
 import { extractBearerToken, getUserByToken } from '../services/userAuthService.js'
-import { fail } from '../utils/response.js'
+import { fail, failInternal } from '../utils/response.js'
 
 /**
  * 登录用户鉴权（Multer 之前使用，避免未登录先落盘）。
@@ -21,6 +21,6 @@ export async function requireUser(req, res, next) {
     if (err?.code === 'USER_BANNED') {
       return fail(res, err.message || '账号已被封禁', 403)
     }
-    return fail(res, err.message || '获取用户信息失败', 500)
+    return failInternal(res, err, '获取用户信息失败')
   }
 }
