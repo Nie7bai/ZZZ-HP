@@ -72,6 +72,7 @@ import {
   packFromBlocks,
   packFromEffects,
 } from '@/utils/buffEffect'
+import { invalidateBuffCatalogCache } from '@/utils/panelBuffCalc'
 
 function normalizeSupportNeeds(value: unknown): SupportStatNeed[] {
   if (!Array.isArray(value)) return []
@@ -445,36 +446,40 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
     const index = agents.value.findIndex((item) => item.id === doc.id)
     if (index >= 0) {
       agents.value[index] = doc
-      return
+    } else {
+      agents.value.push(doc)
     }
-    agents.value.push(doc)
+    invalidateBuffCatalogCache()
   }
 
   function applyLocalWengine(doc: WengineBuffDoc) {
     const index = wengines.value.findIndex((item) => item.id === doc.id)
     if (index >= 0) {
       wengines.value[index] = doc
-      return
+    } else {
+      wengines.value.push(doc)
     }
-    wengines.value.push(doc)
+    invalidateBuffCatalogCache()
   }
 
   function applyLocalBangboo(doc: BangbooBuffDoc) {
     const index = bangboos.value.findIndex((item) => item.id === doc.id)
     if (index >= 0) {
       bangboos.value[index] = doc
-      return
+    } else {
+      bangboos.value.push(doc)
     }
-    bangboos.value.push(doc)
+    invalidateBuffCatalogCache()
   }
 
   function applyLocalDriveDisc(doc: DriveDiscBuffDoc) {
     const index = driveDiscs.value.findIndex((item) => item.id === doc.id)
     if (index >= 0) {
       driveDiscs.value[index] = doc
-      return
+    } else {
+      driveDiscs.value.push(doc)
     }
-    driveDiscs.value.push(doc)
+    invalidateBuffCatalogCache()
   }
 
   async function loadAll(force = false) {
@@ -536,6 +541,7 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
           skillSubcategories.value,
           followUpSkillRules.value,
         )
+        invalidateBuffCatalogCache()
         loaded.value = true
         error.value = ''
       } catch (err) {
@@ -563,6 +569,7 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
   async function deleteAgent(id: string) {
     await deleteAgentBuff(id)
     agents.value = agents.value.filter((item) => item.id !== id)
+    invalidateBuffCatalogCache()
   }
 
   async function upsertWengine(doc: WengineBuffDoc) {
@@ -574,6 +581,7 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
   async function deleteWengine(id: string) {
     await deleteWengineBuff(id)
     wengines.value = wengines.value.filter((item) => item.id !== id)
+    invalidateBuffCatalogCache()
   }
 
   async function upsertBangboo(doc: BangbooBuffDoc) {
@@ -585,6 +593,7 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
   async function deleteBangboo(id: string) {
     await deleteBangbooBuff(id)
     bangboos.value = bangboos.value.filter((item) => item.id !== id)
+    invalidateBuffCatalogCache()
   }
 
   async function upsertDriveDisc(doc: DriveDiscBuffDoc) {
@@ -600,6 +609,7 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
   async function deleteDriveDisc(id: string) {
     await deleteDriveDiscBuff(id)
     driveDiscs.value = driveDiscs.value.filter((item) => item.id !== id)
+    invalidateBuffCatalogCache()
   }
 
   async function upsertSkillSubcategoryDoc(doc: SkillSubcategory) {

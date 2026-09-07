@@ -17,6 +17,8 @@
     "test:crisis-hp-score": "npx vite-node scripts/test-crisis-hp-score-convert.mjs",
     "test:mode-routes": "npx vite-node scripts/test-mode-panel-routes.mjs",
     "test:affix-preagg": "npx vite-node scripts/test-affix-preagg.mjs",
+    "test:buff-catalog-cache": "npx vite-node scripts/test-buff-catalog-cache.mjs",
+    "test:user-auth-session": "npx vite-node scripts/test-user-auth-session-race.mjs",
     "lint": "run-s \"lint:*\"",
     "lint:oxlint": "oxlint . --fix",
     "lint:eslint": "eslint . --fix --cache",

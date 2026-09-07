@@ -50,6 +50,10 @@ function writeSavedAccounts(list: SavedAccount[]) {
   localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(list.slice(0, MAX_ACCOUNTS)))
 }
 
+function readStoredToken(): string {
+  return localStorage.getItem(TOKEN_KEY) || ''
+}
+
 export const useUserAuthStore = defineStore('userAuth', () => {
   const token = ref(localStorage.getItem(TOKEN_KEY) || '')
   const user = ref<AuthUser | null>(null)
@@ -59,6 +63,11 @@ export const useUserAuthStore = defineStore('userAuth', () => {
   const savedAccounts = ref<SavedAccount[]>(readSavedAccounts())
 
   const isLoggedIn = computed(() => Boolean(token.value && user.value))
+
+  /** 发起异步鉴权时的会话是否仍有效（含其他标签页改写的 localStorage） */
+  function isCurrentSession(requestToken: string) {
+    return Boolean(requestToken) && token.value === requestToken && readStoredToken() === requestToken
+  }
 
   function upsertSavedAccount(nextToken: string, nextUser: AuthUser) {
     const entry: SavedAccount = {
@@ -116,38 +125,45 @@ export const useUserAuthStore = defineStore('userAuth', () => {
 
   async function restoreSession() {
     savedAccounts.value = readSavedAccounts()
-    const saved = localStorage.getItem(TOKEN_KEY) || ''
-    if (!saved) {
+    const requestToken = localStorage.getItem(TOKEN_KEY) || ''
+    if (!requestToken) {
       ready.value = true
       return
     }
-    token.value = saved
+    token.value = requestToken
     try {
-      user.value = await fetchAuthMe(saved)
-      if (user.value) upsertSavedAccount(saved, user.value)
+      const me = await fetchAuthMe(requestToken)
+      if (!isCurrentSession(requestToken)) return
+      user.value = me
+      if (me) upsertSavedAccount(requestToken, me)
     } catch (err) {
-      handleAuthFailure(err)
+      if (isCurrentSession(requestToken)) handleAuthFailure(err)
     } finally {
       ready.value = true
     }
   }
 
   async function switchAccount(saved: SavedAccount) {
+    const requestToken = saved.token
     const prevToken = token.value
     const prevUser = user.value
-    token.value = saved.token
-    localStorage.setItem(TOKEN_KEY, saved.token)
+    token.value = requestToken
+    localStorage.setItem(TOKEN_KEY, requestToken)
     try {
-      const me = await fetchAuthMe(saved.token)
+      const me = await fetchAuthMe(requestToken)
+      if (!isCurrentSession(requestToken)) return me
       user.value = me
       banNotice.value = ''
-      upsertSavedAccount(saved.token, me)
+      upsertSavedAccount(requestToken, me)
       closeLoginDialog()
+      return me
     } catch (err) {
-      token.value = prevToken
-      user.value = prevUser
-      if (prevToken) localStorage.setItem(TOKEN_KEY, prevToken)
-      else localStorage.removeItem(TOKEN_KEY)
+      if (token.value === requestToken) {
+        token.value = prevToken
+        user.value = prevUser
+        if (prevToken) localStorage.setItem(TOKEN_KEY, prevToken)
+        else localStorage.removeItem(TOKEN_KEY)
+      }
       if (isAccountBannedError(err)) {
         setBanNotice(err instanceof Error ? err.message : '账号已被封禁')
       }
@@ -169,29 +185,37 @@ export const useUserAuthStore = defineStore('userAuth', () => {
   }
 
   async function refreshMe() {
-    if (!token.value) return null
+    const requestToken = token.value
+    if (!requestToken) return null
     try {
-      user.value = await fetchAuthMe(token.value)
-      if (user.value) upsertSavedAccount(token.value, user.value)
-      return user.value
+      const me = await fetchAuthMe(requestToken)
+      if (!isCurrentSession(requestToken)) return me
+      user.value = me
+      if (me) upsertSavedAccount(requestToken, me)
+      return me
     } catch (err) {
-      handleAuthFailure(err)
+      if (isCurrentSession(requestToken)) handleAuthFailure(err)
       throw err
     }
   }
 
   async function updateProfile(payload: UpdateProfilePayload) {
-    if (!token.value) throw new Error('未登录')
-    user.value = await updateAuthProfile(token.value, payload)
-    if (user.value) upsertSavedAccount(token.value, user.value)
-    return user.value
+    const requestToken = token.value
+    if (!requestToken) throw new Error('未登录')
+    const me = await updateAuthProfile(requestToken, payload)
+    if (!isCurrentSession(requestToken)) return me
+    user.value = me
+    if (me) upsertSavedAccount(requestToken, me)
+    return me
   }
 
   async function uploadProfileImage(file: File, field: 'avatar' | 'banner' = 'avatar') {
-    if (!token.value) throw new Error('未登录')
-    const result = await uploadAuthImage(token.value, file, field)
+    const requestToken = token.value
+    if (!requestToken) throw new Error('未登录')
+    const result = await uploadAuthImage(requestToken, file, field)
+    if (!isCurrentSession(requestToken)) return result
     user.value = result.user
-    if (user.value) upsertSavedAccount(token.value, user.value)
+    if (user.value) upsertSavedAccount(requestToken, user.value)
     return result
   }
 

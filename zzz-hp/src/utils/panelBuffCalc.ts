@@ -1457,6 +1457,11 @@ const buffCatalogCache = new Map<string, BuffCatalogEntry>()
 /** 每条招式上下文 × 结算槽位各占一条；32 在长流程扫掠时会挤掉还要用的条目 */
 const BUFF_CATALOG_CACHE_LIMIT = 128
 
+/** 目录文档（角色/音擎/邦布/驱动盘）内容变更后须调用，避免同 ID 命中旧效果 */
+export function invalidateBuffCatalogCache() {
+  buffCatalogCache.clear()
+}
+
 function touchBuffCatalogEntry(key: string, entry: BuffCatalogEntry) {
   buffCatalogCache.delete(key)
   buffCatalogCache.set(key, entry)
