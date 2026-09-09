@@ -47,6 +47,14 @@ zzz-hp-backend/data/*
 # Local Cursor search dumps
 **/.cursor-search/
 
+# Temporary scratch files (never commit)
+# 一次性排查脚本、临时导出/备份，避免误入版本库
+tmp-*.mjs
+tmp-*.js
+tmp-*.json
+tmp-backups/
+**/tmp-backups/
+
 # Editor / OS
 .DS_Store
 .idea/
