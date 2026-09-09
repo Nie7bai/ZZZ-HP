@@ -149,7 +149,7 @@ export interface DamageCalcResult {
   sharpenDmgMultiplier: number
   /** 是否走锐化公式 */
   useSharpenFormula: boolean
-  /** 锐爆伤害 B（= 1.2 + 锐爆伤害加成） */
+  /** 锐爆伤害 B（= 锐爆伤害加成/100，以角色数据为准） */
   sharpenCritDmgRatio: number
   /** 锐爆期望区 */
   sharpenCritZone: number
@@ -329,7 +329,8 @@ export function computeVulnerableZone(options: {
 
 /**
  * 锐爆期望区。
- * B = 1.2 + 锐爆伤害加成%/100；r = clamp(暴击率%/100, 0, 2)（锋御上限 200%）。
+ * B = 锐爆伤害加成%/100（完全以角色数据为准，无内置基础值）；
+ * r = clamp(暴击率%/100, 0, 2)（锋御上限 200%）。
  * r ≤ 1: 1 + r×B
  * r > 1: (1+B) × [1 + B×(r−1)]（首段必暴 + 超出部分再判一次）
  */
@@ -337,7 +338,7 @@ export function computeSharpenCritExpectedZone(
   critRatePercent: number,
   sharpenCritDmgBonusPercent: number,
 ): number {
-  const B = 1.2 + sharpenCritDmgBonusPercent / 100
+  const B = sharpenCritDmgBonusPercent / 100
   const r = clamp(critRatePercent / 100, 0, 2)
   if (r <= 1) return 1 + r * B
   return (1 + B) * (1 + B * (r - 1))
@@ -348,7 +349,7 @@ export function computeSharpenCritFullCritZone(
   critRatePercent: number,
   sharpenCritDmgBonusPercent: number,
 ): number {
-  const B = 1.2 + sharpenCritDmgBonusPercent / 100
+  const B = sharpenCritDmgBonusPercent / 100
   const r = clamp(critRatePercent / 100, 0, 2)
   if (r <= 1) return 1 + B
   return (1 + B) * (1 + B * (r - 1))
@@ -651,7 +652,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     mainParts.dmgMultiplier > 0 ? directDmgMultiplier / mainParts.dmgMultiplier : 1
 
   const combatSharpenCritDmgBonus = input.combatSharpenCritDmgBonus ?? 0
-  const sharpenCritDmgRatio = 1.2 + combatSharpenCritDmgBonus / 100
+  const sharpenCritDmgRatio = combatSharpenCritDmgBonus / 100
   const sharpenCritZone = computeSharpenCritExpectedZone(panel.critRate, combatSharpenCritDmgBonus)
   const sharpenCritZoneNoCrit = 1
   const sharpenCritZoneFullCrit = computeSharpenCritFullCritZone(

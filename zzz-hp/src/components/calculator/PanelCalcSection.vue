@@ -113,6 +113,7 @@ import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 import {
   buildAlignedDirectFormulaGroup,
   buildDirectDamageExpectedProcessItems,
+  buildSharpenCritZoneLines,
   formatDirectDmgMultZoneFormula,
   formatSettlementDmgMultZoneFormula,
 } from '@/utils/directDamageDisplay'
@@ -2943,14 +2944,34 @@ const valueTips = computed(() => {
       `局内暴击 ${formatFormulaNumber(tipPanel.critRate, 2)}% = ${formatFormulaNumber(p.critRateRatio)}（计入上限）`,
     ),
     critMultiplier: withTotal(
-      buildStatSourceGroups({
-        keys: ['critRate', 'critDmg'],
-        externalPanel: tipExternal,
-        sources: tipSources,
-        finalValues: { critRate: tipPanel.critRate, critDmg: tipPanel.critDmg },
-      }),
       p.useSharpenFormula
-        ? `锐爆区 = ${formatFormulaNumber(p.critMultiplier)}（暴击率上限 200%，不乘常规暴伤）`
+        ? [
+            // 锐爆区口径与常规暴击区不同：不用常规暴伤，改用锐爆伤害加成
+            ...buildStatSourceGroups({
+              keys: ['critRate'],
+              externalPanel: tipExternal,
+              sources: tipSources,
+              finalValues: { critRate: tipPanel.critRate },
+            }),
+            ...buildStatSourceGroups({
+              keys: ['sharpenCritDmgBonus'],
+              externalPanel: tipExternal,
+              sources: tipSources,
+              externalKeyMap: { sharpenCritDmgBonus: null },
+            }),
+            {
+              label: '锐爆区计算过程',
+              items: buildSharpenCritZoneLines(p, formatFormulaNumber),
+            },
+          ]
+        : buildStatSourceGroups({
+            keys: ['critRate', 'critDmg'],
+            externalPanel: tipExternal,
+            sources: tipSources,
+            finalValues: { critRate: tipPanel.critRate, critDmg: tipPanel.critDmg },
+          }),
+      p.useSharpenFormula
+        ? `锐爆区 = ${formatFormulaNumber(p.critMultiplier)}（B = ${formatFormulaNumber(p.sharpenCritDmgRatio, 4)}，暴击率上限 200%，不乘常规暴伤）`
         : `暴击区 1 + ${formatFormulaNumber(p.critRateRatio)} × ${formatFormulaNumber(p.critDmgRatio)} = ${formatFormulaNumber(p.critMultiplier)}`,
     ),
     specialMultiplier: withTotal(
@@ -3117,7 +3138,7 @@ const valueTips = computed(() => {
         label: '乘区组成',
         items: [
           `通用乘区 ${directFormulaParts.value[0]}`,
-          `暴击区 ${directFormulaParts.value[1]}`,
+          `${p.useSharpenFormula ? '锐爆区' : '暴击区'} ${directFormulaParts.value[1]}`,
           `特殊乘区 ${directFormulaParts.value[2]}`,
           ...(p.baseDamageSource === 'pierce'
             ? [`贯穿增伤区 ${formatFormulaNumber(p.pierceDmgMultiplier)}`]

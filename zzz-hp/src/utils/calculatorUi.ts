@@ -347,7 +347,7 @@ export const BUFF_STAT_FIELDS: {
     key: 'sharpenCritDmgBonus',
     label: '锐爆伤害加成',
     unit: 'percent',
-    hint: '仅锐化：锐爆伤害 B = 120% + 本值；替换常规暴伤区',
+    hint: '仅锐化：锐爆伤害 B = 本值（无内置基础值）；替换常规暴伤区',
   },
   {
     key: 'dmgPenalty',
