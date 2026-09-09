@@ -1044,20 +1044,15 @@ function syncLivePanelFromCommitted() {
 }
 
 watch(
-  isMbMainAgent,
-  (isMb) => {
+  [isMbMainAgent, isFengYuMainAgent],
+  ([isMb, isFengYu], [prevMb, prevFengYu]) => {
     if (isMb) {
       baseDamageSource.value = 'pierce'
-    }
-  },
-  { immediate: true },
-)
-
-watch(
-  isFengYuMainAgent,
-  (isFengYu) => {
-    if (isFengYu) {
+    } else if (isFengYu) {
       baseDamageSource.value = 'def'
+    } else if (prevMb || prevFengYu) {
+      // 从命破/锋御切回普通职业：必须复位，否则残留 def/pierce 会让普通角色拿错基础伤害
+      baseDamageSource.value = 'atk'
     }
   },
   { immediate: true },

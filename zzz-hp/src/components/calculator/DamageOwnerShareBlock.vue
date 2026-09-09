@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { DamageOwnerShareSummary } from '@/utils/damageEventOwner'
 
 const props = defineProps<{
@@ -20,12 +20,20 @@ const emit = defineEmits<{
 
 const expandedOwnerIds = ref<Set<string>>(new Set())
 
-watch(
-  () => props.summary,
-  () => {
-    expandedOwnerIds.value = new Set()
-  },
+/**
+ * 仅在统计口径真正变化时重置展开状态。
+ * 上游会周期性重建 summary 对象（同内容新引用），直接按引用判断会把用户展开的
+ * 产生者强制折叠，因此这里比较结构签名。
+ */
+const summaryStructureKey = computed(() =>
+  (props.summary?.shares ?? [])
+    .map((item) => `${item.agentId}:${item.events.map((event) => event.eventId).join(',')}`)
+    .join('|'),
 )
+
+watch(summaryStructureKey, () => {
+  expandedOwnerIds.value = new Set()
+})
 
 function formatNumber(v: number) {
   return Math.round(v).toLocaleString('zh-CN')

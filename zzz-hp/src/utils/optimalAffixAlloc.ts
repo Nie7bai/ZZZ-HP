@@ -1435,7 +1435,9 @@ const affixEvalCache = new Map<
 >()
 
 function affixCountsCacheKey(affixCounts: AffixCounts): string {
-  return `${affixCounts.hpFlat},${affixCounts.hpPercent},${affixCounts.atkFlat},${affixCounts.atkPercent},${affixCounts.pen},${affixCounts.critRate},${affixCounts.critDmg},${affixCounts.mastery}`
+  // 必须覆盖 AffixCounts 的全部字段：锋御走 defFlat/defPercent，
+  // 漏掉会让不同防御档数命中同一条缓存，返回错误伤害。
+  return `${affixCounts.hpFlat},${affixCounts.hpPercent},${affixCounts.atkFlat},${affixCounts.atkPercent},${affixCounts.defFlat},${affixCounts.defPercent},${affixCounts.pen},${affixCounts.critRate},${affixCounts.critDmg},${affixCounts.mastery}`
 }
 
 function serializeBuffSelection(state: BuffSelectionState | null | undefined): string {
