@@ -473,6 +473,10 @@ export interface Skill {
    * 公共属性异常用这个字段按当前角色 `element` 拆条。
    */
   element?: string
+  /**
+   * 非空 = 技能组私有招式：不进招式库顶层列表，只在所属组编辑里出现。
+   */
+  ownerGroupId?: string | null
   source: SkillSource
   damageType: SkillDamageType
   /** 招式类型，多选。异常类留空 → 仅靠类型的招式限定 Buff 不命中 */
@@ -488,6 +492,31 @@ export interface Skill {
   baseMultFactor?: number
   /** 决算倍率%，仅直伤可选 */
   settlementMult?: number
+  /** 备注：计算页招式库/准备行展示 */
+  note?: string
+}
+
+/** 技能组成员（引用招式库 skillId） */
+export interface SkillGroupMember {
+  skillId: string
+  order: number
+  /** 组定义默认段次数；流程展开时再 × FlowEntry.count */
+  count: number
+  /** 保留字段：现已一律计入流程（兼容旧数据） */
+  includeInFlow: boolean
+}
+
+/**
+ * 技能组：招式库内的编排包。准备/流程里仍是一条，结算时按 members 内部展开。
+ */
+export interface SkillGroup {
+  id: string
+  agentId: string
+  name: string
+  note?: string
+  /** 预设（管理端）或自建（浏览器）；缺省按 preset */
+  source?: SkillSource
+  members: SkillGroupMember[]
 }
 
 /** 管理端：计算时再选产生角色 */
@@ -671,6 +700,7 @@ export interface CalculatorBuffData {
   followUpSkillRules?: FollowUpSkillRule[]
   damageEventModes?: DamageEventMode[]
   skills?: Skill[]
+  skillGroups?: SkillGroup[]
   exportedAt?: string
 }
 
@@ -690,4 +720,5 @@ export interface CalculatorBuffImportSummary {
   followUpSkillRules: CalculatorBuffImportTypeSummary
   damageEventModes: CalculatorBuffImportTypeSummary
   skills: CalculatorBuffImportTypeSummary
+  skillGroups: CalculatorBuffImportTypeSummary
 }

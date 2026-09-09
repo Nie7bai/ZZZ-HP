@@ -103,31 +103,65 @@ export interface PreparedSkillExtraMods {
 }
 
 /**
+ * 准备阶段技能组内某一段的双代理人（与普通准备招式同语义）。
+ * memberKey = `${order}:${skillId}`，与流程细调对齐。
+ */
+export interface PreparedGroupMemberAgents {
+  memberKey: string
+  skillId: string
+  anomalyPowerAgentId?: string | null
+  triggerAgentId?: string | null
+}
+
+/**
  * 准备阶段的一条记录（用户仍称之为「招式」，此名仅存盘用）。
- * 只绑定招式库的 `skillId`，不复制招式定义。
+ * 普通招式绑 `skillId`；技能组绑 `skillGroupId`（二者互斥）。
  */
 export interface PreparedSkill {
   /** 本方案内实例 id；流程引用它，而非直接引用招式库 */
   id: string
-  skillId: string
+  /** 普通招式 id；与 skillGroupId 互斥 */
+  skillId?: string | null
+  /** 技能组 id；与 skillId 互斥 */
+  skillGroupId?: string | null
   skillSource: SkillSource
-  /** 异常强度提供者（agentId）。留空则不能计算 */
+  /** 异常强度提供者（agentId）。普通招式用；技能组优先看 memberAgents */
   anomalyPowerAgentId?: string | null
-  /** 异常类触发者（agentId）。留空则不能计算 */
+  /** 异常类触发者（agentId）。普通招式用；技能组优先看 memberAgents */
   triggerAgentId?: string | null
+  /** 技能组：按段配置双代理人；缺省段在结算时回落 defaultAnomalyAgents */
+  memberAgents?: PreparedGroupMemberAgents[] | null
   extraMods?: PreparedSkillExtraMods | null
 }
 
-/** 流程里的一条编排 */
+/**
+ * 流程组行上的成员覆盖（仅该方案实例；缺省 = 继承整组 FlowEntry + 组定义）。
+ */
+export interface FlowGroupMemberOverride {
+  /** 稳定键：`${order}:${skillId}` */
+  memberKey: string
+  skillId: string
+  /** 若填：替代成员定义 count，再 × FlowEntry.count */
+  count?: number | null
+  staggerPhase?: StaggerPhase | null
+  critMode?: DamageEventCritMode | null
+}
+
+/** 流程里的一条编排（普通招式或整组各占一行） */
 export interface FlowEntry {
   id: string
   /** 该流程所属角色；为将来三条流程合并显示预留 */
   ownerAgentId: string
   /** 指向准备阶段的某条 */
   preparedId: string
+  /** 普通招式 = 次数；技能组 = 整组乘数（× 成员 count） */
   count: number
+  /** 整组默认失衡；成员可 override */
   staggerPhase: StaggerPhase
+  /** 整组默认暴击；成员可 override */
   critMode: DamageEventCritMode
+  /** 仅准备为技能组时有意义 */
+  memberOverrides?: FlowGroupMemberOverride[] | null
 }
 
 /**

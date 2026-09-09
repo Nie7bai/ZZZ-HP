@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import AdminCalculatorSidebar from '@/components/admin/calculator/AdminCalculatorSidebar.vue'
 import AdminAgentBuffPanel from '@/components/admin/calculator/AdminAgentBuffPanel.vue'
@@ -13,10 +14,20 @@ import type { AgentBuffEditActionId, AgentBuffEditSectionId } from '@/constants/
 import type { BangbooBuffEditActionId, BangbooBuffEditSectionId } from '@/constants/bangbooBuffEditNav'
 import type { DriveDiscBuffEditActionId, DriveDiscBuffEditSectionId } from '@/constants/driveDiscBuffEditNav'
 import type { WengineBuffEditActionId, WengineBuffEditSectionId } from '@/constants/wengineBuffEditNav'
+import { isAdminCalculatorPanelId } from '@/constants/sidebarPanelIds'
+import { getSidebarPanelLocation } from '@/router/sidebarPanelRoutes'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import type { AdminCalculatorPanel } from '@/types/calculator'
 
-const activePanel = ref<AdminCalculatorPanel>('agent')
+const route = useRoute()
+const router = useRouter()
+
+const activePanel = computed<AdminCalculatorPanel>(() => {
+  const fromRoute = route.meta.sidebarPanelId
+  if (isAdminCalculatorPanelId(fromRoute)) return fromRoute
+  return 'agent'
+})
+
 const agentPanelRef = ref<InstanceType<typeof AdminAgentBuffPanel> | null>(null)
 const wenginePanelRef = ref<InstanceType<typeof AdminWengineBuffPanel> | null>(null)
 const bangbooPanelRef = ref<InstanceType<typeof AdminBangbooBuffPanel> | null>(null)
@@ -52,16 +63,26 @@ watch(
   },
 )
 
-async function scrollToAgentSection(sectionId: AgentBuffEditSectionId) {
-  const wasAgent = activePanel.value === 'agent'
-  activePanel.value = 'agent'
+async function ensurePanel(panelId: AdminCalculatorPanel): Promise<boolean> {
+  if (activePanel.value === panelId) return false
+  const basePath =
+    typeof route.meta.sidebarPanelBasePath === 'string' && route.meta.sidebarPanelBasePath
+      ? route.meta.sidebarPanelBasePath
+      : '/admin/character-calculator'
+  await router.push(getSidebarPanelLocation(basePath, panelId, route))
   await nextTick()
-  if (!wasAgent) await nextTick()
+  return true
+}
+
+async function scrollToAgentSection(sectionId: AgentBuffEditSectionId) {
+  const switched = await ensurePanel('agent')
+  await nextTick()
+  if (switched) await nextTick()
   await agentPanelRef.value?.scrollToSection(sectionId)
 }
 
 async function handleAgentAction(actionId: AgentBuffEditActionId) {
-  activePanel.value = 'agent'
+  await ensurePanel('agent')
   await nextTick()
   if (actionId === 'save') {
     await agentPanelRef.value?.saveAgent()
@@ -71,15 +92,14 @@ async function handleAgentAction(actionId: AgentBuffEditActionId) {
 }
 
 async function scrollToWengineSection(sectionId: WengineBuffEditSectionId) {
-  const wasWengine = activePanel.value === 'wengine'
-  activePanel.value = 'wengine'
+  const switched = await ensurePanel('wengine')
   await nextTick()
-  if (!wasWengine) await nextTick()
+  if (switched) await nextTick()
   await wenginePanelRef.value?.scrollToSection(sectionId)
 }
 
 async function handleWengineAction(actionId: WengineBuffEditActionId) {
-  activePanel.value = 'wengine'
+  await ensurePanel('wengine')
   await nextTick()
   if (actionId === 'save') {
     await wenginePanelRef.value?.saveItem()
@@ -89,15 +109,14 @@ async function handleWengineAction(actionId: WengineBuffEditActionId) {
 }
 
 async function scrollToBangbooSection(sectionId: BangbooBuffEditSectionId) {
-  const wasBangboo = activePanel.value === 'bangboo'
-  activePanel.value = 'bangboo'
+  const switched = await ensurePanel('bangboo')
   await nextTick()
-  if (!wasBangboo) await nextTick()
+  if (switched) await nextTick()
   await bangbooPanelRef.value?.scrollToSection(sectionId)
 }
 
 async function handleBangbooAction(actionId: BangbooBuffEditActionId) {
-  activePanel.value = 'bangboo'
+  await ensurePanel('bangboo')
   await nextTick()
   if (actionId === 'save') {
     await bangbooPanelRef.value?.saveItem()
@@ -107,15 +126,14 @@ async function handleBangbooAction(actionId: BangbooBuffEditActionId) {
 }
 
 async function scrollToDriveDiscSection(sectionId: DriveDiscBuffEditSectionId) {
-  const wasDriveDisc = activePanel.value === 'drive-disc'
-  activePanel.value = 'drive-disc'
+  const switched = await ensurePanel('drive-disc')
   await nextTick()
-  if (!wasDriveDisc) await nextTick()
+  if (switched) await nextTick()
   await driveDiscPanelRef.value?.scrollToSection(sectionId)
 }
 
 async function handleDriveDiscAction(actionId: DriveDiscBuffEditActionId) {
-  activePanel.value = 'drive-disc'
+  await ensurePanel('drive-disc')
   await nextTick()
   if (actionId === 'save') {
     await driveDiscPanelRef.value?.saveItem()
@@ -125,7 +143,7 @@ async function handleDriveDiscAction(actionId: DriveDiscBuffEditActionId) {
 }
 
 async function handleSkillLibraryAction(actionId: 'save' | 'delete') {
-  activePanel.value = 'skill-library'
+  await ensurePanel('skill-library')
   await nextTick()
   if (actionId === 'save') {
     await skillLibraryPanelRef.value?.saveItem()
@@ -138,7 +156,7 @@ async function handleSkillLibraryAction(actionId: 'save' | 'delete') {
 <template>
   <div class="admin-layout">
     <AdminCalculatorSidebar
-      v-model:active-panel="activePanel"
+      :active-panel="activePanel"
       title="角色计算器"
       back-to="/admin"
       back-label="← 返回管理员入口"

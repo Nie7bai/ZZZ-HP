@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import AdminSidebar from '@/components/admin/AdminSidebar.vue'
 import AdminVisualMonsterPanel from '@/components/admin/AdminVisualMonsterPanel.vue'
 import AdminMonsterPanel from '@/components/admin/AdminMonsterPanel.vue'
@@ -7,6 +8,7 @@ import AdminBuffPanel from '@/components/admin/AdminBuffPanel.vue'
 import AdminSeasonDatePanel from '@/components/admin/AdminSeasonDatePanel.vue'
 import AdminSeasonImportExportPanel from '@/components/admin/AdminSeasonImportExportPanel.vue'
 import AdminDeductionVisualPanel from '@/components/admin/AdminDeductionVisualPanel.vue'
+import { adminPanelsForScope, isAdminPanelId } from '@/constants/sidebarPanelIds'
 import type { AdminPanel, AdminScope } from '@/types/admin'
 
 const props = defineProps<{
@@ -16,24 +18,18 @@ const props = defineProps<{
   backLabel?: string
 }>()
 
-const activePanel = ref<AdminPanel>('monster')
+const route = useRoute()
 const visualPanelRef = ref<{ reload?: () => Promise<void> } | null>(null)
 
 /** 推演主面板为节点内联编辑；不展示侧栏怪物/Buff 表单页 */
 const isDeduction = computed(() => props.scope === 'deduction')
 
-watch(
-  isDeduction,
-  (deduction) => {
-    if (
-      deduction &&
-      (activePanel.value === 'monster-form' || activePanel.value === 'buff-form')
-    ) {
-      activePanel.value = 'monster'
-    }
-  },
-  { immediate: true },
-)
+const activePanel = computed<AdminPanel>(() => {
+  const fromRoute = route.meta.sidebarPanelId
+  const allowed = adminPanelsForScope(props.scope)
+  if (isAdminPanelId(fromRoute) && allowed.includes(fromRoute)) return fromRoute
+  return allowed[0] ?? 'monster'
+})
 
 async function onSeasonDatesChanged() {
   await visualPanelRef.value?.reload?.()
@@ -43,7 +39,7 @@ async function onSeasonDatesChanged() {
 <template>
   <div class="admin-layout">
     <AdminSidebar
-      v-model:active-panel="activePanel"
+      :active-panel="activePanel"
       :title="title"
       :back-to="backTo"
       :back-label="backLabel"

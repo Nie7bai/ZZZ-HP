@@ -36,6 +36,21 @@ const SKILL_TYPE_IMPLIES: Partial<Record<SkillTypeId, SkillTypeId[]>> = {
 }
 
 /**
+ * 计算页标签展示：有小类时隐藏对应大类。
+ * 例：勾了「强化特殊技」会蕴含「特殊技」，标签只显示「强化特殊技」。
+ */
+export function skillTypeLabelsForDisplay(types: SkillTypeId[] | null | undefined): string[] {
+  const set = new Set(types ?? [])
+  const hideParents = new Set<SkillTypeId>()
+  for (const type of set) {
+    for (const parent of SKILL_TYPE_IMPLIES[type] ?? []) hideParents.add(parent)
+  }
+  return SKILL_TYPE_OPTIONS.filter((item) => set.has(item.id) && !hideParents.has(item.id)).map(
+    (item) => item.label,
+  )
+}
+
+/**
  * 类型 → 旧坐标。`followUp` 不走坐标，走 `isFollowUp` 标志。
  *
  * 注：`specialBasic`（普通特殊技）没有对应的旧公共小类，故与 `special` 同坐标；

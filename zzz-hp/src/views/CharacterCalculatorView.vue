@@ -1,10 +1,17 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import BuffEffectBlocksDisplay from '@/components/calculator/BuffEffectBlocksDisplay.vue'
 import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
 import DamageCalcPage from '@/components/calculator/DamageCalcPage.vue'
 import { DAMAGE_CALC_SECTIONS, DAMAGE_CALC_MODE_ITEMS, type DamageCalcNavItem } from '@/constants/damageCalcNav'
+import {
+  CHARACTER_CALC_PAGES,
+  isCharacterCalcPage,
+  type CharacterCalcPage,
+} from '@/constants/sidebarPanelIds'
+import { getSidebarPanelLocation } from '@/router/sidebarPanelRoutes'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import { useThemeStore } from '@/stores/theme'
 
@@ -14,9 +21,11 @@ import { AGENT_ELEMENTS, AGENT_MINDSCAPE_RANKS, AGENT_ROLES, collectMindscapeRan
 
 defineOptions({ name: 'CharacterCalculatorView' })
 
-type CalcPage = 'damage' | 'role-buff' | 'wengine-buff' | 'bangboo-buff' | 'drive-disc-buff'
+type CalcPage = CharacterCalcPage
 type MindscapeBuffMode = 'current' | 'cumulative'
 
+const route = useRoute()
+const router = useRouter()
 const calculatorBuffStore = useCalculatorBuffStore()
 const themeStore = useThemeStore()
 const { mode: themeMode } = storeToRefs(themeStore)
@@ -51,10 +60,28 @@ const pageTitleMap: Record<CalcPage, string> = {
   'drive-disc-buff': '驱动盘增益',
 }
 
+const calcPages = CHARACTER_CALC_PAGES
+
+const pageLinks = computed(() => {
+  const basePath =
+    typeof route.meta.sidebarPanelBasePath === 'string' && route.meta.sidebarPanelBasePath
+      ? route.meta.sidebarPanelBasePath
+      : '/character-calculator'
+  return calcPages.map((p) => ({
+    id: p,
+    label: pageTitleMap[p],
+    to: getSidebarPanelLocation(basePath, p, route),
+  }))
+})
+
 const damageSubNav = DAMAGE_CALC_SECTIONS
 const damageCalcModeItems = DAMAGE_CALC_MODE_ITEMS
 const damageCalcModeHint = ref<'panel' | 'affix' | 'optimal'>('panel')
-const activePage = ref<CalcPage>('damage')
+const activePage = computed<CalcPage>(() => {
+  const fromRoute = route.meta.sidebarPanelId
+  if (isCharacterCalcPage(fromRoute)) return fromRoute
+  return 'damage'
+})
 const mobileNavOpen = ref(false)
 const damageCalcPageRef = ref<InstanceType<typeof DamageCalcPage> | null>(null)
 
@@ -73,21 +100,26 @@ onUnmounted(() => {
   document.body.style.overflow = ''
 })
 
-function selectPage(page: CalcPage) {
-  activePage.value = page
-  mobileNavOpen.value = false
+async function ensurePage(page: CalcPage): Promise<boolean> {
+  if (activePage.value === page) return false
+  const basePath =
+    typeof route.meta.sidebarPanelBasePath === 'string' && route.meta.sidebarPanelBasePath
+      ? route.meta.sidebarPanelBasePath
+      : '/character-calculator'
+  await router.push(getSidebarPanelLocation(basePath, page, route))
+  await nextTick()
+  return true
 }
 
 async function scrollToDamageSection(item: DamageCalcNavItem | { id: 'damage-calc-mode' }) {
-  const wasDamage = activePage.value === 'damage'
-  activePage.value = 'damage'
+  const switched = await ensurePage('damage')
   mobileNavOpen.value = false
   if ('calcMode' in item && item.calcMode) {
     damageCalcModeHint.value = item.calcMode
     damageCalcPageRef.value?.setCalcMode(item.calcMode)
   }
   await nextTick()
-  if (!wasDamage) await nextTick()
+  if (switched) await nextTick()
   await damageCalcPageRef.value?.scrollToSection(item.id)
 }
 
@@ -275,18 +307,18 @@ const filteredDriveDiscDocs = computed(() =>
         <span class="sidebar-title-bar" aria-hidden="true" />
       </h1>
       <nav class="sidebar-nav">
-        <div v-for="p in (['damage', 'role-buff', 'wengine-buff', 'bangboo-buff', 'drive-disc-buff'] as CalcPage[])" :key="p" class="sidebar-nav-group">
-          <button
+        <div v-for="page in pageLinks" :key="page.id" class="sidebar-nav-group">
+          <RouterLink
             class="sidebar-btn"
-            :class="{ active: activePage === p }"
-            type="button"
-            @click="selectPage(p)"
+            :class="{ active: activePage === page.id }"
+            :to="page.to"
+            @click="mobileNavOpen = false"
           >
             <span class="nav-btn-tick" aria-hidden="true" />
-            <span class="nav-btn-label">{{ pageTitleMap[p] }}</span>
-          </button>
+            <span class="nav-btn-label">{{ page.label }}</span>
+          </RouterLink>
           <div
-            v-if="p === 'damage'"
+            v-if="page.id === 'damage'"
             class="damage-subnav-wrap"
             :class="{ expanded: activePage === 'damage' }"
           >
@@ -791,7 +823,9 @@ const filteredDriveDiscDocs = computed(() =>
   font-size: 0.9rem;
   font-weight: 600;
   text-align: left;
+  text-decoration: none;
   cursor: pointer;
+  box-sizing: border-box;
   box-shadow:
     inset 0 1px 2px rgba(255, 255, 255, 0.14),
     inset 0 0 0 2px #2e2e2e,

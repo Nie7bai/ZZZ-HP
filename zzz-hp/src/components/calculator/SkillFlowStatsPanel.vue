@@ -11,6 +11,7 @@ import {
   saveSkillFlowDamageRecords,
   type SkillFlowDamageRecord,
 } from '@/utils/skillFlowDamageRecords'
+import { hitBelongsToFlowEntry, sumHitDamagesForEntry } from '@/utils/skillGroup'
 
 const PIE_COLORS = ['#c9a55c', '#5b8def', '#e08a3c', '#4caf8a', '#9b7ed9', '#d46a6a']
 
@@ -70,8 +71,7 @@ function slotTotal(index: number) {
   if (!slot) return 0
   let sum = 0
   for (const entry of slot.flow) {
-    const value = props.hitDamages?.[entry.id]
-    if (Number.isFinite(value)) sum += Number(value)
+    sum += sumHitDamagesForEntry(props.hitDamages, entry.id) ?? 0
   }
   return sum
 }
@@ -98,8 +98,10 @@ const slotRows = computed(() =>
 )
 
 const currentHits = computed(() => {
-  const ids = new Set((props.slots?.[props.activeSlotIndex]?.flow ?? []).map((entry) => entry.id))
-  return (props.hits ?? []).filter((hit) => ids.has(hit.id))
+  const entryIds = (props.slots?.[props.activeSlotIndex]?.flow ?? []).map((entry) => entry.id)
+  return (props.hits ?? []).filter((hit) =>
+    entryIds.some((entryId) => hitBelongsToFlowEntry(hit.id, entryId)),
+  )
 })
 
 function toSlices(groups: Map<string, number>): PieSlice[] {
@@ -543,5 +545,44 @@ function clearRecords() {
   .sf-stats-pies {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+:global([data-theme='light']) .sf-stats {
+  border-top-color: #e4e8ef;
+  background: #f7f8fb;
+}
+:global([data-theme='light']) .sf-stats-head h3,
+:global([data-theme='light']) .sf-pie-block h4,
+:global([data-theme='light']) .sf-stats-lift-head h4 {
+  color: #2b3038;
+}
+:global([data-theme='light']) .sf-stats-head p,
+:global([data-theme='light']) .sf-stats-hint,
+:global([data-theme='light']) .sf-stats-label,
+:global([data-theme='light']) .sf-rec-who,
+:global([data-theme='light']) .sf-rec-table th {
+  color: #5a6575;
+}
+:global([data-theme='light']) .sf-stats-num {
+  color: #2b5088;
+}
+:global([data-theme='light']) .sf-stats-agent {
+  border-color: #d7dde6;
+  background: #fff;
+}
+:global([data-theme='light']) .mini-btn {
+  border-color: #cfd6e0;
+  background: #fff;
+  color: #3a4250;
+}
+:global([data-theme='light']) .mini-btn.danger {
+  color: #b54747;
+  border-color: #e2b4b4;
+}
+:global([data-theme='light']) .sf-rec-table {
+  color: #3a4250;
+}
+:global([data-theme='light']) .sf-rec-table th,
+:global([data-theme='light']) .sf-rec-table td {
+  border-bottom-color: #e4e8ef;
 }
 </style>

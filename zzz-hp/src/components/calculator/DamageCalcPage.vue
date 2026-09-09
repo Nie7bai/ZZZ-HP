@@ -187,6 +187,7 @@ const resolvedFlow = computed(() =>
     slots: schemeSlots.value,
     teamSlots,
     findSkill: (id) => calculatorBuffStore.findSkill(id),
+    findSkillGroup: (id) => calculatorBuffStore.findSkillGroup(id),
     skillSubcategories: skillSubcategories.value,
   }),
 )
@@ -196,6 +197,7 @@ const previewHits = computed(() =>
     slots: schemeSlots.value,
     teamSlots,
     findSkill: (id) => calculatorBuffStore.findSkill(id),
+    findSkillGroup: (id) => calculatorBuffStore.findSkillGroup(id),
     skillSubcategories: skillSubcategories.value,
   }),
 )

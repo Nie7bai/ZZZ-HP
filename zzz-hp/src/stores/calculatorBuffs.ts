@@ -8,11 +8,14 @@ import {
   deleteFollowUpSkillRule,
   deletePresetSkill,
   deleteSkillSubcategory,
+  deletePresetSkillGroup,
   deleteWengineBuff,
   fetchCalculatorBuffs,
   fetchDamageEventModes,
   fetchPresetSkills,
+  fetchPresetSkillGroups,
   savePresetSkill,
+  savePresetSkillGroup,
   saveAgentBuff,
   saveBangbooBuff,
   saveDamageEventMode,
@@ -31,6 +34,7 @@ import type {
   DriveDiscBuffDoc,
   FollowUpSkillRule,
   Skill,
+  SkillGroup,
   SkillCategoryId,
   SkillSubcategory,
   SupportStatNeed,
@@ -47,6 +51,7 @@ import {
   upsertCustomSkill,
 } from '@/utils/skillLibrary'
 import { mergePublicAnomalyPresets } from '@/utils/publicAnomalySkills'
+import { normalizeSkillGroup, loadCustomSkillGroups, upsertCustomSkillGroup, removeCustomSkillGroup } from '@/utils/skillGroup'
 import {
   AGENT_MINDSCAPE_RANKS,
   createEmptyMindscapeBuffs,
@@ -436,7 +441,10 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
   const damageEventModes = ref<DamageEventMode[]>([])
   /** 招式库：预设来自后端，自定义来自浏览器，对外合成一份 */
   const presetSkills = ref<Skill[]>([])
+  const presetSkillGroups = ref<SkillGroup[]>([])
+  const customSkillGroups = ref<SkillGroup[]>(loadCustomSkillGroups())
   const customSkills = ref<Skill[]>([])
+  const skillGroups = computed(() => [...presetSkillGroups.value, ...customSkillGroups.value])
   const loading = ref(true)
   const loaded = ref(false)
   const error = ref('')
@@ -533,6 +541,16 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
         } catch {
           presetSkills.value = mergePublicAnomalyPresets([])
         }
+        try {
+          const groups = await fetchPresetSkillGroups()
+          presetSkillGroups.value = groups
+            .map((item) => normalizeSkillGroup(item as unknown as Record<string, unknown>))
+            .filter((item): item is SkillGroup => item != null)
+            .map((item) => ({ ...item, source: item.source ?? 'preset' }))
+        } catch {
+          presetSkillGroups.value = []
+        }
+        customSkillGroups.value = loadCustomSkillGroups()
         // 小类名要用来给迁移出的招式起名，故排在小类加载之后
         migrateLegacyModesToSkills({
           subcategories: skillSubcategories.value,
@@ -642,7 +660,7 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
     return skills.value.find((item) => item.id === id) ?? null
   }
 
-  /** 招式库对某角色可见的部分：该角色专属 + 公共（有 element 的只给同属性；属性未知时不藏） */
+  /** 招式库对某角色可见的部分：该角色专属 + 公共（有 element 的只给同属性；属性未知时不藏）。排除组私有招式。 */
   function skillsForAgent(agentId: string, elementHint?: string): Skill[] {
     const element = (
       elementHint ||
@@ -650,11 +668,47 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
       ''
     ).trim()
     return skills.value.filter((item) => {
+      if (item.ownerGroupId) return false
       if (item.agentId) return item.agentId === agentId
       const skillEl = String(item.element ?? '').trim()
       if (!skillEl) return true
       if (!element) return true
       return skillEl === element
+    })
+  }
+
+  /** 顶层列表用：不含组私有 */
+  function librarySkillsForAgent(agentId: string, elementHint?: string): Skill[] {
+    return skillsForAgent(agentId, elementHint)
+  }
+
+  function skillGroupsForAgent(agentId: string): SkillGroup[] {
+    return skillGroups.value
+      .filter((item) => !item.agentId || item.agentId === agentId)
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name, 'zh') || a.id.localeCompare(b.id))
+  }
+
+  function findSkillGroup(id: string): SkillGroup | null {
+    return skillGroups.value.find((item) => item.id === id) ?? null
+  }
+
+  /**
+   * 组编辑器用：仅管理端预设招式（不含计算页自建/方案缓存）。
+   * 同角色顶层招式 + 本组私有；排除其他组私有。
+   * 公共招式带 element 时（如属性异常）只给同属性角色，与计算页招式库一致。
+   */
+  function skillsSelectableForGroup(agentId: string, groupId: string): Skill[] {
+    const element = (agents.value.find((item) => item.id === agentId)?.element || '').trim()
+    return presetSkills.value.filter((item) => {
+      if (item.source === 'custom') return false
+      if (item.agentId && item.agentId !== agentId) return false
+      if (item.ownerGroupId && item.ownerGroupId !== groupId) return false
+      if (!item.agentId) {
+        const skillEl = String(item.element ?? '').trim()
+        if (skillEl && element && skillEl !== element) return false
+      }
+      return true
     })
   }
 
@@ -671,6 +725,45 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
     presetSkills.value = presetSkills.value.filter((item) => item.id !== id)
   }
 
+  async function upsertPresetSkillGroupDoc(doc: SkillGroup) {
+    const saved = await savePresetSkillGroup(doc)
+    const normalized =
+      normalizeSkillGroup(saved as unknown as Record<string, unknown>) ?? saved
+    const withSource = { ...normalized, source: 'preset' as const }
+    const index = presetSkillGroups.value.findIndex((item) => item.id === withSource.id)
+    if (index >= 0) presetSkillGroups.value[index] = withSource
+    else presetSkillGroups.value.push(withSource)
+    presetSkillGroups.value.sort(
+      (a, b) =>
+        a.agentId.localeCompare(b.agentId) ||
+        a.name.localeCompare(b.name, 'zh') ||
+        a.id.localeCompare(b.id),
+    )
+    return withSource
+  }
+
+  async function removePresetSkillGroupDoc(id: string) {
+    await deletePresetSkillGroup(id)
+    presetSkillGroups.value = presetSkillGroups.value.filter((item) => item.id !== id)
+    // 本地同步清掉已级联删除的组私有招式
+    presetSkills.value = presetSkills.value.filter((item) => item.ownerGroupId !== id)
+  }
+
+  function upsertCustomSkillGroupDoc(doc: SkillGroup) {
+    customSkillGroups.value = upsertCustomSkillGroup(doc)
+    return customSkillGroups.value.find((item) => item.id === doc.id) ?? doc
+  }
+
+  function removeCustomSkillGroupDoc(id: string) {
+    customSkillGroups.value = removeCustomSkillGroup(id)
+    // 组内自建招式一并清掉
+    const orphanIds = customSkills.value
+      .filter((item) => item.ownerGroupId === id)
+      .map((item) => item.id)
+    for (const skillId of orphanIds) removeCustomSkill(skillId)
+    customSkills.value = loadCustomSkills()
+  }
+
   function upsertCustomSkillDoc(doc: Skill) {
     customSkills.value = upsertCustomSkill(doc)
     return doc
@@ -682,6 +775,7 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
 
   function reloadCustomSkillsFromStorage() {
     customSkills.value = loadCustomSkills()
+    customSkillGroups.value = loadCustomSkillGroups()
   }
 
   async function upsertFollowUpSkillRuleDoc(doc: FollowUpSkillRule) {
@@ -730,12 +824,21 @@ export const useCalculatorBuffStore = defineStore('calculatorBuffs', () => {
     followUpSkillRules,
     damageEventModes,
     presetSkills,
+    skillGroups,
     customSkills,
     skills,
     findSkill,
+    findSkillGroup,
     skillsForAgent,
+    librarySkillsForAgent,
+    skillGroupsForAgent,
+    skillsSelectableForGroup,
     upsertPresetSkillDoc,
     removePresetSkillDoc,
+    upsertPresetSkillGroupDoc,
+    removePresetSkillGroupDoc,
+    upsertCustomSkillGroupDoc,
+    removeCustomSkillGroupDoc,
     upsertCustomSkillDoc,
     removeCustomSkillDoc,
     reloadCustomSkillsFromStorage,

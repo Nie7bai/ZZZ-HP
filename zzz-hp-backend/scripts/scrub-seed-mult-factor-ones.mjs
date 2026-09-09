@@ -21,6 +21,8 @@ const mainFile = path.resolve('scripts/data/zzz-hp-calculator-buffs.json')
 function scrubEffect(effect) {
   if (!effect || typeof effect !== 'object') return null
   if (!FACTORS.has(effect.stat)) return effect
+  // 转模 value 本就为 0，运行时折算；不能当脏数据丢掉
+  if (effect.kind === 'convert') return effect
   const value = Number(effect.value)
   const per = Number(effect.valuePerStack)
   const nextValue = value === 1 ? 0 : value

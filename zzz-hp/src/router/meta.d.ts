@@ -9,6 +9,9 @@ declare module 'vue-router' {
     modePanelBasePath?: string
     modePanelId?: ModePanelId
     modePanelMode?: ModeKey
+    /** 通用侧栏面板：/base/<sidebarPanelId> */
+    sidebarPanelBasePath?: string
+    sidebarPanelId?: string
   }
 }
 

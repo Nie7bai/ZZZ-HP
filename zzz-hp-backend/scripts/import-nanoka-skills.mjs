@@ -6,17 +6,24 @@
  * 例：克拉蕾「锻星·一段」L12：
  *   (10770 + 980 * 11) / 100 = 215.5
  *
- * 只导入 param 名含「伤害倍率」的段；跳过「失衡倍率」。
+ * 策略 B：匹配则覆盖 baseMult / skillTypes / element / buffAnchorId；缺失新建。
+ * 属性 element 跟随角色；特殊技写入 special+specialBasic（或 special+specialEnhanced）。
+ * 只导入「伤害倍率」段（跳过失衡）。同名段去重（保留首条）。
  *
  * Usage:
  *   node scripts/import-nanoka-skills.mjs --agent claret
  *   node scripts/import-nanoka-skills.mjs --agent claret --write
- *   node scripts/import-nanoka-skills.mjs --agent claret --level 12 --write
+ *   node scripts/import-nanoka-skills.mjs --all
+ *   node scripts/import-nanoka-skills.mjs --all --write
+ *   node scripts/import-nanoka-skills.mjs --all --level 12 --write
  *
  * 默认 dry-run；显式 --write 才写入 MySQL。
  * 回滚：用 scripts/data/backups/ 下备份跑 import-calculator-buffs.mjs。
  */
 import dotenv from 'dotenv'
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import pool from '../src/config/db.js'
 import {
   fetchCharacterDetail,
@@ -29,7 +36,9 @@ import { listSkillSubcategories } from '../src/services/skillSubcategoryService.
 
 dotenv.config()
 
-/** 本库 agentId → nanoka 查找键（试点克拉蕾；后续可扩） */
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+/** 可选硬编码覆盖（自动匹配失败或需钉死 nanokaId 时用） */
 const AGENT_NANOKA_LOOKUP = {
   claret: { code: 'Claret', zh: '克拉蕾', nanokaId: '1611' },
 }
@@ -97,12 +106,29 @@ function stableSkillId(agentId, nanokaSkillId, paramName) {
   return id.slice(0, 64)
 }
 
+/**
+ * 大类 + 小类一并写入（管理端勾选要看得见）。
+ * nanoka 把终结技挂在 chain 下，按名称纠正为 ultimate。
+ */
 function mapSkillTypes(category, skillName) {
-  const base = NANOKA_CATEGORY_TO_SKILL_TYPES[category] ?? ['basic']
-  if (category === 'dodge' && /反击/.test(skillName)) return ['dodgeCounter']
-  if (category === 'special' && /强化/.test(skillName)) return ['specialEnhanced']
-  if (category === 'special' && /普通特殊|非强化/.test(skillName)) return ['specialBasic']
-  return [...base]
+  const name = String(skillName ?? '')
+  if (/终结技/.test(name)) return ['ultimate']
+  if (/连携技/.test(name)) return ['chain']
+  if (/强化特殊技/.test(name) || (category === 'special' && /强化/.test(name))) {
+    return ['special', 'specialEnhanced']
+  }
+  if (category === 'special' || /^特殊技/.test(name)) {
+    return ['special', 'specialBasic']
+  }
+  if (/闪避反击/.test(name) || (category === 'dodge' && /反击/.test(name))) {
+    return ['dodge', 'dodgeCounter']
+  }
+  if (/冲刺攻击/.test(name)) return ['dodge', 'dash']
+  if (category === 'basic' || /普通攻击/.test(name)) return ['basic']
+  if (category === 'assist') return ['assist']
+  if (category === 'dodge') return ['dodge']
+  if (category === 'chain') return ['chain']
+  return [...(NANOKA_CATEGORY_TO_SKILL_TYPES[category] ?? ['basic'])]
 }
 
 /**
@@ -118,11 +144,12 @@ export function computeBaseMultPercent(damagePercentage, growth, level = 12) {
 }
 
 /**
- * 从角色详情拆出伤害倍率候选段。
+ * 从角色详情拆出伤害倍率候选段（同 displayName 去重，保留首条）。
  */
 export function extractDamageSegments(detail, { level = 12 } = {}) {
   const skillRoot = detail?.skill ?? {}
   const segments = []
+  const seenNorm = new Set()
   for (const [category, block] of Object.entries(skillRoot)) {
     const descriptions = Array.isArray(block?.description) ? block.description : []
     for (const entry of descriptions) {
@@ -144,6 +171,9 @@ export function extractDamageSegments(detail, { level = 12 } = {}) {
           level,
         )
         const displayName = buildDisplayName(skillName, paramName)
+        const norm = normalizeSkillName(displayName)
+        if (seenNorm.has(norm)) continue
+        seenNorm.add(norm)
         segments.push({
           category,
           skillName,
@@ -160,9 +190,23 @@ export function extractDamageSegments(detail, { level = 12 } = {}) {
   return segments
 }
 
+/** 去掉本库备注括号，便于对 nanoka 中文名 */
+function stripAgentNameNoise(name) {
+  return String(name ?? '')
+    .replace(/[（(][^）)]*[）)]/g, '')
+    .trim()
+}
+
 function resolveBuffAnchorId(subcategories, agentId, segment) {
   const forAgent = subcategories.filter((s) => String(s.agentId ?? '') === agentId)
-  const candidates = [segment.titleCore, segment.skillName, segment.displayName]
+  // 优先短参名（如「毁伤伤害倍率」→「毁伤」），再回落到技能标题核心
+  const candidates = [
+    shortParamLabel(segment.paramName),
+    segment.titleCore,
+    stripSkillTitlePrefix(segment.displayName),
+    segment.skillName,
+    segment.displayName,
+  ]
     .map(normalizeSkillName)
     .filter(Boolean)
   for (const sub of forAgent) {
@@ -172,47 +216,55 @@ function resolveBuffAnchorId(subcategories, agentId, segment) {
   return null
 }
 
-async function resolveNanokaId(agentId, buildTag) {
-  const lookup = AGENT_NANOKA_LOOKUP[agentId]
-  if (lookup?.nanokaId) return { nanokaId: lookup.nanokaId, via: 'hardcoded' }
-  const index = await fetchCharacterIndex(buildTag)
-  const hit = findCharacterIndexEntry(index, lookup ?? { code: agentId })
-  if (!hit) throw new Error(`nanoka 索引中找不到角色：${agentId}`)
-  return { nanokaId: hit.id, via: 'index', meta: hit }
+function sameSkillTypes(a, b) {
+  const left = [...(a ?? [])].map(String).sort()
+  const right = [...(b ?? [])].map(String).sort()
+  if (left.length !== right.length) return false
+  return left.every((v, i) => v === right[i])
 }
 
-async function main() {
-  const agentId = (readArg('--agent') || 'claret').trim()
-  const level = Number(readArg('--level') || 12)
-  const doWrite = hasFlag('--write')
-  const dryRun = !doWrite
-
-  if (!AGENT_NANOKA_LOOKUP[agentId] && !hasFlag('--allow-unknown-agent')) {
-    console.error(
-      `未知 agent「${agentId}」。试点仅注册：${Object.keys(AGENT_NANOKA_LOOKUP).join(', ')}。` +
-        `若确认可加 --allow-unknown-agent。`,
+async function loadAgentRows(agentIdFilter = null) {
+  if (agentIdFilter) {
+    const [rows] = await pool.query(
+      'SELECT id, name, element FROM `character` WHERE id = ? LIMIT 1',
+      [agentIdFilter],
     )
-    process.exit(1)
+    return rows
   }
+  const [rows] = await pool.query('SELECT id, name, element FROM `character` ORDER BY name ASC, id ASC')
+  return rows
+}
 
-  console.log(`agent=${agentId} level=${level} mode=${dryRun ? 'dry-run' : 'WRITE'}`)
+/**
+ * @param {{ id: string, name: string }} agent
+ * @param {Record<string, any>} index nanoka character.json
+ */
+function resolveNanokaId(agent, index) {
+  const override = AGENT_NANOKA_LOOKUP[agent.id]
+  if (override?.nanokaId) {
+    return { nanokaId: String(override.nanokaId), via: 'hardcoded', meta: override }
+  }
+  const candidates = [
+    override ? { code: override.code, zh: override.zh } : null,
+    { zh: agent.name },
+    { zh: stripAgentNameNoise(agent.name) },
+    { code: agent.id },
+  ].filter(Boolean)
 
-  const buildTag = await resolveNanokaCharacterBuildTag()
-  console.log(`nanoka build=${buildTag}`)
+  for (const c of candidates) {
+    const hit = findCharacterIndexEntry(index, c)
+    if (hit) return { nanokaId: hit.id, via: 'index', meta: hit }
+  }
+  return null
+}
 
-  const { nanokaId, via } = await resolveNanokaId(agentId, buildTag)
-  console.log(`nanokaId=${nanokaId} (via ${via})`)
-
-  const detail = await fetchCharacterDetail(buildTag, nanokaId, 'zh')
-  console.log(`detail name=${detail?.name} code=${detail?.code_name}`)
-
-  const segments = extractDamageSegments(detail, { level })
-  console.log(`伤害倍率段 ${segments.length} 条`)
-
-  const [existingSkills, subcategories] = await Promise.all([
-    listSkills(),
-    listSkillSubcategories(),
-  ])
+function planAgentImport({
+  agentId,
+  agentElement,
+  segments,
+  existingSkills,
+  subcategories,
+}) {
   const agentSkills = existingSkills.filter((s) => String(s.agentId ?? '') === agentId)
   const byNormName = new Map()
   for (const skill of agentSkills) {
@@ -225,18 +277,23 @@ async function main() {
     skipSame: [],
     unmatchedLocal: [],
   }
-
   const planned = []
+
   for (const seg of segments) {
     const norm = normalizeSkillName(seg.displayName)
     const existing = byNormName.get(norm)
-    const buffAnchorId = existing?.buffAnchorId ?? resolveBuffAnchorId(subcategories, agentId, seg)
+    const resolvedAnchor = resolveBuffAnchorId(subcategories, agentId, seg)
+    const buffAnchorId = resolvedAnchor ?? existing?.buffAnchorId ?? null
     const id = existing?.id ?? stableSkillId(agentId, seg.nanokaSkillId, seg.paramName)
+    const skillTypes = seg.skillTypes
+    const element = agentElement
 
     if (existing) {
-      const same =
-        Math.abs(Number(existing.baseMult) - seg.baseMult) < 1e-6
-      if (same) {
+      const sameMult = Math.abs(Number(existing.baseMult) - seg.baseMult) < 1e-6
+      const sameTypes = sameSkillTypes(existing.skillTypes, skillTypes)
+      const sameElement = String(existing.element ?? '') === element
+      const sameAnchor = String(existing.buffAnchorId ?? '') === String(buffAnchorId ?? '')
+      if (sameMult && sameTypes && sameElement && sameAnchor) {
         report.skipSame.push({ id, name: existing.name, baseMult: existing.baseMult })
       } else {
         report.overwrite.push({
@@ -244,13 +301,24 @@ async function main() {
           name: existing.name,
           from: existing.baseMult,
           to: seg.baseMult,
+          skillTypes,
+          element,
+          buffAnchorId,
+          changed: {
+            baseMult: !sameMult,
+            skillTypes: !sameTypes,
+            element: !sameElement,
+            buffAnchorId: !sameAnchor,
+          },
         })
         planned.push({
           action: 'overwrite',
           doc: {
             ...existing,
             baseMult: seg.baseMult,
-            // 策略 B：覆盖只改 baseMult；其余字段保持 existing
+            skillTypes,
+            element,
+            buffAnchorId,
           },
         })
       }
@@ -259,8 +327,9 @@ async function main() {
         id,
         name: seg.displayName,
         baseMult: seg.baseMult,
-        skillTypes: seg.skillTypes,
+        skillTypes,
         buffAnchorId,
+        element,
       })
       planned.push({
         action: 'create',
@@ -269,12 +338,12 @@ async function main() {
           agentId,
           name: seg.displayName,
           damageType: 'direct',
-          skillTypes: seg.skillTypes,
+          skillTypes,
           buffAnchorId,
           baseMult: seg.baseMult,
           baseMultFactor: 100,
           settlementMult: 0,
-          element: '',
+          element,
         },
       })
     }
@@ -291,17 +360,31 @@ async function main() {
     }
   }
 
+  return { report, planned }
+}
+
+function printDetailReport(report, { verbose }) {
   const printRows = (title, rows, fmt) => {
     console.log(`\n=== ${title} (${rows.length}) ===`)
-    for (const row of rows.slice(0, 40)) console.log(fmt(row))
-    if (rows.length > 40) console.log(`  … 另有 ${rows.length - 40} 条`)
+    const limit = verbose ? 40 : 8
+    for (const row of rows.slice(0, limit)) console.log(fmt(row))
+    if (rows.length > limit) console.log(`  … 另有 ${rows.length - limit} 条`)
   }
 
-  printRows('新建', report.create, (r) => `  + ${r.name}  baseMult=${r.baseMult}  id=${r.id}`)
+  printRows(
+    '新建',
+    report.create,
+    (r) =>
+      `  + ${r.name}  baseMult=${r.baseMult}  types=${(r.skillTypes || []).join('+')}  el=${r.element || '-'}  anchor=${r.buffAnchorId || '-'}  id=${r.id}`,
+  )
   printRows(
     '覆盖',
     report.overwrite,
-    (r) => `  ~ ${r.name}  ${r.from} → ${r.to}  id=${r.id}`,
+    (r) =>
+      `  ~ ${r.name}  ${r.from} → ${r.to}  types=${(r.skillTypes || []).join('+')}  el=${r.element || '-'}  anchor=${r.buffAnchorId || '-'}  changed=${Object.entries(r.changed || {})
+        .filter(([, v]) => v)
+        .map(([k]) => k)
+        .join(',') || 'none'}  id=${r.id}`,
   )
   printRows('跳过(同值)', report.skipSame, (r) => `  = ${r.name}  ${r.baseMult}`)
   printRows(
@@ -309,15 +392,108 @@ async function main() {
     report.unmatchedLocal,
     (r) => `  ! ${r.name}  baseMult=${r.baseMult}  id=${r.id}`,
   )
+}
 
-  // 手算核对锚点
-  const forge = segments.find(
-    (s) => s.skillName.includes('锻星') && s.paramName === '一段伤害倍率',
+async function backupCalculatorBuffsJson() {
+  const src = path.join(__dirname, 'data', 'zzz-hp-calculator-buffs.json')
+  const backupDir = path.join(__dirname, 'data', 'backups')
+  fs.mkdirSync(backupDir, { recursive: true })
+  const local = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  const localStamp = `${local.getFullYear()}${pad(local.getMonth() + 1)}${pad(local.getDate())}-${pad(local.getHours())}${pad(local.getMinutes())}${pad(local.getSeconds())}`
+  const dest = path.join(backupDir, `zzz-hp-calculator-buffs.${localStamp}.json`)
+  fs.copyFileSync(src, dest)
+  return dest
+}
+
+async function main() {
+  const level = Number(readArg('--level') || 12)
+  const doWrite = hasFlag('--write')
+  const dryRun = !doWrite
+  const allAgents = hasFlag('--all')
+  const agentFilter = allAgents ? null : (readArg('--agent') || '').trim() || null
+  const verbose = hasFlag('--verbose') || Boolean(agentFilter)
+
+  if (!allAgents && !agentFilter) {
+    console.error('请指定 --agent <id> 或 --all')
+    process.exit(1)
+  }
+
+  console.log(
+    `mode=${dryRun ? 'dry-run' : 'WRITE'} level=${level} scope=${allAgents ? 'ALL' : agentFilter}`,
   )
-  if (forge) {
-    console.log(
-      `\n核对：锻星一段 L${level} baseMult=${forge.baseMult}（期望 L12=215.5）`,
-    )
+
+  const buildTag = await resolveNanokaCharacterBuildTag()
+  console.log(`nanoka build=${buildTag}`)
+
+  const index = await fetchCharacterIndex(buildTag)
+  const agents = await loadAgentRows(agentFilter)
+  if (!agents.length) {
+    console.error(agentFilter ? `本库无角色：${agentFilter}` : '本库无角色')
+    process.exit(1)
+  }
+
+  const [existingSkills, subcategories] = await Promise.all([
+    listSkills(),
+    listSkillSubcategories(),
+  ])
+
+  if (doWrite && allAgents) {
+    const backupPath = await backupCalculatorBuffsJson()
+    console.log(`已备份种子 JSON → ${backupPath}`)
+  }
+
+  const totals = {
+    agents: 0,
+    unresolved: [],
+    create: 0,
+    overwrite: 0,
+    skipSame: 0,
+    unmatchedLocal: 0,
+    segments: 0,
+    written: 0,
+  }
+  const allPlanned = []
+
+  for (const agent of agents) {
+    const resolved = resolveNanokaId(agent, index)
+    if (!resolved) {
+      totals.unresolved.push({ id: agent.id, name: agent.name })
+      console.log(`\n## ${agent.name} (${agent.id})  ✗ nanoka 未匹配`)
+      continue
+    }
+
+    const detail = await fetchCharacterDetail(buildTag, resolved.nanokaId, 'zh')
+    const segments = extractDamageSegments(detail, { level })
+    const agentElement = String(agent.element ?? '').trim()
+    const { report, planned } = planAgentImport({
+      agentId: agent.id,
+      agentElement,
+      segments,
+      existingSkills,
+      subcategories,
+    })
+
+    totals.agents += 1
+    totals.segments += segments.length
+    totals.create += report.create.length
+    totals.overwrite += report.overwrite.length
+    totals.skipSame += report.skipSame.length
+    totals.unmatchedLocal += report.unmatchedLocal.length
+    allPlanned.push(...planned)
+
+    const line = `## ${agent.name} (${agent.id})  nanoka=${resolved.nanokaId}/${detail?.code_name || '?'}  segs=${segments.length}  +${report.create.length} ~${report.overwrite.length} =${report.skipSame.length} !${report.unmatchedLocal.length}  el=${agentElement || '-'}`
+    console.log(`\n${line}`)
+    if (verbose) printDetailReport(report, { verbose: true })
+  }
+
+  console.log('\n========== 汇总 ==========')
+  console.log(
+    `角色 ${totals.agents}/${agents.length} · 段 ${totals.segments} · 新建 ${totals.create} · 覆盖 ${totals.overwrite} · 跳过 ${totals.skipSame} · 残留 ${totals.unmatchedLocal}`,
+  )
+  if (totals.unresolved.length) {
+    console.log('未匹配 nanoka：')
+    for (const u of totals.unresolved) console.log(`  - ${u.name} (${u.id})`)
   }
 
   if (dryRun) {
@@ -325,12 +501,13 @@ async function main() {
     return
   }
 
-  let written = 0
-  for (const item of planned) {
+  for (const item of allPlanned) {
     await upsertSkill(item.doc)
-    written += 1
+    totals.written += 1
   }
-  console.log(`\n已写入 ${written} 条（新建 ${report.create.length} · 覆盖 ${report.overwrite.length}）`)
+  console.log(
+    `\n已写入 ${totals.written} 条（新建 ${totals.create} · 覆盖 ${totals.overwrite}）`,
+  )
 }
 
 const isDirectRun = process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('import-nanoka-skills.mjs')

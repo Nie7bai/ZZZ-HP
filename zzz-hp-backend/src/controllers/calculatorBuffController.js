@@ -24,6 +24,11 @@ import {
 } from '../services/damageEventModeService.js'
 import { deleteSkill, listSkills, upsertSkill } from '../services/skillLibraryService.js'
 import {
+  deleteSkillGroup,
+  listSkillGroups,
+  upsertSkillGroup,
+} from '../services/skillGroupService.js'
+import {
   exportCalculatorBuffSnapshot,
   importCalculatorBuffSnapshot,
 } from '../services/calculatorBuffSnapshotService.js'
@@ -116,6 +121,33 @@ export async function removeSkill(req, res) {
     return success(res, data, '招式删除成功')
   } catch (err) {
     return fail(res, err.message || '招式删除失败', 400, { error: err.message })
+  }
+}
+
+export async function getSkillGroups(_req, res) {
+  try {
+    const data = await listSkillGroups()
+    return success(res, data)
+  } catch (err) {
+    return failInternal(res, err, '获取技能组失败')
+  }
+}
+
+export async function saveSkillGroup(req, res) {
+  try {
+    const data = await upsertSkillGroup(req.body)
+    return success(res, data, '技能组保存成功')
+  } catch (err) {
+    return fail(res, err.message || '技能组保存失败', 400, { error: err.message })
+  }
+}
+
+export async function removeSkillGroup(req, res) {
+  try {
+    const data = await deleteSkillGroup(req.params.id)
+    return success(res, data, '技能组删除成功')
+  } catch (err) {
+    return fail(res, err.message || '技能组删除失败', 400, { error: err.message })
   }
 }
 

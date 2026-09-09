@@ -14,6 +14,7 @@ import type {
   CalculatorBuffImportSummary,
 } from '@/types/calculator'
 import { clearAdminAuthenticated } from '@/utils/adminAuth'
+import { isCustomSkillGroup } from '@/utils/skillGroup'
 import '@/components/admin/calculator/adminCalculatorPanel.css'
 
 const router = useRouter()
@@ -28,7 +29,13 @@ const {
   followUpSkillRules,
   damageEventModes,
   presetSkills,
+  skillGroups,
 } = storeToRefs(store)
+
+/** 管理端导入导出只碰预设组，不含计算页本机自建 */
+const presetSkillGroups = computed(() =>
+  skillGroups.value.filter((item) => !isCustomSkillGroup(item)),
+)
 
 type SnapshotKey = keyof Pick<
   CalculatorBuffData,
@@ -40,6 +47,7 @@ type SnapshotKey = keyof Pick<
   | 'followUpSkillRules'
   | 'damageEventModes'
   | 'skills'
+  | 'skillGroups'
 >
 type ExportScope = 'all' | SnapshotKey | 'picked'
 
@@ -58,6 +66,7 @@ const TYPE_LABELS: Record<SnapshotKey, string> = {
   followUpSkillRules: '追击规则',
   damageEventModes: '伤害事件模式',
   skills: '招式库',
+  skillGroups: '技能组',
 }
 
 const SNAPSHOT_KEYS = Object.keys(TYPE_LABELS) as SnapshotKey[]
@@ -74,6 +83,7 @@ const selectedIds = ref<Record<SnapshotKey, string[]>>({
   followUpSkillRules: [],
   damageEventModes: [],
   skills: [],
+  skillGroups: [],
 })
 
 const exporting = ref(false)
@@ -138,6 +148,11 @@ const pickLists = computed<Record<SnapshotKey, PickRow[]>>(() => ({
     id: item.id,
     title: item.name,
     hint: `${agentHint(item.agentId)}${item.element ? ` · ${item.element}` : ''} · ${item.id}`,
+  })),
+  skillGroups: presetSkillGroups.value.map((item) => ({
+    id: item.id,
+    title: item.name,
+    hint: `${agentHint(item.agentId)} · ${item.members.length} 段 · ${item.id}`,
   })),
 }))
 
@@ -212,6 +227,7 @@ function emptySnapshot(exportedAt?: string): CalculatorBuffData {
     followUpSkillRules: [],
     damageEventModes: [],
     skills: [],
+    skillGroups: [],
     exportedAt,
   }
 }

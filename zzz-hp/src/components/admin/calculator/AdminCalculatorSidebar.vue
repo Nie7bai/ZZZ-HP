@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import type { AdminCalculatorPanel } from '@/types/calculator'
 import {
   AGENT_BUFF_EDIT_ACTIONS,
@@ -20,11 +22,14 @@ import {
   WENGINE_BUFF_EDIT_SECTIONS,
   type WengineBuffEditActionId,
 } from '@/constants/wengineBuffEditNav'
+import { ADMIN_CALCULATOR_PANELS } from '@/constants/sidebarPanelIds'
+import { getSidebarPanelLocation } from '@/router/sidebarPanelRoutes'
 
 defineProps<{
   title: string
   backTo: string
   backLabel?: string
+  activePanel: AdminCalculatorPanel
   agentSaving?: boolean
   agentCanDelete?: boolean
   wengineSaving?: boolean
@@ -36,8 +41,6 @@ defineProps<{
   skillLibrarySaving?: boolean
   skillLibraryCanDelete?: boolean
 }>()
-
-const activePanel = defineModel<AdminCalculatorPanel>('activePanel', { default: 'agent' })
 
 const emit = defineEmits<{
   scrollAgentSection: [sectionId: (typeof AGENT_BUFF_EDIT_SECTIONS)[number]['id']]
@@ -51,15 +54,31 @@ const emit = defineEmits<{
   skillLibraryAction: [actionId: 'save' | 'delete']
 }>()
 
-const panels: { id: AdminCalculatorPanel; label: string }[] = [
-  { id: 'agent', label: '编辑角色增益' },
-  { id: 'wengine', label: '编辑音擎增益' },
-  { id: 'bangboo', label: '编辑邦布增益' },
-  { id: 'drive-disc', label: '编辑驱动盘增益' },
-  { id: 'skill-subcategory', label: '招式小类 / 增益锚点' },
-  { id: 'skill-library', label: '招式库' },
-  { id: 'import-export', label: '导入 / 导出' },
-]
+const route = useRoute()
+
+const basePath = computed(() => {
+  const fromMeta = route.meta.sidebarPanelBasePath
+  if (typeof fromMeta === 'string' && fromMeta) return fromMeta
+  return '/admin/character-calculator'
+})
+
+const panelLabels: Record<AdminCalculatorPanel, string> = {
+  agent: '编辑角色增益',
+  wengine: '编辑音擎增益',
+  bangboo: '编辑邦布增益',
+  'drive-disc': '编辑驱动盘增益',
+  'skill-subcategory': '招式小类 / 增益锚点',
+  'skill-library': '招式库',
+  'import-export': '导入 / 导出',
+}
+
+const panels = computed(() =>
+  ADMIN_CALCULATOR_PANELS.map((id) => ({
+    id,
+    label: panelLabels[id],
+    to: getSidebarPanelLocation(basePath.value, id, route),
+  })),
+)
 </script>
 
 <template>
@@ -70,14 +89,13 @@ const panels: { id: AdminCalculatorPanel; label: string }[] = [
 
     <nav class="sidebar-nav">
       <div v-for="panel in panels" :key="panel.id" class="sidebar-nav-group">
-        <button
-          type="button"
+        <RouterLink
+          :to="panel.to"
           class="nav-btn"
           :class="{ active: activePanel === panel.id }"
-          @click="activePanel = panel.id"
         >
           {{ panel.label }}
-        </button>
+        </RouterLink>
 
         <div
           v-if="panel.id === 'agent'"
@@ -389,6 +407,7 @@ const panels: { id: AdminCalculatorPanel; label: string }[] = [
 }
 
 .nav-btn {
+  display: block;
   width: 100%;
   padding: 0.75rem 1rem;
   border: 1px solid var(--color-border);
@@ -397,6 +416,7 @@ const panels: { id: AdminCalculatorPanel; label: string }[] = [
   color: var(--color-heading);
   font-size: 0.95rem;
   text-align: left;
+  text-decoration: none;
   cursor: pointer;
   transition:
     background-color 0.2s,

@@ -3317,6 +3317,31 @@ body:has(.calculator-page.theme-light) .preset-preview li,
   background: #ffffff !important;
   color: #1c212a !important;
 }
+[data-theme='light'] .sf-name-pop {
+  border-color: #c9a55c !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: #1c212a !important;
+  box-shadow:
+    0 0 0 1px rgba(201, 165, 92, 0.28),
+    0 0 12px 4px rgba(28, 33, 42, 0.1),
+    0 8px 22px rgba(28, 33, 42, 0.12) !important;
+}
+[data-theme='light'] .sf-name-pop::before {
+  background: rgba(255, 255, 255, 0.7) !important;
+}
+[data-theme='light'] .sf-name-pop-note {
+  border-top-color: #e6e8ee !important;
+  color: #5a6575 !important;
+}
+[data-theme='light'] .sf-name-pop-mult {
+  border-top-color: #e6e8ee !important;
+}
+[data-theme='light'] .sf-name-pop-mult-label {
+  color: #6a7382 !important;
+}
+[data-theme='light'] .sf-name-pop-mult-val {
+  color: #8a6a1f !important;
+}
 [data-theme='light'] .skill-detail-head h3,
 [data-theme='light'] .skill-flow-modal .detail-mult,
 [data-theme='light'] .skill-flow-modal .detail-section-title,
@@ -3439,4 +3464,100 @@ body:has(.calculator-page.theme-light) .preset-preview li,
 [data-theme='light'] .skill-detail-panel .custom-form label,
 [data-theme='light'] .skill-detail-panel .type-checks {
   color: #667085 !important;
+}
+
+[data-theme='light'] .skill-detail-foot {
+  border-top-color: #d5dae3 !important;
+  background: #f5f7fa !important;
+  box-shadow: none !important;
+}
+[data-theme='light'] .skill-detail-panel .primary-btn,
+[data-theme='light'] .skill-detail-panel .primary-btn.save-action {
+  border-color: #c9d4b8 !important;
+  background: #f3f7ee !important;
+  color: #3d4f2f !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+[data-theme='light'] .skill-detail-panel .primary-btn:hover,
+[data-theme='light'] .skill-detail-panel .primary-btn.save-action:hover {
+  border-color: #c9a55c !important;
+  background: #fff8eb !important;
+  color: #5c4818 !important;
+}
+
+/* 技能组详情 / 组内细调（Teleport 到 body，须用 [data-theme] + !important） */
+[data-theme='light'] .skill-detail-body {
+  background: #ffffff !important;
+  color: #1c212a !important;
+}
+[data-theme='light'] .skill-detail-panel .muted,
+[data-theme='light'] .skill-detail-panel .empty-hint,
+[data-theme='light'] .skill-detail-panel .col-desc,
+[data-theme='light'] .group-tune-panel .col-desc {
+  color: #5c6570 !important;
+}
+[data-theme='light'] .calc-member-col {
+  border-color: #d5dae3 !important;
+  background: #f5f7fa !important;
+}
+[data-theme='light'] .calc-member-col-head {
+  border-color: #eef1f5 !important;
+  background: #ffffff !important;
+}
+[data-theme='light'] .calc-member-col-head h4,
+[data-theme='light'] .calc-member-main strong,
+[data-theme='light'] .calc-member-name {
+  color: #1c212a !important;
+}
+[data-theme='light'] .calc-member-count,
+[data-theme='light'] .calc-member-controls,
+[data-theme='light'] .calc-member-main .muted {
+  color: #5c6570 !important;
+}
+[data-theme='light'] .calc-member-card {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+}
+[data-theme='light'] .skill-detail-panel .order-btn,
+[data-theme='light'] .group-tune-panel .order-btn {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+  color: #1c212a !important;
+}
+[data-theme='light'] .group-tune-panel .sf-card {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+}
+[data-theme='light'] .group-tune-panel .sf-card .sf-name {
+  color: #1c212a !important;
+}
+[data-theme='light'] .skill-detail-panel .group-member-detail {
+  border-color: #d5dae3 !important;
+  background: #f5f7fa !important;
+}
+[data-theme='light'] .skill-detail-panel .group-note-banner {
+  border-color: #9a7318 !important;
+  background: transparent !important;
+  color: #12161d !important;
+  font-weight: 700 !important;
+}
+[data-theme='light'] .skill-detail-panel .group-total-mult {
+  color: #3a4250 !important;
+}
+[data-theme='light'] .skill-detail-panel .group-total-mult strong {
+  color: #12161d !important;
+}
+[data-theme='light'] .skill-detail-panel .group-total-mult .muted {
+  color: #5a6575 !important;
+}
+[data-theme='light'] .skill-detail-panel .field-block {
+  color: #1c212a !important;
+}
+[data-theme='light'] .skill-detail-panel .sf-card {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+}
+[data-theme='light'] .skill-detail-panel .sf-card .sf-name {
+  color: #1c212a !important;
 }

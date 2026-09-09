@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+import { adminPanelsForScope } from '@/constants/sidebarPanelIds'
+import { getSidebarPanelLocation } from '@/router/sidebarPanelRoutes'
 import type { AdminPanel, AdminScope } from '@/types/admin'
 
 const props = defineProps<{
@@ -7,33 +10,44 @@ const props = defineProps<{
   backTo: string
   backLabel?: string
   scope?: AdminScope
+  activePanel: AdminPanel
 }>()
 
-const activePanel = defineModel<AdminPanel>('activePanel', { default: 'monster' })
+const route = useRoute()
 
-const allPanels: {
+const basePath = computed(() => {
+  const fromMeta = route.meta.sidebarPanelBasePath
+  if (typeof fromMeta === 'string' && fromMeta) return fromMeta
+  // 回退：去掉末段 panel
+  return route.path.replace(/\/[^/]+\/?$/, '') || route.path
+})
+
+const panelMeta: {
   id: AdminPanel
   label: string
   deductionLabel?: string
-  deductionExclude?: boolean
 }[] = [
   { id: 'monster', label: '内容管理', deductionLabel: '节点编辑（怪物 / Buff）' },
-  { id: 'monster-form', label: '表单添加怪物', deductionExclude: true },
-  { id: 'buff-form', label: '表单添加 Buff', deductionExclude: true },
-  { id: 'season-date', label: '版本日期管理', deductionExclude: true },
+  { id: 'monster-form', label: '表单添加怪物' },
+  { id: 'buff-form', label: '表单添加 Buff' },
+  { id: 'season-date', label: '版本日期管理' },
   { id: 'import-export', label: '导入 / 导出' },
 ]
 
-function panelLabel(panel: { label: string; deductionLabel?: string }) {
+function panelLabel(panel: { id: AdminPanel; label: string; deductionLabel?: string }) {
   if (props.scope === 'deduction' && panel.deductionLabel) return panel.deductionLabel
   return panel.label
 }
 
-const panels = computed(() =>
-  allPanels.filter(
-    (panel) => !panel.deductionExclude || props.scope !== 'deduction',
-  ),
-)
+const panels = computed(() => {
+  const allowed = new Set(adminPanelsForScope(props.scope ?? 'crisis-assault'))
+  return panelMeta
+    .filter((panel) => allowed.has(panel.id))
+    .map((panel) => ({
+      ...panel,
+      to: getSidebarPanelLocation(basePath.value, panel.id, route),
+    }))
+})
 </script>
 
 <template>
@@ -43,16 +57,15 @@ const panels = computed(() =>
     <h2 class="sidebar-title">{{ title }}</h2>
 
     <nav class="sidebar-nav">
-      <button
+      <RouterLink
         v-for="panel in panels"
         :key="panel.id"
-        type="button"
+        :to="panel.to"
         class="nav-btn"
         :class="{ active: activePanel === panel.id }"
-        @click="activePanel = panel.id"
       >
         {{ panelLabel(panel) }}
-      </button>
+      </RouterLink>
     </nav>
   </aside>
 </template>
@@ -106,6 +119,7 @@ const panels = computed(() =>
   color: var(--color-heading);
   font-size: 0.95rem;
   text-align: left;
+  text-decoration: none;
   cursor: pointer;
   transition:
     background-color 0.2s,
@@ -119,8 +133,8 @@ const panels = computed(() =>
 }
 
 .nav-btn.active {
-  border-color: hsla(160, 100%, 37%, 0.6);
-  background: hsla(160, 100%, 37%, 0.12);
+  border-color: var(--color-border-hover);
+  background: var(--color-background-mute);
   font-weight: 600;
 }
 </style>

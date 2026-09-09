@@ -22,19 +22,32 @@ const draft = defineModel<{
   buffAnchorId: string
   baseMult: number
   settlementMult: number
+  note: string
 }>({ required: true })
 
-const props = defineProps<{
-  readonly?: boolean
-  anchors: SkillSubcategory[]
-  /** 用于读取「限定该锚点」的角色 Buff 固有倍率（如蕾米埃尔耀变） */
-  agent?: AgentBuffDoc | null
-  /**
-   * 已结算的最终倍率区展示（如异放倍率区 0.7120）。
-   * 选完异常强度提供者后由外部传入，优先于「等待选择」提示。
-   */
-  resolvedMultDisplay?: string | null
-}>()
+const props = withDefaults(
+  defineProps<{
+    readonly?: boolean
+    /** 定义只读时仍可改备注（本机覆盖管理端） */
+    noteEditable?: boolean
+    anchors: SkillSubcategory[]
+    /** 用于读取「限定该锚点」的角色 Buff 固有倍率（如蕾米埃尔耀变） */
+    agent?: AgentBuffDoc | null
+    /**
+     * 已结算的最终倍率区展示（如异放倍率区 0.7120）。
+     * 选完异常强度提供者后由外部传入，优先于「等待选择」提示。
+     */
+    resolvedMultDisplay?: string | null
+    /** 管理端白底弹窗用 light；计算页默认 dark */
+    appearance?: 'dark' | 'light'
+  }>(),
+  {
+    appearance: 'dark',
+    noteEditable: false,
+  },
+)
+
+const noteFieldReadonly = computed(() => Boolean(props.readonly) && !props.noteEditable)
 
 watch(
   () => draft.value.damageType,
@@ -222,7 +235,10 @@ function toggleSkillType(id: SkillTypeId) {
 </script>
 
 <template>
-  <div class="custom-form" :class="{ 'is-readonly': readonly }">
+  <div
+    class="custom-form"
+    :class="{ 'is-readonly': readonly, 'is-light': appearance === 'light' }"
+  >
     <label>
       <span>名称</span>
       <input v-if="readonly" :value="draft.name" type="text" readonly tabindex="-1" />
@@ -309,6 +325,27 @@ function toggleSkillType(id: SkillTypeId) {
         placeholder="可不填"
       />
     </label>
+    <label>
+      <span>备注</span>
+      <input
+        v-if="noteFieldReadonly"
+        :value="draft.note?.trim() || '—'"
+        type="text"
+        readonly
+        tabindex="-1"
+      />
+      <input
+        v-else
+        v-model="draft.note"
+        type="text"
+        maxlength="80"
+        :placeholder="
+          noteEditable && readonly
+            ? '本机可改；未改时用管理端备注'
+            : '可选'
+        "
+      />
+    </label>
   </div>
 </template>
 
@@ -366,5 +403,48 @@ function toggleSkillType(id: SkillTypeId) {
   margin: 0;
   color: #9aa3b0;
   font-size: 0.78rem;
+}
+:global([data-theme='light']) .custom-form label,
+:global([data-theme='light']) .type-checks,
+:global([data-theme='light']) .empty-hint {
+  color: #5a6575;
+}
+:global([data-theme='light']) .custom-form input,
+:global([data-theme='light']) .custom-form select {
+  border-color: #d7dde6;
+  background: #fff;
+  color: #2b3038;
+}
+:global([data-theme='light']) .chip {
+  border-color: #cfd6e0;
+  background: #fff;
+  color: #3a4250;
+}
+:global([data-theme='light']) .chip.active {
+  border-color: #b8923f;
+  background: #fff8ea;
+  color: #2b3038;
+}
+/* 管理端白底弹窗：不依赖 data-theme */
+.custom-form.is-light label,
+.custom-form.is-light .type-checks,
+.custom-form.is-light .empty-hint {
+  color: #5a6575;
+}
+.custom-form.is-light input,
+.custom-form.is-light select {
+  border-color: #d7dde6;
+  background: #fff;
+  color: #2b3038;
+}
+.custom-form.is-light .chip {
+  border-color: #cfd6e0;
+  background: #fff;
+  color: #3a4250;
+}
+.custom-form.is-light .chip.active {
+  border-color: #b8923f;
+  background: #fff8ea;
+  color: #2b3038;
 }
 </style>

@@ -3,8 +3,20 @@ import HomeView from '../views/HomeView.vue'
 import { useCrisisAssaultCompareStore } from '../stores/crisisAssaultCompare'
 import AdminLayout from '../layouts/AdminLayout.vue'
 import { publicModePanelRouteRecords } from './modePanelRoutes'
+import { createSidebarPanelRouteRecords } from './sidebarPanelRoutes'
+import {
+  ADMIN_CALCULATOR_PANELS,
+  ADMIN_DEDUCTION_PANELS,
+  ADMIN_SCOPE_PANELS,
+  CHARACTER_CALC_PAGES,
+  SITE_INFO_ROUTE_PANELS,
+} from '../constants/sidebarPanelIds'
 import type { AdminScope } from '../types/admin'
 import { isAdminAuthenticated } from '../utils/adminAuth'
+
+const AdminCalculatorLayout = () => import('../layouts/AdminCalculatorLayout.vue')
+const SiteInfoView = () => import('../views/SiteInfoView.vue')
+const CharacterCalculatorView = () => import('../views/CharacterCalculatorView.vue')
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -20,23 +32,31 @@ const router = createRouter({
       component: () => import('../views/AccountView.vue'),
       meta: { title: '账号中心' },
     },
-    {
-      path: '/about',
-      name: 'about',
-      component: () => import('../views/SiteInfoView.vue'),
+    ...createSidebarPanelRouteRecords({
+      basePath: '/about',
+      routeName: 'about',
+      component: SiteInfoView,
+      panelIds: SITE_INFO_ROUTE_PANELS,
+      defaultPanelId: 'about',
       meta: { title: '网站说明' },
-    },
+      childProps: {
+        backTo: '/',
+        backLabel: '← 返回首页',
+      },
+    }),
     ...publicModePanelRouteRecords,
     {
       path: '/defense',
       name: 'defense-select',
       component: () => import('../views/DefenseSelectView.vue'),
     },
-    {
-      path: '/character-calculator',
-      name: 'character-calculator',
-      component: () => import('../views/CharacterCalculatorView.vue'),
-    },
+    ...createSidebarPanelRouteRecords({
+      basePath: '/character-calculator',
+      routeName: 'character-calculator',
+      component: CharacterCalculatorView,
+      panelIds: CHARACTER_CALC_PAGES,
+      defaultPanelId: 'damage',
+    }),
     {
       path: '/admin/login',
       name: 'admin-login',
@@ -73,40 +93,46 @@ const router = createRouter({
       component: () => import('../views/admin/AdminSiteInfoView.vue'),
       meta: { requiresAdmin: true, title: '网站说明管理' },
     },
-    {
-      path: '/admin/about',
-      name: 'admin-about',
-      component: () => import('../views/SiteInfoView.vue'),
-      props: {
+    ...createSidebarPanelRouteRecords({
+      basePath: '/admin/about',
+      routeName: 'admin-about',
+      component: SiteInfoView,
+      panelIds: SITE_INFO_ROUTE_PANELS,
+      defaultPanelId: 'about',
+      meta: { requiresAdmin: true, title: '网站说明' },
+      childProps: {
         backTo: '/admin',
         backLabel: '← 返回管理员入口',
       },
-      meta: { requiresAdmin: true, title: '网站说明' },
-    },
-    {
-      path: '/admin/crisis-assault',
-      name: 'admin-crisis-assault',
+    }),
+    ...createSidebarPanelRouteRecords({
+      basePath: '/admin/crisis-assault',
+      routeName: 'admin-crisis-assault',
       component: AdminLayout,
-      props: () => ({
+      panelIds: ADMIN_SCOPE_PANELS,
+      defaultPanelId: 'monster',
+      meta: { requiresAdmin: true },
+      childProps: () => ({
         title: '危局强袭战',
         scope: 'crisis-assault' as AdminScope,
         backTo: '/admin',
         backLabel: '← 返回管理员入口',
       }),
-      meta: { requiresAdmin: true },
-    },
-    {
-      path: '/admin/deduction',
-      name: 'admin-deduction',
+    }),
+    ...createSidebarPanelRouteRecords({
+      basePath: '/admin/deduction',
+      routeName: 'admin-deduction',
       component: AdminLayout,
-      props: () => ({
+      panelIds: ADMIN_DEDUCTION_PANELS,
+      defaultPanelId: 'monster',
+      meta: { requiresAdmin: true },
+      childProps: () => ({
         title: '临界推演',
         scope: 'deduction' as AdminScope,
         backTo: '/admin',
         backLabel: '← 返回管理员入口',
       }),
-      meta: { requiresAdmin: true },
-    },
+    }),
     {
       path: '/admin/boss-info',
       name: 'admin-boss-info',
@@ -119,36 +145,42 @@ const router = createRouter({
       component: () => import('../views/admin/AdminBuffCatalogView.vue'),
       meta: { requiresAdmin: true, title: '环境 Buff 管理' },
     },
-    {
-      path: '/admin/character-calculator',
-      name: 'admin-character-calculator',
-      component: () => import('../layouts/AdminCalculatorLayout.vue'),
+    ...createSidebarPanelRouteRecords({
+      basePath: '/admin/character-calculator',
+      routeName: 'admin-character-calculator',
+      component: AdminCalculatorLayout,
+      panelIds: ADMIN_CALCULATOR_PANELS,
+      defaultPanelId: 'agent',
       meta: { requiresAdmin: true },
-    },
-    {
-      path: '/admin/defense/old',
-      name: 'admin-defense-old',
+    }),
+    ...createSidebarPanelRouteRecords({
+      basePath: '/admin/defense/old',
+      routeName: 'admin-defense-old',
       component: AdminLayout,
-      props: () => ({
+      panelIds: ADMIN_SCOPE_PANELS,
+      defaultPanelId: 'monster',
+      meta: { requiresAdmin: true },
+      childProps: () => ({
         title: '旧·式舆防卫战',
         scope: 'defense-old' as AdminScope,
         backTo: '/admin/defense',
         backLabel: '← 返回式舆防卫战',
       }),
-      meta: { requiresAdmin: true },
-    },
-    {
-      path: '/admin/defense/new',
-      name: 'admin-defense-new',
+    }),
+    ...createSidebarPanelRouteRecords({
+      basePath: '/admin/defense/new',
+      routeName: 'admin-defense-new',
       component: AdminLayout,
-      props: () => ({
+      panelIds: ADMIN_SCOPE_PANELS,
+      defaultPanelId: 'monster',
+      meta: { requiresAdmin: true },
+      childProps: () => ({
         title: '新·式舆防卫战',
         scope: 'defense-new' as AdminScope,
         backTo: '/admin/defense',
         backLabel: '← 返回式舆防卫战',
       }),
-      meta: { requiresAdmin: true },
-    },
+    }),
   ],
 })
 

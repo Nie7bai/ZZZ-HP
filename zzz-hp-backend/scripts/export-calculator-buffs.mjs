@@ -14,6 +14,7 @@ import pool from '../src/config/db.js'
 import { listCalculatorBuffs } from '../src/services/calculatorBuffService.js'
 import { listDamageEventModes } from '../src/services/damageEventModeService.js'
 import { listSkills } from '../src/services/skillLibraryService.js'
+import { listSkillGroups } from '../src/services/skillGroupService.js'
 
 dotenv.config()
 
@@ -33,6 +34,7 @@ try {
   const data = await listCalculatorBuffs()
   const damageEventModes = await listDamageEventModes()
   const skills = await listSkills()
+  const skillGroups = await listSkillGroups()
   let out
 
   if (agentsOnly && fs.existsSync(outPath)) {
@@ -48,6 +50,7 @@ try {
       followUpSkillRules: data.followUpSkillRules ?? [],
       damageEventModes,
       skills,
+      skillGroups,
     }
   }
 
@@ -59,7 +62,7 @@ try {
       `音擎 ${out.wengines.length} · 邦布 ${out.bangboos.length} · 驱动盘 ${out.driveDiscs.length}`,
     )
     console.log(
-      `招式小类 ${out.skillSubcategories.length} · 追击规则 ${out.followUpSkillRules.length} · 伤害事件模式 ${out.damageEventModes.length} · 招式 ${out.skills?.length ?? 0}`,
+      `招式小类 ${out.skillSubcategories.length} · 追击规则 ${out.followUpSkillRules.length} · 伤害事件模式 ${out.damageEventModes.length} · 招式 ${out.skills?.length ?? 0} · 技能组 ${out.skillGroups?.length ?? 0}`,
     )
   }
 } finally {

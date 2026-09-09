@@ -1,6 +1,7 @@
 import { listCalculatorBuffs, upsertAgent, upsertBangboo, upsertDriveDisc, upsertWengine } from './calculatorBuffService.js'
 import { listDamageEventModes, upsertDamageEventMode } from './damageEventModeService.js'
 import { listSkills, upsertSkill } from './skillLibraryService.js'
+import { listSkillGroups, upsertSkillGroup } from './skillGroupService.js'
 import { listFollowUpSkillRules, listSkillSubcategories, upsertFollowUpSkillRule, upsertSkillSubcategory } from './skillSubcategoryService.js'
 
 const SNAPSHOT_KEYS = [
@@ -12,6 +13,7 @@ const SNAPSHOT_KEYS = [
   'followUpSkillRules',
   'damageEventModes',
   'skills',
+  'skillGroups',
 ]
 
 function asArray(value) {
@@ -24,7 +26,11 @@ function itemId(item) {
 
 export async function exportCalculatorBuffSnapshot() {
   const data = await listCalculatorBuffs()
-  const [damageEventModes, skills] = await Promise.all([listDamageEventModes(), listSkills()])
+  const [damageEventModes, skills, skillGroups] = await Promise.all([
+    listDamageEventModes(),
+    listSkills(),
+    listSkillGroups(),
+  ])
   return {
     exportedAt: new Date().toISOString(),
     agents: data.agents,
@@ -35,6 +41,7 @@ export async function exportCalculatorBuffSnapshot() {
     followUpSkillRules: data.followUpSkillRules ?? [],
     damageEventModes,
     skills,
+    skillGroups,
   }
 }
 
@@ -68,6 +75,7 @@ export function coerceCalculatorBuffSnapshot(raw) {
   }
   if (Array.isArray(doc.events) || doc.modeType) return { damageEventModes: [doc] }
   if (doc.damageType != null && (doc.baseMult != null || doc.skillTypes)) return { skills: [doc] }
+  if (Array.isArray(doc.members) && doc.name && doc.agentId != null) return { skillGroups: [doc] }
   if (doc.agentId && doc.categoryId) return { followUpSkillRules: [doc] }
   if (doc.profession || doc.element) return { agents: [doc] }
 
@@ -114,6 +122,7 @@ export async function importCalculatorBuffSnapshot(raw) {
     followUpSkillRules: emptyTypeResult(),
     damageEventModes: emptyTypeResult(),
     skills: emptyTypeResult(),
+    skillGroups: emptyTypeResult(),
   }
 
   if (Array.isArray(snapshot.agents)) {
@@ -155,6 +164,13 @@ export async function importCalculatorBuffSnapshot(raw) {
   }
   if (Array.isArray(snapshot.skills)) {
     summary.skills = await importDocs(snapshot.skills, idSet(current.skills), upsertSkill)
+  }
+  if (Array.isArray(snapshot.skillGroups)) {
+    summary.skillGroups = await importDocs(
+      snapshot.skillGroups,
+      idSet(current.skillGroups),
+      upsertSkillGroup,
+    )
   }
 
   const hasAny =

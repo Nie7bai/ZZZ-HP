@@ -40,6 +40,20 @@ async function ensureTable() {
   } catch {
     // column may already exist
   }
+  try {
+    await pool.query(
+      `ALTER TABLE calculator_skills ADD COLUMN owner_group_id VARCHAR(64) NULL AFTER element`,
+    )
+  } catch {
+    // column may already exist
+  }
+  try {
+    await pool.query(
+      `ALTER TABLE calculator_skills ADD COLUMN note VARCHAR(255) NOT NULL DEFAULT '' AFTER owner_group_id`,
+    )
+  } catch {
+    // column may already exist
+  }
   await ensurePublicAnomalySkills()
   ensured = true
 }
@@ -96,6 +110,11 @@ function rowToDoc(row) {
     baseMultFactor: readNumber(row.base_mult_factor, 100),
     settlementMult: readNumber(row.settlement_mult, 0),
     element: String(row.element ?? ''),
+    ownerGroupId:
+      row.owner_group_id == null || row.owner_group_id === ''
+        ? null
+        : String(row.owner_group_id),
+    note: String(row.note ?? '').trim(),
   }
 }
 
@@ -120,6 +139,11 @@ export async function upsertSkill(doc) {
   const baseMultFactor = readNumber(doc.baseMultFactor, 100)
   const settlementMult = readNumber(doc.settlementMult, 0)
   const element = String(doc.element ?? '').trim()
+  const ownerGroupId =
+    doc.ownerGroupId == null || doc.ownerGroupId === ''
+      ? null
+      : String(doc.ownerGroupId).trim()
+  const note = String(doc.note ?? '').trim()
 
   if (!name) throw new Error('招式名称为必填项')
   if (!damageType) throw new Error('伤害类型为必填项')
@@ -132,8 +156,8 @@ export async function upsertSkill(doc) {
   await pool.query(
     `INSERT INTO calculator_skills
       (id, agent_id, name, damage_type, skill_types, buff_anchor_id,
-       base_mult, base_mult_factor, settlement_mult, sort_order, element)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+       base_mult, base_mult_factor, settlement_mult, sort_order, element, owner_group_id, note)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        agent_id = VALUES(agent_id),
        name = VALUES(name),
@@ -143,7 +167,9 @@ export async function upsertSkill(doc) {
        base_mult = VALUES(base_mult),
        base_mult_factor = VALUES(base_mult_factor),
        settlement_mult = VALUES(settlement_mult),
-       element = VALUES(element)`,
+       element = VALUES(element),
+       owner_group_id = VALUES(owner_group_id),
+       note = VALUES(note)`,
     [
       id,
       agentId,
@@ -155,6 +181,8 @@ export async function upsertSkill(doc) {
       baseMultFactor,
       settlementMult,
       element,
+      ownerGroupId,
+      note,
     ],
   )
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import SiteInfoPanel from '@/components/info/SiteInfoPanel.vue'
 import {
   fetchSiteInfoSections,
@@ -7,6 +8,8 @@ import {
   SITE_INFO_PANEL_ORDER,
   type SiteInfoSection,
 } from '@/api/siteInfo'
+import { isSiteInfoPanelId } from '@/constants/sidebarPanelIds'
+import { getSidebarPanelLocation } from '@/router/sidebarPanelRoutes'
 import type { SiteInfoPanelId } from '@/types/siteInfo'
 
 export type { SiteInfoPanelId }
@@ -22,22 +25,37 @@ const props = withDefaults(
   },
 )
 
-const panels = SITE_INFO_PANEL_ORDER.map((id) => ({
-  id,
-  label: SITE_INFO_PANEL_LABELS[id],
-}))
+const route = useRoute()
+
+const basePath = computed(() => {
+  const fromMeta = route.meta.sidebarPanelBasePath
+  if (typeof fromMeta === 'string' && fromMeta) return fromMeta
+  return '/about'
+})
+
+const panels = computed(() =>
+  SITE_INFO_PANEL_ORDER.map((id) => ({
+    id,
+    label: SITE_INFO_PANEL_LABELS[id],
+    to: getSidebarPanelLocation(basePath.value, id, route),
+  })),
+)
 
 const sections = ref<Partial<Record<SiteInfoPanelId, SiteInfoSection>>>({})
 const loading = ref(true)
 const loadError = ref('')
-
-const activePanel = ref<SiteInfoPanelId>('about')
 const mobileNavOpen = ref(false)
+
+const activePanel = computed<SiteInfoPanelId>(() => {
+  const fromRoute = route.meta.sidebarPanelId
+  if (isSiteInfoPanelId(fromRoute)) return fromRoute
+  return 'about'
+})
 
 const activeSection = computed(() => sections.value[activePanel.value] ?? null)
 
 const mobileSubtitle = computed(
-  () => panels.find((p) => p.id === activePanel.value)?.label ?? '',
+  () => panels.value.find((p) => p.id === activePanel.value)?.label ?? '',
 )
 
 async function loadSections() {
@@ -53,11 +71,6 @@ async function loadSections() {
   } finally {
     loading.value = false
   }
-}
-
-function selectPanel(id: SiteInfoPanelId) {
-  activePanel.value = id
-  mobileNavOpen.value = false
 }
 
 watch(activePanel, () => {
@@ -111,16 +124,16 @@ onMounted(() => {
         <h2 class="sidebar-title">网站说明</h2>
 
         <nav class="sidebar-nav">
-          <button
+          <RouterLink
             v-for="panel in panels"
             :key="panel.id"
-            type="button"
+            :to="panel.to"
             class="nav-btn"
             :class="{ active: activePanel === panel.id }"
-            @click="selectPanel(panel.id)"
+            @click="mobileNavOpen = false"
           >
             {{ panel.label }}
-          </button>
+          </RouterLink>
         </nav>
       </aside>
     </div>
@@ -192,6 +205,7 @@ onMounted(() => {
 }
 
 .nav-btn {
+  display: block;
   width: 100%;
   padding: 0.75rem 1rem;
   border: 1px solid var(--color-border);
@@ -200,11 +214,13 @@ onMounted(() => {
   color: var(--color-heading);
   font-size: 0.95rem;
   text-align: left;
+  text-decoration: none;
   cursor: pointer;
   transition:
     background-color 0.2s,
     border-color 0.2s,
     color 0.2s;
+  box-sizing: border-box;
 }
 
 .nav-btn:hover {

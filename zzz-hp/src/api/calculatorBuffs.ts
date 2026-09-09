@@ -7,6 +7,7 @@ import type {
   DriveDiscBuffDoc,
   FollowUpSkillRule,
   Skill,
+  SkillGroup,
   SkillSubcategory,
   WengineBuffDoc,
 } from '@/types/calculator'
@@ -111,6 +112,25 @@ export async function deletePresetSkill(id: string): Promise<void> {
   await requestJson<{ id: string }>(`/api/calculator-buffs/skills/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   })
+}
+
+export async function fetchPresetSkillGroups(): Promise<SkillGroup[]> {
+  return requestJson<SkillGroup[]>('/api/calculator-buffs/skill-groups')
+}
+
+export async function savePresetSkillGroup(doc: SkillGroup): Promise<SkillGroup> {
+  return requestJson<SkillGroup>('/api/calculator-buffs/skill-groups', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(doc),
+  })
+}
+
+export async function deletePresetSkillGroup(id: string): Promise<void> {
+  await requestJson<{ id: string }>(
+    `/api/calculator-buffs/skill-groups/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
+  )
 }
 
 export async function saveFollowUpSkillRule(

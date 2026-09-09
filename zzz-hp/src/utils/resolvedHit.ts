@@ -5,12 +5,14 @@ import type {
   DamageEventMultOverrides,
   Skill,
   SkillCalcContext,
+  SkillGroup,
   SkillMatchCoord,
   SkillSubcategory,
   StaggerPhase,
 } from '@/types/calculator'
 import type {
   FlowEntry,
+  PreparedGroupMemberAgents,
   PreparedSkill,
   PreparedSkillExtraMods,
   SchemeSlot,
@@ -31,6 +33,12 @@ import {
   isLegacyAnomalyEventKind,
   isLuminousAgent,
 } from '@/utils/remielUtils'
+import {
+  findMemberAgents,
+  findMemberOverride,
+  skillGroupMemberKey,
+  sortSkillGroupMembers,
+} from '@/utils/skillGroup'
 import { buildSkillMatchCoords, skillTypesIncludeFollowUp } from '@/utils/skillTypes'
 
 export function newLocalId(prefix: string): string {
@@ -73,6 +81,27 @@ export function defaultAnomalyAgents(
   }
   // 异常类：强度提供者与触发者均默认当前流程角色，倍率走角色原有面板/招式值
   return { anomalyPowerAgentId: ownerAgentId, triggerAgentId: ownerAgentId }
+}
+
+/** 为组内异常段生成默认双代理人（加入准备时） */
+export function buildDefaultMemberAgents(
+  group: SkillGroup,
+  ownerAgentId: string,
+  findSkill: (id: string) => Skill | null | undefined,
+): PreparedGroupMemberAgents[] {
+  const rows: PreparedGroupMemberAgents[] = []
+  for (const member of sortSkillGroupMembers(group.members)) {
+    const skill = findSkill(member.skillId)
+    if (!skill || !skillNeedsDualAgents(skill.damageType)) continue
+    const defaults = defaultAnomalyAgents(skill.damageType, ownerAgentId)
+    rows.push({
+      memberKey: skillGroupMemberKey(member),
+      skillId: member.skillId,
+      anomalyPowerAgentId: defaults.anomalyPowerAgentId,
+      triggerAgentId: defaults.triggerAgentId,
+    })
+  }
+  return rows
 }
 
 /**
@@ -155,6 +184,7 @@ export interface ResolveFlowOptions {
   slots: SchemeSlot[]
   teamSlots: Array<{ agentId: string }>
   findSkill: (skillId: string) => Skill | null
+  findSkillGroup?: (groupId: string) => SkillGroup | null
   skillSubcategories?: SkillSubcategory[] | null
 }
 
@@ -170,6 +200,14 @@ function resolveOne(
   skill: Skill,
   ownerAgentId: string,
   options: ResolveFlowOptions,
+  overrides?: {
+    count?: number
+    staggerPhase?: StaggerPhase
+    critMode?: DamageEventCritMode
+    hitId?: string
+    anomalyPowerAgentId?: string | null
+    triggerAgentId?: string | null
+  },
 ): ResolvedHit {
   const { damageKind, anomalySubKind } = mapEventKindToCalc(skill.damageType)
   const anchorId = skill.buffAnchorId?.trim() || null
@@ -184,15 +222,29 @@ function resolveOne(
   })
 
   const defaults = defaultAnomalyAgents(skill.damageType, ownerAgentId)
+  const stagger = overrides?.staggerPhase ?? entry.staggerPhase
+  const crit = overrides?.critMode ?? entry.critMode
+  const count =
+    overrides?.count != null
+      ? Math.max(0, Number(overrides.count) || 0)
+      : Math.max(0, Number(entry.count) || 0)
+  const powerRaw =
+    overrides && 'anomalyPowerAgentId' in overrides
+      ? overrides.anomalyPowerAgentId
+      : prepared.anomalyPowerAgentId
+  const triggerRaw =
+    overrides && 'triggerAgentId' in overrides
+      ? overrides.triggerAgentId
+      : prepared.triggerAgentId
   return {
-    id: entry.id,
+    id: overrides?.hitId ?? entry.id,
     skill,
     ownerAgentId,
-    anomalyPowerAgentId: prepared.anomalyPowerAgentId?.trim() || defaults.anomalyPowerAgentId,
-    triggerAgentId: prepared.triggerAgentId?.trim() || defaults.triggerAgentId,
-    count: Math.max(0, Number(entry.count) || 0),
-    staggerPhase: entry.staggerPhase,
-    critMode: resolveFlowHitCritMode(skill.damageType, entry.critMode),
+    anomalyPowerAgentId: powerRaw?.trim() || defaults.anomalyPowerAgentId,
+    triggerAgentId: triggerRaw?.trim() || defaults.triggerAgentId,
+    count,
+    staggerPhase: stagger,
+    critMode: resolveFlowHitCritMode(skill.damageType, crit),
     damageKind,
     anomalySubKind,
     coords,
@@ -205,8 +257,7 @@ function resolveOne(
 /**
  * 展开方案的三条流程为一份扁平结算列表。
  *
- * 顺序即三条流程按槽位先后拼接——数据结构上没有「三条」的痕迹，
- * 将来要合并成一条时间轴只需换排序，不必动存盘。
+ * 技能组流程行在内部按 members 展开为多段 ResolvedHit（UI 仍一行）。
  */
 export function resolveFlow(options: ResolveFlowOptions): ResolveFlowResult {
   const hits: ResolvedHit[] = []
@@ -221,9 +272,48 @@ export function resolveFlow(options: ResolveFlowOptions): ResolveFlowResult {
     for (const entry of slot.flow) {
       const prepared = preparedById.get(entry.preparedId)
       if (!prepared) continue
-      const skill = options.findSkill(prepared.skillId)
+
+      const groupId = prepared.skillGroupId?.trim() || ''
+      if (groupId) {
+        const group = options.findSkillGroup?.(groupId) ?? null
+        if (!group) {
+          missing.add(groupId)
+          continue
+        }
+        const members = sortSkillGroupMembers(group.members)
+        const groupMult = Math.max(0, Number(entry.count) || 0)
+        members.forEach((member, memberIndex) => {
+          const skill = options.findSkill(member.skillId)
+          if (!skill) {
+            missing.add(member.skillId)
+            return
+          }
+          const ov = findMemberOverride(entry.memberOverrides, member)
+          const ma = findMemberAgents(prepared.memberAgents, member)
+          const segmentCount = Math.max(0, Number(ov?.count ?? member.count) || 0) * groupMult
+          // 组内异常段：优先成员双代理人，缺省再回落准备条目 / 当前角色默认
+          const power =
+            ma?.anomalyPowerAgentId?.trim() || prepared.anomalyPowerAgentId?.trim() || null
+          const trigger = ma?.triggerAgentId?.trim() || prepared.triggerAgentId?.trim() || null
+          hits.push(
+            resolveOne(entry, prepared, skill, ownerAgentId, options, {
+              count: segmentCount,
+              staggerPhase: ov?.staggerPhase ?? entry.staggerPhase,
+              critMode: entry.critMode,
+              hitId: `${entry.id}#${memberIndex}:${member.skillId}`,
+              ...(power ? { anomalyPowerAgentId: power } : {}),
+              ...(trigger ? { triggerAgentId: trigger } : {}),
+            }),
+          )
+        })
+        continue
+      }
+
+      const skillId = prepared.skillId?.trim() || ''
+      if (!skillId) continue
+      const skill = options.findSkill(skillId)
       if (!skill) {
-        missing.add(prepared.skillId)
+        missing.add(skillId)
         continue
       }
       hits.push(resolveOne(entry, prepared, skill, ownerAgentId, options))
@@ -257,7 +347,39 @@ export function resolveSkillPreviews(options: ResolveFlowOptions): ResolvedHit[]
     if (!ownerAgentId) return
 
     for (const prepared of slot.prepared) {
-      const skill = options.findSkill(prepared.skillId)
+      const groupId = prepared.skillGroupId?.trim() || ''
+      if (groupId) {
+        const group = options.findSkillGroup?.(groupId) ?? null
+        if (!group) continue
+        const members = sortSkillGroupMembers(group.members)
+        members.forEach((member, memberIndex) => {
+          const skill = options.findSkill(member.skillId)
+          if (!skill) return
+          const ma = findMemberAgents(prepared.memberAgents, member)
+          const power =
+            ma?.anomalyPowerAgentId?.trim() || prepared.anomalyPowerAgentId?.trim() || null
+          const trigger = ma?.triggerAgentId?.trim() || prepared.triggerAgentId?.trim() || null
+          hits.push(
+            resolveOne(
+              previewFlowEntry(prepared.id, ownerAgentId, prepared.id),
+              prepared,
+              skill,
+              ownerAgentId,
+              options,
+              {
+                count: Math.max(0, Number(member.count) || 0),
+                hitId: `${prepared.id}#preview:${memberIndex}:${member.skillId}`,
+                ...(power ? { anomalyPowerAgentId: power } : {}),
+                ...(trigger ? { triggerAgentId: trigger } : {}),
+              },
+            ),
+          )
+        })
+        continue
+      }
+      const skillId = prepared.skillId?.trim() || ''
+      if (!skillId) continue
+      const skill = options.findSkill(skillId)
       if (!skill) continue
       hits.push(
         resolveOne(
