@@ -218,7 +218,10 @@ function normalizeEffectList(value) {
       if (BUFF_MULT_FACTOR_KEYS.includes(effect.stat)) {
         effect.value = normalizeBuffMultFactorDelta(effect.value)
         effect.valuePerStack = normalizeBuffMultFactorDelta(effect.valuePerStack)
+        // 转模（convert）的数值在运行时由来源属性折算，value 本就为 0，
+        // 不能按脏条目丢弃（否则会删掉蕾米埃尔「精通 → 耀变倍率修正」等核心被动）
         if (
+          effect.kind !== 'convert' &&
           Math.abs(effect.value) < 1e-12 &&
           (effect.kind !== 'stacked' || Math.abs(effect.valuePerStack) < 1e-12)
         ) {

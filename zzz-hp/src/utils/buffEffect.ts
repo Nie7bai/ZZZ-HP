@@ -1004,10 +1004,16 @@ export function normalizeBuffEffect(value: unknown): BuffEffect | null {
       setEffectSkillTargets(effect, targets)
     }
   }
-  // 倍率修正增量为 0 的脏条目不保留
+  // 倍率修正增量为 0 的脏条目不保留。
+  // 转模（convert）的数值由来源属性在运行时折算，value 字段本就为 0，
+  // 不能按脏条目丢弃，否则会连带删掉蕾米埃尔「精通 → 耀变倍率修正」这类核心被动。
   const factorValue = Number(effect.value ?? 0)
   const factorPerStack = Number(effect.valuePerStack ?? 0)
-  if (isBuffMultFactorKey(effect.stat) && Math.abs(factorValue) < 1e-12) {
+  if (
+    effect.kind !== 'convert' &&
+    isBuffMultFactorKey(effect.stat) &&
+    Math.abs(factorValue) < 1e-12
+  ) {
     if (effect.kind !== 'stacked' || Math.abs(factorPerStack) < 1e-12) {
       return null
     }

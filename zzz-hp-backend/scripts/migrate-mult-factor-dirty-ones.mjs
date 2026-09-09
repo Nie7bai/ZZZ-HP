@@ -40,7 +40,10 @@ function scrubEffect(effect) {
     value: normalizeBuffMultFactorDelta(effect.value),
     valuePerStack: normalizeBuffMultFactorDelta(effect.valuePerStack),
   }
+  // 转模（convert）的数值在运行时由来源属性折算，value 本就为 0，
+  // 不能按脏条目丢弃（否则会删掉蕾米埃尔「精通 → 耀变倍率修正」等核心被动）
   if (
+    next.kind !== 'convert' &&
     Math.abs(Number(next.value) || 0) < 1e-12 &&
     (next.kind !== 'stacked' || Math.abs(Number(next.valuePerStack) || 0) < 1e-12)
   ) {
