@@ -320,13 +320,43 @@ function applyAffixState(state: AgentAffixState | undefined) {
   })
 }
 
+function isSameRecord(a: object | undefined, b: object | undefined): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  const aRec = a as Record<string, unknown>
+  const bRec = b as Record<string, unknown>
+  const aKeys = Object.keys(aRec)
+  if (aKeys.length !== Object.keys(bRec).length) return false
+  return aKeys.every((key) => aRec[key] === bRec[key])
+}
+
+function isSameAffixState(a: AgentAffixState | undefined, b: AgentAffixState): boolean {
+  if (!a) return false
+  return (
+    isSameRecord(a.affixCounts, b.affixCounts) &&
+    isSameRecord(a.affixDriveDiscMainStats, b.affixDriveDiscMainStats)
+  )
+}
+
 function flushAffixOntoSlot(slotIndex: number) {
   if (suppressRestoreResets) return
   const slot = props.teamSlots[slotIndex]
   if (!slot?.agentId) return
-  slot.affixCounts = { ...affixCounts }
-  slot.affixDriveDiscMainStats = { ...affixDriveDiscMainStats }
-  affixStateByAgent[slot.agentId] = captureAffixState()
+  // 内容未变时不写回：getSnapshot() 也会调用本函数，无条件赋值会让
+  // teamSlots 深层 watch 触发「保存草稿 → getSnapshot」的 400ms 自激循环，
+  // 导致整页持续重渲染（词条模块尤其明显）。
+  const nextCounts = { ...affixCounts }
+  if (!isSameRecord(slot.affixCounts, nextCounts)) {
+    slot.affixCounts = nextCounts
+  }
+  const nextMainStats = { ...affixDriveDiscMainStats }
+  if (!isSameRecord(slot.affixDriveDiscMainStats, nextMainStats)) {
+    slot.affixDriveDiscMainStats = nextMainStats
+  }
+  const nextState = captureAffixState()
+  if (!isSameAffixState(affixStateByAgent[slot.agentId], nextState)) {
+    affixStateByAgent[slot.agentId] = nextState
+  }
 }
 
 function flushAffixOntoTeamSlots() {
