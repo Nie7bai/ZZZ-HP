@@ -28,6 +28,7 @@ import {
   type AffixExternalFixedParts,
   type AffixPanelCalcInput,
 } from '@/utils/affixPanelCalc'
+import { applyPanelDeltas, type AffixPanelDeltaField } from '@/utils/affixLibrary'
 import {
   createEmptyAgentBasePanel,
   createEmptyBuffStatModifiers,
@@ -372,7 +373,8 @@ export interface AffixReplaceRow {
 }
 
 export interface BenefitCurveSeries {
-  key: OptimalAffixKey
+  /** 系列标识；扫掠模式为 OptimalAffixKey，词条分配模式为词条库条目 id */
+  key: string
   label: string
   color: string
   /** index 0 unused; values[n] = cumulative % after adding n rolls */
@@ -1348,13 +1350,14 @@ const affixSweepCache = new Map<
 export function evaluateAffixCountsForSweep(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
+  panelDeltas?: AffixPanelDeltaMap,
 ): { grandTotal: number; eventLines: OptimalEventDamageLine[] } {
   resetAffixEvalCacheIfNeeded(ctx)
-  const cacheKey = affixCountsCacheKey(affixCounts)
+  const cacheKey = affixCountsCacheKey(affixCounts, panelDeltas)
   const cached = affixSweepCache.get(cacheKey)
   if (cached) return cached
 
-  const external = computeExternalForEval(ctx, affixCounts)
+  const external = computeExternalForEval(ctx, affixCounts, panelDeltas)
 
   let payload: { grandTotal: number; eventLines: OptimalEventDamageLine[] }
   if (ctx.hits?.length) {
@@ -1421,6 +1424,8 @@ export function evaluateAffixCountsForSweep(
 
 const AFFIX_EVAL_CACHE_MAX = 800
 let affixEvalCacheCtxSig = ''
+/** 自定义词条（panelField 类）叠加到局外面板的增量表 */
+export type AffixPanelDeltaMap = Partial<Record<AffixPanelDeltaField, number>>
 const affixEvalCache = new Map<
   string,
   {
@@ -1434,10 +1439,19 @@ const affixEvalCache = new Map<
   }
 >()
 
-function affixCountsCacheKey(affixCounts: AffixCounts): string {
+function affixCountsCacheKey(
+  affixCounts: AffixCounts,
+  panelDeltas?: AffixPanelDeltaMap,
+): string {
   // 必须覆盖 AffixCounts 的全部字段：锋御走 defFlat/defPercent，
   // 漏掉会让不同防御档数命中同一条缓存，返回错误伤害。
-  return `${affixCounts.hpFlat},${affixCounts.hpPercent},${affixCounts.atkFlat},${affixCounts.atkPercent},${affixCounts.defFlat},${affixCounts.defPercent},${affixCounts.pen},${affixCounts.critRate},${affixCounts.critDmg},${affixCounts.mastery}`
+  const base = `${affixCounts.hpFlat},${affixCounts.hpPercent},${affixCounts.atkFlat},${affixCounts.atkPercent},${affixCounts.defFlat},${affixCounts.defPercent},${affixCounts.pen},${affixCounts.critRate},${affixCounts.critDmg},${affixCounts.mastery}`
+  if (!panelDeltas) return base
+  const parts = (Object.keys(panelDeltas) as AffixPanelDeltaField[])
+    .sort()
+    .filter((key) => Boolean(panelDeltas[key]))
+    .map((key) => `${key}=${panelDeltas[key]}`)
+  return parts.length ? `${base}|${parts.join(',')}` : base
 }
 
 function serializeBuffSelection(state: BuffSelectionState | null | undefined): string {
@@ -1532,13 +1546,19 @@ function getAffixExternalFixedParts(ctx: OptimalEvalContext): AffixExternalFixed
   return affixExternalFixedParts
 }
 
-function computeExternalForEval(ctx: OptimalEvalContext, affixCounts: AffixCounts): PanelStats {
-  return applyAffixCountsToFixedParts(getAffixExternalFixedParts(ctx), affixCounts)
+function computeExternalForEval(
+  ctx: OptimalEvalContext,
+  affixCounts: AffixCounts,
+  panelDeltas?: AffixPanelDeltaMap,
+): PanelStats {
+  const external = applyAffixCountsToFixedParts(getAffixExternalFixedParts(ctx), affixCounts)
+  return panelDeltas ? applyPanelDeltas(external, panelDeltas) : external
 }
 
 function evaluateAffixCountsUncached(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
+  panelDeltas?: AffixPanelDeltaMap,
 ): {
   finalPanel: PanelStats
   result: DamageCalcResult
@@ -1548,7 +1568,7 @@ function evaluateAffixCountsUncached(
   grandTotal: number
   eventLines: OptimalEventDamageLine[]
 } {
-  const external = computeExternalForEval(ctx, affixCounts)
+  const external = computeExternalForEval(ctx, affixCounts, panelDeltas)
 
   if (ctx.hits?.length) {
     const { grandTotal, eventLines, firstResult, firstBreakdown } = computeEventDamageLines(
@@ -1666,6 +1686,7 @@ function evaluateAffixCountsUncached(
 export function evaluateAffixCounts(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
+  panelDeltas?: AffixPanelDeltaMap,
 ): {
   finalPanel: PanelStats
   result: DamageCalcResult
@@ -1676,11 +1697,11 @@ export function evaluateAffixCounts(
   eventLines: OptimalEventDamageLine[]
 } {
   resetAffixEvalCacheIfNeeded(ctx)
-  const cacheKey = affixCountsCacheKey(affixCounts)
+  const cacheKey = affixCountsCacheKey(affixCounts, panelDeltas)
   const cached = affixEvalCache.get(cacheKey)
   if (cached) return cached
 
-  const result = evaluateAffixCountsUncached(ctx, affixCounts)
+  const result = evaluateAffixCountsUncached(ctx, affixCounts, panelDeltas)
   if (affixEvalCache.size >= AFFIX_EVAL_CACHE_MAX) {
     const firstKey = affixEvalCache.keys().next().value
     if (firstKey) affixEvalCache.delete(firstKey)
