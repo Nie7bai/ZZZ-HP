@@ -666,12 +666,15 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   let directDamageFromDirectMult: number
   let settlementDamageExpected: number
   let directDamageExpected: number
-  let reportedDmgMultiplier = mainParts.dmgMultiplier
+  /**
+   * 展示用增伤区必须与链上实际使用的增伤区一致：
+   * 异常链不扣弱伤（取强度提供者面板的通用增伤区），直伤/命破/锐化链扣弱伤。
+   */
+  const reportedDmgMultiplier = useTriggerBase ? baseParts.dmgMultiplier : directDmgMultiplier
   let reportedCritMultiplier = mainParts.critMultiplier
   let reportedPierceDmg = mainParts.pierceDmgMultiplier
 
   if (useSharpenFormula) {
-    reportedDmgMultiplier = directDmgMultiplier
     reportedCritMultiplier = sharpenCritZone
     reportedPierceDmg = 1
     const sharpenBaseChain =
@@ -685,7 +688,6 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     settlementDamageExpected = 0
     directDamageExpected = directDamageFromDirectMult
   } else {
-    reportedDmgMultiplier = directDmgMultiplier
     const directBaseChain =
       mainParts.generalMultiplier *
       directDmgPenaltyFactor *
