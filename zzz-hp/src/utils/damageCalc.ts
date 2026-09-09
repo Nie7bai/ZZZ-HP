@@ -287,7 +287,9 @@ export function computeDefenseZone(options: {
   const reduceDefenseRatio = clamp(defense.reduceDefense / 100, 0, 1)
   const defenseFactor = Math.max(0, 1 - ignoreDefenseRatio - reduceDefenseRatio)
   const defenseAfterModifiers = options.enemyDefense * defenseFactor * (1 - penRateRatio)
-  const effectiveDefense = Math.max(0, defenseAfterModifiers) - defense.pen
+  // 有效防御整体钳制到 ≥0：减去固定穿透后可能为负，若不再钳制，
+  // 防御区会突破 1 并随穿透值无限增长。钳制后分母 ≥ 794，防御区恒 ≤ 1。
+  const effectiveDefense = Math.max(0, defenseAfterModifiers - defense.pen)
   const defenseMultiplier = options.isMb ? 1 : 794 / (794 + effectiveDefense)
   return {
     penRateRatio,
@@ -437,7 +439,8 @@ function computeGeneralAndAnomalyBase(options: {
   const reduceDefenseRatio = clamp(defense.reduceDefense / 100, 0, 1)
   const defenseFactor = Math.max(0, 1 - ignoreDefenseRatio - reduceDefenseRatio)
   const defenseAfterModifiers = options.enemyInput.defense * defenseFactor * (1 - penRateRatio)
-  const effectiveDefense = Math.max(0, defenseAfterModifiers) - defense.pen
+  // 与 computeDefenseZone 同口径：有效防御整体钳制到 ≥0，防御区恒 ≤ 1
+  const effectiveDefense = Math.max(0, defenseAfterModifiers - defense.pen)
   const defenseMultiplier = options.isMb ? 1 : 794 / (794 + effectiveDefense)
   const resPenPanel = options.resPenSource ?? panel
   const resistanceMultiplier = 1 - enemyRes + clamp((resPenPanel.resPen + extraResPen) / 100, -2, 2)
