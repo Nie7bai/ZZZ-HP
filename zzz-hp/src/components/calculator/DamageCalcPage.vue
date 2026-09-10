@@ -189,6 +189,20 @@ const resolvedFlow = computed(() =>
     skillTalentLevelsByAgent,
   }),
 )
+
+/** 槽位影画变更时，把已存技能等级钳进该影画上下限 */
+watch(
+  () => teamSlots.map((slot) => `${slot.agentId}:${slot.rank}`).join('|'),
+  () => {
+    for (const slot of teamSlots) {
+      if (!slot.agentId || !skillTalentLevelsByAgent[slot.agentId]) continue
+      skillTalentLevelsByAgent[slot.agentId] = fillSkillTalentLevels(
+        skillTalentLevelsByAgent[slot.agentId],
+        slot.rank,
+      )
+    }
+  },
+)
 const hits = computed(() => resolvedFlow.value.hits)
 const previewHits = computed(() =>
   resolveSkillPreviews({
@@ -1258,7 +1272,10 @@ function applyUnifiedImport(payload: UnifiedPresetConfirmPayload) {
     ...payload.affixDriveDiscMainStats,
   }
   anomalySlotPanels[payload.agentId] = fillPanelStatsDefaults(payload.externalPanel)
-  skillTalentLevelsByAgent[payload.agentId] = fillSkillTalentLevels(payload.skillTalentLevels)
+  skillTalentLevelsByAgent[payload.agentId] = fillSkillTalentLevels(
+    payload.skillTalentLevels,
+    payload.rank,
+  )
   slot.agentId = payload.agentId
   syncMainCFlagToActiveSlot()
   nextTick(() => {
@@ -1408,7 +1425,8 @@ function applyWorkingState(entry: {
     const talentMap = entry.panelState.skillTalentLevelsByAgent
     if (talentMap) {
       for (const [agentId, levels] of Object.entries(talentMap)) {
-        skillTalentLevelsByAgent[agentId] = fillSkillTalentLevels(levels)
+        const rank = teamSlots.find((slot) => slot.agentId === agentId)?.rank ?? 0
+        skillTalentLevelsByAgent[agentId] = fillSkillTalentLevels(levels, rank)
       }
     }
   }

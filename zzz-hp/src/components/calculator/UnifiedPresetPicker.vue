@@ -34,6 +34,7 @@ import {
 } from '@/utils/panelBuffCalc'
 import type { BangbooBuffDoc } from '@/types/calculator'
 import {
+  DEFAULT_SKILL_TALENT_LEVEL,
   createDefaultSkillTalentLevels,
   fillSkillTalentLevels,
   type SkillTalentLevels,
@@ -181,8 +182,11 @@ function resetDraftPanelFromSlot() {
   )
   Object.assign(
     draftSkillTalentLevels,
-    createDefaultSkillTalentLevels(),
-    fillSkillTalentLevels(agentId ? props.skillTalentLevelsByAgent?.[agentId] : null),
+    createDefaultSkillTalentLevels(DEFAULT_SKILL_TALENT_LEVEL, selected.value.rank),
+    fillSkillTalentLevels(
+      agentId ? props.skillTalentLevelsByAgent?.[agentId] : null,
+      selected.value.rank || slot?.rank || 0,
+    ),
   )
   const saved = agentId ? props.anomalySlotPanels?.[agentId] : undefined
   if (saved) {
@@ -234,9 +238,17 @@ watch(
     Object.assign(draftAffixMains, createDefaultAffixDriveDiscMainStats())
     Object.assign(
       draftSkillTalentLevels,
-      createDefaultSkillTalentLevels(),
-      fillSkillTalentLevels(props.skillTalentLevelsByAgent?.[newId]),
+      createDefaultSkillTalentLevels(DEFAULT_SKILL_TALENT_LEVEL, selected.value.rank),
+      fillSkillTalentLevels(props.skillTalentLevelsByAgent?.[newId], selected.value.rank),
     )
+  },
+)
+
+watch(
+  () => selected.value.rank,
+  (rank) => {
+    if (!open.value) return
+    Object.assign(draftSkillTalentLevels, fillSkillTalentLevels(draftSkillTalentLevels, rank))
   },
 )
 
@@ -471,7 +483,7 @@ function confirm() {
     externalPanel: fillPanelStatsDefaults(external),
     affixCounts: { ...draftAffixCounts },
     affixDriveDiscMainStats: { ...draftAffixMains },
-    skillTalentLevels: fillSkillTalentLevels(draftSkillTalentLevels),
+    skillTalentLevels: fillSkillTalentLevels(draftSkillTalentLevels, selected.value.rank),
   })
   open.value = false
 }
@@ -763,6 +775,7 @@ const canConfirm = computed(() => !!selected.value.agentId)
                 :wengines="wengines"
                 :drive-discs="driveDiscs"
                 :agent-id="selected.agentId"
+                :agent-rank="selected.rank"
                 :wengine-id="selected.wengineId"
                 :two-piece-id="selected.twoPieceId"
                 :four-piece-id="selected.fourPieceId"

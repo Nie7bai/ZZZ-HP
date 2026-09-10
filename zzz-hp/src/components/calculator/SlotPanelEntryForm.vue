@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import type { AgentBuffDoc, CharacterAttrKey, DriveDiscBuffDoc, WengineBuffDoc } from '@/types/calculator'
 import { CHARACTER_ATTR_OPTIONS } from '@/types/calculator'
 import {
@@ -26,7 +26,9 @@ import {
 import {
   SKILL_TALENT_LEVEL_KEYS,
   SKILL_TALENT_LEVEL_LABELS,
+  clampSkillTalentLevel,
   createDefaultSkillTalentLevels,
+  skillTalentLevelBoundsForRank,
   type SkillTalentLevels,
 } from '@/utils/skillTalentLevels'
 
@@ -39,6 +41,8 @@ const props = defineProps<{
   wengines: WengineBuffDoc[]
   driveDiscs: DriveDiscBuffDoc[]
   agentId: string
+  /** 当前槽位影画，决定技能等级上下限 */
+  agentRank?: number
   wengineId: string
   twoPieceId: string
   fourPieceId: string
@@ -60,6 +64,31 @@ const affixDriveDiscMainStats = defineModel<AffixDriveDiscMainStats>('affixDrive
 const skillTalentLevels = defineModel<SkillTalentLevels>('skillTalentLevels', {
   default: () => createDefaultSkillTalentLevels(),
 })
+
+const talentBounds = computed(() => skillTalentLevelBoundsForRank(props.agentRank))
+
+watch(
+  () => props.agentRank,
+  (rank) => {
+    const next = { ...skillTalentLevels.value }
+    let changed = false
+    for (const key of SKILL_TALENT_LEVEL_KEYS) {
+      const clamped = clampSkillTalentLevel(next[key], rank)
+      if (clamped !== next[key]) {
+        next[key] = clamped
+        changed = true
+      }
+    }
+    if (changed) skillTalentLevels.value = next
+  },
+)
+
+function onTalentLevelInput(key: (typeof SKILL_TALENT_LEVEL_KEYS)[number], raw: unknown) {
+  skillTalentLevels.value = {
+    ...skillTalentLevels.value,
+    [key]: clampSkillTalentLevel(Number(raw), props.agentRank),
+  }
+}
 
 const isAffixMode = computed(() => calcMode.value === 'affix')
 
@@ -213,19 +242,21 @@ function formatValue(key: keyof PanelStats, value: number) {
       <header class="panel-block-header">
         <h3>技能等级</h3>
         <p>
-          五大类等级（默认 12）。仅影响 nanoka 导入的直伤招式倍率；闪避含冲刺/闪避反击，特殊技含普特/强特，连携与终结共用一档。
+          当前 {{ agentRank ?? 0 }} 影可填 {{ talentBounds.min }}–{{ talentBounds.max }}（默认
+          12）。规则：0–2 影 1–12；3–4 影 3–14；5–6 影 5–16。仅影响 nanoka 导入的直伤招式倍率；闪避含冲刺/闪避反击，特殊技含普特/强特，连携与终结共用一档。
         </p>
       </header>
       <div class="grid five">
         <label v-for="key in SKILL_TALENT_LEVEL_KEYS" :key="key" class="field">
           <span>{{ SKILL_TALENT_LEVEL_LABELS[key] }}</span>
           <input
-            v-model.lazy.number="skillTalentLevels[key]"
+            :value="skillTalentLevels[key]"
             type="number"
-            min="1"
-            max="16"
+            :min="talentBounds.min"
+            :max="talentBounds.max"
             step="1"
             :disabled="disabled"
+            @change="onTalentLevelInput(key, ($event.target as HTMLInputElement).value)"
           />
         </label>
       </div>

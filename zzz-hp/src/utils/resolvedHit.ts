@@ -191,11 +191,11 @@ function hasPanelMods(extraMods: PreparedSkillExtraMods | null | undefined): boo
 export interface ResolveFlowOptions {
   /** 按下标对齐 teamSlots */
   slots: SchemeSlot[]
-  teamSlots: Array<{ agentId: string }>
+  teamSlots: Array<{ agentId: string; rank?: number }>
   findSkill: (skillId: string) => Skill | null
   findSkillGroup?: (groupId: string) => SkillGroup | null
   skillSubcategories?: SkillSubcategory[] | null
-  /** 每人五大类技能等级；缺省按 L12 */
+  /** 每人五大类技能等级；缺省按 L12，并按该槽影画上下限钳制 */
   skillTalentLevelsByAgent?: Record<string, SkillTalentLevels | Partial<SkillTalentLevels> | null>
 }
 
@@ -248,7 +248,13 @@ function resolveOne(
       ? overrides.triggerAgentId
       : prepared.triggerAgentId
   const levels = options.skillTalentLevelsByAgent?.[ownerAgentId]
-  const { baseMult: effectiveBaseMult, talentLevel } = resolveEffectiveBaseMult(skill, levels)
+  const ownerRank =
+    options.teamSlots.find((slot) => slot.agentId === ownerAgentId)?.rank ?? 0
+  const { baseMult: effectiveBaseMult, talentLevel } = resolveEffectiveBaseMult(
+    skill,
+    levels,
+    ownerRank,
+  )
   return {
     id: overrides?.hitId ?? entry.id,
     skill,

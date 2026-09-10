@@ -562,7 +562,8 @@ function cardTriggerWarnForMember(
 /** 库内/未结算时的有效基础倍率（nanoka 按当前槽位技能等级） */
 function libraryEffectiveBaseMult(skill: Skill): number {
   const ownerId = currentAgentId.value || skill.agentId
-  return resolveEffectiveBaseMult(skill, props.skillTalentLevelsByAgent?.[ownerId]).baseMult
+  const rank = props.teamSlots.find((slot) => slot.agentId === ownerId)?.rank ?? 0
+  return resolveEffectiveBaseMult(skill, props.skillTalentLevelsByAgent?.[ownerId], rank).baseMult
 }
 
 /** 有结算结果时显示最终倍率区对应的百分点；否则回落招式固有/填写值 */

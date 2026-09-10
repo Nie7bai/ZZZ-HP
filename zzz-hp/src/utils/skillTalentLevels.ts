@@ -28,28 +28,59 @@ export const SKILL_TALENT_LEVEL_LABELS: Record<SkillTalentLevelKey, string> = {
 
 export const DEFAULT_SKILL_TALENT_LEVEL = 12
 
+/** 影画档位对应的技能等级上下限 */
+export function skillTalentLevelBoundsForRank(rank: number | null | undefined): {
+  min: number
+  max: number
+} {
+  const r = Math.max(0, Math.min(6, Math.round(Number(rank) || 0)))
+  if (r >= 5) return { min: 5, max: 16 }
+  if (r >= 3) return { min: 3, max: 14 }
+  return { min: 1, max: 12 }
+}
+
+export function clampSkillTalentLevel(
+  level: number,
+  rank: number | null | undefined,
+): number {
+  const { min, max } = skillTalentLevelBoundsForRank(rank)
+  const n = Number(level)
+  if (!Number.isFinite(n)) return Math.min(max, Math.max(min, DEFAULT_SKILL_TALENT_LEVEL))
+  return Math.max(min, Math.min(max, Math.round(n)))
+}
+
 export function createDefaultSkillTalentLevels(
   level = DEFAULT_SKILL_TALENT_LEVEL,
+  rank: number | null | undefined = 0,
 ): SkillTalentLevels {
+  const clamped = clampSkillTalentLevel(level, rank)
   return {
-    basic: level,
-    dodge: level,
-    assist: level,
-    special: level,
-    chainUltimate: level,
+    basic: clamped,
+    dodge: clamped,
+    assist: clamped,
+    special: clamped,
+    chainUltimate: clamped,
   }
 }
 
 export function fillSkillTalentLevels(
   raw?: Partial<SkillTalentLevels> | null,
+  rank: number | null | undefined = 0,
 ): SkillTalentLevels {
-  const base = createDefaultSkillTalentLevels()
+  const base = createDefaultSkillTalentLevels(DEFAULT_SKILL_TALENT_LEVEL, rank)
   if (!raw) return base
   for (const key of SKILL_TALENT_LEVEL_KEYS) {
     const value = Number(raw[key])
-    if (Number.isFinite(value)) base[key] = Math.max(1, Math.min(16, Math.round(value)))
+    if (Number.isFinite(value)) base[key] = clampSkillTalentLevel(value, rank)
   }
   return base
+}
+
+export function clampSkillTalentLevels(
+  raw: Partial<SkillTalentLevels> | null | undefined,
+  rank: number | null | undefined,
+): SkillTalentLevels {
+  return fillSkillTalentLevels(raw, rank)
 }
 
 const TYPE_TO_TALENT_KEY: Record<SkillTypeId, SkillTalentLevelKey | null> = {
@@ -80,10 +111,11 @@ export function resolveSkillTalentLevelKey(
 export function resolveSkillTalentLevel(
   skillTypes: SkillTypeId[] | null | undefined,
   levels?: Partial<SkillTalentLevels> | null,
+  rank: number | null | undefined = 0,
 ): number | null {
   const key = resolveSkillTalentLevelKey(skillTypes)
   if (!key) return null
-  const filled = fillSkillTalentLevels(levels)
+  const filled = fillSkillTalentLevels(levels, rank)
   return filled[key]
 }
 
@@ -118,9 +150,10 @@ export function resolveEffectiveBaseMult(
     | 'damagePercentageGrowth'
   >,
   levels?: Partial<SkillTalentLevels> | null,
+  rank: number | null | undefined = 0,
 ): { baseMult: number; talentLevel: number | null; talentKey: SkillTalentLevelKey | null } {
   const talentKey = resolveSkillTalentLevelKey(skill.skillTypes)
-  const talentLevel = talentKey ? fillSkillTalentLevels(levels)[talentKey] : null
+  const talentLevel = talentKey ? fillSkillTalentLevels(levels, rank)[talentKey] : null
   const canScale =
     skill.multSource === 'nanoka' &&
     (skill.damageType === 'direct' || skill.damageType === 'sharpen') &&
@@ -132,7 +165,7 @@ export function resolveEffectiveBaseMult(
       baseMult: computeNanokaBaseMultPercent(
         Number(skill.damagePercentage),
         Number(skill.damagePercentageGrowth) || 0,
-        talentLevel ?? DEFAULT_SKILL_TALENT_LEVEL,
+        talentLevel ?? clampSkillTalentLevel(DEFAULT_SKILL_TALENT_LEVEL, rank),
       ),
       talentLevel,
       talentKey,

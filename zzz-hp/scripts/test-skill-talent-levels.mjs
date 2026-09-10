@@ -6,8 +6,10 @@ import assert from 'node:assert/strict'
 import {
   computeNanokaBaseMultPercent,
   createDefaultSkillTalentLevels,
+  fillSkillTalentLevels,
   resolveEffectiveBaseMult,
   resolveSkillTalentLevelKey,
+  skillTalentLevelBoundsForRank,
 } from '../src/utils/skillTalentLevels.ts'
 import {
   computeBaseMultPercent,
@@ -37,6 +39,17 @@ check('chain→chainUltimate', resolveSkillTalentLevelKey(['chain']), 'chainUlti
 check('ultimate→chainUltimate', resolveSkillTalentLevelKey(['ultimate']), 'chainUltimate')
 check('followUp only → null', resolveSkillTalentLevelKey(['followUp']), null)
 check('followUp+special → special', resolveSkillTalentLevelKey(['followUp', 'special']), 'special')
+
+console.log('=== 1b. 影画 → 技能等级上下限 ===')
+check('0影', skillTalentLevelBoundsForRank(0), { min: 1, max: 12 })
+check('2影', skillTalentLevelBoundsForRank(2), { min: 1, max: 12 })
+check('3影', skillTalentLevelBoundsForRank(3), { min: 3, max: 14 })
+check('4影', skillTalentLevelBoundsForRank(4), { min: 3, max: 14 })
+check('5影', skillTalentLevelBoundsForRank(5), { min: 5, max: 16 })
+check('6影', skillTalentLevelBoundsForRank(6), { min: 5, max: 16 })
+check('0影钳 16→12', fillSkillTalentLevels({ basic: 16 }, 0).basic, 12)
+check('5影钳 1→5', fillSkillTalentLevels({ basic: 1 }, 5).basic, 5)
+check('3影保留 12', fillSkillTalentLevels({ basic: 12 }, 3).basic, 12)
 
 console.log('\n=== 2. nanoka L 公式（与导入脚本一致） ===')
 const pct = 3120
