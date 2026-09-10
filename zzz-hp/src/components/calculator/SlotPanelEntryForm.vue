@@ -243,7 +243,8 @@ function formatValue(key: keyof PanelStats, value: number) {
         <h3>技能等级</h3>
         <p>
           当前 {{ agentRank ?? 0 }} 影可填 {{ talentBounds.min }}–{{ talentBounds.max }}（默认
-          12）。规则：0–2 影 1–12；3–4 影 3–14；5–6 影 5–16。仅影响 nanoka 导入的直伤招式倍率；闪避含冲刺/闪避反击，特殊技含普特/强特，连携与终结共用一档。
+          {{ talentBounds.max }}）。规则：0–2 影 1–12；3–4 影 3–14；5–6 影 5–16。仅影响 nanoka
+          导入的直伤招式倍率；闪避含冲刺/闪避反击，特殊技含普特/强特，连携与终结共用一档。
         </p>
       </header>
       <div class="grid five">

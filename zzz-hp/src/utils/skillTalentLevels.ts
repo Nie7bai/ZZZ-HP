@@ -39,27 +39,31 @@ export function skillTalentLevelBoundsForRank(rank: number | null | undefined): 
   return { min: 1, max: 12 }
 }
 
+/** 未配置时默认取该影画档位上限 */
+export function defaultSkillTalentLevelForRank(rank: number | null | undefined): number {
+  return skillTalentLevelBoundsForRank(rank).max
+}
+
 export function clampSkillTalentLevel(
   level: number,
   rank: number | null | undefined,
 ): number {
   const { min, max } = skillTalentLevelBoundsForRank(rank)
   const n = Number(level)
-  if (!Number.isFinite(n)) return Math.min(max, Math.max(min, DEFAULT_SKILL_TALENT_LEVEL))
+  if (!Number.isFinite(n)) return max
   return Math.max(min, Math.min(max, Math.round(n)))
 }
 
 export function createDefaultSkillTalentLevels(
-  level = DEFAULT_SKILL_TALENT_LEVEL,
   rank: number | null | undefined = 0,
 ): SkillTalentLevels {
-  const clamped = clampSkillTalentLevel(level, rank)
+  const level = defaultSkillTalentLevelForRank(rank)
   return {
-    basic: clamped,
-    dodge: clamped,
-    assist: clamped,
-    special: clamped,
-    chainUltimate: clamped,
+    basic: level,
+    dodge: level,
+    assist: level,
+    special: level,
+    chainUltimate: level,
   }
 }
 
@@ -67,7 +71,7 @@ export function fillSkillTalentLevels(
   raw?: Partial<SkillTalentLevels> | null,
   rank: number | null | undefined = 0,
 ): SkillTalentLevels {
-  const base = createDefaultSkillTalentLevels(DEFAULT_SKILL_TALENT_LEVEL, rank)
+  const base = createDefaultSkillTalentLevels(rank)
   if (!raw) return base
   for (const key of SKILL_TALENT_LEVEL_KEYS) {
     const value = Number(raw[key])
@@ -165,7 +169,7 @@ export function resolveEffectiveBaseMult(
       baseMult: computeNanokaBaseMultPercent(
         Number(skill.damagePercentage),
         Number(skill.damagePercentageGrowth) || 0,
-        talentLevel ?? clampSkillTalentLevel(DEFAULT_SKILL_TALENT_LEVEL, rank),
+        talentLevel ?? defaultSkillTalentLevelForRank(rank),
       ),
       talentLevel,
       talentKey,

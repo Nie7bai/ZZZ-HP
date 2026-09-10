@@ -51,6 +51,11 @@ check('0影钳 16→12', fillSkillTalentLevels({ basic: 16 }, 0).basic, 12)
 check('5影钳 1→5', fillSkillTalentLevels({ basic: 1 }, 5).basic, 5)
 check('3影保留 12', fillSkillTalentLevels({ basic: 12 }, 3).basic, 12)
 
+check('0影默认上限', createDefaultSkillTalentLevels(0).basic, 12)
+check('3影默认上限', createDefaultSkillTalentLevels(3).basic, 14)
+check('5影默认上限', createDefaultSkillTalentLevels(5).basic, 16)
+check('缺省填空→档位上限', fillSkillTalentLevels(null, 4).special, 14)
+
 console.log('\n=== 2. nanoka L 公式（与导入脚本一致） ===')
 const pct = 3120
 const growth = 210

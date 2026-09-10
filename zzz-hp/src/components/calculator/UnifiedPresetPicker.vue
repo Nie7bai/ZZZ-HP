@@ -34,7 +34,6 @@ import {
 } from '@/utils/panelBuffCalc'
 import type { BangbooBuffDoc } from '@/types/calculator'
 import {
-  DEFAULT_SKILL_TALENT_LEVEL,
   createDefaultSkillTalentLevels,
   fillSkillTalentLevels,
   type SkillTalentLevels,
@@ -182,7 +181,7 @@ function resetDraftPanelFromSlot() {
   )
   Object.assign(
     draftSkillTalentLevels,
-    createDefaultSkillTalentLevels(DEFAULT_SKILL_TALENT_LEVEL, selected.value.rank),
+    createDefaultSkillTalentLevels(selected.value.rank),
     fillSkillTalentLevels(
       agentId ? props.skillTalentLevelsByAgent?.[agentId] : null,
       selected.value.rank || slot?.rank || 0,
@@ -238,7 +237,7 @@ watch(
     Object.assign(draftAffixMains, createDefaultAffixDriveDiscMainStats())
     Object.assign(
       draftSkillTalentLevels,
-      createDefaultSkillTalentLevels(DEFAULT_SKILL_TALENT_LEVEL, selected.value.rank),
+      createDefaultSkillTalentLevels(selected.value.rank),
       fillSkillTalentLevels(props.skillTalentLevelsByAgent?.[newId], selected.value.rank),
     )
   },
