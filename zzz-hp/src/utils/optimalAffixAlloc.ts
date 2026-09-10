@@ -22,6 +22,7 @@ import {
 } from '@/types/calculatorPanel'
 import {
   AFFIX_VALUE_PER_COUNT,
+  applyAffixCountsOntoExternalPanel,
   applyAffixCountsToFixedParts,
   buildAffixExternalFixedParts,
   computeExternalPanelFromTeamSlot,
@@ -291,6 +292,13 @@ export interface OptimalEvalContext {
   driveDiscSelection: AffixPanelCalcInput['driveDiscSelection']
   driveDiscMainStats: AffixDriveDiscMainStats
   driveDiscs: DriveDiscBuffDoc[]
+  /**
+   * 主 C 的基准局外面板，来自「角色配置」（导入录入写入的 `anomalySlotPanels`）。
+   *
+   * 有值时候选词条**叠加在它之上**（词条 = 在面板上再加 N 条，面板本身不动）；
+   * 无值时 `computeExternalForEval` 回退到按槽位配置推导 —— 与改造前逐位等价。
+   */
+  mainBaseExternalPanel?: PanelStats | null
   panelContext: PanelCalcContext
   enemyInput: DamageEnemyInput
   baseDamageSource: BaseDamageSource
@@ -1637,12 +1645,28 @@ function getAffixExternalFixedParts(ctx: OptimalEvalContext): AffixExternalFixed
   return affixExternalFixedParts
 }
 
+/**
+ * 本次评估用的主 C 局外面板 —— 求解 / 扫掠 / 收益表唯一的「取面板」入口。
+ *
+ * 有基准面板（「角色配置」录入的那份，`anomalySlotPanels`）时：**面板是起点，
+ * 候选词条叠加其上** —— 词条是「在面板上再加 N 条」，不反推也不扣减面板里已有的词条。
+ * 百分比词条按「角色基础 + 音擎基础」折算，与 `applyAffixCountsToFixedParts` 同口径。
+ *
+ * 没有基准面板时回退到按槽位配置推导，行为与改造前逐位等价。
+ */
 function computeExternalForEval(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
   panelDeltas?: AffixPanelDeltaMap,
 ): PanelStats {
-  const external = applyAffixCountsToFixedParts(getAffixExternalFixedParts(ctx), affixCounts)
+  const base = ctx.mainBaseExternalPanel
+  const external = base
+    ? applyAffixCountsOntoExternalPanel(base, affixCounts, {
+        hp: ctx.agentBase?.hp ?? 0,
+        atk: (ctx.agentBase?.atk ?? 0) + (ctx.wengineBaseAtk ?? 0),
+        def: (ctx.agentBase?.def ?? 0) + (ctx.wengineBaseDef ?? 0),
+      })
+    : applyAffixCountsToFixedParts(getAffixExternalFixedParts(ctx), affixCounts)
   return panelDeltas ? applyPanelDeltas(external, panelDeltas) : external
 }
 
@@ -2517,9 +2541,22 @@ export function buildOptimalEvalContext(input: {
       ? input.wengines.find((w) => w.id === mainSlot.wengineId)
       : null
 
+  /**
+   * 主 C 的**基准局外面板**：来自「角色配置」（导入录入写入的 `anomalySlotPanels`）。
+   *
+   * 面板是起点，候选词条在它之上叠加 —— 见 `computeExternalForEval`。取不到时留 null，
+   * 由 `computeExternalForEval` 回退到「按槽位配置推导」（改造前的行为，逐位等价）。
+   */
+  const mainSavedPanel = mainSlot.agentId ? input.anomalySlotPanels?.[mainSlot.agentId] : undefined
+  const mainBaseExternalPanel =
+    mainSavedPanel && !isPlaceholderExternalPanel(mainSavedPanel)
+      ? fillPanelStatsDefaults(mainSavedPanel)
+      : null
+
   return {
     isMb: input.isMb,
     isFengYu: Boolean(input.isFengYu),
+    mainBaseExternalPanel,
     agentBase: mainAgent?.basePanel ?? createEmptyAgentBasePanel(),
     wengineBaseAtk: mainWengine?.baseAtk ?? 0,
     wengineBaseDef: mainWengine?.baseDef ?? 0,
@@ -2546,12 +2583,11 @@ export function buildOptimalEvalContext(input: {
       slotExternalPanels: Object.fromEntries(
         input.teamSlots.flatMap((slot, index) => {
           if (!slot.agentId) return []
-          // 主 C：由最优词条扫掠推导；队友：优先用手填局外，避免盖掉「导入」录入
-          if (index !== input.mainSlotIndex) {
-            const saved = input.anomalySlotPanels?.[slot.agentId]
-            if (saved && !isPlaceholderExternalPanel(saved)) {
-              return [[index, fillPanelStatsDefaults(saved)]]
-            }
+          // 局外面板统一以「角色配置」为准（导入录入写入的 anomalySlotPanels）；
+          // 主 C 的候选词条叠加不在这里，见 computeExternalForEval。
+          const saved = input.anomalySlotPanels?.[slot.agentId]
+          if (saved && !isPlaceholderExternalPanel(saved)) {
+            return [[index, fillPanelStatsDefaults(saved)]]
           }
           return [
             [

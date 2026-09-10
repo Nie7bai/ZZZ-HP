@@ -347,6 +347,64 @@ export function computeExternalPanelFromAffixes(input: AffixPanelCalcInput): Pan
   return applyAffixCountsToFixedParts(buildAffixExternalFixedParts(fixedInput), affixCounts)
 }
 
+/** 百分比词条折算所用的基础值：角色基础 + 音擎基础，不含任何词条。 */
+export type AffixPercentBases = {
+  hp: number
+  atk: number
+  def: number
+}
+
+/**
+ * 在**已有局外面板**上叠加词条增量。
+ *
+ * 与 `applyAffixCountsToFixedParts` 的区别：那个函数把整份面板算出来（含角色 / 音擎 /
+ * 驱动盘 / 主属性），这个函数假定面板已经由「角色配置」给好 —— 面板导入、截图识别或
+ * 词条推导写入 `anomalySlotPanels` 的那一份 —— 只把词条那部分加在上面。
+ *
+ * 面板里已有的副词条**不参与扣减**：词条是「在面板上再加 N 条」，用户自行判断上限。
+ * 驱动盘主属性、套装效果、音擎高级属性都已在面板里，此处不重复叠加。
+ *
+ * 百分比词条按基础值折算（与游戏口径、与 `applyAffixCountsToFixedParts` 一致）：
+ * 大攻击 +3%/条 的增量是 `(角色基础攻 + 音擎基础攻) × 3%`，而不是面板攻击 × 3%。
+ */
+export function applyAffixCountsOntoExternalPanel(
+  base: PanelStats,
+  counts: AffixCounts,
+  bases: AffixPercentBases,
+): PanelStats {
+  const hpPercent = affixStatTotal(counts.hpPercent, AFFIX_VALUE_PER_COUNT.hpPercent)
+  const atkPercent = affixStatTotal(counts.atkPercent, AFFIX_VALUE_PER_COUNT.atkPercent)
+  const defPercent = affixStatTotal(counts.defPercent, AFFIX_VALUE_PER_COUNT.defPercent)
+  return {
+    ...base,
+    hp: roundPanelValue(
+      base.hp +
+        (bases.hp * hpPercent) / 100 +
+        affixStatTotal(counts.hpFlat, AFFIX_VALUE_PER_COUNT.hpFlat),
+    ),
+    atk: roundPanelValue(
+      base.atk +
+        (bases.atk * atkPercent) / 100 +
+        affixStatTotal(counts.atkFlat, AFFIX_VALUE_PER_COUNT.atkFlat),
+    ),
+    def: roundPanelValue(
+      base.def +
+        (bases.def * defPercent) / 100 +
+        affixStatTotal(counts.defFlat, AFFIX_VALUE_PER_COUNT.defFlat),
+    ),
+    critRate: roundPanelValue(
+      base.critRate + affixStatTotal(counts.critRate, AFFIX_VALUE_PER_COUNT.critRate),
+    ),
+    critDmg: roundPanelValue(
+      base.critDmg + affixStatTotal(counts.critDmg, AFFIX_VALUE_PER_COUNT.critDmg),
+    ),
+    pen: roundPanelValue(base.pen + affixStatTotal(counts.pen, AFFIX_VALUE_PER_COUNT.pen)),
+    mastery: roundPanelValue(
+      base.mastery + affixStatTotal(counts.mastery, AFFIX_VALUE_PER_COUNT.mastery),
+    ),
+  }
+}
+
 function clampCount(value: number, max = 40) {
   if (!Number.isFinite(value)) return 0
   return Math.min(max, Math.max(0, Math.round(value)))

@@ -27,7 +27,6 @@ import type {
 import {
   createDefaultAffixDriveDiscMainStats,
   createEmptyAffixCounts,
-  createExternalPanelFromAgentBase,
   fillPanelStatsDefaults,
   isPlaceholderExternalPanel,
   type AffixCounts,
@@ -38,9 +37,6 @@ import {
   type PanelStats,
 } from '@/types/calculatorPanel'
 import {
-  AFFIX_DRIVE_DISC_SLOT_1_HP,
-  AFFIX_DRIVE_DISC_SLOT_2_ATK,
-  AFFIX_DRIVE_DISC_SLOT_3_DEF,
   DRIVE_DISC_SLOT_4_OPTIONS,
   DRIVE_DISC_SLOT_5_OPTIONS,
   DRIVE_DISC_SLOT_6_OPTIONS,
@@ -49,7 +45,6 @@ import {
   createEmptyBuffStatModifiers,
   createEmptyRefinementMods,
 } from '@/utils/calculatorUi'
-import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 import type { DamageCalcResult } from '@/utils/damageCalc'
 import { type DamageEnemyInput } from '@/utils/enemyResistance'
 import {
@@ -134,83 +129,6 @@ import {
 const MB_PROFESSION = '命破'
 const FENGYU_PROFESSION = '锋御'
 
-const PANEL_FIELDS: { key: keyof PanelStats; label: string }[] = [
-  { key: 'hp', label: '生命值' },
-  { key: 'atk', label: '攻击力' },
-  { key: 'def', label: '防御力' },
-  { key: 'critRate', label: '暴击率%' },
-  { key: 'critDmg', label: '暴伤%' },
-  { key: 'dmgBonus', label: '增伤%' },
-  { key: 'ignoreDefense', label: '无视防御%' },
-  { key: 'reduceDefense', label: '减防%' },
-  { key: 'penRate', label: '穿透率%' },
-  { key: 'pen', label: '穿透值' },
-  { key: 'resPen', label: '抗穿%' },
-  { key: 'mastery', label: '精通' },
-  { key: 'anomalyControl', label: '异常掌控' },
-  { key: 'energyRegen', label: '能量回复效率%' },
-  { key: 'anomalyCritRate', label: '异常暴击%' },
-  { key: 'anomalyCritDmg', label: '异常爆伤%' },
-  { key: 'anomalyDmgBonus', label: '异常增伤%' },
-  { key: 'directDmgMult', label: '直伤倍率%' },
-  { key: 'anomalyMult', label: '异常倍率%' },
-  { key: 'disorderBaseMult', label: '紊乱基础倍率%' },
-  { key: 'anomalyDuration', label: '异常持续时间(s)' },
-  { key: 'disorderCompMult', label: '紊乱补偿倍率%' },
-  { key: 'turbulenceBaseMult', label: '乱流基础倍率%' },
-  { key: 'turbulenceCompMult', label: '乱流补偿倍率%' },
-  { key: 'disorderDmgBonus', label: '紊乱增伤%' },
-  { key: 'turbulenceDmgBonus', label: '乱流增伤%' },
-]
-
-type FinalPanelField =
-  | { id: string; label: string; kind: 'stat'; key: keyof PanelStats }
-  | { id: string; label: string; kind: 'defenseMerged' }
-  | { id: string; label: string; kind: 'special' }
-  | { id: string; label: string; kind: 'pierce' }
-
-const FINAL_PANEL_FIELDS: FinalPanelField[] = [
-  { id: 'hp', label: '生命值', kind: 'stat', key: 'hp' },
-  { id: 'atk', label: '攻击力', kind: 'stat', key: 'atk' },
-  { id: 'critRate', label: '暴击率%', kind: 'stat', key: 'critRate' },
-  { id: 'critDmg', label: '暴伤%', kind: 'stat', key: 'critDmg' },
-  { id: 'sharpenCritDmgBonus', label: '锐爆伤害%', kind: 'stat', key: 'sharpenCritDmgBonus' },
-  { id: 'dmgBonus', label: '增伤%', kind: 'stat', key: 'dmgBonus' },
-  { id: 'defenseMerged', label: '无视防御/减防%', kind: 'defenseMerged' },
-  { id: 'penRate', label: '穿透率%', kind: 'stat', key: 'penRate' },
-  { id: 'pen', label: '穿透值', kind: 'stat', key: 'pen' },
-  { id: 'resPen', label: '抗穿%', kind: 'stat', key: 'resPen' },
-  { id: 'special', label: '特殊补充%', kind: 'special' },
-  { id: 'mastery', label: '精通', kind: 'stat', key: 'mastery' },
-  { id: 'anomalyControl', label: '异常掌控', kind: 'stat', key: 'anomalyControl' },
-  { id: 'energyRegen', label: '能量回复效率%', kind: 'stat', key: 'energyRegen' },
-  { id: 'anomalyCritRate', label: '异常暴击%', kind: 'stat', key: 'anomalyCritRate' },
-  { id: 'anomalyCritDmg', label: '异常爆伤%', kind: 'stat', key: 'anomalyCritDmg' },
-  { id: 'anomalyDmgBonus', label: '异常增伤%', kind: 'stat', key: 'anomalyDmgBonus' },
-  { id: 'directDmgMult', label: '直伤倍率%', kind: 'stat', key: 'directDmgMult' },
-  { id: 'anomalyMult', label: '异常倍率%', kind: 'stat', key: 'anomalyMult' },
-  { id: 'disorderBaseMult', label: '紊乱基础倍率%', kind: 'stat', key: 'disorderBaseMult' },
-  { id: 'anomalyDuration', label: '异常持续时间(s)', kind: 'stat', key: 'anomalyDuration' },
-  { id: 'disorderCompMult', label: '紊乱补偿倍率%', kind: 'stat', key: 'disorderCompMult' },
-  { id: 'turbulenceBaseMult', label: '乱流基础倍率%', kind: 'stat', key: 'turbulenceBaseMult' },
-  { id: 'turbulenceCompMult', label: '乱流补偿倍率%', kind: 'stat', key: 'turbulenceCompMult' },
-  { id: 'disorderDmgBonus', label: '紊乱增伤%', kind: 'stat', key: 'disorderDmgBonus' },
-  { id: 'turbulenceDmgBonus', label: '乱流增伤%', kind: 'stat', key: 'turbulenceDmgBonus' },
-  { id: 'pierce', label: '贯穿力', kind: 'pierce' },
-]
-
-const EXTERNAL_PANEL_FIELDS = PANEL_FIELDS.filter(
-  (field) =>
-    field.key !== 'anomalyCritRate' &&
-    field.key !== 'anomalyCritDmg' &&
-    field.key !== 'anomalyDmgBonus' &&
-    field.key !== 'disorderDmgBonus' &&
-    field.key !== 'turbulenceDmgBonus' &&
-    field.key !== 'ignoreDefense' &&
-    field.key !== 'reduceDefense' &&
-    field.key !== 'resPen',
-)
-
 const props = defineProps<{
   teamSlots: TeamSlot[]
   agents: AgentBuffDoc[]
@@ -281,7 +199,6 @@ onDeactivated(() => {
 })
 const isSectionActive = computed(() => props.active !== false && keptAliveActive.value)
 const baseDamageSource = ref<BaseDamageSource>('atk')
-const driveDiscMainStats = reactive(createDefaultAffixDriveDiscMainStats())
 const enemyInput = defineModel<DamageEnemyInput>('enemyInput', { required: true })
 
 function setDamageKind(kind: OptimalDamageKind) {
@@ -322,6 +239,19 @@ const mainSlotIndex = computed(() => {
 
 const mainSlot = computed(() => props.teamSlots[mainSlotIndex.value]!)
 
+/**
+ * 4/5/6 号驱动盘主属性 —— 单一来源：直接读「角色配置」里该槽位已存的主属性。
+ *
+ * 面板本身由外部配置给出（见 `optimalAffixAlloc.ts` 的 `mainBaseExternalPanel`），
+ * 这里的主属性只服务两件事：
+ * ① 柱体模式的词条上限规则（`36 − 6×同类主属性数`，用户要求「柱体模式照旧」）；
+ * ② 主属性组合试算的相对差（`evaluateMainStatComboDamage`）。
+ */
+const driveDiscMainStats = computed<AffixDriveDiscMainStats>(() => ({
+  ...createDefaultAffixDriveDiscMainStats(),
+  ...(props.teamSlots[mainSlotIndex.value]?.affixDriveDiscMainStats ?? {}),
+}))
+
 const mainAgent = computed(() => props.agents.find((item) => item.id === mainSlot.value.agentId))
 
 const { skillSubcategories, followUpSkillRules } = storeToRefs(useCalculatorBuffStore())
@@ -346,11 +276,6 @@ const anomalySupportSlots = computed(() => {
     .filter(({ slot }) => Boolean(slot.agentId && participantIds.has(slot.agentId)))
 })
 
-/**
- * 最优模块独立局外 / 转模副本：编辑不写回「面板/词条计算」页。
- */
-const optimalParticipantPanels = reactive<Record<string, PanelStats>>({})
-
 const anomalyProducerAgentIds = computed(() => {
   const ids = new Set<string>()
   for (const item of anomalySupportSlots.value) {
@@ -358,56 +283,6 @@ const anomalyProducerAgentIds = computed(() => {
   }
   return ids
 })
-
-function seedOptimalParticipantPanel(agentId: string): PanelStats {
-  const existing = optimalParticipantPanels[agentId]
-  if (existing) return existing
-  const fromPage = props.anomalySlotPanels?.[agentId]
-  if (fromPage && !isPlaceholderExternalPanel(fromPage)) {
-    const cloned = fillPanelStatsDefaults({ ...fromPage })
-    optimalParticipantPanels[agentId] = cloned
-    return cloned
-  }
-  const agent = props.agents.find((item) => item.id === agentId)
-  const seeded = createExternalPanelFromAgentBase(agent?.basePanel)
-  optimalParticipantPanels[agentId] = seeded
-  return seeded
-}
-
-/** 参与者局外 UI 已去掉：始终跟页级导入同步，避免面板改完进最优仍用旧副本 */
-function syncOptimalParticipantsFromPage() {
-  for (const [agentId, panel] of Object.entries(props.anomalySlotPanels ?? {})) {
-    if (!panel || isPlaceholderExternalPanel(panel)) continue
-    optimalParticipantPanels[agentId] = fillPanelStatsDefaults({ ...panel })
-  }
-}
-
-const panelSeedReady = ref(false)
-
-watch(
-  () =>
-    props.teamSlots
-      .map((slot) => slot.agentId)
-      .filter((id): id is string => Boolean(id))
-      .join('|'),
-  () => {
-    panelSeedReady.value = false
-    for (const slot of props.teamSlots) {
-      if (slot.agentId) seedOptimalParticipantPanel(slot.agentId)
-    }
-    syncOptimalParticipantsFromPage()
-    panelSeedReady.value = true
-  },
-  { immediate: true },
-)
-
-watch(
-  () => JSON.stringify(props.anomalySlotPanels ?? {}),
-  () => {
-    if (!panelSeedReady.value) return
-    syncOptimalParticipantsFromPage()
-  },
-)
 
 /** 主 C 参与转模链或队伍存在转模增益角色时，主 C 局外由本模块词条推导，不沿用面板页主 C 局外 */
 const optimalConvertModeActive = computed(() => {
@@ -431,9 +306,19 @@ const optimalConvertModeActive = computed(() => {
 /** 转模来源统一读各角色完整局外（导入/页级 anomalySlotPanels）；旧方案 convertSlotPanels 仅作兜底 */
 const evalConvertSlotPanels = computed((): ConvertSlotPanels => props.convertSlotPanels ?? {})
 
+/**
+ * 参与者的局外面板 —— 单一来源：直接读页级「角色配置」（`props.anomalySlotPanels`）。
+ *
+ * 这里原先是模块自建的副本 `optimalParticipantPanels`（缺面板时用角色基础面板兜底），
+ * 副本会与页级配置漂移，是「面板改完进最优仍用旧值」这类问题的来源，已删除。
+ */
 const effectiveAnomalySlotPanels = computed(() => {
   const mainId = mainAgent.value?.id
-  const merged: Record<string, PanelStats> = { ...optimalParticipantPanels }
+  const merged: Record<string, PanelStats> = {}
+  for (const [agentId, panel] of Object.entries(props.anomalySlotPanels ?? {})) {
+    if (!panel || isPlaceholderExternalPanel(panel)) continue
+    merged[agentId] = fillPanelStatsDefaults({ ...panel })
+  }
   if (mainId && optimalConvertModeActive.value) {
     return omitAgentFromAnomalySlotPanels(merged, mainId)
   }
@@ -454,7 +339,7 @@ const evalCtx = computed(() =>
     bangbooRefine: props.bangbooRefine,
     driveDiscs: props.driveDiscs,
     mainSlotIndex: mainSlotIndex.value,
-    driveDiscMainStats: { ...driveDiscMainStats },
+    driveDiscMainStats: { ...driveDiscMainStats.value },
     enemyInput: { ...enemyInput.value },
     baseDamageSource: isMb.value ? 'pierce' : isFengYu.value ? 'def' : baseDamageSource.value,
     extraGains: extraGains.value.map((item) => ({ ...item })),
@@ -480,20 +365,20 @@ const flatLabel = computed(() => flatStatLabel(isMb.value, isFengYu.value))
 const outLabel = computed(() => outPercentLabel(isMb.value, isFengYu.value))
 
 const directError = computed(() =>
-  validateDirectAlloc(directAlloc, isMb.value, driveDiscMainStats, isFengYu.value),
+  validateDirectAlloc(directAlloc, isMb.value, driveDiscMainStats.value, isFengYu.value),
 )
 const anomalyError = computed(() =>
-  validateAnomalyAlloc(anomalyAlloc, isMb.value, driveDiscMainStats, isFengYu.value),
+  validateAnomalyAlloc(anomalyAlloc, isMb.value, driveDiscMainStats.value, isFengYu.value),
 )
 
 const sweepConfigFingerprint = computed(() =>
   JSON.stringify({
     baseDamageSource: baseDamageSource.value,
-    driveDiscMainStats: { ...driveDiscMainStats },
+    driveDiscMainStats: { ...driveDiscMainStats.value },
     enemy: enemyInput.value,
     extraGains: extraGains.value,
     convert: props.convertSlotPanels ?? {},
-    participants: optimalParticipantPanels,
+    participants: props.anomalySlotPanels ?? {},
     damageKind: sweepDamageKind.value,
     buffSelection: props.buffSelection,
     slotBuffSelections: props.slotBuffSelections,
@@ -536,7 +421,6 @@ let sweepGeneration = 0
 const pendingConfigDirty = ref(false)
 
 function markSweepConfigDirty() {
-  if (!panelSeedReady.value) return
   // 配置变了（含切换异常强度提供者/触发者）时必须中止旧扫掠，否则会长时间卡在旧结果上
   sweepGeneration += 1
   sweepAbort?.abort()
@@ -1120,7 +1004,7 @@ watch(
   () =>
     JSON.stringify({
       counts: analysisCounts.value,
-      mains: { ...driveDiscMainStats },
+      mains: { ...driveDiscMainStats.value },
     }),
   () => {
     scheduleEventAffixImpactRefresh()
@@ -1193,10 +1077,10 @@ const skillFlowContextFingerprint = computed(() =>
     slotBuffSelections: props.slotBuffSelections,
     convert: props.convertSlotPanels ?? {},
     anomaly: props.anomalySlotPanels ?? {},
-    participants: optimalParticipantPanels,
+    participants: props.anomalySlotPanels ?? {},
     env: (props.environmentBuffs ?? []).map((item) => item.id),
     bangboo: [props.selectedBangbooId, props.bangbooRefine],
-    mains: { ...driveDiscMainStats },
+    mains: { ...driveDiscMainStats.value },
     baseDamageSource: baseDamageSource.value,
     damageKind: sweepDamageKind.value,
     stagger: props.staggerPhase,
@@ -1229,12 +1113,6 @@ function recomputeSkillFlowHitMaps() {
     return
   }
   // 流程计入总伤；准备招式只算单次预览。招式库不算。
-  for (const hit of [...(props.hits ?? []), ...(props.previewHits ?? [])]) {
-    for (const id of [hit.ownerAgentId, hit.anomalyPowerAgentId, hit.triggerAgentId]) {
-      if (id) seedOptimalParticipantPanel(id)
-    }
-  }
-
   const globalSig = skillFlowContextFingerprint.value + '|' + JSON.stringify(external)
   if (globalSig !== skillFlowCacheGlobalSig) {
     clearSkillFlowLineStore()
@@ -1323,44 +1201,6 @@ watch([sweepComputing, isSectionActive], ([computing, active]) => {
     emitSkillFlowHitMaps()
   }, SKILL_FLOW_EMIT_DEBOUNCE_MS)
 })
-
-const displayExternalPierce = computed(() => {
-  const ext = displayEval.value?.external
-  if (!ext) return 0
-  return Math.round((0.1 * ext.hp + 0.3 * ext.atk) * 100) / 100
-})
-
-function formatPanelValue(key: keyof PanelStats | 'pierce' | 'special', value: number) {
-  if (
-    key === 'hp' ||
-    key === 'atk' ||
-    key === 'pen' ||
-    key === 'mastery' ||
-    key === 'pierce' ||
-    key === 'anomalyDuration'
-  ) {
-    return formatNumber(value)
-  }
-  return formatCalcDecimal(value, 4)
-}
-
-function formatFinalPanelField(field: FinalPanelField) {
-  const evalResult = displayEval.value
-  if (!evalResult) return '—'
-  if (field.kind === 'stat') {
-    return formatPanelValue(field.key, evalResult.finalPanel[field.key])
-  }
-  if (field.kind === 'defenseMerged') {
-    return formatPanelValue(
-      'reduceDefense',
-      evalResult.finalPanel.ignoreDefense + evalResult.finalPanel.reduceDefense,
-    )
-  }
-  if (field.kind === 'special') {
-    return formatPanelValue('special', evalResult.breakdown.combatMods.special)
-  }
-  return formatPanelValue('pierce', evalResult.piercePower)
-}
 
 function metricOf(result: DamageCalcResult, grandTotal?: number) {
   if (typeof grandTotal === 'number' && Number.isFinite(grandTotal)) return grandTotal
@@ -1475,9 +1315,9 @@ const rankingComboCount = computed(() => {
   if (!n4 || !n5 || !n6) return 0
   let count = n4 * n5 * n6
   const currentInRange =
-    rankingSlot4Options.value.some((item) => item.id === driveDiscMainStats.slot4MainStat) &&
-    rankingSlot5Options.value.some((item) => item.id === driveDiscMainStats.slot5MainStat) &&
-    rankingSlot6Options.value.some((item) => item.id === driveDiscMainStats.slot6MainStat)
+    rankingSlot4Options.value.some((item) => item.id === driveDiscMainStats.value.slot4MainStat) &&
+    rankingSlot5Options.value.some((item) => item.id === driveDiscMainStats.value.slot5MainStat) &&
+    rankingSlot6Options.value.some((item) => item.id === driveDiscMainStats.value.slot6MainStat)
   if (currentInRange && rankingTwoPieceId.value === currentTwoPieceId.value) count -= 1
   return count
 })
@@ -1851,24 +1691,24 @@ function mainStatDiffBuilder() {
   // 与组合试算同一口径：现场按当前主属性重算，避免扫掠快照/无 hits 面板口径错位
   const baseDmg = evaluateMainStatComboDamage(
     {
-      slot4MainStat: driveDiscMainStats.slot4MainStat,
-      slot5MainStat: driveDiscMainStats.slot5MainStat,
-      slot6MainStat: driveDiscMainStats.slot6MainStat,
+      slot4MainStat: driveDiscMainStats.value.slot4MainStat,
+      slot5MainStat: driveDiscMainStats.value.slot5MainStat,
+      slot6MainStat: driveDiscMainStats.value.slot6MainStat,
     },
     counts,
     currentTwoPieceId.value,
   )
 
   return MAIN_STAT_SLOTS.map(({ key, title, options }) => {
-    const currentId = driveDiscMainStats[key]
+    const currentId = driveDiscMainStats.value[key]
     const current = options.find((o) => o.id === currentId)
     const rows = options
       .filter((o) => o.id !== currentId)
       .map((o) => {
         const nextStats: AffixDriveDiscMainStats = {
-          slot4MainStat: driveDiscMainStats.slot4MainStat,
-          slot5MainStat: driveDiscMainStats.slot5MainStat,
-          slot6MainStat: driveDiscMainStats.slot6MainStat,
+          slot4MainStat: driveDiscMainStats.value.slot4MainStat,
+          slot5MainStat: driveDiscMainStats.value.slot5MainStat,
+          slot6MainStat: driveDiscMainStats.value.slot6MainStat,
           [key]: o.id,
         }
         const dmg = evaluateMainStatComboDamage(nextStats, counts, currentTwoPieceId.value)
@@ -1887,9 +1727,9 @@ function mainStatDiffBuilder() {
 function buildCombinedMainStatRankings() {
   if (!analysisCounts.value || !analysisEval.value) return []
   const currentStats: AffixDriveDiscMainStats = {
-    slot4MainStat: driveDiscMainStats.slot4MainStat,
-    slot5MainStat: driveDiscMainStats.slot5MainStat,
-    slot6MainStat: driveDiscMainStats.slot6MainStat,
+    slot4MainStat: driveDiscMainStats.value.slot4MainStat,
+    slot5MainStat: driveDiscMainStats.value.slot5MainStat,
+    slot6MainStat: driveDiscMainStats.value.slot6MainStat,
   }
   const baseDamage = evaluateMainStatComboDamage(
     currentStats,
@@ -2017,7 +1857,7 @@ const diffWatchFingerprint = computed(() =>
     metric: anomalyChartMetric.value,
     tab: detailTab.value,
     events: hasEventMode.value ? selectedChartEventIds.value : null,
-    mains: { ...driveDiscMainStats },
+    mains: { ...driveDiscMainStats.value },
     agents: props.teamSlots.map((s) => s.agentId ?? ''),
     hits: (props.hits ?? []).map(
       (h) =>
@@ -2048,7 +1888,7 @@ watch(detailTab, (tab) => {
 const affixAllocFingerprint = computed(() =>
   JSON.stringify({
     mode: sectionMode.value,
-    mains: { ...driveDiscMainStats },
+    mains: { ...driveDiscMainStats.value },
     agents: props.teamSlots.map((s) => s.agentId ?? ''),
     hits: (props.hits ?? []).map(
       (h) =>
@@ -2082,9 +1922,9 @@ watch(sectionMode, (mode) => {
 
 // 首屏 / 切回本页时先算一次收益表
 watch(
-  [() => hasEventMode.value, () => isSectionActive.value, () => panelSeedReady.value],
-  ([hasEvents, active, ready]) => {
-    if (!hasEvents || !active || !ready) return
+  [() => hasEventMode.value, () => isSectionActive.value],
+  ([hasEvents, active]) => {
+    if (!hasEvents || !active) return
     if (sectionMode.value !== 'allocation') return
     scheduleAffixBenefitRecompute()
   },
@@ -2102,17 +1942,17 @@ function resolveMainStatLabel(
 }
 
 function syncCombinedMainStatDraftFromCurrent() {
-  combinedMainStatDraft.slot4MainStat = driveDiscMainStats.slot4MainStat
-  combinedMainStatDraft.slot5MainStat = driveDiscMainStats.slot5MainStat
-  combinedMainStatDraft.slot6MainStat = driveDiscMainStats.slot6MainStat
+  combinedMainStatDraft.slot4MainStat = driveDiscMainStats.value.slot4MainStat
+  combinedMainStatDraft.slot5MainStat = driveDiscMainStats.value.slot5MainStat
+  combinedMainStatDraft.slot6MainStat = driveDiscMainStats.value.slot6MainStat
   combinedMainStatDraftTwoPieceId.value = currentTwoPieceId.value
 }
 
 watch(
   () => [
-    driveDiscMainStats.slot4MainStat,
-    driveDiscMainStats.slot5MainStat,
-    driveDiscMainStats.slot6MainStat,
+    driveDiscMainStats.value.slot4MainStat,
+    driveDiscMainStats.value.slot5MainStat,
+    driveDiscMainStats.value.slot6MainStat,
     currentTwoPieceId.value,
   ],
   syncCombinedMainStatDraftFromCurrent,
@@ -2143,6 +1983,13 @@ function evaluateMainStatComboDamage(
   const evaled = evaluateAffixCounts(
     {
       ...evalCtx.value,
+      /**
+       * 主属性组合试算是在问「换一套 4/5/6 主属性会怎样」——答案必须由配置重新推导面板，
+       * 不能沿用外部面板（否则主属性改了面板不变，试算恒为 0）。
+       * 故这里显式清掉基准面板，让 `computeExternalForEval` 走推导路径。
+       * 基线与试算两测都走同一路径，差值仍是同口径对比。
+       */
+      mainBaseExternalPanel: null,
       driveDiscMainStats: {
         ...evalCtx.value.driveDiscMainStats,
         ...mainStats,
@@ -2160,9 +2007,9 @@ function evaluateMainStatComboDamage(
 const combinedMainStatPreview = computed(() => {
   if (!analysisCounts.value || !analysisEval.value) return null
   const currentStats: AffixDriveDiscMainStats = {
-    slot4MainStat: driveDiscMainStats.slot4MainStat,
-    slot5MainStat: driveDiscMainStats.slot5MainStat,
-    slot6MainStat: driveDiscMainStats.slot6MainStat,
+    slot4MainStat: driveDiscMainStats.value.slot4MainStat,
+    slot5MainStat: driveDiscMainStats.value.slot5MainStat,
+    slot6MainStat: driveDiscMainStats.value.slot6MainStat,
   }
   const draftStats: AffixDriveDiscMainStats = {
     slot4MainStat: combinedMainStatDraft.slot4MainStat,
@@ -2338,7 +2185,6 @@ defineExpose({
   previewFinalPanel,
   /** 全槽局外 + 局内（随增益实时重算；主 C 优先用扫掠/预览结算） */
   slotPanelPreviews: computed(() => {
-    void optimalParticipantPanels
     void extraGains.value
     void JSON.stringify(props.slotBuffSelections ?? {})
     void props.staggerPhase
@@ -2355,7 +2201,7 @@ defineExpose({
           final: mainEval.finalPanel,
         }
       }
-      const seeded = optimalParticipantPanels[slot.agentId]
+      const seeded = props.anomalySlotPanels?.[slot.agentId]
       if (!seeded) return null
       const external = fillPanelStatsDefaults(seeded)
       return {
@@ -2414,7 +2260,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
       </p>
     </header>
 
-    <h3 class="block-title">基础伤害来源与驱动盘主属性</h3>
+    <h3 class="block-title">基础伤害来源</h3>
     <div class="grid three">
       <label class="field">
         <span>基础伤害来源</span>
@@ -2426,77 +2272,6 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         <small v-if="isMb" class="hint">命破角色固定使用贯穿力</small>
         <small v-else-if="isFengYu" class="hint">锋御角色固定使用防御力（锐化公式）</small>
       </label>
-      <label class="field">
-        <span>4号主属性</span>
-        <select v-model="driveDiscMainStats.slot4MainStat">
-          <option v-for="opt in DRIVE_DISC_SLOT_4_OPTIONS" :key="opt.id" :value="opt.id">
-            {{ opt.label }}
-          </option>
-        </select>
-      </label>
-      <label class="field">
-        <span>5号主属性</span>
-        <select v-model="driveDiscMainStats.slot5MainStat">
-          <option v-for="opt in DRIVE_DISC_SLOT_5_OPTIONS" :key="opt.id" :value="opt.id">
-            {{ opt.label }}
-          </option>
-        </select>
-      </label>
-      <label class="field">
-        <span>6号主属性</span>
-        <select v-model="driveDiscMainStats.slot6MainStat">
-          <option v-for="opt in DRIVE_DISC_SLOT_6_OPTIONS" :key="opt.id" :value="opt.id">
-            {{ opt.label }}
-          </option>
-        </select>
-      </label>
-      <p class="hint span-2">
-        1号固定生命 {{ AFFIX_DRIVE_DISC_SLOT_1_HP }} · 2号固定攻击 {{ AFFIX_DRIVE_DISC_SLOT_2_ATK }} · 3号固定防御
-        {{ AFFIX_DRIVE_DISC_SLOT_3_DEF }}（已计入词条推导）
-      </p>
-    </div>
-
-    <!--
-      ============ 扫掠柱图模式：局外 / 局内面板 ============
-      面板数据来自 displayEval，其取值链是「选中柱体 → 第一个柱体 → 扫掠输入预览」，
-      与词条分配模式的求解结果（affixAllocEval）无关。
-      放在分配模式里会显示成柱体的面板，误导用户，故仅在扫掠柱图模式渲染。
-    -->
-    <div v-if="sectionMode === 'sweep' && displayEval" class="panel-layout">
-      <section class="panel-block">
-        <header class="panel-block-header">
-          <h3>局外面板（初始）</h3>
-          <p>
-            {{ selectedCounts ? '跟随当前选中分配。' : '按当前词条分配预览（未开算时余量暂记入爆伤/精通）。' }}由词条分配与角色/音擎/驱动盘基础属性推导，仅展示在最优模块。
-            <template v-if="optimalConvertModeActive">
-              主 C 参与转模增益，此处主 C 局外由词条分配推导，不沿用面板页主 C 局外。
-            </template>
-          </p>
-        </header>
-        <div class="grid four">
-          <label v-for="field in EXTERNAL_PANEL_FIELDS" :key="`external-${field.key}`" class="field">
-            <span>{{ field.label }}</span>
-            <input :value="formatPanelValue(field.key, displayEval.external[field.key])" type="text" readonly />
-          </label>
-          <label class="field">
-            <span>贯穿力</span>
-            <input :value="formatPanelValue('pierce', displayExternalPierce)" type="text" readonly />
-          </label>
-        </div>
-      </section>
-
-      <section class="panel-block panel-block--final">
-        <header class="panel-block-header">
-          <h3>局内面板（最终）</h3>
-          <p>叠加自身/队友/音擎/邦布/驱动盘/额外 Buff 后的战斗面板，仅展示。</p>
-        </header>
-        <div class="grid four">
-          <label v-for="field in FINAL_PANEL_FIELDS" :key="`final-${field.id}`" class="field">
-            <span>{{ field.label }}</span>
-            <input :value="formatFinalPanelField(field)" type="text" readonly />
-          </label>
-        </div>
-      </section>
     </div>
 
     <div class="section-mode-row" role="tablist" aria-label="功能模式">
