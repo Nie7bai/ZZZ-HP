@@ -95,7 +95,7 @@ import {
 import type { EnvironmentBuffFilterMode } from '@/components/calculator/EnvironmentBuffFilterBar.vue'
 import { mapBossInfoToDamageEnemyInput } from '@/utils/enemyInputFromBoss'
 import {
-  DEFAULT_ENEMY_STAGGER_MULTIPLIER,
+  createDefaultDamageEnemyInput,
   normalizeDamageEnemyInput,
   type DamageEnemyInput,
 } from '@/utils/enemyResistance'
@@ -159,15 +159,7 @@ const activeSlot = ref(0)
 const selectedBangbooId = ref('none')
 const bangbooRefine = ref(1)
 const panelCalcMode = ref<PanelCalcMode>('panel')
-const enemyInput = ref<DamageEnemyInput>(
-  normalizeDamageEnemyInput({
-    defense: 953,
-    vulnerableMultiplier: 1,
-    staggerMultiplier: DEFAULT_ENEMY_STAGGER_MULTIPLIER,
-    specialMultiplier: 1,
-    level: 60,
-  }),
-)
+const enemyInput = ref<DamageEnemyInput>(createDefaultDamageEnemyInput())
 const historyEntries = ref<DamageCalcHistoryEntry[]>(listAllDamageCalcHistory())
 const activeHistoryId = ref('')
 const historyMessage = ref('')
@@ -1504,7 +1496,7 @@ function restoreWorkingState() {
 
 function saveHistoryEntry(payload: { name: string; folder: string }) {
   if (panelCalcMode.value === 'optimal') {
-    historyMessage.value = '最优词条分配模式暂不支持写入历史，请切换到面板/词条计算后再保存'
+    historyMessage.value = '最优词条分配模式暂不支持写入历史，请切换到面板/词条导入后再保存'
     return
   }
   const panelState = captureSchemePanelState()
@@ -1555,7 +1547,7 @@ function loadHistoryEntry(entry: DamageCalcHistoryEntry) {
 /** 用当前页面配置覆盖指定方案（保留其 id / 名称 / 目录） */
 function overwriteHistoryEntry(id: string) {
   if (panelCalcMode.value === 'optimal') {
-    historyMessage.value = '最优词条分配模式暂不支持写入，请切换到面板/词条计算后再保存'
+    historyMessage.value = '最优词条分配模式暂不支持写入，请切换到面板/词条导入后再保存'
     return
   }
   const panelState = captureSchemePanelState()
@@ -1622,13 +1614,7 @@ function blankTeamSlots(): TeamSlot[] {
 }
 
 function defaultEnemyInput(): DamageEnemyInput {
-  return normalizeDamageEnemyInput({
-    defense: 953,
-    vulnerableMultiplier: 1,
-    staggerMultiplier: DEFAULT_ENEMY_STAGGER_MULTIPLIER,
-    specialMultiplier: 1,
-    level: 60,
-  })
+  return createDefaultDamageEnemyInput()
 }
 
 /** 方案边界内的空白页：队伍/面板/额外 Buff/准备流程/敌方。不含方案库、自建招式、流程伤害记录、危局筛选、公式开关。 */
@@ -1920,7 +1906,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       <EnemyEnvironmentSection
         v-model="enemyInput"
         title="敌方与环境"
-        description="选择 Boss 或手动录入防御、抗性与失衡倍率，供面板计算与最优词条共用。"
+        description="选择 Boss 或手动录入防御、抗性与失衡倍率，供面板导入与最优词条共用。"
       />
     </section>
 
@@ -1928,10 +1914,10 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       <header class="calc-mode-header">
         <h2>计算方式</h2>
         <p class="calc-mode-desc">
-          局外 / 词条在「代理人 → 导入」的面板 Tab 录入（含截图识别）；面板计算用手填局外，词条计算用副词条推导；最优词条在约束下扫描并绘制期望伤害曲线。
+          局外 / 词条在「代理人 → 导入」的面板 Tab 录入（含截图识别）；面板导入用手填局外，词条导入用副词条推导；最优词条在约束下扫描并绘制期望伤害曲线。
         </p>
       </header>
-      <div class="calc-mode-tabs" role="tablist" aria-label="面板计算方式">
+      <div class="calc-mode-tabs" role="tablist" aria-label="面板导入方式">
         <button
           type="button"
           role="tab"
@@ -1940,7 +1926,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
           :aria-selected="panelCalcMode === 'panel'"
           @click="selectPanelCalcMode('panel')"
         >
-          面板计算
+          面板导入
         </button>
         <button
           type="button"
@@ -1950,7 +1936,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
           :aria-selected="panelCalcMode === 'affix'"
           @click="selectPanelCalcMode('affix')"
         >
-          词条计算
+          词条导入
         </button>
         <button
           type="button"

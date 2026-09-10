@@ -4,6 +4,8 @@ export interface PanelStats {
   def: number
   critRate: number
   critDmg: number
+  /** 锐爆伤害加成%（锋御局内展示；由 combatMods 写入 finalPanel） */
+  sharpenCritDmgBonus: number
   dmgBonus: number
   ignoreDefense: number
   reduceDefense: number
@@ -193,7 +195,7 @@ export const SCHEME_EXCLUDED_PANEL_DEFAULTS: Pick<
  * 复用后仍每次返回新对象，调用方随便改都不会串。
  */
 const DEFAULT_EXTERNAL_PANEL: PanelStats = {
-  hp: 9873, atk: 4008, def: 0, critRate: 48.2, critDmg: 186, dmgBonus: 10,
+  hp: 9873, atk: 4008, def: 0, critRate: 48.2, critDmg: 186, sharpenCritDmgBonus: 0, dmgBonus: 10,
   ignoreDefense: 0, reduceDefense: 0, penRate: 0, pen: 90, resPen: 0, mastery: 0,
   anomalyControl: 0, energyRegen: 0, anomalyCritRate: 0, anomalyCritDmg: 0,
   anomalyDmgBonus: 0, anomalyReleaseCritRate: 0, anomalyReleaseCritDmg: 0,

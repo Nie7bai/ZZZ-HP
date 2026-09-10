@@ -10,6 +10,7 @@ import {
 import {
   ENEMY_RESISTANCE_ELEMENTS,
   ENEMY_RESISTANCE_OPTIONS,
+  createDefaultDamageEnemyInput,
   listActiveResistanceElements,
   normalizeDamageEnemyInput,
   resistanceTypeLabel,
@@ -96,13 +97,8 @@ function applyBossInput(next: DamageEnemyInput) {
 }
 
 function clearBossSelection() {
-  patchEnemyInput({
-    bossSource: 'manual',
-    bossName: undefined,
-    bossRecordId: undefined,
-    bossRecordLabel: undefined,
-    bossImage: undefined,
-  })
+  // 整表回落默认敌方基础参数，避免沿用已选怪物的防御/抗性/失衡等残留
+  Object.assign(model.value, createDefaultDamageEnemyInput())
 }
 
 function switchMode(mode: EnemyInputMode) {
@@ -204,7 +200,10 @@ function switchMode(mode: EnemyInputMode) {
       </template>
 
       <template v-else>
-        <p v-if="!visibleResistanceElements.length" class="res-empty-hint span-row">
+        <p v-if="!hasBossApplied" class="res-empty-hint span-row">
+          未选怪物，当前使用默认敌方基础参数
+        </p>
+        <p v-else-if="!visibleResistanceElements.length" class="res-empty-hint span-row">
           当前怪物无额外弱点/抗性条目；可在「手动输入」模式中调整。
         </p>
         <label

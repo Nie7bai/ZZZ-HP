@@ -2172,6 +2172,7 @@ export function applyBuffModsToPanel(
     def: externalPanel.def * (1 + mods.inCombatDefPercent / 100) + mods.def,
     critRate: externalPanel.critRate + mods.critRate,
     critDmg: externalPanel.critDmg + mods.critDmg,
+    sharpenCritDmgBonus: externalPanel.sharpenCritDmgBonus ?? 0,
     dmgBonus: externalPanel.dmgBonus + mods.dmgBonus + mods.skillDmgBonus,
     ignoreDefense: externalPanel.ignoreDefense,
     reduceDefense: externalPanel.reduceDefense + mods.reduceDefense,
@@ -2428,7 +2429,10 @@ export function computeFinalPanel(
   return {
     totalMods,
     combatMods,
-    finalPanel,
+    finalPanel: {
+      ...finalPanel,
+      sharpenCritDmgBonus: combatMods.sharpenCritDmgBonus,
+    },
     sources: includeDetails ? totalSources : [],
     collectedEffects: [],
   }

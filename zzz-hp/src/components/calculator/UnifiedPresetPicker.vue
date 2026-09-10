@@ -94,7 +94,7 @@ const selected = ref({
 const draftExternalPanel = reactive<PanelStats>(createDefaultExternalPanel())
 const draftAffixCounts = reactive(createEmptyAffixCounts())
 const draftAffixMains = reactive(createDefaultAffixDriveDiscMainStats())
-/** 面板 Tab 独立切换：面板计算 / 词条计算 */
+/** 面板 Tab 独立切换：面板导入 / 词条导入 */
 const entryMode = ref<Extract<PanelCalcMode, 'panel' | 'affix'>>(
   props.preferredEntryMode ?? 'panel',
 )
@@ -210,12 +210,14 @@ watch(
   (newId, oldId) => {
     if (!open.value || !newId || newId === oldId) return
     const agent = props.agents.find((item) => item.id === newId)
-    const saved = props.anomalySlotPanels?.[newId]
-    if (saved) {
-      Object.assign(draftExternalPanel, createDefaultExternalPanel(), saved)
-    } else if (agent) {
+    // 选中代理人后面板草稿固定回落该角色基础面板（不沿用旧导入）
+    if (agent) {
       Object.assign(draftExternalPanel, createExternalPanelFromAgentBase(agent.basePanel))
+    } else {
+      Object.assign(draftExternalPanel, createDefaultExternalPanel())
     }
+    Object.assign(draftAffixCounts, createEmptyAffixCounts())
+    Object.assign(draftAffixMains, createDefaultAffixDriveDiscMainStats())
   },
 )
 
@@ -352,12 +354,8 @@ const selectedWengine = computed(() => props.wengines.find((w) => w.id === selec
 const selectedTwoPiece = computed(() => props.driveDiscs.find((d) => d.id === selected.value.twoPieceId))
 const selectedFourPiece = computed(() => props.driveDiscs.find((d) => d.id === selected.value.fourPieceId))
 
-const panelTabFilled = computed(() => {
-  if (entryMode.value === 'affix') {
-    return Object.values(draftAffixCounts).some((n) => Number(n) > 0)
-  }
-  return draftExternalPanel.hp > 0 || draftExternalPanel.atk > 0
-})
+/** 面板 Tab：确定导入前不画 √（基础面板有攻/生命时也不算已填） */
+const panelTabFilled = computed(() => false)
 
 const summary = computed(() => {
   const parts: string[] = []
@@ -376,7 +374,9 @@ const summary = computed(() => {
     discParts.push(`${selectedTwoPiece.value.name}（2件）`)
   }
   parts.push(discParts.join(' + ') || '未佩戴驱动盘')
-  if (entryMode.value === 'affix') {
+  if (!selectedAgent.value) {
+    parts.push('面板暂无')
+  } else if (entryMode.value === 'affix') {
     const total = Object.values(draftAffixCounts).reduce((sum, n) => sum + (Number(n) || 0), 0)
     parts.push(`词条 ${total} 条`)
   } else {
@@ -721,28 +721,34 @@ const canConfirm = computed(() => !!selected.value.agentId)
         <!-- Tab: Panel -->
         <div v-if="activeTab === 'panel'" class="tab-panel tab-panel--panel">
           <div class="tab-grid-wrap tab-grid-wrap--panel">
-            <PanelScreenshotUploadSection
-              embedded
-              :agents="agents"
-              :wengines="wengines"
-              :drive-discs="driveDiscs"
-              @apply-recognition="applyRecognitionToDraft"
-            />
-            <SlotPanelEntryForm
-              v-model:external-panel="draftExternalPanel"
-              v-model:affix-counts="draftAffixCounts"
-              v-model:affix-drive-disc-main-stats="draftAffixMains"
-              v-model:calc-mode="entryMode"
-              :agents="agents"
-              :wengines="wengines"
-              :drive-discs="driveDiscs"
-              :agent-id="selected.agentId"
-              :wengine-id="selected.wengineId"
-              :two-piece-id="selected.twoPieceId"
-              :four-piece-id="selected.fourPieceId"
-              :final-panel="liveFinalPanel"
-              :convert-source-marks="draftConvertSourceMarks"
-            />
+            <div v-if="!selected.agentId" class="panel-locked-state" role="status">
+              <p class="panel-locked-title">面板暂不可导入</p>
+              <p class="panel-locked-desc">请先在「角色」Tab 选择代理人，再录入或识别局外面板。</p>
+            </div>
+            <div v-else class="panel-import-stack">
+              <PanelScreenshotUploadSection
+                embedded
+                :agents="agents"
+                :wengines="wengines"
+                :drive-discs="driveDiscs"
+                @apply-recognition="applyRecognitionToDraft"
+              />
+              <SlotPanelEntryForm
+                v-model:external-panel="draftExternalPanel"
+                v-model:affix-counts="draftAffixCounts"
+                v-model:affix-drive-disc-main-stats="draftAffixMains"
+                v-model:calc-mode="entryMode"
+                :agents="agents"
+                :wengines="wengines"
+                :drive-discs="driveDiscs"
+                :agent-id="selected.agentId"
+                :wengine-id="selected.wengineId"
+                :two-piece-id="selected.twoPieceId"
+                :four-piece-id="selected.fourPieceId"
+                :final-panel="liveFinalPanel"
+                :convert-source-marks="draftConvertSourceMarks"
+              />
+            </div>
           </div>
         </div>
 
@@ -882,6 +888,41 @@ const canConfirm = computed(() => !!selected.value.agentId)
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+.panel-import-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.panel-locked-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 16rem;
+  padding: 1.5rem 1.25rem;
+  border: 1px dashed #3a4250;
+  border-radius: 12px;
+  background: #14181f;
+  text-align: center;
+}
+
+.panel-locked-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #c9a55c;
+}
+
+.panel-locked-desc {
+  margin: 0;
+  max-width: 22rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #9aa3b0;
 }
 
 .tab-toolbar {
@@ -1249,6 +1290,19 @@ const canConfirm = computed(() => !!selected.value.agentId)
 :global([data-theme='light']) .empty-hint,
 :global([data-theme='light']) .disc-col-header p,
 :global([data-theme='light']) .trigger-hint {
+  color: #4d6a80;
+}
+
+:global([data-theme='light']) .panel-locked-state {
+  border-color: #b7d3e8;
+  background: #ffffff;
+}
+
+:global([data-theme='light']) .panel-locked-title {
+  color: #8a6a2e;
+}
+
+:global([data-theme='light']) .panel-locked-desc {
   color: #4d6a80;
 }
 

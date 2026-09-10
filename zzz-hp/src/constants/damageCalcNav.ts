@@ -10,8 +10,8 @@ export const DAMAGE_CALC_SECTIONS = [
 
 /** 侧栏「计算方式」下的子项（面板 / 词条 / 最优分配） */
 export const DAMAGE_CALC_MODE_ITEMS = [
-  { id: 'damage-calc-panel', label: '面板计算', calcMode: 'panel' as const },
-  { id: 'damage-calc-affix', label: '词条计算', calcMode: 'affix' as const },
+  { id: 'damage-calc-panel', label: '面板导入', calcMode: 'panel' as const },
+  { id: 'damage-calc-affix', label: '词条导入', calcMode: 'affix' as const },
   { id: 'damage-calc-optimal', label: '最优词条分配', calcMode: 'optimal' as const },
 ] as const
 

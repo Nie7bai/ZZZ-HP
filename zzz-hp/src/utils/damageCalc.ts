@@ -90,7 +90,15 @@ export interface DamageCalcInput {
   triggerAgentResistanceElement?: string | null
   /** 异常强度提供者 piercePower（命破等）；缺省用持有者 piercePower */
   triggerPiercePower?: number
+  /**
+   * 异常强度提供者基础伤害来源（已弃用语义）。
+   * 异常基础一律用攻击力，引擎忽略本字段与 triggerIsMb 对基础来源的影响。
+   */
   triggerBaseDamageSource?: BaseDamageSource
+  /**
+   * 异常强度提供者是否为命破。
+   * 仅历史调用兼容；异常基础不再因此改用贯穿力或把防御区固定为 1。
+   */
   triggerIsMb?: boolean
   /** 当前招式小类（有则优先采用小类倍率） */
   skillSubcategory?: SkillSubcategory | null
@@ -357,6 +365,16 @@ export function computeSharpenCritFullCritZone(
   return (1 + B) * (1 + B * (r - 1))
 }
 
+/** @deprecated 异常基础已统一用攻击力；直伤请继续按职业选 pierce/def/atk */
+export function resolveBaseDamageSourceForProfession(
+  profession: string | null | undefined,
+  fallback: BaseDamageSource = 'atk',
+): BaseDamageSource {
+  if (profession === '命破') return 'pierce'
+  if (profession === '锋御') return 'def'
+  return fallback
+}
+
 function resolveBaseDamageParts(options: {
   panel: PanelStats
   piercePower: number
@@ -602,43 +620,48 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     },
   })
 
-  const triggerParts = useTriggerBase
-    ? computeGeneralAndAnomalyBase({
-        panel: triggerPanel,
-        piercePower: input.triggerPiercePower ?? input.piercePower,
-        baseDamageSource: input.triggerBaseDamageSource ?? input.baseDamageSource,
-        isMb: input.triggerIsMb ?? false,
-        enemyInput: input.enemyInput,
-        combatVulnerable: input.combatVulnerable,
-        combatDirectVulnerable: input.combatDirectVulnerable ?? 0,
-        combatAnomalyVulnerable: input.combatAnomalyVulnerable ?? 0,
-        combatDmgReduction: input.combatDmgReduction ?? 0,
-        combatDirectDmgReduction: input.combatDirectDmgReduction ?? 0,
-        combatAnomalyDmgReduction: input.combatAnomalyDmgReduction ?? 0,
-        combatGlobalStaggerVulnerable: input.combatGlobalStaggerVulnerable ?? 0,
-        combatStaggerVulnerable: input.combatStaggerVulnerable,
-        combatStaggerVulnerableOnly: input.combatStaggerVulnerableOnly ?? 0,
-        combatSpecial: input.combatSpecial,
-        combatPierceDmgBonus: input.combatPierceDmgBonus ?? 0,
-        staggerPhase,
-        agentLevel: triggerAgentLevel,
-        resistanceElement:
-          input.triggerAgentResistanceElement ??
-          input.triggerAgentElement ??
-          ownerResistanceElement,
-        // 异常基础防御区：穿透率/穿透值取异常强度提供者，减防/无视防御取异常类触发者
-        defensePanel: {
-          penRate: triggerPanel.penRate,
-          pen: triggerPanel.pen,
-          ignoreDefense: triggerAgentPanel.ignoreDefense,
-          reduceDefense: triggerAgentPanel.reduceDefense,
-        },
-        // 抗性穿透/减少/无视等效果数值来自异常类触发者面板（触发者携带此类 buff）
-        resPenSource: input.anomalyTriggerPanel ?? triggerPanel,
-        extraResPen: subKind === 'radiance' ? (input.remielRadianceResPen ?? 0) : 0,
-      })
-    : mainParts
+  // 异常基础一律攻击力：面板取强度提供者（无则招式持有者）；不跟命破/锋御直伤规则
+  const anomalyBasePanel = useTriggerBase ? triggerPanel : panel
+  const anomalyBaseLevel = useTriggerBase ? triggerAgentLevel : ownerAgentLevel
+  const anomalyBaseResistanceElement = useTriggerBase
+    ? (input.triggerAgentResistanceElement ??
+      input.triggerAgentElement ??
+      ownerResistanceElement)
+    : ownerResistanceElement
+  const triggerParts = computeGeneralAndAnomalyBase({
+    panel: anomalyBasePanel,
+    piercePower: useTriggerBase
+      ? (input.triggerPiercePower ?? input.piercePower)
+      : input.piercePower,
+    baseDamageSource: 'atk',
+    isMb: false,
+    enemyInput: input.enemyInput,
+    combatVulnerable: input.combatVulnerable,
+    combatDirectVulnerable: input.combatDirectVulnerable ?? 0,
+    combatAnomalyVulnerable: input.combatAnomalyVulnerable ?? 0,
+    combatDmgReduction: input.combatDmgReduction ?? 0,
+    combatDirectDmgReduction: input.combatDirectDmgReduction ?? 0,
+    combatAnomalyDmgReduction: input.combatAnomalyDmgReduction ?? 0,
+    combatGlobalStaggerVulnerable: input.combatGlobalStaggerVulnerable ?? 0,
+    combatStaggerVulnerable: input.combatStaggerVulnerable,
+    combatStaggerVulnerableOnly: input.combatStaggerVulnerableOnly ?? 0,
+    combatSpecial: input.combatSpecial,
+    combatPierceDmgBonus: input.combatPierceDmgBonus ?? 0,
+    staggerPhase,
+    agentLevel: anomalyBaseLevel,
+    resistanceElement: anomalyBaseResistanceElement,
+    // 异常基础防御区：穿透取强度提供者（或持有者），减防/无视取异常类触发者
+    defensePanel: {
+      penRate: anomalyBasePanel.penRate,
+      pen: anomalyBasePanel.pen,
+      ignoreDefense: triggerAgentPanel.ignoreDefense,
+      reduceDefense: triggerAgentPanel.reduceDefense,
+    },
+    resPenSource: input.anomalyTriggerPanel ?? anomalyBasePanel,
+    extraResPen: subKind === 'radiance' ? (input.remielRadianceResPen ?? 0) : 0,
+  })
 
+  // 有强度提供者时，展示用基础伤害/通用乘区跟异常基础；直伤仍用 mainParts
   const baseParts = useTriggerBase ? triggerParts : mainParts
 
   const directDmgMultZone = skillMults
@@ -824,7 +847,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       disorderBaseMultRatio + effectiveDuration * disorderCompMultRatio,
     )
   }
-  const disorderBase = useTriggerBase ? triggerParts.anomalyBaseExpected : mainParts.anomalyBaseExpected
+  const disorderBase = triggerParts.anomalyBaseExpected
   const disorderExpected = disorderBase * disorderZone * disorderDmgBonusZone
 
   const turbulenceDmgBonusZone = 1 + bonusPanel.turbulenceDmgBonus / 100
@@ -908,12 +931,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     resistanceMultiplier: round(baseParts.resistanceMultiplier, 4),
     vulnerableMultiplier: round(pathVulnerableMultiplier, 4),
     directVulnerableMultiplier: round(mainParts.directVulnerableMultiplier, 4),
-    anomalyVulnerableMultiplier: round(
-      useTriggerBase
-        ? triggerParts.anomalyVulnerableMultiplier
-        : mainParts.anomalyVulnerableMultiplier,
-      4,
-    ),
+    anomalyVulnerableMultiplier: round(triggerParts.anomalyVulnerableMultiplier, 4),
     staggerMultiplier: round(mainParts.staggerMultiplier, 4),
     specialMultiplier: round(mainParts.specialMultiplier, 4),
     pierceDmgMultiplier: round(reportedPierceDmg, 4),
@@ -932,12 +950,9 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     directDamageFromDirectMult: round(directDamageFromDirectMult, 0),
     settlementDamageExpected: round(settlementDamageExpected, 0),
     directDamageExpected: round(directDamageExpected, 0),
-    masteryZone: round(
-      useTriggerBase ? triggerParts.masteryZone : mainParts.masteryZone,
-      4,
-    ),
-    levelZone: round(baseParts.levelZone, 4),
-    levelZoneAgentLevel: useTriggerBase ? triggerAgentLevel : ownerAgentLevel,
+    masteryZone: round(triggerParts.masteryZone, 4),
+    levelZone: round(triggerParts.levelZone, 4),
+    levelZoneAgentLevel: anomalyBaseLevel,
     anomalyDmgBonusZone: round(anomalyDmgBonusZone, 4),
     anomalyMultZone: round(anomalyMultZone, 4),
     anomalyCritRateRatio: round(anomalyCritRateRatio, 4),

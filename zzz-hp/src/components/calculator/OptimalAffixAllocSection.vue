@@ -174,6 +174,7 @@ const FINAL_PANEL_FIELDS: FinalPanelField[] = [
   { id: 'atk', label: '攻击力', kind: 'stat', key: 'atk' },
   { id: 'critRate', label: '暴击率%', kind: 'stat', key: 'critRate' },
   { id: 'critDmg', label: '暴伤%', kind: 'stat', key: 'critDmg' },
+  { id: 'sharpenCritDmgBonus', label: '锐爆伤害%', kind: 'stat', key: 'sharpenCritDmgBonus' },
   { id: 'dmgBonus', label: '增伤%', kind: 'stat', key: 'dmgBonus' },
   { id: 'defenseMerged', label: '无视防御/减防%', kind: 'defenseMerged' },
   { id: 'penRate', label: '穿透率%', kind: 'stat', key: 'penRate' },
