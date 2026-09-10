@@ -154,6 +154,7 @@ const groupSelectableSkills = computed(() => {
       (item) =>
         item.name.toLowerCase().includes(q) ||
         item.id.toLowerCase().includes(q) ||
+        (item.note ?? '').toLowerCase().includes(q) ||
         damageTypeLabel(item.damageType).toLowerCase().includes(q),
     )
   }
@@ -164,6 +165,12 @@ const memberSkillName = (skillId: string) => {
   const fromPreset = presetSkills.value.find((item) => item.id === skillId)
   if (fromPreset) return fromPreset.name
   return store.findSkill(skillId)?.name ?? skillId
+}
+
+const memberSkillNote = (skillId: string) => {
+  const fromPreset = presetSkills.value.find((item) => item.id === skillId)
+  const note = (fromPreset?.note ?? store.findSkill(skillId)?.note ?? '').trim()
+  return note
 }
 
 function applyAnchorMults(force: boolean) {
@@ -810,8 +817,12 @@ defineExpose({
           </div>
           <ul v-if="groupForm.members.length" class="member-preview">
             <li v-for="(m, i) in groupForm.members" :key="`${m.order}-${m.skillId}`">
-              {{ i + 1 }}. {{ memberSkillName(m.skillId) }}
-              · ×{{ m.count }}
+              <span class="member-preview-line">
+                {{ i + 1 }}. {{ memberSkillName(m.skillId) }} · ×{{ m.count }}
+              </span>
+              <span v-if="memberSkillNote(m.skillId)" class="member-preview-note">
+                {{ memberSkillNote(m.skillId) }}
+              </span>
             </li>
           </ul>
           <p v-else class="field-hint">尚未添加成员。可点「编辑成员」引用招式或创建组内招式。</p>
@@ -865,7 +876,7 @@ defineExpose({
                 v-model="memberLibraryQuery"
                 class="field-input"
                 type="search"
-                placeholder="搜索招式名"
+                placeholder="搜索招式名 / 备注"
               />
               <p class="member-col-desc">点加入进组；组内私有可直接删除。</p>
             </header>
@@ -873,6 +884,9 @@ defineExpose({
               <li v-for="sk in groupSelectableSkills" :key="sk.id" class="member-card">
                 <div class="member-card-main">
                   <span class="member-card-name" :title="sk.name">{{ sk.name }}</span>
+                  <span v-if="sk.note?.trim()" class="member-card-note" :title="sk.note.trim()">
+                    {{ sk.note.trim() }}
+                  </span>
                   <span class="member-card-meta">
                     {{ damageTypeLabel(sk.damageType)
                     }}{{ sk.ownerGroupId ? ' · 组内私有' : '' }}{{ sk.element ? ` · ${sk.element}` : '' }}
@@ -918,6 +932,13 @@ defineExpose({
                 <div class="member-card-main">
                   <span class="member-card-name" :title="memberSkillName(m.skillId)">
                     {{ index + 1 }}. {{ memberSkillName(m.skillId) }}
+                  </span>
+                  <span
+                    v-if="memberSkillNote(m.skillId)"
+                    class="member-card-note"
+                    :title="memberSkillNote(m.skillId)"
+                  >
+                    {{ memberSkillNote(m.skillId) }}
                   </span>
                   <label class="inline-field">
                     次数
@@ -1094,6 +1115,44 @@ defineExpose({
   font-size: 0.85rem;
   color: #4a5060;
 }
+.member-preview li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  padding: 0.2rem 0;
+}
+.member-preview-line {
+  color: #1f2937;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.member-preview-note {
+  font-size: 0.76rem;
+  color: #8b919c;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.member-preview li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  padding: 0.2rem 0;
+}
+.member-preview-line {
+  color: #1f2937;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.member-preview-note {
+  font-size: 0.76rem;
+  color: #8b919c;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .modal-mask {
   position: fixed;
   inset: 0;
@@ -1189,35 +1248,43 @@ defineExpose({
 }
 .member-card--in-group {
   flex-direction: row;
-  align-items: center;
+  align-items: flex-start;
   flex-wrap: nowrap;
 }
 .member-card-main {
   min-width: 0;
   flex: 1;
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 0.45rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
 }
 .member-card-name {
-  display: inline-block;
-  flex: 0 0 13em;
-  width: 13em;
-  min-width: 13em;
-  max-width: 13em;
+  display: block;
+  width: 100%;
   font-size: 0.86rem;
   font-weight: 600;
   color: #1f2937;
   line-height: 1.35;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  vertical-align: middle;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.member-card-note {
+  display: block;
+  width: 100%;
+  font-size: 0.76rem;
+  font-weight: 400;
+  color: #8b919c;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .member-card-meta {
   font-size: 0.72rem;
   color: #8b919c;
+}
+.member-card--in-group .inline-field {
+  margin-top: 0.15rem;
 }
 .member-card-controls {
   display: flex;

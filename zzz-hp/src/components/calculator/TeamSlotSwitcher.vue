@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
 import type { AgentBuffDoc, DriveDiscBuffDoc, WengineBuffDoc } from '@/types/calculator'
@@ -31,6 +31,30 @@ const emit = defineEmits<{
 }>()
 
 const hoverIndex = ref<number | null>(null)
+let hoverHideTimer: ReturnType<typeof setTimeout> | null = null
+
+function clearHoverHideTimer() {
+  if (hoverHideTimer == null) return
+  clearTimeout(hoverHideTimer)
+  hoverHideTimer = null
+}
+
+function showHover(index: number) {
+  clearHoverHideTimer()
+  hoverIndex.value = index
+}
+
+function scheduleHideHover() {
+  clearHoverHideTimer()
+  hoverHideTimer = setTimeout(() => {
+    hoverIndex.value = null
+    hoverHideTimer = null
+  }, 220)
+}
+
+onUnmounted(() => {
+  clearHoverHideTimer()
+})
 
 function isConvertSlot(index: number) {
   if (!props.convertSlotIndexes) return false
@@ -93,21 +117,23 @@ const EXTERNAL_PREVIEW_FIELDS: { key: keyof PanelStats; label: string }[] = [
   { key: 'mastery', label: '精通' },
   { key: 'anomalyControl', label: '异常掌控' },
   { key: 'energyRegen', label: '能量回复效率%' },
-  { key: 'anomalyDuration', label: '异常持续时间(s)' },
-  { key: 'disorderBaseMult', label: '紊乱基础倍率%' },
-  { key: 'disorderCompMult', label: '紊乱补偿倍率%' },
-  { key: 'turbulenceBaseMult', label: '乱流基础倍率%' },
-  { key: 'turbulenceCompMult', label: '乱流补偿倍率%' },
 ]
 
 const FINAL_PREVIEW_FIELDS: { key: keyof PanelStats; label: string }[] = [
   ...EXTERNAL_PREVIEW_FIELDS,
+  { key: 'sharpenCritDmgBonus', label: '锐爆伤害%' },
   { key: 'anomalyCritRate', label: '异常暴击%' },
   { key: 'anomalyCritDmg', label: '异常爆伤%' },
   { key: 'anomalyDmgBonus', label: '异常增伤%' },
   { key: 'disorderDmgBonus', label: '紊乱增伤%' },
   { key: 'turbulenceDmgBonus', label: '乱流增伤%' },
 ]
+
+function finalPreviewFieldsFor(index: number) {
+  const agent = agentOf(props.teamSlots[index]!)
+  if (agent?.profession === '锋御') return FINAL_PREVIEW_FIELDS
+  return FINAL_PREVIEW_FIELDS.filter((field) => field.key !== 'sharpenCritDmgBonus')
+}
 
 const activeSlot = computed(() => props.teamSlots[props.activeIndex])
 const activeAgent = computed(() => (activeSlot.value ? agentOf(activeSlot.value) : undefined))
@@ -173,8 +199,8 @@ const driveDiscLine = computed(() => {
         v-for="(slot, index) in teamSlots"
         :key="index"
         class="slot-wrap"
-        @mouseenter="hoverIndex = index"
-        @mouseleave="hoverIndex = null"
+        @mouseenter="showHover(index)"
+        @mouseleave="scheduleHideHover"
       >
         <button
           type="button"
@@ -199,6 +225,8 @@ const driveDiscLine = computed(() => {
           class="panel-hover-card"
           :class="{ 'panel-hover-card--end': index === teamSlots.length - 1 }"
           role="tooltip"
+          @mouseenter="showHover(index)"
+          @mouseleave="scheduleHideHover"
         >
           <p class="panel-hover-title">局外面板</p>
           <dl class="panel-hover-grid">
@@ -215,7 +243,7 @@ const driveDiscLine = computed(() => {
             <p class="panel-hover-title panel-hover-title--final">局内面板</p>
             <dl class="panel-hover-grid">
               <div
-                v-for="field in FINAL_PREVIEW_FIELDS"
+                v-for="field in finalPreviewFieldsFor(index)"
                 :key="`fin-${field.key}`"
                 class="panel-hover-item"
               >
@@ -524,7 +552,7 @@ const driveDiscLine = computed(() => {
 
 .panel-hover-card {
   position: absolute;
-  top: calc(100% + 0.35rem);
+  top: calc(100% + 0.55rem);
   left: 0;
   z-index: 50;
   width: min(38rem, 94vw);
@@ -536,7 +564,17 @@ const driveDiscLine = computed(() => {
   background: #1a1e26;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
   color: #d7dde8;
-  pointer-events: none;
+  pointer-events: auto;
+}
+
+/* 桥接槽位与卡片之间的空隙，避免慢速移入时断开 */
+.panel-hover-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -0.7rem;
+  height: 0.7rem;
 }
 
 .panel-hover-card--end {

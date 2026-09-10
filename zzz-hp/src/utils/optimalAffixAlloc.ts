@@ -36,6 +36,7 @@ import {
 } from '@/utils/calculatorUi'
 import {
   computeDamageResult,
+  resolveBaseDamageSourceForProfession,
   type DamageCalcResult,
   type DamageEnemyInput,
 } from '@/utils/damageCalc'
@@ -830,6 +831,7 @@ export function evaluateOptimalEventDetail(
     : undefined
   const evtPowerElement = eventNeedsTrigger ? tAgent?.element : ownerAgent?.element
   const evtTriggerIsMb = tAgent?.profession === MB_PROFESSION
+  const evtTriggerBaseDamageSource = resolveBaseDamageSourceForProfession(tAgent?.profession)
 
   // 直伤用招式持有者属性；异常类改用异常强度提供者属性（元素恒取强度提供者）
   const skillCtx = buildSkillContextFromHit(hit, evtPowerElement)
@@ -1108,7 +1110,7 @@ export function evaluateOptimalEventDetail(
     triggerFinalPanel: evtTriggerFinalPanel,
     triggerAgentElement: eventNeedsTrigger ? evtPowerElement : undefined,
     triggerPiercePower: evtTriggerPierce,
-    triggerBaseDamageSource: evtTriggerIsMb ? 'pierce' : 'atk',
+    triggerBaseDamageSource: evtTriggerBaseDamageSource,
     triggerIsMb: evtTriggerIsMb,
     skillSubcategory: effectiveSub,
     mainAgentLevel: resolveProducerAgentLevel(ctx, ownerAgentId),

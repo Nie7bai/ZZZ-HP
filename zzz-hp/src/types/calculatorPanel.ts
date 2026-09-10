@@ -4,6 +4,8 @@ export interface PanelStats {
   def: number
   critRate: number
   critDmg: number
+  /** 锐爆伤害加成%（锋御局内展示；由 combatMods 写入 finalPanel） */
+  sharpenCritDmgBonus: number
   dmgBonus: number
   ignoreDefense: number
   reduceDefense: number
@@ -181,6 +183,7 @@ export function createDefaultExternalPanel(): PanelStats {
     def: 0,
     critRate: 48.2,
     critDmg: 186,
+    sharpenCritDmgBonus: 0,
     dmgBonus: 10,
     ignoreDefense: 0,
     reduceDefense: 0,

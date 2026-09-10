@@ -297,6 +297,7 @@ export function applyAffixCountsToFixedParts(
     critDmg: roundPanelValue(
       parts.critDmg + affixStatTotal(counts.critDmg, AFFIX_VALUE_PER_COUNT.critDmg),
     ),
+    sharpenCritDmgBonus: 0,
     dmgBonus: roundPanelValue(parts.dmgBonus),
     ignoreDefense: 0,
     reduceDefense: roundPanelValue(parts.reduceDefense),

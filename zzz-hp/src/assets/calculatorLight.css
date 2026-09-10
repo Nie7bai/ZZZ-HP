@@ -2796,6 +2796,19 @@ body:has(.calculator-page.theme-light) .preset-preview li,
  * 导入弹窗 · 面板 Tab（Teleport 到 body；SlotPanelEntryForm / OCR 嵌入块
  * 不在 .calculator-page 内，必须用 [data-theme='light'] 覆盖 scoped 深色）
  */
+[data-theme='light'] .unified-modal .panel-locked-state {
+  border-color: #b7d3e8 !important;
+  background: #ffffff !important;
+}
+
+[data-theme='light'] .unified-modal .panel-locked-title {
+  color: #8a6a2e !important;
+}
+
+[data-theme='light'] .unified-modal .panel-locked-desc {
+  color: #4d6a80 !important;
+}
+
 [data-theme='light'] .unified-modal .tab-panel--panel .upload-section--embedded,
 [data-theme='light'] .unified-modal .slot-panel-entry .panel-block {
   border-color: #d5dae3 !important;

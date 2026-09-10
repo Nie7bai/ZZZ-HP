@@ -59,6 +59,9 @@ export function createDefaultElementResistance(): Record<
   }
 }
 
+/** 未选怪物时的默认敌方防御 */
+export const DEFAULT_ENEMY_DEFENSE = 953
+
 export function normalizeDamageEnemyInput(
   input: Partial<DamageEnemyInput> | null | undefined,
 ): DamageEnemyInput {
@@ -84,6 +87,18 @@ export function normalizeDamageEnemyInput(
     bossRecordLabel: input?.bossRecordLabel,
     bossImage: input?.bossImage,
   }
+}
+
+/** 未选怪物时的默认敌方基础参数（与计算器初始值一致） */
+export function createDefaultDamageEnemyInput(): DamageEnemyInput {
+  return normalizeDamageEnemyInput({
+    defense: DEFAULT_ENEMY_DEFENSE,
+    vulnerableMultiplier: 1,
+    staggerMultiplier: DEFAULT_ENEMY_STAGGER_MULTIPLIER,
+    specialMultiplier: 1,
+    level: 60,
+    bossSource: 'manual',
+  })
 }
 
 export function isEnemyResistanceElement(
