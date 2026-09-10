@@ -1456,8 +1456,17 @@ type BuffCatalogEntry = {
 }
 
 const buffCatalogCache = new Map<string, BuffCatalogEntry>()
-/** 每条招式上下文 × 结算槽位各占一条；32 在长流程扫掠时会挤掉还要用的条目 */
-const BUFF_CATALOG_CACHE_LIMIT = 128
+/**
+ * 缓存条数上限。
+ *
+ * 实测（2026-09-10，42 招式 / 3 人队 / 主 C 派派）：
+ * **单次评估会产生 138 个不同的缓存键**（每条目 × 每个结算槽位各占一条），
+ * 且相邻两次评估的键**完全相同**。旧上限 128 小于工作集 → LRU 颠簸：
+ * 键在被复用前就被淘汰，于是每次评估稳定 **123 次未命中**，
+ * 每次未命中都要重跑整套 buff 效果收集（collectAllBuffEffects → 克隆 → 合并）。
+ * 上限提到工作集之上后，第 2 次起未命中降到 ~0。
+ */
+const BUFF_CATALOG_CACHE_LIMIT = 1024
 
 /** 目录文档（角色/音擎/邦布/驱动盘）内容变更后须调用，避免同 ID 命中旧效果 */
 export function invalidateBuffCatalogCache() {
@@ -1479,24 +1488,58 @@ function splitConvertEffects(effects: BuffEffect[]) {
   return { nonConvertEffects, convertEffects }
 }
 
+/**
+ * 缓存键的部件级记忆化。
+ *
+ * 实测（2026-09-10）：单次评估要构建 ~320~800 次缓存键，而键的部件对象
+ * （buffSelection / extraMods / skillContext）是同一批对象反复出现。
+ * 按**对象身份**记住序列化结果，同一对象只 stringify 一次。
+ *
+ * 与本文件既有契约一致：内容变更（就地改文档对象）本就必须调用
+ * `invalidateBuffCatalogCache()` 才生效（见 scripts/test-buff-catalog-cache.mjs）。
+ */
+const partKeyCache = new WeakMap<object, string>()
+
+function stringifyKeyPart(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  if (typeof value !== 'object') return String(value)
+  const cached = partKeyCache.get(value as object)
+  if (cached !== undefined) return cached
+  const serialized = JSON.stringify(value)
+  partKeyCache.set(value as object, serialized)
+  return serialized
+}
+
+/** 用 NUL 拼接：JSON 输出里控制字符一律转义成 `\u0000`，不会与分隔符混淆 */
+const KEY_SEP = '\u0000'
+
 function buildBuffCatalogKey(ctx: PanelCalcContext): string {
-  return JSON.stringify({
-    slots: ctx.teamSlots.map((slot) => [
-      slot.agentId,
-      slot.rank,
-      slot.wengineId,
-      slot.wengineRefine,
-      slot.twoPieceDriveDiscId,
-      slot.fourPieceDriveDiscId,
-    ]),
-    bangboo: [ctx.bangboo?.id ?? '', ctx.bangbooRefine, Boolean(ctx.excludeBangboo)],
-    main: ctx.mainSlotIndex,
-    restrict: ctx.restrictToSlotIndex ?? null,
-    extra: ctx.extraGains ?? ctx.extraMods ?? null,
-    sel: ctx.buffSelection ?? null,
-    skill: ctx.skillContext ?? null,
-    env: (ctx.environmentBuffs ?? []).map((item) => item.sourceKey),
-  })
+  // 注意：这里**不能**用外层 JSON.stringify 包住这些部件 —— 那会把已经序列化好的
+  // 字符串再转义一遍，部件级记忆化就白做了（2026-09-10 实测：那样反而略慢）。
+  const slotsKey = ctx.teamSlots
+    .map((slot) =>
+      [
+        slot.agentId,
+        slot.rank,
+        slot.wengineId,
+        slot.wengineRefine,
+        slot.twoPieceDriveDiscId,
+        slot.fourPieceDriveDiscId,
+      ].join(','),
+    )
+    .join(';')
+  const bangbooKey = `${ctx.bangboo?.id ?? ''},${ctx.bangbooRefine},${ctx.excludeBangboo ? 1 : 0}`
+  const envKey = (ctx.environmentBuffs ?? []).map((item) => item.sourceKey).join(',')
+  return [
+    slotsKey,
+    bangbooKey,
+    String(ctx.mainSlotIndex),
+    String(ctx.restrictToSlotIndex ?? ''),
+    stringifyKeyPart(ctx.extraGains ?? ctx.extraMods ?? null),
+    stringifyKeyPart(ctx.buffSelection ?? null),
+    stringifyKeyPart(ctx.skillContext ?? null),
+    envKey,
+  ].join(KEY_SEP)
 }
 
 function packsFromSources(sources: BuffModSource[]): BuffCatalogPack[] {

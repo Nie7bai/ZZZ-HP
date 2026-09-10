@@ -1242,6 +1242,29 @@ function evaluateOptimalDamageEvent(
   }
 }
 
+/**
+ * 取一条招式的伤害明细；「不随主 C 面板变化」的招式按 `hit.id` 跨轮复用。
+ *
+ * 判据是 `optimalHitDependsOnMainAffixPanel()`（拿不准时返回 true，即不缓存）。
+ * 调用方（求解器每评估一次、扫掠每个点）都会重复问同样这些招式，而这类招式的
+ * 结果在同一套配置下与主 C 词条无关，重算纯属浪费。
+ */
+function resolveEventLine(
+  ctx: OptimalEvalContext,
+  external: PanelStats,
+  hit: ResolvedHit,
+): OptimalEventDamageLine | null {
+  if (optimalHitDependsOnMainAffixPanel(ctx, hit)) {
+    return evaluateOptimalDamageEvent(ctx, external, hit)
+  }
+  if (!stableEventLinesByHitId) stableEventLinesByHitId = new Map()
+  const cached = stableEventLinesByHitId.get(hit.id)
+  if (cached) return cached
+  const line = evaluateOptimalDamageEvent(ctx, external, hit)
+  if (line) stableEventLinesByHitId.set(hit.id, line)
+  return line
+}
+
 function computeEventDamageLines(
   ctx: OptimalEvalContext,
   external: PanelStats,
@@ -1262,7 +1285,7 @@ function computeEventDamageLines(
   let firstBreakdown: OptimalPanelBreakdown | null = null
 
   for (const hit of hits) {
-    const line = evaluateOptimalDamageEvent(ctx, external, hit)
+    const line = resolveEventLine(ctx, external, hit)
     if (!line) continue
     eventLines.push(line)
     grandTotal += line.total
@@ -1317,23 +1340,10 @@ function computeEventDamageLinesForSweep(
   const hits = ctx.hits ?? []
   if (!hits.length) return { grandTotal: 0, eventLines: [] }
 
-  if (!sweepStableEventLines) sweepStableEventLines = new Map()
-
   let grandTotal = 0
   const eventLines: OptimalEventDamageLine[] = []
   for (const hit of hits) {
-    let line: OptimalEventDamageLine | null
-    if (!optimalHitDependsOnMainAffixPanel(ctx, hit)) {
-      const cached = sweepStableEventLines.get(hit.id)
-      if (cached) {
-        line = cached
-      } else {
-        line = evaluateOptimalDamageEvent(ctx, external, hit)
-        if (line) sweepStableEventLines.set(hit.id, line)
-      }
-    } else {
-      line = evaluateOptimalDamageEvent(ctx, external, hit)
-    }
+    const line = resolveEventLine(ctx, external, hit)
     if (!line) continue
     eventLines.push(line)
     grandTotal += line.total
@@ -1544,7 +1554,17 @@ function computeAffixEvalContextSignature(ctx: OptimalEvalContext): string {
 }
 
 let affixExternalFixedParts: AffixExternalFixedParts | null = null
-let sweepStableEventLines: Map<string, OptimalEventDamageLine> | null = null
+
+/**
+ * 「不随主 C 面板变化的招式」的伤害明细缓存（按 hit.id）。
+ *
+ * 判定见 `optimalHitDependsOnMainAffixPanel()`：持有者 / 异常强度提供者 / 触发者
+ * 都不是主 C，且队伍里没有主 C 的转模作用于全队时，该招式的伤害在同一套配置下
+ * 与主 C 词条无关。早期只有扫掠路径这样缓存，求解器路径没有，于是求解器每评估
+ * 一次就把这些招式全部重算一遍 —— 实测（42 招式）占单次评估约 60%。
+ * 上下文签名变化时由 `resetAffixEvalCacheIfNeeded()` 统一清空，与其它缓存同生命周期。
+ */
+let stableEventLinesByHitId: Map<string, OptimalEventDamageLine> | null = null
 
 function resetAffixEvalCacheIfNeeded(ctx: OptimalEvalContext) {
   const sig = affixEvalContextSignature(ctx)
@@ -1552,7 +1572,7 @@ function resetAffixEvalCacheIfNeeded(ctx: OptimalEvalContext) {
     affixEvalCache.clear()
     affixSweepCache.clear()
     affixExternalFixedParts = null
-    sweepStableEventLines = null
+    stableEventLinesByHitId = null
     mainAgentTeamConvertReadsPanelCached = null
     affixEvalCacheCtxSig = sig
   }
@@ -1562,7 +1582,7 @@ export function clearAffixEvalCache() {
   affixEvalCache.clear()
   affixSweepCache.clear()
   affixExternalFixedParts = null
-  sweepStableEventLines = null
+  stableEventLinesByHitId = null
   mainAgentTeamConvertReadsPanelCached = null
   affixEvalCacheCtxSig = ''
 }

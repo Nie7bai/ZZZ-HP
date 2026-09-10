@@ -105,7 +105,9 @@ import {
 import { buildGenericPanelSkillContext } from '@/utils/resolvedHit'
 
 import {
+  computeAffixBenefitSeriesForTable,
   computeAffixBenefitTable,
+  type AffixBenefitSeries,
   type AffixBenefitTable as AffixBenefitTableData,
 } from '@/utils/affixBenefitAnalysis'
 import {
@@ -1613,6 +1615,10 @@ const affixAllocManualWidth = ref(8)
 const affixAllocProgress = ref<AffixOptimizerProgress | null>(null)
 let affixAllocAbort: AbortController | null = null
 const affixBenefitTable = ref<AffixBenefitTableData | null>(null)
+/** 逐档收益曲线：按需补算（首屏不算），失效时置 null */
+const affixBenefitSeries = ref<AffixBenefitSeries[] | null>(null)
+/** 曲线补算中（首屏不算曲线，切到「收益曲线」时才补） */
+const affixBenefitSeriesLoading = ref(false)
 const affixBenefitLoading = ref(false)
 const affixBenefitStep = ref(1)
 
@@ -1683,19 +1689,48 @@ function runAffixBenefitOnly() {
   if (affixBenefitLoading.value) return
   if (!affixLibraryEntries.value.length) {
     affixBenefitTable.value = null
+    affixBenefitSeries.value = null
     return
   }
   affixBenefitLoading.value = true
   window.setTimeout(() => {
     try {
+      // 只算「基线 + 逐条目 +1 档」：曲线占评估量约 85%，而折线图要等求解完成
+      // 才渲染（见模板 v-if="affixAllocResult"），首屏用不到 → 需要时再补算
       affixBenefitTable.value = computeAffixBenefitTable({
         ctx: evalCtx.value,
         baseCounts: affixAllocBaseCounts.value,
         entries: affixLibraryEntries.value,
         rollsPerStep: affixBenefitStep.value,
+        includeSeries: false,
       })
+      affixBenefitSeries.value = null
     } finally {
       affixBenefitLoading.value = false
+    }
+  }, 0)
+}
+
+/**
+ * 补算逐档收益曲线（用户真的要看折线图时）。
+ * 已算过或正在算则直接返回，避免重复点击反复重算；放到下一个宏任务里算，避免卡住点击。
+ */
+function ensureAffixBenefitSeries() {
+  if (affixBenefitSeries.value || affixBenefitSeriesLoading.value) return
+  const table = affixBenefitTable.value
+  if (!table || !table.rows.length) return
+  const input = {
+    ctx: evalCtx.value,
+    baseCounts: affixAllocBaseCounts.value,
+    entries: affixLibraryEntries.value,
+    rollsPerStep: affixBenefitStep.value,
+  }
+  affixBenefitSeriesLoading.value = true
+  window.setTimeout(() => {
+    try {
+      affixBenefitSeries.value = computeAffixBenefitSeriesForTable(input, table)
+    } finally {
+      affixBenefitSeriesLoading.value = false
     }
   }, 0)
 }
@@ -1774,7 +1809,19 @@ function setAffixBenefitStep(step: number) {
 /** 词条分配模式的收益曲线数据：复用收益表的逐档曲线 */
 const affixAllocCurveMode = ref<'cumulative' | 'marginal'>('cumulative')
 const affixAllocCurveMaxRolls = 10
-const affixAllocCurveData = computed(() => affixBenefitTable.value?.series ?? null)
+/** 曲线数据按需补算：未算过时为 null，模板据此显示「正在准备曲线」而不是空图 */
+const affixAllocCurveData = computed(() => affixBenefitSeries.value)
+
+// 折线图只在「收益曲线」子页签且已有求解结果时渲染；在那之前不必付曲线的计算成本
+watch(
+  [affixAllocDetailTab, affixAllocResult, affixBenefitTable],
+  () => {
+    if (affixAllocDetailTab.value !== 'curve') return
+    if (!affixAllocResult.value) return
+    ensureAffixBenefitSeries()
+  },
+  { immediate: true },
+)
 
 const combinedMainStatRankings = ref<
   {
@@ -2607,6 +2654,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
               :max-added="affixAllocCurveMaxRolls"
               hint="逐档真实重算；只画收益率最高的前几条词条"
             />
+            <p v-else-if="affixBenefitSeriesLoading" class="hint">收益曲线计算中…（首屏只算「+1 档」表，曲线按需补算）</p>
             <p v-else class="hint">暂无收益曲线数据。</p>
           </template>
 

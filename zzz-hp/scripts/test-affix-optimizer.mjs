@@ -35,6 +35,7 @@ import {
   buildOptimalEvalContext,
   clearAffixEvalCache,
   evaluateAffixCounts,
+  optimalHitDependsOnMainAffixPanel,
 } from '../src/utils/optimalAffixAlloc.ts'
 
 let failed = 0
@@ -95,11 +96,11 @@ const library = createDefaultAffixLibrary()
 const byId = new Map(library.map((e) => [e.id, e]))
 
 /** 造 n 个直伤命中（用于让单次评估的成本随流程规模变化） */
-function makeHits(n) {
+function makeHits(n, ownerAgentId = 'a') {
   const hits = []
   for (let i = 0; i < n; i += 1) {
     hits.push({
-      id: `h${i}`,
+      id: `h${ownerAgentId}_${i}`,
       skill: {
         id: `s${i}`,
         name: `招式${i + 1}`,
@@ -109,7 +110,7 @@ function makeHits(n) {
         subcategoryId: null,
         mult: 300 + i * 10,
       },
-      ownerAgentId: 'a',
+      ownerAgentId,
       anomalyPowerAgentId: null,
       triggerAgentId: null,
       count: 1,
@@ -669,7 +670,86 @@ console.log('\n[15] 角色基础面板变化不得吃到旧缓存')
     `增量 ${lowDelta.toFixed(1)} → ${highDelta.toFixed(1)}`)
 }
 
+// ---------- 16. 跨轮缓存：不随主 C 面板变化的招式 ----------
+console.log('\n[16] 跨轮缓存（不随主 C 面板变化的招式）')
+{
+  // 背景（2026-09-10 实测）：求解器每评估一次，会把全部招式逐个重算面板。
+  // 但只有「持有者/异常强度提供者/触发者 = 主 C」的招式才随词条变；其余在同一套
+  // 配置下结果恒定。此前只有扫掠路径做了这个缓存，求解器没有 —— 实测（42 招式）
+  // 那些恒定招式占单次评估约 60%，等于每次评估都白算一遍。
+  const twoAgentBasePanel = (atk) => ({
+    ...createEmptyAgentBasePanel(),
+    hp: 9000, atk, def: 700, critRate: 5, critDmg: 50,
+    anomalyControl: 100, energyRegen: 120, directDmgMult: 100, anomalyMult: 125,
+  })
+  const makeTwoAgentCtx = (hits) => makeCtx({
+    teamSlots: [
+      { agentId: 'a', wengineId: 'none', twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'none' },
+      { agentId: 'b', wengineId: 'none', twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'none' },
+    ],
+    agents: [
+      { id: 'a', name: '主C', element: '电', profession: '强攻', basePanel: twoAgentBasePanel(900) },
+      { id: 'b', name: '队友', element: '电', profession: '强攻', basePanel: twoAgentBasePanel(600) },
+    ],
+    hits,
+  })
 
+  const mainHits = makeHits(3, 'a')
+  const allyHits = makeHits(3, 'b')
+  // 队友招式：持有者/提供者/触发者都不是主 C → 不随词条变
+  for (const hit of allyHits) {
+    hit.anomalyPowerAgentId = 'b'
+    hit.triggerAgentId = 'b'
+  }
+  const cachedCtx = makeTwoAgentCtx([...mainHits, ...allyHits])
+
+  // 判定函数本身：缓存的边界必须与它一致
+  const mainDepends = mainHits.every((h) => optimalHitDependsOnMainAffixPanel(cachedCtx, h))
+  const allyDepends = allyHits.some((h) => optimalHitDependsOnMainAffixPanel(cachedCtx, h))
+  check('主 C 自己的招式判定为「随词条变」（不进缓存）', mainDepends)
+  check('队友招式判定为「不随词条变」（可跨轮复用）', !allyDepends)
+
+  const countsX = { ...createEmptyAffixCounts(), atkPercent: 10 }
+  const countsY = { ...createEmptyAffixCounts(), critRate: 10 }
+
+  // 基准：每次评估前都清空缓存（强制全量重算）
+  clearAffixEvalCache()
+  const refX = evaluateAffixCounts(cachedCtx, countsX).grandTotal
+  clearAffixEvalCache()
+  const refY = evaluateAffixCounts(cachedCtx, countsY).grandTotal
+
+  // 对照：不清缓存，队友招式走跨轮复用
+  clearAffixEvalCache()
+  const gotX = evaluateAffixCounts(cachedCtx, countsX).grandTotal
+  const gotY = evaluateAffixCounts(cachedCtx, countsY).grandTotal
+
+  console.log(`    清缓存 X=${refX.toFixed(3)} Y=${refY.toFixed(3)}｜走缓存 X=${gotX.toFixed(3)} Y=${gotY.toFixed(3)}`)
+  check('走跨轮缓存的结果与全量重算一致（X）', Math.abs(gotX - refX) < 1e-9, `${gotX} vs ${refX}`)
+  check('走跨轮缓存的结果与全量重算一致（Y）', Math.abs(gotY - refY) < 1e-9, `${gotY} vs ${refY}`)
+  check('两次评估的档数分配确实不同（否则本用例是空转）', Math.abs(refX - refY) > 1e-9,
+    `X=${refX.toFixed(3)} vs Y=${refY.toFixed(3)}`)
+
+  // 缓存确实省了计算：大量队友招式 + 少量主 C 招式时，第二轮应显著更快
+  const manyAllyHits = makeHits(400, 'b')
+  for (const hit of manyAllyHits) {
+    hit.anomalyPowerAgentId = 'b'
+    hit.triggerAgentId = 'b'
+  }
+  const perfCtx = makeTwoAgentCtx([...makeHits(4, 'a'), ...manyAllyHits])
+
+  clearAffixEvalCache()
+  const t0 = performance.now()
+  evaluateAffixCounts(perfCtx, countsX)
+  const coldMs = performance.now() - t0
+
+  const t1 = performance.now()
+  evaluateAffixCounts(perfCtx, countsY)
+  const warmMs = performance.now() - t1
+
+  console.log(`    ${manyAllyHits.length + 4} 招式：首轮 ${coldMs.toFixed(2)}ms → 次轮 ${warmMs.toFixed(2)}ms（比值 ${(coldMs / warmMs).toFixed(1)}x）`)
+  check('队友招式走缓存后，次轮评估显著快于首轮（≥2x）', coldMs / warmMs >= 2,
+    `${coldMs.toFixed(2)}ms → ${warmMs.toFixed(2)}ms`)
+}
 
 console.log(`\n结果：${passed} passed, ${failed} failed`)
 if (failed > 0) process.exit(1)
