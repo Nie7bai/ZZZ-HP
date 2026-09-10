@@ -28,6 +28,7 @@ import {
   type AffixExternalFixedParts,
   type AffixPanelCalcInput,
 } from '@/utils/affixPanelCalc'
+import { applyPanelDeltas, type AffixPanelDeltaField } from '@/utils/affixLibrary'
 import {
   createEmptyAgentBasePanel,
   createEmptyBuffStatModifiers,
@@ -373,7 +374,8 @@ export interface AffixReplaceRow {
 }
 
 export interface BenefitCurveSeries {
-  key: OptimalAffixKey
+  /** 系列标识；扫掠模式为 OptimalAffixKey，词条分配模式为词条库条目 id */
+  key: string
   label: string
   color: string
   /** index 0 unused; values[n] = cumulative % after adding n rolls */
@@ -854,7 +856,7 @@ export function evaluateOptimalEventDetail(
   const evtBreakdown = computeFinalPanel(ownerExternal, evtPanelCtx, panelOpts)
   const zoneMultResolved = splitSkillZoneMultOverrides(damageType, hit.multOverrides)
   const panelOverrides = zoneMultResolved.panelOverrides
-  let evtFinalPanel = applyHitPanelMods(
+  const evtFinalPanel = applyHitPanelMods(
     applyEventMultOverrides(evtBreakdown.finalPanel, panelOverrides),
     hit.panelMods,
   )
@@ -1350,13 +1352,14 @@ const affixSweepCache = new Map<
 export function evaluateAffixCountsForSweep(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
+  panelDeltas?: AffixPanelDeltaMap,
 ): { grandTotal: number; eventLines: OptimalEventDamageLine[] } {
   resetAffixEvalCacheIfNeeded(ctx)
-  const cacheKey = affixCountsCacheKey(affixCounts)
+  const cacheKey = affixCountsCacheKey(affixCounts, panelDeltas)
   const cached = affixSweepCache.get(cacheKey)
   if (cached) return cached
 
-  const external = computeExternalForEval(ctx, affixCounts)
+  const external = computeExternalForEval(ctx, affixCounts, panelDeltas)
 
   let payload: { grandTotal: number; eventLines: OptimalEventDamageLine[] }
   if (ctx.hits?.length) {
@@ -1423,6 +1426,8 @@ export function evaluateAffixCountsForSweep(
 
 const AFFIX_EVAL_CACHE_MAX = 800
 let affixEvalCacheCtxSig = ''
+/** 自定义词条（panelField 类）叠加到局外面板的增量表 */
+export type AffixPanelDeltaMap = Partial<Record<AffixPanelDeltaField, number>>
 const affixEvalCache = new Map<
   string,
   {
@@ -1436,8 +1441,19 @@ const affixEvalCache = new Map<
   }
 >()
 
-function affixCountsCacheKey(affixCounts: AffixCounts): string {
-  return `${affixCounts.hpFlat},${affixCounts.hpPercent},${affixCounts.atkFlat},${affixCounts.atkPercent},${affixCounts.pen},${affixCounts.critRate},${affixCounts.critDmg},${affixCounts.mastery}`
+function affixCountsCacheKey(
+  affixCounts: AffixCounts,
+  panelDeltas?: AffixPanelDeltaMap,
+): string {
+  // 必须覆盖 AffixCounts 的全部字段：锋御走 defFlat/defPercent，
+  // 漏掉会让不同防御档数命中同一条缓存，返回错误伤害。
+  const base = `${affixCounts.hpFlat},${affixCounts.hpPercent},${affixCounts.atkFlat},${affixCounts.atkPercent},${affixCounts.defFlat},${affixCounts.defPercent},${affixCounts.pen},${affixCounts.critRate},${affixCounts.critDmg},${affixCounts.mastery}`
+  if (!panelDeltas) return base
+  const parts = (Object.keys(panelDeltas) as AffixPanelDeltaField[])
+    .sort()
+    .filter((key) => Boolean(panelDeltas[key]))
+    .map((key) => `${key}=${panelDeltas[key]}`)
+  return parts.length ? `${base}|${parts.join(',')}` : base
 }
 
 function serializeBuffSelection(state: BuffSelectionState | null | undefined): string {
@@ -1460,7 +1476,30 @@ function serializeMultiSlotBuffSelection(
   return `${serializeBuffSelection(multi.team)}#${slotPart}`
 }
 
+/**
+ * 上下文签名的记忆化。
+ *
+ * 背景：签名要把十余个字段 `JSON.stringify`（含本次新增的 agentBase / wengineAdvanced），
+ * 实测这部分约占「面板口径」单次评估的**一半**开销；而一次求解或一次收益表重算里
+ * `ctx` 始终是**同一个对象**，签名结果必然相同，逐次重算是纯浪费。
+ *
+ * 按 `ctx` 对象身份缓存后，签名从「每次评估算一遍」变为「每个 ctx 算一遍」。
+ *
+ * 前提：调用方不得**就地修改** `ctx` 的字段（当前全项目已核对：无此用法；
+ * `buildOptimalEvalContext` 每次返回新对象，页面侧 `evalCtx` 是 computed）。
+ * 若将来出现就地修改，需在改完显式调用 `clearAffixEvalCache()`。
+ */
+const affixCtxSignatureCache = new WeakMap<OptimalEvalContext, string>()
+
 function affixEvalContextSignature(ctx: OptimalEvalContext): string {
+  const memo = affixCtxSignatureCache.get(ctx)
+  if (memo !== undefined) return memo
+  const signature = computeAffixEvalContextSignature(ctx)
+  affixCtxSignatureCache.set(ctx, signature)
+  return signature
+}
+
+function computeAffixEvalContextSignature(ctx: OptimalEvalContext): string {
   const events =
     ctx.hits
       ?.map(
@@ -1478,6 +1517,19 @@ function affixEvalContextSignature(ctx: OptimalEvalContext): string {
     ctx.isFengYu ? '1' : '0',
     ctx.wengineBaseAtk ?? 0,
     ctx.wengineBaseDef ?? 0,
+    /**
+     * 角色基础面板与音擎加成必须整体入签名。
+     *
+     * 修复前的缺陷（2026-09-10 实测复现）：签名只带 `mainAgentId` 与
+     * `wengineBaseAtk/wengineBaseDef`，而 `buildAffixExternalFixedParts` 真正读的是
+     * `ctx.agentBase` 与 `ctx.wengineAdvanced`。于是下面两种操作会命中旧上下文、
+     * 拿到过期的基础值：
+     *   1. 换成「基础攻击/防御相同、但加成不同」的音擎（如两把基础攻击都是 594 的 S 音擎）；
+     *   2. 同一角色 id 的基础面板发生变化（例如重新加载角色数据）。
+     * 表现为换完音擎后伤害/面板一动不动。
+     */
+    JSON.stringify(ctx.agentBase ?? null),
+    JSON.stringify(ctx.wengineAdvanced ?? null),
     ctx.baseDamageSource ?? '',
     JSON.stringify(ctx.driveDiscMainStats),
     // 主词条组合试算会改 2/4 件套；缺失会导致同词条数命中旧缓存，伤害不变
@@ -1532,13 +1584,19 @@ function getAffixExternalFixedParts(ctx: OptimalEvalContext): AffixExternalFixed
   return affixExternalFixedParts
 }
 
-function computeExternalForEval(ctx: OptimalEvalContext, affixCounts: AffixCounts): PanelStats {
-  return applyAffixCountsToFixedParts(getAffixExternalFixedParts(ctx), affixCounts)
+function computeExternalForEval(
+  ctx: OptimalEvalContext,
+  affixCounts: AffixCounts,
+  panelDeltas?: AffixPanelDeltaMap,
+): PanelStats {
+  const external = applyAffixCountsToFixedParts(getAffixExternalFixedParts(ctx), affixCounts)
+  return panelDeltas ? applyPanelDeltas(external, panelDeltas) : external
 }
 
 function evaluateAffixCountsUncached(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
+  panelDeltas?: AffixPanelDeltaMap,
 ): {
   finalPanel: PanelStats
   result: DamageCalcResult
@@ -1548,7 +1606,7 @@ function evaluateAffixCountsUncached(
   grandTotal: number
   eventLines: OptimalEventDamageLine[]
 } {
-  const external = computeExternalForEval(ctx, affixCounts)
+  const external = computeExternalForEval(ctx, affixCounts, panelDeltas)
 
   if (ctx.hits?.length) {
     const { grandTotal, eventLines, firstResult, firstBreakdown } = computeEventDamageLines(
@@ -1663,10 +1721,7 @@ function evaluateAffixCountsUncached(
   }
 }
 
-export function evaluateAffixCounts(
-  ctx: OptimalEvalContext,
-  affixCounts: AffixCounts,
-): {
+export interface AffixCountsEvalResult {
   finalPanel: PanelStats
   result: DamageCalcResult
   piercePower: number
@@ -1674,19 +1729,40 @@ export function evaluateAffixCounts(
   breakdown: OptimalPanelBreakdown
   grandTotal: number
   eventLines: OptimalEventDamageLine[]
-} {
-  resetAffixEvalCacheIfNeeded(ctx)
-  const cacheKey = affixCountsCacheKey(affixCounts)
-  const cached = affixEvalCache.get(cacheKey)
-  if (cached) return cached
+}
 
-  const result = evaluateAffixCountsUncached(ctx, affixCounts)
+/**
+ * 与 `evaluateAffixCounts` 同源，额外回报本次是「缓存命中」还是「真算」。
+ *
+ * 用途：求解器需要按**真实计算量**记账——缓存命中只花真算约 1% 的时间，
+ * 计入预算会让预算虚耗并提前触发截断（见 `dev-docs/affix-optimizer-impl-log.md` 步骤 0）。
+ * 缓存键与淘汰逻辑复用同一份实现，避免两套键不一致返回错误伤害。
+ */
+export function evaluateAffixCountsWithCacheInfo(
+  ctx: OptimalEvalContext,
+  affixCounts: AffixCounts,
+  panelDeltas?: AffixPanelDeltaMap,
+): { value: AffixCountsEvalResult; cacheHit: boolean } {
+  resetAffixEvalCacheIfNeeded(ctx)
+  const cacheKey = affixCountsCacheKey(affixCounts, panelDeltas)
+  const cached = affixEvalCache.get(cacheKey)
+  if (cached) return { value: cached, cacheHit: true }
+
+  const result = evaluateAffixCountsUncached(ctx, affixCounts, panelDeltas)
   if (affixEvalCache.size >= AFFIX_EVAL_CACHE_MAX) {
     const firstKey = affixEvalCache.keys().next().value
     if (firstKey) affixEvalCache.delete(firstKey)
   }
   affixEvalCache.set(cacheKey, result)
-  return result
+  return { value: result, cacheHit: false }
+}
+
+export function evaluateAffixCounts(
+  ctx: OptimalEvalContext,
+  affixCounts: AffixCounts,
+  panelDeltas?: AffixPanelDeltaMap,
+): AffixCountsEvalResult {
+  return evaluateAffixCountsWithCacheInfo(ctx, affixCounts, panelDeltas).value
 }
 
 /** 使局内暴击率刚好 > 100% 的最小暴击条数（只算面板，不算事件） */
@@ -1777,13 +1853,58 @@ export function sweepDirectDamage(
   return points
 }
 
-function yieldToMain(): Promise<void> {
-  return new Promise((resolve) => {
-    if (typeof requestAnimationFrame === 'function') {
-      requestAnimationFrame(() => resolve())
-    } else {
-      setTimeout(resolve, 0)
+/**
+ * 让出主线程一次，供分片异步任务（扫掠 / 求解器）保持页面响应。
+ *
+ * **为什么浏览器里用 MessageChannel 而不是 requestAnimationFrame**（2026-09-10 实测，真实浏览器）：
+ *
+ * | 让出方式 | 每次等待 |
+ * |---|---|
+ * | `requestAnimationFrame` | **16.66 ms**（绑定帧率） |
+ * | `setTimeout(0)` | **10.33 ms**（浏览器嵌套定时器钳制） |
+ * | `MessageChannel` | **0.01 ms** |
+ *
+ * 于是「多久让出一次」直接决定总耗时：模拟 251 次评估、纯计算 21ms，
+ * rAF 每 24 次让出 → 159ms；MessageChannel 每 24 次让出 → 26ms。
+ * 用户反馈的「词条分配变慢」就是这个：计算量没变，全花在等帧上了。
+ *
+ * 响应性仍然保证：每个时间片（见调用方的 `sliceBudgetMs`）结束后都会让出，
+ * 浏览器可在让出的间隙处理输入与绘制。
+ *
+ * **Node（脚本与测试）里走 `setImmediate`**：模块级 MessageChannel 会一直保活事件循环，
+ * 导致脚本跑完不退出（实测挂住不返回）；而 `port.unref()` 又会让纯 await 的脚本
+ * 以 unsettled top-level await 直接退出。`setImmediate` 两者皆无。
+ */
+const isBrowserMessageChannelUsable =
+  typeof window !== 'undefined' && typeof window.MessageChannel === 'function'
+
+let yieldChannel: MessageChannel | null = null
+const yieldWaiters: (() => void)[] = []
+
+function scheduleYield(resolve: () => void): void {
+  if (isBrowserMessageChannelUsable) {
+    if (!yieldChannel) {
+      yieldChannel = new MessageChannel()
+      // 严格一一对应：一次 postMessage 唤醒一个等待者，避免并发让出时互相顶掉
+      yieldChannel.port1.onmessage = () => {
+        const waiter = yieldWaiters.shift()
+        if (waiter) waiter()
+      }
     }
+    yieldWaiters.push(resolve)
+    yieldChannel.port2.postMessage(null)
+    return
+  }
+  if (typeof setImmediate === 'function') {
+    setImmediate(resolve)
+    return
+  }
+  setTimeout(resolve, 0)
+}
+
+export function yieldToMain(): Promise<void> {
+  return new Promise((resolve) => {
+    scheduleYield(resolve)
   })
 }
 

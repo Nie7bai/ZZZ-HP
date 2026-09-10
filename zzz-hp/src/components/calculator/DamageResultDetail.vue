@@ -33,6 +33,7 @@ import {
 import {
   buildAlignedDirectFormulaGroup,
   buildDirectDamageExpectedProcessItems,
+  buildSharpenCritZoneLines,
   formatDirectDmgMultZoneFormula,
   formatSettlementDmgMultZoneFormula,
 } from '@/utils/directDamageDisplay'
@@ -712,14 +713,34 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
       `局内暴击 ${formatFormulaNumber(panel.critRate, 2)}% = ${formatFormulaNumber(p.critRateRatio)}（计入上限）`,
     ),
     critMultiplier: withTotal(
-      buildStatSourceGroups({
-        keys: ['critRate', 'critDmg'],
-        externalPanel: external,
-        sources,
-        finalValues: { critRate: panel.critRate, critDmg: panel.critDmg },
-      }),
       p.useSharpenFormula
-        ? `锐爆区 = ${formatFormulaNumber(p.critMultiplier)}（暴击率上限 200%，不乘常规暴伤）`
+        ? [
+            // 锐爆区口径与常规暴击区不同：不用常规暴伤，改用锐爆伤害加成
+            ...buildStatSourceGroups({
+              keys: ['critRate'],
+              externalPanel: external,
+              sources,
+              finalValues: { critRate: panel.critRate },
+            }),
+            ...buildStatSourceGroups({
+              keys: ['sharpenCritDmgBonus'],
+              externalPanel: external,
+              sources,
+              externalKeyMap: { sharpenCritDmgBonus: null },
+            }),
+            {
+              label: '锐爆区计算过程',
+              items: buildSharpenCritZoneLines(p, formatFormulaNumber),
+            },
+          ]
+        : buildStatSourceGroups({
+            keys: ['critRate', 'critDmg'],
+            externalPanel: external,
+            sources,
+            finalValues: { critRate: panel.critRate, critDmg: panel.critDmg },
+          }),
+      p.useSharpenFormula
+        ? `锐爆区 = ${formatFormulaNumber(p.critMultiplier)}（B = ${formatFormulaNumber(p.sharpenCritDmgRatio, 4)}，暴击率上限 200%，不乘常规暴伤）`
         : `暴击区 1 + ${formatFormulaNumber(p.critRateRatio)} × ${formatFormulaNumber(p.critDmgRatio)} = ${formatFormulaNumber(p.critMultiplier)}`,
     ),
     specialMultiplier: withTotal(
@@ -1482,8 +1503,8 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
         />
       </div>
       <div class="result-grid">
-        <p>暴击率（计入上限 1）：<StatValueWithSources :value="calcParts.critRateRatio" :groups="valueTips.critRateRatio" /></p>
-        <p>暴击区：<StatValueWithSources :value="calcParts.critMultiplier" :groups="valueTips.critMultiplier" /></p>
+        <p>暴击率（计入上限 {{ calcParts.useSharpenFormula ? '2' : '1' }}）：<StatValueWithSources :value="calcParts.critRateRatio" :groups="valueTips.critRateRatio" /></p>
+        <p>{{ calcParts.useSharpenFormula ? '锐爆区' : '暴击区' }}：<StatValueWithSources :value="calcParts.critMultiplier" :groups="valueTips.critMultiplier" /></p>
         <p>特殊乘区（含增益）：<StatValueWithSources :value="calcParts.specialMultiplier" :groups="valueTips.specialMultiplier" /></p>
         <p>直伤倍率区：<StatValueWithSources :value="calcParts.directDmgMultZone" :groups="valueTips.directDmgMultZone" /></p>
         <p v-if="calcParts.settlementDmgMultZone > 0">

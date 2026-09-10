@@ -8872,7 +8872,7 @@
         "atk": 626,
         "def": 441,
         "critRate": 33.8,
-        "critDmg": 0,
+        "critDmg": 50,
         "sharpenCritDmgBonus": 150,
         "mastery": 79,
         "anomalyControl": 80,
@@ -61161,6 +61161,110 @@
                 }
               ],
               "enabledDefault": true
+            },
+            {
+              "id": "blk-mttou4li-pfihup",
+              "name": "35%全队增伤",
+              "note": "消耗[熔炉升温]发动强化普攻时获得，持续40s",
+              "effects": [
+                {
+                  "id": "eff-mttou4li-rea0ai",
+                  "origin": "",
+                  "scope": "general",
+                  "applyTarget": "team",
+                  "applySituation": "global",
+                  "applyProfession": null,
+                  "teamProfession": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null,
+                  "skillSubcategoryId": null,
+                  "elementFilter": "all",
+                  "kind": "fixed",
+                  "stat": "dmgBonus",
+                  "value": 35,
+                  "stackable": false,
+                  "maxStacks": 1,
+                  "valuePerStack": 0,
+                  "defaultStacks": 1,
+                  "enabledDefault": true,
+                  "note": ""
+                }
+              ],
+              "enabledDefault": true
+            },
+            {
+              "id": "blk-mttp1p1j-9ermke",
+              "name": "锐暴伤害提升12%或爆伤提升35%",
+              "note": "潜能v6效果\n队伍中的\n锋御职业锐暴伤害提升12%\n其他职业爆伤提升35%",
+              "effects": [
+                {
+                  "id": "eff-mttp1p1j-znyjgl",
+                  "origin": "",
+                  "scope": "general",
+                  "applyTarget": "team",
+                  "applySituation": "global",
+                  "applyProfession": "锋御",
+                  "teamProfession": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null,
+                  "skillSubcategoryId": null,
+                  "elementFilter": "all",
+                  "kind": "fixed",
+                  "stat": "sharpenCritDmgBonus",
+                  "value": 12,
+                  "stackable": false,
+                  "maxStacks": 1,
+                  "valuePerStack": 0,
+                  "defaultStacks": 1,
+                  "enabledDefault": true,
+                  "note": ""
+                },
+                {
+                  "id": "eff-mttrnusu-h58op3",
+                  "origin": "",
+                  "scope": "general",
+                  "applyTarget": "team",
+                  "applySituation": "global",
+                  "applyProfession": null,
+                  "teamProfession": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null,
+                  "skillSubcategoryId": null,
+                  "elementFilter": "all",
+                  "kind": "fixed",
+                  "stat": "critDmg",
+                  "value": 35,
+                  "stackable": false,
+                  "maxStacks": 1,
+                  "valuePerStack": 0,
+                  "defaultStacks": 1,
+                  "enabledDefault": true,
+                  "note": ""
+                },
+                {
+                  "id": "eff-mttrobl0-dc0cuk",
+                  "origin": "",
+                  "scope": "general",
+                  "applyTarget": "team",
+                  "applySituation": "global",
+                  "applyProfession": "锋御",
+                  "teamProfession": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null,
+                  "skillSubcategoryId": null,
+                  "elementFilter": "all",
+                  "kind": "fixed",
+                  "stat": "critDmg",
+                  "value": -35,
+                  "stackable": false,
+                  "maxStacks": 1,
+                  "valuePerStack": 0,
+                  "defaultStacks": 1,
+                  "enabledDefault": true,
+                  "note": ""
+                }
+              ],
+              "enabledDefault": true
             }
           ],
           "effects": [
@@ -61191,6 +61295,94 @@
               "valuePerStack": 35,
               "defaultStacks": 2,
               "appliesToAnomaly": true,
+              "enabledDefault": true,
+              "note": ""
+            },
+            {
+              "id": "eff-mttou4li-rea0ai",
+              "origin": "",
+              "scope": "general",
+              "applyTarget": "team",
+              "applySituation": "global",
+              "applyProfession": null,
+              "teamProfession": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null,
+              "skillSubcategoryId": null,
+              "elementFilter": "all",
+              "kind": "fixed",
+              "stat": "dmgBonus",
+              "value": 35,
+              "stackable": false,
+              "maxStacks": 1,
+              "valuePerStack": 0,
+              "defaultStacks": 1,
+              "enabledDefault": true,
+              "note": ""
+            },
+            {
+              "id": "eff-mttp1p1j-znyjgl",
+              "origin": "",
+              "scope": "general",
+              "applyTarget": "team",
+              "applySituation": "global",
+              "applyProfession": "锋御",
+              "teamProfession": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null,
+              "skillSubcategoryId": null,
+              "elementFilter": "all",
+              "kind": "fixed",
+              "stat": "sharpenCritDmgBonus",
+              "value": 12,
+              "stackable": false,
+              "maxStacks": 1,
+              "valuePerStack": 0,
+              "defaultStacks": 1,
+              "enabledDefault": true,
+              "note": ""
+            },
+            {
+              "id": "eff-mttrnusu-h58op3",
+              "origin": "",
+              "scope": "general",
+              "applyTarget": "team",
+              "applySituation": "global",
+              "applyProfession": null,
+              "teamProfession": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null,
+              "skillSubcategoryId": null,
+              "elementFilter": "all",
+              "kind": "fixed",
+              "stat": "critDmg",
+              "value": 35,
+              "stackable": false,
+              "maxStacks": 1,
+              "valuePerStack": 0,
+              "defaultStacks": 1,
+              "enabledDefault": true,
+              "note": ""
+            },
+            {
+              "id": "eff-mttrobl0-dc0cuk",
+              "origin": "",
+              "scope": "general",
+              "applyTarget": "team",
+              "applySituation": "global",
+              "applyProfession": "锋御",
+              "teamProfession": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null,
+              "skillSubcategoryId": null,
+              "elementFilter": "all",
+              "kind": "fixed",
+              "stat": "critDmg",
+              "value": -35,
+              "stackable": false,
+              "maxStacks": 1,
+              "valuePerStack": 0,
+              "defaultStacks": 1,
               "enabledDefault": true,
               "note": ""
             }
@@ -61274,7 +61466,7 @@
             "externalDefPercent": 0,
             "atk": 0,
             "def": 0,
-            "dmgBonus": 0,
+            "dmgBonus": 35,
             "critRate": 0,
             "critDmg": 0,
             "penRate": 0,
@@ -61288,7 +61480,7 @@
             "pierce": 0,
             "pierceDmgBonus": 0,
             "sharpenDmgBonus": 0,
-            "sharpenCritDmgBonus": 0,
+            "sharpenCritDmgBonus": 12,
             "dmgPenalty": 0,
             "vulnerable": 0,
             "directVulnerable": 0,
@@ -78114,6 +78306,37 @@
                   "appliesToAnomaly": true,
                   "enabledDefault": true,
                   "note": ""
+                },
+                {
+                  "id": "eff-ms7tarv6-tfz2kz",
+                  "origin": "",
+                  "scope": "general",
+                  "applyTarget": "self",
+                  "applySituation": "global",
+                  "applyProfession": null,
+                  "teamProfession": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null,
+                  "skillSubcategoryId": null,
+                  "elementFilter": "all",
+                  "kind": "convert",
+                  "stat": "radianceMultFactor",
+                  "value": 0,
+                  "stackable": false,
+                  "maxStacks": 1,
+                  "valuePerStack": 0,
+                  "defaultStacks": 1,
+                  "convert": {
+                    "from": "mastery",
+                    "panelSource": "final",
+                    "ratioPercent": 20,
+                    "cap": null,
+                    "defaultBase": 500,
+                    "initialBase": 0
+                  },
+                  "appliesToAnomaly": true,
+                  "enabledDefault": true,
+                  "note": ""
                 }
               ],
               "enabledDefault": true
@@ -78426,6 +78649,37 @@
                 "ratioPercent": 2,
                 "cap": null,
                 "defaultBase": 100,
+                "initialBase": 0
+              },
+              "appliesToAnomaly": true,
+              "enabledDefault": true,
+              "note": ""
+            },
+            {
+              "id": "eff-ms7tarv6-tfz2kz",
+              "origin": "",
+              "scope": "general",
+              "applyTarget": "self",
+              "applySituation": "global",
+              "applyProfession": null,
+              "teamProfession": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null,
+              "skillSubcategoryId": null,
+              "elementFilter": "all",
+              "kind": "convert",
+              "stat": "radianceMultFactor",
+              "value": 0,
+              "stackable": false,
+              "maxStacks": 1,
+              "valuePerStack": 0,
+              "defaultStacks": 1,
+              "convert": {
+                "from": "mastery",
+                "panelSource": "final",
+                "ratioPercent": 20,
+                "cap": null,
+                "defaultBase": 500,
                 "initialBase": 0
               },
               "appliesToAnomaly": true,
@@ -226258,7 +226512,7 @@
                 "skillSubcategoryId": null,
                 "elementFilter": "all",
                 "kind": "fixed",
-                "stat": "critDmg",
+                "stat": "dmgBonus",
                 "value": 15,
                 "stackable": false,
                 "maxStacks": 1,
@@ -226331,7 +226585,7 @@
             "skillSubcategoryId": null,
             "elementFilter": "all",
             "kind": "fixed",
-            "stat": "critDmg",
+            "stat": "dmgBonus",
             "value": 15,
             "stackable": false,
             "maxStacks": 1,
@@ -226397,9 +226651,9 @@
           "externalDefPercent": 0,
           "atk": 0,
           "def": 0,
-          "dmgBonus": 0,
+          "dmgBonus": 15,
           "critRate": 24,
-          "critDmg": 15,
+          "critDmg": 0,
           "penRate": 0,
           "reduceDefense": 0,
           "resPen": 0,
@@ -229717,7 +229971,9 @@
       "baseMult": 1250,
       "baseMultFactor": 100,
       "settlementMult": 0,
-      "element": "风"
+      "element": "风",
+      "ownerGroupId": null,
+      "note": ""
     },
     {
       "id": "sk-public-anomaly-fire",
@@ -229730,7 +229986,9 @@
       "baseMult": 50,
       "baseMultFactor": 100,
       "settlementMult": 0,
-      "element": "火"
+      "element": "火",
+      "ownerGroupId": null,
+      "note": ""
     },
     {
       "id": "sk-public-anomaly-electric",
@@ -229743,7 +230001,9 @@
       "baseMult": 125,
       "baseMultFactor": 100,
       "settlementMult": 0,
-      "element": "电"
+      "element": "电",
+      "ownerGroupId": null,
+      "note": ""
     },
     {
       "id": "sk-public-anomaly-physical",
@@ -229756,7 +230016,9 @@
       "baseMult": 713,
       "baseMultFactor": 100,
       "settlementMult": 0,
-      "element": "物理"
+      "element": "物理",
+      "ownerGroupId": null,
+      "note": ""
     },
     {
       "id": "sk-public-anomaly-ether",
@@ -229769,7 +230031,9 @@
       "baseMult": 62.5,
       "baseMultFactor": 100,
       "settlementMult": 0,
-      "element": "以太"
+      "element": "以太",
+      "ownerGroupId": null,
+      "note": ""
     },
     {
       "id": "sk-public-anomaly-ice",
@@ -229782,7 +230046,9 @@
       "baseMult": 500,
       "baseMultFactor": 100,
       "settlementMult": 0,
-      "element": "冰"
+      "element": "冰",
+      "ownerGroupId": null,
+      "note": ""
     },
     {
       "id": "sk-public-anomaly-frost",
@@ -229795,7 +230061,434 @@
       "baseMult": 500,
       "baseMultFactor": 100,
       "settlementMult": 0,
-      "element": "霜"
+      "element": "霜",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611016-main",
+      "agentId": "claret",
+      "name": "冲刺攻击：淬火",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "dodge"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 106.8,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611028-main",
+      "agentId": "claret",
+      "name": "反制支援：寸铁不让",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "assist"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 2306.9,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611010-main",
+      "agentId": "claret",
+      "name": "强化特殊技：血华誓·铸锋秘术",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "specialEnhanced"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 1249.6,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611022-main",
+      "agentId": "claret",
+      "name": "快速支援：厄月再临",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "assist"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 106.8,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611023-main",
+      "agentId": "claret",
+      "name": "快速支援：血华誓·厄月再临",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "assist"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 232.4,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611027-main",
+      "agentId": "claret",
+      "name": "支援突击：血华誓·无垢熔锋",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "assist"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 892.8,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611030-main",
+      "agentId": "claret",
+      "name": "支援突击：血华誓·琢形",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "assist"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 1713.2,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611008-main",
+      "agentId": "claret",
+      "name": "普通攻击：血华誓·伏钺",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "basic"
+      ],
+      "buffAnchorId": "claret-basic-mtskqn2n",
+      "baseMult": 656.9,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611005-一段",
+      "agentId": "claret",
+      "name": "普通攻击：血华誓·锻星·一段",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "basic"
+      ],
+      "buffAnchorId": "claret-basic-mtskq8rr",
+      "baseMult": 215.5,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611029-三段下砸",
+      "agentId": "claret",
+      "name": "普通攻击：血华誓·锻星·三段下砸",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "basic"
+      ],
+      "buffAnchorId": "claret-basic-mtskq8rr",
+      "baseMult": 355.5,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611007-三段连续斩击",
+      "agentId": "claret",
+      "name": "普通攻击：血华誓·锻星·三段连续斩击",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "basic"
+      ],
+      "buffAnchorId": "claret-basic-mtskq8rr",
+      "baseMult": 904.2,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611006-二段",
+      "agentId": "claret",
+      "name": "普通攻击：血华誓·锻星·二段",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "basic"
+      ],
+      "buffAnchorId": "claret-basic-mtskq8rr",
+      "baseMult": 575.6,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611001-一段",
+      "agentId": "claret",
+      "name": "普通攻击：血锻四式·一段",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "basic"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 109.4,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611003-三段",
+      "agentId": "claret",
+      "name": "普通攻击：血锻四式·三段",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "basic"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 190.9,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611002-二段",
+      "agentId": "claret",
+      "name": "普通攻击：血锻四式·二段",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "basic"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 135.4,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611004-四段",
+      "agentId": "claret",
+      "name": "普通攻击：血锻四式·四段",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "basic"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 579.9,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611009-main",
+      "agentId": "claret",
+      "name": "特殊技：初辉启鸣",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "special"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 180.3,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611011-上挑",
+      "agentId": "claret",
+      "name": "特殊技：血华誓·斩金断铁·上挑",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "special"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 153.6,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611012-横斩",
+      "agentId": "claret",
+      "name": "特殊技：血华誓·斩金断铁·横斩",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "special"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 175.7,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611013-毁伤",
+      "agentId": "claret",
+      "name": "特殊技：血华誓·斩金断铁·毁伤",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "special"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 1625.6,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611014-main",
+      "agentId": "claret",
+      "name": "特殊技：血华誓·葬血强袭",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "special"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 626.3,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611021-main",
+      "agentId": "claret",
+      "name": "终结技：血华誓·千锤百炼",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "chain"
+      ],
+      "buffAnchorId": "claret-ultimate-mtsefude",
+      "baseMult": 4504.8,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611020-main",
+      "agentId": "claret",
+      "name": "连携技：血华誓·血契共鸣",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "chain"
+      ],
+      "buffAnchorId": "claret-chain-mtsefivk",
+      "baseMult": 2116.2,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611018-main",
+      "agentId": "claret",
+      "name": "闪避反击：回锋",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "dodgeCounter"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 545.3,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "sk-claret-nk-1611019-main",
+      "agentId": "claret",
+      "name": "闪避反击：血华誓·回锋",
+      "source": "preset",
+      "damageType": "direct",
+      "skillTypes": [
+        "dodgeCounter"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 660,
+      "baseMultFactor": 100,
+      "settlementMult": 0,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
     },
     {
       "id": "sk-yeshunguang-direct-mtsgty6b",
@@ -229810,7 +230503,10 @@
       "baseMult": 800.8,
       "baseMultFactor": 100,
       "settlementMult": 0,
-      "element": ""
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
     }
-  ]
+  ],
+  "skillGroups": []
 }

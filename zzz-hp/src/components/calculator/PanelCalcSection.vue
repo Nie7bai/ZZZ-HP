@@ -118,6 +118,7 @@ import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 import {
   buildAlignedDirectFormulaGroup,
   buildDirectDamageExpectedProcessItems,
+  buildSharpenCritZoneLines,
   formatDirectDmgMultZoneFormula,
   formatSettlementDmgMultZoneFormula,
 } from '@/utils/directDamageDisplay'
@@ -321,13 +322,43 @@ function applyAffixState(state: AgentAffixState | undefined) {
   })
 }
 
+function isSameRecord(a: object | undefined, b: object | undefined): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  const aRec = a as Record<string, unknown>
+  const bRec = b as Record<string, unknown>
+  const aKeys = Object.keys(aRec)
+  if (aKeys.length !== Object.keys(bRec).length) return false
+  return aKeys.every((key) => aRec[key] === bRec[key])
+}
+
+function isSameAffixState(a: AgentAffixState | undefined, b: AgentAffixState): boolean {
+  if (!a) return false
+  return (
+    isSameRecord(a.affixCounts, b.affixCounts) &&
+    isSameRecord(a.affixDriveDiscMainStats, b.affixDriveDiscMainStats)
+  )
+}
+
 function flushAffixOntoSlot(slotIndex: number) {
   if (suppressRestoreResets) return
   const slot = props.teamSlots[slotIndex]
   if (!slot?.agentId) return
-  slot.affixCounts = { ...affixCounts }
-  slot.affixDriveDiscMainStats = { ...affixDriveDiscMainStats }
-  affixStateByAgent[slot.agentId] = captureAffixState()
+  // 内容未变时不写回：getSnapshot() 也会调用本函数，无条件赋值会让
+  // teamSlots 深层 watch 触发「保存草稿 → getSnapshot」的 400ms 自激循环，
+  // 导致整页持续重渲染（词条模块尤其明显）。
+  const nextCounts = { ...affixCounts }
+  if (!isSameRecord(slot.affixCounts, nextCounts)) {
+    slot.affixCounts = nextCounts
+  }
+  const nextMainStats = { ...affixDriveDiscMainStats }
+  if (!isSameRecord(slot.affixDriveDiscMainStats, nextMainStats)) {
+    slot.affixDriveDiscMainStats = nextMainStats
+  }
+  const nextState = captureAffixState()
+  if (!isSameAffixState(affixStateByAgent[slot.agentId], nextState)) {
+    affixStateByAgent[slot.agentId] = nextState
+  }
 }
 
 function flushAffixOntoTeamSlots() {
@@ -1045,20 +1076,15 @@ function syncLivePanelFromCommitted() {
 }
 
 watch(
-  isMbMainAgent,
-  (isMb) => {
+  [isMbMainAgent, isFengYuMainAgent],
+  ([isMb, isFengYu], [prevMb, prevFengYu]) => {
     if (isMb) {
       baseDamageSource.value = 'pierce'
-    }
-  },
-  { immediate: true },
-)
-
-watch(
-  isFengYuMainAgent,
-  (isFengYu) => {
-    if (isFengYu) {
+    } else if (isFengYu) {
       baseDamageSource.value = 'def'
+    } else if (prevMb || prevFengYu) {
+      // 从命破/锋御切回普通职业：必须复位，否则残留 def/pierce 会让普通角色拿错基础伤害
+      baseDamageSource.value = 'atk'
     }
   },
   { immediate: true },
@@ -2948,14 +2974,34 @@ const valueTips = computed(() => {
       `局内暴击 ${formatFormulaNumber(tipPanel.critRate, 2)}% = ${formatFormulaNumber(p.critRateRatio)}（计入上限）`,
     ),
     critMultiplier: withTotal(
-      buildStatSourceGroups({
-        keys: ['critRate', 'critDmg'],
-        externalPanel: tipExternal,
-        sources: tipSources,
-        finalValues: { critRate: tipPanel.critRate, critDmg: tipPanel.critDmg },
-      }),
       p.useSharpenFormula
-        ? `锐爆区 = ${formatFormulaNumber(p.critMultiplier)}（暴击率上限 200%，不乘常规暴伤）`
+        ? [
+            // 锐爆区口径与常规暴击区不同：不用常规暴伤，改用锐爆伤害加成
+            ...buildStatSourceGroups({
+              keys: ['critRate'],
+              externalPanel: tipExternal,
+              sources: tipSources,
+              finalValues: { critRate: tipPanel.critRate },
+            }),
+            ...buildStatSourceGroups({
+              keys: ['sharpenCritDmgBonus'],
+              externalPanel: tipExternal,
+              sources: tipSources,
+              externalKeyMap: { sharpenCritDmgBonus: null },
+            }),
+            {
+              label: '锐爆区计算过程',
+              items: buildSharpenCritZoneLines(p, formatFormulaNumber),
+            },
+          ]
+        : buildStatSourceGroups({
+            keys: ['critRate', 'critDmg'],
+            externalPanel: tipExternal,
+            sources: tipSources,
+            finalValues: { critRate: tipPanel.critRate, critDmg: tipPanel.critDmg },
+          }),
+      p.useSharpenFormula
+        ? `锐爆区 = ${formatFormulaNumber(p.critMultiplier)}（B = ${formatFormulaNumber(p.sharpenCritDmgRatio, 4)}，暴击率上限 200%，不乘常规暴伤）`
         : `暴击区 1 + ${formatFormulaNumber(p.critRateRatio)} × ${formatFormulaNumber(p.critDmgRatio)} = ${formatFormulaNumber(p.critMultiplier)}`,
     ),
     specialMultiplier: withTotal(
@@ -3122,7 +3168,7 @@ const valueTips = computed(() => {
         label: '乘区组成',
         items: [
           `通用乘区 ${directFormulaParts.value[0]}`,
-          `暴击区 ${directFormulaParts.value[1]}`,
+          `${p.useSharpenFormula ? '锐爆区' : '暴击区'} ${directFormulaParts.value[1]}`,
           `特殊乘区 ${directFormulaParts.value[2]}`,
           ...(p.baseDamageSource === 'pierce'
             ? [`贯穿增伤区 ${formatFormulaNumber(p.pierceDmgMultiplier)}`]

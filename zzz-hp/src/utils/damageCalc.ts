@@ -157,7 +157,7 @@ export interface DamageCalcResult {
   sharpenDmgMultiplier: number
   /** 是否走锐化公式 */
   useSharpenFormula: boolean
-  /** 锐爆伤害 B（= 1.2 + 锐爆伤害加成） */
+  /** 锐爆伤害 B（= 锐爆伤害加成/100，以角色数据为准） */
   sharpenCritDmgRatio: number
   /** 锐爆期望区 */
   sharpenCritZone: number
@@ -295,7 +295,9 @@ export function computeDefenseZone(options: {
   const reduceDefenseRatio = clamp(defense.reduceDefense / 100, 0, 1)
   const defenseFactor = Math.max(0, 1 - ignoreDefenseRatio - reduceDefenseRatio)
   const defenseAfterModifiers = options.enemyDefense * defenseFactor * (1 - penRateRatio)
-  const effectiveDefense = Math.max(0, defenseAfterModifiers) - defense.pen
+  // 有效防御整体钳制到 ≥0：减去固定穿透后可能为负，若不再钳制，
+  // 防御区会突破 1 并随穿透值无限增长。钳制后分母 ≥ 794，防御区恒 ≤ 1。
+  const effectiveDefense = Math.max(0, defenseAfterModifiers - defense.pen)
   const defenseMultiplier = options.isMb ? 1 : 794 / (794 + effectiveDefense)
   return {
     penRateRatio,
@@ -337,7 +339,8 @@ export function computeVulnerableZone(options: {
 
 /**
  * 锐爆期望区。
- * B = 1.2 + 锐爆伤害加成%/100；r = clamp(暴击率%/100, 0, 2)（锋御上限 200%）。
+ * B = 锐爆伤害加成%/100（完全以角色数据为准，无内置基础值）；
+ * r = clamp(暴击率%/100, 0, 2)（锋御上限 200%）。
  * r ≤ 1: 1 + r×B
  * r > 1: (1+B) × [1 + B×(r−1)]（首段必暴 + 超出部分再判一次）
  */
@@ -345,7 +348,7 @@ export function computeSharpenCritExpectedZone(
   critRatePercent: number,
   sharpenCritDmgBonusPercent: number,
 ): number {
-  const B = 1.2 + sharpenCritDmgBonusPercent / 100
+  const B = sharpenCritDmgBonusPercent / 100
   const r = clamp(critRatePercent / 100, 0, 2)
   if (r <= 1) return 1 + r * B
   return (1 + B) * (1 + B * (r - 1))
@@ -356,7 +359,7 @@ export function computeSharpenCritFullCritZone(
   critRatePercent: number,
   sharpenCritDmgBonusPercent: number,
 ): number {
-  const B = 1.2 + sharpenCritDmgBonusPercent / 100
+  const B = sharpenCritDmgBonusPercent / 100
   const r = clamp(critRatePercent / 100, 0, 2)
   if (r <= 1) return 1 + B
   return (1 + B) * (1 + B * (r - 1))
@@ -454,7 +457,8 @@ function computeGeneralAndAnomalyBase(options: {
   const reduceDefenseRatio = clamp(defense.reduceDefense / 100, 0, 1)
   const defenseFactor = Math.max(0, 1 - ignoreDefenseRatio - reduceDefenseRatio)
   const defenseAfterModifiers = options.enemyInput.defense * defenseFactor * (1 - penRateRatio)
-  const effectiveDefense = Math.max(0, defenseAfterModifiers) - defense.pen
+  // 与 computeDefenseZone 同口径：有效防御整体钳制到 ≥0，防御区恒 ≤ 1
+  const effectiveDefense = Math.max(0, defenseAfterModifiers - defense.pen)
   const defenseMultiplier = options.isMb ? 1 : 794 / (794 + effectiveDefense)
   const resPenPanel = options.resPenSource ?? panel
   const resistanceMultiplier = 1 - enemyRes + clamp((resPenPanel.resPen + extraResPen) / 100, -2, 2)
@@ -674,7 +678,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     mainParts.dmgMultiplier > 0 ? directDmgMultiplier / mainParts.dmgMultiplier : 1
 
   const combatSharpenCritDmgBonus = input.combatSharpenCritDmgBonus ?? 0
-  const sharpenCritDmgRatio = 1.2 + combatSharpenCritDmgBonus / 100
+  const sharpenCritDmgRatio = combatSharpenCritDmgBonus / 100
   const sharpenCritZone = computeSharpenCritExpectedZone(panel.critRate, combatSharpenCritDmgBonus)
   const sharpenCritZoneNoCrit = 1
   const sharpenCritZoneFullCrit = computeSharpenCritFullCritZone(
@@ -685,12 +689,15 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   let directDamageFromDirectMult: number
   let settlementDamageExpected: number
   let directDamageExpected: number
-  let reportedDmgMultiplier = mainParts.dmgMultiplier
+  /**
+   * 展示用增伤区必须与链上实际使用的增伤区一致：
+   * 异常链不扣弱伤（取强度提供者面板的通用增伤区），直伤/命破/锐化链扣弱伤。
+   */
+  const reportedDmgMultiplier = useTriggerBase ? baseParts.dmgMultiplier : directDmgMultiplier
   let reportedCritMultiplier = mainParts.critMultiplier
   let reportedPierceDmg = mainParts.pierceDmgMultiplier
 
   if (useSharpenFormula) {
-    reportedDmgMultiplier = directDmgMultiplier
     reportedCritMultiplier = sharpenCritZone
     reportedPierceDmg = 1
     const sharpenBaseChain =
@@ -704,7 +711,6 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     settlementDamageExpected = 0
     directDamageExpected = directDamageFromDirectMult
   } else {
-    reportedDmgMultiplier = directDmgMultiplier
     const directBaseChain =
       mainParts.generalMultiplier *
       directDmgPenaltyFactor *

@@ -57,31 +57,43 @@ check('防御力副词条', AFFIX_VALUE_PER_COUNT.defFlat, 15)
 check('局外防御%副词条', AFFIX_VALUE_PER_COUNT.defPercent, 4.8)
 
 section('1. 锐爆期望区')
-check('0% 暴击', computeSharpenCritExpectedZone(0, 0), 1)
-check('50% 暴击 B=1.2', computeSharpenCritExpectedZone(50, 0), 1 + 0.5 * 1.2)
-check('100% 暴击 B=1.2', computeSharpenCritExpectedZone(100, 0), 1 + 1.2)
+// B = 锐爆伤害加成%/100，无内置基础值（原 1.2 底座已移除）
+// 无加成时 B=0，锐爆区恒为 1（相当于不暴击）
+check('0% 暴击 无加成', computeSharpenCritExpectedZone(0, 0), 1)
+check('50% 暴击 无加成', computeSharpenCritExpectedZone(50, 0), 1)
+check('100% 暴击 无加成', computeSharpenCritExpectedZone(100, 0), 1)
+check('200% 暴击 无加成', computeSharpenCritExpectedZone(200, 0), 1)
+
+// B=1.5（克拉蕾基础锐爆伤害 150）
+const B150 = 150 / 100
+check('50% 暴击 B=1.5', computeSharpenCritExpectedZone(50, 150), 1 + 0.5 * B150)
+check('100% 暴击 B=1.5', computeSharpenCritExpectedZone(100, 150), 1 + B150)
 check(
-  '135% 暴击 B=1.2',
-  computeSharpenCritExpectedZone(135, 0),
-  (1 + 1.2) * (1 + 1.2 * 0.35),
+  '135% 暴击 B=1.5',
+  computeSharpenCritExpectedZone(135, 150),
+  (1 + B150) * (1 + B150 * 0.35),
 )
 check(
-  '200% 暴击 B=1.2',
-  computeSharpenCritExpectedZone(200, 0),
-  (1 + 1.2) * (1 + 1.2 * 1),
+  '200% 暴击 B=1.5',
+  computeSharpenCritExpectedZone(200, 150),
+  (1 + B150) * (1 + B150 * 1),
 )
-check('250% 夹到 200%', computeSharpenCritExpectedZone(250, 0), (1 + 1.2) * (1 + 1.2))
+check('250% 夹到 200%', computeSharpenCritExpectedZone(250, 150), (1 + B150) * (1 + B150))
+
+// B=1.8（150 基础 + 30 加成）
+const B180 = 180 / 100
 check(
   '135% +30% 锐爆加成',
-  computeSharpenCritExpectedZone(135, 30),
-  (1 + 1.5) * (1 + 1.5 * 0.35),
+  computeSharpenCritExpectedZone(135, 180),
+  (1 + B180) * (1 + B180 * 0.35),
 )
-check('必暴击 r=0.5', computeSharpenCritFullCritZone(50, 0), 1 + 1.2)
+check('必暴击 r=0.5', computeSharpenCritFullCritZone(50, 150), 1 + B150)
 check(
   '必暴击 r=1.35',
-  computeSharpenCritFullCritZone(135, 0),
-  (1 + 1.2) * (1 + 1.2 * 0.35),
+  computeSharpenCritFullCritZone(135, 150),
+  (1 + B150) * (1 + B150 * 0.35),
 )
+check('必暴击 r=0.5 无加成', computeSharpenCritFullCritZone(50, 0), 1)
 
 section('2. 锐化结算链')
 const panel = createDefaultExternalPanel()
@@ -113,7 +125,8 @@ const baseInput = {
   combatSpecial: 0,
   staggerPhase: 'normal',
   useSharpenFormula: true,
-  combatSharpenCritDmgBonus: 0,
+  // B = 150/100 = 1.5（克拉蕾基础锐爆伤害；无内置 1.2 底座）
+  combatSharpenCritDmgBonus: 150,
   combatDmgPenalty: 0,
 }
 
@@ -123,9 +136,9 @@ check('锐化基础伤害=防御', sharpen.baseDamage, 1500)
 check('锐化不用决算', sharpen.settlementDamageExpected, 0)
 check('锐化 pierce 区=1', sharpen.pierceDmgMultiplier, 1)
 check(
-  '锐爆区 135%',
+  '锐爆区 135% B=1.5',
   sharpen.sharpenCritZone,
-  (1 + 1.2) * (1 + 1.2 * 0.35),
+  (1 + 1.5) * (1 + 1.5 * 0.35),
   1e-6,
 )
 
