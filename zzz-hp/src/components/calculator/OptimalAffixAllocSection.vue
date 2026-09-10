@@ -26,7 +26,6 @@ import type {
 } from '@/types/calculator'
 import {
   createDefaultAffixDriveDiscMainStats,
-  createDefaultExternalPanel,
   createEmptyAffixCounts,
   createExternalPanelFromAgentBase,
   fillPanelStatsDefaults,
@@ -69,7 +68,6 @@ import {
   optimalHitDependsOnMainAffixPanel,
   buildDirectAffixCounts,
   buildAnomalyAffixCounts,
-  type OptimalEventEvalDetail,
   flatStatLabel,
   outPercentLabel,
   outPercentFromAffixCounts,
@@ -95,7 +93,6 @@ import {
   computeFinalPanel,
   type ConvertSlotPanels,
 } from '@/utils/panelBuffCalc'
-import { summarizeDamageByOwner } from '@/utils/damageEventOwner'
 import { useDamageProcessEvents } from '@/composables/useDamageProcessEvents'
 
 import DamageProcessPanel from '@/components/calculator/DamageProcessPanel.vue'
@@ -126,7 +123,9 @@ import {
   type AffixLibraryState,
 } from '@/utils/affixLibrary'
 import {
-  solveOptimalAffixAllocation,
+  solveOptimalAffixAllocationAsync,
+  type AffixCandidateWidthMode,
+  type AffixOptimizerProgress,
   type AffixOptimizerResult,
 } from '@/utils/affixOptimizer'
 
@@ -259,12 +258,12 @@ type AnomalyMetric = 'anomaly' | 'disorder' | 'turbulence' | 'anomalyRelease' | 
 type CurveMode = 'cumulative' | 'marginal'
 
 /** 本模块需手动选择直伤/异常；未选时只展示模式入口。默认跟随招式流程的首个伤害类型 */
-const damageKind = ref<OptimalDamageKind | null>(null)
+const sweepDamageKind = ref<OptimalDamageKind | null>(null)
 
 watch(
   () => props.damageKind,
   (kind) => {
-    if (kind === 'direct' || kind === 'anomaly') damageKind.value = kind
+    if (kind === 'direct' || kind === 'anomaly') sweepDamageKind.value = kind
   },
   { immediate: true },
 )
@@ -283,8 +282,8 @@ const driveDiscMainStats = reactive(createDefaultAffixDriveDiscMainStats())
 const enemyInput = defineModel<DamageEnemyInput>('enemyInput', { required: true })
 
 function setDamageKind(kind: OptimalDamageKind) {
-  if (damageKind.value === kind) return
-  damageKind.value = kind
+  if (sweepDamageKind.value === kind) return
+  sweepDamageKind.value = kind
 }
 
 const directAlloc = reactive<DirectAllocState>({
@@ -348,26 +347,6 @@ const anomalySupportSlots = computed(() => {
  * 最优模块独立局外 / 转模副本：编辑不写回「面板/词条计算」页。
  */
 const optimalParticipantPanels = reactive<Record<string, PanelStats>>({})
-function buildBasePanelCalcContext() {
-  const slotIndex = mainSlotIndex.value
-  return {
-    teamSlots: props.teamSlots,
-    agents: props.agents,
-    wengines: props.wengines,
-    bangboo: selectedBangboo.value,
-    bangbooRefine: props.bangbooRefine,
-    mainSlotIndex: slotIndex,
-    driveDiscs: props.driveDiscs,
-    skillContext: buildGenericPanelSkillContext({
-      element: mainAgent.value?.element,
-      staggerPhase: props.staggerPhase ?? 'stagger',
-    }),
-    buffSelection: resolveBuffSelectionForSlot(props.slotBuffSelections, slotIndex),
-    anomalySlotPanels: optimalParticipantPanels,
-    convertSlotPanels: props.convertSlotPanels,
-    environmentBuffs: props.environmentBuffs,
-  }
-}
 
 const anomalyProducerAgentIds = computed(() => {
   const ids = new Set<string>()
@@ -479,7 +458,7 @@ const evalCtx = computed(() =>
     skillContext: buildGenericPanelSkillContext({
       element: mainAgent.value?.element,
       staggerPhase: props.staggerPhase ?? 'stagger',
-      damageKind: damageKind.value ?? 'direct',
+      damageKind: sweepDamageKind.value ?? 'direct',
     }),
     buffSelection: props.buffSelection ?? null,
     slotBuffSelections: props.slotBuffSelections ?? null,
@@ -512,7 +491,7 @@ const sweepConfigFingerprint = computed(() =>
     extraGains: extraGains.value,
     convert: props.convertSlotPanels ?? {},
     participants: optimalParticipantPanels,
-    damageKind: damageKind.value,
+    damageKind: sweepDamageKind.value,
     buffSelection: props.buffSelection,
     slotBuffSelections: props.slotBuffSelections,
     agents: props.teamSlots.map((slot) => slot.agentId ?? ''),
@@ -572,9 +551,9 @@ function markSweepConfigDirty() {
 }
 
 function startCalculation() {
-  if (!damageKind.value) return
-  if (damageKind.value === 'direct' && directError.value) return
-  if (damageKind.value === 'anomaly' && anomalyError.value) return
+  if (!sweepDamageKind.value) return
+  if (sweepDamageKind.value === 'direct' && directError.value) return
+  if (sweepDamageKind.value === 'anomaly' && anomalyError.value) return
   pendingConfigDirty.value = false
   sweepNeedsCommit.value = false
   sweepCommitted.value = true
@@ -584,7 +563,7 @@ function startCalculation() {
 }
 
 async function runSweepRecompute() {
-  if (!sweepCommitted.value || !damageKind.value) {
+  if (!sweepCommitted.value || !sweepDamageKind.value) {
     sweepComputing.value = false
     return
   }
@@ -594,7 +573,7 @@ async function runSweepRecompute() {
   sweepAbort = controller
   sweepComputing.value = true
   const chunkSize = hasEventMode.value ? 3 : 6
-  const kind = damageKind.value
+  const kind = sweepDamageKind.value
   try {
     if (kind === 'direct') {
       if (directError.value) {
@@ -727,7 +706,7 @@ watch(sweepConfigFingerprint, markSweepConfigDirty)
 /** 用指纹代替 deep watch，避免响应式遍历放大开销 */
 const allocSweepFingerprint = computed(() =>
   JSON.stringify({
-    kind: damageKind.value,
+    kind: sweepDamageKind.value,
     direct: { ...directAlloc },
     anomaly: { ...anomalyAlloc },
     directError: directError.value,
@@ -751,7 +730,7 @@ const eventAffixImpactLoading = ref(false)
 const combinedMainStatRankingsLoading = ref(false)
 
 const sweepPoints = computed(() =>
-  damageKind.value === 'direct' ? directPoints.value : anomalyPoints.value,
+  sweepDamageKind.value === 'direct' ? directPoints.value : anomalyPoints.value,
 )
 
 const selectedDirect = computed(() => {
@@ -765,7 +744,7 @@ const selectedAnomaly = computed(() => {
 })
 
 const selectedCounts = computed(() => {
-  if (damageKind.value === 'direct') return selectedDirect.value?.affixCounts ?? null
+  if (sweepDamageKind.value === 'direct') return selectedDirect.value?.affixCounts ?? null
   return selectedAnomaly.value?.affixCounts ?? null
 })
 
@@ -899,14 +878,14 @@ const eventAffixImpactStale = ref(false)
 let eventAffixImpactTimer: ReturnType<typeof setTimeout> | null = null
 
 function recomputeEventAffixImpact() {
-  if (!hasEventMode.value || !analysisCounts.value || !damageKind.value) {
+  if (!hasEventMode.value || !analysisCounts.value || !sweepDamageKind.value) {
     eventAffixImpact.value = []
     return
   }
   eventAffixImpact.value = computeEventAffixImpact(
     evalCtx.value,
     analysisCounts.value,
-    damageKind.value,
+    sweepDamageKind.value,
   )
   eventAffixImpactStale.value = false
 }
@@ -938,7 +917,7 @@ function scheduleEventAffixImpactRefresh() {
 /** 仅事件结构/伤害模式变化时才清空；分配微调改为后台刷新，避免表格被刷掉 */
 const eventAffixImpactStructureKey = computed(() =>
   JSON.stringify({
-    kind: damageKind.value,
+    kind: sweepDamageKind.value,
     hasEvent: hasEventMode.value,
     hits: (props.hits ?? []).map(
       (hit) =>
@@ -956,7 +935,7 @@ watch(eventAffixImpactStructureKey, () => {
 })
 
 const barLabels = computed(() =>
-  damageKind.value === 'direct'
+  sweepDamageKind.value === 'direct'
     ? directPoints.value.map((p) => `${p.outPercent}/${p.critDmg}`)
     : anomalyPoints.value.map((p) => `${p.outPercent}/${p.mastery}`),
 )
@@ -1048,7 +1027,7 @@ watch(
 /** 面板展示用：未开算时按当前词条分配预览；已有扫掠点时优先用扫掠结果 */
 const allocPreviewCounts = computed(() => {
   if (selectedCounts.value) return null
-  if (damageKind.value === 'direct') {
+  if (sweepDamageKind.value === 'direct') {
     if (directPoints.value[0]?.affixCounts) return null
     if (directError.value || !mainAgent.value?.id) return null
     const crit = Math.round(directAlloc.critRate)
@@ -1065,7 +1044,7 @@ const allocPreviewCounts = computed(() => {
     )
   }
   if (anomalyPoints.value[0]?.affixCounts) return null
-  if (anomalyError.value || !damageKind.value || !mainAgent.value?.id) return null
+  if (anomalyError.value || !sweepDamageKind.value || !mainAgent.value?.id) return null
   const total = Math.round(anomalyAlloc.totalRolls)
   return buildAnomalyAffixCounts(
     isMb.value,
@@ -1096,10 +1075,10 @@ watch(
 
 const displayCounts = computed(() => {
   if (selectedCounts.value) return selectedCounts.value
-  if (damageKind.value === 'direct' && directPoints.value[0]?.affixCounts) {
+  if (sweepDamageKind.value === 'direct' && directPoints.value[0]?.affixCounts) {
     return directPoints.value[0].affixCounts
   }
-  if (damageKind.value === 'anomaly' && anomalyPoints.value[0]?.affixCounts) {
+  if (sweepDamageKind.value === 'anomaly' && anomalyPoints.value[0]?.affixCounts) {
     return anomalyPoints.value[0].affixCounts
   }
   return debouncedAllocPreviewCounts.value
@@ -1108,7 +1087,7 @@ const displayCounts = computed(() => {
 const selectedEval = computed(() => {
   if (!selectedCounts.value) return null
   const point =
-    damageKind.value === 'direct' ? selectedDirect.value : selectedAnomaly.value
+    sweepDamageKind.value === 'direct' ? selectedDirect.value : selectedAnomaly.value
   if (point?.evalSnapshot) return point.evalSnapshot
   // 过程 Tab 需要完整事件明细；其余场景只算主 C 面板，避免点柱就卡一下
   if (detailTab.value === 'process') {
@@ -1217,7 +1196,7 @@ const skillFlowContextFingerprint = computed(() =>
     bangboo: [props.selectedBangbooId, props.bangbooRefine],
     mains: { ...driveDiscMainStats },
     baseDamageSource: baseDamageSource.value,
-    damageKind: damageKind.value,
+    damageKind: sweepDamageKind.value,
     stagger: props.staggerPhase,
   }),
 )
@@ -1383,7 +1362,7 @@ function formatFinalPanelField(field: FinalPanelField) {
 
 function metricOf(result: DamageCalcResult, grandTotal?: number) {
   if (typeof grandTotal === 'number' && Number.isFinite(grandTotal)) return grandTotal
-  if (damageKind.value === 'direct') return result.directDamageExpected
+  if (sweepDamageKind.value === 'direct') return result.directDamageExpected
   if (anomalyChartMetric.value === 'disorder') return result.disorderExpected
   if (anomalyChartMetric.value === 'turbulence') return result.turbulenceExpected
   if (anomalyChartMetric.value === 'anomalyRelease') return result.anomalyReleaseExpected
@@ -1424,7 +1403,7 @@ const analysisMetricDamage = computed(() => {
 })
 
 const processDamageTotalLabel = computed(() =>
-  damageKind.value === 'anomaly' ? '异常伤害事件总伤期望' : '伤害事件总伤期望',
+  sweepDamageKind.value === 'anomaly' ? '异常伤害事件总伤期望' : '伤害事件总伤期望',
 )
 
 /** 过程明细仅在「计算过程」Tab 展开且模块可见时求值，避免扫掠后全量重算卡顿 */
@@ -1447,7 +1426,6 @@ const sweepProcess = useDamageProcessEvents({
   },
 })
 
-const processEventRows = sweepProcess.eventRows
 const selectedProcessEventId = sweepProcess.selectedEventId
 const selectedProcessEventDetail = sweepProcess.selectedDetail
 const processOwnerShareSummary = sweepProcess.ownerShareSummary
@@ -1623,6 +1601,17 @@ const affixAllocDetailTab = ref<'curve' | 'process'>('curve')
 const affixAllocResult = ref<AffixOptimizerResult | null>(null)
 const affixAllocLoading = ref(false)
 const affixAllocError = ref<string | null>(null)
+/**
+ * 候选宽度模式：
+ * - auto：每轮候选条数由剩余计算量预算推导（流程便宜就多搜，昂贵就少搜）
+ * - manual：用户指定条数，不设预算兜底
+ */
+const affixAllocWidthMode = ref<AffixCandidateWidthMode>('auto')
+/** manual 模式下的候选条数 */
+const affixAllocManualWidth = ref(8)
+/** 求解进度（仅求解中刷新） */
+const affixAllocProgress = ref<AffixOptimizerProgress | null>(null)
+let affixAllocAbort: AbortController | null = null
 const affixBenefitTable = ref<AffixBenefitTableData | null>(null)
 const affixBenefitLoading = ref(false)
 const affixBenefitStep = ref(1)
@@ -1645,7 +1634,7 @@ const affixAllocProcess = useDamageProcessEvents({
   eventLines: computed(() => affixAllocEval.value?.eventLines),
   selectedEventIds: computed(() => null),
   totalLabel: computed(() =>
-    damageKind.value === 'anomaly' ? '异常伤害事件总伤期望' : '伤害事件总伤期望',
+    sweepDamageKind.value === 'anomaly' ? '异常伤害事件总伤期望' : '伤害事件总伤期望',
   ),
   hasEvents: computed(() => hasEventMode.value),
   active: computed(() => isSectionActive.value),
@@ -1723,8 +1712,8 @@ function scheduleAffixBenefitRecompute() {
   }, DIFF_EVENT_DEBOUNCE_MS)
 }
 
-/** 词条分配模式：求解最优分配 */
-function runAffixAllocation() {
+/** 词条分配模式：求解最优分配（分帧异步，可中止，带进度） */
+async function runAffixAllocation() {
   if (affixAllocLoading.value) return
   if (!affixLibraryEntries.value.length) {
     affixAllocError.value = '词条库为空，请先启用至少一条词条'
@@ -1734,20 +1723,45 @@ function runAffixAllocation() {
   affixAllocTotalRolls.value = total
   affixAllocLoading.value = true
   affixAllocError.value = null
-  window.setTimeout(() => {
-    try {
-      affixAllocResult.value = solveOptimalAffixAllocation({
+  affixAllocProgress.value = null
+  affixAllocAbort?.abort()
+  const controller = new AbortController()
+  affixAllocAbort = controller
+  try {
+    affixAllocResult.value = await solveOptimalAffixAllocationAsync(
+      {
         ctx: evalCtx.value,
         entries: affixLibraryEntries.value,
         maxTotalRolls: total,
-      })
-    } catch (error) {
-      affixAllocError.value = error instanceof Error ? error.message : '计算失败'
-      affixAllocResult.value = null
-    } finally {
+        candidateWidthMode: affixAllocWidthMode.value,
+        manualCandidateWidth: affixAllocManualWidth.value,
+      },
+      {
+        signal: controller.signal,
+        onProgress: (progress) => {
+          affixAllocProgress.value = progress
+        },
+      },
+    )
+  } catch (error) {
+    if ((error as DOMException)?.name === 'AbortError') return
+    affixAllocError.value = error instanceof Error ? error.message : '计算失败'
+    affixAllocResult.value = null
+  } finally {
+    if (affixAllocAbort === controller) {
       affixAllocLoading.value = false
+      affixAllocProgress.value = null
+      affixAllocAbort = null
     }
-  }, 0)
+  }
+}
+
+/** 中止正在进行的求解（改参数 / 手动停止时调用） */
+function abortAffixAllocation() {
+  affixAllocAbort?.abort()
+  affixAllocAbort = null
+  affixAllocLoading.value = false
+  affixAllocProgress.value = null
 }
 
 function setAffixBenefitStep(step: number) {
@@ -1871,7 +1885,7 @@ function buildCombinedMainStatRankings() {
 }
 
 function recomputeDiffAnalysis() {
-  if (detailTab.value !== 'diff' || !analysisCounts.value || !damageKind.value) {
+  if (detailTab.value !== 'diff' || !analysisCounts.value || !sweepDamageKind.value) {
     diffAnalysis.value = null
     mainStatDiff.value = null
     showMainStatDiff.value = false
@@ -1880,7 +1894,7 @@ function recomputeDiffAnalysis() {
   diffAnalysis.value = computeDiffAnalysis(
     evalCtx.value,
     analysisCounts.value,
-    damageKind.value,
+    sweepDamageKind.value,
     anomalyChartMetric.value,
     hasEventMode.value ? selectedChartEventIds.value : null,
   )
@@ -1903,14 +1917,14 @@ function scheduleDiffRecompute() {
 }
 
 function recomputeBenefitData() {
-  if (detailTab.value !== 'curve' || !analysisCounts.value || !damageKind.value) {
+  if (detailTab.value !== 'curve' || !analysisCounts.value || !sweepDamageKind.value) {
     benefitData.value = null
     return
   }
   benefitData.value = computeBenefitCurves(
     evalCtx.value,
     analysisCounts.value,
-    damageKind.value,
+    sweepDamageKind.value,
     anomalyChartMetric.value,
     BENEFIT_CURVE_MAX_ADDED,
     hasEventMode.value ? selectedChartEventIds.value : null,
@@ -1941,7 +1955,7 @@ function expandCombinedMainStatRankings() {
 const diffWatchFingerprint = computed(() =>
   JSON.stringify({
     counts: analysisCounts.value,
-    kind: damageKind.value,
+    kind: sweepDamageKind.value,
     metric: anomalyChartMetric.value,
     tab: detailTab.value,
     events: hasEventMode.value ? selectedChartEventIds.value : null,
@@ -1990,8 +2004,19 @@ const affixAllocFingerprint = computed(() =>
 
 watch(affixAllocFingerprint, () => {
   if (sectionMode.value !== 'allocation') return
+  // 上下文变了，正在跑的求解结果已经过期：中止它，避免用户对着旧结果判断
+  if (affixAllocLoading.value) abortAffixAllocation()
   scheduleAffixBenefitRecompute()
 })
+
+// 求解参数变化同样让正在跑的求解过期
+watch(
+  [affixAllocWidthMode, affixAllocManualWidth, affixAllocTotalRolls],
+  () => {
+    if (sectionMode.value !== 'allocation') return
+    if (affixAllocLoading.value) abortAffixAllocation()
+  },
+)
 
 watch(sectionMode, (mode) => {
   if (mode === 'allocation') scheduleAffixBenefitRecompute()
@@ -2146,7 +2171,7 @@ function formatPercent(v: number) {
 }
 
 function sweepKeyFromIndex(index: number) {
-  if (damageKind.value === 'direct') {
+  if (sweepDamageKind.value === 'direct') {
     const point = directPoints.value[index]
     return point ? { outPercent: point.outPercent, secondary: point.critDmg } : null
   }
@@ -2156,7 +2181,7 @@ function sweepKeyFromIndex(index: number) {
 
 function findIndexForSweepKey(key: { outPercent: number; secondary: number } | null) {
   if (!key) return null
-  if (damageKind.value === 'direct') {
+  if (sweepDamageKind.value === 'direct') {
     const idx = directPoints.value.findIndex(
       (point) => point.outPercent === key.outPercent && point.critDmg === key.secondary,
     )
@@ -2176,7 +2201,7 @@ function syncSelectedBarAfterSweep() {
       return
     }
   }
-  const points = damageKind.value === 'direct' ? directPoints.value : anomalyPoints.value
+  const points = sweepDamageKind.value === 'direct' ? directPoints.value : anomalyPoints.value
   if (selectedIndex.value == null) return
   if (!points.length) {
     selectedIndex.value = null
@@ -2203,14 +2228,14 @@ function selectBar(index: number) {
 function ensureSelectedEvalSnapshot() {
   const idx = selectedIndex.value
   if (idx == null) return
-  const points = damageKind.value === 'direct' ? directPoints.value : anomalyPoints.value
+  const points = sweepDamageKind.value === 'direct' ? directPoints.value : anomalyPoints.value
   const point = points[idx]
   if (!point || point.evalSnapshot) return
   point.evalSnapshot = evaluateAffixCounts(evalCtx.value, point.affixCounts)
 }
 
 function applyDefaultCrit() {
-  if (!mainAgent.value?.id || damageKind.value !== 'direct') return
+  if (!mainAgent.value?.id || sweepDamageKind.value !== 'direct') return
   const crit = findMinCritRollsForOvercap(evalCtx.value, {
     flatStat: directAlloc.flatStat,
     hpFlat: directAlloc.hpFlat,
@@ -2228,7 +2253,7 @@ function applyDefaultCrit() {
 watch(
   () => [mainAgent.value?.id, isMb.value, isFengYu.value],
   () => {
-    if (damageKind.value === 'direct') applyDefaultCrit()
+    if (sweepDamageKind.value === 'direct') applyDefaultCrit()
   },
   { immediate: true },
 )
@@ -2248,7 +2273,7 @@ watch(
   { immediate: true },
 )
 
-watch(damageKind, (kind) => {
+watch(sweepDamageKind, (kind) => {
   clearBarSelection()
   if (!kind) return
   if (kind === 'direct') applyDefaultCrit()
@@ -2257,7 +2282,7 @@ watch(damageKind, (kind) => {
   }
 })
 
-watch([directPoints, anomalyPoints, damageKind], syncSelectedBarAfterSweep)
+watch([directPoints, anomalyPoints, sweepDamageKind], syncSelectedBarAfterSweep)
 
 watch(
   () => directAlloc.critRate,
@@ -2506,23 +2531,52 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
             <span>总词条数</span>
             <input v-model.lazy.number="affixAllocTotalRolls" type="number" min="1" max="60" step="1" />
           </label>
+          <label class="field">
+            <span>候选宽度</span>
+            <select v-model="affixAllocWidthMode">
+              <option value="auto">自动（按计算量预算推导）</option>
+              <option value="manual">手动指定条数</option>
+            </select>
+          </label>
+          <label v-if="affixAllocWidthMode === 'manual'" class="field">
+            <span>每轮候选条数</span>
+            <input
+              v-model.lazy.number="affixAllocManualWidth"
+              type="number"
+              min="1"
+              :max="Math.max(1, affixLibraryEntries.length)"
+              step="1"
+            />
+          </label>
           <button
+            v-if="affixAllocLoading"
+            type="button"
+            class="ghost-btn"
+            @click="abortAffixAllocation"
+          >
+            停止
+          </button>
+          <button
+            v-else
             type="button"
             class="calc-run-btn"
-            :class="{ 'is-computing': affixAllocLoading }"
-            :disabled="affixAllocLoading || !affixLibraryEntries.length"
+            :disabled="!affixLibraryEntries.length"
             @click="runAffixAllocation"
           >
-            {{ affixAllocLoading ? '计算中…' : '求最优分配' }}
+            求最优分配
           </button>
           <span class="hint">词条库 {{ affixLibraryEntries.length }} 条 · 每条词条 1 档 = 1 个词条</span>
         </div>
+        <p v-if="affixAllocWidthMode === 'manual'" class="hint">
+          手动模式不设预算上限：条数越大搜索越彻底，也越慢。填满词条库条数即等于不剪枝。
+        </p>
         <p v-if="affixAllocError" class="err">{{ affixAllocError }}</p>
         <AffixAllocationResult
           :result="affixAllocResult"
           :library="affixLibraryEntries"
           :loading="affixAllocLoading"
           :error="affixAllocError"
+          :progress="affixAllocProgress"
         />
 
         <template v-if="affixAllocResult">
@@ -2582,8 +2636,8 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         type="button"
         role="tab"
         class="kind-mode-tab"
-        :class="{ active: damageKind === 'direct' }"
-        :aria-selected="damageKind === 'direct'"
+        :class="{ active: sweepDamageKind === 'direct' }"
+        :aria-selected="sweepDamageKind === 'direct'"
         @click="setDamageKind('direct')"
       >
         直伤
@@ -2592,19 +2646,19 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         type="button"
         role="tab"
         class="kind-mode-tab"
-        :class="{ active: damageKind === 'anomaly' }"
-        :aria-selected="damageKind === 'anomaly'"
+        :class="{ active: sweepDamageKind === 'anomaly' }"
+        :aria-selected="sweepDamageKind === 'anomaly'"
         @click="setDamageKind('anomaly')"
       >
         异常
       </button>
-      <p v-if="!damageKind" class="hint kind-mode-hint">请先选择直伤或异常，再配置词条并开始计算。</p>
+      <p v-if="!sweepDamageKind" class="hint kind-mode-hint">请先选择直伤或异常，再配置词条并开始计算。</p>
     </div>
 
-    <template v-if="damageKind">
+    <template v-if="sweepDamageKind">
     <div class="alloc-layout">
       <div class="alloc-left">
-        <template v-if="damageKind === 'direct'">
+        <template v-if="sweepDamageKind === 'direct'">
           <h3 class="block-title">直伤词条分配</h3>
           <p class="constraint-hint">
             <template v-if="isMb">
@@ -2691,7 +2745,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         type="button"
         class="calc-run-btn"
         :class="{ 'is-computing': sweepComputing }"
-        :disabled="sweepComputing || (damageKind === 'direct' ? Boolean(directError) : Boolean(anomalyError))"
+        :disabled="sweepComputing || (sweepDamageKind === 'direct' ? Boolean(directError) : Boolean(anomalyError))"
         @click="startCalculation"
       >
         {{ sweepComputing ? '计算中…' : '开始计算' }}
@@ -2712,10 +2766,10 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
       <template v-if="hasEventMode">
         默认显示全部事件总伤害（单柱）。可在下方勾选参与统计的事件，查看其合计伤害随词条分配的变化。X 轴为「{{
           outLabel
-        }}条数 / {{ damageKind === 'direct' ? '爆伤' : '精通' }}条数」。点击柱体查看详情。
+        }}条数 / {{ sweepDamageKind === 'direct' ? '爆伤' : '精通' }}条数」。点击柱体查看详情。
       </template>
       <template v-else>
-        X 轴标签为「{{ outLabel }}条数 / {{ damageKind === 'direct' ? '爆伤' : '精通' }}条数」。点击柱体查看详情。
+        X 轴标签为「{{ outLabel }}条数 / {{ sweepDamageKind === 'direct' ? '爆伤' : '精通' }}条数」。点击柱体查看详情。
       </template>
     </p>
     <div v-if="hasEventMode && chartEventOptions.length" class="chart-event-filter">
@@ -2756,8 +2810,8 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
       </p>
     </div>
     <p v-if="!barLabels.length" class="empty">
-      <template v-if="damageKind === 'direct' && directError">{{ directError }}</template>
-      <template v-else-if="damageKind === 'anomaly' && anomalyError">{{ anomalyError }}</template>
+      <template v-if="sweepDamageKind === 'direct' && directError">{{ directError }}</template>
+      <template v-else-if="sweepDamageKind === 'anomaly' && anomalyError">{{ anomalyError }}</template>
       <template v-else-if="!sweepCommitted || sweepNeedsCommit">
         请点击上方「开始计算」生成柱状图。
       </template>
@@ -2771,7 +2825,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
       @select="selectBar"
     />
     <OptimalDamageBarChart
-      v-else-if="damageKind === 'direct'"
+      v-else-if="sweepDamageKind === 'direct'"
       :labels="barLabels"
       :series="directBarSeries"
       :selected-index="selectedIndex"
@@ -2850,7 +2904,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
       <header class="detail-header">
         <h3>
           {{ selectedIndex != null ? '选中分配' : '当前分配' }}：
-          <template v-if="damageKind === 'direct'">
+          <template v-if="sweepDamageKind === 'direct'">
             <template v-if="selectedDirect">
               {{ outLabel }} {{ selectedDirect.outPercent }} · 爆伤 {{ selectedDirect.critDmg }} · 暴击
               {{ directAlloc.critRate }} · 精通 {{ directAlloc.mastery }}
@@ -2906,7 +2960,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         </p>
       </header>
 
-      <p v-if="damageKind === 'anomaly' && !hasEventMode" class="metric-tabs">
+      <p v-if="sweepDamageKind === 'anomaly' && !hasEventMode" class="metric-tabs">
         当前异常子类：{{
           anomalySubKind === 'disorder'
             ? '紊乱伤害'
@@ -2941,7 +2995,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
             伤害事件总伤期望：
             <strong>{{ formatNumber(analysisMetricDamage) }}</strong>
           </p>
-          <template v-else-if="damageKind === 'direct'">
+          <template v-else-if="sweepDamageKind === 'direct'">
             <p>直伤期望伤害：<strong>{{ formatNumber(analysisEval!.result.directDamageExpected) }}</strong></p>
           </template>
           <template v-else>
@@ -2962,7 +3016,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           :pierce-power="analysisEval!.piercePower"
           :enemy-input="enemyInput"
           :is-mb="isMb"
-          :show="damageKind"
+          :show="sweepDamageKind"
           :anomaly-sub-kind="anomalySubKind"
         />
         </template>

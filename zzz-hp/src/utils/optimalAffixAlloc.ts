@@ -854,7 +854,7 @@ export function evaluateOptimalEventDetail(
   const evtBreakdown = computeFinalPanel(ownerExternal, evtPanelCtx, panelOpts)
   const zoneMultResolved = splitSkillZoneMultOverrides(damageType, hit.multOverrides)
   const panelOverrides = zoneMultResolved.panelOverrides
-  let evtFinalPanel = applyHitPanelMods(
+  const evtFinalPanel = applyHitPanelMods(
     applyEventMultOverrides(evtBreakdown.finalPanel, panelOverrides),
     hit.panelMods,
   )
@@ -1683,11 +1683,7 @@ function evaluateAffixCountsUncached(
   }
 }
 
-export function evaluateAffixCounts(
-  ctx: OptimalEvalContext,
-  affixCounts: AffixCounts,
-  panelDeltas?: AffixPanelDeltaMap,
-): {
+export interface AffixCountsEvalResult {
   finalPanel: PanelStats
   result: DamageCalcResult
   piercePower: number
@@ -1695,11 +1691,24 @@ export function evaluateAffixCounts(
   breakdown: OptimalPanelBreakdown
   grandTotal: number
   eventLines: OptimalEventDamageLine[]
-} {
+}
+
+/**
+ * 与 `evaluateAffixCounts` 同源，额外回报本次是「缓存命中」还是「真算」。
+ *
+ * 用途：求解器需要按**真实计算量**记账——缓存命中只花真算约 1% 的时间，
+ * 计入预算会让预算虚耗并提前触发截断（见 `dev-docs/affix-optimizer-impl-log.md` 步骤 0）。
+ * 缓存键与淘汰逻辑复用同一份实现，避免两套键不一致返回错误伤害。
+ */
+export function evaluateAffixCountsWithCacheInfo(
+  ctx: OptimalEvalContext,
+  affixCounts: AffixCounts,
+  panelDeltas?: AffixPanelDeltaMap,
+): { value: AffixCountsEvalResult; cacheHit: boolean } {
   resetAffixEvalCacheIfNeeded(ctx)
   const cacheKey = affixCountsCacheKey(affixCounts, panelDeltas)
   const cached = affixEvalCache.get(cacheKey)
-  if (cached) return cached
+  if (cached) return { value: cached, cacheHit: true }
 
   const result = evaluateAffixCountsUncached(ctx, affixCounts, panelDeltas)
   if (affixEvalCache.size >= AFFIX_EVAL_CACHE_MAX) {
@@ -1707,7 +1716,15 @@ export function evaluateAffixCounts(
     if (firstKey) affixEvalCache.delete(firstKey)
   }
   affixEvalCache.set(cacheKey, result)
-  return result
+  return { value: result, cacheHit: false }
+}
+
+export function evaluateAffixCounts(
+  ctx: OptimalEvalContext,
+  affixCounts: AffixCounts,
+  panelDeltas?: AffixPanelDeltaMap,
+): AffixCountsEvalResult {
+  return evaluateAffixCountsWithCacheInfo(ctx, affixCounts, panelDeltas).value
 }
 
 /** 使局内暴击率刚好 > 100% 的最小暴击条数（只算面板，不算事件） */
@@ -1798,7 +1815,8 @@ export function sweepDirectDamage(
   return points
 }
 
-function yieldToMain(): Promise<void> {
+/** 让出主线程一次，供分片异步任务（扫掠 / 求解器）保持页面响应 */
+export function yieldToMain(): Promise<void> {
   return new Promise((resolve) => {
     if (typeof requestAnimationFrame === 'function') {
       requestAnimationFrame(() => resolve())

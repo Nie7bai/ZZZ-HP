@@ -2,7 +2,10 @@
  * 最优词条分配求解器验证：
  * 1) 小规模场景与「全排列穷举」对比，求解器结果必须等于或接近穷举最优；
  * 2) 预算约束（总词条数 / atkPen / 主词条上限 / 互斥组）不得被突破；
- * 3) 分配结果真实可评估，且总伤与求解器报告一致。
+ * 3) 分配结果真实可评估，且总伤与求解器报告一致；
+ * 4) 计算量预算与候选宽度（auto 推导 / manual 指定）；
+ * 5) 同步与异步结果必须一致，异步可中止；
+ * 6) 零收益条目出局、交叉项补测、无半成品。
  * 运行：npx vite-node scripts/test-affix-optimizer.mjs
  */
 import {
@@ -19,11 +22,13 @@ import {
 } from '../src/utils/affixLibrary.ts'
 import {
   solveOptimalAffixAllocation,
+  solveOptimalAffixAllocationAsync,
   buildAllocationRows,
   resolveAffixOptimizerBudget,
 } from '../src/utils/affixOptimizer.ts'
 import {
   buildOptimalEvalContext,
+  clearAffixEvalCache,
   evaluateAffixCounts,
 } from '../src/utils/optimalAffixAlloc.ts'
 
@@ -83,6 +88,38 @@ function makeCtx(overrides = {}) {
 const ctx = makeCtx()
 const library = createDefaultAffixLibrary()
 const byId = new Map(library.map((e) => [e.id, e]))
+
+/** 造 n 个直伤命中（用于让单次评估的成本随流程规模变化） */
+function makeHits(n) {
+  const hits = []
+  for (let i = 0; i < n; i += 1) {
+    hits.push({
+      id: `h${i}`,
+      skill: {
+        id: `s${i}`,
+        name: `招式${i + 1}`,
+        damageType: 'direct',
+        element: '电',
+        category: 'basic',
+        subcategoryId: null,
+        mult: 300 + i * 10,
+      },
+      ownerAgentId: 'a',
+      anomalyPowerAgentId: null,
+      triggerAgentId: null,
+      count: 1,
+      staggerPhase: 'stagger',
+      critMode: 'expected',
+      damageKind: 'direct',
+      anomalySubKind: null,
+      coords: [],
+      isFollowUp: false,
+      multOverrides: { directDmgMult: 300 + i * 10 },
+      panelMods: null,
+    })
+  }
+  return hits
+}
 
 // ---------- 1. 小规模穷举对照 ----------
 console.log('\n[1] 与全排列穷举对比（预算 6 档）')
@@ -250,18 +287,193 @@ console.log('\n[6] 词条库解析')
 console.log('\n[7] 算法质量对比')
 {
   const BUDGET = 30
-  const full = solveOptimalAffixAllocation({ ctx, entries: library, maxTotalRolls: BUDGET })
-  // 退化为单起点 + 仅 1-swap（用 maxStarts=1 近似，2-swap 无法单独关闭，
-  // 故这里只对比起点数对结果的影响）
-  const single = solveOptimalAffixAllocation({
-    ctx, entries: library, maxTotalRolls: BUDGET, maxStarts: 1,
+  // 用小预算强制发生剪枝，多起点才会与单起点产生差别
+  const full = solveOptimalAffixAllocation({
+    ctx, entries: library, maxTotalRolls: BUDGET, maxStarts: 3, maxWorkUnits: 300,
   })
-  console.log(`    多起点 ${full.totalDamage}（${full.engineCalls} 次调用）`)
-  console.log(`    单起点 ${single.totalDamage}（${single.engineCalls} 次调用）`)
+  const single = solveOptimalAffixAllocation({
+    ctx, entries: library, maxTotalRolls: BUDGET, maxStarts: 1, maxWorkUnits: 300,
+  })
+  console.log(`    多起点 ${full.totalDamage}（${full.engineCalls} 次评估）`)
+  console.log(`    单起点 ${single.totalDamage}（${single.engineCalls} 次评估）`)
   check('多起点结果不劣于单起点',
     full.totalDamage >= single.totalDamage - 1e-9,
     `${full.totalDamage} vs ${single.totalDamage}`)
 }
+
+// ---------- 8. 计算量预算：缓存命中不计入 ----------
+console.log('\n[8] 计算量预算记账')
+{
+  clearAffixEvalCache()
+  const first = solveOptimalAffixAllocation({ ctx, entries: library, maxTotalRolls: 20 })
+  // 不清缓存再跑一次：同样的组合会大量命中缓存
+  const second = solveOptimalAffixAllocation({ ctx, entries: library, maxTotalRolls: 20 })
+  check('缓存命中不计入计算量',
+    second.workUsed <= first.workUsed,
+    `第一次 ${Math.round(first.workUsed)}，第二次 ${Math.round(second.workUsed)}`)
+  check('缓存命中次数被记录',
+    second.cacheHits > 0,
+    `cacheHits=${second.cacheHits}`)
+  check('真实评估次数不含缓存命中',
+    second.engineCalls <= first.engineCalls,
+    `${second.engineCalls} <= ${first.engineCalls}`)
+  clearAffixEvalCache()
+}
+
+// ---------- 9. 候选宽度：auto 按流程规模自适应，manual 由用户指定 ----------
+console.log('\n[9] 候选宽度模式')
+{
+  const all = resolveAffixLibraryAll(createDefaultAffixLibraryState())
+  const hits8 = makeCtx({ hits: makeHits(8) })
+  const hits30 = makeCtx({ hits: makeHits(30) })
+  clearAffixEvalCache()
+  const autoCheap = solveOptimalAffixAllocation({
+    ctx: hits8, entries: all, maxTotalRolls: 46,
+  })
+  clearAffixEvalCache()
+  const autoExpensive = solveOptimalAffixAllocation({
+    ctx: hits30, entries: all, maxTotalRolls: 46,
+  })
+  console.log(
+    `    8 命中：最紧宽度 ${autoCheap.candidateWidth} / 最宽 ${autoCheap.candidateWidthMax}，` +
+    `计算量 ${Math.round(autoCheap.workUsed)}`,
+  )
+  console.log(
+    `    30 命中：最紧宽度 ${autoExpensive.candidateWidth} / 最宽 ${autoExpensive.candidateWidthMax}，` +
+    `计算量 ${Math.round(autoExpensive.workUsed)}`,
+  )
+  check('auto 宽度不超过词条条数',
+    autoCheap.candidateWidthMax <= all.length && autoExpensive.candidateWidthMax <= all.length,
+    `${autoCheap.candidateWidthMax} / ${autoExpensive.candidateWidthMax} <= ${all.length}`)
+  check('便宜流程的最紧宽度不小于昂贵流程（便宜的多搜）',
+    autoCheap.candidateWidth >= autoExpensive.candidateWidth,
+    `${autoCheap.candidateWidth} >= ${autoExpensive.candidateWidth}`)
+
+  const manual = solveOptimalAffixAllocation({
+    ctx: hits8, entries: library, maxTotalRolls: 46,
+    candidateWidthMode: 'manual', manualCandidateWidth: 3,
+  })
+  check('manual 模式宽度等于用户指定值',
+    manual.candidateWidth === 3 && manual.candidateWidthMax === 3,
+    `${manual.candidateWidth} / ${manual.candidateWidthMax}`)
+  check('manual 模式不设预算上限、不截断',
+    manual.workBudget === null && manual.truncated === false,
+    `workBudget=${manual.workBudget} truncated=${manual.truncated}`)
+  const clamped = solveOptimalAffixAllocation({
+    ctx: hits8, entries: library, maxTotalRolls: 46,
+    candidateWidthMode: 'manual', manualCandidateWidth: 999,
+  })
+  check('manual 宽度被钳到词条条数',
+    clamped.candidateWidth === library.length,
+    `${clamped.candidateWidth} vs ${library.length}`)
+}
+
+// ---------- 10. 同步 / 异步一致，异步可中止 ----------
+console.log('\n[10] 异步求解')
+{
+  clearAffixEvalCache()
+  const sync = solveOptimalAffixAllocation({ ctx, entries: library, maxTotalRolls: 30 })
+  clearAffixEvalCache()
+  const phases = []
+  const async = await solveOptimalAffixAllocationAsync(
+    { ctx, entries: library, maxTotalRolls: 30 },
+    { chunkSize: 16, onProgress: (p) => phases.push(p.phase) },
+  )
+  check('异步结果与同步一致',
+    Math.abs(async.totalDamage - sync.totalDamage) < 1e-9,
+    `${async.totalDamage} vs ${sync.totalDamage}`)
+  check('进度回调被触发', phases.length > 0, `阶段回调 ${phases.length} 次`)
+
+  const controller = new AbortController()
+  controller.abort()
+  let abortOk = false
+  try {
+    await solveOptimalAffixAllocationAsync(
+      { ctx, entries: library, maxTotalRolls: 30 },
+      { chunkSize: 4, signal: controller.signal },
+    )
+  } catch (error) {
+    abortOk = error?.name === 'AbortError'
+  }
+  check('已中止的信号会抛 AbortError', abortOk)
+}
+
+// ---------- 11. 零收益条目出局 ----------
+console.log('\n[11] 零收益条目出局')
+{
+  clearAffixEvalCache()
+  const all = resolveAffixLibraryAll(createDefaultAffixLibraryState())
+  const solved = solveOptimalAffixAllocation({ ctx, entries: all, maxTotalRolls: 46 })
+  const defRolls =
+    (solved.rollsByEntryId['substat:defFlat'] ?? 0) +
+    (solved.rollsByEntryId['substat:defPercent'] ?? 0)
+  check('直伤场景不把档数花在防御词条上', defRolls === 0, `防御类档数 ${defRolls}`)
+  check('求解结果仍然合法可重算',
+    Math.abs(evaluateAffixCounts(ctx, solved.counts, solved.panelDeltas).grandTotal - solved.totalDamage) < 1e-6)
+}
+
+// ---------- 12. 交叉项：零收益条目后续变得有价值时能被补测 ----------
+console.log('\n[12] 交叉项补测（暴击为 0 时爆伤增益为 0）')
+{
+  // 基础暴击率调到 0：此时爆伤单独加档不涨分（增益 = 暴击率 × 爆伤增量），
+  // 属典型交叉项——只看基线的话爆伤会被判定「零收益」永久出局。
+  // 档数给到 30：交叉点落在中间（穷举最优是混搭），才能证明补测真的生效。
+  const zeroCritCtx = makeCtx({
+    agents: [
+      {
+        id: 'a',
+        name: '测试',
+        element: '电',
+        profession: '强攻',
+        basePanel: {
+          ...createEmptyAgentBasePanel(),
+          hp: 9000, atk: 900, def: 700, critRate: 0, critDmg: 50,
+          anomalyControl: 100, energyRegen: 120, directDmgMult: 100, anomalyMult: 125,
+        },
+      },
+    ],
+  })
+  const ROLLS = 30
+  const critEntries = library.filter((e) =>
+    ['substat:critRate', 'substat:critDmg'].includes(e.id),
+  )
+  clearAffixEvalCache()
+  const solved = solveOptimalAffixAllocation({
+    ctx: zeroCritCtx, entries: critEntries, maxTotalRolls: ROLLS,
+  })
+  const critRolls = solved.rollsByEntryId['substat:critRate'] ?? 0
+  const critDmgRolls = solved.rollsByEntryId['substat:critDmg'] ?? 0
+
+  // 同规模的穷举对照（只有两个词条，可全排列）
+  let bruteTotal = -Infinity
+  for (let k = 0; k <= ROLLS; k += 1) {
+    const counts = { ...createEmptyAffixCounts(), critRate: k, critDmg: ROLLS - k }
+    bruteTotal = Math.max(bruteTotal, evaluateAffixCounts(zeroCritCtx, counts).grandTotal)
+  }
+  console.log(`    求解器：暴击 ${critRolls} / 爆伤 ${critDmgRolls} → ${solved.totalDamage.toFixed(1)}`)
+  console.log(`    穷举：   最优 ${bruteTotal.toFixed(1)}`)
+  check('暴击为 0 时仍能把档数分给爆伤（补测生效）',
+    critDmgRolls > 0, JSON.stringify(solved.rollsByEntryId))
+  check('交叉项场景不劣于穷举最优',
+    solved.totalDamage >= bruteTotal - 1e-6,
+    `${solved.totalDamage} vs ${bruteTotal}`)
+}
+
+// ---------- 13. 无半成品：预算耗尽后返回的仍是完整状态 ----------
+console.log('\n[13] 预算不足时不产生半成品')
+{
+  clearAffixEvalCache()
+  const tiny = solveOptimalAffixAllocation({
+    ctx, entries: library, maxTotalRolls: 46, maxWorkUnits: 40,
+  })
+  check('预算极小且无法完成任何一轮时，退回基线而非半成品',
+    Math.abs(tiny.totalDamage - tiny.baselineDamage) < 1e-9 || tiny.truncated,
+    `总伤 ${tiny.totalDamage}，基线 ${tiny.baselineDamage}，截断 ${tiny.truncated}`)
+  check('退回的结果仍可重算一致',
+    Math.abs(evaluateAffixCounts(ctx, tiny.counts, tiny.panelDeltas).grandTotal - tiny.totalDamage) < 1e-6)
+  check('结果不劣于基线', tiny.totalDamage >= tiny.baselineDamage - 1e-9)
+}
+
 
 console.log(`\n结果：${passed} passed, ${failed} failed`)
 if (failed > 0) process.exit(1)
