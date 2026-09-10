@@ -695,16 +695,111 @@ function buildPanelSourceValuesForSlot(
   }
 }
 
+/**
+ * 按槽位惰性求值的源值地图。
+ *
+ * 背景（2026-09-10 实测，真实方案 30 词条）：一次求解里
+ * `buildAllPanelSourceValuesBySlot` 被调用 20,121 次，每次都把 3 个槽位全算一遍
+ * （合计约 6 万次 `buildPanelSourceValuesForSlot`；这些调用里的 `collectPanelBuffMods`
+ * 占求解总耗时的约 74%）。而真正读到源值的次数远小于构建次数：槽位 0 读了 3,060 次、
+ * 槽位 2 读了 4,000 次，其余大量调用根本没读。
+ *
+ * 因此把「按槽位算」推迟到首次读取：`get` 命中未算的槽位才计算并缓存，`has` 只回答
+ * 「该槽位是否在队伍里」而不触发计算。所有会暴露全景的 API（size / keys / values /
+ * entries / forEach / 迭代）都会先把全部槽位补齐，因此对调用方而言语义与普通 Map 一致 ——
+ * 变的只是「什么时候算」，算出来的值不变。
+ *
+ * 构建/读取次数的原始数据见 `scripts/count-slot-source-usage.mjs`。
+ *
+ * 只读视图：不要对它 set/delete（求解器与面板计算都只读它）。
+ */
+class PanelSourceValuesBySlotMap extends Map<number, PanelSourceValues> {
+  private readonly slotIndices: readonly number[]
+  private readonly computeSlot: (slotIndex: number) => PanelSourceValues
+
+  constructor(
+    slotIndices: readonly number[],
+    computeSlot: (slotIndex: number) => PanelSourceValues,
+  ) {
+    super()
+    this.slotIndices = slotIndices
+    this.computeSlot = computeSlot
+  }
+
+  private ensure(slotIndex: number): PanelSourceValues {
+    const cached = super.get(slotIndex)
+    if (cached !== undefined) return cached
+    const computed = this.computeSlot(slotIndex)
+    super.set(slotIndex, computed)
+    return computed
+  }
+
+  private ensureAll(): void {
+    for (const slotIndex of this.slotIndices) this.ensure(slotIndex)
+  }
+
+  override get(slotIndex: number): PanelSourceValues | undefined {
+    return this.slotIndices.includes(slotIndex) ? this.ensure(slotIndex) : undefined
+  }
+
+  override has(slotIndex: number): boolean {
+    return this.slotIndices.includes(slotIndex)
+  }
+
+  override get size(): number {
+    return this.slotIndices.length
+  }
+
+  override keys(): MapIterator<number> {
+    this.ensureAll()
+    return super.keys()
+  }
+
+  override values(): MapIterator<PanelSourceValues> {
+    this.ensureAll()
+    return super.values()
+  }
+
+  override entries(): MapIterator<[number, PanelSourceValues]> {
+    this.ensureAll()
+    return super.entries()
+  }
+
+  override forEach(
+    callback: (value: PanelSourceValues, key: number, map: Map<number, PanelSourceValues>) => void,
+    thisArg?: unknown,
+  ): void {
+    this.ensureAll()
+    super.forEach(callback, thisArg)
+  }
+
+  override [Symbol.iterator](): MapIterator<[number, PanelSourceValues]> {
+    this.ensureAll()
+    return super[Symbol.iterator]()
+  }
+}
+
+/**
+ * 求解器/面板计算用的源值地图（惰性）。
+ * UI 要展示全部槽位时才走 `buildPanelSourceValuesBySlotRecord`（那里会立刻补齐）。
+ */
+export function buildPanelSourceValuesBySlotMap(
+  ctx: PanelCalcContext,
+  currentSlotExternalPanel: PanelStats,
+): Map<number, PanelSourceValues> {
+  const slotIndices = ctx.teamSlots
+    .map((slot, index) => (slot.agentId ? index : -1))
+    .filter((index) => index >= 0)
+  return new PanelSourceValuesBySlotMap(slotIndices, (slotIndex) =>
+    buildPanelSourceValuesForSlot(slotIndex, ctx, currentSlotExternalPanel),
+  )
+}
+
 function buildAllPanelSourceValuesBySlot(
   ctx: PanelCalcContext,
   currentSlotExternalPanel: PanelStats,
 ): Map<number, PanelSourceValues> {
-  const map = new Map<number, PanelSourceValues>()
-  ctx.teamSlots.forEach((slot, index) => {
-    if (!slot.agentId) return
-    map.set(index, buildPanelSourceValuesForSlot(index, ctx, currentSlotExternalPanel))
-  })
-  return map
+  return buildPanelSourceValuesBySlotMap(ctx, currentSlotExternalPanel)
 }
 
 /** 各槽位局外/局内转模取值（供 Buff 展示等 UI 按来源槽位解析） */
@@ -1474,7 +1569,7 @@ export function invalidateBuffCatalogCache() {
   // 部件记忆化一并清：属防御性处理（已核对 src/ 内无调用方就地修改这些对象，
   // 因此当前不会因不清而出现可复现的错误）。留着是为了让「就地改 + 失效」这条
   // 契约即使将来被误用也仍然成立。
-  partKeyCache = new WeakMap<object, string>()
+  clearBuffCatalogKeyPartCaches()
 }
 
 function touchBuffCatalogEntry(key: string, entry: BuffCatalogEntry) {
@@ -1521,10 +1616,26 @@ function stringifyKeyPart(value: unknown): string {
 /** 用 NUL 拼接：JSON 输出里控制字符一律转义成 `\u0000`，不会与分隔符混淆 */
 const KEY_SEP = '\u0000'
 
-function buildBuffCatalogKey(ctx: PanelCalcContext): string {
-  // 注意：这里**不能**用外层 JSON.stringify 包住这些部件 —— 那会把已经序列化好的
-  // 字符串再转义一遍，部件级记忆化就白做了（2026-09-10 实测：那样反而略慢）。
-  const slotsKey = ctx.teamSlots
+/**
+ * 槽位键 / 环境键**不做按对象身份的记忆化**。
+ *
+ * 曾尝试过（2026-09-10）：用 WeakMap 按 `ctx.teamSlots` 数组身份缓存序列化结果，
+ * 理由是「一次求解调用 8 万次、每次都重建键」。**实测证明这是错的**：
+ * 真实 UI 里 `DamageCalcPage.vue` 的 `teamSlots` 是 `reactive()` 数组，
+ * 全生命周期只有一个实例，换人/换音擎/改影画都是**就地赋值**；而
+ * `buildOptimalEvalContext` 里的 `deepUnwrapReactive` 用的是 `toRaw`，
+ * **不改变数组身份**。于是按身份缓存会把槽位键永久冻结在首次计算那一刻。
+ *
+ * 实测证据（scripts/probe-inplace-team-mutation.mjs，真实方案）：
+ *   队友影画 0→6：真值 62114191 → 71083794，就地路径 62114191 → 62114191（错，不更新）
+ *   队友影画 6→0：真值 71083794 → 62114191，就地路径 71083794 → 71083794（错，不更新）
+ *   队友 4 件套： 真值 58731561 → 58891841，就地路径 58731561 → 58731561（错，不更新）
+ *
+ * 而该记忆化本身几乎没有收益（剖析：`buildBuffCatalogKey` 子树占比 16.7% → 17.5%，
+ * 噪音级）。真正的收益来自「按需计算转模源值」（见 PanelSourceValuesBySlotMap）。
+ */
+function teamSlotsKey(teamSlots: readonly TeamSlot[]): string {
+  return teamSlots
     .map((slot) =>
       [
         slot.agentId,
@@ -1536,8 +1647,23 @@ function buildBuffCatalogKey(ctx: PanelCalcContext): string {
       ].join(','),
     )
     .join(';')
+}
+
+function environmentBuffsKey(environmentBuffs: readonly EnvironmentBuffEntry[]): string {
+  return environmentBuffs.map((item) => item.sourceKey).join(',')
+}
+
+/** 缓存清空时一并丢弃按键对象身份记忆化的部件，避免旧契约下的陈旧串留存 */
+export function clearBuffCatalogKeyPartCaches() {
+  partKeyCache = new WeakMap()
+}
+
+function buildBuffCatalogKey(ctx: PanelCalcContext): string {
+  // 注意：这里**不能**用外层 JSON.stringify 包住这些部件 —— 那会把已经序列化好的
+  // 字符串再转义一遍，部件级记忆化就白做了（2026-09-10 实测：那样反而略慢）。
+  const slotsKey = teamSlotsKey(ctx.teamSlots)
   const bangbooKey = `${ctx.bangboo?.id ?? ''},${ctx.bangbooRefine},${ctx.excludeBangboo ? 1 : 0}`
-  const envKey = (ctx.environmentBuffs ?? []).map((item) => item.sourceKey).join(',')
+  const envKey = environmentBuffsKey(ctx.environmentBuffs ?? [])
   return [
     slotsKey,
     bangbooKey,

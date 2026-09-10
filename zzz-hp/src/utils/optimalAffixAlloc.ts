@@ -77,7 +77,7 @@ import {
   type PanelCalcContext,
   resolveBuffSelectionForSlot,
   panelToConvertAttrValues,
-  buildPanelSourceValuesBySlotRecord,
+  buildPanelSourceValuesBySlotMap,
 } from '@/utils/panelBuffCalc'
 import { formatAnomalyFormulaAgentLabel } from '@/utils/anomalyFormulaDisplay'
 
@@ -640,13 +640,10 @@ function buildPanelContextForSlot(
       : ctx.panelContext.buffSelection,
     attrValues: panelToConvertAttrValues(externalForSlot, { level, pierceMod: 0 }),
   }
-  const panelSourceValuesRecord = buildPanelSourceValuesBySlotRecord(base, externalForSlot)
-  const panelSourceValuesBySlot = new Map(
-    Object.entries(panelSourceValuesRecord).map(([key, value]) => [Number(key), value]),
-  )
+  const panelSourceValuesBySlot = buildPanelSourceValuesBySlotMap(base, externalForSlot)
   return {
     ...base,
-    panelSourceValues: panelSourceValuesRecord[slotIndex],
+    panelSourceValues: panelSourceValuesBySlot.get(slotIndex),
     panelSourceValuesBySlot,
   }
 }
@@ -1572,6 +1569,17 @@ function computeAffixEvalContextSignature(ctx: OptimalEvalContext): string {
     JSON.stringify(ctx.panelContext.wengines ?? []),
     JSON.stringify(ctx.panelContext.driveDiscs ?? []),
     JSON.stringify(ctx.panelContext.bangboo ?? null),
+    /**
+     * 邦布精炼**必须单独入签名**：`ctx.panelContext.bangboo` 是邦布文档本身，
+     * 精炼只决定「取 refinementEffects 的第几组」，不体现在文档内容里。
+     *
+     * 缺陷与依据（2026-09-10，审计同类缺口时发现）：`panelBuffCalc.ts` 的
+     * `clampRefine(ctx.bangbooRefine) - 1` 用它选精炼效果块；而
+     * `zzz-hp-backend/scripts/data/zzz-hp-calculator-buffs.json` 里同一邦布不同精炼
+     * 效果确实不同（snap：精1 全队 dmgBonus 6.8 → 精5 10；biggest_fan：精1 atk 50 → 精5 100）。
+     * 只改精炼而签名不变，就会沿用旧精炼的结果。
+     */
+    ctx.panelContext.bangbooRefine ?? 1,
     JSON.stringify(ctx.panelContext.buffSelection ?? null),
     JSON.stringify(ctx.panelContext.extraMods ?? null),
     ctx.panelContext.liveExternalSlotIndex ?? '',

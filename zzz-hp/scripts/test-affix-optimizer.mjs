@@ -17,6 +17,7 @@ import {
   createEmptyAgentBasePanel,
   createEmptySelfTeamBuffs,
   createEmptyWengineAdvancedStats,
+  createEmptyBuffStatModifiers,
 } from '../src/utils/calculatorUi.ts'
 import {
   createDefaultAffixLibrary,
@@ -37,6 +38,7 @@ import {
   evaluateAffixCounts,
   optimalHitDependsOnMainAffixPanel,
 } from '../src/utils/optimalAffixAlloc.ts'
+import { invalidateBuffCatalogCache } from '../src/utils/panelBuffCalc.ts'
 
 let failed = 0
 let passed = 0
@@ -822,6 +824,157 @@ console.log('\n[17] 队友数据变化必须让缓存失效（上下文签名覆
   check('不清缓存也能读到换队友音擎后的新值（签名覆盖队伍数据）',
     Math.abs(highCached - highTruth) < 1e-6,
     `缓存值 ${highCached.toFixed(0)} vs 真值 ${highTruth.toFixed(0)}`)
+}
+
+// ---------- 18. 就地修改队伍数组（真实 UI 形态）必须可见 ----------
+console.log('\n[18] 就地修改同一个 teamSlots 数组（真实 UI 形态）后，结果必须跟着变')
+{
+  // 为什么必须单测「就地修改」这个形态：
+  // 真实页面里 `DamageCalcPage.vue` 的 teamSlots 是 `reactive()` 数组，全生命周期
+  // 只有一个实例，换人/换音擎/改影画全是**就地赋值**；而 buildOptimalEvalContext 里的
+  // deepUnwrapReactive 用的是 toRaw，**不改变数组身份**。因此任何「按键对象身份记忆化」
+  // 的缓存（例如 2026-09-10 曾短暂引入的 teamSlotsKeyCache）都会把槽位键冻结在首次计算时。
+  // 其它用例都传内联数组字面量（每次都是新对象），抓不到这类缺陷。
+  //
+  // 改动项必须是**只经 buff 目录生效**的数据：队友音擎/影画里，
+  // 基础攻击、局外加成那部分由 buildPanelSourceValuesForSlot 直接读 slot 计算，
+  // 就算目录键被冻结也照样会变 —— 用它测不出冻结。这里改用队友的 **4 件套**
+  // （collectSlotDriveDiscEffects 对非主 C 只取 team 级效果，完全走 buff 目录）。
+  //
+  // 实测记录（scripts/probe-inplace-team-mutation.mjs，真实方案 scheme-dan）：
+  //   队友影画 0→6：真值 62114191 → 71083794，被冻结时 62114191 → 62114191（错）
+  //   队友 4 件套： 真值 58731561 → 58891841，被冻结时 58731561 → 58731561（错）
+  const basePanel = (atk) => ({
+    ...createEmptyAgentBasePanel(),
+    hp: 9000, atk, def: 700, critRate: 5, critDmg: 50,
+    anomalyControl: 100, energyRegen: 120, directDmgMult: 100, anomalyMult: 125,
+  })
+  /** 只带「4 件套：全队攻击 +N」的驱动盘文档 */
+  const driveDiscDoc = (id, teamAtkFlat) => ({
+    id,
+    name: id,
+    avatar_image: null,
+    twoPieceNote: '',
+    fourPieceNote: '',
+    twoPieceEffects: [],
+    twoPieceMods: createEmptyBuffStatModifiers(),
+    fourPieceBuffs: {
+      effectBlocks: [],
+      effects: [
+        {
+          id: `${id}-atk`,
+          kind: 'fixed',
+          stat: 'atk',
+          value: teamAtkFlat,
+          scope: 'general',
+          applyTarget: 'team',
+          enabledDefault: true,
+        },
+      ],
+    },
+  })
+
+  // ★ 稳定数组：两次评估共用同一个对象，第二次评估前就地改内容
+  const stableTeamSlots = [
+    { agentId: 'a', wengineId: 'none', twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'none' },
+    { agentId: 'b', wengineId: 'none', twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'disc-low' },
+  ]
+  const stableAgents = [
+    { id: 'a', name: '主C', element: '电', profession: '强攻', basePanel: basePanel(900) },
+    { id: 'b', name: '队友', element: '电', profession: '强攻', basePanel: basePanel(600) },
+  ]
+  const overrides = {
+    teamSlots: stableTeamSlots,
+    agents: stableAgents,
+    driveDiscs: [driveDiscDoc('disc-low', 50), driveDiscDoc('disc-high', 200)],
+    hits: makeHits(1, 'a'),
+  }
+
+  const counts = { ...createEmptyAffixCounts(), atkPercent: 15 }
+
+  // 真值：每次都重新装配（等价于「刷新页面后重算」）
+  const truthLow = (() => {
+    invalidateBuffCatalogCache()
+    clearAffixEvalCache()
+    return evaluateAffixCounts(makeCtx(overrides), counts).grandTotal
+  })()
+
+  // 预热：让缓存在「队友 4 件套 = disc-low」的状态下建立
+  invalidateBuffCatalogCache()
+  clearAffixEvalCache()
+  const beforeMutate = evaluateAffixCounts(makeCtx(overrides), counts).grandTotal
+
+  // ★ 就地改队友 4 件套（不换数组、不手动清任何缓存）
+  stableTeamSlots[1].fourPieceDriveDiscId = 'disc-high'
+  const afterMutate = evaluateAffixCounts(makeCtx(overrides), counts).grandTotal
+
+  const truthHigh = (() => {
+    invalidateBuffCatalogCache()
+    clearAffixEvalCache()
+    return evaluateAffixCounts(makeCtx(overrides), counts).grandTotal
+  })()
+
+  console.log(`    就地改队友 4 件套：${beforeMutate.toFixed(0)} → ${afterMutate.toFixed(0)}`)
+  console.log(`    真值（每次重装）：${truthLow.toFixed(0)} → ${truthHigh.toFixed(0)}`)
+
+  check('就地改队友 4 件套确实改变结果（否则本用例无意义）',
+    Math.abs(truthHigh - truthLow) > 1e-6, `${truthLow.toFixed(0)} vs ${truthHigh.toFixed(0)}`)
+  check('就地改队友 4 件套后结果跟着变（槽位键未被按数组身份冻结）',
+    Math.abs(afterMutate - beforeMutate) > 1e-6,
+    `改后 ${afterMutate.toFixed(0)} vs 改前 ${beforeMutate.toFixed(0)}`)
+  check('就地改后的值与真值一致',
+    Math.abs(afterMutate - truthHigh) < 1e-6,
+    `就地 ${afterMutate.toFixed(0)} vs 真值 ${truthHigh.toFixed(0)}`)
+}
+
+// ---------- 19. 邦布精炼变化必须让结果失效 ----------
+console.log('\n[19] 只改邦布精炼（其余不动）必须改变结果、且不吃旧缓存')
+{
+  // 缺陷与依据：ctx.panelContext.bangboo 是邦布文档，精炼只决定取 refinementEffects 的第几组，
+  // 不体现在文档内容里；若签名漏掉 bangbooRefine，只改精炼时结果会停在旧值。
+  const bangboo = {
+    id: 'test-bangboo',
+    name: '测试邦布',
+    avatar_image: null,
+    effects: [],
+    effectBlocks: [],
+    // 精1 全队攻击 +50；精5 全队攻击 +200（差值足够明显）
+    refinementEffects: [
+      [{ id: 'bb-r1', kind: 'fixed', stat: 'atk', value: 50, scope: 'general', applyTarget: 'team', enabledDefault: true }],
+      [], [], [],
+      [{ id: 'bb-r5', kind: 'fixed', stat: 'atk', value: 200, scope: 'general', applyTarget: 'team', enabledDefault: true }],
+    ],
+    refinementEffectBlocks: [[], [], [], [], []],
+  }
+  const hits = makeHits(1, 'a')
+  const overrides = { bangboo, hits }
+
+  const counts = { ...createEmptyAffixCounts(), atkPercent: 15 }
+
+  // 精炼 1（建立缓存）
+  clearAffixEvalCache()
+  invalidateBuffCatalogCache()
+  const refined1 = evaluateAffixCounts(makeCtx({ ...overrides, bangbooRefine: 1 }), counts).grandTotal
+
+  // 只改精炼 → 3（★ 不手动清任何缓存）
+  const refined5 = evaluateAffixCounts(makeCtx({ ...overrides, bangbooRefine: 5 }), counts).grandTotal
+
+  // 真值
+  clearAffixEvalCache()
+  invalidateBuffCatalogCache()
+  const truth1 = evaluateAffixCounts(makeCtx({ ...overrides, bangbooRefine: 1 }), counts).grandTotal
+  clearAffixEvalCache()
+  invalidateBuffCatalogCache()
+  const truth5 = evaluateAffixCounts(makeCtx({ ...overrides, bangbooRefine: 5 }), counts).grandTotal
+
+  console.log(`    精1 ${truth1.toFixed(0)}／精5 ${truth5.toFixed(0)}（基准真值）`)
+  console.log(`    不清缓存：精1 ${refined1.toFixed(0)}／精5 ${refined5.toFixed(0)}`)
+
+  check('改邦布精炼确实改变结果（否则本用例无意义）',
+    Math.abs(truth5 - truth1) > 1e-6, `${truth1.toFixed(0)} vs ${truth5.toFixed(0)}`)
+  check('不清缓存也能读到新精炼的结果（签名覆盖 bangbooRefine）',
+    Math.abs(refined5 - truth5) < 1e-6,
+    `缓存值 ${refined5.toFixed(0)} vs 真值 ${truth5.toFixed(0)}`)
 }
 
 console.log(`\n结果：${passed} passed, ${failed} failed`)
