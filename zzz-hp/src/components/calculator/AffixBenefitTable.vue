@@ -177,11 +177,11 @@ function submitDraft() {
           <thead>
             <tr>
               <th>词条</th>
-              <th>每档</th>
-              <th>当前档数</th>
-              <th>+{{ rollsPerStep }} 档伤害增量</th>
-              <th>收益率</th>
-              <th>相对权重</th>
+              <th class="num-head">每档</th>
+              <th class="num-head">当前档数</th>
+              <th class="num-head">+{{ rollsPerStep }} 档伤害增量</th>
+              <th class="num-head">收益率</th>
+              <th class="num-head">相对权重</th>
             </tr>
           </thead>
           <tbody>
@@ -444,6 +444,11 @@ th {
   font-weight: 500;
   text-align: left;
   white-space: nowrap;
+}
+
+/* 数值列表头必须与 .num-cell 同向（右对齐），否则表头在左、数字在右，看着不对齐 */
+th.num-head {
+  text-align: right;
 }
 
 td {

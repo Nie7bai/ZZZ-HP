@@ -142,9 +142,9 @@ function formatNumber(value: number) {
           <thead>
             <tr>
               <th>词条</th>
-              <th>每档</th>
-              <th>分配档数</th>
-              <th>合计数值</th>
+              <th class="num-head">每档</th>
+              <th class="num-head">分配档数</th>
+              <th class="num-head">合计数值</th>
             </tr>
           </thead>
           <tbody>
@@ -275,6 +275,11 @@ th {
   font-weight: 500;
   text-align: left;
   white-space: nowrap;
+}
+
+/* 数值列表头必须与 .num-cell 同向（右对齐），否则表头在左、数字在右，看着不对齐 */
+th.num-head {
+  text-align: right;
 }
 
 td {
