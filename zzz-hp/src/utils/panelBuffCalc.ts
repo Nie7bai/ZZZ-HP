@@ -677,6 +677,23 @@ function buildPanelSourceValuesForSlot(
     mainSlotIndex: slotIndex,
     mainExternalPanel: externalPanel,
     skipConvert: true,
+    /**
+     * 必须在这里切断对「按槽位惰性求值的源值地图」的引用 —— 这是自递归的源头。
+     *
+     * 本次调用只算非转模部分（`skipConvert: true` 会让所有 `kind === 'convert'` 效果
+     * 在 `resolveEffectsToMods` 里被整段跳过，因此源值不可能被消费）。但下面几处会
+     * **eager** 地读它，读的时候并不看 skipConvert：
+     *   - `resolvePackMods` 的 `ctx.panelSourceValuesBySlot.has/get(slotIndex)`
+     *   - 邦布分支的 `ctx.panelSourceValuesBySlot?.get(ctx.mainSlotIndex)`
+     *   - `resolvePackEffectMods` 的同类读取
+     * 而此刻 `mainSlotIndex` / `slotIndex` 正是「正在被计算的那个槽位」，地图的 `get()`
+     * 会再次触发该槽位的计算 → 又回到本函数 → 无限递归（实测 830 层后栈溢出）。
+     *
+     * 缺口只在「地图的闭包 ctx 自带同一张地图」时才闭合，因此带 `undefined` 是零成本的
+     * 结构性防护：既保留 `ctx.panelSourceValues` 作为回退，也不改变任何转模路径
+     * （那些路径的 skipConvert 为 false，源值照旧从地图取）。
+     */
+    panelSourceValuesBySlot: undefined,
   }
   const baseAnomalyControl = resolveBaseAnomalyControl(slotCtx)
   const baseEnergyRegen = resolveBaseEnergyRegen(slotCtx)

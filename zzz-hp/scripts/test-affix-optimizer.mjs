@@ -12,6 +12,7 @@
 import {
   createEmptyAffixCounts,
   createDefaultAffixDriveDiscMainStats,
+  fillPanelStatsDefaults,
 } from '../src/types/calculatorPanel.ts'
 import {
   createEmptyAgentBasePanel,
@@ -38,7 +39,10 @@ import {
   evaluateAffixCounts,
   optimalHitDependsOnMainAffixPanel,
 } from '../src/utils/optimalAffixAlloc.ts'
-import { invalidateBuffCatalogCache } from '../src/utils/panelBuffCalc.ts'
+import {
+  buildPanelSourceValuesBySlotMap,
+  invalidateBuffCatalogCache,
+} from '../src/utils/panelBuffCalc.ts'
 
 let failed = 0
 let passed = 0
@@ -975,6 +979,112 @@ console.log('\n[19] 只改邦布精炼（其余不动）必须改变结果、且
   check('不清缓存也能读到新精炼的结果（签名覆盖 bangbooRefine）',
     Math.abs(refined5 - truth5) < 1e-6,
     `缓存值 ${refined5.toFixed(0)} vs 真值 ${truth5.toFixed(0)}`)
+}
+
+// ---------- 20. 惰性源值地图不得自递归 ----------
+console.log('\n[20] 惰性源值地图：闭包 ctx 自带同一张地图时不得自递归')
+{
+  // 背景（2026-09-10 核对时发现并用本用例复现）：
+  // `buildPanelSourceValuesForSlot` 内部要建 `slotCtx = {...ctx, mainSlotIndex: slotIndex, skipConvert: true}`，
+  // 再调 `collectPanelBuffMods(slotCtx)`。若 ctx 里带着按槽位惰性求值的源值地图，
+  // 那么「计算槽位 X 的源值」的过程中会有多处 **eager** 读 `map.get(X)`：
+  //   - `resolvePackMods` 的 `.has(slotIndex)/.get(slotIndex)`
+  //   - 邦布分支与 `resolvePackEffectMods` 的 `.get(ctx.mainSlotIndex)`
+  // 而读的正是「正在计算中的那个槽位」→ 再次触发该槽位计算 → 无限递归。
+  // 实测：修复前 830 层后 `RangeError: Maximum call stack size exceeded`。
+  // 修复：在 `slotCtx` 里显式 `panelSourceValuesBySlot: undefined`（该调用 skipConvert 恒为 true，
+  // 转模效果整段被跳过，源值不可能被消费，故切断引用零成本）。
+  //
+  // 本用例刻意构造「地图的闭包 ctx 反过来带它自己」这一自引用形态：
+  //   - 未修复时：这里会抛 RangeError → 用例失败（已实测）；
+  //   - 已修复时：正常返回源值（已实测）。
+  // 当前调用方不会产生自引用形态，本用例是结构性防护，防止将来某次「就地回填 ctx」
+  // 把这条路径变成真的栈溢出 —— 那种故障在浏览器里只表现为页面卡死，极难定位。
+  const teamAtk = (id, value) => ({
+    id, kind: 'fixed', stat: 'atk', value,
+    scope: 'general', applyTarget: 'team', enabledDefault: true,
+  })
+  const externalPanel = fillPanelStatsDefaults({})
+  const mkAgent = (id) => ({
+    id,
+    name: id,
+    element: '电',
+    profession: '强攻',
+    basePanel: createEmptyAgentBasePanel(),
+    mindscapeBuffs: [
+      { effectBlocks: [{ id: 'blk-1', name: '影画1', note: '', effects: [teamAtk(`${id}-ms`, 20)] }], effects: [] },
+    ],
+  })
+  const mkDisc = (id, value) => ({
+    id,
+    name: id,
+    avatar_image: null,
+    twoPieceNote: '',
+    fourPieceNote: '',
+    twoPieceEffects: [],
+    twoPieceMods: createEmptyBuffStatModifiers(),
+    fourPieceBuffs: {
+      effectBlocks: [{ id: 'blk-4', name: '4件套', note: '', effects: [teamAtk(`${id}-4pc`, value)] }],
+      effects: [teamAtk(`${id}-4pc`, value)],
+    },
+  })
+
+  const holder = {
+    teamSlots: [
+      { agentId: 'a', rank: 0, wengineId: 'none', wengineRefine: 1, twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'dd-1' },
+      { agentId: 'b', rank: 0, wengineId: 'none', wengineRefine: 1, twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'none' },
+    ],
+    agents: [mkAgent('a'), mkAgent('b')],
+    wengines: [],
+    // 邦布用真实 id（不是 'none'）：邦布分支正是会 eager 读地图的那条路径
+    bangboo: {
+      id: 'bb-1',
+      name: '测试邦布',
+      avatar_image: null,
+      effects: [],
+      effectBlocks: [{ id: 'bb-blk', name: '固定', note: '', effects: [teamAtk('bb-fixed', 25)] }],
+      refinementEffects: [[], [], [], [], []],
+      refinementEffectBlocks: [[], [], [], [], []],
+    },
+    bangbooRefine: 1,
+    mainSlotIndex: 0,
+    driveDiscs: [mkDisc('dd-1', 60)],
+    extraMods: createEmptyBuffStatModifiers(),
+    skipConvert: false,
+  }
+
+  // ★ 自引用：先建地图，再把这张地图回填进它自己的闭包 ctx
+  const selfMap = buildPanelSourceValuesBySlotMap(holder, externalPanel)
+  holder.panelSourceValuesBySlot = selfMap
+
+  invalidateBuffCatalogCache() // 强制内部走「建源 → 解析每个 pack」
+
+  let resolved = null
+  let thrown = null
+  try {
+    resolved = selfMap.get(0)
+  } catch (error) {
+    thrown = error
+  }
+
+  console.log(`    自引用形态下 get(0)：${thrown ? `抛错 ${thrown.name}` : '正常返回'}`)
+  check('闭包 ctx 自带同一张地图时，按槽位取源值不得自递归',
+    !thrown, thrown ? String(thrown.message).slice(0, 80) : 'ok')
+  check('取到的源值结构完整',
+    !!resolved && !!resolved.external && !!resolved.final,
+    resolved ? `external=${!!resolved.external} final=${!!resolved.final}` : 'null')
+
+  // 再次取值应为同一对象（记忆化）；同样要防住未修复时的递归，否则整进程会被未捕获异常干掉
+  let second = null
+  let secondThrown = null
+  try {
+    second = selfMap.get(0)
+  } catch (error) {
+    secondThrown = error
+  }
+  check('同一地图重复取同一槽位返回同一对象（记忆化生效）',
+    !secondThrown && second === resolved,
+    secondThrown ? `抛错 ${secondThrown.name}` : `same=${second === resolved}`)
 }
 
 console.log(`\n结果：${passed} passed, ${failed} failed`)
