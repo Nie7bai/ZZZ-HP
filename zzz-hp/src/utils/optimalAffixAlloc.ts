@@ -1474,7 +1474,30 @@ function serializeMultiSlotBuffSelection(
   return `${serializeBuffSelection(multi.team)}#${slotPart}`
 }
 
+/**
+ * 上下文签名的记忆化。
+ *
+ * 背景：签名要把十余个字段 `JSON.stringify`（含本次新增的 agentBase / wengineAdvanced），
+ * 实测这部分约占「面板口径」单次评估的**一半**开销；而一次求解或一次收益表重算里
+ * `ctx` 始终是**同一个对象**，签名结果必然相同，逐次重算是纯浪费。
+ *
+ * 按 `ctx` 对象身份缓存后，签名从「每次评估算一遍」变为「每个 ctx 算一遍」。
+ *
+ * 前提：调用方不得**就地修改** `ctx` 的字段（当前全项目已核对：无此用法；
+ * `buildOptimalEvalContext` 每次返回新对象，页面侧 `evalCtx` 是 computed）。
+ * 若将来出现就地修改，需在改完显式调用 `clearAffixEvalCache()`。
+ */
+const affixCtxSignatureCache = new WeakMap<OptimalEvalContext, string>()
+
 function affixEvalContextSignature(ctx: OptimalEvalContext): string {
+  const memo = affixCtxSignatureCache.get(ctx)
+  if (memo !== undefined) return memo
+  const signature = computeAffixEvalContextSignature(ctx)
+  affixCtxSignatureCache.set(ctx, signature)
+  return signature
+}
+
+function computeAffixEvalContextSignature(ctx: OptimalEvalContext): string {
   const events =
     ctx.hits
       ?.map(
@@ -1492,6 +1515,19 @@ function affixEvalContextSignature(ctx: OptimalEvalContext): string {
     ctx.isFengYu ? '1' : '0',
     ctx.wengineBaseAtk ?? 0,
     ctx.wengineBaseDef ?? 0,
+    /**
+     * 角色基础面板与音擎加成必须整体入签名。
+     *
+     * 修复前的缺陷（2026-09-10 实测复现）：签名只带 `mainAgentId` 与
+     * `wengineBaseAtk/wengineBaseDef`，而 `buildAffixExternalFixedParts` 真正读的是
+     * `ctx.agentBase` 与 `ctx.wengineAdvanced`。于是下面两种操作会命中旧上下文、
+     * 拿到过期的基础值：
+     *   1. 换成「基础攻击/防御相同、但加成不同」的音擎（如两把基础攻击都是 594 的 S 音擎）；
+     *   2. 同一角色 id 的基础面板发生变化（例如重新加载角色数据）。
+     * 表现为换完音擎后伤害/面板一动不动。
+     */
+    JSON.stringify(ctx.agentBase ?? null),
+    JSON.stringify(ctx.wengineAdvanced ?? null),
     ctx.baseDamageSource ?? '',
     JSON.stringify(ctx.driveDiscMainStats),
     // 主词条组合试算会改 2/4 件套；缺失会导致同词条数命中旧缓存，伤害不变

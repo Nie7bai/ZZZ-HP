@@ -5,7 +5,6 @@ import {
   type AffixLibraryEntry,
 } from '@/utils/affixLibrary'
 import {
-  affixRollCap,
   evaluateAffixCountsWithCacheInfo,
   yieldToMain,
   type AffixPanelDeltaMap,
@@ -226,10 +225,18 @@ export function resolveAffixOptimizerBudget(
 ): AffixOptimizerBudget {
   return {
     maxTotalRolls: maxTotalRolls ?? DEFAULT_MAX_TOTAL_ROLLS,
-    rollCapOf: (entry) =>
-      entry.kind === 'substat' && entry.affixKey
-        ? affixRollCap(ctx.driveDiscMainStats, entry.affixKey)
-        : Number.POSITIVE_INFINITY,
+    /**
+     * 单条档数上限一律不限。
+     *
+     * 这里原先是 `affixRollCap(ctx.driveDiscMainStats, key)`，即柱图/词条计算页的
+     * 「36 − 6×同名主属性数」规则（`AFFIX_ROLL_CAP_BASE` / `AFFIX_ROLL_CAP_PER_MAIN`）。
+     * 用户 2026-09-10 决定：**词条分配模式不复用柱图规则** ——
+     * 本模式回答的是「N 个词条怎么分最优」，是纯分配问题，与真实配装的可行性约束无关。
+     *
+     * 条目自身的 `cap`（词条库里的「上限」列）仍然生效，见 `remainingAllowedRolls`。
+     * 参数 `ctx` 保留以维持既有调用签名。
+     */
+    rollCapOf: () => Number.POSITIVE_INFINITY,
   }
 }
 

@@ -1,18 +1,23 @@
 /**
  * 最优词条分配求解器验证：
  * 1) 小规模场景与「全排列穷举」对比，求解器结果必须等于或接近穷举最优；
- * 2) 预算约束（总词条数 / atkPen / 主词条上限 / 互斥组）不得被突破；
+ * 2) 预算约束（总词条数 / 条目 cap / 互斥组）不得被突破；
  * 3) 分配结果真实可评估，且总伤与求解器报告一致；
  * 4) 计算量预算与候选宽度（auto 推导 / manual 指定）；
  * 5) 同步与异步结果必须一致，异步可中止；
- * 6) 零收益条目出局、交叉项补测、无半成品。
+ * 6) 零收益条目出局、交叉项补测、无半成品；
+ * 7) 基础值取值与缓存失效（换音擎 / 换角色基础面板不得吃到旧值）。
  * 运行：npx vite-node scripts/test-affix-optimizer.mjs
  */
 import {
   createEmptyAffixCounts,
   createDefaultAffixDriveDiscMainStats,
 } from '../src/types/calculatorPanel.ts'
-import { createEmptyAgentBasePanel } from '../src/utils/calculatorUi.ts'
+import {
+  createEmptyAgentBasePanel,
+  createEmptySelfTeamBuffs,
+  createEmptyWengineAdvancedStats,
+} from '../src/utils/calculatorUi.ts'
 import {
   createDefaultAffixLibrary,
   resolveAffixLibrary,
@@ -191,17 +196,37 @@ console.log('\n[2] 预算约束')
     solved.usedRolls === budget.maxTotalRolls,
     `${solved.usedRolls} vs ${budget.maxTotalRolls}`)
 
-  let capOk = true
+  // 口径（2026-09-10 用户决定）：词条分配模式**不复用柱图规则**，
+  // 即不再套用「36 − 6×同名主属性数」的主词条上限。约束只剩两处：
+  //   1. 总词条数（唯一预算，见上）
+  //   2. 条目自身的 cap（词条库「上限」列，0 = 不限）
+  check('主词条上限已剔除（rollCapOf 恒为不限）',
+    !Number.isFinite(budget.rollCapOf(byId.get('substat:critDmg'))),
+    String(budget.rollCapOf(byId.get('substat:critDmg'))))
+
+  let entryCapOk = true
   for (const [id, rolls] of Object.entries(solved.rollsByEntryId)) {
     const entry = byId.get(id)
     if (!entry) continue
-    const cap = budget.rollCapOf(entry)
-    if (Number.isFinite(cap) && rolls > cap) {
-      capOk = false
-      console.log(`      超限：${entry.label} ${rolls} > ${cap}`)
+    if (entry.cap > 0 && rolls > entry.cap) {
+      entryCapOk = false
+      console.log(`      超条目上限：${entry.label} ${rolls} > ${entry.cap}`)
     }
   }
-  check('主词条档数上限未突破', capOk)
+  check('条目自身的上限（cap）未突破', entryCapOk)
+
+  // cap = 1 的条目不得超出 1 档（正面验证 cap 确实在生效）
+  const cappedEntries = library.filter((e) => e.cap > 0)
+  const cappedSolved = solveOptimalAffixAllocation({
+    ctx, entries: cappedEntries, maxTotalRolls: 30,
+  })
+  const cappedViolations = cappedEntries.filter(
+    (e) => (cappedSolved.rollsByEntryId[e.id] ?? 0) > e.cap,
+  )
+  check('cap>0 的条目最多拿 cap 档',
+    cappedViolations.length === 0,
+    cappedViolations.map((e) => `${e.label}=${cappedSolved.rollsByEntryId[e.id]}`).join(', ') || '无越界')
+
   check('分配非空', Object.keys(solved.rollsByEntryId).length > 0,
     JSON.stringify(solved.rollsByEntryId))
   // 每条词条一律占 1 个总词条数（独立功能口径）
@@ -473,6 +498,138 @@ console.log('\n[13] 预算不足时不产生半成品')
     Math.abs(evaluateAffixCounts(ctx, tiny.counts, tiny.panelDeltas).grandTotal - tiny.totalDamage) < 1e-6)
   check('结果不劣于基线', tiny.totalDamage >= tiny.baselineDamage - 1e-9)
 }
+
+// ---------- 14. 基础值取值：换音擎必须让缓存失效 ----------
+console.log('\n[14] 换音擎（基础值相同、加成不同）不得吃到旧缓存')
+{
+  const wengine = (id, name, advanced) => ({
+    id,
+    name,
+    profession: '强攻',
+    rarity: 'S',
+    avatar_image: null,
+    note: '',
+    baseAtk: 594,
+    baseDef: 0,
+    advancedStats: { ...createEmptyWengineAdvancedStats(), ...advanced },
+    fixedBuffs: createEmptySelfTeamBuffs(),
+    refinementBuffs: [createEmptySelfTeamBuffs()],
+  })
+  // 两把音擎基础攻击/防御完全相同，只有加成不同 —— 等价于「签名只带 baseAtk 就失效」的场景
+  const wA = wengine('wa', '音擎A', { critRate: 24 })
+  const wB = wengine('wb', '音擎B', { penRate: 24 })
+
+  const baseCtxInput = {
+    isMb: false,
+    isFengYu: false,
+    agents: [{
+      id: 'a',
+      name: '测试',
+      element: '电',
+      profession: '强攻',
+      basePanel: {
+        ...createEmptyAgentBasePanel(),
+        hp: 9000, atk: 900, def: 700, critRate: 5, critDmg: 50,
+        anomalyControl: 100, energyRegen: 120, directDmgMult: 100, anomalyMult: 125,
+      },
+    }],
+    wengines: [wA, wB],
+    bangboo: {
+      id: 'none', name: 'x', avatar_image: null, effects: [],
+      refinementEffects: [], fixedMods: {}, refinementMods: {},
+    },
+    bangbooRefine: 1,
+    driveDiscs: [],
+    mainSlotIndex: 0,
+    driveDiscMainStats: createDefaultAffixDriveDiscMainStats(),
+    enemyInput: {
+      level: 60, defense: 952.8, resistanceType: 'normal',
+      vulnerableMultiplier: 1, staggerMultiplier: 1.5, specialMultiplier: 1,
+    },
+    baseDamageSource: 'atk',
+    skillContext: { element: '电', staggerPhase: 'stagger', damageKind: 'direct' },
+    hits: undefined,
+  }
+  const ctxA = buildOptimalEvalContext({
+    ...baseCtxInput,
+    teamSlots: [{ agentId: 'a', wengineId: 'wa', twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'none' }],
+  })
+  const ctxB = buildOptimalEvalContext({
+    ...baseCtxInput,
+    teamSlots: [{ agentId: 'a', wengineId: 'wb', twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'none' }],
+  })
+
+  clearAffixEvalCache()
+  const probeCounts = { ...createEmptyAffixCounts(), atkPercent: 10 }
+  const resA = evaluateAffixCounts(ctxA, probeCounts)
+  const resB = evaluateAffixCounts(ctxB, probeCounts)
+  check('换音擎后暴击率按新音擎重算',
+    resB.finalPanel.critRate === resA.finalPanel.critRate - 24,
+    `${resA.finalPanel.critRate} → ${resB.finalPanel.critRate}`)
+  check('换音擎后穿透率按新音擎重算',
+    resB.finalPanel.penRate === resA.finalPanel.penRate + 24,
+    `${resA.finalPanel.penRate} → ${resB.finalPanel.penRate}`)
+  check('两个音擎不被当作同一上下文（未返回同一缓存对象）', resA !== resB)
+}
+
+// ---------- 15. 基础值取值：角色基础面板变化必须生效 ----------
+console.log('\n[15] 角色基础面板变化不得吃到旧缓存')
+{
+  const makeAgentCtx = (baseAtk) => buildOptimalEvalContext({
+    isMb: false,
+    isFengYu: false,
+    teamSlots: [{ agentId: 'a', wengineId: 'none', twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'none' }],
+    agents: [{
+      id: 'a',
+      name: '测试',
+      element: '电',
+      profession: '强攻',
+      basePanel: {
+        ...createEmptyAgentBasePanel(),
+        hp: 9000, atk: baseAtk, def: 700, critRate: 5, critDmg: 50,
+        anomalyControl: 100, energyRegen: 120, directDmgMult: 100, anomalyMult: 125,
+      },
+    }],
+    wengines: [],
+    bangboo: {
+      id: 'none', name: 'x', avatar_image: null, effects: [],
+      refinementEffects: [], fixedMods: {}, refinementMods: {},
+    },
+    bangbooRefine: 1,
+    driveDiscs: [],
+    mainSlotIndex: 0,
+    driveDiscMainStats: createDefaultAffixDriveDiscMainStats(),
+    enemyInput: {
+      level: 60, defense: 952.8, resistanceType: 'normal',
+      vulnerableMultiplier: 1, staggerMultiplier: 1.5, specialMultiplier: 1,
+    },
+    baseDamageSource: 'atk',
+    skillContext: { element: '电', staggerPhase: 'stagger', damageKind: 'direct' },
+    hits: undefined,
+  })
+
+  clearAffixEvalCache()
+  const zeroCounts = createEmptyAffixCounts()
+  const tenCounts = { ...createEmptyAffixCounts(), atkPercent: 10 }
+
+  // 用「同一角色：0 档 vs 10 档」的差值隔离出攻击%的贡献，
+  // 这样不受 2 号位固定攻击等常数项干扰
+  const lowZero = evaluateAffixCounts(makeAgentCtx(900), zeroCounts)
+  const lowTen = evaluateAffixCounts(makeAgentCtx(900), tenCounts)
+  const highZero = evaluateAffixCounts(makeAgentCtx(1800), zeroCounts)
+  const highTen = evaluateAffixCounts(makeAgentCtx(1800), tenCounts)
+
+  const lowDelta = lowTen.finalPanel.atk - lowZero.finalPanel.atk
+  const highDelta = highTen.finalPanel.atk - highZero.finalPanel.atk
+  console.log(`    基础 900：0 档 ${lowZero.finalPanel.atk} → 10 档 ${lowTen.finalPanel.atk}，增量 ${lowDelta.toFixed(1)}（期望 900×30%=270）`)
+  console.log(`    基础 1800：0 档 ${highZero.finalPanel.atk} → 10 档 ${highTen.finalPanel.atk}，增量 ${highDelta.toFixed(1)}（期望 1800×30%=540）`)
+  check('攻击%按基础值乘算（基础 900）',
+    Math.abs(lowDelta - 270) < 0.5, `${lowDelta.toFixed(1)} vs 270`)
+  check('角色基础攻击翻倍后，攻击%带来的增量同步翻倍（未吃旧基础值）',
+    Math.abs(highDelta - lowDelta * 2) < 0.5,
+    `增量 ${lowDelta.toFixed(1)} → ${highDelta.toFixed(1)}`)
+}
+
 
 
 console.log(`\n结果：${passed} passed, ${failed} failed`)

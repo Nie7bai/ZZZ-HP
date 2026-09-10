@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import type { AffixBenefitTable } from '@/utils/affixBenefitAnalysis'
 import type { AffixLibraryEntry } from '@/utils/affixLibrary'
+import { useResizableColumns, type ResizableColumnSpec } from '@/composables/useResizableColumns'
 
 /**
  * 词条收益表 + 词条库编辑（词条功能改造）
@@ -43,6 +44,42 @@ const sortedRows = computed(() => {
   }
   return rows
 })
+
+// ---------- 列宽（可拖拽，按比例） ----------
+/**
+ * 列宽用**比例**而不是像素：表格占满容器宽度，比例才能「拖多少就是多少」。
+ * 默认比例把「词条」列压到 20%（原 auto 布局下它吃掉约 28%），数值列相应放宽。
+ */
+const BENEFIT_COLUMN_SPECS: ResizableColumnSpec[] = [
+  { key: 'entry', defaultRatio: 20, minWidthPx: 120 },
+  { key: 'perRoll', defaultRatio: 11, minWidthPx: 64 },
+  { key: 'currentRolls', defaultRatio: 13, minWidthPx: 80 },
+  { key: 'damageDelta', defaultRatio: 22, minWidthPx: 110 },
+  { key: 'percentDelta', defaultRatio: 12, minWidthPx: 80 },
+  { key: 'weight', defaultRatio: 22, minWidthPx: 100 },
+]
+
+const BENEFIT_COLUMN_STORAGE_KEY = 'zzz-hp-affix-benefit-col-ratios'
+
+const benefitTableWrap = ref<HTMLElement | null>(null)
+
+const {
+  ratioOf: benefitColumnRatio,
+  resizingKey: resizingColumnKey,
+  startResize: startColumnResize,
+  resetColumn: resetColumnWidth,
+} = useResizableColumns(BENEFIT_COLUMN_STORAGE_KEY, BENEFIT_COLUMN_SPECS)
+
+/** 表头元数据；与 BENEFIT_COLUMN_SPECS 的 key 一一对应 */
+const benefitColumns = computed(() => [
+  { key: 'entry', label: '词条', numeric: false },
+  { key: 'perRoll', label: '每档', numeric: true },
+  { key: 'currentRolls', label: '当前档数', numeric: true },
+  { key: 'damageDelta', label: `+${props.rollsPerStep} 档伤害增量`, numeric: true },
+  { key: 'percentDelta', label: '收益率', numeric: true },
+  { key: 'weight', label: '相对权重', numeric: true },
+])
+
 
 function formatDelta(value: number) {
   if (!Number.isFinite(value)) return '—'
@@ -172,16 +209,31 @@ function submitDraft() {
           （每条按 +{{ rollsPerStep }} 档单独评估，共 {{ table.evaluatedCount }} 条）
         </span>
       </p>
-      <div class="table-wrap">
+      <div ref="benefitTableWrap" class="table-wrap benefit-table-wrap">
         <table class="benefit-table">
+          <colgroup>
+            <col
+              v-for="col in benefitColumns"
+              :key="col.key"
+              :style="{ width: `${benefitColumnRatio(col.key)}%` }"
+            />
+          </colgroup>
           <thead>
             <tr>
-              <th>词条</th>
-              <th class="num-head">每档</th>
-              <th class="num-head">当前档数</th>
-              <th class="num-head">+{{ rollsPerStep }} 档伤害增量</th>
-              <th class="num-head">收益率</th>
-              <th class="num-head">相对权重</th>
+              <th
+                v-for="col in benefitColumns"
+                :key="col.key"
+                :class="{ 'num-head': col.numeric }"
+              >
+                {{ col.label }}
+                <span
+                  class="col-resizer"
+                  :class="{ active: resizingColumnKey === col.key }"
+                  title="拖动调整列宽；双击恢复默认"
+                  @mousedown="startColumnResize(col.key, $event, benefitTableWrap)"
+                  @dblclick="resetColumnWidth(col.key)"
+                />
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -449,6 +501,56 @@ th {
 /* 数值列表头必须与 .num-cell 同向（右对齐），否则表头在左、数字在右，看着不对齐 */
 th.num-head {
   text-align: right;
+}
+
+/* ---------- 收益表：列宽可拖拽 ---------- */
+
+/* 表格占满容器（保持原有布局），列宽按比例分配 */
+.benefit-table {
+  /* fixed 布局：列宽严格按 <col> 比例走，拖拽才能精确生效 */
+  table-layout: fixed;
+}
+
+/* 表头与数值同一右侧内边距，保证右对齐仍然对齐；超长内容省略号避免撑破列宽 */
+.benefit-table th,
+.benefit-table td {
+  padding-right: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.benefit-table th {
+  position: relative;
+}
+
+/* 列分界竖线：静止时可见（浅灰），hover / 拖拽时变金色加粗 */
+.col-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 9px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+  z-index: 2;
+}
+
+.col-resizer::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 15%;
+  width: 1px;
+  height: 70%;
+  background: rgba(112, 103, 86, 0.55);
+  transition: background 0.12s ease-out, width 0.12s ease-out;
+}
+
+.col-resizer:hover::before,
+.col-resizer.active::before {
+  left: 3px;
+  width: 2px;
+  background: var(--calc-accent, #c9a55c);
 }
 
 td {
