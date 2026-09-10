@@ -1471,6 +1471,10 @@ const BUFF_CATALOG_CACHE_LIMIT = 1024
 /** 目录文档（角色/音擎/邦布/驱动盘）内容变更后须调用，避免同 ID 命中旧效果 */
 export function invalidateBuffCatalogCache() {
   buffCatalogCache.clear()
+  // 部件记忆化一并清：属防御性处理（已核对 src/ 内无调用方就地修改这些对象，
+  // 因此当前不会因不清而出现可复现的错误）。留着是为了让「就地改 + 失效」这条
+  // 契约即使将来被误用也仍然成立。
+  partKeyCache = new WeakMap<object, string>()
 }
 
 function touchBuffCatalogEntry(key: string, entry: BuffCatalogEntry) {
@@ -1491,14 +1495,18 @@ function splitConvertEffects(effects: BuffEffect[]) {
 /**
  * 缓存键的部件级记忆化。
  *
- * 实测（2026-09-10）：单次评估要构建 ~320~800 次缓存键，而键的部件对象
+ * 实测（2026-09-10）：单次评估要构建 ~800 次缓存键，而键的部件对象
  * （buffSelection / extraMods / skillContext）是同一批对象反复出现。
  * 按**对象身份**记住序列化结果，同一对象只 stringify 一次。
  *
  * 与本文件既有契约一致：内容变更（就地改文档对象）本就必须调用
  * `invalidateBuffCatalogCache()` 才生效（见 scripts/test-buff-catalog-cache.mjs）。
+ *
+ * **已知边界**：记忆化后键不再随这些对象的**内容**变化（只随身份）。
+ * 契约内的做法不受影响；契约外「就地改而不失效」在 skipConvert=true 下会返回旧值，
+ * 而修复前会因键变化意外重算。已核对 `src/` 内无就地修改这些对象的调用方（2026-09-10）。
  */
-const partKeyCache = new WeakMap<object, string>()
+let partKeyCache = new WeakMap<object, string>()
 
 function stringifyKeyPart(value: unknown): string {
   if (value === null || value === undefined) return ''
