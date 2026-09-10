@@ -81,10 +81,7 @@ import {
 import EquipPickerModal from '@/components/calculator/EquipPickerModal.vue'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import {
-  omitAgentFromAnomalySlotPanels,
   resolveBuffSelectionForSlot,
-  slotParticipatesInConvertBuff,
-  teamHasConvertSupportSlots,
   computeFinalPanel,
   type ConvertSlotPanels,
 } from '@/utils/panelBuffCalc'
@@ -263,46 +260,6 @@ const selectedBangboo = computed(
     emptyBangboo,
 )
 
-const anomalySupportSlots = computed(() => {
-  const mainId = mainSlot.value.agentId
-  const participantIds = new Set<string>()
-  for (const hit of [...(props.hits ?? []), ...(props.previewHits ?? [])]) {
-    for (const id of [hit.ownerAgentId, hit.anomalyPowerAgentId, hit.triggerAgentId]) {
-      if (id && id !== mainId) participantIds.add(id)
-    }
-  }
-  return props.teamSlots
-    .map((slot, index) => ({ slot, index }))
-    .filter(({ slot }) => Boolean(slot.agentId && participantIds.has(slot.agentId)))
-})
-
-const anomalyProducerAgentIds = computed(() => {
-  const ids = new Set<string>()
-  for (const item of anomalySupportSlots.value) {
-    if (item.slot.agentId) ids.add(item.slot.agentId)
-  }
-  return ids
-})
-
-/** 主 C 参与转模链或队伍存在转模增益角色时，主 C 局外由本模块词条推导，不沿用面板页主 C 局外 */
-const optimalConvertModeActive = computed(() => {
-  const ctx = {
-    teamSlots: props.teamSlots,
-    agents: props.agents,
-    wengines: props.wengines,
-    bangboo: selectedBangboo.value,
-    bangbooRefine: props.bangbooRefine,
-    mainSlotIndex: mainSlotIndex.value,
-    driveDiscs: props.driveDiscs,
-    buffSelection: props.buffSelection ?? null,
-    slotBuffSelections: props.slotBuffSelections ?? null,
-  }
-  return (
-    slotParticipatesInConvertBuff(ctx, mainSlotIndex.value) ||
-    teamHasConvertSupportSlots(ctx, { excludeAnomalyAgentIds: anomalyProducerAgentIds.value })
-  )
-})
-
 /** 转模来源统一读各角色完整局外（导入/页级 anomalySlotPanels）；旧方案 convertSlotPanels 仅作兜底 */
 const evalConvertSlotPanels = computed((): ConvertSlotPanels => props.convertSlotPanels ?? {})
 
@@ -311,16 +268,17 @@ const evalConvertSlotPanels = computed((): ConvertSlotPanels => props.convertSlo
  *
  * 这里原先是模块自建的副本 `optimalParticipantPanels`（缺面板时用角色基础面板兜底），
  * 副本会与页级配置漂移，是「面板改完进最优仍用旧值」这类问题的来源，已删除。
+ *
+ * 也不再剔除主 C 的面板：旧架构下主 C 局外由候选词条推导，所以要把页级那份摘掉以免顶掉
+ * 推导结果；新架构下**页级那份就是基准**，摘掉等于让基准失效（会静默回退到推导路径）。
+ * 主 C 槽位本身取的是「基准 + 候选词条」的评估结果（`ctx.mainExternalPanel`），
+ * 面板聚合里 live 槽位优先读它，因此不会用到未叠加候选的基准值。
  */
 const effectiveAnomalySlotPanels = computed(() => {
-  const mainId = mainAgent.value?.id
   const merged: Record<string, PanelStats> = {}
   for (const [agentId, panel] of Object.entries(props.anomalySlotPanels ?? {})) {
     if (!panel || isPlaceholderExternalPanel(panel)) continue
     merged[agentId] = fillPanelStatsDefaults({ ...panel })
-  }
-  if (mainId && optimalConvertModeActive.value) {
-    return omitAgentFromAnomalySlotPanels(merged, mainId)
   }
   return merged
 })
