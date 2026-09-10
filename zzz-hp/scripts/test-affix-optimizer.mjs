@@ -423,6 +423,45 @@ console.log('\n[10] 异步求解')
   check('已中止的信号会抛 AbortError', abortOk)
 }
 
+// ---------- 10b. 让出主线程不得依赖动画帧 ----------
+console.log('\n[10b] 让出主线程不得依赖 requestAnimationFrame')
+{
+  // 回归测试（2026-09-10 实测教训）：
+  // 旧实现用 requestAnimationFrame 让出，浏览器里每次让出要等满一帧 16.66ms。
+  // 求解器每 chunkSize 次评估让出一次，于是「0 命中」这种便宜场景（纯计算 ~21ms）
+  // 被拖到 ~260ms，且耗时与计算量无关、只与让出次数×帧长有关。
+  // 这里把 rAF 换成「永不回调」的桩：若有人改回 rAF 优先，求解器会卡死并被超时捕获。
+  const originalRaf = globalThis.requestAnimationFrame
+  let rafCalls = 0
+  globalThis.requestAnimationFrame = () => {
+    rafCalls += 1
+    return 0
+  }
+
+  let finished = false
+  try {
+    clearAffixEvalCache()
+    const result = await Promise.race([
+      solveOptimalAffixAllocationAsync(
+        { ctx, entries: library, maxTotalRolls: 30 },
+        { chunkSize: 16 },
+      ).then((value) => {
+        finished = true
+        return value
+      }),
+      new Promise((resolve) => setTimeout(() => resolve(null), 5000)),
+    ])
+    check(
+      'rAF 不可用时异步求解仍能完成，且一次都不调用它',
+      finished && result != null && rafCalls === 0,
+      `完成=${finished}，rAF 调用 ${rafCalls} 次`,
+    )
+  } finally {
+    if (originalRaf === undefined) delete globalThis.requestAnimationFrame
+    else globalThis.requestAnimationFrame = originalRaf
+  }
+}
+
 // ---------- 11. 零收益条目出局 ----------
 console.log('\n[11] 零收益条目出局')
 {

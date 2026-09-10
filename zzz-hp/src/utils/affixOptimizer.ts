@@ -123,8 +123,10 @@ export interface AffixOptimizerProgress {
 }
 
 export type AffixOptimizerAsyncOptions = {
-  /** 每多少次评估让出主线程一次（默认 24） */
+  /** 每多少次评估至少让出主线程一次（默认 24） */
   chunkSize?: number
+  /** 一个时间片最多占主线程多久（默认 8ms）；与 chunkSize 取「先到先让」 */
+  sliceBudgetMs?: number
   /** 中止信号：改参数后应中止旧求解 */
   signal?: AbortSignal
   /** 进度回调（每次让出主线程前调用一次） */
@@ -768,16 +770,33 @@ export function solveOptimalAffixAllocation(
   return toResult(input, step.value)
 }
 
-/** 分帧异步求解：保持页面响应，可中止，可报进度 */
+/**
+ * 分片异步求解：保持页面响应，可中止，可报进度。
+ *
+ * 让出节奏由两个条件共同决定（任一满足即让出）：
+ * - `chunkSize`：一次至少评估多少次；
+ * - `sliceBudgetMs`：一个时间片最多占主线程多久。
+ *
+ * 为什么要时间预算：单次评估的成本随流程规模变化（面板口径约 0.03ms、30 命中约 1ms）。
+ * 只用次数下限时，流程很贵会导致一个时间片长达数十毫秒、输入发涩；只用时间预算时，
+ * 极便宜的评估会把时钟查询变密。两者取「或」，兼顾。
+ *
+ * 注意：让出机制本身是 MessageChannel（≈0.01ms/次），不是 rAF（16.66ms/次）——
+ * 用 rAF 会让总耗时被帧率卡死，见 `yieldToMain` 的说明。
+ */
 export async function solveOptimalAffixAllocationAsync(
   input: AffixOptimizerInput,
   options?: AffixOptimizerAsyncOptions,
 ): Promise<AffixOptimizerResult> {
   const chunkSize = Math.max(1, options?.chunkSize ?? 24)
+  const sliceBudgetMs = Math.max(1, options?.sliceBudgetMs ?? 8)
   const signal = options?.signal
   const generator = solveSearch(input)
 
+  const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
   let sinceYield = 0
+  let sliceStart = now()
+
   for (;;) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
     let step: IteratorResult<AffixOptimizerProgress, SearchOutcome>
@@ -790,8 +809,9 @@ export async function solveOptimalAffixAllocationAsync(
     }
     if (step.done) return toResult(input, step.value)
     sinceYield += 1
-    if (sinceYield >= chunkSize) {
+    if (sinceYield >= chunkSize || now() - sliceStart >= sliceBudgetMs) {
       sinceYield = 0
+      sliceStart = now()
       options?.onProgress?.(step.value)
       await yieldToMain()
     }

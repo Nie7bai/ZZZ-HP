@@ -82,6 +82,7 @@ import {
   type OptimalDamageKind,
   type OptimalEventAffixImpact,
   type OptimalEventDamageLine,
+  yieldToMain,
 } from '@/utils/optimalAffixAlloc'
 import EquipPickerModal from '@/components/calculator/EquipPickerModal.vue'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
@@ -673,10 +674,9 @@ async function refreshDirectSweepFixedStats(
     sinceYield += 1
     if (sinceYield >= options.chunkSize) {
       sinceYield = 0
-      await new Promise<void>((resolve) => {
-        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => resolve())
-        else setTimeout(resolve, 0)
-      })
+      // 复用统一让出实现（MessageChannel）。此处原先自己用 rAF，每次让出要等满一帧
+      // 16.66ms；事件模式下 chunkSize=3 会把扫掠拖成「让出次数 × 16.66ms」，与计算量无关
+      await yieldToMain()
     }
   }
   return next

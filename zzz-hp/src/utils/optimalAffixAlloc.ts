@@ -1851,14 +1851,58 @@ export function sweepDirectDamage(
   return points
 }
 
-/** 让出主线程一次，供分片异步任务（扫掠 / 求解器）保持页面响应 */
+/**
+ * 让出主线程一次，供分片异步任务（扫掠 / 求解器）保持页面响应。
+ *
+ * **为什么浏览器里用 MessageChannel 而不是 requestAnimationFrame**（2026-09-10 实测，真实浏览器）：
+ *
+ * | 让出方式 | 每次等待 |
+ * |---|---|
+ * | `requestAnimationFrame` | **16.66 ms**（绑定帧率） |
+ * | `setTimeout(0)` | **10.33 ms**（浏览器嵌套定时器钳制） |
+ * | `MessageChannel` | **0.01 ms** |
+ *
+ * 于是「多久让出一次」直接决定总耗时：模拟 251 次评估、纯计算 21ms，
+ * rAF 每 24 次让出 → 159ms；MessageChannel 每 24 次让出 → 26ms。
+ * 用户反馈的「词条分配变慢」就是这个：计算量没变，全花在等帧上了。
+ *
+ * 响应性仍然保证：每个时间片（见调用方的 `sliceBudgetMs`）结束后都会让出，
+ * 浏览器可在让出的间隙处理输入与绘制。
+ *
+ * **Node（脚本与测试）里走 `setImmediate`**：模块级 MessageChannel 会一直保活事件循环，
+ * 导致脚本跑完不退出（实测挂住不返回）；而 `port.unref()` 又会让纯 await 的脚本
+ * 以 unsettled top-level await 直接退出。`setImmediate` 两者皆无。
+ */
+const isBrowserMessageChannelUsable =
+  typeof window !== 'undefined' && typeof window.MessageChannel === 'function'
+
+let yieldChannel: MessageChannel | null = null
+const yieldWaiters: (() => void)[] = []
+
+function scheduleYield(resolve: () => void): void {
+  if (isBrowserMessageChannelUsable) {
+    if (!yieldChannel) {
+      yieldChannel = new MessageChannel()
+      // 严格一一对应：一次 postMessage 唤醒一个等待者，避免并发让出时互相顶掉
+      yieldChannel.port1.onmessage = () => {
+        const waiter = yieldWaiters.shift()
+        if (waiter) waiter()
+      }
+    }
+    yieldWaiters.push(resolve)
+    yieldChannel.port2.postMessage(null)
+    return
+  }
+  if (typeof setImmediate === 'function') {
+    setImmediate(resolve)
+    return
+  }
+  setTimeout(resolve, 0)
+}
+
 export function yieldToMain(): Promise<void> {
   return new Promise((resolve) => {
-    if (typeof requestAnimationFrame === 'function') {
-      requestAnimationFrame(() => resolve())
-    } else {
-      setTimeout(resolve, 0)
-    }
+    scheduleYield(resolve)
   })
 }
 
