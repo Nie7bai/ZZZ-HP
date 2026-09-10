@@ -63,7 +63,6 @@ import {
   evaluateAffixCounts,
   evaluateAffixCountsForSweep,
   clearAffixEvalCache,
-  findMinCritRollsForOvercap,
   evaluateOptimalEventDetail,
   optimalHitDependsOnMainAffixPanel,
   buildDirectAffixCounts,
@@ -2292,30 +2291,6 @@ function ensureSelectedEvalSnapshot() {
   point.evalSnapshot = evaluateAffixCounts(evalCtx.value, point.affixCounts)
 }
 
-function applyDefaultCrit() {
-  if (!mainAgent.value?.id || sweepDamageKind.value !== 'direct') return
-  const crit = findMinCritRollsForOvercap(evalCtx.value, {
-    flatStat: directAlloc.flatStat,
-    hpFlat: directAlloc.hpFlat,
-    atkPercent: directAlloc.atkPercent,
-    pen: directAlloc.pen,
-    mastery: directAlloc.mastery,
-  })
-  directAlloc.critRate = crit
-  // 保留用户已填的更高总词条，避免每次重算默认暴击把总数打回 crit
-  directAlloc.totalRolls = Math.max(Math.round(directAlloc.totalRolls) || 0, crit)
-  clearBarSelection()
-}
-
-// 调整 4/5/6 号盘主属性时不重置暴击/总词条数，仅在切换角色时重算默认值
-watch(
-  () => [mainAgent.value?.id, isMb.value, isFengYu.value],
-  () => {
-    if (sweepDamageKind.value === 'direct') applyDefaultCrit()
-  },
-  { immediate: true },
-)
-
 watch(
   [isMb, isFengYu],
   ([mb, fengYu], [prevMb, prevFengYu]) => {
@@ -2333,11 +2308,8 @@ watch(
 
 watch(sweepDamageKind, (kind) => {
   clearBarSelection()
-  if (!kind) return
-  if (kind === 'direct') applyDefaultCrit()
-  else {
-    anomalyAlloc.totalRolls = 0
-  }
+  // 不再自动填默认暴击条数：切换伤害模式只清空柱体选中，不动用户已填的分配
+  if (kind === 'anomaly') anomalyAlloc.totalRolls = 0
 })
 
 watch([directPoints, anomalyPoints, sweepDamageKind], syncSelectedBarAfterSweep)
@@ -2483,8 +2455,13 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
       </p>
     </div>
 
-    <!-- ============ 共用：局外 / 局内面板（两个模式共用同一份） ============ -->
-    <div v-if="displayEval" class="panel-layout">
+    <!--
+      ============ 扫掠柱图模式：局外 / 局内面板 ============
+      面板数据来自 displayEval，其取值链是「选中柱体 → 第一个柱体 → 扫掠输入预览」，
+      与词条分配模式的求解结果（affixAllocEval）无关。
+      放在分配模式里会显示成柱体的面板，误导用户，故仅在扫掠柱图模式渲染。
+    -->
+    <div v-if="sectionMode === 'sweep' && displayEval" class="panel-layout">
       <section class="panel-block">
         <header class="panel-block-header">
           <h3>局外面板（初始）</h3>
@@ -2757,7 +2734,6 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
             <label class="field">
               <span>暴击</span>
               <input v-model.lazy.number="directAlloc.critRate" type="number" min="0" step="1" />
-              <small class="hint">默认：局内暴击刚好 &gt; 100%</small>
             </label>
             <label class="field">
               <span>总词条数</span>
@@ -2770,7 +2746,6 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
             </label>
           </div>
           <p v-if="directError" class="err">{{ directError }}</p>
-          <button type="button" class="ghost-btn" @click="applyDefaultCrit">重算默认暴击条数</button>
         </template>
 
         <template v-else>

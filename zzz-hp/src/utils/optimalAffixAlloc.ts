@@ -1816,29 +1816,6 @@ export function evaluateAffixCounts(
   return evaluateAffixCountsWithCacheInfo(ctx, affixCounts, panelDeltas).value
 }
 
-/** 使局内暴击率刚好 > 100% 的最小暴击条数（只算面板，不算事件） */
-export function findMinCritRollsForOvercap(
-  ctx: OptimalEvalContext,
-  baseState: Omit<DirectAllocState, 'critRate' | 'totalRolls'>,
-  maxSearch = DIRECT_CONSTRAINTS.maxTotalRolls,
-): number {
-  const critCap = affixRollCap(ctx.driveDiscMainStats, 'critRate')
-  const limit = Math.min(maxSearch, Number.isFinite(critCap) ? critCap : maxSearch)
-  const panelOnlyCtx: OptimalEvalContext = { ...ctx, hits: undefined }
-  for (let n = 0; n <= limit; n += 1) {
-    const counts = buildDirectAffixCounts(
-      ctx.isMb,
-      { ...baseState, critRate: n, totalRolls: n },
-      0,
-      0,
-      ctx.isFengYu,
-    )
-    const { finalPanel } = evaluateAffixCounts(panelOnlyCtx, counts)
-    if (finalPanel.critRate > 100) return n
-  }
-  return limit
-}
-
 export function sweepDirectDamage(
   ctx: OptimalEvalContext,
   state: DirectAllocState,
