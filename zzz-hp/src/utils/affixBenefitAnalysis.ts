@@ -78,6 +78,15 @@ export interface AffixBenefitInput {
   maxCurveRolls?: number
   /** 曲线最多画多少条（按 +1 档收益率降序） */
   maxCurveSeries?: number
+  /**
+   * 是否同时算逐档收益曲线（默认 true）。
+   *
+   * 为什么可以关掉：曲线只服务「收益曲线」折线图，而该图在分配模式下要等求解
+   * 完成后才渲染（`v-if="affixAllocResult"`）。而曲线占整个收益表评估量的
+   * **85%**（实测 42 招式流程：71 次评估里 60 次是曲线），首屏却完全用不到。
+   * 传 false 时 `series` 返回空数组，需要时再调 `computeAffixBenefitSeries()` 补算。
+   */
+  includeSeries?: boolean
 }
 
 /** 目标口径：流程全部事件加总（有 hits 走事件，无 hits 回落到面板口径总伤） */
@@ -132,18 +141,42 @@ export function computeAffixBenefitTable(input: AffixBenefitInput): AffixBenefit
   }
   rows.sort((a, b) => b.percentDelta - a.percentDelta)
 
-  const series = computeAffixBenefitSeries({
-    ctx,
-    baseCounts,
-    basePanelDeltas,
-    entries,
-    baselineDamage,
-    rankedRows: rows,
+  const series = input.includeSeries === false
+    ? []
+    : computeAffixBenefitSeries({
+        ctx,
+        baseCounts,
+        basePanelDeltas,
+        entries,
+        baselineDamage,
+        rankedRows: rows,
+        maxCurveRolls: Math.max(2, Math.round(input.maxCurveRolls ?? 10)),
+        maxCurveSeries: Math.max(1, Math.round(input.maxCurveSeries ?? 6)),
+      })
+
+  return { baselineDamage, rows, evaluatedCount: entries.length, series }
+}
+
+/**
+ * 补算逐档收益曲线（`computeAffixBenefitTable({ includeSeries: false })` 之后调用）。
+ *
+ * 单独拆出来是为了让首屏只付「基线 + 逐条目 +1 档」的成本（约占 15%），
+ * 把占 85% 的曲线留到用户真的要看折线图时再算。
+ */
+export function computeAffixBenefitSeriesForTable(
+  input: AffixBenefitInput,
+  table: Pick<AffixBenefitTable, 'baselineDamage' | 'rows'>,
+): AffixBenefitSeries[] {
+  return computeAffixBenefitSeries({
+    ctx: input.ctx,
+    baseCounts: input.baseCounts,
+    basePanelDeltas: input.basePanelDeltas,
+    entries: input.entries,
+    baselineDamage: table.baselineDamage,
+    rankedRows: table.rows,
     maxCurveRolls: Math.max(2, Math.round(input.maxCurveRolls ?? 10)),
     maxCurveSeries: Math.max(1, Math.round(input.maxCurveSeries ?? 6)),
   })
-
-  return { baselineDamage, rows, evaluatedCount: entries.length, series }
 }
 
 /**

@@ -63,7 +63,6 @@ import {
   evaluateAffixCounts,
   evaluateAffixCountsForSweep,
   clearAffixEvalCache,
-  findMinCritRollsForOvercap,
   evaluateOptimalEventDetail,
   optimalHitDependsOnMainAffixPanel,
   buildDirectAffixCounts,
@@ -105,7 +104,9 @@ import {
 import { buildGenericPanelSkillContext } from '@/utils/resolvedHit'
 
 import {
+  computeAffixBenefitSeriesForTable,
   computeAffixBenefitTable,
+  type AffixBenefitSeries,
   type AffixBenefitTable as AffixBenefitTableData,
 } from '@/utils/affixBenefitAnalysis'
 import {
@@ -1612,8 +1613,15 @@ const affixAllocWidthMode = ref<AffixCandidateWidthMode>('auto')
 const affixAllocManualWidth = ref(8)
 /** 求解进度（仅求解中刷新） */
 const affixAllocProgress = ref<AffixOptimizerProgress | null>(null)
+/** 进度刷新间隔（毫秒）：求解每个时间片都回调，逐次刷新会拖慢求解本身 */
+const AFFIX_ALLOC_PROGRESS_THROTTLE_MS = 100
+let lastProgressAt = 0
 let affixAllocAbort: AbortController | null = null
 const affixBenefitTable = ref<AffixBenefitTableData | null>(null)
+/** 逐档收益曲线：按需补算（首屏不算），失效时置 null */
+const affixBenefitSeries = ref<AffixBenefitSeries[] | null>(null)
+/** 曲线补算中（首屏不算曲线，切到「收益曲线」时才补） */
+const affixBenefitSeriesLoading = ref(false)
 const affixBenefitLoading = ref(false)
 const affixBenefitStep = ref(1)
 
@@ -1684,19 +1692,48 @@ function runAffixBenefitOnly() {
   if (affixBenefitLoading.value) return
   if (!affixLibraryEntries.value.length) {
     affixBenefitTable.value = null
+    affixBenefitSeries.value = null
     return
   }
   affixBenefitLoading.value = true
   window.setTimeout(() => {
     try {
+      // 只算「基线 + 逐条目 +1 档」：曲线占评估量约 85%，而折线图要等求解完成
+      // 才渲染（见模板 v-if="affixAllocResult"），首屏用不到 → 需要时再补算
       affixBenefitTable.value = computeAffixBenefitTable({
         ctx: evalCtx.value,
         baseCounts: affixAllocBaseCounts.value,
         entries: affixLibraryEntries.value,
         rollsPerStep: affixBenefitStep.value,
+        includeSeries: false,
       })
+      affixBenefitSeries.value = null
     } finally {
       affixBenefitLoading.value = false
+    }
+  }, 0)
+}
+
+/**
+ * 补算逐档收益曲线（用户真的要看折线图时）。
+ * 已算过或正在算则直接返回，避免重复点击反复重算；放到下一个宏任务里算，避免卡住点击。
+ */
+function ensureAffixBenefitSeries() {
+  if (affixBenefitSeries.value || affixBenefitSeriesLoading.value) return
+  const table = affixBenefitTable.value
+  if (!table || !table.rows.length) return
+  const input = {
+    ctx: evalCtx.value,
+    baseCounts: affixAllocBaseCounts.value,
+    entries: affixLibraryEntries.value,
+    rollsPerStep: affixBenefitStep.value,
+  }
+  affixBenefitSeriesLoading.value = true
+  window.setTimeout(() => {
+    try {
+      affixBenefitSeries.value = computeAffixBenefitSeriesForTable(input, table)
+    } finally {
+      affixBenefitSeriesLoading.value = false
     }
   }, 0)
 }
@@ -1725,6 +1762,7 @@ async function runAffixAllocation() {
   affixAllocLoading.value = true
   affixAllocError.value = null
   affixAllocProgress.value = null
+  lastProgressAt = 0
   affixAllocAbort?.abort()
   const controller = new AbortController()
   affixAllocAbort = controller
@@ -1739,7 +1777,14 @@ async function runAffixAllocation() {
       },
       {
         signal: controller.signal,
+        // 进度节流：求解每个时间片都会回调一次（实测 200 次左右），而每次赋值都会
+        // 触发整个组件重渲染 —— 剖析显示仅在求解期间重渲染 + 数字格式化就吃掉约
+        // 11% 的 CPU（formatCalcDecimal/formatNumber 163ms、Vue 重建 ~40ms）。
+        // 进度是给人看的，100ms 一次的刷新率远超人眼需求。
         onProgress: (progress) => {
+          const now = performance.now()
+          if (now - lastProgressAt < AFFIX_ALLOC_PROGRESS_THROTTLE_MS) return
+          lastProgressAt = now
           affixAllocProgress.value = progress
         },
       },
@@ -1775,7 +1820,19 @@ function setAffixBenefitStep(step: number) {
 /** 词条分配模式的收益曲线数据：复用收益表的逐档曲线 */
 const affixAllocCurveMode = ref<'cumulative' | 'marginal'>('cumulative')
 const affixAllocCurveMaxRolls = 10
-const affixAllocCurveData = computed(() => affixBenefitTable.value?.series ?? null)
+/** 曲线数据按需补算：未算过时为 null，模板据此显示「正在准备曲线」而不是空图 */
+const affixAllocCurveData = computed(() => affixBenefitSeries.value)
+
+// 折线图只在「收益曲线」子页签且已有求解结果时渲染；在那之前不必付曲线的计算成本
+watch(
+  [affixAllocDetailTab, affixAllocResult, affixBenefitTable],
+  () => {
+    if (affixAllocDetailTab.value !== 'curve') return
+    if (!affixAllocResult.value) return
+    ensureAffixBenefitSeries()
+  },
+  { immediate: true },
+)
 
 const combinedMainStatRankings = ref<
   {
@@ -2235,30 +2292,6 @@ function ensureSelectedEvalSnapshot() {
   point.evalSnapshot = evaluateAffixCounts(evalCtx.value, point.affixCounts)
 }
 
-function applyDefaultCrit() {
-  if (!mainAgent.value?.id || sweepDamageKind.value !== 'direct') return
-  const crit = findMinCritRollsForOvercap(evalCtx.value, {
-    flatStat: directAlloc.flatStat,
-    hpFlat: directAlloc.hpFlat,
-    atkPercent: directAlloc.atkPercent,
-    pen: directAlloc.pen,
-    mastery: directAlloc.mastery,
-  })
-  directAlloc.critRate = crit
-  // 保留用户已填的更高总词条，避免每次重算默认暴击把总数打回 crit
-  directAlloc.totalRolls = Math.max(Math.round(directAlloc.totalRolls) || 0, crit)
-  clearBarSelection()
-}
-
-// 调整 4/5/6 号盘主属性时不重置暴击/总词条数，仅在切换角色时重算默认值
-watch(
-  () => [mainAgent.value?.id, isMb.value, isFengYu.value],
-  () => {
-    if (sweepDamageKind.value === 'direct') applyDefaultCrit()
-  },
-  { immediate: true },
-)
-
 watch(
   [isMb, isFengYu],
   ([mb, fengYu], [prevMb, prevFengYu]) => {
@@ -2276,11 +2309,8 @@ watch(
 
 watch(sweepDamageKind, (kind) => {
   clearBarSelection()
-  if (!kind) return
-  if (kind === 'direct') applyDefaultCrit()
-  else {
-    anomalyAlloc.totalRolls = 0
-  }
+  // 不再自动填默认暴击条数：切换伤害模式只清空柱体选中，不动用户已填的分配
+  if (kind === 'anomaly') anomalyAlloc.totalRolls = 0
 })
 
 watch([directPoints, anomalyPoints, sweepDamageKind], syncSelectedBarAfterSweep)
@@ -2426,8 +2456,13 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
       </p>
     </div>
 
-    <!-- ============ 共用：局外 / 局内面板（两个模式共用同一份） ============ -->
-    <div v-if="displayEval" class="panel-layout">
+    <!--
+      ============ 扫掠柱图模式：局外 / 局内面板 ============
+      面板数据来自 displayEval，其取值链是「选中柱体 → 第一个柱体 → 扫掠输入预览」，
+      与词条分配模式的求解结果（affixAllocEval）无关。
+      放在分配模式里会显示成柱体的面板，误导用户，故仅在扫掠柱图模式渲染。
+    -->
+    <div v-if="sectionMode === 'sweep' && displayEval" class="panel-layout">
       <section class="panel-block">
         <header class="panel-block-header">
           <h3>局外面板（初始）</h3>
@@ -2608,6 +2643,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
               :max-added="affixAllocCurveMaxRolls"
               hint="逐档真实重算；只画收益率最高的前几条词条"
             />
+            <p v-else-if="affixBenefitSeriesLoading" class="hint">收益曲线计算中…（首屏只算「+1 档」表，曲线按需补算）</p>
             <p v-else class="hint">暂无收益曲线数据。</p>
           </template>
 
@@ -2699,7 +2735,6 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
             <label class="field">
               <span>暴击</span>
               <input v-model.lazy.number="directAlloc.critRate" type="number" min="0" step="1" />
-              <small class="hint">默认：局内暴击刚好 &gt; 100%</small>
             </label>
             <label class="field">
               <span>总词条数</span>
@@ -2712,7 +2747,6 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
             </label>
           </div>
           <p v-if="directError" class="err">{{ directError }}</p>
-          <button type="button" class="ghost-btn" @click="applyDefaultCrit">重算默认暴击条数</button>
         </template>
 
         <template v-else>

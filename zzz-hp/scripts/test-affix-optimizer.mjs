@@ -12,11 +12,13 @@
 import {
   createEmptyAffixCounts,
   createDefaultAffixDriveDiscMainStats,
+  fillPanelStatsDefaults,
 } from '../src/types/calculatorPanel.ts'
 import {
   createEmptyAgentBasePanel,
   createEmptySelfTeamBuffs,
   createEmptyWengineAdvancedStats,
+  createEmptyBuffStatModifiers,
 } from '../src/utils/calculatorUi.ts'
 import {
   createDefaultAffixLibrary,
@@ -35,7 +37,12 @@ import {
   buildOptimalEvalContext,
   clearAffixEvalCache,
   evaluateAffixCounts,
+  optimalHitDependsOnMainAffixPanel,
 } from '../src/utils/optimalAffixAlloc.ts'
+import {
+  buildPanelSourceValuesBySlotMap,
+  invalidateBuffCatalogCache,
+} from '../src/utils/panelBuffCalc.ts'
 
 let failed = 0
 let passed = 0
@@ -95,11 +102,11 @@ const library = createDefaultAffixLibrary()
 const byId = new Map(library.map((e) => [e.id, e]))
 
 /** 造 n 个直伤命中（用于让单次评估的成本随流程规模变化） */
-function makeHits(n) {
+function makeHits(n, ownerAgentId = 'a') {
   const hits = []
   for (let i = 0; i < n; i += 1) {
     hits.push({
-      id: `h${i}`,
+      id: `h${ownerAgentId}_${i}`,
       skill: {
         id: `s${i}`,
         name: `招式${i + 1}`,
@@ -109,7 +116,7 @@ function makeHits(n) {
         subcategoryId: null,
         mult: 300 + i * 10,
       },
-      ownerAgentId: 'a',
+      ownerAgentId,
       anomalyPowerAgentId: null,
       triggerAgentId: null,
       count: 1,
@@ -669,7 +676,416 @@ console.log('\n[15] 角色基础面板变化不得吃到旧缓存')
     `增量 ${lowDelta.toFixed(1)} → ${highDelta.toFixed(1)}`)
 }
 
+// ---------- 16. 跨轮缓存：不随主 C 面板变化的招式 ----------
+console.log('\n[16] 跨轮缓存（不随主 C 面板变化的招式）')
+{
+  // 背景（2026-09-10 实测）：求解器每评估一次，会把全部招式逐个重算面板。
+  // 但只有「持有者/异常强度提供者/触发者 = 主 C」的招式才随词条变；其余在同一套
+  // 配置下结果恒定。此前只有扫掠路径做了这个缓存，求解器没有 —— 实测（42 招式）
+  // 那些恒定招式占单次评估约 60%，等于每次评估都白算一遍。
+  const twoAgentBasePanel = (atk) => ({
+    ...createEmptyAgentBasePanel(),
+    hp: 9000, atk, def: 700, critRate: 5, critDmg: 50,
+    anomalyControl: 100, energyRegen: 120, directDmgMult: 100, anomalyMult: 125,
+  })
+  const makeTwoAgentCtx = (hits) => makeCtx({
+    teamSlots: [
+      { agentId: 'a', wengineId: 'none', twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'none' },
+      { agentId: 'b', wengineId: 'none', twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'none' },
+    ],
+    agents: [
+      { id: 'a', name: '主C', element: '电', profession: '强攻', basePanel: twoAgentBasePanel(900) },
+      { id: 'b', name: '队友', element: '电', profession: '强攻', basePanel: twoAgentBasePanel(600) },
+    ],
+    hits,
+  })
 
+  const mainHits = makeHits(3, 'a')
+  const allyHits = makeHits(3, 'b')
+  // 队友招式：持有者/提供者/触发者都不是主 C → 不随词条变
+  for (const hit of allyHits) {
+    hit.anomalyPowerAgentId = 'b'
+    hit.triggerAgentId = 'b'
+  }
+  const cachedCtx = makeTwoAgentCtx([...mainHits, ...allyHits])
+
+  // 判定函数本身：缓存的边界必须与它一致
+  const mainDepends = mainHits.every((h) => optimalHitDependsOnMainAffixPanel(cachedCtx, h))
+  const allyDepends = allyHits.some((h) => optimalHitDependsOnMainAffixPanel(cachedCtx, h))
+  check('主 C 自己的招式判定为「随词条变」（不进缓存）', mainDepends)
+  check('队友招式判定为「不随词条变」（可跨轮复用）', !allyDepends)
+
+  const countsX = { ...createEmptyAffixCounts(), atkPercent: 10 }
+  const countsY = { ...createEmptyAffixCounts(), critRate: 10 }
+
+  // 基准：每次评估前都清空缓存（强制全量重算）
+  clearAffixEvalCache()
+  const refX = evaluateAffixCounts(cachedCtx, countsX).grandTotal
+  clearAffixEvalCache()
+  const refY = evaluateAffixCounts(cachedCtx, countsY).grandTotal
+
+  // 对照：不清缓存，队友招式走跨轮复用
+  clearAffixEvalCache()
+  const gotX = evaluateAffixCounts(cachedCtx, countsX).grandTotal
+  const gotY = evaluateAffixCounts(cachedCtx, countsY).grandTotal
+
+  console.log(`    清缓存 X=${refX.toFixed(3)} Y=${refY.toFixed(3)}｜走缓存 X=${gotX.toFixed(3)} Y=${gotY.toFixed(3)}`)
+  check('走跨轮缓存的结果与全量重算一致（X）', Math.abs(gotX - refX) < 1e-9, `${gotX} vs ${refX}`)
+  check('走跨轮缓存的结果与全量重算一致（Y）', Math.abs(gotY - refY) < 1e-9, `${gotY} vs ${refY}`)
+  check('两次评估的档数分配确实不同（否则本用例是空转）', Math.abs(refX - refY) > 1e-9,
+    `X=${refX.toFixed(3)} vs Y=${refY.toFixed(3)}`)
+
+  // 缓存确实省了计算：大量队友招式 + 少量主 C 招式时，第二轮应显著更快
+  const manyAllyHits = makeHits(400, 'b')
+  for (const hit of manyAllyHits) {
+    hit.anomalyPowerAgentId = 'b'
+    hit.triggerAgentId = 'b'
+  }
+  const perfCtx = makeTwoAgentCtx([...makeHits(4, 'a'), ...manyAllyHits])
+
+  clearAffixEvalCache()
+  const t0 = performance.now()
+  evaluateAffixCounts(perfCtx, countsX)
+  const coldMs = performance.now() - t0
+
+  const t1 = performance.now()
+  evaluateAffixCounts(perfCtx, countsY)
+  const warmMs = performance.now() - t1
+
+  console.log(`    ${manyAllyHits.length + 4} 招式：首轮 ${coldMs.toFixed(2)}ms → 次轮 ${warmMs.toFixed(2)}ms（比值 ${(coldMs / warmMs).toFixed(1)}x）`)
+  check('队友招式走缓存后，次轮评估显著快于首轮（≥2x）', coldMs / warmMs >= 2,
+    `${coldMs.toFixed(2)}ms → ${warmMs.toFixed(2)}ms`)
+}
+
+// ---------- 17. 队友数据变化必须让缓存失效 ----------
+console.log('\n[17] 队友数据变化必须让缓存失效（上下文签名覆盖队伍）')
+{
+  // 缺陷与实测（2026-09-10 用真实方案复现）：引擎会读队友数据
+  // （collectTeamDriveDiscMods 遍历全部槽位、collectAllBuffEffects 取全队效果、
+  // 事件按 ownerAgentId 反查角色文档），但签名只覆盖主 C → 只改队友时缓存不失效。
+  // 实测：队友音擎 Electro_Lip_Gloss → Identity_Base，
+  //   不手动清缓存 61863011 → 61863011（错）；每次清缓存 61863011 → 58285182（对）。
+  const wengineDoc = (id, externalAtkPercent) => ({
+    id,
+    name: id,
+    profession: '强攻',
+    rarity: 'S',
+    avatar_image: null,
+    note: '',
+    baseAtk: 594,
+    advancedStats: { ...createEmptyWengineAdvancedStats(), externalAtkPercent },
+    fixedBuffs: {},
+    refinementBuffs: [],
+  })
+
+  const basePanel = (atk) => ({
+    ...createEmptyAgentBasePanel(),
+    hp: 9000, atk, def: 700, critRate: 5, critDmg: 50,
+    anomalyControl: 100, energyRegen: 120, directDmgMult: 100, anomalyMult: 125,
+  })
+
+  const buildCtx = (allyWengineId) =>
+    makeCtx({
+      teamSlots: [
+        { agentId: 'a', wengineId: 'none', twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'none' },
+        { agentId: 'b', wengineId: allyWengineId, twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'none' },
+      ],
+      agents: [
+        { id: 'a', name: '主C', element: '电', profession: '强攻', basePanel: basePanel(900) },
+        { id: 'b', name: '队友', element: '电', profession: '强攻', basePanel: basePanel(600) },
+      ],
+      wengines: [wengineDoc('we-low', 10), wengineDoc('we-high', 50)],
+      hits: (() => {
+        const ally = makeHits(2, 'b')
+        for (const hit of ally) {
+          hit.anomalyPowerAgentId = 'b'
+          hit.triggerAgentId = 'b'
+        }
+        return [...makeHits(1, 'a'), ...ally]
+      })(),
+    })
+
+  const counts = { ...createEmptyAffixCounts(), atkPercent: 15 }
+  const ctxLow = buildCtx('we-low')
+  const ctxHigh = buildCtx('we-high')
+
+  // 连续调用，中间不清缓存：签名若漏队友，第二次会拿到第一次的旧值
+  clearAffixEvalCache()
+  const lowCached = evaluateAffixCounts(ctxLow, counts).grandTotal
+  const highCached = evaluateAffixCounts(ctxHigh, counts).grandTotal
+
+  // 每次清缓存（基准真值）
+  clearAffixEvalCache()
+  const lowTruth = evaluateAffixCounts(ctxLow, counts).grandTotal
+  clearAffixEvalCache()
+  const highTruth = evaluateAffixCounts(ctxHigh, counts).grandTotal
+
+  console.log(`    低加成音擎 ${lowTruth.toFixed(0)}／高加成音擎 ${highTruth.toFixed(0)}（基准真值）`)
+  console.log(`    不手动清缓存：低 ${lowCached.toFixed(0)}／高 ${highCached.toFixed(0)}`)
+
+  check('换队友音擎确实改变结果（否则本用例无意义）',
+    Math.abs(highTruth - lowTruth) > 1e-6, `${lowTruth.toFixed(0)} vs ${highTruth.toFixed(0)}`)
+  check('不清缓存也能读到换队友音擎后的新值（签名覆盖队伍数据）',
+    Math.abs(highCached - highTruth) < 1e-6,
+    `缓存值 ${highCached.toFixed(0)} vs 真值 ${highTruth.toFixed(0)}`)
+}
+
+// ---------- 18. 就地修改队伍数组（真实 UI 形态）必须可见 ----------
+console.log('\n[18] 就地修改同一个 teamSlots 数组（真实 UI 形态）后，结果必须跟着变')
+{
+  // 为什么必须单测「就地修改」这个形态：
+  // 真实页面里 `DamageCalcPage.vue` 的 teamSlots 是 `reactive()` 数组，全生命周期
+  // 只有一个实例，换人/换音擎/改影画全是**就地赋值**；而 buildOptimalEvalContext 里的
+  // deepUnwrapReactive 用的是 toRaw，**不改变数组身份**。因此任何「按键对象身份记忆化」
+  // 的缓存（例如 2026-09-10 曾短暂引入的 teamSlotsKeyCache）都会把槽位键冻结在首次计算时。
+  // 其它用例都传内联数组字面量（每次都是新对象），抓不到这类缺陷。
+  //
+  // 改动项必须是**只经 buff 目录生效**的数据：队友音擎/影画里，
+  // 基础攻击、局外加成那部分由 buildPanelSourceValuesForSlot 直接读 slot 计算，
+  // 就算目录键被冻结也照样会变 —— 用它测不出冻结。这里改用队友的 **4 件套**
+  // （collectSlotDriveDiscEffects 对非主 C 只取 team 级效果，完全走 buff 目录）。
+  //
+  // 实测记录（scripts/probe-inplace-team-mutation.mjs，真实方案 scheme-dan）：
+  //   队友影画 0→6：真值 62114191 → 71083794，被冻结时 62114191 → 62114191（错）
+  //   队友 4 件套： 真值 58731561 → 58891841，被冻结时 58731561 → 58731561（错）
+  const basePanel = (atk) => ({
+    ...createEmptyAgentBasePanel(),
+    hp: 9000, atk, def: 700, critRate: 5, critDmg: 50,
+    anomalyControl: 100, energyRegen: 120, directDmgMult: 100, anomalyMult: 125,
+  })
+  /** 只带「4 件套：全队攻击 +N」的驱动盘文档 */
+  const driveDiscDoc = (id, teamAtkFlat) => ({
+    id,
+    name: id,
+    avatar_image: null,
+    twoPieceNote: '',
+    fourPieceNote: '',
+    twoPieceEffects: [],
+    twoPieceMods: createEmptyBuffStatModifiers(),
+    fourPieceBuffs: {
+      effectBlocks: [],
+      effects: [
+        {
+          id: `${id}-atk`,
+          kind: 'fixed',
+          stat: 'atk',
+          value: teamAtkFlat,
+          scope: 'general',
+          applyTarget: 'team',
+          enabledDefault: true,
+        },
+      ],
+    },
+  })
+
+  // ★ 稳定数组：两次评估共用同一个对象，第二次评估前就地改内容
+  const stableTeamSlots = [
+    { agentId: 'a', wengineId: 'none', twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'none' },
+    { agentId: 'b', wengineId: 'none', twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'disc-low' },
+  ]
+  const stableAgents = [
+    { id: 'a', name: '主C', element: '电', profession: '强攻', basePanel: basePanel(900) },
+    { id: 'b', name: '队友', element: '电', profession: '强攻', basePanel: basePanel(600) },
+  ]
+  const overrides = {
+    teamSlots: stableTeamSlots,
+    agents: stableAgents,
+    driveDiscs: [driveDiscDoc('disc-low', 50), driveDiscDoc('disc-high', 200)],
+    hits: makeHits(1, 'a'),
+  }
+
+  const counts = { ...createEmptyAffixCounts(), atkPercent: 15 }
+
+  // 真值：每次都重新装配（等价于「刷新页面后重算」）
+  const truthLow = (() => {
+    invalidateBuffCatalogCache()
+    clearAffixEvalCache()
+    return evaluateAffixCounts(makeCtx(overrides), counts).grandTotal
+  })()
+
+  // 预热：让缓存在「队友 4 件套 = disc-low」的状态下建立
+  invalidateBuffCatalogCache()
+  clearAffixEvalCache()
+  const beforeMutate = evaluateAffixCounts(makeCtx(overrides), counts).grandTotal
+
+  // ★ 就地改队友 4 件套（不换数组、不手动清任何缓存）
+  stableTeamSlots[1].fourPieceDriveDiscId = 'disc-high'
+  const afterMutate = evaluateAffixCounts(makeCtx(overrides), counts).grandTotal
+
+  const truthHigh = (() => {
+    invalidateBuffCatalogCache()
+    clearAffixEvalCache()
+    return evaluateAffixCounts(makeCtx(overrides), counts).grandTotal
+  })()
+
+  console.log(`    就地改队友 4 件套：${beforeMutate.toFixed(0)} → ${afterMutate.toFixed(0)}`)
+  console.log(`    真值（每次重装）：${truthLow.toFixed(0)} → ${truthHigh.toFixed(0)}`)
+
+  check('就地改队友 4 件套确实改变结果（否则本用例无意义）',
+    Math.abs(truthHigh - truthLow) > 1e-6, `${truthLow.toFixed(0)} vs ${truthHigh.toFixed(0)}`)
+  check('就地改队友 4 件套后结果跟着变（槽位键未被按数组身份冻结）',
+    Math.abs(afterMutate - beforeMutate) > 1e-6,
+    `改后 ${afterMutate.toFixed(0)} vs 改前 ${beforeMutate.toFixed(0)}`)
+  check('就地改后的值与真值一致',
+    Math.abs(afterMutate - truthHigh) < 1e-6,
+    `就地 ${afterMutate.toFixed(0)} vs 真值 ${truthHigh.toFixed(0)}`)
+}
+
+// ---------- 19. 邦布精炼变化必须让结果失效 ----------
+console.log('\n[19] 只改邦布精炼（其余不动）必须改变结果、且不吃旧缓存')
+{
+  // 缺陷与依据：ctx.panelContext.bangboo 是邦布文档，精炼只决定取 refinementEffects 的第几组，
+  // 不体现在文档内容里；若签名漏掉 bangbooRefine，只改精炼时结果会停在旧值。
+  const bangboo = {
+    id: 'test-bangboo',
+    name: '测试邦布',
+    avatar_image: null,
+    effects: [],
+    effectBlocks: [],
+    // 精1 全队攻击 +50；精5 全队攻击 +200（差值足够明显）
+    refinementEffects: [
+      [{ id: 'bb-r1', kind: 'fixed', stat: 'atk', value: 50, scope: 'general', applyTarget: 'team', enabledDefault: true }],
+      [], [], [],
+      [{ id: 'bb-r5', kind: 'fixed', stat: 'atk', value: 200, scope: 'general', applyTarget: 'team', enabledDefault: true }],
+    ],
+    refinementEffectBlocks: [[], [], [], [], []],
+  }
+  const hits = makeHits(1, 'a')
+  const overrides = { bangboo, hits }
+
+  const counts = { ...createEmptyAffixCounts(), atkPercent: 15 }
+
+  // 精炼 1（建立缓存）
+  clearAffixEvalCache()
+  invalidateBuffCatalogCache()
+  const refined1 = evaluateAffixCounts(makeCtx({ ...overrides, bangbooRefine: 1 }), counts).grandTotal
+
+  // 只改精炼 → 3（★ 不手动清任何缓存）
+  const refined5 = evaluateAffixCounts(makeCtx({ ...overrides, bangbooRefine: 5 }), counts).grandTotal
+
+  // 真值
+  clearAffixEvalCache()
+  invalidateBuffCatalogCache()
+  const truth1 = evaluateAffixCounts(makeCtx({ ...overrides, bangbooRefine: 1 }), counts).grandTotal
+  clearAffixEvalCache()
+  invalidateBuffCatalogCache()
+  const truth5 = evaluateAffixCounts(makeCtx({ ...overrides, bangbooRefine: 5 }), counts).grandTotal
+
+  console.log(`    精1 ${truth1.toFixed(0)}／精5 ${truth5.toFixed(0)}（基准真值）`)
+  console.log(`    不清缓存：精1 ${refined1.toFixed(0)}／精5 ${refined5.toFixed(0)}`)
+
+  check('改邦布精炼确实改变结果（否则本用例无意义）',
+    Math.abs(truth5 - truth1) > 1e-6, `${truth1.toFixed(0)} vs ${truth5.toFixed(0)}`)
+  check('不清缓存也能读到新精炼的结果（签名覆盖 bangbooRefine）',
+    Math.abs(refined5 - truth5) < 1e-6,
+    `缓存值 ${refined5.toFixed(0)} vs 真值 ${truth5.toFixed(0)}`)
+}
+
+// ---------- 20. 惰性源值地图不得自递归 ----------
+console.log('\n[20] 惰性源值地图：闭包 ctx 自带同一张地图时不得自递归')
+{
+  // 背景（2026-09-10 核对时发现并用本用例复现）：
+  // `buildPanelSourceValuesForSlot` 内部要建 `slotCtx = {...ctx, mainSlotIndex: slotIndex, skipConvert: true}`，
+  // 再调 `collectPanelBuffMods(slotCtx)`。若 ctx 里带着按槽位惰性求值的源值地图，
+  // 那么「计算槽位 X 的源值」的过程中会有多处 **eager** 读 `map.get(X)`：
+  //   - `resolvePackMods` 的 `.has(slotIndex)/.get(slotIndex)`
+  //   - 邦布分支与 `resolvePackEffectMods` 的 `.get(ctx.mainSlotIndex)`
+  // 而读的正是「正在计算中的那个槽位」→ 再次触发该槽位计算 → 无限递归。
+  // 实测：修复前 830 层后 `RangeError: Maximum call stack size exceeded`。
+  // 修复：在 `slotCtx` 里显式 `panelSourceValuesBySlot: undefined`（该调用 skipConvert 恒为 true，
+  // 转模效果整段被跳过，源值不可能被消费，故切断引用零成本）。
+  //
+  // 本用例刻意构造「地图的闭包 ctx 反过来带它自己」这一自引用形态：
+  //   - 未修复时：这里会抛 RangeError → 用例失败（已实测）；
+  //   - 已修复时：正常返回源值（已实测）。
+  // 当前调用方不会产生自引用形态，本用例是结构性防护，防止将来某次「就地回填 ctx」
+  // 把这条路径变成真的栈溢出 —— 那种故障在浏览器里只表现为页面卡死，极难定位。
+  const teamAtk = (id, value) => ({
+    id, kind: 'fixed', stat: 'atk', value,
+    scope: 'general', applyTarget: 'team', enabledDefault: true,
+  })
+  const externalPanel = fillPanelStatsDefaults({})
+  const mkAgent = (id) => ({
+    id,
+    name: id,
+    element: '电',
+    profession: '强攻',
+    basePanel: createEmptyAgentBasePanel(),
+    mindscapeBuffs: [
+      { effectBlocks: [{ id: 'blk-1', name: '影画1', note: '', effects: [teamAtk(`${id}-ms`, 20)] }], effects: [] },
+    ],
+  })
+  const mkDisc = (id, value) => ({
+    id,
+    name: id,
+    avatar_image: null,
+    twoPieceNote: '',
+    fourPieceNote: '',
+    twoPieceEffects: [],
+    twoPieceMods: createEmptyBuffStatModifiers(),
+    fourPieceBuffs: {
+      effectBlocks: [{ id: 'blk-4', name: '4件套', note: '', effects: [teamAtk(`${id}-4pc`, value)] }],
+      effects: [teamAtk(`${id}-4pc`, value)],
+    },
+  })
+
+  const holder = {
+    teamSlots: [
+      { agentId: 'a', rank: 0, wengineId: 'none', wengineRefine: 1, twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'dd-1' },
+      { agentId: 'b', rank: 0, wengineId: 'none', wengineRefine: 1, twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'none' },
+    ],
+    agents: [mkAgent('a'), mkAgent('b')],
+    wengines: [],
+    // 邦布用真实 id（不是 'none'）：邦布分支正是会 eager 读地图的那条路径
+    bangboo: {
+      id: 'bb-1',
+      name: '测试邦布',
+      avatar_image: null,
+      effects: [],
+      effectBlocks: [{ id: 'bb-blk', name: '固定', note: '', effects: [teamAtk('bb-fixed', 25)] }],
+      refinementEffects: [[], [], [], [], []],
+      refinementEffectBlocks: [[], [], [], [], []],
+    },
+    bangbooRefine: 1,
+    mainSlotIndex: 0,
+    driveDiscs: [mkDisc('dd-1', 60)],
+    extraMods: createEmptyBuffStatModifiers(),
+    skipConvert: false,
+  }
+
+  // ★ 自引用：先建地图，再把这张地图回填进它自己的闭包 ctx
+  const selfMap = buildPanelSourceValuesBySlotMap(holder, externalPanel)
+  holder.panelSourceValuesBySlot = selfMap
+
+  invalidateBuffCatalogCache() // 强制内部走「建源 → 解析每个 pack」
+
+  let resolved = null
+  let thrown = null
+  try {
+    resolved = selfMap.get(0)
+  } catch (error) {
+    thrown = error
+  }
+
+  console.log(`    自引用形态下 get(0)：${thrown ? `抛错 ${thrown.name}` : '正常返回'}`)
+  check('闭包 ctx 自带同一张地图时，按槽位取源值不得自递归',
+    !thrown, thrown ? String(thrown.message).slice(0, 80) : 'ok')
+  check('取到的源值结构完整',
+    !!resolved && !!resolved.external && !!resolved.final,
+    resolved ? `external=${!!resolved.external} final=${!!resolved.final}` : 'null')
+
+  // 再次取值应为同一对象（记忆化）；同样要防住未修复时的递归，否则整进程会被未捕获异常干掉
+  let second = null
+  let secondThrown = null
+  try {
+    second = selfMap.get(0)
+  } catch (error) {
+    secondThrown = error
+  }
+  check('同一地图重复取同一槽位返回同一对象（记忆化生效）',
+    !secondThrown && second === resolved,
+    secondThrown ? `抛错 ${secondThrown.name}` : `same=${second === resolved}`)
+}
 
 console.log(`\n结果：${passed} passed, ${failed} failed`)
 if (failed > 0) process.exit(1)

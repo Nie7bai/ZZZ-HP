@@ -54,6 +54,7 @@ import {
   type ResolvedHit,
 } from '@/utils/resolvedHit'
 import { mergeExtraModsForEvent } from '@/utils/extraBuffCalc'
+import { deepUnwrapReactive } from '@/utils/reactiveUnwrap'
 import {
   computeMutationZone,
   findLuminousAgentInTeam,
@@ -77,7 +78,7 @@ import {
   type PanelCalcContext,
   resolveBuffSelectionForSlot,
   panelToConvertAttrValues,
-  buildPanelSourceValuesBySlotRecord,
+  buildPanelSourceValuesBySlotMap,
 } from '@/utils/panelBuffCalc'
 import { formatAnomalyFormulaAgentLabel } from '@/utils/anomalyFormulaDisplay'
 
@@ -640,13 +641,10 @@ function buildPanelContextForSlot(
       : ctx.panelContext.buffSelection,
     attrValues: panelToConvertAttrValues(externalForSlot, { level, pierceMod: 0 }),
   }
-  const panelSourceValuesRecord = buildPanelSourceValuesBySlotRecord(base, externalForSlot)
-  const panelSourceValuesBySlot = new Map(
-    Object.entries(panelSourceValuesRecord).map(([key, value]) => [Number(key), value]),
-  )
+  const panelSourceValuesBySlot = buildPanelSourceValuesBySlotMap(base, externalForSlot)
   return {
     ...base,
-    panelSourceValues: panelSourceValuesRecord[slotIndex],
+    panelSourceValues: panelSourceValuesBySlot.get(slotIndex),
     panelSourceValuesBySlot,
   }
 }
@@ -1244,6 +1242,29 @@ function evaluateOptimalDamageEvent(
   }
 }
 
+/**
+ * 取一条招式的伤害明细；「不随主 C 面板变化」的招式按 `hit.id` 跨轮复用。
+ *
+ * 判据是 `optimalHitDependsOnMainAffixPanel()`（拿不准时返回 true，即不缓存）。
+ * 调用方（求解器每评估一次、扫掠每个点）都会重复问同样这些招式，而这类招式的
+ * 结果在同一套配置下与主 C 词条无关，重算纯属浪费。
+ */
+function resolveEventLine(
+  ctx: OptimalEvalContext,
+  external: PanelStats,
+  hit: ResolvedHit,
+): OptimalEventDamageLine | null {
+  if (optimalHitDependsOnMainAffixPanel(ctx, hit)) {
+    return evaluateOptimalDamageEvent(ctx, external, hit)
+  }
+  if (!stableEventLinesByHitId) stableEventLinesByHitId = new Map()
+  const cached = stableEventLinesByHitId.get(hit.id)
+  if (cached) return cached
+  const line = evaluateOptimalDamageEvent(ctx, external, hit)
+  if (line) stableEventLinesByHitId.set(hit.id, line)
+  return line
+}
+
 function computeEventDamageLines(
   ctx: OptimalEvalContext,
   external: PanelStats,
@@ -1264,7 +1285,7 @@ function computeEventDamageLines(
   let firstBreakdown: OptimalPanelBreakdown | null = null
 
   for (const hit of hits) {
-    const line = evaluateOptimalDamageEvent(ctx, external, hit)
+    const line = resolveEventLine(ctx, external, hit)
     if (!line) continue
     eventLines.push(line)
     grandTotal += line.total
@@ -1319,23 +1340,10 @@ function computeEventDamageLinesForSweep(
   const hits = ctx.hits ?? []
   if (!hits.length) return { grandTotal: 0, eventLines: [] }
 
-  if (!sweepStableEventLines) sweepStableEventLines = new Map()
-
   let grandTotal = 0
   const eventLines: OptimalEventDamageLine[] = []
   for (const hit of hits) {
-    let line: OptimalEventDamageLine | null
-    if (!optimalHitDependsOnMainAffixPanel(ctx, hit)) {
-      const cached = sweepStableEventLines.get(hit.id)
-      if (cached) {
-        line = cached
-      } else {
-        line = evaluateOptimalDamageEvent(ctx, external, hit)
-        if (line) sweepStableEventLines.set(hit.id, line)
-      }
-    } else {
-      line = evaluateOptimalDamageEvent(ctx, external, hit)
-    }
+    const line = resolveEventLine(ctx, external, hit)
     if (!line) continue
     eventLines.push(line)
     grandTotal += line.total
@@ -1542,11 +1550,56 @@ function computeAffixEvalContextSignature(ctx: OptimalEvalContext): string {
     events,
     serializeMultiSlotBuffSelection(ctx.slotBuffSelections),
     ctx.triggerAnomalyAgentId ?? '',
+    /**
+     * 队伍级数据必须入签名。
+     *
+     * 缺陷与实测（2026-09-09 起就有、2026-09-10 用真实方案复现）：引擎会读队友数据
+     * （`collectTeamDriveDiscMods` 遍历全部槽位、`collectAllBuffEffects` 取全队效果、
+     * 事件按 `ownerAgentId/anomalyPowerAgentId` 反查角色文档），但签名只覆盖主 C。
+     * 于是**只改队友、不动主 C** 时签名不变 → 缓存不失效 → 结果停在旧值。
+     *
+     * 实测（真实方案，把 1 号队友的音擎从 Electro_Lip_Gloss 换成 Identity_Base）：
+     * - 不手动清缓存：61863011 → **61863011**（错，两次一样）
+     * - 每次手动清缓存：61863011 → **58285182**（对，确实应该变）
+     *
+     * 收进来的内容：槽位配置、全量角色/音擎/驱动盘文档、邦布、页级选择态。
+     * 这几份 JSON 串合计 8~12ms，而签名按 ctx 对象身份记忆化（`affixCtxSignatureCache`），
+     * 同一份 ctx 只算一次 —— 求解 200 次评估共用，摊薄后可忽略。
+     */
+    JSON.stringify(ctx.panelContext.teamSlots ?? []),
+    JSON.stringify(ctx.panelContext.agents ?? []),
+    JSON.stringify(ctx.panelContext.wengines ?? []),
+    JSON.stringify(ctx.panelContext.driveDiscs ?? []),
+    JSON.stringify(ctx.panelContext.bangboo ?? null),
+    /**
+     * 邦布精炼**必须单独入签名**：`ctx.panelContext.bangboo` 是邦布文档本身，
+     * 精炼只决定「取 refinementEffects 的第几组」，不体现在文档内容里。
+     *
+     * 缺陷与依据（2026-09-10，审计同类缺口时发现）：`panelBuffCalc.ts` 的
+     * `clampRefine(ctx.bangbooRefine) - 1` 用它选精炼效果块；而
+     * `zzz-hp-backend/scripts/data/zzz-hp-calculator-buffs.json` 里同一邦布不同精炼
+     * 效果确实不同（snap：精1 全队 dmgBonus 6.8 → 精5 10；biggest_fan：精1 atk 50 → 精5 100）。
+     * 只改精炼而签名不变，就会沿用旧精炼的结果。
+     */
+    ctx.panelContext.bangbooRefine ?? 1,
+    JSON.stringify(ctx.panelContext.buffSelection ?? null),
+    JSON.stringify(ctx.panelContext.extraMods ?? null),
+    ctx.panelContext.liveExternalSlotIndex ?? '',
   ].join('|')
 }
 
 let affixExternalFixedParts: AffixExternalFixedParts | null = null
-let sweepStableEventLines: Map<string, OptimalEventDamageLine> | null = null
+
+/**
+ * 「不随主 C 面板变化的招式」的伤害明细缓存（按 hit.id）。
+ *
+ * 判定见 `optimalHitDependsOnMainAffixPanel()`：持有者 / 异常强度提供者 / 触发者
+ * 都不是主 C，且队伍里没有主 C 的转模作用于全队时，该招式的伤害在同一套配置下
+ * 与主 C 词条无关。早期只有扫掠路径这样缓存，求解器路径没有，于是求解器每评估
+ * 一次就把这些招式全部重算一遍 —— 实测（42 招式）占单次评估约 60%。
+ * 上下文签名变化时由 `resetAffixEvalCacheIfNeeded()` 统一清空，与其它缓存同生命周期。
+ */
+let stableEventLinesByHitId: Map<string, OptimalEventDamageLine> | null = null
 
 function resetAffixEvalCacheIfNeeded(ctx: OptimalEvalContext) {
   const sig = affixEvalContextSignature(ctx)
@@ -1554,7 +1607,7 @@ function resetAffixEvalCacheIfNeeded(ctx: OptimalEvalContext) {
     affixEvalCache.clear()
     affixSweepCache.clear()
     affixExternalFixedParts = null
-    sweepStableEventLines = null
+    stableEventLinesByHitId = null
     mainAgentTeamConvertReadsPanelCached = null
     affixEvalCacheCtxSig = sig
   }
@@ -1564,7 +1617,7 @@ export function clearAffixEvalCache() {
   affixEvalCache.clear()
   affixSweepCache.clear()
   affixExternalFixedParts = null
-  sweepStableEventLines = null
+  stableEventLinesByHitId = null
   mainAgentTeamConvertReadsPanelCached = null
   affixEvalCacheCtxSig = ''
 }
@@ -1763,29 +1816,6 @@ export function evaluateAffixCounts(
   panelDeltas?: AffixPanelDeltaMap,
 ): AffixCountsEvalResult {
   return evaluateAffixCountsWithCacheInfo(ctx, affixCounts, panelDeltas).value
-}
-
-/** 使局内暴击率刚好 > 100% 的最小暴击条数（只算面板，不算事件） */
-export function findMinCritRollsForOvercap(
-  ctx: OptimalEvalContext,
-  baseState: Omit<DirectAllocState, 'critRate' | 'totalRolls'>,
-  maxSearch = DIRECT_CONSTRAINTS.maxTotalRolls,
-): number {
-  const critCap = affixRollCap(ctx.driveDiscMainStats, 'critRate')
-  const limit = Math.min(maxSearch, Number.isFinite(critCap) ? critCap : maxSearch)
-  const panelOnlyCtx: OptimalEvalContext = { ...ctx, hits: undefined }
-  for (let n = 0; n <= limit; n += 1) {
-    const counts = buildDirectAffixCounts(
-      ctx.isMb,
-      { ...baseState, critRate: n, totalRolls: n },
-      0,
-      0,
-      ctx.isFengYu,
-    )
-    const { finalPanel } = evaluateAffixCounts(panelOnlyCtx, counts)
-    if (finalPanel.critRate > 100) return n
-  }
-  return limit
 }
 
 export function sweepDirectDamage(
@@ -2475,6 +2505,11 @@ export function buildOptimalEvalContext(input: {
   followUpSkillRules?: import('@/types/calculator').FollowUpSkillRule[]
   environmentBuffs?: import('@/utils/environmentBuffCalc').EnvironmentBuffEntry[]
 }): OptimalEvalContext {
+  // 深解包响应式代理：引擎会对这批数据做海量属性读取，走 Proxy 陷阱会慢 3 倍以上
+  // （实测 16.4ms → 5.3ms/次评估，见 reactiveUnwrap.ts）。只换引用不改值，
+  // 写入仍走响应式链路，因此不会造成「面板改了但计算不更新」。
+  deepUnwrapReactive(input)
+
   const mainSlot = input.teamSlots[input.mainSlotIndex]!
   const mainAgent = input.agents.find((a) => a.id === mainSlot.agentId)
   const mainWengine =
