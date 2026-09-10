@@ -51,6 +51,14 @@ export interface DamageCalcPanelSnapshot {
     string,
     { affixCounts: AffixCounts; affixDriveDiscMainStats: AffixDriveDiscMainStats }
   >
+  /**
+   * 每人一份五大类技能等级（面板导入配置；缺省全 12）。
+   * 仅影响 nanoka 导入直伤招式的有效倍率。
+   */
+  skillTalentLevelsByAgent?: Record<
+    string,
+    import('@/utils/skillTalentLevels').SkillTalentLevels
+  >
   extraMods: BuffStatModifiers
   /** 额外 Buff 增益条目（优先于扁平 extraMods） */
   extraGains?: Array<{

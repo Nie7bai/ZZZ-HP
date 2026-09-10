@@ -54,6 +54,27 @@ async function ensureTable() {
   } catch {
     // column may already exist
   }
+  try {
+    await pool.query(
+      `ALTER TABLE calculator_skills ADD COLUMN mult_source VARCHAR(16) NULL AFTER note`,
+    )
+  } catch {
+    // column may already exist
+  }
+  try {
+    await pool.query(
+      `ALTER TABLE calculator_skills ADD COLUMN damage_percentage DOUBLE NULL AFTER mult_source`,
+    )
+  } catch {
+    // column may already exist
+  }
+  try {
+    await pool.query(
+      `ALTER TABLE calculator_skills ADD COLUMN damage_percentage_growth DOUBLE NULL AFTER damage_percentage`,
+    )
+  } catch {
+    // column may already exist
+  }
   await ensurePublicAnomalySkills()
   ensured = true
 }
@@ -95,6 +116,15 @@ function parseSkillTypes(raw) {
 }
 
 function rowToDoc(row) {
+  const multSource = String(row.mult_source ?? '').trim() === 'nanoka' ? 'nanoka' : null
+  const damagePercentage =
+    row.damage_percentage == null || row.damage_percentage === ''
+      ? undefined
+      : readNumber(row.damage_percentage, NaN)
+  const damagePercentageGrowth =
+    row.damage_percentage_growth == null || row.damage_percentage_growth === ''
+      ? undefined
+      : readNumber(row.damage_percentage_growth, NaN)
   return {
     id: String(row.id),
     agentId: String(row.agent_id ?? ''),
@@ -109,6 +139,9 @@ function rowToDoc(row) {
     baseMult: readNumber(row.base_mult, 0),
     baseMultFactor: readNumber(row.base_mult_factor, 100),
     settlementMult: readNumber(row.settlement_mult, 0),
+    multSource,
+    ...(Number.isFinite(damagePercentage) ? { damagePercentage } : {}),
+    ...(Number.isFinite(damagePercentageGrowth) ? { damagePercentageGrowth } : {}),
     element: String(row.element ?? ''),
     ownerGroupId:
       row.owner_group_id == null || row.owner_group_id === ''
@@ -144,6 +177,19 @@ export async function upsertSkill(doc) {
       ? null
       : String(doc.ownerGroupId).trim()
   const note = String(doc.note ?? '').trim()
+  const multSource = String(doc.multSource ?? '').trim() === 'nanoka' ? 'nanoka' : null
+  const damagePercentage =
+    doc.damagePercentage == null || doc.damagePercentage === ''
+      ? null
+      : readNumber(doc.damagePercentage, NaN)
+  const damagePercentageGrowth =
+    doc.damagePercentageGrowth == null || doc.damagePercentageGrowth === ''
+      ? null
+      : readNumber(doc.damagePercentageGrowth, NaN)
+  const damagePercentageValue = Number.isFinite(damagePercentage) ? damagePercentage : null
+  const damagePercentageGrowthValue = Number.isFinite(damagePercentageGrowth)
+    ? damagePercentageGrowth
+    : null
 
   if (!name) throw new Error('招式名称为必填项')
   if (!damageType) throw new Error('伤害类型为必填项')
@@ -156,8 +202,9 @@ export async function upsertSkill(doc) {
   await pool.query(
     `INSERT INTO calculator_skills
       (id, agent_id, name, damage_type, skill_types, buff_anchor_id,
-       base_mult, base_mult_factor, settlement_mult, sort_order, element, owner_group_id, note)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+       base_mult, base_mult_factor, settlement_mult, sort_order, element, owner_group_id, note,
+       mult_source, damage_percentage, damage_percentage_growth)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        agent_id = VALUES(agent_id),
        name = VALUES(name),
@@ -169,7 +216,10 @@ export async function upsertSkill(doc) {
        settlement_mult = VALUES(settlement_mult),
        element = VALUES(element),
        owner_group_id = VALUES(owner_group_id),
-       note = VALUES(note)`,
+       note = VALUES(note),
+       mult_source = VALUES(mult_source),
+       damage_percentage = VALUES(damage_percentage),
+       damage_percentage_growth = VALUES(damage_percentage_growth)`,
     [
       id,
       agentId,
@@ -183,6 +233,9 @@ export async function upsertSkill(doc) {
       element,
       ownerGroupId,
       note,
+      multSource,
+      damagePercentageValue,
+      damagePercentageGrowthValue,
     ],
   )
 
