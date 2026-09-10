@@ -1618,6 +1618,16 @@ function computeAffixEvalContextSignature(ctx: OptimalEvalContext): string {
     ctx.panelContext.bangbooRefine ?? 1,
     JSON.stringify(ctx.panelContext.buffSelection ?? null),
     JSON.stringify(ctx.panelContext.extraMods ?? null),
+    /**
+     * 场地 / 环境 Buff（危局、Boss 场地、防卫房间）必须入签名，且要含**内容**。
+     *
+     * 缺陷与实测（2026-09-11，`scripts/test-env-buff-cache-key.mjs`）：
+     * 原先只有 `buffSelection`（勾选状态）。同一 effect id、勾选不变、仅改数值
+     * （+30% → +60%）时签名不变 → 词条评估沿用旧值（实测两次都是 1484）。
+     * 同批把 `panelBuffCalc.environmentBuffsKey` 也从「只用 sourceKey」改为含内容，
+     * 否则面板级目录缓存同样会停在旧 mods；两处缺一不可。
+     */
+    JSON.stringify(ctx.panelContext.environmentBuffs ?? null),
     ctx.panelContext.liveExternalSlotIndex ?? '',
   ].join('|')
 }

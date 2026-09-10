@@ -1666,8 +1666,19 @@ function teamSlotsKey(teamSlots: readonly TeamSlot[]): string {
     .join(';')
 }
 
+/**
+ * 环境 Buff 的键必须含**内容**，不能只用 `sourceKey`。
+ *
+ * 缺陷与实测（2026-09-11，`scripts/test-env-buff-cache-key.mjs`）：
+ * 只要 `sourceKey` 不变，同一 effect 的数值从 +30% 改成 +60% 也不换键 ——
+ * 面板与词条两条链路都会继续用旧 mods（实测两次都是 1484，应更高）。
+ *
+ * 与 `teamSlotsKey` 一样**不做按对象身份的记忆化**（原因见上方注释：
+ * 真实 UI 里集合被就地赋值，按身份缓存会把键冻结在首次计算那一刻）。
+ */
 function environmentBuffsKey(environmentBuffs: readonly EnvironmentBuffEntry[]): string {
-  return environmentBuffs.map((item) => item.sourceKey).join(',')
+  if (!environmentBuffs.length) return ''
+  return JSON.stringify(environmentBuffs)
 }
 
 /** 缓存清空时一并丢弃按键对象身份记忆化的部件，避免旧契约下的陈旧串留存 */
