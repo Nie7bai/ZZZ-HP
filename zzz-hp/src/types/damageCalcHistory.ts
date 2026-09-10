@@ -32,7 +32,6 @@ export interface DamageCalcTeamSlotSnapshot {
   rank: number
   wengineId: string
   wengineRefine: number
-  isMainC: boolean
   twoPieceDriveDiscId: string
   fourPieceDriveDiscId: string
   /** 该槽位词条计算的 4/5/6 号盘主属性；跟 2/4 件套一起存，避免只活在编辑器里被换人冲掉 */

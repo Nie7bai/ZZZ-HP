@@ -499,7 +499,7 @@ export function summarizeHits(
 }
 
 export interface HitParticipationContext {
-  teamSlots: Array<{ agentId: string; isMainC?: boolean }>
+  teamSlots: Array<{ agentId: string }>
   agents: Array<{ id: string; element: string; name?: string; profession?: string | null }>
 }
 

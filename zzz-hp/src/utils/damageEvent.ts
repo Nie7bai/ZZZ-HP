@@ -194,7 +194,7 @@ export function eventNeedsAnomalyProducer(kind: DamageEventKind): boolean {
 }
 
 export interface DamageEventParticipationContext {
-  teamSlots: Array<{ agentId: string; isMainC?: boolean }>
+  teamSlots: Array<{ agentId: string }>
   agents: Array<{ id: string; element: string; name?: string }>
   mainAgentId?: string
 }

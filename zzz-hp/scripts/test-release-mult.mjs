@@ -46,7 +46,7 @@ const agent = {
 }
 
 const ctx = {
-  teamSlots: [{ agentId: mainAgentId, rank: 0, wengineId: 'none', wengineRefine: 1, isMainC: true, twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'none' }],
+  teamSlots: [{ agentId: mainAgentId, rank: 0, wengineId: 'none', wengineRefine: 1, twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'none' }],
   agents: [agent],
   wengines: [],
   bangboo: { id: 'none', name: '无', effects: [], refinementEffects: [] },

@@ -114,7 +114,6 @@ export interface TeamSlot {
   rank: number
   wengineId: string
   wengineRefine: number
-  isMainC: boolean
   twoPieceDriveDiscId: string
   fourPieceDriveDiscId: string
   affixDriveDiscMainStats?: AffixDriveDiscMainStats
@@ -131,7 +130,6 @@ const teamSlots = reactive<TeamSlot[]>([
     rank: 0,
     wengineId: 'none',
     wengineRefine: 1,
-    isMainC: true,
     twoPieceDriveDiscId: 'none',
     fourPieceDriveDiscId: 'none',
   },
@@ -140,7 +138,6 @@ const teamSlots = reactive<TeamSlot[]>([
     rank: 0,
     wengineId: 'none',
     wengineRefine: 1,
-    isMainC: false,
     twoPieceDriveDiscId: 'none',
     fourPieceDriveDiscId: 'none',
   },
@@ -149,7 +146,6 @@ const teamSlots = reactive<TeamSlot[]>([
     rank: 0,
     wengineId: 'none',
     wengineRefine: 1,
-    isMainC: false,
     twoPieceDriveDiscId: 'none',
     fourPieceDriveDiscId: 'none',
   },
@@ -1114,12 +1110,6 @@ function ensureAgentExternalPanel(agentId: string) {
   anomalySlotPanels[agentId] = createExternalPanelFromAgentBase(agent?.basePanel)
 }
 
-function syncMainCFlagToActiveSlot() {
-  teamSlots.forEach((slot, idx) => {
-    slot.isMainC = idx === activeSlot.value
-  })
-}
-
 function selectWengine(wengineId: string) {
   if (wengineId !== 'none' && activeSlotData.value.wengineId === wengineId) {
     activeSlotData.value.wengineId = 'none'
@@ -1252,7 +1242,6 @@ function applyUnifiedImport(payload: UnifiedPresetConfirmPayload) {
   }
   anomalySlotPanels[payload.agentId] = fillPanelStatsDefaults(payload.externalPanel)
   slot.agentId = payload.agentId
-  syncMainCFlagToActiveSlot()
   nextTick(() => {
     panelCalcSectionRef.value?.syncLivePanelFromCommitted?.()
   })
@@ -1265,7 +1254,6 @@ function cloneTeamSlots(): DamageCalcHistoryEntry['teamSlots'] {
     rank: slot.rank,
     wengineId: slot.wengineId,
     wengineRefine: slot.wengineRefine,
-    isMainC: slot.isMainC,
     twoPieceDriveDiscId: slot.twoPieceDriveDiscId || 'none',
     fourPieceDriveDiscId: slot.fourPieceDriveDiscId || 'none',
     affixDriveDiscMainStats: slot.affixDriveDiscMainStats
@@ -1283,7 +1271,6 @@ function applyTeamSlots(slots: DamageCalcHistoryEntry['teamSlots']) {
     target.rank = slot.rank
     target.wengineId = slot.wengineId
     target.wengineRefine = slot.wengineRefine
-    target.isMainC = slot.isMainC
     target.twoPieceDriveDiscId =
       typeof slot.twoPieceDriveDiscId === 'string' && slot.twoPieceDriveDiscId
         ? slot.twoPieceDriveDiscId
@@ -1298,7 +1285,6 @@ function applyTeamSlots(slots: DamageCalcHistoryEntry['teamSlots']) {
     target.affixCounts = slot.affixCounts ? { ...slot.affixCounts } : undefined
     target.agentId = slot.agentId
   })
-  syncMainCFlagToActiveSlot()
 }
 
 function cloneAnomalySlotPanels(): Record<string, PanelStats> {
@@ -1588,7 +1574,6 @@ function blankTeamSlots(): TeamSlot[] {
       rank: 0,
       wengineId: 'none',
       wengineRefine: 1,
-      isMainC: true,
       twoPieceDriveDiscId: 'none',
       fourPieceDriveDiscId: 'none',
     },
@@ -1597,7 +1582,6 @@ function blankTeamSlots(): TeamSlot[] {
       rank: 0,
       wengineId: 'none',
       wengineRefine: 1,
-      isMainC: false,
       twoPieceDriveDiscId: 'none',
       fourPieceDriveDiscId: 'none',
     },
@@ -1606,7 +1590,6 @@ function blankTeamSlots(): TeamSlot[] {
       rank: 0,
       wengineId: 'none',
       wengineRefine: 1,
-      isMainC: false,
       twoPieceDriveDiscId: 'none',
       fourPieceDriveDiscId: 'none',
     },
@@ -1680,8 +1663,6 @@ watch(
   schedulePersistWorkingDraft,
   { deep: true },
 )
-
-watch(activeSlot, syncMainCFlagToActiveSlot)
 
 const pageRootRef = ref<HTMLElement | null>(null)
 const skillFlowSectionRef = ref<InstanceType<typeof SkillFlowSection> | null>(null)
