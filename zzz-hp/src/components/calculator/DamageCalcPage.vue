@@ -1158,13 +1158,16 @@ const stickySlotPanelPreviews = computed(() => {
     if (fromPanel) return fromPanel
   }
 
-  // 最优模式：用最优区预览（主 C 含局内；其余槽亦算局内）
-  if (panelCalcMode.value === 'optimal') {
-    const fromOptimal = optimalAffixSectionRef.value?.slotPanelPreviews
-    if (fromOptimal?.length) return fromOptimal
-  }
+  /**
+   * 最优模式**不再**把分析结果灌进槽位卡片。
+   *
+   * 用户口径（2026-09-11）：槽位卡片是「角色配置」的呈现，属于**录入区**；
+   * 最优分配的结果是临时分析值（切柱就变），回显到卡片会让人误以为它被存了下来，
+   * 而且会把「基准面板」遮住 —— 判断分配合不合理，恰恰要同时看到基准与结果。
+   * 结果面板改为在最优模块内部展示（见 `OptimalAffixAllocSection` 的「面板口径」）。
+   */
 
-  // 兜底：轻量局外（页级导入值）
+  // 兜底：轻量局外（页级配置值，即「角色配置」里存的那一份）
   return teamSlots.map((slot) => {
     if (!slot.agentId) return null
     const saved = anomalySlotPanels[slot.agentId]
