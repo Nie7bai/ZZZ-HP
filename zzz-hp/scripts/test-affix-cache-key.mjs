@@ -10,6 +10,7 @@
 import {
   createEmptyAffixCounts,
   createDefaultAffixDriveDiscMainStats,
+  fillPanelStatsDefaults,
 } from '../src/types/calculatorPanel.ts'
 import { createEmptyAgentBasePanel } from '../src/utils/calculatorUi.ts'
 import { buildOptimalEvalContext, evaluateAffixCounts } from '../src/utils/optimalAffixAlloc.ts'
@@ -106,6 +107,33 @@ const evalC = evaluateAffixCounts(ctx, countsC)
 check('固定防御 0 → 6 伤害应变化',
   evalC.grandTotal !== evalA.grandTotal,
   `${evalA.grandTotal} vs ${evalC.grandTotal}`)
+
+console.log('\n[同词条跨上下文不得串值：基准面板 / 按槽位推导]')
+
+/**
+ * 缺陷背景（2026-09-11，真实方案复现）：
+ * 主属性组合试算用 `mainBaseExternalPanel: null` 评估（换主属性必须重新推导面板），
+ * 而上下文签名原先不含基准面板 —— 两者签名一致就共用一条缓存，谁先算谁的值被另一边读走。
+ * 表现：柱图总伤 74,222,437，详情总伤 56,758,629（读到了「无基准」那条）。
+ */
+const basePanel = fillPanelStatsDefaults({ hp: 12000, def: 2200, critRate: 60, critDmg: 120 })
+const ctxWithBase = { ...ctx, mainBaseExternalPanel: basePanel }
+const ctxDerived = { ...ctx, mainBaseExternalPanel: null }
+const sharedCounts = { ...createEmptyAffixCounts(), defPercent: 9, critDmg: 21 }
+
+const evalWithBase1 = evaluateAffixCounts(ctxWithBase, sharedCounts)
+const evalDerived = evaluateAffixCounts(ctxDerived, sharedCounts)
+const evalWithBase2 = evaluateAffixCounts(ctxWithBase, sharedCounts)
+
+check('两种基准的伤害本就不同（基准面板确实生效）',
+  evalWithBase1.grandTotal !== evalDerived.grandTotal,
+  `有基准 ${evalWithBase1.grandTotal} vs 推导 ${evalDerived.grandTotal}`)
+check('推导口径评估后，有基准再评估仍是自己的值（不得读走推导值）',
+  evalWithBase2.grandTotal === evalWithBase1.grandTotal,
+  `${evalWithBase2.grandTotal} vs ${evalWithBase1.grandTotal}`)
+check('有基准再评估的面板也不得被推导面板顶掉',
+  evalWithBase2.external.def === evalWithBase1.external.def,
+  `${evalWithBase2.external.def} vs ${evalWithBase1.external.def}`)
 
 console.log(`\n结果：${passed} passed, ${failed} failed`)
 if (failed > 0) process.exit(1)

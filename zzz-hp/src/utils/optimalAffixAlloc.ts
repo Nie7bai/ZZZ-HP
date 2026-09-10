@@ -400,7 +400,7 @@ function clampInt(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.round(value)))
 }
 
-function resolveAffixOutPercentCap(caps: AffixRollCaps, isMb: boolean, isFengYu: boolean): number {
+export function resolveAffixOutPercentCap(caps: AffixRollCaps, isMb: boolean, isFengYu: boolean): number {
   if (isMb) return caps.hpPercent
   if (isFengYu) return caps.defPercent
   return caps.atkPercent
@@ -1371,7 +1371,7 @@ export function evaluateAffixCountsForSweep(
   panelDeltas?: AffixPanelDeltaMap,
 ): { grandTotal: number; eventLines: OptimalEventDamageLine[] } {
   resetAffixEvalCacheIfNeeded(ctx)
-  const cacheKey = affixCountsCacheKey(affixCounts, panelDeltas)
+  const cacheKey = affixEvalCacheKey(affixCounts, panelDeltas)
   const cached = affixSweepCache.get(cacheKey)
   if (cached) return cached
 
@@ -1379,8 +1379,7 @@ export function evaluateAffixCountsForSweep(
 
   let payload: { grandTotal: number; eventLines: OptimalEventDamageLine[] }
   if (ctx.hits?.length) {
-    payload = computeEventDamageLinesForSweep(ctx, external)
-  } else {
+    payload = computeEventDamageLinesForSweep(ctx, external)  } else {
     const breakdown = computeFinalPanel(
       external,
       {
@@ -1472,6 +1471,24 @@ function affixCountsCacheKey(
   return parts.length ? `${base}|${parts.join(',')}` : base
 }
 
+/**
+ * 评估缓存键 = **上下文签名** + 词条数。
+ *
+ * 只按词条数做键时，同一套词条在不同上下文下会互相命中：实测（2026-09-11，真实方案）
+ * 主属性组合试算用 `mainBaseExternalPanel: null` 评估（换主属性必须重新推导面板），
+ * 它把「无基准」的结果写进缓存；随后柱图/详情再评估同一套词条直接命中该条，
+ * 详情总伤从 74,222,437 掉成 56,758,629 —— 就是用户看到的「柱图与详情对不上」。
+ *
+ * 签名由 `resetAffixEvalCacheIfNeeded()` 在调用前算好（同一份 ctx 走记忆化，不增开销），
+ * 这里直接复用；这样即便将来签名又漏了字段，也不会跨上下文串值。
+ */
+function affixEvalCacheKey(
+  affixCounts: AffixCounts,
+  panelDeltas?: AffixPanelDeltaMap,
+): string {
+  return `${affixEvalCacheCtxSig}|${affixCountsCacheKey(affixCounts, panelDeltas)}`
+}
+
 function serializeBuffSelection(state: BuffSelectionState | null | undefined): string {
   if (!state) return ''
   return Object.entries(state.enabledIds)
@@ -1548,6 +1565,15 @@ function computeAffixEvalContextSignature(ctx: OptimalEvalContext): string {
     JSON.stringify(ctx.wengineAdvanced ?? null),
     ctx.baseDamageSource ?? '',
     JSON.stringify(ctx.driveDiscMainStats),
+    /**
+     * 基准局外面板必须入签名。
+     *
+     * 主属性组合试算会用 `mainBaseExternalPanel: null` 评估「换一套主属性会怎样」
+     * （见组件 `evaluateMainStatComboDamage`：主属性变了面板必须重新推导），
+     * 而它的主属性/套装在「当前这套」时与常规 ctx 完全相同 —— 也就是说**只有基准不同**。
+     * 漏掉它，两者签名一致 → 共用同一份缓存 → 谁先算谁的值被另一边读走。
+     */
+    JSON.stringify(ctx.mainBaseExternalPanel ?? null),
     // 主词条组合试算会改 2/4 件套；缺失会导致同词条数命中旧缓存，伤害不变
     JSON.stringify(ctx.driveDiscSelection),
     JSON.stringify(ctx.enemyInput),
@@ -1821,7 +1847,7 @@ export function evaluateAffixCountsWithCacheInfo(
   panelDeltas?: AffixPanelDeltaMap,
 ): { value: AffixCountsEvalResult; cacheHit: boolean } {
   resetAffixEvalCacheIfNeeded(ctx)
-  const cacheKey = affixCountsCacheKey(affixCounts, panelDeltas)
+  const cacheKey = affixEvalCacheKey(affixCounts, panelDeltas)
   const cached = affixEvalCache.get(cacheKey)
   if (cached) return { value: cached, cacheHit: true }
 
@@ -1840,6 +1866,35 @@ export function evaluateAffixCounts(
   panelDeltas?: AffixPanelDeltaMap,
 ): AffixCountsEvalResult {
   return evaluateAffixCountsWithCacheInfo(ctx, affixCounts, panelDeltas).value
+}
+
+/**
+ * 「只改了固定词条（精通/穿透/小攻等）」时，能否原地刷新既有柱体而不重新枚举结构。
+ *
+ * 结构条件：既有各柱仍是「局外大% + 爆伤 = 剩余档数」。
+ *
+ * **上限条件同样必须满足**（2026-09-11 补）：4/5/6 主属性变化会改变主词条上限
+ * （36 − 6×同类数）。上限收紧后若仍原地刷新，就会留下完整扫掠本会跳过的柱 ——
+ * 实测（局外大防御上限 30 → 24，总词条 30）：完整扫掠出 25 根，原地刷新保留 31 根，
+ * 柱图里凭空多出 25~30 档「已超上限」的柱，且与 X 轴上限规则自相矛盾。
+ */
+export function canReuseDirectSweepStructure(
+  points: DirectSweepPoint[],
+  state: DirectAllocState,
+  isMb: boolean,
+  isFengYu: boolean,
+  mainStats: AffixDriveDiscMainStats,
+): boolean {
+  const crit = Math.round(state.critRate)
+  const total = Math.round(state.totalRolls)
+  const fixedAtk = isMb ? Math.round(state.atkPercent) : 0
+  const remain = isMb ? total - crit - fixedAtk : total - crit
+  if (remain < 0 || !points.length) return false
+  if (!points.every((p) => p.outPercent + p.critDmg === remain)) return false
+  const caps = getAffixRollCaps(mainStats)
+  if (crit > caps.critRate) return false
+  const outCap = resolveAffixOutPercentCap(caps, isMb, isFengYu)
+  return points.every((p) => p.outPercent <= outCap && p.critDmg <= caps.critDmg)
 }
 
 export function sweepDirectDamage(

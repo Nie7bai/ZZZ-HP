@@ -16,6 +16,7 @@ const { migrateLegacyModesToSkills, loadCustomSkills, isLegacyModeMigrationDone 
   '../src/utils/skillLibrary.ts'
 )
 const { LEGACY_PUBLIC_SUBCATEGORY_ID } = await import('../src/utils/skillTypes.ts')
+const { buildSkillMatchCoords } = await import('../src/utils/skillTypes.ts')
 
 let failed = 0
 const check = (name, actual, expected) => {
@@ -172,8 +173,17 @@ console.log('=== 8. 幂等：标记已迁移后不再重复 ===')
 }
 
 console.log('')
-console.log('=== 9. 异常类即使 skillBound=true 也不带类型/锚点 ===')
+console.log('=== 9. 异常类不带招式类型；锚点保留（供「限定某一招」的 Buff 识别） ===')
 {
+  /**
+   * 本组期望在 2026-08-16（6da0596）随机制更新：
+   * 锚点从「一律丢弃」改为「保留」，因为同批引入了 `appliesToAnomaly` ——
+   * 招式限定 Buff 是否作用于异常伤害由它决定（`buffEffect.shouldApplyEffect`：
+   * scope=skill 且 damageKind=anomaly 时须 `appliesToAnomaly === true` 才命中）。
+   * 若这里把锚点丢掉，管理员为异常伤害配的招式限定增益将永远无法命中
+   * （后端 `fix-skill-anomaly-applies.mjs` 正是在给这类固有异常乘区补该标记）。
+   * 招式类型仍然为空：异常伤害不吃「按类型」的限定。
+   */
   const { skills } = run([
     mode(
       [
@@ -189,9 +199,21 @@ console.log('=== 9. 异常类即使 skillBound=true 也不带类型/锚点 ===')
     ),
   ])
   check('招式类型为空', skills[0]?.skillTypes, [])
-  check('锚点为空', skills[0]?.buffAnchorId, null)
+  check('锚点保留（供招式限定 Buff 识别）', skills[0]?.buffAnchorId, 'yixuan-special-1')
   check('名称仍可用小类名识别', skills[0]?.name, '强化特殊技：凝云术')
   check('伤害类型保留', skills[0]?.damageType, 'anomalyRelease')
+  // 锚点必须真的能产出匹配坐标，否则「保留」没有意义。
+  // 与真实调用方一致：`resolvedHit.ts` 会从旧小类记录取 categoryId 一并传入。
+  const coords = buildSkillMatchCoords({
+    skillTypes: skills[0]?.skillTypes,
+    buffAnchorId: skills[0]?.buffAnchorId,
+    buffAnchorCategory: 'special',
+  })
+  check(
+    '锚点产出招式限定坐标',
+    coords,
+    [{ category: 'special', subcategoryId: 'yixuan-special-1' }],
+  )
 }
 
 console.log('')

@@ -52,6 +52,7 @@ import {
   BENEFIT_CURVE_MAX_ADDED,
   DIRECT_CONSTRAINTS,
   buildOptimalEvalContext,
+  canReuseDirectSweepStructure,
   computeBenefitCurves,
   computeDiffAnalysis,
   computeEventAffixImpact,
@@ -425,7 +426,7 @@ async function runSweepRecompute() {
         directPoints.value = []
       } else if (
         directPoints.value.length > 0 &&
-        canReuseDirectSweepStructure(directPoints.value, directAlloc, isMb.value)
+        canReuseCurrentDirectSweep(directPoints.value, directAlloc)
       ) {
         // 仅固定词条（精通/穿透/小攻等）变化：复用扫掠结构，只重算各点伤害
         directPoints.value = await refreshDirectSweepFixedStats(
@@ -475,18 +476,15 @@ async function runSweepRecompute() {
   }
 }
 
-function canReuseDirectSweepStructure(
-  points: DirectSweepPoint[],
-  state: DirectAllocState,
-  mb: boolean,
-) {
-  const crit = Math.round(state.critRate)
-  const total = Math.round(state.totalRolls)
-  const fixedAtk = mb ? Math.round(state.atkPercent) : 0
-  const remain = mb ? total - crit - fixedAtk : total - crit
-  if (remain < 0 || !points.length) return false
-  // 结构仍是「局外大% + 爆伤 = remain」时才能原地刷新
-  return points.every((p) => p.outPercent + p.critDmg === remain)
+function canReuseCurrentDirectSweep(points: DirectSweepPoint[], state: DirectAllocState) {
+  // 结构 + 主词条上限一起判定，见 canReuseDirectSweepStructure 的说明
+  return canReuseDirectSweepStructure(
+    points,
+    state,
+    isMb.value,
+    isFengYu.value,
+    driveDiscMainStats.value,
+  )
 }
 
 async function refreshDirectSweepFixedStats(
