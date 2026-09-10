@@ -53,6 +53,7 @@ import {
   type ResolvedHit,
 } from '@/utils/resolvedHit'
 import { mergeExtraModsForEvent } from '@/utils/extraBuffCalc'
+import { deepUnwrapReactive } from '@/utils/reactiveUnwrap'
 import {
   computeMutationZone,
   findLuminousAgentInTeam,
@@ -2493,6 +2494,11 @@ export function buildOptimalEvalContext(input: {
   followUpSkillRules?: import('@/types/calculator').FollowUpSkillRule[]
   environmentBuffs?: import('@/utils/environmentBuffCalc').EnvironmentBuffEntry[]
 }): OptimalEvalContext {
+  // 深解包响应式代理：引擎会对这批数据做海量属性读取，走 Proxy 陷阱会慢 3 倍以上
+  // （实测 16.4ms → 5.3ms/次评估，见 reactiveUnwrap.ts）。只换引用不改值，
+  // 写入仍走响应式链路，因此不会造成「面板改了但计算不更新」。
+  deepUnwrapReactive(input)
+
   const mainSlot = input.teamSlots[input.mainSlotIndex]!
   const mainAgent = input.agents.find((a) => a.id === mainSlot.agentId)
   const mainWengine =

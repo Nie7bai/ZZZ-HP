@@ -1613,6 +1613,9 @@ const affixAllocWidthMode = ref<AffixCandidateWidthMode>('auto')
 const affixAllocManualWidth = ref(8)
 /** 求解进度（仅求解中刷新） */
 const affixAllocProgress = ref<AffixOptimizerProgress | null>(null)
+/** 进度刷新间隔（毫秒）：求解每个时间片都回调，逐次刷新会拖慢求解本身 */
+const AFFIX_ALLOC_PROGRESS_THROTTLE_MS = 100
+let lastProgressAt = 0
 let affixAllocAbort: AbortController | null = null
 const affixBenefitTable = ref<AffixBenefitTableData | null>(null)
 /** 逐档收益曲线：按需补算（首屏不算），失效时置 null */
@@ -1759,6 +1762,7 @@ async function runAffixAllocation() {
   affixAllocLoading.value = true
   affixAllocError.value = null
   affixAllocProgress.value = null
+  lastProgressAt = 0
   affixAllocAbort?.abort()
   const controller = new AbortController()
   affixAllocAbort = controller
@@ -1773,7 +1777,14 @@ async function runAffixAllocation() {
       },
       {
         signal: controller.signal,
+        // 进度节流：求解每个时间片都会回调一次（实测 200 次左右），而每次赋值都会
+        // 触发整个组件重渲染 —— 剖析显示仅在求解期间重渲染 + 数字格式化就吃掉约
+        // 11% 的 CPU（formatCalcDecimal/formatNumber 163ms、Vue 重建 ~40ms）。
+        // 进度是给人看的，100ms 一次的刷新率远超人眼需求。
         onProgress: (progress) => {
+          const now = performance.now()
+          if (now - lastProgressAt < AFFIX_ALLOC_PROGRESS_THROTTLE_MS) return
+          lastProgressAt = now
           affixAllocProgress.value = progress
         },
       },

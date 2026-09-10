@@ -174,54 +174,6 @@ export function createEmptyPanelStatDelta(): PanelStatDelta {
   }
 }
 
-export function createDefaultExternalPanel(): PanelStats {
-  return {
-    hp: 9873,
-    atk: 4008,
-    def: 0,
-    critRate: 48.2,
-    critDmg: 186,
-    dmgBonus: 10,
-    ignoreDefense: 0,
-    reduceDefense: 0,
-    penRate: 0,
-    pen: 90,
-    resPen: 0,
-    mastery: 0,
-    anomalyControl: 0,
-    energyRegen: 0,
-    anomalyCritRate: 0,
-    anomalyCritDmg: 0,
-    anomalyDmgBonus: 0,
-    anomalyReleaseCritRate: 0,
-    anomalyReleaseCritDmg: 0,
-    anomalyReleaseMult: 0,
-    anomalyReleaseDmgBonus: 0,
-    directDmgMult: 100,
-    settlementDmgMult: 0,
-    anomalyMult: 0,
-    disorderBaseMult: 0,
-    anomalyDuration: 0,
-    disorderCompMult: 0,
-    turbulenceBaseMult: 0,
-    turbulenceCompMult: 0,
-    disorderDmgBonus: 0,
-    turbulenceDmgBonus: 0,
-    directDmgMultFactor: 100,
-    anomalyMultFactor: 100,
-    anomalyReleaseMultFactor: 100,
-    disorderBaseMultFactor: 100,
-    turbulenceBaseMultFactor: 100,
-    radianceMult: 0,
-    radianceDmgBonus: 0,
-    radianceResPen: 0,
-    specialMult: 100,
-    mutationCoeff: 0,
-    radianceMultFactor: 100,
-    specialMultFactor: 100,
-    mutationCoeffFactor: 100,
-  }
-}
 
 /** 方案不持久化的乘区入口；缺字段时必须补成数字，否则 `undefined + convert` 会变成 NaN。 */
 export const SCHEME_EXCLUDED_PANEL_DEFAULTS: Pick<
@@ -232,9 +184,36 @@ export const SCHEME_EXCLUDED_PANEL_DEFAULTS: Pick<
   mutationCoeffFactor: 100,
 }
 
+/**
+ * 默认局外面板的模板。
+ *
+ * 原先 `createDefaultExternalPanel()` 每次调用都重新写一遍这 44 个字段的字面量。
+ * 它在热路径上（词条求解每评估一次要补面板默认值数千次），实测剖析里
+ * `fillPanelStatsDefaults` 自身占 9.8% CPU。模板不可变（全是数字），
+ * 复用后仍每次返回新对象，调用方随便改都不会串。
+ */
+const DEFAULT_EXTERNAL_PANEL: PanelStats = {
+  hp: 9873, atk: 4008, def: 0, critRate: 48.2, critDmg: 186, dmgBonus: 10,
+  ignoreDefense: 0, reduceDefense: 0, penRate: 0, pen: 90, resPen: 0, mastery: 0,
+  anomalyControl: 0, energyRegen: 0, anomalyCritRate: 0, anomalyCritDmg: 0,
+  anomalyDmgBonus: 0, anomalyReleaseCritRate: 0, anomalyReleaseCritDmg: 0,
+  anomalyReleaseMult: 0, anomalyReleaseDmgBonus: 0, directDmgMult: 100,
+  settlementDmgMult: 0, anomalyMult: 0, disorderBaseMult: 0, anomalyDuration: 0,
+  disorderCompMult: 0, turbulenceBaseMult: 0, turbulenceCompMult: 0,
+  disorderDmgBonus: 0, turbulenceDmgBonus: 0, directDmgMultFactor: 100,
+  anomalyMultFactor: 100, anomalyReleaseMultFactor: 100, disorderBaseMultFactor: 100,
+  turbulenceBaseMultFactor: 100, radianceMult: 0, radianceDmgBonus: 0,
+  radianceResPen: 0, specialMult: 100, mutationCoeff: 0, radianceMultFactor: 100,
+  specialMultFactor: 100, mutationCoeffFactor: 100,
+}
+
+export function createDefaultExternalPanel(): PanelStats {
+  return { ...DEFAULT_EXTERNAL_PANEL }
+}
+
 /** 读盘 / 队友槽面板可能缺键；用默认值补齐后再进乘区。 */
 export function fillPanelStatsDefaults(panel?: Partial<PanelStats> | null): PanelStats {
-  return { ...createDefaultExternalPanel(), ...(panel ?? {}) }
+  return { ...DEFAULT_EXTERNAL_PANEL, ...(panel ?? {}) }
 }
 
 /** 方案快照里把内部乘区入口重置为默认，而不是 delete（delete 会让后续加法得到 NaN）。 */
