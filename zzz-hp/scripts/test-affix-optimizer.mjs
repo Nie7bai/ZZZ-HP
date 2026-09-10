@@ -751,5 +751,78 @@ console.log('\n[16] 跨轮缓存（不随主 C 面板变化的招式）')
     `${coldMs.toFixed(2)}ms → ${warmMs.toFixed(2)}ms`)
 }
 
+// ---------- 17. 队友数据变化必须让缓存失效 ----------
+console.log('\n[17] 队友数据变化必须让缓存失效（上下文签名覆盖队伍）')
+{
+  // 缺陷与实测（2026-09-10 用真实方案复现）：引擎会读队友数据
+  // （collectTeamDriveDiscMods 遍历全部槽位、collectAllBuffEffects 取全队效果、
+  // 事件按 ownerAgentId 反查角色文档），但签名只覆盖主 C → 只改队友时缓存不失效。
+  // 实测：队友音擎 Electro_Lip_Gloss → Identity_Base，
+  //   不手动清缓存 61863011 → 61863011（错）；每次清缓存 61863011 → 58285182（对）。
+  const wengineDoc = (id, externalAtkPercent) => ({
+    id,
+    name: id,
+    profession: '强攻',
+    rarity: 'S',
+    avatar_image: null,
+    note: '',
+    baseAtk: 594,
+    advancedStats: { ...createEmptyWengineAdvancedStats(), externalAtkPercent },
+    fixedBuffs: {},
+    refinementBuffs: [],
+  })
+
+  const basePanel = (atk) => ({
+    ...createEmptyAgentBasePanel(),
+    hp: 9000, atk, def: 700, critRate: 5, critDmg: 50,
+    anomalyControl: 100, energyRegen: 120, directDmgMult: 100, anomalyMult: 125,
+  })
+
+  const buildCtx = (allyWengineId) =>
+    makeCtx({
+      teamSlots: [
+        { agentId: 'a', wengineId: 'none', twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'none' },
+        { agentId: 'b', wengineId: allyWengineId, twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'none' },
+      ],
+      agents: [
+        { id: 'a', name: '主C', element: '电', profession: '强攻', basePanel: basePanel(900) },
+        { id: 'b', name: '队友', element: '电', profession: '强攻', basePanel: basePanel(600) },
+      ],
+      wengines: [wengineDoc('we-low', 10), wengineDoc('we-high', 50)],
+      hits: (() => {
+        const ally = makeHits(2, 'b')
+        for (const hit of ally) {
+          hit.anomalyPowerAgentId = 'b'
+          hit.triggerAgentId = 'b'
+        }
+        return [...makeHits(1, 'a'), ...ally]
+      })(),
+    })
+
+  const counts = { ...createEmptyAffixCounts(), atkPercent: 15 }
+  const ctxLow = buildCtx('we-low')
+  const ctxHigh = buildCtx('we-high')
+
+  // 连续调用，中间不清缓存：签名若漏队友，第二次会拿到第一次的旧值
+  clearAffixEvalCache()
+  const lowCached = evaluateAffixCounts(ctxLow, counts).grandTotal
+  const highCached = evaluateAffixCounts(ctxHigh, counts).grandTotal
+
+  // 每次清缓存（基准真值）
+  clearAffixEvalCache()
+  const lowTruth = evaluateAffixCounts(ctxLow, counts).grandTotal
+  clearAffixEvalCache()
+  const highTruth = evaluateAffixCounts(ctxHigh, counts).grandTotal
+
+  console.log(`    低加成音擎 ${lowTruth.toFixed(0)}／高加成音擎 ${highTruth.toFixed(0)}（基准真值）`)
+  console.log(`    不手动清缓存：低 ${lowCached.toFixed(0)}／高 ${highCached.toFixed(0)}`)
+
+  check('换队友音擎确实改变结果（否则本用例无意义）',
+    Math.abs(highTruth - lowTruth) > 1e-6, `${lowTruth.toFixed(0)} vs ${highTruth.toFixed(0)}`)
+  check('不清缓存也能读到换队友音擎后的新值（签名覆盖队伍数据）',
+    Math.abs(highCached - highTruth) < 1e-6,
+    `缓存值 ${highCached.toFixed(0)} vs 真值 ${highTruth.toFixed(0)}`)
+}
+
 console.log(`\n结果：${passed} passed, ${failed} failed`)
 if (failed > 0) process.exit(1)

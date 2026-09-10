@@ -1551,6 +1551,30 @@ function computeAffixEvalContextSignature(ctx: OptimalEvalContext): string {
     events,
     serializeMultiSlotBuffSelection(ctx.slotBuffSelections),
     ctx.triggerAnomalyAgentId ?? '',
+    /**
+     * 队伍级数据必须入签名。
+     *
+     * 缺陷与实测（2026-09-09 起就有、2026-09-10 用真实方案复现）：引擎会读队友数据
+     * （`collectTeamDriveDiscMods` 遍历全部槽位、`collectAllBuffEffects` 取全队效果、
+     * 事件按 `ownerAgentId/anomalyPowerAgentId` 反查角色文档），但签名只覆盖主 C。
+     * 于是**只改队友、不动主 C** 时签名不变 → 缓存不失效 → 结果停在旧值。
+     *
+     * 实测（真实方案，把 1 号队友的音擎从 Electro_Lip_Gloss 换成 Identity_Base）：
+     * - 不手动清缓存：61863011 → **61863011**（错，两次一样）
+     * - 每次手动清缓存：61863011 → **58285182**（对，确实应该变）
+     *
+     * 收进来的内容：槽位配置、全量角色/音擎/驱动盘文档、邦布、页级选择态。
+     * 这几份 JSON 串合计 8~12ms，而签名按 ctx 对象身份记忆化（`affixCtxSignatureCache`），
+     * 同一份 ctx 只算一次 —— 求解 200 次评估共用，摊薄后可忽略。
+     */
+    JSON.stringify(ctx.panelContext.teamSlots ?? []),
+    JSON.stringify(ctx.panelContext.agents ?? []),
+    JSON.stringify(ctx.panelContext.wengines ?? []),
+    JSON.stringify(ctx.panelContext.driveDiscs ?? []),
+    JSON.stringify(ctx.panelContext.bangboo ?? null),
+    JSON.stringify(ctx.panelContext.buffSelection ?? null),
+    JSON.stringify(ctx.panelContext.extraMods ?? null),
+    ctx.panelContext.liveExternalSlotIndex ?? '',
   ].join('|')
 }
 
