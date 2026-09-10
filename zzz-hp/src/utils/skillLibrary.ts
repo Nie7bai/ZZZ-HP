@@ -48,6 +48,13 @@ function normalizeSkill(raw: Record<string, unknown>): Skill | null {
     settlementMult: Number.isFinite(Number(raw.settlementMult))
       ? Number(raw.settlementMult)
       : undefined,
+    multSource: raw.multSource === 'nanoka' ? 'nanoka' : null,
+    damagePercentage: Number.isFinite(Number(raw.damagePercentage))
+      ? Number(raw.damagePercentage)
+      : undefined,
+    damagePercentageGrowth: Number.isFinite(Number(raw.damagePercentageGrowth))
+      ? Number(raw.damagePercentageGrowth)
+      : undefined,
     element: raw.element == null || raw.element === '' ? '' : String(raw.element),
     ownerGroupId,
     note: typeof raw.note === 'string' ? raw.note.trim() : '',

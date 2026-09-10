@@ -40,6 +40,10 @@ import {
   sortSkillGroupMembers,
 } from '@/utils/skillGroup'
 import { buildSkillMatchCoords, skillTypesIncludeFollowUp } from '@/utils/skillTypes'
+import {
+  resolveEffectiveBaseMult,
+  type SkillTalentLevels,
+} from '@/utils/skillTalentLevels'
 
 export function newLocalId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
@@ -132,6 +136,10 @@ export interface ResolvedHit {
   multOverrides: DamageEventMultOverrides | null
   /** 准备阶段的属性增量（增伤/暴击等），加算并入对应乘区 */
   panelMods: PreparedSkillExtraMods | null
+  /** 本击结算用的有效基础倍率%（nanoka 按技能等级重算后） */
+  effectiveBaseMult: number
+  /** 映射到的五大类等级；无法映射则为 null */
+  skillTalentLevel: number | null
 }
 
 /** 每种伤害类型的倍率写到哪两个覆写字段 */
@@ -151,12 +159,13 @@ const MULT_FIELDS: Record<
 function buildMultOverrides(
   skill: Skill,
   extraMods: PreparedSkillExtraMods | null | undefined,
+  effectiveBaseMult: number,
 ): DamageEventMultOverrides | null {
   const fields = MULT_FIELDS[skill.damageType]
   const overrides: DamageEventMultOverrides = {}
 
   // 倍率 0 沿用旧语义：未设置，回落面板 / 招式小类默认值
-  const base = Number(skill.baseMult) || 0
+  const base = Number(effectiveBaseMult) || 0
   const extraBase = Number(extraMods?.baseMult) || 0
   const total = base + extraBase
   if (total !== 0) overrides[fields.mult] = total
@@ -186,6 +195,8 @@ export interface ResolveFlowOptions {
   findSkill: (skillId: string) => Skill | null
   findSkillGroup?: (groupId: string) => SkillGroup | null
   skillSubcategories?: SkillSubcategory[] | null
+  /** 每人五大类技能等级；缺省按 L12 */
+  skillTalentLevelsByAgent?: Record<string, SkillTalentLevels | Partial<SkillTalentLevels> | null>
 }
 
 /** 招式被删后，引用它的准备阶段条目会解析失败，此处记下来给 UI 提示 */
@@ -236,6 +247,8 @@ function resolveOne(
     overrides && 'triggerAgentId' in overrides
       ? overrides.triggerAgentId
       : prepared.triggerAgentId
+  const levels = options.skillTalentLevelsByAgent?.[ownerAgentId]
+  const { baseMult: effectiveBaseMult, talentLevel } = resolveEffectiveBaseMult(skill, levels)
   return {
     id: overrides?.hitId ?? entry.id,
     skill,
@@ -249,8 +262,10 @@ function resolveOne(
     anomalySubKind,
     coords,
     isFollowUp: skillTypesIncludeFollowUp(skill.skillTypes),
-    multOverrides: buildMultOverrides(skill, prepared.extraMods),
+    multOverrides: buildMultOverrides(skill, prepared.extraMods, effectiveBaseMult),
     panelMods: hasPanelMods(prepared.extraMods) ? (prepared.extraMods ?? null) : null,
+    effectiveBaseMult,
+    skillTalentLevel: talentLevel,
   }
 }
 

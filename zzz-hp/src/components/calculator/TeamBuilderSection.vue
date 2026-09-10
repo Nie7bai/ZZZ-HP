@@ -16,6 +16,7 @@ const props = defineProps<{
   activeAgent?: AgentBuffDoc
   preferredEntryMode?: Extract<PanelCalcMode, 'panel' | 'affix'>
   anomalySlotPanels?: Record<string, PanelStats>
+  skillTalentLevelsByAgent?: Record<string, import('@/utils/skillTalentLevels').SkillTalentLevels>
   finalPanelPreview?: PanelStats | null
   finalPanelToken?: string
   resolveFinalPanel?: (external: PanelStats) => PanelStats | null
@@ -85,6 +86,7 @@ function updateSlotRefine(index: number, value: number) {
       :active-slot="activeSlot"
       :preferred-entry-mode="preferredEntryMode"
       :anomaly-slot-panels="anomalySlotPanels"
+      :skill-talent-levels-by-agent="skillTalentLevelsByAgent"
       :final-panel-preview="finalPanelPreview"
       :final-panel-token="finalPanelToken"
       :resolve-final-panel="resolveFinalPanel"

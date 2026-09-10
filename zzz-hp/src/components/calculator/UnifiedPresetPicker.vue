@@ -33,6 +33,11 @@ import {
   type ConvertSourceMark,
 } from '@/utils/panelBuffCalc'
 import type { BangbooBuffDoc } from '@/types/calculator'
+import {
+  createDefaultSkillTalentLevels,
+  fillSkillTalentLevels,
+  type SkillTalentLevels,
+} from '@/utils/skillTalentLevels'
 
 const EMPTY_BANGBOO: BangbooBuffDoc = {
   id: 'none',
@@ -54,6 +59,7 @@ export type UnifiedPresetConfirmPayload = {
   externalPanel: PanelStats
   affixCounts: AffixCounts
   affixDriveDiscMainStats: AffixDriveDiscMainStats
+  skillTalentLevels: SkillTalentLevels
 }
 
 const props = defineProps<{
@@ -65,6 +71,8 @@ const props = defineProps<{
   /** 打开时的默认录入模式；用户可在弹窗内切换，不再跟随页面计算方式 */
   preferredEntryMode?: Extract<PanelCalcMode, 'panel' | 'affix'>
   anomalySlotPanels?: Record<string, PanelStats>
+  /** 每人五大类技能等级；打开/换人时回填 */
+  skillTalentLevelsByAgent?: Record<string, SkillTalentLevels | Partial<SkillTalentLevels>>
   finalPanelPreview?: PanelStats | null
   /** 父级增益/邦布等签名：变化时重算局内预览 */
   finalPanelToken?: string
@@ -94,6 +102,7 @@ const selected = ref({
 const draftExternalPanel = reactive<PanelStats>(createDefaultExternalPanel())
 const draftAffixCounts = reactive(createEmptyAffixCounts())
 const draftAffixMains = reactive(createDefaultAffixDriveDiscMainStats())
+const draftSkillTalentLevels = reactive<SkillTalentLevels>(createDefaultSkillTalentLevels())
 /** 面板 Tab 独立切换：面板导入 / 词条导入 */
 const entryMode = ref<Extract<PanelCalcMode, 'panel' | 'affix'>>(
   props.preferredEntryMode ?? 'panel',
@@ -170,6 +179,11 @@ function resetDraftPanelFromSlot() {
     createDefaultAffixDriveDiscMainStats(),
     slot?.affixDriveDiscMainStats,
   )
+  Object.assign(
+    draftSkillTalentLevels,
+    createDefaultSkillTalentLevels(),
+    fillSkillTalentLevels(agentId ? props.skillTalentLevelsByAgent?.[agentId] : null),
+  )
   const saved = agentId ? props.anomalySlotPanels?.[agentId] : undefined
   if (saved) {
     Object.assign(draftExternalPanel, createDefaultExternalPanel(), saved)
@@ -218,6 +232,11 @@ watch(
     }
     Object.assign(draftAffixCounts, createEmptyAffixCounts())
     Object.assign(draftAffixMains, createDefaultAffixDriveDiscMainStats())
+    Object.assign(
+      draftSkillTalentLevels,
+      createDefaultSkillTalentLevels(),
+      fillSkillTalentLevels(props.skillTalentLevelsByAgent?.[newId]),
+    )
   },
 )
 
@@ -452,6 +471,7 @@ function confirm() {
     externalPanel: fillPanelStatsDefaults(external),
     affixCounts: { ...draftAffixCounts },
     affixDriveDiscMainStats: { ...draftAffixMains },
+    skillTalentLevels: fillSkillTalentLevels(draftSkillTalentLevels),
   })
   open.value = false
 }
@@ -737,6 +757,7 @@ const canConfirm = computed(() => !!selected.value.agentId)
                 v-model:external-panel="draftExternalPanel"
                 v-model:affix-counts="draftAffixCounts"
                 v-model:affix-drive-disc-main-stats="draftAffixMains"
+                v-model:skill-talent-levels="draftSkillTalentLevels"
                 v-model:calc-mode="entryMode"
                 :agents="agents"
                 :wengines="wengines"

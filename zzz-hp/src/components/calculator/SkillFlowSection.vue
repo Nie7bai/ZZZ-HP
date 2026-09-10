@@ -56,6 +56,10 @@ import {
   unsetSkillMult,
 } from '@/utils/skillSubcategoryMult'
 import { skillTypeLabelsForDisplay } from '@/utils/skillTypes'
+import {
+  resolveEffectiveBaseMult,
+  type SkillTalentLevels,
+} from '@/utils/skillTalentLevels'
 
 import { teamSlotDisplayLabel } from '@/utils/teamSlotLabel'
 
@@ -65,6 +69,8 @@ const props = defineProps<{
   hits?: ResolvedHit[]
   hitDamages?: Record<string, number>
   hitCalcResults?: Record<string, DamageCalcResult>
+  /** 每人五大类技能等级；展示 nanoka 有效倍率用 */
+  skillTalentLevelsByAgent?: Record<string, SkillTalentLevels | Partial<SkillTalentLevels>>
   /** 当前加载的方案名；未归档为空 */
   schemeName?: string
 }>()
@@ -553,6 +559,12 @@ function cardTriggerWarnForMember(
   return anomalyTriggerMultHint(skill, triggerId)
 }
 
+/** 库内/未结算时的有效基础倍率（nanoka 按当前槽位技能等级） */
+function libraryEffectiveBaseMult(skill: Skill): number {
+  const ownerId = currentAgentId.value || skill.agentId
+  return resolveEffectiveBaseMult(skill, props.skillTalentLevelsByAgent?.[ownerId]).baseMult
+}
+
 /** 有结算结果时显示最终倍率区对应的百分点；否则回落招式固有/填写值 */
 function skillMultText(skill: Skill, calcKey?: string | null) {
   if (calcKey) {
@@ -562,7 +574,7 @@ function skillMultText(skill: Skill, calcKey?: string | null) {
       if (ratio != null) return formatSkillMultZoneAsPercent(ratio)
     }
   }
-  const filled = Number(skill.baseMult)
+  const filled = libraryEffectiveBaseMult(skill)
   if (!unsetSkillMult(filled)) return String(filled)
   const anchorId = skill.buffAnchorId?.trim()
   const sub = anchorId

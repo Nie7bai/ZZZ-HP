@@ -23,6 +23,12 @@ import {
   externalConvertFieldClass,
   type ConvertSourceMark,
 } from '@/utils/panelBuffCalc'
+import {
+  SKILL_TALENT_LEVEL_KEYS,
+  SKILL_TALENT_LEVEL_LABELS,
+  createDefaultSkillTalentLevels,
+  type SkillTalentLevels,
+} from '@/utils/skillTalentLevels'
 
 const calcMode = defineModel<Extract<PanelCalcMode, 'panel' | 'affix'>>('calcMode', {
   default: 'panel',
@@ -50,6 +56,9 @@ const externalPanel = defineModel<PanelStats>('externalPanel', {
 const affixCounts = defineModel<AffixCounts>('affixCounts', { required: true })
 const affixDriveDiscMainStats = defineModel<AffixDriveDiscMainStats>('affixDriveDiscMainStats', {
   required: true,
+})
+const skillTalentLevels = defineModel<SkillTalentLevels>('skillTalentLevels', {
+  default: () => createDefaultSkillTalentLevels(),
 })
 
 const isAffixMode = computed(() => calcMode.value === 'affix')
@@ -199,6 +208,28 @@ function formatValue(key: keyof PanelStats, value: number) {
     </div>
 
     <p v-if="disabled" class="disabled-hint">请先在「角色」Tab 选择代理人后再录入面板。</p>
+
+    <section class="panel-block">
+      <header class="panel-block-header">
+        <h3>技能等级</h3>
+        <p>
+          五大类等级（默认 12）。仅影响 nanoka 导入的直伤招式倍率；闪避含冲刺/闪避反击，特殊技含普特/强特，连携与终结共用一档。
+        </p>
+      </header>
+      <div class="grid five">
+        <label v-for="key in SKILL_TALENT_LEVEL_KEYS" :key="key" class="field">
+          <span>{{ SKILL_TALENT_LEVEL_LABELS[key] }}</span>
+          <input
+            v-model.lazy.number="skillTalentLevels[key]"
+            type="number"
+            min="1"
+            max="16"
+            step="1"
+            :disabled="disabled"
+          />
+        </label>
+      </div>
+    </section>
 
     <section v-if="isAffixMode" class="panel-block">
       <header class="panel-block-header">
@@ -425,6 +456,18 @@ function formatValue(key: keyof PanelStats, value: number) {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.55rem 0.65rem;
+}
+
+.grid.five {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.55rem 0.65rem;
+}
+
+@media (max-width: 720px) {
+  .grid.five {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .field {
