@@ -9,7 +9,11 @@ import {
   buildDefenseDisplayIdMap,
   resolveDefenseSeasonOrder,
 } from '../src/utils/defenseSeasonId.js'
-import { crisisPhaseNumericId } from '../src/services/crisisTidService.js'
+import {
+  crisisPhaseNumericId,
+  computeNextCrisisTid,
+  isHardCrisisTidEra,
+} from '../src/services/crisisTidService.js'
 
 test('防卫：表内 3.1-3 仍为 62057', () => {
   assert.equal(versionPhaseToDisplayId('3.1', 3), 62057)
@@ -42,4 +46,17 @@ test('防卫：resolve 顺序把新期接在表末', () => {
 test('危局 phaseId：3.1 第1期 → 311', () => {
   assert.equal(crisisPhaseNumericId('3.1', 1), 311)
   assert.equal(crisisPhaseNumericId('3.2', 1), 321)
+})
+
+test('危局：3.1 起为绝境号段', () => {
+  assert.equal(isHardCrisisTidEra('3.0'), false)
+  assert.equal(isHardCrisisTidEra('3.1'), true)
+  assert.equal(isHardCrisisTidEra('3.2'), true)
+})
+
+test('危局 tid 续推：旧号 +1，绝境 +10', () => {
+  assert.equal(computeNextCrisisTid(69041, { hardEra: false }), 69042)
+  assert.equal(computeNextCrisisTid(null, { hardEra: true }), 690421)
+  assert.equal(computeNextCrisisTid(690421, { hardEra: true }), 690431)
+  assert.equal(computeNextCrisisTid(690441, { hardEra: true }), 690451)
 })
