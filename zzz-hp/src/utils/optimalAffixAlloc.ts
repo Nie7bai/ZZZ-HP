@@ -1448,6 +1448,20 @@ export function evaluateAffixCountsForSweep(
 
 const AFFIX_EVAL_CACHE_MAX = 800
 let affixEvalCacheCtxSig = ''
+/**
+ * 当前上下文在**缓存键里**用的短标识。
+ *
+ * 缺陷与实测（2026-09-11，用户报「词条计算变慢」）：此前缓存键直接把上下文签名
+ * （`affixEvalCacheCtxSig`）拼在前面，而签名含全量角色 / 音擎 / 驱动盘文档 ——
+ * 实测一次 30 词条求解里键长 **4,217,995 字符**，241 次评估中仅「拼键 + Map 查找 +
+ * Map 写入」就花掉 **13.2 s**（真算只占 0.84 s），把求解从 888 ms 拖到 14 s。
+ * 每次拼键都会新建一个 4 MB 字符串、每次哈希都要重算，纯属浪费。
+ *
+ * 签名本身只需回答「变没变」（`resetAffixEvalCacheIfNeeded` 比的是它，变了就整体清缓存），
+ * 因此缓存键里改成用**等价的短 id**：签名一变、id 必变，隔断语义与原来逐位相同。
+ */
+let affixEvalCacheCtxKey = ''
+let affixEvalCacheCtxSeq = 0
 /** 自定义词条（panelField 类）叠加到局外面板的增量表 */
 export type AffixPanelDeltaMap = Partial<Record<AffixPanelDeltaField, number>>
 const affixEvalCache = new Map<
@@ -1513,22 +1527,25 @@ function affixCountsCacheKey(
 }
 
 /**
- * 评估缓存键 = **上下文签名** + 词条数。
+ * 评估缓存键 = **上下文短标识** + 词条数。
  *
  * 只按词条数做键时，同一套词条在不同上下文下会互相命中：实测（2026-09-11，真实方案）
  * 主属性组合试算用 `mainBaseExternalPanel: null` 评估（换主属性必须重新推导面板），
  * 它把「无基准」的结果写进缓存；随后柱图/详情再评估同一套词条直接命中该条，
  * 详情总伤从 74,222,437 掉成 56,758,629 —— 就是用户看到的「柱图与详情对不上」。
  *
- * 签名由 `resetAffixEvalCacheIfNeeded()` 在调用前算好（同一份 ctx 走记忆化，不增开销），
+ * 标识由 `resetAffixEvalCacheIfNeeded()` 在调用前备好（同一份 ctx 走记忆化，不增开销），
  * 这里直接复用；这样即便将来签名又漏了字段，也不会跨上下文串值。
+ *
+ * 注意**不要**把签名原文（几 MB）拼进键：那会让每次评估都新建并哈希一个巨型字符串，
+ * 实测把求解从 888 ms 拖到 14 s（见 `affixEvalCacheCtxKey` 的说明）。
  */
 function affixEvalCacheKey(
   affixCounts: AffixCounts,
   panelDeltas?: AffixPanelDeltaMap,
   valuePerCount?: AffixValuePerCount,
 ): string {
-  return `${affixEvalCacheCtxSig}|${affixCountsCacheKey(affixCounts, panelDeltas, valuePerCount)}`
+  return `${affixEvalCacheCtxKey}|${affixCountsCacheKey(affixCounts, panelDeltas, valuePerCount)}`
 }
 
 function serializeBuffSelection(state: BuffSelectionState | null | undefined): string {
@@ -1704,6 +1721,9 @@ function resetAffixEvalCacheIfNeeded(ctx: OptimalEvalContext) {
     stableEventLinesByHitId = null
     mainAgentTeamConvertReadsPanelCached = null
     affixEvalCacheCtxSig = sig
+    // 签名变了 → 换一把短 id，缓存键里的上下文段随之失效（见 affixEvalCacheCtxKey）
+    affixEvalCacheCtxSeq += 1
+    affixEvalCacheCtxKey = `c${affixEvalCacheCtxSeq}`
   }
 }
 
@@ -1714,6 +1734,8 @@ export function clearAffixEvalCache() {
   stableEventLinesByHitId = null
   mainAgentTeamConvertReadsPanelCached = null
   affixEvalCacheCtxSig = ''
+  affixEvalCacheCtxSeq += 1
+  affixEvalCacheCtxKey = `c${affixEvalCacheCtxSeq}`
 }
 
 function getAffixExternalFixedParts(ctx: OptimalEvalContext): AffixExternalFixedParts {
