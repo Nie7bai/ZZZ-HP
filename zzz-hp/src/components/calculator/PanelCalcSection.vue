@@ -1647,6 +1647,8 @@ function buildResolvedHitSignature(hit: ResolvedHit) {
     skillId: hit.skill.id,
     damageType: hit.skill.damageType,
     baseMult: hit.skill.baseMult,
+    effectiveBaseMult: hit.effectiveBaseMult,
+    skillTalentLevel: hit.skillTalentLevel,
     baseMultFactor: hit.skill.baseMultFactor,
     settlementMult: hit.skill.settlementMult,
     skillTypes: hit.skill.skillTypes,

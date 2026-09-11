@@ -6,8 +6,8 @@
  * 例：克拉蕾「锻星·一段」L12：
  *   (10770 + 980 * 11) / 100 = 215.5
  *
- * 策略 B：匹配则覆盖 baseMult / skillTypes / element / buffAnchorId；缺失新建。
- * 属性 element 跟随角色；特殊技写入 special+specialBasic（或 special+specialEnhanced）。
+ * 策略 B（现行）：匹配则只更新倍率相关（multSource / damagePercentage / growth / L12 baseMult）；
+ * 保留已有 skillTypes / element / buffAnchorId / note 等。缺失则新建（含 types/element/anchor）。
  * 只导入「伤害倍率」段（跳过失衡）。同名段去重（保留首条）。
  *
  * Usage:
@@ -165,9 +165,11 @@ export function extractDamageSegments(detail, { level = 12 } = {}) {
         const nanokaSkillId = Object.keys(paramMap)[0]
         if (!nanokaSkillId) continue
         const stats = paramMap[nanokaSkillId] ?? {}
+        const damagePercentage = Number(stats.damage_percentage ?? stats.main) || 0
+        const damagePercentageGrowth = Number(stats.damage_percentage_growth ?? stats.growth) || 0
         const baseMult = computeBaseMultPercent(
-          stats.damage_percentage ?? stats.main,
-          stats.damage_percentage_growth ?? stats.growth,
+          damagePercentage,
+          damagePercentageGrowth,
           level,
         )
         const displayName = buildDisplayName(skillName, paramName)
@@ -181,6 +183,8 @@ export function extractDamageSegments(detail, { level = 12 } = {}) {
           nanokaSkillId: String(nanokaSkillId),
           displayName,
           baseMult,
+          damagePercentage,
+          damagePercentageGrowth,
           skillTypes: mapSkillTypes(category, skillName),
           titleCore: stripSkillTitlePrefix(skillName),
         })
@@ -221,6 +225,15 @@ function sameSkillTypes(a, b) {
   const right = [...(b ?? [])].map(String).sort()
   if (left.length !== right.length) return false
   return left.every((v, i) => v === right[i])
+}
+
+function sameOptionalNumber(a, b, eps = 1e-6) {
+  const left = a == null || a === '' ? null : Number(a)
+  const right = b == null || b === '' ? null : Number(b)
+  if (left == null && right == null) return true
+  if (left == null || right == null) return false
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return false
+  return Math.abs(left - right) < eps
 }
 
 async function loadAgentRows(agentIdFilter = null) {
@@ -287,13 +300,22 @@ function planAgentImport({
     const id = existing?.id ?? stableSkillId(agentId, seg.nanokaSkillId, seg.paramName)
     const skillTypes = seg.skillTypes
     const element = agentElement
+    const multFields = {
+      multSource: 'nanoka',
+      damagePercentage: seg.damagePercentage,
+      damagePercentageGrowth: seg.damagePercentageGrowth,
+      baseMult: seg.baseMult,
+    }
 
     if (existing) {
-      const sameMult = Math.abs(Number(existing.baseMult) - seg.baseMult) < 1e-6
-      const sameTypes = sameSkillTypes(existing.skillTypes, skillTypes)
-      const sameElement = String(existing.element ?? '') === element
-      const sameAnchor = String(existing.buffAnchorId ?? '') === String(buffAnchorId ?? '')
-      if (sameMult && sameTypes && sameElement && sameAnchor) {
+      const sameMult = sameOptionalNumber(existing.baseMult, seg.baseMult)
+      const samePercentage = sameOptionalNumber(existing.damagePercentage, seg.damagePercentage)
+      const sameGrowth = sameOptionalNumber(
+        existing.damagePercentageGrowth,
+        seg.damagePercentageGrowth,
+      )
+      const sameSource = String(existing.multSource ?? '') === 'nanoka'
+      if (sameMult && samePercentage && sameGrowth && sameSource) {
         report.skipSame.push({ id, name: existing.name, baseMult: existing.baseMult })
       } else {
         report.overwrite.push({
@@ -301,24 +323,22 @@ function planAgentImport({
           name: existing.name,
           from: existing.baseMult,
           to: seg.baseMult,
-          skillTypes,
-          element,
-          buffAnchorId,
+          skillTypes: existing.skillTypes,
+          element: existing.element,
+          buffAnchorId: existing.buffAnchorId,
           changed: {
             baseMult: !sameMult,
-            skillTypes: !sameTypes,
-            element: !sameElement,
-            buffAnchorId: !sameAnchor,
+            damagePercentage: !samePercentage,
+            damagePercentageGrowth: !sameGrowth,
+            multSource: !sameSource,
           },
         })
+        // 重导入只更新倍率相关，保留 types/element/anchor/note/settlement 等
         planned.push({
           action: 'overwrite',
           doc: {
             ...existing,
-            baseMult: seg.baseMult,
-            skillTypes,
-            element,
-            buffAnchorId,
+            ...multFields,
           },
         })
       }
@@ -340,7 +360,7 @@ function planAgentImport({
           damageType: 'direct',
           skillTypes,
           buffAnchorId,
-          baseMult: seg.baseMult,
+          ...multFields,
           baseMultFactor: 100,
           settlementMult: 0,
           element,
@@ -362,6 +382,8 @@ function planAgentImport({
 
   return { report, planned }
 }
+
+export { planAgentImport, sameSkillTypes, sameOptionalNumber }
 
 function printDetailReport(report, { verbose }) {
   const printRows = (title, rows, fmt) => {

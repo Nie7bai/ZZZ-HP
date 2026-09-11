@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import type { AgentBuffDoc, CharacterAttrKey, DriveDiscBuffDoc, WengineBuffDoc } from '@/types/calculator'
 import { CHARACTER_ATTR_OPTIONS } from '@/types/calculator'
 import {
@@ -23,6 +23,14 @@ import {
   externalConvertFieldClass,
   type ConvertSourceMark,
 } from '@/utils/panelBuffCalc'
+import {
+  SKILL_TALENT_LEVEL_KEYS,
+  SKILL_TALENT_LEVEL_LABELS,
+  clampSkillTalentLevel,
+  createDefaultSkillTalentLevels,
+  skillTalentLevelBoundsForRank,
+  type SkillTalentLevels,
+} from '@/utils/skillTalentLevels'
 
 const calcMode = defineModel<Extract<PanelCalcMode, 'panel' | 'affix'>>('calcMode', {
   default: 'panel',
@@ -33,6 +41,8 @@ const props = defineProps<{
   wengines: WengineBuffDoc[]
   driveDiscs: DriveDiscBuffDoc[]
   agentId: string
+  /** 当前槽位影画，决定技能等级上下限 */
+  agentRank?: number
   wengineId: string
   twoPieceId: string
   fourPieceId: string
@@ -51,6 +61,34 @@ const affixCounts = defineModel<AffixCounts>('affixCounts', { required: true })
 const affixDriveDiscMainStats = defineModel<AffixDriveDiscMainStats>('affixDriveDiscMainStats', {
   required: true,
 })
+const skillTalentLevels = defineModel<SkillTalentLevels>('skillTalentLevels', {
+  default: () => createDefaultSkillTalentLevels(),
+})
+
+const talentBounds = computed(() => skillTalentLevelBoundsForRank(props.agentRank))
+
+watch(
+  () => props.agentRank,
+  (rank) => {
+    const next = { ...skillTalentLevels.value }
+    let changed = false
+    for (const key of SKILL_TALENT_LEVEL_KEYS) {
+      const clamped = clampSkillTalentLevel(next[key], rank)
+      if (clamped !== next[key]) {
+        next[key] = clamped
+        changed = true
+      }
+    }
+    if (changed) skillTalentLevels.value = next
+  },
+)
+
+function onTalentLevelInput(key: (typeof SKILL_TALENT_LEVEL_KEYS)[number], raw: unknown) {
+  skillTalentLevels.value = {
+    ...skillTalentLevels.value,
+    [key]: clampSkillTalentLevel(Number(raw), props.agentRank),
+  }
+}
 
 const isAffixMode = computed(() => calcMode.value === 'affix')
 
@@ -199,6 +237,26 @@ function formatValue(key: keyof PanelStats, value: number) {
     </div>
 
     <p v-if="disabled" class="disabled-hint">请先在「角色」Tab 选择代理人后再录入面板。</p>
+
+    <section class="panel-block">
+      <header class="panel-block-header">
+        <h3>技能等级</h3>
+      </header>
+      <div class="grid five">
+        <label v-for="key in SKILL_TALENT_LEVEL_KEYS" :key="key" class="field">
+          <span>{{ SKILL_TALENT_LEVEL_LABELS[key] }}</span>
+          <input
+            :value="skillTalentLevels[key]"
+            type="number"
+            :min="talentBounds.min"
+            :max="talentBounds.max"
+            step="1"
+            :disabled="disabled"
+            @change="onTalentLevelInput(key, ($event.target as HTMLInputElement).value)"
+          />
+        </label>
+      </div>
+    </section>
 
     <section v-if="isAffixMode" class="panel-block">
       <header class="panel-block-header">
@@ -425,6 +483,18 @@ function formatValue(key: keyof PanelStats, value: number) {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.55rem 0.65rem;
+}
+
+.grid.five {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.55rem 0.65rem;
+}
+
+@media (max-width: 720px) {
+  .grid.five {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .field {

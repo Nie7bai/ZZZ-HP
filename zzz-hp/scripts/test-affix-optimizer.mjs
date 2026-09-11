@@ -39,6 +39,7 @@ import {
   evaluateAffixCounts,
   optimalHitDependsOnMainAffixPanel,
 } from '../src/utils/optimalAffixAlloc.ts'
+import { statKeyOfTarget } from '../src/utils/affixLibrary.ts'
 import {
   buildPanelSourceValuesBySlotMap,
   invalidateBuffCatalogCache,
@@ -153,7 +154,8 @@ console.log('\n[1] 与全排列穷举对比（预算 6 档）')
         const counts = { ...createEmptyAffixCounts() }
         for (const e of subset) {
           const n = rolls[e.id] ?? 0
-          if (n > 0) counts[e.affixKey] += n
+          const key = statKeyOfTarget(e.target)
+          if (n > 0 && key) counts[key] += n
         }
         const total = evaluateAffixCounts(ctx, counts).grandTotal
         if (total > bestTotal) {

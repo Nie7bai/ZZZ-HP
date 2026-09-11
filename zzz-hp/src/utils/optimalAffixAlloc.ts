@@ -299,6 +299,13 @@ export interface OptimalEvalContext {
    * 无值时 `computeExternalForEval` 回退到按槽位配置推导 —— 与改造前逐位等价。
    */
   mainBaseExternalPanel?: PanelStats | null
+  /**
+   * 词条「每档值」表（由词条库条目的 `perRoll` 算出），省略时按 `AFFIX_VALUE_PER_COUNT`。
+   *
+   * 放进上下文而不是逐函数传参：柱图扫掠 / 详情 / 收益表 / 基准总伤都从 ctx 取面板，
+   * 少传一条路就会出现「同一套词条，两处数字不一样」——即 2026-09-11 修过的那类分叉。
+   */
+  valuePerCount?: AffixValuePerCount
   panelContext: PanelCalcContext
   enemyInput: DamageEnemyInput
   baseDamageSource: BaseDamageSource
@@ -1371,7 +1378,7 @@ export function evaluateAffixCountsForSweep(
   panelDeltas?: AffixPanelDeltaMap,
 ): { grandTotal: number; eventLines: OptimalEventDamageLine[] } {
   resetAffixEvalCacheIfNeeded(ctx)
-  const cacheKey = affixEvalCacheKey(affixCounts, panelDeltas)
+  const cacheKey = affixEvalCacheKey(affixCounts, panelDeltas, ctx.valuePerCount)
   const cached = affixSweepCache.get(cacheKey)
   if (cached) return cached
 
@@ -1456,19 +1463,53 @@ const affixEvalCache = new Map<
   }
 >()
 
+/**
+ * 词条计数各字段的「每档值」。
+ *
+ * 由词条库条目决定（`entryRollsToEvalInput` 产出）：`stat:` 目标的条目用自己的
+ * `perRoll` 覆盖对应字段，未覆盖的字段回落 `AFFIX_VALUE_PER_COUNT`。
+ * 省略时全部走常量表 —— 柱图（词条计算页）等调用点因此行为不变。
+ */
+export type AffixValuePerCount = Record<keyof AffixCounts, number>
+
+/** valuePerCount 是否与默认常量表一致（一致就不进缓存键，保持既有键形态稳定） */
+function isDefaultValuePerCount(valuePerCount: AffixValuePerCount): boolean {
+  const keys = Object.keys(AFFIX_VALUE_PER_COUNT) as (keyof AffixCounts)[]
+  for (const key of keys) {
+    if (valuePerCount[key] !== AFFIX_VALUE_PER_COUNT[key]) return false
+  }
+  return true
+}
+
 function affixCountsCacheKey(
   affixCounts: AffixCounts,
   panelDeltas?: AffixPanelDeltaMap,
+  valuePerCount?: AffixValuePerCount,
 ): string {
   // 必须覆盖 AffixCounts 的全部字段：锋御走 defFlat/defPercent，
   // 漏掉会让不同防御档数命中同一条缓存，返回错误伤害。
   const base = `${affixCounts.hpFlat},${affixCounts.hpPercent},${affixCounts.atkFlat},${affixCounts.atkPercent},${affixCounts.defFlat},${affixCounts.defPercent},${affixCounts.pen},${affixCounts.critRate},${affixCounts.critDmg},${affixCounts.mastery}`
-  if (!panelDeltas) return base
+  /**
+   * 每档值必须进键。
+   *
+   * 本项目已因「缓存键漏字段」栽过两次（`defFlat/defPercent`、`agentBase/wengineAdvanced`）。
+   * 漏掉 `valuePerCount` 会以新形式复发同一个病症：
+   * **改「每档」数字，伤害一动不动** —— 正是本次词条库改造要修的东西。
+   * 默认值不进键，让柱图等既有调用点的键形态与改造前完全一致。
+   */
+  const valuePart =
+    valuePerCount && !isDefaultValuePerCount(valuePerCount)
+      ? `|vpc:${(Object.keys(AFFIX_VALUE_PER_COUNT) as (keyof AffixCounts)[])
+          .map((key) => valuePerCount[key])
+          .join(',')}`
+      : ''
+  if (!panelDeltas) return `${base}${valuePart}`
   const parts = (Object.keys(panelDeltas) as AffixPanelDeltaField[])
     .sort()
     .filter((key) => Boolean(panelDeltas[key]))
     .map((key) => `${key}=${panelDeltas[key]}`)
-  return parts.length ? `${base}|${parts.join(',')}` : base
+  const deltaPart = parts.length ? `|${parts.join(',')}` : ''
+  return `${base}${valuePart}${deltaPart}`
 }
 
 /**
@@ -1485,8 +1526,9 @@ function affixCountsCacheKey(
 function affixEvalCacheKey(
   affixCounts: AffixCounts,
   panelDeltas?: AffixPanelDeltaMap,
+  valuePerCount?: AffixValuePerCount,
 ): string {
-  return `${affixEvalCacheCtxSig}|${affixCountsCacheKey(affixCounts, panelDeltas)}`
+  return `${affixEvalCacheCtxSig}|${affixCountsCacheKey(affixCounts, panelDeltas, valuePerCount)}`
 }
 
 function serializeBuffSelection(state: BuffSelectionState | null | undefined): string {
@@ -1574,6 +1616,14 @@ function computeAffixEvalContextSignature(ctx: OptimalEvalContext): string {
      * 漏掉它，两者签名一致 → 共用同一份缓存 → 谁先算谁的值被另一边读走。
      */
     JSON.stringify(ctx.mainBaseExternalPanel ?? null),
+    /**
+     * 每档值必须入签名。
+     *
+     * 它与 `agentBase` / `wengineAdvanced` 同类：都影响「由词条数算出来的局外面板」。
+     * 词条库改「每档」后若签名不变，柱图 / 详情 / 基准总伤会共用同一条旧缓存，
+     * 表现为「改了每档，数字一动不动」。
+     */
+    JSON.stringify(ctx.valuePerCount ?? null),
     // 主词条组合试算会改 2/4 件套；缺失会导致同词条数命中旧缓存，伤害不变
     JSON.stringify(ctx.driveDiscSelection),
     JSON.stringify(ctx.enemyInput),
@@ -1694,15 +1744,24 @@ function computeExternalForEval(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
   panelDeltas?: AffixPanelDeltaMap,
+  valuePerCount?: AffixValuePerCount,
 ): PanelStats {
+  // 显式参数优先（求解器 / 收益表按自己的条目表算），否则用上下文里那份 ——
+  // 页面所有展示路径共用同一个 ctx，因此「每档」在哪儿改，哪儿就跟着变。
+  const vpc = valuePerCount ?? ctx.valuePerCount
   const base = ctx.mainBaseExternalPanel
   const external = base
-    ? applyAffixCountsOntoExternalPanel(base, affixCounts, {
-        hp: ctx.agentBase?.hp ?? 0,
-        atk: (ctx.agentBase?.atk ?? 0) + (ctx.wengineBaseAtk ?? 0),
-        def: (ctx.agentBase?.def ?? 0) + (ctx.wengineBaseDef ?? 0),
-      })
-    : applyAffixCountsToFixedParts(getAffixExternalFixedParts(ctx), affixCounts)
+    ? applyAffixCountsOntoExternalPanel(
+        base,
+        affixCounts,
+        {
+          hp: ctx.agentBase?.hp ?? 0,
+          atk: (ctx.agentBase?.atk ?? 0) + (ctx.wengineBaseAtk ?? 0),
+          def: (ctx.agentBase?.def ?? 0) + (ctx.wengineBaseDef ?? 0),
+        },
+        vpc,
+      )
+    : applyAffixCountsToFixedParts(getAffixExternalFixedParts(ctx), affixCounts, vpc)
   return panelDeltas ? applyPanelDeltas(external, panelDeltas) : external
 }
 
@@ -1710,6 +1769,7 @@ function evaluateAffixCountsUncached(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
   panelDeltas?: AffixPanelDeltaMap,
+  valuePerCount?: AffixValuePerCount,
 ): {
   finalPanel: PanelStats
   result: DamageCalcResult
@@ -1719,7 +1779,7 @@ function evaluateAffixCountsUncached(
   grandTotal: number
   eventLines: OptimalEventDamageLine[]
 } {
-  const external = computeExternalForEval(ctx, affixCounts, panelDeltas)
+  const external = computeExternalForEval(ctx, affixCounts, panelDeltas, valuePerCount)
 
   if (ctx.hits?.length) {
     const { grandTotal, eventLines, firstResult, firstBreakdown } = computeEventDamageLines(
@@ -1855,13 +1915,15 @@ export function evaluateAffixCountsWithCacheInfo(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
   panelDeltas?: AffixPanelDeltaMap,
+  valuePerCount?: AffixValuePerCount,
 ): { value: AffixCountsEvalResult; cacheHit: boolean } {
   resetAffixEvalCacheIfNeeded(ctx)
-  const cacheKey = affixEvalCacheKey(affixCounts, panelDeltas)
+  const vpc = valuePerCount ?? ctx.valuePerCount
+  const cacheKey = affixEvalCacheKey(affixCounts, panelDeltas, vpc)
   const cached = affixEvalCache.get(cacheKey)
   if (cached) return { value: cached, cacheHit: true }
 
-  const result = evaluateAffixCountsUncached(ctx, affixCounts, panelDeltas)
+  const result = evaluateAffixCountsUncached(ctx, affixCounts, panelDeltas, vpc)
   if (affixEvalCache.size >= AFFIX_EVAL_CACHE_MAX) {
     const firstKey = affixEvalCache.keys().next().value
     if (firstKey) affixEvalCache.delete(firstKey)
@@ -1874,8 +1936,9 @@ export function evaluateAffixCounts(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
   panelDeltas?: AffixPanelDeltaMap,
+  valuePerCount?: AffixValuePerCount,
 ): AffixCountsEvalResult {
-  return evaluateAffixCountsWithCacheInfo(ctx, affixCounts, panelDeltas).value
+  return evaluateAffixCountsWithCacheInfo(ctx, affixCounts, panelDeltas, valuePerCount).value
 }
 
 /**
@@ -2593,6 +2656,11 @@ export function buildOptimalEvalContext(input: {
   skillSubcategories?: SkillSubcategory[]
   followUpSkillRules?: import('@/types/calculator').FollowUpSkillRule[]
   environmentBuffs?: import('@/utils/environmentBuffCalc').EnvironmentBuffEntry[]
+  /**
+   * 词条「每档值」表（词条库条目的 `perRoll`）。省略 = 按 `AFFIX_VALUE_PER_COUNT`，
+   * 与改造前的行为逐位一致。
+   */
+  valuePerCount?: AffixValuePerCount
 }): OptimalEvalContext {
   // 深解包响应式代理：引擎会对这批数据做海量属性读取，走 Proxy 陷阱会慢 3 倍以上
   // （实测 16.4ms → 5.3ms/次评估，见 reactiveUnwrap.ts）。只换引用不改值，
@@ -2622,6 +2690,8 @@ export function buildOptimalEvalContext(input: {
     isMb: input.isMb,
     isFengYu: Boolean(input.isFengYu),
     mainBaseExternalPanel,
+    // 词条库条目的「每档值」：不放这里就得在每个展示路径上各传一次，漏一处就分叉
+    valuePerCount: input.valuePerCount,
     agentBase: mainAgent?.basePanel ?? createEmptyAgentBasePanel(),
     wengineBaseAtk: mainWengine?.baseAtk ?? 0,
     wengineBaseDef: mainWengine?.baseDef ?? 0,

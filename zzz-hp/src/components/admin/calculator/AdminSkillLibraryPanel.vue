@@ -50,6 +50,10 @@ const form = ref({
   element: '',
   ownerGroupId: '' as string,
   note: '',
+  /** 仅回传 nanoka 导入字段；管理端 UI 不编辑 */
+  multSource: null as 'nanoka' | null,
+  damagePercentage: null as number | null,
+  damagePercentageGrowth: null as number | null,
 })
 
 const groupForm = ref({
@@ -254,6 +258,9 @@ function resetForm() {
     element: '',
     ownerGroupId: '',
     note: '',
+    multSource: null,
+    damagePercentage: null,
+    damagePercentageGrowth: null,
   }
   selectedId.value = ''
   message.value = ''
@@ -291,6 +298,16 @@ function selectItem(item: Skill) {
     element: item.element ?? '',
     ownerGroupId: item.ownerGroupId ?? '',
     note: item.note ?? '',
+    multSource: item.multSource === 'nanoka' ? 'nanoka' : null,
+    damagePercentage:
+      item.damagePercentage == null || !Number.isFinite(Number(item.damagePercentage))
+        ? null
+        : Number(item.damagePercentage),
+    damagePercentageGrowth:
+      item.damagePercentageGrowth == null ||
+      !Number.isFinite(Number(item.damagePercentageGrowth))
+        ? null
+        : Number(item.damagePercentageGrowth),
   }
 }
 
@@ -463,6 +480,13 @@ async function saveItem() {
       element: form.value.element,
       ownerGroupId: form.value.ownerGroupId || null,
       note: form.value.note.trim() || undefined,
+      multSource: form.value.multSource === 'nanoka' ? 'nanoka' : null,
+      ...(form.value.damagePercentage != null
+        ? { damagePercentage: form.value.damagePercentage }
+        : {}),
+      ...(form.value.damagePercentageGrowth != null
+        ? { damagePercentageGrowth: form.value.damagePercentageGrowth }
+        : {}),
     })
     selectedId.value = saved.id
     form.value.id = saved.id

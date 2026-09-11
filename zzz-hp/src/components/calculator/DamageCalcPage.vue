@@ -45,6 +45,10 @@ import type {
   DamageCalcKind,
   StaggerPhase,
 } from '@/types/calculator'
+import {
+  fillSkillTalentLevels,
+  type SkillTalentLevels,
+} from '@/utils/skillTalentLevels'
 import type { DefenseSeason } from '@/types/defense'
 import type { PhaseData } from '@/types/history'
 import { fetchCrisisAssaultPhases } from '@/api/crisisAssault'
@@ -166,6 +170,7 @@ const currentSchemeName = computed(
 const staggerPhase = ref<StaggerPhase>('stagger')
 const anomalySlotPanels = reactive<Record<string, PanelStats>>({})
 const convertSlotPanels = reactive<ConvertSlotPanels>({})
+const skillTalentLevelsByAgent = reactive<Record<string, SkillTalentLevels>>({})
 const extraGains = ref<ExtraBuffGain[]>([])
 const schemeSlots = ref<SchemeSlot[]>(ensureSchemeSlots([], 3))
 const hitDamages = ref<Record<string, number>>({})
@@ -177,7 +182,22 @@ const resolvedFlow = computed(() =>
     findSkill: (id) => calculatorBuffStore.findSkill(id),
     findSkillGroup: (id) => calculatorBuffStore.findSkillGroup(id),
     skillSubcategories: skillSubcategories.value,
+    skillTalentLevelsByAgent,
   }),
+)
+
+/** 槽位影画变更时，把已存技能等级钳进该影画上下限 */
+watch(
+  () => teamSlots.map((slot) => `${slot.agentId}:${slot.rank}`).join('|'),
+  () => {
+    for (const slot of teamSlots) {
+      if (!slot.agentId || !skillTalentLevelsByAgent[slot.agentId]) continue
+      skillTalentLevelsByAgent[slot.agentId] = fillSkillTalentLevels(
+        skillTalentLevelsByAgent[slot.agentId],
+        slot.rank,
+      )
+    }
+  },
 )
 const hits = computed(() => resolvedFlow.value.hits)
 const previewHits = computed(() =>
@@ -187,6 +207,7 @@ const previewHits = computed(() =>
     findSkill: (id) => calculatorBuffStore.findSkill(id),
     findSkillGroup: (id) => calculatorBuffStore.findSkillGroup(id),
     skillSubcategories: skillSubcategories.value,
+    skillTalentLevelsByAgent,
   }),
 )
 const firstHit = computed(() => hits.value[0] ?? null)
@@ -1244,6 +1265,10 @@ function applyUnifiedImport(payload: UnifiedPresetConfirmPayload) {
     ...payload.affixDriveDiscMainStats,
   }
   anomalySlotPanels[payload.agentId] = fillPanelStatsDefaults(payload.externalPanel)
+  skillTalentLevelsByAgent[payload.agentId] = fillSkillTalentLevels(
+    payload.skillTalentLevels,
+    payload.rank,
+  )
   slot.agentId = payload.agentId
   nextTick(() => {
     panelCalcSectionRef.value?.syncLivePanelFromCommitted?.()
@@ -1385,6 +1410,14 @@ function applyWorkingState(entry: {
     panelCalcSectionRef.value?.loadSnapshot(panelState, {
       preserveBaseDamageSource: entry.preserveBaseDamageSource,
     })
+    for (const key of Object.keys(skillTalentLevelsByAgent)) delete skillTalentLevelsByAgent[key]
+    const talentMap = entry.panelState.skillTalentLevelsByAgent
+    if (talentMap) {
+      for (const [agentId, levels] of Object.entries(talentMap)) {
+        const rank = teamSlots.find((slot) => slot.agentId === agentId)?.rank ?? 0
+        skillTalentLevelsByAgent[agentId] = fillSkillTalentLevels(levels, rank)
+      }
+    }
   }
   // 必须在换人 watch 同一轮里写回快照，不能拖到 nextTick：
   // 否则默认 4/5/6（爆伤/攻击/生命）会先被 flush 进槽位，再被草稿 persist 写死。
@@ -1413,11 +1446,27 @@ function captureSchemePanelState(): DamageCalcSchemePanelSnapshot | null {
   // - 异化系数乘区输入（mutationCoeff / mutationCoeffFactor）
   const { baseDamageSource: _ignored, ...schemeSnapshot } = snapshot
   const externalPanel = resetSchemeExcludedPanelFields({ ...schemeSnapshot.externalPanel })
-  return { ...schemeSnapshot, externalPanel }
+  return {
+    ...schemeSnapshot,
+    externalPanel,
+    skillTalentLevelsByAgent: JSON.parse(JSON.stringify(skillTalentLevelsByAgent)) as Record<
+      string,
+      SkillTalentLevels
+    >,
+  }
 }
 
 function captureWorkingDraft(): DamageCalcWorkingDraft | null {
   const panelState = panelCalcSectionRef.value?.getSnapshot() ?? null
+  const withTalent = panelState
+    ? {
+        ...panelState,
+        skillTalentLevelsByAgent: JSON.parse(JSON.stringify(skillTalentLevelsByAgent)) as Record<
+          string,
+          SkillTalentLevels
+        >,
+      }
+    : null
   return {
     savedAt: Date.now(),
     loadedSchemeId: activeHistoryId.value || getLoadedSchemeId(),
@@ -1426,7 +1475,7 @@ function captureWorkingDraft(): DamageCalcWorkingDraft | null {
     selectedBangbooId: selectedBangbooId.value,
     bangbooRefine: bangbooRefine.value,
     panelCalcMode: panelCalcMode.value,
-    panelState,
+    panelState: withTalent,
     anomalySlotPanels: captureSchemeAnomalySlotPanels(),
     convertSlotPanels: cloneConvertSlotPanels(),
     slots: JSON.parse(JSON.stringify(schemeSlots.value)),
@@ -1610,6 +1659,7 @@ function emptySchemePanelState(): DamageCalcSchemePanelSnapshot {
     affixCounts: createEmptyAffixCounts(),
     affixDriveDiscMainStats: createDefaultAffixDriveDiscMainStats(),
     affixStateByAgent: {},
+    skillTalentLevelsByAgent: {},
     extraMods: createEmptyBuffStatModifiers(),
     extraGains: [],
     enemyInput: defaultEnemyInput(),
@@ -1631,6 +1681,7 @@ function resetPageSchemeConfig() {
     panelState: emptySchemePanelState(),
     preserveBaseDamageSource: true,
   })
+  for (const key of Object.keys(skillTalentLevelsByAgent)) delete skillTalentLevelsByAgent[key]
   extraGains.value = []
   enemyInput.value = defaultEnemyInput()
   activeHistoryId.value = ''
@@ -1766,6 +1817,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :active-slot="activeSlot"
       :preferred-entry-mode="panelCalcMode === 'affix' ? 'affix' : 'panel'"
       :anomaly-slot-panels="anomalySlotPanels"
+      :skill-talent-levels-by-agent="skillTalentLevelsByAgent"
       :final-panel-preview="activeFinalPanelPreview"
       :final-panel-token="importFinalPanelToken"
       :resolve-final-panel="resolveImportFinalPanel"
@@ -1795,6 +1847,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :active-agent="activeAgent"
       :preferred-entry-mode="panelCalcMode === 'affix' ? 'affix' : 'panel'"
       :anomaly-slot-panels="anomalySlotPanels"
+      :skill-talent-levels-by-agent="skillTalentLevelsByAgent"
       :final-panel-preview="activeFinalPanelPreview"
       :final-panel-token="importFinalPanelToken"
       :resolve-final-panel="resolveImportFinalPanel"
@@ -2024,6 +2077,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
         :hits="hits"
         :hit-damages="hitDamages"
         :hit-calc-results="hitCalcResults"
+        :skill-talent-levels-by-agent="skillTalentLevelsByAgent"
         :scheme-name="currentSchemeName"
         v-model:slots="schemeSlots"
         v-model:edited-slot-index="activeSlot"

@@ -1,7 +1,19 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import type { AffixCounts } from '@/types/calculatorPanel'
 import type { AffixBenefitTable } from '@/utils/affixBenefitAnalysis'
-import type { AffixLibraryEntry } from '@/utils/affixLibrary'
+import {
+  AFFIX_PANEL_DELTA_FIELD_LABELS,
+  AFFIX_SUBSTAT_KEY_LABELS,
+  affixPerRollUnit,
+  formatAffixPerRoll,
+  panelTarget,
+  statKeyOfTarget,
+  statTarget,
+  type AffixLibraryEntry,
+  type AffixLibraryEntryTarget,
+  type AffixPanelDeltaField,
+} from '@/utils/affixLibrary'
 import { useResizableColumns, type ResizableColumnSpec } from '@/composables/useResizableColumns'
 
 /**
@@ -26,7 +38,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   select: [entryId: string]
   toggleEntry: [entryId: string, enabled: boolean]
-  addEntry: [entry: Omit<AffixLibraryEntry, 'id' | 'builtin'>]
+  addEntry: [entry: Omit<AffixLibraryEntry, 'id'>]
   updateEntry: [entryId: string, patch: Partial<AffixLibraryEntry>]
   removeEntry: [entryId: string]
   restoreDefaults: []
@@ -99,44 +111,41 @@ function formatWeight(value: number) {
 // ---------- 新增条目表单 ----------
 const draft = ref({
   label: '',
-  kind: 'substat' as 'substat' | 'panelField',
-  affixKey: 'atkPercent',
-  panelField: 'dmgBonus',
+  target: statTarget('atkPercent') as AffixLibraryEntryTarget,
   perRoll: 3,
   cap: 0,
   group: '',
 })
 const draftError = ref<string | null>(null)
 
-const SUBSTAT_OPTIONS = [
-  { id: 'atkPercent', label: '局外攻击力%' },
-  { id: 'atkFlat', label: '固定攻击力' },
-  { id: 'hpPercent', label: '局外生命值%' },
-  { id: 'hpFlat', label: '固定生命值' },
-  { id: 'defPercent', label: '局外防御力%' },
-  { id: 'defFlat', label: '固定防御力' },
-  { id: 'critRate', label: '暴击率%' },
-  { id: 'critDmg', label: '暴击伤害%' },
-  { id: 'mastery', label: '异常精通' },
-  { id: 'pen', label: '固定穿透' },
-]
+/**
+ * 候选目标（合并后是同一个下拉，按命名空间分组）。
+ *
+ * 合并前这里是「类型（副词条/面板字段）+ 字段」两级选择，而两条路在同一个目标格子上
+ * 实测结果完全一致 —— 分类对使用者无意义，故并成一个列表。
+ */
+const STAT_TARGET_OPTIONS = (Object.keys(AFFIX_SUBSTAT_KEY_LABELS) as (keyof AffixCounts)[]).map(
+  (key) => ({ id: statTarget(key), label: AFFIX_SUBSTAT_KEY_LABELS[key] }),
+)
 
-const PANEL_FIELD_OPTIONS = [
-  { id: 'dmgBonus', label: '增伤%' },
-  { id: 'penRate', label: '穿透率%' },
-  { id: 'reduceDefense', label: '减防%' },
-  { id: 'ignoreDefense', label: '无视防御%' },
-  { id: 'resPen', label: '抗性穿透%' },
-  { id: 'anomalyDmgBonus', label: '异常增伤%' },
-  { id: 'anomalyCritRate', label: '异常暴击率%' },
-  { id: 'anomalyCritDmg', label: '异常暴击伤害%' },
-  { id: 'anomalyReleaseDmgBonus', label: '异放增伤%' },
-  { id: 'disorderDmgBonus', label: '紊乱增伤%' },
-  { id: 'turbulenceDmgBonus', label: '乱流增伤%' },
-  { id: 'radianceDmgBonus', label: '耀变增伤%' },
-  { id: 'radianceResPen', label: '耀变抗性穿透%' },
-  { id: 'specialMult', label: '特殊倍率%' },
-]
+const PANEL_TARGET_OPTIONS = (
+  Object.keys(AFFIX_PANEL_DELTA_FIELD_LABELS) as AffixPanelDeltaField[]
+).map((field) => ({ id: panelTarget(field), label: AFFIX_PANEL_DELTA_FIELD_LABELS[field] }))
+
+/** 新增表单里「每档」的单位提示（百分比字段给 %，固定值字段留空） */
+const draftPerRollUnit = computed(() =>
+  affixPerRollUnit(draft.value.target) === 'percent' ? '%' : '',
+)
+
+/** 词条库列表里的类型说明：区分「按基础值换算」与「直接叠加面板」 */
+function targetNamespaceLabel(target: AffixLibraryEntryTarget): string {
+  return statKeyOfTarget(target) ? '词条数' : '面板增量'
+}
+
+/** 词条库列表里「每档」的单位提示 */
+function perRollUnitHint(target: AffixLibraryEntryTarget): string {
+  return affixPerRollUnit(target) === 'percent' ? '%' : ''
+}
 
 function submitDraft() {
   const label = draft.value.label.trim()
@@ -151,9 +160,7 @@ function submitDraft() {
   draftError.value = null
   emit('addEntry', {
     label,
-    kind: draft.value.kind,
-    affixKey: draft.value.kind === 'substat' ? (draft.value.affixKey as never) : undefined,
-    panelField: draft.value.kind === 'panelField' ? (draft.value.panelField as never) : undefined,
+    target: draft.value.target,
     perRoll: draft.value.perRoll,
     cap: draft.value.cap,
     group: draft.value.group.trim(),
@@ -244,7 +251,7 @@ function submitDraft() {
               @click="emit('select', row.entryId)"
             >
               <td>{{ row.label }}</td>
-              <td class="num-cell">{{ row.perRoll }}</td>
+              <td class="num-cell">{{ formatAffixPerRoll(row.target, row.perRoll) }}</td>
               <td class="num-cell">{{ row.currentRolls }}</td>
               <td
                 class="num-cell"
@@ -307,17 +314,19 @@ function submitDraft() {
                 />
               </td>
               <td class="type-cell">
-                {{ entry.kind === 'substat' ? '副词条' : '面板字段' }}
-                <span v-if="entry.builtin" class="builtin-tag">内置</span>
+                {{ targetNamespaceLabel(entry.target) }}
               </td>
               <td>
-                <input
-                  class="inline-input num"
-                  type="number"
-                  step="0.1"
-                  :value="entry.perRoll"
-                  @change="emit('updateEntry', entry.id, { perRoll: Number(($event.target as HTMLInputElement).value) })"
-                />
+                <span class="per-roll-cell">
+                  <input
+                    class="inline-input num"
+                    type="number"
+                    step="0.1"
+                    :value="entry.perRoll"
+                    @change="emit('updateEntry', entry.id, { perRoll: Number(($event.target as HTMLInputElement).value) })"
+                  />
+                  <span v-if="perRollUnitHint(entry.target)" class="unit-hint">%</span>
+                </span>
               </td>
               <td>
                 <input
@@ -340,10 +349,9 @@ function submitDraft() {
               </td>
               <td>
                 <button
-                  v-if="!entry.builtin"
                   type="button"
                   class="del-btn"
-                  title="删除自建条目"
+                  title="删除该条目（默认条目可用「恢复默认」找回）"
                   @click="emit('removeEntry', entry.id)"
                 >
                   ×
@@ -362,31 +370,26 @@ function submitDraft() {
             <input v-model="draft.label" type="text" placeholder="如：5号位增伤" />
           </label>
           <label>
-            <span>类型</span>
-            <select v-model="draft.kind">
-              <option value="substat">副词条</option>
-              <option value="panelField">面板字段</option>
-            </select>
-          </label>
-          <label v-if="draft.kind === 'substat'">
-            <span>字段</span>
-            <select v-model="draft.affixKey">
-              <option v-for="opt in SUBSTAT_OPTIONS" :key="opt.id" :value="opt.id">
-                {{ opt.label }}
-              </option>
-            </select>
-          </label>
-          <label v-else>
-            <span>字段</span>
-            <select v-model="draft.panelField">
-              <option v-for="opt in PANEL_FIELD_OPTIONS" :key="opt.id" :value="opt.id">
-                {{ opt.label }}
-              </option>
+            <span>目标</span>
+            <select v-model="draft.target">
+              <optgroup label="词条数（按基础值换算）">
+                <option v-for="opt in STAT_TARGET_OPTIONS" :key="opt.id" :value="opt.id">
+                  {{ opt.label }}
+                </option>
+              </optgroup>
+              <optgroup label="面板增量（直接叠加局外面板）">
+                <option v-for="opt in PANEL_TARGET_OPTIONS" :key="opt.id" :value="opt.id">
+                  {{ opt.label }}
+                </option>
+              </optgroup>
             </select>
           </label>
           <label>
             <span>每档</span>
-            <input v-model.number="draft.perRoll" type="number" step="0.1" min="0" />
+            <span class="per-roll-cell">
+              <input v-model.number="draft.perRoll" type="number" step="0.1" min="0" />
+              <span v-if="draftPerRollUnit" class="unit-hint">{{ draftPerRollUnit }}</span>
+            </span>
           </label>
           <label>
             <span>上限</span>
@@ -645,12 +648,18 @@ td.neg {
   font-size: 0.76rem;
 }
 
-.builtin-tag {
-  margin-left: 0.3rem;
-  padding: 0 0.25rem;
-  border-radius: 4px;
-  background: rgba(60, 55, 40, 0.08);
-  font-size: 0.68rem;
+/* 「每档」输入 + 单位后缀：单位不是输入值的一部分，只是提示 */
+.per-roll-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  width: 100%;
+}
+
+.unit-hint {
+  flex: none;
+  color: var(--calc-muted, #6b7280);
+  font-size: 0.76rem;
 }
 
 .inline-input {

@@ -265,47 +265,54 @@ export function buildAffixExternalFixedParts(
   }
 }
 
+/**
+ * 词条计数 → 局外面板。
+ *
+ * `valuePerCount` 可覆盖「每档值」：词条库里的条目各自带 `perRoll`，用户在界面改了
+ * 每档数值就必须按新值算（历史缺陷：副词条这条路写死读 `AFFIX_VALUE_PER_COUNT`，
+ * 界面改了每档、伤害却不变）。默认参数保证柱图等既有调用点行为完全不变。
+ */
 export function applyAffixCountsToFixedParts(
   parts: AffixExternalFixedParts,
   counts: AffixCounts,
+  valuePerCount: Record<keyof AffixCounts, number> = AFFIX_VALUE_PER_COUNT,
 ): PanelStats {
-  const hpPercent =
-    parts.fixedHpPercent + affixStatTotal(counts.hpPercent, AFFIX_VALUE_PER_COUNT.hpPercent)
+  const hpPercent = parts.fixedHpPercent + affixStatTotal(counts.hpPercent, valuePerCount.hpPercent)
   const atkPercent =
-    parts.fixedAtkPercent + affixStatTotal(counts.atkPercent, AFFIX_VALUE_PER_COUNT.atkPercent)
+    parts.fixedAtkPercent + affixStatTotal(counts.atkPercent, valuePerCount.atkPercent)
   const defPercent =
-    parts.fixedDefPercent + affixStatTotal(counts.defPercent, AFFIX_VALUE_PER_COUNT.defPercent)
+    parts.fixedDefPercent + affixStatTotal(counts.defPercent, valuePerCount.defPercent)
   return {
     hp: roundPanelValue(
       parts.agentHp * (1 + hpPercent / 100) +
-        affixStatTotal(counts.hpFlat, AFFIX_VALUE_PER_COUNT.hpFlat) +
+        affixStatTotal(counts.hpFlat, valuePerCount.hpFlat) +
         AFFIX_DRIVE_DISC_SLOT_1_HP,
     ),
     atk: roundPanelValue(
       parts.atkBase * (1 + atkPercent / 100) +
-        affixStatTotal(counts.atkFlat, AFFIX_VALUE_PER_COUNT.atkFlat) +
+        affixStatTotal(counts.atkFlat, valuePerCount.atkFlat) +
         AFFIX_DRIVE_DISC_SLOT_2_ATK,
     ),
     def: roundPanelValue(
       parts.agentDef * (1 + defPercent / 100) +
-        affixStatTotal(counts.defFlat, AFFIX_VALUE_PER_COUNT.defFlat) +
+        affixStatTotal(counts.defFlat, valuePerCount.defFlat) +
         AFFIX_DRIVE_DISC_SLOT_3_DEF,
     ),
     critRate: roundPanelValue(
-      parts.critRate + affixStatTotal(counts.critRate, AFFIX_VALUE_PER_COUNT.critRate),
+      parts.critRate + affixStatTotal(counts.critRate, valuePerCount.critRate),
     ),
     critDmg: roundPanelValue(
-      parts.critDmg + affixStatTotal(counts.critDmg, AFFIX_VALUE_PER_COUNT.critDmg),
+      parts.critDmg + affixStatTotal(counts.critDmg, valuePerCount.critDmg),
     ),
     sharpenCritDmgBonus: 0,
     dmgBonus: roundPanelValue(parts.dmgBonus),
     ignoreDefense: 0,
     reduceDefense: roundPanelValue(parts.reduceDefense),
     penRate: roundPanelValue(parts.penRate),
-    pen: roundPanelValue(parts.pen + affixStatTotal(counts.pen, AFFIX_VALUE_PER_COUNT.pen)),
+    pen: roundPanelValue(parts.pen + affixStatTotal(counts.pen, valuePerCount.pen)),
     resPen: roundPanelValue(parts.resPen),
     mastery: roundPanelValue(
-      parts.mastery + affixStatTotal(counts.mastery, AFFIX_VALUE_PER_COUNT.mastery),
+      parts.mastery + affixStatTotal(counts.mastery, valuePerCount.mastery),
     ),
     anomalyControl: roundPanelValue(parts.anomalyControl),
     energyRegen: roundPanelValue(parts.energyRegen),
@@ -366,41 +373,45 @@ export type AffixPercentBases = {
  *
  * 百分比词条按基础值折算（与游戏口径、与 `applyAffixCountsToFixedParts` 一致）：
  * 大攻击 +3%/条 的增量是 `(角色基础攻 + 音擎基础攻) × 3%`，而不是面板攻击 × 3%。
+ *
+ * `valuePerCount` 可覆盖「每档值」：用户在词条库改了每档，界面显示 4% 就必须按 4% 算，
+ * 不能又回落到写死的常量表。省略时用常量表（改造前行为）。
  */
 export function applyAffixCountsOntoExternalPanel(
   base: PanelStats,
   counts: AffixCounts,
   bases: AffixPercentBases,
+  valuePerCount: Record<keyof AffixCounts, number> = AFFIX_VALUE_PER_COUNT,
 ): PanelStats {
-  const hpPercent = affixStatTotal(counts.hpPercent, AFFIX_VALUE_PER_COUNT.hpPercent)
-  const atkPercent = affixStatTotal(counts.atkPercent, AFFIX_VALUE_PER_COUNT.atkPercent)
-  const defPercent = affixStatTotal(counts.defPercent, AFFIX_VALUE_PER_COUNT.defPercent)
+  const hpPercent = affixStatTotal(counts.hpPercent, valuePerCount.hpPercent)
+  const atkPercent = affixStatTotal(counts.atkPercent, valuePerCount.atkPercent)
+  const defPercent = affixStatTotal(counts.defPercent, valuePerCount.defPercent)
   return {
     ...base,
     hp: roundPanelValue(
       base.hp +
         (bases.hp * hpPercent) / 100 +
-        affixStatTotal(counts.hpFlat, AFFIX_VALUE_PER_COUNT.hpFlat),
+        affixStatTotal(counts.hpFlat, valuePerCount.hpFlat),
     ),
     atk: roundPanelValue(
       base.atk +
         (bases.atk * atkPercent) / 100 +
-        affixStatTotal(counts.atkFlat, AFFIX_VALUE_PER_COUNT.atkFlat),
+        affixStatTotal(counts.atkFlat, valuePerCount.atkFlat),
     ),
     def: roundPanelValue(
       base.def +
         (bases.def * defPercent) / 100 +
-        affixStatTotal(counts.defFlat, AFFIX_VALUE_PER_COUNT.defFlat),
+        affixStatTotal(counts.defFlat, valuePerCount.defFlat),
     ),
     critRate: roundPanelValue(
-      base.critRate + affixStatTotal(counts.critRate, AFFIX_VALUE_PER_COUNT.critRate),
+      base.critRate + affixStatTotal(counts.critRate, valuePerCount.critRate),
     ),
     critDmg: roundPanelValue(
-      base.critDmg + affixStatTotal(counts.critDmg, AFFIX_VALUE_PER_COUNT.critDmg),
+      base.critDmg + affixStatTotal(counts.critDmg, valuePerCount.critDmg),
     ),
-    pen: roundPanelValue(base.pen + affixStatTotal(counts.pen, AFFIX_VALUE_PER_COUNT.pen)),
+    pen: roundPanelValue(base.pen + affixStatTotal(counts.pen, valuePerCount.pen)),
     mastery: roundPanelValue(
-      base.mastery + affixStatTotal(counts.mastery, AFFIX_VALUE_PER_COUNT.mastery),
+      base.mastery + affixStatTotal(counts.mastery, valuePerCount.mastery),
     ),
   }
 }

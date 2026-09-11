@@ -1,12 +1,16 @@
 import type { AffixCounts } from '@/types/calculatorPanel'
 import {
-  entryRollsToAffixCounts,
-  entryRollsToPanelDeltas,
+  affixValuePerCountFromEntries,
+  entryRollsToEvalInput,
+  panelFieldOfTarget,
+  statKeyOfTarget,
   type AffixLibraryEntry,
+  type AffixLibraryEntryTarget,
 } from '@/utils/affixLibrary'
 import {
   evaluateAffixCounts,
   type AffixPanelDeltaMap,
+  type AffixValuePerCount,
   type OptimalEvalContext,
 } from '@/utils/optimalAffixAlloc'
 
@@ -24,6 +28,8 @@ import {
 export interface AffixBenefitRow {
   entryId: string
   label: string
+  /** 条目落点（用于按字段单位格式化「每档」显示） */
+  target: AffixLibraryEntryTarget
   /** 当前已投入档数（按当前分配回填） */
   currentRolls: number
   /** 每档增量 */
@@ -112,20 +118,23 @@ export function computeAffixBenefitTable(input: AffixBenefitInput): AffixBenefit
   const { ctx, baseCounts, entries } = input
   const step = Math.max(1, Math.round(input.rollsPerStep ?? 1))
   const basePanelDeltas = input.basePanelDeltas
+  // 每档值以词条库条目为准（合并后副词条也读 entry.perRoll）
+  const valuePerCount = affixValuePerCountFromEntries(entries)
 
-  const baseEval = evaluateAffixCounts(ctx, baseCounts, basePanelDeltas)
+  const baseEval = evaluateAffixCounts(ctx, baseCounts, basePanelDeltas, valuePerCount)
   const baselineDamage = metricOf(baseEval)
 
   const rows: AffixBenefitRow[] = []
   for (const entry of entries) {
     const nextCounts = bumpEntryCounts(baseCounts, entry, step)
     const nextDeltas = bumpEntryPanelDeltas(basePanelDeltas, entry, step)
-    const evaluated = evaluateAffixCounts(ctx, nextCounts, nextDeltas)
+    const evaluated = evaluateAffixCounts(ctx, nextCounts, nextDeltas, valuePerCount)
     const damageDelta = metricOf(evaluated) - baselineDamage
     const percentDelta = baselineDamage > 0 ? (damageDelta / baselineDamage) * 100 : 0
     rows.push({
       entryId: entry.id,
       label: entry.label,
+      target: entry.target,
       currentRolls: currentRollsOf(baseCounts, basePanelDeltas, entry),
       perRoll: entry.perRoll,
       damageDelta,
@@ -196,6 +205,7 @@ function computeAffixBenefitSeries(input: {
   const { ctx, baseCounts, basePanelDeltas, baselineDamage, rankedRows } = input
   if (baselineDamage <= 0) return []
   const entryById = new Map(input.entries.map((entry) => [entry.id, entry]))
+  const valuePerCount = affixValuePerCountFromEntries(input.entries)
   const picked = rankedRows.slice(0, input.maxCurveSeries)
   const series: AffixBenefitSeries[] = []
 
@@ -208,7 +218,7 @@ function computeAffixBenefitSeries(input: {
     for (let n = 1; n <= input.maxCurveRolls; n += 1) {
       const counts = bumpEntryCounts(baseCounts, entry, n)
       const deltas = bumpEntryPanelDeltas(basePanelDeltas, entry, n)
-      const evaluated = evaluateAffixCounts(ctx, counts, deltas)
+      const evaluated = evaluateAffixCounts(ctx, counts, deltas, valuePerCount)
       const damage = metricOf(evaluated)
       cumulativePercent.push(((damage - baselineDamage) / baselineDamage) * 100)
       marginalPercent.push(prevDamage > 0 ? ((damage - prevDamage) / prevDamage) * 100 : 0)
@@ -233,8 +243,8 @@ function bumpEntryCounts(
   entry: AffixLibraryEntry,
   step: number,
 ): AffixCounts {
-  const key = entry.affixKey
-  if (entry.kind !== 'substat' || !key) return counts
+  const key = statKeyOfTarget(entry.target)
+  if (!key) return counts
   const next = { ...counts }
   next[key] = (next[key] ?? 0) + step
   return next
@@ -245,8 +255,8 @@ function bumpEntryPanelDeltas(
   entry: AffixLibraryEntry,
   step: number,
 ): AffixPanelDeltaMap | undefined {
-  const field = entry.panelField
-  if (entry.kind !== 'panelField' || !field) return deltas
+  const field = panelFieldOfTarget(entry.target)
+  if (!field) return deltas
   const next: AffixPanelDeltaMap = { ...(deltas ?? {}) }
   next[field] = (next[field] ?? 0) + step * entry.perRoll
   return next
@@ -257,31 +267,36 @@ function currentRollsOf(
   deltas: AffixPanelDeltaMap | undefined,
   entry: AffixLibraryEntry,
 ): number {
-  if (entry.kind === 'substat') {
-    return entry.affixKey ? (counts[entry.affixKey] ?? 0) : 0
-  }
-  const total = entry.panelField ? (deltas?.[entry.panelField] ?? 0) : 0
+  const statKey = statKeyOfTarget(entry.target)
+  if (statKey) return counts[statKey] ?? 0
+  const field = panelFieldOfTarget(entry.target)
+  const total = field ? (deltas?.[field] ?? 0) : 0
   return entry.perRoll > 0 ? total / entry.perRoll : 0
 }
 
-/** 把「条目档数表」换算成求解器可直接使用的 (counts, panelDeltas) */
+/** 把「条目档数表」换算成求解器可直接使用的 (counts, panelDeltas, valuePerCount) */
 export function rollsToEvalInput(
   entries: AffixLibraryEntry[],
   rollsByEntryId: Record<string, number>,
   baseCounts: AffixCounts,
   basePanelDeltas?: AffixPanelDeltaMap,
-): { counts: AffixCounts; panelDeltas: AffixPanelDeltaMap | undefined } {
-  const substatRolls = entryRollsToAffixCounts(entries, rollsByEntryId)
+): {
+  counts: AffixCounts
+  panelDeltas: AffixPanelDeltaMap | undefined
+  valuePerCount: AffixValuePerCount
+} {
+  const input = entryRollsToEvalInput(entries, rollsByEntryId)
   const counts = { ...baseCounts }
-  for (const key of Object.keys(substatRolls) as (keyof AffixCounts)[]) {
-    counts[key] = (counts[key] ?? 0) + (substatRolls[key] ?? 0)
+  for (const key of Object.keys(input.counts) as (keyof AffixCounts)[]) {
+    counts[key] = (counts[key] ?? 0) + (input.counts[key] ?? 0)
   }
-  const entryDeltas = entryRollsToPanelDeltas(entries, rollsByEntryId)
-  const deltaKeys = Object.keys(entryDeltas) as (keyof typeof entryDeltas)[]
-  if (!deltaKeys.length) return { counts, panelDeltas: basePanelDeltas }
+  const deltaKeys = Object.keys(input.deltas) as (keyof typeof input.deltas)[]
+  if (!deltaKeys.length) {
+    return { counts, panelDeltas: basePanelDeltas, valuePerCount: input.valuePerCount }
+  }
   const panelDeltas: AffixPanelDeltaMap = { ...(basePanelDeltas ?? {}) }
   for (const key of deltaKeys) {
-    panelDeltas[key] = (panelDeltas[key] ?? 0) + (entryDeltas[key] ?? 0)
+    panelDeltas[key] = (panelDeltas[key] ?? 0) + (input.deltas[key] ?? 0)
   }
-  return { counts, panelDeltas }
+  return { counts, panelDeltas, valuePerCount: input.valuePerCount }
 }

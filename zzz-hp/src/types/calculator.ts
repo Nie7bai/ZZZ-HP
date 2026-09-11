@@ -492,6 +492,15 @@ export interface Skill {
   baseMultFactor?: number
   /** 决算倍率%，仅直伤可选 */
   settlementMult?: number
+  /**
+   * 倍率来源。仅 nanoka 导入写 `'nanoka'`；管理端手建不设。
+   * 为 nanoka 时结算可按面板五大类技能等级重算 baseMult。
+   */
+  multSource?: 'nanoka' | null
+  /** nanoka L1 伤害倍率万分比整数（如 3120 → L1=31.20%） */
+  damagePercentage?: number
+  /** nanoka 每级增长（万分比整数） */
+  damagePercentageGrowth?: number
   /** 备注：计算页招式库/准备行展示 */
   note?: string
 }

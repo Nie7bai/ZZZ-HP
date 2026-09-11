@@ -104,6 +104,7 @@ import {
 } from '@/utils/affixBenefitAnalysis'
 import {
   addCustomAffixLibraryEntry,
+  affixValuePerCountFromEntries,
   createDefaultAffixLibraryState,
   isAffixLibraryEntryEnabled,
   loadAffixLibraryState,
@@ -287,6 +288,31 @@ const effectiveAnomalySlotPanels = computed(() => {
 const isMb = computed(() => mainAgent.value?.profession === MB_PROFESSION)
 const isFengYu = computed(() => mainAgent.value?.profession === FENGYU_PROFESSION)
 
+/**
+ * 词条功能改造：词条库 + 全词条收益 + 最优分配。
+ *
+ * 声明位置在 `evalCtx` 之前：评估上下文要带词条库的「每档值」，而 computed 首次求值时
+ * 若还没走到声明处会触发 TDZ，所以库状态统一放在这里。
+ */
+const affixLibraryState = ref<AffixLibraryState>(createDefaultAffixLibraryState())
+const affixLibraryEntries = computed<AffixLibraryEntry[]>(() =>
+  resolveAffixLibrary(affixLibraryState.value),
+)
+const affixLibraryAllEntries = computed<AffixLibraryEntry[]>(() =>
+  resolveAffixLibraryAll(affixLibraryState.value),
+)
+const enabledAffixEntryIds = computed(() =>
+  affixLibraryAllEntries.value
+    .filter((entry) => isAffixLibraryEntryEnabled(affixLibraryState.value, entry))
+    .map((entry) => entry.id),
+)
+/**
+ * 词条库的「每档值」表：`stat:` 类目标用条目自己的 `perRoll`，其余字段回落常量表。
+ */
+const affixLibraryValuePerCount = computed(() =>
+  affixValuePerCountFromEntries(affixLibraryEntries.value),
+)
+
 const evalCtx = computed(() =>
   buildOptimalEvalContext({
     isMb: isMb.value,
@@ -317,6 +343,8 @@ const evalCtx = computed(() =>
     skillSubcategories: skillSubcategories.value,
     followUpSkillRules: followUpSkillRules.value,
     environmentBuffs: props.environmentBuffs,
+    // 词条库「每档值」随上下文走：柱图 / 详情 / 收益表 / 基准总伤共用一份，避免分叉
+    valuePerCount: affixLibraryValuePerCount.value,
   }),
 )
 
@@ -1016,6 +1044,8 @@ function hitFingerprint(hit: import('@/utils/resolvedHit').ResolvedHit) {
     skillId: hit.skill.id,
     damageType: hit.skill.damageType,
     baseMult: hit.skill.baseMult,
+    effectiveBaseMult: hit.effectiveBaseMult,
+    skillTalentLevel: hit.skillTalentLevel,
     baseMultFactor: hit.skill.baseMultFactor,
     settlementMult: hit.skill.settlementMult,
     skillTypes: hit.skill.skillTypes,
@@ -1372,22 +1402,6 @@ const mainStatDiffLoading = ref(false)
 const benefitData = ref<ReturnType<typeof computeBenefitCurves> | null>(null)
 
 /**
- * 词条功能改造：词条库 + 全词条收益 + 最优分配。
- * 与上方 `benefitData`（二维扫掠的收益曲线）并存，互不影响。
- */
-const affixLibraryState = ref<AffixLibraryState>(createDefaultAffixLibraryState())
-const affixLibraryEntries = computed<AffixLibraryEntry[]>(() =>
-  resolveAffixLibrary(affixLibraryState.value),
-)
-const affixLibraryAllEntries = computed<AffixLibraryEntry[]>(() =>
-  resolveAffixLibraryAll(affixLibraryState.value),
-)
-const enabledAffixEntryIds = computed(() =>
-  affixLibraryAllEntries.value
-    .filter((entry) => isAffixLibraryEntryEnabled(affixLibraryState.value, entry))
-    .map((entry) => entry.id),
-)
-/**
  * 词条分配（新功能，主）与手动扫掠柱图（旧功能，次要）二选一。
  * 两者各有独立的输入与子页签（收益曲线 / 计算过程）。
  */
@@ -1428,7 +1442,7 @@ const affixAllocBaseCounts = computed(() => createEmptyAffixCounts())
 const affixAllocEval = computed(() => {
   const result = affixAllocResult.value
   if (!result) return null
-  return evaluateAffixCounts(evalCtx.value, result.counts, result.panelDeltas)
+  return evaluateAffixCounts(evalCtx.value, result.counts, result.panelDeltas, result.valuePerCount)
 })
 
 /** 词条分配模式：计算过程（与扫掠模式共用 useDamageProcessEvents） */
@@ -1467,7 +1481,7 @@ function toggleAffixLibraryEntry(entryId: string, enabled: boolean) {
   persistAffixLibrary(setAffixLibraryEntryEnabled(affixLibraryState.value, entryId, enabled))
 }
 
-function addAffixLibraryEntry(entry: Omit<AffixLibraryEntry, 'id' | 'builtin'>) {
+function addAffixLibraryEntry(entry: Omit<AffixLibraryEntry, 'id'>) {
   persistAffixLibrary(addCustomAffixLibraryEntry(affixLibraryState.value, entry))
 }
 
