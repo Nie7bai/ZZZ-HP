@@ -105,7 +105,18 @@ export interface AffixCounts {
   mastery: number
 }
 
-export type PanelCalcMode = 'panel' | 'affix' | 'optimal'
+/** 页面计算方式：伤害计算（统一录入） / 最优词条分配 */
+export type PanelCalcMode = 'damage' | 'optimal'
+
+/**
+ * 局外权威（脏标记）：最后编辑的一侧。
+ * - `panel`：用手填/OCR 局外结算，词条为吸附结果
+ * - `affix`：用词条实时推导局外结算
+ */
+export type ExternalPanelAuthority = 'panel' | 'affix'
+
+/** @deprecated 旧方案 / 草稿里的计算方式；读入时归一到 PanelCalcMode + ExternalPanelAuthority */
+export type LegacyPanelCalcMode = 'panel' | 'affix' | 'damage' | 'optimal'
 
 export type DriveDiscSlot4StatId =
   | 'critDmg'

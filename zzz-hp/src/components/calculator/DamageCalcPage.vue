@@ -27,6 +27,7 @@ import type {
 import type {
   AffixCounts,
   AffixDriveDiscMainStats,
+  ExternalPanelAuthority,
   PanelCalcMode,
   PanelStats,
 } from '@/types/calculatorPanel'
@@ -45,6 +46,11 @@ import type {
   DamageCalcKind,
   StaggerPhase,
 } from '@/types/calculator'
+import {
+  legacyModeToExternalAuthority,
+  normalizePanelCalcMode,
+  resolveExternalAuthority,
+} from '@/utils/panelCalcMode'
 import {
   fillSkillTalentLevels,
   type SkillTalentLevels,
@@ -162,7 +168,14 @@ const teamSlots = reactive<TeamSlot[]>([
 const activeSlot = ref(0)
 const selectedBangbooId = ref('none')
 const bangbooRefine = ref(1)
-const panelCalcMode = ref<PanelCalcMode>('panel')
+const panelCalcMode = ref<PanelCalcMode>('damage')
+/** 每人局外权威（最后编辑侧） */
+const externalPanelAuthorityByAgent = reactive<Record<string, ExternalPanelAuthority>>({})
+
+const mainExternalAuthority = computed<ExternalPanelAuthority>(() => {
+  const agentId = teamSlots[activeSlot.value]?.agentId
+  return resolveExternalAuthority(externalPanelAuthorityByAgent, agentId, 'panel')
+})
 const enemyInput = ref<DamageEnemyInput>(createDefaultDamageEnemyInput())
 const historyEntries = ref<DamageCalcHistoryEntry[]>(listAllDamageCalcHistory())
 const activeHistoryId = ref('')
@@ -834,9 +847,21 @@ const mainSlotBuffSelection = computed(() =>
 )
 
 const buffEnabledCount = computed(() => {
-  const resolved = mainSlotBuffSelection.value
-  if (!resolved) return 0
-  return Object.values(resolved.enabledIds).filter(Boolean).length
+  // 与弹窗「已选 N 项」同口径：只计当前可收集到且实际开启的效果，忽略 store 里过期的 enabledIds
+  const effects = collectAllBuffEffects(buildBuffCollectContext(mainSlotIndex.value))
+  return effects.filter((item) => {
+    const fallback =
+      isEnvironmentBuffSourceKey(item.sourceKey) || item.effect.teamProfession?.trim()
+        ? false
+        : item.effect.enabledDefault !== false
+    return getBuffEffectEnabled(
+      multiSlotBuffSelection,
+      mainSlotIndex.value,
+      item.effect.id,
+      item.effect.applyTarget,
+      fallback,
+    )
+  }).length
 })
 
 /** 顶栏「转模」标签：该槽位影画/音擎/驱动盘含局外或局内转模 */
@@ -1172,6 +1197,7 @@ const stickySlotPanelPreviews = computed(() => {
   void staggerPhase.value
   void activeEnvironmentBuffs.value
   void panelCalcMode.value
+  void externalPanelAuthorityByAgent
   void anomalySlotPanels
   void convertSlotPanels
   void teamSlots.map((s) => [
@@ -1183,7 +1209,7 @@ const stickySlotPanelPreviews = computed(() => {
     s.fourPieceDriveDiscId,
   ])
 
-  // 面板/词条模式：用 PanelCalcSection 的预览（含局内，随增益重算）
+  // 伤害计算：用 PanelCalcSection 的预览（含局内，随增益重算）
   if (panelCalcMode.value !== 'optimal') {
     const fromPanel = panelCalcSectionRef.value?.slotPanelPreviews
     if (fromPanel) return fromPanel
@@ -1195,19 +1221,27 @@ const stickySlotPanelPreviews = computed(() => {
     if (fromOptimal?.length) return fromOptimal
   }
 
-  // 兜底：轻量局外（页级导入值）
+  // 兜底：轻量局外（按每人权威取手填或词条推导）
   return teamSlots.map((slot) => {
     if (!slot.agentId) return null
+    const auth = resolveExternalAuthority(externalPanelAuthorityByAgent, slot.agentId, 'panel')
     const saved = anomalySlotPanels[slot.agentId]
     const external =
-      saved && !isPlaceholderExternalPanel(saved)
-        ? fillPanelStatsDefaults(saved)
-        : computeExternalPanelFromTeamSlot({
+      auth === 'affix'
+        ? computeExternalPanelFromTeamSlot({
             slot,
             agents: agents.value,
             wengines: wengines.value,
             driveDiscs: driveDiscs.value,
           })
+        : saved && !isPlaceholderExternalPanel(saved)
+          ? fillPanelStatsDefaults(saved)
+          : computeExternalPanelFromTeamSlot({
+              slot,
+              agents: agents.value,
+              wengines: wengines.value,
+              driveDiscs: driveDiscs.value,
+            })
     return { external, final: null as PanelStats | null }
   })
 })
@@ -1276,6 +1310,7 @@ function applyUnifiedImport(payload: UnifiedPresetConfirmPayload) {
     payload.skillTalentLevels,
     payload.rank,
   )
+  externalPanelAuthorityByAgent[payload.agentId] = payload.externalAuthority
   slot.agentId = payload.agentId
   syncMainCFlagToActiveSlot()
   nextTick(() => {
@@ -1375,7 +1410,7 @@ function applyWorkingState(entry: {
   activeSlot: number
   selectedBangbooId: string
   bangbooRefine: number
-  panelCalcMode: PanelCalcMode
+  panelCalcMode: PanelCalcMode | string
   anomalySlotPanels?: Record<string, PanelStats>
   convertSlotPanels?: ConvertSlotPanels
   slots?: SchemeSlot[]
@@ -1389,6 +1424,7 @@ function applyWorkingState(entry: {
   envBuffFrontierId?: string
   envBuffNodeId?: string
   preserveBaseDamageSource?: boolean
+  externalPanelAuthorityByAgent?: Record<string, ExternalPanelAuthority>
 }) {
   restoringWorkingState = true
   panelCalcSectionRef.value?.beginRestore()
@@ -1399,7 +1435,24 @@ function applyWorkingState(entry: {
   applyTeamSlots(entry.teamSlots)
   selectedBangbooId.value = entry.selectedBangbooId
   bangbooRefine.value = entry.bangbooRefine
-  panelCalcMode.value = entry.panelCalcMode === 'optimal' ? 'affix' : entry.panelCalcMode
+  panelCalcMode.value = normalizePanelCalcMode(entry.panelCalcMode)
+  for (const key of Object.keys(externalPanelAuthorityByAgent)) {
+    delete externalPanelAuthorityByAgent[key]
+  }
+  if (entry.externalPanelAuthorityByAgent) {
+    Object.assign(
+      externalPanelAuthorityByAgent,
+      JSON.parse(JSON.stringify(entry.externalPanelAuthorityByAgent)) as Record<
+        string,
+        ExternalPanelAuthority
+      >,
+    )
+  } else {
+    const legacyAuth = legacyModeToExternalAuthority(entry.panelCalcMode)
+    for (const slot of entry.teamSlots) {
+      if (slot.agentId) externalPanelAuthorityByAgent[slot.agentId] = legacyAuth
+    }
+  }
   applyAnomalySlotPanels(entry.anomalySlotPanels)
   applyConvertSlotPanels(entry.convertSlotPanels)
   schemeSlots.value = ensureSchemeSlots(pickSlotsToRestore(entry), 3)
@@ -1489,6 +1542,9 @@ function captureWorkingDraft(): DamageCalcWorkingDraft | null {
     panelState: withTalent,
     anomalySlotPanels: captureSchemeAnomalySlotPanels(),
     convertSlotPanels: cloneConvertSlotPanels(),
+    externalPanelAuthorityByAgent: JSON.parse(
+      JSON.stringify(externalPanelAuthorityByAgent),
+    ) as Record<string, ExternalPanelAuthority>,
     slots: JSON.parse(JSON.stringify(schemeSlots.value)),
     staggerPhase: staggerPhase.value,
     multiSlotBuffSelection: JSON.parse(JSON.stringify(multiSlotBuffSelection)),
@@ -1545,7 +1601,7 @@ function restoreWorkingState() {
 
 function saveHistoryEntry(payload: { name: string; folder: string }) {
   if (panelCalcMode.value === 'optimal') {
-    historyMessage.value = '最优词条分配模式暂不支持写入历史，请切换到面板/词条导入后再保存'
+    historyMessage.value = '最优词条分配模式暂不支持写入历史，请切换到伤害计算后再保存'
     return
   }
   const panelState = captureSchemePanelState()
@@ -1572,6 +1628,9 @@ function saveHistoryEntry(payload: { name: string; folder: string }) {
     panelState,
     anomalySlotPanels: captureSchemeAnomalySlotPanels(),
     convertSlotPanels: cloneConvertSlotPanels(),
+    externalPanelAuthorityByAgent: JSON.parse(
+      JSON.stringify(externalPanelAuthorityByAgent),
+    ) as Record<string, ExternalPanelAuthority>,
     slots: JSON.parse(JSON.stringify(schemeSlots.value)),
     staggerPhase: staggerPhase.value,
     multiSlotBuffSelection: JSON.parse(JSON.stringify(multiSlotBuffSelection)),
@@ -1596,7 +1655,7 @@ function loadHistoryEntry(entry: DamageCalcHistoryEntry) {
 /** 用当前页面配置覆盖指定方案（保留其 id / 名称 / 目录） */
 function overwriteHistoryEntry(id: string) {
   if (panelCalcMode.value === 'optimal') {
-    historyMessage.value = '最优词条分配模式暂不支持写入，请切换到面板/词条导入后再保存'
+    historyMessage.value = '最优词条分配模式暂不支持写入，请切换到伤害计算后再保存'
     return
   }
   const panelState = captureSchemePanelState()
@@ -1615,6 +1674,9 @@ function overwriteHistoryEntry(id: string) {
     panelState,
     anomalySlotPanels: captureSchemeAnomalySlotPanels(),
     convertSlotPanels: cloneConvertSlotPanels(),
+    externalPanelAuthorityByAgent: JSON.parse(
+      JSON.stringify(externalPanelAuthorityByAgent),
+    ) as Record<string, ExternalPanelAuthority>,
     slots: JSON.parse(JSON.stringify(schemeSlots.value)),
     staggerPhase: staggerPhase.value,
     multiSlotBuffSelection: JSON.parse(JSON.stringify(multiSlotBuffSelection)),
@@ -1686,9 +1748,10 @@ function resetPageSchemeConfig() {
     activeSlot: 0,
     selectedBangbooId: 'none',
     bangbooRefine: 1,
-    panelCalcMode: 'panel',
+    panelCalcMode: 'damage',
     anomalySlotPanels: {},
     convertSlotPanels: {},
+    externalPanelAuthorityByAgent: {},
     slots: ensureSchemeSlots([], 3),
     staggerPhase: 'stagger',
     multiSlotBuffSelection: createEmptyMultiSlotBuffSelection(),
@@ -1721,6 +1784,7 @@ watch(
     selectedBangbooId,
     bangbooRefine,
     panelCalcMode,
+    externalPanelAuthorityByAgent,
     staggerPhase,
     extraGains,
     enemyInput,
@@ -1752,14 +1816,16 @@ function onClearLoadedScheme() {
 
 async function scrollToSection(sectionId: DamageCalcSectionId) {
   await nextTick()
-  if (sectionId === 'damage-calc-panel') panelCalcMode.value = 'panel'
-  if (sectionId === 'damage-calc-affix') panelCalcMode.value = 'affix'
+  if (sectionId === 'damage-calc-damage' || sectionId === 'damage-calc-panel' || sectionId === 'damage-calc-affix') {
+    panelCalcMode.value = 'damage'
+  }
   if (sectionId === 'damage-calc-optimal') panelCalcMode.value = 'optimal'
   if (sectionId === 'skill-flow') {
     skillFlowSectionRef.value?.expand()
     await nextTick()
   }
   const anchorId =
+    sectionId === 'damage-calc-damage' ||
     sectionId === 'damage-calc-panel' ||
     sectionId === 'damage-calc-affix' ||
     sectionId === 'damage-calc-optimal'
@@ -1780,12 +1846,7 @@ function selectPanelCalcMode(mode: PanelCalcMode) {
     // 先让 Tab 高亮，把重 DOM 切换放到下一帧，避免点击瞬时卡死
     panelCalcMode.value = mode
   }
-  const anchor =
-    mode === 'panel'
-      ? 'damage-calc-panel'
-      : mode === 'affix'
-        ? 'damage-calc-affix'
-        : 'damage-calc-optimal'
+  const anchor = mode === 'optimal' ? 'damage-calc-optimal' : 'damage-calc-damage'
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       void scrollToSection(anchor)
@@ -1831,7 +1892,8 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :drive-discs="driveDiscs"
       :team-slots="teamSlots"
       :active-slot="activeSlot"
-      :preferred-entry-mode="panelCalcMode === 'affix' ? 'affix' : 'panel'"
+      :preferred-authority="mainExternalAuthority"
+      :external-authority-by-agent="externalPanelAuthorityByAgent"
       :anomaly-slot-panels="anomalySlotPanels"
       :skill-talent-levels-by-agent="skillTalentLevelsByAgent"
       :final-panel-preview="activeFinalPanelPreview"
@@ -1861,7 +1923,8 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :team-slots="teamSlots"
       :active-slot="activeSlot"
       :active-agent="activeAgent"
-      :preferred-entry-mode="panelCalcMode === 'affix' ? 'affix' : 'panel'"
+      :preferred-authority="mainExternalAuthority"
+      :external-authority-by-agent="externalPanelAuthorityByAgent"
       :anomaly-slot-panels="anomalySlotPanels"
       :skill-talent-levels-by-agent="skillTalentLevelsByAgent"
       :final-panel-preview="activeFinalPanelPreview"
@@ -1959,7 +2022,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       <EnemyEnvironmentSection
         v-model="enemyInput"
         title="敌方与环境"
-        description="选择 Boss 或手动录入防御、抗性与失衡倍率，供面板导入与最优词条共用。"
+        description="选择 Boss 或手动录入防御、抗性与失衡倍率，供伤害计算与最优词条共用。"
       />
     </section>
 
@@ -1967,29 +2030,19 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       <header class="calc-mode-header">
         <h2>计算方式</h2>
         <p class="calc-mode-desc">
-          局外 / 词条在「代理人 → 导入」的面板 Tab 录入（含截图识别）；面板导入用手填局外，词条导入用副词条推导；最优词条在约束下扫描并绘制期望伤害曲线。
+          局外与词条在「代理人 → 导入」统一录入（含截图识别）；以最后修改的一侧为准结算。最优词条在约束下扫描并绘制期望伤害曲线。
         </p>
       </header>
-      <div class="calc-mode-tabs" role="tablist" aria-label="面板导入方式">
+      <div class="calc-mode-tabs" role="tablist" aria-label="计算方式">
         <button
           type="button"
           role="tab"
           class="calc-mode-tab"
-          :class="{ active: panelCalcMode === 'panel' }"
-          :aria-selected="panelCalcMode === 'panel'"
-          @click="selectPanelCalcMode('panel')"
+          :class="{ active: panelCalcMode === 'damage' }"
+          :aria-selected="panelCalcMode === 'damage'"
+          @click="selectPanelCalcMode('damage')"
         >
-          面板导入
-        </button>
-        <button
-          type="button"
-          role="tab"
-          class="calc-mode-tab"
-          :class="{ active: panelCalcMode === 'affix' }"
-          :aria-selected="panelCalcMode === 'affix'"
-          @click="selectPanelCalcMode('affix')"
-        >
-          词条导入
+          伤害计算
         </button>
         <button
           type="button"
@@ -2017,7 +2070,8 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :selected-bangboo-id="selectedBangbooId"
       :bangboo-refine="bangbooRefine"
       :edited-slot-index="activeSlot"
-      :calc-mode="panelCalcMode === 'optimal' ? 'panel' : panelCalcMode"
+      :calc-mode="mainExternalAuthority"
+      :external-authority-by-agent="externalPanelAuthorityByAgent"
       :damage-kind="damageKind"
       :anomaly-sub-kind="anomalySubKind"
       :trigger-anomaly-agent-id="triggerAnomalyAgentId"

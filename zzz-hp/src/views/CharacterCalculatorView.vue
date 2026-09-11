@@ -76,7 +76,7 @@ const pageLinks = computed(() => {
 
 const damageSubNav = DAMAGE_CALC_SECTIONS
 const damageCalcModeItems = DAMAGE_CALC_MODE_ITEMS
-const damageCalcModeHint = ref<'panel' | 'affix' | 'optimal'>('panel')
+const damageCalcModeHint = ref<'damage' | 'optimal'>('damage')
 const activePage = computed<CalcPage>(() => {
   const fromRoute = route.meta.sidebarPanelId
   if (isCharacterCalcPage(fromRoute)) return fromRoute

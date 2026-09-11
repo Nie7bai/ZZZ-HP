@@ -360,6 +360,8 @@ export function inferAffixCountsFromExternalPanel(input: {
   target: Partial<PanelStats>
   agentBase: AgentBasePanel
   wengineBaseAtk: number
+  /** 锋御音擎基础防御，计入防御基数 */
+  wengineBaseDef?: number
   wengineAdvanced: WengineAdvancedStats
   driveDiscSelection: AffixDriveDiscSelection
   driveDiscMainStats: AffixDriveDiscMainStats
@@ -430,6 +432,35 @@ export function inferAffixCountsFromExternalPanel(input: {
     }
   }
 
+  const targetDef = input.target.def
+  if (typeof targetDef === 'number' && Number.isFinite(targetDef) && targetDef > 0) {
+    const fixedDefPercent =
+      wengineAdvanced.externalDefPercent +
+      readTwoPieceExternalPercents(twoPieceMods).externalDefPercent +
+      mainStats.externalDefPercent
+    const defBase = agentBase.def + (input.wengineBaseDef ?? 0)
+    let best = { pct: 0, flat: 0, err: Number.POSITIVE_INFINITY }
+    for (let pct = 0; pct <= 36; pct++) {
+      const withPct =
+        defBase * (1 + (fixedDefPercent + pct * AFFIX_VALUE_PER_COUNT.defPercent) / 100) +
+        AFFIX_DRIVE_DISC_SLOT_3_DEF
+      const flat = clampCount((targetDef - withPct) / AFFIX_VALUE_PER_COUNT.defFlat)
+      const actual =
+        defBase * (1 + (fixedDefPercent + pct * AFFIX_VALUE_PER_COUNT.defPercent) / 100) +
+        flat * AFFIX_VALUE_PER_COUNT.defFlat +
+        AFFIX_DRIVE_DISC_SLOT_3_DEF
+      const err = Math.abs(actual - targetDef)
+      if (err < best.err || (err === best.err && pct + flat < best.pct + best.flat)) {
+        best = { pct, flat, err }
+      }
+    }
+    counts.defPercent = best.pct
+    counts.defFlat = best.flat
+    if (best.err > 30) {
+      warnings.push(`防御反推残差较大（Δ${roundPanelValue(best.err)}），已吸附到最近词条组合`)
+    }
+  }
+
   const independent: {
     key: keyof Pick<AffixCounts, 'pen' | 'critRate' | 'critDmg' | 'mastery'>
     panelKey: keyof PanelStats
@@ -467,6 +498,7 @@ export function inferAffixCountsFromExternalPanel(input: {
   const hasAnyTarget =
     (typeof targetHp === 'number' && targetHp > 0) ||
     (typeof targetAtk === 'number' && targetAtk > 0) ||
+    (typeof targetDef === 'number' && targetDef > 0) ||
     independent.some((item) => typeof input.target[item.panelKey] === 'number')
   if (!hasAnyTarget) {
     warnings.push('识别局外面板缺少可用数值，未能反推词条数')
