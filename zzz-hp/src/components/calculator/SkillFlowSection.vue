@@ -78,7 +78,7 @@ const props = defineProps<{
   /** 各来源能否选（数据算过且未过期）与禁用原因 */
   panelSourceAvailability?: Record<
     'config' | 'allocation' | 'sweep',
-    { enabled: boolean; reason?: string | null }
+    { enabled: boolean; reason?: string | null; detail?: string | null }
   >
 }>()
 
@@ -2117,6 +2117,7 @@ const panelSourceOptions = computed(() => {
       label: '角色配置面板',
       enabled: availability?.config?.enabled ?? true,
       reason: availability?.config?.reason ?? null,
+      detail: availability?.config?.detail ?? null,
       help: '用「代理人 → 导入」里录入的激活面板',
     },
     {
@@ -2124,6 +2125,7 @@ const panelSourceOptions = computed(() => {
       label: '词条分析 · 最优分配',
       enabled: availability?.allocation?.enabled ?? false,
       reason: availability?.allocation?.reason ?? null,
+      detail: availability?.allocation?.detail ?? null,
       help: '用求解出的词条数叠加在基准面板上',
     },
     {
@@ -2131,10 +2133,22 @@ const panelSourceOptions = computed(() => {
       label: '词条分析 · 当前点击柱',
       enabled: availability?.sweep?.enabled ?? false,
       reason: availability?.sweep?.reason ?? null,
+      detail: availability?.sweep?.detail ?? null,
       help: '用柱图上当前点击那根柱的词条数叠加',
     },
   ]
 })
+
+/** 按钮 tooltip：可用时给「用的是哪一组词条」，不可用时说明原因 */
+function panelSourceTitle(option: {
+  enabled: boolean
+  reason: string | null
+  detail: string | null
+  help: string
+}): string {
+  if (!option.enabled) return option.reason ?? '暂不可用'
+  return option.detail ? `${option.detail} —— ${option.help}` : option.help
+}
 
 /** 选中项失效时的提示（回落 ① 的理由要说清楚，避免看着像 bug） */
 const panelSourceNotice = computed(() => {
@@ -2195,7 +2209,7 @@ const panelSourceNotice = computed(() => {
         }"
         :aria-checked="(panelSourceMode ?? 'config') === option.mode"
         :disabled="!option.enabled"
-        :title="option.enabled ? option.help : option.reason ?? '暂不可用'"
+        :title="panelSourceTitle(option)"
         @click="emit('update:panelSourceMode', option.mode)"
       >
         {{ option.label }}

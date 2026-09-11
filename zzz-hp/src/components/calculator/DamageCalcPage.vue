@@ -516,12 +516,14 @@ const skillFlowPanelAvailability = computed(() => {
       reason:
         allocationReason ??
         '尚未计算：先在「最优词条分配」里求解',
+      detail: skillFlowPanelOptions.value.allocation?.label ?? null,
     },
     sweep: {
       enabled: sweepReason == null,
       reason:
         sweepReason ??
         '尚未计算：先在「最优词条分配 · 扫掠柱图」里算一次并点选一根柱',
+      detail: skillFlowPanelOptions.value.sweep?.label ?? null,
     },
     /** 选中项失效的提示（已在用 ① 的面板） */
     notice: skillFlowPanelResolved.value.active ? null : skillFlowPanelResolved.value.reason,

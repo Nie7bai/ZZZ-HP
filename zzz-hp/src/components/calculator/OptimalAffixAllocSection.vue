@@ -97,6 +97,7 @@ import {
 import { buildGenericPanelSkillContext } from '@/utils/resolvedHit'
 import {
   buildSkillFlowPageSignature,
+  formatAffixCountsSummary,
   type SkillFlowPanelOption,
 } from '@/utils/skillFlowPanelSource'
 import {
@@ -1090,12 +1091,18 @@ const panelSourceSignature = computed(() =>
  * 只在真正算过时上报；未算过的来源报 null（选项据此禁用）。
  */
 function emitPanelSourceOptions() {
+  const result = affixAllocResult.value
+  const selectedCountsValue = selectedCounts.value
   emit('update:panelSourceOptions', {
     allocation: affixAllocEval.value?.external
-      ? buildPanelSourceOption('allocation', affixAllocEval.value.external)
+      ? buildPanelSourceOption(
+          'allocation',
+          affixAllocEval.value.external,
+          result?.counts ?? null,
+        )
       : null,
     sweep: selectedEval.value?.external
-      ? buildPanelSourceOption('sweep', selectedEval.value.external)
+      ? buildPanelSourceOption('sweep', selectedEval.value.external, selectedCountsValue)
       : null,
   })
 }
@@ -1103,14 +1110,32 @@ function emitPanelSourceOptions() {
 function buildPanelSourceOption(
   mode: 'allocation' | 'sweep',
   mainExternal: PanelStats,
+  counts: AffixCounts | null | undefined,
 ): SkillFlowPanelOption {
+  const summary = counts
+    ? formatAffixCountsSummary({ ...(counts as unknown as Record<string, number>) }, AFFIX_SOURCE_LABELS)
+    : ''
   return {
     mode,
     mainExternal,
-    label: mode === 'allocation' ? '最优分配' : '当前柱',
+    label: mode === 'allocation' ? `最优分配（${summary}）` : `当前柱（${summary}）`,
     signature: panelSourceSignature.value,
     baseDamageSource: baseDamageSource.value,
   }
+}
+
+/** 选项 tooltip 里的词条名（与 `affixKeyLabel` 同口径，命破/锋御的局外大% 由词条键区分） */
+const AFFIX_SOURCE_LABELS: Record<string, string> = {
+  atkFlat: '攻击力',
+  hpFlat: '生命值',
+  defFlat: '防御力',
+  atkPercent: '局外大攻击',
+  hpPercent: '局外大生命',
+  defPercent: '局外大防御',
+  pen: '穿透值',
+  critRate: '暴击',
+  critDmg: '爆伤',
+  mastery: '精通',
 }
 
 /** 用最优词条面板重算流程/准备招式预览伤害，供招式流程展示（防抖 + per-hit 缓存） */

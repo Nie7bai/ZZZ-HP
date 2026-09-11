@@ -1,4 +1,4 @@
-import type { AffixCounts, AffixDriveDiscMainStats, PanelStats } from '@/types/calculatorPanel'
+import type { PanelStats } from '@/types/calculatorPanel'
 import type { AgentPanelSources } from '@/types/damageCalcHistory'
 import type { BaseDamageSource } from '@/types/calculator'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
@@ -66,8 +66,6 @@ export function buildSkillFlowPageSignature(input: {
   triggerAnomalyAgentId?: string | null
   /** 基础伤害来源（页级唯一一份，2026-09-11 起收到页级） */
   baseDamageSource?: string
-  /** 4/5/6 主属性随来源记录走，这里带出全部记录即可覆盖 */
-  driveDiscMainStatsByAgent?: unknown
 }): string {
   return serializeSignatureFields({
     v: 1,
@@ -89,7 +87,8 @@ export function buildSkillFlowPageSignature(input: {
     buffs: input.slotBuffSelections ?? null,
     env: [...input.environmentBuffIds],
     extra: input.extraGains,
-    enemy: input.enemyInput,    stagger: input.staggerPhase ?? null,
+    enemy: input.enemyInput,
+    stagger: input.staggerPhase ?? null,
     kind: [
       input.damageKind ?? null,
       input.anomalySubKind ?? null,
@@ -157,17 +156,15 @@ export function resolveSkillFlowPanelSource(input: {
   return { mainExternal: option.mainExternal, active: true, reason: null }
 }
 
-/** 词条数的可读摘要（用于选项②③的标签） */
+/** 词条数的可读摘要（给选项②③的 tooltip 用；词条键到中文名的映射由调用方给） */
 export function formatAffixCountsSummary(
-  counts: AffixCounts,
+  counts: Record<string, number | undefined>,
   labels: Record<string, string>,
 ): string {
   const parts = Object.entries(counts)
     .filter(([, value]) => typeof value === 'number' && value > 0)
-    .sort(([, a], [, b]) => b - a)
+    .sort(([, a], [, b]) => (b ?? 0) - (a ?? 0))
     .slice(0, 3)
     .map(([key, value]) => `${labels[key] ?? key} ${value}`)
   return parts.length ? parts.join(' + ') : '零词条'
 }
-
-export type { AffixDriveDiscMainStats }
