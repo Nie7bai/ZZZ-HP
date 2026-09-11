@@ -1508,6 +1508,16 @@ function restoreAffixLibraryDefaultsHandler() {
   persistAffixLibrary(restoreAffixLibraryDefaults())
 }
 
+/**
+ * 词条库弹窗做了库级变更（切换 / 新建 / 删除 / 导入）。
+ *
+ * 这些操作在弹窗里已经落盘，这里只需把激活那套重新读进来并重算：
+ * `persistAffixLibrary` 会顺带清空旧的分配结果并重跑收益表。
+ */
+function onAffixLibrarySwitched() {
+  persistAffixLibrary(loadAffixLibraryState())
+}
+
 /** 词条分配模式：收益表自动跟随上下文计算，最优分配点按钮才求解 */
 function runAffixBenefitOnly() {
   if (affixBenefitLoading.value) return
@@ -2345,6 +2355,7 @@ const panelScopeRows = computed(() => {
           @update-entry="updateAffixLibraryEntryPatch"
           @remove-entry="removeAffixLibraryEntryById"
           @restore-defaults="restoreAffixLibraryDefaultsHandler"
+          @library-switched="onAffixLibrarySwitched"
         />
 
         <h3 class="block-title">最优分配</h3>
