@@ -363,6 +363,29 @@ console.log('\n[7] 验收 5 / 8：代码审查（无来源分支、无推断逻�
   check('全仓 src 无残留反推调用点', leftover.length === 0, leftover.join('；'))
 
   /**
+   * 面板组件里的自动写回**只准更新数值**，不得「写入并激活」。
+   *
+   * 回归（2026-09-11 实测）：`flushImportedPanelForAgent` 曾用 `writePanelSource`，
+   * 于是切槽 / 保存草稿时会把 live 值写成「面板导入」那份并**抢走激活**——
+   * 一个只用「词条导入」那份的角色被静默改了当前面板。
+   * 改法：改用 `updatePanelSourceValues`，且那份不存在时不新建。
+   * 这里用「导入白名单」把这条钉死：该组件不得再引入 `writePanelSource`。
+   */
+  const panelSection = read('components/calculator/PanelCalcSection.vue')
+  const writeImport = /import\s*\{[^}]*\bwritePanelSource\b[^}]*\}\s*from\s*'@\/utils\/agentPanelSources'/.test(
+    panelSection,
+  )
+  check(
+    '面板组件不引入「写入并激活」（自动写回不得改激活）',
+    !writeImport,
+    writeImport ? '面板组件又 import 了 writePanelSource' : '',
+  )
+  check(
+    '自动写回在缺那份时不新建（有守卫）',
+    /if \(!current\?\.importedPanel\) return/.test(panelSection),
+  )
+
+  /**
    * 老字段 `anomalySlotPanels` 只准留在「持久化 / 迁移 / 老草稿兼容读取」这几处，
    * 且每处都必须带兼容语义 —— 它**不得**再作为运行时存储使用（运行时是 `slotPanels`）。
    */

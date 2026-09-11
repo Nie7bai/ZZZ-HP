@@ -40,7 +40,6 @@ import {
   resolveActivePanel,
   updatePanelSourceValues,
   writeAffixInputsIntoSource,
-  writePanelSource,
 } from '@/utils/agentPanelSources'
 import type { AgentPanelSources } from '@/types/damageCalcHistory'
 import {
@@ -579,10 +578,21 @@ const resolvedActiveSlotPanels = computed<Record<string, PanelStats>>(() => {
   return map
 })
 
+/**
+ * 编辑中那个人的局外面板 —— 显示与计算唯一的取面板入口。
+ *
+ * 只读**激活那份**（面板导入 / 词条导入同等对待），不看「面板导入 / 词条导入」两个 tab，
+ * 也不问来历。改造前这里按 `calcMode === 'affix'` 分流（词条模式读现推值、面板模式读
+ * live 编辑器），于是那两个 tab 会**悄悄改掉算进去的面板**——实测同一份激活面板下，
+ * 只因为 tab 停在「面板导入」而不是「词条导入」，局内攻击就从 3883 变成 6136
+ * （2026-09-11 复现，见 dev-docs/panel-dual-source.md 实施记录）。
+ */
 const effectiveExternalPanel = computed<PanelStats>(() => {
-  if (props.calcMode === 'affix') return derivedExternalPanel.value
-  // 面板录入页：正在编辑的就是「面板导入」那份，编辑中优先用 live（写回由 flush 负责）
-  return externalPanel
+  const id = mainAgent.value?.id
+  const active = id ? resolveActivePanel(props.slotPanels?.[id]) : undefined
+  if (active) return active
+  // 该角色两份都还没有数据：面板页用 live 编辑器，词条页按当前输入现推（纯兜底）
+  return props.calcMode === 'affix' ? derivedExternalPanel.value : externalPanel
 })
 
 const isAffixMode = computed(() => props.calcMode === 'affix')
@@ -835,13 +845,20 @@ function ensureAnomalySlotPanel(agentId: string): PanelStats {
   return createExternalPanelFromAgentBase(agent?.basePanel)
 }
 
-/** 把 live 面板编辑器写进该角色的「面板导入」那份并激活它 */
+/**
+ * 把 live 面板的值同步进该角色的「面板导入」那份。
+ *
+ * 两条硬约束（2026-09-11 实测缺陷后定下）：
+ * 1. **没有那份就不新建** —— 否则一个只用「词条导入」那份的角色，会被这条自动写回
+ *    凭空造出一份「面板导入」并抢走激活（实测：切槽/保存草稿时静默发生）；
+ * 2. **不改变激活** —— 自动写回只更新数值，当前用哪份由用户决定（点确定导入或手动切换）。
+ */
 function flushImportedPanelForAgent(agentId: string, panel: PanelStats) {
+  const current = props.slotPanels?.[agentId]
+  if (!current?.importedPanel) return
   const next = fillPanelStatsDefaults(panel)
-  if (isSameRecord(panelOfSource(props.slotPanels?.[agentId], 'imported'), next)) return
-  emitSlotPanelPatch(agentId, (current) =>
-    writePanelSource(current, 'imported', next, { importedAt: Date.now(), source: 'manual' }),
-  )
+  if (isSameRecord(panelOfSource(current, 'imported'), next)) return
+  emitSlotPanelPatch(agentId, (cur) => updatePanelSourceValues(cur, 'imported', next))
 }
 
 function updateAnomalySlotPanel(agentId: string, key: keyof PanelStats, value: number) {
@@ -1246,7 +1263,7 @@ function flushCurrentPanelOntoImportedSource() {
   if (suppressRestoreResets) return
   const id = mainAgent.value?.id
   if (!id || isAffixMode.value) return
-  // 面板录入页编辑的就是「面板导入」那份：写回它并激活（内容未变时 flush 内部会跳过）
+  // 面板录入页编辑的就是「面板导入」那份：同步数值（不新建、不改激活，见上）
   emitAnomalySlotPanel(id, { ...externalPanel })
   const convertSlot = convertSupportSlots.value.find((item) => item.agentId === id)
   if (convertSlot) {
