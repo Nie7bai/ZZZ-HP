@@ -54,10 +54,10 @@ const mode = defineModel<'cumulative' | 'marginal'>('mode', { default: 'cumulati
 }
 
 .chip {
-  border: 1px solid #333841;
+  border: 1px solid var(--calc-border, #333841);
   border-radius: 999px;
-  background: #1a1e25;
-  color: #d5dae3;
+  background: var(--calc-surface-3, #1a1e25);
+  color: var(--calc-text, #d5dae3);
   font: inherit;
   font-size: 0.8rem;
   padding: 0.3rem 0.75rem;
@@ -65,14 +65,14 @@ const mode = defineModel<'cumulative' | 'marginal'>('mode', { default: 'cumulati
 }
 
 .chip.active {
-  border-color: rgba(191, 255, 9, 0.45);
-  background: rgba(191, 255, 9, 0.12);
-  color: #bfff09;
+  border-color: var(--calc-run-border, rgba(191, 255, 9, 0.45));
+  background: var(--calc-run-bg, rgba(191, 255, 9, 0.12));
+  color: var(--calc-run-text, #bfff09);
 }
 
 .hint {
   margin: 0;
   font-size: 0.8rem;
-  color: #9aa3b0;
+  color: var(--calc-muted, #9aa3b0);
 }
 </style>
