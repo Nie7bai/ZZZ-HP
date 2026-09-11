@@ -16,6 +16,7 @@ import { findDefenseSeasonIndexFromChartPoint } from '@/utils/defenseCompare'
 import { formatHpDelta } from '@/utils/gameData'
 import { createRequestEpoch } from '@/utils/requestEpoch'
 import ElementTraitIcons from '@/components/shared/ElementTraitIcons.vue'
+import BuffRichText from '@/components/calculator/BuffRichText.vue'
 import { hasElementIcons } from '@/utils/elementIcons'
 
 const props = defineProps<{
@@ -739,7 +740,9 @@ function formatEnemyResistance(value?: string) {
                     {{ room.roomBuff.name }}
                   </h4>
                   <ul v-if="room.roomBuff.lines.length" class="buff-lines">
-                    <li v-for="(line, index) in room.roomBuff.lines" :key="index">{{ line }}</li>
+                    <li v-for="(line, index) in room.roomBuff.lines" :key="index">
+                      <BuffRichText :text="line" />
+                    </li>
                   </ul>
                 </div>
                 <p v-else-if="adminMode" class="room-buff-empty">暂无关卡增益</p>

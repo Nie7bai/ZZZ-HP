@@ -12,6 +12,7 @@ import { formatHp, formatHpDelta, formatHpExpansionPercent, parseHpString, split
 import { createRequestEpoch } from '@/utils/requestEpoch'
 import type { AdminBuffSlotContext, AdminMonsterSlotContext } from '@/types/admin'
 import BuffEffectBlocksDisplay from '@/components/calculator/BuffEffectBlocksDisplay.vue'
+import BuffRichText from '@/components/calculator/BuffRichText.vue'
 import ElementTraitIcons from '@/components/shared/ElementTraitIcons.vue'
 import { hasElementIcons } from '@/utils/elementIcons'
 
@@ -766,7 +767,9 @@ function onPickerWheel(event: WheelEvent) {
               <h3 class="buff-name">{{ buff.name }}</h3>
             </div>
             <ul v-if="buff.lines.length" class="buff-lines">
-              <li v-for="(line, lineIndex) in buff.lines" :key="lineIndex">{{ line }}</li>
+              <li v-for="(line, lineIndex) in buff.lines" :key="lineIndex">
+                <BuffRichText :text="line" />
+              </li>
             </ul>
             <BuffEffectBlocksDisplay
               v-if="blocksForHistoryDisplay(buff.effectBlocks, buff.buffText ?? buff.lines.join('\n'))?.length"
@@ -898,7 +901,7 @@ function onPickerWheel(event: WheelEvent) {
                   class="enemy-field-buff-lines"
                 >
                   <li v-for="(line, lineIndex) in fieldBuffLines(enemy)" :key="lineIndex">
-                    {{ line }}
+                    <BuffRichText :text="line" />
                   </li>
                 </ul>
                 <BuffEffectBlocksDisplay
@@ -912,7 +915,7 @@ function onPickerWheel(event: WheelEvent) {
                   v-else-if="!fieldBuffLines(enemy).length && enemy.fieldBuff?.text"
                   class="enemy-field-buff-meta"
                 >
-                  {{ enemy.fieldBuff.text }}
+                  <BuffRichText :text="enemy.fieldBuff.text" />
                 </p>
               </div>
             </div>
@@ -1036,7 +1039,7 @@ function onPickerWheel(event: WheelEvent) {
                   class="enemy-field-buff-lines"
                 >
                   <li v-for="(line, lineIndex) in fieldBuffLines(enemy)" :key="lineIndex">
-                    {{ line }}
+                    <BuffRichText :text="line" />
                   </li>
                 </ul>
                 <BuffEffectBlocksDisplay
@@ -1050,7 +1053,7 @@ function onPickerWheel(event: WheelEvent) {
                   v-else-if="!fieldBuffLines(enemy).length && enemy.fieldBuff?.text"
                   class="enemy-field-buff-meta"
                 >
-                  {{ enemy.fieldBuff.text }}
+                  <BuffRichText :text="enemy.fieldBuff.text" />
                 </p>
               </div>
             </div>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { BuffModSource } from '@/utils/panelBuffCalc'
 import BuffModsDisplay from '@/components/calculator/BuffModsDisplay.vue'
+import BuffRichText from '@/components/calculator/BuffRichText.vue'
 import { effectSummaryLabel } from '@/utils/buffEffect'
 import { buffStatFieldLabel, BUFF_STAT_FIELDS, hasNonZeroBuffMods } from '@/utils/calculatorUi'
 import type { SkillSubcategory } from '@/types/calculator'
@@ -34,7 +35,9 @@ function statLabel(stat: string) {
         {{ source.label }}
         <span v-if="source.blockName" class="buff-block-tag">{{ source.blockName }}</span>
       </p>
-      <p v-if="source.note?.trim()" class="buff-source-note">{{ source.note }}</p>
+      <p v-if="source.note?.trim()" class="buff-source-note">
+        <BuffRichText :text="source.note" />
+      </p>
       <div
         v-if="hasNonZeroBuffMods(source.mods)"
         class="buff-source-mods"
@@ -44,7 +47,9 @@ function statLabel(stat: string) {
       </div>
       <ul v-if="source.effects?.length" class="buff-effect-list">
         <li v-for="effect in source.effects" :key="effect.id">
-          {{ effectSummaryLabel(effect, (s) => statLabel(s), props.skillSubcategories) }}
+          <BuffRichText
+            :text="effectSummaryLabel(effect, (s) => statLabel(s), props.skillSubcategories)"
+          />
         </li>
       </ul>
     </article>

@@ -107,28 +107,14 @@ function onToggle(el: string) {
 }
 
 .trait-chip--on {
-  background: color-mix(in srgb, #34d399 24%, transparent);
-  border-color: #34d399;
-  color: #047857;
+  background: color-mix(in srgb, var(--color-heading, #c9a55c) 18%, transparent);
+  border-color: color-mix(in srgb, var(--color-heading, #c9a55c) 55%, var(--color-border, #3a4250));
+  color: var(--color-heading, #c9a55c);
   opacity: 1;
-}
-
-.trait-chip--resist.trait-chip--on {
-  background: color-mix(in srgb, #f87171 24%, transparent);
-  border-color: #f87171;
-  color: #b91c1c;
 }
 
 .trait-chips.is-disabled {
   opacity: 0.7;
   pointer-events: none;
-}
-
-[data-theme='light'] .trait-chip--on {
-  color: #047857;
-}
-
-[data-theme='light'] .trait-chip--resist.trait-chip--on {
-  color: #b91c1c;
 }
 </style>

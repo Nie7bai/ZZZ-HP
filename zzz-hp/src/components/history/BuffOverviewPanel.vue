@@ -11,6 +11,7 @@ import type { DefenseVariant } from '@/types/defense'
 import { modeTitles, type BuffInfo, type ModeKey, type PhaseData } from '@/types/history'
 import { defenseSeasonsToPhaseData } from '@/utils/defenseCompare'
 import { createRequestEpoch } from '@/utils/requestEpoch'
+import BuffRichText from '@/components/calculator/BuffRichText.vue'
 
 type BuffViewMode = 'horizontal' | 'card'
 
@@ -443,7 +444,9 @@ watch(buffSearchInput, () => {
               <h3 class="buff-name">{{ entry.buff.name }}</h3>
             </div>
             <ul class="buff-lines">
-              <li v-for="(line, lineIndex) in entry.buff.lines" :key="lineIndex">{{ line }}</li>
+              <li v-for="(line, lineIndex) in entry.buff.lines" :key="lineIndex">
+                <BuffRichText :text="line" />
+              </li>
             </ul>
           </div>
         </div>
@@ -504,7 +507,7 @@ watch(buffSearchInput, () => {
                 </div>
                 <ul class="buff-lines">
                   <li v-for="(line, lineIndex) in item.buff.lines" :key="lineIndex">
-                    {{ line }}
+                    <BuffRichText :text="line" />
                   </li>
                 </ul>
               </div>
@@ -538,7 +541,9 @@ watch(buffSearchInput, () => {
               <h3 class="buff-name">{{ buff.name }}</h3>
             </div>
             <ul class="buff-lines">
-              <li v-for="(line, lineIndex) in buff.lines" :key="lineIndex">{{ line }}</li>
+              <li v-for="(line, lineIndex) in buff.lines" :key="lineIndex">
+                <BuffRichText :text="line" />
+              </li>
             </ul>
           </div>
         </div>
