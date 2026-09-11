@@ -23,6 +23,7 @@ import {
   panelOfSource,
   panelSourceKindsWithData,
   resolveActivePanel,
+  resolveActivePanelSourceKind,
   schemeActivePanels,
   schemeAffixInputs,
   setActivePanelSource,
@@ -178,6 +179,32 @@ console.log('\n[2] 手动切换激活：只改 active，两份数值都不动（
     resolveActivePanel(switchedToEmpty).atk === panelFromGame.atk,
   )
   check('回落时 hasPanelSource 仍如实反映（该份确实没数据）', !hasPanelSource(switchedToEmpty, 'affixDerived'))
+}
+
+console.log('\n[2.1] 「当前生效来源」标注：必须跟实际取值一致（§4.2 槽位卡片胶囊）')
+{
+  let sources = writePanelSource(undefined, 'imported', panelFromGame, { importedAt: 1 })
+  sources = writePanelSource(sources, 'affixDerived', panelFromAffix, { importedAt: 2 })
+
+  check(
+    '用户选哪份就标哪份（两份都有数据时）',
+    resolveActivePanelSourceKind(sources) === 'affixDerived' &&
+      resolveActivePanelSourceKind(setActivePanelSource(sources, 'imported')) === 'imported',
+  )
+
+  // 选中那份没数据 → 标「实际回落」的那份，不能照用户的选择标
+  const onlyImported = writePanelSource(undefined, 'imported', panelFromGame)
+  const switchedToEmpty = setActivePanelSource(onlyImported, 'affixDerived')
+  check(
+    '选中那份没数据时标出真正生效的那份',
+    resolveActivePanelSourceKind(switchedToEmpty) === 'imported',
+  )
+  check(
+    '标注口径与 resolveActivePanel 的回落方向一致',
+    resolveActivePanel(switchedToEmpty).atk === panelFromGame.atk,
+  )
+  check('两份都没数据时不标来源（返回空）', resolveActivePanelSourceKind(createAgentPanelSources()) === undefined)
+  check('没有来源记录时返回空', resolveActivePanelSourceKind(undefined) === undefined)
 }
 
 console.log('\n[3] 验收 1：面板导入后，计算读到的就是填进去那份（含小数）')

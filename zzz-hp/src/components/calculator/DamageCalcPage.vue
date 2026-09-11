@@ -94,6 +94,7 @@ import {
   migrateLegacyPanelsToSources,
   panelSourceKindsWithData,
   resolveActivePanel,
+  resolveActivePanelSourceKind,
   setActivePanelSource,
   writeAffixInputsIntoSource,
   writePanelSource,
@@ -1278,20 +1279,16 @@ const stickySlotPanelPreviews = computed(() => {
     s.fourPieceDriveDiscId,
   ])
 
-  // 面板/词条模式：用 PanelCalcSection 的预览（含局内，随增益重算）
-  if (panelCalcMode.value !== 'optimal') {
-    const fromPanel = panelCalcSectionRef.value?.slotPanelPreviews
-    if (fromPanel) return fromPanel
-  }
-
   /**
-   * 最优模式**不再**把分析结果灌进槽位卡片。
+   * 三个模式一律用 `PanelCalcSection` 的预览：它是「**激活那份面板** + 当前增益」算出的局外 / 局内，
+   * 随 Buff 实时重算；`PanelCalcSection` 在最优模式下仍以 `v-show` 挂载，预览随时可读。
    *
-   * 用户口径（2026-09-11）：槽位卡片是「角色配置」的呈现，属于**录入区**；
-   * 最优分配的结果是临时分析值（切柱就变），回显到卡片会让人误以为它被存了下来，
-   * 而且会把「基准面板」遮住 —— 判断分配合不合理，恰恰要同时看到基准与结果。
-   * 结果面板改为在最优模块内部展示（见 `OptimalAffixAllocSection` 的「面板口径」）。
+   * 最优模式也走这里（原先跳过），于是卡片的内容与「角色配置」严格一致 ——
+   * 卡片是**录入区**的呈现，展示的就是配置里那份面板，与最优分析的候选结果无关；
+   * 分析结果仍在模块内「面板口径」三行展示（用户口径 2026-09-11，见 `62e83d8`）。
    */
+  const fromPanel = panelCalcSectionRef.value?.slotPanelPreviews
+  if (fromPanel) return fromPanel
 
   // 兜底：轻量局外（页级配置值，即「角色配置」里激活的那一份）
   return teamSlots.map((slot) => {
@@ -1308,6 +1305,18 @@ const stickySlotPanelPreviews = computed(() => {
     return { external, final: null as PanelStats | null }
   })
 })
+
+/**
+ * 每个槽位**当前生效**的面板来源（面板导入 / 词条导入）—— 顶部槽位卡片的胶囊标签用。
+ *
+ * 取「实际在用」而不是「用户选的」（见 `resolveActivePanelSourceKind`）：选中那份没数据时
+ * 面板会回落到另一份，照用户的选择标注就会标错。两份都没有数据的槽位给 `null`，卡片不标来源。
+ */
+const slotPanelSourceKinds = computed(() =>
+  teamSlots.map((slot) =>
+    slot.agentId ? (resolveActivePanelSourceKind(slotPanels[slot.agentId]) ?? null) : null,
+  ),
+)
 
 /** 导入弹窗局内预览：随草稿局外 + 当前增益实时重算（对齐改前内嵌面板行为） */
 const importFinalPanelToken = computed(() =>
@@ -1966,6 +1975,7 @@ defineExpose({ scrollToSection, setCalcMode, toggleOptimalAffixSection, panelCal
         :drive-discs="driveDiscs"
         :active-index="activeSlot"
         :panel-previews="stickySlotPanelPreviews"
+        :panel-source-kinds="slotPanelSourceKinds"
         :convert-slot-indexes="convertSlotIndexes"
         @select="selectSlot"
         @import="openTeamPresetPicker"

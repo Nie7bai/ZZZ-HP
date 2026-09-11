@@ -3,8 +3,10 @@ import { computed, onUnmounted, ref } from 'vue'
 import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
 import type { AgentBuffDoc, DriveDiscBuffDoc, WengineBuffDoc } from '@/types/calculator'
+import type { AgentPanelSourceKind } from '@/types/damageCalcHistory'
 import type { PanelStats } from '@/types/calculatorPanel'
 import { isWengineProfessionMatch } from '@/utils/calculatorUi'
+import { AGENT_PANEL_SOURCE_LABELS, AGENT_PANEL_SOURCE_ORDER } from '@/utils/agentPanelSources'
 import { teamSlotDisplayLabel } from '@/utils/teamSlotLabel'
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 
@@ -20,6 +22,8 @@ const props = defineProps<{
   driveDiscs: DriveDiscBuffDoc[]
   activeIndex: number
   panelPreviews?: Array<SlotPanelPreview | PanelStats | null | undefined>
+  /** 各槽位**当前生效**的面板来源（面板导入 / 词条导入）；没数据时为 null */
+  panelSourceKinds?: Array<AgentPanelSourceKind | null | undefined>
   /** 含局外/局内转模效果的槽位索引 */
   convertSlotIndexes?: Set<number> | number[]
 }>()
@@ -102,6 +106,19 @@ function formatStat(key: keyof PanelStats, value: number) {
     return Math.round(value).toLocaleString('en-US')
   }
   return formatCalcDecimal(value, 2)
+}
+
+/** 该槽当前生效的面板来源；两份都没数据时为 null（卡片不标来源） */
+function panelSourceKindOf(index: number): AgentPanelSourceKind | null {
+  return props.panelSourceKinds?.[index] ?? null
+}
+
+/** 胶囊 tooltip：说清「标的是生效那份」以及去哪切换 */
+function panelSourceTitle(kind: AgentPanelSourceKind, index: number) {
+  const current = panelSourceKindOf(index)
+  return kind === current
+    ? `当前生效：${AGENT_PANEL_SOURCE_LABELS[kind]}（卡片的局外/局内都取自这份）`
+    : `未生效：${AGENT_PANEL_SOURCE_LABELS[kind]}；在导入弹窗的「面板来源」里切换`
 }
 
 const EXTERNAL_PREVIEW_FIELDS: { key: keyof PanelStats; label: string }[] = [
@@ -228,7 +245,20 @@ const driveDiscLine = computed(() => {
           @mouseenter="showHover(index)"
           @mouseleave="scheduleHideHover"
         >
-          <p class="panel-hover-title">局外面板</p>
+          <div class="panel-hover-head">
+            <p class="panel-hover-title">局外面板</p>
+            <span v-if="panelSourceKindOf(index)" class="panel-source-tags">
+              <span
+                v-for="kind in AGENT_PANEL_SOURCE_ORDER"
+                :key="`src-${kind}`"
+                class="panel-source-tag"
+                :class="{ active: panelSourceKindOf(index) === kind }"
+                :title="panelSourceTitle(kind, index)"
+              >
+                {{ AGENT_PANEL_SOURCE_LABELS[kind] }}
+              </span>
+            </span>
+          </div>
           <dl class="panel-hover-grid">
             <div
               v-for="field in EXTERNAL_PREVIEW_FIELDS"
@@ -587,6 +617,43 @@ const driveDiscLine = computed(() => {
   font-size: 0.76rem;
   font-weight: 700;
   color: #c9a55c;
+}
+
+/* 标题行：来源胶囊与「局外面板」同一行，右侧对齐 */
+.panel-hover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.4rem;
+}
+
+.panel-hover-head .panel-hover-title {
+  margin: 0;
+}
+
+.panel-source-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+/* 两枚胶囊：生效那份绿框（同导入弹窗的「面板来源」），另一枚淡灰 */
+.panel-source-tag {
+  padding: 0.05rem 0.45rem;
+  border: 1px solid #3a4658;
+  border-radius: 999px;
+  color: #7b8698;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.panel-source-tag.active {
+  border-color: #7dd3a0;
+  color: #7dd3a0;
+  font-weight: 650;
 }
 
 .panel-hover-title--final {

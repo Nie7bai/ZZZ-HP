@@ -72,6 +72,25 @@ export function activePanelSourceKind(
   return undefined
 }
 
+/**
+ * **实际在用**的那份来源 —— `resolveActivePanel` 的「来源」版本。
+ *
+ * 与 `activePanelSourceKind` 的分工：
+ * - 那个答「用户选的是哪份」（选的那份没数据就说没有，用于回显用户的选择）；
+ * - 这个答「最终喂进计算的是哪份」（选中那份没数据时**回落**到另一份，规则与 `resolveActivePanel` 一致）。
+ *
+ * 界面要标「这份数字来自哪里」必须用这个：否则回落时会把另一份的面板标成用户选的那份
+ * （见 `dev-docs/panel-dual-source.md` §4.2）。
+ */
+export function resolveActivePanelSourceKind(
+  sources: AgentPanelSources | undefined,
+): AgentPanelSourceKind | undefined {
+  if (!sources) return undefined
+  if (hasPanelSource(sources, sources.active)) return sources.active
+  for (const kind of panelSourceKindsWithData(sources)) return kind
+  return undefined
+}
+
 /** 某一来源的导入时间（仅展示与排查用；计算链路不读） */
 export function sourceImportedAt(
   sources: AgentPanelSources | undefined,
