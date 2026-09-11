@@ -1449,19 +1449,53 @@ const affixEvalCache = new Map<
   }
 >()
 
+/**
+ * 词条计数各字段的「每档值」。
+ *
+ * 由词条库条目决定（`entryRollsToEvalInput` 产出）：`stat:` 目标的条目用自己的
+ * `perRoll` 覆盖对应字段，未覆盖的字段回落 `AFFIX_VALUE_PER_COUNT`。
+ * 省略时全部走常量表 —— 柱图（词条计算页）等调用点因此行为不变。
+ */
+export type AffixValuePerCount = Record<keyof AffixCounts, number>
+
+/** valuePerCount 是否与默认常量表一致（一致就不进缓存键，保持既有键形态稳定） */
+function isDefaultValuePerCount(valuePerCount: AffixValuePerCount): boolean {
+  const keys = Object.keys(AFFIX_VALUE_PER_COUNT) as (keyof AffixCounts)[]
+  for (const key of keys) {
+    if (valuePerCount[key] !== AFFIX_VALUE_PER_COUNT[key]) return false
+  }
+  return true
+}
+
 function affixCountsCacheKey(
   affixCounts: AffixCounts,
   panelDeltas?: AffixPanelDeltaMap,
+  valuePerCount?: AffixValuePerCount,
 ): string {
   // 必须覆盖 AffixCounts 的全部字段：锋御走 defFlat/defPercent，
   // 漏掉会让不同防御档数命中同一条缓存，返回错误伤害。
   const base = `${affixCounts.hpFlat},${affixCounts.hpPercent},${affixCounts.atkFlat},${affixCounts.atkPercent},${affixCounts.defFlat},${affixCounts.defPercent},${affixCounts.pen},${affixCounts.critRate},${affixCounts.critDmg},${affixCounts.mastery}`
-  if (!panelDeltas) return base
+  /**
+   * 每档值必须进键。
+   *
+   * 本项目已因「缓存键漏字段」栽过两次（`defFlat/defPercent`、`agentBase/wengineAdvanced`）。
+   * 漏掉 `valuePerCount` 会以新形式复发同一个病症：
+   * **改「每档」数字，伤害一动不动** —— 正是本次词条库改造要修的东西。
+   * 默认值不进键，让柱图等既有调用点的键形态与改造前完全一致。
+   */
+  const valuePart =
+    valuePerCount && !isDefaultValuePerCount(valuePerCount)
+      ? `|vpc:${(Object.keys(AFFIX_VALUE_PER_COUNT) as (keyof AffixCounts)[])
+          .map((key) => valuePerCount[key])
+          .join(',')}`
+      : ''
+  if (!panelDeltas) return `${base}${valuePart}`
   const parts = (Object.keys(panelDeltas) as AffixPanelDeltaField[])
     .sort()
     .filter((key) => Boolean(panelDeltas[key]))
     .map((key) => `${key}=${panelDeltas[key]}`)
-  return parts.length ? `${base}|${parts.join(',')}` : base
+  const deltaPart = parts.length ? `|${parts.join(',')}` : ''
+  return `${base}${valuePart}${deltaPart}`
 }
 
 function serializeBuffSelection(state: BuffSelectionState | null | undefined): string {
@@ -1641,8 +1675,13 @@ function computeExternalForEval(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
   panelDeltas?: AffixPanelDeltaMap,
+  valuePerCount?: AffixValuePerCount,
 ): PanelStats {
-  const external = applyAffixCountsToFixedParts(getAffixExternalFixedParts(ctx), affixCounts)
+  const external = applyAffixCountsToFixedParts(
+    getAffixExternalFixedParts(ctx),
+    affixCounts,
+    valuePerCount,
+  )
   return panelDeltas ? applyPanelDeltas(external, panelDeltas) : external
 }
 
@@ -1650,6 +1689,7 @@ function evaluateAffixCountsUncached(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
   panelDeltas?: AffixPanelDeltaMap,
+  valuePerCount?: AffixValuePerCount,
 ): {
   finalPanel: PanelStats
   result: DamageCalcResult
@@ -1659,7 +1699,7 @@ function evaluateAffixCountsUncached(
   grandTotal: number
   eventLines: OptimalEventDamageLine[]
 } {
-  const external = computeExternalForEval(ctx, affixCounts, panelDeltas)
+  const external = computeExternalForEval(ctx, affixCounts, panelDeltas, valuePerCount)
 
   if (ctx.hits?.length) {
     const { grandTotal, eventLines, firstResult, firstBreakdown } = computeEventDamageLines(
@@ -1795,13 +1835,14 @@ export function evaluateAffixCountsWithCacheInfo(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
   panelDeltas?: AffixPanelDeltaMap,
+  valuePerCount?: AffixValuePerCount,
 ): { value: AffixCountsEvalResult; cacheHit: boolean } {
   resetAffixEvalCacheIfNeeded(ctx)
-  const cacheKey = affixCountsCacheKey(affixCounts, panelDeltas)
+  const cacheKey = affixCountsCacheKey(affixCounts, panelDeltas, valuePerCount)
   const cached = affixEvalCache.get(cacheKey)
   if (cached) return { value: cached, cacheHit: true }
 
-  const result = evaluateAffixCountsUncached(ctx, affixCounts, panelDeltas)
+  const result = evaluateAffixCountsUncached(ctx, affixCounts, panelDeltas, valuePerCount)
   if (affixEvalCache.size >= AFFIX_EVAL_CACHE_MAX) {
     const firstKey = affixEvalCache.keys().next().value
     if (firstKey) affixEvalCache.delete(firstKey)
@@ -1814,8 +1855,9 @@ export function evaluateAffixCounts(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
   panelDeltas?: AffixPanelDeltaMap,
+  valuePerCount?: AffixValuePerCount,
 ): AffixCountsEvalResult {
-  return evaluateAffixCountsWithCacheInfo(ctx, affixCounts, panelDeltas).value
+  return evaluateAffixCountsWithCacheInfo(ctx, affixCounts, panelDeltas, valuePerCount).value
 }
 
 export function sweepDirectDamage(

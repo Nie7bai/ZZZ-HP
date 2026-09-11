@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { buildAllocationRows } from '@/utils/affixOptimizer'
 import type { AffixOptimizerProgress, AffixOptimizerResult } from '@/utils/affixOptimizer'
 import type { AffixLibraryEntry } from '@/utils/affixLibrary'
+import { formatAffixPerRoll } from '@/utils/affixLibrary'
 
 /**
  * 最优分配结果面板
@@ -150,7 +151,7 @@ function formatNumber(value: number) {
           <tbody>
             <tr v-for="row in rows" :key="row.entry.id">
               <td>{{ row.entry.label }}</td>
-              <td class="num-cell">{{ row.entry.perRoll }}</td>
+              <td class="num-cell">{{ formatAffixPerRoll(row.entry.target, row.entry.perRoll) }}</td>
               <td class="num-cell rolls-cell">
                 <span class="rolls-bar" :style="{ width: barWidth(row.rolls) }" />
                 <span class="rolls-text">{{ row.rolls }}</span>

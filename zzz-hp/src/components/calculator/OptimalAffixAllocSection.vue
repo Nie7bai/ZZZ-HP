@@ -1634,7 +1634,7 @@ const affixAllocBaseCounts = computed(() => createEmptyAffixCounts())
 const affixAllocEval = computed(() => {
   const result = affixAllocResult.value
   if (!result) return null
-  return evaluateAffixCounts(evalCtx.value, result.counts, result.panelDeltas)
+  return evaluateAffixCounts(evalCtx.value, result.counts, result.panelDeltas, result.valuePerCount)
 })
 
 /** 词条分配模式：计算过程（与扫掠模式共用 useDamageProcessEvents） */
@@ -1673,7 +1673,7 @@ function toggleAffixLibraryEntry(entryId: string, enabled: boolean) {
   persistAffixLibrary(setAffixLibraryEntryEnabled(affixLibraryState.value, entryId, enabled))
 }
 
-function addAffixLibraryEntry(entry: Omit<AffixLibraryEntry, 'id' | 'builtin'>) {
+function addAffixLibraryEntry(entry: Omit<AffixLibraryEntry, 'id'>) {
   persistAffixLibrary(addCustomAffixLibraryEntry(affixLibraryState.value, entry))
 }
 

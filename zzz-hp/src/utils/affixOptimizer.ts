@@ -1,13 +1,11 @@
 import type { AffixCounts } from '@/types/calculatorPanel'
-import {
-  entryRollsToAffixCounts,
-  entryRollsToPanelDeltas,
-  type AffixLibraryEntry,
-} from '@/utils/affixLibrary'
+import { rollsToEvalInput } from '@/utils/affixBenefitAnalysis'
+import { affixValuePerCountFromEntries, type AffixLibraryEntry } from '@/utils/affixLibrary'
 import {
   evaluateAffixCountsWithCacheInfo,
   yieldToMain,
   type AffixPanelDeltaMap,
+  type AffixValuePerCount,
   type OptimalEvalContext,
 } from '@/utils/optimalAffixAlloc'
 
@@ -80,6 +78,13 @@ export interface AffixOptimizerResult {
   rollsByEntryId: Record<string, number>
   counts: AffixCounts
   panelDeltas: AffixPanelDeltaMap | undefined
+  /**
+   * 本次求解用的「每档值」表（由参与求解的条目决定）。
+   *
+   * 消费方拿 `counts`/`panelDeltas` 复算总伤时**必须**一并传入，
+   * 否则会按默认常量表算，与求解器报告的数字对不上。
+   */
+  valuePerCount: AffixValuePerCount
   totalDamage: number
   baselineDamage: number
   improvementPercent: number
@@ -157,20 +162,12 @@ function entryRolls(
   rollsByEntryId: Record<string, number>,
   baseCounts: AffixCounts,
   basePanelDeltas?: AffixPanelDeltaMap,
-): { counts: AffixCounts; panelDeltas: AffixPanelDeltaMap | undefined } {
-  const substatRolls = entryRollsToAffixCounts(entries, rollsByEntryId)
-  const counts = { ...baseCounts }
-  for (const key of Object.keys(substatRolls) as (keyof AffixCounts)[]) {
-    counts[key] = (counts[key] ?? 0) + (substatRolls[key] ?? 0)
-  }
-  const entryDeltas = entryRollsToPanelDeltas(entries, rollsByEntryId)
-  const deltaKeys = Object.keys(entryDeltas) as (keyof typeof entryDeltas)[]
-  if (!deltaKeys.length) return { counts, panelDeltas: basePanelDeltas }
-  const panelDeltas: AffixPanelDeltaMap = { ...(basePanelDeltas ?? {}) }
-  for (const key of deltaKeys) {
-    panelDeltas[key] = (panelDeltas[key] ?? 0) + (entryDeltas[key] ?? 0)
-  }
-  return { counts, panelDeltas }
+): {
+  counts: AffixCounts
+  panelDeltas: AffixPanelDeltaMap | undefined
+  valuePerCount: AffixValuePerCount
+} {
+  return rollsToEvalInput(entries, rollsByEntryId, baseCounts, basePanelDeltas)
 }
 
 function usedRollsOf(
@@ -327,8 +324,13 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
 
   /** 真实评估一次（缓存命中不计入计算量） */
   const evaluate = (rollsByEntryId: Record<string, number>): SolveState => {
-    const { counts, panelDeltas } = entryRolls(entries, rollsByEntryId, emptyCounts)
-    const { value, cacheHit } = evaluateAffixCountsWithCacheInfo(ctx, counts, panelDeltas)
+    const { counts, panelDeltas, valuePerCount } = entryRolls(entries, rollsByEntryId, emptyCounts)
+    const { value, cacheHit } = evaluateAffixCountsWithCacheInfo(
+      ctx,
+      counts,
+      panelDeltas,
+      valuePerCount,
+    )
     if (cacheHit) {
       cacheHits += 1
     } else {
@@ -742,6 +744,7 @@ function toResult(input: AffixOptimizerInput, outcome: SearchOutcome): AffixOpti
     rollsByEntryId: outcome.rollsByEntryId,
     counts: state.counts,
     panelDeltas: state.panelDeltas,
+    valuePerCount: affixValuePerCountFromEntries(input.entries),
     totalDamage: state.total,
     baselineDamage,
     improvementPercent,
