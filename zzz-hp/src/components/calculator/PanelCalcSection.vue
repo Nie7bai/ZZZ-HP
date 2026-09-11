@@ -100,6 +100,10 @@ import {
 } from '@/utils/resolvedHit'
 import { summarizeDamageByOwner, RADIANCE_SELF_TRIGGER_HINT } from '@/utils/damageEventOwner'
 import {
+  buildOptimalEvalContext,
+  evaluateOptimalEventDetail,
+} from '@/utils/optimalAffixAlloc'
+import {
   mergeExtraModsForEvent,
   normalizeExtraGain,
 } from '@/utils/extraBuffCalc'
@@ -535,7 +539,7 @@ const mainAgent = computed(() =>
   props.agents.find((item) => item.id === mainSlot.value.agentId),
 )
 
-const { skillSubcategories } = storeToRefs(useCalculatorBuffStore())
+const { skillSubcategories, followUpSkillRules } = storeToRefs(useCalculatorBuffStore())
 
 const resolvedSkillSubcategory = computed<SkillSubcategory | null>(() => {
   const id = props.skillSubcategoryId
@@ -1761,15 +1765,58 @@ function withHitPanelMemo<T>(runner: () => T): T {
   }
 }
 
+/**
+ * 面板计算链路用的统一评估上下文（`计算方式 = 面板导入 / 词条导入`）。
+ *
+ * 招式伤害只认「上下文 + 主 C 局外面板」，「面板从哪来」由 `skillFlowMainExternal` 决定 ——
+ * 这条链路与最优词条分配链路共用同一段招式计算，见 dev-docs/skill-flow-unification.md。
+ */
+const skillFlowEvalCtx = computed(() =>
+  buildOptimalEvalContext({
+    isMb: isMbMainAgent.value,
+    isFengYu: isFengYuMainAgent.value,
+    teamSlots: props.teamSlots,
+    agents: props.agents,
+    wengines: props.wengines,
+    bangboo: selectedBangboo.value,
+    bangbooRefine: props.bangbooRefine,
+    driveDiscs: props.driveDiscs,
+    mainSlotIndex: mainSlotIndex.value,
+    driveDiscMainStats: affixDriveDiscMainStats,
+    enemyInput: enemyInput.value,
+    baseDamageSource: effectiveBaseDamageSource.value,
+    extraGains: extraGains.value,
+    buffSelection: resolveBuffSelectionForSlot(props.slotBuffSelections, mainSlotIndex.value),
+    slotBuffSelections: props.slotBuffSelections,
+    activeSlotPanels: resolvedActiveSlotPanels.value,
+    convertSlotPanels: props.convertSlotPanels,
+    // 非主 C 槽位沿用本组件那份解析（激活面板 → 转模部分面板 → 默认面板），
+    // 与改造前逐位一致（引擎默认解析的回落不同，不能让它接管）
+    slotExternalPanels: slotExternalPanelsMap.value,
+    hits: props.hits,
+    triggerAnomalyAgentId: props.triggerAnomalyAgentId,
+    resolveSubcategory: (id) => skillSubcategories.value.find((item) => item.id === id) ?? null,
+    skillSubcategories: skillSubcategories.value,
+    followUpSkillRules: followUpSkillRules.value,
+    environmentBuffs: props.environmentBuffs,
+  }),
+)
+
+/** 主 C 局外面板：角色配置里那份激活面板（改造前口径） */
+const skillFlowMainExternal = computed(() => resolveExternalPanelForSlotIndex(mainSlotIndex.value))
+
 function resolveHitLine(
   hit: ResolvedHit,
   resolveOwnerName?: (hit: ResolvedHit) => string | undefined,
 ): HitLine | null {
-  const input = buildHitCalcInput(hit)
-  if (!input) return null
-  const result = computeDamageResult(input)
-  const perHit = pickEventDamage(result, hit.skill.damageType, hit.critMode)
-  const total = perHit * hit.count
+  const detail = evaluateOptimalEventDetail(
+    skillFlowEvalCtx.value,
+    skillFlowMainExternal.value,
+    hit,
+    { includeDetails: false },
+  )
+  if (!detail) return null
+  const { result, perHit, total } = detail
   const kindLabel =
     DAMAGE_EVENT_KIND_OPTIONS.find((item) => item.id === hit.skill.damageType)?.label ??
     hit.skill.damageType

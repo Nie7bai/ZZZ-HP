@@ -2674,6 +2674,15 @@ export function buildOptimalEvalContext(input: {
   /** 主 C「词条导入」那一路的词条数（没有存面板时用来现推局外） */
   mainAffixCounts?: AffixCounts
   convertSlotPanels?: import('@/utils/panelBuffCalc').ConvertSlotPanels
+  /**
+   * 各槽位局外面板（`index → PanelStats`），**整份覆盖**默认解析。
+   *
+   * 为什么需要：默认解析是「激活面板，取不到则按配置推导」（本文件下方 `Object.fromEntries`），
+   * 而面板计算链路取不到时会回落到「转模部分面板 → 默认面板」。两条链路的回落不同，
+   * 合并时由调用方把自己那份解析结果传进来，保证逐位一致（见 dev-docs/skill-flow-unification.md 步骤①）。
+   * 省略 = 保持原有解析。
+   */
+  slotExternalPanels?: Record<number, PanelStats>
   hits?: ResolvedHit[]
   /** 页级异常强度提供者 id（命名含 trigger，实为 power） */
   triggerAnomalyAgentId?: string | null
@@ -2740,39 +2749,41 @@ export function buildOptimalEvalContext(input: {
       buffSelection: input.buffSelection,
       activeSlotPanels: input.activeSlotPanels,
       convertSlotPanels: input.convertSlotPanels,
-      slotExternalPanels: Object.fromEntries(
-        input.teamSlots.flatMap((slot, index) => {
-          if (!slot.agentId) return []
-          // 局外面板统一以「角色配置」为准（导入录入写入的 activeSlotPanels）；
-          // 主 C 的候选词条叠加不在这里，见 computeExternalForEval。
-          const saved = input.activeSlotPanels?.[slot.agentId]
-          if (saved && !isPlaceholderExternalPanel(saved)) {
-            return [[index, fillPanelStatsDefaults(saved)]]
-          }
-          return [
-            [
-              index,
-              computeExternalPanelFromTeamSlot({
-                slot,
-                agents: input.agents,
-                wengines: input.wengines,
-                driveDiscs: input.driveDiscs,
-                overrideAffix:
-                  index === input.mainSlotIndex
-                    ? {
-                        // 词条数来自「词条导入」那份来源记录（老方案经 v4 迁移后同在一处）
-                        affixCounts: {
-                          ...createEmptyAffixCounts(),
-                          ...input.mainAffixCounts,
-                        },
-                        affixDriveDiscMainStats: input.driveDiscMainStats,
-                      }
-                    : undefined,
-              }),
-            ],
-          ]
-        }),
-      ),
+      slotExternalPanels:
+        input.slotExternalPanels ??
+        Object.fromEntries(
+          input.teamSlots.flatMap((slot, index) => {
+            if (!slot.agentId) return []
+            // 局外面板统一以「角色配置」为准（导入录入写入的 activeSlotPanels）；
+            // 主 C 的候选词条叠加不在这里，见 computeExternalForEval。
+            const saved = input.activeSlotPanels?.[slot.agentId]
+            if (saved && !isPlaceholderExternalPanel(saved)) {
+              return [[index, fillPanelStatsDefaults(saved)]]
+            }
+            return [
+              [
+                index,
+                computeExternalPanelFromTeamSlot({
+                  slot,
+                  agents: input.agents,
+                  wengines: input.wengines,
+                  driveDiscs: input.driveDiscs,
+                  overrideAffix:
+                    index === input.mainSlotIndex
+                      ? {
+                          // 词条数来自「词条导入」那份来源记录（老方案经 v4 迁移后同在一处）
+                          affixCounts: {
+                            ...createEmptyAffixCounts(),
+                            ...input.mainAffixCounts,
+                          },
+                          affixDriveDiscMainStats: input.driveDiscMainStats,
+                        }
+                      : undefined,
+                }),
+              ],
+            ]
+          }),
+        ),
       baseAnomalyControl: mainAgent?.basePanel.anomalyControl ?? 0,
       baseEnergyRegen: mainAgent?.basePanel.energyRegen ?? 0,
       environmentBuffs: input.environmentBuffs,
