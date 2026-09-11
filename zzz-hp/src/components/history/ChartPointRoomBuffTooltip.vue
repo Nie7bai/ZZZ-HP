@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ChartRoomBuffPreview } from '@/api/crisisAssault'
+import BuffRichText from '@/components/calculator/BuffRichText.vue'
 
 defineProps<{
   visible: boolean
@@ -30,7 +31,9 @@ defineProps<{
           </div>
         </div>
         <ul class="tooltip-buff-lines">
-          <li v-for="(line, index) in roomBuff.lines" :key="index">{{ line }}</li>
+          <li v-for="(line, index) in roomBuff.lines" :key="index">
+            <BuffRichText :text="line" />
+          </li>
         </ul>
       </div>
     </div>

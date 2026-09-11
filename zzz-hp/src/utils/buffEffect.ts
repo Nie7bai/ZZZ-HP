@@ -1318,9 +1318,9 @@ export function effectSummaryLabel(
   const elementLabel = formatElementFilterLabel(effect)
   const gate = formatTeamProfessionGateLabel(effect)
   const statText = statLabelFn?.(effect.stat) ?? effect.stat
-  const kind =
+  const amount =
     effect.kind === 'stacked'
-      ? `叠层×${effect.valuePerStack ?? 0}`
+      ? `${effect.valuePerStack ?? 0}×叠层`
       : effect.kind === 'convert'
         ? convertSummaryLabel(effect.convert)
         : `${effect.value ?? 0}`
@@ -1329,11 +1329,12 @@ export function effectSummaryLabel(
   // 属性限制：全局之后、效果之前
   if (elementLabel) parts.push(elementLabel)
   if (gate) parts.push(gate)
-  parts.push(`${statText} ${kind}`)
+  // 数值在前、增益名在后：`60 爆伤%` / `5×叠层 爆伤%`
+  parts.push(`${amount} ${statText}`)
   return parts.join(' · ')
 }
 
-/** 局内 Buff 卡片效果行：`[强攻][斩妄开天] [电] 增伤 +40` */
+/** 局内 Buff 卡片效果行：`[强攻][斩妄开天] [电] +40 增伤` */
 export function formatBuffEffectResultText(
   effect: BuffEffect,
   amountText: string,
@@ -1350,7 +1351,7 @@ export function formatBuffEffectResultText(
   const head = [applyProf, skillPrefix].filter(Boolean).join('')
   const mid = gate ? `${gate} ` : ''
   const el = elementLabel ? `${elementLabel} ` : ''
-  return `${head}${head ? ' ' : ''}${mid}${el}${label} ${amountText}`
+  return `${head}${head ? ' ' : ''}${mid}${el}${amountText} ${label}`
 }
 
 export { BUFF_STAT_KEYS }

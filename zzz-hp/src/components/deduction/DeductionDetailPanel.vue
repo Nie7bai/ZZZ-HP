@@ -26,6 +26,7 @@ import AdminDeductionFuzzySelect from '@/components/admin/AdminDeductionFuzzySel
 import AdminImagePicker from '@/components/admin/AdminImagePicker.vue'
 import AdminBuffEffectEditor from '@/components/admin/calculator/AdminBuffEffectEditor.vue'
 import BuffEffectBlocksDisplay from '@/components/calculator/BuffEffectBlocksDisplay.vue'
+import BuffRichText from '@/components/calculator/BuffRichText.vue'
 import { uploadBossImage, uploadBuffImage, type BuffNameTemplate } from '@/api/admin'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import type { BuffEffectBlock } from '@/types/calculator'
@@ -1263,7 +1264,9 @@ onMounted(() => {
                     </button>
                   </template>
                 </div>
-                <p v-if="buff.desc" class="dd-buff-desc">{{ buff.desc }}</p>
+                <p v-if="buff.desc" class="dd-buff-desc">
+                  <BuffRichText :text="buff.desc" />
+                </p>
                 <BuffEffectBlocksDisplay
                   v-if="blocksForDisplay(buff.effect_blocks, buff.desc ?? '')?.length"
                   compact
@@ -1366,7 +1369,7 @@ onMounted(() => {
                   :key="lineIndex"
                   class="dd-field-buff-line"
                 >
-                  {{ line }}
+                  <BuffRichText :text="line" />
                 </p>
                 <BuffEffectBlocksDisplay
                   v-if="blocksForDisplay(layer.fieldBuff?.effectBlocks, layer.fieldBuff?.text ?? '')?.length"

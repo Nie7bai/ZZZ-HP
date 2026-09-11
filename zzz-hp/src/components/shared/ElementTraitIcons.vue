@@ -45,16 +45,7 @@ const items = computed(() => parseElementIcons(props.value))
 .trait-icons-label {
   font-weight: 650;
   margin-right: 0.1rem;
-}
-
-.trait-icons--weak,
-.trait-icons--weak .trait-icons-label {
-  color: #34d399;
-}
-
-.trait-icons--resist,
-.trait-icons--resist .trait-icons-label {
-  color: #f87171;
+  color: inherit;
 }
 
 .trait-icons-item {
@@ -72,15 +63,6 @@ const items = computed(() => parseElementIcons(props.value))
 
 .trait-icons-name {
   font-size: 0.92em;
-}
-
-[data-theme='light'] .trait-icons--weak,
-[data-theme='light'] .trait-icons--weak .trait-icons-label {
-  color: #059669;
-}
-
-[data-theme='light'] .trait-icons--resist,
-[data-theme='light'] .trait-icons--resist .trait-icons-label {
-  color: #dc2626;
+  color: inherit;
 }
 </style>
