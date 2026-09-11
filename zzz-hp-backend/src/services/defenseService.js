@@ -414,10 +414,14 @@ export async function getDefenseSeasons(variant = 'new', { includeHidden = false
     frontier.level = Math.max(frontier.level, room.level)
 
     const battleRoom = ensureBattleRoom(room, decoded.stage, decoded.roomInStage)
-    splitTraitText(boss.weakness).forEach((item) => battleRoom.weakness.push(item))
-    splitTraitText(boss.resistance)
-      .filter(isMeaningfulResistanceTrait)
-      .forEach((item) => battleRoom.resistance.push(item))
+    const isEliteOrBoss =
+      decoded.monsterCategory === 'elite' || decoded.monsterCategory === 'boss'
+    if (isEliteOrBoss) {
+      splitTraitText(boss.weakness).forEach((item) => battleRoom.weakness.push(item))
+      splitTraitText(boss.resistance)
+        .filter(isMeaningfulResistanceTrait)
+        .forEach((item) => battleRoom.resistance.push(item))
+    }
 
     const wave = ensureWave(battleRoom, decoded.wave)
     wave.enemies.push({

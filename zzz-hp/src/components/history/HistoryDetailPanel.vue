@@ -12,6 +12,8 @@ import { formatHp, formatHpDelta, formatHpExpansionPercent, parseHpString, split
 import { createRequestEpoch } from '@/utils/requestEpoch'
 import type { AdminBuffSlotContext, AdminMonsterSlotContext } from '@/types/admin'
 import BuffEffectBlocksDisplay from '@/components/calculator/BuffEffectBlocksDisplay.vue'
+import ElementTraitIcons from '@/components/shared/ElementTraitIcons.vue'
+import { hasElementIcons } from '@/utils/elementIcons'
 
 const props = defineProps<{
   mode: ModeKey
@@ -867,17 +869,21 @@ function onPickerWheel(event: WheelEvent) {
                   <div
                     v-if="
                       enemy.defense !== undefined ||
-                      enemy.weakness ||
-                      enemy.resistance ||
+                      hasElementIcons(enemy.weakness) ||
+                      hasElementIcons(enemy.resistance) ||
                       enemy.staggerTime != null
                     "
                     class="enemy-traits"
                   >
                     <p v-if="enemy.defense !== undefined" class="enemy-defense">防御：{{ enemy.defense }}</p>
-                    <p v-if="enemy.weakness" class="enemy-weakness">弱点：{{ enemy.weakness }}</p>
-                    <p v-if="enemy.resistance" class="enemy-resistance">抗性：{{ enemy.resistance }}</p>
                     <p v-if="enemy.staggerTime != null" class="enemy-stagger-time">
                       失衡时间：{{ enemy.staggerTime }} 秒
+                    </p>
+                    <p v-if="hasElementIcons(enemy.weakness)" class="enemy-weakness">
+                      <ElementTraitIcons :value="enemy.weakness" label="弱点" variant="weak" />
+                    </p>
+                    <p v-if="hasElementIcons(enemy.resistance)" class="enemy-resistance">
+                      <ElementTraitIcons :value="enemy.resistance" label="抗性" variant="resist" />
                     </p>
                   </div>
                 </div>
@@ -1001,17 +1007,21 @@ function onPickerWheel(event: WheelEvent) {
                   <div
                     v-if="
                       enemy.defense !== undefined ||
-                      enemy.weakness ||
-                      enemy.resistance ||
+                      hasElementIcons(enemy.weakness) ||
+                      hasElementIcons(enemy.resistance) ||
                       enemy.staggerTime != null
                     "
                     class="enemy-traits"
                   >
                     <p v-if="enemy.defense !== undefined" class="enemy-defense">防御：{{ enemy.defense }}</p>
-                    <p v-if="enemy.weakness" class="enemy-weakness">弱点：{{ enemy.weakness }}</p>
-                    <p v-if="enemy.resistance" class="enemy-resistance">抗性：{{ enemy.resistance }}</p>
                     <p v-if="enemy.staggerTime != null" class="enemy-stagger-time">
                       失衡时间：{{ enemy.staggerTime }} 秒
+                    </p>
+                    <p v-if="hasElementIcons(enemy.weakness)" class="enemy-weakness">
+                      <ElementTraitIcons :value="enemy.weakness" label="弱点" variant="weak" />
+                    </p>
+                    <p v-if="hasElementIcons(enemy.resistance)" class="enemy-resistance">
+                      <ElementTraitIcons :value="enemy.resistance" label="抗性" variant="resist" />
                     </p>
                   </div>
                 </div>

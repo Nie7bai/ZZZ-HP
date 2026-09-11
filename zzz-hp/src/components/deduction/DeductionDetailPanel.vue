@@ -33,7 +33,8 @@ import { applyReusedMonsterLevel } from '@/utils/adminMonsterReuse'
 import { normalizeBuffEffectBlocks, packFromBlocks } from '@/utils/buffEffect'
 import { formatHp, resolveAssetUrl, splitBuffLines } from '@/utils/gameData'
 import { convertHpToDefense953, roundConvertedHp, REFERENCE_DEFENSE_953 } from '@/utils/defenseHpConvert'
-import { parseElementIcons } from '@/utils/elementIcons'
+import ElementTraitChips from '@/components/shared/ElementTraitChips.vue'
+import ElementTraitIcons from '@/components/shared/ElementTraitIcons.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -598,24 +599,6 @@ const NODE_TYPES = [
 /** 归一化节点类型：仅保留 剧情(1) / 战斗(2)，老数据 3=最终战→战斗、4=开场/5=剧情变体→剧情 */
 function normalizeNodeType(type: number): number {
   return isDeductionBattleNode(type) ? 2 : 1
-}
-
-const ELEMENTS = ['冰', '火', '电', '以太', '物理', '风', '霜', '流明']
-
-function splitElements(value: string | null): string[] {
-  if (!value) return []
-  return value
-    .split(/[、,]/)
-    .map((s) => s.replace(/属性$/, '').trim())
-    .filter(Boolean)
-}
-
-function joinElements(list: string[]): string | null {
-  return list.length ? [...new Set(list)].join('、') : null
-}
-
-function toggleElement(list: string[], el: string): string[] {
-  return list.includes(el) ? list.filter((x) => x !== el) : [...list, el]
 }
 
 // ── 下拉数据源（怪物 / Buff） ──────────────────────
@@ -1413,32 +1396,20 @@ onMounted(() => {
                         <label class="dd-num-inline">HP <input v-model.number="monsterDraft.hp" type="number" class="dd-inline dd-inline--num dd-inline--num-lg" /></label>
                         <label class="dd-num-inline">防御 <input v-model.number="monsterDraft.defense" type="number" class="dd-inline dd-inline--num dd-inline--num-lg" /></label>
                       </div>
-                      <div class="dd-inline-row">
-                        <span class="dd-mini-label">弱点</span>
-                        <button
-                          v-for="el in ELEMENTS"
-                          :key="'w' + el"
-                          type="button"
-                          class="dd-elem-chip"
-                          :class="{ 'dd-elem-chip--on': splitElements(monsterDraft.weakness).includes(el) }"
-                          @click="monsterDraft.weakness = joinElements(toggleElement(splitElements(monsterDraft.weakness), el))"
-                        >
-                          {{ el }}
-                        </button>
-                      </div>
-                      <div class="dd-inline-row">
-                        <span class="dd-mini-label">抗性</span>
-                        <button
-                          v-for="el in ELEMENTS"
-                          :key="'r' + el"
-                          type="button"
-                          class="dd-elem-chip"
-                          :class="{ 'dd-elem-chip--on dd-elem-chip--resist': splitElements(monsterDraft.resistance).includes(el) }"
-                          @click="monsterDraft.resistance = joinElements(toggleElement(splitElements(monsterDraft.resistance), el))"
-                        >
-                          {{ el }}
-                        </button>
-                      </div>
+                      <ElementTraitChips
+                        layout="inline"
+                        label="弱点"
+                        variant="weak"
+                        :model-value="monsterDraft.weakness ?? ''"
+                        @update:model-value="monsterDraft.weakness = $event || null"
+                      />
+                      <ElementTraitChips
+                        layout="inline"
+                        label="抗性"
+                        variant="resist"
+                        :model-value="monsterDraft.resistance ?? ''"
+                        @update:model-value="monsterDraft.resistance = $event || null"
+                      />
                       <div class="dd-inline-media">
                         <span class="dd-mini-label">图片</span>
                         <AdminImagePicker ref="monsterImagePickerRef" @change="onMonsterImageChange" />
@@ -1489,40 +1460,20 @@ onMounted(() => {
                             953 {{ monsterHpConverted953Text(monster) }}
                           </span>
                           <span class="dd-stat">防御 {{ formatHp(monster.defense) }}</span>
-                          <span v-if="parseElementIcons(monster.weakness).length" class="dd-stat dd-stat--weak">
-                            弱
-                            <span
-                              v-for="elem in parseElementIcons(monster.weakness)"
-                              :key="elem.name"
-                              class="dd-elem"
-                            >
-                              <img
-                                class="dd-elem-img"
-                                :src="elem.icon"
-                                :alt="elem.name"
-                                :title="elem.name"
-                                loading="lazy"
-                              />
-                              <span class="dd-elem-name">{{ elem.name }}</span>
-                            </span>
-                          </span>
-                          <span v-if="parseElementIcons(monster.resistance).length" class="dd-stat dd-stat--resist">
-                            抗
-                            <span
-                              v-for="elem in parseElementIcons(monster.resistance)"
-                              :key="elem.name"
-                              class="dd-elem"
-                            >
-                              <img
-                                class="dd-elem-img"
-                                :src="elem.icon"
-                                :alt="elem.name"
-                                :title="elem.name"
-                                loading="lazy"
-                              />
-                              <span class="dd-elem-name">{{ elem.name }}</span>
-                            </span>
-                          </span>
+                          <ElementTraitIcons
+                            v-if="monster.weakness"
+                            class="dd-stat"
+                            :value="monster.weakness"
+                            label="弱"
+                            variant="weak"
+                          />
+                          <ElementTraitIcons
+                            v-if="monster.resistance"
+                            class="dd-stat"
+                            :value="monster.resistance"
+                            label="抗"
+                            variant="resist"
+                          />
                           <span
                             v-if="monster.stagger_time != null"
                             class="dd-stat"

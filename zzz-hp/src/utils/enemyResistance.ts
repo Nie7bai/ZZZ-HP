@@ -1,7 +1,7 @@
 export type EnemyResistanceType = 'weak' | 'normal' | 'res20' | 'res40'
 
 /** 可单独配置抗性的属性（不含流明） */
-export const ENEMY_RESISTANCE_ELEMENTS = ['风', '火', '电', '物理', '以太', '冰', '霜'] as const
+export const ENEMY_RESISTANCE_ELEMENTS = ['风', '火', '电', '物理', '以太', '冰'] as const
 
 export type EnemyResistanceElement = (typeof ENEMY_RESISTANCE_ELEMENTS)[number]
 
@@ -55,7 +55,6 @@ export function createDefaultElementResistance(): Record<
     物理: 'normal',
     以太: 'normal',
     冰: 'normal',
-    霜: 'normal',
   }
 }
 
@@ -68,6 +67,8 @@ export function normalizeDamageEnemyInput(
   const fallbackType = input?.resistanceType ?? 'normal'
   const base = createDefaultElementResistance()
   const merged = { ...base, ...input?.elementResistance }
+  // 旧存档可能残留已下线属性「霜」
+  delete (merged as Record<string, unknown>)['霜']
   if (input?.resistanceType && !input?.elementResistance) {
     for (const el of ENEMY_RESISTANCE_ELEMENTS) {
       merged[el] = input.resistanceType

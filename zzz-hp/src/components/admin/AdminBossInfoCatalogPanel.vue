@@ -16,6 +16,7 @@ import type { BuffEffectBlock } from '@/types/calculator'
 import { normalizeBuffEffectBlocks, packFromBlocks } from '@/utils/buffEffect'
 import { resolveAssetUrl } from '@/utils/gameData'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
+import ElementTraitChips from '@/components/shared/ElementTraitChips.vue'
 
 interface BossInfoDraft {
   boss_name: string
@@ -487,14 +488,12 @@ onMounted(() => {
           <span>失衡时间（秒）</span>
           <input v-model="draft.stagger_time" type="number" min="0" step="0.1" />
         </label>
-        <label class="field">
-          <span>弱点</span>
-          <input v-model="draft.weakness" type="text" />
-        </label>
-        <label class="field">
-          <span>抗性</span>
-          <input v-model="draft.resistance" type="text" />
-        </label>
+        <div class="field">
+          <ElementTraitChips v-model="draft.weakness" label="弱点" variant="weak" />
+        </div>
+        <div class="field">
+          <ElementTraitChips v-model="draft.resistance" label="抗性" variant="resist" />
+        </div>
         <label class="field">
           <span>危局基础血量</span>
           <input v-model="draft.crisis_base_hp" type="number" min="0" step="1" />

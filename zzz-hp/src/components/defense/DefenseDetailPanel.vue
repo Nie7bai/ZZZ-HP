@@ -15,6 +15,8 @@ import {
 import { findDefenseSeasonIndexFromChartPoint } from '@/utils/defenseCompare'
 import { formatHpDelta } from '@/utils/gameData'
 import { createRequestEpoch } from '@/utils/requestEpoch'
+import ElementTraitIcons from '@/components/shared/ElementTraitIcons.vue'
+import { hasElementIcons } from '@/utils/elementIcons'
 
 const props = defineProps<{
   embedded?: boolean
@@ -184,14 +186,6 @@ function filterMeaningfulResistanceTraits(items: string[]) {
     const trimmed = item.trim()
     return trimmed && trimmed !== '无'
   })
-}
-
-function formatWeaknessText(items: string[]) {
-  return items.filter(Boolean).join('、')
-}
-
-function formatResistanceTraitText(items: string[]) {
-  return filterMeaningfulResistanceTraits(items).join('、')
 }
 
 function parseDefensePhaseNumber(phaseLabel: string) {
@@ -777,16 +771,18 @@ function formatEnemyResistance(value?: string) {
                     "
                     class="trait-row"
                   >
-                    <p v-if="battleRoom.weakness.length" class="trait-line">
-                      <span class="trait-label">弱点</span>
-                      {{ formatWeaknessText(battleRoom.weakness) }}
+                    <p v-if="hasElementIcons(battleRoom.weakness)" class="trait-line">
+                      <ElementTraitIcons :value="battleRoom.weakness" label="弱点" variant="weak" />
                     </p>
                     <p
-                      v-if="filterMeaningfulResistanceTraits(battleRoom.resistance ?? []).length"
+                      v-if="hasElementIcons(filterMeaningfulResistanceTraits(battleRoom.resistance ?? []))"
                       class="trait-line"
                     >
-                      <span class="trait-label">抗性</span>
-                      {{ formatResistanceTraitText(battleRoom.resistance ?? []) }}
+                      <ElementTraitIcons
+                        :value="filterMeaningfulResistanceTraits(battleRoom.resistance ?? [])"
+                        label="抗性"
+                        variant="resist"
+                      />
                     </p>
                   </div>
                 </header>
@@ -858,14 +854,18 @@ function formatEnemyResistance(value?: string) {
                           </p>
                         </div>
                         <p v-if="enemy.defense !== undefined" class="enemy-chip-def">防御 {{ enemy.defense }}</p>
-                        <p v-if="enemy.weakness" class="enemy-chip-trait">
-                          <span class="trait-label">弱点</span>{{ enemy.weakness }}
-                        </p>
-                        <p v-if="formatEnemyResistance(enemy.resistance)" class="enemy-chip-trait">
-                          <span class="trait-label">抗性</span>{{ formatEnemyResistance(enemy.resistance) }}
-                        </p>
                         <p v-if="enemy.staggerTime != null" class="enemy-chip-trait">
                           <span class="trait-label">失衡时间</span>{{ enemy.staggerTime }} 秒
+                        </p>
+                        <p v-if="hasElementIcons(enemy.weakness)" class="enemy-chip-trait">
+                          <ElementTraitIcons :value="enemy.weakness" label="弱点" variant="weak" />
+                        </p>
+                        <p v-if="hasElementIcons(formatEnemyResistance(enemy.resistance))" class="enemy-chip-trait">
+                          <ElementTraitIcons
+                            :value="formatEnemyResistance(enemy.resistance)"
+                            label="抗性"
+                            variant="resist"
+                          />
                         </p>
                       </div>
                     </article>
