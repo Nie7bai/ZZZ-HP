@@ -83,7 +83,6 @@ import {
   DAMAGE_EVENT_KIND_OPTIONS,
   disorderLabelFromResult,
   mapEventKindToCalc,
-  pickEventDamage,
   applyOwnerPanelMultOverrides,
   applyRadianceBonusMultOverrides,
   resolveRadianceBonusMultDefaults,
@@ -2041,18 +2040,29 @@ onUnmounted(() => {
 
 const hasDamageEvents = computed(() => (props.hits?.length ?? 0) > 0)
 
+/**
+ * 「点选事件」的统一评估产物：与招式流程列表走同一段代码（`evaluateOptimalEventDetail`），
+ * 只是这一趟带明细（`includeDetails` 默认 true）—— 列表要数字、详情要账本，产物同源。
+ *
+ * 改造前这里会**再整条算一遍** `buildHitCalcInput`（面板侧那套 265 行实现），
+ * 与列表那趟的结果只能靠人工维持一致；现在两侧共用一个入口。
+ */
+const selectedEventEvalDetail = computed(() => {
+  const base = selectedDamageEventLine.value
+  if (!base) return null
+  return evaluateOptimalEventDetail(skillFlowEvalCtx.value, skillFlowMainExternal.value, base.hit)
+})
+
 const selectedEventDetailLine = computed((): HitLine | null => {
   const base = selectedDamageEventLine.value
   if (!base) return null
-  const input = buildHitCalcInput(base.hit)
-  if (!input) return base
-  const result = computeDamageResult(input)
-  const perHit = pickEventDamage(result, base.hit.skill.damageType, base.hit.critMode)
+  const detail = selectedEventEvalDetail.value
+  if (!detail) return base
   return {
     ...base,
-    result,
-    perHit,
-    total: perHit * base.hit.count,
+    result: detail.result,
+    perHit: detail.perHit,
+    total: detail.total,
   }
 })
 
@@ -2450,13 +2460,9 @@ function withTotal(groups: StatSourceGroup[], totalText: string, processItems?: 
   return [...result, { label: '合计', items: [totalText], fullWidth: true }]
 }
 
-const selectedEventOwnerBreakdown = computed(() => {
-  const line = selectedEventDetailLine.value
-  if (!line) return null
-  const { skillCtx, ownerSlotIndex } = buildHitSkillContext(line.hit)
-  const external = resolveOwnerExternalPanel(ownerSlotIndex, line.hit.ownerAgentId)
-  return computeFinalPanel(external, buildHitPanelCalcContext(skillCtx, ownerSlotIndex, line.hit))
-})
+const selectedEventOwnerBreakdown = computed(
+  () => selectedEventEvalDetail.value?.breakdown ?? null,
+)
 
 const valueTips = computed(() => {
   // 与界面展示一致：有选中事件时用该事件结果，不用页级第一击
