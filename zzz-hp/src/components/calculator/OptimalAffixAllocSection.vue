@@ -61,7 +61,6 @@ import {
   evaluateAffixCountsForSweep,
   clearAffixEvalCache,
   evaluateOptimalEventDetail,
-  optimalHitDependsOnMainAffixPanel,
   buildDirectAffixCounts,
   buildAnomalyAffixCounts,
   flatStatLabel,
@@ -96,6 +95,13 @@ import {
   eventNeedsAnomalyProducer,
 } from '@/utils/damageEvent'
 import { buildGenericPanelSkillContext } from '@/utils/resolvedHit'
+import {
+  buildHitEvalFingerprint,
+  hitEvalCacheKey,
+  internHitEvalContext,
+  readHitEvalCache,
+  writeHitEvalCache,
+} from '@/utils/hitEvalCache'
 
 import {
   computeAffixBenefitSeriesForTable,
@@ -1021,50 +1027,7 @@ const skillFlowHitMapState = ref<{
   results: Record<string, DamageCalcResult>
 }>({ map: {}, results: {} })
 
-type SkillFlowLineCache = {
-  signatureById: Record<string, string>
-  lineById: Record<
-    string,
-    { total: number; perHit: number; result: DamageCalcResult }
-  >
-}
-const skillFlowLineStore: SkillFlowLineCache = { signatureById: {}, lineById: {} }
-let skillFlowCacheGlobalSig = ''
 let pendingSkillFlowEmit = false
-
-function clearSkillFlowLineStore() {
-  for (const key of Object.keys(skillFlowLineStore.signatureById)) {
-    delete skillFlowLineStore.signatureById[key]
-  }
-  for (const key of Object.keys(skillFlowLineStore.lineById)) {
-    delete skillFlowLineStore.lineById[key]
-  }
-}
-
-/** 对齐面板 buildResolvedHitSignature，避免改倍率覆写/panelMods 不刷新 */
-function hitFingerprint(hit: import('@/utils/resolvedHit').ResolvedHit) {
-  return JSON.stringify({
-    id: hit.id,
-    ownerAgentId: hit.ownerAgentId,
-    anomalyPowerAgentId: hit.anomalyPowerAgentId,
-    triggerAgentId: hit.triggerAgentId,
-    count: hit.count,
-    staggerPhase: hit.staggerPhase,
-    critMode: hit.critMode,
-    anomalySubKind: hit.anomalySubKind,
-    skillId: hit.skill.id,
-    damageType: hit.skill.damageType,
-    baseMult: hit.skill.baseMult,
-    effectiveBaseMult: hit.effectiveBaseMult,
-    skillTalentLevel: hit.skillTalentLevel,
-    baseMultFactor: hit.skill.baseMultFactor,
-    settlementMult: hit.skill.settlementMult,
-    skillTypes: hit.skill.skillTypes,
-    buffAnchorId: hit.skill.buffAnchorId,
-    multOverrides: hit.multOverrides,
-    panelMods: hit.panelMods,
-  })
-}
 
 const skillFlowContextFingerprint = computed(() =>
   JSON.stringify({
@@ -1090,15 +1053,13 @@ const skillFlowHitFingerprint = computed(() => {
   return JSON.stringify({
     context: skillFlowContextFingerprint.value,
     external: external ?? null,
-    hits: (props.hits ?? []).map(hitFingerprint),
-    previews: (props.previewHits ?? []).map(hitFingerprint),
+    hits: (props.hits ?? []).map(buildHitEvalFingerprint),
+    previews: (props.previewHits ?? []).map(buildHitEvalFingerprint),
   })
 })
 
 function recomputeSkillFlowHitMaps() {
   if (!isSectionActive.value) {
-    clearSkillFlowLineStore()
-    skillFlowCacheGlobalSig = ''
     skillFlowHitMapState.value = { map: {}, results: {} }
     return
   }
@@ -1109,54 +1070,34 @@ function recomputeSkillFlowHitMaps() {
     skillFlowHitMapState.value = { map, results }
     return
   }
-  // 流程计入总伤；准备招式只算单次预览。招式库不算。
-  const globalSig = skillFlowContextFingerprint.value + '|' + JSON.stringify(external)
-  if (globalSig !== skillFlowCacheGlobalSig) {
-    clearSkillFlowLineStore()
-    skillFlowCacheGlobalSig = globalSig
-  }
 
   const ctx = evalCtx.value
-  const nextSignatures: Record<string, string> = {}
+  // 与面板计算共用同一张记忆表：键里带「用的是哪份面板」，两组输入各占一行，互不覆盖。
+  // 令牌取自响应式指纹（不能从 ctx 取：ctx 是深解包后的原始对象，读取不建立依赖）。
+  const contextToken = internHitEvalContext(skillFlowContextFingerprint.value)
 
   const resolveLine = (hit: import('@/utils/resolvedHit').ResolvedHit, usePerHit: boolean) => {
-    const dependsOnMain = optimalHitDependsOnMainAffixPanel(ctx, hit)
-    const signature = dependsOnMain
-      ? `${hitFingerprint(hit)}|${globalSig}|${usePerHit ? '1' : '0'}`
-      : `${hitFingerprint(hit)}|${skillFlowContextFingerprint.value}|stable-affix|${usePerHit ? '1' : '0'}`
-    nextSignatures[hit.id] = signature
-    const cached = skillFlowLineStore.lineById[hit.id]
-    if (cached && skillFlowLineStore.signatureById[hit.id] === signature) {
-      map[hit.id] = usePerHit ? cached.perHit : cached.total
-      results[hit.id] = cached.result
-      return
+    const key = hitEvalCacheKey(buildHitEvalFingerprint(hit), contextToken, external, false)
+    let entry = readHitEvalCache(key)
+    if (!entry) {
+      const detail = evaluateOptimalEventDetail(ctx, external, hit, {
+        includeDetails: false,
+      })
+      if (!detail) return
+      entry = {
+        hitId: hit.id,
+        total: detail.total,
+        perHit: detail.perHit,
+        result: detail.result,
+      }
+      writeHitEvalCache(key, entry)
     }
-    const detail = evaluateOptimalEventDetail(ctx, external, hit, {
-      includeDetails: false,
-    })
-    if (!detail) {
-      delete skillFlowLineStore.lineById[hit.id]
-      return
-    }
-    skillFlowLineStore.lineById[hit.id] = {
-      total: detail.total,
-      perHit: detail.perHit,
-      result: detail.result,
-    }
-    skillFlowLineStore.signatureById[hit.id] = signature
-    map[hit.id] = usePerHit ? detail.perHit : detail.total
-    results[hit.id] = detail.result
+    map[hit.id] = usePerHit ? entry.perHit : entry.total
+    results[hit.id] = entry.result
   }
 
   for (const hit of props.hits ?? []) resolveLine(hit, false)
   for (const hit of props.previewHits ?? []) resolveLine(hit, true)
-
-  for (const key of Object.keys(skillFlowLineStore.signatureById)) {
-    if (!(key in nextSignatures)) {
-      delete skillFlowLineStore.signatureById[key]
-      delete skillFlowLineStore.lineById[key]
-    }
-  }
 
   skillFlowHitMapState.value = { map, results }
 }
@@ -1177,8 +1118,6 @@ watch(
   skillFlowHitFingerprint,
   () => {
     if (!isSectionActive.value) {
-      clearSkillFlowLineStore()
-      skillFlowCacheGlobalSig = ''
       skillFlowHitMapState.value = { map: {}, results: {} }
       return
     }

@@ -15,4 +15,5 @@
 - **服务启停只有用户能做**：不自行启动 dev server（`npm run dev` / `vite` / `node src/app.js`），不 kill 进程，不改启动脚本 —— 除非当次明确要求。规则与事故记录见 `dev-docs/dev-server-ops.md`。
 - **本地改动改完即 commit**：不必等指示、不必逐次汇报；一件事一个提交，保持每个提交可独立回滚。**push 仍需用户明确要求**。见 `.cursor/rules/git-workflow.mdc`。
 - **提交前跑三项**：`vue-tsc --noEmit -p tsconfig.app.json`、`eslint src scripts`、`scripts/test-*.mjs`（在 `zzz-hp/` 下）；报告实际结果，失败/跳过要写明。
+- **手册先行、收尾留痕**：任何行为改动，**动手前**先在 `dev-docs/` 对应手册写下「要做什么、怎么做、预期收益、风险与验收」，**做完后**同一处补齐「实际结果 + 证据（命令、数字、提交号）」。手册是后续维护的唯一入口，不写等于没做。找不到对应手册就新建一份，并在 `dev-docs/README.md` 登记。
 

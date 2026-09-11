@@ -98,6 +98,14 @@ import {
   evaluateOptimalEventDetail,
 } from '@/utils/optimalAffixAlloc'
 import {
+  buildHitEvalFingerprint,
+  hitEvalCacheKey,
+  internHitEvalContext,
+  readHitEvalCache,
+  writeHitEvalCache,
+  type HitEvalCacheEntry,
+} from '@/utils/hitEvalCache'
+import {
   mergeExtraModsForEvent,
   normalizeExtraGain,
 } from '@/utils/extraBuffCalc'
@@ -1383,29 +1391,6 @@ function resolveOwnerExternalPanel(ownerSlotIndex: number, ownerAgentId: string)
   return ensureAnomalySlotPanel(ownerAgentId)
 }
 
-function buildResolvedHitSignature(hit: ResolvedHit) {
-  return JSON.stringify({
-    id: hit.id,
-    ownerAgentId: hit.ownerAgentId,
-    anomalyPowerAgentId: hit.anomalyPowerAgentId,
-    triggerAgentId: hit.triggerAgentId,
-    count: hit.count,
-    staggerPhase: hit.staggerPhase,
-    critMode: hit.critMode,
-    skillId: hit.skill.id,
-    damageType: hit.skill.damageType,
-    baseMult: hit.skill.baseMult,
-    effectiveBaseMult: hit.effectiveBaseMult,
-    skillTalentLevel: hit.skillTalentLevel,
-    baseMultFactor: hit.skill.baseMultFactor,
-    settlementMult: hit.skill.settlementMult,
-    skillTypes: hit.skill.skillTypes,
-    buffAnchorId: hit.skill.buffAnchorId,
-    multOverrides: hit.multOverrides,
-    panelMods: hit.panelMods,
-  })
-}
-
 /**
  * 面板计算链路用的统一评估上下文（`计算方式 = 面板导入 / 词条导入`）。
  *
@@ -1446,42 +1431,16 @@ const skillFlowEvalCtx = computed(() =>
 /** 主 C 局外面板：角色配置里那份激活面板（改造前口径） */
 const skillFlowMainExternal = computed(() => resolveExternalPanelForSlotIndex(mainSlotIndex.value))
 
-function resolveHitLine(
-  hit: ResolvedHit,
-  resolveOwnerName?: (hit: ResolvedHit) => string | undefined,
-): HitLine | null {
-  const detail = evaluateOptimalEventDetail(
-    skillFlowEvalCtx.value,
-    skillFlowMainExternal.value,
-    hit,
-    { includeDetails: false },
-  )
-  if (!detail) return null
-  const { result, perHit, total } = detail
-  const kindLabel =
-    DAMAGE_EVENT_KIND_OPTIONS.find((item) => item.id === hit.skill.damageType)?.label ??
-    hit.skill.damageType
-  const suffix =
-    hit.skill.damageType === 'disorder' ? `（${disorderLabelFromResult(result)}）` : ''
-  const ownerName = resolveOwnerName?.(hit)
-  return {
-    hit,
-    perHit,
-    total,
-    label: `${kindLabel}${suffix}`,
-    displayName: `${ownerName ? `${ownerName} · ` : ''}${hit.skill.name}${suffix}`,
-    result,
-  }
-}
 
-type HitLineStore = {
-  signatureById: Record<string, string>
-  lineById: Record<string, HitLine>
-}
-
-const damageEventLineStore = reactive<HitLineStore>({ signatureById: {}, lineById: {} })
-const previewHitLineStore = reactive<HitLineStore>({ signatureById: {}, lineById: {} })
-
+/**
+ * 「配置变了没」的指纹：**必须从响应式来源直接读**。
+ *
+ * 教训（2026-09-11 实测）：先前用 `buildHitEvalContextSignature(ctx)` 直接从上下文取，
+ * 但上下文里的对象是深解包后的**原始对象**（不经过响应式代理），读它**不会**建立依赖 ——
+ * 于是改了敌方防御等参数后这个 computed 不重算、键不变、命中旧结果，界面数字纹丝不动。
+ * 所以这里保留按响应式来源逐项读取的写法（改造前即如此），键里的「用的是哪份面板」
+ * 另有 `mainExternal` 承担。
+ */
 const hitCalcGlobalSignature = computed(() =>
   JSON.stringify({
     src: baseDamageSource.value,
@@ -1522,57 +1481,77 @@ const hitCalcGlobalSignature = computed(() =>
   }),
 )
 
-function clearHitLineStore(store: HitLineStore) {
-  for (const key of Object.keys(store.signatureById)) delete store.signatureById[key]
-  for (const key of Object.keys(store.lineById)) delete store.lineById[key]
+/** 准备招式的单次预览行（只用于上报，不参与流程总伤） */
+const previewHitLineById: Record<string, HitLine> = {}
+
+function buildHitLine(
+  hit: ResolvedHit,
+  entry: HitEvalCacheEntry,
+  resolveOwnerName?: (hit: ResolvedHit) => string | undefined,
+): HitLine {
+  const kindLabel =
+    DAMAGE_EVENT_KIND_OPTIONS.find((item) => item.id === hit.skill.damageType)?.label ??
+    hit.skill.damageType
+  const suffix =
+    hit.skill.damageType === 'disorder'
+      ? `（${disorderLabelFromResult(entry.result)}）`
+      : ''
+  const ownerName = resolveOwnerName?.(hit)
+  return {
+    hit,
+    perHit: entry.perHit,
+    total: entry.total,
+    label: `${kindLabel}${suffix}`,
+    displayName: `${ownerName ? `${ownerName} · ` : ''}${hit.skill.name}${suffix}`,
+    result: entry.result,
+  }
 }
 
 function syncHitSummary(
   hits: ResolvedHit[] | undefined,
-  store: HitLineStore,
   resolveOwnerName?: (hit: ResolvedHit) => string | undefined,
-  options?: { usePerHit?: boolean; forceAll?: boolean; globalSignature?: string },
+  options?: { usePerHit?: boolean },
 ) {
   const list = hits ?? []
-  if (options?.forceAll) clearHitLineStore(store)
-
-  const nextSignatures: Record<string, string> = {}
+  const contextToken = internHitEvalContext(hitCalcGlobalSignature.value)
   const lines: HitLine[] = []
   let grandTotal = 0
-  const globalSuffix = options?.globalSignature ? `|${options.globalSignature}` : ''
 
   for (const hit of list) {
-    // 必须带上全局指纹：仅 hit 签名不变时，Buff/盘/局外变化也要失效，避免旧伤害残留
-    const signature = `${buildResolvedHitSignature(hit)}${globalSuffix}`
-    nextSignatures[hit.id] = signature
-
-    let line = store.lineById[hit.id]
-    if (!line || store.signatureById[hit.id] !== signature) {
+    const key = hitEvalCacheKey(
+      buildHitEvalFingerprint(hit),
+      contextToken,
+      skillFlowMainExternal.value,
+      false,
+    )
+    let entry = readHitEvalCache(key)
+    if (!entry) {
       try {
-        line = resolveHitLine(hit, resolveOwnerName) ?? undefined
+        const detail = evaluateOptimalEventDetail(
+          skillFlowEvalCtx.value,
+          skillFlowMainExternal.value,
+          hit,
+          { includeDetails: false },
+        )
+        if (detail) {
+          entry = {
+            hitId: hit.id,
+            perHit: detail.perHit,
+            total: detail.total,
+            result: detail.result,
+          }
+          writeHitEvalCache(key, entry)
+        }
       } catch (error) {
         console.error('[syncHitSummary] skip hit due to calc error', hit.skill?.name, error)
-        line = undefined
       }
-      if (line) store.lineById[hit.id] = line
-      else delete store.lineById[hit.id]
-    } else if (line.hit !== hit) {
-      line = { ...line, hit }
-      store.lineById[hit.id] = line
     }
+    if (!entry) continue
 
-    if (!line) continue
+    const line = buildHitLine(hit, entry, resolveOwnerName)
     lines.push(line)
     grandTotal += options?.usePerHit ? line.perHit : line.total
   }
-
-  for (const key of Object.keys(store.signatureById)) {
-    if (!(key in nextSignatures)) {
-      delete store.signatureById[key]
-      delete store.lineById[key]
-    }
-  }
-  Object.assign(store.signatureById, nextSignatures)
 
   return { lines, grandTotal }
 }
@@ -1586,19 +1565,13 @@ function emitHitMaps() {
     map[line.hit.id] = line.total
     results[line.hit.id] = line.result
   }
-  for (const line of Object.values(previewHitLineStore.lineById)) {
+  for (const line of Object.values(previewHitLineById)) {
     map[line.hit.id] = line.perHit
     results[line.hit.id] = line.result
   }
   emit('update:hitDamages', map)
   emit('update:hitCalcResults', results)
 }
-
-let lastSyncedHitGlobalSignature = ''
-let pendingHitForceAll = false
-/** 从挂起/禁用恢复时强制全量重算，避免用挂起前缓存盖掉最优区刚写出的结果 */
-let pendingResumeForceAll = false
-let wasHitCalcInactive = props.calcSuspended || !damageCalcEnabled.value
 
 watch(
   [
@@ -1608,22 +1581,14 @@ watch(
     () => props.calcSuspended,
     () => damageCalcEnabled.value,
   ],
-  ([, , globalSignature]) => {
+  () => {
     const inactive = props.calcSuspended || !damageCalcEnabled.value
-    // 挂起期间也要记下「全局已变」，恢复后必须 forceAll
-    if (globalSignature !== lastSyncedHitGlobalSignature) pendingHitForceAll = true
     if (inactive) {
-      if (!wasHitCalcInactive) pendingResumeForceAll = true
-      wasHitCalcInactive = true
       if (hitSummarySyncTimer) {
         clearTimeout(hitSummarySyncTimer)
         hitSummarySyncTimer = null
       }
       return
-    }
-    if (wasHitCalcInactive) {
-      pendingResumeForceAll = true
-      wasHitCalcInactive = false
     }
     if (hitSummarySyncTimer) {
       clearTimeout(hitSummarySyncTimer)
@@ -1632,34 +1597,23 @@ watch(
     hitSummarySyncTimer = setTimeout(() => {
       hitSummarySyncTimer = null
       if (props.calcSuspended || !damageCalcEnabled.value) return
-      const currentSignature = hitCalcGlobalSignature.value
-      const forceAll =
-        pendingHitForceAll ||
-        pendingResumeForceAll ||
-        currentSignature !== lastSyncedHitGlobalSignature
-      pendingHitForceAll = false
-      pendingResumeForceAll = false
-      lastSyncedHitGlobalSignature = currentSignature
       const hits = props.hits
       damageEventSummary.value = hits?.length
         ? syncHitSummary(
             hits,
-            damageEventLineStore,
             (hit) => props.agents.find((item) => item.id === hit.ownerAgentId)?.name,
-            { forceAll, globalSignature: currentSignature },
           )
         : { lines: [], grandTotal: 0 }
-      if (!hits?.length) clearHitLineStore(damageEventLineStore)
       const previewHits = props.previewHits
+      for (const key of Object.keys(previewHitLineById)) delete previewHitLineById[key]
       if (previewHits?.length) {
-        syncHitSummary(
+        for (const line of syncHitSummary(
           previewHits,
-          previewHitLineStore,
           (hit) => props.agents.find((item) => item.id === hit.ownerAgentId)?.name,
-          { forceAll, globalSignature: currentSignature, usePerHit: true },
-        )
-      } else {
-        clearHitLineStore(previewHitLineStore)
+          { usePerHit: true },
+        ).lines) {
+          previewHitLineById[line.hit.id] = line
+        }
       }
       emitHitMaps()
     }, HIT_RESULT_DEBOUNCE_MS)
