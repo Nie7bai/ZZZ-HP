@@ -1,4 +1,5 @@
 import pool from '../config/db.js'
+import { ensureCrisisTid } from './crisisTidService.js'
 
 function formatDateValue(value) {
   if (!value) return null
@@ -93,6 +94,13 @@ export async function createSeasonDate(payload) {
     `SELECT id, mode, version, phase, start_date, end_date FROM \`date\` WHERE id = ?`,
     [result.insertId],
   )
+  if (mode === 'crisis') {
+    try {
+      await ensureCrisisTid(version, phase)
+    } catch (err) {
+      console.warn('[season-date] ensureCrisisTid failed:', err?.message || err)
+    }
+  }
   return mapRow(rows[0])
 }
 

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test scripts/security-hardening.test.mjs scripts/auth-route-wiring.test.mjs",
+    "test": "node --test scripts/security-hardening.test.mjs scripts/auth-route-wiring.test.mjs scripts/season-display-id.test.mjs",
     "start": "node src/app.js",
     "dev": "node --watch src/app.js",
     "import:nanoka": "node scripts/import-nanoka.mjs",

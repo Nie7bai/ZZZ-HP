@@ -6,7 +6,7 @@ import {
   isDefenseBuffId,
 } from '../utils/defenseId.js'
 import { getDefenseSeasonMeta } from './nanoka/defenseSeasonCatalog.js'
-import { versionPhaseToDisplayId } from '../utils/defenseSeasonId.js'
+import { versionPhaseToDisplayId, buildDefenseDisplayIdMap, defenseSeasonKey as defenseIdSeasonKey } from '../utils/defenseSeasonId.js'
 import { isSeasonPubliclyVisible, isSeasonUnreleased } from '../utils/crisisRoom.js'
 import {
   ensureEnvironmentBuffSchema,
@@ -118,13 +118,18 @@ function computeFrontierTotalHp(frontier) {
   return frontier.rooms.reduce((sum, room) => sum + computeRoomTotalHp(room), 0)
 }
 
-function buildSeasonSkeleton(version, phase, dateInfo) {
+function buildSeasonSkeleton(version, phase, dateInfo, displayIdByKey = null) {
   const phaseNum = String(phase).replace(/\D/g, '')
   const catalog = getDefenseSeasonMeta(version, phase)
   const startDate = catalog?.startDate ?? dateInfo?.start_date
   const endDate = catalog?.endDate ?? dateInfo?.end_date
-  const computedDisplayId = versionPhaseToDisplayId(version, phase)
+  const key = seasonKey(version, phase)
+  const fromMap = displayIdByKey?.get(defenseIdSeasonKey(version, phase))
+    ?? displayIdByKey?.get(key)
+  const computedDisplayId =
+    fromMap != null ? fromMap : versionPhaseToDisplayId(version, phase, displayIdByKey ? [] : [{ version, phase }])
   const seasonId =
+    (fromMap != null ? String(fromMap) : null) ??
     catalog?.seasonId ??
     (computedDisplayId != null ? String(computedDisplayId) : `${String(version).replace(/\D/g, '')}${phaseNum}`)
 
@@ -358,6 +363,24 @@ export async function getDefenseSeasons(variant = 'new', { includeHidden = false
     return defenseDateMap.get(key) ?? legacyDateMap.get(key)
   }
 
+  const seasonRefMap = new Map()
+  const rememberSeasonRef = (version, phase) => {
+    const key = seasonKey(version, phase)
+    if (!seasonRefMap.has(key)) {
+      seasonRefMap.set(key, { version: String(version).trim(), phase })
+    }
+  }
+  for (const row of defenseDateRows) rememberSeasonRef(row.version, row.phase)
+  for (const boss of bossRows) {
+    if (isDefenseBossId(boss.id) && matchesVariant(boss.version, variant)) {
+      rememberSeasonRef(boss.version, boss.phase)
+    }
+  }
+  for (const buff of buffRows) {
+    if (matchesVariant(buff.version, variant)) rememberSeasonRef(buff.version, buff.phase)
+  }
+  const displayIdByKey = buildDefenseDisplayIdMap([...seasonRefMap.values()])
+
   const seasons = new Map()
 
   for (const boss of bossRows) {
@@ -373,7 +396,15 @@ export async function getDefenseSeasons(variant = 'new', { includeHidden = false
 
     const key = seasonKey(boss.version, boss.phase)
     if (!seasons.has(key)) {
-      seasons.set(key, buildSeasonSkeleton(boss.version, boss.phase, resolveDateInfo(boss.version, boss.phase)))
+      seasons.set(
+        key,
+        buildSeasonSkeleton(
+          boss.version,
+          boss.phase,
+          resolveDateInfo(boss.version, boss.phase),
+          displayIdByKey,
+        ),
+      )
     }
     const season = seasons.get(key)
 
@@ -383,10 +414,14 @@ export async function getDefenseSeasons(variant = 'new', { includeHidden = false
     frontier.level = Math.max(frontier.level, room.level)
 
     const battleRoom = ensureBattleRoom(room, decoded.stage, decoded.roomInStage)
-    splitTraitText(boss.weakness).forEach((item) => battleRoom.weakness.push(item))
-    splitTraitText(boss.resistance)
-      .filter(isMeaningfulResistanceTrait)
-      .forEach((item) => battleRoom.resistance.push(item))
+    const isEliteOrBoss =
+      decoded.monsterCategory === 'elite' || decoded.monsterCategory === 'boss'
+    if (isEliteOrBoss) {
+      splitTraitText(boss.weakness).forEach((item) => battleRoom.weakness.push(item))
+      splitTraitText(boss.resistance)
+        .filter(isMeaningfulResistanceTrait)
+        .forEach((item) => battleRoom.resistance.push(item))
+    }
 
     const wave = ensureWave(battleRoom, decoded.wave)
     wave.enemies.push({
@@ -428,7 +463,10 @@ export async function getDefenseSeasons(variant = 'new', { includeHidden = false
   for (const [key, dateInfo] of defenseDateMap.entries()) {
     if (!matchesVariant(dateInfo.version, variant)) continue
     if (!seasons.has(key)) {
-      seasons.set(key, buildSeasonSkeleton(dateInfo.version, dateInfo.phase, dateInfo))
+      seasons.set(
+        key,
+        buildSeasonSkeleton(dateInfo.version, dateInfo.phase, dateInfo, displayIdByKey),
+      )
     }
   }
 

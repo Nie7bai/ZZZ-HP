@@ -26,6 +26,7 @@ import {
 } from '../utils/sameNameBuffEffects.js'
 import { ensureContentModeColumns } from './contentModeService.js'
 import { ensureBossStaggerSchema, normalizeStaggerTime } from '../utils/bossSchema.js'
+import { crisisPhaseNumericId, resolveCrisisTidMap } from './crisisTidService.js'
 
 let schemaEnsured = false
 
@@ -238,13 +239,10 @@ export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
   const buffRows = buffRowsRaw.filter((buff) => isCrisisBuffId(buff.id))
   const dateMap = await getSeasonDateMap('crisis')
   const trashMap = await getSeasonContentTrashMap('crisis')
-  const [idRows] = await pool.execute('SELECT id, tid FROM id_table')
   const baseHpByName = await loadCrisisBaseHpMap()
   const fieldBuffByName = await loadBossFieldBuffMap()
   const staggerTimeByName = await loadBossStaggerTimeMap()
   const globalBuffEffectMap = await loadGlobalBuffEffectMap()
-
-  const tidMap = new Map(idRows.map((row) => [Number(row.id), Number(row.tid)]))
 
   const phaseMap = new Map()
 
@@ -286,9 +284,11 @@ export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
     })
   }
 
-  const phases = [...phaseMap.values()]
+  const sortedPhaseItems = [...phaseMap.values()].sort(comparePhase)
+  const tidMap = await resolveCrisisTidMap(sortedPhaseItems)
+
+  const phases = sortedPhaseItems
     .filter((item) => item.bosses.length > 0 || includeHidden)
-    .sort(comparePhase)
     .map((item) => {
       const bosses = item.bosses.map((boss) =>
         enrichBoss(boss, baseHpByName, fieldBuffByName, staggerTimeByName),
@@ -296,8 +296,8 @@ export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
       const normalBosses = bosses.filter((boss) => !boss.is_hard_room)
       const hardBosses = bosses.filter((boss) => boss.is_hard_room)
       const dateInfo = dateMap.get(seasonDateKey(item.version, item.phase))
-      const phaseId = Number(`${String(item.version).replace('.', '')}${item.phase}`)
-      const tid = tidMap.get(phaseId) ?? null
+      const phaseId = crisisPhaseNumericId(item.version, item.phase)
+      const tid = phaseId != null ? (tidMap.get(phaseId) ?? null) : null
       const startDate = formatDateValue(dateInfo?.start_date)
       const listed = isSeasonPubliclyVisible(startDate)
       const isHidden = isSeasonUnreleased(startDate)
