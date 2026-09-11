@@ -24,7 +24,7 @@ const skillById = new Map(
 )
 const flowResult = resolveFlow({
   slots: scheme.slots,
-  teamSlots: scheme.teamSlots.map((s) => ({ agentId: s.agentId })),
+  teamSlots: scheme.teamSlots.map((s) => ({ agentId: s.agentId, rank: s.rank })),
   findSkill: (id) => skillById.get(id) ?? null,
   skillSubcategories: buffs.skillSubcategories,
 })
