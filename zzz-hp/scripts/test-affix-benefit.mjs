@@ -16,16 +16,27 @@ import {
 } from '../src/utils/calculatorUi.ts'
 import { AFFIX_VALUE_PER_COUNT } from '../src/utils/affixPanelCalc.ts'
 import {
+  activeAffixLibrarySet,
+  activateAffixLibrarySet,
   affixValuePerCountFromEntries,
+  coerceAffixLibraryState,
+  coerceAffixLibraryStore,
+  createAffixLibrarySet,
   createDefaultAffixLibrary,
+  createDefaultAffixLibraryState,
+  createDefaultAffixLibraryStore,
   createOptionalAffixLibraryEntries,
+  deleteAffixLibrarySet,
   entryRollsToEvalInput,
   applyPanelDeltas,
+  exportAffixLibrarySet,
+  importAffixLibrarySet,
   panelFieldOfTarget,
+  renameAffixLibrarySet,
+  resolveAffixLibraryAll,
   resolveAffixLibrary,
   setAffixLibraryEntryEnabled,
   statKeyOfTarget,
-  createDefaultAffixLibraryState,
 } from '../src/utils/affixLibrary.ts'
 import { computeAffixBenefitTable } from '../src/utils/affixBenefitAnalysis.ts'
 import {
@@ -368,6 +379,91 @@ console.log('\n[6] 词条库整改验收')
   check('传自定义表时按 4.8 算（基础 29 + 6 × 4.8 = 57.8）',
     nearly(customCall.critRate, 29 + 6 * 4.8, 1e-9),
     `实际 ${customCall.critRate}`)
+}
+
+// ---------- 6. 多套词条库（存档结构、切换、增删改） ----------
+console.log('\n[6] 多套词条库')
+{
+  const s0 = createDefaultAffixLibraryStore()
+  check('首次创建给一套库', s0.sets.length === 1, `实际 ${s0.sets.length}`)
+  check('名字是「默认」', s0.sets[0].name === '默认', s0.sets[0].name)
+  check('激活指向它', s0.activeId === s0.sets[0].id)
+  check('激活取回一致', activeAffixLibrarySet(s0).id === s0.activeId)
+
+  // 旧存档（顶层直接就是一套库的内容）要能读成「默认」这套
+  const legacyState = {
+    customEntries: [],
+    enabledOverride: { 'substat:critRate': false },
+    overrides: { 'substat:critRate': { perRoll: 5 } },
+    removedEntryIds: ['panel:dmgBonus'],
+  }
+  const migrated = coerceAffixLibraryStore(legacyState)
+  check('旧存档包成一套', migrated?.sets.length === 1, `实际 ${migrated?.sets.length}`)
+  check('旧存档名字补「默认」', migrated?.sets[0].name === '默认', migrated?.sets[0].name)
+  check('旧存档 enabledOverride 保住',
+    JSON.stringify(migrated?.sets[0].state.enabledOverride) === JSON.stringify({ 'substat:critRate': false }),
+    JSON.stringify(migrated?.sets[0].state.enabledOverride))
+  check('旧存档 overrides 保住',
+    migrated?.sets[0].state.overrides['substat:critRate']?.perRoll === 5,
+    JSON.stringify(migrated?.sets[0].state.overrides))
+  check('旧存档 removedEntryIds 保住',
+    migrated?.sets[0].state.removedEntryIds[0] === 'panel:dmgBonus',
+    JSON.stringify(migrated?.sets[0].state.removedEntryIds))
+
+  let s = createDefaultAffixLibraryStore()
+  const firstId = s.sets[0].id
+  s = createAffixLibrarySet(s, '配装A')
+  check('新建后两套', s.sets.length === 2, `实际 ${s.sets.length}`)
+  check('新建后自动切过去', activeAffixLibrarySet(s).name === '配装A', activeAffixLibrarySet(s).name)
+  s = activateAffixLibrarySet(s, firstId)
+  check('能切回默认', activeAffixLibrarySet(s).name === '默认', activeAffixLibrarySet(s).name)
+  s = renameAffixLibrarySet(s, firstId, '我的默认')
+  check('重命名生效', s.sets[0].name === '我的默认', s.sets[0].name)
+  const secondId = s.sets[1].id
+  s = deleteAffixLibrarySet(s, secondId)
+  check('删除后剩一套', s.sets.length === 1, `实际 ${s.sets.length}`)
+  check('不允许删掉最后一套', deleteAffixLibrarySet(s, firstId).sets.length === 1)
+}
+
+// ---------- 7. 导出 / 导入 ----------
+console.log('\n[7] 词条库导出 / 导入')
+{
+  let store = createDefaultAffixLibraryStore()
+  store = createAffixLibrarySet(store, '导出源', {
+    ...createDefaultAffixLibraryState(),
+    enabledOverride: { 'substat:critRate': true },
+  })
+  const json = exportAffixLibrarySet(store)
+  const parsed = JSON.parse(json)
+  check('导出带类型标记', parsed.type === 'zzz-hp-affix-library', parsed.type)
+  check('导出带库名', parsed.name === '导出源', parsed.name)
+  check('导出带内容', parsed.state.enabledOverride['substat:critRate'] === true)
+
+  const base = createDefaultAffixLibraryStore()
+  const asNew = importAffixLibrarySet(base, json, 'new')
+  check('导入为新库：无错误', asNew.error === null, String(asNew.error))
+  check('导入为新库：变成两套', asNew.store.sets.length === 2, `实际 ${asNew.store.sets.length}`)
+  check('导入为新库：切过去', activeAffixLibrarySet(asNew.store).name === '导出源')
+
+  const asReplace = importAffixLibrarySet(base, json, 'replace')
+  check('覆盖当前：无错误', asReplace.error === null, String(asReplace.error))
+  check('覆盖当前：仍一套', asReplace.store.sets.length === 1, `实际 ${asReplace.store.sets.length}`)
+  check('覆盖当前：名字跟文件', asReplace.store.sets[0].name === '导出源', asReplace.store.sets[0].name)
+  check('覆盖当前：内容进来', asReplace.store.sets[0].state.enabledOverride['substat:critRate'] === true)
+
+  check('坏 JSON 报错', importAffixLibrarySet(base, '{', 'new').error === 'JSON 解析失败，请检查文件格式',
+    String(importAffixLibrarySet(base, '{', 'new').error))
+  check('数组报错', importAffixLibrarySet(base, '[]', 'new').error === '文件内容不是词条库对象',
+    String(importAffixLibrarySet(base, '[]', 'new').error))
+  check('空对象报错', importAffixLibrarySet(base, '{}', 'new').error === '文件里没有词条库内容',
+    String(importAffixLibrarySet(base, '{}', 'new').error))
+  check('导入失败时存档原样', importAffixLibrarySet(base, '{}', 'new').store.sets.length === 1)
+
+  const bare = { customEntries: [], enabledOverride: { 'substat:critRate': false } }
+  check('裸状态（无外层包装）也认', importAffixLibrarySet(base, JSON.stringify(bare), 'new').error === null,
+    String(importAffixLibrarySet(base, JSON.stringify(bare), 'new').error))
+  check('裸状态内容能解析出条目',
+    resolveAffixLibraryAll(coerceAffixLibraryState(bare)).length > 0)
 }
 
 console.log(`\n结果：${passed} passed, ${failed} failed`)

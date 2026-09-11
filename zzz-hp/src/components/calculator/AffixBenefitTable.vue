@@ -1,26 +1,15 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { AffixCounts } from '@/types/calculatorPanel'
 import type { AffixBenefitTable } from '@/utils/affixBenefitAnalysis'
-import {
-  AFFIX_PANEL_DELTA_FIELD_LABELS,
-  AFFIX_SUBSTAT_KEY_LABELS,
-  affixPerRollUnit,
-  formatAffixPerRoll,
-  panelTarget,
-  statKeyOfTarget,
-  statTarget,
-  type AffixLibraryEntry,
-  type AffixLibraryEntryTarget,
-  type AffixPanelDeltaField,
-} from '@/utils/affixLibrary'
+import { formatAffixPerRoll, type AffixLibraryEntry } from '@/utils/affixLibrary'
+import AffixLibraryModal from '@/components/calculator/AffixLibraryModal.vue'
 import { useResizableColumns, type ResizableColumnSpec } from '@/composables/useResizableColumns'
 
 /**
- * 词条收益表 + 词条库编辑（词条功能改造）
+ * 词条收益表（词条功能改造）
  *
- * 上表：每条词条 +N 档的总伤增量、收益率、相对权重。
- * 下表：词条库编辑器，可增删改条目、切换参与状态。
+ * 每条词条 +N 档的总伤增量、收益率、相对权重。
+ * 词条库的编辑与多套库切换收在 `AffixLibraryModal` 里（点「词条库」按钮打开）。
  */
 
 const props = withDefaults(
@@ -42,12 +31,12 @@ const emit = defineEmits<{
   updateEntry: [entryId: string, patch: Partial<AffixLibraryEntry>]
   removeEntry: [entryId: string]
   restoreDefaults: []
+  /** 弹窗里做了库级变更（切库/导入等），页面应重新载入激活库并重算 */
+  librarySwitched: []
 }>()
 
 const sortKey = ref<'percent' | 'name'>('percent')
-const showLibraryEditor = ref(false)
-
-const enabledSet = computed(() => new Set(props.enabledIds))
+const showLibraryModal = ref(false)
 
 const sortedRows = computed(() => {
   const rows = props.table?.rows ?? []
@@ -108,70 +97,11 @@ function formatWeight(value: number) {
   return value.toFixed(3)
 }
 
-// ---------- 新增条目表单 ----------
-const draft = ref({
-  label: '',
-  target: statTarget('atkPercent') as AffixLibraryEntryTarget,
-  perRoll: 3,
-  cap: 0,
-  group: '',
-})
-const draftError = ref<string | null>(null)
-
-/**
- * 候选目标（合并后是同一个下拉，按命名空间分组）。
- *
- * 合并前这里是「类型（副词条/面板字段）+ 字段」两级选择，而两条路在同一个目标格子上
- * 实测结果完全一致 —— 分类对使用者无意义，故并成一个列表。
- */
-const STAT_TARGET_OPTIONS = (Object.keys(AFFIX_SUBSTAT_KEY_LABELS) as (keyof AffixCounts)[]).map(
-  (key) => ({ id: statTarget(key), label: AFFIX_SUBSTAT_KEY_LABELS[key] }),
-)
-
-const PANEL_TARGET_OPTIONS = (
-  Object.keys(AFFIX_PANEL_DELTA_FIELD_LABELS) as AffixPanelDeltaField[]
-).map((field) => ({ id: panelTarget(field), label: AFFIX_PANEL_DELTA_FIELD_LABELS[field] }))
-
-/** 新增表单里「每档」的单位提示（百分比字段给 %，固定值字段留空） */
-const draftPerRollUnit = computed(() =>
-  affixPerRollUnit(draft.value.target) === 'percent' ? '%' : '',
-)
-
-/** 词条库列表里的类型说明：区分「按基础值换算」与「直接叠加面板」 */
-function targetNamespaceLabel(target: AffixLibraryEntryTarget): string {
-  return statKeyOfTarget(target) ? '词条数' : '面板增量'
+/** 弹窗里做了库级变更：转告页面重新载入激活库并重算 */
+function onLibrarySwitched() {
+  emit('librarySwitched')
 }
 
-/** 词条库列表里「每档」的单位提示 */
-function perRollUnitHint(target: AffixLibraryEntryTarget): string {
-  return affixPerRollUnit(target) === 'percent' ? '%' : ''
-}
-
-function submitDraft() {
-  const label = draft.value.label.trim()
-  if (!label) {
-    draftError.value = '请填写词条名称'
-    return
-  }
-  if (!Number.isFinite(draft.value.perRoll) || draft.value.perRoll <= 0) {
-    draftError.value = '每档数值须为正数'
-    return
-  }
-  draftError.value = null
-  emit('addEntry', {
-    label,
-    target: draft.value.target,
-    perRoll: draft.value.perRoll,
-    cap: draft.value.cap,
-    group: draft.value.group.trim(),
-    // 独立功能口径：每条词条 1 档一律占 1 个总词条数
-    rollCost: 1,
-    enabledByDefault: true,
-  })
-  draft.value.label = ''
-  draft.value.cap = 0
-  draft.value.group = ''
-}
 </script>
 
 <template>
@@ -198,16 +128,29 @@ function submitDraft() {
       <button
         type="button"
         class="chip"
-        :class="{ active: showLibraryEditor }"
-        @click="showLibraryEditor = !showLibraryEditor"
+        :class="{ active: showLibraryModal }"
+        @click="showLibraryModal = true"
       >
         词条库（{{ library.length }} 条）
       </button>
     </div>
 
+    <AffixLibraryModal
+      :open="showLibraryModal"
+      :library="library"
+      :enabled-ids="enabledIds"
+      @close="showLibraryModal = false"
+      @toggle-entry="(id, enabled) => emit('toggleEntry', id, enabled)"
+      @add-entry="(entry) => emit('addEntry', entry)"
+      @update-entry="(id, patch) => emit('updateEntry', id, patch)"
+      @remove-entry="(id) => emit('removeEntry', id)"
+      @restore-defaults="emit('restoreDefaults')"
+      @switched="onLibrarySwitched"
+    />
+
     <p v-if="loading" class="hint">正在计算词条收益…</p>
     <p v-else-if="!table || !table.rows.length" class="hint">
-      没有参与计算的词条。请在下方「词条库」中启用条目。
+      没有参与计算的词条。请点右上角「词条库」启用条目。
     </p>
     <template v-else>
       <p class="baseline-line">
@@ -278,132 +221,6 @@ function submitDraft() {
       </div>
     </template>
 
-    <section v-if="showLibraryEditor" class="library-editor">
-      <header class="library-header">
-        <h4>词条库</h4>
-        <button type="button" class="ghost-btn" @click="emit('restoreDefaults')">恢复默认</button>
-      </header>
-
-      <div class="table-wrap">
-        <table class="library-table">
-          <thead>
-            <tr>
-              <th>参与</th>
-              <th>名称</th>
-              <th>类型</th>
-              <th>每档</th>
-              <th>上限</th>
-              <th>互斥组</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="entry in library" :key="entry.id" :class="{ disabled: !enabledSet.has(entry.id) }">
-              <td>
-                <input
-                  type="checkbox"
-                  :checked="enabledSet.has(entry.id)"
-                  @change="emit('toggleEntry', entry.id, ($event.target as HTMLInputElement).checked)"
-                />
-              </td>
-              <td>
-                <input
-                  class="inline-input"
-                  :value="entry.label"
-                  @change="emit('updateEntry', entry.id, { label: ($event.target as HTMLInputElement).value })"
-                />
-              </td>
-              <td class="type-cell">
-                {{ targetNamespaceLabel(entry.target) }}
-              </td>
-              <td>
-                <span class="per-roll-cell">
-                  <input
-                    class="inline-input num"
-                    type="number"
-                    step="0.1"
-                    :value="entry.perRoll"
-                    @change="emit('updateEntry', entry.id, { perRoll: Number(($event.target as HTMLInputElement).value) })"
-                  />
-                  <span v-if="perRollUnitHint(entry.target)" class="unit-hint">%</span>
-                </span>
-              </td>
-              <td>
-                <input
-                  class="inline-input num"
-                  type="number"
-                  min="0"
-                  step="1"
-                  :value="entry.cap"
-                  title="0 表示不设上限"
-                  @change="emit('updateEntry', entry.id, { cap: Number(($event.target as HTMLInputElement).value) })"
-                />
-              </td>
-              <td>
-                <input
-                  class="inline-input"
-                  :value="entry.group"
-                  placeholder="空=自由"
-                  @change="emit('updateEntry', entry.id, { group: ($event.target as HTMLInputElement).value })"
-                />
-              </td>
-              <td>
-                <button
-                  type="button"
-                  class="del-btn"
-                  title="删除该条目（默认条目可用「恢复默认」找回）"
-                  @click="emit('removeEntry', entry.id)"
-                >
-                  ×
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="add-entry">
-        <h5>新增词条</h5>
-        <div class="add-grid">
-          <label>
-            <span>名称</span>
-            <input v-model="draft.label" type="text" placeholder="如：5号位增伤" />
-          </label>
-          <label>
-            <span>目标</span>
-            <select v-model="draft.target">
-              <optgroup label="词条数（按基础值换算）">
-                <option v-for="opt in STAT_TARGET_OPTIONS" :key="opt.id" :value="opt.id">
-                  {{ opt.label }}
-                </option>
-              </optgroup>
-              <optgroup label="面板增量（直接叠加局外面板）">
-                <option v-for="opt in PANEL_TARGET_OPTIONS" :key="opt.id" :value="opt.id">
-                  {{ opt.label }}
-                </option>
-              </optgroup>
-            </select>
-          </label>
-          <label>
-            <span>每档</span>
-            <span class="per-roll-cell">
-              <input v-model.number="draft.perRoll" type="number" step="0.1" min="0" />
-              <span v-if="draftPerRollUnit" class="unit-hint">{{ draftPerRollUnit }}</span>
-            </span>
-          </label>
-          <label>
-            <span>上限</span>
-            <input v-model.number="draft.cap" type="number" min="0" step="1" title="0 = 不设上限" />
-          </label>
-          <label>
-            <span>互斥组</span>
-            <input v-model="draft.group" type="text" placeholder="可空" />
-          </label>
-          <button type="button" class="btn-primary" @click="submitDraft">添加</button>
-        </div>
-        <p v-if="draftError" class="err">{{ draftError }}</p>
-      </div>
-    </section>
   </div>
 </template>
 

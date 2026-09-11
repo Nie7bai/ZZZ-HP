@@ -319,40 +319,235 @@ function migrateCustomEntry(raw: unknown): AffixLibraryEntry | null {
   }
 }
 
-export function loadAffixLibraryState(): AffixLibraryState {
-  try {
-    const raw = localStorage.getItem(AFFIX_LIBRARY_STORAGE_KEY)
-    if (!raw) return createDefaultAffixLibraryState()
-    const parsed = JSON.parse(raw) as Partial<AffixLibraryState>
-    const customEntries = Array.isArray(parsed.customEntries)
+/**
+ * 把任意来源的对象收成一份合法词条库状态。
+ *
+ * 载入存档与导入文件共用这一处：字段缺失、类型不对一律回落默认值，
+ * 自建条目逐条走 `migrateCustomEntry`（同时承担旧 `kind` 结构的迁移）。
+ */
+export function coerceAffixLibraryState(raw: unknown): AffixLibraryState {
+  const parsed = (raw && typeof raw === 'object' ? raw : {}) as Partial<AffixLibraryState>
+  return {
+    customEntries: Array.isArray(parsed.customEntries)
       ? parsed.customEntries
           .map(migrateCustomEntry)
           .filter((entry): entry is AffixLibraryEntry => entry !== null)
-      : []
-    return {
-      customEntries,
-      enabledOverride:
-        parsed.enabledOverride && typeof parsed.enabledOverride === 'object'
-          ? parsed.enabledOverride
-          : {},
-      overrides:
-        parsed.overrides && typeof parsed.overrides === 'object' ? parsed.overrides : {},
-      removedEntryIds: Array.isArray(parsed.removedEntryIds)
-        ? parsed.removedEntryIds.filter((id): id is string => typeof id === 'string')
-        : [],
-    }
-  } catch {
-    // 存档损坏或隐私模式：回落默认库，不影响计算
-    return createDefaultAffixLibraryState()
+      : [],
+    enabledOverride:
+      parsed.enabledOverride && typeof parsed.enabledOverride === 'object'
+        ? parsed.enabledOverride
+        : {},
+    overrides: parsed.overrides && typeof parsed.overrides === 'object' ? parsed.overrides : {},
+    removedEntryIds: Array.isArray(parsed.removedEntryIds)
+      ? parsed.removedEntryIds.filter((id): id is string => typeof id === 'string')
+      : [],
   }
 }
 
-export function saveAffixLibraryState(state: AffixLibraryState): void {
+// ===================== 多套词条库 =====================
+
+/**
+ * 一套词条库：名字 + 内容 + 时间戳。
+ *
+ * 为什么要多套：词条库此前只有一份，换一套配装就得把上一条条的改动手工还原。
+ * 现在按「库」分开存，随时切换。库不随方案导出（用户已定），只在本机 localStorage。
+ */
+export interface AffixLibrarySet {
+  id: string
+  name: string
+  state: AffixLibraryState
+  createdAt: number
+  updatedAt: number
+}
+
+/** 词条库存档：全部库 + 当前激活的那套 */
+export interface AffixLibraryStore {
+  version: number
+  activeId: string
+  sets: AffixLibrarySet[]
+}
+
+export const AFFIX_LIBRARY_STORE_VERSION = 2
+export const DEFAULT_AFFIX_LIBRARY_SET_NAME = '默认'
+/** 库名长度上限：只是防手滑贴进一整段文字，不追求严格 */
+export const AFFIX_LIBRARY_SET_NAME_MAX = 24
+
+function normalizeAffixLibrarySetName(raw: unknown, fallback: string): string {
+  const name = typeof raw === 'string' ? raw.trim() : ''
+  return name ? name.slice(0, AFFIX_LIBRARY_SET_NAME_MAX) : fallback
+}
+
+function nextAffixLibrarySetId(sets: AffixLibrarySet[]): string {
+  let max = 0
+  for (const set of sets) {
+    const match = /^set:(\d+)$/.exec(set.id)
+    if (match) max = Math.max(max, Number(match[1]))
+  }
+  return `set:${max + 1}`
+}
+
+function coerceAffixLibrarySet(raw: unknown, index: number): AffixLibrarySet | null {
+  if (!raw || typeof raw !== 'object') return null
+  const item = raw as Record<string, unknown>
+  const now = Date.now()
+  const id = typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `set:${index + 1}`
+  return {
+    id,
+    name: normalizeAffixLibrarySetName(item.name, `词条库 ${index + 1}`),
+    state: coerceAffixLibraryState(item.state),
+    createdAt: Number.isFinite(Number(item.createdAt)) ? Number(item.createdAt) : now,
+    updatedAt: Number.isFinite(Number(item.updatedAt)) ? Number(item.updatedAt) : now,
+  }
+}
+
+export function createDefaultAffixLibraryStore(): AffixLibraryStore {
+  const now = Date.now()
+  const set: AffixLibrarySet = {
+    id: 'set:1',
+    name: DEFAULT_AFFIX_LIBRARY_SET_NAME,
+    state: createDefaultAffixLibraryState(),
+    createdAt: now,
+    updatedAt: now,
+  }
+  return { version: AFFIX_LIBRARY_STORE_VERSION, activeId: set.id, sets: [set] }
+}
+
+/**
+ * 收成一份合法存档。旧结构（还没有多套概念时，存档**直接就是一套库内容**）
+ * 自动包成「默认」一套；识别不了返回 null，由调用方决定回落什么。
+ */
+export function coerceAffixLibraryStore(raw: unknown): AffixLibraryStore | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const obj = raw as Record<string, unknown>
+
+  if (Array.isArray(obj.sets)) {
+    const seen = new Set<string>()
+    const sets: AffixLibrarySet[] = []
+    for (const [index, item] of obj.sets.entries()) {
+      const set = coerceAffixLibrarySet(item, index)
+      if (!set) continue
+      // id 必须唯一：重复的补一个新 id，避免「切换后指向别套」
+      if (seen.has(set.id)) set.id = nextAffixLibrarySetId(sets)
+      seen.add(set.id)
+      sets.push(set)
+    }
+    if (!sets.length) return null
+    const activeId =
+      typeof obj.activeId === 'string' && sets.some((set) => set.id === obj.activeId)
+        ? obj.activeId
+        : sets[0]!.id
+    return { version: AFFIX_LIBRARY_STORE_VERSION, activeId, sets }
+  }
+
+  // 旧结构：顶层就是 `customEntries` / `enabledOverride` 这一套
+  if ('customEntries' in obj || 'enabledOverride' in obj || 'removedEntryIds' in obj) {
+    const store = createDefaultAffixLibraryStore()
+    store.sets[0]!.state = coerceAffixLibraryState(obj)
+    return store
+  }
+  return null
+}
+
+function writeAffixLibraryStore(store: AffixLibraryStore): void {
   try {
-    localStorage.setItem(AFFIX_LIBRARY_STORAGE_KEY, JSON.stringify(state))
+    localStorage.setItem(AFFIX_LIBRARY_STORAGE_KEY, JSON.stringify(store))
   } catch {
     // 配额满/隐私模式：静默忽略
   }
+}
+
+export function loadAffixLibraryStore(): AffixLibraryStore {
+  try {
+    const raw = localStorage.getItem(AFFIX_LIBRARY_STORAGE_KEY)
+    if (!raw) return createDefaultAffixLibraryStore()
+    return coerceAffixLibraryStore(JSON.parse(raw)) ?? createDefaultAffixLibraryStore()
+  } catch {
+    // 存档损坏或隐私模式：回落默认库，不影响计算
+    return createDefaultAffixLibraryStore()
+  }
+}
+
+export function saveAffixLibraryStore(store: AffixLibraryStore): void {
+  writeAffixLibraryStore(store)
+}
+
+/** 当前激活的那套（activeId 失配时取第一套，保证永远有一套可用） */
+export function activeAffixLibrarySet(store: AffixLibraryStore): AffixLibrarySet {
+  return store.sets.find((set) => set.id === store.activeId) ?? store.sets[0]!
+}
+
+/** 切换激活的库；id 不存在或本来就是它，原样返回 */
+export function activateAffixLibrarySet(store: AffixLibraryStore, id: string): AffixLibraryStore {
+  if (store.activeId === id) return store
+  if (!store.sets.some((set) => set.id === id)) return store
+  const next: AffixLibraryStore = { ...store, activeId: id }
+  writeAffixLibraryStore(next)
+  return next
+}
+
+/** 新建一套并切过去；`state` 缺省为空库（默认条目仍按需生成） */
+export function createAffixLibrarySet(
+  store: AffixLibraryStore,
+  name: string,
+  state?: AffixLibraryState,
+): AffixLibraryStore {
+  const now = Date.now()
+  const set: AffixLibrarySet = {
+    id: nextAffixLibrarySetId(store.sets),
+    name: normalizeAffixLibrarySetName(name, '新建词条库'),
+    state: state ? coerceAffixLibraryState(state) : createDefaultAffixLibraryState(),
+    createdAt: now,
+    updatedAt: now,
+  }
+  const next: AffixLibraryStore = { ...store, activeId: set.id, sets: [...store.sets, set] }
+  writeAffixLibraryStore(next)
+  return next
+}
+
+export function renameAffixLibrarySet(
+  store: AffixLibraryStore,
+  id: string,
+  name: string,
+): AffixLibraryStore {
+  const set = store.sets.find((item) => item.id === id)
+  if (!set) return store
+  const nextName = normalizeAffixLibrarySetName(name, set.name)
+  if (nextName === set.name) return store
+  const next: AffixLibraryStore = {
+    ...store,
+    sets: store.sets.map((item) =>
+      item.id === id ? { ...item, name: nextName, updatedAt: Date.now() } : item,
+    ),
+  }
+  writeAffixLibraryStore(next)
+  return next
+}
+
+/** 删除一套；最后一套不给删（删完就没库可用了），删的若是激活项则切到剩下的第一套 */
+export function deleteAffixLibrarySet(store: AffixLibraryStore, id: string): AffixLibraryStore {
+  if (store.sets.length <= 1) return store
+  if (!store.sets.some((set) => set.id === id)) return store
+  const sets = store.sets.filter((set) => set.id !== id)
+  const activeId = store.activeId === id ? sets[0]!.id : store.activeId
+  const next: AffixLibraryStore = { ...store, activeId, sets }
+  writeAffixLibraryStore(next)
+  return next
+}
+
+/** 把一份状态写回激活的那套（内容编辑都走这里） */
+export function saveAffixLibraryState(state: AffixLibraryState): void {
+  const store = loadAffixLibraryStore()
+  writeAffixLibraryStore({
+    ...store,
+    sets: store.sets.map((set) =>
+      set.id === store.activeId ? { ...set, state, updatedAt: Date.now() } : set,
+    ),
+  })
+}
+
+/** 当前激活那套的内容（既有调用方沿用这个入口，不必知道多套的存在） */
+export function loadAffixLibraryState(): AffixLibraryState {
+  return activeAffixLibrarySet(loadAffixLibraryStore()).state
 }
 
 /** 全部默认条目（副词条 + 可选扩展），已应用用户覆盖值 */
@@ -567,4 +762,94 @@ export function validateAffixLibraryEntry(
   if (!isAffixLibraryEntryTarget(entry.target)) return '请选择词条目标'
   if (!Number.isFinite(entry.perRoll) || entry.perRoll <= 0) return '每档数值须为正数'
   return null
+}
+
+// ===================== 导出 / 导入 =====================
+
+export const AFFIX_LIBRARY_EXPORT_TYPE = 'zzz-hp-affix-library'
+export const AFFIX_LIBRARY_EXPORT_VERSION = 1
+
+export interface AffixLibraryExport {
+  type: string
+  version: number
+  exportedAt: number
+  name: string
+  state: AffixLibraryState
+}
+
+/** 导出一套（缺省当前激活那套）为文件内容 */
+export function exportAffixLibrarySet(store: AffixLibraryStore, setId?: string): string {
+  const target =
+    (setId ? store.sets.find((set) => set.id === setId) : null) ?? activeAffixLibrarySet(store)
+  const payload: AffixLibraryExport = {
+    type: AFFIX_LIBRARY_EXPORT_TYPE,
+    version: AFFIX_LIBRARY_EXPORT_VERSION,
+    exportedAt: Date.now(),
+    name: target.name,
+    state: target.state,
+  }
+  return JSON.stringify(payload, null, 2)
+}
+
+export interface AffixLibraryImportResult {
+  /** 导入后的存档；失败时原样返回入参，调用方直接赋回即可 */
+  store: AffixLibraryStore
+  /** 实际生效的库名 */
+  name: string
+  error: string | null
+}
+
+/**
+ * 导入一套词条库。
+ *
+ * - `'replace'`：覆盖激活的那套（名字取文件里的；文件没写名字就沿用原名字）
+ * - `'new'`：作为新的一套加进来并切过去
+ *
+ * 也接受「没有外层包装、顶层直接是 `customEntries`」的文件。
+ */
+export function importAffixLibrarySet(
+  store: AffixLibraryStore,
+  json: string,
+  mode: 'replace' | 'new',
+): AffixLibraryImportResult {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(json)
+  } catch {
+    return { store, name: '', error: 'JSON 解析失败，请检查文件格式' }
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { store, name: '', error: '文件内容不是词条库对象' }
+  }
+
+  const obj = parsed as Record<string, unknown>
+  let rawState: unknown = null
+  let rawName = ''
+  if (obj.state && typeof obj.state === 'object' && !Array.isArray(obj.state)) {
+    rawState = obj.state
+    rawName = typeof obj.name === 'string' ? obj.name : ''
+  } else if (Array.isArray(obj.customEntries)) {
+    rawState = obj
+  }
+  if (!rawState) {
+    return { store, name: '', error: '文件里没有词条库内容' }
+  }
+
+  const state = coerceAffixLibraryState(rawState)
+  if (mode === 'replace') {
+    const target = activeAffixLibrarySet(store)
+    const name = normalizeAffixLibrarySetName(rawName, target.name)
+    const next: AffixLibraryStore = {
+      ...store,
+      sets: store.sets.map((set) =>
+        set.id === target.id ? { ...set, name, state, updatedAt: Date.now() } : set,
+      ),
+    }
+    writeAffixLibraryStore(next)
+    return { store: next, name, error: null }
+  }
+
+  const current = activeAffixLibrarySet(store)
+  const next = createAffixLibrarySet(store, rawName || `${current.name} 副本`, state)
+  return { store: next, name: activeAffixLibrarySet(next).name, error: null }
 }
