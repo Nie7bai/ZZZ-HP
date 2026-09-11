@@ -3447,7 +3447,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 }
 
 .event-insensitive td {
-  color: #9aa3b5;
+  color: var(--calc-muted, #9aa3b5);
 }
 
 .impact-reason {
@@ -3463,15 +3463,15 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 .result-section-title {
   margin: 0;
   font-size: 0.92rem;
-  color: #e8eaed;
+  color: var(--calc-text, #e8eaed);
 }
 
 .event-summary-block {
   margin-bottom: 0.85rem;
   padding: 0.65rem 0.75rem;
-  border: 1px solid #2d323a;
+  border: 1px solid var(--calc-border, #2d323a);
   border-radius: 10px;
-  background: #0f1217;
+  background: var(--calc-input-bg, #0f1217);
 }
 
 .event-summary-list {
@@ -3489,19 +3489,19 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   justify-content: space-between;
   gap: 0.35rem 0.75rem;
   padding: 0.45rem 0.55rem;
-  border: 1px solid #2a3038;
+  border: 1px solid var(--calc-border, #2a3038);
   border-radius: 8px;
-  background: #141820;
+  background: var(--calc-surface-2, #141820);
   cursor: pointer;
 }
 
 .event-summary-item:hover {
-  border-color: #3d4654;
+  border-color: color-mix(in srgb, var(--calc-border, #2a3038) 40%, var(--calc-text, #e8eaed));
 }
 
 .event-summary-item--active {
-  border-color: rgba(125, 211, 160, 0.55);
-  background: rgba(125, 211, 160, 0.08);
+  border-color: color-mix(in srgb, var(--calc-pos, #7dd3a0) 55%, transparent);
+  background: color-mix(in srgb, var(--calc-pos, #7dd3a0) 8%, transparent);
 }
 
 .event-summary-item--disabled {
@@ -3510,27 +3510,27 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 }
 
 .event-summary-item--disabled:hover {
-  border-color: #2a3140;
+  border-color: var(--calc-border, #2a3140);
 }
 
 .event-summary-skip {
-  color: #c07a7a;
+  color: var(--calc-neg, #c07a7a);
   font-size: 0.8rem;
 }
 
 .event-summary-name {
-  color: #e8ecf4;
+  color: var(--calc-text, #e8ecf4);
   font-size: 0.86rem;
 }
 
 .event-summary-count {
   margin-left: 0.25rem;
-  color: #9aa3b0;
+  color: var(--calc-muted, #9aa3b0);
   font-size: 0.8rem;
 }
 
 .event-summary-damage {
-  color: #9aa3b0;
+  color: var(--calc-muted, #9aa3b0);
   font-size: 0.8rem;
 }
 
@@ -3554,7 +3554,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 .chart-event-filter-summary {
   flex: 1 1 12rem;
   font-size: 0.78rem;
-  color: #9aa3b0;
+  color: var(--calc-muted, #9aa3b0);
   line-height: 1.45;
 }
 
@@ -3567,7 +3567,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 .chart-event-filter-hint {
   margin: 0;
   font-size: 0.75rem;
-  color: #7a8494;
+  color: var(--calc-muted, #7a8494);
   line-height: 1.45;
 }
 
@@ -3579,22 +3579,22 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   min-width: 10rem;
   max-width: 100%;
   padding: 0.45rem 0.6rem;
-  border: 1px solid #3a4048;
+  border: 1px solid var(--calc-border, #3a4048);
   border-radius: 10px;
-  background: #141820;
-  color: #e8ecf4;
+  background: var(--calc-surface-2, #141820);
+  color: var(--calc-text, #e8ecf4);
   cursor: pointer;
   text-align: left;
 }
 
 .chart-event-chip:hover {
-  border-color: #4d5666;
-  background: #181e28;
+  border-color: color-mix(in srgb, var(--calc-border, #3a4048) 35%, var(--calc-text, #e8ecf4));
+  background: var(--calc-surface-3, #181e28);
 }
 
 .chart-event-chip.active {
-  border-color: rgba(125, 211, 160, 0.55);
-  background: rgba(125, 211, 160, 0.08);
+  border-color: color-mix(in srgb, var(--calc-pos, #7dd3a0) 55%, transparent);
+  background: color-mix(in srgb, var(--calc-pos, #7dd3a0) 8%, transparent);
 }
 
 .chart-event-chip-top {
@@ -3608,53 +3608,55 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   flex-shrink: 0;
   padding: 0.08rem 0.4rem;
   border-radius: 999px;
-  background: #252b36;
-  color: #c9d2de;
+  background: var(--calc-surface-3, #252b36);
+  color: var(--calc-text, #c9d2de);
   font-size: 0.72rem;
   font-weight: 600;
 }
 
 .chart-event-chip.active .chart-event-kind {
-  background: rgba(125, 211, 160, 0.18);
-  color: #dff3e8;
+  background: color-mix(in srgb, var(--calc-pos, #7dd3a0) 18%, transparent);
+  color: var(--calc-text, #dff3e8);
 }
 
 .chart-event-name {
   font-size: 0.82rem;
   font-weight: 600;
-  color: #eef2f7;
+  color: var(--calc-text, #eef2f7);
 }
 
 .chart-event-meta {
   font-size: 0.74rem;
   line-height: 1.4;
-  color: #9aa3b0;
+  color: var(--calc-muted, #9aa3b0);
 }
 
 .filter-label {
   font-size: 0.8rem;
-  color: #9aa3b0;
+  color: var(--calc-muted, #9aa3b0);
 }
 
 .opt-section {
+  /* 面板语义色继承自 .calculator-page(.theme-light)；勿在此写死暗色 --calc-*，否则白天无法覆盖 */
   --calc-run-border: rgba(191, 255, 9, 0.45);
   --calc-run-bg: rgba(191, 255, 9, 0.12);
   --calc-run-text: #bfff09;
   --calc-run-bg-hover: rgba(191, 255, 9, 0.18);
   --calc-run-border-hover: rgba(191, 255, 9, 0.55);
-  border: 1px solid #2a2d33;
+  border: 1px solid var(--calc-border, #2d323a);
   border-radius: 14px;
-  background: linear-gradient(180deg, #171a1f 0%, #12151a 100%);
+  background: var(--calc-surface, #171a1f);
   padding: 1rem;
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
+  color: var(--calc-text, #e8eaed);
 }
 
 .opt-header h2 {
   margin: 0;
   font-size: 1.05rem;
-  color: #f0f2f6;
+  color: var(--calc-text);
 }
 
 .opt-header p,
@@ -3662,7 +3664,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 .hint {
   margin: 0.25rem 0 0;
   font-size: 0.8rem;
-  color: #9aa3b0;
+  color: var(--calc-muted);
 }
 
 .section-mode-row {
@@ -3672,14 +3674,14 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   align-items: center;
   margin: 0.75rem 0 0.5rem;
   padding-bottom: 0.6rem;
-  border-bottom: 1px solid #2a2f37;
+  border-bottom: 1px solid var(--calc-border);
 }
 
 .section-mode-tab {
-  border: 1px solid #333841;
+  border: 1px solid var(--calc-border);
   border-radius: 999px;
-  background: #1a1e25;
-  color: #d5dae3;
+  background: var(--calc-surface-3);
+  color: var(--calc-text);
   font: inherit;
   font-size: 0.85rem;
   font-weight: 700;
@@ -3688,9 +3690,9 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 }
 
 .section-mode-tab.active {
-  border-color: rgba(191, 255, 9, 0.45);
-  background: rgba(191, 255, 9, 0.12);
-  color: #bfff09;
+  border-color: var(--calc-run-border);
+  background: var(--calc-run-bg);
+  color: var(--calc-run-text);
 }
 
 .alloc-input-row {
@@ -3706,16 +3708,16 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   flex-direction: column;
   gap: 0.2rem;
   font-size: 0.78rem;
-  color: #9aa3b0;
+  color: var(--calc-muted);
 }
 
 .alloc-input-row input {
   width: 7rem;
   padding: 0.3rem 0.4rem;
-  border: 1px solid #2a2f37;
+  border: 1px solid var(--calc-border);
   border-radius: 6px;
-  background: #171a1f;
-  color: #e8eaed;
+  background: var(--calc-input-bg);
+  color: var(--calc-text);
   font-size: 0.85rem;
 }
 
@@ -3731,7 +3733,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 .sub-title {
   margin: 0.35rem 0 0;
   font-size: 0.92rem;
-  color: #e8eaed;
+  color: var(--calc-text);
 }
 
 .grid {
@@ -3777,28 +3779,32 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 }
 
 .panel-block {
-  border: 1px solid #2d323a;
+  border: 1px solid var(--calc-border);
   border-radius: 12px;
   padding: 0.75rem;
-  background: #10141a;
+  background: var(--calc-input-bg);
   min-width: 0;
 }
 
 .panel-block--final {
-  border-color: #3a4a31;
-  background: linear-gradient(180deg, #121712 0%, #0f1410 100%);
+  border-color: color-mix(in srgb, var(--calc-pos) 35%, var(--calc-border));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--calc-pos) 8%, var(--calc-surface)) 0%,
+    var(--calc-input-bg) 100%
+  );
 }
 
 .panel-block-header h3 {
   margin: 0;
   font-size: 0.92rem;
-  color: #e8ebf0;
+  color: var(--calc-text);
 }
 
 .panel-block-header p {
   margin: 0.25rem 0 0.65rem;
   font-size: 0.76rem;
-  color: #8f96a3;
+  color: var(--calc-muted);
 }
 
 .anomaly-support-panels {
@@ -3808,17 +3814,17 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 }
 
 .anomaly-slot-details {
-  border: 1px solid #2d323a;
+  border: 1px solid var(--calc-border, #2d323a);
   border-radius: 8px;
   padding: 0.35rem 0.5rem 0.55rem;
-  background: rgba(0, 0, 0, 0.18);
+  background: color-mix(in srgb, var(--calc-text, #e8eaed) 6%, transparent);
 }
 
 .anomaly-slot-details summary {
   cursor: pointer;
   font-size: 0.82rem;
   font-weight: 600;
-  color: #d5dae4;
+  color: var(--calc-text, #d5dae4);
   padding: 0.25rem 0;
 }
 
@@ -3828,7 +3834,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 
 .panel-block .field > input:read-only {
   opacity: 0.92;
-  background: #0c1016;
+  background: color-mix(in srgb, var(--calc-input-bg, #0c1016) 88%, var(--calc-border, #2d323a));
 }
 
 .extra-mods-block {
@@ -3871,17 +3877,17 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 }
 
 .buff-breakdown {
-  border: 1px solid #2d323a;
+  border: 1px solid var(--calc-border, #2d323a);
   border-radius: 10px;
   padding: 0.55rem 0.75rem;
-  background: #0f1217;
-  color: #b7c0cd;
+  background: var(--calc-input-bg, #0f1217);
+  color: var(--calc-muted, #b7c0cd);
   font-size: 0.8rem;
 }
 
 .buff-breakdown summary {
   cursor: pointer;
-  color: #d5dae4;
+  color: var(--calc-text, #d5dae4);
 }
 
 .mods-summary {
@@ -3920,15 +3926,15 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   flex-direction: column;
   gap: 0.28rem;
   font-size: 0.8rem;
-  color: #9aa3b0;
+  color: var(--calc-muted);
 }
 
 .field > input,
 .field > select {
-  border: 1px solid #333841;
+  border: 1px solid var(--calc-border);
   border-radius: 8px;
-  background: #0f1217;
-  color: #e8eaed;
+  background: var(--calc-input-bg);
+  color: var(--calc-text);
   padding: 0.45rem 0.55rem;
   font: inherit;
 }
@@ -3968,10 +3974,10 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 }
 
 .kind-mode-tab {
-  border: 1px solid #2d323a;
+  border: 1px solid var(--calc-border, #2d323a);
   border-radius: 999px;
-  background: #10141a;
-  color: #c5ccd6;
+  background: var(--calc-input-bg, #10141a);
+  color: var(--calc-text, #c5ccd6);
   font: inherit;
   font-size: 0.8rem;
   padding: 0.28rem 0.75rem;
@@ -3979,9 +3985,9 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 }
 
 .kind-mode-tab.active {
-  border-color: rgba(201, 165, 92, 0.55);
-  background: rgba(201, 165, 92, 0.14);
-  color: #f0d7a2;
+  border-color: color-mix(in srgb, var(--calc-accent, #c9a55c) 55%, transparent);
+  background: var(--calc-accent-bg, rgba(201, 165, 92, 0.14));
+  color: var(--calc-accent-fg, #f0d7a2);
   font-weight: 600;
 }
 
@@ -3992,7 +3998,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   gap: 0.55rem 0.85rem;
   margin-top: 0.35rem;
   padding-top: 0.65rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid color-mix(in srgb, var(--calc-border, #2d323a) 80%, transparent);
 }
 
 .calc-run-btn {
@@ -4050,10 +4056,10 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 .detail-tab,
 .ghost-btn,
 .chip {
-  border: 1px solid #333841;
+  border: 1px solid var(--calc-border);
   border-radius: 999px;
-  background: #1a1e25;
-  color: #d5dae3;
+  background: var(--calc-surface-3);
+  color: var(--calc-text);
   font: inherit;
   font-size: 0.8rem;
   font-weight: 700;
@@ -4064,14 +4070,14 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 .kind-tab.active,
 .detail-tab.active,
 .chip.active {
-  border-color: rgba(191, 255, 9, 0.45);
-  background: rgba(191, 255, 9, 0.12);
-  color: #bfff09;
+  border-color: var(--calc-run-border);
+  background: var(--calc-run-bg);
+  color: var(--calc-run-text);
 }
 
 .err {
   margin: 0;
-  color: #f07178;
+  color: var(--calc-neg);
   font-size: 0.82rem;
 }
 
@@ -4560,7 +4566,7 @@ th {
 .alloc-block {
   margin-top: 1rem;
   padding-top: 0.85rem;
-  border-top: 1px dashed #2a2f37;
+  border-top: 1px dashed var(--calc-border);
 }
 
 .alloc-header {
@@ -4573,7 +4579,7 @@ th {
 .alloc-header h4 {
   margin: 0;
   font-size: 0.95rem;
-  color: #e8eaed;
+  color: var(--calc-text);
 }
 
 .alloc-controls {
@@ -4589,16 +4595,16 @@ th {
   flex-direction: column;
   gap: 0.2rem;
   font-size: 0.75rem;
-  color: #9aa3b0;
+  color: var(--calc-muted);
 }
 
 .alloc-controls input {
   width: 7rem;
   padding: 0.28rem 0.4rem;
-  border: 1px solid #2a2f37;
+  border: 1px solid var(--calc-border);
   border-radius: 6px;
-  background: #171a1f;
-  color: #e8eaed;
+  background: var(--calc-input-bg);
+  color: var(--calc-text);
   font-size: 0.82rem;
 }
 </style>

@@ -407,7 +407,7 @@ function submitDraft() {
 <style scoped>
 .benefit-workbench {
   margin-top: 0.5rem;
-  color: var(--calc-text, #1c212a);
+  color: var(--calc-text, #e8eaed);
 }
 
 .toolbar {
@@ -420,14 +420,14 @@ function submitDraft() {
 
 .ctl-label {
   font-size: 0.8rem;
-  color: var(--calc-muted, #6b7280);
+  color: var(--calc-muted, #9aa3b0);
 }
 
 .chip {
-  border: 1px solid var(--calc-border, #d5dae3);
+  border: 1px solid var(--calc-border, #2d323a);
   border-radius: 999px;
-  background: var(--calc-surface-2, #f1efe9);
-  color: var(--calc-text, #1c212a);
+  background: var(--calc-surface-2, #141820);
+  color: var(--calc-text, #e8eaed);
   font: inherit;
   font-size: 0.78rem;
   padding: 0.22rem 0.7rem;
@@ -440,8 +440,8 @@ function submitDraft() {
 
 .chip.active {
   border-color: var(--calc-accent, #c9a55c);
-  background: var(--calc-accent-bg, #fff8eb);
-  color: #5c4818;
+  background: var(--calc-accent-bg, rgba(201, 165, 92, 0.14));
+  color: var(--calc-accent-fg, #f0d7a2);
   font-weight: 600;
 }
 
@@ -452,33 +452,33 @@ function submitDraft() {
 .baseline-line {
   margin: 0 0 0.5rem;
   font-size: 0.82rem;
-  color: var(--calc-text, #1c212a);
+  color: var(--calc-text, #e8eaed);
 }
 
 .baseline-line strong {
-  color: #8a6d2e;
+  color: var(--calc-accent, #c9a55c);
 }
 
 .summary-hint {
-  color: var(--calc-muted, #6b7280);
+  color: var(--calc-muted, #9aa3b0);
   font-size: 0.75rem;
 }
 
 .hint {
   margin: 0.25rem 0 0;
   font-size: 0.8rem;
-  color: var(--calc-muted, #6b7280);
+  color: var(--calc-muted, #9aa3b0);
 }
 
 .err {
   margin: 0.3rem 0 0;
   font-size: 0.78rem;
-  color: #b42318;
+  color: var(--calc-neg, #f07178);
 }
 
 .table-wrap {
   overflow: auto;
-  border: 1px solid var(--calc-border, #d5dae3);
+  border: 1px solid var(--calc-border, #2d323a);
   border-radius: 10px;
 }
 
@@ -490,9 +490,9 @@ table {
 
 th {
   padding: 0.55rem 0.65rem;
-  border-bottom: 1px solid var(--calc-border, #d5dae3);
-  background: var(--calc-surface-2, #f1efe9);
-  color: var(--calc-muted, #6b7280);
+  border-bottom: 1px solid var(--calc-border, #2d323a);
+  background: var(--calc-surface-2, #141820);
+  color: var(--calc-muted, #9aa3b0);
   font-weight: 500;
   text-align: left;
   white-space: nowrap;
@@ -555,8 +555,8 @@ th.num-head {
 
 td {
   padding: 0.55rem 0.65rem;
-  border-bottom: 1px solid var(--calc-border, #d5dae3);
-  color: var(--calc-text, #1c212a);
+  border-bottom: 1px solid var(--calc-border, #2d323a);
+  color: var(--calc-text, #e8eaed);
   text-align: left;
 }
 
@@ -570,11 +570,11 @@ tbody tr:last-child td {
 }
 
 td.pos {
-  color: #1f7a47;
+  color: var(--calc-pos, #7dd3a0);
 }
 
 td.neg {
-  color: #b42318;
+  color: var(--calc-neg, #f07178);
 }
 
 .benefit-row {
@@ -608,7 +608,7 @@ td.neg {
 .library-editor {
   margin-top: 0.85rem;
   padding-top: 0.75rem;
-  border-top: 1px dashed var(--calc-border, #d5dae3);
+  border-top: 1px dashed var(--calc-border, #2d323a);
 }
 
 .library-header {
@@ -621,14 +621,14 @@ td.neg {
 .library-header h4 {
   margin: 0;
   font-size: 0.88rem;
-  color: var(--calc-text, #1c212a);
+  color: var(--calc-text, #e8eaed);
 }
 
 .ghost-btn {
-  border: 1px solid var(--calc-border, #d5dae3);
+  border: 1px solid var(--calc-border, #2d323a);
   border-radius: 8px;
-  background: var(--calc-surface-2, #f1efe9);
-  color: var(--calc-text, #1c212a);
+  background: var(--calc-surface-2, #141820);
+  color: var(--calc-text, #e8eaed);
   font: inherit;
   font-size: 0.78rem;
   padding: 0.22rem 0.6rem;
@@ -641,7 +641,7 @@ td.neg {
 
 .type-cell {
   white-space: nowrap;
-  color: var(--calc-muted, #6b7280);
+  color: var(--calc-muted, #9aa3b0);
   font-size: 0.76rem;
 }
 
@@ -649,7 +649,7 @@ td.neg {
   margin-left: 0.3rem;
   padding: 0 0.25rem;
   border-radius: 4px;
-  background: rgba(60, 55, 40, 0.08);
+  background: color-mix(in srgb, var(--calc-muted, #9aa3b0) 18%, transparent);
   font-size: 0.68rem;
 }
 
@@ -657,10 +657,10 @@ td.neg {
   width: 100%;
   min-width: 4.5rem;
   padding: 0.18rem 0.35rem;
-  border: 1px solid var(--calc-border, #d5dae3);
+  border: 1px solid var(--calc-border, #2d323a);
   border-radius: 4px;
-  background: var(--calc-input-bg, #ffffff);
-  color: var(--calc-text, #1c212a);
+  background: var(--calc-input-bg, #0f1217);
+  color: var(--calc-text, #e8eaed);
   font: inherit;
   font-size: 0.78rem;
 }
@@ -672,10 +672,10 @@ td.neg {
 .del-btn {
   width: 1.5rem;
   height: 1.5rem;
-  border: 1px solid rgba(196, 92, 92, 0.45);
+  border: 1px solid color-mix(in srgb, var(--calc-neg, #f07178) 45%, transparent);
   border-radius: 4px;
   background: transparent;
-  color: #b42318;
+  color: var(--calc-neg, #f07178);
   cursor: pointer;
   line-height: 1;
 }
@@ -683,15 +683,15 @@ td.neg {
 .add-entry {
   margin-top: 0.75rem;
   padding: 0.6rem 0.7rem;
-  border: 1px solid var(--calc-border, #d5dae3);
+  border: 1px solid var(--calc-border, #2d323a);
   border-radius: 8px;
-  background: var(--calc-surface-2, #f1efe9);
+  background: var(--calc-surface-2, #141820);
 }
 
 .add-entry h5 {
   margin: 0 0 0.45rem;
   font-size: 0.82rem;
-  color: var(--calc-text, #1c212a);
+  color: var(--calc-text, #e8eaed);
 }
 
 .add-grid {
@@ -706,16 +706,16 @@ td.neg {
   flex-direction: column;
   gap: 0.2rem;
   font-size: 0.75rem;
-  color: var(--calc-muted, #6b7280);
+  color: var(--calc-muted, #9aa3b0);
 }
 
 .add-grid input,
 .add-grid select {
   padding: 0.25rem 0.35rem;
-  border: 1px solid var(--calc-border, #d5dae3);
+  border: 1px solid var(--calc-border, #2d323a);
   border-radius: 4px;
-  background: var(--calc-input-bg, #ffffff);
-  color: var(--calc-text, #1c212a);
+  background: var(--calc-input-bg, #0f1217);
+  color: var(--calc-text, #e8eaed);
   font: inherit;
   font-size: 0.78rem;
 }
@@ -723,8 +723,8 @@ td.neg {
 .btn-primary {
   border: 1px solid var(--calc-accent, #c9a55c);
   border-radius: 999px;
-  background: var(--calc-accent-bg, #fff8eb);
-  color: #5c4818;
+  background: var(--calc-accent-bg, rgba(201, 165, 92, 0.14));
+  color: var(--calc-accent-fg, #f0d7a2);
   font: inherit;
   font-size: 0.78rem;
   font-weight: 600;
@@ -734,7 +734,7 @@ td.neg {
 }
 
 .btn-primary:hover {
-  background: #fff3d6;
-  border-color: #b8944a;
+  background: var(--calc-run-bg-hover, rgba(201, 165, 92, 0.22));
+  border-color: var(--calc-run-border-hover, rgba(201, 165, 92, 0.55));
 }
 </style>

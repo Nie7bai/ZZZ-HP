@@ -12,7 +12,10 @@
   --calc-muted: color-mix(in srgb, var(--color-text, #1c212a) 58%, transparent);
   --calc-accent: #c9a55c;
   --calc-accent-bg: #fff8eb;
+  --calc-accent-fg: #5c4818;
   --calc-input-bg: #ffffff;
+  --calc-pos: #1f7a47;
+  --calc-neg: #b42318;
 }
 
 /* 顶栏：淡蓝实心底，堵住槽位条/编辑条/方案库按钮之间的缝（不要写 background-image:none，会把渐变也清掉） */
@@ -904,17 +907,179 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear:hover 
   color: #3d4f2f !important;
 }
 
-/* 鈥斺€?鏈€浼樿瘝鏉″垎閰?鈥斺€?*/
+/* —— 最优词条分配 —— */
 .calculator-page.theme-light .opt-section {
+  /* 覆盖组件内暗色默认变量，否则子组件仍吃黑夜值 */
+  --calc-surface: var(--zzz-card, #faf8f2);
+  --calc-surface-2: var(--zzz-paper-soft, #f1efe9);
+  --calc-surface-3: color-mix(in srgb, var(--zzz-paper, #e8e6df) 85%, #ffffff);
+  --calc-border: var(--color-border, #d5dae3);
+  --calc-text: var(--color-text, #1c212a);
+  --calc-muted: color-mix(in srgb, var(--color-text, #1c212a) 58%, transparent);
+  --calc-accent: #c9a55c;
+  --calc-accent-bg: #fff8eb;
+  --calc-accent-fg: #5c4818;
+  --calc-input-bg: #ffffff;
+  --calc-pos: #1f7a47;
+  --calc-neg: #b42318;
   --calc-run-border: var(--calc-accent);
   --calc-run-bg: var(--calc-accent-bg);
-  --calc-run-text: #5c4818;
+  --calc-run-text: var(--calc-accent-fg);
   --calc-run-bg-hover: #fff3d6;
   --calc-run-border-hover: #b8944a;
   border-color: var(--calc-border) !important;
   background: var(--calc-surface) !important;
   color: var(--calc-text) !important;
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.calculator-page.theme-light .opt-section .opt-header h2,
+.calculator-page.theme-light .opt-section .block-title,
+.calculator-page.theme-light .opt-section .sub-title,
+.calculator-page.theme-light .opt-section .alloc-header h4,
+.calculator-page.theme-light .opt-section .panel-block-header h3 {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .opt-section .section-mode-row {
+  border-bottom-color: var(--calc-border) !important;
+}
+
+.calculator-page.theme-light .opt-section .section-mode-tab {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface-2) !important;
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .opt-section .section-mode-tab.active {
+  border-color: var(--calc-accent) !important;
+  background: var(--calc-accent-bg) !important;
+  color: var(--calc-accent-fg) !important;
+}
+
+.calculator-page.theme-light .opt-section .alloc-input-row input,
+.calculator-page.theme-light .opt-section .alloc-controls input,
+.calculator-page.theme-light .opt-section .field > input,
+.calculator-page.theme-light .opt-section .field > select,
+.calculator-page.theme-light .opt-section .field > input:read-only {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-input-bg) !important;
+  color: var(--calc-text) !important;
+  color-scheme: light;
+}
+
+.calculator-page.theme-light .opt-section .panel-block {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface-2) !important;
+}
+
+.calculator-page.theme-light .opt-section .panel-block--final {
+  border-color: #c9d4b8 !important;
+  background:
+    linear-gradient(135deg, rgba(136, 171, 78, 0.08), transparent 42%),
+    var(--calc-surface) !important;
+}
+
+.calculator-page.theme-light .opt-section .panel-block-header p,
+.calculator-page.theme-light .opt-section .ctl-label,
+.calculator-page.theme-light .opt-section .benefit-step-row .ctl-label {
+  color: var(--calc-muted) !important;
+}
+
+.calculator-page.theme-light .opt-section .alloc-block {
+  border-top-color: var(--calc-border) !important;
+}
+
+.calculator-page.theme-light .opt-section .alloc-result .summary-item,
+.calculator-page.theme-light .opt-section .alloc-result .budget-item,
+.calculator-page.theme-light .opt-section .alloc-result .table-wrap,
+.calculator-page.theme-light .opt-section .benefit-workbench .table-wrap,
+.calculator-page.theme-light .opt-section .benefit-workbench .add-entry {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface-2) !important;
+}
+
+.calculator-page.theme-light .opt-section .alloc-result th,
+.calculator-page.theme-light .opt-section .benefit-workbench th {
+  background: var(--calc-surface-3) !important;
+  color: var(--calc-muted) !important;
+  border-bottom-color: var(--calc-border) !important;
+}
+
+.calculator-page.theme-light .opt-section .alloc-result td,
+.calculator-page.theme-light .opt-section .benefit-workbench td {
+  color: var(--calc-text) !important;
+  border-bottom-color: var(--calc-border) !important;
+}
+
+.calculator-page.theme-light .opt-section .alloc-result .summary-value.pos,
+.calculator-page.theme-light .opt-section .benefit-workbench td.pos,
+.calculator-page.theme-light .opt-section td.pos,
+.calculator-page.theme-light .opt-section .pos {
+  color: var(--calc-pos) !important;
+}
+
+.calculator-page.theme-light .opt-section .benefit-workbench td.neg,
+.calculator-page.theme-light .opt-section td.neg,
+.calculator-page.theme-light .opt-section .neg,
+.calculator-page.theme-light .opt-section .err,
+.calculator-page.theme-light .opt-section .alloc-result .err {
+  color: var(--calc-neg) !important;
+}
+
+.calculator-page.theme-light .opt-section .benefit-workbench .chip.active,
+.calculator-page.theme-light .opt-section .benefit-workbench .btn-primary,
+.calculator-page.theme-light .opt-section .curve-toolbar .chip.active {
+  border-color: var(--calc-accent) !important;
+  background: var(--calc-accent-bg) !important;
+  color: var(--calc-accent-fg) !important;
+}
+
+.calculator-page.theme-light .opt-section .benefit-workbench .inline-input,
+.calculator-page.theme-light .opt-section .benefit-workbench .add-grid input,
+.calculator-page.theme-light .opt-section .benefit-workbench .add-grid select {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-input-bg) !important;
+  color: var(--calc-text) !important;
+  color-scheme: light;
+}
+
+.calculator-page.theme-light .opt-section .curve-toolbar .chip {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface-2) !important;
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .opt-section .opt-bar-chart .bar-tip,
+.calculator-page.theme-light .opt-section .opt-line-chart .line-tip {
+  border-color: var(--calc-border) !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: var(--calc-text) !important;
+  box-shadow: 0 6px 18px rgba(16, 24, 40, 0.12) !important;
+}
+
+.calculator-page.theme-light .opt-section .opt-bar-chart .bar-tip__label,
+.calculator-page.theme-light .opt-section .opt-line-chart .line-tip__label {
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .opt-section .opt-bar-chart .bar-tip__row strong,
+.calculator-page.theme-light .opt-section .opt-line-chart .line-tip__row strong {
+  color: #8a6d2e !important;
+}
+
+.calculator-page.theme-light .opt-section .opt-bar-chart .bar-group.selected .bar {
+  stroke: var(--calc-accent) !important;
+}
+
+.calculator-page.theme-light .opt-section .opt-bar-chart .max-marker {
+  fill: #8a6d2e !important;
+  stroke: #ffffff !important;
+}
+
+.calculator-page.theme-light .opt-section .opt-line-chart .legend,
+.calculator-page.theme-light .opt-section .opt-bar-chart .legend {
+  color: var(--calc-muted) !important;
 }
 
 .calculator-page.theme-light .opt-section .calc-commit-row {
