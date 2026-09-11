@@ -1832,6 +1832,9 @@ function setCalcMode(mode: PanelCalcMode) {
  * 【临时冻结 · 2026-09-11】「面板导入 / 词条导入」两个按钮已停用（它们会改掉算进伤害的
  * 那份面板，见本文件模板里的说明）。停用后「最优词条分配」成了唯一还能切模式的按钮，
  * 因此它同时承担退出：进去后再点一次即回到普通计算，否则会困在模块里出不来。
+ *
+ * 侧栏同名项也走这个函数（见 CharacterCalculatorView.scrollToDamageSection）——
+ * 否则从侧栏进去的人点侧栏回不来（2026-09-11 用户实测）。
  */
 function toggleOptimalAffixSection() {
   selectPanelCalcMode(panelCalcMode.value === 'optimal' ? 'panel' : 'optimal')
@@ -1856,7 +1859,7 @@ function selectPanelCalcMode(mode: PanelCalcMode) {
   })
 }
 
-defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
+defineExpose({ scrollToSection, setCalcMode, toggleOptimalAffixSection, panelCalcMode })
 </script>
 
 <template>

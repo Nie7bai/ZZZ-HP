@@ -115,10 +115,17 @@ async function scrollToDamageSection(item: DamageCalcNavItem | { id: 'damage-cal
   const switched = await ensurePage('damage')
   mobileNavOpen.value = false
   // 冻结项（面板导入 / 词条导入）不得再切换计算方式，只当导航锚点用
+  const mode = 'calcMode' in item ? item.calcMode : undefined
   const frozen = 'frozen' in item && item.frozen
-  if ('calcMode' in item && item.calcMode && !frozen) {
-    damageCalcModeHint.value = item.calcMode
-    damageCalcPageRef.value?.setCalcMode(item.calcMode)
+  if (mode && !frozen) {
+    // 「最优词条分配」是进 / 出切换：它是词条功能唯一的出口，
+    // 只进不出会把从侧栏进入的人困在模块里（2026-09-11 用户实测）。
+    if (mode === 'optimal') {
+      damageCalcPageRef.value?.toggleOptimalAffixSection()
+    } else {
+      damageCalcModeHint.value = mode
+      damageCalcPageRef.value?.setCalcMode(mode)
+    }
   }
   await nextTick()
   if (switched) await nextTick()
@@ -354,7 +361,15 @@ const filteredDriveDiscDocs = computed(() =>
                         :disabled="modeItem.frozen || undefined"
                         :aria-disabled="modeItem.frozen || undefined"
                         :tabindex="activePage === 'damage' && !modeItem.frozen ? 0 : -1"
-                        :title="modeItem.frozen ? '已冻结：面板在「代理人 → 导入」里录入，不用它切换' : undefined"
+                        :title="
+                          modeItem.frozen
+                            ? '已冻结：面板在「代理人 → 导入」里录入，不用它切换'
+                            : modeItem.calcMode === 'optimal'
+                              ? damageCalcModeHint === 'optimal'
+                                ? '返回计算'
+                                : '进入最优词条分配'
+                              : undefined
+                        "
                         @click="scrollToDamageSection(modeItem)"
                       >
                         {{ modeItem.label }}
