@@ -73,6 +73,17 @@ const props = defineProps<{
   skillTalentLevelsByAgent?: Record<string, SkillTalentLevels | Partial<SkillTalentLevels>>
   /** 当前加载的方案名；未归档为空 */
   schemeName?: string
+  /** 招式流程「用哪份面板」三选项，见 `utils/skillFlowPanelSource.ts` */
+  panelSourceMode?: 'config' | 'allocation' | 'sweep'
+  /** 各来源能否选（数据算过且未过期）与禁用原因 */
+  panelSourceAvailability?: Record<
+    'config' | 'allocation' | 'sweep',
+    { enabled: boolean; reason?: string | null }
+  >
+}>()
+
+const emit = defineEmits<{
+  'update:panelSourceMode': [mode: 'config' | 'allocation' | 'sweep']
 }>()
 
 const slots = defineModel<SchemeSlot[]>('slots', { required: true })
@@ -2096,6 +2107,43 @@ onMounted(() => window.addEventListener('keydown', onModalKeydown))
 onUnmounted(() => window.removeEventListener('keydown', onModalKeydown))
 
 defineExpose({ expand })
+
+/** 三选项的展示态：可用性由页级判定（数据算过且未过期） */
+const panelSourceOptions = computed(() => {
+  const availability = props.panelSourceAvailability
+  return [
+    {
+      mode: 'config' as const,
+      label: '角色配置面板',
+      enabled: availability?.config?.enabled ?? true,
+      reason: availability?.config?.reason ?? null,
+      help: '用「代理人 → 导入」里录入的激活面板',
+    },
+    {
+      mode: 'allocation' as const,
+      label: '词条分析 · 最优分配',
+      enabled: availability?.allocation?.enabled ?? false,
+      reason: availability?.allocation?.reason ?? null,
+      help: '用求解出的词条数叠加在基准面板上',
+    },
+    {
+      mode: 'sweep' as const,
+      label: '词条分析 · 当前点击柱',
+      enabled: availability?.sweep?.enabled ?? false,
+      reason: availability?.sweep?.reason ?? null,
+      help: '用柱图上当前点击那根柱的词条数叠加',
+    },
+  ]
+})
+
+/** 选中项失效时的提示（回落 ① 的理由要说清楚，避免看着像 bug） */
+const panelSourceNotice = computed(() => {
+  const mode = props.panelSourceMode ?? 'config'
+  if (mode === 'config') return null
+  const option = panelSourceOptions.value.find((item) => item.mode === mode)
+  if (!option || option.enabled) return null
+  return `${option.label}：${option.reason ?? '暂不可用'}（已回落到角色配置面板）`
+})
 </script>
 
 <template>
@@ -2127,6 +2175,32 @@ defineExpose({ expand })
       <button type="button" class="sf-toggle-btn" @click="expanded = !expanded">
         {{ expanded ? '收起' : '展开' }}
       </button>
+    </div>
+
+    <!--
+      用哪份面板（三选项）。三态共用同一张按输入分键的记忆表，切来源时各自留着自己的结果。
+      未算过 / 配置改动过的选项禁用（宁可禁用也不显示过期数字），见 utils/skillFlowPanelSource.ts。
+    -->
+    <div class="sf-panel-source" role="radiogroup" aria-label="招式伤害用哪份面板">
+      <span class="sf-panel-source-label">伤害面板</span>
+      <button
+        v-for="option in panelSourceOptions"
+        :key="option.mode"
+        type="button"
+        role="radio"
+        class="sf-panel-source-btn"
+        :class="{
+          active: (panelSourceMode ?? 'config') === option.mode,
+          disabled: !option.enabled,
+        }"
+        :aria-checked="(panelSourceMode ?? 'config') === option.mode"
+        :disabled="!option.enabled"
+        :title="option.enabled ? option.help : option.reason ?? '暂不可用'"
+        @click="emit('update:panelSourceMode', option.mode)"
+      >
+        {{ option.label }}
+      </button>
+      <span v-if="panelSourceNotice" class="sf-panel-source-notice">{{ panelSourceNotice }}</span>
     </div>
 
     <div v-show="expanded" class="skill-flow-modal skill-flow-editor">
@@ -3346,6 +3420,56 @@ defineExpose({ expand })
   border-color: #dfc07a;
   background: #3a3018;
   color: #f7e7c0;
+}
+
+/* 「伤害面板」三选项：与站点其他 chip 观感一致，禁用态明确不可点 */
+.sf-panel-source {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.55rem;
+}
+.sf-panel-source-label {
+  color: #9aa3b0;
+  font-size: 0.82rem;
+}
+.sf-panel-source-btn {
+  appearance: none;
+  border: 1px solid #4a5364;
+  background: #1b2130;
+  color: #cbd3df;
+  font: inherit;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  padding: 0.32rem 0.75rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+.sf-panel-source-btn:hover:not(.disabled) {
+  border-color: #6d7a91;
+  color: #eaf0f8;
+}
+.sf-panel-source-btn.active {
+  border-color: #c9a55c;
+  background: rgba(201, 165, 92, 0.18);
+  color: #f0d7a2;
+  font-weight: 600;
+}
+.sf-panel-source-btn.disabled {
+  border-color: #333a47;
+  background: #171c26;
+  color: #5c6675;
+  text-decoration: line-through;
+  cursor: not-allowed;
+}
+.sf-panel-source-notice {
+  color: #d8a25c;
+  font-size: 0.78rem;
 }
 .primary-btn {
   border: 1px solid #c9a55c;

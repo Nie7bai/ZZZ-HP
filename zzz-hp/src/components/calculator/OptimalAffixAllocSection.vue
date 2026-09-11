@@ -96,6 +96,10 @@ import {
 } from '@/utils/damageEvent'
 import { buildGenericPanelSkillContext } from '@/utils/resolvedHit'
 import {
+  buildSkillFlowPageSignature,
+  type SkillFlowPanelOption,
+} from '@/utils/skillFlowPanelSource'
+import {
   buildHitEvalFingerprint,
   hitEvalCacheKey,
   internHitEvalContext,
@@ -164,6 +168,12 @@ const props = defineProps<{
   /** 准备招式单次预览（与面板计算共用，用于技能卡伤害数字） */
   previewHits?: import('@/utils/resolvedHit').ResolvedHit[]
   environmentBuffs?: import('@/utils/environmentBuffCalc').EnvironmentBuffEntry[]
+  /**
+   * 招式流程「用哪份面板」的覆盖值（三选项的 ②③）。
+   *
+   * 本模块的招式流程映射优先用它；为 null 时沿用自己按词条分析算出的面板。
+   */
+  skillFlowMainExternalOverride?: PanelStats | null
 }>()
 
 const extraGains = defineModel<ExtraBuffGain[]>('extraGains', { default: () => [] })
@@ -171,6 +181,10 @@ const extraGains = defineModel<ExtraBuffGain[]>('extraGains', { default: () => [
 const emit = defineEmits<{
   'update:hitDamages': [value: Record<string, number>]
   'update:hitCalcResults': [value: Record<string, DamageCalcResult>]
+  /** 上报「最优分配 / 当前柱」两个来源的主 C 局外面板与摘要，供招式流程三选项使用 */
+  'update:panelSourceOptions': [
+    value: Partial<Record<'allocation' | 'sweep', SkillFlowPanelOption | null>>,
+  ]
 }>()
 
 const emptyBangboo: BangbooBuffDoc = {
@@ -207,7 +221,13 @@ onDeactivated(() => {
   keptAliveActive.value = false
 })
 const isSectionActive = computed(() => props.active !== false && keptAliveActive.value)
-const baseDamageSource = ref<BaseDamageSource>('atk')
+/**
+ * 基础伤害来源：**页级共享**（`v-model:baseDamageSource`）。
+ *
+ * 原先两个 section 各存一份，同一个概念在两处可各选各的 —— 招式流程三选项要求
+ * 「同一份配置只对应一份面板」，因此收到页级（也让页级签名能覆盖它）。
+ */
+const baseDamageSource = defineModel<BaseDamageSource>('baseDamageSource', { default: 'atk' })
 const enemyInput = defineModel<DamageEnemyInput>('enemyInput', { required: true })
 
 function setDamageKind(kind: OptimalDamageKind) {
@@ -1015,11 +1035,83 @@ watch(
 /**
  * 招式流程用的局外面板：只跟「开始计算」产出的柱体走。
  * 未扫过、或改数字尚未再点开始：不算招式总伤（未扫过返回空；已有柱则沿用上次选中柱）。
+ *
+ * 三选项的 ②③ 由页级下发覆盖值（同一份数值两个消费者共用），此时以覆盖值为准。
  */
 const skillFlowExternal = computed(() => {
+  const override = props.skillFlowMainExternalOverride
+  if (override) return override
+  // ① 角色配置面板：页级已解析的激活面板（与面板侧同一份来源）
+  const mainAgentId = props.teamSlots[mainSlotIndex.value]?.agentId
+  const savedConfigPanel = mainAgentId ? props.activeSlotPanels?.[mainAgentId] : undefined
+  if (savedConfigPanel) return fillPanelStatsDefaults(savedConfigPanel)
+  // 没有录入面板时保留旧行为：只在扫掠过之后按柱体算（未扫过为空）
   if (!sweepPoints.value.length) return null
   return analysisEval.value?.external ?? null
 })
+
+/**
+ * 与页级同一份字段表算出的上下文签名（`buildSkillFlowPageSignature`）。
+ *
+ * 用途：上报来源时**带上「这份面板是在什么配置下算出来的」**，页级据此判过期。
+ * 字段表只有一份（在 util 里），两个调用点各自的取值都来自页级下发的同一批 props，
+ * 因此两边算出来必定一致。
+ */
+const panelSourceSignature = computed(() =>
+  buildSkillFlowPageSignature({
+    teamSlots: props.teamSlots,
+    slotPanels: props.slotPanels,
+    activeSlotPanels: props.activeSlotPanels ?? {},
+    convertSlotPanels: props.convertSlotPanels,
+    mainSlotIndex: mainSlotIndex.value,
+    selectedBangbooId: props.selectedBangbooId,
+    bangbooRefine: props.bangbooRefine,
+    slotBuffSelections: props.slotBuffSelections,
+    environmentBuffIds: (props.environmentBuffs ?? []).map((item) => item.id),
+    extraGains: extraGains.value,
+    enemyInput: enemyInput.value,
+    staggerPhase: props.staggerPhase,
+    damageKind: props.damageKind,
+    anomalySubKind: props.anomalySubKind,
+    skillCategoryId: props.skillCategoryId,
+    skillSubcategoryId: props.skillSubcategoryId,
+    triggerAnomalyAgentId: props.triggerAnomalyAgentId,
+    baseDamageSource: baseDamageSource.value,
+  }),
+)
+
+/**
+ * 上报「最优分配 / 当前柱」两个来源的主 C 局外面板，供招式流程三选项使用。
+ *
+ * 定义位置在 `affixAllocEval` 之后（TDZ）：`affixAllocEval` 在本文件靠后定义，
+ * 提前引用会在 setup 阶段直接抛「Cannot access before initialization」（实测踩过）。
+ *
+ * 报的是**算好的面板**而不是词条数：两个消费者必须拿到同一份数值（各自再叠一次会引入分叉）。
+ * 只在真正算过时上报；未算过的来源报 null（选项据此禁用）。
+ */
+function emitPanelSourceOptions() {
+  emit('update:panelSourceOptions', {
+    allocation: affixAllocEval.value?.external
+      ? buildPanelSourceOption('allocation', affixAllocEval.value.external)
+      : null,
+    sweep: selectedEval.value?.external
+      ? buildPanelSourceOption('sweep', selectedEval.value.external)
+      : null,
+  })
+}
+
+function buildPanelSourceOption(
+  mode: 'allocation' | 'sweep',
+  mainExternal: PanelStats,
+): SkillFlowPanelOption {
+  return {
+    mode,
+    mainExternal,
+    label: mode === 'allocation' ? '最优分配' : '当前柱',
+    signature: panelSourceSignature.value,
+    baseDamageSource: baseDamageSource.value,
+  }
+}
 
 /** 用最优词条面板重算流程/准备招式预览伤害，供招式流程展示（防抖 + per-hit 缓存） */
 const skillFlowHitMapState = ref<{
@@ -1394,6 +1486,17 @@ const affixAllocEval = computed(() => {
   if (!result) return null
   return evaluateAffixCounts(evalCtx.value, result.counts, result.panelDeltas, result.valuePerCount)
 })
+
+// 两个来源的面板就绪 / 失效时上报给页级（招式流程三选项据此启用与判过期）
+watch(
+  [
+    () => affixAllocEval.value?.external ?? null,
+    () => selectedEval.value?.external ?? null,
+    panelSourceSignature,
+  ],
+  () => emitPanelSourceOptions(),
+  { immediate: true },
+)
 
 /** 词条分配模式：计算过程（与扫掠模式共用 useDamageProcessEvents） */
 const affixAllocProcess = useDamageProcessEvents({

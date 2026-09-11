@@ -263,8 +263,14 @@ const props = defineProps<{
   previewHits?: ResolvedHit[]
   /** 为 true 时跳过伤害事件汇总等非必要重算（如最优词条模式） */
   calcSuspended?: boolean
-  /** 场地 / 环境 Buff（危局全局、Boss 场地、防卫房间） */
+  /** 环境 / 场地 Buff（危局全局、Boss 场地、防卫房间） */
   environmentBuffs?: import('@/utils/environmentBuffCalc').EnvironmentBuffEntry[]
+  /**
+   * 主 C 局外面板覆盖值（招式流程三选项的「词条分析」两态）。
+   *
+   * 为 null / 省略时用角色配置那份激活面板。见 `utils/skillFlowPanelSource.ts`。
+   */
+  skillFlowMainExternalOverride?: PanelStats | null
 }>()
 
 const extraGains = defineModel<ExtraBuffGain[]>('extraGains', { default: () => [] })
@@ -277,7 +283,13 @@ const emit = defineEmits<{
   'update:hitCalcResults': [value: Record<string, DamageCalcResult>]
 }>()
 
-const baseDamageSource = ref<BaseDamageSource>('atk')
+/**
+ * 基础伤害来源：**页级共享**（`v-model:baseDamageSource`）。
+ *
+ * 原先两个 section 各存一份，同一个概念在两处可各选各的；招式流程三选项要求
+ * 「同一份配置只对应一份面板」，因此收到页级（也让页级签名能覆盖它）。
+ */
+const baseDamageSource = defineModel<BaseDamageSource>('baseDamageSource', { default: 'atk' })
 const showDetailedResults = ref(false)
 const selectedDamageEventId = ref<string | null>(null)
 const damageEventSummary = ref<{ lines: HitLine[]; grandTotal: number } | null>(null)
@@ -1428,8 +1440,13 @@ const skillFlowEvalCtx = computed(() =>
   }),
 )
 
-/** 主 C 局外面板：角色配置里那份激活面板（改造前口径） */
-const skillFlowMainExternal = computed(() => resolveExternalPanelForSlotIndex(mainSlotIndex.value))
+/**
+ * 主 C 局外面板：默认取角色配置里那份激活面板；
+ * 选了「词条分析」两态时用页级下发的覆盖值（同一份数值两个消费者共用）。
+ */
+const skillFlowMainExternal = computed(
+  () => props.skillFlowMainExternalOverride ?? resolveExternalPanelForSlotIndex(mainSlotIndex.value),
+)
 
 
 /**
@@ -1578,6 +1595,8 @@ watch(
     () => props.hits,
     () => props.previewHits,
     hitCalcGlobalSignature,
+    // 招式流程三选项切换：换面板必须重算（缓存键里含面板，换来源即换键）
+    () => props.skillFlowMainExternalOverride,
     () => props.calcSuspended,
     () => damageCalcEnabled.value,
   ],

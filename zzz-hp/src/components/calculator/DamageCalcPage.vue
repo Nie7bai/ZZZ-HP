@@ -6,6 +6,12 @@ import BuffEffectPickerModal from '@/components/calculator/BuffEffectPickerModal
 import EnvironmentBuffFilterBar from '@/components/calculator/EnvironmentBuffFilterBar.vue'
 import DamageCalcHistorySection from '@/components/calculator/DamageCalcHistorySection.vue'
 import SkillFlowSection from '@/components/calculator/SkillFlowSection.vue'
+import {
+  buildSkillFlowPageSignature,
+  resolveSkillFlowPanelSource,
+  type SkillFlowPanelOption,
+  type SkillFlowPanelSourceMode,
+} from '@/utils/skillFlowPanelSource'
 import OptimalAffixAllocSection from '@/components/calculator/OptimalAffixAllocSection.vue'
 import PanelCalcSection from '@/components/calculator/PanelCalcSection.vue'
 import ExtraBuffGainModal from '@/components/calculator/ExtraBuffGainModal.vue'
@@ -38,6 +44,7 @@ import {
 import type {
   AnomalyDamageSubKind,
   BangbooBuffDoc,
+  BaseDamageSource,
   DamageCalcKind,
   StaggerPhase,
 } from '@/types/calculator'
@@ -192,6 +199,24 @@ const extraGains = ref<ExtraBuffGain[]>([])
 const schemeSlots = ref<SchemeSlot[]>(ensureSchemeSlots([], 3))
 const hitDamages = ref<Record<string, number>>({})
 const hitCalcResults = ref<Record<string, DamageCalcResult>>({})
+/**
+ * 招式流程「用哪份面板」（三选项）与词条分析上报的候选来源。
+ *
+ * 数据只活在内存（词条分析产物明确不落盘）：刷新后 ②③ 自动回到禁用并回落 ①。
+ * 判定见 `utils/skillFlowPanelSource.ts`。
+ */
+const skillFlowPanelSource = ref<SkillFlowPanelSourceMode>('config')
+const skillFlowPanelOptions = ref<
+  Partial<Record<'allocation' | 'sweep', SkillFlowPanelOption | null>>
+>({ allocation: null, sweep: null })
+/**
+ * 基础伤害来源（攻击力 / 防御力 / 贯穿力）：**页级唯一一份**，两个 section 与之双向绑定。
+ *
+ * 原先两侧各存一份、可各选各的；招式流程三选项要求「同一份配置只对应一份面板」，
+ * 因此收到页级 —— 顺带让页级签名能覆盖它（见 `buildSkillFlowPageSignature`）。
+ */
+const baseDamageSource = ref<BaseDamageSource>('atk')
+
 const resolvedFlow = computed(() =>
   resolveFlow({
     slots: schemeSlots.value,
@@ -406,8 +431,7 @@ const defenseFrontierOptions = computed(() =>
   listDefenseEnvFrontierFilterOptions(selectedDefenseSeason.value),
 )
 
-const activeEnvironmentBuffs = computed<EnvironmentBuffEntry[]>(() => {
-  if (envBuffMode.value === 'none' || !envBuffPhaseId.value) return []
+const activeEnvironmentBuffs = computed<EnvironmentBuffEntry[]>(() => {  if (envBuffMode.value === 'none' || !envBuffPhaseId.value) return []
   if (envBuffMode.value === 'crisis') {
     const phase = selectedCrisisPhase.value
     if (!phase) return []
@@ -434,6 +458,74 @@ const envBuffForceGroups = computed(() => {
   if (envBuffMode.value === 'defense') return ['防线 Buff']
   if (envBuffMode.value === 'deduction') return ['临界 Buff', 'Boss 场地 Buff']
   return []
+})
+
+/**
+ * 页级上下文签名：判断词条分析上报的那份面板是否还能代表「当前配置」。
+ *
+ * 逐字段从**响应式来源**读（读取即收集依赖，配置一变签名就变）——
+ * 不能从深解包后的计算上下文取，那样读不建立依赖，会命中过期结果（实测踩过）。
+ */
+const skillFlowPageSignature = computed(() =>
+  buildSkillFlowPageSignature({
+    teamSlots,
+    slotPanels,
+    activeSlotPanels: activeSlotPanels.value,
+    convertSlotPanels,
+    mainSlotIndex: activeSlot.value,
+    selectedBangbooId: selectedBangbooId.value,
+    bangbooRefine: bangbooRefine.value,
+    slotBuffSelections: multiSlotBuffSelection,
+    environmentBuffIds: activeEnvironmentBuffs.value.map((item) => item.id),
+    extraGains: extraGains.value,
+    enemyInput: enemyInput.value,
+    staggerPhase: staggerPhase.value,
+    damageKind: damageKind.value,
+    anomalySubKind: anomalySubKind.value,
+    skillCategoryId: skillCategoryId.value,
+    skillSubcategoryId: skillSubcategoryId.value,
+    triggerAnomalyAgentId: triggerAnomalyAgentId.value,
+    baseDamageSource: baseDamageSource.value,
+  }),
+)
+
+/** 当前选择解析出的主 C 局外面板覆盖值（null = 用角色配置面板） */
+const skillFlowPanelResolved = computed(() =>
+  resolveSkillFlowPanelSource({
+    mode: skillFlowPanelSource.value,
+    options: skillFlowPanelOptions.value,
+    currentSignature: skillFlowPageSignature.value,
+  }),
+)
+
+const skillFlowMainExternalOverride = computed(() => skillFlowPanelResolved.value.mainExternal)
+
+const skillFlowPanelAvailability = computed(() => {
+  const signature = skillFlowPageSignature.value
+  const reasonFor = (option: SkillFlowPanelOption | null | undefined) => {
+    if (!option) return '尚未计算：先在「最优词条分配」里算一次'
+    if (option.signature !== signature) return '配置已改动，请重新计算词条分析'
+    return null
+  }
+  const allocationReason = reasonFor(skillFlowPanelOptions.value.allocation)
+  const sweepReason = reasonFor(skillFlowPanelOptions.value.sweep)
+  return {
+    config: { enabled: true, reason: null },
+    allocation: {
+      enabled: allocationReason == null,
+      reason:
+        allocationReason ??
+        '尚未计算：先在「最优词条分配」里求解',
+    },
+    sweep: {
+      enabled: sweepReason == null,
+      reason:
+        sweepReason ??
+        '尚未计算：先在「最优词条分配 · 扫掠柱图」里算一次并点选一根柱',
+    },
+    /** 选中项失效的提示（已在用 ① 的面板） */
+    notice: skillFlowPanelResolved.value.active ? null : skillFlowPanelResolved.value.reason,
+  }
 })
 
 const envBuffFilterHint = computed(() => {
@@ -2111,6 +2203,8 @@ defineExpose({ scrollToSection, setCalcMode, toggleOptimalAffixSection, panelCal
       :hits="hits"
       :preview-hits="previewHits"
       :environment-buffs="activeEnvironmentBuffs"
+      :skill-flow-main-external-override="skillFlowMainExternalOverride"
+      v-model:base-damage-source="baseDamageSource"
       v-model:enemy-input="enemyInput"
       v-model:extra-gains="extraGains"
       @update:slot-panels="applySlotPanelPatch"
@@ -2152,11 +2246,14 @@ defineExpose({ scrollToSection, setCalcMode, toggleOptimalAffixSection, panelCal
         :hits="hits"
         :preview-hits="previewHits"
         :environment-buffs="activeEnvironmentBuffs"
+        :skill-flow-main-external-override="skillFlowMainExternalOverride"
+        v-model:base-damage-source="baseDamageSource"
         v-model:enemy-input="enemyInput"
         v-model:extra-gains="extraGains"
         :convert-slot-panels="convertSlotPanels"
         @update:hit-damages="hitDamages = $event"
         @update:hit-calc-results="hitCalcResults = $event"
+        @update:panel-source-options="skillFlowPanelOptions = $event"
       />
     </KeepAlive>
 
@@ -2177,6 +2274,9 @@ defineExpose({ scrollToSection, setCalcMode, toggleOptimalAffixSection, panelCal
         :hit-calc-results="hitCalcResults"
         :skill-talent-levels-by-agent="skillTalentLevelsByAgent"
         :scheme-name="currentSchemeName"
+        :panel-source-mode="skillFlowPanelSource"
+        :panel-source-availability="skillFlowPanelAvailability"
+        @update:panel-source-mode="skillFlowPanelSource = $event"
         v-model:slots="schemeSlots"
         v-model:edited-slot-index="activeSlot"
       />
