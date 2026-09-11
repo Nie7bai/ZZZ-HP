@@ -996,6 +996,10 @@ export function normalizeBuffEffect(value: unknown): BuffEffect | null {
   if (effect.kind === 'convert' && !effect.convert) {
     effect.kind = 'fixed'
   }
+  // 叠层结算只用 valuePerStack×层数；转模只用 convert.*。value 为历史冗余，统一清零以免脏数据回写。
+  if (effect.kind === 'stacked' || effect.stackable || effect.kind === 'convert') {
+    effect.value = 0
+  }
   if (effect.scope === 'skill') {
     const targets = getEffectSkillTargets(effect)
     if (!targets.length) {
