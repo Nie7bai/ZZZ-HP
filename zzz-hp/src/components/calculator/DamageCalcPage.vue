@@ -1445,7 +1445,10 @@ function applyWorkingState(entry: {
   applyTeamSlots(entry.teamSlots)
   selectedBangbooId.value = entry.selectedBangbooId
   bangbooRefine.value = entry.bangbooRefine
-  panelCalcMode.value = entry.panelCalcMode === 'optimal' ? 'affix' : entry.panelCalcMode
+  // 【临时冻结 · 2026-09-11】草稿里存的『面板导入 / 词条导入』模式不再恢复成活动状态：
+  // 那两个按钮已停用，模式留着只会变成「谁也没点、却决定了用哪份面板」的幽灵状态。
+  // 一律回到普通计算；是否进「最优词条分配」由用户当场点（不自动打开重模块）。
+  panelCalcMode.value = 'panel'
   // 新结构直接用；老草稿（单份面板 + 槽位级词条数）按 panelCalcMode 归位
   applySlotPanels(
     entry.slotPanels ??
@@ -1801,9 +1804,9 @@ function onClearLoadedScheme() {
 
 async function scrollToSection(sectionId: DamageCalcSectionId) {
   await nextTick()
-  if (sectionId === 'damage-calc-panel') panelCalcMode.value = 'panel'
-  if (sectionId === 'damage-calc-affix') panelCalcMode.value = 'affix'
-  if (sectionId === 'damage-calc-optimal') panelCalcMode.value = 'optimal'
+  // 【临时冻结 · 2026-09-11】这里原先把「面板导入 / 词条导入 / 最优词条分配」三个 id
+  // 直接写成对应模式，是「用按钮挑面板和模式」的第二条路径。现在只做滚动，模式一律由
+  // selectPanelCalcMode / toggleOptimalAffixSection 决定（面板本身与这些按钮无关）。
   if (sectionId === 'skill-flow') {
     skillFlowSectionRef.value?.expand()
     await nextTick()
@@ -1821,6 +1824,17 @@ async function scrollToSection(sectionId: DamageCalcSectionId) {
 function setCalcMode(mode: PanelCalcMode) {
   if (panelCalcMode.value === mode) return
   panelCalcMode.value = mode
+}
+
+/**
+ * 「最优词条分配」按钮：进入 / 返回 一个按钮来回切。
+ *
+ * 【临时冻结 · 2026-09-11】「面板导入 / 词条导入」两个按钮已停用（它们会改掉算进伤害的
+ * 那份面板，见本文件模板里的说明）。停用后「最优词条分配」成了唯一还能切模式的按钮，
+ * 因此它同时承担退出：进去后再点一次即回到普通计算，否则会困在模块里出不来。
+ */
+function toggleOptimalAffixSection() {
+  selectPanelCalcMode(panelCalcMode.value === 'optimal' ? 'panel' : 'optimal')
 }
 
 function selectPanelCalcMode(mode: PanelCalcMode) {
@@ -2022,23 +2036,35 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
         </p>
       </header>
       <div class="calc-mode-tabs" role="tablist" aria-label="面板导入方式">
+        <!--
+          【临时冻结 · 2026-09-11】「面板导入 / 词条导入」两个按钮。
+          冻结原因：它们会改掉**算进伤害的那份面板**（同一份激活面板下，只因停在这两个
+          按钮之一，局内攻击在 3883 / 6136 之间跳），即「用按钮挑面板」这套第二状态干扰架构。
+          冻结期间：两个按钮只作展示，不响应点击、不再参与任何取面板 / 计算决策；
+          每份面板本身照常在「代理人 → 导入」里录入与保存。
+          进入「最优词条分配」后，再点它一次即可退回（第 3 个按钮同时承担退出）。
+          恢复：删掉这两个按钮上的 `disabled / calc-mode-tab--frozen / title`，
+          并把 `selectPanelCalcMode` 里的退出分支去掉。
+        -->
         <button
           type="button"
           role="tab"
-          class="calc-mode-tab"
-          :class="{ active: panelCalcMode === 'panel' }"
+          class="calc-mode-tab calc-mode-tab--frozen"
+          disabled
+          aria-disabled="true"
           :aria-selected="panelCalcMode === 'panel'"
-          @click="selectPanelCalcMode('panel')"
+          title="已冻结：不再用它切换面板；面板在「代理人 → 导入」里录入（面板 / 词条各存一份）"
         >
           面板导入
         </button>
         <button
           type="button"
           role="tab"
-          class="calc-mode-tab"
-          :class="{ active: panelCalcMode === 'affix' }"
+          class="calc-mode-tab calc-mode-tab--frozen"
+          disabled
+          aria-disabled="true"
           :aria-selected="panelCalcMode === 'affix'"
-          @click="selectPanelCalcMode('affix')"
+          title="已冻结：不再用它切换面板；面板在「代理人 → 导入」里录入（面板 / 词条各存一份）"
         >
           词条导入
         </button>
@@ -2048,7 +2074,8 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
           class="calc-mode-tab"
           :class="{ active: panelCalcMode === 'optimal' }"
           :aria-selected="panelCalcMode === 'optimal'"
-          @click="selectPanelCalcMode('optimal')"
+          :title="panelCalcMode === 'optimal' ? '返回计算' : '进入最优词条分配'"
+          @click="toggleOptimalAffixSection"
         >
           最优词条分配
         </button>
@@ -2297,6 +2324,17 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
   background: rgba(201, 165, 92, 0.14);
   color: #f0d7a2;
   font-weight: 600;
+}
+
+/* 【临时冻结 · 2026-09-11】「面板导入 / 词条导入」停用态：仍在原位，但明确不可点 */
+.calc-mode-tab--frozen,
+.calc-mode-tab--frozen:hover {
+  border-color: #23272e;
+  background: #0c0e12;
+  color: #5b6270;
+  cursor: not-allowed;
+  text-decoration: line-through;
+  text-decoration-color: rgba(91, 98, 112, 0.8);
 }
 
 .skill-context-row {

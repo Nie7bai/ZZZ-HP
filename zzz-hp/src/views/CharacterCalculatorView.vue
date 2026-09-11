@@ -114,7 +114,9 @@ async function ensurePage(page: CalcPage): Promise<boolean> {
 async function scrollToDamageSection(item: DamageCalcNavItem | { id: 'damage-calc-mode' }) {
   const switched = await ensurePage('damage')
   mobileNavOpen.value = false
-  if ('calcMode' in item && item.calcMode) {
+  // 冻结项（面板导入 / 词条导入）不得再切换计算方式，只当导航锚点用
+  const frozen = 'frozen' in item && item.frozen
+  if ('calcMode' in item && item.calcMode && !frozen) {
     damageCalcModeHint.value = item.calcMode
     damageCalcPageRef.value?.setCalcMode(item.calcMode)
   }
@@ -335,13 +337,24 @@ const filteredDriveDiscDocs = computed(() =>
                       计算方式
                     </button>
                     <div class="damage-calc-mode-children">
+                      <!--
+                        【临时冻结 · 2026-09-11】「面板导入 / 词条导入」两项只作展示：
+                        它们原先会改掉算进伤害的那份面板（见 constants/damageCalcNav.ts 说明）。
+                        冻结期间不响应点击、不参与高亮，也不再切换面板或计算方式。
+                      -->
                       <button
                         v-for="modeItem in damageCalcModeItems"
                         :key="modeItem.id"
                         type="button"
                         class="damage-subnav-btn"
-                        :class="{ active: damageCalcModeHint === modeItem.calcMode }"
-                        :tabindex="activePage === 'damage' ? 0 : -1"
+                        :class="{
+                          active: !modeItem.frozen && damageCalcModeHint === modeItem.calcMode,
+                          'damage-subnav-btn--frozen': modeItem.frozen,
+                        }"
+                        :disabled="modeItem.frozen || undefined"
+                        :aria-disabled="modeItem.frozen || undefined"
+                        :tabindex="activePage === 'damage' && !modeItem.frozen ? 0 : -1"
+                        :title="modeItem.frozen ? '已冻结：面板在「代理人 → 导入」里录入，不用它切换' : undefined"
                         @click="scrollToDamageSection(modeItem)"
                       >
                         {{ modeItem.label }}
@@ -952,6 +965,16 @@ const filteredDriveDiscDocs = computed(() =>
 .damage-subnav-btn.active {
   color: var(--zzz-yellow, #fbfe00);
   background: rgba(251, 254, 0, 0.12);
+}
+
+/* 【临时冻结 · 2026-09-11】「面板导入 / 词条导入」停用态：保留可见，但明确不可点 */
+.damage-subnav-btn--frozen,
+.damage-subnav-btn--frozen:hover {
+  color: rgba(245, 245, 240, 0.3);
+  background: transparent;
+  cursor: not-allowed;
+  text-decoration: line-through;
+  text-decoration-color: rgba(245, 245, 240, 0.35);
 }
 
 .damage-calc-mode-group {
