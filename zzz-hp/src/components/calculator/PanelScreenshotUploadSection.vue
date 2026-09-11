@@ -245,8 +245,8 @@ async function onUploadTencentOcrJson(event: Event) {
         <p class="section-desc">
           {{
             embedded
-              ? '识别结果先写入导入预览；点「确定导入」后才落到当前槽位。词条数由局外面板反推。'
-              : '识别角色面板并填入当前正在编辑的槽位与局外面板；词条数由识别出的局外面板按换算公式反推。也可手动上传 OCR JSON/文本对照。'
+              ? '识别结果先写入导入预览；点「确定导入」后才落到当前这份面板。'
+              : '识别角色面板并填入当前正在编辑的槽位与局外面板；词条数不再由面板反推，请到「词条导入」页自行录入。也可手动上传 OCR JSON/文本对照。'
           }}
         </p>
       </div>
@@ -296,7 +296,7 @@ async function onUploadTencentOcrJson(event: Event) {
           {{ recognitionResult.externalPanel.dmgBonus ?? '—' }}%
         </li>
         <li v-if="driveDiscMainStatsSummary">
-          4/5/6 主属性：{{ driveDiscMainStatsSummary }}（反推词条时扣除）
+          4/5/6 主属性：{{ driveDiscMainStatsSummary }}（写入「词条导入」页的主属性）
         </li>
       </ul>
       <ul v-if="recognitionResult.warnings.length" class="recognition-warnings">
@@ -305,7 +305,7 @@ async function onUploadTencentOcrJson(event: Event) {
     </div>
     <div v-if="showImagePreview" class="upload-preview">
       <img v-if="panelImageUrl" :src="panelImageUrl" :alt="panelImageName || '面板预览'" />
-      <p v-else>选择截图后可在此预览；识别后将写入面板并反推词条数。</p>
+      <p v-else>选择截图后可在此预览；识别后写入导入预览，点「确定导入」才生效。</p>
     </div>
   </section>
 </template>

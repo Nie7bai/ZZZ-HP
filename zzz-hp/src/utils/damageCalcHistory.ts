@@ -1,6 +1,8 @@
 import type { AgentBuffDoc } from '@/types/calculator'
 import { loadCustomSkills, parseCustomSkillList, replaceCustomSkills } from '@/utils/skillLibrary'
 import type {
+  AgentPanelProvenance,
+  AgentPanelSources,
   DamageCalcHistoryEntry,
   DamageCalcHistoryExport,
   DamageCalcHistoryImportResult,
@@ -10,7 +12,17 @@ import type {
   SchemeStore,
 } from '@/types/damageCalcHistory'
 import { SCHEME_STORE_VERSION } from '@/types/damageCalcHistory'
-import { resetSchemeExcludedPanelFields } from '@/types/calculatorPanel'
+import type { AffixCounts, AffixDriveDiscMainStats, PanelStats } from '@/types/calculatorPanel'
+import {
+  createDefaultAffixDriveDiscMainStats,
+  createEmptyAffixCounts,
+  resetSchemeExcludedPanelFields,
+} from '@/types/calculatorPanel'
+import {
+  createAgentPanelSources,
+  migrateLegacyPanelIntoSource,
+  writeAffixInputsIntoSource,
+} from '@/utils/agentPanelSources'
 import { normalizeExtraGain } from '@/utils/extraBuffCalc'
 
 const STORAGE_KEY = 'zzz-hp-damage-calc-history'
@@ -226,13 +238,16 @@ function createEmptyStore(): SchemeStore {
 }
 
 /**
- * v2 → v3：招式库 / 准备阶段 / 流程 改造。
+ * 旧字段清理（v2 起）：招式库 / 准备阶段 / 流程 改造。
  *
  * 3.1.6.4 的「事件跟随方案」未上线，其 `directEvents` / `anomalyEvents` 与随之而来的
  * 全局事件复制迁移（migrateLegacyGlobalEvents）一并废弃：前者直接清除，后者已删除。
  *
  * 旧的全局自定义事件模式库不在这里处理——它转成**全局自定义招式库**，
  * 与方案无关，见 `migrateLegacyModesToSkills`。
+ *
+ * 局外面板的双来源归位不在这里：它逐条走 `sanitizeSchemeEntry`（读盘与导入都经过），
+ * 因为归位要用到该条方案自己的 `teamSlots` 与 `panelCalcMode`。
  */
 function migrateStoreToV3(store: SchemeStore): void {
   if (store.version >= SCHEME_STORE_VERSION) return
@@ -290,6 +305,87 @@ function sanitizeSchemeAnomalySlotPanels(
   return next
 }
 
+/** 单份来源记录的白名单清洗；两份面板都空则整条丢弃 */
+function sanitizeAgentPanelSources(value: unknown): AgentPanelSources | null {
+  if (!value || typeof value !== 'object') return null
+  const raw = value as Partial<AgentPanelSources> & Record<string, unknown>
+  const importedPanel = sanitizeSchemePanelLike(raw.importedPanel) as PanelStats | null
+  const affixDerivedPanel = sanitizeSchemePanelLike(raw.affixDerivedPanel) as PanelStats | null
+  if (!importedPanel && !affixDerivedPanel) return null
+  const next: AgentPanelSources = {
+    active: raw.active === 'affixDerived' ? 'affixDerived' : 'imported',
+  }
+  if (importedPanel) next.importedPanel = importedPanel
+  if (affixDerivedPanel) next.affixDerivedPanel = affixDerivedPanel
+  if (raw.affixCounts && typeof raw.affixCounts === 'object') {
+    next.affixCounts = { ...createEmptyAffixCounts(), ...(raw.affixCounts as AffixCounts) }
+  }
+  if (raw.affixDriveDiscMainStats && typeof raw.affixDriveDiscMainStats === 'object') {
+    next.affixDriveDiscMainStats = {
+      ...createDefaultAffixDriveDiscMainStats(),
+      ...(raw.affixDriveDiscMainStats as AffixDriveDiscMainStats),
+    }
+  }
+  const provenance = raw.provenance as AgentPanelProvenance | undefined
+  if (provenance && typeof provenance === 'object') next.provenance = { ...provenance }
+  return next
+}
+
+function sanitizeSchemeSlotPanels(
+  panels: DamageCalcHistoryEntry['slotPanels'],
+): Record<string, AgentPanelSources> | undefined {
+  if (!panels || typeof panels !== 'object') return undefined
+  const next: Record<string, AgentPanelSources> = {}
+  for (const [agentId, sources] of Object.entries(panels)) {
+    const sanitized = sanitizeAgentPanelSources(sources)
+    if (sanitized) next[agentId] = sanitized
+  }
+  return next
+}
+
+/**
+ * 老结构 → 双面板（`dev-docs/panel-dual-source.md` §3.3、§6）。
+ *
+ * 老方案只有一份面板，归位规则**只读** `panelCalcMode`：
+ * `affix` → 词条导入那份；其他 → 面板导入那份。不扫描、不校验、不标注「旧数据」。
+ * 槽位上的词条数与 4/5/6 主属性一并搬进该来源记录，随后清掉老字段。
+ */
+function migrateEntryToDualPanel(entry: DamageCalcHistoryEntry): void {
+  const sources = sanitizeSchemeSlotPanels(entry.slotPanels) ?? {}
+  const legacyPanels = sanitizeSchemeAnomalySlotPanels(entry.anomalySlotPanels)
+  if (legacyPanels) {
+    for (const [agentId, panel] of Object.entries(legacyPanels)) {
+      if (sources[agentId]) continue
+      sources[agentId] = migrateLegacyPanelIntoSource(
+        undefined,
+        panel as PanelStats,
+        entry.panelCalcMode,
+      )
+    }
+  }
+  for (const slot of entry.teamSlots ?? []) {
+    const agentId = slot?.agentId
+    if (!agentId) continue
+    const legacyCounts = slot.affixCounts
+    const legacyMains = slot.affixDriveDiscMainStats
+    if (!legacyCounts && !legacyMains) continue
+    const current = sources[agentId] ?? createAgentPanelSources()
+    sources[agentId] = writeAffixInputsIntoSource(current, {
+      affixCounts: legacyCounts
+        ? { ...createEmptyAffixCounts(), ...legacyCounts }
+        : undefined,
+      affixDriveDiscMainStats: legacyMains
+        ? { ...createDefaultAffixDriveDiscMainStats(), ...legacyMains }
+        : undefined,
+    })
+    delete slot.affixCounts
+    delete slot.affixDriveDiscMainStats
+  }
+  if (Object.keys(sources).length) entry.slotPanels = sources
+  else delete entry.slotPanels
+  delete entry.anomalySlotPanels
+}
+
 /**
  * 方案白名单适配层：
  * - 保留：队伍、词条数、主属性、额外 Buff 增益、敌方配置、准备/流程、各角色录入面板
@@ -300,11 +396,13 @@ function sanitizeSchemeAnomalySlotPanels(
  * - 所有方案面板容器里的 mutationCoeff / mutationCoeffFactor（重置为 0 / 100，不 delete）
  */
 function sanitizeSchemeEntry(entry: DamageCalcHistoryEntry): DamageCalcHistoryEntry {
-  return {
+  const next: DamageCalcHistoryEntry = {
     ...entry,
     panelState: sanitizeSchemePanelState(entry.panelState) ?? entry.panelState,
-    anomalySlotPanels: sanitizeSchemeAnomalySlotPanels(entry.anomalySlotPanels),
   }
+  // 老结构的归位与清洗都在这里做：方案库读盘、导出包导入都经过本函数
+  migrateEntryToDualPanel(next)
+  return next
 }
 
 function isValidEntry(item: unknown): item is DamageCalcHistoryEntry {

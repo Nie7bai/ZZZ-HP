@@ -542,8 +542,8 @@ export interface PanelCalcContext {
   liveExternalSlotIndex?: number
   /** 正在编辑的那份局外面板（live） */
   mainExternalPanel?: PanelStats
-  /** 异常产生角色局外面板 */
-  anomalySlotPanels?: Record<string, PanelStats>
+  /** 每人一份的激活局外面板（面板导入 / 词条导入已解析，不问来历） */
+  activeSlotPanels?: Record<string, PanelStats>
   /** 转模增益角色局外面板（仅转模来源属性） */
   convertSlotPanels?: ConvertSlotPanels
   /**
@@ -641,7 +641,7 @@ function resolveExternalPanelForSlot(
   }
   const agentId = ctx.teamSlots[slotIndex]?.agentId
   if (!agentId) return createDefaultExternalPanel()
-  const anomaly = ctx.anomalySlotPanels?.[agentId]
+  const anomaly = ctx.activeSlotPanels?.[agentId]
   if (anomaly) return fillPanelStatsDefaults(anomaly)
   const convertPartial = ctx.convertSlotPanels?.[agentId]
   if (convertPartial) {

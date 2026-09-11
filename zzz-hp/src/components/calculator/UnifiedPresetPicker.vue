@@ -17,15 +17,19 @@ import {
   type PanelCalcMode,
   type PanelStats,
 } from '@/types/calculatorPanel'
-import { inferAffixCountsFromExternalPanel, computeExternalPanelFromTeamSlot } from '@/utils/affixPanelCalc'
+import { computeExternalPanelFromTeamSlot } from '@/utils/affixPanelCalc'
+import {
+  describePanelSources,
+  formatPanelImportedAt,
+  panelOfSource,
+} from '@/utils/agentPanelSources'
+import type { AgentPanelSourceKind, AgentPanelSources } from '@/types/damageCalcHistory'
 import {
   AGENT_ELEMENTS,
   AGENT_ROLES,
   WENGINE_RARITIES,
-  createEmptyAgentBasePanel,
   createEmptyBuffStatModifiers,
   createEmptyRefinementMods,
-  createEmptyWengineAdvancedStats,
   isWengineProfessionMatch,
 } from '@/utils/calculatorUi'
 import {
@@ -60,6 +64,10 @@ export type UnifiedPresetConfirmPayload = {
   affixCounts: AffixCounts
   affixDriveDiscMainStats: AffixDriveDiscMainStats
   skillTalentLevels: SkillTalentLevels
+  /** 点确定时所在的子页决定写哪一份面板（面板导入 / 词条导入） */
+  panelSource: AgentPanelSourceKind
+  /** 面板导入那份的来历：截图识别还是手打（仅元数据） */
+  panelSourceDetail: 'screenshot' | 'manual'
 }
 
 const props = defineProps<{
@@ -70,7 +78,8 @@ const props = defineProps<{
   activeSlot: number
   /** 打开时的默认录入模式；用户可在弹窗内切换，不再跟随页面计算方式 */
   preferredEntryMode?: Extract<PanelCalcMode, 'panel' | 'affix'>
-  anomalySlotPanels?: Record<string, PanelStats>
+  /** 每个角色的两份局外面板（面板导入 / 词条导入）+ 当前激活那份 */
+  slotPanels?: Record<string, AgentPanelSources>
   /** 每人五大类技能等级；打开/换人时回填 */
   skillTalentLevelsByAgent?: Record<string, SkillTalentLevels | Partial<SkillTalentLevels>>
   finalPanelPreview?: PanelStats | null
@@ -83,6 +92,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   confirm: [payload: UnifiedPresetConfirmPayload]
+  /** 手动切换某角色当前生效的那份面板（只改 active） */
+  'update:activePanelSource': [agentId: string, kind: AgentPanelSourceKind]
 }>()
 
 const open = defineModel<boolean>('open', { default: false })
@@ -106,6 +117,19 @@ const draftSkillTalentLevels = reactive<SkillTalentLevels>(createDefaultSkillTal
 /** 面板 Tab 独立切换：面板导入 / 词条导入 */
 const entryMode = ref<Extract<PanelCalcMode, 'panel' | 'affix'>>(
   props.preferredEntryMode ?? 'panel',
+)
+/** 面板草稿是不是来自截图识别（只用于记录来历，元数据） */
+let draftFromRecognition = false
+/** 识别写进草稿的那份数值快照：用来区分「识别来的」与「后来手改的」 */
+let recognitionPanelSignature = ''
+watch(
+  draftExternalPanel,
+  () => {
+    if (draftFromRecognition && JSON.stringify(draftExternalPanel) !== recognitionPanelSignature) {
+      draftFromRecognition = false
+    }
+  },
+  { deep: true },
 )
 
 /** 导入区局内：草稿局外/词条推导 + 当前增益实时结算（对齐改前内嵌面板） */
@@ -173,11 +197,13 @@ function resetDraftPanelFromSlot() {
   const slot = props.teamSlots[props.activeSlot]
   const agentId = selected.value.agentId || slot?.agentId || ''
   const agent = props.agents.find((item) => item.id === agentId)
-  Object.assign(draftAffixCounts, createEmptyAffixCounts(), slot?.affixCounts)
+  // 两份草稿各自读自己那一份来源：面板页草稿读「面板导入」，词条页草稿读「词条导入」的输入
+  const sources = agentId ? props.slotPanels?.[agentId] : undefined
+  Object.assign(draftAffixCounts, createEmptyAffixCounts(), sources?.affixCounts)
   Object.assign(
     draftAffixMains,
     createDefaultAffixDriveDiscMainStats(),
-    slot?.affixDriveDiscMainStats,
+    sources?.affixDriveDiscMainStats,
   )
   Object.assign(
     draftSkillTalentLevels,
@@ -187,7 +213,7 @@ function resetDraftPanelFromSlot() {
       selected.value.rank || slot?.rank || 0,
     ),
   )
-  const saved = agentId ? props.anomalySlotPanels?.[agentId] : undefined
+  const saved = panelOfSource(sources, 'imported')
   if (saved) {
     Object.assign(draftExternalPanel, createDefaultExternalPanel(), saved)
   } else if (agent) {
@@ -195,6 +221,22 @@ function resetDraftPanelFromSlot() {
   } else {
     Object.assign(draftExternalPanel, createDefaultExternalPanel())
   }
+  draftFromRecognition = false
+}
+
+/** 当前选中角色的来源一览（激活标记 + 导入时间），供面板页显示与切换 */
+const currentSlotPanelSources = computed(() =>
+  describePanelSources(selected.value.agentId ? props.slotPanels?.[selected.value.agentId] : undefined),
+)
+/** 只列有数据的那份（§4.3）：某份从未导入过时它就不会出现在切换项里 */
+const switchablePanelSources = computed(() =>
+  currentSlotPanelSources.value.filter((item) => item.hasData),
+)
+
+function switchActivePanelSource(kind: AgentPanelSourceKind) {
+  const agentId = selected.value.agentId
+  if (!agentId) return
+  emit('update:activePanelSource', agentId, kind)
 }
 
 watch(open, (isOpen) => {
@@ -436,26 +478,14 @@ function applyRecognitionToDraft(result: PanelScreenshotRecognition) {
   if (mains?.slot5MainStat) draftAffixMains.slot5MainStat = mains.slot5MainStat
   if (mains?.slot6MainStat) draftAffixMains.slot6MainStat = mains.slot6MainStat
 
-  const agent = props.agents.find((item) => item.id === selected.value.agentId)
-  const wengine = props.wengines.find((item) => item.id === selected.value.wengineId)
-  const inferred = inferAffixCountsFromExternalPanel({
-    target: result.externalPanel,
-    agentBase: agent?.basePanel ?? createEmptyAgentBasePanel(),
-    wengineBaseAtk: wengine?.baseAtk ?? 0,
-    wengineAdvanced: wengine?.advancedStats ?? createEmptyWengineAdvancedStats(),
-    driveDiscSelection: {
-      twoPieceDriveDiscId: selected.value.twoPieceId,
-      fourPieceDriveDiscId: selected.value.fourPieceId,
-    },
-    driveDiscMainStats: { ...draftAffixMains },
-    driveDiscs: props.driveDiscs,
-  })
-  Object.assign(draftAffixCounts, createEmptyAffixCounts(), inferred.affixCounts)
+  draftFromRecognition = true
+  recognitionPanelSignature = JSON.stringify(draftExternalPanel)
   activeTab.value = 'panel'
 }
 
 function confirm() {
   if (!selected.value.agentId) return
+  const panelSource: AgentPanelSourceKind = entryMode.value === 'affix' ? 'affixDerived' : 'imported'
   const external =
     entryMode.value === 'affix'
       ? computeExternalPanelFromTeamSlot({
@@ -483,6 +513,8 @@ function confirm() {
     affixCounts: { ...draftAffixCounts },
     affixDriveDiscMainStats: { ...draftAffixMains },
     skillTalentLevels: fillSkillTalentLevels(draftSkillTalentLevels, selected.value.rank),
+    panelSource,
+    panelSourceDetail: draftFromRecognition ? 'screenshot' : 'manual',
   })
   open.value = false
 }
@@ -757,6 +789,26 @@ const canConfirm = computed(() => !!selected.value.agentId)
               <p class="panel-locked-desc">请先在「角色」Tab 选择代理人，再录入或识别局外面板。</p>
             </div>
             <div v-else class="panel-import-stack">
+              <div class="panel-source-bar">
+                <span class="panel-source-title">面板来源</span>
+                <button
+                  v-for="item in switchablePanelSources"
+                  :key="item.kind"
+                  type="button"
+                  class="panel-source-btn"
+                  :class="{ active: item.active }"
+                  :title="item.active ? '当前使用这份' : '切换为这份'"
+                  @click="switchActivePanelSource(item.kind)"
+                >
+                  <template v-if="item.active">当前 · </template>{{ item.label }}
+                  <template v-if="item.importedAt">
+                    · {{ formatPanelImportedAt(item.importedAt) }}
+                  </template>
+                </button>
+                <span v-if="!switchablePanelSources.length" class="panel-source-empty">
+                  还没有面板数据
+                </span>
+              </div>
               <PanelScreenshotUploadSection
                 embedded
                 :agents="agents"
@@ -927,6 +979,38 @@ const canConfirm = computed(() => !!selected.value.agentId)
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+/* 当前使用哪一份面板（面板导入 / 词条导入）：点一下即切换，不用重新导入 */
+.panel-source-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+}
+
+.panel-source-title {
+  color: #8b97a8;
+}
+
+.panel-source-btn {
+  padding: 0.15rem 0.55rem;
+  border: 1px solid #3a4658;
+  border-radius: 999px;
+  background: transparent;
+  color: #cbd5e1;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+
+.panel-source-btn.active {
+  border-color: #7dd3a0;
+  color: #7dd3a0;
+}
+
+.panel-source-empty {
+  color: #6b7688;
 }
 
 .panel-locked-state {

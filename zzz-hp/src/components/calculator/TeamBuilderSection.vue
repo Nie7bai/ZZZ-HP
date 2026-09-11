@@ -4,6 +4,7 @@ import UnifiedPresetPicker, {
 } from '@/components/calculator/UnifiedPresetPicker.vue'
 import TeamSlotCard from '@/components/calculator/TeamSlotCard.vue'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
+import type { AgentPanelSourceKind, AgentPanelSources } from '@/types/damageCalcHistory'
 import type { AgentBuffDoc, DriveDiscBuffDoc, WengineBuffDoc } from '@/types/calculator'
 import type { PanelCalcMode, PanelStats } from '@/types/calculatorPanel'
 
@@ -15,7 +16,8 @@ const props = defineProps<{
   activeSlot: number
   activeAgent?: AgentBuffDoc
   preferredEntryMode?: Extract<PanelCalcMode, 'panel' | 'affix'>
-  anomalySlotPanels?: Record<string, PanelStats>
+  /** 每个角色的两份局外面板（面板导入 / 词条导入）+ 当前激活那份 */
+  slotPanels?: Record<string, AgentPanelSources>
   skillTalentLevelsByAgent?: Record<string, import('@/utils/skillTalentLevels').SkillTalentLevels>
   finalPanelPreview?: PanelStats | null
   finalPanelToken?: string
@@ -28,6 +30,7 @@ const emit = defineEmits<{
   clearSlot: [index: number]
   selectWengine: [wengineId: string]
   confirmImport: [payload: UnifiedPresetConfirmPayload]
+  'update:activePanelSource': [agentId: string, kind: AgentPanelSourceKind]
 }>()
 
 function wengineById(id: string) {
@@ -85,12 +88,13 @@ function updateSlotRefine(index: number, value: number) {
       :team-slots="teamSlots"
       :active-slot="activeSlot"
       :preferred-entry-mode="preferredEntryMode"
-      :anomaly-slot-panels="anomalySlotPanels"
+      :slot-panels="slotPanels"
       :skill-talent-levels-by-agent="skillTalentLevelsByAgent"
       :final-panel-preview="finalPanelPreview"
       :final-panel-token="finalPanelToken"
       :resolve-final-panel="resolveFinalPanel"
       @confirm="emit('confirmImport', $event)"
+      @update:active-panel-source="(agentId, kind) => emit('update:activePanelSource', agentId, kind)"
     />
   </section>
 </template>

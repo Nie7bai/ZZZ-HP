@@ -12,7 +12,7 @@ export interface PanelScreenshotRecognition {
   fourPieceDriveDiscId: string | null
   fourPieceDriveDiscName: string | null
   externalPanel: Partial<PanelStats>
-  /** 识别到的 4/5/6 号盘主属性（用于词条反推时扣除） */
+  /** 识别到的 4/5/6 号盘主属性（写入「词条导入」页的主属性输入） */
   driveDiscMainStats?: Partial<AffixDriveDiscMainStats>
   warnings: string[]
 }

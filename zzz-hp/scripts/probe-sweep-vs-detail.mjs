@@ -12,6 +12,7 @@
 import fs from 'node:fs'
 
 import { resolveFlow } from '../src/utils/resolvedHit.ts'
+import { schemeActivePanels, schemeAffixInputs } from '../src/utils/agentPanelSources.ts'
 import {
   buildOptimalEvalContext,
   evaluateAffixCounts,
@@ -84,7 +85,7 @@ for (const scheme of schemes) {
     bangbooRefine: 1,
     driveDiscs: buffs.driveDiscs,
     mainSlotIndex: activeSlot,
-    driveDiscMainStats: mainSlot.affixDriveDiscMainStats ?? {
+    driveDiscMainStats: schemeAffixInputs(scheme, mainSlot.agentId).affixDriveDiscMainStats ?? {
       slot4MainStat: 'critRate',
       slot5MainStat: 'penRate',
       slot6MainStat: 'externalDefPercent',
@@ -101,7 +102,7 @@ for (const scheme of schemes) {
       mainAgent.profession === '命破' ? 'pierce' : mainAgent.profession === '锋御' ? 'def' : 'atk',
     buffSelection: null,
     slotBuffSelections: scheme.multiSlotBuffSelection ?? null,
-    anomalySlotPanels: scheme.anomalySlotPanels ?? undefined,
+    activeSlotPanels: schemeActivePanels(scheme),
     convertSlotPanels: scheme.convertSlotPanels ?? undefined,
     hits: flow.hits,
     resolveSubcategory: (id) => buffs.skillSubcategories.find((x) => x.id === id) ?? null,

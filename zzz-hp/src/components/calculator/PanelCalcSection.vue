@@ -29,23 +29,25 @@ import {
   createEmptyAffixCounts,
   createExternalPanelFromAgentBase,
   fillPanelStatsDefaults,
-  isPlaceholderExternalPanel,
   type AffixCounts,
   type AffixDriveDiscMainStats,
   type PanelCalcMode,
   type PanelStats,
 } from '@/types/calculatorPanel'
+import { computeExternalPanelFromTeamSlot } from '@/utils/affixPanelCalc'
 import {
-  computeExternalPanelFromTeamSlot,
-  inferAffixCountsFromExternalPanel,
-} from '@/utils/affixPanelCalc'
+  panelOfSource,
+  resolveActivePanel,
+  updatePanelSourceValues,
+  writeAffixInputsIntoSource,
+  writePanelSource,
+} from '@/utils/agentPanelSources'
+import type { AgentPanelSources } from '@/types/damageCalcHistory'
 import {
   BUFF_STAT_FIELDS,
   buffStatFieldLabel,
-  createEmptyAgentBasePanel,
   createEmptyBuffStatModifiers,
   createEmptyRefinementMods,
-  createEmptyWengineAdvancedStats,
   getMindscapeNotesUpToRank,
   mergeBuffStatModifiers,
 } from '@/utils/calculatorUi'
@@ -237,8 +239,13 @@ const props = defineProps<{
    * 命名含 trigger，实为 power；逐 hit 结算请用 hit.anomalyPowerAgentId / hit.triggerAgentId。
    */
   triggerAnomalyAgentId?: string | null
-  /** 各角色局外面板，key = agentId；当前编辑槽位用 live 编辑器，其余读这里 */
-  anomalySlotPanels?: Record<string, PanelStats>
+  /**
+   * 各角色的**两份局外面板**（面板导入 / 词条导入 + 当前激活那份），key = agentId。
+   *
+   * 本组件是「面板导入 / 词条导入」两个录入页的宿主，因此它按来源读写；
+   * 计算链路只取激活那份（`resolveActivePanel`），不问来历。
+   */
+  slotPanels?: Record<string, AgentPanelSources>
   /** 转模增益角色局外面板（仅转模来源属性），key = agentId */
   convertSlotPanels?: ConvertSlotPanels
   skillCategoryId?: import('@/types/calculator').SkillCategoryId
@@ -258,7 +265,8 @@ const props = defineProps<{
 const extraGains = defineModel<ExtraBuffGain[]>('extraGains', { default: () => [] })
 
 const emit = defineEmits<{
-  'update:anomalySlotPanels': [value: Record<string, PanelStats>]
+  /** 只传变化的那些 agentId（补丁），页级 `Object.assign` 合并 */
+  'update:slotPanels': [patch: Record<string, AgentPanelSources>]
   'update:convertSlotPanels': [value: ConvertSlotPanels]
   'update:hitDamages': [value: Record<string, number>]
   'update:hitCalcResults': [value: Record<string, DamageCalcResult>]
@@ -344,40 +352,76 @@ function flushAffixOntoSlot(slotIndex: number) {
   if (suppressRestoreResets) return
   const slot = props.teamSlots[slotIndex]
   if (!slot?.agentId) return
-  // 内容未变时不写回：getSnapshot() 也会调用本函数，无条件赋值会让
-  // teamSlots 深层 watch 触发「保存草稿 → getSnapshot」的 400ms 自激循环，
-  // 导致整页持续重渲染（词条模块尤其明显）。
+  // 词条数与 4/5/6 主属性存进该角色的「词条导入」来源记录（与那份面板一起，不共用）。
+  // 内容未变时不写回：getSnapshot() 也会调用本函数，无条件赋值会让下游深层 watch
+  // 触发「保存草稿 → getSnapshot」的 400ms 自激循环。
+  const agentId = slot.agentId
+  const current = props.slotPanels?.[agentId]
   const nextCounts = { ...affixCounts }
-  if (!isSameRecord(slot.affixCounts, nextCounts)) {
-    slot.affixCounts = nextCounts
-  }
-  const nextMainStats = { ...affixDriveDiscMainStats }
-  if (!isSameRecord(slot.affixDriveDiscMainStats, nextMainStats)) {
-    slot.affixDriveDiscMainStats = nextMainStats
+  const nextMains = { ...affixDriveDiscMainStats }
+  const countsChanged = !isSameRecord(current?.affixCounts, nextCounts)
+  const mainsChanged = !isSameRecord(current?.affixDriveDiscMainStats, nextMains)
+  if (countsChanged || mainsChanged) {
+    emitSlotPanelPatch(agentId, (cur) =>
+      writeAffixInputsIntoSource(cur, {
+        affixCounts: nextCounts,
+        affixDriveDiscMainStats: nextMains,
+      }),
+    )
   }
   const nextState = captureAffixState()
-  if (!isSameAffixState(affixStateByAgent[slot.agentId], nextState)) {
-    affixStateByAgent[slot.agentId] = nextState
+  if (!isSameAffixState(affixStateByAgent[agentId], nextState)) {
+    affixStateByAgent[agentId] = nextState
   }
+}
+
+/**
+ * 词条录入模式：条数一变，就把现推出来的局外面板更新进「词条导入」那份。
+ *
+ * 存下来而不是每次现推，是为了让「存的面板 = 界面显示的 = 下游读的」三者一致
+ * （老结构下正是这里对不上：存的与现推的是两个数）。
+ *
+ * **不改变激活来源**：用户手动切到「面板导入」后，条数继续编辑不该把他切回来。
+ * 自动写回改的只是「词条导入」那份的数值，当前用哪份仍由用户决定（§4.3）。
+ */
+function commitDerivedPanelForAgent(agentId: string) {
+  const derived = fillPanelStatsDefaults(derivedExternalPanel.value)
+  const current = props.slotPanels?.[agentId]
+  const stored = panelOfSource(current, 'affixDerived')
+  if (stored && isSameRecord(stored, derived)) return
+  emitSlotPanelPatch(agentId, (cur) =>
+    updatePanelSourceValues(cur, 'affixDerived', derived, {
+      updatedAt: Date.now(),
+      source: 'affix',
+    }),
+  )
 }
 
 function flushAffixOntoTeamSlots() {
   flushAffixOntoSlot(mainSlotIndex.value)
+  if (isAffixMode.value) {
+    const id = props.teamSlots[mainSlotIndex.value]?.agentId
+    if (id) commitDerivedPanelForAgent(id)
+  }
 }
 
 function persistAffixOntoCurrentSlot() {
   if (suppressRestoreResets || applyingAffixState) return
   flushAffixOntoSlot(mainSlotIndex.value)
+  if (isAffixMode.value) {
+    const id = props.teamSlots[mainSlotIndex.value]?.agentId
+    if (id) commitDerivedPanelForAgent(id)
+  }
 }
 
 function slotAffixState(slot: TeamSlot | undefined): AgentAffixState | undefined {
-  if (!slot) return undefined
-  if (!slot.affixDriveDiscMainStats && !slot.affixCounts) return undefined
+  const sources = slot?.agentId ? props.slotPanels?.[slot.agentId] : undefined
+  if (!sources?.affixDriveDiscMainStats && !sources?.affixCounts) return undefined
   return {
-    affixCounts: { ...createEmptyAffixCounts(), ...slot.affixCounts },
+    affixCounts: { ...createEmptyAffixCounts(), ...sources.affixCounts },
     affixDriveDiscMainStats: {
       ...createDefaultAffixDriveDiscMainStats(),
-      ...slot.affixDriveDiscMainStats,
+      ...sources.affixDriveDiscMainStats,
     },
   }
 }
@@ -400,24 +444,23 @@ function migrateSnapshotAffixOntoSlots(
     if (!slot.agentId) return
     const fromMap = map[slot.agentId]
     const useTopLevel = index === mainSlotIndex.value
-    // 槽位已有值（含「爆伤/攻击/生命」这种合法默认）一律保留；只补空。
-    if (!slot.affixDriveDiscMainStats) {
-      const mains =
-        fromMap?.affixDriveDiscMainStats ??
-        (useTopLevel ? snapshot.affixDriveDiscMainStats : undefined)
-      if (mains) {
-        slot.affixDriveDiscMainStats = {
-          ...createDefaultAffixDriveDiscMainStats(),
-          ...mains,
-        }
-      }
-    }
-    if (!slot.affixCounts) {
-      const counts = fromMap?.affixCounts ?? (useTopLevel ? snapshot.affixCounts : undefined)
-      if (counts) {
-        slot.affixCounts = { ...createEmptyAffixCounts(), ...counts }
-      }
-    }
+    const current = props.slotPanels?.[slot.agentId]
+    // 来源记录里已有值（含「爆伤/攻击/生命」这种合法默认）一律保留；只补空。
+    const mains =
+      current?.affixDriveDiscMainStats ??
+      fromMap?.affixDriveDiscMainStats ??
+      (useTopLevel ? snapshot.affixDriveDiscMainStats : undefined)
+    const counts =
+      current?.affixCounts ?? fromMap?.affixCounts ?? (useTopLevel ? snapshot.affixCounts : undefined)
+    if (!mains && !counts) return
+    emitSlotPanelPatch(slot.agentId, (cur) =>
+      writeAffixInputsIntoSource(cur, {
+        affixCounts: counts ? { ...createEmptyAffixCounts(), ...counts } : undefined,
+        affixDriveDiscMainStats: mains
+          ? { ...createDefaultAffixDriveDiscMainStats(), ...mains }
+          : undefined,
+      }),
+    )
   })
 }
 
@@ -506,12 +549,6 @@ function resolveSubcategoryById(id: string | null): SkillSubcategory | null {
   return skillSubcategories.value.find((item) => item.id === id) ?? null
 }
 
-const mainWengine = computed(() => {
-  const id = mainSlot.value.wengineId
-  if (!id || id === 'none') return null
-  return props.wengines.find((item) => item.id === id) ?? null
-})
-
 function derivedExternalPanelForSlot(slotIndex: number): PanelStats {
   const slot = props.teamSlots[slotIndex]
   if (!slot) return createDefaultExternalPanel()
@@ -529,13 +566,22 @@ function derivedExternalPanelForSlot(slotIndex: number): PanelStats {
 
 const derivedExternalPanel = computed(() => derivedExternalPanelForSlot(mainSlotIndex.value))
 
+/**
+ * 每个角色**激活那份**局外面板 —— 计算链路唯一的取面板入口。
+ * 来源（面板导入 / 词条导入）到这里就解析完了，下游不再区分。
+ */
+const resolvedActiveSlotPanels = computed<Record<string, PanelStats>>(() => {
+  const map: Record<string, PanelStats> = {}
+  for (const [agentId, sources] of Object.entries(props.slotPanels ?? {})) {
+    const panel = resolveActivePanel(sources)
+    if (panel) map[agentId] = panel
+  }
+  return map
+})
+
 const effectiveExternalPanel = computed<PanelStats>(() => {
   if (props.calcMode === 'affix') return derivedExternalPanel.value
-  const id = mainAgent.value?.id
-  const saved = id ? props.anomalySlotPanels?.[id] : undefined
-  if (saved && !isPlaceholderExternalPanel(saved)) {
-    return fillPanelStatsDefaults(saved)
-  }
+  // 面板录入页：正在编辑的就是「面板导入」那份，编辑中优先用 live（写回由 flush 负责）
   return externalPanel
 })
 
@@ -582,14 +628,9 @@ function resolveExternalPanelForSlotIndex(slotIndex: number): PanelStats {
   const slot = props.teamSlots[slotIndex]
   const agentId = slot?.agentId
   if (!agentId) return createDefaultExternalPanel()
-  if (isAffixMode.value) {
-    return derivedExternalPanelForSlot(slotIndex)
-  }
-  // 局外以导入写入的 anomalySlotPanels 为准（含当前编辑槽），不再优先用可能过期的 live 编辑器
-  const anomaly = props.anomalySlotPanels?.[agentId]
-  if (anomaly && !isPlaceholderExternalPanel(anomaly)) {
-    return fillPanelStatsDefaults(anomaly)
-  }
+  // 统一读该角色**激活那份**（面板导入或词条导入都一样对待，不问来历）
+  const active = resolveActivePanel(props.slotPanels?.[agentId])
+  if (active) return active
   if (slotIndex === mainSlotIndex.value) {
     return fillPanelStatsDefaults(externalPanel)
   }
@@ -696,7 +737,8 @@ function buildPanelCalcContextForSlot(
     extraGains: extraGains.value,
     skillContext: buildSkillContextForSlot(slotIndex),
     buffSelection: resolveBuffSelectionForSlot(props.slotBuffSelections, slotIndex),
-    anomalySlotPanels: props.anomalySlotPanels,
+    // 已解析的激活面板（每人一份）：引擎侧不再知道「来源」这回事
+    activeSlotPanels: resolvedActiveSlotPanels.value,
     convertSlotPanels: props.convertSlotPanels,
     slotExternalPanels: slotExternalPanelsMap.value,
     mainExternalPanel: resolveExternalPanelForSlotIndex(mainSlotIndex.value),
@@ -776,31 +818,38 @@ function emitConvertSlotPanel(
   })
 }
 
+/** 生成某个角色的来源记录补丁并上报（页级按 key 合并，避免整表覆盖） */
+function emitSlotPanelPatch(
+  agentId: string,
+  update: (current: AgentPanelSources | undefined) => AgentPanelSources,
+) {
+  if (!agentId) return
+  emit('update:slotPanels', { [agentId]: update(props.slotPanels?.[agentId]) })
+}
+
+/** 某角色「面板导入」那份（没有则回落到角色基础面板），供面板录入页编辑 */
 function ensureAnomalySlotPanel(agentId: string): PanelStats {
-  const existing = props.anomalySlotPanels?.[agentId]
-  if (existing && !isPlaceholderExternalPanel(existing)) {
-    return fillPanelStatsDefaults(existing)
-  }
+  const existing = panelOfSource(props.slotPanels?.[agentId], 'imported')
+  if (existing) return existing
   const agent = props.agents.find((item) => item.id === agentId)
   return createExternalPanelFromAgentBase(agent?.basePanel)
 }
 
+/** 把 live 面板编辑器写进该角色的「面板导入」那份并激活它 */
+function flushImportedPanelForAgent(agentId: string, panel: PanelStats) {
+  const next = fillPanelStatsDefaults(panel)
+  if (isSameRecord(panelOfSource(props.slotPanels?.[agentId], 'imported'), next)) return
+  emitSlotPanelPatch(agentId, (current) =>
+    writePanelSource(current, 'imported', next, { importedAt: Date.now(), source: 'manual' }),
+  )
+}
+
 function updateAnomalySlotPanel(agentId: string, key: keyof PanelStats, value: number) {
-  const next = {
-    ...props.anomalySlotPanels,
-    [agentId]: {
-      ...ensureAnomalySlotPanel(agentId),
-      [key]: value,
-    },
-  }
-  emit('update:anomalySlotPanels', next)
+  flushImportedPanelForAgent(agentId, { ...ensureAnomalySlotPanel(agentId), [key]: value })
 }
 
 function emitAnomalySlotPanel(agentId: string, panel: PanelStats) {
-  emit('update:anomalySlotPanels', {
-    ...props.anomalySlotPanels,
-    [agentId]: { ...panel },
-  })
+  flushImportedPanelForAgent(agentId, panel)
 }
 
 function applyAgentBaseToExternalPanel(base: PanelStats | AgentBuffDoc['basePanel']) {
@@ -1033,7 +1082,8 @@ const externalPiercePower = computed(() =>
 )
 
 function applyRecognitionToExternalPanel(result: PanelScreenshotRecognition) {
-  // 面板计算与词条计算同步写入，避免只更新当前模式
+  // 截图识别写「面板导入」页的草稿；词条数不再反推（`dev-docs/panel-dual-source.md` §7）——
+  // 反推会静默改写面板，且面板这一路根本不需要条数。
   for (const [key, value] of Object.entries(result.externalPanel) as [
     keyof PanelStats,
     number,
@@ -1043,33 +1093,19 @@ function applyRecognitionToExternalPanel(result: PanelScreenshotRecognition) {
     }
   }
 
-  // 先写入识别到的 4/5/6 主属性，再反推词条（反推会扣除主属性贡献）
+  // 识别到的 4/5/6 主属性归「词条导入」那一份的输入（面板本身不动它）
   const mains = result.driveDiscMainStats
   if (mains?.slot4MainStat) affixDriveDiscMainStats.slot4MainStat = mains.slot4MainStat
   if (mains?.slot5MainStat) affixDriveDiscMainStats.slot5MainStat = mains.slot5MainStat
   if (mains?.slot6MainStat) affixDriveDiscMainStats.slot6MainStat = mains.slot6MainStat
-
-  const inferred = inferAffixCountsFromExternalPanel({
-    target: result.externalPanel,
-    agentBase: mainAgent.value?.basePanel ?? createEmptyAgentBasePanel(),
-    wengineBaseAtk: mainWengine.value?.baseAtk ?? 0,
-    wengineAdvanced: mainWengine.value?.advancedStats ?? createEmptyWengineAdvancedStats(),
-    driveDiscSelection: {
-      twoPieceDriveDiscId: mainSlot.value.twoPieceDriveDiscId,
-      fourPieceDriveDiscId: mainSlot.value.fourPieceDriveDiscId,
-    },
-    driveDiscMainStats: { ...affixDriveDiscMainStats },
-    driveDiscs: props.driveDiscs,
-  })
-  Object.assign(affixCounts, createEmptyAffixCounts(), inferred.affixCounts)
 }
 
-/** 导入确认后：按槽位已提交的词条 / anomaly 面板刷新 live 编辑器 */
+/** 导入确认后：按激活那份刷新 live 面板编辑器（面板页编辑的是「面板导入」那份） */
 function syncLivePanelFromCommitted() {
   loadAffixFromCurrentSlot()
   const id = mainAgent.value?.id
   if (!id || isAffixMode.value) return
-  const saved = props.anomalySlotPanels?.[id]
+  const saved = panelOfSource(props.slotPanels?.[id], 'imported')
   if (saved) {
     Object.assign(externalPanel, createDefaultExternalPanel(), saved)
   }
@@ -1113,9 +1149,9 @@ watch(
     if (oldIdx == null || oldIdx === newIdx) return
     const oldAgentId = props.teamSlots[oldIdx]?.agentId
     if (oldAgentId && !isAffixMode.value) {
-      const existing = props.anomalySlotPanels?.[oldAgentId]
+      const existing = panelOfSource(props.slotPanels?.[oldAgentId], 'imported')
       // 与 flush 一致：已有导入局外时勿用可能未同步的 live 覆盖
-      if (!existing || isPlaceholderExternalPanel(existing)) {
+      if (!existing) {
         emitAnomalySlotPanel(oldAgentId, { ...externalPanel })
       }
     }
@@ -1123,8 +1159,8 @@ watch(
     // 换槽后立刻把当前槽已提交局外灌进 live，供快照/兼容路径使用
     if (!isAffixMode.value) {
       const newId = props.teamSlots[newIdx]?.agentId
-      const saved = newId ? props.anomalySlotPanels?.[newId] : undefined
-      if (saved && !isPlaceholderExternalPanel(saved)) {
+      const saved = newId ? panelOfSource(props.slotPanels?.[newId], 'imported') : undefined
+      if (saved) {
         Object.assign(externalPanel, createDefaultExternalPanel(), saved)
       }
     }
@@ -1136,9 +1172,9 @@ watch(
   (newId, oldId) => {
     if (suppressRestoreResets) return
     if (oldId && !isAffixMode.value) {
-      const existing = props.anomalySlotPanels?.[oldId]
+      const existing = panelOfSource(props.slotPanels?.[oldId], 'imported')
       // 已有导入局外时勿用可能未同步的 live 覆盖
-      if (!existing || isPlaceholderExternalPanel(existing)) {
+      if (!existing) {
         emitAnomalySlotPanel(oldId, { ...externalPanel })
       }
       const convertSlot = convertSupportSlots.value.find((item) => item.agentId === oldId)
@@ -1156,8 +1192,8 @@ watch(
 
     // 首次挂载不要覆盖方案/草稿里已经灌进编辑器的局外面板。
     if (!oldId) {
-      const savedAnomaly = props.anomalySlotPanels?.[newId]
-      if (savedAnomaly && !isPlaceholderExternalPanel(savedAnomaly)) {
+      const savedAnomaly = panelOfSource(props.slotPanels?.[newId], 'imported')
+      if (savedAnomaly) {
         Object.assign(externalPanel, createDefaultExternalPanel(), savedAnomaly)
         return
       }
@@ -1172,8 +1208,8 @@ watch(
       return
     }
 
-    const savedAnomaly = props.anomalySlotPanels?.[newId]
-    if (savedAnomaly && !isPlaceholderExternalPanel(savedAnomaly)) {
+    const savedAnomaly = panelOfSource(props.slotPanels?.[newId], 'imported')
+    if (savedAnomaly) {
       Object.assign(externalPanel, createDefaultExternalPanel(), savedAnomaly)
       return
     }
@@ -1202,7 +1238,7 @@ watch(
 
 let anomalyPanelEmitTimer: ReturnType<typeof setTimeout> | null = null
 
-function flushCurrentPanelOntoAnomalyMap() {
+function flushCurrentPanelOntoImportedSource() {
   if (anomalyPanelEmitTimer) {
     clearTimeout(anomalyPanelEmitTimer)
     anomalyPanelEmitTimer = null
@@ -1210,9 +1246,7 @@ function flushCurrentPanelOntoAnomalyMap() {
   if (suppressRestoreResets) return
   const id = mainAgent.value?.id
   if (!id || isAffixMode.value) return
-  const existing = props.anomalySlotPanels?.[id]
-  // 已有导入/已存局外时勿用可能未同步的 live 覆盖
-  if (existing && !isPlaceholderExternalPanel(existing)) return
+  // 面板录入页编辑的就是「面板导入」那份：写回它并激活（内容未变时 flush 内部会跳过）
   emitAnomalySlotPanel(id, { ...externalPanel })
   const convertSlot = convertSupportSlots.value.find((item) => item.agentId === id)
   if (convertSlot) {
@@ -1228,7 +1262,7 @@ watch(
     if (anomalyPanelEmitTimer) clearTimeout(anomalyPanelEmitTimer)
     anomalyPanelEmitTimer = setTimeout(() => {
       anomalyPanelEmitTimer = null
-      flushCurrentPanelOntoAnomalyMap()
+      flushCurrentPanelOntoImportedSource()
     }, 200)
   },
   { deep: true },
@@ -1755,7 +1789,9 @@ const hitCalcGlobalSignature = computed(() =>
       slot.fourPieceDriveDiscId,
       index === props.editedSlotIndex
         ? ''
-        : `${JSON.stringify(slot.affixCounts ?? null)}|${JSON.stringify(slot.affixDriveDiscMainStats ?? null)}`,
+        : JSON.stringify(
+            resolveActivePanel(slot.agentId ? props.slotPanels?.[slot.agentId] : undefined) ?? null,
+          ),
     ]),
     bangboo: [props.selectedBangbooId, props.bangbooRefine],
     edit: props.editedSlotIndex,
@@ -1770,8 +1806,8 @@ const hitCalcGlobalSignature = computed(() =>
     ],
     buffs: slotBuffSelectionsSignature.value,
     convert: convertSlotPanelsSignature.value,
-    // 局外以 anomaly 为准：必须进指纹，否则导入后流程/伤害可能不重算
-    anomaly: props.anomalySlotPanels ?? {},
+    // 激活那份局外（已解析）必须进指纹，否则导入/切换来源后流程与伤害可能不重算
+    anomaly: resolvedActiveSlotPanels.value,
     env: (props.environmentBuffs ?? []).map((item) => item.id),
     extra: extraGains.value,
     enemy: enemyInput.value,
@@ -3885,7 +3921,7 @@ const teamWengineNotes = computed(() =>
 
 function getSnapshot(): DamageCalcPanelSnapshot {
   flushAffixOntoTeamSlots()
-  flushCurrentPanelOntoAnomalyMap()
+  flushCurrentPanelOntoImportedSource()
   const id = mainAgent.value?.id
   if (id) affixStateByAgent[id] = captureAffixState()
   return {
@@ -4077,7 +4113,8 @@ defineExpose({
     void panelBreakdown.value
     void slotBuffSelectionsSignature.value
     void slotExternalPanelsMap.value
-    void props.anomalySlotPanels
+    void resolvedActiveSlotPanels.value
+    void props.slotPanels
     void props.convertSlotPanels
     void extraGains.value
     void props.bangbooRefine

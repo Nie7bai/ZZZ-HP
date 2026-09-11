@@ -24,6 +24,7 @@ import {
 import { createEmptyAffixCounts } from '../src/types/calculatorPanel.ts'
 import { computeExternalPanelFromTeamSlot } from '../src/utils/affixPanelCalc.ts'
 import { AFFIX_VALUE_PER_COUNT } from '../src/utils/affixPanelCalc.ts'
+import { schemeActivePanels, schemeAffixInputs } from '../src/utils/agentPanelSources.ts'
 import {
   slotParticipatesInConvertBuff,
   teamHasConvertSupportSlots,
@@ -108,7 +109,7 @@ for (const scheme of schemes) {
       bangbooRefine: 1,
       driveDiscs: buffs.driveDiscs,
       mainSlotIndex: activeSlot,
-      driveDiscMainStats: mainSlot.affixDriveDiscMainStats ?? {
+      driveDiscMainStats: schemeAffixInputs(scheme, mainSlot.agentId).affixDriveDiscMainStats ?? {
         slot4MainStat: 'critRate',
         slot5MainStat: 'penRate',
         slot6MainStat: 'externalDefPercent',
@@ -159,7 +160,7 @@ for (const scheme of schemes) {
   log('[转模链检测（仅信息展示：组件已不再据此剔除主 C 面板）]')
   log(`   slotParticipatesInConvertBuff=${inConvertChain}  teamHasConvertSupportSlots=${teamHasConvert}  → ${convertModeActive ? '该主 C 在转模链上（旧逻辑会剔除其面板，已移除）' : '不在转模链'}`)
 
-  const ctx = makeCtx(scheme.anomalySlotPanels ?? undefined)
+  const ctx = makeCtx(schemeActivePanels(scheme))
   const zero = createEmptyAffixCounts()
 
   // 第 5 个参数为 'nobase' 时：模拟改造前的行为（无基准面板，走按槽位配置推导）

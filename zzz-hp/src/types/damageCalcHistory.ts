@@ -27,6 +27,40 @@ export type DamageCalcConvertSlotPanels = Record<
   Partial<Record<CharacterAttrKey, number>>
 >
 
+/** 局外面板的两种来源：面板导入 / 词条导入 */
+export type AgentPanelSourceKind = 'imported' | 'affixDerived'
+
+/** 来源的来历与时间：仅界面显示与排查用，**计算链路不得读取** */
+export interface AgentPanelProvenance {
+  /** 该角色「面板导入」那份的写入时间 */
+  importedAt?: number
+  /** 该角色「词条导入」那份的写入时间 */
+  affixDerivedAt?: number
+  source?: 'screenshot' | 'manual' | 'affix'
+}
+
+/**
+ * 每个角色的两份局外面板 —— **平级**，字段名刻意不叫「主 / 备」。
+ *
+ * - 两份各带来历、互不覆盖：一次导入只写当前这一路，另一份原样保留；
+ * - `active` 是每角色一份的显式状态，落进方案库与工作草稿；
+ * - 词条数与 4/5/6 主属性挂在**各自的来源记录**里，只服务「词条导入」这一路；
+ * - 下游只读 `active` 那份（`resolveActivePanel`），不接收也不查询来源。
+ */
+export interface AgentPanelSources {
+  /** 「面板导入」那份：游戏里看到的数字（截图识别或手打） */
+  importedPanel?: PanelStats
+  /** 「词条导入」那份：按条数算出来的数字 */
+  affixDerivedPanel?: PanelStats
+  /** 生成 affixDerivedPanel 的输入，只服务「词条导入」这一路的再次编辑 */
+  affixCounts?: AffixCounts
+  affixDriveDiscMainStats?: AffixDriveDiscMainStats
+  /** 当前生效的那份 */
+  active: AgentPanelSourceKind
+  /** 来历与时间，仅展示与排查用；计算链路不得读取 */
+  provenance?: AgentPanelProvenance
+}
+
 export interface DamageCalcTeamSlotSnapshot {
   agentId: string
   rank: number
@@ -34,9 +68,9 @@ export interface DamageCalcTeamSlotSnapshot {
   wengineRefine: number
   twoPieceDriveDiscId: string
   fourPieceDriveDiscId: string
-  /** 该槽位词条计算的 4/5/6 号盘主属性；跟 2/4 件套一起存，避免只活在编辑器里被换人冲掉 */
+  /** @deprecated 已迁入 `slotPanels[agentId].affixDriveDiscMainStats`（v4 迁移时清除） */
   affixDriveDiscMainStats?: AffixDriveDiscMainStats
-  /** 该槽位副词条数 */
+  /** @deprecated 已迁入 `slotPanels[agentId].affixCounts`（v4 迁移时清除） */
   affixCounts?: AffixCounts
 }
 
@@ -190,7 +224,10 @@ export interface DamageCalcWorkingDraft {
   bangbooRefine: number
   panelCalcMode: PanelCalcMode
   panelState: DamageCalcPanelSnapshot | null
+  /** @deprecated v4 起改用 `slotPanels`（迁移时读取，写完即清） */
   anomalySlotPanels?: Record<string, PanelStats>
+  /** 每个角色的两份局外面板（面板导入 / 词条导入）与当前激活那份 */
+  slotPanels?: Record<string, AgentPanelSources>
   convertSlotPanels?: DamageCalcConvertSlotPanels
   slots?: SchemeSlot[]
   staggerPhase?: StaggerPhase
@@ -214,8 +251,10 @@ export interface DamageCalcHistoryEntry {
   bangbooRefine: number
   panelCalcMode: PanelCalcMode
   panelState: DamageCalcSchemePanelSnapshot
-  /** 异常产生角色局外面板（按 agentId） */
+  /** @deprecated v4 起改用 `slotPanels`（迁移时读取，写完即清） */
   anomalySlotPanels?: Record<string, PanelStats>
+  /** 每个角色的两份局外面板（面板导入 / 词条导入）与当前激活那份 */
+  slotPanels?: Record<string, AgentPanelSources>
   /** 转模增益角色局外面板（按 agentId） */
   convertSlotPanels?: DamageCalcConvertSlotPanels
   /** 准备阶段 + 流程，按下标对齐 teamSlots */
@@ -247,7 +286,7 @@ export interface SchemeFolderMeta {
 }
 
 /** 方案库存储结构（对齐 zzz-dev 路径树） */
-export const SCHEME_STORE_VERSION = 3
+export const SCHEME_STORE_VERSION = 4
 
 export interface SchemeStore {
   version: number

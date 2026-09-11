@@ -16,6 +16,7 @@ import OptimalDamageBarChart from '@/components/calculator/OptimalDamageBarChart
 import AffixBenefitTable from '@/components/calculator/AffixBenefitTable.vue'
 import AffixAllocationResult from '@/components/calculator/AffixAllocationResult.vue'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
+import type { AgentPanelSources } from '@/types/damageCalcHistory'
 import type {
   AgentBuffDoc,
   AnomalyDamageSubKind,
@@ -143,7 +144,10 @@ const props = defineProps<{
   anomalySubKind?: AnomalyDamageSubKind
   /** 页级异常强度提供者（第一击 power）；与逐 hit 字段并存时优先 hit */
   triggerAnomalyAgentId?: string | null
-  anomalySlotPanels?: Record<string, PanelStats>
+  /** 已解析的激活面板（每人一份）：本模块只拿面板本身，不问它是哪一份来源 */
+  activeSlotPanels?: Record<string, PanelStats>
+  /** 原始来源记录：只为读「词条导入」那一路的 4/5/6 主属性（柱体上限规则） */
+  slotPanels?: Record<string, AgentPanelSources>
   convertSlotPanels?: ConvertSlotPanels
   skillCategoryId?: import('@/types/calculator').SkillCategoryId
   skillSubcategoryId?: string | null
@@ -239,7 +243,7 @@ const mainSlotIndex = computed(() => {
 const mainSlot = computed(() => props.teamSlots[mainSlotIndex.value]!)
 
 /**
- * 4/5/6 号驱动盘主属性 —— 单一来源：直接读「角色配置」里该槽位已存的主属性。
+ * 4/5/6 号驱动盘主属性 —— 单一来源：「词条导入」那份来源记录（它只服务这一路）。
  *
  * 面板本身由外部配置给出（见 `optimalAffixAlloc.ts` 的 `mainBaseExternalPanel`），
  * 这里的主属性只服务两件事：
@@ -248,7 +252,13 @@ const mainSlot = computed(() => props.teamSlots[mainSlotIndex.value]!)
  */
 const driveDiscMainStats = computed<AffixDriveDiscMainStats>(() => ({
   ...createDefaultAffixDriveDiscMainStats(),
-  ...(props.teamSlots[mainSlotIndex.value]?.affixDriveDiscMainStats ?? {}),
+  ...(props.slotPanels?.[mainSlot.value.agentId]?.affixDriveDiscMainStats ?? {}),
+}))
+
+/** 主 C「词条导入」那一路的词条数（没有存面板时用来现推局外） */
+const mainAffixCounts = computed<AffixCounts>(() => ({
+  ...createEmptyAffixCounts(),
+  ...(props.slotPanels?.[mainSlot.value.agentId]?.affixCounts ?? {}),
 }))
 
 const mainAgent = computed(() => props.agents.find((item) => item.id === mainSlot.value.agentId))
@@ -262,11 +272,11 @@ const selectedBangboo = computed(
     emptyBangboo,
 )
 
-/** 转模来源统一读各角色完整局外（导入/页级 anomalySlotPanels）；旧方案 convertSlotPanels 仅作兜底 */
+/** 转模来源统一读各角色完整局外（导入/页级 activeSlotPanels）；旧方案 convertSlotPanels 仅作兜底 */
 const evalConvertSlotPanels = computed((): ConvertSlotPanels => props.convertSlotPanels ?? {})
 
 /**
- * 参与者的局外面板 —— 单一来源：直接读页级「角色配置」（`props.anomalySlotPanels`）。
+ * 参与者的局外面板 —— 单一来源：直接读页级「角色配置」（`props.activeSlotPanels`）。
  *
  * 这里原先是模块自建的副本 `optimalParticipantPanels`（缺面板时用角色基础面板兜底），
  * 副本会与页级配置漂移，是「面板改完进最优仍用旧值」这类问题的来源，已删除。
@@ -278,7 +288,7 @@ const evalConvertSlotPanels = computed((): ConvertSlotPanels => props.convertSlo
  */
 const effectiveAnomalySlotPanels = computed(() => {
   const merged: Record<string, PanelStats> = {}
-  for (const [agentId, panel] of Object.entries(props.anomalySlotPanels ?? {})) {
+  for (const [agentId, panel] of Object.entries(props.activeSlotPanels ?? {})) {
     if (!panel || isPlaceholderExternalPanel(panel)) continue
     merged[agentId] = fillPanelStatsDefaults({ ...panel })
   }
@@ -325,6 +335,7 @@ const evalCtx = computed(() =>
     driveDiscs: props.driveDiscs,
     mainSlotIndex: mainSlotIndex.value,
     driveDiscMainStats: { ...driveDiscMainStats.value },
+    mainAffixCounts: mainAffixCounts.value,
     enemyInput: { ...enemyInput.value },
     baseDamageSource: isMb.value ? 'pierce' : isFengYu.value ? 'def' : baseDamageSource.value,
     extraGains: extraGains.value.map((item) => ({ ...item })),
@@ -335,7 +346,7 @@ const evalCtx = computed(() =>
     }),
     buffSelection: props.buffSelection ?? null,
     slotBuffSelections: props.slotBuffSelections ?? null,
-    anomalySlotPanels: effectiveAnomalySlotPanels.value,
+    activeSlotPanels: effectiveAnomalySlotPanels.value,
     convertSlotPanels: evalConvertSlotPanels.value,
     triggerAnomalyAgentId: props.triggerAnomalyAgentId,
     hits: props.hits,
@@ -365,7 +376,7 @@ const sweepConfigFingerprint = computed(() =>
     enemy: enemyInput.value,
     extraGains: extraGains.value,
     convert: props.convertSlotPanels ?? {},
-    participants: props.anomalySlotPanels ?? {},
+    participants: props.activeSlotPanels ?? {},
     damageKind: sweepDamageKind.value,
     buffSelection: props.buffSelection,
     slotBuffSelections: props.slotBuffSelections,
@@ -1062,8 +1073,8 @@ const skillFlowContextFingerprint = computed(() =>
     buffSelection: props.buffSelection,
     slotBuffSelections: props.slotBuffSelections,
     convert: props.convertSlotPanels ?? {},
-    anomaly: props.anomalySlotPanels ?? {},
-    participants: props.anomalySlotPanels ?? {},
+    anomaly: props.activeSlotPanels ?? {},
+    participants: props.activeSlotPanels ?? {},
     env: (props.environmentBuffs ?? []).map((item) => item.id),
     bangboo: [props.selectedBangbooId, props.bangbooRefine],
     mains: { ...driveDiscMainStats.value },
@@ -2178,7 +2189,7 @@ function buildPreviewPanelContext(slotIndex: number) {
       staggerPhase: props.staggerPhase ?? 'stagger',
     }),
     buffSelection: resolveBuffSelectionForSlot(props.slotBuffSelections, slotIndex),
-    anomalySlotPanels: effectiveAnomalySlotPanels.value,
+    activeSlotPanels: effectiveAnomalySlotPanels.value,
     convertSlotPanels: props.convertSlotPanels,
     environmentBuffs: props.environmentBuffs,
   }

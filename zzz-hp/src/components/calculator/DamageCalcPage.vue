@@ -19,24 +19,20 @@ import UnifiedPresetPicker, {
 } from '@/components/calculator/UnifiedPresetPicker.vue'
 import type { DamageCalcSectionId } from '@/constants/damageCalcNav'
 import type {
+  AgentPanelSourceKind,
+  AgentPanelSources,
   DamageCalcHistoryEntry,
   DamageCalcSchemePanelSnapshot,
   DamageCalcWorkingDraft,
   SchemeSlot,
 } from '@/types/damageCalcHistory'
-import type {
-  AffixCounts,
-  AffixDriveDiscMainStats,
-  PanelCalcMode,
-  PanelStats,
-} from '@/types/calculatorPanel'
+import type { PanelCalcMode, PanelStats } from '@/types/calculatorPanel'
 import {
   createDefaultAffixDriveDiscMainStats,
   createDefaultExternalPanel,
   createEmptyAffixCounts,
   createExternalPanelFromAgentBase,
   fillPanelStatsDefaults,
-  isPlaceholderExternalPanel,
   resetSchemeExcludedPanelFields,
 } from '@/types/calculatorPanel'
 import type {
@@ -88,6 +84,14 @@ import {
 } from '@/utils/panelBuffCalc'
 import { computeExternalPanelFromTeamSlot } from '@/utils/affixPanelCalc'
 import {
+  migrateLegacyPanelsToSources,
+  panelSourceKindsWithData,
+  resolveActivePanel,
+  setActivePanelSource,
+  writeAffixInputsIntoSource,
+  writePanelSource,
+} from '@/utils/agentPanelSources'
+import {
   listCrisisEnvironmentBuffs,
   listDefenseEnvironmentBuffs,
   listDeductionEnvironmentBuffs,
@@ -120,8 +124,6 @@ export interface TeamSlot {
   wengineRefine: number
   twoPieceDriveDiscId: string
   fourPieceDriveDiscId: string
-  affixDriveDiscMainStats?: AffixDriveDiscMainStats
-  affixCounts?: AffixCounts
 }
 
 const calculatorBuffStore = useCalculatorBuffStore()
@@ -168,7 +170,22 @@ const currentSchemeName = computed(
 )
 
 const staggerPhase = ref<StaggerPhase>('stagger')
-const anomalySlotPanels = reactive<Record<string, PanelStats>>({})
+/**
+ * 每个角色的**两份局外面板**（面板导入 / 词条导入）+ 当前激活那份。
+ *
+ * 唯一的面板存放处：词条数、4/5/6 主属性也跟在各自的来源记录里。
+ * 计算链路不直接读它 —— 读 `activeSlotPanels`（已解析的激活那份）。
+ */
+const slotPanels = reactive<Record<string, AgentPanelSources>>({})
+/** 已解析的激活面板（每人一份）：下游只拿这一份，不接收也不查询来源 */
+const activeSlotPanels = computed<Record<string, PanelStats>>(() => {
+  const map: Record<string, PanelStats> = {}
+  for (const [agentId, sources] of Object.entries(slotPanels)) {
+    const panel = resolveActivePanel(sources)
+    if (panel) map[agentId] = panel
+  }
+  return map
+})
 const convertSlotPanels = reactive<ConvertSlotPanels>({})
 const skillTalentLevelsByAgent = reactive<Record<string, SkillTalentLevels>>({})
 const extraGains = ref<ExtraBuffGain[]>([])
@@ -678,16 +695,20 @@ function getParticipantAgentIds(): string[] {
   return [...ids]
 }
 
-function ensureAnomalySlotPanel(agentId: string) {
-  const existing = anomalySlotPanels[agentId]
-  if (existing && !isPlaceholderExternalPanel(existing)) {
-    if (!Number.isFinite(existing.mutationCoeff) || !Number.isFinite(existing.mutationCoeffFactor)) {
-      anomalySlotPanels[agentId] = fillPanelStatsDefaults(existing)
-    }
-    return
-  }
+/**
+ * 该角色还没有任何面板时，用角色基础面板填「面板导入」那份（兜底，不计导入时间）。
+ * 已有任一份数据则原样保留 —— 不在别人的页面上重算、不反推、不清理。
+ */
+function ensureAgentExternalPanel(agentId: string) {
+  if (!agentId) return
+  const existing = slotPanels[agentId]
+  if (existing && panelSourceKindsWithData(existing).length) return
   const agent = agents.value.find((item) => item.id === agentId)
-  anomalySlotPanels[agentId] = createExternalPanelFromAgentBase(agent?.basePanel)
+  slotPanels[agentId] = writePanelSource(
+    existing,
+    'imported',
+    createExternalPanelFromAgentBase(agent?.basePanel),
+  )
 }
 
 watch(
@@ -701,7 +722,7 @@ watch(
   () => {
     if (restoringWorkingState) return
     for (const agentId of getParticipantAgentIds()) {
-      ensureAnomalySlotPanel(agentId)
+      ensureAgentExternalPanel(agentId)
     }
   },
 )
@@ -1116,19 +1137,11 @@ function clearSlot(index: number) {
   slot.wengineRefine = 1
   slot.twoPieceDriveDiscId = 'none'
   slot.fourPieceDriveDiscId = 'none'
-  slot.affixDriveDiscMainStats = undefined
-  slot.affixCounts = undefined
   if (oldId && !teamSlots.some((item) => item.agentId === oldId)) {
-    delete anomalySlotPanels[oldId]
+    // 两份面板都随角色一起清掉（角色不在队里了，留着没意义）
+    delete slotPanels[oldId]
     delete convertSlotPanels[oldId]
   }
-}
-
-function ensureAgentExternalPanel(agentId: string) {
-  if (!agentId) return
-  if (anomalySlotPanels[agentId] && !isPlaceholderExternalPanel(anomalySlotPanels[agentId]!)) return
-  const agent = agents.value.find((item) => item.id === agentId)
-  anomalySlotPanels[agentId] = createExternalPanelFromAgentBase(agent?.basePanel)
 }
 
 function selectWengine(wengineId: string) {
@@ -1162,12 +1175,10 @@ const stickySlotPanelPreviews = computed(() => {
   void staggerPhase.value
   void activeEnvironmentBuffs.value
   void panelCalcMode.value
-  void anomalySlotPanels
+  void slotPanels
   void convertSlotPanels
   void teamSlots.map((s) => [
     s.agentId,
-    s.affixCounts,
-    s.affixDriveDiscMainStats,
     s.wengineId,
     s.twoPieceDriveDiscId,
     s.fourPieceDriveDiscId,
@@ -1188,19 +1199,18 @@ const stickySlotPanelPreviews = computed(() => {
    * 结果面板改为在最优模块内部展示（见 `OptimalAffixAllocSection` 的「面板口径」）。
    */
 
-  // 兜底：轻量局外（页级配置值，即「角色配置」里存的那一份）
+  // 兜底：轻量局外（页级配置值，即「角色配置」里激活的那一份）
   return teamSlots.map((slot) => {
     if (!slot.agentId) return null
-    const saved = anomalySlotPanels[slot.agentId]
+    const saved = activeSlotPanels.value[slot.agentId]
     const external =
-      saved && !isPlaceholderExternalPanel(saved)
-        ? fillPanelStatsDefaults(saved)
-        : computeExternalPanelFromTeamSlot({
-            slot,
-            agents: agents.value,
-            wengines: wengines.value,
-            driveDiscs: driveDiscs.value,
-          })
+      saved ??
+      computeExternalPanelFromTeamSlot({
+        slot,
+        agents: agents.value,
+        wengines: wengines.value,
+        driveDiscs: driveDiscs.value,
+      })
     return { external, final: null as PanelStats | null }
   })
 })
@@ -1251,6 +1261,12 @@ watch(
   { deep: true, immediate: true },
 )
 
+/**
+ * 「确定导入」——**唯一**的面板写盘入口（`dev-docs/panel-dual-source.md` §4.1）。
+ *
+ * 写哪一份由弹窗里点确定时所在的子页决定：面板页写「面板导入」那份，
+ * 词条页写「词条导入」那份（含词条数与 4/5/6 主属性）。另一份原样保留。
+ */
 function applyUnifiedImport(payload: UnifiedPresetConfirmPayload) {
   const slot = teamSlots[activeSlot.value]
   if (!slot) return
@@ -1259,20 +1275,54 @@ function applyUnifiedImport(payload: UnifiedPresetConfirmPayload) {
   slot.wengineRefine = payload.wengineRefine
   slot.twoPieceDriveDiscId = payload.twoPieceDriveDiscId
   slot.fourPieceDriveDiscId = payload.fourPieceDriveDiscId
-  slot.affixCounts = { ...createEmptyAffixCounts(), ...payload.affixCounts }
-  slot.affixDriveDiscMainStats = {
-    ...createDefaultAffixDriveDiscMainStats(),
-    ...payload.affixDriveDiscMainStats,
+  const agentId = payload.agentId
+  const existing = slotPanels[agentId]
+  const importedAt = Date.now()
+  if (payload.panelSource === 'affixDerived') {
+    const written = writePanelSource(existing, 'affixDerived', payload.externalPanel, {
+      importedAt,
+      source: 'affix',
+    })
+    slotPanels[agentId] = writeAffixInputsIntoSource(written, {
+      affixCounts: { ...createEmptyAffixCounts(), ...payload.affixCounts },
+      affixDriveDiscMainStats: {
+        ...createDefaultAffixDriveDiscMainStats(),
+        ...payload.affixDriveDiscMainStats,
+      },
+    })
+  } else {
+    slotPanels[agentId] = writePanelSource(existing, 'imported', payload.externalPanel, {
+      importedAt,
+      source: payload.panelSourceDetail ?? 'manual',
+    })
   }
-  anomalySlotPanels[payload.agentId] = fillPanelStatsDefaults(payload.externalPanel)
-  skillTalentLevelsByAgent[payload.agentId] = fillSkillTalentLevels(
+  skillTalentLevelsByAgent[agentId] = fillSkillTalentLevels(
     payload.skillTalentLevels,
     payload.rank,
   )
-  slot.agentId = payload.agentId
+  slot.agentId = agentId
   nextTick(() => {
     panelCalcSectionRef.value?.syncLivePanelFromCommitted?.()
   })
+}
+
+/**
+ * 手动切换某角色当前生效的那份面板（§4.3）：只改 `active`，两份面板本身原样不动。
+ * 切换后全页面按新面板重算。
+ */
+function setSlotPanelActiveSource(agentId: string, kind: AgentPanelSourceKind) {
+  if (!agentId) return
+  const existing = slotPanels[agentId]
+  if (!existing) return
+  if (!panelSourceKindsWithData(existing).includes(kind)) return
+  slotPanels[agentId] = setActivePanelSource(existing, kind)
+}
+
+/** 子组件上报的来源记录补丁（只含变化的 agentId），按 key 合并 */
+function applySlotPanelPatch(patch: Record<string, AgentPanelSources>) {
+  for (const [agentId, sources] of Object.entries(patch)) {
+    if (sources) slotPanels[agentId] = sources
+  }
 }
 
 function cloneTeamSlots(): DamageCalcHistoryEntry['teamSlots'] {
@@ -1284,10 +1334,6 @@ function cloneTeamSlots(): DamageCalcHistoryEntry['teamSlots'] {
     wengineRefine: slot.wengineRefine,
     twoPieceDriveDiscId: slot.twoPieceDriveDiscId || 'none',
     fourPieceDriveDiscId: slot.fourPieceDriveDiscId || 'none',
-    affixDriveDiscMainStats: slot.affixDriveDiscMainStats
-      ? { ...slot.affixDriveDiscMainStats }
-      : undefined,
-    affixCounts: slot.affixCounts ? { ...slot.affixCounts } : undefined,
   }))
 }
 
@@ -1307,22 +1353,18 @@ function applyTeamSlots(slots: DamageCalcHistoryEntry['teamSlots']) {
       typeof slot.fourPieceDriveDiscId === 'string' && slot.fourPieceDriveDiscId
         ? slot.fourPieceDriveDiscId
         : 'none'
-    target.affixDriveDiscMainStats = slot.affixDriveDiscMainStats
-      ? { ...slot.affixDriveDiscMainStats }
-      : undefined
-    target.affixCounts = slot.affixCounts ? { ...slot.affixCounts } : undefined
     target.agentId = slot.agentId
   })
 }
 
-function cloneAnomalySlotPanels(): Record<string, PanelStats> {
-  return JSON.parse(JSON.stringify(anomalySlotPanels)) as Record<string, PanelStats>
-}
-
-function captureSchemeAnomalySlotPanels(): Record<string, PanelStats> {
-  const cloned = cloneAnomalySlotPanels()
-  for (const [agentId, panel] of Object.entries(cloned)) {
-    cloned[agentId] = resetSchemeExcludedPanelFields(panel)
+/** 两份面板一起深拷贝，并剥掉不进方案的内部字段（异化系数等） */
+function captureSchemeSlotPanels(): Record<string, AgentPanelSources> {
+  const cloned = JSON.parse(JSON.stringify(slotPanels)) as Record<string, AgentPanelSources>
+  for (const sources of Object.values(cloned)) {
+    for (const key of ['importedPanel', 'affixDerivedPanel'] as const) {
+      const panel = sources[key]
+      if (panel) sources[key] = resetSchemeExcludedPanelFields(panel)
+    }
   }
   return cloned
 }
@@ -1331,16 +1373,28 @@ function cloneConvertSlotPanels(): ConvertSlotPanels {
   return JSON.parse(JSON.stringify(convertSlotPanels)) as ConvertSlotPanels
 }
 
-function applyAnomalySlotPanels(panels?: Record<string, PanelStats>) {
-  for (const key of Object.keys(anomalySlotPanels)) {
-    delete anomalySlotPanels[key]
+function applySlotPanels(panels?: Record<string, AgentPanelSources>) {
+  for (const key of Object.keys(slotPanels)) {
+    delete slotPanels[key]
   }
   if (!panels) return
-  const cloned = JSON.parse(JSON.stringify(panels)) as Record<string, PanelStats>
-  for (const [agentId, panel] of Object.entries(cloned)) {
-    cloned[agentId] = resetSchemeExcludedPanelFields(fillPanelStatsDefaults(panel))
+  const cloned = JSON.parse(JSON.stringify(panels)) as Record<string, AgentPanelSources>
+  for (const sources of Object.values(cloned)) {
+    for (const key of ['importedPanel', 'affixDerivedPanel'] as const) {
+      const panel = sources[key]
+      if (panel) sources[key] = resetSchemeExcludedPanelFields(fillPanelStatsDefaults(panel))
+    }
+    if (sources.affixCounts) {
+      sources.affixCounts = { ...createEmptyAffixCounts(), ...sources.affixCounts }
+    }
+    if (sources.affixDriveDiscMainStats) {
+      sources.affixDriveDiscMainStats = {
+        ...createDefaultAffixDriveDiscMainStats(),
+        ...sources.affixDriveDiscMainStats,
+      }
+    }
   }
-  Object.assign(anomalySlotPanels, cloned)
+  Object.assign(slotPanels, cloned)
 }
 
 function applyConvertSlotPanels(panels?: ConvertSlotPanels) {
@@ -1365,6 +1419,9 @@ function applyWorkingState(entry: {
   selectedBangbooId: string
   bangbooRefine: number
   panelCalcMode: PanelCalcMode
+  /** 双来源结构（新）：每人的两份面板 + 激活那份 */
+  slotPanels?: Record<string, AgentPanelSources>
+  /** @deprecated 老草稿：一份面板（读取时按 panelCalcMode 归位） */
   anomalySlotPanels?: Record<string, PanelStats>
   convertSlotPanels?: ConvertSlotPanels
   slots?: SchemeSlot[]
@@ -1389,7 +1446,15 @@ function applyWorkingState(entry: {
   selectedBangbooId.value = entry.selectedBangbooId
   bangbooRefine.value = entry.bangbooRefine
   panelCalcMode.value = entry.panelCalcMode === 'optimal' ? 'affix' : entry.panelCalcMode
-  applyAnomalySlotPanels(entry.anomalySlotPanels)
+  // 新结构直接用；老草稿（单份面板 + 槽位级词条数）按 panelCalcMode 归位
+  applySlotPanels(
+    entry.slotPanels ??
+      migrateLegacyPanelsToSources({
+        legacyPanels: entry.anomalySlotPanels,
+        panelCalcMode: entry.panelCalcMode,
+        teamSlots: entry.teamSlots,
+      }),
+  )
   applyConvertSlotPanels(entry.convertSlotPanels)
   schemeSlots.value = ensureSchemeSlots(pickSlotsToRestore(entry), 3)
   staggerPhase.value = entry.staggerPhase ?? 'stagger'
@@ -1476,7 +1541,7 @@ function captureWorkingDraft(): DamageCalcWorkingDraft | null {
     bangbooRefine: bangbooRefine.value,
     panelCalcMode: panelCalcMode.value,
     panelState: withTalent,
-    anomalySlotPanels: captureSchemeAnomalySlotPanels(),
+    slotPanels: captureSchemeSlotPanels(),
     convertSlotPanels: cloneConvertSlotPanels(),
     slots: JSON.parse(JSON.stringify(schemeSlots.value)),
     staggerPhase: staggerPhase.value,
@@ -1559,7 +1624,7 @@ function saveHistoryEntry(payload: { name: string; folder: string }) {
     bangbooRefine: bangbooRefine.value,
     panelCalcMode: panelCalcMode.value,
     panelState,
-    anomalySlotPanels: captureSchemeAnomalySlotPanels(),
+    slotPanels: captureSchemeSlotPanels(),
     convertSlotPanels: cloneConvertSlotPanels(),
     slots: JSON.parse(JSON.stringify(schemeSlots.value)),
     staggerPhase: staggerPhase.value,
@@ -1602,7 +1667,7 @@ function overwriteHistoryEntry(id: string) {
     bangbooRefine: bangbooRefine.value,
     panelCalcMode: panelCalcMode.value,
     panelState,
-    anomalySlotPanels: captureSchemeAnomalySlotPanels(),
+    slotPanels: captureSchemeSlotPanels(),
     convertSlotPanels: cloneConvertSlotPanels(),
     slots: JSON.parse(JSON.stringify(schemeSlots.value)),
     staggerPhase: staggerPhase.value,
@@ -1673,7 +1738,7 @@ function resetPageSchemeConfig() {
     selectedBangbooId: 'none',
     bangbooRefine: 1,
     panelCalcMode: 'panel',
-    anomalySlotPanels: {},
+    slotPanels: {},
     convertSlotPanels: {},
     slots: ensureSchemeSlots([], 3),
     staggerPhase: 'stagger',
@@ -1710,7 +1775,7 @@ watch(
     staggerPhase,
     extraGains,
     enemyInput,
-    anomalySlotPanels,
+    slotPanels,
     convertSlotPanels,
     multiSlotBuffSelection,
   ],
@@ -1816,12 +1881,13 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :team-slots="teamSlots"
       :active-slot="activeSlot"
       :preferred-entry-mode="panelCalcMode === 'affix' ? 'affix' : 'panel'"
-      :anomaly-slot-panels="anomalySlotPanels"
+      :slot-panels="slotPanels"
       :skill-talent-levels-by-agent="skillTalentLevelsByAgent"
       :final-panel-preview="activeFinalPanelPreview"
       :final-panel-token="importFinalPanelToken"
       :resolve-final-panel="resolveImportFinalPanel"
       @confirm="applyUnifiedImport"
+      @update:active-panel-source="setSlotPanelActiveSource"
     />
     <!-- 构图：方案库 → 编队/邦布 → 局内Buff → 敌方与环境 → 计算方式 → 伤害 → 招式流程 -->
     <DamageCalcHistorySection
@@ -1846,11 +1912,12 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :active-slot="activeSlot"
       :active-agent="activeAgent"
       :preferred-entry-mode="panelCalcMode === 'affix' ? 'affix' : 'panel'"
-      :anomaly-slot-panels="anomalySlotPanels"
+      :slot-panels="slotPanels"
       :skill-talent-levels-by-agent="skillTalentLevelsByAgent"
       :final-panel-preview="activeFinalPanelPreview"
       :final-panel-token="importFinalPanelToken"
       :resolve-final-panel="resolveImportFinalPanel"
+      @update:active-panel-source="setSlotPanelActiveSource"
       @select-slot="selectSlot"
       @assign-agent="assignAgent"
       @clear-slot="clearSlot"
@@ -2005,7 +2072,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :damage-kind="damageKind"
       :anomaly-sub-kind="anomalySubKind"
       :trigger-anomaly-agent-id="triggerAnomalyAgentId"
-      :anomaly-slot-panels="anomalySlotPanels"
+      :slot-panels="slotPanels"
       :convert-slot-panels="convertSlotPanels"
       :skill-category-id="skillCategoryId"
       :skill-subcategory-id="skillSubcategoryId"
@@ -2016,7 +2083,7 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
       :environment-buffs="activeEnvironmentBuffs"
       v-model:enemy-input="enemyInput"
       v-model:extra-gains="extraGains"
-      @update:anomaly-slot-panels="Object.assign(anomalySlotPanels, $event)"
+      @update:slot-panels="applySlotPanelPatch"
       @update:convert-slot-panels="Object.assign(convertSlotPanels, $event)"
       @update:hit-damages="hitDamages = $event"
       @update:hit-calc-results="hitCalcResults = $event"
@@ -2045,7 +2112,8 @@ defineExpose({ scrollToSection, setCalcMode, panelCalcMode })
         :damage-kind="damageKind"
         :anomaly-sub-kind="anomalySubKind"
         :trigger-anomaly-agent-id="triggerAnomalyAgentId"
-        :anomaly-slot-panels="anomalySlotPanels"
+        :active-slot-panels="activeSlotPanels"
+        :slot-panels="slotPanels"
         :skill-category-id="skillCategoryId"
         :skill-subcategory-id="skillSubcategoryId"
         :buff-selection="mainSlotBuffSelection"

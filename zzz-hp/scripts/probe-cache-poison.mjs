@@ -21,6 +21,7 @@ import {
   clearAffixEvalCache,
 } from '../src/utils/optimalAffixAlloc.ts'
 import { createDefaultAffixDriveDiscMainStats } from '../src/utils/affixDriveDiscConfig.ts'
+import { schemeActivePanels, schemeAffixInputs } from '../src/utils/agentPanelSources.ts'
 
 const BUFFS = 'D:/WB_agent_out/applications/ZZZ-HP/zzz-hp-backend/scripts/data/zzz-hp-calculator-buffs.json'
 const DEFAULT_SCHEME = 'D:/WB_agent_out/applications/ZZZ-HP/artifacts/profiles/zzz-hp-schemes-2026-09-10.json'
@@ -84,7 +85,7 @@ for (const scheme of Object.values(pack.schemes)) {
     bangbooRefine: 1,
     driveDiscs: buffs.driveDiscs,
     mainSlotIndex: activeSlot,
-    driveDiscMainStats: mainSlot.affixDriveDiscMainStats ?? createDefaultAffixDriveDiscMainStats(),
+    driveDiscMainStats: schemeAffixInputs(scheme, mainSlot.agentId).affixDriveDiscMainStats ?? createDefaultAffixDriveDiscMainStats(),
     enemyInput: {
       level: 60,
       defense: 953,
@@ -97,7 +98,7 @@ for (const scheme of Object.values(pack.schemes)) {
       mainAgent.profession === '命破' ? 'pierce' : mainAgent.profession === '锋御' ? 'def' : 'atk',
     buffSelection: null,
     slotBuffSelections: scheme.multiSlotBuffSelection ?? null,
-    anomalySlotPanels: scheme.anomalySlotPanels ?? undefined,
+    activeSlotPanels: schemeActivePanels(scheme),
     convertSlotPanels: scheme.convertSlotPanels ?? undefined,
     hits: flow.hits,
     resolveSubcategory: (id) => buffs.skillSubcategories.find((x) => x.id === id) ?? null,

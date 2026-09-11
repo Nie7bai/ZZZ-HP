@@ -112,7 +112,7 @@ console.log('\n[1] 无外部面板：回退到推导路径（与改造前逐位�
 
   // 显式传一个「占位面板」也应被当成没有面板（导入未录入时的占位值）
   const ctxPlaceholder = makeCtx({
-    anomalySlotPanels: {
+    activeSlotPanels: {
       a: fillPanelStatsDefaults({ ...createDefaultExternalPanel() }),
     },
   })
@@ -150,7 +150,7 @@ console.log('\n[1] 无外部面板：回退到推导路径（与改造前逐位�
 console.log('\n[2] 有外部面板：面板以「角色配置」为准')
 {
   const panel = makeExternalPanel()
-  const ctxWithPanel = makeCtx({ anomalySlotPanels: { a: panel } })
+  const ctxWithPanel = makeCtx({ activeSlotPanels: { a: panel } })
   clearAffixEvalCache()
   const evalWithPanel = evaluateAffixCounts(ctxWithPanel, counts0)
 
@@ -175,7 +175,7 @@ console.log('\n[2] 有外部面板：面板以「角色配置」为准')
 console.log('\n[3] 词条在面板上叠加（不反推、不扣减）')
 {
   const panel = makeExternalPanel({ critRate: 60, atk: 3000 })
-  const ctx = makeCtx({ anomalySlotPanels: { a: panel } })
+  const ctx = makeCtx({ activeSlotPanels: { a: panel } })
   clearAffixEvalCache()
   const base = evaluateAffixCounts(ctx, counts0)
 
@@ -207,11 +207,11 @@ console.log('\n[3] 词条在面板上叠加（不反推、不扣减）')
 
 console.log('\n[4] 面板变化必须让缓存失效（不得停在旧值）')
 {
-  const ctxA = makeCtx({ anomalySlotPanels: { a: makeExternalPanel({ critDmg: 100 }) } })
+  const ctxA = makeCtx({ activeSlotPanels: { a: makeExternalPanel({ critDmg: 100 }) } })
   clearAffixEvalCache()
   const evalA = evaluateAffixCounts(ctxA, counts0)
 
-  const ctxB = makeCtx({ anomalySlotPanels: { a: makeExternalPanel({ critDmg: 200 }) } })
+  const ctxB = makeCtx({ activeSlotPanels: { a: makeExternalPanel({ critDmg: 200 }) } })
   const evalB = evaluateAffixCounts(ctxB, counts0)
 
   check(
@@ -224,7 +224,7 @@ console.log('\n[4] 面板变化必须让缓存失效（不得停在旧值）')
 console.log('\n[5] 词条增量函数自身的边界')
 {
   const panel = makeExternalPanel()
-  const ctx = makeCtx({ anomalySlotPanels: { a: panel } })
+  const ctx = makeCtx({ activeSlotPanels: { a: panel } })
   clearAffixEvalCache()
   const many = evaluateAffixCounts(ctx, {
     ...createEmptyAffixCounts(),

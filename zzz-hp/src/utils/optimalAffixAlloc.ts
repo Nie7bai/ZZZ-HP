@@ -293,7 +293,7 @@ export interface OptimalEvalContext {
   driveDiscMainStats: AffixDriveDiscMainStats
   driveDiscs: DriveDiscBuffDoc[]
   /**
-   * 主 C 的基准局外面板，来自「角色配置」（导入录入写入的 `anomalySlotPanels`）。
+   * 主 C 的基准局外面板，来自「角色配置」（导入录入写入的 `activeSlotPanels`）。
    *
    * 有值时候选词条**叠加在它之上**（词条 = 在面板上再加 N 条，面板本身不动）；
    * 无值时 `computeExternalForEval` 回退到按槽位配置推导 —— 与改造前逐位等价。
@@ -698,7 +698,7 @@ function resolveExternalForAgent(
   if (slotIndex === ctx.panelContext.mainSlotIndex) return mainExternal
   const mapped = ctx.panelContext.slotExternalPanels?.[slotIndex]
   if (mapped) return fillPanelStatsDefaults(mapped)
-  const anomaly = ctx.panelContext.anomalySlotPanels?.[agentId]
+  const anomaly = ctx.panelContext.activeSlotPanels?.[agentId]
   if (anomaly) return fillPanelStatsDefaults(anomaly)
   return createDefaultExternalPanel()
 }
@@ -1629,7 +1629,7 @@ function computeAffixEvalContextSignature(ctx: OptimalEvalContext): string {
     JSON.stringify(ctx.enemyInput),
     JSON.stringify(ctx.panelContext.skillContext),
     JSON.stringify(ctx.extraGains ?? []),
-    JSON.stringify(ctx.panelContext.anomalySlotPanels ?? {}),
+    JSON.stringify(ctx.panelContext.activeSlotPanels ?? {}),
     JSON.stringify(ctx.panelContext.convertSlotPanels ?? {}),
     events,
     serializeMultiSlotBuffSelection(ctx.slotBuffSelections),
@@ -1734,7 +1734,7 @@ function getAffixExternalFixedParts(ctx: OptimalEvalContext): AffixExternalFixed
 /**
  * 本次评估用的主 C 局外面板 —— 求解 / 扫掠 / 收益表唯一的「取面板」入口。
  *
- * 有基准面板（「角色配置」录入的那份，`anomalySlotPanels`）时：**面板是起点，
+ * 有基准面板（「角色配置」录入的那份，`activeSlotPanels`）时：**面板是起点，
  * 候选词条叠加其上** —— 词条是「在面板上再加 N 条」，不反推也不扣减面板里已有的词条。
  * 百分比词条按「角色基础 + 音擎基础」折算，与 `applyAffixCountsToFixedParts` 同口径。
  *
@@ -2647,7 +2647,10 @@ export function buildOptimalEvalContext(input: {
   skillContext?: SkillCalcContext | null
   buffSelection?: BuffSelectionState | null
   slotBuffSelections?: MultiSlotBuffSelection | null
-  anomalySlotPanels?: Record<string, PanelStats>
+  /** 已解析的激活面板（每人一份）：调用方解析完来源再传进来 */
+  activeSlotPanels?: Record<string, PanelStats>
+  /** 主 C「词条导入」那一路的词条数（没有存面板时用来现推局外） */
+  mainAffixCounts?: AffixCounts
   convertSlotPanels?: import('@/utils/panelBuffCalc').ConvertSlotPanels
   hits?: ResolvedHit[]
   /** 页级异常强度提供者 id（命名含 trigger，实为 power） */
@@ -2675,12 +2678,12 @@ export function buildOptimalEvalContext(input: {
       : null
 
   /**
-   * 主 C 的**基准局外面板**：来自「角色配置」（导入录入写入的 `anomalySlotPanels`）。
+   * 主 C 的**基准局外面板**：来自「角色配置」（导入录入写入的 `activeSlotPanels`）。
    *
    * 面板是起点，候选词条在它之上叠加 —— 见 `computeExternalForEval`。取不到时留 null，
    * 由 `computeExternalForEval` 回退到「按槽位配置推导」（改造前的行为，逐位等价）。
    */
-  const mainSavedPanel = mainSlot.agentId ? input.anomalySlotPanels?.[mainSlot.agentId] : undefined
+  const mainSavedPanel = mainSlot.agentId ? input.activeSlotPanels?.[mainSlot.agentId] : undefined
   const mainBaseExternalPanel =
     mainSavedPanel && !isPlaceholderExternalPanel(mainSavedPanel)
       ? fillPanelStatsDefaults(mainSavedPanel)
@@ -2713,14 +2716,14 @@ export function buildOptimalEvalContext(input: {
       driveDiscs: input.driveDiscs,
       skillContext: input.skillContext,
       buffSelection: input.buffSelection,
-      anomalySlotPanels: input.anomalySlotPanels,
+      activeSlotPanels: input.activeSlotPanels,
       convertSlotPanels: input.convertSlotPanels,
       slotExternalPanels: Object.fromEntries(
         input.teamSlots.flatMap((slot, index) => {
           if (!slot.agentId) return []
-          // 局外面板统一以「角色配置」为准（导入录入写入的 anomalySlotPanels）；
+          // 局外面板统一以「角色配置」为准（导入录入写入的 activeSlotPanels）；
           // 主 C 的候选词条叠加不在这里，见 computeExternalForEval。
-          const saved = input.anomalySlotPanels?.[slot.agentId]
+          const saved = input.activeSlotPanels?.[slot.agentId]
           if (saved && !isPlaceholderExternalPanel(saved)) {
             return [[index, fillPanelStatsDefaults(saved)]]
           }
@@ -2735,9 +2738,10 @@ export function buildOptimalEvalContext(input: {
                 overrideAffix:
                   index === input.mainSlotIndex
                     ? {
+                        // 词条数来自「词条导入」那份来源记录（老方案经 v4 迁移后同在一处）
                         affixCounts: {
                           ...createEmptyAffixCounts(),
-                          ...slot.affixCounts,
+                          ...input.mainAffixCounts,
                         },
                         affixDriveDiscMainStats: input.driveDiscMainStats,
                       }

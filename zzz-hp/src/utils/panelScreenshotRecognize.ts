@@ -814,7 +814,7 @@ export async function recognizePanelScreenshot(
     result.driveDiscMainStats = mains
   } else {
     warnings.push(
-      '未识别到 4/5/6 号盘主属性；词条反推将沿用「词条导入」页当前选择的主属性（未设置过则为默认值）',
+      '未识别到 4/5/6 号盘主属性；「词条导入」页那份将沿用该页当前选择的主属性（未设置过则为默认值）',
     )
   }
   result.warnings = warnings
