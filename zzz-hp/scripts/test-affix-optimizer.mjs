@@ -26,6 +26,8 @@ import {
   createDefaultAffixLibrary,
   createDefaultAffixLibraryState,
   createOptionalAffixLibraryEntries,
+  createPresetAffixLibraryEntries,
+  entryRollsToEvalInput,
   removeAffixLibraryGroup,
   renameAffixLibraryGroup,
   resolveAffixLibrary,
@@ -473,6 +475,15 @@ console.log('\n[4.9] 存档读取与分组补齐')
     !reopened.groups.some((g) => g.name === '6号位'),
     reopened.groups.map((g) => g.name).join(', '),
   )
+  // 被删组里的预设条目（4/5/6 号位主属性）不能还挂着已删组名 —— 挂着就会被兜底补回来
+  const reopenedSlot6 = resolveAffixLibraryAll(reopened).filter(
+    (e) => e.id.startsWith('main:slot6:'),
+  )
+  check(
+    '被删组里的预设条目回落未分组（不再引用已删组名）',
+    reopenedSlot6.length > 0 && reopenedSlot6.every((e) => e.group === ''),
+    reopenedSlot6.map((e) => `${e.id}=${e.group || '(空)'}`).join(', '),
+  )
 
   // 改名的预设组：新名留下、原名不复活、组内条目跟着改名
   const renamed = renameAffixLibraryGroup(createDefaultAffixLibraryState(), '5号位', '五号位')
@@ -487,6 +498,15 @@ console.log('\n[4.9] 存档读取与分组补齐')
     (e) => e.id === 'substat:atkPercent',
   )?.group
   check('改名不影响条目（条目本就不在该组）', presetEntryGroup === '副词条', String(presetEntryGroup))
+  // 被改名组里的预设条目要跟着走，否则它们还引用旧组名 → 旧组被兜底补回来
+  const renamedSlot5 = resolveAffixLibraryAll(reopenedRenamed).filter(
+    (e) => e.id.startsWith('main:slot5:'),
+  )
+  check(
+    '被改名组里的预设条目跟着改名',
+    renamedSlot5.length > 0 && renamedSlot5.every((e) => e.group === '五号位'),
+    renamedSlot5.map((e) => `${e.id}=${e.group || '(空)'}`).join(', '),
+  )
 
   // 建回一个被删过的预设组名 → 撤销「删过」记录
   const recreated = addAffixLibraryGroup(removed, '6号位', 1)
@@ -496,6 +516,70 @@ console.log('\n[4.9] 存档读取与分组补齐')
     reopenedRecreated.groups.some((g) => g.name === '6号位'),
     reopenedRecreated.groups.map((g) => g.name).join(', '),
   )
+}
+
+// ---------- 4.10 同字段多条：各按自己的每档折算 ----------
+console.log('\n[4.10] 同字段多条目的折算')
+{
+  // 用户场景：副词条「局外攻击力% 3%/档」+ 5 号位主属性「局外攻击力 30%/档」
+  const pair = [
+    byId.get('substat:atkPercent'),
+    {
+      id: 'main:slot5:atkPercent',
+      label: '局外攻击力 30%',
+      target: 'stat:atkPercent',
+      perRoll: 30,
+      cap: 1,
+      group: '5号位',
+      rollCost: 1,
+      enabledByDefault: true,
+    },
+  ]
+  const sixPlusOne = entryRollsToEvalInput(pair, {
+    'substat:atkPercent': 6,
+    'main:slot5:atkPercent': 1,
+  })
+  // 6×3% + 1×30% = 48 个百分点（修前：7 档 × 被顶掉的 30% = 210）
+  const atkPercentPoints =
+    (sixPlusOne.counts.atkPercent ?? 0) * sixPlusOne.valuePerCount.atkPercent
+  check(
+    '副词条 6 档×3% + 主属性 1 档×30% = 48 个百分点',
+    Math.abs(atkPercentPoints - 48) < 1e-9,
+    `实际 ${atkPercentPoints} 个百分点`,
+  )
+
+  const mainOnly = entryRollsToEvalInput(pair, { 'main:slot5:atkPercent': 1 })
+  const mainOnlyPoints = (mainOnly.counts.atkPercent ?? 0) * mainOnly.valuePerCount.atkPercent
+  check('只选主属性 1 档 = 30 个百分点', Math.abs(mainOnlyPoints - 30) < 1e-9,
+    `实际 ${mainOnlyPoints}`)
+
+  // 每档值与常量表一致的条目：折算前后行为不变（既有库不受影响）
+  const plain = entryRollsToEvalInput([byId.get('substat:atkPercent')], {
+    'substat:atkPercent': 6,
+  })
+  const plainPoints = (plain.counts.atkPercent ?? 0) * plain.valuePerCount.atkPercent
+  check('每档=常量表的条目行为不变（6 档 × 3% = 18）', Math.abs(plainPoints - 18) < 1e-9,
+    `实际 ${plainPoints}`)
+
+  // 预设的 4/5/6 号位条目必须落在对应组、且各自是独立条目（同字段不合并）
+  const preset = createPresetAffixLibraryEntries()
+  const slotEntries = preset.filter((e) => /号位$/.test(e.group))
+  const ids = new Set(slotEntries.map((e) => e.id))
+  check('预设含 4/5/6 号位条目且 id 唯一', ids.size === slotEntries.length && slotEntries.length > 0,
+    `${slotEntries.length} 条`)
+  const slot5 = preset.filter((e) => e.group === '5号位')
+  check('5 号位预设条目数 = 5（对应限定组合的选项表）', slot5.length === 5,
+    slot5.map((e) => e.label).join(' / '))
+  const slot6 = preset.filter((e) => e.group === '6号位')
+  check(
+    '6 号位含异常掌控与能量恢复（冲击力未收录，面板无此字段）',
+    slot6.some((e) => e.label.includes('异常掌控')) &&
+      slot6.some((e) => e.label.includes('能量恢复')) &&
+      !slot6.some((e) => e.label.includes('冲击力')),
+    slot6.map((e) => e.label).join(' / '),
+  )
+  check('4/5/6 号位条目默认不启用（避免与已导入的面板重复计算）',
+    slotEntries.every((e) => e.enabledByDefault === false))
 }
 
 // ---------- 5. 引擎调用上限 ----------
@@ -514,13 +598,20 @@ console.log('\n[5] 安全网')
 console.log('\n[6] 词条库解析')
 {
   const state = createDefaultAffixLibraryState()
-  // 默认参与 = 10 条副词条；14 条扩展（主词条/Buff 来源）默认不参与
+  // 默认参与 = 10 条副词条；扩展（主词条/Buff 来源）+ 4/5/6 号位主属性默认不参与
   const active = resolveAffixLibrary(state)
   check('默认参与 10 条副词条', active.length === 10, String(active.length))
   const all = resolveAffixLibraryAll(state)
-  check('全量 24 条（含默认关闭的扩展）', all.length === 24, String(all.length))
-  check('扩展条目默认不参与',
-    all.filter((e) => !e.enabledByDefault).length === 14,
+  // 数量从预设构造器派生：新增预设条目时这里不该再变成陈旧断言
+  const presetTotal = createPresetAffixLibraryEntries().length
+  const presetOff = createPresetAffixLibraryEntries().filter((e) => !e.enabledByDefault).length
+  check(
+    `全量 = 预设条目数（${presetTotal}，含默认关闭的扩展与 4/5/6 号位）`,
+    all.length === presetTotal,
+    String(all.length),
+  )
+  check('非副词条预设条目默认不参与',
+    all.filter((e) => !e.enabledByDefault).length === presetOff,
     String(all.filter((e) => !e.enabledByDefault).length))
   const enabledOne = setAffixLibraryEntryEnabled(state, 'panel:dmgBonus', true)
   check('显式启用增伤后 11 条', resolveAffixLibrary(enabledOne).length === 11,

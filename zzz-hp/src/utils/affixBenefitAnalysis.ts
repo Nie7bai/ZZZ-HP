@@ -1,5 +1,7 @@
 import type { AffixCounts } from '@/types/calculatorPanel'
 import {
+  affixEquivalentRollsToRolls,
+  affixRollsToEquivalentRolls,
   affixValuePerCountFromEntries,
   entryRollsToEvalInput,
   panelFieldOfTarget,
@@ -246,7 +248,9 @@ function bumpEntryCounts(
   const key = statKeyOfTarget(entry.target)
   if (!key) return counts
   const next = { ...counts }
-  next[key] = (next[key] ?? 0) + step
+  // 与 entryRollsToEvalInput 同口径：按条目自己的每档值折成等效档数，
+  // 这样同字段多条（副词条 3%/档 与 主属性 30%/档）互不顶掉
+  next[key] = (next[key] ?? 0) + affixRollsToEquivalentRolls(entry, key, step)
   return next
 }
 
@@ -268,7 +272,10 @@ function currentRollsOf(
   entry: AffixLibraryEntry,
 ): number {
   const statKey = statKeyOfTarget(entry.target)
-  if (statKey) return counts[statKey] ?? 0
+  if (statKey) {
+    // counts 存的是等效档数，回填「当前几档」要按该条目的每档值折回去
+    return affixEquivalentRollsToRolls(entry, statKey, counts[statKey] ?? 0)
+  }
   const field = panelFieldOfTarget(entry.target)
   const total = field ? (deltas?.[field] ?? 0) : 0
   return entry.perRoll > 0 ? total / entry.perRoll : 0

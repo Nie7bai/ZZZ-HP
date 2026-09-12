@@ -63,6 +63,8 @@ export type AffixPanelDeltaField =
   | 'ignoreDefense'
   | 'resPen'
   | 'mastery'
+  | 'anomalyControl'
+  | 'energyRegen'
   | 'anomalyDmgBonus'
   | 'anomalyCritRate'
   | 'anomalyCritDmg'
@@ -85,6 +87,8 @@ export const AFFIX_PANEL_DELTA_FIELD_LABELS: Record<AffixPanelDeltaField, string
   ignoreDefense: '无视防御%',
   resPen: '抗性穿透%',
   mastery: '异常精通',
+  anomalyControl: '异常掌控',
+  energyRegen: '能量恢复效率',
   anomalyDmgBonus: '异常增伤%',
   anomalyCritRate: '异常暴击率%',
   anomalyCritDmg: '异常暴击伤害%',
@@ -237,7 +241,10 @@ export function createDefaultAffixLibrary(): AffixLibraryEntry[] {
  *
  * 与副词条的区别只剩「落点」与默认值：
  * - `cap: 1` —— 主词条/来源最多取一次（副词条可叠，见 createDefaultAffixLibrary）；
- * - `group` 默认空 —— 需要互斥时由用户在词条库里填同组名。
+ * - `group` 默认「副词条」—— 未指定槽位的自由条目归在这里（额度不限）。
+ *
+ * 已确知属于 5 号位的两条（穿透率 / 增伤）直接归入「5号位」组，
+ * 见 `AFFIX_OPTIONAL_GROUP_OVERRIDES`。
  */
 export function createOptionalAffixLibraryEntries(): AffixLibraryEntry[] {
   const specs: { field: AffixPanelDeltaField; perRoll: number }[] = [
@@ -262,10 +269,75 @@ export function createOptionalAffixLibraryEntries(): AffixLibraryEntry[] {
     label: AFFIX_PANEL_DELTA_FIELD_LABELS[spec.field],
     perRoll: spec.perRoll,
     cap: 1,
-    group: AFFIX_PRESET_DEFAULT_GROUP,
+    group: AFFIX_OPTIONAL_GROUP_OVERRIDES[spec.field] ?? AFFIX_PRESET_DEFAULT_GROUP,
     rollCost: 1,
     enabledByDefault: false,
   }))
+}
+
+/**
+ * 扩展条目里**已知属于某个槽位**的那些，直接归到对应组（用户截图口径）。
+ *
+ * 只有这两条能确定：穿透率 24% 与增伤 30% 是 5 号位主属性（用户实际用法如此）。
+ * 其余 12 条是不分槽位的自由条目（减防 / 无视防御 / 各异常增伤…），留在「副词条」组。
+ */
+export const AFFIX_OPTIONAL_GROUP_OVERRIDES: Partial<Record<AffixPanelDeltaField, string>> = {
+  penRate: '5号位',
+  dmgBonus: '5号位',
+}
+
+/**
+ * 4/5/6 号位主属性候选条目（默认不启用），按用户给的选项表逐一对应。
+ *
+ * 数值来源 = `affixDriveDiscConfig.ts` 的 `DRIVE_DISC_SLOT_{4,5,6}_OPTIONS`
+ * （同一份口径，改那边要同步这里）。
+ *
+ * 为什么同一字段会有多条：4/5/6 各有一条「局外攻击力 30%」，分属不同组、各自额度 1，
+ * 求解器按组各选至多一条。折算时各按自己的每档算（见 `entryRollsToEvalInput`），
+ * 与副词条的「局外攻击力% 3%/档」互不干扰 —— 这正是本次修的那个 bug。
+ *
+ * 未收录：**冲击力 18%**（6 号位）。`PanelStats` 没有冲击力字段、计算链路也不读它，
+ * 收进来会是一条「点了没反应」的条目，反而误导。
+ */
+export function createDriveDiscMainStatAffixEntries(): AffixLibraryEntry[] {
+  const specs: { slot: 4 | 5 | 6; key: string; field?: AffixPanelDeltaField; statKey?: keyof AffixCounts; label: string; perRoll: number }[] = [
+    // ---- 4 号位 ----
+    { slot: 4, key: 'critDmg', statKey: 'critDmg', label: '爆伤 48%', perRoll: 48 },
+    { slot: 4, key: 'critRate', statKey: 'critRate', label: '暴击 24%', perRoll: 24 },
+    { slot: 4, key: 'externalAtkPercent', statKey: 'atkPercent', label: '局外攻击力 30%', perRoll: 30 },
+    { slot: 4, key: 'externalHpPercent', statKey: 'hpPercent', label: '局外生命值 30%', perRoll: 30 },
+    { slot: 4, key: 'mastery', statKey: 'mastery', label: '精通 92', perRoll: 92 },
+    { slot: 4, key: 'externalDefPercent', statKey: 'defPercent', label: '局外防御力 48%', perRoll: 48 },
+    // ---- 5 号位（穿透率 / 增伤的候选在 createOptionalAffixLibraryEntries 里，不重复造）----
+    { slot: 5, key: 'externalAtkPercent', statKey: 'atkPercent', label: '局外攻击力 30%', perRoll: 30 },
+    { slot: 5, key: 'externalHpPercent', statKey: 'hpPercent', label: '局外生命值 30%', perRoll: 30 },
+    { slot: 5, key: 'externalDefPercent', statKey: 'defPercent', label: '局外防御力 48%', perRoll: 48 },
+    // ---- 6 号位 ----
+    { slot: 6, key: 'externalAtkPercent', statKey: 'atkPercent', label: '局外攻击力 30%', perRoll: 30 },
+    { slot: 6, key: 'externalHpPercent', statKey: 'hpPercent', label: '局外生命值 30%', perRoll: 30 },
+    { slot: 6, key: 'externalDefPercent', statKey: 'defPercent', label: '局外防御力 48%', perRoll: 48 },
+    { slot: 6, key: 'anomalyControl', field: 'anomalyControl', label: '异常掌控 30%', perRoll: 30 },
+    { slot: 6, key: 'energyRegen', field: 'energyRegen', label: '能量恢复 60%', perRoll: 60 },
+  ]
+  return specs.map((spec) => ({
+    id: `main:slot${spec.slot}:${spec.key}`,
+    target: spec.statKey ? statTarget(spec.statKey) : panelTarget(spec.field!),
+    label: spec.label,
+    perRoll: spec.perRoll,
+    cap: 1,
+    group: `${spec.slot}号位`,
+    rollCost: 1,
+    enabledByDefault: false,
+  }))
+}
+
+/** 预设条目全量（不含用户自建）：副词条 + 扩展条目 + 4/5/6 号位主属性 */
+export function createPresetAffixLibraryEntries(): AffixLibraryEntry[] {
+  return [
+    ...createDefaultAffixLibrary(),
+    ...createOptionalAffixLibraryEntries(),
+    ...createDriveDiscMainStatAffixEntries(),
+  ]
 }
 
 /** 词条分组：组名 + 组额度（组内各条档数之和的上限，见文件头「分组额度」） */
@@ -700,11 +772,17 @@ export function loadAffixLibraryState(): AffixLibraryState {
   return activeAffixLibrarySet(loadAffixLibraryStore()).state
 }
 
-/** 全部默认条目（副词条 + 可选扩展），已应用用户覆盖值 */
+/** 全部预设条目（副词条 + 扩展 + 4/5/6 号位主属性），已应用用户覆盖值 */
 function presetEntriesWithOverrides(state: AffixLibraryState): AffixLibraryEntry[] {
-  return [...createDefaultAffixLibrary(), ...createOptionalAffixLibraryEntries()].map((entry) => {
+  const removed = new Set(state.removedGroupNames)
+  return createPresetAffixLibraryEntries().map((entry) => {
     const override = state.overrides[entry.id]
-    return override ? { ...entry, ...override } : entry
+    const merged = override ? { ...entry, ...override } : entry
+    // 用户删过这个组 → 组内预设条目回落「未分组」。
+    // 必须在这里清：预设条目每次读盘都重建，若还挂着已删组名，
+    // `withReferencedGroupsBackfilled` 会把那个组又补回来（删除等于没删）。
+    if (merged.group && removed.has(merged.group)) return { ...merged, group: '' }
+    return merged
   })
 }
 
@@ -880,6 +958,27 @@ export function setAffixLibraryGroupCap(
 }
 
 /**
+ * 把**预设条目**的组名从 `from` 改写成 `to`（写成条目级 override）。
+ *
+ * 为什么必需：预设条目每次读盘都按内置 `group` 重建。只改 `groups` 表与已有
+ * override 的话，那些「没被用户改过、但组名挂在被删/被改名组上」的预设条目
+ * 依然引用旧组名，读盘时会被兜底补回来 —— 删组等于没删、改名变成多出一个组。
+ */
+function retargetPresetEntryGroups(
+  state: AffixLibraryState,
+  from: string,
+  to: string,
+): AffixLibraryState['overrides'] {
+  const next = { ...state.overrides }
+  for (const entry of createPresetAffixLibraryEntries()) {
+    const effective = state.overrides[entry.id]?.group ?? entry.group
+    if (effective !== from) continue
+    next[entry.id] = { ...state.overrides[entry.id], group: to }
+  }
+  return next
+}
+
+/**
  * 改组名，并**同步所有引用它的条目**（自建条目 + 默认条目的覆盖值）。
  *
  * 不同步的话，条目会指向一个不存在的组名 —— 读回来时会被兜底补成一个新组，
@@ -895,18 +994,19 @@ export function renameAffixLibraryGroup(
   if (hasAffixLibraryGroup(state, trimmed)) return state
   const patchGroup = <T extends { group: string }>(item: T): T =>
     item.group === from ? { ...item, group: trimmed } : item
+  const patchedOverrides = Object.fromEntries(
+    Object.entries(state.overrides).map(([id, patch]) => [
+      id,
+      patch.group === from ? { ...patch, group: trimmed } : patch,
+    ]),
+  )
   return {
     ...state,
     groups: state.groups.map((group) =>
       group.name === from ? { ...group, name: trimmed } : group,
     ),
     customEntries: state.customEntries.map(patchGroup),
-    overrides: Object.fromEntries(
-      Object.entries(state.overrides).map(([id, patch]) => [
-        id,
-        patch.group === from ? { ...patch, group: trimmed } : patch,
-      ]),
-    ),
+    overrides: retargetPresetEntryGroups({ ...state, overrides: patchedOverrides }, from, trimmed),
     // 改掉一个预设组的名字 → 记下原名，否则下次读盘它又会被补回来
     removedGroupNames: mergeRemovedGroupName(state.removedGroupNames, from, trimmed),
   }
@@ -938,16 +1038,18 @@ export function removeAffixLibraryGroup(
     isPresetGroupName(name) && !state.removedGroupNames.includes(name)
       ? [...state.removedGroupNames, name]
       : state.removedGroupNames
+  const patchedOverrides = Object.fromEntries(
+    Object.entries(state.overrides).map(([id, patch]) => [
+      id,
+      patch.group === name ? { ...patch, group: '' } : patch,
+    ]),
+  )
   return {
     ...state,
     groups: state.groups.filter((group) => group.name !== name),
     customEntries: state.customEntries.map(clearGroup),
-    overrides: Object.fromEntries(
-      Object.entries(state.overrides).map(([id, patch]) => [
-        id,
-        patch.group === name ? { ...patch, group: '' } : patch,
-      ]),
-    ),
+    // 预设条目也要一并落成「未分组」的覆盖值，否则它们还引用着被删的组名
+    overrides: retargetPresetEntryGroups({ ...state, overrides: patchedOverrides }, name, ''),
     removedGroupNames,
   }
 }
@@ -969,13 +1071,20 @@ export interface AffixEntryEvalInput {
 /**
  * 档数表 → 求解器可直接使用的 `(counts, deltas, valuePerCount)`。
  *
- * `valuePerCount` 由**全部条目**算出（与档数无关）：某个 `stat:` 字段的每档值
- * 由指向它的条目决定，即便这次该条目档数为 0 —— 因为 `counts` 里可能还有
- * 来自基线（页面已填词条数）的档数，它们同样按该字段的每档值换算。
+ * ## 同字段多条：**各按自己的每档算**（2026-09-12 修）
  *
- * 同字段多条目的边界：档数会合并进同一个桶，而每档值只能有一个，
- * 因此**列表中靠后的条目生效**（`resolveAffixLibraryAll()` 的顺序：
- * 默认条目在前、自建条目在后）。这是合并模型的固有取舍，已在词条库界面提示。
+ * 早期实现把档数合并进同一个桶、每档值按字段存一份，于是「同字段多条」时
+ * **后一条的每档值会顶掉前一条**：
+ *
+ * ```
+ * 副词条 攻击% 6 档 × 3%  +  5号位 攻击% 1 档 × 30%
+ *   旧：7 档 × 30% = 210 个百分点   ← 错 4 倍（实测）
+ *   新：6×3% + 1×30% = 48 个百分点  ✓
+ * ```
+ *
+ * 修法：条目自己的 `perRoll` 在这里就折算进「等效档数」（折算是相对常量表
+ * `AFFIX_VALUE_PER_COUNT`），`valuePerCount` 因此恒为常量表。
+ * 这样 4/5/6 号位主属性（30%/档）与副词条（3%/档）指向同一字段也不会互相污染。
  */
 export function entryRollsToEvalInput(
   entries: AffixLibraryEntry[],
@@ -983,16 +1092,16 @@ export function entryRollsToEvalInput(
 ): AffixEntryEvalInput {
   const counts: Partial<AffixCounts> = {}
   const deltas: AffixPanelDeltaDraft = {}
+  /** 折算基准，恒为常量表：条目自己的每档值已在下面折进 counts */
   const valuePerCount: Record<keyof AffixCounts, number> = { ...AFFIX_VALUE_PER_COUNT }
 
   for (const entry of entries) {
     const statKey = statKeyOfTarget(entry.target)
     if (statKey) {
-      if (Number.isFinite(entry.perRoll) && entry.perRoll > 0) {
-        valuePerCount[statKey] = entry.perRoll
-      }
       const rolls = rollsByEntryId[entry.id] ?? 0
-      if (rolls > 0) counts[statKey] = (counts[statKey] ?? 0) + rolls
+      if (rolls > 0) {
+        counts[statKey] = (counts[statKey] ?? 0) + affixRollsToEquivalentRolls(entry, statKey, rolls)
+      }
       continue
     }
     const field = panelFieldOfTarget(entry.target)
@@ -1005,19 +1114,48 @@ export function entryRollsToEvalInput(
   return { counts, deltas, valuePerCount }
 }
 
-/** 只要每档值表（调用方自己管档数时用，例如收益曲线的逐档累加） */
+/**
+ * 把「N 档 × 自己的每档值」折成**相对常量表的等效档数**。
+ *
+ * 引擎按 `档数 × 常量表` 折算百分点，因此等效档数 = `N × perRoll / 常量表值`。
+ * 每档值与常量表相同时等价于原来的 `N`（既有默认库行为完全不变）。
+ */
+export function affixRollsToEquivalentRolls(
+  entry: AffixLibraryEntry,
+  statKey: keyof AffixCounts,
+  rolls: number,
+): number {
+  const base = AFFIX_VALUE_PER_COUNT[statKey]
+  if (!Number.isFinite(base) || base <= 0) return rolls
+  if (!Number.isFinite(entry.perRoll) || entry.perRoll <= 0) return rolls
+  return rolls * (entry.perRoll / base)
+}
+
+/** 等效档数 → 真实档数（收益表回填「当前几档」用） */
+export function affixEquivalentRollsToRolls(
+  entry: AffixLibraryEntry,
+  statKey: keyof AffixCounts,
+  equivalentRolls: number,
+): number {
+  const base = AFFIX_VALUE_PER_COUNT[statKey]
+  if (!Number.isFinite(base) || base <= 0) return equivalentRolls
+  if (!Number.isFinite(entry.perRoll) || entry.perRoll <= 0) return equivalentRolls
+  return (equivalentRolls * base) / entry.perRoll
+}
+
+/**
+ * 每档值表。
+ *
+ * **恒为常量表**（2026-09-12 起）：条目各自的每档值已由 `entryRollsToEvalInput`
+ * 折进等效档数，这里再按字段覆盖一次就会让同字段多条互相顶掉。
+ * 保留该函数是为了不动调用方签名 —— 「用户改每档要生效」现在由等效档数承担
+ * （改每档 → 等效档数变 → 缓存键里的 counts 变 → 结果随之变）。
+ */
 export function affixValuePerCountFromEntries(
   entries: AffixLibraryEntry[],
 ): Record<keyof AffixCounts, number> {
-  const valuePerCount: Record<keyof AffixCounts, number> = { ...AFFIX_VALUE_PER_COUNT }
-  for (const entry of entries) {
-    const statKey = statKeyOfTarget(entry.target)
-    if (!statKey) continue
-    if (Number.isFinite(entry.perRoll) && entry.perRoll > 0) {
-      valuePerCount[statKey] = entry.perRoll
-    }
-  }
-  return valuePerCount
+  void entries
+  return { ...AFFIX_VALUE_PER_COUNT }
 }
 
 /** 把面板增量叠加到局外面板副本上（不改原对象） */
