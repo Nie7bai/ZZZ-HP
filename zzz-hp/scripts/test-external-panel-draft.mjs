@@ -33,10 +33,22 @@ console.log('面板导入草稿：')
 
 const empty = createEmptyExternalPanelDraft()
 
+/** 必填项 = 参与「填没填完」判定的那些（可选字段如冲击力不算） */
+const REQUIRED_INPUT_FIELDS = EXTERNAL_PANEL_INPUT_FIELDS.filter((field) => !field.optional)
+const OPTIONAL_INPUT_FIELDS = EXTERNAL_PANEL_INPUT_FIELDS.filter((field) => field.optional)
+
 check(
   '空白草稿：录入项全是 null（不是 0，更不是占位面板）',
-  missingExternalPanelInputs(empty).length === EXTERNAL_PANEL_INPUT_FIELDS.length,
-  `录入项 ${EXTERNAL_PANEL_INPUT_FIELDS.length} 项`,
+  EXTERNAL_PANEL_INPUT_FIELDS.every((field) => empty[field.key] === null),
+  `录入项 ${EXTERNAL_PANEL_INPUT_FIELDS.length} 项（必填 ${REQUIRED_INPUT_FIELDS.length} + 可选 ${OPTIONAL_INPUT_FIELDS.length}）`,
+)
+
+check(
+  '可选录入项（冲击力）不参与「填没填完」判定',
+  OPTIONAL_INPUT_FIELDS.some((field) => field.key === 'impact') &&
+    missingExternalPanelInputs(empty).length === REQUIRED_INPUT_FIELDS.length &&
+    !missingExternalPanelInputs(empty).some((item) => item.key === 'impact'),
+  `未填项 ${missingExternalPanelInputs(empty).length} 项`,
 )
 check(
   '空白草稿 → 不能进计算（resolve 返回 null）',
@@ -58,6 +70,20 @@ check(
   '填 0 也算填了（「没填」和「填了 0」是两回事）',
   resolveExternalPanelDraft(full) !== null &&
     missingExternalPanelInputs(full).length === 0,
+)
+
+// 可选字段留空（null）→ 落库补 0，不能把 null 带进 PanelStats（后续加法会变 NaN）
+const withoutOptional = { ...full }
+for (const field of OPTIONAL_INPUT_FIELDS) withoutOptional[field.key] = null
+const resolvedWithoutOptional = resolveExternalPanelDraft(withoutOptional)
+check(
+  '可选字段留空 → 落库补 0（不是 null）',
+  resolvedWithoutOptional !== null && resolvedWithoutOptional.impact === 0,
+  `impact = ${resolvedWithoutOptional?.impact}`,
+)
+check(
+  '可选字段不填也照样能进计算（不阻塞导入）',
+  resolvedWithoutOptional !== null,
 )
 
 full.hp = 8000

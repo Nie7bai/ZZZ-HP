@@ -181,6 +181,7 @@ const FINAL_FIELDS: { key: keyof PanelStats; label: string }[] = [
   { key: 'mastery', label: '精通' },
   { key: 'anomalyControl', label: '异常掌控' },
   { key: 'energyRegen', label: '能量回复效率%' },
+  { key: 'impact', label: '冲击力' },
   { key: 'anomalyCritRate', label: '异常暴击%' },
   { key: 'anomalyCritDmg', label: '异常爆伤%' },
   { key: 'anomalyDmgBonus', label: '异常增伤%' },
@@ -204,6 +205,7 @@ function formatValue(key: keyof PanelStats, value: number) {
     key === 'pen' ||
     key === 'mastery' ||
     key === 'anomalyControl' ||
+    key === 'impact' ||
     key === 'anomalyDuration'
   ) {
     return Math.round(value).toLocaleString('en-US')

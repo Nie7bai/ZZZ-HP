@@ -19,6 +19,8 @@ import {
   createEmptyWengineAdvancedStats,
 } from '../src/utils/calculatorUi.ts'
 import { AFFIX_VALUE_PER_COUNT, computeExternalPanelFromTeamSlot } from '../src/utils/affixPanelCalc.ts'
+import { buildPanelSourceValuesBySlotRecord } from '../src/utils/panelBuffCalc.ts'
+import { resolveConvertValue } from '../src/utils/buffEffect.ts'
 import {
   buildOptimalEvalContext,
   clearAffixEvalCache,
@@ -247,6 +249,59 @@ console.log('\n[5] 词条增量函数自身的边界')
     '未涉及的面板字段原样保留',
     many.external.hp === panel.hp && many.external.def === panel.def,
     `hp=${many.external.hp} def=${many.external.def}`,
+  )
+  check(
+    '冲击力也不被词条叠加改写（它不进乘区）',
+    many.external.impact === panel.impact,
+    `${panel.impact} → ${many.external.impact}`,
+  )
+}
+
+console.log('\n[6] 冲击力：转模来源属性（青衣「阳关三叠」口径）')
+{
+  // 面板的冲击力必须一路传到转模取值 —— 改动前 PanelStats 没有这个字段，取值恒为 0
+  const IMPACT = 170
+  const panel = makeExternalPanel({ impact: IMPACT })
+  const ctx = makeCtx({ activeSlotPanels: { a: panel } })
+  const record = buildPanelSourceValuesBySlotRecord(ctx.panelContext, panel)
+  check(
+    '面板冲击力进入转模源值（局外与局内）',
+    record?.[0]?.external?.impact === IMPACT && record?.[0]?.final?.impact === IMPACT,
+    `external=${record?.[0]?.external?.impact} final=${record?.[0]?.final?.impact}`,
+  )
+
+  const qingyiConvert = {
+    id: 'qingyi-ms',
+    kind: 'convert',
+    convert: {
+      from: 'impact',
+      panelSource: 'final',
+      ratioPercent: 600,
+      cap: null,
+      defaultBase: null,
+      initialBase: 120,
+    },
+  }
+  const value = resolveConvertValue(
+    qingyiConvert,
+    ctx.attrValues ?? {},
+    null,
+    record?.[0],
+  )
+  check(
+    `青衣转模 = (冲击力 ${IMPACT} − 120) × 600% = 300`,
+    Math.abs(value - 300) < 1e-6,
+    `实算 ${value}`,
+  )
+
+  const withoutImpact = makeExternalPanel({ impact: 0 })
+  const recordZero = buildPanelSourceValuesBySlotRecord(
+    makeCtx({ activeSlotPanels: { a: withoutImpact } }).panelContext,
+    withoutImpact,
+  )
+  check(
+    '冲击力 0 时不产生收益（max(0, 0−120) = 0）',
+    resolveConvertValue(qingyiConvert, {}, null, recordZero?.[0]) === 0,
   )
 }
 

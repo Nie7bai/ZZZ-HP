@@ -491,6 +491,7 @@ const PANEL_STAT_ATTR_KEYS: PanelStatAttrKey[] = [
   'energyRegen',
   'penRate',
   'def',
+  'impact',
 ]
 
 export type PanelSourceValues = {
@@ -654,8 +655,15 @@ function resolveConvertAttrExtras(
   const partial = agentId ? ctx.convertSlotPanels?.[agentId] : undefined
   const extras: Partial<Record<CharacterAttrKey, number>> = {
     level: partial?.level ?? ctx.attrValues?.level ?? 60,
-    impact: partial?.impact ?? ctx.attrValues?.impact ?? 0,
   }
+  /**
+   * 冲击力：只有真知道时才写进 extras —— 不能用 `?? 0` 兜底。
+   *
+   * 兜底成 0 会把 `panelToConvertAttrValues` 里「取面板的 impact」又顶掉，
+   * 面板填了冲击力也白填（青衣那条链就是这样断掉的，见 affix-calc-manual.md §1.9）。
+   */
+  const impact = partial?.impact ?? ctx.attrValues?.impact
+  if (impact != null && Number.isFinite(impact)) extras.impact = impact
   if (partial?.pierce != null && Number.isFinite(partial.pierce)) {
     extras.pierce = partial.pierce
   }
@@ -2159,6 +2167,8 @@ export function applyBuffModsToPanel(
     penRate: externalPanel.penRate + mods.penRate,
     pen: externalPanel.pen,
     resPen: externalPanel.resPen + mods.resPen,
+    // 冲击力不进乘区、也没有任何增益改它：原样带过去，局内转模（青衣）才读得到
+    impact: externalPanel.impact ?? 0,
     mastery: externalPanel.mastery + mods.mastery,
     anomalyControl:
       externalPanel.anomalyControl +
@@ -2250,7 +2260,8 @@ export function panelToConvertAttrValues(
     penRate: panel.penRate,
     def: panel.def,
     pierce: computePiercePower(panel.hp, panel.atk, pierceMod),
-    impact: extras.impact ?? 0,
+    // 冲击力取自面板（转模来源属性）；extras 里有明确值时优先（转模角色单独录入的那份）
+    impact: extras.impact ?? panel.impact ?? 0,
     level: extras.level ?? 60,
     ...extras,
   }

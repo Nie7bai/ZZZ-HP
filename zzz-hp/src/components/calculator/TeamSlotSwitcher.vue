@@ -134,6 +134,7 @@ const EXTERNAL_PREVIEW_FIELDS: { key: keyof PanelStats; label: string }[] = [
   { key: 'mastery', label: '精通' },
   { key: 'anomalyControl', label: '异常掌控' },
   { key: 'energyRegen', label: '能量回复效率%' },
+  { key: 'impact', label: '冲击力' },
 ]
 
 const FINAL_PREVIEW_FIELDS: { key: keyof PanelStats; label: string }[] = [

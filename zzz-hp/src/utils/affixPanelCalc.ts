@@ -316,6 +316,14 @@ export function applyAffixCountsToFixedParts(
     ),
     anomalyControl: roundPanelValue(parts.anomalyControl),
     energyRegen: roundPanelValue(parts.energyRegen),
+    /**
+     * 冲击力：词条模式**推不出来**，恒 0。
+     *
+     * 要推导它得有「角色基础冲击力」+「6 号位主属性 18%」两项数据，而 DB 里
+     * 没有任何角色的基础冲击力（`AgentBasePanel` 无 impact 字段）。
+     * 因此词条模式下青衣的冲击力转模仍是 0；面板导入那条路已经能用（手工填 / 见 §1.9）。
+     */
+    impact: 0,
     anomalyCritRate: roundPanelValue(parts.anomalyCritRate),
     anomalyCritDmg: roundPanelValue(parts.anomalyCritDmg),
     anomalyDmgBonus: roundPanelValue(parts.anomalyDmgBonus),
