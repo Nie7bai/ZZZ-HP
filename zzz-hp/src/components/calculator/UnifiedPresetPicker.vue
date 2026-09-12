@@ -42,6 +42,7 @@ import {
   fillSkillTalentLevels,
   type SkillTalentLevels,
 } from '@/utils/skillTalentLevels'
+import { shouldResetDraftsOnAgentChange } from '@/utils/presetPickerDraftReset'
 
 const EMPTY_BANGBOO: BangbooBuffDoc = {
   id: 'none',
@@ -239,35 +240,60 @@ function switchActivePanelSource(kind: AgentPanelSourceKind) {
   emit('update:activePanelSource', agentId, kind)
 }
 
+/**
+ * 打开弹窗时按槽位回填的角色 id。
+ *
+ * 打开时 `selected` 被整体改写（agentId 从空变成槽位角色），这次变化是「回填」而不是
+ * 用户换人：紧接着执行的角色 watch 要跳过它，否则会把刚回填的草稿清掉 ——
+ * 表现为刷新后第一次打开配置全空，关掉再打开才正常。
+ */
+let agentIdRestoredOnOpen: string | null = null
+
 watch(open, (isOpen) => {
-  if (isOpen) {
-    entryMode.value = props.preferredEntryMode ?? 'panel'
-    const slot = props.teamSlots[props.activeSlot]
-    if (!slot) return
-    selected.value = {
-      agentId: slot.agentId || '',
-      rank: slot.rank,
-      wengineId: slot.wengineId,
-      wengineRefine: slot.wengineRefine,
-      twoPieceId: slot.twoPieceDriveDiscId,
-      fourPieceId: slot.fourPieceDriveDiscId,
-    }
-    agentRoleFilter.value = ''
-    agentElementFilter.value = ''
-    wengineRoleFilter.value = ''
-    wengineRarityFilter.value = ''
-    agentSearch.value = ''
-    wengineSearch.value = ''
-    discSearch.value = ''
-    activeTab.value = 'agent'
-    resetDraftPanelFromSlot()
+  if (!isOpen) {
+    // 关闭时清掉，避免标记留到下一次打开
+    agentIdRestoredOnOpen = null
+    return
   }
+  entryMode.value = props.preferredEntryMode ?? 'panel'
+  const slot = props.teamSlots[props.activeSlot]
+  if (!slot) return
+  selected.value = {
+    agentId: slot.agentId || '',
+    rank: slot.rank,
+    wengineId: slot.wengineId,
+    wengineRefine: slot.wengineRefine,
+    twoPieceId: slot.twoPieceDriveDiscId,
+    fourPieceId: slot.fourPieceDriveDiscId,
+  }
+  agentRoleFilter.value = ''
+  agentElementFilter.value = ''
+  wengineRoleFilter.value = ''
+  wengineRarityFilter.value = ''
+  agentSearch.value = ''
+  wengineSearch.value = ''
+  discSearch.value = ''
+  activeTab.value = 'agent'
+  agentIdRestoredOnOpen = selected.value.agentId || null
+  resetDraftPanelFromSlot()
 })
 
 watch(
   () => selected.value.agentId,
   (newId, oldId) => {
-    if (!open.value || !newId || newId === oldId) return
+    // 回填标记只消费一次：无论本次是否重置，都清掉它
+    const restoredOnOpen = agentIdRestoredOnOpen
+    agentIdRestoredOnOpen = null
+    if (
+      !shouldResetDraftsOnAgentChange({
+        isOpen: open.value,
+        oldAgentId: oldId,
+        newAgentId: newId,
+        agentIdRestoredOnOpen: restoredOnOpen,
+      })
+    ) {
+      return
+    }
     const agent = props.agents.find((item) => item.id === newId)
     // 选中代理人后面板草稿固定回落该角色基础面板（不沿用旧导入）
     if (agent) {
