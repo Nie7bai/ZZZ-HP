@@ -124,6 +124,9 @@ import {
   schemeSlotsHaveContent,
 } from '@/utils/resolvedHit'
 import type { DamageCalcResult } from '@/utils/damageCalc'
+import { buildOptimalEvalContext } from '@/utils/optimalAffixAlloc'
+import { useDamageProcessEvents } from '@/composables/useDamageProcessEvents'
+import DamageProcessPanel from '@/components/calculator/DamageProcessPanel.vue'
 
 export interface TeamSlot {
   agentId: string
@@ -135,8 +138,14 @@ export interface TeamSlot {
 }
 
 const calculatorBuffStore = useCalculatorBuffStore()
-const { agents, wengines, bangboos, driveDiscs, skillSubcategories } =
-  storeToRefs(calculatorBuffStore)
+const {
+  agents,
+  wengines,
+  bangboos,
+  driveDiscs,
+  skillSubcategories,
+  followUpSkillRules,
+} = storeToRefs(calculatorBuffStore)
 
 const teamSlots = reactive<TeamSlot[]>([
   {
@@ -243,6 +252,109 @@ watch(
   },
 )
 const hits = computed(() => resolvedFlow.value.hits)
+
+/**
+ * ==================== 统一伤害结果区（链路终点） ====================
+ *
+ * 设计（所有者口径 2026-09-12）：伤害结果 = **一个功能**，不是普通 / 词条分配 / 扫掠柱图
+ * 三套。入口是「伤害面板 3 选 1」（config / allocation / sweep），传进来的**面板数据不同**，
+ * 内部**一套流程计算**（evaluateOptimalEventDetail）→ 一套详情展示（DamageProcessPanel），
+ * 页面底部常驻。链路见 `docs/specs/panel-affix-flow.svg`。
+ */
+const mainAgentOf = computed(() =>
+  agents.value.find((item) => item.id === teamSlots[activeSlot.value]?.agentId),
+)
+const isMbMainAgent = computed(() => mainAgentOf.value?.profession === '命破')
+const isFengYuMainAgent = computed(() => mainAgentOf.value?.profession === '锋御')
+
+/** 统一结果区的评估上下文：页级组装（与词条分析页同一构造函数，保证口径一致） */
+const damageResultEvalCtx = computed(() =>
+  buildOptimalEvalContext({
+    isMb: isMbMainAgent.value,
+    isFengYu: isFengYuMainAgent.value,
+    teamSlots,
+    agents: agents.value,
+    wengines: wengines.value,
+    bangboo: selectedBangboo.value,
+    bangbooRefine: bangbooRefine.value,
+    driveDiscs: driveDiscs.value,
+    mainSlotIndex: activeSlot.value,
+    driveDiscMainStats: {
+      ...createDefaultAffixDriveDiscMainStats(),
+      ...(slotPanels[teamSlots[activeSlot.value]?.agentId ?? '']?.affixDriveDiscMainStats ?? {}),
+    },
+    mainAffixCounts: slotPanels[teamSlots[activeSlot.value]?.agentId ?? '']?.affixCounts,
+    enemyInput: { ...enemyInput.value },
+    baseDamageSource: isMbMainAgent.value
+      ? 'pierce'
+      : isFengYuMainAgent.value
+        ? 'def'
+        : baseDamageSource.value,
+    extraGains: extraGains.value.map((item) => ({ ...item })),
+    skillContext: buildGenericPanelSkillContext({
+      element: mainAgentOf.value?.element,
+      staggerPhase: staggerPhase.value ?? 'stagger',
+    }),
+    buffSelection: mainSlotBuffSelection.value,
+    slotBuffSelections: multiSlotBuffSelection as MultiSlotBuffSelection,
+    activeSlotPanels: activeSlotPanels.value,
+    convertSlotPanels: convertSlotPanels as ConvertSlotPanels,
+    triggerAnomalyAgentId: triggerAnomalyAgentId.value,
+    hits: hits.value,
+    resolveSubcategory: (id) => skillSubcategories.value.find((item) => item.id === id) ?? null,
+    skillSubcategories: skillSubcategories.value,
+    followUpSkillRules: followUpSkillRules.value,
+    environmentBuffs: activeEnvironmentBuffs.value,
+  }),
+)
+
+/** 统一结果区当前用的主面板：3 选 1 解析结果（null = 角色配置面板） */
+const damageResultExternal = computed(() => skillFlowMainExternalOverride.value)
+
+/** 总伤期望：页级 hitDamages 汇总（普通 / 最优两处计算共用同一份页级结果） */
+const damageResultGrandTotal = computed(() =>
+  Object.values(hitDamages.value).reduce((sum, n) => sum + (Number(n) || 0), 0),
+)
+
+/** 事件明细（总伤 / 单次）：供产生者占比与统计事件使用 */
+const damageResultEventLines = computed(() =>
+  (hits.value ?? [])
+    .map((hit) => {
+      const total = hitDamages.value[hit.id] ?? 0
+      return {
+        eventId: hit.id,
+        displayName: `${agents.value.find((a) => a.id === hit.ownerAgentId)?.name ?? ''} · ${hit.skill.name}`,
+        total,
+        perHit: hit.count > 0 ? total / hit.count : 0,
+      }
+    })
+    .filter((line) => line.total > 0),
+)
+
+/** 统一结果区：一套流程计算 + 一套详情展示（统计事件默认全部；后续支持事件集选择） */
+const damageResultProcess = useDamageProcessEvents({
+  ctx: damageResultEvalCtx,
+  external: damageResultExternal,
+  grandTotal: damageResultGrandTotal,
+  eventLines: damageResultEventLines,
+  selectedEventIds: computed(() => null),
+  totalLabel: computed(() => '伤害事件总伤期望'),
+  hasEvents: computed(() => (hits.value?.length ?? 0) > 0),
+  active: computed(() => true),
+  enabled: computed(() => true),
+  hits,
+  agents: computed(() => agents.value),
+  teamSlots: computed(() => teamSlots),
+})
+
+/** 顶层解构：模板可直接解包（嵌套对象里的 ref 不会自动解包） */
+const {
+  ownerShareSummary: damageResultOwnerShareSummary,
+  skippedEvents: damageResultSkippedEvents,
+  selectedDetail: damageResultSelectedDetail,
+  selectedEventId: damageResultSelectedEventId,
+  selectEvent: damageResultSelectEvent,
+} = damageResultProcess
 const previewHits = computed(() =>
   resolveSkillPreviews({
     slots: schemeSlots.value,
@@ -2205,8 +2317,20 @@ defineExpose({ scrollToSection, setCalcMode, toggleOptimalAffixSection, panelCal
       />
     </Teleport>
 
-    <!-- 伤害结果统一锚点：普通 / 词条分配 / 扫掠柱图 三套详情都 Teleport 到这里（页面最底部固定位置） -->
-    <div id="damage-result-anchor" class="damage-result-anchor" />
+    <!-- 统一伤害结果区：链路终点，页面底部常驻（3 选 1 面板 → 一套流程计算 → 出伤害 + 出详情） -->
+    <section class="section-card damage-result-section damage-anchor" aria-label="伤害结果">
+      <DamageProcessPanel
+        :has-events="(hits?.length ?? 0) > 0"
+        :summary="damageResultOwnerShareSummary"
+        :skipped-events="damageResultSkippedEvents"
+        :detail="damageResultSelectedDetail"
+        :selected-event-id="damageResultSelectedEventId"
+        total-label="伤害事件总伤期望"
+        :enemy-input="enemyInput"
+        :is-mb="isMbMainAgent"
+        @select-event="damageResultSelectEvent"
+      />
+    </section>
   </div>
 </template>
 
