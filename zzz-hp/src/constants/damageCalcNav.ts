@@ -8,18 +8,16 @@ export const DAMAGE_CALC_SECTIONS = [
   { id: 'skill-flow', label: '招式流程' },
 ] as const
 
-/** 侧栏「计算方式」下的子项（伤害计算 / 最优分配） */
+/** 侧栏「计算方式」下的子项（面板 / 词条 / 最优分配） */
 export const DAMAGE_CALC_MODE_ITEMS = [
-  { id: 'damage-calc-damage', label: '伤害计算', calcMode: 'damage' as const },
+  { id: 'damage-calc-panel', label: '面板导入', calcMode: 'panel' as const },
+  { id: 'damage-calc-affix', label: '词条导入', calcMode: 'affix' as const },
   { id: 'damage-calc-optimal', label: '最优词条分配', calcMode: 'optimal' as const },
 ] as const
 
 export type DamageCalcSectionId =
   | (typeof DAMAGE_CALC_SECTIONS)[number]['id']
   | (typeof DAMAGE_CALC_MODE_ITEMS)[number]['id']
-  /** 旧书签 / 侧栏 id，仍可滚动到计算方式区 */
-  | 'damage-calc-panel'
-  | 'damage-calc-affix'
 
 export type DamageCalcNavItem =
   | (typeof DAMAGE_CALC_SECTIONS)[number]

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
 import PanelScreenshotUploadSection from '@/components/calculator/PanelScreenshotUploadSection.vue'
 import SlotPanelEntryForm from '@/components/calculator/SlotPanelEntryForm.vue'
@@ -14,7 +14,7 @@ import {
   fillPanelStatsDefaults,
   type AffixCounts,
   type AffixDriveDiscMainStats,
-  type ExternalPanelAuthority,
+  type PanelCalcMode,
   type PanelStats,
 } from '@/types/calculatorPanel'
 import { inferAffixCountsFromExternalPanel, computeExternalPanelFromTeamSlot } from '@/utils/affixPanelCalc'
@@ -60,8 +60,6 @@ export type UnifiedPresetConfirmPayload = {
   affixCounts: AffixCounts
   affixDriveDiscMainStats: AffixDriveDiscMainStats
   skillTalentLevels: SkillTalentLevels
-  /** 确认时的局外权威（最后编辑侧） */
-  externalAuthority: ExternalPanelAuthority
 }
 
 const props = defineProps<{
@@ -70,10 +68,8 @@ const props = defineProps<{
   driveDiscs: DriveDiscBuffDoc[]
   teamSlots: TeamSlot[]
   activeSlot: number
-  /** 打开时按角色回填的默认权威；缺省 panel */
-  preferredAuthority?: ExternalPanelAuthority
-  /** 按 agentId 记住的局外权威 */
-  externalAuthorityByAgent?: Record<string, ExternalPanelAuthority>
+  /** 打开时的默认录入模式；用户可在弹窗内切换，不再跟随页面计算方式 */
+  preferredEntryMode?: Extract<PanelCalcMode, 'panel' | 'affix'>
   anomalySlotPanels?: Record<string, PanelStats>
   /** 每人五大类技能等级；打开/换人时回填 */
   skillTalentLevelsByAgent?: Record<string, SkillTalentLevels | Partial<SkillTalentLevels>>
@@ -107,84 +103,15 @@ const draftExternalPanel = reactive<PanelStats>(createDefaultExternalPanel())
 const draftAffixCounts = reactive(createEmptyAffixCounts())
 const draftAffixMains = reactive(createDefaultAffixDriveDiscMainStats())
 const draftSkillTalentLevels = reactive<SkillTalentLevels>(createDefaultSkillTalentLevels())
-/** 脏标记：最后编辑侧 */
-const draftAuthority = ref<ExternalPanelAuthority>(props.preferredAuthority ?? 'panel')
-const draftSyncSuspended = ref(false)
+/** 面板 Tab 独立切换：面板导入 / 词条导入 */
+const entryMode = ref<Extract<PanelCalcMode, 'panel' | 'affix'>>(
+  props.preferredEntryMode ?? 'panel',
+)
 
-function resolveDraftExternalForPreview(): PanelStats {
-  if (draftAuthority.value === 'affix') {
-    return computeExternalPanelFromTeamSlot({
-      slot: {
-        agentId: selected.value.agentId,
-        wengineId: selected.value.wengineId,
-        twoPieceDriveDiscId: selected.value.twoPieceId,
-        fourPieceDriveDiscId: selected.value.fourPieceId,
-        affixCounts: { ...draftAffixCounts },
-        affixDriveDiscMainStats: { ...draftAffixMains },
-      },
-      agents: props.agents,
-      wengines: props.wengines,
-      driveDiscs: props.driveDiscs,
-    })
-  }
-  return fillPanelStatsDefaults({ ...draftExternalPanel })
-}
-
-function syncExternalFromAffixes() {
-  if (!selected.value.agentId) return
-  Object.assign(
-    draftExternalPanel,
-    computeExternalPanelFromTeamSlot({
-      slot: {
-        agentId: selected.value.agentId,
-        wengineId: selected.value.wengineId,
-        twoPieceDriveDiscId: selected.value.twoPieceId,
-        fourPieceDriveDiscId: selected.value.fourPieceId,
-        affixCounts: { ...draftAffixCounts },
-        affixDriveDiscMainStats: { ...draftAffixMains },
-      },
-      agents: props.agents,
-      wengines: props.wengines,
-      driveDiscs: props.driveDiscs,
-    }),
-  )
-}
-
-function snapAffixesFromExternal() {
-  if (!selected.value.agentId) return
-  const agent = props.agents.find((item) => item.id === selected.value.agentId)
-  const wengine = props.wengines.find((item) => item.id === selected.value.wengineId)
-  const inferred = inferAffixCountsFromExternalPanel({
-    target: draftExternalPanel,
-    agentBase: agent?.basePanel ?? createEmptyAgentBasePanel(),
-    wengineBaseAtk: wengine?.baseAtk ?? 0,
-    wengineBaseDef: wengine?.baseDef ?? 0,
-    wengineAdvanced: wengine?.advancedStats ?? createEmptyWengineAdvancedStats(),
-    driveDiscSelection: {
-      twoPieceDriveDiscId: selected.value.twoPieceId,
-      fourPieceDriveDiscId: selected.value.fourPieceId,
-    },
-    driveDiscMainStats: { ...draftAffixMains },
-    driveDiscs: props.driveDiscs,
-  })
-  Object.assign(draftAffixCounts, createEmptyAffixCounts(), inferred.affixCounts)
-}
-
-function onUserEditSide(side: ExternalPanelAuthority) {
-  draftAuthority.value = side
-  draftSyncSuspended.value = true
-  try {
-    if (side === 'affix') syncExternalFromAffixes()
-    else snapAffixesFromExternal()
-  } finally {
-    draftSyncSuspended.value = false
-  }
-}
-
-/** 导入区局内：按脏标记取局外 + 当前增益实时结算 */
+/** 导入区局内：草稿局外/词条推导 + 当前增益实时结算（对齐改前内嵌面板） */
 const liveFinalPanel = computed(() => {
   void props.finalPanelToken
-  void draftAuthority.value
+  void entryMode.value
   void JSON.stringify(draftExternalPanel)
   void JSON.stringify(draftAffixCounts)
   void JSON.stringify(draftAffixMains)
@@ -193,7 +120,23 @@ const liveFinalPanel = computed(() => {
   void selected.value.twoPieceId
   void selected.value.fourPieceId
   if (!props.resolveFinalPanel) return props.finalPanelPreview ?? null
-  return props.resolveFinalPanel(resolveDraftExternalForPreview()) ?? props.finalPanelPreview ?? null
+  const external =
+    entryMode.value === 'affix'
+      ? computeExternalPanelFromTeamSlot({
+          slot: {
+            agentId: selected.value.agentId,
+            wengineId: selected.value.wengineId,
+            twoPieceDriveDiscId: selected.value.twoPieceId,
+            fourPieceDriveDiscId: selected.value.fourPieceId,
+            affixCounts: { ...draftAffixCounts },
+            affixDriveDiscMainStats: { ...draftAffixMains },
+          },
+          agents: props.agents,
+          wengines: props.wengines,
+          driveDiscs: props.driveDiscs,
+        })
+      : fillPanelStatsDefaults({ ...draftExternalPanel })
+  return props.resolveFinalPanel(external) ?? props.finalPanelPreview ?? null
 })
 
 /** 按导入草稿装备，标出该槽位局外/局内转模会读哪些属性（不依赖 Buff 是否已勾选） */
@@ -255,62 +198,48 @@ function resetDraftPanelFromSlot() {
 }
 
 watch(open, (isOpen) => {
-  if (!isOpen) return
-  const slot = props.teamSlots[props.activeSlot]
-  if (!slot) return
-  // 先挂起：open 里改 agentId 会异步触发换人 watch，否则会把刚回填的局外冲成初始面板
-  draftSyncSuspended.value = true
-  selected.value = {
-    agentId: slot.agentId || '',
-    rank: slot.rank,
-    wengineId: slot.wengineId,
-    wengineRefine: slot.wengineRefine,
-    twoPieceId: slot.twoPieceDriveDiscId,
-    fourPieceId: slot.fourPieceDriveDiscId,
+  if (isOpen) {
+    entryMode.value = props.preferredEntryMode ?? 'panel'
+    const slot = props.teamSlots[props.activeSlot]
+    if (!slot) return
+    selected.value = {
+      agentId: slot.agentId || '',
+      rank: slot.rank,
+      wengineId: slot.wengineId,
+      wengineRefine: slot.wengineRefine,
+      twoPieceId: slot.twoPieceDriveDiscId,
+      fourPieceId: slot.fourPieceDriveDiscId,
+    }
+    agentRoleFilter.value = ''
+    agentElementFilter.value = ''
+    wengineRoleFilter.value = ''
+    wengineRarityFilter.value = ''
+    agentSearch.value = ''
+    wengineSearch.value = ''
+    discSearch.value = ''
+    activeTab.value = 'agent'
+    resetDraftPanelFromSlot()
   }
-  const agentId = slot.agentId || ''
-  draftAuthority.value =
-    (agentId ? props.externalAuthorityByAgent?.[agentId] : undefined) ??
-    props.preferredAuthority ??
-    'panel'
-  agentRoleFilter.value = ''
-  agentElementFilter.value = ''
-  wengineRoleFilter.value = ''
-  wengineRarityFilter.value = ''
-  agentSearch.value = ''
-  wengineSearch.value = ''
-  discSearch.value = ''
-  activeTab.value = 'agent'
-  resetDraftPanelFromSlot()
-  void nextTick(() => {
-    draftSyncSuspended.value = false
-  })
 })
 
 watch(
   () => selected.value.agentId,
   (newId, oldId) => {
-    if (!open.value || draftSyncSuspended.value || !newId || newId === oldId) return
+    if (!open.value || !newId || newId === oldId) return
     const agent = props.agents.find((item) => item.id === newId)
-    draftSyncSuspended.value = true
-    try {
-      // 用户在弹窗内换人：草稿回落该角色基础面板（不沿用旧导入）
-      if (agent) {
-        Object.assign(draftExternalPanel, createExternalPanelFromAgentBase(agent.basePanel))
-      } else {
-        Object.assign(draftExternalPanel, createDefaultExternalPanel())
-      }
-      Object.assign(draftAffixCounts, createEmptyAffixCounts())
-      Object.assign(draftAffixMains, createDefaultAffixDriveDiscMainStats())
-      Object.assign(
-        draftSkillTalentLevels,
-        createDefaultSkillTalentLevels(selected.value.rank),
-        fillSkillTalentLevels(props.skillTalentLevelsByAgent?.[newId], selected.value.rank),
-      )
-      draftAuthority.value = props.externalAuthorityByAgent?.[newId] ?? 'panel'
-    } finally {
-      draftSyncSuspended.value = false
+    // 选中代理人后面板草稿固定回落该角色基础面板（不沿用旧导入）
+    if (agent) {
+      Object.assign(draftExternalPanel, createExternalPanelFromAgentBase(agent.basePanel))
+    } else {
+      Object.assign(draftExternalPanel, createDefaultExternalPanel())
     }
+    Object.assign(draftAffixCounts, createEmptyAffixCounts())
+    Object.assign(draftAffixMains, createDefaultAffixDriveDiscMainStats())
+    Object.assign(
+      draftSkillTalentLevels,
+      createDefaultSkillTalentLevels(selected.value.rank),
+      fillSkillTalentLevels(props.skillTalentLevelsByAgent?.[newId], selected.value.rank),
+    )
   },
 )
 
@@ -319,20 +248,6 @@ watch(
   (rank) => {
     if (!open.value) return
     Object.assign(draftSkillTalentLevels, fillSkillTalentLevels(draftSkillTalentLevels, rank))
-  },
-)
-
-watch(
-  () => [selected.value.wengineId, selected.value.twoPieceId, selected.value.fourPieceId] as const,
-  () => {
-    if (!open.value || draftSyncSuspended.value || !selected.value.agentId) return
-    draftSyncSuspended.value = true
-    try {
-      if (draftAuthority.value === 'affix') syncExternalFromAffixes()
-      else snapAffixesFromExternal()
-    } finally {
-      draftSyncSuspended.value = false
-    }
   },
 )
 
@@ -491,63 +406,58 @@ const summary = computed(() => {
   parts.push(discParts.join(' + ') || '未佩戴驱动盘')
   if (!selectedAgent.value) {
     parts.push('面板暂无')
-  } else {
+  } else if (entryMode.value === 'affix') {
     const total = Object.values(draftAffixCounts).reduce((sum, n) => sum + (Number(n) || 0), 0)
+    parts.push(`词条 ${total} 条`)
+  } else {
     parts.push(
-      `词条 ${total} 条 · 局外 生命${Math.round(draftExternalPanel.hp)} / 攻击${Math.round(draftExternalPanel.atk)}`,
+      `局外 生命${Math.round(draftExternalPanel.hp)} / 攻击${Math.round(draftExternalPanel.atk)}`,
     )
   }
   return parts.join('  |  ')
 })
 
 function applyRecognitionToDraft(result: PanelScreenshotRecognition) {
-  draftSyncSuspended.value = true
-  try {
-    if (result.agentId) selected.value.agentId = result.agentId
-    selected.value.rank = result.rank
-    if (result.wengineId) selected.value.wengineId = result.wengineId
-    selected.value.wengineRefine = result.wengineRefine
-    if (result.twoPieceDriveDiscId) selected.value.twoPieceId = result.twoPieceDriveDiscId
-    if (result.fourPieceDriveDiscId) selected.value.fourPieceId = result.fourPieceDriveDiscId
+  if (result.agentId) selected.value.agentId = result.agentId
+  selected.value.rank = result.rank
+  if (result.wengineId) selected.value.wengineId = result.wengineId
+  selected.value.wengineRefine = result.wengineRefine
+  if (result.twoPieceDriveDiscId) selected.value.twoPieceId = result.twoPieceDriveDiscId
+  if (result.fourPieceDriveDiscId) selected.value.fourPieceId = result.fourPieceDriveDiscId
 
-    Object.assign(
-      draftExternalPanel,
-      createDefaultExternalPanel(),
-      fillPanelStatsDefaults(result.externalPanel),
-    )
+  Object.assign(
+    draftExternalPanel,
+    createDefaultExternalPanel(),
+    fillPanelStatsDefaults(result.externalPanel),
+  )
 
-    const mains = result.driveDiscMainStats
-    if (mains?.slot4MainStat) draftAffixMains.slot4MainStat = mains.slot4MainStat
-    if (mains?.slot5MainStat) draftAffixMains.slot5MainStat = mains.slot5MainStat
-    if (mains?.slot6MainStat) draftAffixMains.slot6MainStat = mains.slot6MainStat
+  const mains = result.driveDiscMainStats
+  if (mains?.slot4MainStat) draftAffixMains.slot4MainStat = mains.slot4MainStat
+  if (mains?.slot5MainStat) draftAffixMains.slot5MainStat = mains.slot5MainStat
+  if (mains?.slot6MainStat) draftAffixMains.slot6MainStat = mains.slot6MainStat
 
-    const agent = props.agents.find((item) => item.id === selected.value.agentId)
-    const wengine = props.wengines.find((item) => item.id === selected.value.wengineId)
-    const inferred = inferAffixCountsFromExternalPanel({
-      target: result.externalPanel,
-      agentBase: agent?.basePanel ?? createEmptyAgentBasePanel(),
-      wengineBaseAtk: wengine?.baseAtk ?? 0,
-      wengineBaseDef: wengine?.baseDef ?? 0,
-      wengineAdvanced: wengine?.advancedStats ?? createEmptyWengineAdvancedStats(),
-      driveDiscSelection: {
-        twoPieceDriveDiscId: selected.value.twoPieceId,
-        fourPieceDriveDiscId: selected.value.fourPieceId,
-      },
-      driveDiscMainStats: { ...draftAffixMains },
-      driveDiscs: props.driveDiscs,
-    })
-    Object.assign(draftAffixCounts, createEmptyAffixCounts(), inferred.affixCounts)
-    draftAuthority.value = 'panel'
-    activeTab.value = 'panel'
-  } finally {
-    draftSyncSuspended.value = false
-  }
+  const agent = props.agents.find((item) => item.id === selected.value.agentId)
+  const wengine = props.wengines.find((item) => item.id === selected.value.wengineId)
+  const inferred = inferAffixCountsFromExternalPanel({
+    target: result.externalPanel,
+    agentBase: agent?.basePanel ?? createEmptyAgentBasePanel(),
+    wengineBaseAtk: wengine?.baseAtk ?? 0,
+    wengineAdvanced: wengine?.advancedStats ?? createEmptyWengineAdvancedStats(),
+    driveDiscSelection: {
+      twoPieceDriveDiscId: selected.value.twoPieceId,
+      fourPieceDriveDiscId: selected.value.fourPieceId,
+    },
+    driveDiscMainStats: { ...draftAffixMains },
+    driveDiscs: props.driveDiscs,
+  })
+  Object.assign(draftAffixCounts, createEmptyAffixCounts(), inferred.affixCounts)
+  activeTab.value = 'panel'
 }
 
 function confirm() {
   if (!selected.value.agentId) return
   const external =
-    draftAuthority.value === 'affix'
+    entryMode.value === 'affix'
       ? computeExternalPanelFromTeamSlot({
           slot: {
             agentId: selected.value.agentId,
@@ -573,7 +483,6 @@ function confirm() {
     affixCounts: { ...draftAffixCounts },
     affixDriveDiscMainStats: { ...draftAffixMains },
     skillTalentLevels: fillSkillTalentLevels(draftSkillTalentLevels, selected.value.rank),
-    externalAuthority: draftAuthority.value,
   })
   open.value = false
 }
@@ -860,7 +769,7 @@ const canConfirm = computed(() => !!selected.value.agentId)
                 v-model:affix-counts="draftAffixCounts"
                 v-model:affix-drive-disc-main-stats="draftAffixMains"
                 v-model:skill-talent-levels="draftSkillTalentLevels"
-                v-model:authority="draftAuthority"
+                v-model:calc-mode="entryMode"
                 :agents="agents"
                 :wengines="wengines"
                 :drive-discs="driveDiscs"
@@ -871,8 +780,6 @@ const canConfirm = computed(() => !!selected.value.agentId)
                 :four-piece-id="selected.fourPieceId"
                 :final-panel="liveFinalPanel"
                 :convert-source-marks="draftConvertSourceMarks"
-                :sync-suspended="draftSyncSuspended"
-                @user-edit-side="onUserEditSide"
               />
             </div>
           </div>

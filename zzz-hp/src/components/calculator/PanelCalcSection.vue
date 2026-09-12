@@ -32,7 +32,7 @@ import {
   isPlaceholderExternalPanel,
   type AffixCounts,
   type AffixDriveDiscMainStats,
-  type ExternalPanelAuthority,
+  type PanelCalcMode,
   type PanelStats,
 } from '@/types/calculatorPanel'
 import {
@@ -228,10 +228,7 @@ const props = defineProps<{
   bangbooRefine: number
   /** 计算页正在编辑的编队槽位；局外面板跟这个人走 */
   editedSlotIndex: number
-  /** 当前编辑槽位的局外权威（脏标记） */
-  calcMode: ExternalPanelAuthority
-  /** 全队局外权威；结算按角色取，缺省回落到 calcMode */
-  externalAuthorityByAgent?: Record<string, ExternalPanelAuthority>
+  calcMode: PanelCalcMode
   sectionId?: string
   damageKind?: import('@/types/calculator').DamageCalcKind
   anomalySubKind?: AnomalyDamageSubKind
@@ -530,15 +527,10 @@ function derivedExternalPanelForSlot(slotIndex: number): PanelStats {
   })
 }
 
-function authorityForAgent(agentId: string | null | undefined): ExternalPanelAuthority {
-  if (!agentId) return props.calcMode === 'affix' ? 'affix' : 'panel'
-  return props.externalAuthorityByAgent?.[agentId] ?? (props.calcMode === 'affix' ? 'affix' : 'panel')
-}
-
 const derivedExternalPanel = computed(() => derivedExternalPanelForSlot(mainSlotIndex.value))
 
 const effectiveExternalPanel = computed<PanelStats>(() => {
-  if (authorityForAgent(mainAgent.value?.id) === 'affix') return derivedExternalPanel.value
+  if (props.calcMode === 'affix') return derivedExternalPanel.value
   const id = mainAgent.value?.id
   const saved = id ? props.anomalySlotPanels?.[id] : undefined
   if (saved && !isPlaceholderExternalPanel(saved)) {
@@ -547,7 +539,7 @@ const effectiveExternalPanel = computed<PanelStats>(() => {
   return externalPanel
 })
 
-const isAffixMode = computed(() => authorityForAgent(mainAgent.value?.id) === 'affix')
+const isAffixMode = computed(() => props.calcMode === 'affix')
 
 const isMbMainAgent = computed(() => mainAgent.value?.profession === MB_PROFESSION)
 const isFengYuMainAgent = computed(() => mainAgent.value?.profession === FENGYU_PROFESSION)
@@ -590,7 +582,7 @@ function resolveExternalPanelForSlotIndex(slotIndex: number): PanelStats {
   const slot = props.teamSlots[slotIndex]
   const agentId = slot?.agentId
   if (!agentId) return createDefaultExternalPanel()
-  if (authorityForAgent(agentId) === 'affix') {
+  if (isAffixMode.value) {
     return derivedExternalPanelForSlot(slotIndex)
   }
   // 局外以导入写入的 anomalySlotPanels 为准（含当前编辑槽），不再优先用可能过期的 live 编辑器
