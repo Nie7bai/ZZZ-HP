@@ -76,7 +76,7 @@ const pageLinks = computed(() => {
 
 const damageSubNav = DAMAGE_CALC_SECTIONS
 const damageCalcModeItems = DAMAGE_CALC_MODE_ITEMS
-const damageCalcModeHint = ref<'damage' | 'optimal'>('damage')
+const damageCalcModeHint = ref<'panel' | 'affix' | 'optimal'>('panel')
 const activePage = computed<CalcPage>(() => {
   const fromRoute = route.meta.sidebarPanelId
   if (isCharacterCalcPage(fromRoute)) return fromRoute
@@ -704,19 +704,6 @@ const filteredDriveDiscDocs = computed(() =>
   transition:
     background-color 0.2s,
     color 0.2s;
-  /* 暗色语义 token；后代组件（含最优词条）继承 */
-  --calc-surface: #171a1f;
-  --calc-surface-2: #141820;
-  --calc-surface-3: #1a1e25;
-  --calc-border: #2d323a;
-  --calc-text: #e8eaed;
-  --calc-muted: #9aa3b0;
-  --calc-accent: #c9a55c;
-  --calc-accent-bg: rgba(201, 165, 92, 0.14);
-  --calc-accent-fg: #f0d7a2;
-  --calc-input-bg: #0f1217;
-  --calc-pos: #7dd3a0;
-  --calc-neg: #f07178;
 }
 
 .mobile-topbar,
@@ -728,18 +715,6 @@ const filteredDriveDiscDocs = computed(() =>
   /* 对齐危局/防卫内容区纸色底 */
   background: var(--zzz-bg, #ece9e0);
   color: var(--color-text, #1c212a);
-  --calc-surface: var(--zzz-card, #faf8f2);
-  --calc-surface-2: var(--zzz-paper-soft, #f1efe9);
-  --calc-surface-3: color-mix(in srgb, var(--zzz-paper, #e8e6df) 85%, #ffffff);
-  --calc-border: var(--color-border, #d5dae3);
-  --calc-text: var(--color-text, #1c212a);
-  --calc-muted: color-mix(in srgb, var(--color-text, #1c212a) 58%, transparent);
-  --calc-accent: #c9a55c;
-  --calc-accent-bg: #fff8eb;
-  --calc-accent-fg: #5c4818;
-  --calc-input-bg: #ffffff;
-  --calc-pos: #1f7a47;
-  --calc-neg: #b42318;
 }
 
 /* 对齐危局 ModeSidebar：深色棋盘侧栏，明暗主题不变 */

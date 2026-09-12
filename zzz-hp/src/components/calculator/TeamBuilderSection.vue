@@ -5,7 +5,7 @@ import UnifiedPresetPicker, {
 import TeamSlotCard from '@/components/calculator/TeamSlotCard.vue'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
 import type { AgentBuffDoc, DriveDiscBuffDoc, WengineBuffDoc } from '@/types/calculator'
-import type { ExternalPanelAuthority, PanelStats } from '@/types/calculatorPanel'
+import type { PanelCalcMode, PanelStats } from '@/types/calculatorPanel'
 
 const props = defineProps<{
   agents: AgentBuffDoc[]
@@ -14,8 +14,7 @@ const props = defineProps<{
   teamSlots: TeamSlot[]
   activeSlot: number
   activeAgent?: AgentBuffDoc
-  preferredAuthority?: ExternalPanelAuthority
-  externalAuthorityByAgent?: Record<string, ExternalPanelAuthority>
+  preferredEntryMode?: Extract<PanelCalcMode, 'panel' | 'affix'>
   anomalySlotPanels?: Record<string, PanelStats>
   skillTalentLevelsByAgent?: Record<string, import('@/utils/skillTalentLevels').SkillTalentLevels>
   finalPanelPreview?: PanelStats | null
@@ -85,8 +84,7 @@ function updateSlotRefine(index: number, value: number) {
       :drive-discs="driveDiscs"
       :team-slots="teamSlots"
       :active-slot="activeSlot"
-      :preferred-authority="preferredAuthority"
-      :external-authority-by-agent="externalAuthorityByAgent"
+      :preferred-entry-mode="preferredEntryMode"
       :anomaly-slot-panels="anomalySlotPanels"
       :skill-talent-levels-by-agent="skillTalentLevelsByAgent"
       :final-panel-preview="finalPanelPreview"

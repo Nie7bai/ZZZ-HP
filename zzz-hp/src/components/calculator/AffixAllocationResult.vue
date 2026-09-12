@@ -177,19 +177,19 @@ function formatNumber(value: number) {
 <style scoped>
 .alloc-result {
   margin-top: 0.5rem;
-  color: var(--calc-text, #e8eaed);
+  color: var(--calc-text, #1c212a);
 }
 
 .hint {
   margin: 0.25rem 0 0;
   font-size: 0.8rem;
-  color: var(--calc-muted, #9aa3b0);
+  color: var(--calc-muted, #6b7280);
 }
 
 .err {
   margin: 0.3rem 0 0;
   font-size: 0.78rem;
-  color: var(--calc-neg, #f07178);
+  color: #b42318;
 }
 
 .alloc-summary {
@@ -204,23 +204,23 @@ function formatNumber(value: number) {
   flex-direction: column;
   gap: 0.15rem;
   padding: 0.5rem 0.65rem;
-  border: 1px solid var(--calc-border, #2d323a);
+  border: 1px solid var(--calc-border, #d5dae3);
   border-radius: 8px;
-  background: var(--calc-surface-2, #141820);
+  background: var(--calc-surface-2, #f1efe9);
 }
 
 .summary-label {
   font-size: 0.72rem;
-  color: var(--calc-muted, #9aa3b0);
+  color: var(--calc-muted, #6b7280);
 }
 
 .summary-value {
   font-size: 1rem;
-  color: var(--calc-text, #e8eaed);
+  color: var(--calc-text, #1c212a);
 }
 
 .alloc-result .summary-value.pos {
-  color: var(--calc-pos, #7dd3a0) !important;
+  color: #1f7a47 !important;
 }
 
 .budget-row {
@@ -235,29 +235,29 @@ function formatNumber(value: number) {
   flex-direction: column;
   gap: 0.1rem;
   padding: 0.5rem 0.65rem;
-  border: 1px solid var(--calc-border, #2d323a);
+  border: 1px solid var(--calc-border, #d5dae3);
   border-radius: 8px;
-  background: var(--calc-surface-2, #141820);
+  background: var(--calc-surface-2, #f1efe9);
 }
 
 .budget-label {
   font-size: 0.72rem;
-  color: var(--calc-muted, #9aa3b0);
+  color: var(--calc-muted, #6b7280);
 }
 
 .budget-value {
   font-size: 0.95rem;
-  color: var(--calc-text, #e8eaed);
+  color: var(--calc-text, #1c212a);
 }
 
 .budget-hint {
   font-size: 0.68rem;
-  color: var(--calc-muted, #9aa3b0);
+  color: var(--calc-muted, #6b7280);
 }
 
 .table-wrap {
   overflow: auto;
-  border: 1px solid var(--calc-border, #2d323a);
+  border: 1px solid var(--calc-border, #d5dae3);
   border-radius: 10px;
 }
 
@@ -269,9 +269,9 @@ table {
 
 th {
   padding: 0.55rem 0.65rem;
-  border-bottom: 1px solid var(--calc-border, #2d323a);
-  background: var(--calc-surface-2, #141820);
-  color: var(--calc-muted, #9aa3b0);
+  border-bottom: 1px solid var(--calc-border, #d5dae3);
+  background: var(--calc-surface-2, #f1efe9);
+  color: var(--calc-muted, #6b7280);
   font-weight: 500;
   text-align: left;
   white-space: nowrap;
@@ -284,8 +284,8 @@ th.num-head {
 
 td {
   padding: 0.55rem 0.65rem;
-  border-bottom: 1px solid var(--calc-border, #2d323a);
-  color: var(--calc-text, #e8eaed);
+  border-bottom: 1px solid var(--calc-border, #d5dae3);
+  color: var(--calc-text, #1c212a);
   text-align: left;
 }
 
@@ -309,7 +309,7 @@ tbody tr:last-child td {
   top: 50%;
   height: 60%;
   transform: translateY(-50%);
-  background: color-mix(in srgb, var(--calc-accent, #c9a55c) 28%, transparent);
+  background: rgba(201, 165, 92, 0.28);
   border-radius: 2px;
   pointer-events: none;
 }
@@ -326,7 +326,7 @@ tbody tr:last-child td {
 }
 
 .warn {
-  color: var(--calc-accent-fg, #f0d7a2);
+  color: #8a6d2e;
 }
 
 .progress-track {
@@ -334,13 +334,13 @@ tbody tr:last-child td {
   height: 6px;
   margin: 0.35rem 0;
   border-radius: 3px;
-  background: var(--calc-border, #2d323a);
+  background: var(--calc-border, #d5dae3);
   overflow: hidden;
 }
 
 .progress-fill {
   height: 100%;
-  background: color-mix(in srgb, var(--calc-accent, #c9a55c) 85%, transparent);
+  background: rgba(201, 165, 92, 0.85);
   transition: width 0.15s ease-out;
 }
 </style>

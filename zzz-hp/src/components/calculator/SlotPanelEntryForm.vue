@@ -6,7 +6,7 @@ import {
   createDefaultExternalPanel,
   type AffixCounts,
   type AffixDriveDiscMainStats,
-  type ExternalPanelAuthority,
+  type PanelCalcMode,
   type PanelStats,
 } from '@/types/calculatorPanel'
 import {
@@ -16,7 +16,7 @@ import {
   DRIVE_DISC_SLOT_5_OPTIONS,
   DRIVE_DISC_SLOT_6_OPTIONS,
 } from '@/utils/affixDriveDiscConfig'
-import { AFFIX_COUNT_FIELDS } from '@/utils/affixPanelCalc'
+import { AFFIX_COUNT_FIELDS, computeExternalPanelFromTeamSlot } from '@/utils/affixPanelCalc'
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 import {
   CONVERT_SOURCE_ATTRS_OFF_PANEL,
@@ -32,7 +32,7 @@ import {
   type SkillTalentLevels,
 } from '@/utils/skillTalentLevels'
 
-const authority = defineModel<ExternalPanelAuthority>('authority', {
+const calcMode = defineModel<Extract<PanelCalcMode, 'panel' | 'affix'>>('calcMode', {
   default: 'panel',
 })
 
@@ -52,8 +52,6 @@ const props = defineProps<{
   convertSourceMarks?: ConvertSourceMark[]
   /** 未选代理人时禁用录入 */
   disabled?: boolean
-  /** 父级正在批量灌草稿时跳过双向同步，避免抖 */
-  syncSuspended?: boolean
 }>()
 
 const externalPanel = defineModel<PanelStats>('externalPanel', {
@@ -66,11 +64,6 @@ const affixDriveDiscMainStats = defineModel<AffixDriveDiscMainStats>('affixDrive
 const skillTalentLevels = defineModel<SkillTalentLevels>('skillTalentLevels', {
   default: () => createDefaultSkillTalentLevels(),
 })
-
-const emit = defineEmits<{
-  /** 用户改词条侧 / 局外侧 */
-  'user-edit-side': [side: ExternalPanelAuthority]
-}>()
 
 const talentBounds = computed(() => skillTalentLevelBoundsForRank(props.agentRank))
 
@@ -97,12 +90,32 @@ function onTalentLevelInput(key: (typeof SKILL_TALENT_LEVEL_KEYS)[number], raw: 
   }
 }
 
+const isAffixMode = computed(() => calcMode.value === 'affix')
+
 const agent = computed(() => props.agents.find((item) => item.id === props.agentId))
 const wengine = computed(() =>
   props.wengineId && props.wengineId !== 'none'
     ? props.wengines.find((item) => item.id === props.wengineId)
     : undefined,
 )
+
+const derivedExternal = computed(() =>
+  computeExternalPanelFromTeamSlot({
+    slot: {
+      agentId: props.agentId,
+      wengineId: props.wengineId,
+      twoPieceDriveDiscId: props.twoPieceId,
+      fourPieceDriveDiscId: props.fourPieceId,
+      affixCounts: affixCounts.value,
+      affixDriveDiscMainStats: affixDriveDiscMainStats.value,
+    },
+    agents: props.agents,
+    wengines: props.wengines,
+    driveDiscs: props.driveDiscs,
+  }),
+)
+
+const displayPanel = computed(() => (isAffixMode.value ? derivedExternal.value : externalPanel.value))
 
 const driveDiscSummary = computed(() => {
   const four = props.driveDiscs.find((d) => d.id === props.fourPieceId)?.name
@@ -182,18 +195,6 @@ const visibleFinalFields = computed(() => {
   return FINAL_FIELDS.filter((field) => field.key !== 'sharpenCritDmgBonus')
 })
 
-function onAffixSideEdit() {
-  if (props.disabled || props.syncSuspended) return
-  authority.value = 'affix'
-  emit('user-edit-side', 'affix')
-}
-
-function onExternalSideEdit() {
-  if (props.disabled || props.syncSuspended) return
-  authority.value = 'panel'
-  emit('user-edit-side', 'panel')
-}
-
 function formatValue(key: keyof PanelStats, value: number) {
   if (
     key === 'hp' ||
@@ -212,6 +213,29 @@ function formatValue(key: keyof PanelStats, value: number) {
 
 <template>
   <div class="slot-panel-entry" :class="{ 'is-disabled': disabled }">
+    <div class="entry-mode-row">
+      <span class="entry-mode-label">录入方式</span>
+      <button
+        type="button"
+        class="entry-mode-tab"
+        :class="{ active: calcMode === 'panel' }"
+        :disabled="disabled"
+        @click="calcMode = 'panel'"
+      >
+        面板导入
+      </button>
+      <button
+        type="button"
+        class="entry-mode-tab"
+        :class="{ active: calcMode === 'affix' }"
+        :disabled="disabled"
+        @click="calcMode = 'affix'"
+      >
+        词条导入
+      </button>
+      <p class="entry-mode-hint">仅影响本导入表单，不跟随页面「计算方式」。</p>
+    </div>
+
     <p v-if="disabled" class="disabled-hint">请先在「角色」Tab 选择代理人后再录入面板。</p>
 
     <section class="panel-block">
@@ -234,22 +258,15 @@ function formatValue(key: keyof PanelStats, value: number) {
       </div>
     </section>
 
-    <section class="panel-block">
+    <section v-if="isAffixMode" class="panel-block">
       <header class="panel-block-header">
         <h3>驱动盘主属性</h3>
-        <p>
-          {{ driveDiscSummary }} · 1 号盘固定生命 {{ AFFIX_DRIVE_DISC_SLOT_1_HP }}，2 号盘固定攻击
-          {{ AFFIX_DRIVE_DISC_SLOT_2_ATK }}
-        </p>
+        <p>{{ driveDiscSummary }} · 1 号盘固定生命 {{ AFFIX_DRIVE_DISC_SLOT_1_HP }}，2 号盘固定攻击 {{ AFFIX_DRIVE_DISC_SLOT_2_ATK }}</p>
       </header>
       <div class="grid four">
         <label class="field">
           <span>4 号盘主属性</span>
-          <select
-            v-model="affixDriveDiscMainStats.slot4MainStat"
-            :disabled="disabled"
-            @change="onAffixSideEdit"
-          >
+          <select v-model="affixDriveDiscMainStats.slot4MainStat" :disabled="disabled">
             <option v-for="option in DRIVE_DISC_SLOT_4_OPTIONS" :key="option.id" :value="option.id">
               {{ option.label }}
             </option>
@@ -257,11 +274,7 @@ function formatValue(key: keyof PanelStats, value: number) {
         </label>
         <label class="field">
           <span>5 号盘主属性</span>
-          <select
-            v-model="affixDriveDiscMainStats.slot5MainStat"
-            :disabled="disabled"
-            @change="onAffixSideEdit"
-          >
+          <select v-model="affixDriveDiscMainStats.slot5MainStat" :disabled="disabled">
             <option v-for="option in DRIVE_DISC_SLOT_5_OPTIONS" :key="option.id" :value="option.id">
               {{ option.label }}
             </option>
@@ -269,11 +282,7 @@ function formatValue(key: keyof PanelStats, value: number) {
         </label>
         <label class="field">
           <span>6 号盘主属性</span>
-          <select
-            v-model="affixDriveDiscMainStats.slot6MainStat"
-            :disabled="disabled"
-            @change="onAffixSideEdit"
-          >
+          <select v-model="affixDriveDiscMainStats.slot6MainStat" :disabled="disabled">
             <option v-for="option in DRIVE_DISC_SLOT_6_OPTIONS" :key="option.id" :value="option.id">
               {{ option.label }}
             </option>
@@ -282,7 +291,7 @@ function formatValue(key: keyof PanelStats, value: number) {
       </div>
     </section>
 
-    <section class="panel-block">
+    <section v-if="isAffixMode" class="panel-block">
       <header class="panel-block-header">
         <h3>词条数</h3>
         <p>基于角色基础面板、音擎与驱动盘属性推导局外；每条副词条按固定数值折算。</p>
@@ -297,7 +306,6 @@ function formatValue(key: keyof PanelStats, value: number) {
             min="0"
             step="1"
             :disabled="disabled"
-            @change="onAffixSideEdit"
           />
           <span class="field-hint">每条 +{{ field.perCount }}</span>
         </label>
@@ -312,7 +320,11 @@ function formatValue(key: keyof PanelStats, value: number) {
       <header class="panel-block-header">
         <h3>局外面板（初始）</h3>
         <p>
-          可手填；修改后会吸附到最近整数词条组合。改词条时此处随词条刷新。
+          {{
+            isAffixMode
+              ? '由词条数、驱动盘与角色/音擎基础属性自动计算，只读预览。'
+              : '手填当前槽位局外面板，不含战斗增益。'
+          }}
           <template v-if="convertAttrs.external.size"> 实线绿框为局外转模来源。</template>
           <template v-if="convertAttrs.final.size"> 虚线绿框为局内转模对应的局外属性。</template>
         </p>
@@ -329,11 +341,18 @@ function formatValue(key: keyof PanelStats, value: number) {
         >
           <span>{{ field.label }}</span>
           <input
+            v-if="!isAffixMode"
             v-model.number="externalPanel[field.key]"
             type="number"
             step="any"
             :disabled="disabled"
-            @change="onExternalSideEdit"
+          />
+          <input
+            v-else
+            :value="formatValue(field.key, displayPanel[field.key])"
+            type="text"
+            readonly
+            :disabled="disabled"
           />
         </label>
       </div>
@@ -382,6 +401,49 @@ function formatValue(key: keyof PanelStats, value: number) {
   background: #14181f;
   color: #9aa3b0;
   font-size: 0.78rem;
+}
+
+.entry-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
+}
+
+.entry-mode-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #c9a55c;
+}
+
+.entry-mode-tab {
+  appearance: none;
+  border: 1px solid #343a44;
+  border-radius: 8px;
+  background: #12161d;
+  color: #9aa3b0;
+  padding: 0.28rem 0.7rem;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.entry-mode-tab:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.entry-mode-tab.active {
+  border-color: #c9a55c;
+  background: rgba(201, 165, 92, 0.16);
+  color: #f0d7a2;
+}
+
+.entry-mode-hint {
+  margin: 0;
+  font-size: 0.72rem;
+  color: #8f96a3;
 }
 
 .panel-block {

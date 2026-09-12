@@ -9,7 +9,6 @@ import type {
 import type {
   AffixCounts,
   AffixDriveDiscMainStats,
-  ExternalPanelAuthority,
   PanelCalcMode,
   PanelStats,
 } from '@/types/calculatorPanel'
@@ -191,8 +190,6 @@ export interface DamageCalcWorkingDraft {
   selectedBangbooId: string
   bangbooRefine: number
   panelCalcMode: PanelCalcMode
-  /** 每人局外权威（最后编辑侧）；缺省时由旧 panelCalcMode=panel/affix 推断 */
-  externalPanelAuthorityByAgent?: Record<string, ExternalPanelAuthority>
   panelState: DamageCalcPanelSnapshot | null
   anomalySlotPanels?: Record<string, PanelStats>
   convertSlotPanels?: DamageCalcConvertSlotPanels
@@ -217,8 +214,6 @@ export interface DamageCalcHistoryEntry {
   selectedBangbooId: string
   bangbooRefine: number
   panelCalcMode: PanelCalcMode
-  /** 每人局外权威（最后编辑侧）；缺省时由旧 panelCalcMode=panel/affix 推断 */
-  externalPanelAuthorityByAgent?: Record<string, ExternalPanelAuthority>
   panelState: DamageCalcSchemePanelSnapshot
   /** 异常产生角色局外面板（按 agentId） */
   anomalySlotPanels?: Record<string, PanelStats>
