@@ -2901,7 +2901,8 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         }}
       </p>
 
-      <template v-if="detailTab === 'process'">
+      <Teleport to="#damage-result-anchor">
+        <div v-if="detailTab === 'process'" class="damage-result-block">
         <template v-if="hasEventMode">
           <DamageProcessPanel
             :has-events="hasEventMode"
@@ -2947,9 +2948,10 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           :anomaly-sub-kind="anomalySubKind"
         />
         </template>
-      </template>
+        </div>
+      </Teleport>
 
-      <template v-else-if="detailTab === 'diff' && diffAnalysis">
+      <template v-if="detailTab === 'diff' && diffAnalysis">
         <h4 class="sub-title">副词条差异计算（相对当前分配 +1 条）</h4>
         <div class="table-wrap">
           <table>
@@ -3290,9 +3292,9 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         </template>
       </template>
 
-      <p v-else-if="detailTab === 'diff'" class="hint">词条差异计算中…若长时间无结果，请再点一次「开始计算」。</p>
+      <p v-if="detailTab === 'diff'" class="hint">词条差异计算中…若长时间无结果，请再点一次「开始计算」。</p>
 
-      <template v-else-if="detailTab === 'curve' && benefitData">
+      <template v-if="detailTab === 'curve' && benefitData">
         <BenefitCurvePanel
           v-model:mode="curveMode"
           :series="benefitData.series"

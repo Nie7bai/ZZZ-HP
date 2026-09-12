@@ -2204,6 +2204,9 @@ defineExpose({ scrollToSection, setCalcMode, toggleOptimalAffixSection, panelCal
         v-model:edited-slot-index="activeSlot"
       />
     </Teleport>
+
+    <!-- 伤害结果统一锚点：普通 / 词条分配 / 扫掠柱图 三套详情都 Teleport 到这里（页面最底部固定位置） -->
+    <div id="damage-result-anchor" class="damage-result-anchor" />
   </div>
 </template>
 

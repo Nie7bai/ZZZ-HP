@@ -3318,6 +3318,9 @@ defineExpose({
     <!-- 父页可插入招式流程等：构图上落在面板区与伤害结果之间 -->
     <slot name="after-setup" />
 
+    <!-- 伤害结果：Teleport 到页面底部统一锚点（普通模式；最优模式由词条分析页输出同一锚点） -->
+    <Teleport defer to="#damage-result-anchor">
+      <div v-if="!calcSuspended" class="damage-result-block">
     <div class="result-mode-bar">
       <h3 class="enemy-title result-mode-title">伤害结果</h3>
       <label class="detail-mode-toggle">
@@ -3713,6 +3716,8 @@ defineExpose({
     </div>
     </template>
     </template>
+    </div>
+    </Teleport>
   </section>
 </template>
 
