@@ -58,12 +58,11 @@ const sortedRows = computed(() => {
  * 默认比例把「词条」列压到 20%（原 auto 布局下它吃掉约 28%），数值列相应放宽。
  */
 const BENEFIT_COLUMN_SPECS: ResizableColumnSpec[] = [
-  { key: 'entry', defaultRatio: 20, minWidthPx: 120 },
-  { key: 'perRoll', defaultRatio: 11, minWidthPx: 64 },
-  { key: 'currentRolls', defaultRatio: 13, minWidthPx: 80 },
-  { key: 'damageDelta', defaultRatio: 22, minWidthPx: 110 },
-  { key: 'percentDelta', defaultRatio: 12, minWidthPx: 80 },
-  { key: 'weight', defaultRatio: 22, minWidthPx: 100 },
+  { key: 'entry', defaultRatio: 22, minWidthPx: 120 },
+  { key: 'perRoll', defaultRatio: 12, minWidthPx: 64 },
+  { key: 'damageDelta', defaultRatio: 24, minWidthPx: 110 },
+  { key: 'percentDelta', defaultRatio: 13, minWidthPx: 80 },
+  { key: 'weight', defaultRatio: 29, minWidthPx: 100 },
 ]
 
 const BENEFIT_COLUMN_STORAGE_KEY = 'zzz-hp-affix-benefit-col-ratios'
@@ -81,7 +80,6 @@ const {
 const benefitColumns = computed(() => [
   { key: 'entry', label: '词条', numeric: false },
   { key: 'perRoll', label: '每档', numeric: true },
-  { key: 'currentRolls', label: '当前档数', numeric: true },
   { key: 'damageDelta', label: `+${props.rollsPerStep} 档伤害增量`, numeric: true },
   { key: 'percentDelta', label: '收益率', numeric: true },
   { key: 'weight', label: '相对权重', numeric: true },
@@ -206,7 +204,6 @@ function onLibrarySwitched() {
             >
               <td>{{ row.label }}</td>
               <td class="num-cell">{{ formatAffixPerRoll(row.target, row.perRoll) }}</td>
-              <td class="num-cell">{{ row.currentRolls }}</td>
               <td
                 class="num-cell"
                 :class="row.damageDelta > 0 ? 'pos' : row.damageDelta < 0 ? 'neg' : ''"

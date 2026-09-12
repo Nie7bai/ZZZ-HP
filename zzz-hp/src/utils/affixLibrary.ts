@@ -1139,18 +1139,6 @@ export function affixRollsToEquivalentRolls(
   return rolls * (entry.perRoll / base)
 }
 
-/** 等效档数 → 真实档数（收益表回填「当前几档」用） */
-export function affixEquivalentRollsToRolls(
-  entry: AffixLibraryEntry,
-  statKey: keyof AffixCounts,
-  equivalentRolls: number,
-): number {
-  const base = AFFIX_VALUE_PER_COUNT[statKey]
-  if (!Number.isFinite(base) || base <= 0) return equivalentRolls
-  if (!Number.isFinite(entry.perRoll) || entry.perRoll <= 0) return equivalentRolls
-  return (equivalentRolls * base) / entry.perRoll
-}
-
 /**
  * 每档值表。
  *

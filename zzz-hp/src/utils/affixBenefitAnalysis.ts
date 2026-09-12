@@ -1,6 +1,5 @@
 import type { AffixCounts } from '@/types/calculatorPanel'
 import {
-  affixEquivalentRollsToRolls,
   affixRollsToEquivalentRolls,
   affixValuePerCountFromEntries,
   entryRollsToEvalInput,
@@ -32,8 +31,6 @@ export interface AffixBenefitRow {
   label: string
   /** 条目落点（用于按字段单位格式化「每档」显示） */
   target: AffixLibraryEntryTarget
-  /** 当前已投入档数（按当前分配回填） */
-  currentRolls: number
   /** 每档增量 */
   perRoll: number
   /** 再 +1 档的总伤增量 */
@@ -137,7 +134,6 @@ export function computeAffixBenefitTable(input: AffixBenefitInput): AffixBenefit
       entryId: entry.id,
       label: entry.label,
       target: entry.target,
-      currentRolls: currentRollsOf(baseCounts, basePanelDeltas, entry),
       perRoll: entry.perRoll,
       damageDelta,
       percentDelta,
@@ -264,21 +260,6 @@ function bumpEntryPanelDeltas(
   const next: AffixPanelDeltaMap = { ...(deltas ?? {}) }
   next[field] = (next[field] ?? 0) + step * entry.perRoll
   return next
-}
-
-function currentRollsOf(
-  counts: AffixCounts,
-  deltas: AffixPanelDeltaMap | undefined,
-  entry: AffixLibraryEntry,
-): number {
-  const statKey = statKeyOfTarget(entry.target)
-  if (statKey) {
-    // counts 存的是等效档数，回填「当前几档」要按该条目的每档值折回去
-    return affixEquivalentRollsToRolls(entry, statKey, counts[statKey] ?? 0)
-  }
-  const field = panelFieldOfTarget(entry.target)
-  const total = field ? (deltas?.[field] ?? 0) : 0
-  return entry.perRoll > 0 ? total / entry.perRoll : 0
 }
 
 /** 把「条目档数表」换算成求解器可直接使用的 (counts, panelDeltas, valuePerCount) */
