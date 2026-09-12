@@ -403,8 +403,8 @@ function onRestoreDefaults() {
 /** 组额度说明：一句话讲清这个数字管什么 */
 const GROUP_CAP_HINT = '组内各条档数之和 ≤ 额度'
 
-/** 额度 0 在界面上的说法 */
-const GROUP_CAP_UNLIMITED_LABEL = '不限'
+/** 额度 0 的说明：别只说「不限」，要说清它还是一种约束的关闭状态 */
+const GROUP_CAP_UNLIMITED_HINT = '0 = 不限制（这几条可以同时用满各自上限）'
 
 const groupError = ref<string | null>(null)
 
@@ -687,11 +687,15 @@ function submitDraft() {
               <span class="group-head-name">{{ activeGroup.name }}</span>
               <span class="group-head-cap">
                 组额度：
-                <strong>{{
-                  activeGroup.cap === 0 ? GROUP_CAP_UNLIMITED_LABEL : activeGroup.cap
-                }}</strong>
+                <strong>{{ activeGroup.cap === 0 ? '不限制' : activeGroup.cap }}</strong>
               </span>
-              <span class="group-head-hint">{{ GROUP_CAP_HINT }}</span>
+              <span class="group-head-hint">
+                {{
+                  activeGroup.cap === 0
+                    ? '这几条可以同时用满各自上限'
+                    : `${GROUP_CAP_HINT}（改额度去「组管理」页）`
+                }}
+              </span>
             </div>
             <div v-if="activeTab === UNGROUPED_TAB" class="group-head">
               <span class="group-head-name">未分组</span>
@@ -896,7 +900,7 @@ function submitDraft() {
                         />
                       </td>
                       <td class="type-cell">
-                        {{ group.cap === 0 ? '不限（组只是归类）' : GROUP_CAP_HINT }}
+                        {{ group.cap === 0 ? GROUP_CAP_UNLIMITED_HINT : GROUP_CAP_HINT }}
                       </td>
                       <td>
                         <button
@@ -944,7 +948,11 @@ function submitDraft() {
               </div>
 
               <p v-if="groupError" class="err">{{ groupError }}</p>
-              <p class="footnote">
+              <p v-if="simpleMode" class="footnote">
+                当前是只读模式：可以勾选条目、调单词条上限；新建 / 删除 / 改名分组、
+                改组额度需要先勾上右上角的「高级编辑」。
+              </p>
+              <p v-else class="footnote">
                 删分组只删组本身，组内条目会变回未分组（条目不会被删掉）。
                 条目在「词条」页的下拉里选组，额度不够时求解器会少分配档数。
               </p>

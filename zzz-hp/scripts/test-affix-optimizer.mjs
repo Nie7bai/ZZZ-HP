@@ -21,12 +21,16 @@ import {
   createEmptyBuffStatModifiers,
 } from '../src/utils/calculatorUi.ts'
 import {
+  addAffixLibraryGroup,
+  coerceAffixLibraryState,
   createDefaultAffixLibrary,
+  createDefaultAffixLibraryState,
   createOptionalAffixLibraryEntries,
+  removeAffixLibraryGroup,
+  renameAffixLibraryGroup,
   resolveAffixLibrary,
   resolveAffixLibraryAll,
   setAffixLibraryEntryEnabled,
-  createDefaultAffixLibraryState,
 } from '../src/utils/affixLibrary.ts'
 import {
   solveOptimalAffixAllocation,
@@ -430,6 +434,68 @@ console.log('\n[4] 分组额度')
       groupsInPreset.join(', '))
     check('未传额度表时预设求解不受组约束', solved.usedRolls === 30, `用档 ${solved.usedRolls}`)
   }
+}
+
+// ---------- 4.9 存档读取：预设分组必须补回来 ----------
+console.log('\n[4.9] 存档读取与分组补齐')
+{
+  // 这次改造之前的存档：没有 groups 字段（用户实际踩到的就是这个）
+  const legacy = coerceAffixLibraryState({
+    customEntries: [],
+    enabledOverride: {},
+    overrides: {},
+    removedEntryIds: [],
+  })
+  const names = legacy.groups.map((g) => g.name)
+  check(
+    '老存档（无分组字段）读回来带 5 个预设组',
+    names.join(',') === '4号位,5号位,6号位,2件套,副词条',
+    names.join(', '),
+  )
+
+  // 条目引用了一个表里没有的组名 → 补组，且额度按「互斥」的老语义取 1
+  const withLegacyGroup = coerceAffixLibraryState({
+    customEntries: [],
+    enabledOverride: {},
+    overrides: { 'panel:dmgBonus': { group: '老组' }, 'panel:penRate': { group: '老组' } },
+    removedEntryIds: [],
+  })
+  const legacyGroup = withLegacyGroup.groups.find((g) => g.name === '老组')
+  check('条目引用的未知组名会被补出页签', Boolean(legacyGroup), legacyGroup ? '已补' : '未补')
+  check('补出来的额度是 1（保留「二选一」的老意图）', legacyGroup?.cap === 1,
+    `cap=${legacyGroup?.cap}`)
+
+  // 删掉的预设组不能复活
+  const removed = removeAffixLibraryGroup(createDefaultAffixLibraryState(), '6号位')
+  const reopened = coerceAffixLibraryState(removed)
+  check(
+    '删掉的预设组读盘后不复活',
+    !reopened.groups.some((g) => g.name === '6号位'),
+    reopened.groups.map((g) => g.name).join(', '),
+  )
+
+  // 改名的预设组：新名留下、原名不复活、组内条目跟着改名
+  const renamed = renameAffixLibraryGroup(createDefaultAffixLibraryState(), '5号位', '五号位')
+  const reopenedRenamed = coerceAffixLibraryState(renamed)
+  const reopenNames = reopenedRenamed.groups.map((g) => g.name)
+  check(
+    '改名的预设组：原名不复活、新名在',
+    !reopenNames.includes('5号位') && reopenNames.includes('五号位'),
+    reopenNames.join(', '),
+  )
+  const presetEntryGroup = resolveAffixLibraryAll(renamed).find(
+    (e) => e.id === 'substat:atkPercent',
+  )?.group
+  check('改名不影响条目（条目本就不在该组）', presetEntryGroup === '副词条', String(presetEntryGroup))
+
+  // 建回一个被删过的预设组名 → 撤销「删过」记录
+  const recreated = addAffixLibraryGroup(removed, '6号位', 1)
+  const reopenedRecreated = coerceAffixLibraryState(recreated)
+  check(
+    '重新建回同名预设组后不再被滤掉',
+    reopenedRecreated.groups.some((g) => g.name === '6号位'),
+    reopenedRecreated.groups.map((g) => g.name).join(', '),
+  )
 }
 
 // ---------- 5. 引擎调用上限 ----------

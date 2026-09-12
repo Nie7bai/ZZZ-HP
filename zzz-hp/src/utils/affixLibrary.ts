@@ -329,6 +329,13 @@ export interface AffixLibraryState {
    * 而且**静默不生效** —— 这是最难查的那类问题。
    */
   groups: AffixLibraryGroup[]
+  /**
+   * 被用户删掉的**预设分组**名。
+   *
+   * 与 `removedEntryIds` 同一个思路：预设分组是「按需生成」的（每次读盘都补齐），
+   * 光从 `groups` 里删掉，下次读盘又会被补回来 —— 想真删就得记住「删过谁」。
+   */
+  removedGroupNames: string[]
 }
 
 export function createDefaultAffixLibraryState(): AffixLibraryState {
@@ -338,6 +345,7 @@ export function createDefaultAffixLibraryState(): AffixLibraryState {
     overrides: {},
     removedEntryIds: [],
     groups: AFFIX_PRESET_GROUPS.map((group) => ({ ...group })),
+    removedGroupNames: [],
   }
 }
 
@@ -389,7 +397,9 @@ function migrateCustomEntry(raw: unknown): AffixLibraryEntry | null {
  */
 export function coerceAffixLibraryState(raw: unknown): AffixLibraryState {
   const parsed = (raw && typeof raw === 'object' ? raw : {}) as Partial<AffixLibraryState>
-  const groups = coerceAffixLibraryGroups(parsed.groups)
+  const removedGroupNames = Array.isArray(parsed.removedGroupNames)
+    ? parsed.removedGroupNames.filter((name): name is string => typeof name === 'string')
+    : []
   const state: AffixLibraryState = {
     customEntries: Array.isArray(parsed.customEntries)
       ? parsed.customEntries
@@ -404,7 +414,8 @@ export function coerceAffixLibraryState(raw: unknown): AffixLibraryState {
     removedEntryIds: Array.isArray(parsed.removedEntryIds)
       ? parsed.removedEntryIds.filter((id): id is string => typeof id === 'string')
       : [],
-    groups,
+    groups: mergePresetGroups(coerceAffixLibraryGroups(parsed.groups), removedGroupNames),
+    removedGroupNames,
   }
   return withReferencedGroupsBackfilled(state)
 }
@@ -434,13 +445,42 @@ export function coerceGroupCap(value: unknown): number {
 }
 
 /**
+ * 把预设分组补回来（存档里没有的、且用户没删过的）。
+ *
+ * 为什么要补：预设分组是「按需生成」的（`AFFIX_PRESET_GROUPS`）。用户在这次改造**之前**
+ * 存的档里根本没有分组表 —— 只从存档读就会一个预设组都没有，界面上只剩用户自己建的组。
+ *
+ * 用户删过的预设组记在 `removedGroupNames` 里，不会复活。
+ */
+function mergePresetGroups(
+  saved: AffixLibraryGroup[],
+  removedNames: string[],
+): AffixLibraryGroup[] {
+  const removed = new Set(removedNames)
+  const savedByName = new Map(saved.map((group) => [group.name, group]))
+  const out: AffixLibraryGroup[] = []
+  // 预设组按预设顺序排前面（存过的保留用户改过的额度）
+  for (const preset of AFFIX_PRESET_GROUPS) {
+    if (removed.has(preset.name)) continue
+    out.push(savedByName.get(preset.name) ?? { ...preset })
+    savedByName.delete(preset.name)
+  }
+  // 用户自建（含改名后的组）按存档顺序排在后面
+  for (const group of saved) {
+    if (removed.has(group.name) || out.some((item) => item.name === group.name)) continue
+    out.push(group)
+  }
+  return out
+}
+
+/**
  * 给「被条目引用、但组表里没有」的组名补一条记录。
  *
  * 为什么需要：老存档与手改过的导入文件里只有条目上的组名。若不补，
  * 那个引用就没有页签可去 —— 条目会**在界面上消失**（比报错更难发现）。
  *
- * 补出来的额度是**不限**而不是 1：我们不知道用户当初想约束多少，
- * 静默给他加一条约束会直接改变求解结果，方向反了。
+ * 补出来的额度是 **1**：这些组名来自改造前的「互斥组」字段，那时的语义就是
+ * 「同组至多一条」—— 按 1 补才与用户当初的意图一致。
  */
 function withReferencedGroupsBackfilled(state: AffixLibraryState): AffixLibraryState {
   const known = new Set(state.groups.map((group) => group.name))
@@ -449,7 +489,7 @@ function withReferencedGroupsBackfilled(state: AffixLibraryState): AffixLibraryS
     const name = entry.group.trim()
     if (!name || known.has(name)) continue
     known.add(name)
-    missing.push({ name, cap: AFFIX_GROUP_UNLIMITED })
+    missing.push({ name, cap: DEFAULT_AFFIX_GROUP_CAP })
   }
   return missing.length ? { ...state, groups: [...state.groups, ...missing] } : state
 }
@@ -803,6 +843,11 @@ export function hasAffixLibraryGroup(state: AffixLibraryState, name: string): bo
   return state.groups.some((item) => item.name === name)
 }
 
+/** 该组名是不是预设组 */
+function isPresetGroupName(name: string): boolean {
+  return AFFIX_PRESET_GROUPS.some((group) => group.name === name)
+}
+
 /** 新建一组；名字空 / 重名则原样返回（调用方负责提示） */
 export function addAffixLibraryGroup(
   state: AffixLibraryState,
@@ -811,7 +856,12 @@ export function addAffixLibraryGroup(
 ): AffixLibraryState {
   const trimmed = name.trim()
   if (!trimmed || hasAffixLibraryGroup(state, trimmed)) return state
-  return { ...state, groups: [...state.groups, { name: trimmed, cap: coerceGroupCap(cap) }] }
+  return {
+    ...state,
+    groups: [...state.groups, { name: trimmed, cap: coerceGroupCap(cap) }],
+    // 建回一个被删过的预设组名 → 撤销「删过」的记录，否则下次读盘又会被滤掉
+    removedGroupNames: state.removedGroupNames.filter((item) => item !== trimmed),
+  }
 }
 
 /** 改组额度（`0` = 不限） */
@@ -857,7 +907,20 @@ export function renameAffixLibraryGroup(
         patch.group === from ? { ...patch, group: trimmed } : patch,
       ]),
     ),
+    // 改掉一个预设组的名字 → 记下原名，否则下次读盘它又会被补回来
+    removedGroupNames: mergeRemovedGroupName(state.removedGroupNames, from, trimmed),
   }
+}
+
+/** 记「删过 / 改名走了」的预设组名；新名字若曾是预设组名则撤销那条记录 */
+function mergeRemovedGroupName(
+  removedNames: string[],
+  from: string,
+  to: string,
+): string[] {
+  let next = removedNames.filter((item) => item !== to)
+  if (isPresetGroupName(from) && !next.includes(from)) next = [...next, from]
+  return next
 }
 
 /**
@@ -871,6 +934,10 @@ export function removeAffixLibraryGroup(
 ): AffixLibraryState {
   const clearGroup = <T extends { group: string }>(item: T): T =>
     item.group === name ? { ...item, group: '' } : item
+  const removedGroupNames =
+    isPresetGroupName(name) && !state.removedGroupNames.includes(name)
+      ? [...state.removedGroupNames, name]
+      : state.removedGroupNames
   return {
     ...state,
     groups: state.groups.filter((group) => group.name !== name),
@@ -881,6 +948,7 @@ export function removeAffixLibraryGroup(
         patch.group === name ? { ...patch, group: '' } : patch,
       ]),
     ),
+    removedGroupNames,
   }
 }
 
