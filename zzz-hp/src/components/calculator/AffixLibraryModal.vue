@@ -703,7 +703,16 @@ function submitDraft() {
             </div>
 
             <div v-if="activeTab !== 'manage'" class="entry-scroll">
-              <table class="library-table">
+              <table class="library-table library-table--entries">
+                <colgroup>
+                  <col class="col-participate" />
+                  <col class="col-label" />
+                  <col class="col-type" />
+                  <col class="col-perroll" />
+                  <col class="col-cap" />
+                  <col class="col-group" />
+                  <col class="col-del" />
+                </colgroup>
                 <thead>
                   <tr>
                     <th>参与</th>
@@ -862,7 +871,13 @@ function submitDraft() {
             <!-- 组管理页：建 / 改名 / 改额度 / 删（额度只在这一处维护） -->
             <template v-else>
               <div class="entry-scroll">
-                <table class="library-table">
+                <table class="library-table library-table--groups">
+                  <colgroup>
+                    <col class="col-groupname" />
+                    <col class="col-groupcap" />
+                    <col class="col-groupnote" />
+                    <col class="col-del" />
+                  </colgroup>
                   <thead>
                     <tr>
                       <th>组名</th>
@@ -1336,8 +1351,19 @@ function submitDraft() {
 
 .library-table {
   width: 100%;
+  /* 固定表格布局：输入框自带约 20 字符的固有宽度，不锁列宽的话「每档 / 上限」会被撑到 200px+ */
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 0.8rem;
+}
+
+/* 单元格里的输入框要能被列宽约束住（否则固有宽度仍是撑宽的元凶） */
+.library-table td > .inline-input,
+.library-table td .per-roll-cell > .inline-input,
+.library-table td select.inline-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .library-table th {
@@ -1367,9 +1393,38 @@ function submitDraft() {
   white-space: nowrap;
 }
 
+/* ---------- 列宽（固定表格布局，不锁宽度输入框会把列撑到 200px+） ---------- */
+
+.library-table--entries .col-participate {
+  width: 46px;
+}
+.library-table--entries .col-type {
+  width: 84px;
+}
+.library-table--entries .col-perroll {
+  width: 104px;
+}
+.library-table--entries .col-cap {
+  width: 72px;
+}
+.library-table--entries .col-group {
+  width: 118px;
+}
+.library-table--entries .col-del,
+.library-table--groups .col-del {
+  width: 34px;
+}
+
+.library-table--groups .col-groupcap {
+  width: 96px;
+}
+.library-table--groups .col-groupnote {
+  width: 260px;
+}
+
 .inline-input {
   width: 100%;
-  min-width: 4rem;
+  min-width: 0;
   border: 1px solid #3a4049;
   border-radius: 6px;
   background: #10131a;
