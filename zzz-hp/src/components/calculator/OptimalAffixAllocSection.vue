@@ -1122,7 +1122,7 @@ function emitPanelSourceOptions() {
  *
  * 展示功能需要 ②③ 的局外 + 局内；局内（finalPanel）不在流程计算上报里，
  * 这里把词条分析侧**已算好的** external / finalPanel 一并上报（同一份数值，
- * 与「面板口径」第三行一致，展示侧不再重复计算）。
+ * 与词条分析侧「局内（含增益）」结果一致，展示侧不再重复计算）。
  */
 type DisplayPanelEvalLike = { external: PanelStats; finalPanel: PanelStats } | null | undefined
 
@@ -2319,7 +2319,7 @@ defineExpose({
    * 原 `slotPanelPreviews`（把本区结算面板灌进槽位卡片）已删除。
    *
    * 槽位卡片是「角色配置」的录入区，不该被临时分析结果覆盖（用户口径 2026-09-11）；
-   * 结果面板改由本模块的「面板口径」三行展示，见 `panelScopeRows`。
+   * 结果面板改由招式流程区「查看面板」展示（局外 + 局内，基于三选项，见 skillFlowPanelSource.ts）。
    */
 })
 
@@ -2359,48 +2359,6 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
     return null
   }
 }
-
-/**
- * 「面板口径」三行：基准面板 → 加 N 条后（局外） → 局内（含增益）。
- *
- * 为什么要在模块内部摊开显示（用户口径 2026-09-11）：
- * 槽位卡片是「角色配置」的录入区，不该被临时分析结果覆盖；而判断一套分配合不合理，
- * 又必须同时看到「起点是什么」和「加完是多少」。两者分开放在这里最清楚。
- */
-const panelScopeRows = computed(() => {
-  const basePanel = evalCtx.value.mainBaseExternalPanel ?? null
-  const evaled = displayEval.value
-  const counts = displayCounts.value
-  const addedRolls = counts
-    ? Object.values(counts).reduce((sum, n) => sum + (Number(n) || 0), 0)
-    : 0
-  const fmt = (panel: PanelStats | null | undefined) =>
-    panel
-      ? `生命 ${Math.round(panel.hp)} · 攻击 ${Math.round(panel.atk)} · 防御 ${Math.round(panel.def)}` +
-        ` · 暴击 ${panel.critRate.toFixed(1)}% · 爆伤 ${panel.critDmg.toFixed(1)}%` +
-        ` · 精通 ${Math.round(panel.mastery)}`
-      : '—'
-  return [
-    {
-      key: 'base',
-      label: '基准面板',
-      hint: basePanel ? '来自「角色配置」' : '配置里无局外面板，按槽位推导',
-      text: fmt(basePanel),
-    },
-    {
-      key: 'external',
-      label: `+${addedRolls} 条后（局外）`,
-      hint: '基准叠加当前词条',
-      text: fmt(evaled?.external),
-    },
-    {
-      key: 'final',
-      label: '局内（含增益）',
-      hint: '实际参与伤害结算',
-      text: fmt(evaled?.finalPanel),
-    },
-  ]
-})
 </script>
 
 <template>
@@ -2412,15 +2370,6 @@ const panelScopeRows = computed(() => {
         「扫掠柱图」手动指定两个维度扫掠对比。
       </p>
     </header>
-
-    <h3 class="block-title">面板口径</h3>
-    <div class="panel-scope-rows">
-      <div v-for="row in panelScopeRows" :key="row.key" class="panel-scope-row">
-        <span class="panel-scope-label">{{ row.label }}</span>
-        <span class="panel-scope-text">{{ row.text }}</span>
-        <span class="panel-scope-hint">{{ row.hint }}</span>
-      </div>
-    </div>
 
     <h3 class="block-title">基础伤害来源</h3>
     <div class="grid three">
@@ -3614,44 +3563,6 @@ const panelScopeRows = computed(() => {
   margin: 0.75rem 0 0.5rem;
   padding-bottom: 0.6rem;
   border-bottom: 1px solid #2a2f37;
-}
-
-/* 「面板口径」三行：基准 → 加 N 条 → 局内 */
-.panel-scope-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  margin-top: 0.4rem;
-}
-
-.panel-scope-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.6rem;
-  padding: 0.4rem 0.6rem;
-  border: 1px solid #2a2f37;
-  border-radius: 6px;
-  background: #1b1f26;
-}
-
-.panel-scope-label {
-  flex: 0 0 9.5rem;
-  font-size: 0.82rem;
-  color: #f0f2f6;
-}
-
-.panel-scope-text {
-  flex: 1 1 auto;
-  font-size: 0.8rem;
-  color: #cfd6e0;
-  font-variant-numeric: tabular-nums;
-}
-
-.panel-scope-hint {
-  flex: 0 0 auto;
-  font-size: 0.75rem;
-  color: #7d8794;
 }
 
 .section-mode-tab {

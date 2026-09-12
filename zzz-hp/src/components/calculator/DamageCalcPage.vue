@@ -1252,7 +1252,7 @@ const stickySlotPanelPreviews = computed(() => {
    *
    * 最优模式也走这里（原先跳过），于是卡片的内容与「角色配置」严格一致 ——
    * 卡片是**录入区**的呈现，展示的就是配置里那份面板，与最优分析的候选结果无关；
-   * 分析结果仍在模块内「面板口径」三行展示（用户口径 2026-09-11，见 `62e83d8`）。
+   * 分析结果改由招式流程区「查看面板」展示（局外 + 局内，见 skillFlowPanelSource.ts）。
    */
   const fromPanel = panelCalcSectionRef.value?.slotPanelPreviews
   if (fromPanel) return fromPanel

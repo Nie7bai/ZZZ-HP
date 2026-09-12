@@ -38,7 +38,7 @@ export interface SkillFlowPanelOption {
  *
  * 只服务「查看面板」展示功能（招式流程区三选项下方）：展示 ②③ 的局外 + 局内。
  * 由词条分析侧在算出结果时一并上报（external / finalPanel 都是已算好的值，
- * 与词条分析页「面板口径」第三行同一份数值），不在展示侧重复计算、防止分叉。
+ * 与词条分析侧「局内（含增益）」结果同一份数值），不在展示侧重复计算、防止分叉。
  */
 export interface SkillFlowDisplayOption {
   mode: 'allocation' | 'sweep'
