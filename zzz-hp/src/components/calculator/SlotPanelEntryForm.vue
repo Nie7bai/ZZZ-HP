@@ -3,9 +3,12 @@ import { computed, watch } from 'vue'
 import type { AgentBuffDoc, CharacterAttrKey, DriveDiscBuffDoc, WengineBuffDoc } from '@/types/calculator'
 import { CHARACTER_ATTR_OPTIONS } from '@/types/calculator'
 import {
-  createDefaultExternalPanel,
+  createEmptyExternalPanelDraft,
+  EXTERNAL_PANEL_INPUT_FIELDS,
   type AffixCounts,
   type AffixDriveDiscMainStats,
+  type ExternalPanelDraft,
+  type ExternalPanelInputKey,
   type PanelCalcMode,
   type PanelStats,
 } from '@/types/calculatorPanel'
@@ -54,8 +57,12 @@ const props = defineProps<{
   disabled?: boolean
 }>()
 
-const externalPanel = defineModel<PanelStats>('externalPanel', {
-  default: () => createDefaultExternalPanel(),
+/**
+ * 局外面板草稿：录入项允许**留空**（null = 用户还没填），不预填占位毕业面板。
+ * 面板 Tab 用；词条 Tab 不看它。
+ */
+const externalPanel = defineModel<ExternalPanelDraft>('externalPanel', {
+  default: () => createEmptyExternalPanelDraft(),
 })
 const affixCounts = defineModel<AffixCounts>('affixCounts', { required: true })
 const affixDriveDiscMainStats = defineModel<AffixDriveDiscMainStats>('affixDriveDiscMainStats', {
@@ -115,7 +122,10 @@ const derivedExternal = computed(() =>
   }),
 )
 
-const displayPanel = computed(() => (isAffixMode.value ? derivedExternal.value : externalPanel.value))
+/** 录入项留空（清空输入框）= null，不是 0 —— 「没填」和「填了 0」是两回事 */
+function onExternalPanelInput(key: ExternalPanelInputKey, raw: string) {
+  externalPanel.value[key] = raw === '' ? null : Number(raw)
+}
 
 const driveDiscSummary = computed(() => {
   const four = props.driveDiscs.find((d) => d.id === props.fourPieceId)?.name
@@ -151,20 +161,8 @@ function fieldConvertClass(key: string, panel: 'external' | 'final') {
   return externalConvertFieldClass({ key, id: key }, convertAttrs.value)
 }
 
-const EXTERNAL_FIELDS: { key: keyof PanelStats; label: string }[] = [
-  { key: 'hp', label: '生命值' },
-  { key: 'atk', label: '攻击力' },
-  { key: 'def', label: '防御力' },
-  { key: 'critRate', label: '暴击率%' },
-  { key: 'critDmg', label: '爆伤%' },
-  { key: 'dmgBonus', label: '增伤%' },
-  { key: 'penRate', label: '穿透率%' },
-  { key: 'pen', label: '穿透值' },
-  { key: 'reduceDefense', label: '无视防御/减防%' },
-  { key: 'mastery', label: '精通' },
-  { key: 'anomalyControl', label: '异常掌控' },
-  { key: 'energyRegen', label: '能量回复效率%' },
-]
+/** 录入项清单来自类型层的单一事实来源（表单渲染与「填没填完」判定共用一份） */
+const EXTERNAL_FIELDS = EXTERNAL_PANEL_INPUT_FIELDS
 
 const FINAL_FIELDS: { key: keyof PanelStats; label: string }[] = [
   { key: 'hp', label: '生命值' },
@@ -342,14 +340,15 @@ function formatValue(key: keyof PanelStats, value: number) {
           <span>{{ field.label }}</span>
           <input
             v-if="!isAffixMode"
-            v-model.number="externalPanel[field.key]"
+            :value="externalPanel[field.key]"
             type="number"
             step="any"
             :disabled="disabled"
+            @input="onExternalPanelInput(field.key, ($event.target as HTMLInputElement).value)"
           />
           <input
             v-else
-            :value="formatValue(field.key, displayPanel[field.key])"
+            :value="formatValue(field.key, derivedExternal[field.key])"
             type="text"
             readonly
             :disabled="disabled"

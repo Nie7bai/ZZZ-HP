@@ -228,6 +228,64 @@ export function createDefaultExternalPanel(): PanelStats {
   return { ...DEFAULT_EXTERNAL_PANEL }
 }
 
+/**
+ * 「面板导入」表单里**要用户填**的那些字段（其余键是乘区入口，由模板给默认值，不由用户录入）。
+ *
+ * 单一事实来源：表单渲染与「填没填完」判定都用这一份，避免两处清单各写一半。
+ */
+export const EXTERNAL_PANEL_INPUT_FIELDS: readonly {
+  key: keyof PanelStats
+  label: string
+}[] = [
+  { key: 'hp', label: '生命值' },
+  { key: 'atk', label: '攻击力' },
+  { key: 'def', label: '防御力' },
+  { key: 'critRate', label: '暴击率%' },
+  { key: 'critDmg', label: '爆伤%' },
+  { key: 'dmgBonus', label: '增伤%' },
+  { key: 'penRate', label: '穿透率%' },
+  { key: 'pen', label: '穿透值' },
+  { key: 'reduceDefense', label: '无视防御/减防%' },
+  { key: 'mastery', label: '精通' },
+  { key: 'anomalyControl', label: '异常掌控' },
+  { key: 'energyRegen', label: '能量回复效率%' },
+]
+
+export type ExternalPanelInputKey = (typeof EXTERNAL_PANEL_INPUT_FIELDS)[number]['key']
+
+/**
+ * 面板导入草稿：录入项**留空就是 null**，不是 0、更不是占位毕业面板。
+ *
+ * 空是合法状态（所有者口径 2026-09-12）：用户没填就是没数据，工具不得替他填一个
+ * 「看起来像配置」的数（那会让人以为已经配好了）。乘区入口那些键仍取模板默认值 ——
+ * 它们不是用户数据，是公式入口。
+ */
+export type ExternalPanelDraft = Omit<PanelStats, ExternalPanelInputKey> &
+  Record<ExternalPanelInputKey, number | null>
+
+/** 空白草稿：录入项全部留空，等用户手填或截图识别填。 */
+export function createEmptyExternalPanelDraft(): ExternalPanelDraft {
+  const draft: ExternalPanelDraft = { ...createDefaultExternalPanel() }
+  for (const field of EXTERNAL_PANEL_INPUT_FIELDS) draft[field.key] = null
+  return draft
+}
+
+/** 草稿里还没填的录入项（按表单顺序）。 */
+export function missingExternalPanelInputs(
+  draft: ExternalPanelDraft,
+): { key: ExternalPanelInputKey; label: string }[] {
+  return EXTERNAL_PANEL_INPUT_FIELDS.filter((field) => draft[field.key] == null).map((field) => ({
+    key: field.key,
+    label: field.label,
+  }))
+}
+
+/** 草稿 → 完整面板；还有没填的就返回 null（空就是空，没填完不能进计算）。 */
+export function resolveExternalPanelDraft(draft: ExternalPanelDraft): PanelStats | null {
+  if (missingExternalPanelInputs(draft).length) return null
+  return { ...(draft as PanelStats) }
+}
+
 /** 读盘 / 队友槽面板可能缺键；用默认值补齐后再进乘区。 */
 export function fillPanelStatsDefaults(panel?: Partial<PanelStats> | null): PanelStats {
   return { ...DEFAULT_EXTERNAL_PANEL, ...(panel ?? {}) }
