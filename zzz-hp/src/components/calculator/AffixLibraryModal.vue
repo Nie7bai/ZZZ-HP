@@ -766,7 +766,9 @@ function submitDraft() {
                             })
                           "
                         />
-                        <span v-if="perRollUnitHint(entry.target)" class="unit-hint">%</span>
+                        <!-- 单位槽恒存在（非百分比行为空串）：用 v-if 会让百分比行的输入框被单位挤窄 13px，
+                             整列右边缘参差不齐（用户 2026-09-12 报的「对齐」）。 -->
+                        <span class="unit-hint">{{ perRollUnitHint(entry.target) }}</span>
                       </span>
                     </td>
                     <td>
@@ -839,7 +841,7 @@ function submitDraft() {
                   <span>每档</span>
                   <span class="per-roll-cell">
                     <input v-model.number="draft.perRoll" type="number" step="0.1" min="0" />
-                    <span v-if="draftPerRollUnit" class="unit-hint">{{ draftPerRollUnit }}</span>
+                    <span class="unit-hint">{{ draftPerRollUnit }}</span>
                   </span>
                 </label>
                 <label>
@@ -1445,9 +1447,19 @@ function submitDraft() {
   width: 100%;
 }
 
+/* 输入框吃掉单位槽以外的空间；单位槽宽度固定 → 每行输入框等宽、右边缘对齐 */
+.per-roll-cell > .inline-input {
+  flex: 1 1 auto;
+}
+
 .unit-hint {
+  /* 固定宽度（不是 auto）：% 只在百分比行出现，auto 会让那些行的输入框被挤窄 */
+  flex: 0 0 0.62rem;
+  width: 0.62rem;
+  text-align: left;
   color: #8b94a1;
   font-size: 0.75rem;
+  line-height: 1;
 }
 
 .del-btn {
