@@ -640,7 +640,7 @@ const skillFlowMainExternalOverride = computed(() => skillFlowPanelResolved.valu
 const skillFlowPanelAvailability = computed(() => {
   const signature = skillFlowPageSignature.value
   const reasonFor = (option: SkillFlowPanelOption | null | undefined) => {
-    if (!option) return '尚未计算：先在「最优词条分配」里算一次'
+    if (!option) return '尚未计算：先在「词条配比分析」里算一次'
     if (option.signature !== signature) return '配置已改动，请重新计算词条分析'
     return null
   }
@@ -652,14 +652,14 @@ const skillFlowPanelAvailability = computed(() => {
       enabled: allocationReason == null,
       reason:
         allocationReason ??
-        '尚未计算：先在「最优词条分配」里求解',
+        '尚未计算：先在「词条配比分析」里求解',
       detail: skillFlowPanelOptions.value.allocation?.label ?? null,
     },
     sweep: {
       enabled: sweepReason == null,
       reason:
         sweepReason ??
-        '尚未计算：先在「最优词条分配 · 扫掠柱图」里算一次并点选一根柱',
+        '尚未计算：先在「词条配比分析 · 扫掠柱图」里算一次并点选一根柱',
       detail: skillFlowPanelOptions.value.sweep?.label ?? null,
     },
     /** 选中项失效的提示（已在用 ① 的面板） */

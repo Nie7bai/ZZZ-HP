@@ -167,7 +167,7 @@ export function resolveSkillFlowPanelSource(input: {
   }
   const option = input.options[input.mode] ?? null
   if (!option) {
-    return { mainExternal: null, active: false, reason: '尚未计算，先到「最优词条分配」里算一次' }
+    return { mainExternal: null, active: false, reason: '尚未计算，先到「词条配比分析」里算一次' }
   }
   if (option.signature !== input.currentSignature) {
     return { mainExternal: null, active: false, reason: '配置已改动，请重新计算词条分析' }

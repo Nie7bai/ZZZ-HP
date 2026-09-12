@@ -348,7 +348,7 @@ const filteredDriveDiscDocs = computed(() =>
                           modeItem.frozen
                             ? '已冻结：面板在「代理人 → 导入」里录入，不用它切换'
                             : modeItem.calcMode === 'optimal'
-                              ? '最优词条分配（常驻）'
+                              ? '词条配比分析（常驻）'
                               : undefined
                         "
                         @click="scrollToDamageSection(modeItem)"

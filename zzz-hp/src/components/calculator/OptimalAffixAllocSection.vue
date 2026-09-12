@@ -2306,9 +2306,9 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 <template>
   <section class="opt-section">
     <header class="opt-header">
-      <h2>最优词条分配</h2>
+      <h2>词条配比分析</h2>
       <p>
-        两种用法二选一：「词条分配」在总词条数约束下求全词条最优分配；
+        两种用法二选一：「最优分配」在总词条数约束下求全词条最优配比；
         「扫掠柱图」手动指定两个维度扫掠对比。
       </p>
     </header>
@@ -2336,7 +2336,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         :aria-selected="sectionMode === 'allocation'"
         @click="sectionMode = 'allocation'"
       >
-        词条分配
+        最优分配
       </button>
       <button
         type="button"

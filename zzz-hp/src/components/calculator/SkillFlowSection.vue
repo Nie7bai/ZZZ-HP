@@ -2332,7 +2332,7 @@ const showcaseTitle = computed(() => {
           </span>
         </div>
         <p v-if="showcaseUnavailableReason" class="sf-panel-showcase-empty">
-          {{ showcaseUnavailableReason }}（先用「角色配置面板」）→ 去「最优词条分配」里算一次再回来看
+          {{ showcaseUnavailableReason }}（先用「角色配置面板」）→ 去「词条配比分析」里算一次再回来看
         </p>
         <template v-else-if="showcasePanel">
           <p class="sf-panel-showcase-sub">局外面板</p>

@@ -18,7 +18,7 @@ export const DAMAGE_CALC_SECTIONS = [
  * 「最优词条分配」2026-09-13 起**常驻**：无进入/退出，侧栏项只作锚点滚动。
  */
 export const DAMAGE_CALC_MODE_ITEMS = [
-  { id: 'damage-calc-optimal', label: '最优词条分配', calcMode: 'optimal' as const, frozen: false },
+  { id: 'damage-calc-optimal', label: '词条配比分析', calcMode: 'optimal' as const, frozen: false },
 ] as const
 
 export type DamageCalcSectionId =
