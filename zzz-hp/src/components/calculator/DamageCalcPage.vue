@@ -177,7 +177,8 @@ const teamSlots = reactive<TeamSlot[]>([
 const activeSlot = ref(0)
 const selectedBangbooId = ref('none')
 const bangbooRefine = ref(1)
-const panelCalcMode = ref<PanelCalcMode>('panel')
+/** 计算方式：恒为「最优词条分配」（2026-09-13 起常驻，无进入/退出；统一结果区常驻页面底部） */
+const panelCalcMode = ref<PanelCalcMode>('optimal')
 const enemyInput = ref<DamageEnemyInput>(createDefaultDamageEnemyInput())
 const historyEntries = ref<DamageCalcHistoryEntry[]>(listAllDamageCalcHistory())
 const activeHistoryId = ref('')
@@ -1616,10 +1617,7 @@ function applyWorkingState(entry: {
   applyTeamSlots(entry.teamSlots)
   selectedBangbooId.value = entry.selectedBangbooId
   bangbooRefine.value = entry.bangbooRefine
-  // 【冻结 · 2026-09-11 起】草稿里存的『面板导入 / 词条导入』模式不再恢复成活动状态：
-  // 那两个按钮已停用，模式留着只会变成「谁也没点、却决定了用哪份面板」的幽灵状态。
-  // 一律回到普通计算；是否进「最优词条分配」由用户当场点（不自动打开重模块）。
-  panelCalcMode.value = 'panel'
+  // 计算方式恒为「最优词条分配」（2026-09-13 起常驻）：方案加载不再改动它。
 
   // 新结构直接用；老草稿（单份面板 + 槽位级词条数）按 panelCalcMode 归位
   applySlotPanels(
@@ -1978,40 +1976,7 @@ async function scrollToSection(sectionId: DamageCalcSectionId) {
   target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-function setCalcMode(mode: PanelCalcMode) {
-  if (panelCalcMode.value === mode) return
-  panelCalcMode.value = mode
-}
-
-/**
- * 「最优词条分配」按钮：进入 / 返回 一个按钮来回切。
- *
- * 2026-09-11 曾因「面板导入 / 词条导入」停用而让本按钮同时承担退出；
- * 2026-09-12 解冻后两个按钮已恢复（`selectPanelCalcMode('panel' / 'affix')`），
- * 本按钮仍是进 / 出最优词条分配的唯一入口，行为不变。
- *
- * 侧栏同名项也走这个函数（见 CharacterCalculatorView.scrollToDamageSection）。
- */
-function toggleOptimalAffixSection() {
-  selectPanelCalcMode(panelCalcMode.value === 'optimal' ? 'panel' : 'optimal')
-}
-
-function selectPanelCalcMode(mode: PanelCalcMode) {
-  const changed = panelCalcMode.value !== mode
-  if (changed) {
-    // 先让按钮高亮，把重 DOM 切换放到下一帧，避免点击瞬时卡死
-    panelCalcMode.value = mode
-  }
-  const anchor =
-    mode === 'panel' || mode === 'affix' ? 'damage-calc-mode' : 'damage-calc-optimal'
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      void scrollToSection(anchor)
-    })
-  })
-}
-
-defineExpose({ scrollToSection, setCalcMode, toggleOptimalAffixSection, panelCalcMode })
+defineExpose({ scrollToSection })
 </script>
 
 <template>
@@ -2193,22 +2158,11 @@ defineExpose({ scrollToSection, setCalcMode, toggleOptimalAffixSection, panelCal
       </header>
       <div class="calc-mode-tabs" role="tablist" aria-label="面板导入方式">
         <!--
-          「面板导入 / 词条导入」两个模式切换按钮**已永久删除**（2026-09-12，所有者口径）：
-          它们不是导入功能（真正的导入在页面顶部「导入」按钮），只是会改掉算进伤害面板的
-          第二状态干扰架构（曾因「局内攻击在 3883 / 6136 之间跳」冻结，后直接删除）。
-          面板读取统一走 `resolveActivePanel`（唯一入口）；模式只剩「最优词条分配」进出。
+          「面板导入 / 词条导入」两个模式切换按钮**已永久删除**（2026-09-12，所有者口径）；
+          「最优词条分配」进出按钮**也已去除**（2026-09-13，所有者口径）：计算方式恒为最优词条分配，
+          伤害结果统一由页面底部常驻区承担，没有需要进出的第二状态。
+          面板读取统一走 `resolveActivePanel`（唯一入口）。
         -->
-        <button
-          type="button"
-          role="tab"
-          class="calc-mode-tab"
-          :class="{ active: panelCalcMode === 'optimal' }"
-          :aria-selected="panelCalcMode === 'optimal'"
-          :title="panelCalcMode === 'optimal' ? '返回计算' : '进入最优词条分配'"
-          @click="toggleOptimalAffixSection"
-        >
-          最优词条分配
-        </button>
       </div>
     </section>
 

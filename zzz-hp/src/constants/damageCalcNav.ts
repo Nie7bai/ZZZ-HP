@@ -15,7 +15,7 @@ export const DAMAGE_CALC_SECTIONS = [
  * 它们不是导入功能（真正的导入在页面顶部「导入」按钮），只是会改掉算进伤害面板的
  * 第二状态干扰架构（曾因「局内攻击在 3883 / 6136 之间跳」冻结，后直接删除）。
  * 面板读取统一走 `resolveActivePanel`（唯一入口），与模式无关。
- * 模式只剩「最优词条分配」一个入口（进入 / 返回）。
+ * 「最优词条分配」2026-09-13 起**常驻**：无进入/退出，侧栏项只作锚点滚动。
  */
 export const DAMAGE_CALC_MODE_ITEMS = [
   { id: 'damage-calc-optimal', label: '最优词条分配', calcMode: 'optimal' as const, frozen: false },

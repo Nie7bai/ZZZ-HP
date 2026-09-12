@@ -79,7 +79,7 @@ const pageLinks = computed(() => {
 
 const damageSubNav = DAMAGE_CALC_SECTIONS
 const damageCalcModeItems = DAMAGE_CALC_MODE_ITEMS
-const damageCalcModeHint = ref<'panel' | 'affix' | 'optimal'>('panel')
+const damageCalcModeHint = ref<'panel' | 'affix' | 'optimal'>('optimal')
 const activePage = computed<CalcPage>(() => {
   const fromRoute = route.meta.sidebarPanelId
   if (isCharacterCalcPage(fromRoute)) return fromRoute
@@ -117,19 +117,7 @@ async function ensurePage(page: CalcPage): Promise<boolean> {
 async function scrollToDamageSection(item: DamageCalcNavItem | { id: 'damage-calc-mode' }) {
   const switched = await ensurePage('damage')
   mobileNavOpen.value = false
-  // 冻结项（面板导入 / 词条导入）不得再切换计算方式，只当导航锚点用
-  const mode = 'calcMode' in item ? item.calcMode : undefined
-  const frozen = 'frozen' in item && item.frozen
-  if (mode && !frozen) {
-    // 「最优词条分配」是进 / 出切换：它是词条功能唯一的出口，
-    // 只进不出会把从侧栏进入的人困在模块里（2026-09-11 用户实测）。
-    if (mode === 'optimal') {
-      damageCalcPageRef.value?.toggleOptimalAffixSection()
-    } else {
-      damageCalcModeHint.value = mode
-      damageCalcPageRef.value?.setCalcMode(mode)
-    }
-  }
+  // 计算方式恒为「最优词条分配」（2026-09-13 起常驻）：侧栏同名项只做锚点滚动，不再切换模式
   await nextTick()
   if (switched) await nextTick()
   await damageCalcPageRef.value?.scrollToSection(item.id)
@@ -360,9 +348,7 @@ const filteredDriveDiscDocs = computed(() =>
                           modeItem.frozen
                             ? '已冻结：面板在「代理人 → 导入」里录入，不用它切换'
                             : modeItem.calcMode === 'optimal'
-                              ? damageCalcModeHint === 'optimal'
-                                ? '返回计算'
-                                : '进入最优词条分配'
+                              ? '最优词条分配（常驻）'
                               : undefined
                         "
                         @click="scrollToDamageSection(modeItem)"
