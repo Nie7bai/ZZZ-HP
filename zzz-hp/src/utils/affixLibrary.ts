@@ -355,12 +355,75 @@ export function createDriveDiscMainStatAffixEntries(): AffixLibraryEntry[] {
   }))
 }
 
-/** 预设条目全量（不含用户自建）：副词条 + 扩展条目 + 4/5/6 号位主属性 */
+/**
+ * 驱动盘「2 件套」候选条目（**默认不启用**）。
+ *
+ * ## 名称＝效果，不写套装名（用户 2026-09-12 裁定）
+ *
+ * 同一效果对应多套驱动盘：增伤 10% 有 **10 套**、精通 30 有 3 套、另有 3 组各 2 套。
+ * 计算上它们**完全等价**（套装名只是标签，四件套不参与词条计算），
+ * 全建出来只会让收益表出现整片逐位相同的重复行（实测：34 行里 26 行重复）。
+ * 故按**效果去重**，名称沿用 4/5/6 号位那套格式（`爆伤 48%` / `局外攻击力 30%` 那种）。
+ *
+ * ## 数值来源与口径
+ *
+ * 来源 = `zzz-hp-backend/scripts/data/zzz-hp-calculator-buffs.json`（30 个驱动盘的
+ * 2 件套效果）。落点选择与 4/5/6 号位一致：百分比类走 `stat:`、其余走 `panel:`
+ * （两种落点折算口径已在步骤 27 统一，这里只为与相邻条目一致）。
+ *
+ * ## 为什么只有 11 条（跳过了 5 套）
+ *
+ * - 原始朋克 / 山大王 / 灵魂摇滚：数据源里 2 件套效果**为空**（结构化与说明都空）；
+ * - 如影相随 / 拂晓生花：效果是「[追加攻击][冲刺攻击] / [普通攻击] 伤害 +15%」——
+ *   **限定招式**，词条模型没有这个概念，按通用增伤填会**算高**；
+ * - 震星迪斯科：结构化数值为空，但说明写着「冲击力 6%」，按说明填（用户 2026-09-12 定）。
+ *
+ * ## 为什么默认不启用
+ *
+ * 用户导入的面板里**本就含当前佩戴的 2 件套**，条目再叠一次就是**双算**
+ * （`mainBaseExternalPanel` 存在时，条目贡献叠加在面板之上）。要参与请自行勾选。
+ */
+export function createDriveDiscTwoPieceAffixEntries(): AffixLibraryEntry[] {
+  const specs: {
+    key: string
+    field?: AffixPanelDeltaField
+    statKey?: keyof AffixCounts
+    label: string
+    perRoll: number
+  }[] = [
+    { key: 'dmgBonus', field: 'dmgBonus', label: '增伤 10%', perRoll: 10 },
+    { key: 'mastery', statKey: 'mastery', label: '精通 30', perRoll: 30 },
+    { key: 'energyRegen', field: 'energyRegen', label: '能量恢复 20%', perRoll: 20 },
+    { key: 'externalAtkPercent', statKey: 'atkPercent', label: '局外攻击力 10%', perRoll: 10 },
+    { key: 'externalHpPercent', statKey: 'hpPercent', label: '局外生命值 10%', perRoll: 10 },
+    { key: 'externalDefPercent', statKey: 'defPercent', label: '局外防御力 16%', perRoll: 16 },
+    { key: 'critRate', statKey: 'critRate', label: '暴击 8%', perRoll: 8 },
+    { key: 'critDmg', statKey: 'critDmg', label: '爆伤 16%', perRoll: 16 },
+    { key: 'penRate', field: 'penRate', label: '穿透率 8%', perRoll: 8 },
+    { key: 'anomalyControlPercent', field: 'anomalyControl', label: '异常掌控 8%', perRoll: 8 },
+    // 震星迪斯科：数据里只有说明「冲击力 6%」，无数值；按同口径（冲击力按点数）填
+    { key: 'impact', field: 'impact', label: '冲击力 6%', perRoll: 6 },
+  ]
+  return specs.map((spec) => ({
+    // id 含数值：将来某套的 2 件套数值若不同，新增 id 即可（id 一旦发布不可改名）
+    id: `set:${spec.key}:${spec.perRoll}`,
+    target: spec.statKey ? statTarget(spec.statKey) : panelTarget(spec.field!),
+    label: spec.label,
+    perRoll: spec.perRoll,
+    cap: 1,
+    group: '2件套',
+    rollCost: 1,
+    enabledByDefault: false,
+  }))
+}
+
+/** 预设条目全量（不含用户自建）：副词条 + 扩展条目 + 4/5/6 号位主属性 + 2 件套 */
 export function createPresetAffixLibraryEntries(): AffixLibraryEntry[] {
   return [
     ...createDefaultAffixLibrary(),
     ...createOptionalAffixLibraryEntries(),
     ...createDriveDiscMainStatAffixEntries(),
+    ...createDriveDiscTwoPieceAffixEntries(),
   ]
 }
 

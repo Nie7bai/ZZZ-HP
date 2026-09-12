@@ -26,6 +26,7 @@ import {
   createDefaultAffixLibrary,
   createDefaultAffixLibraryState,
   createDriveDiscMainStatAffixEntries,
+  createDriveDiscTwoPieceAffixEntries,
   createOptionalAffixLibraryEntries,
   createPresetAffixLibraryEntries,
   entryRollsToEvalInput,
@@ -47,7 +48,7 @@ import {
   evaluateAffixCounts,
   optimalHitDependsOnMainAffixPanel,
 } from '../src/utils/optimalAffixAlloc.ts'
-import { statKeyOfTarget } from '../src/utils/affixLibrary.ts'
+import { affixTargetLabel as affixTargetLabelOf, statKeyOfTarget } from '../src/utils/affixLibrary.ts'
 import {
   buildPanelSourceValuesBySlotMap,
   invalidateBuffCatalogCache,
@@ -429,6 +430,26 @@ console.log('\n[4] 分组额度')
     check('真实候选池：同组两条不同时上榜', ok, detail || '各预算档均至多一条')
   }
 
+  // 4.7b 2 件套：11 条同组、额度 1，任何预算下都至多选一条（且总档数 ≤ 1）
+  {
+    const twoPiece = createDriveDiscTwoPieceAffixEntries()
+    const entries = [...library, ...twoPiece]
+    let ok = true
+    let detail = ''
+    for (const budget of [6, 10, 16, 24, 46]) {
+      const solved = solveOptimalAffixAllocation({
+        ctx, entries, maxTotalRolls: budget, groupCaps: { '2件套': 1 },
+      })
+      const used = twoPiece.reduce((sum, e) => sum + (solved.rollsByEntryId[e.id] ?? 0), 0)
+      const picked = twoPiece.filter((e) => (solved.rollsByEntryId[e.id] ?? 0) > 0)
+      if (used > 1) {
+        ok = false
+        detail = `预算 ${budget}：用了 ${used} 档（${picked.map((e) => e.label).join('+')}）`
+      }
+    }
+    check('2件套：11 条同组额度 1 → 至多选一条', ok, detail || '各预算档均至多一条')
+  }
+
   // 4.8 预设条目自带「副词条」组（额度不限），不传额度表时求解结果不受影响
   {
     const groupsInPreset = [...new Set(library.map((e) => e.group))]
@@ -594,6 +615,44 @@ console.log('\n[4.10] 同字段多条目的折算')
     preset
       .filter((e) => e.group === '副词条' && e.id.startsWith('panel:'))
       .every((e) => e.enabledByDefault === false))
+
+  // 2 件套：按「效果」去重后的 11 条（用户 2026-09-12 口径，见 impl-log 步骤 32）
+  const twoPiece = preset.filter((e) => e.group === '2件套')
+  check('2件套组共 11 条（按效果去重）', twoPiece.length === 11,
+    twoPiece.map((e) => e.label).join(' / '))
+  check('2件套条目 id 唯一', new Set(twoPiece.map((e) => e.id)).size === twoPiece.length)
+  check('2件套条目默认不启用（避免与自己佩戴的那套双算）',
+    twoPiece.every((e) => e.enabledByDefault === false))
+  check('2件套条目各自 cap = 1', twoPiece.every((e) => e.cap === 1))
+  check('2件套名称＝效果（与 4/5/6 号位同一套格式，不含套装名）',
+    twoPiece.every((e) => !/套装|Suit/.test(e.label) && typeof affixTargetLabelOf(e.target) === 'string'),
+    twoPiece.map((e) => `${e.label}→${affixTargetLabelOf(e.target)}`).join(' / '))
+  // 名称就是效果：逐条核对（与手册步骤 32 的清单一致）。爆伤/暴击伤害是刻意简写，同 4号位。
+  const EXPECTED_TWO_PIECE = [
+    '暴击 8%=stat:critRate',
+    '爆伤 16%=stat:critDmg',
+    '精通 30=stat:mastery',
+    '局外攻击力 10%=stat:atkPercent',
+    '局外生命值 10%=stat:hpPercent',
+    '局外防御力 16%=stat:defPercent',
+    '增伤 10%=panel:dmgBonus',
+    '穿透率 8%=panel:penRate',
+    '能量恢复 20%=panel:energyRegen',
+    '异常掌控 8%=panel:anomalyControl',
+    '冲击力 6%=panel:impact',
+  ]
+  const actual = twoPiece.map((e) => `${e.label}=${e.target}`).sort()
+  check('2件套 11 条的名称与目标逐条符合手册清单',
+    JSON.stringify(actual) === JSON.stringify([...EXPECTED_TWO_PIECE].sort()),
+    actual.join(' , '))
+  // 去重的意义：组内不得出现「目标 + 每档」完全相同的两条
+  const sig = new Set(twoPiece.map((e) => `${e.target}=${e.perRoll}`))
+  check('2件套组内无重复效果', sig.size === twoPiece.length, `${sig.size} 种 / ${twoPiece.length} 条`)
+  // 震星迪斯科那条按说明文字填的冲击力
+  const impactSet = twoPiece.find((e) => e.label === '冲击力 6%')
+  check('震星迪斯科「冲击力 6%」在列（按说明文字填）',
+    impactSet?.target === 'panel:impact' && impactSet?.perRoll === 6,
+    impactSet ? `${impactSet.target}=${impactSet.perRoll}` : '(缺)')
 }
 
 // ---------- 5. 引擎调用上限 ----------
