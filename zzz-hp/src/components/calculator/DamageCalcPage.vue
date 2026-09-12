@@ -926,10 +926,6 @@ const emptyBangboo: BangbooBuffDoc = {
   refinementMods: createEmptyRefinementMods(),
 }
 
-const emit = defineEmits<{
-  'update:calcMode': [mode: PanelCalcMode]
-}>()
-
 const skillFlowTeleportTo = computed(() =>
   panelCalcMode.value === 'optimal' ? '#skill-flow-anchor-optimal' : '#skill-flow-anchor-panel',
 )
@@ -1060,14 +1056,6 @@ const convertSlotIndexes = computed(() => {
   }
   return indexes
 })
-
-watch(
-  panelCalcMode,
-  (mode) => {
-    emit('update:calcMode', mode)
-  },
-  { immediate: true },
-)
 
 function syncBuffDefaultsForSlot(slotIndex: number) {
   const effects = collectAllBuffEffects(buildBuffCollectContext(slotIndex))
@@ -1964,15 +1952,13 @@ function onClearLoadedScheme() {
 
 async function scrollToSection(sectionId: DamageCalcSectionId) {
   await nextTick()
-  // 「最优词条分配」的 id 映射到计算方式锚点（只滚动，模式由 toggle 决定）；
-  // 「面板导入 / 词条导入」入口已永久删除（2026-09-12，见 damageCalcNav.ts）。
+  // 「面板导入 / 词条导入」入口已永久删除（2026-09-12，见 damageCalcNav.ts）；
+  // 「词条配比分析」区块即锚点本身（#damage-panel），无映射。
   if (sectionId === 'skill-flow') {
     skillFlowSectionRef.value?.expand()
     await nextTick()
   }
-  const anchorId =
-    sectionId === 'damage-calc-optimal' ? 'damage-calc-mode' : sectionId
-  const target = pageRootRef.value?.querySelector<HTMLElement>(`#${anchorId}`)
+  const target = pageRootRef.value?.querySelector<HTMLElement>(`#${sectionId}`)
   target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
@@ -2147,23 +2133,6 @@ defineExpose({ scrollToSection })
         title="敌方与环境"
         description="选择 Boss 或手动录入防御、抗性与失衡倍率，供面板导入与最优词条共用。"
       />
-    </section>
-
-    <section id="damage-calc-mode" class="calc-mode-section damage-anchor">
-      <header class="calc-mode-header">
-        <h2>计算方式</h2>
-        <p class="calc-mode-desc">
-          局外 / 词条在「代理人 → 导入」的面板 Tab 录入（含截图识别）；面板导入用手填局外，词条导入用副词条推导；最优词条在约束下扫描并绘制期望伤害曲线。
-        </p>
-      </header>
-      <div class="calc-mode-tabs" role="tablist" aria-label="面板导入方式">
-        <!--
-          「面板导入 / 词条导入」两个模式切换按钮**已永久删除**（2026-09-12，所有者口径）；
-          「最优词条分配」进出按钮**也已去除**（2026-09-13，所有者口径）：计算方式恒为最优词条分配，
-          伤害结果统一由页面底部常驻区承担，没有需要进出的第二状态。
-          面板读取统一走 `resolveActivePanel`（唯一入口）。
-        -->
-      </div>
     </section>
 
     <PanelCalcSection

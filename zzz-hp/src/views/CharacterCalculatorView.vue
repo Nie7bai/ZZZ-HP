@@ -5,7 +5,7 @@ import { storeToRefs } from 'pinia'
 import BuffEffectBlocksDisplay from '@/components/calculator/BuffEffectBlocksDisplay.vue'
 import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
 import DamageCalcPage from '@/components/calculator/DamageCalcPage.vue'
-import { DAMAGE_CALC_SECTIONS, DAMAGE_CALC_MODE_ITEMS, type DamageCalcNavItem } from '@/constants/damageCalcNav'
+import { DAMAGE_CALC_SECTIONS, type DamageCalcSectionId } from '@/constants/damageCalcNav'
 import {
   CHARACTER_CALC_PAGES,
   isCharacterCalcPage,
@@ -78,8 +78,6 @@ const pageLinks = computed(() => {
 })
 
 const damageSubNav = DAMAGE_CALC_SECTIONS
-const damageCalcModeItems = DAMAGE_CALC_MODE_ITEMS
-const damageCalcModeHint = ref<'panel' | 'affix' | 'optimal'>('optimal')
 const activePage = computed<CalcPage>(() => {
   const fromRoute = route.meta.sidebarPanelId
   if (isCharacterCalcPage(fromRoute)) return fromRoute
@@ -114,13 +112,13 @@ async function ensurePage(page: CalcPage): Promise<boolean> {
   return true
 }
 
-async function scrollToDamageSection(item: DamageCalcNavItem | { id: 'damage-calc-mode' }) {
+async function scrollToDamageSection(sectionId: DamageCalcSectionId) {
   const switched = await ensurePage('damage')
   mobileNavOpen.value = false
-  // 计算方式恒为「最优词条分配」（2026-09-13 起常驻）：侧栏同名项只做锚点滚动，不再切换模式
+  // 侧栏项只做锚点滚动（「词条配比分析」已常驻，无模式切换）
   await nextTick()
   if (switched) await nextTick()
-  await damageCalcPageRef.value?.scrollToSection(item.id)
+  await damageCalcPageRef.value?.scrollToSection(sectionId)
 }
 
 const roleDocSearch = ref('')
@@ -317,52 +315,13 @@ const filteredDriveDiscDocs = computed(() =>
             <div class="damage-subnav-inner">
               <nav class="damage-subnav" :aria-hidden="activePage !== 'damage'">
                 <template v-for="item in damageSubNav" :key="item.id">
-                  <div v-if="item.id === 'damage-calc-mode'" class="damage-calc-mode-group">
-                    <button
-                      type="button"
-                      class="damage-subnav-btn damage-calc-mode-label"
-                      :tabindex="activePage === 'damage' ? 0 : -1"
-                      @click="scrollToDamageSection({ id: 'damage-calc-mode' })"
-                    >
-                      计算方式
-                    </button>
-                    <div class="damage-calc-mode-children">
-                      <!--
-                        【临时冻结 · 2026-09-11】「面板导入 / 词条导入」两项只作展示：
-                        它们原先会改掉算进伤害的那份面板（见 constants/damageCalcNav.ts 说明）。
-                        冻结期间不响应点击、不参与高亮，也不再切换面板或计算方式。
-                      -->
-                      <button
-                        v-for="modeItem in damageCalcModeItems"
-                        :key="modeItem.id"
-                        type="button"
-                        class="damage-subnav-btn"
-                        :class="{
-                          active: !modeItem.frozen && damageCalcModeHint === modeItem.calcMode,
-                          'damage-subnav-btn--frozen': modeItem.frozen,
-                        }"
-                        :disabled="modeItem.frozen || undefined"
-                        :aria-disabled="modeItem.frozen || undefined"
-                        :tabindex="activePage === 'damage' && !modeItem.frozen ? 0 : -1"
-                        :title="
-                          modeItem.frozen
-                            ? '已冻结：面板在「代理人 → 导入」里录入，不用它切换'
-                            : modeItem.calcMode === 'optimal'
-                              ? '词条配比分析（常驻）'
-                              : undefined
-                        "
-                        @click="scrollToDamageSection(modeItem)"
-                      >
-                        {{ modeItem.label }}
-                      </button>
-                    </div>
-                  </div>
+                  <!-- 侧栏项 = 锚点导航（纯滚动，无选中态）：「词条配比分析」即原「计算方式」组，
+                       2026-09-13 起区块与入口同名、直接锚定 #damage-panel。 -->
                   <button
-                    v-else
                     type="button"
                     class="damage-subnav-btn"
                     :tabindex="activePage === 'damage' ? 0 : -1"
-                    @click="scrollToDamageSection(item)"
+                    @click="scrollToDamageSection(item.id)"
                   >
                     {{ item.label }}
                   </button>
@@ -385,7 +344,6 @@ const filteredDriveDiscDocs = computed(() =>
       <DamageCalcPage
         v-show="activePage === 'damage'"
         ref="damageCalcPageRef"
-        @update:calc-mode="damageCalcModeHint = $event"
       />
 
       <article v-if="activePage === 'role-buff'" class="card">
@@ -964,27 +922,6 @@ const filteredDriveDiscDocs = computed(() =>
 }
 
 /* 【临时冻结 · 2026-09-11】「面板导入 / 词条导入」停用态：保留可见，但明确不可点 */
-.damage-subnav-btn--frozen,
-.damage-subnav-btn--frozen:hover {
-  color: rgba(245, 245, 240, 0.3);
-  background: transparent;
-  cursor: not-allowed;
-  text-decoration: line-through;
-  text-decoration-color: rgba(245, 245, 240, 0.35);
-}
-
-.damage-calc-mode-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  margin-top: 0.1rem;
-}
-
-.damage-calc-mode-label {
-  color: rgba(245, 245, 240, 0.7);
-  font-weight: 600;
-}
-
 .damage-calc-mode-children {
   display: flex;
   flex-direction: column;
