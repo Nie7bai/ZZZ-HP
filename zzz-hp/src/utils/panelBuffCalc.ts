@@ -13,6 +13,7 @@ import type {
   WengineBuffDoc,
 } from '@/types/calculator'
 import {
+  createEmptyExternalPanel,
   createDefaultExternalPanel,
   fillPanelStatsDefaults,
   type PanelStats,
@@ -640,14 +641,31 @@ function resolveExternalPanelForSlot(
     return fillPanelStatsDefaults(currentSlotExternalPanel)
   }
   const agentId = ctx.teamSlots[slotIndex]?.agentId
-  if (!agentId) return createDefaultExternalPanel()
-  const anomaly = ctx.activeSlotPanels?.[agentId]
-  if (anomaly) return fillPanelStatsDefaults(anomaly)
+  if (!agentId) return createEmptyExternalPanel()
+  const active = ctx.activeSlotPanels?.[agentId]
+  if (active) return fillPanelStatsDefaults(active)
   const convertPartial = ctx.convertSlotPanels?.[agentId]
   if (convertPartial) {
     return convertSlotPartialToExternalPanel(convertPartial)
   }
-  return createDefaultExternalPanel()
+  // 没有面板记录 → 空面板：没有面板就不出伤害（不再拿占位毕业面板顶替）
+  return createEmptyExternalPanel()
+}
+
+/**
+ * 该槽位**有没有面板** —— 面板只由「确定导入」/ 手动切换来源 / 读盘恢复产生，
+ * 没有就不该算出伤害（所有者口径 2026-09-12）。
+ *
+ * 只认用户侧的那份（`activeSlotPanels` = 已解析的激活面板）与转模部分面板；
+ * 不认凭空推导出来的兜底值 —— 那正是「工具自己造面板」的老毛病。
+ */
+export function hasExternalPanelForSlot(slotIndex: number, ctx: PanelCalcContext): boolean {
+  if (slotIndex < 0 || slotIndex >= ctx.teamSlots.length) return false
+  const agentId = ctx.teamSlots[slotIndex]?.agentId
+  if (!agentId) return false
+  if (ctx.activeSlotPanels?.[agentId]) return true
+  if (ctx.convertSlotPanels?.[agentId]) return true
+  return false
 }
 
 function resolveConvertAttrExtras(

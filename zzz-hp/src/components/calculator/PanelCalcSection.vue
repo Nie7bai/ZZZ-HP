@@ -24,6 +24,7 @@ import {
   createDefaultExternalPanel,
   createEmptyAffixCounts,
   createEmptyAffixDriveDiscMainStats,
+  createEmptyExternalPanel,
   createExternalPanelFromAgentBase,
   fillPanelStatsDefaults,
   type AffixCounts,
@@ -31,7 +32,6 @@ import {
   type PanelCalcMode,
   type PanelStats,
 } from '@/types/calculatorPanel'
-import { computeExternalPanelFromTeamSlot } from '@/utils/affixPanelCalc'
 import {
   panelOfSource,
   resolveActivePanel,
@@ -368,23 +368,6 @@ const resolvedSkillSubcategory = computed<SkillSubcategory | null>(() => {
   return skillSubcategories.value.find((item) => item.id === id) ?? null
 })
 
-function derivedExternalPanelForSlot(slotIndex: number): PanelStats {
-  const slot = props.teamSlots[slotIndex]
-  if (!slot) return createDefaultExternalPanel()
-  const live = slotIndex === mainSlotIndex.value
-  return computeExternalPanelFromTeamSlot({
-    slot,
-    agents: props.agents,
-    wengines: props.wengines,
-    driveDiscs: props.driveDiscs,
-    overrideAffix: live
-      ? { affixCounts, affixDriveDiscMainStats }
-      : undefined,
-  })
-}
-
-const derivedExternalPanel = computed(() => derivedExternalPanelForSlot(mainSlotIndex.value))
-
 /**
  * 每个角色**激活那份**局外面板 —— 计算链路唯一的取面板入口。
  * 来源（面板导入 / 词条导入）到这里就解析完了，下游不再区分。
@@ -411,11 +394,24 @@ const effectiveExternalPanel = computed<PanelStats>(() => {
   const id = mainAgent.value?.id
   const active = id ? resolveActivePanel(props.slotPanels?.[id]) : undefined
   if (active) return active
-  // 该角色两份都还没有数据：面板页用 live 编辑器，词条页按当前输入现推（纯兜底）
-  return props.calcMode === 'affix' ? derivedExternalPanel.value : externalPanel
+  // 该角色没有面板记录 → 空面板：没有面板就不出伤害（不再拿 live 编辑器/占位面板顶替）
+  return createEmptyExternalPanel()
 })
 
 const isAffixMode = computed(() => props.calcMode === 'affix')
+
+/**
+ * 当前角色**没有面板**（两份都没数据，也没有转模部分面板）。
+ *
+ * 这时计算拿到的是一份空面板（全 0）→ 不出伤害。给界面一句提示，别让人对着 0 猜
+ * （「没点导入就没有面板」+「没有面板就没有伤害」= 所有者口径 2026-09-12）。
+ */
+const mainPanelMissing = computed(() => {
+  const id = mainAgent.value?.id
+  if (!id) return false
+  if (resolveActivePanel(props.slotPanels?.[id])) return false
+  return !props.convertSlotPanels?.[id]
+})
 
 const isMbMainAgent = computed(() => mainAgent.value?.profession === MB_PROFESSION)
 const isFengYuMainAgent = computed(() => mainAgent.value?.profession === FENGYU_PROFESSION)
@@ -451,22 +447,24 @@ const anomalySupportSlots = computed(() => {
     .filter(({ slot }) => Boolean(slot.agentId && participantIds.has(slot.agentId)))
 })
 
+/**
+ * 某槽位的局外面板 —— **只认该角色自己存着的那份（激活那份）**。
+ *
+ * 没有面板记录时给**空面板**（全 0），不给占位毕业面板、也不拿 live 编辑器顶替：
+ * 没有面板就不该算出伤害（所有者口径 2026-09-12）。
+ * 转模角色走 `convertSlotPanels`（转模面板维持现状，不属于「面板导入」那条线）。
+ */
 function resolveExternalPanelForSlotIndex(slotIndex: number): PanelStats {
-  if (slotIndex < 0 || slotIndex >= props.teamSlots.length) {
-    return createDefaultExternalPanel()
-  }
-  const slot = props.teamSlots[slotIndex]
-  const agentId = slot?.agentId
-  if (!agentId) return createDefaultExternalPanel()
-  // 统一读该角色**激活那份**（面板导入或词条导入都一样对待，不问来历）
+  const agentId =
+    slotIndex >= 0 && slotIndex < props.teamSlots.length
+      ? props.teamSlots[slotIndex]?.agentId
+      : undefined
+  if (!agentId) return createEmptyExternalPanel()
   const active = resolveActivePanel(props.slotPanels?.[agentId])
   if (active) return active
-  if (slotIndex === mainSlotIndex.value) {
-    return fillPanelStatsDefaults(externalPanel)
-  }
   const partial = props.convertSlotPanels?.[agentId]
   if (partial) return convertSlotPartialToExternalPanel(partial)
-  return createDefaultExternalPanel()
+  return createEmptyExternalPanel()
 }
 
 /** 每人一份局外，供全队转模按来源槽位取值（不要拿编辑中角色的面板去套队友） */
@@ -637,7 +635,7 @@ function emitConvertSlotPanel(
  * 凭空造一份会让用户以为面板已经配好，还会被当成真数据写盘。
  */
 function activePanelForAgent(agentId: string): PanelStats {
-  return resolveActivePanel(props.slotPanels?.[agentId]) ?? createDefaultExternalPanel()
+  return resolveActivePanel(props.slotPanels?.[agentId]) ?? createEmptyExternalPanel()
 }
 
 function applyAgentBaseToExternalPanel(base: PanelStats | AgentBuffDoc['basePanel']) {
@@ -1175,7 +1173,8 @@ function syncHitSummary(
           skillFlowEvalCtx.value,
           skillFlowMainExternal.value,
           hit,
-          { includeDetails: false },
+          // requirePanel：这四条伤害页入口统一要求「有面板才出伤害」（没面板 → 没有伤害）
+          { includeDetails: false, requirePanel: true },
         )
         if (detail) {
           entry = {
@@ -1286,7 +1285,9 @@ const hasDamageEvents = computed(() => (props.hits?.length ?? 0) > 0)
 const selectedEventEvalDetail = computed(() => {
   const base = selectedDamageEventLine.value
   if (!base) return null
-  return evaluateOptimalEventDetail(skillFlowEvalCtx.value, skillFlowMainExternal.value, base.hit)
+  return evaluateOptimalEventDetail(skillFlowEvalCtx.value, skillFlowMainExternal.value, base.hit, {
+    requirePanel: true,
+  })
 })
 
 const selectedEventDetailLine = computed((): HitLine | null => {
@@ -3422,6 +3423,10 @@ defineExpose({
           全队局外 / 词条 / 局内面板请在「导入」中录入与查看；悬停顶部槽位可预览局外与局内（随 Buff
           增益实时更新）。此处仅结算伤害结果。
         </p>
+        <!-- 没面板就不出伤害（所有者口径 2026-09-12）：给一句提示，别让人对着 0 猜 -->
+        <p v-if="mainPanelMissing" class="section-desc panel-missing-hint" role="status">
+          当前角色还没有面板（局外面板为 0，伤害不计算）——请点顶部「导入」录入或截图识别后「确定导入」。
+        </p>
       </div>
     </header>
 
@@ -3887,6 +3892,16 @@ defineExpose({
   margin: 0.25rem 0 0;
   font-size: 0.8rem;
   color: #9aa3b0;
+}
+
+/* 没面板就没伤害：这句要显眼，别让人对着 0 猜 */
+.panel-missing-hint {
+  margin-top: 0.5rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: 8px;
+  border: 1px dashed #8a6d3b;
+  background: rgba(201, 165, 92, 0.12);
+  color: #f0d7a2;
 }
 
 .team-summary,

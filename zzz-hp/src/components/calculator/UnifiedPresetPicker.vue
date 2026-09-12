@@ -529,11 +529,7 @@ function confirm() {
   let external: PanelStats
   let panelSource: AgentPanelSourceKind
   if (entryMode.value === 'affix') {
-    const mains = draftAffixMains
-    if (!mains.slot4MainStat || !mains.slot5MainStat || !mains.slot6MainStat) {
-      confirmHint.value = '请先选择 4 / 5 / 6 号盘主属性，再确定导入'
-      return
-    }
+    // 4/5/6 主属性允许空：空就是不提供该主属性（按 0 计入），不挡写盘（所有者口径 2026-09-12）
     external = computeExternalPanelFromTeamSlot({
       slot: {
         agentId: selected.value.agentId,

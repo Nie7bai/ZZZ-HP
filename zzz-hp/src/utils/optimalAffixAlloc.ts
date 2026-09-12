@@ -72,6 +72,7 @@ import { isEffectEnabled } from '@/utils/buffEffect'
 import {
   collectAllBuffEffects,
   computeFinalPanel,
+  hasExternalPanelForSlot,
   parseSourceKeySlotIndex,
   resolveAnomalyReleaseMultFields,
   type BuffSelectionState,
@@ -806,7 +807,16 @@ export function evaluateOptimalEventDetail(
   ctx: OptimalEvalContext,
   mainExternal: PanelStats,
   hit: ResolvedHit,
-  options?: { includeDetails?: boolean },
+  options?: {
+    includeDetails?: boolean
+    /**
+     * 要求「该角色有面板」才出伤害（伤害页四条入口传 true；最优分配的候选评估不传）。
+     *
+     * 必要条件（所有者口径 2026-09-12）：没点导入 → 没有面板 → 没有伤害。
+     * 关掉它，Buff 里的固定攻击/暴击仍会算出一份不小的数 —— 那会让人以为面板还在。
+     */
+    requirePanel?: boolean
+  },
 ): OptimalEventEvalDetail | null {
   const includeDetails = options?.includeDetails !== false
   const panelOpts = includeDetails ? undefined : PANEL_NUMBERS_ONLY
@@ -828,6 +838,18 @@ export function evaluateOptimalEventDetail(
 
   const evtPowerAgentId = hit.anomalyPowerAgentId
   if (eventNeedsTrigger && !evtPowerAgentId) return null
+
+  if (options?.requirePanel) {
+    // 出手的角色没面板 → 这一条不出伤害
+    if (!hasExternalPanelForSlot(ownerSlotIndex, ctx.panelContext)) return null
+    // 异常类还要强度提供者的面板（它身上的精通/异常增伤才配得出来）
+    if (eventNeedsTrigger && evtPowerAgentId) {
+      const providerSlotIndex = ctx.panelContext.teamSlots.findIndex(
+        (slot) => slot.agentId === evtPowerAgentId,
+      )
+      if (!hasExternalPanelForSlot(providerSlotIndex, ctx.panelContext)) return null
+    }
+  }
 
   const ownerAgent = ctx.panelContext.agents.find((item) => item.id === ownerAgentId)
   const evtOwnerIsMb = ownerAgent?.profession === MB_PROFESSION

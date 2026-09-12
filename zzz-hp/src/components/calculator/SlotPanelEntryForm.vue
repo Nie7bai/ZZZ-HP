@@ -164,6 +164,9 @@ function fieldConvertClass(key: string, panel: 'external' | 'final') {
 /** 录入项清单来自类型层的单一事实来源（表单渲染与「填没填完」判定共用一份） */
 const EXTERNAL_FIELDS = EXTERNAL_PANEL_INPUT_FIELDS
 
+/** 4/5/6 主属性的「空」选项：可以什么都不选（按不提供该主属性计），默认就是空 */
+const MAIN_STAT_EMPTY_LABEL = '未选择（空）'
+
 const FINAL_FIELDS: { key: keyof PanelStats; label: string }[] = [
   { key: 'hp', label: '生命值' },
   { key: 'atk', label: '攻击力' },
@@ -265,6 +268,7 @@ function formatValue(key: keyof PanelStats, value: number) {
         <label class="field">
           <span>4 号盘主属性</span>
           <select v-model="affixDriveDiscMainStats.slot4MainStat" :disabled="disabled">
+            <option value="">{{ MAIN_STAT_EMPTY_LABEL }}</option>
             <option v-for="option in DRIVE_DISC_SLOT_4_OPTIONS" :key="option.id" :value="option.id">
               {{ option.label }}
             </option>
@@ -273,6 +277,7 @@ function formatValue(key: keyof PanelStats, value: number) {
         <label class="field">
           <span>5 号盘主属性</span>
           <select v-model="affixDriveDiscMainStats.slot5MainStat" :disabled="disabled">
+            <option value="">{{ MAIN_STAT_EMPTY_LABEL }}</option>
             <option v-for="option in DRIVE_DISC_SLOT_5_OPTIONS" :key="option.id" :value="option.id">
               {{ option.label }}
             </option>
@@ -281,6 +286,7 @@ function formatValue(key: keyof PanelStats, value: number) {
         <label class="field">
           <span>6 号盘主属性</span>
           <select v-model="affixDriveDiscMainStats.slot6MainStat" :disabled="disabled">
+            <option value="">{{ MAIN_STAT_EMPTY_LABEL }}</option>
             <option v-for="option in DRIVE_DISC_SLOT_6_OPTIONS" :key="option.id" :value="option.id">
               {{ option.label }}
             </option>

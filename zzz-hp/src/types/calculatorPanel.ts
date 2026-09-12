@@ -254,6 +254,20 @@ export const EXTERNAL_PANEL_INPUT_FIELDS: readonly {
 export type ExternalPanelInputKey = (typeof EXTERNAL_PANEL_INPUT_FIELDS)[number]['key']
 
 /**
+ * 「没有面板」用的空面板：用户录入的字段一律为 0，乘区入口取中性值。
+ *
+ * 与 `createDefaultExternalPanel()`（占位毕业面板，生命 9873 / 攻击 4008）**不是一回事**：
+ * 那份数值是别人的配置，拿它算会凭空算出伤害。所有者口径（2026-09-12）：
+ * **没有面板就不出伤害**（「没点导入就没有面板」之外的第二个必要条件）。
+ */
+export function createEmptyExternalPanel(): PanelStats {
+  const panel = createDefaultExternalPanel()
+  for (const field of EXTERNAL_PANEL_INPUT_FIELDS) panel[field.key] = 0
+  panel.sharpenCritDmgBonus = 0
+  return panel
+}
+
+/**
  * 面板导入草稿：录入项**留空就是 null**，不是 0、更不是占位毕业面板。
  *
  * 空是合法状态（所有者口径 2026-09-12）：用户没填就是没数据，工具不得替他填一个

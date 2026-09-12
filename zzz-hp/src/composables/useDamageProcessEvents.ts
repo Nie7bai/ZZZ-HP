@@ -100,7 +100,9 @@ export function useDamageProcessEvents(source: DamageProcessSource) {
           hit,
           eventId: hit.id,
           displayName: displayNameOf(hit),
-          detail: skipReason ? null : evaluateOptimalEventDetail(ctx, external, hit),
+          detail: skipReason
+            ? null
+            : evaluateOptimalEventDetail(ctx, external, hit, { requirePanel: true }),
           skipReason,
         }
       })
