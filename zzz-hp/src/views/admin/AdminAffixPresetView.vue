@@ -382,50 +382,80 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* 配色一律走主题变量（与其他管理页一致）：写死深色在白天模式下会变成
+   「浅色页面上浮着深色卡片」，2026-09-12 实测发现并修正。 */
 .affix-preset-admin {
+  min-height: 100vh;
   max-width: 1180px;
   margin: 0 auto;
-  padding: 2rem 1.25rem 3rem;
-  color: #e8eaee;
+  padding: 1.5rem 1.25rem 2.5rem;
+  position: relative;
+  color: var(--color-text);
 }
 
 .back,
 .logout {
-  color: #9aa3b0;
-  text-decoration: none;
-  background: none;
-  border: none;
-  cursor: pointer;
+  position: absolute;
+  top: 1.25rem;
   font-size: 0.85rem;
+  text-decoration: none;
+  color: var(--color-text);
+  opacity: 0.75;
+}
+
+.back {
+  left: 1.25rem;
 }
 
 .logout {
-  float: right;
+  right: 1.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-background-soft);
+  padding: 0.35rem 0.8rem;
+  cursor: pointer;
+}
+
+.back:hover,
+.logout:hover {
+  opacity: 1;
+}
+
+.page-header {
+  margin: 2.5rem auto 1.25rem;
+  text-align: center;
 }
 
 .page-header h1 {
-  margin: 0.6rem 0 0.35rem;
-  font-size: 1.35rem;
+  margin: 0 0 0.4rem;
+  font-size: clamp(1.5rem, 3vw, 1.9rem);
+  color: var(--color-heading);
 }
 
 .page-header p {
   margin: 0;
-  color: #9aa3b0;
   font-size: 0.85rem;
+  color: var(--color-text);
+  opacity: 0.7;
   line-height: 1.6;
 }
 
 .stat-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 1rem;
+  gap: 0.75rem;
   align-items: center;
   margin: 1rem 0;
   font-size: 0.85rem;
-  color: #9aa3b0;
+  opacity: 0.85;
 }
 
+/* 强调色：浅底用深金、深底用浅金（主题挂在 <html data-theme> 上，见 stores/theme.ts） */
 .stat-row strong {
+  color: #a8781f;
+}
+
+[data-theme='dark'] .stat-row strong {
   color: #f0d7a2;
 }
 
@@ -442,46 +472,51 @@ onMounted(() => {
 }
 
 .card {
-  border: 1px solid #2d323a;
-  border-radius: 10px;
-  background: #171b22;
-  padding: 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-background-soft);
+  padding: 1rem 1.05rem 1.15rem;
 }
 
 .card-head {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.6rem;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
 }
 
 .card-head h2 {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: 1.05rem;
+  color: var(--color-heading);
 }
 
 .field {
-  display: block;
-  margin-bottom: 0.5rem;
-  font-size: 0.8rem;
-  color: #9aa3b0;
-}
-
-.field > span {
-  display: block;
-  margin-bottom: 0.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--color-text);
 }
 
 .field input,
 .field select {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid #313640;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: #0f1217;
-  color: #edf0f5;
-  padding: 0.4rem 0.55rem;
-  font-size: 0.82rem;
+  background: var(--color-background);
+  color: var(--color-text);
+  padding: 0.5rem 0.6rem;
+  font: inherit;
+}
+
+.field--check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .field--check input {
@@ -491,60 +526,67 @@ onMounted(() => {
 .field-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 0.5rem;
+  gap: 0.6rem;
 }
 
 .hint {
-  margin: 0.2rem 0 0.7rem;
-  color: #7d8694;
-  font-size: 0.75rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.78rem;
+  opacity: 0.65;
   line-height: 1.5;
 }
 
 .actions {
   display: flex;
-  gap: 0.5rem;
-  margin-top: 0.4rem;
+  gap: 0.55rem;
+  margin-top: 0.25rem;
 }
 
 .primary-btn {
-  border: 1px solid #c9a55c;
+  border: none;
   border-radius: 8px;
-  background: rgba(201, 165, 92, 0.16);
-  color: #f0d7a2;
-  padding: 0.4rem 0.9rem;
+  background: #3d7a5a;
+  color: #fff;
+  font: inherit;
+  font-size: 0.85rem;
   cursor: pointer;
-  font-size: 0.82rem;
+  padding: 0.45rem 0.85rem;
+}
+
+.primary-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .ghost-btn {
-  border: 1px solid #343a44;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: #12161d;
-  color: #d5dae4;
-  padding: 0.28rem 0.6rem;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.8rem;
   cursor: pointer;
-  font-size: 0.78rem;
+  padding: 0.3rem 0.65rem;
 }
 
 .ghost-btn.danger {
-  border-color: #6b2f2f;
-  color: #ff9c9c;
+  border-color: color-mix(in srgb, #c44 45%, transparent);
+  color: #c44;
 }
 
 .group-list {
-  margin: 0.8rem 0 0;
+  margin: 0.9rem 0 0;
   padding: 0;
   list-style: none;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
 }
 
 .group-list li {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.3rem 0;
-  border-top: 1px solid #23282f;
+  padding: 0.35rem 0;
+  border-top: 1px solid var(--color-border);
 }
 
 .group-name {
@@ -552,7 +594,7 @@ onMounted(() => {
 }
 
 .group-cap {
-  color: #9aa3b0;
+  opacity: 0.65;
 }
 
 .table-card {
@@ -567,13 +609,13 @@ onMounted(() => {
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.78rem;
+  font-size: 0.82rem;
 }
 
 th,
 td {
-  padding: 0.35rem 0.5rem;
-  border-bottom: 1px solid #23282f;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--color-border);
   text-align: left;
   white-space: nowrap;
 }
@@ -581,14 +623,14 @@ td {
 th {
   position: sticky;
   top: 0;
-  background: #1b1f27;
-  color: #9aa3b0;
+  background: var(--color-background-soft);
+  color: var(--color-heading);
   font-weight: 600;
 }
 
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: #9aa3b0;
+  opacity: 0.7;
 }
 
 .num {
@@ -597,16 +639,16 @@ th {
 
 .row-actions {
   display: flex;
-  gap: 0.3rem;
+  gap: 0.35rem;
 }
 
 .ok-msg {
-  color: #7ddba1;
-  font-size: 0.82rem;
+  color: #2f6f4e;
+  font-size: 0.85rem;
 }
 
 .err {
-  color: #ff9c9c;
-  font-size: 0.82rem;
+  color: #c44;
+  font-size: 0.85rem;
 }
 </style>
