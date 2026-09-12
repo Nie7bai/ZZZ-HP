@@ -1,0 +1,141 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="980" viewBox="0 0 1000 980">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto">
+      <path d="M0,0 L7,3.5 L0,7 Z" fill="#d96c3f"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="1000" height="980" rx="16" fill="#f7f8fa"/>
+
+  <!-- 连线 -->
+  <g stroke="#8a94a6" stroke-width="1.8" fill="none">
+    <!-- 根 → 两方案 -->
+    <path d="M500 78 C 430 108, 330 100, 290 138"/>
+    <path d="M500 78 C 570 108, 670 100, 710 138"/>
+    <!-- 两方案 → 确定角色面板 -->
+    <path d="M290 192 C 315 210, 385 213, 425 228"/>
+    <path d="M710 192 C 685 210, 615 213, 575 228"/>
+    <!-- 确定 → 中间环节两模式（先分支） -->
+    <path d="M500 284 C 470 320, 360 340, 320 388"/>
+    <path d="M500 284 C 530 320, 640 340, 680 388"/>
+    <!-- 模式 → 各自的计算链路 -->
+    <path d="M320 430 C 320 440, 320 447, 320 456"/>
+    <path d="M680 430 C 680 440, 680 447, 680 456"/>
+    <!-- 计算链路 → 总结 -->
+    <path d="M320 504 C 320 506, 320 508, 320 510"/>
+    <path d="M680 504 C 680 506, 680 508, 680 510"/>
+    <!-- 总结（分析词条）→ 选择面板：移出的一条线 -->
+    <path d="M500 568 C 500 585, 500 595, 500 610"/>
+  </g>
+
+  <!-- 上报箭头：A 总结 → ② 最优分配 / B 总结 → ③ 当前点击柱 -->
+  <g stroke="#d96c3f" stroke-width="2.2" fill="none" marker-end="url(#arrow)">
+    <path d="M430 546 C 440 610, 415 670, 400 720"/>
+    <path d="M770 546 C 760 610, 790 670, 800 720"/>
+  </g>
+
+  <!-- 选择面板 → 三选一；三选一 → 流程计算 -->
+  <g stroke="#8a94a6" stroke-width="1.8" fill="none">
+    <path d="M500 660 C 420 685, 250 695, 170 720"/>
+    <path d="M500 660 C 500 685, 500 700, 500 720"/>
+    <path d="M500 660 C 580 685, 750 695, 840 720"/>
+    <path d="M170 778 C 240 805, 350 815, 410 840"/>
+    <path d="M500 778 C 500 805, 500 820, 500 840"/>
+    <path d="M840 778 C 770 805, 660 815, 600 840"/>
+  </g>
+
+  <!-- 中间环节容器（虚线框） -->
+  <rect x="140" y="320" width="720" height="248" rx="14" fill="none" stroke="#b0504e" stroke-width="2" stroke-dasharray="8 6"/>
+
+  <!-- 节点 -->
+  <g font-family="'Microsoft YaHei','PingFang SC',sans-serif" text-anchor="middle">
+    <!-- 根 -->
+    <rect x="380" y="28" width="240" height="50" rx="12" fill="#2c5f8a"/>
+    <text x="500" y="48" font-size="15" font-weight="bold" fill="#ffffff">编辑角色面板</text>
+    <text x="500" y="66" font-size="11" fill="#d5e2ef">（导入弹窗 · 编辑面板）</text>
+
+    <!-- 方案 1 -->
+    <rect x="175" y="138" width="230" height="54" rx="12" fill="#3a9d8c"/>
+    <text x="290" y="158" font-size="13" font-weight="bold" fill="#ffffff">方案 1：面板导入</text>
+    <text x="290" y="176" font-size="11" fill="#d9efe9">（手动录入 / 截图识别）</text>
+
+    <!-- 方案 2 -->
+    <rect x="580" y="138" width="260" height="54" rx="12" fill="#e08a3c"/>
+    <text x="710" y="158" font-size="13" font-weight="bold" fill="#ffffff">方案 2：词条导入</text>
+    <text x="710" y="176" font-size="11" fill="#f8e8d4">（词条数 + 4/5/6 号盘主属性）</text>
+
+    <!-- 确定角色面板 -->
+    <rect x="340" y="228" width="320" height="56" rx="12" fill="#7b5ea7"/>
+    <text x="500" y="248" font-size="14" font-weight="bold" fill="#ffffff">确定角色面板（汇聚 1 次）</text>
+    <text x="500" y="268" font-size="11" fill="#e4daf2">slotPanels 双来源 + 激活 · resolveActivePanel 唯一读入口</text>
+
+    <!-- 中间环节标题 -->
+    <text x="500" y="342" font-size="14" font-weight="bold" fill="#b0504e">词条功能二次修改面板（临时草稿）</text>
+    <text x="500" y="360" font-size="10.5" fill="#b0504e">产物只存内存 · 不落盘 · 刷新即消失（affix-calc-manual §4）</text>
+
+    <!-- 模式 A -->
+    <rect x="200" y="388" width="240" height="42" rx="10" fill="#d96c3f"/>
+    <text x="320" y="404" font-size="13" font-weight="bold" fill="#ffffff">模式 A：词条分配</text>
+    <text x="320" y="420" font-size="10.5" fill="#f8e2d6">点「求最优分配」→ 求解器搜索</text>
+
+    <!-- 模式 B -->
+    <rect x="560" y="388" width="240" height="42" rx="10" fill="#d96c3f"/>
+    <text x="680" y="404" font-size="13" font-weight="bold" fill="#ffffff">模式 B：扫掠柱图</text>
+    <text x="680" y="420" font-size="10.5" fill="#f8e2d6">扫掠 → 柱图 → 点中一根柱</text>
+
+    <!-- 计算链路 A -->
+    <rect x="170" y="456" width="300" height="48" rx="10" fill="#5b6470"/>
+    <text x="320" y="472" font-size="12" font-weight="bold" fill="#ffffff">也走一次流程计算（同一套引擎）</text>
+    <text x="320" y="489" font-size="10" fill="#d9dde2">词条档数 → 局外 → 面板 → 伤害 · 不展示乘区详情</text>
+
+    <!-- 计算链路 B -->
+    <rect x="530" y="456" width="300" height="48" rx="10" fill="#5b6470"/>
+    <text x="680" y="472" font-size="12" font-weight="bold" fill="#ffffff">也走一次流程计算（同一套引擎）</text>
+    <text x="680" y="489" font-size="10" fill="#d9dde2">词条档数 → 局外 → 面板 → 伤害 · 不展示乘区详情</text>
+
+    <!-- 总结 A -->
+    <rect x="170" y="510" width="300" height="36" rx="10" fill="#c99a2e"/>
+    <text x="320" y="532" font-size="11.5" font-weight="bold" fill="#ffffff">总结：最优方案（总伤 / 提升 / 每档分配 / 工作量）</text>
+
+    <!-- 总结 B -->
+    <rect x="530" y="510" width="300" height="36" rx="10" fill="#c99a2e"/>
+    <text x="680" y="532" font-size="11.5" font-weight="bold" fill="#ffffff">总结：柱图（各组合伤害）→ 点中柱</text>
+
+    <!-- 上报箭头标注 -->
+    <text x="350" y="600" font-size="10.5" fill="#b0504e" stroke="#ffffff" stroke-width="3" paint-order="stroke">A 总结 → ②：上报算好的主C局外面板</text>
+    <text x="660" y="600" font-size="10.5" fill="#b0504e" stroke="#ffffff" stroke-width="3" paint-order="stroke">B 总结 → ③：上报算好的主C局外面板</text>
+
+    <!-- 选择面板 -->
+    <rect x="335" y="610" width="330" height="50" rx="12" fill="#5b6470"/>
+    <text x="500" y="628" font-size="14" font-weight="bold" fill="#ffffff">选择面板（3 选 1）</text>
+    <text x="500" y="646" font-size="10.5" fill="#d9dde2">②③ = 上报的候选；未算 / 签名过期 → 回落 ①</text>
+
+    <!-- ① -->
+    <rect x="40" y="720" width="260" height="58" rx="12" fill="#6f9e4f"/>
+    <text x="170" y="740" font-size="13" font-weight="bold" fill="#ffffff">① 角色配置面板</text>
+    <text x="170" y="759" font-size="11" fill="#e2eed6">基础 · 默认 · 不经词条</text>
+
+    <!-- ② -->
+    <rect x="360" y="720" width="280" height="58" rx="12" fill="#d96c3f"/>
+    <text x="500" y="740" font-size="13" font-weight="bold" fill="#ffffff">② 词条分析 · 最优分配</text>
+    <text x="500" y="759" font-size="11" fill="#f8e2d6">模式 A 产物 · 须求解过 + 签名一致</text>
+
+    <!-- ③ -->
+    <rect x="700" y="720" width="280" height="58" rx="12" fill="#d96c3f"/>
+    <text x="840" y="740" font-size="13" font-weight="bold" fill="#ffffff">③ 词条分析 · 当前点击柱</text>
+    <text x="840" y="759" font-size="11" fill="#f8e2d6">模式 B 产物 · 须点过柱 + 签名一致</text>
+
+    <!-- 流程计算 -->
+    <rect x="300" y="840" width="400" height="72" rx="12" fill="#2c5f8a"/>
+    <text x="500" y="858" font-size="14" font-weight="bold" fill="#ffffff">流程计算：出伤害 + 出详情显示</text>
+    <text x="500" y="875" font-size="10" fill="#d5e2ef">同一套引擎 · 这次显示详情</text>
+    <text x="500" y="890" font-size="10" fill="#d5e2ef">resolveFlow → evaluateOptimalEventDetail</text>
+    <text x="500" y="904" font-size="10" fill="#d5e2ef">→ computeDamageResult → UI（伤害 + 乘区详情）</text>
+  </g>
+
+  <!-- 重点说明 -->
+  <g font-family="'Microsoft YaHei','PingFang SC',sans-serif" text-anchor="middle">
+    <text x="500" y="940" font-size="11" fill="#2c5f8a" font-weight="bold">说明：词条功能内部也已走了一次流程计算（同一套引擎）——但那次只做评估，不记录来源、不显示乘区详情</text>
+    <text x="500" y="958" font-size="11" fill="#2c5f8a">选完面板后，正式流程计算还要再完整走一遍，这一次才记录并显示详情</text>
+  </g>
+</svg>
