@@ -52,10 +52,14 @@ const sortedRows = computed(() => {
   return rows
 })
 
-// ---------- 列宽（可拖拽，按比例） ----------
+// ---------- 列宽（可拖拽，Excel 式：每列独立像素宽） ----------
 /**
- * 列宽用**比例**而不是像素：表格占满容器宽度，比例才能「拖多少就是多少」。
- * 默认比例把「词条」列压到 20%（原 auto 布局下它吃掉约 28%），数值列相应放宽。
+ * 列宽规则见 `useResizableColumns`：
+ * - 还没拖过：按下面的 `defaultRatio` 铺满容器（首屏与改造前视觉一致）；
+ * - 拖过一次之后：每列都是**独立像素宽**，拖某一列不影响其它列，
+ *   表格总宽 = 各列之和（超出横向滚动、不足右侧留白，与 Excel 一致）。
+ *
+ * 所以 `defaultRatio` 不是持久语义，只在「首次铺满」与「双击复位」时用。
  */
 const BENEFIT_COLUMN_SPECS: ResizableColumnSpec[] = [
   { key: 'entry', defaultRatio: 22, minWidthPx: 120 },
@@ -65,16 +69,28 @@ const BENEFIT_COLUMN_SPECS: ResizableColumnSpec[] = [
   { key: 'weight', defaultRatio: 29, minWidthPx: 100 },
 ]
 
-const BENEFIT_COLUMN_STORAGE_KEY = 'zzz-hp-affix-benefit-col-ratios'
+const BENEFIT_COLUMN_STORAGE_KEY = 'zzz-hp-affix-benefit-col-widths'
 
 const benefitTableWrap = ref<HTMLElement | null>(null)
 
 const {
-  ratioOf: benefitColumnRatio,
+  hasPixelWidths: benefitHasPixelWidths,
+  totalWidthPx: benefitTotalWidthPx,
+  widthOf: benefitColumnWidth,
   resizingKey: resizingColumnKey,
   startResize: startColumnResize,
   resetColumn: resetColumnWidth,
 } = useResizableColumns(BENEFIT_COLUMN_STORAGE_KEY, BENEFIT_COLUMN_SPECS)
+
+/**
+ * 像素态下必须把表格宽显式设成各列之和。
+ *
+ * 仍旧写 `width: 100%` 的话，浏览器会把差值摊回各列 —— 那就又变成「拖一列、别的列跟着变」，
+ * 正是本次要去掉的行为。
+ */
+const benefitTableStyle = computed(() =>
+  benefitHasPixelWidths.value ? { width: `${benefitTotalWidthPx.value}px` } : undefined,
+)
 
 /** 表头元数据；与 BENEFIT_COLUMN_SPECS 的 key 一一对应 */
 const benefitColumns = computed(() => [
@@ -169,12 +185,12 @@ function onLibrarySwitched() {
         </span>
       </p>
       <div ref="benefitTableWrap" class="table-wrap benefit-table-wrap">
-        <table class="benefit-table">
+        <table class="benefit-table" :style="benefitTableStyle">
           <colgroup>
             <col
               v-for="col in benefitColumns"
               :key="col.key"
-              :style="{ width: `${benefitColumnRatio(col.key)}%` }"
+              :style="{ width: benefitColumnWidth(col.key) }"
             />
           </colgroup>
           <thead>
@@ -188,9 +204,9 @@ function onLibrarySwitched() {
                 <span
                   class="col-resizer"
                   :class="{ active: resizingColumnKey === col.key }"
-                  title="拖动调整列宽；双击恢复默认"
+                  title="拖动调整列宽；双击恢复本列默认宽"
                   @mousedown="startColumnResize(col.key, $event, benefitTableWrap)"
-                  @dblclick="resetColumnWidth(col.key)"
+                  @dblclick="resetColumnWidth(col.key, benefitTableWrap)"
                 />
               </th>
             </tr>
@@ -331,12 +347,13 @@ th.num-head {
   text-align: right;
 }
 
-/* ---------- 收益表：列宽可拖拽 ---------- */
+/* ---------- 收益表：列宽可拖拽（每列独立像素宽） ---------- */
 
-/* 表格占满容器（保持原有布局），列宽按比例分配 */
+/* 表格默认占满容器（这是「还没拖过」时的观感）；拖过一次后由内联 style 改成各列之和 */
 .benefit-table {
-  /* fixed 布局：列宽严格按 <col> 比例走，拖拽才能精确生效 */
+  /* fixed 布局：列宽严格按 <col> 走，拖拽才能精确生效 */
   table-layout: fixed;
+  width: 100%;
 }
 
 /* 表头与数值同一右侧内边距，保证右对齐仍然对齐；超长内容省略号避免撑破列宽 */
