@@ -29,6 +29,8 @@ const props = withDefaults(
 const emit = defineEmits<{
   select: [entryId: string]
   toggleEntry: [entryId: string, enabled: boolean]
+  /** 一次改多条（弹窗里组页的「全选 / 全部取消」） */
+  toggleEntries: [entryIds: string[], enabled: boolean]
   addEntry: [entry: Omit<AffixLibraryEntry, 'id'>]
   updateEntry: [entryId: string, patch: Partial<AffixLibraryEntry>]
   removeEntry: [entryId: string]
@@ -162,6 +164,7 @@ function onLibrarySwitched() {
       :groups="groups"
       @close="showLibraryModal = false"
       @toggle-entry="(id, enabled) => emit('toggleEntry', id, enabled)"
+      @toggle-entries="(ids, enabled) => emit('toggleEntries', ids, enabled)"
       @add-entry="(entry) => emit('addEntry', entry)"
       @update-entry="(id, patch) => emit('updateEntry', id, patch)"
       @remove-entry="(id) => emit('removeEntry', id)"

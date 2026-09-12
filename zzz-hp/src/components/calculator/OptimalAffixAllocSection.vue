@@ -1558,6 +1558,18 @@ function toggleAffixLibraryEntry(entryId: string, enabled: boolean) {
   persistAffixLibrary(setAffixLibraryEntryEnabled(affixLibraryState.value, entryId, enabled))
 }
 
+/**
+ * 一次改多条启用状态（组页的「全选 / 全部取消」）。
+ *
+ * 只落一次盘：逐条走 `persistAffixLibrary` 会让求解重跑 N 次，几十条的组会明显卡。
+ */
+function toggleAffixLibraryEntries(entryIds: string[], enabled: boolean) {
+  if (!entryIds.length) return
+  let next = affixLibraryState.value
+  for (const entryId of entryIds) next = setAffixLibraryEntryEnabled(next, entryId, enabled)
+  persistAffixLibrary(next)
+}
+
 function addAffixLibraryEntry(entry: Omit<AffixLibraryEntry, 'id'>) {
   persistAffixLibrary(addCustomAffixLibraryEntry(affixLibraryState.value, entry))
 }
@@ -2389,6 +2401,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           :rolls-per-step="affixBenefitStep"
           :loading="affixBenefitLoading"
           @toggle-entry="toggleAffixLibraryEntry"
+          @toggle-entries="toggleAffixLibraryEntries"
           @add-entry="addAffixLibraryEntry"
           @update-entry="updateAffixLibraryEntryPatch"
           @remove-entry="removeAffixLibraryEntryById"

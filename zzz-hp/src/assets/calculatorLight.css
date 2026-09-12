@@ -3702,3 +3702,59 @@ body:has(.calculator-page.theme-light) .preset-preview li,
 [data-theme='light'] .affix-library-modal .ok-msg {
   color: #027a48 !important;
 }
+
+/*
+ * 以下为步骤 34/35 新增区块（新建表单、库列表说明、页签、组页首行）的浅色配色。
+ * 这些元素是后加的，之前漏在浅色主题外 —— 深色底 + 近白字浮在浅色弹窗上（用户实测反馈）。
+ */
+[data-theme='light'] .affix-library-modal .set-list-hint,
+[data-theme='light'] .affix-library-modal .option-caption,
+[data-theme='light'] .affix-library-modal .origin-desc,
+[data-theme='light'] .affix-library-modal .group-head-hint,
+[data-theme='light'] .affix-library-modal .advanced-switch,
+[data-theme='light'] .affix-library-modal .target-cell,
+[data-theme='light'] .affix-library-modal .empty-cell {
+  color: #667085 !important;
+}
+
+[data-theme='light'] .affix-library-modal .set-new-panel {
+  border-color: #e4e7ec !important;
+  background: #f7f8fa !important;
+}
+
+[data-theme='light'] .affix-library-modal .origin-option {
+  color: #344054 !important;
+}
+
+[data-theme='light'] .affix-library-modal .origin-option--placeholder {
+  color: #98a2b3 !important;
+}
+
+/* 分页页签：默认浅灰、选中仍是金色强调（与弹窗其余部分同一套色） */
+[data-theme='light'] .affix-library-modal .pane-tab {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+  color: #667085 !important;
+}
+
+[data-theme='light'] .affix-library-modal .pane-tab:hover {
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .affix-library-modal .pane-tab.active {
+  border-color: #c9a55c !important;
+  background: #fff8eb !important;
+  color: #5c4818 !important;
+}
+
+[data-theme='light'] .affix-library-modal .group-head {
+  color: #344054 !important;
+}
+
+[data-theme='light'] .affix-library-modal .group-head-name {
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .affix-library-modal .group-head-cap strong {
+  color: #8a6d28 !important;
+}

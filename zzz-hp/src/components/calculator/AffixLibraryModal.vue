@@ -63,6 +63,8 @@ const props = withDefaults(
 const emit = defineEmits<{
   close: []
   toggleEntry: [entryId: string, enabled: boolean]
+  /** 一次改多条（组页的「全选 / 全部取消」）——一次落盘，不要按条 emit */
+  toggleEntries: [entryIds: string[], enabled: boolean]
   addEntry: [entry: Omit<AffixLibraryEntry, 'id'>]
   updateEntry: [entryId: string, patch: Partial<AffixLibraryEntry>]
   removeEntry: [entryId: string]
@@ -110,6 +112,11 @@ const activeGroup = computed(
 
 /** 有未分组条目才给页签 */
 const hasUngrouped = computed(() => props.library.some((entry) => !entry.group))
+
+/** 本页条目是否**全部**已勾选（决定按钮显示「全选」还是「全部取消」） */
+const allVisibleEnabled = computed(
+  () => visibleEntries.value.length > 0 && visibleEntries.value.every((e) => enabledSet.value.has(e.id)),
+)
 
 /** 当前页的组被删掉时退回组管理页，避免停在一个不存在的页上 */
 watch(
@@ -441,6 +448,20 @@ function onUpdateEntry(entryId: string, patch: Partial<AffixLibraryEntry>) {
 
 function onRemoveEntry(entryId: string) {
   forwardEntryEdit(() => emit('removeEntry', entryId))
+}
+
+/**
+ * 本页「全选 / 全部取消」。
+ *
+ * 只作用于**当前页看到的条目**（组页 = 该组的条目，未分组页 = 没组的条目）——
+ * 这是「组内页面」的语义：想整组一起上就不要逐条点。
+ * 一次 emit 多条、页面一次落盘：逐条 emit 会让求解重跑 N 次。
+ */
+function toggleAllVisible() {
+  const ids = visibleEntries.value.map((entry) => entry.id)
+  if (!ids.length) return
+  const next = !allVisibleEnabled.value
+  forwardEntryEdit(() => emit('toggleEntries', ids, next))
 }
 
 /**
@@ -812,10 +833,28 @@ function submitDraft() {
                     : `${GROUP_CAP_HINT}（改额度去「组管理」页）`
                 }}
               </span>
+              <button
+                type="button"
+                class="mini-btn group-select-all"
+                :disabled="!visibleEntries.length"
+                :title="allVisibleEnabled ? '本页条目全部取消勾选' : '本页条目全部勾选'"
+                @click="toggleAllVisible"
+              >
+                {{ allVisibleEnabled ? '全部取消' : '全选' }}
+              </button>
             </div>
             <div v-if="activeTab === UNGROUPED_TAB" class="group-head">
               <span class="group-head-name">未分组</span>
               <span class="group-head-hint">这些条目不属于任何组，彼此不约束</span>
+              <button
+                type="button"
+                class="mini-btn group-select-all"
+                :disabled="!visibleEntries.length"
+                :title="allVisibleEnabled ? '本页条目全部取消勾选' : '本页条目全部勾选'"
+                @click="toggleAllVisible"
+              >
+                {{ allVisibleEnabled ? '全部取消' : '全选' }}
+              </button>
             </div>
 
             <div v-if="activeTab !== 'manage'" class="entry-scroll">
@@ -1276,6 +1315,12 @@ function submitDraft() {
 .group-head-hint {
   color: #8b94a1;
   font-size: 0.74rem;
+}
+
+/* 组页「全选 / 全部取消」：靠右站，不跟组名抢位置 */
+.group-select-all {
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .empty-cell {
