@@ -14,6 +14,7 @@ import {
 import { getSidebarPanelLocation } from '@/router/sidebarPanelRoutes'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import { useThemeStore } from '@/stores/theme'
+import { ensureAffixPresetLoaded } from '@/utils/affixPresetLoader'
 
 import '@/assets/calculatorLight.css'
 
@@ -34,6 +35,8 @@ const { agents, wengines: wengineDocs, bangboos: bangbooDocs, driveDiscs: driveD
 
 onMounted(() => {
   void calculatorBuffStore.ensureLoaded()
+  // 官方预设词条库走服务端（异步，不阻塞首屏；失败静默回落代码兜底）
+  void ensureAffixPresetLoaded()
 })
 
 watch(loaded, (ready) => {

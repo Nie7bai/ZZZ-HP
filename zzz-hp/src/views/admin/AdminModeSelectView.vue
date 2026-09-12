@@ -11,6 +11,7 @@ const modes = [
   { title: '环境 Buff 管理', path: '/admin/buffs', color: '#c4a35a' },
   { title: '怪物基础库', path: '/admin/boss-info', color: '#d97757' },
   { title: '角色计算器', path: '/admin/character-calculator', color: '#3f8cff' },
+  { title: '官方预设词条库', path: '/admin/affix-preset', color: '#8bbf6b' },
   { title: '更新日志', path: '/admin/changelog', color: '#c4a35a' },
   { title: '网站说明管理', path: '/admin/site-info', color: '#7eb8da' },
   { title: '留言板管理员', path: '/admin/guestbook', color: '#6b84b8' },

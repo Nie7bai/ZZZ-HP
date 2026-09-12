@@ -145,6 +145,12 @@ const router = createRouter({
       component: () => import('../views/admin/AdminBuffCatalogView.vue'),
       meta: { requiresAdmin: true, title: '环境 Buff 管理' },
     },
+    {
+      path: '/admin/affix-preset',
+      name: 'admin-affix-preset',
+      component: () => import('../views/admin/AdminAffixPresetView.vue'),
+      meta: { requiresAdmin: true, title: '官方预设词条库' },
+    },
     ...createSidebarPanelRouteRecords({
       basePath: '/admin/character-calculator',
       routeName: 'admin-character-calculator',

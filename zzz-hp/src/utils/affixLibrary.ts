@@ -1,3 +1,4 @@
+import { ref } from 'vue'
 import type { AffixCounts, PanelStats } from '@/types/calculatorPanel'
 import { AFFIX_VALUE_PER_COUNT } from '@/utils/affixPanelCalc'
 
@@ -462,6 +463,109 @@ export const AFFIX_PRESET_GROUPS: AffixLibraryGroup[] = [
 /** 预设条目默认落在哪一组 */
 export const AFFIX_PRESET_DEFAULT_GROUP = '副词条'
 
+// ===================== 官方预设来源（服务端 / 代码兜底） =====================
+
+/**
+ * 服务端来的官方预设快照。
+ *
+ * 口径（用户 2026-09-12 拍板）：**官方预设的唯一来源是数据库**，管理员维护、用户只读；
+ * 用户自己的词条库仍在 localStorage，不进方案、管理员侧看不到。
+ * 见 `dev-docs/affix-optimizer-impl-log.md` 步骤 33。
+ *
+ * 这里保存的是「已经拉到手的那一份」：
+ * - **拿到了**（`entries` 非空）→ 用它，代码里的构造器不参与；
+ * - **没拿到**（还没拉 / 拉失败）→ 回落构造器。用户口径是「离线了就别用了」，
+ *   但**代码兜底留到入库验证通过为止**（用户原话「丢掉等会再说」）——
+ *   删掉兜底只需把下面两个 `…Base()` 改成只读服务端快照。
+ */
+const serverAffixPreset = ref<{ entries: AffixLibraryEntry[]; groups: AffixLibraryGroup[] } | null>(
+  null,
+)
+
+/** 服务端条目里被跳过的条数（target 不是本版本认识的字段）—— 供界面/测试读出 */
+export const skippedServerPresetEntries = ref(0)
+
+/**
+ * 存入服务端拉到的官方预设。
+ *
+ * **逐条校验 target**：认不出的字段（例如后端上了更新版本、前端还是旧的）
+ * 直接跳过并计数 —— 脏数据不能进计算，也不能静默变 0。
+ * 返回跳过的条数，调用方可据此提示。
+ */
+export function setServerAffixPreset(snapshot: {
+  entries?: unknown[]
+  groups?: unknown[]
+} | null): number {
+  if (!snapshot) {
+    serverAffixPreset.value = null
+    skippedServerPresetEntries.value = 0
+    return 0
+  }
+  const rawEntries = Array.isArray(snapshot.entries) ? snapshot.entries : []
+  const rawGroups = Array.isArray(snapshot.groups) ? snapshot.groups : []
+  let skipped = 0
+  const entries: AffixLibraryEntry[] = []
+  for (const raw of rawEntries) {
+    const item = raw as Partial<AffixLibraryEntry>
+    if (
+      typeof item?.id !== 'string' ||
+      typeof item?.label !== 'string' ||
+      !isAffixLibraryEntryTarget(item?.target)
+    ) {
+      skipped += 1
+      continue
+    }
+    entries.push({
+      id: item.id,
+      label: item.label,
+      target: item.target,
+      perRoll: Number(item.perRoll) || 0,
+      cap: Number(item.cap) || 0,
+      group: typeof item.group === 'string' ? item.group : '',
+      rollCost: Number.isFinite(Number(item.rollCost)) ? Number(item.rollCost) : 1,
+      enabledByDefault: Boolean(item.enabledByDefault),
+    })
+  }
+  const groups: AffixLibraryGroup[] = []
+  for (const raw of rawGroups) {
+    const item = raw as Partial<AffixLibraryGroup>
+    if (typeof item?.name !== 'string' || !item.name) continue
+    groups.push({ name: item.name, cap: Number(item.cap) || 0 })
+  }
+  skippedServerPresetEntries.value = skipped
+  // 条目为空（服务端库是空的/字段全不认识）时保持 null，让调用方回落构造器
+  serverAffixPreset.value = entries.length ? { entries, groups } : null
+  return skipped
+}
+
+export function clearServerAffixPreset(): void {
+  setServerAffixPreset(null)
+}
+
+/** 当前是否在用服务端那份（界面可据此提示「官方预设来自服务器」） */
+export function isUsingServerAffixPreset(): boolean {
+  return serverAffixPreset.value != null
+}
+
+/**
+ * 预设条目（不含用户自建）：优先服务端，其次代码构造器。
+ *
+ * 注意**每次读都可能不同** —— 它读的是响应式快照，服务端数据到达后，
+ * 依赖它的 computed 会自动重算（这是「异步拉取不阻塞首屏」的关键）。
+ */
+export function presetAffixEntriesBase(): AffixLibraryEntry[] {
+  const fromServer = serverAffixPreset.value?.entries
+  return fromServer && fromServer.length ? fromServer.map((entry) => ({ ...entry })) : createPresetAffixLibraryEntries()
+}
+
+/** 预设分组：优先服务端，其次代码常量 */
+export function presetAffixGroupsBase(): AffixLibraryGroup[] {
+  const fromServer = serverAffixPreset.value?.groups
+  return fromServer && fromServer.length
+    ? fromServer.map((group) => ({ ...group }))
+    : AFFIX_PRESET_GROUPS.map((group) => ({ ...group }))
+}
+
 export interface AffixLibraryState {
   /** 用户自建条目 */
   customEntries: AffixLibraryEntry[]
@@ -504,7 +608,7 @@ export function createDefaultAffixLibraryState(): AffixLibraryState {
     enabledOverride: {},
     overrides: {},
     removedEntryIds: [],
-    groups: AFFIX_PRESET_GROUPS.map((group) => ({ ...group })),
+    groups: presetAffixGroupsBase(),
     removedGroupNames: [],
   }
 }
@@ -607,7 +711,7 @@ export function coerceGroupCap(value: unknown): number {
 /**
  * 把预设分组补回来（存档里没有的、且用户没删过的）。
  *
- * 为什么要补：预设分组是「按需生成」的（`AFFIX_PRESET_GROUPS`）。用户在这次改造**之前**
+ * 为什么要补：预设分组是「按需生成」的（服务端快照 / `AFFIX_PRESET_GROUPS`）。用户在这次改造**之前**
  * 存的档里根本没有分组表 —— 只从存档读就会一个预设组都没有，界面上只剩用户自己建的组。
  *
  * 用户删过的预设组记在 `removedGroupNames` 里，不会复活。
@@ -620,7 +724,7 @@ function mergePresetGroups(
   const savedByName = new Map(saved.map((group) => [group.name, group]))
   const out: AffixLibraryGroup[] = []
   // 预设组按预设顺序排前面（存过的保留用户改过的额度）
-  for (const preset of AFFIX_PRESET_GROUPS) {
+  for (const preset of presetAffixGroupsBase()) {
     if (removed.has(preset.name)) continue
     out.push(savedByName.get(preset.name) ?? { ...preset })
     savedByName.delete(preset.name)
@@ -860,10 +964,10 @@ export function loadAffixLibraryState(): AffixLibraryState {
   return activeAffixLibrarySet(loadAffixLibraryStore()).state
 }
 
-/** 全部预设条目（副词条 + 扩展 + 4/5/6 号位主属性），已应用用户覆盖值 */
+/** 全部预设条目（副词条 + 扩展 + 4/5/6 号位主属性 + 2 件套），已应用用户覆盖值 */
 function presetEntriesWithOverrides(state: AffixLibraryState): AffixLibraryEntry[] {
   const removed = new Set(state.removedGroupNames)
-  return createPresetAffixLibraryEntries().map((entry) => {
+  return presetAffixEntriesBase().map((entry) => {
     const override = state.overrides[entry.id]
     const merged = override ? { ...entry, ...override } : entry
     // 用户删过这个组 → 组内预设条目回落「未分组」。
@@ -1011,7 +1115,7 @@ export function hasAffixLibraryGroup(state: AffixLibraryState, name: string): bo
 
 /** 该组名是不是预设组 */
 function isPresetGroupName(name: string): boolean {
-  return AFFIX_PRESET_GROUPS.some((group) => group.name === name)
+  return presetAffixGroupsBase().some((group) => group.name === name)
 }
 
 /** 新建一组；名字空 / 重名则原样返回（调用方负责提示） */
@@ -1058,7 +1162,7 @@ function retargetPresetEntryGroups(
   to: string,
 ): AffixLibraryState['overrides'] {
   const next = { ...state.overrides }
-  for (const entry of createPresetAffixLibraryEntries()) {
+  for (const entry of presetAffixEntriesBase()) {
     const effective = state.overrides[entry.id]?.group ?? entry.group
     if (effective !== from) continue
     next[entry.id] = { ...state.overrides[entry.id], group: to }
