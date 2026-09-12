@@ -2304,7 +2304,7 @@ const showcaseTitle = computed(() => {
             </div>
           </dl>
           <template v-if="showcasePanel.final">
-            <p class="sf-panel-showcase-sub">局内面板（含增益）</p>
+            <p class="sf-panel-showcase-sub sf-panel-showcase-sub--final">局内面板（含增益）</p>
             <dl class="sf-panel-showcase-grid">
               <div
                 v-for="field in PANEL_PREVIEW_FIELDS"
@@ -3599,14 +3599,14 @@ const showcaseTitle = computed(() => {
 }
 .sf-panel-showcase-toggle {
   appearance: none;
-  border: 1px solid #c9a55c;
+  border: 1px solid rgba(201, 165, 92, 0.55);
   background: rgba(201, 165, 92, 0.14);
-  color: #f0d7a2;
+  color: #c9a55c;
   font: inherit;
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 0.34rem 0.9rem;
-  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.32rem 0.85rem;
+  border-radius: 6px;
   cursor: pointer;
   transition:
     background 0.12s ease,
@@ -3614,58 +3614,101 @@ const showcaseTitle = computed(() => {
 }
 .sf-panel-showcase-toggle:hover {
   background: rgba(201, 165, 92, 0.26);
-  border-color: #dfc07a;
 }
+/* 展示卡片：与顶部槽位卡片的悬浮面板同款视觉（panel-hover-card） */
 .sf-panel-showcase-body {
   width: 100%;
   box-sizing: border-box;
-  background: #14181f;
-  border: 1px solid #2a3038;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid rgba(201, 165, 92, 0.45);
   border-radius: 10px;
-  padding: 0.7rem 0.9rem;
+  background: #1a1e26;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  color: #d7dde8;
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
 }
 .sf-panel-showcase-title {
-  margin: 0;
-  color: #f0d7a2;
-  font-size: 0.85rem;
-  font-weight: 600;
+  margin: 0 0 0.2rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #c9a55c;
 }
 .sf-panel-showcase-sub {
-  margin: 0.15rem 0 0;
-  color: #9aa3b0;
-  font-size: 0.78rem;
+  margin: 0.35rem 0 0;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #8fbc7a;
+}
+/* 局内小节：与顶部「局内面板」标题一样带分隔线 */
+.sf-panel-showcase-sub--final {
+  padding-top: 0.45rem;
+  border-top: 1px solid #343a44;
 }
 .sf-panel-showcase-grid {
   margin: 0;
-  padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 0.3rem 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.28rem 0.85rem;
 }
 .sf-panel-showcase-item {
   display: flex;
   justify-content: space-between;
-  gap: 0.5rem;
-  border-bottom: 1px dashed #262d38;
-  padding-bottom: 0.18rem;
+  align-items: baseline;
+  gap: 0.55rem;
+  min-width: 0;
 }
 .sf-panel-showcase-item dt {
-  color: #9aa3b0;
-  font-size: 0.76rem;
+  margin: 0;
+  flex: 1 1 auto;
+  font-size: 0.72rem;
+  color: #8b93a3;
+  line-height: 1.35;
 }
 .sf-panel-showcase-item dd {
   margin: 0;
-  color: #e6ecf4;
-  font-size: 0.78rem;
+  flex: 0 0 auto;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #e8edf5;
   font-variant-numeric: tabular-nums;
 }
 .sf-panel-showcase-empty {
-  margin: 0;
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
   color: #d8a25c;
-  font-size: 0.78rem;
+}
+
+/* ── 亮色主题覆盖（与计算页其他 light 覆盖同法） ── */
+:global([data-theme='light']) .sf-panel-showcase-body {
+  background: #f6f3ec;
+  border-color: rgba(140, 110, 50, 0.45);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  color: #3c3a34;
+}
+:global([data-theme='light']) .sf-panel-showcase-title {
+  color: #8a6a1f;
+}
+:global([data-theme='light']) .sf-panel-showcase-sub {
+  color: #5d7a45;
+}
+:global([data-theme='light']) .sf-panel-showcase-sub--final {
+  border-top-color: #d8d2c4;
+}
+:global([data-theme='light']) .sf-panel-showcase-item dt {
+  color: #8a8578;
+}
+:global([data-theme='light']) .sf-panel-showcase-item dd {
+  color: #221f18;
+}
+:global([data-theme='light']) .sf-panel-showcase-empty {
+  color: #a0701e;
+}
+:global([data-theme='light']) .sf-panel-showcase-toggle {
+  background: rgba(140, 110, 50, 0.12);
+  border-color: rgba(140, 110, 50, 0.5);
+  color: #8a6a1f;
 }
 .primary-btn {
   border: 1px solid #c9a55c;
