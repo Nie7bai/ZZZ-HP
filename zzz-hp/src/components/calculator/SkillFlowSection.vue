@@ -3615,9 +3615,11 @@ const showcaseTitle = computed(() => {
 .sf-panel-showcase-toggle:hover {
   background: rgba(201, 165, 92, 0.26);
 }
-/* 展示卡片：与顶部槽位卡片的悬浮面板同款视觉（panel-hover-card） */
+/* 展示卡片：与顶部槽位卡片的悬浮面板同款视觉（panel-hover-card）；
+   宽度同顶部卡片 min(38rem, 94vw)，不撑满整行 */
 .sf-panel-showcase-body {
-  width: 100%;
+  width: min(38rem, 94vw);
+  max-width: 100%;
   box-sizing: border-box;
   padding: 0.65rem 0.8rem;
   border: 1px solid rgba(201, 165, 92, 0.45);
@@ -3709,6 +3711,9 @@ const showcaseTitle = computed(() => {
   background: rgba(140, 110, 50, 0.12);
   border-color: rgba(140, 110, 50, 0.5);
   color: #8a6a1f;
+}
+:global([data-theme='light']) .sf-panel-showcase-toggle:hover {
+  background: rgba(140, 110, 50, 0.22);
 }
 .primary-btn {
   border: 1px solid #c9a55c;
