@@ -1570,7 +1570,8 @@ function removeAffixLibraryEntryById(entryId: string) {
 }
 
 function restoreAffixLibraryDefaultsHandler() {
-  persistAffixLibrary(restoreAffixLibraryDefaults())
+  // 保留起点：空配置的库点「恢复默认」仍是空配置，不该摇身一变开始加载官方预设
+  persistAffixLibrary(restoreAffixLibraryDefaults(affixLibraryState.value.includePreset))
 }
 
 function addAffixLibraryGroupHandler(name: string, cap: number) {

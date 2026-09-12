@@ -10,12 +10,15 @@ import {
   activeAffixLibrarySet,
   affixPerRollUnit,
   affixTargetLabel,
+  createAffixLibraryStateForOrigin,
   createAffixLibrarySet,
   deleteAffixLibrarySet,
   exportAffixLibrarySet,
   importAffixLibrarySet,
   loadAffixLibraryStore,
+  OFFICIAL_AFFIX_PRESET_NAME,
   panelTarget,
+  presetAffixEntriesBase,
   renameAffixLibrarySet,
   resolveAffixLibrary,
   resolveAffixLibraryAll,
@@ -24,6 +27,7 @@ import {
   type AffixLibraryEntry,
   type AffixLibraryEntryTarget,
   type AffixLibraryGroup,
+  type AffixLibrarySetOrigin,
   type AffixLibraryStore,
   type AffixPanelDeltaField,
 } from '@/utils/affixLibrary'
@@ -266,17 +270,32 @@ const newSetMode = ref(false)
 const newSetName = ref('')
 const newSetInputRef = ref<HTMLInputElement | null>(null)
 
+/**
+ * 新建库的起点（用户 2026-09-12 口径：新建时给用户选）。
+ *
+ * 默认选「基于预设」—— 这是改造前的既有行为，也是多数人的用法；
+ * 界面上按用户给的顺序列（空配置在前），选中项一眼可见。
+ */
+const newSetOrigin = ref<AffixLibrarySetOrigin>('preset')
+
+/** 预设条目数（写进选项说明里，免得「官方那 50 条」随预设变动而过时） */
+const presetEntryCount = computed(() => presetAffixEntriesBase().length)
+
 function startNewSet() {
   newSetMode.value = true
   newSetName.value = ''
+  newSetOrigin.value = 'preset'
   void nextTick(() => newSetInputRef.value?.focus())
 }
 
 function commitNewSet() {
   const name = newSetName.value.trim() || '新建词条库'
+  const origin = newSetOrigin.value
   newSetMode.value = false
   newSetName.value = ''
-  commitStoreChange((base) => createAffixLibrarySet(base, name))
+  commitStoreChange((base) =>
+    createAffixLibrarySet(base, name, createAffixLibraryStateForOrigin(origin)),
+  )
   setMessage.value = `已新建「${name}」并切了过去`
 }
 
@@ -557,7 +576,13 @@ function submitDraft() {
               <button type="button" class="mini-btn" @click="startNewSet">+ 新建</button>
             </div>
 
-            <div v-if="newSetMode" class="set-new-row">
+            <!-- 常驻说明：界面上看不到「官方预设」那一套，它是所有库的底料，容易被误当成 bug -->
+            <p class="set-list-hint">
+              官方预设在服务器上、由管理员维护，你改不到它。这里只有<strong>你自己的库</strong>：
+              勾选 / 改名 / 每档 / 删除都只存本机。
+            </p>
+
+            <div v-if="newSetMode" class="set-new-panel">
               <input
                 ref="newSetInputRef"
                 v-model="newSetName"
@@ -568,8 +593,37 @@ function submitDraft() {
                 @keyup.enter="commitNewSet"
                 @keyup.esc="cancelNewSet"
               />
-              <button type="button" class="mini-btn ok" @click="commitNewSet">确定</button>
-              <button type="button" class="mini-btn" @click="cancelNewSet">取消</button>
+
+              <p class="option-caption">从哪来：</p>
+              <label class="origin-option">
+                <input v-model="newSetOrigin" type="radio" value="empty" />
+                <span class="origin-body">
+                  <strong>空配置</strong>
+                  <span class="origin-desc">不加载官方预设，条目与分组都自己建</span>
+                </span>
+              </label>
+              <label class="origin-option">
+                <input v-model="newSetOrigin" type="radio" value="preset" />
+                <span class="origin-body">
+                  <strong>基于预设词条方案「{{ OFFICIAL_AFFIX_PRESET_NAME }}」</strong>
+                  <span class="origin-desc">
+                    现在就是官方那 {{ presetEntryCount }} 条；没被你改过的条目会跟着官方更新走，
+                    改过 / 删过的只存本机
+                  </span>
+                </span>
+              </label>
+              <!-- 预留位：用户 2026-09-12「暂时留空，因为现在就一个预设」 -->
+              <div class="origin-option origin-option--placeholder">
+                <span class="origin-body">
+                  <strong>其他预设方案</strong>
+                  <span class="origin-desc">目前只有这一套官方预设；将来管理员加了方案会出现在这里</span>
+                </span>
+              </div>
+
+              <div class="set-new-actions">
+                <button type="button" class="mini-btn ok" @click="commitNewSet">确定</button>
+                <button type="button" class="mini-btn" @click="cancelNewSet">取消</button>
+              </div>
             </div>
 
             <ul class="set-list">
@@ -599,6 +653,10 @@ function submitDraft() {
                       {{ setSummary(set.id).enabled }} / {{ setSummary(set.id).total }} 条参与
                     </span>
                   </button>
+                  <!-- 空配置的库标一下，免得日后忘了它是从零搭的（不含官方预设） -->
+                  <span v-if="!set.state.includePreset" class="set-badge set-badge--muted">
+                    空配置
+                  </span>
                   <span v-if="set.id === store.activeId" class="set-badge">使用中</span>
                   <button
                     type="button"
@@ -1183,11 +1241,70 @@ function submitDraft() {
   padding: 0.6rem 0.45rem;
 }
 
-.set-new-row {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
+/* 常驻说明：官方预设是底料，列表里看不到它 —— 不写一句会被当成 bug */
+.set-list-hint {
+  margin: 0 0 0.35rem;
+  font-size: 0.7rem;
+  line-height: 1.45;
+  color: #7d8694;
   flex-shrink: 0;
+}
+
+.set-new-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  border: 1px solid #3a4049;
+  border-radius: 9px;
+  padding: 0.45rem;
+  margin-bottom: 0.35rem;
+  background: #14181f;
+}
+
+.option-caption {
+  margin: 0;
+  font-size: 0.72rem;
+  color: #8b94a1;
+}
+
+.origin-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  font-size: 0.74rem;
+  color: #cdd3dc;
+  cursor: pointer;
+}
+
+.origin-option input[type='radio'] {
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+}
+
+.origin-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.origin-desc {
+  font-size: 0.68rem;
+  line-height: 1.4;
+  color: #7d8694;
+}
+
+/* 预留位（还没有更多预设方案）：不可点，样式压暗，不跟真选项抢注意力 */
+.origin-option--placeholder {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.set-new-actions {
+  display: flex;
+  gap: 0.3rem;
+  margin-top: 0.1rem;
 }
 
 .field-input {
@@ -1270,6 +1387,12 @@ function submitDraft() {
   background: #e8d3a0;
   border-radius: 999px;
   padding: 0.05rem 0.4rem;
+}
+
+/* 「空配置」标签：与「使用中」区分开（那个是金色强调，这个是低调灰） */
+.set-badge--muted {
+  color: #98a1ae;
+  background: #262b33;
 }
 
 .pane-actions {

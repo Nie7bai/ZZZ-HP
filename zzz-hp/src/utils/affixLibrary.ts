@@ -567,6 +567,18 @@ export function presetAffixGroupsBase(): AffixLibraryGroup[] {
 }
 
 export interface AffixLibraryState {
+  /**
+   * 这套库是否加载**官方预设**（服务器那份，见文件头「官方预设来源」）。
+   *
+   * - `true`（默认）：预设条目与预设分组都加载 —— 库里看到的是「官方预设 + 本库的改动」；
+   * - `false`（**空配置**）：一条预设都不加载，条目与分组全自己建。
+   *
+   * 为什么是个开关而不是「把预设复制成自建条目」：预设条目由服务器维护，
+   * 复制成自建就等于冻结，之后官方改数值、用户这边不会知道（那是另一种语义，没做）。
+   *
+   * ⚠️ 缺省必须是 `true`：老存档里没有这个字段，当成 `false` 会让用户库瞬间变空。
+   */
+  includePreset: boolean
   /** 用户自建条目 */
   customEntries: AffixLibraryEntry[]
   /**
@@ -602,15 +614,46 @@ export interface AffixLibraryState {
   removedGroupNames: string[]
 }
 
-export function createDefaultAffixLibraryState(): AffixLibraryState {
+/**
+ * 一套库的初始状态。
+ *
+ * `includePreset` 默认 `true`（= 加载官方预设）；传 `false` 得到**空配置**
+ * （一条预设都不加载，分组也从零开始）—— 新建库时的两个起点之一，见
+ * `createAffixLibraryStateForOrigin()`。
+ */
+export function createDefaultAffixLibraryState(includePreset = true): AffixLibraryState {
   return {
+    includePreset,
     customEntries: [],
     enabledOverride: {},
     overrides: {},
     removedEntryIds: [],
-    groups: presetAffixGroupsBase(),
+    groups: includePreset ? presetAffixGroupsBase() : [],
     removedGroupNames: [],
   }
+}
+
+/** 新建库时可选的起点 */
+export type AffixLibrarySetOrigin = 'preset' | 'empty'
+
+/**
+ * 官方预设的展示名。
+ *
+ * 目前只有一套（用户 2026-09-12 口径「先做一套」），名字先写在这里；
+ * 将来支持多套预设时，名字应随预设一起由服务器给（现在服务器只存条目与分组）。
+ */
+export const OFFICIAL_AFFIX_PRESET_NAME = '默认'
+
+/**
+ * 新建库的起点状态。
+ *
+ * - `'preset'`：基于官方预设（**跟随更新**：没被你改过的条目会随官方变）；
+ * - `'empty'`：空配置，不加载任何预设。
+ */
+export function createAffixLibraryStateForOrigin(
+  origin: AffixLibrarySetOrigin,
+): AffixLibraryState {
+  return createDefaultAffixLibraryState(origin === 'preset')
 }
 
 const AFFIX_LIBRARY_STORAGE_KEY = 'zzz-hp-affix-library'
@@ -664,7 +707,13 @@ export function coerceAffixLibraryState(raw: unknown): AffixLibraryState {
   const removedGroupNames = Array.isArray(parsed.removedGroupNames)
     ? parsed.removedGroupNames.filter((name): name is string => typeof name === 'string')
     : []
+  /**
+   * `includePreset` 缺省 `true`：老存档没有这个字段，当成 `false` 会让用户库瞬间变空。
+   * 只有显式写了 `false` 才当空配置。
+   */
+  const includePreset = parsed.includePreset !== false
   const state: AffixLibraryState = {
+    includePreset,
     customEntries: Array.isArray(parsed.customEntries)
       ? parsed.customEntries
           .map(migrateCustomEntry)
@@ -678,7 +727,11 @@ export function coerceAffixLibraryState(raw: unknown): AffixLibraryState {
     removedEntryIds: Array.isArray(parsed.removedEntryIds)
       ? parsed.removedEntryIds.filter((id): id is string => typeof id === 'string')
       : [],
-    groups: mergePresetGroups(coerceAffixLibraryGroups(parsed.groups), removedGroupNames),
+    groups: mergePresetGroups(
+      coerceAffixLibraryGroups(parsed.groups),
+      removedGroupNames,
+      includePreset,
+    ),
     removedGroupNames,
   }
   return withReferencedGroupsBackfilled(state)
@@ -714,17 +767,20 @@ export function coerceGroupCap(value: unknown): number {
  * 为什么要补：预设分组是「按需生成」的（服务端快照 / `AFFIX_PRESET_GROUPS`）。用户在这次改造**之前**
  * 存的档里根本没有分组表 —— 只从存档读就会一个预设组都没有，界面上只剩用户自己建的组。
  *
- * 用户删过的预设组记在 `removedGroupNames` 里，不会复活。
+ * 用户删过的预设组记在 `removedGroupNames` 里，不会复活；
+ * **空配置的库（`includePreset: false`）压根不补预设组** —— 否则一个什么都没有的库
+ * 点开就是 5 个空页签。
  */
 function mergePresetGroups(
   saved: AffixLibraryGroup[],
   removedNames: string[],
+  includePreset: boolean,
 ): AffixLibraryGroup[] {
   const removed = new Set(removedNames)
   const savedByName = new Map(saved.map((group) => [group.name, group]))
   const out: AffixLibraryGroup[] = []
   // 预设组按预设顺序排前面（存过的保留用户改过的额度）
-  for (const preset of presetAffixGroupsBase()) {
+  for (const preset of includePreset ? presetAffixGroupsBase() : []) {
     if (removed.has(preset.name)) continue
     out.push(savedByName.get(preset.name) ?? { ...preset })
     savedByName.delete(preset.name)
@@ -966,6 +1022,8 @@ export function loadAffixLibraryState(): AffixLibraryState {
 
 /** 全部预设条目（副词条 + 扩展 + 4/5/6 号位主属性 + 2 件套），已应用用户覆盖值 */
 function presetEntriesWithOverrides(state: AffixLibraryState): AffixLibraryEntry[] {
+  // 空配置的库不加载预设：一条都不要（见 `AffixLibraryState.includePreset`）
+  if (!state.includePreset) return []
   const removed = new Set(state.removedGroupNames)
   return presetAffixEntriesBase().map((entry) => {
     const override = state.overrides[entry.id]
@@ -1088,9 +1146,14 @@ export function removeAffixLibraryEntry(
   }
 }
 
-/** 恢复默认：连带清掉「删过谁」，被删的默认条目一并回来 */
-export function restoreAffixLibraryDefaults(): AffixLibraryState {
-  return createDefaultAffixLibraryState()
+/**
+ * 恢复默认：连带清掉「删过谁」，被删的默认条目一并回来。
+ *
+ * **保留起点**（`includePreset`）：空配置的库点「恢复默认」应该回到「什么都没有」，
+ * 而不是摇身一变开始加载官方预设 —— 那是换了一套语义，不是恢复。
+ */
+export function restoreAffixLibraryDefaults(includePreset = true): AffixLibraryState {
+  return createDefaultAffixLibraryState(includePreset)
 }
 
 // ===================== 词条分组（组名 + 组额度） =====================

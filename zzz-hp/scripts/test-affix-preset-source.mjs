@@ -9,13 +9,22 @@
  */
 import {
   AFFIX_PRESET_GROUPS,
+  activeAffixLibrarySet,
+  addCustomAffixLibraryEntry,
+  coerceAffixLibraryState,
+  createAffixLibrarySet,
+  createAffixLibraryStateForOrigin,
   createDefaultAffixLibraryState,
+  createDefaultAffixLibraryStore,
   createPresetAffixLibraryEntries,
+  exportAffixLibrarySet,
+  importAffixLibrarySet,
   isUsingServerAffixPreset,
   presetAffixEntriesBase,
   presetAffixGroupsBase,
   resolveAffixLibrary,
   resolveAffixLibraryAll,
+  restoreAffixLibraryDefaults,
   setServerAffixPreset,
   skippedServerPresetEntries,
 } from '../src/utils/affixLibrary.ts'
@@ -118,7 +127,78 @@ console.log('\n[4] 全不合法 → 回落构造器')
     String(presetAffixEntriesBase().length))
 }
 
-// ---------- 5. 收尾：清空，别把状态带给后续 import ----------
+// ---------- 5. 新建库的两种起点（空配置 / 基于预设） ----------
+console.log('\n[5] 新建库起点')
+{
+  const presetCount = presetAffixEntriesBase().length
+
+  // 基于预设：看到的就是预设那套
+  const fromPreset = createAffixLibraryStateForOrigin('preset')
+  check('起点「基于预设」：includePreset = true', fromPreset.includePreset === true)
+  check('起点「基于预设」：条目数 = 预设条数',
+    resolveAffixLibraryAll(fromPreset).length === presetCount,
+    `${resolveAffixLibraryAll(fromPreset).length} vs ${presetCount}`)
+  check('起点「基于预设」：带预设分组',
+    fromPreset.groups.length === presetAffixGroupsBase().length,
+    fromPreset.groups.map((g) => g.name).join(', '))
+
+  // 空配置：一条预设都不加载
+  const fromEmpty = createAffixLibraryStateForOrigin('empty')
+  check('起点「空配置」：includePreset = false', fromEmpty.includePreset === false)
+  check('起点「空配置」：0 条条目', resolveAffixLibraryAll(fromEmpty).length === 0,
+    String(resolveAffixLibraryAll(fromEmpty).length))
+  check('起点「空配置」：0 个分组（预设组不得凭空出现）',
+    fromEmpty.groups.length === 0, fromEmpty.groups.map((g) => g.name).join(', '))
+
+  // 写盘后再读回来（补组发生在读盘路径上）：自建的组出现，预设组仍不出现
+  const withCustom = addCustomAffixLibraryEntry(fromEmpty, {
+    label: '自建一条',
+    target: 'panel:dmgBonus',
+    perRoll: 12,
+    cap: 1,
+    group: '我的组',
+    rollCost: 1,
+    enabledByDefault: true,
+  })
+  const reread = coerceAffixLibraryState(withCustom)
+  check('空配置 + 自建 → 全部 1 条', resolveAffixLibraryAll(withCustom).length === 1,
+    resolveAffixLibraryAll(withCustom).map((e) => e.label).join(', '))
+  check('自建的组被补进组表，预设组仍不出现',
+    reread.groups.length === 1 && reread.groups[0].name === '我的组',
+    reread.groups.map((g) => `${g.name}:${g.cap}`).join(', '))
+  check('空配置照样读盘不丢标记', reread.includePreset === false)
+
+  // 老存档没有这个字段 → 必须当「加载预设」，否则用户库会瞬间变空
+  const legacy = coerceAffixLibraryState({
+    customEntries: [],
+    enabledOverride: {},
+    overrides: {},
+    removedEntryIds: [],
+    groups: [],
+  })
+  check('老存档（无 includePreset 字段）→ 默认加载预设',
+    legacy.includePreset === true &&
+      resolveAffixLibraryAll(legacy).length === presetCount,
+    `includePreset=${legacy.includePreset} 条数=${resolveAffixLibraryAll(legacy).length}`)
+
+  // 恢复默认保留起点
+  check('恢复默认：空配置库仍是空配置',
+    restoreAffixLibraryDefaults(false).includePreset === false &&
+      resolveAffixLibraryAll(restoreAffixLibraryDefaults(false)).length === 0)
+  check('恢复默认：默认参数仍是加载预设（老调用点行为不变）',
+    restoreAffixLibraryDefaults().includePreset === true)
+
+  // 导出 → 导入 round-trip 后起点不变
+  let store = createDefaultAffixLibraryStore()
+  store = createAffixLibrarySet(store, '空库', createAffixLibraryStateForOrigin('empty'))
+  const exported = exportAffixLibrarySet(store)
+  const imported = importAffixLibrarySet(createDefaultAffixLibraryStore(), exported, 'new')
+  check('导出/导入 round-trip：空配置标记不丢',
+    !imported.error && activeAffixLibrarySet(imported.store).state.includePreset === false,
+    imported.error ?? 'ok')
+}
+
+// ---------- 6. 收尾：清空，别把状态带给后续 import ----------
 setServerAffixPreset(null)
 
 console.log(`\n结果：${passed} passed, ${failed} failed`)
