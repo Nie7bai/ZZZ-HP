@@ -22,6 +22,7 @@ import seasonDateRoutes from './routes/seasonDateRoutes.js'
 import seasonContentRoutes from './routes/seasonContentRoutes.js'
 import deductionRoutes from './routes/deductionRoutes.js'
 import deductionAdminRoutes from './routes/deductionAdminRoutes.js'
+import affixPresetRoutes from './routes/affixPresetRoutes.js'
 import pool from './config/db.js'
 import { ensureRuntimeSchema } from './bootstrap/ensureRuntimeSchema.js'
 import { fail, failInternal } from './utils/response.js'
@@ -164,6 +165,7 @@ app.use('/api/guestbook', guestbookRoutes)
 app.use('/api/season-dates', seasonDateRoutes)
 app.use('/api/deduction', deductionRoutes)
 app.use('/api/admin/deduction', deductionAdminRoutes)
+app.use('/api/affix-preset', affixPresetRoutes)
 
 app.use((_req, res) => {
   fail(res, '接口不存在', 404)
