@@ -90,8 +90,9 @@ export function useDamageProcessEvents(source: DamageProcessSource) {
   const eventRows = computed((): DamageProcessEventRow[] => {
     if (!source.enabled.value || !source.active.value || !source.hasEvents.value) return []
     const ctx = source.ctx.value
-    const external = source.external.value
-    if (!ctx || !external) return []
+    if (!ctx) return []
+    // external 为空 = 「角色配置面板」（3 选 1 的 null 口径）；evaluateOptimalEventDetail 内部用主槽激活面板兜底
+    const external = source.external.value ?? null
     return (source.hits.value ?? [])
       .filter((hit) => inScope(hit.id))
       .map((hit) => {

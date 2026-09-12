@@ -805,7 +805,7 @@ function resolveLuminousTeamModifiersForOptimal(
 
 export function evaluateOptimalEventDetail(
   ctx: OptimalEvalContext,
-  mainExternal: PanelStats,
+  mainExternal: PanelStats | null,
   hit: ResolvedHit,
   options?: {
     includeDetails?: boolean
@@ -818,6 +818,10 @@ export function evaluateOptimalEventDetail(
     requirePanel?: boolean
   },
 ): OptimalEventEvalDetail | null {
+  // mainPanel 为 null 时（「伤害面板」3 选 1 选了角色配置面板），用主槽激活面板兜底：
+  // 普通模式的事件明细同样要能点开（同一套流程计算）。
+  const mainSlotAgentId = ctx.panelContext.teamSlots[ctx.panelContext.mainSlotIndex ?? -1]?.agentId
+  const mainPanel = mainExternal ?? (mainSlotAgentId ? ctx.panelContext.activeSlotPanels?.[mainSlotAgentId] : undefined) ?? null
   const includeDetails = options?.includeDetails !== false
   const panelOpts = includeDetails ? undefined : PANEL_NUMBERS_ONLY
   const skipReason = getHitSkipReason(hit, {
@@ -825,6 +829,8 @@ export function evaluateOptimalEventDetail(
     agents: ctx.panelContext.agents,
   })
   if (skipReason) return null
+  // 主 C 没面板时任何事件明细都算不出（主 C 面板是全部事件的参照基底）
+  if (!mainPanel) return null
 
   const damageType = hit.skill.damageType
   const anomalySubKind = hit.anomalySubKind
@@ -875,7 +881,7 @@ export function evaluateOptimalEventDetail(
     ctx,
     ownerAgentId,
     ownerSlotIndex,
-    mainExternal,
+    mainPanel,
   )
   const ownerExtraMods = buildOptimalExtraModsForEvent(ctx, hit, ownerAgentId)
   const evtPanelCtx = {
@@ -883,7 +889,7 @@ export function evaluateOptimalEventDetail(
       ctx,
       ownerSlotIndex,
       ownerExternal,
-      mainExternal,
+      mainPanel,
       ownerExtraMods,
     ),
     skillContext: skillCtx,
@@ -928,13 +934,13 @@ export function evaluateOptimalEventDetail(
       producerExternalPanel = ownerExternal
       producerBreakdown = evtBreakdown
     } else {
-      const tExternal = resolveExternalForAgent(ctx, evtPowerAgentId, tSlotIndex, mainExternal)
+      const tExternal = resolveExternalForAgent(ctx, evtPowerAgentId, tSlotIndex, mainPanel)
       producerExternalPanel = tExternal
       const tExtraMods = buildOptimalExtraModsForEvent(ctx, hit, evtPowerAgentId)
       producerBreakdown = computeFinalPanel(
         tExternal,
         {
-          ...buildPanelContextForSlot(ctx, tSlotIndex, tExternal, mainExternal, tExtraMods),
+          ...buildPanelContextForSlot(ctx, tSlotIndex, tExternal, mainPanel, tExtraMods),
           skillContext: buildSkillContextFromHit(hit, tAgent?.element),
         },
         panelOpts,
@@ -986,7 +992,7 @@ export function evaluateOptimalEventDetail(
   const effectiveSub =
     sub && panelOverrides ? mergeSkillSubcategoryMultOverrides(sub, panelOverrides) : sub
 
-  const luminousMods = resolveLuminousTeamModifiersForOptimal(ctx, mainExternal, includeDetails)
+  const luminousMods = resolveLuminousTeamModifiersForOptimal(ctx, mainPanel, includeDetails)
 
   // 属性异常/异放/耀变类型增伤取触发者；紊乱/乱流取持有者；直伤回落 owner
   let anomalyTriggerPanel = evtFinalPanel
@@ -1003,7 +1009,7 @@ export function evaluateOptimalEventDetail(
         ctx,
         hit.triggerAgentId,
         trigSlotIndex,
-        mainExternal,
+        mainPanel,
       )
       const trigAgent = ctx.panelContext.agents.find((item) => item.id === hit.triggerAgentId)
       bonusBreakdown = computeFinalPanel(
@@ -1013,7 +1019,7 @@ export function evaluateOptimalEventDetail(
             ctx,
             trigSlotIndex,
             trigExternal,
-            mainExternal,
+            mainPanel,
             buildOptimalExtraModsForEvent(ctx, hit, hit.triggerAgentId),
           ),
           // 元素（属性系别）恒取异常强度提供者，避免触发者自身属性误匹配元素限定增益
@@ -1051,7 +1057,7 @@ export function evaluateOptimalEventDetail(
       const trigExternal =
         triggerId === ownerAgentId
           ? ownerExternal
-          : resolveExternalForAgent(ctx, triggerId, trigSlotIndex, mainExternal)
+          : resolveExternalForAgent(ctx, triggerId, trigSlotIndex, mainPanel)
       const trigAgent = ctx.panelContext.agents.find((item) => item.id === triggerId)
       const trigPanelCtx =
         triggerId === ownerAgentId
@@ -1061,7 +1067,7 @@ export function evaluateOptimalEventDetail(
                 ctx,
                 trigSlotIndex,
                 trigExternal,
-                mainExternal,
+                mainPanel,
                 buildOptimalExtraModsForEvent(ctx, hit, triggerId),
               ),
               // 元素（属性系别）恒取异常强度提供者，避免触发者自身属性误匹配元素限定增益
@@ -1157,7 +1163,7 @@ export function evaluateOptimalEventDetail(
     remielSelfRadianceCalc: resolveRemielSelfRadianceCalcForOptimal(
       ctx,
       evtPowerAgentId,
-      mainExternal,
+      mainPanel,
       skillCtx,
     ),
     disorderZoneMultOverride: zoneMultResolved.disorderZoneMult,
@@ -1194,8 +1200,8 @@ export function evaluateOptimalEventDetail(
   let remielSelfSources: OptimalPanelBreakdown['sources'] | undefined
   let remielSelfFinalPanel: PanelStats | undefined
   if (includeDetails && result.remielSelfRadianceActive && remiel) {
-    const remielExternal = resolveExternalForAgent(ctx, remiel.id, remiel.slotIndex, mainExternal)
-    const remielCtx = buildPanelContextForSlot(ctx, remiel.slotIndex, remielExternal, mainExternal)
+    const remielExternal = resolveExternalForAgent(ctx, remiel.id, remiel.slotIndex, mainPanel)
+    const remielCtx = buildPanelContextForSlot(ctx, remiel.slotIndex, remielExternal, mainPanel)
     const restricted = collectRemielSelfRestrictedContributions(
       remielExternal,
       { ...remielCtx, skillContext: skillCtx },
