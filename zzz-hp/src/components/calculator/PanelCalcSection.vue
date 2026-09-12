@@ -12,15 +12,12 @@ import type {
   BuffStatKey,
   BuffStatModifiers,
   CharacterAttrKey,
-  DamageEvent,
-  DamageEventKind,
   DamageEventMultOverrides,
   DriveDiscBuffDoc,
   SkillCalcContext,
   SkillSubcategory,
   WengineBuffDoc,
 } from '@/types/calculator'
-import { CHARACTER_ATTR_OPTIONS } from '@/types/calculator'
 import type { DamageCalcPanelSnapshot, DamageCalcSchemePanelSnapshot } from '@/types/damageCalcHistory'
 import {
   applyAgentBaseToPanelStats,
@@ -45,8 +42,6 @@ import {
   buffStatFieldLabel,
   createEmptyBuffStatModifiers,
   createEmptyRefinementMods,
-  getMindscapeNotesUpToRank,
-  mergeBuffStatModifiers,
 } from '@/utils/calculatorUi'
 import {
   applyConvertPartialToExternalPanel,
@@ -112,7 +107,6 @@ import {
   findLuminousAgentInTeam,
   isRemielSelfRadiancePowerProvider,
   resolveDamageCalcResistanceElements,
-  isLuminousAgent,
 } from '@/utils/remielUtils'
 import {
   resolveRemielSelfRadianceCalcInput,
@@ -153,65 +147,6 @@ import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 
 const MB_PROFESSION = '命破'
 const FENGYU_PROFESSION = '锋御'
-
-type PanelFieldSlot =
-  | { id: string; kind: 'stat'; key: keyof PanelStats; label: string }
-  | { id: string; kind: 'pierce'; label: string }
-  | { id: string; kind: 'mod'; key: keyof BuffStatModifiers; label: string }
-  | { id: string; kind: 'finalRate'; rate: 'anomaly' | 'disorder' | 'turbulence' | 'release'; label: string }
-  | { id: string; kind: 'spacer' }
-
-/** 局外面板字段（按行排布，含空位）— 倍率相关字段移至伤害事件详情 */
-const EXTERNAL_PANEL_SLOTS: PanelFieldSlot[] = [
-  { id: 'hp', kind: 'stat', key: 'hp', label: '生命值' },
-  { id: 'atk', kind: 'stat', key: 'atk', label: '攻击力' },
-  { id: 'pierce', kind: 'pierce', label: '贯穿力' },
-  { id: 'def', kind: 'stat', key: 'def', label: '防御力' },
-  { id: 'critRate', kind: 'stat', key: 'critRate', label: '暴击率%' },
-  { id: 'critDmg', kind: 'stat', key: 'critDmg', label: '爆伤%' },
-  { id: 'sharpenCritDmgBonus', kind: 'stat', key: 'sharpenCritDmgBonus', label: '锐爆伤害%' },
-  { id: 'dmgBonus', kind: 'stat', key: 'dmgBonus', label: '增伤%' },
-  { id: 'penRate', kind: 'stat', key: 'penRate', label: '穿透率%' },
-  { id: 'pen', kind: 'stat', key: 'pen', label: '穿透值' },
-  { id: 'reduceDefense', kind: 'stat', key: 'reduceDefense', label: '无视防御/减防%' },
-  { id: 'mastery', kind: 'stat', key: 'mastery', label: '精通' },
-  { id: 'anomalyControl', kind: 'stat', key: 'anomalyControl', label: '异常掌控' },
-  { id: 'energyRegen', kind: 'stat', key: 'energyRegen', label: '能量回复效率%' },
-]
-
-/** 局内最终面板字段 — 倍率/factor/finalRate 移至伤害事件详情 */
-const FINAL_PANEL_SLOTS: PanelFieldSlot[] = [
-  { id: 'hp', kind: 'stat', key: 'hp', label: '生命值' },
-  { id: 'atk', kind: 'stat', key: 'atk', label: '攻击力' },
-  { id: 'pierce', kind: 'pierce', label: '贯穿力' },
-  { id: 'def', kind: 'stat', key: 'def', label: '防御力' },
-  { id: 'critRate', kind: 'stat', key: 'critRate', label: '暴击率%' },
-  { id: 'critDmg', kind: 'stat', key: 'critDmg', label: '爆伤%' },
-  { id: 'sharpenCritDmgBonus', kind: 'stat', key: 'sharpenCritDmgBonus', label: '锐爆伤害%' },
-  { id: 'dmgBonus', kind: 'stat', key: 'dmgBonus', label: '增伤%' },
-  { id: 'penRate', kind: 'stat', key: 'penRate', label: '穿透率%' },
-  { id: 'pen', kind: 'stat', key: 'pen', label: '穿透值' },
-  { id: 'reduceDefense', kind: 'stat', key: 'reduceDefense', label: '无视防御/减防%' },
-  { id: 'mastery', kind: 'stat', key: 'mastery', label: '精通' },
-  { id: 'anomalyControl', kind: 'stat', key: 'anomalyControl', label: '异常掌控' },
-  { id: 'energyRegen', kind: 'stat', key: 'energyRegen', label: '能量回复效率%' },
-  { id: 'anomalyCritRate', kind: 'stat', key: 'anomalyCritRate', label: '异常暴击%' },
-  { id: 'anomalyCritDmg', kind: 'stat', key: 'anomalyCritDmg', label: '异常爆伤%' },
-  { id: 'anomalyDmgBonus', kind: 'stat', key: 'anomalyDmgBonus', label: '异常增伤%' },
-  { id: 'anomalyReleaseCritRate', kind: 'stat', key: 'anomalyReleaseCritRate', label: '异放暴击%' },
-  { id: 'anomalyReleaseCritDmg', kind: 'stat', key: 'anomalyReleaseCritDmg', label: '异放爆伤%' },
-  { id: 'anomalyReleaseDmgBonus', kind: 'stat', key: 'anomalyReleaseDmgBonus', label: '异放增伤%' },
-  { id: 'disorderDmgBonus', kind: 'stat', key: 'disorderDmgBonus', label: '紊乱增伤%' },
-  { id: 'turbulenceDmgBonus', kind: 'stat', key: 'turbulenceDmgBonus', label: '乱流增伤%' },
-  { id: 'pierceDmgBonus', kind: 'mod', key: 'pierceDmgBonus', label: '贯穿增伤%' },
-  {
-    id: 'sharpenDmgBonus',
-    kind: 'mod',
-    key: 'sharpenDmgBonus',
-    label: '锐化伤害提升%',
-  },
-  { id: 'special', kind: 'mod', key: 'special', label: '特殊补充%' },
-]
 
 const emptyBangboo: BangbooBuffDoc = {
   id: 'none',
@@ -683,24 +618,6 @@ const convertSupportSlots = computed(() =>
   }),
 )
 
-function characterAttrLabel(key: CharacterAttrKey): string {
-  return CHARACTER_ATTR_OPTIONS.find((item) => item.id === key)?.label ?? key
-}
-
-function ensureConvertSlotPartial(agentId: string): Partial<Record<CharacterAttrKey, number>> {
-  return props.convertSlotPanels?.[agentId] ?? {}
-}
-
-function updateConvertSlotAttr(agentId: string, key: CharacterAttrKey, value: number) {
-  emit('update:convertSlotPanels', {
-    ...props.convertSlotPanels,
-    [agentId]: {
-      ...ensureConvertSlotPartial(agentId),
-      [key]: value,
-    },
-  })
-}
-
 function emitConvertSlotPanel(
   agentId: string,
   keys: CharacterAttrKey[],
@@ -868,11 +785,6 @@ const anomalyCalcBlockedReason = computed(() => {
   return ''
 })
 
-function round(v: number, p = 2) {
-  const f = 10 ** p
-  return Math.round(v * f) / f
-}
-
 function formatNumber(v: number) {
   return Math.round(v).toLocaleString('en-US')
 }
@@ -885,72 +797,6 @@ function formatFormulaNumber(v: number, precision = 4) {
   }
   return formatCalcDecimal(v, precision)
 }
-
-function formatPanelValue(key: keyof PanelStats | 'pierce' | 'special' | string, value: number) {
-  if (
-    key === 'hp' ||
-    key === 'atk' ||
-    key === 'def' ||
-    key === 'pen' ||
-    key === 'mastery' ||
-    key === 'anomalyControl' ||
-    key === 'pierce' ||
-    key === 'anomalyDuration'
-  ) {
-    return formatNumber(value)
-  }
-  return formatCalcDecimal(value, 4)
-}
-
-function formatPanelSlot(slot: PanelFieldSlot, scope: 'external' | 'final') {
-  if (slot.kind === 'spacer') return ''
-  if (slot.kind === 'pierce') {
-    return formatPanelValue(
-      'pierce',
-      scope === 'external' ? externalPiercePower.value : piercePower.value,
-    )
-  }
-  if (slot.kind === 'mod') {
-    return formatPanelValue(slot.key, panelBreakdown.value.totalMods[slot.key])
-  }
-  if (slot.kind === 'finalRate') {
-    const p = calcParts.value
-    if (slot.rate === 'anomaly') {
-      return formatPanelValue('anomalyMult', finalPanel.value.anomalyMult)
-    }
-    if (slot.rate === 'disorder') {
-      return formatPanelValue('disorder', p.disorderZone * 100)
-    }
-    if (slot.rate === 'turbulence') {
-      return formatPanelValue('turbulence', p.turbulenceZone * 100)
-    }
-    return formatPanelValue('release', finalPanel.value.anomalyReleaseMult)
-  }
-  const panel = scope === 'external' ? effectiveExternalPanel.value : finalPanel.value
-  return formatPanelValue(slot.key, panel[slot.key])
-}
-
-function formatAnomalyFinalPanel(agentId: string, slot: PanelFieldSlot) {
-  if (slot.kind === 'spacer') return ''
-  const breakdown = producerPanelBreakdownByAgentId.value[agentId]
-  const slotIndex = props.teamSlots.findIndex((item) => item.agentId === agentId)
-  const external =
-    slotIndex >= 0 ? resolveExternalPanelForSlotIndex(slotIndex) : activePanelForAgent(agentId)
-  const panel = breakdown?.finalPanel ?? external
-  if (slot.kind === 'pierce') {
-    const pierceMod = breakdown?.totalMods.pierce ?? 0
-    return formatPanelValue('pierce', computePiercePower(panel.hp, panel.atk, pierceMod))
-  }
-  if (slot.kind === 'mod') {
-    return formatPanelValue(slot.key, breakdown?.totalMods[slot.key] ?? 0)
-  }
-  if (slot.kind === 'finalRate') return '—'
-  return formatPanelValue(slot.key, panel[slot.key])
-}
-
-const externalPiercePower = computed(() =>
-  computePiercePower(effectiveExternalPanel.value.hp, effectiveExternalPanel.value.atk),
-)
 
 function applyRecognitionToExternalPanel(result: PanelScreenshotRecognition) {
   // 截图识别写「面板导入」页的草稿；词条数不再反推（`dev-docs/panel-dual-source.md` §7）——
@@ -1599,19 +1445,6 @@ const disorderFormulaParts = computed(() => {
   ]
 })
 
-const turbulenceFormulaParts = computed(() => {
-  const p = calcParts.value
-  const parts = [
-    formatNumber(anomalyBaseWithMutation.value),
-    formatFormulaNumber(p.turbulenceZone),
-    formatFormulaNumber(p.turbulenceCombinedDmgBonusZone),
-  ]
-  if (p.turbulenceUsesAnomalyCrit) {
-    parts.push(formatFormulaNumber(p.anomalyCritZone))
-  }
-  return parts
-})
-
 type ValueTipsKey =
   | 'baseDamage'
   | 'dmgMultiplier'
@@ -1860,7 +1693,6 @@ const valueTips = computed(() => {
   const panel = finalPanel.value
   const external = effectiveExternalPanel.value
   const sources = panelBreakdown.value.sources
-  const combat = panelBreakdown.value.combatMods
   const enemy = enemyInput.value
   const pierceMod = panelBreakdown.value.totalMods.pierce
 
@@ -3344,25 +3176,6 @@ const teamSummary = computed(() =>
     })
     .filter(Boolean)
     .join('；'),
-)
-
-const teamAgentNotes = computed(() =>
-  props.teamSlots
-    .map((slot, index) => {
-      if (!slot.agentId) return null
-      const agent = props.agents.find((item) => item.id === slot.agentId)
-      if (!agent) return null
-      const roleLabel = `槽位${index + 1}`
-      const note = agent.note?.trim() ?? ''
-      const mindscapeNotes = getMindscapeNotesUpToRank(agent, slot.rank)
-      return {
-        key: `${index}-${agent.id}`,
-        label: `${roleLabel} · ${agent.name}（${slot.rank}影）`,
-        note,
-        mindscapeNotes,
-      }
-    })
-    .filter((item): item is NonNullable<typeof item> => item !== null),
 )
 
 const teamWengineNotes = computed(() =>
