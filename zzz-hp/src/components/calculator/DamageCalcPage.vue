@@ -1501,8 +1501,10 @@ function applyWorkingState(entry: {
   applyTeamSlots(entry.teamSlots)
   selectedBangbooId.value = entry.selectedBangbooId
   bangbooRefine.value = entry.bangbooRefine
-  // 恢复草稿/方案时沿用方案里记录的计算模式（面板读取统一走 resolveActivePanel，
-  // 模式只是 UI 视图，不再决定取哪份面板；2026-09-12 解除冻结后随存档恢复）。
+  // 【冻结 · 2026-09-11 起】草稿里存的『面板导入 / 词条导入』模式不再恢复成活动状态：
+  // 那两个按钮已停用，模式留着只会变成「谁也没点、却决定了用哪份面板」的幽灵状态。
+  // 一律回到普通计算；是否进「最优词条分配」由用户当场点（不自动打开重模块）。
+  panelCalcMode.value = 'panel'
 
   // 新结构直接用；老草稿（单份面板 + 槽位级词条数）按 panelCalcMode 归位
   applySlotPanels(
@@ -2085,28 +2087,32 @@ defineExpose({ scrollToSection, setCalcMode, toggleOptimalAffixSection, panelCal
       </header>
       <div class="calc-mode-tabs" role="tablist" aria-label="面板导入方式">
         <!--
-          2026-09-11 曾临时冻结「面板导入 / 词条导入」两个按钮（冻结原因：它们会改掉算进伤害的
-          那份面板，即「用按钮挑面板」这套第二状态干扰架构）。
-          2026-09-12 已恢复：面板读取统一走 `resolveActivePanel`（唯一入口），模式不再影响取面板；
-          词条功能的自动回写（换人刷转模、flush 词条输入）已全部删除，按钮恢复切换模式。
+          【冻结 · 2026-09-11 起】「面板导入 / 词条导入」两个按钮。
+          冻结原因：它们会改掉**算进伤害的那份面板**（同一份激活面板下，只因停在这两个
+          按钮之一，局内攻击在 3883 / 6136 之间跳），即「用按钮挑面板」这套第二状态干扰架构。
+          冻结期间：两个按钮只作展示，不响应点击、不再参与任何取面板 / 计算决策；
+          每份面板本身照常在「代理人 → 导入」里录入与保存。
+          （2026-09-12 曾短暂解冻、随后按所有者口径恢复冻结——只恢复保存，不动这两个按钮。）
         -->
         <button
           type="button"
           role="tab"
-          class="calc-mode-tab"
-          :class="{ active: panelCalcMode === 'panel' }"
+          class="calc-mode-tab calc-mode-tab--frozen"
+          disabled
+          aria-disabled="true"
           :aria-selected="panelCalcMode === 'panel'"
-          @click="selectPanelCalcMode('panel')"
+          title="已冻结：不再用它切换面板；面板在「代理人 → 导入」里录入（面板 / 词条各存一份）"
         >
           面板导入
         </button>
         <button
           type="button"
           role="tab"
-          class="calc-mode-tab"
-          :class="{ active: panelCalcMode === 'affix' }"
+          class="calc-mode-tab calc-mode-tab--frozen"
+          disabled
+          aria-disabled="true"
           :aria-selected="panelCalcMode === 'affix'"
-          @click="selectPanelCalcMode('affix')"
+          title="已冻结：不再用它切换面板；面板在「代理人 → 导入」里录入（面板 / 词条各存一份）"
         >
           词条导入
         </button>
