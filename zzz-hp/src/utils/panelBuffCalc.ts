@@ -1019,7 +1019,6 @@ export interface PanelBuffBreakdown {
   combatMods: CombatBuffMods
   finalPanel: PanelStats
   sources: BuffModSource[]
-  collectedEffects: CollectedEffect[]
 }
 
 export interface ComputeFinalPanelOptions {
@@ -2415,7 +2414,6 @@ export function computeFinalPanel(
       sharpenCritDmgBonus: combatMods.sharpenCritDmgBonus,
     },
     sources: includeDetails ? totalSources : [],
-    collectedEffects: [],
   }
 }
 

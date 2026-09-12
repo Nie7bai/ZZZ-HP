@@ -3,7 +3,7 @@
 > **范围**：ZZZ-HP 角色计算器 · 伤害计算页（`zzz-hp/src/components/calculator/`）。
 > **用途**：汇总 2026-09 阶段落地的改动、现行行为口径、验证证据与遗留项，供评审与后续维护参考。
 > **不在本文维护**：动态分支状态（用 Git 查询，见 [Git 协作与发布政策](../policies/git-workflow.md)）、伤害公式本身（见 [`CALCULATOR_FORMULAS.md`](../../CALCULATOR_FORMULAS.md)）。
-> **详细开发手册**在开发者工作区 `dev-docs/`（不进仓库）：`panel-dual-source.md`、`affix-optimizer-impl-log.md`、`skill-flow-unification.md`。
+> **详细开发手册**在开发者工作区 `dev-docs/`（不进仓库）：`panel-import-only.md`、`affix-counts-reset-on-scheme-load.md`、`preset-picker-first-open-blank.md`、`preset-panel-not-loaded.md`。
 
 ---
 
@@ -19,6 +19,10 @@
 | 招式计算链路统一 | 面板侧与最优侧共用同一套招式实现与同一份缓存；招式流程新增「伤害面板」三选项 | `326926b` `40f3d76` `f768d71` `7f553f7` `441822c` |
 | 顶部槽位卡片 | 悬停显示局外 + 局内面板，并标出该槽当前生效的面板来源 | `40897a5` |
 | 入口整理 | 侧栏「最优词条分配」可进可出；「面板导入 / 词条导入」两个旧按钮冻结（面板改在「代理人 → 导入」录入） | `32ae5bf` `2b39fbe` |
+| **面板只能由用户导入产生** | 删掉所有「工具自己造面板」的路径（自动写回、角色基础面板兜底、快照回灌）；空就是空 | `639cf89` `019e608` `070e783` `06417f0` |
+| **没有面板就没有伤害** | 无面板记录时不再拿占位毕业面板兜底；改为空面板 + 评估层闸门，伤害为 0 并给提示 | `0e02600` |
+| **4/5/6 号盘主属性可留空** | 下拉加「未选择（空）」项，默认空；空就按空算，不再拦截「确定导入」 | `0e02600` |
+| 废代码清扫 | 净删 895 行（53 个零引用导出、1 个整文件、多处死函数与失效导入），`eslint` 由 25 错清零 | `bdd4add` `c450168` |
 
 ---
 
@@ -30,9 +34,47 @@
   `active` 指向当前生效那份。实现见 `zzz-hp/src/utils/agentPanelSources.ts`。
 - 下游（伤害计算、扫掠柱图、最优分配、增益计算）只接收**一份** `PanelStats`，**不接收也不查询来源**；
   「来源」只是界面元数据。
-- 写盘入口唯一：「确定导入」写当前所在子页那份并激活它。词条数变化这类**自动写回不改变** `active`
-  （2026-09-11 修复：此前会把手动切换打回去，形同虚设）。
 - 选中那份没有数据时，取值**回落**到另一份；界面标注按回落后的**实际来源**标（见 2.3）。
+
+### 2.1.1 两条必要条件（2026-09-12 确立，所有者口径）
+
+1. **不点导入 → 面板产生不出来**；
+2. **没有面板 → 没有伤害**。
+
+这两条是**代码层**约束，不是「禁用按钮」那类界面拦截（原话：「而不是，不选不让点导入，这个我觉得不是关键」）。
+
+**约束一：写面板的入口只剩三类，且都是用户动作**
+
+| 写入点 | 触发 |
+|---|---|
+| `writePanelSource`（`DamageCalcPage` 两处） | 用户点「确定导入」 |
+| `setActivePanelSource` | 用户手动切换激活来源 |
+| `writeAffixInputsIntoSource`（`damageCalcHistory.ts` 一处） | 读旧格式时的一次性数据迁移 |
+
+改前存在的这些路径**已全部删除**：`ensureAgentExternalPanel`（用角色基础面板造一份并激活）、
+`flushImportedPanelForAgent` / `flushAffixOnto*` / `commitDerivedPanelForAgent` / `migrateSnapshotAffixOntoSlots`
+（自动写回）、`agentPanelSources.updatePanelSourceValues`（专供自动写回的写入口）。
+`test-panel-dual-source.mjs` 用源码断言钉死这条边界。
+
+**约束二：无面板 → 空面板 → 伤害为 0**
+
+- 无面板记录时，`PanelCalcSection.resolveExternalPanelForSlotIndex` / `panelBuffCalc.resolveExternalPanelForSlot`
+  一律给 `createEmptyExternalPanel()`（用户录入字段全 0；乘区入口保持中性 ×1，避免把公式乘成 0），
+  **不再回落**到占位毕业面板（生命 9873 / 攻击 4008）或 live 编辑器。
+- 仅归零面板**不够**：Buff 里的固定攻击 / 暴击仍会算出量（实测残量约 2.5 M，占当时总伤 3.5%）。
+  因此 `evaluateOptimalEventDetail` 增加 `requirePanel` 选项：伤害页四个入口
+  （`syncHitSummary`、`selectedEventEvalDetail`、伤害过程面板、`useDamageProcessEvents`）传 `true`，
+  出手角色没有面板时该 hit 直接不出伤；异常类还要求强度提供者也有面板。
+- **最优词条分配链路不传 `requirePanel`** —— 它本来就要能「无基准面板」推导，维持现状。
+- 主 C 没面板时，伤害计算区显示提示：「当前角色还没有面板（局外面板为 0，伤害不计算）——请点顶部「导入」录入或截图识别后「确定导入」」。
+
+### 2.1.2 空就是空（2026-09-12）
+
+- **面板导入表单**：12 项录入字段留空即 `null`（不是 0、更不是占位面板）；没填齐时点「确定导入」
+  只提示「面板还缺 N 项没填：…」并拒绝写盘。截图识别只写识别到的项，其余留空。
+- **4/5/6 号盘主属性**：下拉含「未选择（空）」项，**默认为空**；空就按「不提供该主属性」计，
+  不再要求「必须选满才能导入」。
+- 「没填」与「填了 0」严格区分：填 0 也算填了。
 
 ### 2.2 招式流程「伤害面板」三选项
 
@@ -86,11 +128,15 @@
 |----|------|
 | 招式流程逐条伤害 | 步骤 ① 与原实现**逐条一致**（70/70，总伤 38,375,257）；步骤 ② 只改变刻意调整口径的部分（70 条中 17 条变化），可逆 |
 | 三选项 | ① 与基线逐条一致；② 下列表与详情同为 5,432,450（① 为 2,426,790）；③ 扫掠后启用、来回切换可复现 |
-| 面板来源 | `test-panel-dual-source.mjs` 覆盖「两份互不覆盖」「切换不改数值」「计算链路无来源分支」「老方案迁移逐位一致」等 |
+| 面板来源 | `test-panel-dual-source.mjs` 覆盖「两份互不覆盖」「切换不改数值」「计算链路无来源分支」「老方案迁移逐位一致」等（52 条） |
 | 槽位卡片 | 面板模式与最优模式悬停卡片**逐字一致**（3/3 槽位）；预览重算 1.1 ~ 1.5 ms / 3 槽位 |
-| 静态检查 | `vue-tsc --noEmit -p tsconfig.app.json` 通过 |
-| 代码规范 | `eslint src scripts` 40 problems / 16 files（与介入前基线一致，均为既有告警） |
-| 测试脚本 | `zzz-hp/scripts/test-*.mjs` 23 个全部通过（含新增 `test-hit-eval-cache.mjs`、`test-panel-dual-source.mjs`） |
+| 两条必要条件 | 换入从没导入过的角色 → `slotPanels` 键不变（不产生记录）；清空主 C 面板记录 → **14 条命中 → 0 条、合计 0**，提示出现；还原后 14 条、合计 71,272,489（基线） |
+| 空就是空 | 未导入过的角色打开面板页 → 12 项字段全空；空手点「确定导入」→ 只提示「还缺 12 项」、记录逐字节未变；填满 12 项 → 写进记录的与所填一致 |
+| 4/5/6 留空 | 三个下拉首项为「未选择（空）」（`value=""`）；三个都选空后点「确定导入」→ 无拦截、写入三个空串 |
+| 静态检查 | `vue-tsc --noEmit -p tsconfig.app.json` 退出码 0 |
+| 代码规范 | `eslint src scripts` **0 problems**（2026-09-12 清扫前为 25 错，均为既有告警） |
+| 测试脚本 | `zzz-hp/scripts/test-*.mjs` **26 个全部通过**（含新增 `test-panel-required-for-damage.mjs`、`test-external-panel-draft.mjs`、`test-preset-picker-draft-reset.mjs`） |
+| 清扫后不回归 | 伤害数字与清扫前**逐位一致**；`TeamSlotCard` 改名后交互正常（改影画 0→2 伤害随之重算、改回精确还原） |
 
 ---
 
@@ -104,7 +150,13 @@
 4. `includeDetails: false` 会跳过蕾米埃尔自辐射的整块面板计算（`optimalAffixAlloc.ts:1175`），
    明细层有回落分支（`DamageResultDetail.vue:397`：拿不到自辐射面板时会退到别的面板）。
    若将来要在明细里展示自辐射面板，需先显式定义产物边界。
-5. `PanelBuffBreakdown.collectedEffects` 是硬编码 `[]` 且无读取方的死字段，可择机删除。
+5. **草稿写盘策略**：页级 deep watch（任何状态变化 400ms 写草稿）不区分「用户操作」与「程序内部抖动」。
+   当前内存已不会自变脏，暂无实际危害；收紧需在十余个动作点各埋一次写盘，与「不加重代码」相冲，**保持现状**。
+6. **旧数据不动**：以前某次自动写回留在盘上的占位面板仍是历史数据，导入时会被
+   `isPlaceholderExternalPanel` 拦下（提示「请先填写或识别面板」）；按所有者口径
+   「用户数据的问题不写代码去猜、去修」。
+7. **链路外的零引用导出保留**：`src/api/*`、`src/data/*`、`defense*`、`elementIcons`、`guestbook*`
+   等模块另有 25 个零引用导出，按所有者决定「吃不准的留着，只要不影响计算」，**未删**。
 
 ---
 
@@ -113,4 +165,6 @@
 - [计算器增益乘区与公式核查表](../../CALCULATOR_FORMULAS.md)：公式与展示口径的唯一事实来源。
 - [招式库、准备阶段与流程改造说明](../../skill-flow-redesign.md)：招式三层结构的背景。
 - [Git 协作与发布政策](../policies/git-workflow.md)：分支、提交、发布规则。
-- 开发手册（工作区 `dev-docs/`，不进仓库）：`panel-dual-source.md`、`affix-optimizer-impl-log.md`、`skill-flow-unification.md`。
+- 开发手册（工作区 `dev-docs/`，不进仓库）：`panel-import-only.md`（面板来源与两条必要条件）、
+  `affix-counts-reset-on-scheme-load.md`（词条数清零与脏草稿）、`preset-picker-first-open-blank.md`、
+  `preset-panel-not-loaded.md`。
