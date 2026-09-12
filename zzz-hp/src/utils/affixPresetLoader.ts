@@ -1,5 +1,5 @@
 import { fetchAffixPreset } from '@/api/affixPreset'
-import { setServerAffixPreset } from '@/utils/affixLibrary'
+import { freezePendingAffixLibrarySets, setServerAffixPreset } from '@/utils/affixLibrary'
 
 /**
  * 拉取官方预设词条库（服务端唯一来源）。
@@ -15,6 +15,10 @@ import { setServerAffixPreset } from '@/utils/affixLibrary'
  *   用户口径是「离线了就别用了」，但**兜底要留到入库验证通过为止**
  *   （原话「丢掉等会再说」），所以这里不弹错、不重试刷屏；
  * - **同一会话只拉一次**：`inflight` 复用；失败则清空，下次进页面可以再试。
+ *
+ * 拿到快照后顺手把**还挂着过渡态**（`'follow'`）的用户库冻成独立（`freezePendingAffixLibrarySets`）：
+ * 官方改不动用户手里的库，跟随是假的（用户 2026-09-13 口径「你不独立，怎么跟官方维护」）。
+ * 时机必须是这里 —— 早于快照会把代码兜底当成官方预设冻进去。
  */
 
 let inflight: Promise<number> | null = null
@@ -23,7 +27,11 @@ let inflight: Promise<number> | null = null
 export function ensureAffixPresetLoaded(): Promise<number> {
   if (!inflight) {
     inflight = fetchAffixPreset()
-      .then((snapshot) => setServerAffixPreset(snapshot))
+      .then((snapshot) => {
+        const skipped = setServerAffixPreset(snapshot)
+        freezePendingAffixLibrarySets()
+        return skipped
+      })
       .catch(() => {
         // 拉失败：保持代码兜底那份，并允许下次再试
         inflight = null

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import type { AffixCounts } from '@/types/calculatorPanel'
+import { ensureAffixPresetLoaded } from '@/utils/affixPresetLoader'
 import {
   AFFIX_LIBRARY_SET_NAME_MAX,
   AFFIX_PANEL_DELTA_FIELD_LABELS,
@@ -15,6 +16,7 @@ import {
   deleteAffixLibrarySet,
   exportAffixLibrarySet,
   importAffixLibrarySet,
+  isUsingServerAffixPreset,
   loadAffixLibraryStore,
   OFFICIAL_AFFIX_PRESET_NAME,
   panelTarget,
@@ -271,12 +273,16 @@ const newSetName = ref('')
 const newSetInputRef = ref<HTMLInputElement | null>(null)
 
 /**
- * 新建库的起点（用户 2026-09-12 口径：新建时给用户选）。
+ * 新建库的起点（用户 2026-09-12 口径：新建时给用户选；2026-09-13：**新建完毕就冻结**）。
  *
- * 默认选「基于预设」—— 这是改造前的既有行为，也是多数人的用法；
+ * 默认选「预设词条方案」—— 多数人的用法；新建时把**官方那份**整份复制进本库，
+ * 此后官方怎么改都与本库无关（用户口径「你不独立，怎么跟官方维护」）。
  * 界面上按用户给的顺序列（空配置在前），选中项一眼可见。
  */
-const newSetOrigin = ref<AffixLibrarySetOrigin>('preset')
+const newSetOrigin = ref<AffixLibrarySetOrigin>('copy')
+
+/** 正在取官方那份预设（新建「预设词条方案」时先取到再冻结，取的过程里按钮禁用） */
+const newSetBusy = ref(false)
 
 /** 预设条目数（写进选项说明里，免得「官方那 50 条」随预设变动而过时） */
 const presetEntryCount = computed(() => presetAffixEntriesBase().length)
@@ -284,13 +290,36 @@ const presetEntryCount = computed(() => presetAffixEntriesBase().length)
 function startNewSet() {
   newSetMode.value = true
   newSetName.value = ''
-  newSetOrigin.value = 'preset'
+  newSetOrigin.value = 'copy'
+  // 提前把官方那份拉起来：点「确定」时多半已在手，新建就是当场冻结，不用等
+  void ensureAffixPresetLoaded()
   void nextTick(() => newSetInputRef.value?.focus())
 }
 
-function commitNewSet() {
+/**
+ * 确定新建：**新建完毕就冻结** —— 选「预设词条方案」时先把官方那份取到，再当场整份复制进新库。
+ *
+ * 为什么等取到才建：新建那一刻要冻的是**官方**那份；若官方还没取到就复制，冻进去的是
+ * 代码兜底，与官方对不上且之后不再纠正（用户 2026-09-13「肯定有偏差的」）。
+ * 取不到就**不建**，如实告诉用户（可以改用空配置）。
+ */
+async function commitNewSet() {
   const name = newSetName.value.trim() || '新建词条库'
   const origin = newSetOrigin.value
+
+  if (origin === 'copy') {
+    newSetBusy.value = true
+    try {
+      await ensureAffixPresetLoaded()
+      if (!isUsingServerAffixPreset()) {
+        setMessage.value = '拿不到官方预设（服务器没响应），暂时没法复制一份；可以先用「空配置」'
+        return
+      }
+    } finally {
+      newSetBusy.value = false
+    }
+  }
+
   newSetMode.value = false
   newSetName.value = ''
   commitStoreChange((base) =>
@@ -414,7 +443,18 @@ function onRemoveEntry(entryId: string) {
   forwardEntryEdit(() => emit('removeEntry', entryId))
 }
 
-function onRestoreDefaults() {
+/**
+ * 恢复默认：独立库要按**当前官方预设**重新复制一份，因此同样得先拿到官方那份；
+ * 拿不到就不动手（免得把代码兜底冻成「官方」），并如实说明。
+ */
+async function onRestoreDefaults() {
+  if (activeSet.value.state.origin === 'copy' && !isUsingServerAffixPreset()) {
+    await ensureAffixPresetLoaded()
+    if (!isUsingServerAffixPreset()) {
+      setMessage.value = '拿不到官方预设（服务器没响应），暂时没法恢复默认'
+      return
+    }
+  }
   forwardEntryEdit(() => emit('restoreDefaults'))
 }
 
@@ -578,8 +618,8 @@ function submitDraft() {
 
             <!-- 常驻说明：界面上看不到「官方预设」那一套，它是所有库的底料，容易被误当成 bug -->
             <p class="set-list-hint">
-              官方预设在服务器上、由管理员维护，你改不到它。这里只有<strong>你自己的库</strong>：
-              勾选 / 改名 / 每档 / 删除都只存本机。
+              官方预设在服务器上、由管理员维护，你改不到它。新建时可复制预设方案；新建后存于本机浏览器，后续由你维护，勾选
+              / 改名 / 每档 / 删除 / 导出 / 导入都只存本机
             </p>
 
             <div v-if="newSetMode" class="set-new-panel">
@@ -603,12 +643,11 @@ function submitDraft() {
                 </span>
               </label>
               <label class="origin-option">
-                <input v-model="newSetOrigin" type="radio" value="preset" />
+                <input v-model="newSetOrigin" type="radio" value="copy" />
                 <span class="origin-body">
-                  <strong>基于预设词条方案「{{ OFFICIAL_AFFIX_PRESET_NAME }}」</strong>
+                  <strong>预设词条方案「{{ OFFICIAL_AFFIX_PRESET_NAME }}」</strong>
                   <span class="origin-desc">
-                    现在就是官方那 {{ presetEntryCount }} 条；没被你改过的条目会跟着官方更新走，
-                    改过 / 删过的只存本机
+                    已加入常见的全部词条，共计{{ presetEntryCount }}条，可以按需勾选
                   </span>
                 </span>
               </label>
@@ -621,8 +660,12 @@ function submitDraft() {
               </div>
 
               <div class="set-new-actions">
-                <button type="button" class="mini-btn ok" @click="commitNewSet">确定</button>
-                <button type="button" class="mini-btn" @click="cancelNewSet">取消</button>
+                <button type="button" class="mini-btn ok" :disabled="newSetBusy" @click="commitNewSet">
+                  {{ newSetBusy ? '取官方预设…' : '确定' }}
+                </button>
+                <button type="button" class="mini-btn" :disabled="newSetBusy" @click="cancelNewSet">
+                  取消
+                </button>
               </div>
             </div>
 
@@ -653,8 +696,8 @@ function submitDraft() {
                       {{ setSummary(set.id).enabled }} / {{ setSummary(set.id).total }} 条参与
                     </span>
                   </button>
-                  <!-- 空配置的库标一下，免得日后忘了它是从零搭的（不含官方预设） -->
-                  <span v-if="!set.state.includePreset" class="set-badge set-badge--muted">
+                  <!-- 空配置的库标一下，免得日后忘了它是从零搭的 -->
+                  <span v-if="set.state.origin === 'empty'" class="set-badge set-badge--muted">
                     空配置
                   </span>
                   <span v-if="set.id === store.activeId" class="set-badge">使用中</span>
@@ -1387,12 +1430,6 @@ function submitDraft() {
   background: #e8d3a0;
   border-radius: 999px;
   padding: 0.05rem 0.4rem;
-}
-
-/* 「空配置」标签：与「使用中」区分开（那个是金色强调，这个是低调灰） */
-.set-badge--muted {
-  color: #98a1ae;
-  background: #262b33;
 }
 
 .pane-actions {

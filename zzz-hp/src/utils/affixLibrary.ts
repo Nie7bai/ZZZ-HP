@@ -568,18 +568,18 @@ export function presetAffixGroupsBase(): AffixLibraryGroup[] {
 
 export interface AffixLibraryState {
   /**
-   * 这套库是否加载**官方预设**（服务器那份，见文件头「官方预设来源」）。
+   * 这套库的**条目从哪来** —— 决定它是否独立于官方预设（见文件头「官方预设来源」）。
    *
-   * - `true`（默认）：预设条目与预设分组都加载 —— 库里看到的是「官方预设 + 本库的改动」；
-   * - `false`（**空配置**）：一条预设都不加载，条目与分组全自己建。
+   * - `'copy'`（**独立**）：新建时把当时的官方预设**整份复制进本库**（烘进 `customEntries`）。
+   *   此后条目归本库所有，官方改预设与它无关，也不会被"恢复默认"以外的操作影响；
+   * - `'empty'`（**空配置**）：一条预设都不加载，条目与分组全自己建；
+   * - `'follow'`（**跟随**）：条目仍由官方预设「按需生成」，本库存的是覆盖/删除记录。
+   *   这是步骤 34 的语义，**只留给历史库**（新建不再提供）。
    *
-   * 为什么是个开关而不是「把预设复制成自建条目」：预设条目由服务器维护，
-   * 复制成自建就等于冻结，之后官方改数值、用户这边不会知道（那是另一种语义，没做）。
-   *
-   * ⚠️ 缺省必须是 `true`：老存档里没有这个字段，当成 `false` 会让用户库瞬间变空。
+   * ⚠️ 缺省必须是 `'follow'`：老存档里没有这个字段，当成 `'empty'` 会让用户库瞬间变空。
    */
-  includePreset: boolean
-  /** 用户自建条目 */
+  origin: AffixLibrarySetOrigin
+  /** 用户自建条目；`'copy'` 的库在这里也存着从官方预设复制来的那一份 */
   customEntries: AffixLibraryEntry[]
   /**
    * 条目 id → 显式启用/禁用。
@@ -617,24 +617,43 @@ export interface AffixLibraryState {
 /**
  * 一套库的初始状态。
  *
- * `includePreset` 默认 `true`（= 加载官方预设）；传 `false` 得到**空配置**
- * （一条预设都不加载，分组也从零开始）—— 新建库时的两个起点之一，见
- * `createAffixLibraryStateForOrigin()`。
+ * 起点语义见 `AffixLibrarySetOrigin`：`'copy'` 复制**当前的**官方预设进来（新建完毕即冻结），
+ * `'empty'` 什么都没有，`'follow'` 只是老存档迁移途中的过渡态（见 `freezePendingAffixLibrarySets`）。
+ *
+ * ⚠️ `'copy'` 要求官方那份**已经在手**，否则抛错：拿代码兜底冒充官方复制一份，
+ * 库里存的就与官方对不上，而且之后再也不会纠正（用户 2026-09-13 指出的正是这类偏差）。
+ * 调用方（新建弹窗）先 `ensureAffixPresetLoaded()` 取到再调。
  */
-export function createDefaultAffixLibraryState(includePreset = true): AffixLibraryState {
+export function createDefaultAffixLibraryState(
+  origin: AffixLibrarySetOrigin = 'follow',
+): AffixLibraryState {
+  if (origin === 'copy' && !isUsingServerAffixPreset()) {
+    throw new Error('官方预设还没取到，无法复制一份')
+  }
   return {
-    includePreset,
-    customEntries: [],
+    origin,
+    // 独立库的那一份快照就存在这里：之后改 / 删 / 改名都走自建条目那条路
+    customEntries: origin === 'copy' ? presetAffixEntriesBase().map((entry) => ({ ...entry })) : [],
     enabledOverride: {},
     overrides: {},
     removedEntryIds: [],
-    groups: includePreset ? presetAffixGroupsBase() : [],
+    groups: origin === 'empty' ? [] : presetAffixGroupsBase().map((group) => ({ ...group })),
     removedGroupNames: [],
   }
 }
 
-/** 新建库时可选的起点 */
-export type AffixLibrarySetOrigin = 'preset' | 'empty'
+/**
+ * 这套库的条目从哪来。
+ *
+ * - `'copy'`：**独立**（冻结）。新建时把当时的官方预设整份复制进本库，此后官方怎么改都与它无关；
+ * - `'empty'`：空配置，一条预设都不加载；
+ * - `'follow'`：**过渡态**，不是给用户选的起点 —— 只出现在老存档迁移（改造前的库本来就是
+ *   「预设 + 覆盖」结构），官方那份一到就冻成 `'copy'`。
+ *
+ * 为什么不留「跟随」给用户：**官方改不动用户手里的库，跟随必然是假的**
+ * （用户 2026-09-13 原话「你不独立，怎么跟官方维护，做不到的」）。
+ */
+export type AffixLibrarySetOrigin = 'follow' | 'copy' | 'empty'
 
 /**
  * 官方预设的展示名。
@@ -645,15 +664,39 @@ export type AffixLibrarySetOrigin = 'preset' | 'empty'
 export const OFFICIAL_AFFIX_PRESET_NAME = '默认'
 
 /**
- * 新建库的起点状态。
+ * 新建库的起点状态（**新建完毕即冻结**）。
  *
- * - `'preset'`：基于官方预设（**跟随更新**：没被你改过的条目会随官方变）；
+ * - `'copy'`：把**当前那份**官方预设整份复制进新库（此后独立，官方更新不再影响它）。
+ *   要求官方那份已在手 —— 没取到会抛错，调用方先 `ensureAffixPresetLoaded()`；
  * - `'empty'`：空配置，不加载任何预设。
  */
 export function createAffixLibraryStateForOrigin(
   origin: AffixLibrarySetOrigin,
 ): AffixLibraryState {
-  return createDefaultAffixLibraryState(origin === 'preset')
+  return createDefaultAffixLibraryState(origin)
+}
+
+/**
+ * 把一套**过渡态**（`'follow'`）的库冻成**独立**（`'copy'`）：官方预设那份整份搬进本库。
+ *
+ * 烘进来的内容是「官方预设 − 用户删过的 ± 用户改过的 + 用户自建的」，
+ * 也就是用户此刻看到的全部条目；转换前后界面与计算**完全相同**，
+ * 区别只是此后官方怎么改都不会再动它。
+ *
+ * 非 `'follow'` 的库原样返回（`'copy'` 本来就独立，`'empty'` 没有预设可复制）。
+ */
+export function convertAffixLibraryStateToCopy(state: AffixLibraryState): AffixLibraryState {
+  if (state.origin !== 'follow') return state
+  return {
+    origin: 'copy',
+    customEntries: resolveAffixLibraryAll(state).map((entry) => ({ ...entry })),
+    // 勾选状态本来就存在这里，照搬（它按条目 id 记，与条目从哪来无关）
+    enabledOverride: { ...state.enabledOverride },
+    overrides: {},
+    removedEntryIds: [],
+    groups: state.groups.map((group) => ({ ...group })),
+    removedGroupNames: [],
+  }
 }
 
 const AFFIX_LIBRARY_STORAGE_KEY = 'zzz-hp-affix-library'
@@ -697,23 +740,36 @@ function migrateCustomEntry(raw: unknown): AffixLibraryEntry | null {
 }
 
 /**
+ * 起点迁移：`origin` 认得出来就用它；认不出（步骤 35 之前的老存档）按当时的 `includePreset` 推断 ——
+ * 显式 `false` = 空配置，其余（含缺省）= 跟随。
+ *
+ * **缺省必须是 `'follow'`**：老存档没有这些字段，当成 `'empty'` 会让用户库瞬间变空。
+ */
+function coerceAffixLibrarySetOrigin(
+  origin: unknown,
+  includePreset: unknown,
+): AffixLibrarySetOrigin {
+  if (origin === 'follow' || origin === 'copy' || origin === 'empty') return origin
+  return includePreset === false ? 'empty' : 'follow'
+}
+
+/**
  * 把任意来源的对象收成一份合法词条库状态。
  *
  * 载入存档与导入文件共用这一处：字段缺失、类型不对一律回落默认值，
  * 自建条目逐条走 `migrateCustomEntry`（同时承担旧 `kind` 结构的迁移）。
  */
 export function coerceAffixLibraryState(raw: unknown): AffixLibraryState {
-  const parsed = (raw && typeof raw === 'object' ? raw : {}) as Partial<AffixLibraryState>
+  const parsed = (raw && typeof raw === 'object' ? raw : {}) as Partial<AffixLibraryState> & {
+    /** 步骤 34 的旧字段（布尔开关）；步骤 35 起由 `origin` 取代，这里只用于迁移 */
+    includePreset?: unknown
+  }
   const removedGroupNames = Array.isArray(parsed.removedGroupNames)
     ? parsed.removedGroupNames.filter((name): name is string => typeof name === 'string')
     : []
-  /**
-   * `includePreset` 缺省 `true`：老存档没有这个字段，当成 `false` 会让用户库瞬间变空。
-   * 只有显式写了 `false` 才当空配置。
-   */
-  const includePreset = parsed.includePreset !== false
+  const origin = coerceAffixLibrarySetOrigin(parsed.origin, parsed.includePreset)
   const state: AffixLibraryState = {
-    includePreset,
+    origin,
     customEntries: Array.isArray(parsed.customEntries)
       ? parsed.customEntries
           .map(migrateCustomEntry)
@@ -730,7 +786,7 @@ export function coerceAffixLibraryState(raw: unknown): AffixLibraryState {
     groups: mergePresetGroups(
       coerceAffixLibraryGroups(parsed.groups),
       removedGroupNames,
-      includePreset,
+      origin === 'follow',
     ),
     removedGroupNames,
   }
@@ -768,19 +824,19 @@ export function coerceGroupCap(value: unknown): number {
  * 存的档里根本没有分组表 —— 只从存档读就会一个预设组都没有，界面上只剩用户自己建的组。
  *
  * 用户删过的预设组记在 `removedGroupNames` 里，不会复活；
- * **空配置的库（`includePreset: false`）压根不补预设组** —— 否则一个什么都没有的库
- * 点开就是 5 个空页签。
+ * **只有「跟随」的库才补预设组**：空配置的库点开不该有 5 个空页签，
+ * 独立库（`'copy'`）的分组在新建时就复制进存档了。
  */
 function mergePresetGroups(
   saved: AffixLibraryGroup[],
   removedNames: string[],
-  includePreset: boolean,
+  followPreset: boolean,
 ): AffixLibraryGroup[] {
   const removed = new Set(removedNames)
   const savedByName = new Map(saved.map((group) => [group.name, group]))
   const out: AffixLibraryGroup[] = []
   // 预设组按预设顺序排前面（存过的保留用户改过的额度）
-  for (const preset of includePreset ? presetAffixGroupsBase() : []) {
+  for (const preset of followPreset ? presetAffixGroupsBase() : []) {
     if (removed.has(preset.name)) continue
     out.push(savedByName.get(preset.name) ?? { ...preset })
     savedByName.delete(preset.name)
@@ -918,6 +974,31 @@ export function coerceAffixLibraryStore(raw: unknown): AffixLibraryStore | null 
   return null
 }
 
+/**
+ * 把存档里还挂着的过渡态（`'follow'`）库冻成独立。
+ *
+ * 谁调：官方预设**真正到达**之后（`affixPresetLoader` 拿到服务端快照那一刻）。
+ * 为什么在那里：冻的是「官方那份」，服务端没到就冻等于把代码兜底当官方（见
+ * `createDefaultAffixLibraryState` 的告警）。服务端没到就**什么都不做**，下次再说。
+ *
+ * 返回写回后的存档；没有可冻的（或官方那份没到）返回 `null`，调用方可据此跳过通知。
+ */
+export function freezePendingAffixLibrarySets(): AffixLibraryStore | null {
+  if (!isUsingServerAffixPreset()) return null
+  const store = loadAffixLibraryStore()
+  if (!store.sets.some((set) => set.state.origin === 'follow')) return null
+  const next: AffixLibraryStore = {
+    ...store,
+    sets: store.sets.map((set) =>
+      set.state.origin === 'follow'
+        ? { ...set, state: convertAffixLibraryStateToCopy(set.state), updatedAt: Date.now() }
+        : set,
+    ),
+  }
+  writeAffixLibraryStore(next)
+  return next
+}
+
 function writeAffixLibraryStore(store: AffixLibraryStore): void {
   try {
     localStorage.setItem(AFFIX_LIBRARY_STORAGE_KEY, JSON.stringify(store))
@@ -1004,13 +1085,31 @@ export function deleteAffixLibrarySet(store: AffixLibraryStore, id: string): Aff
   return next
 }
 
-/** 把一份状态写回激活的那套（内容编辑都走这里） */
+/**
+ * 写盘前的归一：**过渡态（`'follow'`）在官方那份到手后就地冻成独立**。
+ *
+ * 为什么在写盘这一层兜一道：页面手里的状态可能是「官方那份到达之前」读进来的（还挂着
+ * `'follow'`），照原样写回去会把刚冻好的库又变回跟随 —— 静默撤销冻结。
+ * 冻的时机正好：此刻官方那份已经在手，冻出来的内容与用户眼前的一致。
+ */
+export function normalizeAffixLibraryStateForSave(state: AffixLibraryState): AffixLibraryState {
+  return state.origin === 'follow' && isUsingServerAffixPreset()
+    ? convertAffixLibraryStateToCopy(state)
+    : state
+}
+
+/**
+ * 把一份状态写回激活的那套（内容编辑都走这里）。
+ *
+ * 写盘前先过 `normalizeAffixLibraryStateForSave`（把过渡态冻掉），理由见那里。
+ */
 export function saveAffixLibraryState(state: AffixLibraryState): void {
+  const normalized = normalizeAffixLibraryStateForSave(state)
   const store = loadAffixLibraryStore()
   writeAffixLibraryStore({
     ...store,
     sets: store.sets.map((set) =>
-      set.id === store.activeId ? { ...set, state, updatedAt: Date.now() } : set,
+      set.id === store.activeId ? { ...set, state: normalized, updatedAt: Date.now() } : set,
     ),
   })
 }
@@ -1022,8 +1121,9 @@ export function loadAffixLibraryState(): AffixLibraryState {
 
 /** 全部预设条目（副词条 + 扩展 + 4/5/6 号位主属性 + 2 件套），已应用用户覆盖值 */
 function presetEntriesWithOverrides(state: AffixLibraryState): AffixLibraryEntry[] {
-  // 空配置的库不加载预设：一条都不要（见 `AffixLibraryState.includePreset`）
-  if (!state.includePreset) return []
+  // 只有「跟随」的库才从官方预设拿条目：独立库的条目是新建时复制来的（存在 `customEntries`），
+  // 空配置的库一条都没有 —— 都见 `AffixLibraryState.origin`
+  if (state.origin !== 'follow') return []
   const removed = new Set(state.removedGroupNames)
   return presetAffixEntriesBase().map((entry) => {
     const override = state.overrides[entry.id]
@@ -1147,13 +1247,15 @@ export function removeAffixLibraryEntry(
 }
 
 /**
- * 恢复默认：连带清掉「删过谁」，被删的默认条目一并回来。
+ * 恢复默认：连带清掉「删过谁」，被删的条目一并回来。
  *
- * **保留起点**（`includePreset`）：空配置的库点「恢复默认」应该回到「什么都没有」，
- * 而不是摇身一变开始加载官方预设 —— 那是换了一套语义，不是恢复。
+ * **起点必须显式传**（不给缺省值）：空配置的库回到「什么都没有」，独立库回到
+ * 「按**当前**官方预设重新复制一份」（因此同样要求官方那份已在手，见
+ * `createDefaultAffixLibraryState`）。过渡态（`'follow'`）不作为恢复目标 —— 见
+ * `AffixLibrarySetOrigin`。
  */
-export function restoreAffixLibraryDefaults(includePreset = true): AffixLibraryState {
-  return createDefaultAffixLibraryState(includePreset)
+export function restoreAffixLibraryDefaults(origin: AffixLibrarySetOrigin): AffixLibraryState {
+  return createAffixLibraryStateForOrigin(origin)
 }
 
 // ===================== 词条分组（组名 + 组额度） =====================

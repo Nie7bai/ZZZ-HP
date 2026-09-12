@@ -119,6 +119,7 @@ import {
   affixValuePerCountFromEntries,
   createDefaultAffixLibraryState,
   isAffixLibraryEntryEnabled,
+  isUsingServerAffixPreset,
   loadAffixLibraryState,
   removeAffixLibraryEntry,
   removeAffixLibraryGroup,
@@ -1570,8 +1571,12 @@ function removeAffixLibraryEntryById(entryId: string) {
 }
 
 function restoreAffixLibraryDefaultsHandler() {
-  // 保留起点：空配置的库点「恢复默认」仍是空配置，不该摇身一变开始加载官方预设
-  persistAffixLibrary(restoreAffixLibraryDefaults(affixLibraryState.value.includePreset))
+  // 保留起点：空配置的库点「恢复默认」仍是空配置；独立库按当前官方预设重新复制一份。
+  // 「独立库要复制官方那份」这一条由弹窗先行把官方数据取到（见 AffixLibraryModal.onRestoreDefaults），
+  // 这里再兜一道：万一没取到就不动手，避免把代码兜底当成官方冻进用户的库。
+  const origin = affixLibraryState.value.origin
+  if (origin === 'copy' && !isUsingServerAffixPreset()) return
+  persistAffixLibrary(restoreAffixLibraryDefaults(origin))
 }
 
 function addAffixLibraryGroupHandler(name: string, cap: number) {
