@@ -3657,17 +3657,19 @@ const showcaseTitle = computed(() => {
 .sf-panel-showcase-toggle:hover {
   background: rgba(201, 165, 92, 0.26);
 }
-/* 展示卡片：与顶部槽位卡片的悬浮面板同款视觉（panel-hover-card）；
-   宽度同顶部卡片 min(38rem, 94vw)，不撑满整行 */
+/* 展示卡片：与顶部槽位卡片同款视觉（渐变背景 + 金边 + 金色内阴影，见 .slot-btn.active）；
+   宽度同顶部悬浮卡片 min(38rem, 94vw)，不撑满整行 */
 .sf-panel-showcase-body {
   width: min(38rem, 94vw);
   max-width: 100%;
   box-sizing: border-box;
   padding: 0.65rem 0.8rem;
-  border: 1px solid rgba(201, 165, 92, 0.45);
+  border: 1px solid rgba(201, 165, 92, 0.75);
   border-radius: 10px;
-  background: #1a1e26;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  background: linear-gradient(180deg, #242a36 0%, #1c212b 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(201, 165, 92, 0.28),
+    0 12px 32px rgba(0, 0, 0, 0.45);
   color: #d7dde8;
   display: flex;
   flex-direction: column;
@@ -3758,9 +3760,11 @@ const showcaseTitle = computed(() => {
 
 /* ── 亮色主题覆盖（与计算页其他 light 覆盖同法） ── */
 :global([data-theme='light']) .sf-panel-showcase-body {
-  background: #f6f3ec;
-  border-color: rgba(140, 110, 50, 0.45);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  background: linear-gradient(180deg, #faf8f2 0%, #efece2 100%);
+  border-color: rgba(140, 110, 50, 0.6);
+  box-shadow:
+    inset 0 0 0 1px rgba(140, 110, 50, 0.22),
+    0 12px 32px rgba(0, 0, 0, 0.16);
   color: #3c3a34;
 }
 :global([data-theme='light']) .sf-panel-showcase-title {
