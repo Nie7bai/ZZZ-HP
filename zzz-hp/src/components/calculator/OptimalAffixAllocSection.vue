@@ -98,6 +98,7 @@ import { buildGenericPanelSkillContext } from '@/utils/resolvedHit'
 import {
   buildSkillFlowPageSignature,
   formatAffixCountsSummary,
+  type SkillFlowDisplayOption,
   type SkillFlowPanelOption,
 } from '@/utils/skillFlowPanelSource'
 import {
@@ -191,6 +192,10 @@ const emit = defineEmits<{
   /** 上报「最优分配 / 当前柱」两个来源的主 C 局外面板与摘要，供招式流程三选项使用 */
   'update:panelSourceOptions': [
     value: Partial<Record<'allocation' | 'sweep', SkillFlowPanelOption | null>>,
+  ]
+  /** 面板展示专用通道：上报「最优分配 / 当前柱」的局外 + 局内，供招式流程区「查看面板」展示 */
+  'update:displayPanelSources': [
+    value: Partial<Record<'allocation' | 'sweep', SkillFlowDisplayOption | null>>,
   ]
 }>()
 
@@ -1112,6 +1117,49 @@ function emitPanelSourceOptions() {
   })
 }
 
+/**
+ * 面板展示专用上报（独立通道，不污染流程计算用的 `panelSourceOptions`）。
+ *
+ * 展示功能需要 ②③ 的局外 + 局内；局内（finalPanel）不在流程计算上报里，
+ * 这里把词条分析侧**已算好的** external / finalPanel 一并上报（同一份数值，
+ * 与「面板口径」第三行一致，展示侧不再重复计算）。
+ */
+type DisplayPanelEvalLike = { external: PanelStats; finalPanel: PanelStats } | null | undefined
+
+function buildDisplayPanelSourceOption(
+  mode: 'allocation' | 'sweep',
+  evalResult: DisplayPanelEvalLike,
+  counts: AffixCounts | null | undefined,
+): SkillFlowDisplayOption | null {
+  if (!evalResult?.external || !evalResult.finalPanel) return null
+  const summary = counts
+    ? formatAffixCountsSummary(
+        { ...(counts as unknown as Record<string, number>) },
+        AFFIX_SOURCE_LABELS,
+      )
+    : ''
+  return {
+    mode,
+    mainExternal: evalResult.external,
+    finalPanel: evalResult.finalPanel,
+    label: mode === 'allocation' ? `最优分配（${summary}）` : `当前柱（${summary}）`,
+    signature: panelSourceSignature.value,
+  }
+}
+
+function emitDisplayPanelSources() {
+  const result = affixAllocResult.value
+  const selectedCountsValue = selectedCounts.value
+  emit('update:displayPanelSources', {
+    allocation: buildDisplayPanelSourceOption(
+      'allocation',
+      affixAllocEval.value,
+      result?.counts ?? null,
+    ),
+    sweep: buildDisplayPanelSourceOption('sweep', selectedEval.value, selectedCountsValue),
+  })
+}
+
 function buildPanelSourceOption(
   mode: 'allocation' | 'sweep',
   mainExternal: PanelStats,
@@ -1517,14 +1565,18 @@ const affixAllocEval = computed(() => {
   return evaluateAffixCounts(evalCtx.value, result.counts, result.panelDeltas, result.valuePerCount)
 })
 
-// 两个来源的面板就绪 / 失效时上报给页级（招式流程三选项据此启用与判过期）
+// 两个来源的面板就绪 / 失效时上报给页级（招式流程三选项据此启用与判过期；
+// 面板展示专用通道同一时机一并上报）
 watch(
   [
     () => affixAllocEval.value?.external ?? null,
     () => selectedEval.value?.external ?? null,
     panelSourceSignature,
   ],
-  () => emitPanelSourceOptions(),
+  () => {
+    emitPanelSourceOptions()
+    emitDisplayPanelSources()
+  },
   { immediate: true },
 )
 

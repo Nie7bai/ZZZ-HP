@@ -9,6 +9,7 @@ import SkillFlowSection from '@/components/calculator/SkillFlowSection.vue'
 import {
   buildSkillFlowPageSignature,
   resolveSkillFlowPanelSource,
+  type SkillFlowDisplayOption,
   type SkillFlowPanelOption,
   type SkillFlowPanelSourceMode,
 } from '@/utils/skillFlowPanelSource'
@@ -490,6 +491,22 @@ const skillFlowPageSignature = computed(() =>
 )
 
 /** 当前选择解析出的主 C 局外面板覆盖值（null = 用角色配置面板） */
+/**
+ * 面板展示专用通道（与流程计算用的 `skillFlowPanelOptions` 分开）：
+ * 词条分析侧上报的 ②③ 局外 + 局内面板，招式流程区「查看面板」展示用。
+ */
+const displayPanelSources = ref<
+  Partial<Record<'allocation' | 'sweep', SkillFlowDisplayOption | null>>
+>({})
+
+/** 招式流程区「查看面板」（config 选项）展示用的顶部同源预览：当前编辑槽位的局外 + 局内 */
+const configPanelPreviewForSkillFlow = computed(() => {
+  const previews = stickySlotPanelPreviews.value
+  const preview = previews[activeSlot.value]
+  if (!preview || !preview.external) return null
+  return { external: preview.external, final: preview.final ?? null }
+})
+
 const skillFlowPanelResolved = computed(() =>
   resolveSkillFlowPanelSource({
     mode: skillFlowPanelSource.value,
@@ -2197,6 +2214,7 @@ defineExpose({ scrollToSection, setCalcMode, toggleOptimalAffixSection, panelCal
         @update:hit-damages="hitDamages = $event"
         @update:hit-calc-results="hitCalcResults = $event"
         @update:panel-source-options="skillFlowPanelOptions = $event"
+        @update:display-panel-sources="displayPanelSources = $event"
       />
     </KeepAlive>
 
@@ -2219,6 +2237,8 @@ defineExpose({ scrollToSection, setCalcMode, toggleOptimalAffixSection, panelCal
         :scheme-name="currentSchemeName"
         :panel-source-mode="skillFlowPanelSource"
         :panel-source-availability="skillFlowPanelAvailability"
+        :display-panel-sources="displayPanelSources"
+        :config-panel-preview="configPanelPreviewForSkillFlow"
         @update:panel-source-mode="skillFlowPanelSource = $event"
         v-model:slots="schemeSlots"
         v-model:edited-slot-index="activeSlot"

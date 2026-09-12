@@ -34,6 +34,25 @@ export interface SkillFlowPanelOption {
 }
 
 /**
+ * 面板展示专用候选（独立通道，与流程计算用的 `SkillFlowPanelOption` 分开）。
+ *
+ * 只服务「查看面板」展示功能（招式流程区三选项下方）：展示 ②③ 的局外 + 局内。
+ * 由词条分析侧在算出结果时一并上报（external / finalPanel 都是已算好的值，
+ * 与词条分析页「面板口径」第三行同一份数值），不在展示侧重复计算、防止分叉。
+ */
+export interface SkillFlowDisplayOption {
+  mode: 'allocation' | 'sweep'
+  /** 局外：该来源的主 C 局外面板 */
+  mainExternal: PanelStats
+  /** 局内（含增益）：实际参与伤害结算的最终面板 */
+  finalPanel: PanelStats
+  /** 展示用摘要，如「最优分配 30 条」 */
+  label: string
+  /** 算出这份面板时的上下文签名；与当前页级签名不一致 = 过期 */
+  signature: string
+}
+
+/**
  * 页级上下文签名：**由页级能看到、且影响招式结算结果的输入拼成**。
  *
  * 用途只有一个：判断词条分析上报的那份面板是否还能代表「当前配置」。

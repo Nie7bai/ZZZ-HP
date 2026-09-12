@@ -62,6 +62,9 @@ import {
 } from '@/utils/skillTalentLevels'
 
 import { teamSlotDisplayLabel } from '@/utils/teamSlotLabel'
+import { formatCalcDecimal } from '@/utils/calcNumberFormat'
+import type { PanelStats } from '@/types/calculatorPanel'
+import type { SkillFlowDisplayOption } from '@/utils/skillFlowPanelSource'
 
 const props = defineProps<{
   teamSlots: TeamSlot[]
@@ -80,6 +83,10 @@ const props = defineProps<{
     'config' | 'allocation' | 'sweep',
     { enabled: boolean; reason?: string | null; detail?: string | null }
   >
+  /** 面板展示专用：②③ 的局外 + 局内（词条分析侧独立通道上报，见 `SkillFlowDisplayOption`） */
+  displayPanelSources?: Partial<Record<'allocation' | 'sweep', SkillFlowDisplayOption | null>>
+  /** 面板展示（config 选项）：与顶部槽位卡片**同一份**预览（局外 + 局内），保证数据完全一致 */
+  configPanelPreview?: { external: PanelStats; final: PanelStats | null } | null
 }>()
 
 const emit = defineEmits<{
@@ -2142,6 +2149,74 @@ const panelSourceNotice = computed(() => {
   if (!option || option.enabled) return null
   return `${option.label}：${option.reason ?? '暂不可用'}（已回落到角色配置面板）`
 })
+
+/**
+ * 「查看面板」展示：字段表与格式化与顶部槽位卡片同口径（TeamSlotSwitcher）。
+ * 保持单一事实来源的折中：这是纯展示常量，复制维护并注明来源。
+ */
+const PANEL_PREVIEW_FIELDS: { key: keyof PanelStats; label: string }[] = [
+  { key: 'hp', label: '生命值' },
+  { key: 'atk', label: '攻击力' },
+  { key: 'def', label: '防御力' },
+  { key: 'critRate', label: '暴击率%' },
+  { key: 'critDmg', label: '爆伤%' },
+  { key: 'penRate', label: '穿透率%' },
+  { key: 'pen', label: '穿透值' },
+  { key: 'dmgBonus', label: '增伤%' },
+  { key: 'reduceDefense', label: '无视防御/减防%' },
+  { key: 'mastery', label: '精通' },
+  { key: 'anomalyControl', label: '异常掌控' },
+  { key: 'energyRegen', label: '能量回复效率%' },
+]
+
+function formatPanelStat(key: keyof PanelStats, value: number): string {
+  if (
+    key === 'hp' ||
+    key === 'atk' ||
+    key === 'def' ||
+    key === 'pen' ||
+    key === 'mastery' ||
+    key === 'anomalyControl'
+  ) {
+    return Math.round(value).toLocaleString('en-US')
+  }
+  return formatCalcDecimal(value, 2)
+}
+
+/** 面板展示开关：三选项下方的「查看面板」按钮控制 */
+const panelShowcaseOpen = ref(false)
+
+const showcaseMode = computed<'config' | 'allocation' | 'sweep'>(
+  () => props.panelSourceMode ?? 'config',
+)
+
+/** ②③ 展示数据（config 用顶部同源预览，不走这条通道） */
+const showcaseDisplayOption = computed<SkillFlowDisplayOption | null>(() => {
+  const mode = showcaseMode.value
+  if (mode === 'config') return null
+  return props.displayPanelSources?.[mode] ?? null
+})
+
+/** ②③ 未算 / 签名过期的原因（直接引用页级 availability 的口径，不重复判断） */
+const showcaseUnavailableReason = computed<string | null>(() => {
+  if (showcaseMode.value === 'config') return null
+  const option = panelSourceOptions.value.find((item) => item.mode === showcaseMode.value)
+  return option && !option.enabled ? (option.reason ?? '暂不可用') : null
+})
+
+/** 当前展示的对象：局外 + 局内（②③ 有签名判定；config 就是顶部卡片同源数据） */
+const showcasePanel = computed<{ external: PanelStats; final: PanelStats | null } | null>(() => {
+  const mode = showcaseMode.value
+  if (mode === 'config') return props.configPanelPreview ?? null
+  const option = showcaseDisplayOption.value
+  if (!option || showcaseUnavailableReason.value) return null
+  return { external: option.mainExternal, final: option.finalPanel }
+})
+
+const showcaseTitle = computed(() => {
+  const option = panelSourceOptions.value.find((item) => item.mode === showcaseMode.value)
+  return option?.label ?? '角色配置面板'
+})
 </script>
 
 <template>
@@ -2199,6 +2274,52 @@ const panelSourceNotice = computed(() => {
         {{ option.label }}
       </button>
       <span v-if="panelSourceNotice" class="sf-panel-source-notice">{{ panelSourceNotice }}</span>
+    </div>
+
+    <!-- 查看面板：三选项下方按钮，点击展示当前选项的局外 + 局内（风格与顶部槽位卡片一致） -->
+    <div class="sf-panel-showcase">
+      <button
+        type="button"
+        class="sf-panel-showcase-toggle"
+        :aria-expanded="panelShowcaseOpen"
+        @click="panelShowcaseOpen = !panelShowcaseOpen"
+      >
+        {{ panelShowcaseOpen ? '收起面板' : '查看面板' }}
+      </button>
+      <div v-if="panelShowcaseOpen" class="sf-panel-showcase-body">
+        <p class="sf-panel-showcase-title">{{ showcaseTitle }}</p>
+        <p v-if="showcaseUnavailableReason" class="sf-panel-showcase-empty">
+          {{ showcaseUnavailableReason }}（先用「角色配置面板」）→ 去「最优词条分配」里算一次再回来看
+        </p>
+        <template v-else-if="showcasePanel">
+          <p class="sf-panel-showcase-sub">局外面板</p>
+          <dl class="sf-panel-showcase-grid">
+            <div
+              v-for="field in PANEL_PREVIEW_FIELDS"
+              :key="`ext-${field.key}`"
+              class="sf-panel-showcase-item"
+            >
+              <dt>{{ field.label }}</dt>
+              <dd>{{ formatPanelStat(field.key, showcasePanel.external[field.key]) }}</dd>
+            </div>
+          </dl>
+          <template v-if="showcasePanel.final">
+            <p class="sf-panel-showcase-sub">局内面板（含增益）</p>
+            <dl class="sf-panel-showcase-grid">
+              <div
+                v-for="field in PANEL_PREVIEW_FIELDS"
+                :key="`fin-${field.key}`"
+                class="sf-panel-showcase-item"
+              >
+                <dt>{{ field.label }}</dt>
+                <dd>{{ formatPanelStat(field.key, showcasePanel.final[field.key]) }}</dd>
+              </div>
+            </dl>
+          </template>
+          <p v-else class="sf-panel-showcase-empty">暂无局内结果</p>
+        </template>
+        <p v-else class="sf-panel-showcase-empty">暂无可展示的面板数据</p>
+      </div>
     </div>
 
     <div v-show="expanded" class="skill-flow-modal skill-flow-editor">
@@ -3466,6 +3587,83 @@ const panelSourceNotice = computed(() => {
   cursor: not-allowed;
 }
 .sf-panel-source-notice {
+  color: #d8a25c;
+  font-size: 0.78rem;
+}
+.sf-panel-showcase {
+  margin-top: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+.sf-panel-showcase-toggle {
+  appearance: none;
+  border: 1px solid #c9a55c;
+  background: rgba(201, 165, 92, 0.14);
+  color: #f0d7a2;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.34rem 0.9rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+.sf-panel-showcase-toggle:hover {
+  background: rgba(201, 165, 92, 0.26);
+  border-color: #dfc07a;
+}
+.sf-panel-showcase-body {
+  width: 100%;
+  box-sizing: border-box;
+  background: #14181f;
+  border: 1px solid #2a3038;
+  border-radius: 10px;
+  padding: 0.7rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.sf-panel-showcase-title {
+  margin: 0;
+  color: #f0d7a2;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.sf-panel-showcase-sub {
+  margin: 0.15rem 0 0;
+  color: #9aa3b0;
+  font-size: 0.78rem;
+}
+.sf-panel-showcase-grid {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.3rem 1rem;
+}
+.sf-panel-showcase-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-bottom: 1px dashed #262d38;
+  padding-bottom: 0.18rem;
+}
+.sf-panel-showcase-item dt {
+  color: #9aa3b0;
+  font-size: 0.76rem;
+}
+.sf-panel-showcase-item dd {
+  margin: 0;
+  color: #e6ecf4;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+.sf-panel-showcase-empty {
+  margin: 0;
   color: #d8a25c;
   font-size: 0.78rem;
 }
