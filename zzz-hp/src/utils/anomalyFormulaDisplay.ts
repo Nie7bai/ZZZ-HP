@@ -275,11 +275,6 @@ export function buildAlignedAnomalyFormulaGroups(
   return [base, anomaly]
 }
 
-export function formatFormulaGroupTitle(group: Pick<AlignedAnomalyFormulaGroup, 'title' | 'agentLabel' | 'hint'>) {
-  const prefix = group.agentLabel ? `${group.agentLabel} · ` : ''
-  return { prefix, title: group.title, hint: group.hint }
-}
-
 export function resolveAnomalyBaseWithMutation(
   p: Pick<DamageCalcResult, 'anomalyBaseExpected' | 'mutationZone' | 'remielSelfRadianceActive'>,
 ): number {

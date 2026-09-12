@@ -659,25 +659,6 @@ export function effectMatchesTeamProfessionGate(
   return thresholds.includes(teamProfessionCount)
 }
 
-/**
- * @deprecated 人数条件不再覆盖数值；请用 effectMatchesTeamProfessionGate。
- * 保留：不满足条件 → null；满足 → undefined（继续走固定/叠层/转模自身数值）。
- */
-export function resolveTeamProfessionAmount(
-  effect: Pick<
-    BuffEffect,
-    | 'kind'
-    | 'teamProfession'
-    | 'teamProfessionValues'
-    | 'teamProfessionMinCount'
-    | 'value'
-  >,
-  teamProfessionCount: number,
-): number | null | undefined {
-  if (!effectMatchesTeamProfessionGate(effect, teamProfessionCount)) return null
-  return undefined
-}
-
 export function formatTeamProfessionGateLabel(
   effect: Pick<
     BuffEffect,
@@ -719,33 +700,6 @@ export function formatElementFilterLabel(
   const names = filter.map((item) => String(item).trim()).filter(Boolean)
   if (!names.length) return ''
   return `[${names.join('、')}]`
-}
-
-export function filterEffects(
-  effects: BuffEffect[],
-  options: {
-    applyTarget?: BuffApplyTarget
-    ctx?: SkillCalcContext | null
-    element?: string
-    enabledIds?: Set<string> | null
-    disabledIds?: Set<string> | null
-  } = {},
-): BuffEffect[] {
-  return effects.filter((effect) => {
-    if (options.applyTarget && effect.applyTarget !== options.applyTarget) return false
-    if (options.enabledIds && !options.enabledIds.has(effect.id)) {
-      if (effect.enabledDefault === false) return false
-      if (options.disabledIds?.has(effect.id)) return false
-      if (options.enabledIds.size > 0 && !options.enabledIds.has(effect.id)) {
-        // enabledIds 非空表示显式勾选集合
-        return false
-      }
-    }
-    if (options.disabledIds?.has(effect.id)) return false
-    if (!effectMatchesContext(effect, options.ctx)) return false
-    if (!effectMatchesElement(effect, options.element ?? options.ctx?.element)) return false
-    return true
-  })
 }
 
 export function isEffectEnabled(
@@ -824,7 +778,7 @@ export function resolveEffectsToMods(
 
     const stacks =
       options.stacksByEffectId?.[effect.id] ?? effect.defaultStacks ?? 1
-    let amount =
+    const amount =
       effect.kind === 'convert'
         ? resolveConvertValue(
             effect,
@@ -1143,37 +1097,6 @@ export function packFromBlocks(blocks: BuffEffectBlock[]): AgentMindscapeRankBuf
   }
 }
 
-export function normalizeSelfTeamBuffsWithEffects(value: unknown): AgentMindscapeRankBuffs {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    const entry = value as Record<string, unknown>
-    if (Array.isArray(entry.effectBlocks) && entry.effectBlocks.length > 0) {
-      return packFromBlocks(normalizeBuffEffectBlocks(entry.effectBlocks))
-    }
-    if (Array.isArray(entry.effects) && entry.effects.length > 0) {
-      return packFromEffects(normalizeBuffEffects(entry.effects))
-    }
-    if (entry.selfMods || entry.teamMods) {
-      const effects = [
-        ...flatModsToEffects(normalizeLooseMods(entry.selfMods), 'self'),
-        ...flatModsToEffects(normalizeLooseMods(entry.teamMods), 'team'),
-      ]
-      return packFromEffects(effects)
-    }
-  }
-  return packFromEffects([])
-}
-
-function normalizeLooseMods(value: unknown): BuffStatModifiers {
-  const empty = emptyMods()
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return empty
-  const entry = value as Record<string, unknown>
-  const result = { ...empty }
-  for (const key of BUFF_STAT_KEYS) {
-    result[key] = readNumber(entry[key])
-  }
-  return result
-}
-
 /** 收集效果时允许只带 blocks/effects 的轻量 pack（如邦布精炼临时对象） */
 export type BuffEffectPackLike = {
   effectBlocks?: Array<{
@@ -1226,10 +1149,6 @@ export function collectBlockEntriesFromPack(
   })
   if (!effects.length) return []
   return [{ blockId: 'legacy', blockName: '增益', blockNote: '', effects }]
-}
-
-export function mergeEffectLists(...lists: BuffEffect[][]): BuffEffect[] {
-  return lists.flat()
 }
 
 export const SKILL_CATEGORY_LABELS: Record<BuffSkillTargetId, string> = {

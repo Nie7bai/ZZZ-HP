@@ -1,16 +1,6 @@
 import type { DamageEvent, DamageEventMode, DamageEventModeType } from '@/types/calculator'
-import { buildDamageModeTeamKey } from '@/utils/damageEventOwner'
 
 const STORAGE_KEY = 'zzz-hp-custom-damage-event-modes'
-
-function cloneDamageEvents(events: DamageEvent[]): DamageEvent[] {
-  return events.map((event) => ({
-    ...event,
-    ownerAgentId: event.ownerAgentId ?? null,
-    triggerAgentId: event.triggerAgentId ?? null,
-    multOverrides: event.multOverrides ? { ...event.multOverrides } : null,
-  }))
-}
 
 function safeParse(raw: string | null): DamageEventMode[] {
   if (!raw) return []
@@ -66,15 +56,6 @@ function normalizeMode(item: Record<string, unknown>): DamageEventMode {
   }
 }
 
-export function resolveDamageModeTeamKey(
-  events: DamageEvent[],
-  mainAgentId: string,
-  storedTeamKey?: string,
-): string {
-  if (storedTeamKey) return storedTeamKey
-  return buildDamageModeTeamKey(events, mainAgentId)
-}
-
 export function loadCustomModes(): DamageEventMode[] {
   if (typeof localStorage === 'undefined') return []
   return safeParse(localStorage.getItem(STORAGE_KEY))
@@ -85,25 +66,4 @@ export function saveCustomModes(modes: DamageEventMode[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(modes))
 }
 
-export function upsertCustomMode(mode: DamageEventMode): DamageEventMode[] {
-  const list = loadCustomModes()
-  const normalized: DamageEventMode = {
-    ...mode,
-    events: cloneDamageEvents(mode.events),
-  }
-  const index = list.findIndex((item) => item.id === normalized.id)
-  if (index >= 0) list[index] = normalized
-  else list.push(normalized)
-  saveCustomModes(list)
-  return list
-}
 
-export function removeCustomMode(id: string): DamageEventMode[] {
-  const list = loadCustomModes().filter((item) => item.id !== id)
-  saveCustomModes(list)
-  return list
-}
-
-export function createCustomModeId() {
-  return `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
-}

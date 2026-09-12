@@ -470,28 +470,6 @@ export function mergeDefaultBuffSelectionIntoMulti(
   }
 }
 
-/** 从旧版单槽 Buff 选择迁移（主 C 视角） */
-export function migrateLegacyBuffSelection(
-  legacy: BuffSelectionState,
-  effects: CollectedEffect[],
-): MultiSlotBuffSelection {
-  const multi = createEmptyMultiSlotBuffSelection()
-  const effectById = new Map(effects.map((item) => [item.effect.id, item.effect]))
-  for (const [id, enabled] of Object.entries(legacy.enabledIds)) {
-    const effect = effectById.get(id)
-    buffStoreForEffect(multi, 0, effect?.applyTarget).enabledIds[id] = enabled
-  }
-  for (const [id, stacks] of Object.entries(legacy.stacksByEffectId)) {
-    const effect = effectById.get(id)
-    buffStoreForEffect(multi, 0, effect?.applyTarget).stacksByEffectId[id] = stacks
-  }
-  for (const [id, value] of Object.entries(legacy.convertInputs)) {
-    const effect = effectById.get(id)
-    buffStoreForEffect(multi, 0, effect?.applyTarget).convertInputs[id] = value
-  }
-  return multi
-}
-
 /** 转模增益角色局外面板：仅录入转模来源属性 */
 export type ConvertSlotPanels = Record<string, Partial<Record<CharacterAttrKey, number>>>
 
@@ -907,13 +885,6 @@ export function collectConvertSourceMarksForSlot(
   return [...marks.values()]
 }
 
-export function convertSourceAttrSet(
-  marks: ConvertSourceMark[],
-  panelSource: 'external' | 'final',
-): Set<CharacterAttrKey> {
-  return new Set(marks.filter((item) => item.panelSource === panelSource).map((item) => item.attr))
-}
-
 export function convertSourceAttrMatchesPanelSlot(
   attr: CharacterAttrKey,
   slot: { kind?: string; key?: string; id?: string },
@@ -955,25 +926,6 @@ export function teamHasConvertSupportSlots(
   return collectConvertSupportSlots(ctx, options).length > 0
 }
 
-export function omitAgentFromConvertSlotPanels(
-  panels: ConvertSlotPanels | undefined,
-  agentId: string,
-): ConvertSlotPanels {
-  if (!panels?.[agentId]) return { ...panels }
-  const next = { ...panels }
-  delete next[agentId]
-  return next
-}
-
-export function omitAgentFromAnomalySlotPanels(
-  panels: Record<string, PanelStats> | undefined,
-  agentId: string,
-): Record<string, PanelStats> | undefined {
-  if (!panels?.[agentId]) return panels
-  const next = { ...panels }
-  delete next[agentId]
-  return next
-}
 
 /** 需录入局外面板的转模增益角色（非主 C、非异常产生角色） */
 export function collectConvertSupportSlots(

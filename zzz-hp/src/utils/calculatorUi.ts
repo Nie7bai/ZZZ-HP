@@ -509,13 +509,6 @@ export function buffStatFieldLabel(field: (typeof BUFF_STAT_FIELDS)[number]) {
   return field.unit === 'flat' ? `${field.label}（数值）` : `${field.label}%`
 }
 
-export const TWO_PIECE_BUFF_STAT_FIELDS = BUFF_STAT_FIELDS.filter(
-  (field) =>
-    field.key !== 'inCombatHpPercent' &&
-    field.key !== 'inCombatAtkPercent' &&
-    field.key !== 'inCombatDefPercent',
-)
-
 export function normalizeTwoPieceMods(value: unknown): BuffStatModifiers {
   const mods = normalizeBuffStatModifiers(value)
   if (!mods.externalHpPercent && mods.inCombatHpPercent) {
@@ -638,22 +631,6 @@ export function getMindscapeNote(agent: { mindscapeNotes?: string[] }, rank: num
   return agent.mindscapeNotes?.[clampedRank]?.trim() ?? ''
 }
 
-/** 影画注释按阶叠加：N 影包含 0～N 影全部非空条目 */
-export function getMindscapeNotesUpToRank(
-  agent: { mindscapeNotes?: string[] },
-  rank: number,
-): { rank: number; text: string }[] {
-  const clampedRank = Math.min(6, Math.max(0, Math.round(rank)))
-  const notes: { rank: number; text: string }[] = []
-
-  for (let index = 0; index <= clampedRank; index++) {
-    const text = agent.mindscapeNotes?.[index]?.trim() ?? ''
-    if (text) notes.push({ rank: index, text })
-  }
-
-  return notes
-}
-
 export function createEmptyRefinementMods() {
   return REFINEMENT_RANKS.map(() => createEmptyBuffStatModifiers())
 }
@@ -739,12 +716,6 @@ export function normalizeWengineRefinementBuffs(value: unknown): AgentMindscapeR
   return REFINEMENT_RANKS.map((_, index) => normalizeSelfTeamBuffs(value[index] ?? {}))
 }
 
-export function normalizeRefinementMods(value: unknown): BuffStatModifiers[] {
-  const empty = createEmptyRefinementMods()
-  if (!Array.isArray(value)) return empty
-  return REFINEMENT_RANKS.map((_, index) => normalizeBuffStatModifiers(value[index]))
-}
-
 /**
  * 倍率类字段：叠加规则是「百分点增量」直接加算，而非乘算。
  *
@@ -812,17 +783,6 @@ export function getMindscapeRankOnlyBuffs(
   return mindscapeBuffs[clampedRank] ?? createEmptySelfTeamBuffs()
 }
 
-export function hasBuffStatModifiers(mods: BuffStatModifiers) {
-  return BUFF_STAT_FIELDS.some((field) => mods[field.key] !== 0)
-}
-
-export function formatBuffModsSummary(mods: BuffStatModifiers) {
-  const parts = BUFF_STAT_FIELDS.filter((field) => mods[field.key] !== 0).map((field) => {
-    const value = mods[field.key]
-    return `${buffStatFieldLabel(field)} ${value > 0 ? '+' : ''}${value}`
-  })
-  return parts.length ? parts.join('，') : '无'
-}
 
 export const AGENT_BASE_PANEL_FIELDS: {
   key: keyof AgentBasePanel
@@ -967,29 +927,3 @@ export function normalizeWengineAdvancedStats(value: unknown): WengineAdvancedSt
   return result
 }
 
-export function roleShort(role: string) {
-  const map: Record<string, string> = {
-    强攻: '强',
-    击破: '破',
-    异常: '异',
-    支援: '援',
-    防护: '防',
-    命破: '命',
-    锋御: '锋',
-  }
-  return map[role] ?? role.slice(0, 1)
-}
-
-export function elementShort(element: string) {
-  const map: Record<string, string> = {
-    风: '风',
-    火: '火',
-    电: '电',
-    物理: '物',
-    以太: '以',
-    冰: '冰',
-    霜: '霜',
-    流明: '流',
-  }
-  return map[element] ?? element.slice(0, 1)
-}

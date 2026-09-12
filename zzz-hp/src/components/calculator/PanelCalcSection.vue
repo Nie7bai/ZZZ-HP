@@ -12,7 +12,6 @@ import type {
   BuffStatKey,
   BuffStatModifiers,
   CharacterAttrKey,
-  DamageEventMultOverrides,
   DriveDiscBuffDoc,
   SkillCalcContext,
   SkillSubcategory,
@@ -75,7 +74,6 @@ import {
   disorderLabelFromResult,
   applyOwnerPanelMultOverrides,
   applyRadianceBonusMultOverrides,
-  resolveRadianceBonusMultDefaults,
 } from '@/utils/damageEvent'
 import {
   buildGenericPanelSkillContext,
@@ -142,7 +140,6 @@ import {
 } from '@/utils/zoneSourceTips'
 import DirectDamageFormulaAligned from '@/components/calculator/DirectDamageFormulaAligned.vue'
 import DamageOwnerShareBlock from '@/components/calculator/DamageOwnerShareBlock.vue'
-import type { PanelScreenshotRecognition } from '@/types/panelScreenshot'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 
 const MB_PROFESSION = '命破'
@@ -794,25 +791,6 @@ function formatFormulaNumber(v: number, precision = 4) {
     return v.toLocaleString('en-US')
   }
   return formatCalcDecimal(v, precision)
-}
-
-function applyRecognitionToExternalPanel(result: PanelScreenshotRecognition) {
-  // 截图识别写「面板导入」页的草稿；词条数不再反推（`dev-docs/panel-dual-source.md` §7）——
-  // 反推会静默改写面板，且面板这一路根本不需要条数。
-  for (const [key, value] of Object.entries(result.externalPanel) as [
-    keyof PanelStats,
-    number,
-  ][]) {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      externalPanel[key] = value
-    }
-  }
-
-  // 识别到的 4/5/6 主属性归「词条导入」那一份的输入（面板本身不动它）
-  const mains = result.driveDiscMainStats
-  if (mains?.slot4MainStat) affixDriveDiscMainStats.slot4MainStat = mains.slot4MainStat
-  if (mains?.slot5MainStat) affixDriveDiscMainStats.slot5MainStat = mains.slot5MainStat
-  if (mains?.slot6MainStat) affixDriveDiscMainStats.slot6MainStat = mains.slot6MainStat
 }
 
 /** 导入确认后：按激活那份刷新 live 面板编辑器（面板页编辑的是「面板导入」那份） */
@@ -3259,101 +3237,6 @@ function loadSnapshot(
   }
 }
 
-/**
- * 招式倍率的面板默认值，供准备阶段预填。
- * 属性异常/异放/耀变取异常类触发者；紊乱/乱流取异常强度提供者；直伤取持有者。
- */
-function resolveMultDefaultsForEvent(
-  hit: ResolvedHit,
-): Partial<Record<keyof DamageEventMultOverrides, number>> {
-  const result: Partial<Record<keyof DamageEventMultOverrides, number>> = {}
-  const damageType = hit.skill.damageType
-  // 默认倍率要的是「未覆写时那条招式的面板」：同一段招式计算，只是不带倍率覆写
-  const detail = evaluateOptimalEventDetail(
-    skillFlowEvalCtx.value,
-    skillFlowMainExternal.value,
-    { ...hit, multOverrides: null },
-  )
-
-  if (damageType === 'anomalyRelease') {
-    const triggerId = hit.triggerAgentId ?? hit.ownerAgentId
-    const trigSlotIndex = props.teamSlots.findIndex((slot) => slot.agentId === triggerId)
-    const { skillCtx, ownerSlotIndex } = buildHitSkillContext(hit)
-    const trigExternal =
-      triggerId === hit.ownerAgentId
-        ? resolveOwnerExternalPanel(ownerSlotIndex, hit.ownerAgentId)
-        : resolveOwnerExternalPanel(trigSlotIndex, triggerId)
-    const trigAgent = props.agents.find((item) => item.id === triggerId)
-    const trigPanelCtx =
-      triggerId === hit.ownerAgentId
-        ? {
-            ...buildPanelCalcContextForSlot(
-              ownerSlotIndex,
-              buildExtraModsForHit(hit, hit.ownerAgentId),
-            ),
-            skillContext: skillCtx,
-          }
-        : {
-            ...buildPanelCalcContextForSlot(
-              trigSlotIndex,
-              buildExtraModsForHit(hit, triggerId),
-            ),
-            // 元素（属性系别）恒取异常强度提供者，避免触发者自身属性误匹配元素限定增益
-            skillContext: buildSkillContextFromHit(
-              hit,
-              resolveHitPowerElement(hit) || trigAgent?.element,
-            ),
-          }
-    const fields = resolveAnomalyReleaseMultFields(
-      trigExternal,
-      trigPanelCtx,
-      resolveHitPowerElement(hit),
-    )
-    result.anomalyReleaseMult = fields.anomalyReleaseMult
-    result.anomalyReleaseMultFactor = fields.anomalyReleaseMultFactor
-    return result
-  }
-
-  if (damageType === 'direct') {
-    const panel = detail?.finalPanel ?? finalPanel.value
-    result.directDmgMult = panel.directDmgMult
-    result.settlementDmgMult = panel.settlementDmgMult
-    result.directDmgMultFactor = panel.directDmgMultFactor
-    return result
-  }
-
-  if (damageType === 'anomaly') {
-    // 类型倍率取异常类触发者面板（统一产物里的 bonusFinalPanel 即该面板）
-    const panel = detail?.bonusFinalPanel ?? detail?.finalPanel ?? finalPanel.value
-    result.anomalyMult = panel.anomalyMult
-    result.anomalyMultFactor = panel.anomalyMultFactor
-    return result
-  }
-
-  if (damageType === 'radiance') {
-    Object.assign(
-      result,
-      resolveRadianceBonusMultDefaults(detail?.bonusFinalPanel ?? finalPanel.value),
-    )
-    return result
-  }
-
-  // 紊乱 / 乱流：倍率取异常强度提供者
-  const panel = detail?.producerFinalPanel
-  if (!panel) return result
-
-  if (damageType === 'disorder') {
-    result.disorderBaseMult = panel.disorderBaseMult
-    result.disorderBaseMultFactor = panel.disorderBaseMultFactor
-    result.disorderCompMult = panel.disorderCompMult
-  } else if (damageType === 'turbulence') {
-    result.turbulenceBaseMult = panel.turbulenceBaseMult
-    result.turbulenceBaseMultFactor = panel.turbulenceBaseMultFactor
-    result.turbulenceCompMult = panel.turbulenceCompMult
-  }
-  return result
-}
-
 /** 导入草稿等场景：用指定局外 + 当前增益上下文实时算局内 */
 function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats | null {
   const index = slotIndex ?? mainSlotIndex.value
@@ -3373,14 +3256,11 @@ defineExpose({
   loadSnapshot,
   beginRestore,
   endRestore,
-  loadAffixFromCurrentSlot,
-  applyRecognitionToExternalPanel,
   syncLivePanelFromCommitted,
   previewFinalPanel,
   convertAttrDefaults,
   convertPanelSourceValues,
   panelSourceValuesBySlot,
-  resolveMultDefaultsForEvent,
   getAttrDefaultsForSlot,
   getPanelSourceValuesForSlot,
   panelBreakdown,

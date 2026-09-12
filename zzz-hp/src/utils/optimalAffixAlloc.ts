@@ -982,7 +982,6 @@ export function evaluateOptimalEventDetail(
   }
 
   const sub = ctx.resolveSubcategory?.(hit.skill.buffAnchorId ?? null) ?? null
-  const overrides = hit.multOverrides
   // 倍率修正只写面板，避免与 resolveSkillMults 双重相乘
   const effectiveSub =
     sub && panelOverrides ? mergeSkillSubcategoryMultOverrides(sub, panelOverrides) : sub

@@ -90,17 +90,6 @@ export function resolveDamageCalcResistanceElements(
   }
 }
 
-export function findLuminousSlotIndex(
-  teamSlots: Array<{ agentId: string }>,
-  agents: Array<{ id: string; element: string }>,
-): number | null {
-  for (let index = 0; index < teamSlots.length; index += 1) {
-    const agent = agents.find((item) => item.id === teamSlots[index]?.agentId)
-    if (isLuminousAgent(agent)) return index
-  }
-  return null
-}
-
 export function findLuminousAgentInTeam(
   teamSlots: Array<{ agentId: string }>,
   agents: Array<{ id: string; element: string }>,
@@ -177,11 +166,6 @@ export function computeRemielSelfRadianceSpecialLevelZone(level: number): number
   return 1 + 0.025 * clampRemielLevel(level)
 }
 
-/** @deprecated 使用 computeRemielSelfRadianceSpecialLevelZone */
-export function computeRemielSelfRadianceLevelZone(level: number): number {
-  return computeRemielSelfRadianceSpecialLevelZone(level)
-}
-
 /** 标准等级区 = 1 + (等级 - 1) / 59 */
 export function computeRemielSelfRadianceStandardLevelZone(level: number): number {
   const safeLevel = clampRemielLevel(level)
@@ -205,16 +189,6 @@ export function computeRemielSelfAnomalyBase(
   return atk * masteryZone * specialLevelZone * mutationZone * levelZone
 }
 
-export function resolveWengineMasteryForSlot(
-  teamSlots: Array<{ wengineId?: string }>,
-  wengines: Array<{ id: string; advancedStats: { mastery: number } }>,
-  slotIndex: number,
-): number {
-  const wengineId = teamSlots[slotIndex]?.wengineId
-  if (!wengineId || wengineId === 'none') return 0
-  return wengines.find((item) => item.id === wengineId)?.advancedStats.mastery ?? 0
-}
-
 /** 本人耀变特殊攻/精公式：仅当异常强度提供者为蕾米埃尔时启用 */
 export function isRemielSelfRadiancePowerProvider(
   anomalyPowerAgentId: string | null | undefined,
@@ -223,23 +197,3 @@ export function isRemielSelfRadiancePowerProvider(
   return Boolean(remielId && anomalyPowerAgentId && anomalyPowerAgentId === remielId)
 }
 
-/** @deprecated 使用 isRemielSelfRadiancePowerProvider（按强度提供者，而非触发者） */
-export function isRemielSelfRadianceTrigger(
-  anomalyPowerAgentId: string | null | undefined,
-  remielId: string | null | undefined,
-): boolean {
-  return isRemielSelfRadiancePowerProvider(anomalyPowerAgentId, remielId)
-}
-
-/**
- * Buff 属性限定：流明不参与元素白名单匹配（「全部属性」仍生效）。
- */
-export function effectMatchesElementForCalc(
-  elementFilter: 'all' | string[] | undefined,
-  element: string | undefined,
-): boolean {
-  if (!elementFilter || elementFilter === 'all') return true
-  if (!element) return false
-  if (isLuminousElement(element)) return false
-  return elementFilter.includes(element)
-}

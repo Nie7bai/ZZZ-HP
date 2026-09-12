@@ -94,11 +94,6 @@ const props = defineProps<{
 
 const anomalySubKind = computed(() => props.anomalySubKind ?? 'anomaly')
 
-function round(v: number, p = 2) {
-  const f = 10 ** p
-  return Math.round(v * f) / f
-}
-
 function formatNumber(v: number) {
   return Math.round(v).toLocaleString('en-US')
 }
@@ -183,19 +178,6 @@ const disorderFormulaParts = computed(() => {
     formatFormulaNumber(p.disorderZone),
     formatFormulaNumber(p.disorderDmgBonusZone),
   ]
-})
-
-const turbulenceFormulaParts = computed(() => {
-  const p = props.calcParts
-  const parts = [
-    formatNumber(anomalyBaseWithMutation.value),
-    formatFormulaNumber(p.turbulenceZone),
-    formatFormulaNumber(p.turbulenceCombinedDmgBonusZone),
-  ]
-  if (p.turbulenceUsesAnomalyCrit) {
-    parts.push(formatFormulaNumber(p.anomalyCritZone))
-  }
-  return parts
 })
 
 type ValueTipsKey =

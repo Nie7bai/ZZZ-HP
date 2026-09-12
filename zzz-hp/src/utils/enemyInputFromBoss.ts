@@ -94,16 +94,3 @@ export function mapBossRecordToDamageEnemyInput(
     bossImage: record.boss_image ?? info?.boss_image ?? null,
   }
 }
-
-export function clearEnemyBossSelectionMeta(
-  input: DamageEnemyInputWithBossMeta,
-): DamageEnemyInputWithBossMeta {
-  return {
-    ...input,
-    bossSource: 'manual',
-    bossName: undefined,
-    bossRecordId: undefined,
-    bossRecordLabel: undefined,
-    bossImage: undefined,
-  }
-}

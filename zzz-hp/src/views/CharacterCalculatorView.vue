@@ -17,7 +17,7 @@ import { useThemeStore } from '@/stores/theme'
 
 import '@/assets/calculatorLight.css'
 
-import { AGENT_ELEMENTS, AGENT_MINDSCAPE_RANKS, AGENT_ROLES, collectMindscapeRankBuffs, createEmptyBuffStatModifiers, createEmptySelfTeamBuffs, getMindscapeNote, getMindscapeRankOnlyBuffs, numericStatFieldLabel, REFINEMENT_RANKS, SUPPORT_STAT_OPTIONS, WENGINE_ADVANCED_STAT_FIELDS, WENGINE_RARITIES } from '@/utils/calculatorUi'
+import { AGENT_ELEMENTS, AGENT_MINDSCAPE_RANKS, AGENT_ROLES, collectMindscapeRankBuffs, createEmptySelfTeamBuffs, getMindscapeNote, getMindscapeRankOnlyBuffs, numericStatFieldLabel, REFINEMENT_RANKS, SUPPORT_STAT_OPTIONS, WENGINE_ADVANCED_STAT_FIELDS, WENGINE_RARITIES } from '@/utils/calculatorUi'
 
 defineOptions({ name: 'CharacterCalculatorView' })
 
@@ -241,14 +241,6 @@ function toggleWengineDocRoleFilter(role: string) {
 function toggleWengineDocRarityFilter(rarity: string) {
   wengineRarityFilter.value = wengineRarityFilter.value === rarity ? '' : rarity
 }
-
-const selectedBangbooRefinementBuffs = computed(() => {
-  if (!selectedBangbooDoc.value) return createEmptyBuffStatModifiers()
-  return (
-    selectedBangbooDoc.value.refinementMods[selectedBangbooRefinementRank.value - 1] ??
-    createEmptyBuffStatModifiers()
-  )
-})
 
 function selectAgentDoc(id: string) {
   selectedAgentDocId.value = id

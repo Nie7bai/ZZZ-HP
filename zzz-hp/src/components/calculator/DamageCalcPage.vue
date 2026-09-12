@@ -1544,9 +1544,10 @@ function captureSchemePanelState(): DamageCalcSchemePanelSnapshot | null {
 
   // 方案快照白名单：只保留用户侧配置。
   // 不跟方案走的内部字段：
-  // - 基础伤害来源开关
+  // - 基础伤害来源开关（删掉，不进方案）
   // - 异化系数乘区输入（mutationCoeff / mutationCoeffFactor）
-  const { baseDamageSource: _ignored, ...schemeSnapshot } = snapshot
+  const schemeSnapshot = { ...snapshot }
+  delete (schemeSnapshot as { baseDamageSource?: unknown }).baseDamageSource
   const externalPanel = resetSchemeExcludedPanelFields({ ...schemeSnapshot.externalPanel })
   return {
     ...schemeSnapshot,

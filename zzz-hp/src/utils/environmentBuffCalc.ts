@@ -54,10 +54,6 @@ export function environmentBuffSourceKey(kind: EnvironmentBuffKind, id: string):
   return `defense-buff-${id}`
 }
 
-export function isBossFieldSourceKey(sourceKey: string): boolean {
-  return sourceKey.startsWith('boss-field-') || sourceKey.startsWith('deduction-field-')
-}
-
 export function parseBossFieldBossName(sourceKey: string): string | null {
   if (sourceKey.startsWith('boss-field-')) {
     return sourceKey.slice('boss-field-'.length) || null
@@ -323,28 +319,3 @@ export function listDefenseEnvFrontierFilterOptions(
   }))
 }
 
-export function listCrisisPhaseOptions(phases: PhaseData[]): { version: string; phase: string; id: string; label: string }[] {
-  return phases.map((phase) => {
-    const phaseNum = phase.phase.replace(/\D/g, '') || phase.phase
-    return {
-      version: phase.version,
-      phase: phaseNum,
-      id: phase.id,
-      label: `${phase.version} 第${phaseNum}期`,
-    }
-  })
-}
-
-export function listDefenseSeasonOptions(
-  seasons: DefenseSeason[],
-): { version: string; phase: string; id: string; label: string }[] {
-  return seasons.map((season) => {
-    const phaseNum = season.phase.replace(/\D/g, '') || season.phase
-    return {
-      version: season.version,
-      phase: phaseNum,
-      id: season.seasonId,
-      label: `${season.version} 第${phaseNum}期`,
-    }
-  })
-}

@@ -80,13 +80,6 @@ export function fillSkillTalentLevels(
   return base
 }
 
-export function clampSkillTalentLevels(
-  raw: Partial<SkillTalentLevels> | null | undefined,
-  rank: number | null | undefined,
-): SkillTalentLevels {
-  return fillSkillTalentLevels(raw, rank)
-}
-
 const TYPE_TO_TALENT_KEY: Record<SkillTypeId, SkillTalentLevelKey | null> = {
   basic: 'basic',
   dodge: 'dodge',
@@ -110,17 +103,6 @@ export function resolveSkillTalentLevelKey(
     if (key) return key
   }
   return null
-}
-
-export function resolveSkillTalentLevel(
-  skillTypes: SkillTypeId[] | null | undefined,
-  levels?: Partial<SkillTalentLevels> | null,
-  rank: number | null | undefined = 0,
-): number | null {
-  const key = resolveSkillTalentLevelKey(skillTypes)
-  if (!key) return null
-  const filled = fillSkillTalentLevels(levels, rank)
-  return filled[key]
 }
 
 /**

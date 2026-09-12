@@ -132,17 +132,6 @@ export const CONVERT_PANEL_SOURCE_OPTIONS: { id: ConvertPanelSource; label: stri
   { id: 'manual', label: '自行设置' },
 ]
 
-export const ANOMALY_DAMAGE_SUBKIND_OPTIONS: {
-  id: AnomalyDamageSubKind
-  label: string
-}[] = [
-  { id: 'anomaly', label: '异常伤害' },
-  { id: 'disorder', label: '紊乱伤害' },
-  { id: 'turbulence', label: '乱流伤害' },
-  { id: 'anomalyRelease', label: '异放伤害' },
-  { id: 'radiance', label: '耀变伤害' },
-]
-
 export type BaseDamageSource = 'atk' | 'pierce' | 'def'
 
 export interface BuffStatModifiers {

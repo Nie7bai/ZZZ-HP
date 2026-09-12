@@ -7,7 +7,7 @@ import AdminRememberedNumberField from '@/components/admin/calculator/AdminRemem
 import AdminWengineAdvancedStatsGrid from '@/components/admin/calculator/AdminWengineAdvancedStatsGrid.vue'
 import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
-import type { AgentMindscapeRankBuffs, WengineAdvancedStats, WengineBuffDoc } from '@/types/calculator'
+import type { AgentMindscapeRankBuffs, WengineBuffDoc } from '@/types/calculator'
 import type { WengineBuffEditSectionId } from '@/constants/wengineBuffEditNav'
 import { packFromBlocks, packFromEffects } from '@/utils/buffEffect'
 import {

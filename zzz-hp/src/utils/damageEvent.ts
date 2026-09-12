@@ -10,20 +10,17 @@ import type {
 } from '@/types/calculator'
 import type { PanelStats } from '@/types/calculatorPanel'
 import { SKILL_CATEGORY_OPTIONS, TRIGGER_AGENT_AT_CALC } from '@/types/calculator'
-import { computeDamageResult, type DamageCalcInput, type DamageCalcResult } from '@/utils/damageCalc'
+import { type DamageCalcResult } from '@/utils/damageCalc'
 import {
   canAgentBeAnomalyProducerForKind,
   findLuminousAgentInTeam,
   isLegacyAnomalyEventKind,
   isLuminousAgent,
-  isLuminousElement,
 } from '@/utils/remielUtils'
 import {
   formatEventOwnerPrefix,
   isRadianceOwnerValid,
   resolveEventOwnerAgentId,
-  resolveRadianceOwnerAgentId,
-  RADIANCE_SELF_TRIGGER_HINT,
 } from '@/utils/damageEventOwner'
 
 export const DAMAGE_EVENT_KIND_OPTIONS: { id: DamageEventKind; label: string }[] = [
@@ -41,27 +38,6 @@ export const DAMAGE_EVENT_CRIT_MODE_OPTIONS: { id: DamageEventCritMode; label: s
   { id: 'noCrit', label: '不暴击' },
   { id: 'fullCrit', label: '必暴击' },
 ]
-
-export function createEmptyDamageEvent(
-  index = 0,
-  kind: DamageEventKind = 'direct',
-): DamageEvent {
-  const isAnomaly = kind !== 'direct' && kind !== 'sharpen'
-  return {
-    id: `evt-local-${Date.now().toString(36)}-${index}`,
-    kind,
-    categoryId: 'basic',
-    skillSubcategoryId: null,
-    count: 1,
-    staggerPhase: 'stagger',
-    critMode: 'expected',
-    // 计算页默认待选；管理端在编辑器里通过 allowCalcTimeTrigger 写入 __at_calc__
-    triggerAgentId: null,
-    ownerAgentId: null,
-    skillBound: !isAnomaly,
-    multOverrides: null,
-  }
-}
 
 export function mapEventKindToCalc(
   kind: DamageEventKind,
@@ -208,16 +184,6 @@ export function isTurbulenceWindTrigger(
   return agents.find((agent) => agent.id === triggerAgentId)?.element === '风'
 }
 
-/** @deprecated 旧规则：持有者/强度提供者/触发者之一为风；现以 isTurbulenceWindTrigger 为准 */
-export function hasTurbulenceWindRole(
-  agents: Array<{ id: string; element: string }>,
-  ...agentIds: Array<string | null | undefined>
-): boolean {
-  const elementOf = (id: string | null | undefined) =>
-    id ? agents.find((agent) => agent.id === id)?.element : undefined
-  return agentIds.some((id) => elementOf(id) === '风')
-}
-
 export function getTurbulenceParticipationFailureReason(
   ctx: Pick<DamageEventParticipationContext, 'teamSlots' | 'agents'>,
   _ownerAgentId: string,
@@ -295,41 +261,7 @@ export function getDamageEventSkipReason(
   return null
 }
 
-export function getRadianceEventHint(event: DamageEvent, ctx: DamageEventParticipationContext): string | null {
-  if (event.kind !== 'radiance') return null
-  const remielId = resolveRadianceOwnerAgentId(ctx.teamSlots, ctx.agents)
-  // 旧 DamageEvent 仅有 triggerAgentId（产生角色）；本人耀变特殊公式现以强度提供者为准。
-  // 无独立 anomalyPowerAgentId 时，用产生角色作近似提示。
-  const powerOrProducerId =
-    event.triggerAgentId && event.triggerAgentId !== TRIGGER_AGENT_AT_CALC
-      ? event.triggerAgentId
-      : null
-  if (remielId && powerOrProducerId === remielId) {
-    return RADIANCE_SELF_TRIGGER_HINT
-  }
-  return null
-}
 
-export function filterAnomalyProducerAgentOptions<
-  T extends { id: string; element?: string | null },
->(agents: T[], kind: DamageEventKind): T[] {
-  return agents.filter((agent) => canAgentBeAnomalyProducerForKind(agent, kind))
-}
-
-/** @deprecated 使用 getDamageEventKindOptionsForMode；非流明主 C 时仍保留耀变选项 */
-export function filterDamageEventKindOptionsForMainAgent(
-  options: { id: DamageEventKind; label: string }[],
-  mainAgentElement: string | null | undefined,
-  modeType: 'direct' | 'anomaly',
-): { id: DamageEventKind; label: string }[] {
-  if (modeType === 'direct') {
-    return options.filter((opt) => opt.id === 'direct')
-  }
-  if (isLuminousElement(mainAgentElement ?? null)) {
-    return options.filter((opt) => opt.id === 'radiance')
-  }
-  return options.filter((opt) => opt.id !== 'direct')
-}
 
 /** 队伍中是否同时存在风属性与至少一个非风属性代理人 */
 export function isTurbulenceTeamCompositionOk(
@@ -344,18 +276,6 @@ export function isTurbulenceTeamCompositionOk(
   return elements.has('风') && [...elements].some((element) => element !== '风')
 }
 
-/** 乱流伤害事件：队伍须含风 + 另一属性；具体风角色由事件产生/异常产生/主 C 校验 */
-export function canSelectTurbulenceDamageEvent(
-  teamSlots: Array<{ agentId: string }>,
-  agents: Array<{ id: string; element: string }>,
-  _mainAgentElement?: string | null,
-): boolean {
-  return isTurbulenceTeamCompositionOk(teamSlots, agents)
-}
-
-export function isTriggerAgentAtCalc(id: string | null | undefined): boolean {
-  return id === TRIGGER_AGENT_AT_CALC || id == null || id === ''
-}
 
 /** 耀变综合增伤/倍率/特殊倍率乘区取异常类触发者面板；覆写也应写入触发者侧 */
 export function applyRadianceBonusMultOverrides(
@@ -469,52 +389,3 @@ export function applyOwnerPanelMultOverrides(
   return next
 }
 
-export function resolveRadianceBonusMultDefaults(
-  bonusPanel: Pick<
-    PanelStats,
-    'radianceMult' | 'radianceMultFactor' | 'specialMult' | 'specialMultFactor'
-  >,
-): Partial<Record<keyof DamageEventMultOverrides, number>> {
-  return {
-    radianceMult: bonusPanel.radianceMult,
-    radianceMultFactor: bonusPanel.radianceMultFactor,
-    specialMult: bonusPanel.specialMult ?? 100,
-    specialMultFactor: bonusPanel.specialMultFactor ?? 100,
-  }
-}
-
-export function summarizeDamageEvents(
-  events: DamageEvent[],
-  buildInput: (event: DamageEvent) => DamageCalcInput | null,
-  resolveSubcategory?: (id: string | null) => SkillSubcategory | null,
-  resolveOwnerName?: (event: DamageEvent) => string | undefined,
-): { lines: DamageEventLine[]; grandTotal: number } {
-  const lines: DamageEventLine[] = []
-  let grandTotal = 0
-  for (const event of events) {
-    const input = buildInput(event)
-    if (!input) continue
-    const result = computeDamageResult(input)
-    const perHit = pickEventDamage(result, event.kind, event.critMode)
-    const total = perHit * Math.max(0, event.count)
-    const kindLabel =
-      DAMAGE_EVENT_KIND_OPTIONS.find((item) => item.id === event.kind)?.label ?? event.kind
-    const disorderSuffix =
-      event.kind === 'disorder' ? `（${disorderLabelFromResult(result)}）` : ''
-    const ownerName = resolveOwnerName?.(event)
-    const displayName = formatDamageEventDisplayName(event, resolveSubcategory, ownerName)
-    lines.push({
-      event,
-      perHit,
-      total,
-      label: `${kindLabel}${disorderSuffix}`,
-      displayName:
-        event.kind === 'disorder'
-          ? `${displayName}（${disorderLabelFromResult(result)}）`
-          : displayName,
-      result,
-    })
-    grandTotal += total
-  }
-  return { lines, grandTotal }
-}

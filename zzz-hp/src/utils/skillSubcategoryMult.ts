@@ -158,25 +158,6 @@ export function resolveInherentSkillMultPercent(options: {
   }
 }
 
-export function skillMultKindLabel(damageType: SkillDamageType): string {
-  switch (damageType) {
-    case 'direct':
-      return '直伤倍率'
-    case 'anomaly':
-      return '异常倍率'
-    case 'anomalyRelease':
-      return '异放倍率'
-    case 'disorder':
-      return '紊乱倍率'
-    case 'turbulence':
-      return '乱流倍率'
-    case 'radiance':
-      return '耀变倍率'
-    default:
-      return '倍率'
-  }
-}
-
 /**
  * 未填写、锚点也无固有倍率时，是否依赖异常强度提供者属性（异放转模等）。
  * 此类展示「待选择 / 等待选择异常强度提供者」，不展示「面板」。

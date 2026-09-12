@@ -1,4 +1,3 @@
-import type { AgentBuffDoc } from '@/types/calculator'
 import { loadCustomSkills, parseCustomSkillList, replaceCustomSkills } from '@/utils/skillLibrary'
 import type {
   AgentPanelProvenance,
@@ -13,6 +12,7 @@ import type {
 } from '@/types/damageCalcHistory'
 import { SCHEME_STORE_VERSION } from '@/types/damageCalcHistory'
 import type { AffixCounts, AffixDriveDiscMainStats, PanelStats } from '@/types/calculatorPanel'
+import type { ExtraBuffGain } from '@/components/calculator/ExtraBuffGainEditor.vue'
 import {
   createDefaultAffixDriveDiscMainStats,
   createEmptyAffixCounts,
@@ -134,11 +134,6 @@ export function nameConflictType(
 }
 
 export { normFolder, schemePath, parentFolder, baseName, childFolders }
-
-/** 读取原始 store（组件做批量/树操作时需要） */
-export function readRawStore(): SchemeStore {
-  return readStore()
-}
 
 function dirOrder(store: SchemeStore, d: string): number {
   return store.dirs[d]?.order ?? 0
@@ -274,11 +269,11 @@ function sanitizeSchemePanelState(
   panelState: unknown,
 ): DamageCalcSchemePanelSnapshot | null {
   if (!panelState || typeof panelState !== 'object') return null
-  const ps = panelState as Record<string, any>
+  const ps = panelState as Record<string, unknown>
   const { baseDamageSource: _ignored, externalPanel, ...rest } = ps
   const nextExternalPanel = sanitizeSchemePanelLike(externalPanel)
   const extraGains = Array.isArray(ps.extraGains)
-    ? ps.extraGains.map((item: unknown) => normalizeExtraGain(item as any))
+    ? ps.extraGains.map((item: unknown) => normalizeExtraGain(item as ExtraBuffGain))
     : ps.extraGains
 
   return {
@@ -300,7 +295,7 @@ function sanitizeSchemeAnomalySlotPanels(
   const next: NonNullable<DamageCalcHistoryEntry['anomalySlotPanels']> = {}
   for (const [agentId, panel] of Object.entries(panels)) {
     const sanitized = sanitizeSchemePanelLike(panel)
-    if (sanitized) next[agentId] = sanitized as any
+    if (sanitized) next[agentId] = sanitized as unknown as PanelStats
   }
   return next
 }
@@ -561,13 +556,6 @@ export function saveDamageCalcHistory(entry: DamageCalcHistoryEntry): DamageCalc
   }
   store.schemes[key] = sanitizeSchemeEntry(normalized)
   assignOrderFront(store, 'scheme', folder, key)
-  writeStore(store)
-  return listAllDamageCalcHistory()
-}
-
-export function removeDamageCalcHistory(path: string): DamageCalcHistoryEntry[] {
-  const store = readStore()
-  delete store.schemes[path]
   writeStore(store)
   return listAllDamageCalcHistory()
 }
@@ -953,21 +941,6 @@ export function clearWorkingDraft(): void {
   } catch {
     /* ignore */
   }
-}
-
-// ===================== 格式化辅助 =====================
-
-export function formatDamageCalcAgentSelection(
-  teamSlots: DamageCalcHistoryEntry['teamSlots'],
-  agents: AgentBuffDoc[],
-): string {
-  const labels = teamSlots.map((slot, index) => {
-    if (!slot.agentId) return `槽位${index + 1}未选`
-    const agent = agents.find((item) => item.id === slot.agentId)
-    const name = agent?.name ?? '未知角色'
-    return name
-  })
-  return labels.join(' / ')
 }
 
 export function schemeStats(entry: DamageCalcHistoryEntry): {

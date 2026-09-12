@@ -174,24 +174,6 @@ export function createEmptyAffixCounts(): AffixCounts {
   }
 }
 
-export function createEmptyPanelStatDelta(): PanelStatDelta {
-  return {
-    hpFlat: 0,
-    hpPercent: 0,
-    atkFlat: 0,
-    atkPercent: 0,
-    critRate: 0,
-    critDmg: 0,
-    dmgBonus: 0,
-    ignoreDefense: 0,
-    reduceDefense: 0,
-    penRate: 0,
-    pen: 0,
-    resPen: 0,
-  }
-}
-
-
 /** 方案不持久化的乘区入口；缺字段时必须补成数字，否则 `undefined + convert` 会变成 NaN。 */
 export const SCHEME_EXCLUDED_PANEL_DEFAULTS: Pick<
   PanelStats,

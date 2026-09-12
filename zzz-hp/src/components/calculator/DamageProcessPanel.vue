@@ -11,7 +11,7 @@ import type { OptimalEventEvalDetail } from '@/utils/optimalAffixAlloc'
  * 扫掠柱图与词条分配共用同一份实现，调用方只注入数据与口径，
  * 不重复维护 DamageResultDetail 的 30 余个入参。
  */
-const props = defineProps<{
+defineProps<{
   /** 是否处于招式流程模式（无事件时走空态提示） */
   hasEvents: boolean
   /** 产生者占比数据；为空显示空态 */

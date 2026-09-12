@@ -2004,22 +2004,6 @@ function clearMemberOverride(entryId: string, member: { order: number; skillId: 
   if (!entry.memberOverrides.length) entry.memberOverrides = null
 }
 
-type ExtraModKey = 'baseMult' | 'settlementMult' | 'dmgBonus' | 'critRate' | 'critDmg'
-
-function extraNumber(prepared: PreparedSkill, key: ExtraModKey) {
-  const value = prepared.extraMods?.[key]
-  return value == null ? '' : String(value)
-}
-
-function setExtraNumber(prepared: PreparedSkill, key: ExtraModKey, raw: string) {
-  const nextMods = { ...(prepared.extraMods ?? {}) }
-  if (raw.trim() === '') delete nextMods[key]
-  else nextMods[key] = Number(raw)
-  updatePrepared(prepared.id, {
-    extraMods: Object.keys(nextMods).length ? nextMods : null,
-  })
-}
-
 watch(expanded, (open) => {
   if (!open) {
     detail.value = null

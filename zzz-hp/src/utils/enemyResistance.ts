@@ -126,12 +126,6 @@ export function resistanceTypeLabel(type: EnemyResistanceType): string {
   return ENEMY_RESISTANCE_OPTIONS.find((item) => item.id === type)?.label ?? type
 }
 
-export function agentElementToResistanceElement(
-  element: string | null | undefined,
-): EnemyResistanceElement | null {
-  return isEnemyResistanceElement(element) ? element : null
-}
-
 /** 怪物库模式下仅展示有弱点或有抗性的属性 */
 export function listActiveResistanceElements(
   input: DamageEnemyInput | null | undefined,

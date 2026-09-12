@@ -68,7 +68,7 @@ function updateSlotRefine(index: number, value: number) {
         v-for="(slot, index) in teamSlots"
         :key="index"
         :index="index"
-        :slot="slot"
+        :slot-data="slot"
         :agent="slot.agentId ? agentById(slot.agentId) : undefined"
         :wengine="slot.wengineId !== 'none' ? wengineById(slot.wengineId) : undefined"
         :two-piece-disc="discById(slot.twoPieceDriveDiscId)"

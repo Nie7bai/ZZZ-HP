@@ -416,11 +416,6 @@ export function applyAffixCountsOntoExternalPanel(
   }
 }
 
-function clampCount(value: number, max = 40) {
-  if (!Number.isFinite(value)) return 0
-  return Math.min(max, Math.max(0, Math.round(value)))
-}
-
 export const AFFIX_COUNT_FIELDS: {
   key: keyof AffixCounts
   label: string

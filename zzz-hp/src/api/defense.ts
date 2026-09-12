@@ -21,7 +21,7 @@ import { getAdminToken, isAdminAuthenticated } from '@/utils/adminAuth'
 
 export { filterChartPointsByLabels }
 
-interface ApiDefenseSeason extends DefenseSeason {}
+type ApiDefenseSeason = DefenseSeason
 
 interface ApiResponse {
   code: number
