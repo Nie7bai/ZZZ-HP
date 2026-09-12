@@ -83,9 +83,9 @@ function findSlotOption<T extends { id: string; value: number }>(
 }
 
 export function collectAffixDriveDiscMainStatContribution(input: {
-  slot4MainStat: DriveDiscSlot4StatId
-  slot5MainStat: DriveDiscSlot5StatId
-  slot6MainStat: DriveDiscSlot6StatId
+  slot4MainStat: DriveDiscSlot4StatId | ''
+  slot5MainStat: DriveDiscSlot5StatId | ''
+  slot6MainStat: DriveDiscSlot6StatId | ''
 }): AffixDriveDiscMainStatContribution {
   const result = createEmptyAffixDriveDiscMainStatContribution()
 

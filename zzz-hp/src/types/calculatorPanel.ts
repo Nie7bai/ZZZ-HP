@@ -131,9 +131,24 @@ export type DriveDiscSlot6StatId =
   | 'energyRegen'
 
 export interface AffixDriveDiscMainStats {
-  slot4MainStat: DriveDiscSlot4StatId
-  slot5MainStat: DriveDiscSlot5StatId
-  slot6MainStat: DriveDiscSlot6StatId
+  /** 空串 = 未选择（这份记录还没有数据） */
+  slot4MainStat: DriveDiscSlot4StatId | ''
+  slot5MainStat: DriveDiscSlot5StatId | ''
+  slot6MainStat: DriveDiscSlot6StatId | ''
+}
+
+/**
+ * 「未选择」状态：这份记录里还没有任何数据时就是它。
+ *
+ * 与 `createDefaultAffixDriveDiscMainStats()`（爆伤/攻击/生命那种具体配置）不同 ——
+ * 那是**别人的配置**，凭空塞进来会让人以为「已经配好了」。
+ */
+export function createEmptyAffixDriveDiscMainStats(): AffixDriveDiscMainStats {
+  return {
+    slot4MainStat: '',
+    slot5MainStat: '',
+    slot6MainStat: '',
+  }
 }
 
 export function createDefaultAffixDriveDiscMainStats(): AffixDriveDiscMainStats {
@@ -230,7 +245,7 @@ export function isPlaceholderExternalPanel(
   return panel.atk === 4008 && panel.hp === 9873 && panel.critRate === 48.2 && panel.critDmg === 186
 }
 
-type AgentBaseLike = {
+export type AgentBaseLike = {
   hp: number
   atk: number
   def: number

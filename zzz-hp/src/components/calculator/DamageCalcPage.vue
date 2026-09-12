@@ -37,7 +37,6 @@ import {
   createDefaultAffixDriveDiscMainStats,
   createDefaultExternalPanel,
   createEmptyAffixCounts,
-  createExternalPanelFromAgentBase,
   fillPanelStatsDefaults,
   resetSchemeExcludedPanelFields,
 } from '@/types/calculatorPanel'
@@ -780,48 +779,6 @@ async function applyEnemyBossByName(bossName: string, meta?: { version?: string;
   }
 }
 
-function getParticipantAgentIds(): string[] {
-  const ids = new Set<string>()
-  for (const hit of [...hits.value, ...previewHits.value]) {
-    for (const id of [hit.ownerAgentId, hit.anomalyPowerAgentId, hit.triggerAgentId]) {
-      if (id) ids.add(id)
-    }
-  }
-  return [...ids]
-}
-
-/**
- * 该角色还没有任何面板时，用角色基础面板填「面板导入」那份（兜底，不计导入时间）。
- * 已有任一份数据则原样保留 —— 不在别人的页面上重算、不反推、不清理。
- */
-function ensureAgentExternalPanel(agentId: string) {
-  if (!agentId) return
-  const existing = slotPanels[agentId]
-  if (existing && panelSourceKindsWithData(existing).length) return
-  const agent = agents.value.find((item) => item.id === agentId)
-  slotPanels[agentId] = writePanelSource(
-    existing,
-    'imported',
-    createExternalPanelFromAgentBase(agent?.basePanel),
-  )
-}
-
-watch(
-  () =>
-    [...hits.value, ...previewHits.value]
-      .map(
-        (hit) =>
-          `${hit.id}:${hit.ownerAgentId}:${hit.anomalyPowerAgentId ?? ''}:${hit.triggerAgentId ?? ''}`,
-      )
-      .join(','),
-  () => {
-    if (restoringWorkingState) return
-    for (const agentId of getParticipantAgentIds()) {
-      ensureAgentExternalPanel(agentId)
-    }
-  },
-)
-
 const emptyBangboo: BangbooBuffDoc = {
   id: 'none',
   name: '未选择',
@@ -971,17 +928,6 @@ watch(
   panelCalcMode,
   (mode) => {
     emit('update:calcMode', mode)
-  },
-  { immediate: true },
-)
-
-watch(
-  () => teamSlots.map((slot) => slot.agentId).join(','),
-  () => {
-    if (restoringWorkingState) return
-    for (const slot of teamSlots) {
-      if (slot.agentId) ensureAgentExternalPanel(slot.agentId)
-    }
   },
   { immediate: true },
 )
@@ -1220,7 +1166,6 @@ function openTeamPresetPicker(index: number) {
 
 function assignAgent(agentId: string) {
   activeSlotData.value.agentId = agentId
-  ensureAgentExternalPanel(agentId)
 }
 
 function clearSlot(index: number) {
@@ -1354,16 +1299,6 @@ const activeFinalPanelPreview = computed(() => {
   return panelCalcSectionRef.value?.panelBreakdown?.finalPanel ?? null
 })
 
-watch(
-  teamSlots,
-  (slots) => {
-    for (const slot of slots) {
-      if (slot.agentId) ensureAgentExternalPanel(slot.agentId)
-    }
-  },
-  { deep: true, immediate: true },
-)
-
 /**
  * 「确定导入」——**唯一**的面板写盘入口（`dev-docs/panel-dual-source.md` §4.1）。
  *
@@ -1387,11 +1322,8 @@ function applyUnifiedImport(payload: UnifiedPresetConfirmPayload) {
       source: 'affix',
     })
     slotPanels[agentId] = writeAffixInputsIntoSource(written, {
-      affixCounts: { ...createEmptyAffixCounts(), ...payload.affixCounts },
-      affixDriveDiscMainStats: {
-        ...createDefaultAffixDriveDiscMainStats(),
-        ...payload.affixDriveDiscMainStats,
-      },
+      affixCounts: { ...payload.affixCounts },
+      affixDriveDiscMainStats: { ...payload.affixDriveDiscMainStats },
     })
   } else {
     slotPanels[agentId] = writePanelSource(existing, 'imported', payload.externalPanel, {
@@ -1429,7 +1361,6 @@ function applySlotPanelPatch(patch: Record<string, AgentPanelSources>) {
 }
 
 function cloneTeamSlots(): DamageCalcHistoryEntry['teamSlots'] {
-  panelCalcSectionRef.value?.flushAffixOntoTeamSlots?.()
   return teamSlots.map((slot) => ({
     agentId: slot.agentId,
     rank: slot.rank,

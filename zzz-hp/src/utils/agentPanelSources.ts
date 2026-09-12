@@ -135,34 +135,6 @@ export function createAgentPanelSources(): AgentPanelSources {
 }
 
 /**
- * 只更新某一来源的**数值**，不动「当前激活哪份」。
- *
- * 用在持续编辑的路径上（主页面词条模式下条数一变就重算那份面板）。
- * 这种自动写回**不得**改变用户手动选定的来源 —— 否则切过去几百毫秒就被打回去，
- * 手动切换形同虚设（2026-09-11 实测缺陷）。
- * 「写入并激活」只属于用户明确动作，见 `writePanelSource`。
- */
-export function updatePanelSourceValues(
-  sources: AgentPanelSources | undefined,
-  kind: AgentPanelSourceKind,
-  panel: PanelStats,
-  meta?: { updatedAt?: number; source?: AgentPanelProvenance['source'] },
-): AgentPanelSources {
-  const base = sources ?? createAgentPanelSources()
-  const provenance = { ...(base.provenance ?? {}) }
-  if (meta?.updatedAt) {
-    if (kind === 'imported') provenance.importedAt = meta.updatedAt
-    else provenance.affixDerivedAt = meta.updatedAt
-  }
-  if (meta?.source) provenance.source = meta.source
-  return {
-    ...base,
-    [kind === 'imported' ? 'importedPanel' : 'affixDerivedPanel']: fillPanelStatsDefaults(panel),
-    provenance,
-  }
-}
-
-/**
  * 写入某一来源并激活它 —— 「确定导入」用的入口（`dev-docs/panel-dual-source.md` §4.1）。
  *
  * 另一份原样保留：不重算、不反推、不清理。

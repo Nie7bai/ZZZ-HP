@@ -12,8 +12,10 @@ import {
   createDefaultAffixDriveDiscMainStats,
   createDefaultExternalPanel,
   createEmptyAffixCounts,
+  createEmptyAffixDriveDiscMainStats,
   fillPanelStatsDefaults,
 } from '../src/types/calculatorPanel.ts'
+import { collectAffixDriveDiscMainStatContribution } from '../src/utils/affixDriveDiscConfig.ts'
 import { createEmptyAgentBasePanel } from '../src/utils/calculatorUi.ts'
 import {
   createAgentPanelSources,
@@ -27,7 +29,6 @@ import {
   schemeActivePanels,
   schemeAffixInputs,
   setActivePanelSource,
-  updatePanelSourceValues,
   writeAffixInputsIntoSource,
   writePanelSource,
 } from '../src/utils/agentPanelSources.ts'
@@ -316,36 +317,98 @@ console.log('\n[6] 词条数 / 主属性只服务「词条导入」这一路（�
   check('空补丁不产生变化', JSON.stringify(same) === JSON.stringify(sources))
 }
 
-console.log('\n[6.1] 自动数值写回不得改变用户选定的来源（2026-09-11 实测缺陷回归）')
+console.log('\n[6.2] 草稿只读该份自己的数据：没有就是空，不拿别的数据顶替（2026-09-12）')
 {
   /**
-   * 缺陷原状：词条模式下条数一变就重算并写回「词条导入」那份面板，
-   * 那时用的是「写入并激活」，于是用户手动切到「面板导入」后几百毫秒被切回去，
-   * 手动切换形同虚设。修法：自动写回走 `updatePanelSourceValues`（只改数值不动 active）。
+   * 所有者口径：**空就是空**。
+   *
+   * 老数据迁移后常只有一份面板（如「词条导入」那份），另一份是空的。
+   * 若空的那份拿角色基础面板（攻击 626）或另一份面板顶替，用户会看到一组自己没导入过的数，
+   * 以为「面板没加载」，点「确定导入」还会把这份假数据写成真面板。
    */
+  const migrated = migrateLegacyPanelsToSources({
+    legacyPanels: { claret: panelFromAffix },
+    panelCalcMode: 'affix',
+    teamSlots: [],
+  })
+
+  check(
+    '该份没有数据时就是空（不回落角色基础面板）',
+    panelOfSource(migrated.claret, 'imported') === undefined,
+  )
+  check(
+    '该份有数据时读它自己那份',
+    panelOfSource(
+      writePanelSource(migrated.claret, 'imported', panelFromGame, { importedAt: 1 }),
+      'imported',
+    ).atk === panelFromGame.atk,
+  )
+  check(
+    '另一份有数据也不参与这条读取（不跨来源顶替）',
+    panelOfSource(migrated.claret, 'imported') === undefined &&
+      panelOfSource(migrated.claret, 'affixDerived') !== undefined,
+  )
+
+  // 4-5-6 主属性同样：没有就是「未选择」，不塞爆伤/攻击/生命那组默认
+  const empty = createEmptyAffixDriveDiscMainStats()
+  check(
+    '未选择状态：4-5-6 主属性为空，不是爆伤/攻击/生命',
+    empty.slot4MainStat === '' && empty.slot5MainStat === '' && empty.slot6MainStat === '',
+  )
+  check(
+    '空主属性算出来是「没有主属性贡献」（不是默认那套）',
+    collectAffixDriveDiscMainStatContribution(empty).critDmg === 0 &&
+      collectAffixDriveDiscMainStatContribution(empty).externalAtkPercent === 0,
+  )
+  const defaults = createDefaultAffixDriveDiscMainStats()
+  check(
+    '默认那套（爆伤/攻击/生命）只作为「用户自己选的」才有意义，与此区分',
+    collectAffixDriveDiscMainStatContribution(defaults).critDmg === 48 &&
+      collectAffixDriveDiscMainStatContribution(defaults).externalAtkPercent === 30,
+  )
+}
+
+console.log('\n[6.1] 面板只能由「确定导入」写入：不存在自动写回（2026-09-12）')
+{
+  /**
+   * 曾经有过两条自动写回：词条数一变就把现推面板写进「词条导入」那份、
+   * live 编辑器变化再把值写进「面板导入」那份。它们会在用户没导入过的情况下
+   * 凭空生成面板、也可能用陈旧值覆盖真面板（所有者要求：只有点了导入才生成面板）。
+   *
+   * 现在这些通道全部删除：写入面板的函数只剩两个 ——
+   * `writePanelSource`（确定导入）与 `setActivePanelSource`（用户手动切换）。
+   */
+  const srcRoot = path.resolve(import.meta.dirname, '../src')
+  const read = (rel) => fs.readFileSync(path.join(srcRoot, rel), 'utf8')
+  const panelSection = read('components/calculator/PanelCalcSection.vue')
+  const picker = read('components/calculator/UnifiedPresetPicker.vue')
+  const page = read('components/calculator/DamageCalcPage.vue')
+
+  check(
+    '面板组件里没有任何面板写入（自动写回已删除）',
+    !/writePanelSource|updatePanelSourceValues|setActivePanelSource/.test(panelSection),
+  )
+  check(
+    '面板组件不再引用「更新数值」这条写回 API',
+    !/updatePanelSourceValues/.test(picker) && !/updatePanelSourceValues/.test(panelSection),
+  )
+  check(
+    '页面里写入面板的只有导入与手动切换两处',
+    (page.match(/writePanelSource\(/g) || []).length === 2 &&
+      (page.match(/setActivePanelSource\(/g) || []).length === 1,
+  )
+  check(
+    '页面不再用角色基础面板兜底造面板',
+    !/ensureAgentExternalPanel/.test(page) && !/createExternalPanelFromAgentBase/.test(page),
+  )
+
+  // 手动切换只改 active，两份面板本身逐位不动
   let sources = writePanelSource(undefined, 'imported', panelFromGame, { importedAt: 1 })
   sources = writePanelSource(sources, 'affixDerived', panelFromAffix, { importedAt: 2 })
-  // 用户手动切到「面板导入」
-  sources = setActivePanelSource(sources, 'imported')
-  check('手动切换先生效', sources.active === 'imported')
-
-  // 随后条数编辑触发自动写回（数值变了）
-  const recomputed = fillPanelStatsDefaults({ ...panelFromAffix, atk: 2600 })
-  const afterAuto = updatePanelSourceValues(sources, 'affixDerived', recomputed, { updatedAt: 3 })
-  check(
-    '自动写回后 active 仍是用户选的那份',
-    afterAuto.active === 'imported',
-    `active=${afterAuto.active}`,
-  )
-  check(
-    '自动写回确实更新了「词条导入」那份的数值',
-    panelOfSource(afterAuto, 'affixDerived').atk === 2600,
-  )
-  check('自动写回不动「面板导入」那份', panelOfSource(afterAuto, 'imported').atk === panelFromGame.atk)
-  check(
-    '此时计算读到的是「面板导入」（用户选择被尊重）',
-    resolveActivePanel(afterAuto).atk === panelFromGame.atk,
-  )
+  const switched = setActivePanelSource(sources, 'imported')
+  check('用户手动切换后，两份面板逐位不动', JSON.stringify(switched.importedPanel) === JSON.stringify(sources.importedPanel) &&
+    JSON.stringify(switched.affixDerivedPanel) === JSON.stringify(sources.affixDerivedPanel))
+  check('切换后计算读到新选的那份', resolveActivePanel(switched).atk === panelFromGame.atk)
 }
 
 console.log('\n[7] 验收 5 / 8：代码审查（无来源分支、无推断逻辑）')
@@ -390,26 +453,18 @@ console.log('\n[7] 验收 5 / 8：代码审查（无来源分支、无推断逻�
   check('全仓 src 无残留反推调用点', leftover.length === 0, leftover.join('；'))
 
   /**
-   * 面板组件里的自动写回**只准更新数值**，不得「写入并激活」。
+   * 面板组件里**不得有任何面板写入**。
    *
-   * 回归（2026-09-11 实测）：`flushImportedPanelForAgent` 曾用 `writePanelSource`，
-   * 于是切槽 / 保存草稿时会把 live 值写成「面板导入」那份并**抢走激活**——
-   * 一个只用「词条导入」那份的角色被静默改了当前面板。
-   * 改法：改用 `updatePanelSourceValues`，且那份不存在时不新建。
-   * 这里用「导入白名单」把这条钉死：该组件不得再引入 `writePanelSource`。
+   * 回归（2026-09-11）：`flushImportedPanelForAgent` 曾用 `writePanelSource`，切槽 / 保存草稿
+   * 会把 live 值写成「面板导入」并**抢走激活**；同期的条数写回也会凭空生成「词条导入」面板。
+   * 2026-09-12 所有者要求：**必须先点导入才会生成面板**，这些自动写回通道已全部删除。
    */
   const panelSection = read('components/calculator/PanelCalcSection.vue')
-  const writeImport = /import\s*\{[^}]*\bwritePanelSource\b[^}]*\}\s*from\s*'@\/utils\/agentPanelSources'/.test(
-    panelSection,
-  )
+  const panelWrites = panelSection.match(/writePanelSource|updatePanelSourceValues|setActivePanelSource/g) ?? []
   check(
-    '面板组件不引入「写入并激活」（自动写回不得改激活）',
-    !writeImport,
-    writeImport ? '面板组件又 import 了 writePanelSource' : '',
-  )
-  check(
-    '自动写回在缺那份时不新建（有守卫）',
-    /if \(!current\?\.importedPanel\) return/.test(panelSection),
+    '面板组件不含任何面板写入（自动写回通道已删除）',
+    panelWrites.length === 0,
+    panelWrites.length ? `仍出现：${panelWrites.join('、')}` : '',
   )
 
   /**
