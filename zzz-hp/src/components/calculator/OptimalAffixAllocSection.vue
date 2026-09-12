@@ -189,7 +189,7 @@ const extraGains = defineModel<ExtraBuffGain[]>('extraGains', { default: () => [
 const emit = defineEmits<{
   'update:hitDamages': [value: Record<string, number>]
   'update:hitCalcResults': [value: Record<string, DamageCalcResult>]
-  /** 上报「最优分配 / 当前柱」两个来源的主 C 局外面板与摘要，供招式流程三选项使用 */
+  /** 上报「最优分配 / 当前柱」两个来源的当前编辑角色局外面板与摘要，供招式流程三选项使用 */
   'update:panelSourceOptions': [
     value: Partial<Record<'allocation' | 'sweep', SkillFlowPanelOption | null>>,
   ]
@@ -293,7 +293,7 @@ const driveDiscMainStats = computed<AffixDriveDiscMainStats>(() => ({
   ...(props.slotPanels?.[mainSlot.value.agentId]?.affixDriveDiscMainStats ?? {}),
 }))
 
-/** 主 C「词条导入」那一路的词条数（没有存面板时用来现推局外） */
+/** 当前编辑角色「词条导入」那一路的词条数（没有存面板时用来现推局外） */
 const mainAffixCounts = computed<AffixCounts>(() => ({
   ...createEmptyAffixCounts(),
   ...(props.slotPanels?.[mainSlot.value.agentId]?.affixCounts ?? {}),
@@ -319,9 +319,9 @@ const evalConvertSlotPanels = computed((): ConvertSlotPanels => props.convertSlo
  * 这里原先是模块自建的副本 `optimalParticipantPanels`（缺面板时用角色基础面板兜底），
  * 副本会与页级配置漂移，是「面板改完进最优仍用旧值」这类问题的来源，已删除。
  *
- * 也不再剔除主 C 的面板：旧架构下主 C 局外由候选词条推导，所以要把页级那份摘掉以免顶掉
+ * 也不再剔除当前编辑角色的面板：旧架构下当前编辑角色局外由候选词条推导，所以要把页级那份摘掉以免顶掉
  * 推导结果；新架构下**页级那份就是基准**，摘掉等于让基准失效（会静默回退到推导路径）。
- * 主 C 槽位本身取的是「基准 + 候选词条」的评估结果（`ctx.mainExternalPanel`），
+ * 当前编辑槽位本身取的是「基准 + 候选词条」的评估结果（`ctx.mainExternalPanel`），
  * 面板聚合里 live 槽位优先读它，因此不会用到未叠加候选的基准值。
  */
 const effectiveAnomalySlotPanels = computed(() => {
@@ -1008,7 +1008,7 @@ const selectedEval = computed(() => {
   const point =
     sweepDamageKind.value === 'direct' ? selectedDirect.value : selectedAnomaly.value
   if (point?.evalSnapshot) return point.evalSnapshot
-  // 过程 Tab 需要完整事件明细；其余场景只算主 C 面板，避免点柱就卡一下
+  // 过程 Tab 需要完整事件明细；其余场景只算当前编辑角色面板，避免点柱就卡一下
   if (detailTab.value === 'process') {
     return evaluateAffixCounts(evalCtx.value, selectedCounts.value)
   }

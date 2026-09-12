@@ -7,7 +7,7 @@ import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
  * 招式流程「用哪份面板」的三态。
  *
  * ```
- * 主 C 局外面板 = 角色配置面板 + 叠加( 无 | 最优分配的词条数 | 当前点击柱的词条数 )
+ * 当前编辑角色的局外面板 = 角色配置面板 + 叠加( 无 | 最优分配的词条数 | 当前点击柱的词条数 )
  * ```
  *
  * 三个选项的差别全在「叠不叠、叠哪一组」，除此之外没有第二套算法
@@ -19,7 +19,7 @@ export type SkillFlowPanelSourceMode = 'config' | 'allocation' | 'sweep'
 export interface SkillFlowPanelOption {
   mode: 'allocation' | 'sweep'
   /**
-   * 该来源的主 C 局外面板（已由词条分析自己算出）。
+   * 该来源的当前编辑角色局外面板（已由词条分析自己算出）。
    *
    * 传「算好的面板」而不是「词条数」：两个消费者拿到的必须是同一份数值，
    * 各自再叠一次会引入分叉（`computeExternalForEval` 的上下文在两侧并不完全相同）。
@@ -42,7 +42,7 @@ export interface SkillFlowPanelOption {
  */
 export interface SkillFlowDisplayOption {
   mode: 'allocation' | 'sweep'
-  /** 局外：该来源的主 C 局外面板 */
+  /** 局外：该来源的当前编辑角色局外面板 */
   mainExternal: PanelStats
   /** 局内（含增益）：实际参与伤害结算的最终面板 */
   finalPanel: PanelStats
@@ -143,7 +143,7 @@ function serializeSignatureFields(fields: Record<string, unknown>): string {
 
 /** 一份可用来源的判定结果 */
 export interface ResolvedSkillFlowPanelSource {
-  /** 实际要用的主 C 局外面板；null = 用角色配置面板（选项①） */
+  /** 实际要用的当前编辑角色局外面板；null = 用角色配置面板（选项①） */
   mainExternal: PanelStats | null
   /** 当前选项在这份配置下是否仍然有效 */
   active: boolean

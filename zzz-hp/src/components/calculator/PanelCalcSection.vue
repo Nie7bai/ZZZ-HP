@@ -45,11 +45,9 @@ import {
 import {
   applyConvertPartialToExternalPanel,
   buildPanelSourceValuesBySlotRecord,
-  collectConvertSupportSlots,
   computeFinalPanel,
   computePiercePower,
   convertSlotPartialToExternalPanel,
-  externalPanelToConvertPartial,
   panelToConvertAttrValues,
   resolveBuffSelectionForSlot,
   resolveAnomalyReleaseMultFields,
@@ -196,7 +194,7 @@ const props = defineProps<{
   /** 环境 / 场地 Buff（危局全局、Boss 场地、防卫房间） */
   environmentBuffs?: import('@/utils/environmentBuffCalc').EnvironmentBuffEntry[]
   /**
-   * 主 C 局外面板覆盖值（招式流程三选项的「词条分析」两态）。
+   * 当前编辑角色的局外面板覆盖值（招式流程三选项的「词条分析」两态）。
    *
    * 为 null / 省略时用角色配置那份激活面板。见 `utils/skillFlowPanelSource.ts`。
    */
@@ -208,6 +206,10 @@ const extraGains = defineModel<ExtraBuffGain[]>('extraGains', { default: () => [
 const emit = defineEmits<{
   /** 只传变化的那些 agentId（补丁），页级按 key 合并。**当前组件内无 emit 点**，保留声明以对齐页级接线 */
   'update:slotPanels': [patch: Record<string, AgentPanelSources>]
+  /**
+   * 当前组件内已无 emit 点（换人自动刷新转模面板已删除——面板只有「确定导入」能写，
+   * 见 dev-docs/affix-calc-manual.md §1.2；旧数据经页级接线读回），保留声明以对齐页级接线。
+   */
   'update:convertSlotPanels': [value: ConvertSlotPanels]
   'update:hitDamages': [value: Record<string, number>]
   'update:hitCalcResults': [value: Record<string, DamageCalcResult>]
@@ -572,10 +574,6 @@ function buildPanelCalcContextForSlot(
   }
 }
 
-function buildBasePanelCalcContext() {
-  return buildPanelCalcContextForSlot(mainSlotIndex.value)
-}
-
 function getAttrDefaultsForSlot(slotIndex: number) {
   const external = resolveExternalPanelForSlotIndex(slotIndex)
   const agentId = props.teamSlots[slotIndex]?.agentId
@@ -596,33 +594,6 @@ function getPanelSourceValuesForSlot(slotIndex: number) {
     resolveExternalPanelForSlotIndex(slotIndex),
   )
   return record[slotIndex]
-}
-
-const anomalyProducerAgentIds = computed(() => {
-  const ids = new Set<string>()
-  for (const item of anomalySupportSlots.value) {
-    if (item.slot.agentId) ids.add(item.slot.agentId)
-  }
-  return ids
-})
-
-/** 需录入局外面板的转模增益角色（非主 C、非异常产生角色） */
-const convertSupportSlots = computed(() =>
-  collectConvertSupportSlots(buildBasePanelCalcContext(), {
-    excludeAnomalyAgentIds: anomalyProducerAgentIds.value,
-  }),
-)
-
-function emitConvertSlotPanel(
-  agentId: string,
-  keys: CharacterAttrKey[],
-  panel: PanelStats,
-) {
-  if (!keys.length) return
-  emit('update:convertSlotPanels', {
-    ...props.convertSlotPanels,
-    [agentId]: externalPanelToConvertPartial(panel, keys),
-  })
 }
 
 /**
@@ -670,7 +641,7 @@ const needsTriggerPanel = computed(() => {
   )
 })
 
-/** 异放/乱流/耀变时伤害属性跟随触发角色；否则用主 C（流明不作等价属性替换，等价属性仅用于抗性区） */
+/** 异放/乱流/耀变时伤害属性跟随触发角色；否则用当前编辑角色（流明不作等价属性替换，等价属性仅用于抗性区） */
 const damageElement = computed(() => {
   if (needsTriggerPanel.value && triggerAgent.value?.element) {
     return triggerAgent.value.element
@@ -776,7 +747,7 @@ const triggerPanelBreakdown = computed(() => {
 const triggerFinalPanel = computed(() => triggerPanelBreakdown.value?.finalPanel ?? null)
 
 const anomalyCalcBlockedReason = computed(() => {
-  // 招式流程按 hit 逐条 skip；不再按「第一条事件 + 主 C」整页封锁（否则主 C 蕾米时队友异常事件无法出伤）
+  // 招式流程按 hit 逐条 skip；不再按「第一条事件 + 当前编辑角色」整页封锁（否则当前编辑角色是蕾米时队友异常事件无法出伤）
   return ''
 })
 
@@ -851,15 +822,6 @@ watch(
   () => mainAgent.value?.id,
   (newId, oldId) => {
     if (suppressRestoreResets) return
-    if (oldId && !isAffixMode.value) {
-      const convertSlot = convertSupportSlots.value.find((item) => item.agentId === oldId)
-      if (convertSlot) {
-        emitConvertSlotPanel(oldId, convertSlot.requiredAttrs, externalPanel)
-      } else if (props.convertSlotPanels?.[oldId]) {
-        const keys = Object.keys(props.convertSlotPanels[oldId]) as CharacterAttrKey[]
-        emitConvertSlotPanel(oldId, keys, externalPanel)
-      }
-    }
 
     if (!mainAgent.value || !newId) return
 
@@ -1009,7 +971,7 @@ function resolveOwnerExternalPanel(ownerSlotIndex: number, ownerAgentId: string)
 /**
  * 面板计算链路用的统一评估上下文（`计算方式 = 面板导入 / 词条导入`）。
  *
- * 招式伤害只认「上下文 + 主 C 局外面板」，「面板从哪来」由 `skillFlowMainExternal` 决定 ——
+ * 招式伤害只认「上下文 + 当前编辑角色的局外面板」，「面板从哪来」由 `skillFlowMainExternal` 决定 ——
  * 这条链路与最优词条分配链路共用同一段招式计算，见 `dev-docs/affix-calc-manual.md` §4（计算链路统一·步骤①~④）。
  */
 const skillFlowEvalCtx = computed(() =>
@@ -1031,7 +993,7 @@ const skillFlowEvalCtx = computed(() =>
     slotBuffSelections: props.slotBuffSelections,
     activeSlotPanels: resolvedActiveSlotPanels.value,
     convertSlotPanels: props.convertSlotPanels,
-    // 非主 C 槽位沿用本组件那份解析（激活面板 → 转模部分面板 → 空面板），
+    // 非当前编辑槽位沿用本组件那份解析（激活面板 → 转模部分面板 → 空面板），
     // 与改造前逐位一致（引擎默认解析的回落不同，不能让它接管）
     slotExternalPanels: slotExternalPanelsMap.value,
     hits: props.hits,
