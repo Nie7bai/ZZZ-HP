@@ -2173,6 +2173,7 @@ const EXTERNAL_PREVIEW_FIELDS: { key: keyof PanelStats; label: string }[] = [
   { key: 'mastery', label: '精通' },
   { key: 'anomalyControl', label: '异常掌控' },
   { key: 'energyRegen', label: '能量回复效率%' },
+  { key: 'impact', label: '冲击力' },
 ]
 
 /** 局内面板比局外多出的字段（与顶部「局内面板」一致）：锋御专属锐爆 + 异常系 5 项 */
@@ -3758,8 +3759,11 @@ const showcaseTitle = computed(() => {
   color: #d8a25c;
 }
 
-/* ── 亮色主题覆盖（与计算页其他 light 覆盖同法） ── */
-:global([data-theme='light']) .sf-panel-showcase-body {
+/* ── 亮色主题覆盖 ──
+   注意：scoped 下必须把「整个选择器」放进一个 :global()，
+   `:global([data-theme='light']) .xxx` 会编译成只剩 [data-theme='light']，
+   永远不会命中（2026-09-12 实测 compileStyle 验证）。 */
+:global([data-theme='light'] .sf-panel-showcase-body) {
   background: linear-gradient(180deg, #faf8f2 0%, #efece2 100%);
   border-color: rgba(140, 110, 50, 0.6);
   box-shadow:
@@ -3767,38 +3771,38 @@ const showcaseTitle = computed(() => {
     0 12px 32px rgba(0, 0, 0, 0.16);
   color: #3c3a34;
 }
-:global([data-theme='light']) .sf-panel-showcase-title {
+:global([data-theme='light'] .sf-panel-showcase-title) {
   color: #8a6a1f;
 }
-:global([data-theme='light']) .sf-panel-showcase-tag {
+:global([data-theme='light'] .sf-panel-showcase-tag) {
   border-color: #c9c2b2;
   color: #8a8578;
 }
-:global([data-theme='light']) .sf-panel-showcase-tag.active {
+:global([data-theme='light'] .sf-panel-showcase-tag.active) {
   border-color: #4c9a6a;
   color: #3e7d57;
 }
-:global([data-theme='light']) .sf-panel-showcase-sub {
+:global([data-theme='light'] .sf-panel-showcase-sub) {
   color: #5d7a45;
 }
-:global([data-theme='light']) .sf-panel-showcase-sub--final {
+:global([data-theme='light'] .sf-panel-showcase-sub--final) {
   border-top-color: #d8d2c4;
 }
-:global([data-theme='light']) .sf-panel-showcase-item dt {
+:global([data-theme='light'] .sf-panel-showcase-item dt) {
   color: #8a8578;
 }
-:global([data-theme='light']) .sf-panel-showcase-item dd {
+:global([data-theme='light'] .sf-panel-showcase-item dd) {
   color: #221f18;
 }
-:global([data-theme='light']) .sf-panel-showcase-empty {
+:global([data-theme='light'] .sf-panel-showcase-empty) {
   color: #a0701e;
 }
-:global([data-theme='light']) .sf-panel-showcase-toggle {
+:global([data-theme='light'] .sf-panel-showcase-toggle) {
   background: rgba(140, 110, 50, 0.12);
   border-color: rgba(140, 110, 50, 0.5);
   color: #8a6a1f;
 }
-:global([data-theme='light']) .sf-panel-showcase-toggle:hover {
+:global([data-theme='light'] .sf-panel-showcase-toggle:hover) {
   background: rgba(140, 110, 50, 0.22);
 }
 .primary-btn {
