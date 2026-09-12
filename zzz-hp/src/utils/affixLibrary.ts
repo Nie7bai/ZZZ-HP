@@ -26,8 +26,22 @@ import { AFFIX_VALUE_PER_COUNT } from '@/utils/affixPanelCalc'
  * ## 预算模型（独立功能，不复用「词条计算」页的双预算规则）
  *
  * - `rollCost`：占用「总词条数」预算，每条词条 1 档 = 1 个词条。
- * - `group`：互斥组，同组至多选 1 个条目（主词条、套装等）。
  * - `cap`：单条最大档数，0 表示不限。
+ * - `group` + 组额度：**进组的条目共享一个额度**，组内各条档数之和 ≤ 组额度
+ *   （额度由库级 `groups` 表按组名维护，见下）。空组名 = 自由条目。
+ *
+ * ## 分组额度（`groups`，2026-09-12 用户口径）
+ *
+ * 组不是一个布尔标记，而是一个**共享额度**：
+ *
+ * ```
+ * 单词条 A（组 E，自己 cap 3）
+ * 单词条 B（组 E，自己 cap 4）
+ * 组 E 额度 5        →  A 档数 + B 档数 ≤ 5，各自也不超自己的 cap
+ * ```
+ *
+ * 求解器因此只做一次取最小：`min(自己 cap − 自己已用, 组额度 − 组内已用, 总预算剩余)`。
+ * 组额度缺省（未登记的组名）= 1 档 —— 对 cap 各 1 的条目等价于「二选一」的直觉。
  *
  * ## id 命名
  *
@@ -169,7 +183,7 @@ export interface AffixLibraryEntry {
   perRoll: number
   /** 配平最大档数；0 表示不设上限 */
   cap: number
-  /** 互斥组标签；同组至多选 1 个条目。'' 表示自由条目 */
+  /** 所属分组名（引用库级 `groups` 表）；'' 表示自由条目。见文件头「分组额度」 */
   group: string
   /** 每档占用「总词条数」预算（独立功能口径：每条词条 1 档 = 1 个词条） */
   rollCost: number
@@ -206,7 +220,7 @@ function substatEntry(affixKey: keyof AffixCounts): AffixLibraryEntry {
     label: AFFIX_SUBSTAT_KEY_LABELS[affixKey],
     perRoll: AFFIX_VALUE_PER_COUNT[affixKey],
     cap: 0,
-    group: '',
+    group: AFFIX_PRESET_DEFAULT_GROUP,
     // 独立功能口径：不分大小词条，每档一律占 1 个总词条数
     rollCost: 1,
     enabledByDefault: true,
@@ -248,11 +262,46 @@ export function createOptionalAffixLibraryEntries(): AffixLibraryEntry[] {
     label: AFFIX_PANEL_DELTA_FIELD_LABELS[spec.field],
     perRoll: spec.perRoll,
     cap: 1,
-    group: '',
+    group: AFFIX_PRESET_DEFAULT_GROUP,
     rollCost: 1,
     enabledByDefault: false,
   }))
 }
+
+/** 词条分组：组名 + 组额度（组内各条档数之和的上限，见文件头「分组额度」） */
+export interface AffixLibraryGroup {
+  name: string
+  /** 组额度；`AFFIX_GROUP_UNLIMITED`（0）表示不构成约束 */
+  cap: number
+}
+
+/**
+ * 组额度 `0` = **不限**（组不构成约束，纯粹是一个归类页）。
+ *
+ * 与单词条的 `cap: 0 = 不设上限` 同一个语义。需要它是因为页面按组划分：
+ * 「副词条」这种页只是把可叠加的条目归在一起，不能因此让它们共享额度。
+ */
+export const AFFIX_GROUP_UNLIMITED = 0
+
+/** 新建分组时的默认额度（用户主动建组，通常就是要「二选一」） */
+export const DEFAULT_AFFIX_GROUP_CAP = 1
+
+/**
+ * 预设分组：与词条库弹窗的页签一一对应（4/5/6 号位、2 件套、副词条）。
+ *
+ * 4/5/6 号位在主属性上各自只能选一个 → 额度 1；
+ * 副词条可叠加、彼此不互斥 → 额度不限（只是归类）。
+ */
+export const AFFIX_PRESET_GROUPS: AffixLibraryGroup[] = [
+  { name: '4号位', cap: 1 },
+  { name: '5号位', cap: 1 },
+  { name: '6号位', cap: 1 },
+  { name: '2件套', cap: 1 },
+  { name: '副词条', cap: AFFIX_GROUP_UNLIMITED },
+]
+
+/** 预设条目默认落在哪一组 */
+export const AFFIX_PRESET_DEFAULT_GROUP = '副词条'
 
 export interface AffixLibraryState {
   /** 用户自建条目 */
@@ -263,7 +312,7 @@ export interface AffixLibraryState {
    * 扩展条目（主词条/Buff 来源）默认不参与。
    */
   enabledOverride: Record<string, boolean>
-  /** 默认条目的覆盖值（用户改了名称/每档/上限/互斥组时记录） */
+  /** 默认条目的覆盖值（用户改了名称/每档/上限/分组时记录） */
   overrides: Record<string, Partial<Pick<AffixLibraryEntry, 'label' | 'perRoll' | 'cap' | 'group'>>>
   /**
    * 被用户删掉的默认条目 id。
@@ -273,10 +322,23 @@ export interface AffixLibraryState {
    * 所以不设「不可删」标记：删了记在这里，「恢复默认」会清空。
    */
   removedEntryIds: string[]
+  /**
+   * 词条分组（组名 + 组额度），按列表顺序展示。
+   *
+   * 条目只记组名、额度集中在这里维护：同一个组名在两处填，填岔一个字符就变成两个组，
+   * 而且**静默不生效** —— 这是最难查的那类问题。
+   */
+  groups: AffixLibraryGroup[]
 }
 
 export function createDefaultAffixLibraryState(): AffixLibraryState {
-  return { customEntries: [], enabledOverride: {}, overrides: {}, removedEntryIds: [] }
+  return {
+    customEntries: [],
+    enabledOverride: {},
+    overrides: {},
+    removedEntryIds: [],
+    groups: AFFIX_PRESET_GROUPS.map((group) => ({ ...group })),
+  }
 }
 
 const AFFIX_LIBRARY_STORAGE_KEY = 'zzz-hp-affix-library'
@@ -327,7 +389,8 @@ function migrateCustomEntry(raw: unknown): AffixLibraryEntry | null {
  */
 export function coerceAffixLibraryState(raw: unknown): AffixLibraryState {
   const parsed = (raw && typeof raw === 'object' ? raw : {}) as Partial<AffixLibraryState>
-  return {
+  const groups = coerceAffixLibraryGroups(parsed.groups)
+  const state: AffixLibraryState = {
     customEntries: Array.isArray(parsed.customEntries)
       ? parsed.customEntries
           .map(migrateCustomEntry)
@@ -341,7 +404,54 @@ export function coerceAffixLibraryState(raw: unknown): AffixLibraryState {
     removedEntryIds: Array.isArray(parsed.removedEntryIds)
       ? parsed.removedEntryIds.filter((id): id is string => typeof id === 'string')
       : [],
+    groups,
   }
+  return withReferencedGroupsBackfilled(state)
+}
+
+/** 组表的宽松解析：名字非空、额度取非负整数（非法一律回落到「不限」） */
+function coerceAffixLibraryGroups(raw: unknown): AffixLibraryGroup[] {
+  if (!Array.isArray(raw)) return []
+  const out: AffixLibraryGroup[] = []
+  const seen = new Set<string>()
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const name = typeof (item as AffixLibraryGroup).name === 'string'
+      ? (item as AffixLibraryGroup).name.trim()
+      : ''
+    if (!name || seen.has(name)) continue
+    out.push({ name, cap: coerceGroupCap((item as AffixLibraryGroup).cap) })
+    seen.add(name)
+  }
+  return out
+}
+
+/** 额度归一：非负整数；`0` = 不限；非法值回落「不限」 */
+export function coerceGroupCap(value: unknown): number {
+  const raw = Number(value)
+  if (!Number.isFinite(raw) || raw <= 0) return AFFIX_GROUP_UNLIMITED
+  return Math.floor(raw)
+}
+
+/**
+ * 给「被条目引用、但组表里没有」的组名补一条记录。
+ *
+ * 为什么需要：老存档与手改过的导入文件里只有条目上的组名。若不补，
+ * 那个引用就没有页签可去 —— 条目会**在界面上消失**（比报错更难发现）。
+ *
+ * 补出来的额度是**不限**而不是 1：我们不知道用户当初想约束多少，
+ * 静默给他加一条约束会直接改变求解结果，方向反了。
+ */
+function withReferencedGroupsBackfilled(state: AffixLibraryState): AffixLibraryState {
+  const known = new Set(state.groups.map((group) => group.name))
+  const missing: AffixLibraryGroup[] = []
+  for (const entry of [...presetEntriesWithOverrides(state), ...state.customEntries]) {
+    const name = entry.group.trim()
+    if (!name || known.has(name)) continue
+    known.add(name)
+    missing.push({ name, cap: AFFIX_GROUP_UNLIMITED })
+  }
+  return missing.length ? { ...state, groups: [...state.groups, ...missing] } : state
 }
 
 // ===================== 多套词条库 =====================
@@ -671,6 +781,107 @@ export function removeAffixLibraryEntry(
 /** 恢复默认：连带清掉「删过谁」，被删的默认条目一并回来 */
 export function restoreAffixLibraryDefaults(): AffixLibraryState {
   return createDefaultAffixLibraryState()
+}
+
+// ===================== 词条分组（组名 + 组额度） =====================
+
+/** 取某组的额度；未登记的组名按「不限」算（静默加约束比不加更危险） */
+export function affixGroupCap(state: AffixLibraryState, name: string): number {
+  const group = state.groups.find((item) => item.name === name)
+  return group ? group.cap : AFFIX_GROUP_UNLIMITED
+}
+
+/** 组额度表（组名 → 额度），交给求解器用 */
+export function affixGroupCaps(state: AffixLibraryState): Record<string, number> {
+  const caps: Record<string, number> = {}
+  for (const group of state.groups) caps[group.name] = group.cap
+  return caps
+}
+
+/** 该组名是否已被占用（新建 / 改名时查重） */
+export function hasAffixLibraryGroup(state: AffixLibraryState, name: string): boolean {
+  return state.groups.some((item) => item.name === name)
+}
+
+/** 新建一组；名字空 / 重名则原样返回（调用方负责提示） */
+export function addAffixLibraryGroup(
+  state: AffixLibraryState,
+  name: string,
+  cap: number = DEFAULT_AFFIX_GROUP_CAP,
+): AffixLibraryState {
+  const trimmed = name.trim()
+  if (!trimmed || hasAffixLibraryGroup(state, trimmed)) return state
+  return { ...state, groups: [...state.groups, { name: trimmed, cap: coerceGroupCap(cap) }] }
+}
+
+/** 改组额度（`0` = 不限） */
+export function setAffixLibraryGroupCap(
+  state: AffixLibraryState,
+  name: string,
+  cap: number,
+): AffixLibraryState {
+  const safeCap = coerceGroupCap(cap)
+  return {
+    ...state,
+    groups: state.groups.map((group) =>
+      group.name === name ? { ...group, cap: safeCap } : group,
+    ),
+  }
+}
+
+/**
+ * 改组名，并**同步所有引用它的条目**（自建条目 + 默认条目的覆盖值）。
+ *
+ * 不同步的话，条目会指向一个不存在的组名 —— 读回来时会被兜底补成一个新组，
+ * 于是「改个名」变成「多出一个组」，两条互相不约束。
+ */
+export function renameAffixLibraryGroup(
+  state: AffixLibraryState,
+  from: string,
+  to: string,
+): AffixLibraryState {
+  const trimmed = to.trim()
+  if (!trimmed || trimmed === from) return state
+  if (hasAffixLibraryGroup(state, trimmed)) return state
+  const patchGroup = <T extends { group: string }>(item: T): T =>
+    item.group === from ? { ...item, group: trimmed } : item
+  return {
+    ...state,
+    groups: state.groups.map((group) =>
+      group.name === from ? { ...group, name: trimmed } : group,
+    ),
+    customEntries: state.customEntries.map(patchGroup),
+    overrides: Object.fromEntries(
+      Object.entries(state.overrides).map(([id, patch]) => [
+        id,
+        patch.group === from ? { ...patch, group: trimmed } : patch,
+      ]),
+    ),
+  }
+}
+
+/**
+ * 删除一组：**只删组，条目留下**（用户 2026-09-12 口径）。
+ *
+ * 组内条目的组名一起清空，它们变回自由条目 —— 不替用户删条目，也不把它们塞进别的组。
+ */
+export function removeAffixLibraryGroup(
+  state: AffixLibraryState,
+  name: string,
+): AffixLibraryState {
+  const clearGroup = <T extends { group: string }>(item: T): T =>
+    item.group === name ? { ...item, group: '' } : item
+  return {
+    ...state,
+    groups: state.groups.filter((group) => group.name !== name),
+    customEntries: state.customEntries.map(clearGroup),
+    overrides: Object.fromEntries(
+      Object.entries(state.overrides).map(([id, patch]) => [
+        id,
+        patch.group === name ? { ...patch, group: '' } : patch,
+      ]),
+    ),
+  }
 }
 
 export interface AffixEntryEvalInput {

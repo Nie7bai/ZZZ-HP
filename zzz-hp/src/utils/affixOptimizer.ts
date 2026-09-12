@@ -70,6 +70,13 @@ export interface AffixOptimizerInput {
   maxEngineCalls?: number
   /** 允许单条最大档数（默认按 cap 与预算推） */
   maxRollsPerEntry?: number
+  /**
+   * 组额度表（组名 → 组内各条档数之和的上限；`0` = 不限）。
+   *
+   * 组名不在表里时按**不限**算 —— 静默加约束比不加约束危险（见 `groupCapFor`）。
+   * 表由词条库的 `affixGroupCaps(state)` 给。
+   */
+  groupCaps?: Record<string, number>
   /** 多起点贪心的起点数（1~3，默认 3） */
   maxStarts?: number
 }
@@ -184,27 +191,51 @@ function usedRollsOf(
   return rolls
 }
 
-/** 互斥组占用：同组已选条目集合 */
-function occupiedGroups(
+/**
+ * 某组当前已占用的档数（组内所有条目已分配档数之和）。
+ *
+ * `rolls` 必须是**当前正在评估的那份**档数快照：局部搜索里一次会连加两条，
+ * 判断第二条时必须把刚加上的第一条算进来（2026-09-12 修：原先传的是「撤档之后」的
+ * 旧快照，导致同组两条可以同时上榜）。
+ */
+function groupRollsUsed(
   entries: AffixLibraryEntry[],
-  rollsByEntryId: Record<string, number>,
-): Set<string> {
-  const occupied = new Set<string>()
+  rolls: Record<string, number>,
+  group: string,
+): number {
+  let sum = 0
   for (const entry of entries) {
-    if (!entry.group) continue
-    if ((rollsByEntryId[entry.id] ?? 0) > 0) occupied.add(entry.group)
+    if (entry.group !== group) continue
+    sum += rolls[entry.id] ?? 0
   }
-  return occupied
+  return sum
 }
 
-/** 该条目还能再加多少档（受 cap、主词条上限、总词条数、互斥组限制） */
+/**
+ * 组额度：`0` = 不限（不构成约束）；组名不在表里也按不限算。
+ *
+ * 为什么缺失按「不限」而不是「1」：预设条目自带组名（都在「副词条」组），
+ * 而调用方（脚本、测试）未必传组额度表 —— 那时若按 1 算，会让所有副词条
+ * 共享 1 档，求解结果直接崩掉。静默加约束比不加约束危险得多。
+ */
+function groupCapFor(groupCaps: Record<string, number>, group: string): number {
+  const cap = groupCaps[group]
+  if (cap === undefined || !Number.isFinite(cap) || cap <= 0) {
+    return Number.POSITIVE_INFINITY
+  }
+  return cap
+}
+
+/** 该条目还能再加多少档（受 cap、组额度、总词条数限制） */
 function remainingAllowedRolls(
   entry: AffixLibraryEntry,
   current: number,
   budget: AffixOptimizerBudget,
   usedRolls: number,
-  occupied: Set<string>,
+  rolls: Record<string, number>,
+  entries: AffixLibraryEntry[],
   maxRollsPerEntry: number,
+  groupCaps: Record<string, number>,
 ): number {
   const capLimit = entry.cap > 0 ? entry.cap : maxRollsPerEntry
   const rollCap = budget.rollCapOf(entry)
@@ -213,10 +244,18 @@ function remainingAllowedRolls(
     Math.min(capLimit, Number.isFinite(rollCap) ? rollCap : capLimit) - current,
   )
   if (byCap <= 0) return 0
-  if (entry.group && current === 0 && occupied.has(entry.group)) return 0
+  let byGroup = Number.POSITIVE_INFINITY
+  if (entry.group) {
+    const capOfGroup = groupCapFor(groupCaps, entry.group)
+    if (Number.isFinite(capOfGroup)) {
+      const groupRoom = capOfGroup - groupRollsUsed(entries, rolls, entry.group)
+      if (groupRoom <= 0) return 0
+      byGroup = groupRoom
+    }
+  }
   const cost = Math.max(1, entry.rollCost)
   const rollRoom = Math.floor((budget.maxTotalRolls - usedRolls) / cost)
-  return Math.max(0, Math.min(byCap, rollRoom))
+  return Math.max(0, Math.min(byCap, byGroup, rollRoom))
 }
 
 export function resolveAffixOptimizerBudget(
@@ -274,6 +313,8 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
   const { ctx, entries } = input
   const budget = resolveAffixOptimizerBudget(ctx, input.maxTotalRolls)
   const maxRollsPerEntry = input.maxRollsPerEntry ?? budget.maxTotalRolls
+  /** 组额度表：缺省无表，任何组都按 DEFAULT_AFFIX_GROUP_CAP 算 */
+  const groupCaps = input.groupCaps ?? {}
   const fixedRolls = input.fixedRollsByEntryId ?? {}
   const maxStarts = Math.max(1, Math.min(3, input.maxStarts ?? 3))
   const widthMode: AffixCandidateWidthMode = input.candidateWidthMode ?? 'auto'
@@ -482,15 +523,16 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
 
     for (;;) {
       const width = deriveWidth('linear', 1)
-      const occupied = occupiedGroups(entries, rolls)
       const allowedHere = (entry: AffixLibraryEntry) =>
         remainingAllowedRolls(
           entry,
           rolls[entry.id] ?? 0,
           budget,
           used,
-          occupied,
+          rolls,
+          entries,
           maxRollsPerEntry,
+          groupCaps,
         ) > 0
       let candidates = pickCandidates(width, order, allowedHere)
       // 候选不足就补测零收益条目（补测门槛按档数翻倍推进，不会无限循环）
@@ -555,7 +597,6 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
         const removeRolls = rolls[removeEntry.id] ?? 0
         const afterRemove = { ...rolls, [removeEntry.id]: removeRolls - 1 }
         const usedAfter = usedRollsOf(entries, afterRemove)
-        const occupiedAfter = occupiedGroups(entries, afterRemove)
         const candidates = pickCandidates(
           width,
           order,
@@ -565,8 +606,10 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
               afterRemove[entry.id] ?? 0,
               budget,
               usedAfter,
-              occupiedAfter,
+              afterRemove,
+              entries,
               maxRollsPerEntry,
+              groupCaps,
             ) > 0,
         )
 
@@ -636,7 +679,6 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
       let bestSwap: { next: Record<string, number>; state: SolveState } | null = null
 
       for (const removal of removals) {
-        const occupiedAfter = occupiedGroups(entries, removal.rolls)
         const candidates = pickCandidates(
           width,
           order,
@@ -646,8 +688,10 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
               removal.rolls[entry.id] ?? 0,
               budget,
               removal.usedRolls,
-              occupiedAfter,
+              removal.rolls,
+              entries,
               maxRollsPerEntry,
+              groupCaps,
             ) > 0,
         )
         for (let i = 0; i < candidates.length; i += 1) {
@@ -659,7 +703,20 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
           for (let j = i; j < candidates.length; j += 1) {
             const b = candidates[j]!
             const bRolls = afterAddA[b.id] ?? 0
-            if (remainingAllowedRolls(b, bRolls, budget, usedA, occupiedAfter, maxRollsPerEntry) <= 0) continue
+            // 传 afterAddA 而不是 removal.rolls：这一轮已经加了 a 一档，
+            // 同组额度必须把 a 算进去（否则同组两条会同时被加进来）
+            if (
+              remainingAllowedRolls(
+                b,
+                bRolls,
+                budget,
+                usedA,
+                afterAddA,
+                entries,
+                maxRollsPerEntry,
+                groupCaps,
+              ) <= 0
+            ) continue
             const candidate = { ...afterAddA, [b.id]: bRolls + 1 }
             const evaluated = evaluate(candidate)
             yield snapshot()

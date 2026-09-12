@@ -5,6 +5,7 @@ import {
   AFFIX_LIBRARY_SET_NAME_MAX,
   AFFIX_PANEL_DELTA_FIELD_LABELS,
   AFFIX_SUBSTAT_KEY_LABELS,
+  DEFAULT_AFFIX_GROUP_CAP,
   activateAffixLibrarySet,
   activeAffixLibrarySet,
   affixPerRollUnit,
@@ -21,6 +22,7 @@ import {
   statTarget,
   type AffixLibraryEntry,
   type AffixLibraryEntryTarget,
+  type AffixLibraryGroup,
   type AffixLibraryStore,
   type AffixPanelDeltaField,
 } from '@/utils/affixLibrary'
@@ -34,7 +36,7 @@ import {
  * 职责划分：
  * - **库级操作**（新建 / 重命名 / 删除 / 切换 / 导入导出）由本组件自己做并落盘，
  *   完成后 emit `switched`，由页面重新载入激活库并重算；
- * - **条目级编辑**（启用 / 增 / 改 / 删 / 恢复默认）走 emit 交给页面，
+ * - **条目级编辑与分组编辑**（启用 / 增 / 改 / 删 / 分组额度 / 恢复默认）走 emit 交给页面，
  *   沿用既有的「改了就重算」链路，不在这里另建一套状态。
  */
 
@@ -45,6 +47,8 @@ const props = withDefaults(
     library: AffixLibraryEntry[]
     /** 正在参与计算的条目 id */
     enabledIds: string[]
+    /** 当前激活库的分组（组名 + 组额度），见分组页 */
+    groups: AffixLibraryGroup[]
   }>(),
   {},
 )
@@ -56,11 +60,90 @@ const emit = defineEmits<{
   updateEntry: [entryId: string, patch: Partial<AffixLibraryEntry>]
   removeEntry: [entryId: string]
   restoreDefaults: []
+  /** 新建分组（额度默认 1 档） */
+  addGroup: [name: string, cap: number]
+  /** 改组额度 */
+  setGroupCap: [name: string, cap: number]
+  /** 改组名（页面负责同步条目引用） */
+  renameGroup: [from: string, to: string]
+  /** 只删分组，组内条目变回自由条目 */
+  removeGroup: [name: string]
   /** 库级变更（切换/新建/重命名/删除/导入）已完成并落盘，页面应重新载入 */
   switched: []
 }>()
 
 const enabledSet = computed(() => new Set(props.enabledIds))
+
+/**
+ * 右栏横向分页。
+ *
+ * `'manage'` = 组管理（首页）；`'__ungrouped__'` = 未分组（**只在真有未分组条目时出现**，
+ * 因为预设里所有条目都在组里，平时看不到它；删组或新建未选组的条目时它会冒出来，
+ * 否则那些条目会在界面上凭空消失）；其余值 = 组名。
+ */
+const UNGROUPED_TAB = '__ungrouped__'
+const activeTab = ref<string>('manage')
+
+/** 当前页对应的组名；组管理页与未分组页为 '' */
+const activeGroupName = computed(() =>
+  activeTab.value === 'manage' || activeTab.value === UNGROUPED_TAB ? '' : activeTab.value,
+)
+
+/** 当前页要显示的条目 */
+const visibleEntries = computed(() => {
+  if (activeTab.value === 'manage') return []
+  if (activeTab.value === UNGROUPED_TAB) return props.library.filter((entry) => !entry.group)
+  return props.library.filter((entry) => entry.group === activeTab.value)
+})
+
+/** 当前页的组（组管理页 / 未分组页为 null） */
+const activeGroup = computed(
+  () => props.groups.find((group) => group.name === activeGroupName.value) ?? null,
+)
+
+/** 有未分组条目才给页签 */
+const hasUngrouped = computed(() => props.library.some((entry) => !entry.group))
+
+/** 当前页的组被删掉时退回组管理页，避免停在一个不存在的页上 */
+watch(
+  () => props.groups.map((group) => group.name).join('\u0000'),
+  () => {
+    if (activeTab.value === 'manage' || activeTab.value === UNGROUPED_TAB) return
+    if (!props.groups.some((group) => group.name === activeTab.value)) activeTab.value = 'manage'
+  },
+)
+
+// ---------- 高级编辑开关 ----------
+
+/**
+ * 高级编辑：关闭时只留「勾选参与 + 调单词条上限」，其余编辑入口一律关掉。
+ *
+ * 默认**关闭** —— 这是给拿到预设就能用的用户准备的：词条库开箱是一份可用配置，
+ * 想改结构的人自己把开关打开（状态记在本机）。
+ *
+ * 关闭时**不隐藏任何数据**：自定义条目、改过的值照常显示、照常参与计算，
+ * 只是输入框不可改。藏起来会变成「看不见的东西在影响伤害」。
+ */
+const ADVANCED_EDITING_KEY = 'zzz-hp-affix-library-advanced-editing'
+
+function loadAdvancedEditing(): boolean {
+  try {
+    return localStorage.getItem(ADVANCED_EDITING_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+const advancedEditing = ref(loadAdvancedEditing())
+const simpleMode = computed(() => !advancedEditing.value)
+
+watch(advancedEditing, (on) => {
+  try {
+    localStorage.setItem(ADVANCED_EDITING_KEY, on ? '1' : '0')
+  } catch {
+    /* 存不了就只在本次会话生效 */
+  }
+})
 
 // ---------- 库列表 ----------
 
@@ -76,6 +159,9 @@ watch(
     setMessage.value = ''
     importError.value = ''
     pendingImport.value = null
+    activeTab.value = 'manage'
+    advancedEditing.value = loadAdvancedEditing()
+    groupError.value = null
   },
 )
 
@@ -312,6 +398,71 @@ function onRestoreDefaults() {
   forwardEntryEdit(() => emit('restoreDefaults'))
 }
 
+// ---------- 分组（组名 + 组额度） ----------
+
+/** 组额度说明：一句话讲清这个数字管什么 */
+const GROUP_CAP_HINT = '组内各条档数之和 ≤ 额度'
+
+/** 额度 0 在界面上的说法 */
+const GROUP_CAP_UNLIMITED_LABEL = '不限'
+
+const groupError = ref<string | null>(null)
+
+function onPickGroup(target: string, value: string) {
+  if (target === 'draft') {
+    draft.value.group = value
+    return
+  }
+  forwardEntryEdit(() => emit('updateEntry', target, { group: value }))
+}
+
+function onSetGroupCap(name: string, value: number) {
+  forwardEntryEdit(() => emit('setGroupCap', name, value))
+}
+
+/** 改组名：空名 / 重名一律拒绝，并把输入框还原成原值（否则界面与实际不符） */
+function onRenameGroup(from: string, event: Event) {
+  const input = event.target as HTMLInputElement
+  const to = input.value.trim()
+  if (!to || to === from) {
+    input.value = from
+    return
+  }
+  if (props.groups.some((group) => group.name === to)) {
+    groupError.value = `已有同名分组「${to}」`
+    input.value = from
+    return
+  }
+  groupError.value = null
+  forwardEntryEdit(() => emit('renameGroup', from, to))
+}
+
+/** 删组：只删组，组内条目变回自由条目（页面负责清引用） */
+function onRemoveGroup(name: string) {
+  groupError.value = null
+  forwardEntryEdit(() => emit('removeGroup', name))
+}
+
+/** 分组页的新建表单（与条目行共用建组逻辑） */
+const newGroupDraftName = ref('')
+const newGroupDraftCap = ref(DEFAULT_AFFIX_GROUP_CAP)
+
+function submitNewGroup() {
+  const name = newGroupDraftName.value.trim()
+  if (!name) {
+    groupError.value = '请填写组名'
+    return
+  }
+  if (props.groups.some((group) => group.name === name)) {
+    groupError.value = `已有同名分组「${name}」`
+    return
+  }
+  groupError.value = null
+  forwardEntryEdit(() => emit('addGroup', name, newGroupDraftCap.value))
+  newGroupDraftName.value = ''
+  newGroupDraftCap.value = DEFAULT_AFFIX_GROUP_CAP
+}
+
 // ---------- 条目编辑（新增表单） ----------
 
 /** 候选目标（合并后是一个下拉，按命名空间分组） */
@@ -485,16 +636,69 @@ function submitDraft() {
             <p v-if="setMessage" class="ok-msg">{{ setMessage }}</p>
           </aside>
 
-          <!-- 右：当前库的条目 -->
+          <!-- 右：当前库的横向分页（组管理 → 各组 → 未分组） -->
           <section class="entry-pane">
             <div class="pane-head">
-              <span class="pane-title">「{{ activeSet.name }}」的词条</span>
-              <button type="button" class="mini-btn" @click="onRestoreDefaults">
-                恢复默认
+              <span class="pane-title">「{{ activeSet.name }}」</span>
+              <label class="advanced-switch" title="关闭后只能勾选参与与调整单词条上限">
+                <input v-model="advancedEditing" type="checkbox" />
+                <span>高级编辑</span>
+              </label>
+            </div>
+
+            <div class="tab-strip" role="tablist">
+              <button
+                type="button"
+                class="pane-tab"
+                :class="{ active: activeTab === 'manage' }"
+                role="tab"
+                :aria-selected="activeTab === 'manage'"
+                @click="activeTab = 'manage'"
+              >
+                组管理
+              </button>
+              <button
+                v-for="group in groups"
+                :key="group.name"
+                type="button"
+                class="pane-tab"
+                :class="{ active: activeTab === group.name }"
+                role="tab"
+                :aria-selected="activeTab === group.name"
+                @click="activeTab = group.name"
+              >
+                {{ group.name }}
+              </button>
+              <button
+                v-if="hasUngrouped"
+                type="button"
+                class="pane-tab"
+                :class="{ active: activeTab === UNGROUPED_TAB }"
+                role="tab"
+                :aria-selected="activeTab === UNGROUPED_TAB"
+                @click="activeTab = UNGROUPED_TAB"
+              >
+                未分组
               </button>
             </div>
 
-            <div class="entry-scroll">
+            <!-- 组页首行：组名 + 组额度（额度只在这里显示，改在组管理页） -->
+            <div v-if="activeGroup" class="group-head">
+              <span class="group-head-name">{{ activeGroup.name }}</span>
+              <span class="group-head-cap">
+                组额度：
+                <strong>{{
+                  activeGroup.cap === 0 ? GROUP_CAP_UNLIMITED_LABEL : activeGroup.cap
+                }}</strong>
+              </span>
+              <span class="group-head-hint">{{ GROUP_CAP_HINT }}</span>
+            </div>
+            <div v-if="activeTab === UNGROUPED_TAB" class="group-head">
+              <span class="group-head-name">未分组</span>
+              <span class="group-head-hint">这些条目不属于任何组，彼此不约束</span>
+            </div>
+
+            <div v-if="activeTab !== 'manage'" class="entry-scroll">
               <table class="library-table">
                 <thead>
                   <tr>
@@ -503,13 +707,13 @@ function submitDraft() {
                     <th>类型</th>
                     <th>每档</th>
                     <th>上限</th>
-                    <th>互斥组</th>
+                    <th>分组</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr
-                    v-for="entry in library"
+                    v-for="entry in visibleEntries"
                     :key="entry.id"
                     :class="{ disabled: !enabledSet.has(entry.id) }"
                   >
@@ -526,6 +730,7 @@ function submitDraft() {
                       <input
                         class="inline-input"
                         :value="entry.label"
+                        :disabled="simpleMode"
                         @change="
                           onUpdateEntry(entry.id, {
                             label: ($event.target as HTMLInputElement).value,
@@ -541,6 +746,7 @@ function submitDraft() {
                           type="number"
                           step="0.1"
                           :value="entry.perRoll"
+                          :disabled="simpleMode"
                           @change="
                             onUpdateEntry(entry.id, {
                               perRoll: Number(($event.target as HTMLInputElement).value),
@@ -566,22 +772,24 @@ function submitDraft() {
                       />
                     </td>
                     <td>
-                      <input
+                      <select
                         class="inline-input"
                         :value="entry.group"
-                        placeholder="空=自由"
-                        @change="
-                          onUpdateEntry(entry.id, {
-                            group: ($event.target as HTMLInputElement).value,
-                          })
-                        "
-                      />
+                        :disabled="simpleMode"
+                        @change="onPickGroup(entry.id, ($event.target as HTMLSelectElement).value)"
+                      >
+                        <option value="">空=自由</option>
+                        <option v-for="group in groups" :key="group.name" :value="group.name">
+                          {{ group.name }}
+                        </option>
+                      </select>
                     </td>
                     <td>
                       <button
                         type="button"
                         class="del-btn"
                         title="删除该条目（默认条目可用「恢复默认」找回）"
+                        :disabled="simpleMode"
                         @click="onRemoveEntry(entry.id)"
                       >
                         ×
@@ -592,7 +800,7 @@ function submitDraft() {
               </table>
             </div>
 
-            <div class="add-entry">
+            <div v-if="activeTab !== 'manage' && !simpleMode" class="add-entry">
               <h5>新增词条</h5>
               <div class="add-grid">
                 <label>
@@ -626,17 +834,131 @@ function submitDraft() {
                   <input v-model.number="draft.cap" type="number" min="0" step="1" title="0 = 不设上限" />
                 </label>
                 <label>
-                  <span>互斥组</span>
-                  <input v-model="draft.group" type="text" placeholder="可空" />
+                  <span>分组</span>
+                  <select
+                    :value="draft.group"
+                    @change="onPickGroup('draft', ($event.target as HTMLSelectElement).value)"
+                  >
+                    <option value="">空=自由</option>
+                    <option v-for="group in groups" :key="group.name" :value="group.name">
+                      {{ group.name }}
+                    </option>
+                  </select>
                 </label>
                 <button type="button" class="btn-primary" @click="submitDraft">添加</button>
               </div>
               <p v-if="draftError" class="err">{{ draftError }}</p>
             </div>
 
-            <p class="footnote">
+            <p v-if="activeTab !== 'manage'" class="footnote">
               同一字段有多条词条时，档数会合并计算，每档值取列表中靠后的那条。
+              <span v-if="simpleMode">（「高级编辑」打开后才能改结构）</span>
             </p>
+
+            <!-- 组管理页：建 / 改名 / 改额度 / 删（额度只在这一处维护） -->
+            <template v-else>
+              <div class="entry-scroll">
+                <table class="library-table">
+                  <thead>
+                    <tr>
+                      <th>组名</th>
+                      <th>组额度</th>
+                      <th>说明</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="group in groups" :key="group.name">
+                      <td>
+                        <input
+                          class="inline-input"
+                          type="text"
+                          :value="group.name"
+                          :disabled="simpleMode"
+                          @change="onRenameGroup(group.name, $event)"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          class="inline-input num"
+                          type="number"
+                          min="0"
+                          step="1"
+                          :value="group.cap"
+                          title="组内各条档数之和的上限；0 = 不限"
+                          :disabled="simpleMode"
+                          @change="
+                            onSetGroupCap(
+                              group.name,
+                              Number(($event.target as HTMLInputElement).value),
+                            )
+                          "
+                        />
+                      </td>
+                      <td class="type-cell">
+                        {{ group.cap === 0 ? '不限（组只是归类）' : GROUP_CAP_HINT }}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          class="del-btn"
+                          title="只删这个分组，组内条目会变回未分组"
+                          :disabled="simpleMode"
+                          @click="onRemoveGroup(group.name)"
+                        >
+                          ×
+                        </button>
+                      </td>
+                    </tr>
+                    <tr v-if="!groups.length">
+                      <td colspan="4" class="empty-cell">
+                        还没有分组。分组用来表达「这几条共享一个档数额度」—— 比如 5 号位主属性
+                        只能选一个，就建一个额度 1 的组，把候选条目放进去。
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div v-if="!simpleMode" class="add-entry">
+                <h5>新建分组</h5>
+                <div class="add-grid">
+                  <label>
+                    <span>组名</span>
+                    <input v-model="newGroupDraftName" type="text" placeholder="如：5号位主属性" />
+                  </label>
+                  <label>
+                    <span>组额度</span>
+                    <input
+                      v-model.number="newGroupDraftCap"
+                      type="number"
+                      min="0"
+                      step="1"
+                      title="组内各条档数之和的上限；0 = 不限"
+                    />
+                  </label>
+                  <button type="button" class="btn-primary" @click="submitNewGroup">
+                    添加分组
+                  </button>
+                </div>
+              </div>
+
+              <p v-if="groupError" class="err">{{ groupError }}</p>
+              <p class="footnote">
+                删分组只删组本身，组内条目会变回未分组（条目不会被删掉）。
+                条目在「词条」页的下拉里选组，额度不够时求解器会少分配档数。
+              </p>
+              <div class="pane-actions">
+                <button
+                  type="button"
+                  class="mini-btn"
+                  title="把整份词条库恢复成预设（自建条目与所有改动都会没）"
+                  @click="onRestoreDefaults"
+                >
+                  恢复默认
+                </button>
+              </div>
+            </template>
           </section>
         </div>
       </div>
@@ -750,6 +1072,79 @@ function submitDraft() {
   font-size: 0.85rem;
   font-weight: 600;
   color: #cfd6e0;
+}
+
+/* 右栏横向分页条（组管理 → 各组 → 未分组） */
+.tab-strip {
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+  padding-bottom: 0.2rem;
+  flex-shrink: 0;
+}
+
+.pane-tab {
+  border: 1px solid #3a4049;
+  border-radius: 7px;
+  background: #10131a;
+  color: #9aa3b0;
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.18rem 0.65rem;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.pane-tab:hover {
+  color: #e4e8ef;
+}
+
+.pane-tab.active {
+  border-color: #c9a55c;
+  background: #2a2314;
+  color: #f0dfb4;
+}
+
+/* 高级编辑开关 */
+.advanced-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.76rem;
+  color: #9aa3b0;
+  margin-left: auto;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* 组页首行：组名 + 额度 */
+.group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  color: #cfd6e0;
+}
+
+.group-head-name {
+  font-weight: 600;
+}
+
+.group-head-cap strong {
+  color: #f0dfb4;
+}
+
+.group-head-hint {
+  color: #8b94a1;
+  font-size: 0.74rem;
+}
+
+.empty-cell {
+  color: #8b94a1;
+  font-size: 0.78rem;
+  padding: 0.6rem 0.45rem;
 }
 
 .set-new-row {

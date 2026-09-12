@@ -115,17 +115,22 @@ import {
   type AffixBenefitTable as AffixBenefitTableData,
 } from '@/utils/affixBenefitAnalysis'
 import {
+  addAffixLibraryGroup,
   addCustomAffixLibraryEntry,
+  affixGroupCaps,
   affixValuePerCountFromEntries,
   createDefaultAffixLibraryState,
   isAffixLibraryEntryEnabled,
   loadAffixLibraryState,
   removeAffixLibraryEntry,
+  removeAffixLibraryGroup,
+  renameAffixLibraryGroup,
   resolveAffixLibrary,
   resolveAffixLibraryAll,
   restoreAffixLibraryDefaults,
   saveAffixLibraryState,
   setAffixLibraryEntryEnabled,
+  setAffixLibraryGroupCap,
   updateAffixLibraryEntry,
   type AffixLibraryEntry,
   type AffixLibraryState,
@@ -1575,6 +1580,22 @@ function restoreAffixLibraryDefaultsHandler() {
   persistAffixLibrary(restoreAffixLibraryDefaults())
 }
 
+function addAffixLibraryGroupHandler(name: string, cap: number) {
+  persistAffixLibrary(addAffixLibraryGroup(affixLibraryState.value, name, cap))
+}
+
+function setAffixLibraryGroupCapHandler(name: string, cap: number) {
+  persistAffixLibrary(setAffixLibraryGroupCap(affixLibraryState.value, name, cap))
+}
+
+function renameAffixLibraryGroupHandler(from: string, to: string) {
+  persistAffixLibrary(renameAffixLibraryGroup(affixLibraryState.value, from, to))
+}
+
+function removeAffixLibraryGroupHandler(name: string) {
+  persistAffixLibrary(removeAffixLibraryGroup(affixLibraryState.value, name))
+}
+
 /**
  * 词条库弹窗做了库级变更（切换 / 新建 / 删除 / 导入）。
  *
@@ -1672,6 +1693,7 @@ async function runAffixAllocation() {
         maxTotalRolls: total,
         candidateWidthMode: affixAllocWidthMode.value,
         manualCandidateWidth: affixAllocManualWidth.value,
+        groupCaps: affixGroupCaps(affixLibraryState.value),
       },
       {
         signal: controller.signal,
@@ -2415,6 +2437,7 @@ const panelScopeRows = computed(() => {
           :table="affixBenefitTable"
           :library="affixLibraryAllEntries"
           :enabled-ids="enabledAffixEntryIds"
+          :groups="affixLibraryState.groups"
           :rolls-per-step="affixBenefitStep"
           :loading="affixBenefitLoading"
           @toggle-entry="toggleAffixLibraryEntry"
@@ -2422,6 +2445,10 @@ const panelScopeRows = computed(() => {
           @update-entry="updateAffixLibraryEntryPatch"
           @remove-entry="removeAffixLibraryEntryById"
           @restore-defaults="restoreAffixLibraryDefaultsHandler"
+          @add-group="addAffixLibraryGroupHandler"
+          @set-group-cap="setAffixLibraryGroupCapHandler"
+          @rename-group="renameAffixLibraryGroupHandler"
+          @remove-group="removeAffixLibraryGroupHandler"
           @library-switched="onAffixLibrarySwitched"
         />
 

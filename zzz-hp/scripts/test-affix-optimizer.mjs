@@ -22,6 +22,7 @@ import {
 } from '../src/utils/calculatorUi.ts'
 import {
   createDefaultAffixLibrary,
+  createOptionalAffixLibraryEntries,
   resolveAffixLibrary,
   resolveAffixLibraryAll,
   setAffixLibraryEntryEnabled,
@@ -271,18 +272,164 @@ console.log('\n[3] 结果一致性')
   console.log(`    引擎调用 ${solved.engineCalls} 次，截断=${solved.truncated}`)
 }
 
-// ---------- 4. 互斥组 ----------
-console.log('\n[4] 互斥组')
+// ---------- 4. 分组额度（组 cap） ----------
+console.log('\n[4] 分组额度')
 {
-  const grouped = library.map((e) =>
-    e.id === 'substat:atkPercent' ? { ...e, group: 'main' } : e,
-  ).map((e) =>
-    e.id === 'substat:hpPercent' ? { ...e, group: 'main' } : e,
+  const four = library.filter((e) =>
+    ['substat:atkPercent', 'substat:atkFlat', 'substat:critRate', 'substat:critDmg'].includes(e.id),
   )
-  const solved = solveOptimalAffixAllocation({ ctx, entries: grouped, maxTotalRolls: 30 })
-  const chosen = grouped.filter((e) => (solved.rollsByEntryId[e.id] ?? 0) > 0 && e.group === 'main')
-  check('互斥组至多选 1 条', chosen.length <= 1,
-    chosen.map((e) => `${e.label}×${solved.rollsByEntryId[e.id]}`).join(', ') || '未选')
+  const setGroup = (entries, id, group, cap, perRoll) =>
+    entries.map((e) =>
+      e.id === id ? { ...e, group, ...(cap != null ? { cap } : {}), ...(perRoll != null ? { perRoll } : {}) } : e,
+    )
+
+  // 4.0 显式额度 1：同组合计至多 1 档。
+  // 这条在 2026-09-12 之前会失败 —— 2-swap 用了「撤档后」的旧快照，
+  // 会把同组第二条也加进来（见 步骤 24 的 bug 记录）。
+  {
+    let worst = 0
+    let detail = ''
+    const entries = setGroup(
+      setGroup(four, 'substat:atkPercent', 'g0', 0, 100),
+      'substat:atkFlat', 'g0', 0, 1000,
+    )
+    for (const budget of [2, 3, 4, 6, 10, 20]) {
+      const solved = solveOptimalAffixAllocation({
+        ctx, entries, maxTotalRolls: budget, groupCaps: { g0: 1 },
+      })
+      const used =
+        (solved.rollsByEntryId['substat:atkPercent'] ?? 0) +
+        (solved.rollsByEntryId['substat:atkFlat'] ?? 0)
+      if (used > worst) {
+        worst = used
+        detail = `预算 ${budget}：攻击%=${solved.rollsByEntryId['substat:atkPercent'] ?? 0}、` +
+          `固定攻击=${solved.rollsByEntryId['substat:atkFlat'] ?? 0}`
+      }
+    }
+    check('额度 1：组内合计至多 1 档', worst <= 1, detail || '各预算档均 ≤ 1')
+  }
+
+  // 4.1 组额度和条数预算是两回事：A cap 3 + B cap 4，组额度 5 → 合计 ≤ 5，各自 ≤ 自己 cap
+  {
+    let ok = true
+    let detail = ''
+    const entries = setGroup(
+      setGroup(four, 'substat:atkPercent', 'g1', 3, 100),
+      'substat:atkFlat', 'g1', 4, 2000,
+    )
+    for (const budget of [5, 8, 20, 46]) {
+      const solved = solveOptimalAffixAllocation({
+        ctx, entries, maxTotalRolls: budget, groupCaps: { g1: 5 },
+      })
+      const a = solved.rollsByEntryId['substat:atkPercent'] ?? 0
+      const b = solved.rollsByEntryId['substat:atkFlat'] ?? 0
+      if (a + b > 5 || a > 3 || b > 4) {
+        ok = false
+        detail = `预算 ${budget}：攻击%=${a}、固定攻击=${b}`
+      }
+    }
+    check('组额度 5：A+B ≤ 5 且各自不超自己 cap', ok, detail || '各预算档均满足')
+  }
+
+  // 4.2 组额度会真的被用满（否则 4.1 可能只是「两条都没被选」而"通过"）
+  {
+    const entries = setGroup(
+      setGroup(four, 'substat:atkPercent', 'g2', 3, 100),
+      'substat:atkFlat', 'g2', 4, 2000,
+    )
+    const solved = solveOptimalAffixAllocation({
+      ctx, entries, maxTotalRolls: 46, groupCaps: { g2: 5 },
+    })
+    const used =
+      (solved.rollsByEntryId['substat:atkPercent'] ?? 0) +
+      (solved.rollsByEntryId['substat:atkFlat'] ?? 0)
+    check('组额度 5 在额度充足时被用满', used === 5, `实际合计 ${used}`)
+  }
+
+  // 4.3 额度 1 对 cap>1 的单条也生效：cap 3 的条目最多只加 1 档
+  {
+    const entries = setGroup(four, 'substat:atkPercent', 'g3', 3, 100)
+    const solved = solveOptimalAffixAllocation({
+      ctx, entries, maxTotalRolls: 46, groupCaps: { g3: 1 },
+    })
+    const a = solved.rollsByEntryId['substat:atkPercent'] ?? 0
+    check('额度 1：cap 3 的单条也最多 1 档', a <= 1, `实际 ${a} 档`)
+  }
+
+  // 4.4 不同组互不影响：各自额度 1，两条可以各拿 1 档
+  {
+    const entries = setGroup(
+      setGroup(four, 'substat:atkPercent', 'gA', 1, 100),
+      'substat:atkFlat', 'gB', 1, 2000,
+    )
+    const solved = solveOptimalAffixAllocation({
+      ctx, entries, maxTotalRolls: 46, groupCaps: { gA: 1, gB: 1 },
+    })
+    const a = solved.rollsByEntryId['substat:atkPercent'] ?? 0
+    const b = solved.rollsByEntryId['substat:atkFlat'] ?? 0
+    check('不同组互不影响（各 1 档可共存）', a === 1 && b === 1, `攻击%=${a}、固定攻击=${b}`)
+  }
+
+  // 4.5 额度 0 = 不限：组只是个归类页，不构成约束
+  {
+    const entries = setGroup(
+      setGroup(four, 'substat:atkPercent', 'gFree', 0, 100),
+      'substat:atkFlat', 'gFree', 0, 2000,
+    )
+    const unlimited = solveOptimalAffixAllocation({
+      ctx, entries, maxTotalRolls: 46, groupCaps: { gFree: 0 },
+    })
+    const limited = solveOptimalAffixAllocation({
+      ctx, entries, maxTotalRolls: 46, groupCaps: { gFree: 1 },
+    })
+    const sumOf = (solved) =>
+      (solved.rollsByEntryId['substat:atkPercent'] ?? 0) +
+      (solved.rollsByEntryId['substat:atkFlat'] ?? 0)
+    const free = sumOf(unlimited)
+    const capped = sumOf(limited)
+    check('额度 0 = 不限（组不构成约束）', free > 10 && capped <= 1,
+      `不限时组内 ${free} 档、额度 1 时 ${capped} 档`)
+  }
+
+  // 4.6 组名不在额度表里 → 按不限算（静默加约束会改变结果，方向反了）
+  {
+    const entries = setGroup(four, 'substat:atkPercent', 'gMissing', 0, 100)
+    const solved = solveOptimalAffixAllocation({ ctx, entries, maxTotalRolls: 46 })
+    const a = solved.rollsByEntryId['substat:atkPercent'] ?? 0
+    check('组名不在表里 → 按不限算', a > 1, `实际 ${a} 档`)
+  }
+
+  // 4.7 回归：用户实际配置（默认 10 副词条 + 增伤%/穿透率% 同组、上限各 1）。
+  // 修复前实测四个预算档全部出现「两条同时上榜」。
+  {
+    const panelTwo = createOptionalAffixLibraryEntries()
+      .filter((e) => ['panel:dmgBonus', 'panel:penRate'].includes(e.id))
+      .map((e) => ({ ...e, enabledByDefault: true, group: '5号位', cap: 1 }))
+    const entries = [...library, ...panelTwo]
+    let ok = true
+    let detail = ''
+    for (const budget of [6, 10, 16, 24, 46]) {
+      const solved = solveOptimalAffixAllocation({
+        ctx, entries, maxTotalRolls: budget, groupCaps: { '5号位': 1 },
+      })
+      const dmg = solved.rollsByEntryId['panel:dmgBonus'] ?? 0
+      const pen = solved.rollsByEntryId['panel:penRate'] ?? 0
+      if (dmg + pen > 1) {
+        ok = false
+        detail = `预算 ${budget}：增伤%=${dmg}、穿透率%=${pen}`
+      }
+    }
+    check('真实候选池：同组两条不同时上榜', ok, detail || '各预算档均至多一条')
+  }
+
+  // 4.8 预设条目自带「副词条」组（额度不限），不传额度表时求解结果不受影响
+  {
+    const groupsInPreset = [...new Set(library.map((e) => e.group))]
+    const solved = solveOptimalAffixAllocation({ ctx, entries: library, maxTotalRolls: 30 })
+    check('预设条目都落在「副词条」组', groupsInPreset.length === 1 && groupsInPreset[0] === '副词条',
+      groupsInPreset.join(', '))
+    check('未传额度表时预设求解不受组约束', solved.usedRolls === 30, `用档 ${solved.usedRolls}`)
+  }
 }
 
 // ---------- 5. 引擎调用上限 ----------

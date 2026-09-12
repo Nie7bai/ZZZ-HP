@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { AffixBenefitTable } from '@/utils/affixBenefitAnalysis'
-import { formatAffixPerRoll, type AffixLibraryEntry } from '@/utils/affixLibrary'
+import { formatAffixPerRoll, type AffixLibraryEntry, type AffixLibraryGroup } from '@/utils/affixLibrary'
 import AffixLibraryModal from '@/components/calculator/AffixLibraryModal.vue'
 import { useResizableColumns, type ResizableColumnSpec } from '@/composables/useResizableColumns'
 
@@ -18,6 +18,8 @@ const props = withDefaults(
     library: AffixLibraryEntry[]
     /** 条目 id → 是否参与计算 */
     enabledIds: string[]
+    /** 当前激活库的分组（组名 + 组额度） */
+    groups: AffixLibraryGroup[]
     rollsPerStep?: number
     loading?: boolean
   }>(),
@@ -31,6 +33,10 @@ const emit = defineEmits<{
   updateEntry: [entryId: string, patch: Partial<AffixLibraryEntry>]
   removeEntry: [entryId: string]
   restoreDefaults: []
+  addGroup: [name: string, cap: number]
+  setGroupCap: [name: string, cap: number]
+  renameGroup: [from: string, to: string]
+  removeGroup: [name: string]
   /** 弹窗里做了库级变更（切库/导入等），页面应重新载入激活库并重算 */
   librarySwitched: []
 }>()
@@ -139,12 +145,17 @@ function onLibrarySwitched() {
       :open="showLibraryModal"
       :library="library"
       :enabled-ids="enabledIds"
+      :groups="groups"
       @close="showLibraryModal = false"
       @toggle-entry="(id, enabled) => emit('toggleEntry', id, enabled)"
       @add-entry="(entry) => emit('addEntry', entry)"
       @update-entry="(id, patch) => emit('updateEntry', id, patch)"
       @remove-entry="(id) => emit('removeEntry', id)"
       @restore-defaults="emit('restoreDefaults')"
+      @add-group="(name, cap) => emit('addGroup', name, cap)"
+      @set-group-cap="(name, cap) => emit('setGroupCap', name, cap)"
+      @rename-group="(from, to) => emit('renameGroup', from, to)"
+      @remove-group="(name) => emit('removeGroup', name)"
       @switched="onLibrarySwitched"
     />
 
