@@ -11,15 +11,13 @@ export const DAMAGE_CALC_SECTIONS = [
 /**
  * 侧栏「计算方式」下的子项。
  *
- * 【冻结 · 2026-09-11 起】`frozen: true` 的两项（面板导入 / 词条导入）停用：
- * 它们原先会改掉**算进伤害的那份面板**（同一份激活面板下，只因停在其中一个，
- * 局内攻击在 3883 / 6136 之间跳），即「用按钮挑面板」这套第二状态干扰架构。
- * 每份面板本身照常在「代理人 → 导入」里录入与保存，与这两个按钮无关。
- * （2026-09-12 曾短暂解冻、随后按所有者口径恢复冻结——只恢复保存，不动这两个按钮。）
+ * 「面板导入 / 词条导入」两个模式切换按钮**已永久删除**（2026-09-12，所有者口径）：
+ * 它们不是导入功能（真正的导入在页面顶部「导入」按钮），只是会改掉算进伤害面板的
+ * 第二状态干扰架构（曾因「局内攻击在 3883 / 6136 之间跳」冻结，后直接删除）。
+ * 面板读取统一走 `resolveActivePanel`（唯一入口），与模式无关。
+ * 模式只剩「最优词条分配」一个入口（进入 / 返回）。
  */
 export const DAMAGE_CALC_MODE_ITEMS = [
-  { id: 'damage-calc-panel', label: '面板导入', calcMode: 'panel' as const, frozen: true },
-  { id: 'damage-calc-affix', label: '词条导入', calcMode: 'affix' as const, frozen: true },
   { id: 'damage-calc-optimal', label: '最优词条分配', calcMode: 'optimal' as const, frozen: false },
 ] as const
 

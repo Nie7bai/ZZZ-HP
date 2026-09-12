@@ -1851,19 +1851,14 @@ function onClearLoadedScheme() {
 
 async function scrollToSection(sectionId: DamageCalcSectionId) {
   await nextTick()
-  // 【临时冻结 · 2026-09-11】这里原先把「面板导入 / 词条导入 / 最优词条分配」三个 id
-  // 直接写成对应模式，是「用按钮挑面板和模式」的第二条路径。现在只做滚动，模式一律由
-  // selectPanelCalcMode / toggleOptimalAffixSection 决定（面板本身与这些按钮无关）。
+  // 「最优词条分配」的 id 映射到计算方式锚点（只滚动，模式由 toggle 决定）；
+  // 「面板导入 / 词条导入」入口已永久删除（2026-09-12，见 damageCalcNav.ts）。
   if (sectionId === 'skill-flow') {
     skillFlowSectionRef.value?.expand()
     await nextTick()
   }
   const anchorId =
-    sectionId === 'damage-calc-panel' ||
-    sectionId === 'damage-calc-affix' ||
-    sectionId === 'damage-calc-optimal'
-      ? 'damage-calc-mode'
-      : sectionId
+    sectionId === 'damage-calc-optimal' ? 'damage-calc-mode' : sectionId
   const target = pageRootRef.value?.querySelector<HTMLElement>(`#${anchorId}`)
   target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
@@ -1893,11 +1888,7 @@ function selectPanelCalcMode(mode: PanelCalcMode) {
     panelCalcMode.value = mode
   }
   const anchor =
-    mode === 'panel'
-      ? 'damage-calc-panel'
-      : mode === 'affix'
-        ? 'damage-calc-affix'
-        : 'damage-calc-optimal'
+    mode === 'panel' || mode === 'affix' ? 'damage-calc-mode' : 'damage-calc-optimal'
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       void scrollToSection(anchor)
@@ -2087,35 +2078,11 @@ defineExpose({ scrollToSection, setCalcMode, toggleOptimalAffixSection, panelCal
       </header>
       <div class="calc-mode-tabs" role="tablist" aria-label="面板导入方式">
         <!--
-          【冻结 · 2026-09-11 起】「面板导入 / 词条导入」两个按钮。
-          冻结原因：它们会改掉**算进伤害的那份面板**（同一份激活面板下，只因停在这两个
-          按钮之一，局内攻击在 3883 / 6136 之间跳），即「用按钮挑面板」这套第二状态干扰架构。
-          冻结期间：两个按钮只作展示，不响应点击、不再参与任何取面板 / 计算决策；
-          每份面板本身照常在「代理人 → 导入」里录入与保存。
-          （2026-09-12 曾短暂解冻、随后按所有者口径恢复冻结——只恢复保存，不动这两个按钮。）
+          「面板导入 / 词条导入」两个模式切换按钮**已永久删除**（2026-09-12，所有者口径）：
+          它们不是导入功能（真正的导入在页面顶部「导入」按钮），只是会改掉算进伤害面板的
+          第二状态干扰架构（曾因「局内攻击在 3883 / 6136 之间跳」冻结，后直接删除）。
+          面板读取统一走 `resolveActivePanel`（唯一入口）；模式只剩「最优词条分配」进出。
         -->
-        <button
-          type="button"
-          role="tab"
-          class="calc-mode-tab calc-mode-tab--frozen"
-          disabled
-          aria-disabled="true"
-          :aria-selected="panelCalcMode === 'panel'"
-          title="已冻结：不再用它切换面板；面板在「代理人 → 导入」里录入（面板 / 词条各存一份）"
-        >
-          面板导入
-        </button>
-        <button
-          type="button"
-          role="tab"
-          class="calc-mode-tab calc-mode-tab--frozen"
-          disabled
-          aria-disabled="true"
-          :aria-selected="panelCalcMode === 'affix'"
-          title="已冻结：不再用它切换面板；面板在「代理人 → 导入」里录入（面板 / 词条各存一份）"
-        >
-          词条导入
-        </button>
         <button
           type="button"
           role="tab"
