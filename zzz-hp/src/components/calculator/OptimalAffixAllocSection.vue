@@ -10,7 +10,6 @@ import {
 } from 'vue'
 import { storeToRefs } from 'pinia'
 import { type ExtraBuffGain } from '@/components/calculator/ExtraBuffGainEditor.vue'
-import DamageResultDetail from '@/components/calculator/DamageResultDetail.vue'
 import BenefitCurvePanel from '@/components/calculator/BenefitCurvePanel.vue'
 import OptimalDamageBarChart from '@/components/calculator/OptimalDamageBarChart.vue'
 import AffixBenefitTable from '@/components/calculator/AffixBenefitTable.vue'
@@ -86,9 +85,7 @@ import {
   computeFinalPanel,
   type ConvertSlotPanels,
 } from '@/utils/panelBuffCalc'
-import { useDamageProcessEvents } from '@/composables/useDamageProcessEvents'
 
-import DamageProcessPanel from '@/components/calculator/DamageProcessPanel.vue'
 import {
   DAMAGE_EVENT_CRIT_MODE_OPTIONS,
   DAMAGE_EVENT_KIND_OPTIONS,
@@ -1345,41 +1342,6 @@ const mainStatEventScopeHint = computed(() => {
   return `按已选 ${selectedChartEventIds.value.length} 个统计事件计算`
 })
 
-const analysisMetricDamage = computed(() => {
-  if (!analysisEval.value) return 0
-  return resolveAffixMetricDamage(analysisEval.value)
-})
-
-const processDamageTotalLabel = computed(() =>
-  sweepDamageKind.value === 'anomaly' ? '异常伤害事件总伤期望' : '伤害事件总伤期望',
-)
-
-/** 过程明细仅在「计算过程」Tab 展开且模块可见时求值，避免扫掠后全量重算卡顿 */
-/** 扫掠柱图模式：计算过程（与词条分配模式共用 useDamageProcessEvents） */
-const sweepProcess = useDamageProcessEvents({
-  ctx: computed(() => evalCtx.value),
-  external: computed(() => analysisEval.value?.external),
-  grandTotal: computed(() => analysisMetricDamage.value),
-  eventLines: computed(() => analysisEval.value?.eventLines),
-  selectedEventIds: selectedChartEventIds,
-  totalLabel: processDamageTotalLabel,
-  hasEvents: computed(() => hasEventMode.value),
-  active: computed(() => isSectionActive.value),
-  enabled: computed(() => detailTab.value === 'process'),
-  hits: computed(() => props.hits),
-  agents: computed(() => props.agents),
-  teamSlots: computed(() => props.teamSlots),
-  onSelectEvent: () => {
-    detailTab.value = 'process'
-  },
-})
-
-const selectedProcessEventId = sweepProcess.selectedEventId
-const selectedProcessEventDetail = sweepProcess.selectedDetail
-const processOwnerShareSummary = sweepProcess.ownerShareSummary
-const processSkippedEvents = sweepProcess.skippedEvents
-const selectProcessEventFromShare = sweepProcess.selectEvent
-
 const filteredEventAffixImpact = computed(() => {
   if (!hasEventMode.value || !selectedChartEventIds.value.length) {
     return eventAffixImpact.value
@@ -1579,29 +1541,6 @@ watch(
   },
   { immediate: true },
 )
-
-/** 词条分配模式：计算过程（与扫掠模式共用 useDamageProcessEvents） */
-const affixAllocProcess = useDamageProcessEvents({
-  ctx: computed(() => evalCtx.value),
-  external: computed(() => affixAllocEval.value?.external),
-  grandTotal: computed(() => affixAllocEval.value?.grandTotal ?? 0),
-  eventLines: computed(() => affixAllocEval.value?.eventLines),
-  selectedEventIds: computed(() => null),
-  totalLabel: computed(() =>
-    sweepDamageKind.value === 'anomaly' ? '异常伤害事件总伤期望' : '伤害事件总伤期望',
-  ),
-  hasEvents: computed(() => hasEventMode.value),
-  active: computed(() => isSectionActive.value),
-  enabled: computed(() => affixAllocDetailTab.value === 'process'),
-  hits: computed(() => props.hits),
-  agents: computed(() => props.agents),
-  teamSlots: computed(() => props.teamSlots),
-})
-
-const affixAllocSelectedProcessEventId = affixAllocProcess.selectedEventId
-const affixAllocSelectedProcessDetail = affixAllocProcess.selectedDetail
-const affixAllocOwnerShareSummary = affixAllocProcess.ownerShareSummary
-const affixAllocSkippedEvents = affixAllocProcess.skippedEvents
 
 affixLibraryState.value = loadAffixLibraryState()
 
@@ -2517,14 +2456,6 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
             >
               收益曲线
             </button>
-            <button
-              type="button"
-              class="detail-tab"
-              :class="{ active: affixAllocDetailTab === 'process' }"
-              @click="affixAllocDetailTab = 'process'"
-            >
-              计算过程
-            </button>
           </div>
 
           <template v-if="affixAllocDetailTab === 'curve'">
@@ -2537,21 +2468,6 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
             />
             <p v-else-if="affixBenefitSeriesLoading" class="hint">收益曲线计算中…（首屏只算「+1 档」表，曲线按需补算）</p>
             <p v-else class="hint">暂无收益曲线数据。</p>
-          </template>
-
-          <template v-else>
-            <DamageProcessPanel
-              :has-events="hasEventMode"
-              :summary="affixAllocOwnerShareSummary"
-              :skipped-events="affixAllocSkippedEvents"
-              :detail="affixAllocSelectedProcessDetail"
-              :selected-event-id="affixAllocSelectedProcessEventId"
-              :total-label="processDamageTotalLabel"
-              :enemy-input="enemyInput"
-              :is-mb="isMb"
-              hint="按流程全部事件统计。点击产生者展开事件，再点事件查看下方计算过程。"
-              @select-event="affixAllocProcess.selectEvent"
-            />
           </template>
         </template>
       </template>
@@ -2873,14 +2789,6 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           >
             收益曲线
           </button>
-          <button
-            type="button"
-            class="detail-tab"
-            :class="{ active: detailTab === 'process' }"
-            @click="detailTab = 'process'"
-          >
-            计算过程
-          </button>
         </div>
         <p v-if="hasEventMode && mainStatEventScopeHint" class="hint detail-scope-hint">
           {{ mainStatEventScopeHint }}
@@ -2900,56 +2808,6 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
                   : '异常伤害'
         }}
       </p>
-
-      <Teleport to="#damage-result-anchor">
-        <div v-if="detailTab === 'process'" class="damage-result-block">
-        <template v-if="hasEventMode">
-          <DamageProcessPanel
-            :has-events="hasEventMode"
-            :summary="processOwnerShareSummary"
-            :skipped-events="processSkippedEvents"
-            :detail="selectedProcessEventDetail"
-            :selected-event-id="selectedProcessEventId"
-            :total-label="processDamageTotalLabel"
-            :enemy-input="enemyInput"
-            :is-mb="isMb"
-            hint="总伤期望已并入本区（口径与柱状图所选统计事件一致）。点击产生者展开事件，再点事件查看下方计算过程。"
-            @select-event="selectProcessEventFromShare"
-          />
-        </template>
-        <template v-else>
-        <div class="result-summary">
-          <p v-if="hasEventMode">
-            伤害事件总伤期望：
-            <strong>{{ formatNumber(analysisMetricDamage) }}</strong>
-          </p>
-          <template v-else-if="sweepDamageKind === 'direct'">
-            <p>直伤期望伤害：<strong>{{ formatNumber(analysisEval!.result.directDamageExpected) }}</strong></p>
-          </template>
-          <template v-else>
-            <p v-if="anomalySubKind === 'anomaly'">异常期望伤害：<strong>{{ formatNumber(analysisEval!.result.anomalyExpected) }}</strong></p>
-            <p v-else-if="anomalySubKind === 'disorder'">紊乱期望伤害：<strong>{{ formatNumber(analysisEval!.result.disorderExpected) }}</strong></p>
-            <p v-else-if="anomalySubKind === 'turbulence'">乱流期望伤害：<strong>{{ formatNumber(analysisEval!.result.turbulenceExpected) }}</strong></p>
-            <p v-else-if="anomalySubKind === 'anomalyRelease'">异放期望伤害：<strong>{{ formatNumber(analysisEval!.result.anomalyReleaseExpected) }}</strong></p>
-            <p v-else-if="anomalySubKind === 'radiance'">耀变期望伤害：<strong>{{ formatNumber(analysisEval!.result.radianceExpected) }}</strong></p>
-            <p v-else>异常期望伤害：<strong>{{ formatNumber(analysisEval!.result.anomalyExpected) }}</strong></p>
-          </template>
-        </div>
-        <DamageResultDetail
-          :calc-parts="analysisEval!.result"
-          :final-panel="analysisEval!.finalPanel"
-          :external-panel="analysisEval!.external"
-          :sources="analysisEval!.breakdown.sources"
-          :pierce-mod="analysisEval!.breakdown.totalMods.pierce"
-          :pierce-power="analysisEval!.piercePower"
-          :enemy-input="enemyInput"
-          :is-mb="isMb"
-          :show="sweepDamageKind"
-          :anomaly-sub-kind="anomalySubKind"
-        />
-        </template>
-        </div>
-      </Teleport>
 
       <template v-if="detailTab === 'diff' && diffAnalysis">
         <h4 class="sub-title">副词条差异计算（相对当前分配 +1 条）</h4>
