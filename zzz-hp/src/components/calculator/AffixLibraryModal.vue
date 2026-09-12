@@ -9,6 +9,7 @@ import {
   activateAffixLibrarySet,
   activeAffixLibrarySet,
   affixPerRollUnit,
+  affixTargetLabel,
   createAffixLibrarySet,
   deleteAffixLibrarySet,
   exportAffixLibrarySet,
@@ -721,6 +722,7 @@ function submitDraft() {
                 <colgroup>
                   <col class="col-participate" />
                   <col class="col-label" />
+                  <col class="col-target" />
                   <col class="col-perroll" />
                   <col class="col-cap" />
                   <col class="col-group" />
@@ -730,6 +732,7 @@ function submitDraft() {
                   <tr>
                     <th>参与</th>
                     <th>名称</th>
+                    <th>目标</th>
                     <th>每档</th>
                     <th>上限</th>
                     <th>分组</th>
@@ -762,6 +765,10 @@ function submitDraft() {
                           })
                         "
                       />
+                    </td>
+                    <!-- 目标只读：名称是自由文本、目标才是实际效果；改目标＝删掉再新增 -->
+                    <td class="target-cell" :title="entry.target">
+                      {{ affixTargetLabel(entry.target) }}
                     </td>
                     <td>
                       <span class="per-roll-cell">
@@ -1394,15 +1401,29 @@ function submitDraft() {
   opacity: 0.5;
 }
 
-.type-cell {
+/** 目标列：只读文本，展示条目实际作用的字段（名称是自由文本，可能对不上） */
+.target-cell {
   color: #9aa3b0;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ---------- 列宽（固定表格布局，不锁宽度输入框会把列撑到 200px+） ---------- */
 
 .library-table--entries .col-participate {
   width: 46px;
+}
+/*
+ * 名称列必须给宽度：`table-layout: fixed` 下没设宽度的列在容器不够宽时会被**压到 0px**
+ * （实测：加了「目标」列后名称列变成 0，名字整列看不见）。
+ * 给了宽度后容器更窄就整体横向滚动（`.entry-scroll` 已是 `overflow: auto`），不会再挤没谁。
+ */
+.library-table--entries .col-label {
+  width: 190px;
+}
+.library-table--entries .col-target {
+  width: 104px;
 }
 .library-table--entries .col-perroll {
   width: 104px;

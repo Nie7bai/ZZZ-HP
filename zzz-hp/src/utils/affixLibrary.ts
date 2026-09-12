@@ -185,6 +185,23 @@ export function isAffixLibraryEntryTarget(value: unknown): value is AffixLibrary
   return false
 }
 
+/**
+ * 目标（`target`）的显示名。
+ *
+ * `label` 是**自由文本**（用户可随便写，也可能写错），`target` 才是「实际加了什么属性」。
+ * 列表要能看出真实效果就得显示它 —— 与新增表单下拉里的项**同源同字**，
+ * 否则「列表显示的名字」和「下拉里的名字」会各说各话。
+ *
+ * 认不出的目标原样回显（不返回空串）：让异常数据露出来，别静默变空白。
+ */
+export function affixTargetLabel(target: AffixLibraryEntryTarget): string {
+  const statKey = statKeyOfTarget(target)
+  if (statKey) return AFFIX_SUBSTAT_KEY_LABELS[statKey]
+  const field = panelFieldOfTarget(target)
+  if (field) return AFFIX_PANEL_DELTA_FIELD_LABELS[field]
+  return String(target)
+}
+
 export interface AffixLibraryEntry {
   /** 稳定 id（默认条目沿用历史前缀，见文件头说明） */
   id: string
