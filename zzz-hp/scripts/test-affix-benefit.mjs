@@ -25,7 +25,9 @@ import {
   createDefaultAffixLibrary,
   createDefaultAffixLibraryState,
   createDefaultAffixLibraryStore,
+  createDriveDiscMainStatAffixEntries,
   createOptionalAffixLibraryEntries,
+  createPresetAffixLibraryEntries,
   deleteAffixLibrarySet,
   entryRollsToEvalInput,
   applyPanelDeltas,
@@ -93,7 +95,10 @@ check(
 )
 
 const optional = createOptionalAffixLibraryEntries()
-const deltaFromRolls = entryRollsToEvalInput(optional, { 'panel:dmgBonus': 1 }).deltas
+const deltaFromRolls = entryRollsToEvalInput(
+  createDriveDiscMainStatAffixEntries(),
+  { 'main:slot5:dmgBonus': 1 },
+).deltas
 check('1 档增伤 30 → 面板增量 30', deltaFromRolls.dmgBonus === 30, JSON.stringify(deltaFromRolls))
 check(
   'panel: 条目不影响每档值表',
@@ -101,7 +106,9 @@ check(
 )
 check(
   'panelFieldOfTarget / statKeyOfTarget 命名空间解析正确',
-  panelFieldOfTarget('panel:dmgBonus') === 'dmgBonus' && statKeyOfTarget('stat:critDmg') === 'critDmg',
+  panelFieldOfTarget('panel:reduceDefense') === 'reduceDefense' &&
+    panelFieldOfTarget('panel:mastery') === 'mastery' &&
+    statKeyOfTarget('stat:critDmg') === 'critDmg',
 )
 // ---------- 2. 与 computeDiffAnalysis 同口径对比 ----------
 console.log('\n[2] 新收益表 vs 现有差异表（共同候选 +1 档）')
@@ -299,9 +306,14 @@ console.log('\n[4.1] 条目贡献的折算口径')
 console.log('\n[5] 词条库启用/禁用')
 const state = createDefaultAffixLibraryState()
 const resolved = resolveAffixLibrary(state)
-check('默认参与 10 条副词条', resolved.length === 10, `实际 ${resolved.length}`)
+const presetEnabled = createPresetAffixLibraryEntries().filter((e) => e.enabledByDefault)
+check(
+  `默认参与 = 预设里默认启用的条数（${presetEnabled.length}）`,
+  resolved.length === presetEnabled.length,
+  `实际 ${resolved.length}`,
+)
 const disabled = setAffixLibraryEntryEnabled(state, 'substat:critRate', false)
-check('禁用暴击率后条目数 = 9', resolveAffixLibrary(disabled).length === 9,
+check('禁用暴击率后少 1 条', resolveAffixLibrary(disabled).length === resolved.length - 1,
   `实际 ${resolveAffixLibrary(disabled).length}`)
 
 // ---------- 6. 词条库整改验收（每档可覆盖 / 单位 / 类型合并 / 迁移 / 柱图不变） ----------

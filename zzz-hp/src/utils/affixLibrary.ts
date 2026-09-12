@@ -52,7 +52,7 @@ import { AFFIX_VALUE_PER_COUNT } from '@/utils/affixPanelCalc'
  *
  * ## id 命名
  *
- * 默认条目的 id 沿用历史前缀（`substat:atkPercent` / `panel:dmgBonus`），**故意不改**：
+ * 默认条目的 id 沿用历史前缀（`substat:atkPercent` / `panel:reduceDefense`），**故意不改**：
  * 用户已存的 `enabledOverride` 与 `overrides` 都是按 id 索引的，改 id 会让这些记录全部失配。
  * 因此 id 前缀与 `target` 前缀不要求一致（`substat:x` 对应 `target: 'stat:x'`）。
  */
@@ -246,19 +246,18 @@ export function createDefaultAffixLibrary(): AffixLibraryEntry[] {
 }
 
 /**
- * 可选扩展条目：代表 4/5/6 主词条或 Buff 来源，默认不启用。
+ * 可选扩展条目：代表 Buff 来源 / 不分槽位的伤害字段，默认不启用。
  *
  * 与副词条的区别只剩「落点」与默认值：
- * - `cap: 1` —— 主词条/来源最多取一次（副词条可叠，见 createDefaultAffixLibrary）；
- * - `group` 默认「副词条」—— 未指定槽位的自由条目归在这里（额度不限）。
+ * - `cap: 1` —— 来源最多取一次（副词条可叠，见 createDefaultAffixLibrary）；
+ * - `group` 默认「副词条」—— 不分槽位的自由条目归在这里（额度不限）。
  *
- * 已确知属于 5 号位的两条（穿透率 / 增伤）直接归入「5号位」组，
- * 见 `AFFIX_OPTIONAL_GROUP_OVERRIDES`。
+ * 增伤 / 穿透率**不在这里**：它们是 5 号位主属性，已由
+ * `createDriveDiscMainStatAffixEntries()` 提供（`main:slot5:dmgBonus` / `main:slot5:penRate`），
+ * 2026-09-12 按用户当前词条库固化为预设。
  */
 export function createOptionalAffixLibraryEntries(): AffixLibraryEntry[] {
   const specs: { field: AffixPanelDeltaField; perRoll: number }[] = [
-    { field: 'dmgBonus', perRoll: 30 },
-    { field: 'penRate', perRoll: 24 },
     { field: 'reduceDefense', perRoll: 30 },
     { field: 'ignoreDefense', perRoll: 30 },
     { field: 'resPen', perRoll: 24 },
@@ -278,25 +277,14 @@ export function createOptionalAffixLibraryEntries(): AffixLibraryEntry[] {
     label: AFFIX_PANEL_DELTA_FIELD_LABELS[spec.field],
     perRoll: spec.perRoll,
     cap: 1,
-    group: AFFIX_OPTIONAL_GROUP_OVERRIDES[spec.field] ?? AFFIX_PRESET_DEFAULT_GROUP,
+    group: AFFIX_PRESET_DEFAULT_GROUP,
     rollCost: 1,
     enabledByDefault: false,
   }))
 }
 
 /**
- * 扩展条目里**已知属于某个槽位**的那些，直接归到对应组（用户截图口径）。
- *
- * 只有这两条能确定：穿透率 24% 与增伤 30% 是 5 号位主属性（用户实际用法如此）。
- * 其余 12 条是不分槽位的自由条目（减防 / 无视防御 / 各异常增伤…），留在「副词条」组。
- */
-export const AFFIX_OPTIONAL_GROUP_OVERRIDES: Partial<Record<AffixPanelDeltaField, string>> = {
-  penRate: '5号位',
-  dmgBonus: '5号位',
-}
-
-/**
- * 4/5/6 号位主属性候选条目（默认不启用），按用户给的选项表逐一对应。
+ * 4/5/6 号位主属性候选条目（**默认启用**），按用户给的选项表逐一对应。
  *
  * 数值来源 = `affixDriveDiscConfig.ts` 的 `DRIVE_DISC_SLOT_{4,5,6}_OPTIONS`
  * （同一份口径，改那边要同步这里）。
@@ -304,6 +292,11 @@ export const AFFIX_OPTIONAL_GROUP_OVERRIDES: Partial<Record<AffixPanelDeltaField
  * 为什么同一字段会有多条：4/5/6 各有一条「局外攻击力 30%」，分属不同组、各自额度 1，
  * 求解器按组各选至多一条。折算时各按自己的每档算（见 `entryRollsToEvalInput`），
  * 与副词条的「局外攻击力% 3%/档」互不干扰 —— 这正是本次修的那个 bug。
+ *
+ * **默认启用**（用户 2026-09-12 口径：把用户当前的库固化为官方预设库，见
+ * `dev-docs/affix-optimizer-impl-log.md` 步骤 28）：主属性由求解器按组各选一条，
+ * 与页面上的 4/5/6 主属性下拉是两处独立入口 —— 同一条两处都选会各算一次，属既有行为。
+ * 老存档里显式关过的仍保持关闭（`enabledByDefault` 只在没有 `enabledOverride` 记录时生效）。
  *
  * **6 号位「冲击力 18%」的口径**（用户 2026-09-12 定：没填的一律按 0）：
  * 与同组的「异常掌控 30%」「能量恢复 60%」一样**按点数加**（这两条也是这么记的）。
@@ -319,10 +312,12 @@ export function createDriveDiscMainStatAffixEntries(): AffixLibraryEntry[] {
     { slot: 4, key: 'externalHpPercent', statKey: 'hpPercent', label: '局外生命值 30%', perRoll: 30 },
     { slot: 4, key: 'mastery', statKey: 'mastery', label: '精通 92', perRoll: 92 },
     { slot: 4, key: 'externalDefPercent', statKey: 'defPercent', label: '局外防御力 48%', perRoll: 48 },
-    // ---- 5 号位（穿透率 / 增伤的候选在 createOptionalAffixLibraryEntries 里，不重复造）----
+    // ---- 5 号位（增伤 / 穿透率两条来自用户实际用法，2026-09-12 固化为预设）----
     { slot: 5, key: 'externalAtkPercent', statKey: 'atkPercent', label: '局外攻击力 30%', perRoll: 30 },
     { slot: 5, key: 'externalHpPercent', statKey: 'hpPercent', label: '局外生命值 30%', perRoll: 30 },
     { slot: 5, key: 'externalDefPercent', statKey: 'defPercent', label: '局外防御力 48%', perRoll: 48 },
+    { slot: 5, key: 'dmgBonus', field: 'dmgBonus', label: '增伤30%', perRoll: 30 },
+    { slot: 5, key: 'penRate', field: 'penRate', label: '穿透率24%', perRoll: 24 },
     // ---- 6 号位 ----
     { slot: 6, key: 'externalAtkPercent', statKey: 'atkPercent', label: '局外攻击力 30%', perRoll: 30 },
     { slot: 6, key: 'externalHpPercent', statKey: 'hpPercent', label: '局外生命值 30%', perRoll: 30 },
@@ -339,7 +334,7 @@ export function createDriveDiscMainStatAffixEntries(): AffixLibraryEntry[] {
     cap: 1,
     group: `${spec.slot}号位`,
     rollCost: 1,
-    enabledByDefault: false,
+    enabledByDefault: true,
   }))
 }
 
@@ -392,8 +387,9 @@ export interface AffixLibraryState {
   customEntries: AffixLibraryEntry[]
   /**
    * 条目 id → 显式启用/禁用。
-   * 缺省时用条目自身的 `enabledByDefault`：内置副词条默认参与，
-   * 扩展条目（主词条/Buff 来源）默认不参与。
+   * 缺省时用条目自身的 `enabledByDefault`：副词条与 4/5/6 号位主属性默认参与
+   * （2026-09-12 起，见 `dev-docs/affix-optimizer-impl-log.md` 步骤 28），
+   * 其余扩展条目（Buff 来源 / 不分槽位的伤害字段）默认不参与。
    */
   enabledOverride: Record<string, boolean>
   /** 默认条目的覆盖值（用户改了名称/每档/上限/分组时记录） */

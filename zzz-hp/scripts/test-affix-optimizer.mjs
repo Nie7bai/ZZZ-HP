@@ -25,6 +25,7 @@ import {
   coerceAffixLibraryState,
   createDefaultAffixLibrary,
   createDefaultAffixLibraryState,
+  createDriveDiscMainStatAffixEntries,
   createOptionalAffixLibraryEntries,
   createPresetAffixLibraryEntries,
   entryRollsToEvalInput,
@@ -405,12 +406,12 @@ console.log('\n[4] 分组额度')
     check('组名不在表里 → 按不限算', a > 1, `实际 ${a} 档`)
   }
 
-  // 4.7 回归：用户实际配置（默认 10 副词条 + 增伤%/穿透率% 同组、上限各 1）。
-  // 修复前实测四个预算档全部出现「两条同时上榜」。
+  // 4.7 回归：5 号位「增伤 30% / 穿透率 24%」同组、额度 1，不得同时上榜。
+  // 修复前实测四个预算档全部出现「两条同时上榜」。两条现已进预设（`main:slot5:*`）。
   {
-    const panelTwo = createOptionalAffixLibraryEntries()
-      .filter((e) => ['panel:dmgBonus', 'panel:penRate'].includes(e.id))
-      .map((e) => ({ ...e, enabledByDefault: true, group: '5号位', cap: 1 }))
+    const panelTwo = createDriveDiscMainStatAffixEntries().filter((e) =>
+      ['main:slot5:dmgBonus', 'main:slot5:penRate'].includes(e.id),
+    )
     const entries = [...library, ...panelTwo]
     let ok = true
     let detail = ''
@@ -418,8 +419,8 @@ console.log('\n[4] 分组额度')
       const solved = solveOptimalAffixAllocation({
         ctx, entries, maxTotalRolls: budget, groupCaps: { '5号位': 1 },
       })
-      const dmg = solved.rollsByEntryId['panel:dmgBonus'] ?? 0
-      const pen = solved.rollsByEntryId['panel:penRate'] ?? 0
+      const dmg = solved.rollsByEntryId['main:slot5:dmgBonus'] ?? 0
+      const pen = solved.rollsByEntryId['main:slot5:penRate'] ?? 0
       if (dmg + pen > 1) {
         ok = false
         detail = `预算 ${budget}：增伤%=${dmg}、穿透率%=${pen}`
@@ -459,7 +460,7 @@ console.log('\n[4.9] 存档读取与分组补齐')
   const withLegacyGroup = coerceAffixLibraryState({
     customEntries: [],
     enabledOverride: {},
-    overrides: { 'panel:dmgBonus': { group: '老组' }, 'panel:penRate': { group: '老组' } },
+    overrides: { 'panel:reduceDefense': { group: '老组' }, 'panel:resPen': { group: '老组' } },
     removedEntryIds: [],
   })
   const legacyGroup = withLegacyGroup.groups.find((g) => g.name === '老组')
@@ -568,7 +569,7 @@ console.log('\n[4.10] 同字段多条目的折算')
   check('预设含 4/5/6 号位条目且 id 唯一', ids.size === slotEntries.length && slotEntries.length > 0,
     `${slotEntries.length} 条`)
   const slot5 = preset.filter((e) => e.group === '5号位')
-  check('5 号位预设条目数 = 5（对应限定组合的选项表）', slot5.length === 5,
+  check('5 号位预设条目数 = 5（3 通用 + 增伤 / 穿透率）', slot5.length === 5,
     slot5.map((e) => e.label).join(' / '))
   const slot6 = preset.filter((e) => e.group === '6号位')
   check(
@@ -580,15 +581,19 @@ console.log('\n[4.10] 同字段多条目的折算')
   )
   const impactEntry = preset.find((e) => e.id === 'main:slot6:impact')
   check(
-    '6 号位冲击力条目：18 点、落 panel:impact、归 6号位组、默认不启用',
+    '6 号位冲击力条目：18 点、落 panel:impact、归 6号位组、默认启用',
     impactEntry?.perRoll === 18 &&
       impactEntry.target === 'panel:impact' &&
       impactEntry.group === '6号位' &&
-      impactEntry.enabledByDefault === false,
+      impactEntry.enabledByDefault === true,
     impactEntry ? `${impactEntry.label} perRoll=${impactEntry.perRoll} → ${impactEntry.target}` : '(缺)',
   )
-  check('4/5/6 号位条目默认不启用（避免与已导入的面板重复计算）',
-    slotEntries.every((e) => e.enabledByDefault === false))
+  check('4/5/6 号位条目默认启用（官方预设库口径，见 impl-log 步骤 28）',
+    slotEntries.every((e) => e.enabledByDefault === true))
+  check('扩展条目（不分槽位的伤害字段）默认不启用',
+    preset
+      .filter((e) => e.group === '副词条' && e.id.startsWith('panel:'))
+      .every((e) => e.enabledByDefault === false))
 }
 
 // ---------- 5. 引擎调用上限 ----------
@@ -607,26 +612,32 @@ console.log('\n[5] 安全网')
 console.log('\n[6] 词条库解析')
 {
   const state = createDefaultAffixLibraryState()
-  // 默认参与 = 10 条副词条；扩展（主词条/Buff 来源）+ 4/5/6 号位主属性默认不参与
+  // 默认参与 = 预设里默认启用的条目（副词条 + 4/5/6 号位主属性，见 impl-log 步骤 28）
   const active = resolveAffixLibrary(state)
-  check('默认参与 10 条副词条', active.length === 10, String(active.length))
+  const presetEnabled = createPresetAffixLibraryEntries().filter((e) => e.enabledByDefault)
+  check(
+    `默认参与 = 预设默认启用条数（${presetEnabled.length}）`,
+    active.length === presetEnabled.length,
+    String(active.length),
+  )
   const all = resolveAffixLibraryAll(state)
   // 数量从预设构造器派生：新增预设条目时这里不该再变成陈旧断言
   const presetTotal = createPresetAffixLibraryEntries().length
   const presetOff = createPresetAffixLibraryEntries().filter((e) => !e.enabledByDefault).length
   check(
-    `全量 = 预设条目数（${presetTotal}，含默认关闭的扩展与 4/5/6 号位）`,
+    `全量 = 预设条目数（${presetTotal}）`,
     all.length === presetTotal,
     String(all.length),
   )
-  check('非副词条预设条目默认不参与',
+  check('默认关闭的预设条目数与构造器一致',
     all.filter((e) => !e.enabledByDefault).length === presetOff,
     String(all.filter((e) => !e.enabledByDefault).length))
-  const enabledOne = setAffixLibraryEntryEnabled(state, 'panel:dmgBonus', true)
-  check('显式启用增伤后 11 条', resolveAffixLibrary(enabledOne).length === 11,
+  const enabledOne = setAffixLibraryEntryEnabled(state, 'panel:reduceDefense', true)
+  check('显式启用一条默认关闭的条目后多 1 条',
+    resolveAffixLibrary(enabledOne).length === active.length + 1,
     String(resolveAffixLibrary(enabledOne).length))
   const disabledOne = setAffixLibraryEntryEnabled(state, 'substat:critRate', false)
-  check('禁用暴击率后 9 条', resolveAffixLibrary(disabledOne).length === 9,
+  check('禁用暴击率后少 1 条', resolveAffixLibrary(disabledOne).length === active.length - 1,
     String(resolveAffixLibrary(disabledOne).length))
 }
 
