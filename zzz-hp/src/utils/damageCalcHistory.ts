@@ -233,7 +233,7 @@ function createEmptyStore(): SchemeStore {
 }
 
 /**
- * 旧字段清理（v2 起）：招式库 / 准备阶段 / 流程 改造。
+ * 旧字段清理（早期版本 → 当前 `SCHEME_STORE_VERSION`；函数名沿用 v3）。
  *
  * 3.1.6.4 的「事件跟随方案」未上线，其 `directEvents` / `anomalyEvents` 与随之而来的
  * 全局事件复制迁移（migrateLegacyGlobalEvents）一并废弃：前者直接清除，后者已删除。
@@ -339,7 +339,7 @@ function sanitizeSchemeSlotPanels(
 }
 
 /**
- * 老结构 → 双面板（`dev-docs/panel-dual-source.md` §3.3、§6）。
+ * 老结构 → 双面板（`dev-docs/affix-calc-manual.md` §1.1、§1.7）。
  *
  * 老方案只有一份面板，归位规则**只读** `panelCalcMode`：
  * `affix` → 词条导入那份；其他 → 面板导入那份。不扫描、不校验、不标注「旧数据」。

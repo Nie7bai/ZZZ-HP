@@ -16,7 +16,8 @@ import {
  *
  * 预算口径（与「词条计算」页的双预算规则**无关**）：
  * - 总词条数是唯一预算，每条词条 1 档 = 1 个词条，不分大小词条。
- * - 主词条上限（36 − 6×同类主词条数）与互斥组仍作为单条上限生效。
+ * - 柱图那套「36 − 6×同类主词条数」的档数上限**不适用**（用户 2026-09-10 决定）；
+ *   现存的单条约束只有词条库条目自身的 `cap` 与互斥组，见 `resolveAffixOptimizerBudget`。
  *
  * 搜索策略（每一步都用真实引擎评估，不做可分性假设）：
  * 1. **多起点贪心**：若干候选优先序各跑一遍，避免单一顺序的结构性偏差。
@@ -48,7 +49,7 @@ export type AffixCandidateWidthMode = 'auto' | 'manual'
 export interface AffixOptimizerBudget {
   /** 总词条数上限（唯一预算） */
   maxTotalRolls: number
-  /** 主词条档数上限（36 − 6×同类主词条数） */
+  /** 单条档数上限；当前实现恒为不限，见 `resolveAffixOptimizerBudget` */
   rollCapOf: (entry: AffixLibraryEntry) => number
 }
 

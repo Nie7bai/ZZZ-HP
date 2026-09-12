@@ -517,16 +517,16 @@ export interface PanelCalcContext {
   buffSelection?: BuffSelectionState | null
   attrValues?: Partial<Record<CharacterAttrKey, number>>
   panelSourceValues?: PanelSourceValues
-  /** 正在编辑局外面板的槽位（编队点选的「编辑中」）；live 面板跟这个人走 */
+  /** 本次结算的主 C 槽位下标（调用方传的是编队「编辑中」槽位）；见下方 `resolveExternalPanelForSlot` */
   liveExternalSlotIndex?: number
-  /** 正在编辑的那份局外面板（live） */
+  /** 主 C 那份局外面板（已解析好的激活面板，不问来历） */
   mainExternalPanel?: PanelStats
   /** 每人一份的激活局外面板（面板导入 / 词条导入已解析，不问来历） */
   activeSlotPanels?: Record<string, PanelStats>
   /** 转模增益角色局外面板（仅转模来源属性） */
   convertSlotPanels?: ConvertSlotPanels
   /**
-   * 各槽位完整局外。词条模式由该槽词条+驱动盘算出，面板模式为该槽手填值。
+   * 各槽位完整局外（该角色激活那份；无记录 → 空面板，转模链另有部分面板兜底）。
    * 全队转模必须按来源槽位取这里，不能拿编辑中角色的面板去套队友。
    */
   slotExternalPanels?: Record<number, PanelStats>

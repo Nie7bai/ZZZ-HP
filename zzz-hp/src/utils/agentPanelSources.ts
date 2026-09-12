@@ -13,7 +13,7 @@ import { fillPanelStatsDefaults, isPlaceholderExternalPanel } from '@/types/calc
  * - `affixDerived`：「词条导入」那一路 —— 工具按条数算出来的数字
  *
  * 两份**平级**（刻意不叫主 / 备），同一时间只有一份 `active`；下游只拿激活那份，
- * **不接收也不查询来源**（见 `dev-docs/panel-dual-source.md` §5）。
+ * **不接收也不查询来源**（见 `dev-docs/affix-calc-manual.md` §1.3）。
  */
 export const AGENT_PANEL_SOURCE_LABELS: Record<AgentPanelSourceKind, string> = {
   imported: '面板导入',
@@ -80,7 +80,7 @@ export function activePanelSourceKind(
  * - 这个答「最终喂进计算的是哪份」（选中那份没数据时**回落**到另一份，规则与 `resolveActivePanel` 一致）。
  *
  * 界面要标「这份数字来自哪里」必须用这个：否则回落时会把另一份的面板标成用户选的那份
- * （见 `dev-docs/panel-dual-source.md` §4.2）。
+ * （见 `dev-docs/affix-calc-manual.md` §1.5）。
  */
 export function resolveActivePanelSourceKind(
   sources: AgentPanelSources | undefined,
@@ -135,7 +135,7 @@ export function createAgentPanelSources(): AgentPanelSources {
 }
 
 /**
- * 写入某一来源并激活它 —— 「确定导入」用的入口（`dev-docs/panel-dual-source.md` §4.1）。
+ * 写入某一来源并激活它 —— 「确定导入」用的入口（`dev-docs/affix-calc-manual.md` §1.4）。
  *
  * 另一份原样保留：不重算、不反推、不清理。
  */
@@ -184,7 +184,7 @@ export function writeAffixInputsIntoSource(
 }
 
 /**
- * 老数据归位（`dev-docs/panel-dual-source.md` §6）：老方案只有一份面板、没有来源信息。
+ * 老数据归位（`dev-docs/affix-calc-manual.md` §1.7）：老方案只有一份面板、没有来源信息。
  * 只读方案记录的 `panelCalcMode`，不做扫描校验、不标注「旧数据」。
  */
 export function migrateLegacyPanelIntoSource(

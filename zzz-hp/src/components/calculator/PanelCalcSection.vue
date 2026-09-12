@@ -177,7 +177,7 @@ const props = defineProps<{
   /**
    * 各角色的**两份局外面板**（面板导入 / 词条导入 + 当前激活那份），key = agentId。
    *
-   * 本组件是「面板导入 / 词条导入」两个录入页的宿主，因此它按来源读写；
+   * 面板录入（两个子页 + 截图识别）在导入弹窗 `UnifiedPresetPicker` 里，本组件只按来源读取；
    * 计算链路只取激活那份（`resolveActivePanel`），不问来历。
    */
   slotPanels?: Record<string, AgentPanelSources>
@@ -206,7 +206,7 @@ const props = defineProps<{
 const extraGains = defineModel<ExtraBuffGain[]>('extraGains', { default: () => [] })
 
 const emit = defineEmits<{
-  /** 只传变化的那些 agentId（补丁），页级 `Object.assign` 合并 */
+  /** 只传变化的那些 agentId（补丁），页级按 key 合并。**当前组件内无 emit 点**，保留声明以对齐页级接线 */
   'update:slotPanels': [patch: Record<string, AgentPanelSources>]
   'update:convertSlotPanels': [value: ConvertSlotPanels]
   'update:hitDamages': [value: Record<string, number>]
@@ -385,7 +385,7 @@ const resolvedActiveSlotPanels = computed<Record<string, PanelStats>>(() => {
  * 也不问来历。改造前这里按 `calcMode === 'affix'` 分流（词条模式读现推值、面板模式读
  * live 编辑器），于是那两个 tab 会**悄悄改掉算进去的面板**——实测同一份激活面板下，
  * 只因为 tab 停在「面板导入」而不是「词条导入」，局内攻击就从 3883 变成 6136
- * （2026-09-11 复现，见 dev-docs/panel-dual-source.md 实施记录）。
+ * （2026-09-11 复现，见 `dev-docs/affix-calc-manual.md` §2）。
  */
 const effectiveExternalPanel = computed<PanelStats>(() => {
   const id = mainAgent.value?.id
@@ -793,7 +793,7 @@ function formatFormulaNumber(v: number, precision = 4) {
   return formatCalcDecimal(v, precision)
 }
 
-/** 导入确认后：按激活那份刷新 live 面板编辑器（面板页编辑的是「面板导入」那份） */
+/** 导入确认后：刷新 live 面板编辑器 —— 面板页编辑的是「面板导入」那份，故按该来源取数 */
 function syncLivePanelFromCommitted() {
   loadAffixFromCurrentSlot()
   const id = mainAgent.value?.id
@@ -1010,7 +1010,7 @@ function resolveOwnerExternalPanel(ownerSlotIndex: number, ownerAgentId: string)
  * 面板计算链路用的统一评估上下文（`计算方式 = 面板导入 / 词条导入`）。
  *
  * 招式伤害只认「上下文 + 主 C 局外面板」，「面板从哪来」由 `skillFlowMainExternal` 决定 ——
- * 这条链路与最优词条分配链路共用同一段招式计算，见 dev-docs/skill-flow-unification.md。
+ * 这条链路与最优词条分配链路共用同一段招式计算，见 `dev-docs/affix-calc-manual.md` §4（计算链路统一·步骤①~④）。
  */
 const skillFlowEvalCtx = computed(() =>
   buildOptimalEvalContext({
@@ -1031,7 +1031,7 @@ const skillFlowEvalCtx = computed(() =>
     slotBuffSelections: props.slotBuffSelections,
     activeSlotPanels: resolvedActiveSlotPanels.value,
     convertSlotPanels: props.convertSlotPanels,
-    // 非主 C 槽位沿用本组件那份解析（激活面板 → 转模部分面板 → 默认面板），
+    // 非主 C 槽位沿用本组件那份解析（激活面板 → 转模部分面板 → 空面板），
     // 与改造前逐位一致（引擎默认解析的回落不同，不能让它接管）
     slotExternalPanels: slotExternalPanelsMap.value,
     hits: props.hits,

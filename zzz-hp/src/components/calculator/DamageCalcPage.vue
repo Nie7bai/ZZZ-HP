@@ -1225,7 +1225,8 @@ const stickySlotPanelPreviews = computed(() => {
   ])
 
   /**
-   * 三个模式一律用 `PanelCalcSection` 的预览：它是「**激活那份面板** + 当前增益」算出的局外 / 局内，
+   * 两个状态一律用 `PanelCalcSection` 的预览（「面板导入 / 词条导入」两态已冻结，见下方模板）：
+   * 它是「**激活那份面板** + 当前增益」算出的局外 / 局内，
    * 随 Buff 实时重算；`PanelCalcSection` 在最优模式下仍以 `v-show` 挂载，预览随时可读。
    *
    * 最优模式也走这里（原先跳过），于是卡片的内容与「角色配置」严格一致 ——
@@ -1300,7 +1301,7 @@ const activeFinalPanelPreview = computed(() => {
 })
 
 /**
- * 「确定导入」——**唯一**的面板写盘入口（`dev-docs/panel-dual-source.md` §4.1）。
+ * 「确定导入」——**唯一**的面板写盘入口（`dev-docs/affix-calc-manual.md` §1.4）。
  *
  * 写哪一份由弹窗里点确定时所在的子页决定：面板页写「面板导入」那份，
  * 词条页写「词条导入」那份（含词条数与 4/5/6 主属性）。另一份原样保留。
@@ -1342,8 +1343,8 @@ function applyUnifiedImport(payload: UnifiedPresetConfirmPayload) {
 }
 
 /**
- * 手动切换某角色当前生效的那份面板（§4.3）：只改 `active`，两份面板本身原样不动。
- * 切换后全页面按新面板重算。
+ * 手动切换某角色当前生效的那份面板：只改 `active`，两份面板本身原样不动。
+ * 切换后全页面按新面板重算（口径见 `dev-docs/affix-calc-manual.md` §1.5）。
  */
 function setSlotPanelActiveSource(agentId: string, kind: AgentPanelSourceKind) {
   if (!agentId) return
@@ -1522,7 +1523,7 @@ function applyWorkingState(entry: {
     }
   }
   // 必须在换人 watch 同一轮里写回快照，不能拖到 nextTick：
-  // 否则默认 4/5/6（爆伤/攻击/生命）会先被 flush 进槽位，再被草稿 persist 写死。
+  // 否则新角色的面板要等下一帧才进快照，槽位卡片与预览会先用旧角色的面板渲染一帧。
   applyPanelSnapshot()
 
   // Buff 默认同步仍等队伍签名 watch 跑完再覆盖
@@ -1875,7 +1876,7 @@ function toggleOptimalAffixSection() {
 function selectPanelCalcMode(mode: PanelCalcMode) {
   const changed = panelCalcMode.value !== mode
   if (changed) {
-    // 先让 Tab 高亮，把重 DOM 切换放到下一帧，避免点击瞬时卡死
+    // 先让按钮高亮，把重 DOM 切换放到下一帧，避免点击瞬时卡死
     panelCalcMode.value = mode
   }
   const anchor =
@@ -2080,7 +2081,8 @@ defineExpose({ scrollToSection, setCalcMode, toggleOptimalAffixSection, panelCal
           每份面板本身照常在「代理人 → 导入」里录入与保存。
           进入「最优词条分配」后，再点它一次即可退回（第 3 个按钮同时承担退出）。
           恢复：删掉这两个按钮上的 `disabled / calc-mode-tab--frozen / title`，
-          并把 `selectPanelCalcMode` 里的退出分支去掉。
+          把 `selectPanelCalcMode` 里的退出分支去掉，并删掉 `constants/damageCalcNav.ts`
+          里这两项的 `frozen: true`（侧栏入口按它 `:disabled`）与恢复草稿时的强制复位。
         -->
         <button
           type="button"

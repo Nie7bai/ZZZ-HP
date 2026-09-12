@@ -11,7 +11,7 @@ import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
  * ```
  *
  * 三个选项的差别全在「叠不叠、叠哪一组」，除此之外没有第二套算法
- * （见 dev-docs/skill-flow-unification.md 步骤④）。
+ * （见 `dev-docs/affix-calc-manual.md` §4；实施见提交「计算链路统一·步骤④」）。
  */
 export type SkillFlowPanelSourceMode = 'config' | 'allocation' | 'sweep'
 

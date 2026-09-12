@@ -2700,7 +2700,8 @@ export function buildOptimalEvalContext(input: {
    *
    * 为什么需要：默认解析是「激活面板，取不到则按配置推导」（本文件下方 `Object.fromEntries`），
    * 而面板计算链路取不到时会回落到「转模部分面板 → 默认面板」。两条链路的回落不同，
-   * 合并时由调用方把自己那份解析结果传进来，保证逐位一致（见 dev-docs/skill-flow-unification.md 步骤①）。
+   * 合并时由调用方把自己那份解析结果传进来，保证逐位一致
+   * （见 `dev-docs/affix-calc-manual.md` §4；实施见提交「计算链路统一·步骤①」）。
    * 省略 = 保持原有解析。
    */
   slotExternalPanels?: Record<number, PanelStats>

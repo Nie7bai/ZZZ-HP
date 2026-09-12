@@ -172,7 +172,8 @@ const props = defineProps<{
   /**
    * 招式流程「用哪份面板」的覆盖值（三选项的 ②③）。
    *
-   * 本模块的招式流程映射优先用它；为 null 时沿用自己按词条分析算出的面板。
+   * 本模块的招式流程映射优先用它；为 null 时按「角色配置的激活面板 → 柱体推导」取值
+   * （见下方 `skillFlowExternal`）。
    */
   skillFlowMainExternalOverride?: PanelStats | null
 }>()
@@ -1034,10 +1035,9 @@ watch(
 )
 
 /**
- * 招式流程用的局外面板：只跟「开始计算」产出的柱体走。
- * 未扫过、或改数字尚未再点开始：不算招式总伤（未扫过返回空；已有柱则沿用上次选中柱）。
- *
- * 三选项的 ②③ 由页级下发覆盖值（同一份数值两个消费者共用），此时以覆盖值为准。
+ * 招式流程用的局外面板。优先级：
+ * ① 页级下发的覆盖值（三选项的 ②③）→ ② 角色配置里的激活面板 → ③ 没录入面板时才落回柱体推导
+ * （未扫过且无配置面板 → 空，不算招式总伤）。
  */
 const skillFlowExternal = computed(() => {
   const override = props.skillFlowMainExternalOverride

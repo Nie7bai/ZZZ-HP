@@ -186,7 +186,7 @@ export const SCHEME_EXCLUDED_PANEL_DEFAULTS: Pick<
 /**
  * 默认局外面板的模板。
  *
- * 原先 `createDefaultExternalPanel()` 每次调用都重新写一遍这 44 个字段的字面量。
+ * 原先 `createDefaultExternalPanel()` 每次调用都重新写一遍这 45 个字段的字面量。
  * 它在热路径上（词条求解每评估一次要补面板默认值数千次），实测剖析里
  * `fillPanelStatsDefaults` 自身占 9.8% CPU。模板不可变（全是数字），
  * 复用后仍每次返回新对象，调用方随便改都不会串。

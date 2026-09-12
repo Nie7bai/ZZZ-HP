@@ -40,9 +40,9 @@ export interface AffixBenefitRow {
   percentDelta: number
   /** 相对权重 = 本行收益率 / 最大收益率，0~1 */
   weight: number
-  /** 是否因上限（cap 或主词条约束）不可再加 */
+  /** 是否因上限不可再加。**预留字段：当前一律 `false`**（收益表暂不判上限） */
   capped: boolean
-  /** 上限提示 */
+  /** 上限提示。**预留字段：当前不产出** */
   note?: string
 }
 
@@ -56,7 +56,7 @@ export interface AffixBenefitSeries {
   cumulativePercent: number[]
   /** 逐档边际收益率（%） */
   marginalPercent: number[]
-  /** 该档是否已因上限不可再加（曲线图用） */
+  /** 该档是否已因上限不可再加（曲线图用）。**预留字段：当前全 `false`** */
   cappedAt: boolean[]
 }
 
