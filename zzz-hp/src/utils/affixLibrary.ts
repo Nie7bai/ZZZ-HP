@@ -6,22 +6,29 @@ import { AFFIX_VALUE_PER_COUNT } from '@/utils/affixPanelCalc'
  *
  * 把「参与收益分析与最优分配的词条」从写死的候选表改成一张可增删改的候选池。
  *
- * ## 条目目标（`target`）：单一命名空间，前缀区分
+ * ## 条目目标（`target`）：两个落点，**语义相同**
  *
- * - `stat:<AffixCounts 字段>`：落到词条计数桶，**经基础值换算**成面板值。
- *   语义是「基础攻击/生命/防御的百分比」或「直接加在面板上的固定值」，
- *   每档数值由 `AFFIX_VALUE_PER_COUNT`（默认）与该条目的 `perRoll`（覆盖）决定。
- * - `panel:<局外面板字段>`：直接叠加到**局外面板**（增伤、穿透率、减防、主词条数值等）。
+ * 一个条目只回答一件事：**给哪个属性加多少**。至于这个量是「按基础值乘算」还是
+ * 「平铺加到面板值上」，**由目标字段的语义决定，条目自己不判断**
+ * （用户 2026-09-12 裁定：「不应该有属性词条直接绕过链路的……就算有判断，
+ * 也不是这个功能里判断的，你凭什么在词条功能说这个词条一定不转模，绕过去」）。
+ *
+ * - `stat:<AffixCounts 字段>`：落到词条计数桶，按字段语义折算成面板增量；
+ * - `panel:<局外面板字段>`：落到面板字段贡献，按同一套字段语义折算成面板增量。
+ *
+ * 两条都落在**同一份局外面板**上，转模链路读的就是这份面板 —— 所以谁也不能
+ * 「不参与转模」，是否参与由**效果数据**决定，不由条目声明。
+ * 折算规则也完全共用：`anomalyControl` / `energyRegen` 按基础值乘算（与主属性、Buff 同口径），
+ * 其余字段平铺。因此界面上**不再有**「词条数 / 面板增量（直接叠加局外面板）」这种类型区分。
  *
  * 历史沿革：早期按 `kind: 'substat' | 'panelField'` 分成两种条目类型，两条路对
  * 「每档值从哪来」给了不同答案 —— 副词条读写死的常量表、面板字段读条目字段。
  * 结果是「界面把每档改成 4%，伤害却按常量 2.4% 算」。现在合并为单一 `target`，
- * **每档值一律以条目自己的 `perRoll` 为准**，两条路的差别只剩「落点」不同。
+ * **每档值一律以条目自己的 `perRoll` 为准**。
  *
- * 为什么不把 `stat:` 也改走面板增量（更「彻底」的统一）：`stat:atkPercent` 的语义是
- * 「**基础攻击**的百分比」（`atk = atkBase × (1 + atkPercent/100) + …`），而面板增量是
- * 「叠加到**最终面板值**」。两者量纲不同，强行统一要么丢掉「按基础值乘算」的语义
- * （改变伤害数值），要么让增量也带「作用基准」信息 —— 那只是把分类挪了个地方。
+ * 更早的错（2026-09-12 修）：`panel:` 曾**直接写进面板字段**，于是同一件事
+ * （6 号位「异常掌控 30%」）从主属性下拉选和从词条库选得到**两个数**（122.2 / 124）。
+ * 现在两条路共用同一套折算 —— 见 `applyPanelDeltas`。
  *
  * ## 预算模型（独立功能，不复用「词条计算」页的双预算规则）
  *
@@ -1163,14 +1170,51 @@ export function affixValuePerCountFromEntries(
   return { ...AFFIX_VALUE_PER_COUNT }
 }
 
-/** 把面板增量叠加到局外面板副本上（不改原对象） */
-export function applyPanelDeltas(panel: PanelStats, deltas: AffixPanelDeltaDraft): PanelStats {
+/**
+ * 条目贡献里**按基础值乘算**的字段清单（其余字段都是平铺加值）。
+ *
+ * 口径与最终面板合成一致：见 `affixPanelCalc.ts` 里 `anomalyControl` / `energyRegen` 的
+ * `基础 × (1 + Σ%)` 写法。冲击力**不在**此列 —— 仓库没有「基础冲击力」数据，
+ * 它按点加（同文件 `impact: mainStats.impact`）。
+ *
+ * 新增字段时只改这里：`AffixPanelDeltaBases` 会跟着要求调用方补基础值，漏传由类型检查拦住。
+ */
+export const AFFIX_PANEL_PERCENT_OF_BASE_FIELDS = ['anomalyControl', 'energyRegen'] as const
+
+export type AffixPanelPercentOfBaseField = (typeof AFFIX_PANEL_PERCENT_OF_BASE_FIELDS)[number]
+
+/** 按基础值乘算的字段各自需要的**基础值**（角色基础面板口径） */
+export type AffixPanelDeltaBases = Record<AffixPanelPercentOfBaseField, number>
+
+function isPercentOfBaseField(
+  key: AffixPanelDeltaField,
+): key is AffixPanelPercentOfBaseField {
+  return (AFFIX_PANEL_PERCENT_OF_BASE_FIELDS as readonly string[]).includes(key)
+}
+
+/**
+ * 把条目贡献叠加到局外面板副本上（不改原对象）。
+ *
+ * **折算口径由字段决定，不由条目决定**（用户 2026-09-12 裁定：词条只表达
+ * 「给哪个属性加多少」，怎么折算、是否进入转模都是下游的事）：
+ * - 乘算字段（`AFFIX_PANEL_PERCENT_OF_BASE_FIELDS`）：落 `基础 × 值 / 100`，与主属性同口径；
+ * - 其余字段：平铺加到面板值上。
+ */
+export function applyPanelDeltas(
+  panel: PanelStats,
+  deltas: AffixPanelDeltaDraft,
+  bases: AffixPanelDeltaBases,
+): PanelStats {
   const keys = Object.keys(deltas) as AffixPanelDeltaField[]
   if (!keys.length) return panel
   const next = { ...panel }
   for (const key of keys) {
     const delta = deltas[key]
     if (!delta) continue
+    if (isPercentOfBaseField(key)) {
+      next[key] = (next[key] ?? 0) + (bases[key] * delta) / 100
+      continue
+    }
     next[key] = (next[key] ?? 0) + delta
   }
   return next

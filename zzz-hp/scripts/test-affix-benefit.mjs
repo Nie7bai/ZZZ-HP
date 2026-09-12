@@ -14,7 +14,7 @@ import {
   createEmptyAgentBasePanel,
   createEmptyWengineAdvancedStats,
 } from '../src/utils/calculatorUi.ts'
-import { AFFIX_VALUE_PER_COUNT } from '../src/utils/affixPanelCalc.ts'
+import { AFFIX_VALUE_PER_COUNT, computeExternalPanelFromTeamSlot } from '../src/utils/affixPanelCalc.ts'
 import {
   activeAffixLibrarySet,
   activateAffixLibrarySet,
@@ -228,7 +228,9 @@ check('权重按收益率降序排列',
 
 // ---------- 4. panelField 条目确实改变伤害 ----------
 console.log('\n[4] 自定义条目（panelField）')
-const withDmgBonus = applyPanelDeltas(createDefaultExternalPanel(), { dmgBonus: 30 })
+/** 条目贡献的折算基础（异常掌控 94 / 能量恢复 120，取自角色快照） */
+const DELTA_BASES = { anomalyControl: 94, energyRegen: 120 }
+const withDmgBonus = applyPanelDeltas(createDefaultExternalPanel(), { dmgBonus: 30 }, DELTA_BASES)
 const baseEvalPanel = evaluateAffixCounts({ ...ctx, hits: undefined }, baseCounts)
 const bumpedCtx = { ...ctx }
 const bumpedEval = evaluateAffixCounts(
@@ -242,6 +244,56 @@ check('增伤 +30% 提升总伤',
 check('applyPanelDeltas 不修改原面板',
   createDefaultExternalPanel().dmgBonus === 10 && withDmgBonus.dmgBonus === 40,
   `dmgBonus=${withDmgBonus.dmgBonus}`)
+
+// ---------- 4.1 折算口径由字段决定（不由条目决定） ----------
+console.log('\n[4.1] 条目贡献的折算口径')
+{
+  // 平铺字段：直接加面板值
+  const flat = applyPanelDeltas(createDefaultExternalPanel(), { dmgBonus: 30, penRate: 24, impact: 18 }, DELTA_BASES)
+  check('平铺字段直接加：增伤 +30 / 穿透率 +24 / 冲击力 +18',
+    flat.dmgBonus === 40 && flat.penRate === 24 && flat.impact === 18,
+    `增伤=${flat.dmgBonus} 穿透率=${flat.penRate} 冲击力=${flat.impact}`)
+
+  // 按基础值乘算的字段：与主属性同一套口径（面板取角色基础值，模拟真实角色）
+  const panelAtBase = { ...createDefaultExternalPanel(), anomalyControl: 94, energyRegen: 120 }
+  const percent = applyPanelDeltas(panelAtBase, { anomalyControl: 30, energyRegen: 60 }, DELTA_BASES)
+  check('异常掌控 30% 落到 基础×1.3（94 → 122.2，与主属性同口径）',
+    nearly(percent.anomalyControl, 122.2, 1e-9),
+    `实际 ${percent.anomalyControl}`)
+  check('能量恢复 60% 落在 基础×1.6（120 → 192，与主属性同口径）',
+    nearly(percent.energyRegen, 192, 1e-9),
+    `实际 ${percent.energyRegen}`)
+
+  // 与主属性那条路的结果必须一致（这正是「不许开捷径」的验收）
+  const viaMainStat = computeExternalPanelFromTeamSlot({
+    slot: { agentId: 'qingyi', wengineId: 'none', twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'none' },
+    agents: [{ id: 'qingyi', basePanel: { ...createEmptyAgentBasePanel(), anomalyControl: 94, energyRegen: 120 } }],
+    wengines: [],
+    driveDiscs: [],
+    overrideAffix: {
+      affixCounts: createEmptyAffixCounts(),
+      affixDriveDiscMainStats: { slot4MainStat: '', slot5MainStat: '', slot6MainStat: 'anomalyControl' },
+    },
+  })
+  const viaEntry = applyPanelDeltas(
+    applyPanelDeltas(
+      computeExternalPanelFromTeamSlot({
+        slot: { agentId: 'qingyi', wengineId: 'none', twoPieceDriveDiscId: 'none', fourPieceDriveDiscId: 'none' },
+        agents: [{ id: 'qingyi', basePanel: { ...createEmptyAgentBasePanel(), anomalyControl: 94, energyRegen: 120 } }],
+        wengines: [],
+        driveDiscs: [],
+        overrideAffix: { affixCounts: createEmptyAffixCounts(), affixDriveDiscMainStats: createDefaultAffixDriveDiscMainStats() },
+      }),
+      {},
+      DELTA_BASES,
+    ),
+    { anomalyControl: 30 },
+    DELTA_BASES,
+  )
+  check('从主属性选「异常掌控 30%」= 从词条库选（两条路同一个数）',
+    nearly(viaMainStat.anomalyControl, viaEntry.anomalyControl, 1e-9),
+    `主属性 ${viaMainStat.anomalyControl} vs 词条 ${viaEntry.anomalyControl}`)
+}
 
 // ---------- 5. 词条库启用状态 ----------
 console.log('\n[5] 词条库启用/禁用')

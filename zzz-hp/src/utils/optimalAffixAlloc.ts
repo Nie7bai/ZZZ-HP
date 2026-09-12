@@ -1805,7 +1805,17 @@ function computeExternalForEval(
         vpc,
       )
     : applyAffixCountsToFixedParts(getAffixExternalFixedParts(ctx), affixCounts, vpc)
-  return panelDeltas ? applyPanelDeltas(external, panelDeltas) : external
+  if (!panelDeltas) return external
+  /**
+   * 条目贡献的折算基础：**主 C 槽位的角色基础面板**，与主属性 / Buff 同口径。
+   *
+   * 不传就会让「异常掌控 / 能量恢复」这两个按基础值乘算的字段贡献归零 ——
+   * 所以这里是必填参数，漏传由类型检查拦住（见 `applyPanelDeltas`）。
+   */
+  return applyPanelDeltas(external, panelDeltas, {
+    anomalyControl: ctx.agentBase?.anomalyControl ?? 0,
+    energyRegen: ctx.agentBase?.energyRegen ?? 0,
+  })
 }
 
 function evaluateAffixCountsUncached(

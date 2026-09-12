@@ -357,11 +357,58 @@ console.log('\n[6] 冲击力：转模来源属性（青衣「阳关三叠」口�
   // 词条库里那条「冲击力 18%」经 applyPanelDeltas 落到面板上
   const impactEntry = createPresetAffixLibraryEntries().find((e) => e.id === 'main:slot6:impact')
   const evalInputImpact = entryRollsToEvalInput([impactEntry], { 'main:slot6:impact': 1 })
-  const panelWithDelta = applyPanelDeltas(makeExternalPanel({ impact: 0 }), evalInputImpact.deltas)
+  const panelWithDelta = applyPanelDeltas(makeExternalPanel({ impact: 0 }), evalInputImpact.deltas, {
+    anomalyControl: AGENT_BASE.anomalyControl,
+    energyRegen: AGENT_BASE.energyRegen,
+  })
   check(
     '词条库「冲击力 18%」1 档 → 面板 impact 0 → 18',
     Math.abs(panelWithDelta.impact - 18) < 1e-9,
     `实际 ${panelWithDelta.impact}`,
+  )
+
+  /**
+   * 不许开捷径（用户 2026-09-12 裁定）：同一个「6 号位异常掌控 30%」，
+   * 从**主属性下拉**选与从**词条库**选必须得到同一个面板值。
+   * 直写时代这里是 124 vs 122.2（差 1.8）—— 那条路已被拆掉。
+   */
+  const slot6AnomalyPanel = (slot6, viaEntry) => {
+    const base = computeExternalPanelFromTeamSlot({
+      slot: {
+        agentId: 'a',
+        wengineId: 'none',
+        twoPieceDriveDiscId: 'none',
+        fourPieceDriveDiscId: 'none',
+      },
+      agents: [{ id: 'a', basePanel: AGENT_BASE }],
+      wengines: [],
+      driveDiscs: [],
+      overrideAffix: {
+        affixCounts: createEmptyAffixCounts(),
+        affixDriveDiscMainStats: {
+          slot4MainStat: '',
+          slot5MainStat: '',
+          slot6MainStat: viaEntry ? '' : slot6,
+        },
+      },
+    })
+    if (!viaEntry) return base
+    return applyPanelDeltas(base, { [viaEntry]: 30 }, {
+      anomalyControl: AGENT_BASE.anomalyControl,
+      energyRegen: AGENT_BASE.energyRegen,
+    })
+  }
+  const viaMainStat = slot6AnomalyPanel('anomalyControl', null)
+  const viaEntry = slot6AnomalyPanel('anomalyControl', 'anomalyControl')
+  check(
+    '异常掌控 30%：从主属性选 = 从词条库选（同一个数，不再有第二条加法）',
+    Math.abs(viaMainStat.anomalyControl - viaEntry.anomalyControl) < 1e-9,
+    `主属性 ${viaMainStat.anomalyControl} vs 词条 ${viaEntry.anomalyControl}`,
+  )
+  check(
+    '异常掌控 30% 落在 基础×1.3（不再是直写 +30）',
+    Math.abs(viaEntry.anomalyControl - AGENT_BASE.anomalyControl * 1.3) < 1e-9,
+    `${AGENT_BASE.anomalyControl} → ${viaEntry.anomalyControl}`,
   )
 }
 

@@ -465,14 +465,33 @@ function submitNewGroup() {
 
 // ---------- 条目编辑（新增表单） ----------
 
-/** 候选目标（合并后是一个下拉，按命名空间分组） */
+/** `stat:` 落点的可选属性 */
 const STAT_TARGET_OPTIONS = (Object.keys(AFFIX_SUBSTAT_KEY_LABELS) as (keyof AffixCounts)[]).map(
   (key) => ({ id: statTarget(key), label: AFFIX_SUBSTAT_KEY_LABELS[key] }),
 )
 
+/** `panel:` 落点的可选属性 */
 const PANEL_TARGET_OPTIONS = (
   Object.keys(AFFIX_PANEL_DELTA_FIELD_LABELS) as AffixPanelDeltaField[]
 ).map((field) => ({ id: panelTarget(field), label: AFFIX_PANEL_DELTA_FIELD_LABELS[field] }))
+
+/**
+ * 「新增条目」的属性清单：两个落点**合并成一个列表**。
+ *
+ * 条目不再区分「词条数 / 面板增量」（用户 2026-09-12 裁定：词条只表达「给哪个属性加多少」，
+ * 怎么折算由字段语义决定）。同名属性只列一次 —— `异常精通` 在两个落点里都有，
+ * 语义相同（平铺加），保留先出现的那个。
+ */
+const TARGET_OPTIONS = (() => {
+  const seen = new Set<string>()
+  const merged: { id: AffixLibraryEntryTarget; label: string }[] = []
+  for (const option of [...STAT_TARGET_OPTIONS, ...PANEL_TARGET_OPTIONS]) {
+    if (seen.has(option.label)) continue
+    seen.add(option.label)
+    merged.push(option)
+  }
+  return merged
+})()
 
 const draft = ref({
   label: '',
@@ -486,11 +505,6 @@ const draftError = ref<string | null>(null)
 const draftPerRollUnit = computed(() =>
   affixPerRollUnit(draft.value.target) === 'percent' ? '%' : '',
 )
-
-/** 列表里的类型说明：区分「按基础值换算」与「直接叠加面板」 */
-function targetNamespaceLabel(target: AffixLibraryEntryTarget): string {
-  return target.startsWith('stat:') ? '词条数' : '面板增量'
-}
 
 function perRollUnitHint(target: AffixLibraryEntryTarget): string {
   return affixPerRollUnit(target) === 'percent' ? '%' : ''
@@ -707,7 +721,6 @@ function submitDraft() {
                 <colgroup>
                   <col class="col-participate" />
                   <col class="col-label" />
-                  <col class="col-type" />
                   <col class="col-perroll" />
                   <col class="col-cap" />
                   <col class="col-group" />
@@ -717,7 +730,6 @@ function submitDraft() {
                   <tr>
                     <th>参与</th>
                     <th>名称</th>
-                    <th>类型</th>
                     <th>每档</th>
                     <th>上限</th>
                     <th>分组</th>
@@ -751,7 +763,6 @@ function submitDraft() {
                         "
                       />
                     </td>
-                    <td class="type-cell">{{ targetNamespaceLabel(entry.target) }}</td>
                     <td>
                       <span class="per-roll-cell">
                         <input
@@ -825,16 +836,9 @@ function submitDraft() {
                 <label>
                   <span>目标</span>
                   <select v-model="draft.target">
-                    <optgroup label="词条数（按基础值换算）">
-                      <option v-for="opt in STAT_TARGET_OPTIONS" :key="opt.id" :value="opt.id">
-                        {{ opt.label }}
-                      </option>
-                    </optgroup>
-                    <optgroup label="面板增量（直接叠加局外面板）">
-                      <option v-for="opt in PANEL_TARGET_OPTIONS" :key="opt.id" :value="opt.id">
-                        {{ opt.label }}
-                      </option>
-                    </optgroup>
+                    <option v-for="opt in TARGET_OPTIONS" :key="opt.id" :value="opt.id">
+                      {{ opt.label }}
+                    </option>
                   </select>
                 </label>
                 <label>
@@ -1399,9 +1403,6 @@ function submitDraft() {
 
 .library-table--entries .col-participate {
   width: 46px;
-}
-.library-table--entries .col-type {
-  width: 84px;
 }
 .library-table--entries .col-perroll {
   width: 104px;
