@@ -512,6 +512,33 @@ console.log('\n[7] 验收 5 / 8：代码审查（无来源分支、无推断逻�
     '运行时存储改用 slotPanels（每人两份来源）',
     /const slotPanels = reactive/.test(page) && /slotPanels: captureSchemeSlotPanels\(\)/.test(page),
   )
+
+  /**
+   * 面板快照里**不得**再带「当前角色词条数 / 4-5-6 主属性 / 每人一份词条数」。
+   *
+   * 回归（2026-09-12）：这三项**只有写、没有读** —— `loadSnapshot` 从不用前两项，
+   * `affixStateByAgent` 还原进一个没有任何读取方的 map。实测盘上草稿里
+   * `panelState.affixStateByAgent.koleda` = 全 0 词条 + `critDmg / externalAtkPercent /
+   * externalHpPercent` 那套默认值，正是「珂蕾妲从没导入过词条，工具却替她写了一份配置」。
+   * 所有者口径：没有就是没有，工具不得凭空造。
+   */
+  const snapshotType = read('types/damageCalcHistory.ts')
+  const snapshotStart = snapshotType.indexOf('export interface DamageCalcPanelSnapshot')
+  const snapshotRest = snapshotType.slice(snapshotStart + 1)
+  const snapshotEnd = snapshotRest.indexOf('\nexport ')
+  const snapshotBlock = snapshotRest.slice(0, snapshotEnd === -1 ? 800 : snapshotEnd)
+  const snapshotAffixFields = ['affixCounts', 'affixDriveDiscMainStats', 'affixStateByAgent'].filter(
+    (field) => new RegExp('\\b' + field + '\\s*:').test(snapshotBlock),
+  )
+  check(
+    '面板快照不再携带词条字段（无人读取，写了就是凭空造配置）',
+    snapshotAffixFields.length === 0,
+    snapshotAffixFields.length ? `仍声明：${snapshotAffixFields.join('、')}` : '',
+  )
+  check(
+    '面板组件不再凭空造 4/5/6 默认主属性（空就是空）',
+    !/createDefaultAffixDriveDiscMainStats/.test(panelSection),
+  )
 }
 
 console.log(`\n结果：${passed} PASS / ${failed} FAIL`)

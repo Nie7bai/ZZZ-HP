@@ -1758,9 +1758,6 @@ function defaultEnemyInput(): DamageEnemyInput {
 function emptySchemePanelState(): DamageCalcSchemePanelSnapshot {
   return {
     externalPanel: resetSchemeExcludedPanelFields(createDefaultExternalPanel()),
-    affixCounts: createEmptyAffixCounts(),
-    affixDriveDiscMainStats: createDefaultAffixDriveDiscMainStats(),
-    affixStateByAgent: {},
     skillTalentLevelsByAgent: {},
     extraMods: createEmptyBuffStatModifiers(),
     extraGains: [],

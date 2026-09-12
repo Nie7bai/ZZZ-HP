@@ -25,8 +25,8 @@ import type { DamageCalcPanelSnapshot, DamageCalcSchemePanelSnapshot } from '@/t
 import {
   applyAgentBaseToPanelStats,
   createDefaultExternalPanel,
-  createDefaultAffixDriveDiscMainStats,
   createEmptyAffixCounts,
+  createEmptyAffixDriveDiscMainStats,
   createExternalPanelFromAgentBase,
   fillPanelStatsDefaults,
   type AffixCounts,
@@ -315,26 +315,18 @@ watch(
 )
 const externalPanel = reactive<PanelStats>(createDefaultExternalPanel())
 const affixCounts = reactive(createEmptyAffixCounts())
-const affixDriveDiscMainStats = reactive(createDefaultAffixDriveDiscMainStats())
+const affixDriveDiscMainStats = reactive(createEmptyAffixDriveDiscMainStats())
 
 type AgentAffixState = {
   affixCounts: AffixCounts
   affixDriveDiscMainStats: AffixDriveDiscMainStats
-}
-const affixStateByAgent = reactive<Record<string, AgentAffixState>>({})
-
-function captureAffixState(): AgentAffixState {
-  return {
-    affixCounts: { ...affixCounts },
-    affixDriveDiscMainStats: { ...affixDriveDiscMainStats },
-  }
 }
 
 function applyAffixState(state: AgentAffixState | undefined) {
   Object.assign(affixCounts, createEmptyAffixCounts(), state?.affixCounts)
   Object.assign(
     affixDriveDiscMainStats,
-    createDefaultAffixDriveDiscMainStats(),
+    createEmptyAffixDriveDiscMainStats(),
     state?.affixDriveDiscMainStats,
   )
 }
@@ -345,7 +337,7 @@ function slotAffixState(slot: TeamSlot | undefined): AgentAffixState | undefined
   return {
     affixCounts: { ...createEmptyAffixCounts(), ...sources.affixCounts },
     affixDriveDiscMainStats: {
-      ...createDefaultAffixDriveDiscMainStats(),
+      ...createEmptyAffixDriveDiscMainStats(),
       ...sources.affixDriveDiscMainStats,
     },
   }
@@ -3393,17 +3385,9 @@ const teamWengineNotes = computed(() =>
 )
 
 function getSnapshot(): DamageCalcPanelSnapshot {
-  const id = mainAgent.value?.id
-  if (id) affixStateByAgent[id] = captureAffixState()
   return {
     baseDamageSource: baseDamageSource.value,
     externalPanel: { ...externalPanel },
-    affixCounts: { ...affixCounts },
-    affixDriveDiscMainStats: { ...affixDriveDiscMainStats },
-    affixStateByAgent: JSON.parse(JSON.stringify(affixStateByAgent)) as Record<
-      string,
-      AgentAffixState
-    >,
     extraMods: { ...extraMods.value },
     extraGains: extraGains.value.map((item) => ({ ...item })),
     enemyInput: { ...enemyInput.value },
@@ -3420,10 +3404,6 @@ function loadSnapshot(
     baseDamageSource.value = snapshot.baseDamageSource
   }
   Object.assign(externalPanel, createDefaultExternalPanel(), snapshot.externalPanel)
-  for (const key of Object.keys(affixStateByAgent)) delete affixStateByAgent[key]
-  if (snapshot.affixStateByAgent) {
-    Object.assign(affixStateByAgent, JSON.parse(JSON.stringify(snapshot.affixStateByAgent)))
-  }
   loadAffixFromCurrentSlot()
   if (snapshot.extraGains?.length) {
     extraGains.value = snapshot.extraGains.map((item) =>

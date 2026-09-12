@@ -77,13 +77,6 @@ export interface DamageCalcTeamSlotSnapshot {
 export interface DamageCalcPanelSnapshot {
   baseDamageSource: 'atk' | 'pierce' | 'def'
   externalPanel: PanelStats
-  affixCounts: AffixCounts
-  affixDriveDiscMainStats: AffixDriveDiscMainStats
-  /** 每人一份词条数；缺省时只用上面那份当前角色词条 */
-  affixStateByAgent?: Record<
-    string,
-    { affixCounts: AffixCounts; affixDriveDiscMainStats: AffixDriveDiscMainStats }
-  >
   /**
    * 每人一份五大类技能等级（面板导入配置；缺省全 12）。
    * 仅影响 nanoka 导入直伤招式的有效倍率。
