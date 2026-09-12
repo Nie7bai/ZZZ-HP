@@ -572,11 +572,20 @@ console.log('\n[4.10] 同字段多条目的折算')
     slot5.map((e) => e.label).join(' / '))
   const slot6 = preset.filter((e) => e.group === '6号位')
   check(
-    '6 号位含异常掌控与能量恢复（冲击力未收录，面板无此字段）',
+    '6 号位含异常掌控 / 冲击力 / 能量恢复（选项表 5 条 + 通用 3 条）',
     slot6.some((e) => e.label.includes('异常掌控')) &&
       slot6.some((e) => e.label.includes('能量恢复')) &&
-      !slot6.some((e) => e.label.includes('冲击力')),
+      slot6.some((e) => e.label.includes('冲击力')),
     slot6.map((e) => e.label).join(' / '),
+  )
+  const impactEntry = preset.find((e) => e.id === 'main:slot6:impact')
+  check(
+    '6 号位冲击力条目：18 点、落 panel:impact、归 6号位组、默认不启用',
+    impactEntry?.perRoll === 18 &&
+      impactEntry.target === 'panel:impact' &&
+      impactEntry.group === '6号位' &&
+      impactEntry.enabledByDefault === false,
+    impactEntry ? `${impactEntry.label} perRoll=${impactEntry.perRoll} → ${impactEntry.target}` : '(缺)',
   )
   check('4/5/6 号位条目默认不启用（避免与已导入的面板重复计算）',
     slotEntries.every((e) => e.enabledByDefault === false))

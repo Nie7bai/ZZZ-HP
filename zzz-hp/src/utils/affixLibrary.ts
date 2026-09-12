@@ -65,6 +65,7 @@ export type AffixPanelDeltaField =
   | 'mastery'
   | 'anomalyControl'
   | 'energyRegen'
+  | 'impact'
   | 'anomalyDmgBonus'
   | 'anomalyCritRate'
   | 'anomalyCritDmg'
@@ -89,6 +90,7 @@ export const AFFIX_PANEL_DELTA_FIELD_LABELS: Record<AffixPanelDeltaField, string
   mastery: '异常精通',
   anomalyControl: '异常掌控',
   energyRegen: '能量恢复效率',
+  impact: '冲击力',
   anomalyDmgBonus: '异常增伤%',
   anomalyCritRate: '异常暴击率%',
   anomalyCritDmg: '异常暴击伤害%',
@@ -296,8 +298,10 @@ export const AFFIX_OPTIONAL_GROUP_OVERRIDES: Partial<Record<AffixPanelDeltaField
  * 求解器按组各选至多一条。折算时各按自己的每档算（见 `entryRollsToEvalInput`），
  * 与副词条的「局外攻击力% 3%/档」互不干扰 —— 这正是本次修的那个 bug。
  *
- * 未收录：**冲击力 18%**（6 号位）。`PanelStats` 没有冲击力字段、计算链路也不读它，
- * 收进来会是一条「点了没反应」的条目，反而误导。
+ * **6 号位「冲击力 18%」的口径**（用户 2026-09-12 定：没填的一律按 0）：
+ * 与同组的「异常掌控 30%」「能量恢复 60%」一样**按点数加**（这两条也是这么记的）。
+ * 注意它不是「基础冲击力 ×18%」—— 角色基础冲击力没有入库，无法那样算；
+ * 精确到百分比需要那份数据，届时本条与 `collectAffixDriveDiscMainStatContribution` 一起改。
  */
 export function createDriveDiscMainStatAffixEntries(): AffixLibraryEntry[] {
   const specs: { slot: 4 | 5 | 6; key: string; field?: AffixPanelDeltaField; statKey?: keyof AffixCounts; label: string; perRoll: number }[] = [
@@ -317,6 +321,7 @@ export function createDriveDiscMainStatAffixEntries(): AffixLibraryEntry[] {
     { slot: 6, key: 'externalHpPercent', statKey: 'hpPercent', label: '局外生命值 30%', perRoll: 30 },
     { slot: 6, key: 'externalDefPercent', statKey: 'defPercent', label: '局外防御力 48%', perRoll: 48 },
     { slot: 6, key: 'anomalyControl', field: 'anomalyControl', label: '异常掌控 30%', perRoll: 30 },
+    { slot: 6, key: 'impact', field: 'impact', label: '冲击力 18%', perRoll: 18 },
     { slot: 6, key: 'energyRegen', field: 'energyRegen', label: '能量恢复 60%', perRoll: 60 },
   ]
   return specs.map((spec) => ({

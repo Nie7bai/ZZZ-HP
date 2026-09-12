@@ -192,6 +192,8 @@ export type AffixExternalFixedParts = {
   mastery: number
   anomalyControl: number
   energyRegen: number
+  /** 6 号位「冲击力 18%」按点数落进来（见 affixDriveDiscConfig 的口径说明） */
+  impact: number
   anomalyCritRate: number
   anomalyCritDmg: number
   anomalyDmgBonus: number
@@ -246,6 +248,8 @@ export function buildAffixExternalFixedParts(
         (1 +
           (wengineAdvanced.energyRegen + twoPieceMods.energyRegen + mainStats.energyRegen) / 100) +
       twoPieceMods.energyRegenFlat,
+    // 冲击力：没有「基础冲击力」这份数据，按点数加（与异常掌控 / 能量恢复同口径）
+    impact: mainStats.impact,
     anomalyCritRate: agentBase.anomalyCritRate,
     anomalyCritDmg: agentBase.anomalyCritDmg,
     anomalyDmgBonus: agentBase.anomalyDmgBonus,
@@ -317,13 +321,13 @@ export function applyAffixCountsToFixedParts(
     anomalyControl: roundPanelValue(parts.anomalyControl),
     energyRegen: roundPanelValue(parts.energyRegen),
     /**
-     * 冲击力：词条模式**推不出来**，恒 0。
+     * 冲击力：**主属性那 18% 是唯一来源**，词条模式推不出「基础冲击力」。
      *
-     * 要推导它得有「角色基础冲击力」+「6 号位主属性 18%」两项数据，而 DB 里
-     * 没有任何角色的基础冲击力（`AgentBasePanel` 无 impact 字段）。
-     * 因此词条模式下青衣的冲击力转模仍是 0；面板导入那条路已经能用（手工填 / 见 §1.9）。
+     * 与 `createDriveDiscMainStatAffixEntries()` 里那条「冲击力 18%」同口径（按点数加）。
+     * 转模（青衣 / 莱特）读的就是这个值 —— 没选 6 号位、面板也没填时它仍是 0，
+     * 与「没填的一律按 0」一致。
      */
-    impact: 0,
+    impact: roundPanelValue(parts.impact),
     anomalyCritRate: roundPanelValue(parts.anomalyCritRate),
     anomalyCritDmg: roundPanelValue(parts.anomalyCritDmg),
     anomalyDmgBonus: roundPanelValue(parts.anomalyDmgBonus),

@@ -22,6 +22,11 @@ import { AFFIX_VALUE_PER_COUNT, computeExternalPanelFromTeamSlot } from '../src/
 import { buildPanelSourceValuesBySlotRecord } from '../src/utils/panelBuffCalc.ts'
 import { resolveConvertValue } from '../src/utils/buffEffect.ts'
 import {
+  applyPanelDeltas,
+  createPresetAffixLibraryEntries,
+  entryRollsToEvalInput,
+} from '../src/utils/affixLibrary.ts'
+import {
   buildOptimalEvalContext,
   clearAffixEvalCache,
   evaluateAffixCounts,
@@ -302,6 +307,61 @@ console.log('\n[6] 冲击力：转模来源属性（青衣「阳关三叠」口�
   check(
     '冲击力 0 时不产生收益（max(0, 0−120) = 0）',
     resolveConvertValue(qingyiConvert, {}, null, recordZero?.[0]) === 0,
+  )
+
+  // —— 6 号位「冲击力 18%」：词条模式的落点与词条库条目的口径 ——
+  const derived6 = computeExternalPanelFromTeamSlot({
+    slot: {
+      agentId: 'a',
+      wengineId: 'none',
+      twoPieceDriveDiscId: 'none',
+      fourPieceDriveDiscId: 'none',
+    },
+    agents: [{ id: 'a', basePanel: AGENT_BASE }],
+    wengines: [],
+    driveDiscs: [],
+    overrideAffix: {
+      affixCounts: createEmptyAffixCounts(),
+      affixDriveDiscMainStats: {
+        slot4MainStat: '',
+        slot5MainStat: '',
+        slot6MainStat: 'impact',
+      },
+    },
+  })
+  check(
+    '词条模式选 6 号位「冲击力 18%」→ 派生面板 impact = 18（按点数，没填的按 0）',
+    derived6.impact === 18,
+    `实际 ${derived6.impact}`,
+  )
+  check(
+    '不选 6 号位冲击力时仍是 0（不做任何猜测）',
+    makeExternalPanel({ impact: 0 }).impact === 0 &&
+      computeExternalPanelFromTeamSlot({
+        slot: {
+          agentId: 'a',
+          wengineId: 'none',
+          twoPieceDriveDiscId: 'none',
+          fourPieceDriveDiscId: 'none',
+        },
+        agents: [{ id: 'a', basePanel: AGENT_BASE }],
+        wengines: [],
+        driveDiscs: [],
+        overrideAffix: {
+          affixCounts: createEmptyAffixCounts(),
+          affixDriveDiscMainStats: createDefaultAffixDriveDiscMainStats(),
+        },
+      }).impact === 0,
+  )
+
+  // 词条库里那条「冲击力 18%」经 applyPanelDeltas 落到面板上
+  const impactEntry = createPresetAffixLibraryEntries().find((e) => e.id === 'main:slot6:impact')
+  const evalInputImpact = entryRollsToEvalInput([impactEntry], { 'main:slot6:impact': 1 })
+  const panelWithDelta = applyPanelDeltas(makeExternalPanel({ impact: 0 }), evalInputImpact.deltas)
+  check(
+    '词条库「冲击力 18%」1 档 → 面板 impact 0 → 18',
+    Math.abs(panelWithDelta.impact - 18) < 1e-9,
+    `实际 ${panelWithDelta.impact}`,
   )
 }
 
