@@ -13,11 +13,13 @@ import {
   sweepDirectDamage,
   clearAffixEvalCache,
 } from '../src/utils/optimalAffixAlloc.ts'
+import { BUFFS_JSON, artifactPath, resolveSchemePath } from './_paths.mjs'
 
-const BUFFS = 'D:/WB_agent_out/applications/ZZZ-HP/zzz-hp-backend/scripts/data/zzz-hp-calculator-buffs.json'
-const DEFAULT_SCHEME = 'D:/WB_agent_out/applications/ZZZ-HP/artifacts/profiles/zzz-hp-schemes-2026-09-10.json'
+const BUFFS = BUFFS_JSON
+/** 方案库参考配置：fixture 放开发目录 artifacts/profiles（见 dev-docs/scripts-conventions.md） */
+const DEFAULT_SCHEME_FILE = 'zzz-hp-schemes-2026-09-10.json'
 
-const schemeFile = process.argv[2] ?? DEFAULT_SCHEME
+const schemeFile = resolveSchemePath(process.argv[2], DEFAULT_SCHEME_FILE)
 const nameFilter = process.argv[3] ?? ''
 const totalRolls = Number(process.argv[4] ?? 30)
 
@@ -142,7 +144,7 @@ for (const scheme of Object.values(pack.schemes)) {
 }
 
 fs.writeFileSync(
-  'D:/WB_agent_out/applications/ZZZ-HP/artifacts/probe-sweep-two-bases.txt',
+  artifactPath('probe-sweep-two-bases.txt'),
   out.join('\n') + '\n',
   'utf8',
 )

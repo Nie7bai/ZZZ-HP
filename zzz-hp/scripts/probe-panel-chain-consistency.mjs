@@ -28,11 +28,13 @@ import {
 } from '../src/utils/optimalAffixAlloc.ts'
 import { createDefaultAffixDriveDiscMainStats } from '../src/utils/affixDriveDiscConfig.ts'
 import { schemeActivePanels, schemeAffixInputs } from '../src/utils/agentPanelSources.ts'
+import { BUFFS_JSON, artifactPath, resolveSchemePath } from './_paths.mjs'
 
-const BUFFS = 'D:/WB_agent_out/applications/ZZZ-HP/zzz-hp-backend/scripts/data/zzz-hp-calculator-buffs.json'
-const DEFAULT_SCHEME = 'D:/WB_agent_out/applications/ZZZ-HP/artifacts/profiles/zzz-hp-schemes-2026-09-10.json'
+const BUFFS = BUFFS_JSON
+/** 方案库参考配置：fixture 放开发目录 artifacts/profiles（见 dev-docs/scripts-conventions.md） */
+const DEFAULT_SCHEME_FILE = 'zzz-hp-schemes-2026-09-10.json'
 
-const schemeFile = process.argv[2] ?? DEFAULT_SCHEME
+const schemeFile = resolveSchemePath(process.argv[2], DEFAULT_SCHEME_FILE)
 const nameFilter = process.argv[3] ?? ''
 
 const out = []
@@ -250,7 +252,7 @@ log('')
 log(`结果：${failures === 0 ? '全部通过' : `${failures} 项失败`}`)
 
 fs.writeFileSync(
-  'D:/WB_agent_out/applications/ZZZ-HP/artifacts/probe-panel-chain-consistency.txt',
+  artifactPath('probe-panel-chain-consistency.txt'),
   out.join('\n') + '\n',
   'utf8',
 )

@@ -16,10 +16,11 @@ import { buildOptimalEvalContext, clearAffixEvalCache } from '../src/utils/optim
 import { solveOptimalAffixAllocationAsync } from '../src/utils/affixOptimizer.ts'
 import { createDefaultAffixLibrary } from '../src/utils/affixLibrary.ts'
 import { schemeActivePanels, schemeAffixInputs } from '../src/utils/agentPanelSources.ts'
+import { ARTIFACTS_DIR, BUFFS_JSON, resolveSchemePath } from './_paths.mjs'
 
-const BUFFS = 'D:/WB_agent_out/applications/ZZZ-HP/zzz-hp-backend/scripts/data/zzz-hp-calculator-buffs.json'
-const ARTIFACTS = 'D:/WB_agent_out/ZZZ-HP/artifacts'
-const SCHEME = process.argv[2] ?? `${ARTIFACTS}/profiles/scheme-dan.json`
+const BUFFS = BUFFS_JSON
+const ARTIFACTS = ARTIFACTS_DIR
+const SCHEME = resolveSchemePath(process.argv[2])
 const ROLLS = Number(process.argv[3] ?? 30)
 
 const buffs = JSON.parse(fs.readFileSync(BUFFS, 'utf8'))

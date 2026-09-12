@@ -2,7 +2,7 @@
  * 用真实导出方案复现「词条分析」的基准面板与分配结果。
  *
  * 用途：排查「角色配置面板 → 词条分析」这条链路的数值是否符合预期。
- * 数据：增益库 + 用户导出的方案库 JSON（默认 artifacts/profiles/zzz-hp-schemes-2026-09-10.json）
+ * 数据：增益库 + 用户导出的方案库 JSON（默认开发者目录 artifacts/profiles/zzz-hp-schemes-2026-09-10.json）
  *
  * 用法：
  *   npx vite-node scripts/probe-affix-base-panel.mjs [方案JSON路径] [方案名关键词]
@@ -29,11 +29,13 @@ import {
   slotParticipatesInConvertBuff,
   teamHasConvertSupportSlots,
 } from '../src/utils/panelBuffCalc.ts'
+import { BUFFS_JSON, artifactPath, resolveSchemePath } from './_paths.mjs'
 
-const BUFFS = 'D:/WB_agent_out/applications/ZZZ-HP/zzz-hp-backend/scripts/data/zzz-hp-calculator-buffs.json'
-const DEFAULT_SCHEME = 'D:/WB_agent_out/applications/ZZZ-HP/artifacts/profiles/zzz-hp-schemes-2026-09-10.json'
+const BUFFS = BUFFS_JSON
+/** 方案库参考配置：fixture 放开发目录 artifacts/profiles（见 dev-docs/scripts-conventions.md） */
+const DEFAULT_SCHEME_FILE = 'zzz-hp-schemes-2026-09-10.json'
 
-const schemeFile = process.argv[2] ?? DEFAULT_SCHEME
+const schemeFile = resolveSchemePath(process.argv[2], DEFAULT_SCHEME_FILE)
 const nameFilter = process.argv[3] ?? ''
 const totalRolls = Number(process.argv[4] ?? 30)
 
@@ -250,4 +252,4 @@ for (const scheme of schemes) {
   log(`[再加到 20 条]      局内 crit=${e20.finalPanel.critRate}  总伤=${e20.grandTotal.toFixed(0)}`)
 }
 
-fs.writeFileSync('D:/WB_agent_out/applications/ZZZ-HP/artifacts/probe-affix-base-panel.txt', out.join('\n') + '\n', 'utf8')
+fs.writeFileSync(artifactPath('probe-affix-base-panel.txt'), out.join('\n') + '\n', 'utf8')
