@@ -64,6 +64,8 @@ import {
 import { teamSlotDisplayLabel } from '@/utils/teamSlotLabel'
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 import type { PanelStats } from '@/types/calculatorPanel'
+import type { AgentPanelSourceKind } from '@/types/damageCalcHistory'
+import { AGENT_PANEL_SOURCE_LABELS, AGENT_PANEL_SOURCE_ORDER } from '@/utils/agentPanelSources'
 import type { SkillFlowDisplayOption } from '@/utils/skillFlowPanelSource'
 
 const props = defineProps<{
@@ -85,8 +87,12 @@ const props = defineProps<{
   >
   /** 面板展示专用：②③ 的局外 + 局内（词条分析侧独立通道上报，见 `SkillFlowDisplayOption`） */
   displayPanelSources?: Partial<Record<'allocation' | 'sweep', SkillFlowDisplayOption | null>>
-  /** 面板展示（config 选项）：与顶部槽位卡片**同一份**预览（局外 + 局内），保证数据完全一致 */
-  configPanelPreview?: { external: PanelStats; final: PanelStats | null } | null
+  /** 面板展示（config 选项）：与顶部槽位卡片**同一份**预览（局外 + 局内 + 生效来源），保证数据完全一致 */
+  configPanelPreview?: {
+    external: PanelStats
+    final: PanelStats | null
+    sourceKind?: AgentPanelSourceKind | null
+  } | null
 }>()
 
 const emit = defineEmits<{
@@ -2154,7 +2160,7 @@ const panelSourceNotice = computed(() => {
  * 「查看面板」展示：字段表与格式化与顶部槽位卡片同口径（TeamSlotSwitcher）。
  * 保持单一事实来源的折中：这是纯展示常量，复制维护并注明来源。
  */
-const PANEL_PREVIEW_FIELDS: { key: keyof PanelStats; label: string }[] = [
+const EXTERNAL_PREVIEW_FIELDS: { key: keyof PanelStats; label: string }[] = [
   { key: 'hp', label: '生命值' },
   { key: 'atk', label: '攻击力' },
   { key: 'def', label: '防御力' },
@@ -2168,6 +2174,27 @@ const PANEL_PREVIEW_FIELDS: { key: keyof PanelStats; label: string }[] = [
   { key: 'anomalyControl', label: '异常掌控' },
   { key: 'energyRegen', label: '能量回复效率%' },
 ]
+
+/** 局内面板比局外多出的字段（与顶部「局内面板」一致）：锋御专属锐爆 + 异常系 5 项 */
+const FINAL_EXTRA_PREVIEW_FIELDS: { key: keyof PanelStats; label: string }[] = [
+  { key: 'sharpenCritDmgBonus', label: '锐爆伤害%' },
+  { key: 'anomalyCritRate', label: '异常暴击%' },
+  { key: 'anomalyCritDmg', label: '异常爆伤%' },
+  { key: 'anomalyDmgBonus', label: '异常增伤%' },
+  { key: 'disorderDmgBonus', label: '紊乱增伤%' },
+  { key: 'turbulenceDmgBonus', label: '乱流增伤%' },
+]
+
+/** 局内展示字段：通用 12 项 + （锋御加锐爆）+ 异常系 5 项（同顶部「局内面板」） */
+const showcaseFinalFields = computed(() => {
+  const slot = props.teamSlots[activeSlotIndex.value]
+  const agent = slot?.agentId ? props.agents.find((item) => item.id === slot.agentId) : undefined
+  if (agent?.profession === '锋御') return [...EXTERNAL_PREVIEW_FIELDS, ...FINAL_EXTRA_PREVIEW_FIELDS]
+  return [
+    ...EXTERNAL_PREVIEW_FIELDS,
+    ...FINAL_EXTRA_PREVIEW_FIELDS.filter((field) => field.key !== 'sharpenCritDmgBonus'),
+  ]
+})
 
 function formatPanelStat(key: keyof PanelStats, value: number): string {
   if (
@@ -2287,7 +2314,22 @@ const showcaseTitle = computed(() => {
         {{ panelShowcaseOpen ? '收起面板' : '查看面板' }}
       </button>
       <div v-if="panelShowcaseOpen" class="sf-panel-showcase-body">
-        <p class="sf-panel-showcase-title">{{ showcaseTitle }}</p>
+        <div class="sf-panel-showcase-head">
+          <p class="sf-panel-showcase-title">{{ showcaseTitle }}</p>
+          <span
+            v-if="showcaseMode === 'config' && configPanelPreview?.sourceKind"
+            class="sf-panel-showcase-tags"
+          >
+            <span
+              v-for="kind in AGENT_PANEL_SOURCE_ORDER"
+              :key="`src-${kind}`"
+              class="sf-panel-showcase-tag"
+              :class="{ active: configPanelPreview?.sourceKind === kind }"
+            >
+              {{ AGENT_PANEL_SOURCE_LABELS[kind] }}
+            </span>
+          </span>
+        </div>
         <p v-if="showcaseUnavailableReason" class="sf-panel-showcase-empty">
           {{ showcaseUnavailableReason }}（先用「角色配置面板」）→ 去「最优词条分配」里算一次再回来看
         </p>
@@ -2295,7 +2337,7 @@ const showcaseTitle = computed(() => {
           <p class="sf-panel-showcase-sub">局外面板</p>
           <dl class="sf-panel-showcase-grid">
             <div
-              v-for="field in PANEL_PREVIEW_FIELDS"
+              v-for="field in EXTERNAL_PREVIEW_FIELDS"
               :key="`ext-${field.key}`"
               class="sf-panel-showcase-item"
             >
@@ -2307,12 +2349,12 @@ const showcaseTitle = computed(() => {
             <p class="sf-panel-showcase-sub sf-panel-showcase-sub--final">局内面板（含增益）</p>
             <dl class="sf-panel-showcase-grid">
               <div
-                v-for="field in PANEL_PREVIEW_FIELDS"
+                v-for="field in showcaseFinalFields"
                 :key="`fin-${field.key}`"
                 class="sf-panel-showcase-item"
               >
                 <dt>{{ field.label }}</dt>
-                <dd>{{ formatPanelStat(field.key, showcasePanel.final[field.key]) }}</dd>
+                <dd>{{ formatPanelStat(field.key, showcasePanel.final![field.key]) }}</dd>
               </div>
             </dl>
           </template>
@@ -3637,6 +3679,38 @@ const showcaseTitle = computed(() => {
   font-weight: 700;
   color: #c9a55c;
 }
+/* 标题行：标题与来源胶囊同一行，右侧对齐（同顶部卡片） */
+.sf-panel-showcase-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.1rem;
+}
+.sf-panel-showcase-head .sf-panel-showcase-title {
+  margin: 0;
+}
+.sf-panel-showcase-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+/* 两枚胶囊：生效那份绿框，另一枚淡灰（同顶部卡片 panel-source-tag） */
+.sf-panel-showcase-tag {
+  padding: 0.05rem 0.45rem;
+  border: 1px solid #3a4658;
+  border-radius: 999px;
+  color: #7b8698;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.sf-panel-showcase-tag.active {
+  border-color: #7dd3a0;
+  color: #7dd3a0;
+  font-weight: 650;
+}
 .sf-panel-showcase-sub {
   margin: 0.35rem 0 0;
   font-size: 0.76rem;
@@ -3691,6 +3765,14 @@ const showcaseTitle = computed(() => {
 }
 :global([data-theme='light']) .sf-panel-showcase-title {
   color: #8a6a1f;
+}
+:global([data-theme='light']) .sf-panel-showcase-tag {
+  border-color: #c9c2b2;
+  color: #8a8578;
+}
+:global([data-theme='light']) .sf-panel-showcase-tag.active {
+  border-color: #4c9a6a;
+  color: #3e7d57;
 }
 :global([data-theme='light']) .sf-panel-showcase-sub {
   color: #5d7a45;

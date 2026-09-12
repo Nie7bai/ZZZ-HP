@@ -499,12 +499,16 @@ const displayPanelSources = ref<
   Partial<Record<'allocation' | 'sweep', SkillFlowDisplayOption | null>>
 >({})
 
-/** 招式流程区「查看面板」（config 选项）展示用的顶部同源预览：当前编辑槽位的局外 + 局内 */
+/** 招式流程区「查看面板」（config 选项）展示用的顶部同源预览：当前编辑槽位的局外 + 局内 + 生效来源 */
 const configPanelPreviewForSkillFlow = computed(() => {
   const previews = stickySlotPanelPreviews.value
   const preview = previews[activeSlot.value]
   if (!preview || !preview.external) return null
-  return { external: preview.external, final: preview.final ?? null }
+  return {
+    external: preview.external,
+    final: preview.final ?? null,
+    sourceKind: slotPanelSourceKinds.value[activeSlot.value] ?? null,
+  }
 })
 
 const skillFlowPanelResolved = computed(() =>
