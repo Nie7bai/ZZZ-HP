@@ -1259,7 +1259,9 @@ function recomputeSkillFlowHitMaps() {
       }
       writeHitEvalCache(key, entry)
     }
-    map[hit.id] = usePerHit ? entry.perHit : entry.total
+    // 准备招式（预览）走独立键：按单次伤害展示，不进总伤（总伤只汇总流程事件）
+    const mapKey = usePerHit ? `preview:${hit.id}` : hit.id
+    map[mapKey] = usePerHit ? entry.perHit : entry.total
     results[hit.id] = entry.result
   }
 

@@ -311,10 +311,13 @@ const damageResultEvalCtx = computed(() =>
 /** 统一结果区当前用的主面板：3 选 1 解析结果（null = 角色配置面板） */
 const damageResultExternal = computed(() => skillFlowMainExternalOverride.value)
 
-/** 总伤期望：页级 hitDamages 汇总（普通 / 最优两处计算共用同一份页级结果） */
-const damageResultGrandTotal = computed(() =>
-  Object.values(hitDamages.value).reduce((sum, n) => sum + (Number(n) || 0), 0),
-)
+/** 总伤期望：只汇总「流程事件」的页级 hitDamages（准备招式预览按单次伤害，不计入总伤） */
+const damageResultGrandTotal = computed(() => {
+  const flowIds = new Set((hits.value ?? []).map((hit) => hit.id))
+  return Object.entries(hitDamages.value)
+    .filter(([id]) => flowIds.has(id))
+    .reduce((sum, [, n]) => sum + (Number(n) || 0), 0)
+})
 
 /** 事件明细（总伤 / 单次）：供产生者占比与统计事件使用 */
 const damageResultEventLines = computed(() =>
