@@ -38,7 +38,7 @@ const formulaSegments = computed((): DirectFormulaTerm[][] => {
           </div>
         </template>
       </template>
-      <span class="formula-aligned-op" aria-hidden="true">=</span>
+      <span class="formula-aligned-op" aria-hidden="true">→</span>
       <div class="formula-aligned-result formula-aligned-result--inline">
         <StatValueWithSources :value="group.result" :groups="valueTips[group.key] ?? []" />
       </div>

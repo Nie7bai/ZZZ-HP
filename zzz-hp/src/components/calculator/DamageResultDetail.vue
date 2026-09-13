@@ -1456,7 +1456,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
               </span>
             </div>
           </template>
-          <span class="formula-aligned-op" aria-hidden="true">=</span>
+          <span class="formula-aligned-op" aria-hidden="true">→</span>
           <div class="formula-aligned-result">
             <StatValueWithSources
               :value="alignedGeneralFormula.result"
@@ -1522,7 +1522,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
                 </span>
               </div>
             </template>
-            <span class="formula-aligned-op" aria-hidden="true">=</span>
+            <span class="formula-aligned-op" aria-hidden="true">→</span>
             <div v-if="group.dualResults?.length" class="formula-aligned-dual">
               <div
                 v-for="item in group.dualResults"
@@ -1818,12 +1818,12 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
   align-items: flex-start;
 }
 
-/* ===== 数值列表：三列网格 + 细分隔线（去掉深色卡片，改编辑式表格感） ===== */
+/* ===== 参数表：两列（参数名称左对齐 | 数值右对齐），每行一项，行分隔线 ===== */
 .result-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.5rem 0.75rem;
-  margin-top: 0.45rem;
+  grid-template-columns: 1fr;
+  gap: 0;
+  margin-top: 0.5rem;
   font-size: 0.82rem;
   color: var(--calc-text, #1c212a);
 }
@@ -1834,7 +1834,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
   justify-content: space-between;
   gap: 0.5rem;
   margin: 0;
-  padding: 0.32rem 0.1rem;
+  padding: 0.3rem 0.1rem;
   border-bottom: 1px solid color-mix(in srgb, var(--calc-border, #d5dae3) 55%, transparent);
 }
 
@@ -1844,7 +1844,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
   font-variant-numeric: tabular-nums;
 }
 
-/* 汇总行：整行跨列 + 上边框强调 */
+/* 汇总行：整行跨列 + 上边框强调 + 结果加粗高亮 */
 .result-total {
   grid-column: 1 / -1;
   margin-top: 0.45rem !important;
@@ -1852,7 +1852,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
   border-bottom: none !important;
   padding-top: 0.55rem;
   font-weight: 700;
-  color: var(--calc-text, #1c212a);
+  color: var(--calc-accent, #c9a55c);
 }
 
 .result-subtotal {
@@ -1865,7 +1865,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
 
 @media (max-width: 980px) {
   .result-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
 }
 
