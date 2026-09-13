@@ -342,7 +342,7 @@ function eventSkillName(event: { displayName: string }): string {
 .owner-share-hint {
   margin: 0;
   font-size: 0.74rem;
-  color: var(--calc-muted, #9aa3b0);
+  color: var(--color-heading, #f5f5f0);
   line-height: 1.4;
   max-width: 36rem;
 }
@@ -362,7 +362,7 @@ function eventSkillName(event: { displayName: string }): string {
 
 .owner-share-total-label {
   font-size: 0.8rem;
-  color: var(--calc-muted, #9aa3b0);
+  color: var(--color-heading, #f5f5f0);
 }
 
 .owner-share-total-value {
@@ -375,7 +375,7 @@ function eventSkillName(event: { displayName: string }): string {
 .owner-share-empty {
   margin: 0.55rem 0 0;
   font-size: 0.78rem;
-  color: var(--calc-muted, #9aa3b0);
+  color: var(--color-heading, #f5f5f0);
 }
 
 .owner-share-list {
@@ -432,7 +432,7 @@ function eventSkillName(event: { displayName: string }): string {
   width: 0.85rem;
   font-size: 0.95rem;
   line-height: 1;
-  color: var(--calc-muted, #9aa3b0);
+  color: var(--color-heading, #f5f5f0);
   transform: rotate(0deg);
   transition: transform 0.15s ease;
 }
@@ -442,7 +442,7 @@ function eventSkillName(event: { displayName: string }): string {
 }
 
 .owner-share-meta {
-  color: var(--calc-muted, #9aa3b0);
+  color: var(--color-heading, #f5f5f0);
   font-variant-numeric: tabular-nums;
 }
 
@@ -503,7 +503,7 @@ function eventSkillName(event: { displayName: string }): string {
 .owner-event-name {
   display: block;
   font-size: 0.78rem;
-  color: var(--calc-text, #c5cdd8);
+  color: var(--color-heading, #f5f5f0);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -512,7 +512,8 @@ function eventSkillName(event: { displayName: string }): string {
 /* 招式名：放大加粗；角色名保持小字 */
 .owner-event-owner {
   font-weight: 400;
-  color: var(--calc-muted, #9aa3b0);
+  /* 角色名前缀：比招式名浅，但白天必须可读（58% 透明太淡，取 72%） */
+  color: color-mix(in srgb, var(--calc-text, #1c212a) 72%, transparent);
 }
 
 .owner-event-skill {
@@ -525,7 +526,8 @@ function eventSkillName(event: { displayName: string }): string {
   display: block;
   margin-top: 0.12rem;
   font-size: 0.74rem;
-  color: var(--calc-muted, #9aa3b0);
+  /* 单次/合计/占比是伤害数值，必须清楚：直接主文字色（差异靠字号与字重） */
+  color: var(--color-heading, #f5f5f0);
   font-variant-numeric: tabular-nums;
 }
 

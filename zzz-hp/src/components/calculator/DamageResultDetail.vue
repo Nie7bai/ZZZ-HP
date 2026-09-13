@@ -1731,7 +1731,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
 }
 
 .formula-agent-label {
-  color: var(--zzz-fg-dim, rgba(20, 20, 18, 0.55));
+  color: var(--color-heading, #f5f5f0);
   font-weight: 600;
 }
 
@@ -1770,7 +1770,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
 .formula-aligned-term-label {
   font-size: 0.75rem;
   line-height: 1.35;
-  color: var(--zzz-fg-dim, rgba(20, 20, 18, 0.55));
+  color: var(--color-heading, #f5f5f0);
   text-align: center;
   white-space: nowrap;
   letter-spacing: 0.02em;
@@ -1779,7 +1779,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
 .formula-aligned-hint {
   display: block;
   margin-top: 0.15rem;
-  color: var(--zzz-fg-dim, rgba(20, 20, 18, 0.55));
+  color: var(--color-heading, #f5f5f0);
   font-size: 0.68rem;
   font-weight: 400;
   line-height: 1.35;
@@ -1803,7 +1803,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
 .formula-aligned-op {
   flex: 0 0 auto;
   align-self: center;
-  color: var(--zzz-fg-dim, rgba(20, 20, 18, 0.55));
+  color: var(--color-heading, #f5f5f0);
   font-size: 0.78rem;
 }
 

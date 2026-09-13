@@ -643,7 +643,7 @@
 
 .calculator-page.theme-light .formula-label,
 .calculator-page.theme-light .formula-aligned-term-label {
-  color: var(--calc-muted) !important;
+  color: var(--calc-text) !important;
 }
 
 .calculator-page.theme-light .formula-value,
@@ -1186,7 +1186,7 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear:hover 
 
 .calculator-page.theme-light .opt-section .owner-share-meta,
 .calculator-page.theme-light .opt-section .owner-share-events {
-  color: var(--calc-muted) !important;
+  color: var(--calc-text) !important;
 }
 
 .calculator-page.theme-light .opt-section .owner-share-track {
@@ -1194,7 +1194,7 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear:hover 
 }
 
 .calculator-page.theme-light .opt-section .owner-share-hint {
-  color: var(--calc-muted) !important;
+  color: var(--calc-text) !important;
 }
 
 .calculator-page.theme-light .opt-section .owner-share-trigger--expandable:hover,
@@ -1222,7 +1222,7 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear:hover 
 
 .calculator-page.theme-light .opt-section .owner-event-meta,
 .calculator-page.theme-light .opt-section .owner-event-ratio-owner {
-  color: var(--calc-muted) !important;
+  color: var(--calc-text) !important;
 }
 
 .calculator-page.theme-light .opt-section .owner-event-track {
@@ -1284,7 +1284,7 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear:hover 
 .calculator-page.theme-light .opt-section .damage-result-detail .formula-aligned-term-label,
 .calculator-page.theme-light .opt-section .damage-result-detail .formula-aligned-hint,
 .calculator-page.theme-light .opt-section .damage-result-detail .formula-aligned-op {
-  color: var(--calc-muted) !important;
+  color: var(--calc-text) !important;
 }
 
 .calculator-page.theme-light .opt-section .damage-result-detail .formula-aligned-group + .formula-aligned-group {
@@ -2199,7 +2199,7 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear,
 
 .calculator-page.theme-light .owner-share-meta,
 .calculator-page.theme-light .owner-share-events {
-  color: var(--calc-muted) !important;
+  color: var(--calc-text) !important;
 }
 
 .calculator-page.theme-light .owner-share-track {
@@ -2207,7 +2207,7 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear,
 }
 
 .calculator-page.theme-light .owner-share-hint {
-  color: var(--calc-muted) !important;
+  color: var(--calc-text) !important;
 }
 
 .calculator-page.theme-light .owner-share-trigger--expandable:hover,
@@ -2235,7 +2235,7 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear,
 
 .calculator-page.theme-light .owner-event-meta,
 .calculator-page.theme-light .owner-event-ratio-owner {
-  color: var(--calc-muted) !important;
+  color: var(--calc-text) !important;
 }
 
 .calculator-page.theme-light .owner-event-track {
