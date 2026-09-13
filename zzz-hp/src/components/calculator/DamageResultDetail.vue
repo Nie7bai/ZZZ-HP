@@ -1691,7 +1691,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
   margin-top: 0;
 }
 
-/* ===== 公式卡片：白底 + 1px 细边框 + 大方角（minimalist 规则：无渐变、无阴影、8px 圆角封顶） ===== */
+/* ===== 公式卡片：白底 + 1px 细边框 + 大方角；宽度按内容自适应（右端不撑满） ===== */
 .formula-block {
   display: flex;
   flex-direction: column;
@@ -1701,6 +1701,8 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
   border: 1px solid var(--calc-border, #d5dae3);
   border-radius: 8px;
   background: var(--calc-input-bg, #ffffff);
+  width: fit-content;
+  max-width: 100%;
 }
 
 .formula-label {
