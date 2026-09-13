@@ -2186,7 +2186,9 @@ onMounted(() => {
   width: 108px;
 }
 .preset-table--entries .col-sort {
-  width: 56px;
+  /* 76px：两位数的「39」完整画得下（56px 时右内边距 + 数字框 spinner 吃掉可见区，
+     只剩首位数字 —— 用户 2026-09-13 截图里「3333334444444」的真身，见步骤 48） */
+  width: 76px;
 }
 .preset-table--entries .col-del,
 .preset-table--groups .col-del {
