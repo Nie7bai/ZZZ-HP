@@ -58,6 +58,30 @@ interface ApiResponse<T> {
   data: T
 }
 
+/**
+ * 管理端写接口的错误。
+ *
+ * 带上 `status` 与 `apiCode` 是为了让界面能分辨「会话过期」这类**该去登录**的失败 ——
+ * 与 `api/calculatorBuffs.ts` 的 `CalculatorBuffApiError` 同一套形状（仓库既有约定）。
+ */
+export class AffixPresetApiError extends Error {
+  status: number
+  apiCode: string
+
+  constructor(message: string, status: number, apiCode = '') {
+    super(message)
+    this.name = 'AffixPresetApiError'
+    this.status = status
+    this.apiCode = apiCode
+  }
+}
+
+function readApiCode(data: unknown): string {
+  if (!data || typeof data !== 'object' || !('code' in data)) return ''
+  const code = (data as { code?: unknown }).code
+  return typeof code === 'string' ? code : ''
+}
+
 async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const headers = withAdminAuthHeaders(init?.headers)
   const response = await fetch(input, { ...init, headers })
@@ -65,12 +89,24 @@ async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T
   try {
     json = (await response.json()) as ApiResponse<T>
   } catch {
-    throw new Error(`请求失败: ${response.status}`)
+    throw new AffixPresetApiError(`请求失败: ${response.status}`, response.status)
   }
   if (!response.ok || json.code !== 200) {
-    throw new Error(json.message || `请求失败: ${response.status}`)
+    throw new AffixPresetApiError(
+      json.message || `请求失败: ${response.status}`,
+      response.status,
+      readApiCode(json.data),
+    )
   }
   return json.data
+}
+
+/** 这次失败是不是「管理员会话无效」——界面据此弹「去登录」，而不是干瞪着一行红字 */
+export function isAffixPresetAuthError(err: unknown): boolean {
+  return (
+    err instanceof AffixPresetApiError &&
+    (err.status === 401 || err.apiCode === 'ADMIN_AUTH_REQUIRED')
+  )
 }
 
 /**

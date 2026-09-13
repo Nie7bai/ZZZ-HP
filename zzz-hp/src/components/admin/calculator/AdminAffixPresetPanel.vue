@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import type { AffixCounts } from '@/types/calculatorPanel'
+import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
+import { clearAdminAuthenticated } from '@/utils/adminAuth'
 import {
   createAffixPresetScheme,
   deleteAffixPresetScheme,
   fetchAffixPreset,
+  isAffixPresetAuthError,
   replaceAffixPreset,
   type AffixPresetEntryDoc,
   type AffixPresetGroupDoc,
@@ -211,6 +215,39 @@ const busy = ref(false)
 const message = ref('')
 const error = ref('')
 
+// ---------- 会话过期（写接口 401） ----------
+
+const router = useRouter()
+
+/**
+ * 「去登录」弹窗。
+ *
+ * 管理员会话是有期限的（服务端默认 12 小时，另有换密码等操作会作废全部会话）。
+ * 过期后**页面还能打开**（前端只记了个「已登录」标记），但每次写都会被 401 顶回来 ——
+ * 光甩一行红字用户不知道该干嘛，这里明确告诉他去登录，并带回跳地址。
+ * 与 `AdminBuffImportExportPanel` 同一套做法。
+ */
+const authDialogVisible = ref(false)
+
+/** 统一的失败处理：会话过期就走弹窗，其余照旧显示错误文本 */
+function handleWriteError(err: unknown, fallback: string) {
+  if (isAffixPresetAuthError(err)) {
+    authDialogVisible.value = true
+    error.value = ''
+    return
+  }
+  error.value = err instanceof Error ? err.message : fallback
+}
+
+function goRelogin() {
+  authDialogVisible.value = false
+  clearAdminAuthenticated()
+  void router.push({
+    path: '/admin/login',
+    query: { redirect: router.currentRoute.value.fullPath },
+  })
+}
+
 // ---------- 草稿 diff ----------
 
 /**
@@ -273,6 +310,67 @@ const isDefaultScheme = computed(
 
 // ---------- 读取 / 保存 ----------
 
+/**
+ * 草稿暂存：每次改动落到 sessionStorage（按方案分开存）。
+ *
+ * 为什么需要：会话过期时用户必须去登录页 —— 那是**整页跳转**，
+ * 内存里的草稿会跟着没；刷新页面（F5）也一样。这些改动可能是几十条的细调，
+ * 不该因为一次重新登录就白做。
+ *
+ * 存 sessionStorage 而不是 localStorage：它跟着这一次浏览会话走，
+ * 换个标签页/关掉浏览器就该算「这次的活儿结束了」，不该留到下次吓人一跳。
+ * 恢复时**必须**和刚从库里读到的那份比对（见 `restoreStashedDraft`）——
+ * 内容一样就不提示，免得「一进页面就有未保存改动」。
+ */
+const DRAFT_STASH_PREFIX = 'zzz-hp-admin-affix-draft::'
+
+function stashKey(scheme: string): string {
+  return `${DRAFT_STASH_PREFIX}${scheme}`
+}
+
+function writeDraftStash() {
+  if (!loaded.value || !activeScheme.value) return
+  try {
+    if (pendingChanges.value === 0) {
+      sessionStorage.removeItem(stashKey(activeScheme.value))
+      return
+    }
+    sessionStorage.setItem(
+      stashKey(activeScheme.value),
+      JSON.stringify({ entries: entries.value.map(entryDoc), groups: groups.value.map(groupDoc) }),
+    )
+  } catch {
+    /* 存不下就只在本次会话生效（与词条库弹窗同一套兜底） */
+  }
+}
+
+/** 读回暂存的草稿；形体不对就当没有 */
+function readDraftStash(scheme: string): {
+  entries: AffixPresetEntryDoc[]
+  groups: AffixPresetGroupDoc[]
+} | null {
+  try {
+    const raw = sessionStorage.getItem(stashKey(scheme))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { entries?: unknown; groups?: unknown }
+    if (!Array.isArray(parsed.entries) || !Array.isArray(parsed.groups)) return null
+    return {
+      entries: parsed.entries as AffixPresetEntryDoc[],
+      groups: parsed.groups as AffixPresetGroupDoc[],
+    }
+  } catch {
+    return null
+  }
+}
+
+function clearDraftStash(scheme: string) {
+  try {
+    sessionStorage.removeItem(stashKey(scheme))
+  } catch {
+    /* ignore */
+  }
+}
+
 function adoptSnapshot(data: {
   scheme: string
   schemes: AffixPresetSchemeDoc[]
@@ -295,14 +393,48 @@ async function loadScheme(name?: string) {
   loading.value = true
   error.value = ''
   try {
-    adoptSnapshot(await fetchAffixPreset(name))
+    const data = await fetchAffixPreset(name)
+    adoptSnapshot(data)
     loaded.value = true
     activeTab.value = 'manage'
+    restoreStashedDraft(data.scheme)
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载失败'
   } finally {
     loading.value = false
   }
+}
+
+/**
+ * 把上次没存完的草稿接回来（重新登录 / 刷新页面之后）。
+ *
+ * 只在**确实与库里那份不同**时才接：否则一进页面就顶着「未保存改动」，
+ * 用户会以为自己上周改的东西还没存（其实是他上次看完就走了）。
+ */
+function restoreStashedDraft(scheme: string) {
+  const stashed = readDraftStash(scheme)
+  if (!stashed) return
+  const baselineEntries = baseline.value.entries
+  const baselineGroups = baseline.value.groups
+  const sameEntries =
+    stashed.entries.length === baselineEntries.length &&
+    stashed.entries.every(
+      (entry, index) =>
+        baselineEntries[index] && entrySignature(entry) === entrySignature(baselineEntries[index]),
+    )
+  const sameGroups =
+    stashed.groups.length === baselineGroups.length &&
+    stashed.groups.every(
+      (group, index) =>
+        baselineGroups[index] && groupSignature(group) === groupSignature(baselineGroups[index]),
+    )
+  if (sameEntries && sameGroups) {
+    clearDraftStash(scheme)
+    return
+  }
+  entries.value = toEntryRows(stashed.entries)
+  groups.value = toGroupRows(stashed.groups)
+  message.value = `已接回上次没保存完的改动（${pendingChanges.value} 处）—— 确认无误后点「保存」`
 }
 
 /** 有未保存改动时先问一句（切方案 / 重新读取 / 新建方案都会丢掉草稿） */
@@ -328,7 +460,18 @@ function discardDraft() {
   entries.value = toEntryRows(baseline.value.entries)
   groups.value = toGroupRows(baseline.value.groups)
   error.value = ''
+  clearDraftStash(activeScheme.value)
 }
+
+/**
+ * 草稿有变就落暂存（重新登录 / 刷新页面时接回来用）。
+ *
+ * 直接 watch 整个 `pendingChanges`：它就是「与库里那份的差异数」，
+ * 变 0 时顺手把暂存清掉，不用在各处手动维护。
+ */
+watch(pendingChanges, () => {
+  writeDraftStash()
+})
 
 /** 保存前把草稿检一遍：错误直接说清是第几条的哪个字段 */
 function validateDraft(): string | null {
@@ -400,9 +543,11 @@ async function saveDraft() {
       groups: groups.value.map(groupDoc),
     })
     adoptSnapshot(data)
+    clearDraftStash(data.scheme)
     message.value = `已保存「${data.scheme}」：${data.entries.length} 条 / ${data.groups.length} 组`
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '保存失败'
+    // 存不进去时暂存留着：会话过期去登录、回来照样能接上（见 DRAFT_STASH_PREFIX）
+    handleWriteError(err, '保存失败')
   } finally {
     busy.value = false
   }
@@ -457,7 +602,7 @@ async function createScheme() {
     newSchemeSource.value = ''
     await loadScheme(name)
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '新建方案失败'
+    handleWriteError(err, '新建方案失败')
   } finally {
     schemeBusy.value = false
   }
@@ -479,7 +624,7 @@ async function removeActiveScheme() {
     message.value = `已删除方案「${name}」`
     await loadScheme()
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '删除方案失败'
+    handleWriteError(err, '删除方案失败')
   } finally {
     schemeBusy.value = false
   }
@@ -929,11 +1074,20 @@ onMounted(() => {
           + 新建方案
         </button>
         <span class="stat-spacer" />
+        <!--
+          方案之间是**平级**的（用户 2026-09-13「他们应该是平级的」）：
+          删除入口一律显示，只是默认方案不能删 —— 按钮置灰 + 说明为什么，
+          而不是「这一套悄悄少了个按钮」。
+        -->
         <button
-          v-if="!isDefaultScheme"
           type="button"
           class="secondary-btn danger-lite"
-          :disabled="busy || schemeBusy"
+          :disabled="busy || schemeBusy || isDefaultScheme"
+          :title="
+            isDefaultScheme
+              ? '默认方案决定用户侧拿到哪一份预设，不能删除'
+              : '删掉当前这套方案的条目与分组，不能撤销'
+          "
           @click="removeActiveScheme"
         >
           删除当前方案
@@ -1427,7 +1581,6 @@ onMounted(() => {
           </p>
         </section>
       </template>
-
       <!-- 组管理页：建 / 改名 / 改额度 / 改排序 / 删（额度只在这一处维护） -->
       <template v-else>
         <div class="table-scroll">
@@ -1558,6 +1711,17 @@ onMounted(() => {
         放弃改动
       </button>
     </div>
+
+    <!-- 会话过期：写接口被 401 顶回来时给一条明确出路（而不是干瞪着一行红字） -->
+    <AdminConfirmDialog
+      :visible="authDialogVisible"
+      title="需要重新登录"
+      message="当前后台会话无效或已过期，改动没法写进数据库。请重新登录管理员账号，回来后这一页会重新读取。"
+      confirm-text="去登录"
+      cancel-text="稍后"
+      @confirm="goRelogin"
+      @cancel="authDialogVisible = false"
+    />
   </section>
 </template>
 
