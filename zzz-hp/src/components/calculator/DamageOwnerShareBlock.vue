@@ -282,7 +282,7 @@ function eventMetaText(event: {
 
 .owner-share-trigger--expandable:hover,
 .owner-share-trigger--expanded {
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--calc-text, #1c212a) 4%, transparent);
 }
 
 .owner-share-head {
@@ -344,11 +344,7 @@ function eventMetaText(event: {
   height: 100%;
   min-width: 2px;
   border-radius: inherit;
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--calc-accent, #c9a55c) 85%, #fff 15%),
-    var(--calc-accent, #c9a55c)
-  );
+  background: var(--calc-accent, #c9a55c);
 }
 
 .owner-event-list {
@@ -371,13 +367,13 @@ function eventMetaText(event: {
 }
 
 .owner-event-item:hover {
-  background: rgba(255, 255, 255, 0.03);
-  border-color: var(--calc-border, #3a414c);
+  background: color-mix(in srgb, var(--calc-text, #1c212a) 3%, transparent);
+  border-color: var(--calc-border, #d5dae3);
 }
 
 .owner-event-item--active {
-  background: rgba(201, 165, 92, 0.1);
-  border-color: rgba(201, 165, 92, 0.45);
+  background: var(--calc-accent-bg, #fff8eb);
+  border-color: color-mix(in srgb, var(--calc-accent, #c9a55c) 45%, transparent);
 }
 
 .owner-event-name {
