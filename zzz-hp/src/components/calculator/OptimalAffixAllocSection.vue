@@ -2381,7 +2381,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         :aria-selected="sectionMode === 'allocation'"
         @click="sectionMode = 'allocation'"
       >
-        最优分配
+        词条分析
       </button>
       <button
         type="button"
