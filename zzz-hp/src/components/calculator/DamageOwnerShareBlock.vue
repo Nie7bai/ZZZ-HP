@@ -162,6 +162,18 @@ function eventMetaText(event: {
   }
   return formatNumber(event.total)
 }
+
+/** displayName = 「角色名 · 招式名」：拆分出角色名（可能不含前缀） */
+function eventOwnerName(event: { displayName: string }): string {
+  const idx = event.displayName.indexOf(' · ')
+  return idx > 0 ? event.displayName.slice(0, idx) : ''
+}
+
+/** displayName 中「 · 」之后的招式名 */
+function eventSkillName(event: { displayName: string }): string {
+  const idx = event.displayName.indexOf(' · ')
+  return idx > 0 ? event.displayName.slice(idx + 3) : event.displayName
+}
 </script>
 
 <template>
@@ -249,7 +261,10 @@ function eventMetaText(event: {
             @keydown.enter.prevent.stop="onEventClick(event.eventId)"
             @keydown.space.prevent.stop="onEventClick(event.eventId)"
           >
-            <span class="owner-event-name" :title="event.displayName">{{ event.displayName }}</span>
+            <span class="owner-event-name" :title="event.displayName">
+              <span v-if="eventOwnerName(event)" class="owner-event-owner">{{ eventOwnerName(event) }} · </span>
+              <span class="owner-event-skill">{{ eventSkillName(event) }}</span>
+            </span>
             <span class="owner-event-meta">
               <span class="owner-event-ratio-total">{{ formatPct(event.ratio) }}</span>
               <span class="owner-share-sep" aria-hidden="true">·</span>
@@ -483,6 +498,18 @@ function eventMetaText(event: {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 招式名：放大加粗；角色名保持小字 */
+.owner-event-owner {
+  font-weight: 400;
+  color: var(--calc-muted, #9aa3b0);
+}
+
+.owner-event-skill {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--calc-text, #d5dae3);
 }
 
 .owner-event-meta {
