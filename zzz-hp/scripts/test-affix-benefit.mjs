@@ -626,6 +626,56 @@ console.log('\n[?] 收益表筛选状态')
   check('坏 JSON → 默认，不抛错', loadAffixBenefitFilters().hideNoBenefit === true)
 
   globalThis.localStorage = originalLocalStorage
+
+  // —— 残名剪枝（步骤 41）——
+  const { collectAffixBenefitKnownGroups, pruneAffixBenefitFilters } = await import(
+    '../src/utils/affixBenefitFilters.ts'
+  )
+
+  const filters = { hideNoBenefit: false, collapseDuplicates: false, hiddenGroups: ['4号位', '已改名的组'] }
+  const pruned = pruneAffixBenefitFilters(filters, ['4号位', '5号位'])
+  check('残名被剪掉，现存分组保留',
+    JSON.stringify(pruned.hiddenGroups) === JSON.stringify(['4号位']),
+    JSON.stringify(pruned.hiddenGroups))
+  check('剪枝不改原对象', JSON.stringify(filters.hiddenGroups) === JSON.stringify(['4号位', '已改名的组']))
+  check('没有可剪时返回同一个对象（调用方据此免写盘）',
+    pruneAffixBenefitFilters(filters, ['4号位', '已改名的组']) === filters)
+  check('全都不存在 → 剪成空数组', pruneAffixBenefitFilters(filters, []).hiddenGroups.length === 0)
+
+  // 现存分组名：整份存档所有库的并集（跨库共用筛选，只看当前库会误删）
+  const libraryStore = {
+    version: 2,
+    activeId: 'set:1',
+    sets: [
+      {
+        id: 'set:1',
+        name: 'A',
+        createdAt: 0,
+        updatedAt: 0,
+        state: { ...createDefaultAffixLibraryState(), groups: [{ name: '4号位', cap: 1 }] },
+      },
+      {
+        id: 'set:2',
+        name: 'B',
+        createdAt: 0,
+        updatedAt: 0,
+        state: {
+          ...createDefaultAffixLibraryState(),
+          groups: [{ name: '幽灵组', cap: 1 }],
+          customEntries: [
+            { id: 'custom:1', label: '未分组条目', target: 'stat:critRate', perRoll: 5, cap: 0, group: '', rollCost: 1, enabledByDefault: true },
+          ],
+        },
+      },
+    ],
+  }
+  const known = collectAffixBenefitKnownGroups(libraryStore)
+  check('并集含另一套库独有的分组（切库不会误删）', known.has('幽灵组'), [...known].join(', '))
+  check('并集含未分组的空串（条目未分组时保留该筛选）', known.has(''), JSON.stringify([...known]))
+  check('并集不含哪都没有的名字', !known.has('已改名的组'))
+  check('用并集剪枝：另一套库独有的名字活下来',
+    JSON.stringify(pruneAffixBenefitFilters({ hideNoBenefit: true, collapseDuplicates: true, hiddenGroups: ['幽灵组', '已改名的组'] }, known).hiddenGroups) ===
+      JSON.stringify(['幽灵组']))
 }
 
 console.log(`\n结果：${passed} passed, ${failed} failed`)

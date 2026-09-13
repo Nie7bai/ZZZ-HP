@@ -8,7 +8,11 @@
  * 只存本机：换设备 / 清缓存回默认，与词条库（同样存 localStorage）同一处境。
  * 键里**不带库 id** —— 分组筛选对所有库共用一套（同名组在不同库里含义一致，
  * 通常正是想要的行为；要各记各的得把库 id 写进键里，目前没这需求）。
+ *
+ * 跨库共用带来的「残名」问题（组改名 / 删掉后名字还躺在存档里）由
+ * `pruneAffixBenefitFilters()` 解决，见那里。
  */
+import { resolveAffixLibraryAll, type AffixLibraryStore } from '@/utils/affixLibrary'
 
 /** 收益表筛选状态 */
 export interface AffixBenefitFilters {
@@ -68,4 +72,42 @@ export function saveAffixBenefitFilters(filters: AffixBenefitFilters): void {
   } catch {
     // 静默忽略：存不下只是下次回默认，不影响本次使用
   }
+}
+
+/**
+ * 「现在还存在的分组名」—— 从**整份存档的所有库**收集，含未分组的空串。
+ *
+ * 为什么要取并集而不是只取当前激活那套：分组筛选是**跨库共用**的（键里不带库 id）。
+ * 只看当前库的话，切到一套没有「5号位」的库时，就会把这个筛选当残名删掉，
+ * 切回去那个组又是显示状态 —— 用户的设置悄悄没了。
+ *
+ * 条目上的组名也要收：老存档 / 手改过的导入文件里出现过「条目引用了组、
+ * 但组表里没登记」的情况（读盘时会被 `withReferencedGroupsBackfilled` 补上，
+ * 这里不依赖那个补组结果，直接按条目取，谁都漏不掉）。
+ */
+export function collectAffixBenefitKnownGroups(store: AffixLibraryStore): Set<string> {
+  const names = new Set<string>()
+  for (const set of store.sets) {
+    for (const group of set.state.groups) names.add(group.name)
+    for (const entry of resolveAffixLibraryAll(set.state)) names.add(entry.group)
+  }
+  return names
+}
+
+/**
+ * 剪掉存档里**已经不存在**的分组名（组被改名 / 删掉以后留下的残名）。
+ *
+ * 不剪会怎样：残名平时无害（等于没筛），但将来又建了同名分组它会**悄悄复活** ——
+ * 用户 2026-09-13 指出的正是这条，要求「不能留」。
+ *
+ * 没有可剪的时候**原样返回同一个对象**：调用方据此判断「要不要落盘」，
+ * 避免每次库一变动就写一次无意义的存档。
+ */
+export function pruneAffixBenefitFilters(
+  filters: AffixBenefitFilters,
+  knownGroups: Iterable<string>,
+): AffixBenefitFilters {
+  const known = knownGroups instanceof Set ? knownGroups : new Set(knownGroups)
+  const next = filters.hiddenGroups.filter((name) => known.has(name))
+  return next.length === filters.hiddenGroups.length ? filters : { ...filters, hiddenGroups: next }
 }

@@ -5,10 +5,12 @@ import {
   type AffixBenefitRow,
   type AffixBenefitTable,
 } from '@/utils/affixBenefitAnalysis'
-import { formatAffixPerRoll, type AffixLibraryEntry, type AffixLibraryGroup } from '@/utils/affixLibrary'
+import { formatAffixPerRoll, loadAffixLibraryStore, type AffixLibraryEntry, type AffixLibraryGroup } from '@/utils/affixLibrary'
 import {
   createDefaultAffixBenefitFilters,
+  collectAffixBenefitKnownGroups,
   loadAffixBenefitFilters,
+  pruneAffixBenefitFilters,
   saveAffixBenefitFilters,
 } from '@/utils/affixBenefitFilters'
 import AffixLibraryModal from '@/components/calculator/AffixLibraryModal.vue'
@@ -102,6 +104,45 @@ watch([hiddenGroups, hideNoBenefit, collapseDuplicates], () => {
     hiddenGroups: [...hiddenGroups.value],
   })
 })
+
+/**
+ * 现存分组名（整份存档所有库的并集）—— 残名判据。
+ *
+ * 兜底加上当前库快照里的分组与条目：万一盘上内容比页面手里的旧，
+ * 也不该把「正显示在筛选条上的组合」当成残名剪掉。
+ */
+function computeKnownGroupNames(): Set<string> {
+  const names = collectAffixBenefitKnownGroups(loadAffixLibraryStore())
+  for (const group of props.groups) names.add(group.name)
+  for (const entry of props.library) names.add(entry.group)
+  return names
+}
+
+/**
+ * 库一改动（改组名 / 删组 / 换库 / 增删条目）就把存档里的**残名剪掉**。
+ *
+ * 用户口径（2026-09-13）：残名不能留 —— 留着的话将来又建了同名分组，它会悄悄复活。
+ * 依赖用「当前库的分组名 + 条目数」这个签名：分组改名 / 删除 / 换库都会让它变。
+ * `immediate` 让首屏也剪一次（剪完触发上面的落盘 watch，把结果固化）。
+ */
+watch(
+  () => [props.groups.map((group) => group.name).join('\u0000'), props.library.length] as const,
+  () => {
+    const pruned = pruneAffixBenefitFilters(
+      {
+        hideNoBenefit: hideNoBenefit.value,
+        collapseDuplicates: collapseDuplicates.value,
+        hiddenGroups: [...hiddenGroups.value],
+      },
+      computeKnownGroupNames(),
+    )
+    // 没剪掉东西时返回的是同一个对象（空数组长度也相同）—— 此处只比较长度即可
+    if (pruned.hiddenGroups.length !== hiddenGroups.value.size) {
+      hiddenGroups.value = new Set(pruned.hiddenGroups)
+    }
+  },
+  { immediate: true },
+)
 
 /**
  * 表行顺序：**永远按收益率降序**（用户 2026-09-13 口径「不需要按名称排序，没意义」）。
