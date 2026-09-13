@@ -1671,7 +1671,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
   margin: 0.9rem 0 0.5rem;
   font-size: 0.92rem;
   font-weight: 700;
-  color: var(--zzz-fg, #141412);
+  color: var(--calc-text, #1c212a);
   letter-spacing: 0.01em;
 }
 
@@ -1684,7 +1684,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
   margin: 0.75rem 0 0.25rem;
   font-size: 0.82rem;
   font-weight: 700;
-  color: var(--zzz-fg, #141412);
+  color: var(--calc-text, #1c212a);
 }
 
 .result-subsection-title:first-child {
@@ -1698,9 +1698,9 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
   gap: 0.35rem;
   margin: 0.35rem 0 0.6rem;
   padding: 0.85rem 1rem;
-  border: 1px solid var(--color-border, rgba(60, 55, 40, 0.16));
+  border: 1px solid var(--calc-border, #d5dae3);
   border-radius: 8px;
-  background: var(--zzz-card, #faf8f2);
+  background: var(--calc-surface-2, #f1efe9);
   width: fit-content;
   max-width: 100%;
 }
@@ -1709,7 +1709,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
   display: inline-block;
   min-width: 6.5em;
   margin-right: 0.22rem;
-  color: var(--zzz-fg, #141412);
+  color: var(--calc-text, #1c212a);
   font-weight: 700;
 }
 
@@ -1727,11 +1727,11 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
 }
 
 .formula-aligned-group + .formula-aligned-group {
-  border-top: 1px solid var(--color-border, rgba(60, 55, 40, 0.16));
+  border-top: 1px solid var(--calc-border, #d5dae3);
 }
 
 .formula-agent-label {
-  color: var(--color-heading, #f5f5f0);
+  color: var(--calc-text, #1c212a);
   font-weight: 600;
 }
 
@@ -1770,7 +1770,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
 .formula-aligned-term-label {
   font-size: 0.75rem;
   line-height: 1.35;
-  color: var(--color-heading, #f5f5f0);
+  color: var(--calc-text, #1c212a);
   text-align: center;
   white-space: nowrap;
   letter-spacing: 0.02em;
@@ -1779,7 +1779,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
 .formula-aligned-hint {
   display: block;
   margin-top: 0.15rem;
-  color: var(--color-heading, #f5f5f0);
+  color: var(--calc-text, #1c212a);
   font-size: 0.68rem;
   font-weight: 400;
   line-height: 1.35;
@@ -1789,21 +1789,21 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
 .formula-aligned-term-value {
   font-size: 0.85rem;
   line-height: 1.4;
-  color: var(--zzz-fg, #141412);
+  color: var(--calc-text, #1c212a);
   text-align: center;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
 .formula-aligned-term-value :deep(.stat-value > strong) {
-  color: var(--zzz-fg, #141412);
+  color: var(--calc-text, #1c212a);
   font-weight: 600;
 }
 
 .formula-aligned-op {
   flex: 0 0 auto;
   align-self: center;
-  color: var(--color-heading, #f5f5f0);
+  color: var(--calc-text, #1c212a);
   font-size: 0.78rem;
 }
 
@@ -1837,7 +1837,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
   gap: 0;
   margin-top: 0.5rem;
   font-size: 0.82rem;
-  color: var(--zzz-fg, #141412);
+  color: var(--calc-text, #1c212a);
 }
 
 .result-grid p {
@@ -1847,7 +1847,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
   gap: 0.6rem;
   margin: 0;
   padding: 0.3rem 0.1rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-border, rgba(60, 55, 40, 0.16)) 55%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--calc-border, #d5dae3) 55%, transparent);
 }
 
 .result-grid p > :last-child {
@@ -1860,7 +1860,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
 .result-total {
   grid-column: 1 / -1;
   margin-top: 0.45rem !important;
-  border-top: 1px solid var(--color-border, rgba(60, 55, 40, 0.16));
+  border-top: 1px solid var(--calc-border, #d5dae3);
   border-bottom: none !important;
   padding-top: 0.55rem;
   font-weight: 700;
@@ -1870,7 +1870,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
 .result-subtotal {
   grid-column: 1 / -1;
   margin-top: 0.3rem !important;
-  border-top: 1px dashed var(--color-border, rgba(60, 55, 40, 0.16));
+  border-top: 1px dashed var(--calc-border, #d5dae3);
   border-bottom: none !important;
   padding-top: 0.45rem;
   font-weight: 700;
@@ -1892,5 +1892,16 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
     flex-wrap: wrap;
     gap: 0.35rem;
   }
+}
+
+
+/* 暗夜模式：组件根重定义 --calc-*（照抄仓库既有约定：AffixBenefitTable 的 benefit-workbench 写法） */
+:global([data-theme='dark'] .damage-result-detail) {
+  --calc-surface-2: rgba(0, 0, 0, 0.25);
+  --calc-border: #2a2f37;
+  --calc-text: #e8eaed;
+  --calc-muted: #9aa3b0;
+  --calc-input-bg: #171a1f;
+  --calc-accent-bg: rgba(201, 165, 92, 0.14);
 }
 </style>
