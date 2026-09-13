@@ -1466,14 +1466,8 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
         </div>
       </div>
     </div>
-    <div v-if="!calcParts.remielSelfRadianceActive" class="result-grid">
-      <p>基础伤害（局内）：<StatValueWithSources :value="calcParts.baseDamage" :groups="valueTips.baseDamage" /></p>
-      <p>增伤区：<StatValueWithSources :value="calcParts.dmgMultiplier" :groups="valueTips.dmgMultiplier" /></p>
-      <p>防御区：<StatValueWithSources :value="calcParts.defenseMultiplier" :groups="valueTips.defenseMultiplier" /></p>
-      <p>抗性区：<StatValueWithSources :value="calcParts.resistanceMultiplier" :groups="valueTips.resistanceMultiplier" /></p>
-      <p>易伤区（含增益）：<StatValueWithSources :value="formatFormulaNumber(displayVulnerableMultiplier)" :groups="valueTips.vulnerableMultiplier" /></p>
-      <p>失衡易伤区（含增益）：<StatValueWithSources :value="calcParts.staggerMultiplier" :groups="valueTips.staggerMultiplier" /></p>
-      <p class="result-subtotal">通用乘区：<StatValueWithSources :value="formatFormulaNumber(calcParts.generalMultiplier, 2)" :groups="valueTips.generalMultiplier" /></p>
+    <div v-if="!calcParts.remielSelfRadianceActive" class="result-grid result-grid--aux">
+      <p>易伤区（含增益，按直伤/异常分别乘入）：<StatValueWithSources :value="formatFormulaNumber(displayVulnerableMultiplier)" :groups="valueTips.vulnerableMultiplier" /></p>
     </div>
 
     <template v-if="show === 'direct'">
@@ -1484,18 +1478,11 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
           :value-tips="valueTips"
         />
       </div>
-      <div class="result-grid">
+      <div class="result-grid result-grid--aux">
         <p>暴击率（计入上限 {{ calcParts.useSharpenFormula ? '2' : '1' }}）：<StatValueWithSources :value="calcParts.critRateRatio" :groups="valueTips.critRateRatio" /></p>
-        <p>{{ calcParts.useSharpenFormula ? '锐爆区' : '暴击区' }}：<StatValueWithSources :value="calcParts.critMultiplier" :groups="valueTips.critMultiplier" /></p>
-        <p>特殊乘区（含增益）：<StatValueWithSources :value="calcParts.specialMultiplier" :groups="valueTips.specialMultiplier" /></p>
-        <p>直伤倍率区：<StatValueWithSources :value="calcParts.directDmgMultZone" :groups="valueTips.directDmgMultZone" /></p>
-        <p v-if="calcParts.settlementDmgMultZone > 0">
-          决算倍率区：<StatValueWithSources :value="calcParts.settlementDmgMultZone" :groups="valueTips.settlementDmgMultZone" />
-        </p>
         <p>穿透率（计入）：<StatValueWithSources :value="calcParts.penRateRatio" :groups="valueTips.penRateRatio" /></p>
         <p>有效防御项：<StatValueWithSources :value="calcParts.effectiveDefense" :groups="valueTips.effectiveDefense" /></p>
         <p>贯穿力（局内）：<StatValueWithSources :value="Math.round(piercePower).toLocaleString('en-US')" :groups="valueTips.piercePower" /></p>
-        <p class="result-total">直伤期望伤害：<StatValueWithSources :value="Math.round(calcParts.directDamageExpected).toLocaleString('en-US')" :groups="valueTips.directDamageExpected" /></p>
       </div>
     </template>
 
@@ -1820,6 +1807,11 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
   color: #c5cad3;
 }
 
+/* 辅助信息网格（公式卡片之外的补充数值，如暴击率/穿透率/防御项/贯穿力）：四列一排 */
+.result-grid--aux {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .result-grid p {
   margin: 0;
 }
@@ -1840,6 +1832,10 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
 
 @media (max-width: 980px) {
   .result-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .result-grid--aux {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
