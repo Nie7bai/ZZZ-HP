@@ -173,6 +173,8 @@ function eventMetaText(event: {
                 :style="{ width: `${Math.max(event.ratio * 100, 0.5)}%` }"
               />
             </div>
+            <!-- 选中事件的详细计算过程：内嵌在该事件正下方（2026-09-13 起，不再沉到模块底部） -->
+            <slot v-if="selectedEventId === event.eventId" name="event-detail" />
           </li>
         </ul>
       </li>
@@ -410,6 +412,12 @@ function eventMetaText(event: {
   border-radius: 999px;
   background: var(--calc-surface-3, rgba(255, 255, 255, 0.05));
   overflow: hidden;
+}
+
+/* 事件内嵌详情：与事件行之间留出分隔，左缘对齐事件文本 */
+.owner-event-item > :deep(.damage-result-detail) {
+  margin-top: 0.5rem;
+  padding-left: 0.1rem;
 }
 
 .owner-event-bar {
