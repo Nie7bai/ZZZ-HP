@@ -43,7 +43,6 @@ const emit = defineEmits<{
   librarySwitched: []
 }>()
 
-const sortKey = ref<'percent' | 'name'>('percent')
 const showLibraryModal = ref(false)
 
 /**
@@ -65,13 +64,16 @@ const UNGROUPED_GROUP_LABEL = '未分组'
  */
 const hideNoBenefit = ref(false)
 
-const sortedRows = computed(() => {
-  const rows = props.table?.rows ?? []
-  if (sortKey.value === 'name') {
-    return [...rows].sort((a, b) => a.label.localeCompare(b.label, 'zh'))
-  }
-  return rows
-})
+/**
+ * 表行顺序：**永远按收益率降序**（用户 2026-09-13 口径「不需要按名称排序，没意义」）。
+ *
+ * 这里显式再排一次，不吃数据源内部的排序：`computeAffixBenefitTable` 现在也按收益率降序，
+ * 但那是它的实现细节 —— 靠它等价于把「表格顺序」这条契约挂在别处，哪天那边改了顺序，
+ * 表格会静默跟着变。排序是显示层的事，就写在显示层。
+ */
+const sortedRows = computed(() =>
+  [...(props.table?.rows ?? [])].sort((a, b) => b.percentDelta - a.percentDelta),
+)
 
 /** 条目 id → 组名（空串 = 未分组）；筛选条与分组统计都用它 */
 const groupByEntryId = computed(() => {
@@ -232,24 +234,6 @@ function onLibrarySwitched() {
 <template>
   <div class="benefit-workbench">
     <div class="toolbar">
-      <span class="ctl-label">排序</span>
-      <button
-        type="button"
-        class="chip"
-        :class="{ active: sortKey === 'percent' }"
-        @click="sortKey = 'percent'"
-      >
-        收益降序
-      </button>
-      <button
-        type="button"
-        class="chip"
-        :class="{ active: sortKey === 'name' }"
-        @click="sortKey = 'name'"
-      >
-        按名称
-      </button>
-      <span class="ctl-spacer" />
       <button
         type="button"
         class="chip"
@@ -258,6 +242,9 @@ function onLibrarySwitched() {
       >
         词条库（{{ library.length }} 条）
       </button>
+      <span class="ctl-spacer" />
+      <!-- 排序固定为收益率降序，没有开关；用一句灰字说明口径（点了没反应的东西不如不叫按钮） -->
+      <span class="ctl-label">按收益降序</span>
     </div>
 
     <!--
@@ -287,7 +274,13 @@ function onLibrarySwitched() {
       >
         隐藏无收益
       </button>
-      <button v-if="filteringActive" type="button" class="chip" @click="resetFilters">
+      <button
+        type="button"
+        class="chip"
+        :disabled="!filteringActive"
+        :title="filteringActive ? '把分组与隐藏无收益都复位' : '当前没有筛选'"
+        @click="resetFilters"
+      >
         清除筛选
       </button>
     </div>
