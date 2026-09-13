@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import type { DamageOwnerShareSummary } from '@/utils/damageEventOwner'
 
 const props = defineProps<{
@@ -34,6 +34,21 @@ const summaryStructureKey = computed(() =>
 watch(summaryStructureKey, () => {
   expandedOwnerIds.value = new Set()
 })
+
+/**
+ * 视口稳定：选中事件变化后，若内嵌详情超出视口，滚动到最近可见位置。
+ * block: 'nearest' 只在详情真正在视口外时才滚动（不剧烈跳页）。
+ */
+const rootEl = ref<HTMLElement | null>(null)
+watch(
+  () => props.selectedEventId,
+  async () => {
+    await nextTick()
+    rootEl.value
+      ?.querySelector<HTMLElement>('.owner-event-detail-anchor')
+      ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  },
+)
 
 function formatNumber(v: number) {
   return Math.round(v).toLocaleString('zh-CN')
@@ -84,7 +99,11 @@ function eventMetaText(event: {
 </script>
 
 <template>
-  <section v-if="summary?.shares.length || skippedEvents?.length" class="owner-share-block">
+  <section
+    ref="rootEl"
+    v-if="summary?.shares.length || skippedEvents?.length"
+    class="owner-share-block"
+  >
     <div class="owner-share-header">
       <h3 class="owner-share-title">产生者伤害占比</h3>
       <p class="owner-share-hint">
@@ -174,7 +193,12 @@ function eventMetaText(event: {
               />
             </div>
             <!-- 选中事件的详细计算过程：内嵌在该事件正下方（2026-09-13 起，不再沉到模块底部） -->
-            <slot v-if="selectedEventId === event.eventId" name="event-detail" />
+            <div
+              v-if="selectedEventId === event.eventId"
+              class="owner-event-detail-anchor"
+            >
+              <slot name="event-detail" />
+            </div>
           </li>
         </ul>
       </li>
