@@ -36,29 +36,37 @@ watch(summaryStructureKey, () => {
 })
 
 /**
- * 视口稳定：选中事件变化后，若详情超出视口，滚动到最近可见位置。
- * - 展开（id 非空）：滚到内嵌详情锚点
- * - 收起（id 为空）：详情移除后页面缩短，滚回刚收起的事件行，避免视口跳位
- * block: 'nearest' 只在目标真正在视口外时才滚动（不剧烈跳页）。
+ * 视口稳定 + 平滑收起：
+ * - 展开（id 非空）：详情淡入后滚到详情锚点（nearest 平滑）
+ * - 收起（id 为空）：详情先淡出（高度保持，页面不跳），leave 动画完成后滚回事件行
  */
 const rootEl = ref<HTMLElement | null>(null)
+const lastSelectedId = ref<string | null>(null)
 watch(
   () => props.selectedEventId,
-  async (id, prevId) => {
-    await nextTick()
-    const root = rootEl.value
-    if (!root) return
+  async (id) => {
     if (id) {
-      root
-        .querySelector<HTMLElement>('.owner-event-detail-anchor')
-        ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-    } else if (prevId) {
-      root
-        .querySelector<HTMLElement>(`.owner-event-item[data-event-id="${prevId}"]`)
+      lastSelectedId.value = id
+      await nextTick()
+      rootEl.value
+        ?.querySelector<HTMLElement>('.owner-event-detail-anchor')
         ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
     }
+    // 收起不在此滚动：等详情 leave 动画结束后由 onDetailLeave 处理，避免「先跳后补滚」
   },
 )
+
+/** 详情 leave 动画完成（已从 DOM 移除、页面高度恢复）后：平滑滚回刚收起的事件行 */
+function onDetailLeave() {
+  const id = lastSelectedId.value
+  if (!id) return
+  lastSelectedId.value = null
+  nextTick(() => {
+    rootEl.value
+      ?.querySelector<HTMLElement>(`.owner-event-item[data-event-id="${id}"]`)
+      ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  })
+}
 
 function formatNumber(v: number) {
   return Math.round(v).toLocaleString('zh-CN')
@@ -209,12 +217,14 @@ function eventMetaText(event: {
               />
             </div>
             <!-- 选中事件的详细计算过程：内嵌在该事件正下方（2026-09-13 起，不再沉到模块底部） -->
-            <div
-              v-if="selectedEventId === event.eventId"
-              class="owner-event-detail-anchor"
-            >
-              <slot name="event-detail" />
-            </div>
+            <Transition name="event-detail" @after-leave="onDetailLeave">
+              <div
+                v-if="selectedEventId === event.eventId"
+                class="owner-event-detail-anchor"
+              >
+                <slot name="event-detail" />
+              </div>
+            </Transition>
           </li>
         </ul>
       </li>
@@ -458,6 +468,20 @@ function eventMetaText(event: {
 .owner-event-item > :deep(.damage-result-detail) {
   margin-top: 0.5rem;
   padding-left: 0.1rem;
+}
+
+/* 详情展开/收起过渡：淡入淡出 + 轻微位移（收起时高度保持到动画结束，页面不跳） */
+.event-detail-enter-active,
+.event-detail-leave-active {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.event-detail-enter-from,
+.event-detail-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
 }
 
 .owner-event-bar {
