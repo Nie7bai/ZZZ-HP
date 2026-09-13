@@ -146,10 +146,10 @@ const router = createRouter({
       meta: { requiresAdmin: true, title: '环境 Buff 管理' },
     },
     {
+      // 官方预设词条库已并入「角色计算器」侧栏（用户 2026-09-13「不需要单独一个入口」）：
+      // 旧地址留成重定向，书签与历史记录不会 404。
       path: '/admin/affix-preset',
-      name: 'admin-affix-preset',
-      component: () => import('../views/admin/AdminAffixPresetView.vue'),
-      meta: { requiresAdmin: true, title: '官方预设词条库' },
+      redirect: '/admin/character-calculator/affix-preset',
     },
     ...createSidebarPanelRouteRecords({
       basePath: '/admin/character-calculator',

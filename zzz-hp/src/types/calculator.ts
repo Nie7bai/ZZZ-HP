@@ -5,6 +5,7 @@ export type AdminCalculatorPanel =
   | 'drive-disc'
   | 'skill-subcategory'
   | 'skill-library'
+  | 'affix-preset'
   | 'import-export'
 
 export type SupportStatNeed =

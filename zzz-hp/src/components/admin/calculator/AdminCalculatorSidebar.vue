@@ -69,6 +69,7 @@ const panelLabels: Record<AdminCalculatorPanel, string> = {
   'drive-disc': '编辑驱动盘增益',
   'skill-subcategory': '招式小类 / 增益锚点',
   'skill-library': '招式库',
+  'affix-preset': '官方预设词条库',
   'import-export': '导入 / 导出',
 }
 
