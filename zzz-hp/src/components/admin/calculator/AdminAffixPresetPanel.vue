@@ -569,6 +569,25 @@ function openNewScheme() {
   copyFromScheme.value = activeScheme.value
 }
 
+/**
+ * 复制当前方案：与「新建方案」同一个面板，只是**先把答案填好**。
+ *
+ * 为什么要有这个按钮：从零搭一套 50 条是没人愿意干的事（用户 2026-09-13
+ * 「从0建设太麻烦了」）。点进来时来源已经是「复制现有方案 · 当前这套」，
+ * 名字也预填成「XX 副本」——确认一下就能建。
+ */
+function openCopyScheme() {
+  openNewScheme()
+  newSchemeSource.value = COPY_SOURCE
+  copyFromScheme.value = activeScheme.value
+  newSchemeName.value = `${activeScheme.value} 副本`.slice(0, 64)
+  void nextTick(() => {
+    const input = document.querySelector<HTMLInputElement>('.scheme-new input[type="text"]')
+    input?.focus()
+    input?.select()
+  })
+}
+
 function cancelNewScheme() {
   newSchemeOpen.value = false
   newSchemeName.value = ''
@@ -1073,6 +1092,20 @@ onMounted(() => {
         >
           + 新建方案
         </button>
+        <!--
+          复制当前方案（用户 2026-09-13「从0建设太麻烦了，所以要这个功能」）：
+          一键把「新建」面板预置成「复制现有方案 · 当前这套」，名字都填好，
+          改个名就能创建 —— 从零搭一套 50 条是没人愿意干的事。
+        -->
+        <button
+          type="button"
+          class="chip"
+          :disabled="busy || schemeBusy || !activeScheme"
+          :title="`把「${activeScheme}」整份复制成一套新方案`"
+          @click="openCopyScheme"
+        >
+          复制当前方案
+        </button>
         <span class="stat-spacer" />
         <!--
           方案之间是**平级**的（用户 2026-09-13「他们应该是平级的」）：
@@ -1137,11 +1170,37 @@ onMounted(() => {
       <p v-if="message" class="form-ok">{{ message }}</p>
       <p v-if="error" class="form-error">{{ error }}</p>
 
+      <!--
+        状态行：计数 + 未保存改动 + 保存 / 放弃改动 / 重新读取。
+        保存控件放在「重新读取」**左边**（用户 2026-09-13「把这2个按钮和状态就放到现在
+        重新读取位置 左侧」）—— 一行里管完这一页的读写，不再单独占一条常驻条。
+      -->
       <div class="stat-row">
         <span>条目 <strong>{{ entries.length }}</strong> 条</span>
         <span>默认启用 <strong>{{ enabledCount }}</strong> 条</span>
         <span>分组 <strong>{{ groups.length }}</strong> 个</span>
         <span class="stat-spacer" />
+        <span class="save-state" :class="{ 'save-state--dirty': pendingChanges > 0 }">
+          {{
+            pendingChanges > 0 ? `未保存改动：${pendingSummary}` : '没有未保存的改动'
+          }}
+        </span>
+        <button
+          type="button"
+          class="primary-btn"
+          :disabled="busy || pendingChanges === 0"
+          @click="saveDraft"
+        >
+          {{ busy ? '保存中…' : '保存' }}
+        </button>
+        <button
+          type="button"
+          class="secondary-btn"
+          :disabled="busy || pendingChanges === 0"
+          @click="discardDraft"
+        >
+          放弃改动
+        </button>
         <button type="button" class="secondary-btn" :disabled="loading || busy" @click="reload">
           {{ loading ? '读取中…' : '重新读取' }}
         </button>
@@ -1500,7 +1559,7 @@ onMounted(() => {
 
           <!-- ID 规范：只有一个出处的说明放在这里，避免各处手写各说各话 -->
           <p class="footnote">
-            新增先进草稿，点底部「保存」才写库。<strong>ID 是条目的对外身份</strong>
+            新增先进草稿，点上方的「保存」才写库。<strong>ID 是条目的对外身份</strong>
             （导出文件、复制方案、之后新建的库都按它走）；已经复制走的用户库是冻结副本，不受影响。
             规范：
           </p>
@@ -1692,25 +1751,11 @@ onMounted(() => {
           <p class="footnote">
             组额度 = 组内各条档数之和的上限（4/5/6 号位、2 件套用 1：只能选一条）。
             删分组只删组本身，条目在「分组」下拉里选组；组改名会连同组内条目一起改。
-            新增先进草稿，点底部「保存」才写库。
+            新增先进草稿，点上方的「保存」才写库。
           </p>
         </div>
       </template>
     </template>
-
-    <!-- 保存条：有改动才出现，常驻底部（用户 2026-09-13「要有保存按钮」） -->
-    <div v-if="pendingChanges > 0" class="save-bar">
-      <span class="save-bar-text">
-        未保存改动：<strong>{{ pendingSummary }}</strong>
-      </span>
-      <span class="stat-spacer" />
-      <button type="button" class="primary-btn" :disabled="busy" @click="saveDraft">
-        {{ busy ? '保存中…' : '保存' }}
-      </button>
-      <button type="button" class="secondary-btn" :disabled="busy" @click="discardDraft">
-        放弃改动
-      </button>
-    </div>
 
     <!-- 会话过期：写接口被 401 顶回来时给一条明确出路（而不是干瞪着一行红字） -->
     <AdminConfirmDialog
@@ -1894,33 +1939,26 @@ onMounted(() => {
   border-color: color-mix(in srgb, #e85d4c 35%, var(--color-border));
 }
 
-/* ---------- 保存条 ---------- */
+/* ---------- 状态行里的未保存状态 ---------- */
 
-.save-bar {
-  position: sticky;
-  bottom: 0.25rem;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.2rem;
-  padding: 0.55rem 0.75rem;
-  border: 1px solid color-mix(in srgb, #e8a838 45%, var(--color-border));
-  border-radius: 12px;
-  background: color-mix(in srgb, #e8a838 12%, var(--color-background-soft));
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
-}
-
-.save-bar-text {
+/*
+ * 未保存状态跟着保存按钮走（用户 2026-09-13：把状态和两个按钮放到「重新读取」左边）。
+ * 没有改动时不抢眼；有改动时才用金色——状态与按钮的可用性始终对得上。
+ */
+.save-state {
   font-size: 0.85rem;
-  color: var(--color-heading);
+  color: var(--color-text);
+  opacity: 0.75;
+  white-space: nowrap;
 }
 
-.save-bar-text strong {
+.save-state--dirty {
   color: #a8781f;
+  opacity: 1;
+  font-weight: 600;
 }
 
-[data-theme='dark'] .save-bar-text strong {
+[data-theme='dark'] .save-state--dirty {
   color: #f0d7a2;
 }
 

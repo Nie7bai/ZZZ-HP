@@ -735,9 +735,6 @@ function submitDraft() {
                     预设词条方案「{{ scheme.name }}」
                     <span v-if="scheme.isDefault" class="origin-badge">默认</span>
                   </strong>
-                  <span class="origin-desc">
-                    共{{ scheme.entryCount }}条；新建时整份复制进本库，之后官方怎么改都与你无关
-                  </span>
                 </span>
               </label>
 
