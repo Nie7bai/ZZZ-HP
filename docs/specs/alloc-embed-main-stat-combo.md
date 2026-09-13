@@ -24,4 +24,5 @@
 
 - 分支：`feature/embed-main-stat-combo-in-allocation`
 - `remapImportedExternalPanelForMainCombo` + 词条分析页 `evaluateMainStatComboDamage` 有面板时走 remap；扫掠仍清基准。
+- 词条分析页组合试算伤差一律用 `grandTotal`（不绑扫掠柱图事件勾选）；避免未跑扫掠时出现「未选择统计事件 / 0→0」。
 - 证据：`npx vite-node scripts/test-remap-imported-panel-main-combo.mjs` → ok；`npm run type-check` → ok（2026-09-14）。

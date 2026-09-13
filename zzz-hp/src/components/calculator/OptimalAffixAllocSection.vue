@@ -1325,13 +1325,22 @@ type AffixEvalSnapshot = {
   eventLines: OptimalEventDamageLine[]
 }
 
-/** 事件模式下按「统计事件」筛选求和；非事件模式走原 metric */
+/**
+ * 事件模式下按「统计事件」筛选求和；非事件模式走原 metric。
+ *
+ * 词条分析页的组合试算不依赖扫掠柱图勾选（那边事件列表来自柱体，
+ * 未跑扫掠时 `selectedChartEventIds` 常为空 → 以前会算出 0→0）。
+ * 与「全词条收益」同口径：一律流程全部事件总伤。
+ */
 function resolveAffixMetricDamage(evaled: AffixEvalSnapshot) {
   if (!hasEventMode.value || !evaled.eventLines?.length) {
     return metricOf(evaled.result, evaled.grandTotal)
   }
+  if (sectionMode.value === 'allocation') {
+    return evaled.grandTotal
+  }
   const ids = new Set(selectedChartEventIds.value)
-  if (!ids.size) return 0
+  if (!ids.size) return evaled.grandTotal
   return evaled.eventLines
     .filter((line) => ids.has(line.eventId))
     .reduce((sum, line) => sum + line.total, 0)
@@ -1339,7 +1348,12 @@ function resolveAffixMetricDamage(evaled: AffixEvalSnapshot) {
 
 const mainStatEventScopeHint = computed(() => {
   if (!hasEventMode.value) return ''
-  if (!selectedChartEventIds.value.length) return '未选择统计事件'
+  if (sectionMode.value === 'allocation') {
+    return '按全部统计事件计算'
+  }
+  if (!selectedChartEventIds.value.length) {
+    return '未勾选柱图事件，已按全部事件回退'
+  }
   if (selectedChartEventIds.value.length === chartEventOptions.value.length) {
     return '按全部统计事件计算'
   }
