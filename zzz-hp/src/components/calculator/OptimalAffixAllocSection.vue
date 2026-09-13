@@ -2353,7 +2353,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
     <header class="opt-header">
       <h2>词条配比分析</h2>
       <p>
-        两种用法二选一：「最优分配」在总词条数约束下求全词条最优配比；
+        两种用法二选一：「词条分析」在总词条数约束下求全词条最优配比；
         「扫掠柱图」手动指定两个维度扫掠对比。
       </p>
     </header>
