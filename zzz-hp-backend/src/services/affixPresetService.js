@@ -153,6 +153,37 @@ function readInt(value, fallback) {
   return Number.isFinite(num) ? Math.trunc(num) : fallback
 }
 
+/**
+ * 找出一组排序值里的**第一处重复**（0 基下标）。
+ *
+ * 用户 2026-09-13 口径：排序值「不允许重复保存」—— 同号会让「谁先谁后」
+ * 没有唯一答案（只能拿 ID 兜底），所以写库前必须拦掉。
+ * 返回 `{ value, firstIndex, secondIndex }` 或 `null`（无重复）。
+ */
+export function findDuplicateSortValue(values) {
+  const seen = new Map()
+  for (const [index, value] of values.entries()) {
+    if (seen.has(value)) return { value, firstIndex: seen.get(value), secondIndex: index }
+    seen.set(value, index)
+  }
+  return null
+}
+
+/**
+ * 写库前闸门：排序值必须唯一。
+ *
+ * 校验的是**入库后的值**（缺省按列表下标兜底，与下面 INSERT 的取值规则一致），
+ * 所以脚本直接灌、或值缺省的情况都算得对。不唯一就整体拒绝，半份都不会写进去。
+ */
+function assertUniqueSortValues(list, kind, unit) {
+  const duplicate = findDuplicateSortValue(list.map((doc, index) => readInt(doc?.sortOrder, index)))
+  if (!duplicate) return
+  throw new Error(
+    `${kind}排序值重复：第 ${duplicate.firstIndex + 1} ${unit}与第 ${duplicate.secondIndex + 1} ${unit}` +
+      `同为 ${duplicate.value}（同一套方案里排序值必须唯一）`,
+  )
+}
+
 function parseRawJson(raw) {
   if (raw == null) return null
   try {
@@ -243,11 +274,16 @@ export async function listAffixPreset(schemeName) {
  * 中途失败留下半份数据会让前端拿到残缺预设，比整体失败更难排查。
  */
 export async function replaceAffixPreset({ scheme, entries, groups }) {
-  await ensureTables()
   const schemeName = resolveAffixPresetScheme(scheme)
   const entryList = Array.isArray(entries) ? entries : []
   const groupList = Array.isArray(groups) ? groups : []
 
+  // 排序值唯一性（用户 2026-09-13「不允许重复保存」）：闸门放在写库之前，
+  // 不经过控制器的调用方（脚本直接调 service）同样挡得住。
+  assertUniqueSortValues(entryList, '条目', '条')
+  assertUniqueSortValues(groupList, '分组', '个分组')
+
+  await ensureTables()
   const conn = await pool.getConnection()
   try {
     await conn.beginTransaction()

@@ -473,9 +473,15 @@ watch(pendingChanges, () => {
   writeDraftStash()
 })
 
-/** 保存前把草稿检一遍：错误直接说清是第几条的哪个字段 */
+/**
+ * 保存前把草稿检一遍：错误直接说清是第几条的哪个字段。
+ *
+ * 排序值要求**同一套方案内唯一**（用户 2026-09-13「不允许重复保存」）——
+ * 同号会让「谁先谁后」没有唯一答案；这里先拦一道，后端还有一道。
+ */
 function validateDraft(): string | null {
   const ids = new Set<string>()
+  const orders = new Map<number, string>()
   for (const [index, row] of entries.value.entries()) {
     const where = `第 ${index + 1} 条（${row.label.trim() || row.id.trim() || '未命名'}）`
     const id = row.id.trim()
@@ -496,8 +502,16 @@ function validateDraft(): string | null {
     if (!Number.isFinite(Number(row.rollCost)) || Number(row.rollCost) < 0) {
       return `${where}：每档占用须为非负数`
     }
+    const order = Math.trunc(Number(row.sortOrder))
+    if (String(row.sortOrder ?? '').trim() === '' || !Number.isFinite(order)) {
+      return `${where}：排序值不能为空`
+    }
+    const takenBy = orders.get(order)
+    if (takenBy) return `${where}：排序值 ${order} 与${takenBy}重复（同一套方案里必须唯一）`
+    orders.set(order, where)
   }
   const names = new Set<string>()
+  const groupOrders = new Map<number, string>()
   for (const [index, row] of groups.value.entries()) {
     const where = `第 ${index + 1} 个分组`
     const name = row.name.trim()
@@ -507,6 +521,13 @@ function validateDraft(): string | null {
     if (!Number.isFinite(Number(row.cap)) || Number(row.cap) < 0) {
       return `${where}：组额度须为非负数（0 = 不限）`
     }
+    const order = Math.trunc(Number(row.sortOrder))
+    if (String(row.sortOrder ?? '').trim() === '' || !Number.isFinite(order)) {
+      return `${where}：排序值不能为空`
+    }
+    const takenBy = groupOrders.get(order)
+    if (takenBy) return `${where}：排序值 ${order} 与${takenBy}重复（同一套方案里必须唯一）`
+    groupOrders.set(order, where)
   }
   return null
 }
@@ -1322,7 +1343,10 @@ onMounted(() => {
                   每档占用
                 </th>
                 <th title="同一组共享一个档数额度；组额度 0 = 组内不互相约束">分组</th>
-                <th class="th-admin-only" title="展示顺序，小的在前（保存后按新顺序重排）。用户侧没有这个概念">
+                <th
+                  class="th-admin-only"
+                  title="展示顺序，小的在前（保存后按新顺序重排）；同一套方案里不能重复。用户侧没有这个概念"
+                >
                   排序
                 </th>
                 <th></th>
@@ -1628,7 +1652,9 @@ onMounted(() => {
 
             <dt class="legend-admin-only">排序</dt>
             <dd>
-              列表与页签的先后，<strong>小的在前</strong>。同值时条目按 ID、分组按组名的字母序兜底。
+              列表与页签的先后，<strong>小的在前</strong>；<strong>同一套方案里必须唯一</strong>——
+              条目一条序列、分组另一条序列，可以跳号（1、50 也行），但不许同号：
+              重复的保存会被拦下（前端先拦一道，后端再拦一道）。
               <br />
               规则细节：① 服务端按它取数，所以<strong>保存之后</strong>列表才重排；
               ② 它<strong>不影响数值</strong> —— 同目标的条目是<strong>相加</strong>的，
@@ -1655,7 +1681,7 @@ onMounted(() => {
               <tr>
                 <th title="改名会连同组内条目的分组一起改（保存时一次写库）">组名</th>
                 <th title="组内各条档数之和的上限；0 = 不限">组额度</th>
-                <th title="分组展示顺序，小的在前">排序</th>
+                <th title="分组展示顺序，小的在前；同一套方案里不能重复">排序</th>
                 <th>说明</th>
                 <th></th>
               </tr>

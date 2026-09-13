@@ -80,18 +80,43 @@ export async function getAffixPreset(req, res) {
   }
 }
 
-/** 整份替换（管理页「保存」）—— 只覆盖请求里那一套方案，其他方案不受影响 */
+/**
+ * 整份替换（管理页「保存」）—— 只覆盖请求里那一套方案，其他方案不受影响。
+ *
+ * 排序值必须唯一（用户 2026-09-13「不允许重复保存」）：这里先给出**指明第几条**的
+ * 友好报错；service 里还有一道闸门兜底（脚本等不经控制器的调用方也挡）。
+ */
 export async function replaceAffixPresetHandler(req, res) {
   const entries = Array.isArray(req.body?.entries) ? req.body.entries : null
   const groups = Array.isArray(req.body?.groups) ? req.body.groups : null
   if (!entries || !groups) return fail(res, '需要 entries 与 groups 两个数组', 400)
+  const entryOrderSeen = new Map()
   for (const [index, entry] of entries.entries()) {
     const payload = normalizeEntryPayload(entry)
     if (payload.error) return fail(res, `第 ${index + 1} 条：${payload.error}`, 400)
+    const seenAt = entryOrderSeen.get(payload.sortOrder)
+    if (seenAt !== undefined) {
+      return fail(
+        res,
+        `第 ${index + 1} 条：排序值 ${payload.sortOrder} 与第 ${seenAt} 条重复（同一套方案里排序值必须唯一）`,
+        400,
+      )
+    }
+    entryOrderSeen.set(payload.sortOrder, index + 1)
   }
+  const groupOrderSeen = new Map()
   for (const [index, group] of groups.entries()) {
     const payload = normalizeGroupPayload(group)
     if (payload.error) return fail(res, `第 ${index + 1} 个分组：${payload.error}`, 400)
+    const seenAt = groupOrderSeen.get(payload.sortOrder)
+    if (seenAt !== undefined) {
+      return fail(
+        res,
+        `第 ${index + 1} 个分组：排序值 ${payload.sortOrder} 与第 ${seenAt} 个分组重复（同一套方案里排序值必须唯一）`,
+        400,
+      )
+    }
+    groupOrderSeen.set(payload.sortOrder, index + 1)
   }
   try {
     const data = await replaceAffixPreset({
@@ -106,6 +131,9 @@ export async function replaceAffixPresetHandler(req, res) {
       `已保存「${data.scheme}」：${data.entries.length} 条 / ${data.groups.length} 组`,
     )
   } catch (err) {
+    // service 闸门抛出的排序值重复按 400 回（上面的循环正常应先拦下，这里是兜底）
+    const message = err instanceof Error ? err.message : ''
+    if (/排序值重复/.test(message)) return fail(res, message, 400)
     return failInternal(res, err, '保存官方预设词条库失败')
   }
 }
