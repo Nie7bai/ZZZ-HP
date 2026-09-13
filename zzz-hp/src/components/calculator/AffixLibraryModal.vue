@@ -731,10 +731,7 @@ function submitDraft() {
                   @change="newSetSourceTouched = true"
                 />
                 <span class="origin-body">
-                  <strong>
-                    预设词条方案「{{ scheme.name }}」
-                    <span v-if="scheme.isDefault" class="origin-badge">默认</span>
-                  </strong>
+                  <strong>预设词条方案「{{ scheme.name }}」</strong>
                 </span>
               </label>
 
@@ -1432,16 +1429,6 @@ function submitDraft() {
 .origin-desc--hint {
   margin: 0;
   padding-top: 0.1rem;
-}
-
-/* 默认方案徽标：用户侧拿到的那一份就是它 */
-.origin-badge {
-  margin-left: 0.25rem;
-  padding: 0.02rem 0.3rem;
-  border-radius: 999px;
-  background: #e8d3a0;
-  color: #5c4818;
-  font-size: 0.64rem;
 }
 
 .set-new-actions {
