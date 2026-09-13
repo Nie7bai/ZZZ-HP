@@ -3709,6 +3709,15 @@ body:has(.calculator-page.theme-light) .preset-preview li,
   color: #344054 !important;
 }
 
+/*
+ * 危险确认句（删除这套库）：普通正文色看不出是危险操作（用户 2026-09-13
+ * 「辨识度太低了，改成红色字体」）。上一条只管普通确认句，这条单独覆盖 danger，
+ * 用仓库统一的浅色危险红（与 .err / .mini-btn.danger 一致）。
+ */
+[data-theme='light'] .affix-library-modal .confirm-row.danger {
+  color: #b42318 !important;
+}
+
 [data-theme='light'] .affix-library-modal .err {
   color: #b42318 !important;
 }

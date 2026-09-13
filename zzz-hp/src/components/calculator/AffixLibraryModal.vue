@@ -1575,8 +1575,9 @@ function submitDraft() {
   flex-shrink: 0;
 }
 
+/* 危险确认句（删除这套库）：淡粉在深色底上像褪色正文，改成错误红 —— 一眼看出是危险操作 */
 .confirm-row.danger {
-  color: #f0c9c9;
+  color: #f08c8c;
 }
 
 .err {
