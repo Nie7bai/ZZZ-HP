@@ -2267,9 +2267,12 @@ defineExpose({ scrollToSection })
   gap: 1.35rem;
 }
 
-/* 统一伤害结果区：与页面其他模块卡片一致的留白（section-card 惯例 padding 1rem） */
+/* 统一伤害结果区：与页面其他模块卡片一致的留白与卡片底（跟随主题） */
 .damage-result-section {
   padding: 1rem;
+  background: var(--zzz-card, #faf8f2);
+  border: 1px solid var(--color-border, rgba(60, 55, 40, 0.16));
+  border-radius: 12px;
 }
 
 .team-slot-sticky {

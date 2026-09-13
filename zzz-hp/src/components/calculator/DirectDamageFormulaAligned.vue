@@ -105,5 +105,7 @@ const formulaSegments = computed((): DirectFormulaTerm[][] => {
   font-size: 0.88rem;
   line-height: 1.35;
   white-space: nowrap;
+  font-weight: 700;
+  color: var(--calc-accent, #c9a55c);
 }
 </style>
