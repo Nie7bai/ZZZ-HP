@@ -13,6 +13,7 @@ import type {
   WengineBuffDoc,
 } from '@/types/calculator'
 import {
+  createEmptyExternalPanel,
   createDefaultExternalPanel,
   fillPanelStatsDefaults,
   type PanelStats,
@@ -469,28 +470,6 @@ export function mergeDefaultBuffSelectionIntoMulti(
   }
 }
 
-/** 从旧版单槽 Buff 选择迁移（主 C 视角） */
-export function migrateLegacyBuffSelection(
-  legacy: BuffSelectionState,
-  effects: CollectedEffect[],
-): MultiSlotBuffSelection {
-  const multi = createEmptyMultiSlotBuffSelection()
-  const effectById = new Map(effects.map((item) => [item.effect.id, item.effect]))
-  for (const [id, enabled] of Object.entries(legacy.enabledIds)) {
-    const effect = effectById.get(id)
-    buffStoreForEffect(multi, 0, effect?.applyTarget).enabledIds[id] = enabled
-  }
-  for (const [id, stacks] of Object.entries(legacy.stacksByEffectId)) {
-    const effect = effectById.get(id)
-    buffStoreForEffect(multi, 0, effect?.applyTarget).stacksByEffectId[id] = stacks
-  }
-  for (const [id, value] of Object.entries(legacy.convertInputs)) {
-    const effect = effectById.get(id)
-    buffStoreForEffect(multi, 0, effect?.applyTarget).convertInputs[id] = value
-  }
-  return multi
-}
-
 /** 转模增益角色局外面板：仅录入转模来源属性 */
 export type ConvertSlotPanels = Record<string, Partial<Record<CharacterAttrKey, number>>>
 
@@ -512,6 +491,7 @@ const PANEL_STAT_ATTR_KEYS: PanelStatAttrKey[] = [
   'energyRegen',
   'penRate',
   'def',
+  'impact',
 ]
 
 export type PanelSourceValues = {
@@ -538,16 +518,16 @@ export interface PanelCalcContext {
   buffSelection?: BuffSelectionState | null
   attrValues?: Partial<Record<CharacterAttrKey, number>>
   panelSourceValues?: PanelSourceValues
-  /** 正在编辑局外面板的槽位（编队点选的「编辑中」）；live 面板跟这个人走 */
+  /** 本次结算的主 C 槽位下标（调用方传的是编队「编辑中」槽位）；见下方 `resolveExternalPanelForSlot` */
   liveExternalSlotIndex?: number
-  /** 正在编辑的那份局外面板（live） */
+  /** 主 C 那份局外面板（已解析好的激活面板，不问来历） */
   mainExternalPanel?: PanelStats
-  /** 异常产生角色局外面板 */
-  anomalySlotPanels?: Record<string, PanelStats>
+  /** 每人一份的激活局外面板（面板导入 / 词条导入已解析，不问来历） */
+  activeSlotPanels?: Record<string, PanelStats>
   /** 转模增益角色局外面板（仅转模来源属性） */
   convertSlotPanels?: ConvertSlotPanels
   /**
-   * 各槽位完整局外。词条模式由该槽词条+驱动盘算出，面板模式为该槽手填值。
+   * 各槽位完整局外（该角色激活那份；无记录 → 空面板，转模链另有部分面板兜底）。
    * 全队转模必须按来源槽位取这里，不能拿编辑中角色的面板去套队友。
    */
   slotExternalPanels?: Record<number, PanelStats>
@@ -640,14 +620,31 @@ function resolveExternalPanelForSlot(
     return fillPanelStatsDefaults(currentSlotExternalPanel)
   }
   const agentId = ctx.teamSlots[slotIndex]?.agentId
-  if (!agentId) return createDefaultExternalPanel()
-  const anomaly = ctx.anomalySlotPanels?.[agentId]
-  if (anomaly) return fillPanelStatsDefaults(anomaly)
+  if (!agentId) return createEmptyExternalPanel()
+  const active = ctx.activeSlotPanels?.[agentId]
+  if (active) return fillPanelStatsDefaults(active)
   const convertPartial = ctx.convertSlotPanels?.[agentId]
   if (convertPartial) {
     return convertSlotPartialToExternalPanel(convertPartial)
   }
-  return createDefaultExternalPanel()
+  // 没有面板记录 → 空面板：没有面板就不出伤害（不再拿占位毕业面板顶替）
+  return createEmptyExternalPanel()
+}
+
+/**
+ * 该槽位**有没有面板** —— 面板只由「确定导入」/ 手动切换来源 / 读盘恢复产生，
+ * 没有就不该算出伤害（所有者口径 2026-09-12）。
+ *
+ * 只认用户侧的那份（`activeSlotPanels` = 已解析的激活面板）与转模部分面板；
+ * 不认凭空推导出来的兜底值 —— 那正是「工具自己造面板」的老毛病。
+ */
+export function hasExternalPanelForSlot(slotIndex: number, ctx: PanelCalcContext): boolean {
+  if (slotIndex < 0 || slotIndex >= ctx.teamSlots.length) return false
+  const agentId = ctx.teamSlots[slotIndex]?.agentId
+  if (!agentId) return false
+  if (ctx.activeSlotPanels?.[agentId]) return true
+  if (ctx.convertSlotPanels?.[agentId]) return true
+  return false
 }
 
 function resolveConvertAttrExtras(
@@ -658,8 +655,15 @@ function resolveConvertAttrExtras(
   const partial = agentId ? ctx.convertSlotPanels?.[agentId] : undefined
   const extras: Partial<Record<CharacterAttrKey, number>> = {
     level: partial?.level ?? ctx.attrValues?.level ?? 60,
-    impact: partial?.impact ?? ctx.attrValues?.impact ?? 0,
   }
+  /**
+   * 冲击力：只有真知道时才写进 extras —— 不能用 `?? 0` 兜底。
+   *
+   * 兜底成 0 会把 `panelToConvertAttrValues` 里「取面板的 impact」又顶掉，
+   * 面板填了冲击力也白填（青衣那条链就是这样断掉的，见 affix-calc-manual.md §1.9）。
+   */
+  const impact = partial?.impact ?? ctx.attrValues?.impact
+  if (impact != null && Number.isFinite(impact)) extras.impact = impact
   if (partial?.pierce != null && Number.isFinite(partial.pierce)) {
     extras.pierce = partial.pierce
   }
@@ -889,13 +893,6 @@ export function collectConvertSourceMarksForSlot(
   return [...marks.values()]
 }
 
-export function convertSourceAttrSet(
-  marks: ConvertSourceMark[],
-  panelSource: 'external' | 'final',
-): Set<CharacterAttrKey> {
-  return new Set(marks.filter((item) => item.panelSource === panelSource).map((item) => item.attr))
-}
-
 export function convertSourceAttrMatchesPanelSlot(
   attr: CharacterAttrKey,
   slot: { kind?: string; key?: string; id?: string },
@@ -937,25 +934,6 @@ export function teamHasConvertSupportSlots(
   return collectConvertSupportSlots(ctx, options).length > 0
 }
 
-export function omitAgentFromConvertSlotPanels(
-  panels: ConvertSlotPanels | undefined,
-  agentId: string,
-): ConvertSlotPanels {
-  if (!panels?.[agentId]) return { ...panels }
-  const next = { ...panels }
-  delete next[agentId]
-  return next
-}
-
-export function omitAgentFromAnomalySlotPanels(
-  panels: Record<string, PanelStats> | undefined,
-  agentId: string,
-): Record<string, PanelStats> | undefined {
-  if (!panels?.[agentId]) return panels
-  const next = { ...panels }
-  delete next[agentId]
-  return next
-}
 
 /** 需录入局外面板的转模增益角色（非主 C、非异常产生角色） */
 export function collectConvertSupportSlots(
@@ -1049,7 +1027,6 @@ export interface PanelBuffBreakdown {
   combatMods: CombatBuffMods
   finalPanel: PanelStats
   sources: BuffModSource[]
-  collectedEffects: CollectedEffect[]
 }
 
 export interface ComputeFinalPanelOptions {
@@ -1666,8 +1643,19 @@ function teamSlotsKey(teamSlots: readonly TeamSlot[]): string {
     .join(';')
 }
 
+/**
+ * 环境 Buff 的键必须含**内容**，不能只用 `sourceKey`。
+ *
+ * 缺陷与实测（2026-09-11，`scripts/test-env-buff-cache-key.mjs`）：
+ * 只要 `sourceKey` 不变，同一 effect 的数值从 +30% 改成 +60% 也不换键 ——
+ * 面板与词条两条链路都会继续用旧 mods（实测两次都是 1484，应更高）。
+ *
+ * 与 `teamSlotsKey` 一样**不做按对象身份的记忆化**（原因见上方注释：
+ * 真实 UI 里集合被就地赋值，按身份缓存会把键冻结在首次计算那一刻）。
+ */
 function environmentBuffsKey(environmentBuffs: readonly EnvironmentBuffEntry[]): string {
-  return environmentBuffs.map((item) => item.sourceKey).join(',')
+  if (!environmentBuffs.length) return ''
+  return JSON.stringify(environmentBuffs)
 }
 
 /** 缓存清空时一并丢弃按键对象身份记忆化的部件，避免旧契约下的陈旧串留存 */
@@ -2179,6 +2167,8 @@ export function applyBuffModsToPanel(
     penRate: externalPanel.penRate + mods.penRate,
     pen: externalPanel.pen,
     resPen: externalPanel.resPen + mods.resPen,
+    // 冲击力不进乘区、也没有任何增益改它：原样带过去，局内转模（青衣）才读得到
+    impact: externalPanel.impact ?? 0,
     mastery: externalPanel.mastery + mods.mastery,
     anomalyControl:
       externalPanel.anomalyControl +
@@ -2270,7 +2260,8 @@ export function panelToConvertAttrValues(
     penRate: panel.penRate,
     def: panel.def,
     pierce: computePiercePower(panel.hp, panel.atk, pierceMod),
-    impact: extras.impact ?? 0,
+    // 冲击力取自面板（转模来源属性）；extras 里有明确值时优先（转模角色单独录入的那份）
+    impact: extras.impact ?? panel.impact ?? 0,
     level: extras.level ?? 60,
     ...extras,
   }
@@ -2434,7 +2425,6 @@ export function computeFinalPanel(
       sharpenCritDmgBonus: combatMods.sharpenCritDmgBonus,
     },
     sources: includeDetails ? totalSources : [],
-    collectedEffects: [],
   }
 }
 

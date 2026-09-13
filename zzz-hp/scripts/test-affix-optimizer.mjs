@@ -21,11 +21,20 @@ import {
   createEmptyBuffStatModifiers,
 } from '../src/utils/calculatorUi.ts'
 import {
+  addAffixLibraryGroup,
+  coerceAffixLibraryState,
   createDefaultAffixLibrary,
+  createDefaultAffixLibraryState,
+  createDriveDiscMainStatAffixEntries,
+  createDriveDiscTwoPieceAffixEntries,
+  createOptionalAffixLibraryEntries,
+  createPresetAffixLibraryEntries,
+  entryRollsToEvalInput,
+  removeAffixLibraryGroup,
+  renameAffixLibraryGroup,
   resolveAffixLibrary,
   resolveAffixLibraryAll,
   setAffixLibraryEntryEnabled,
-  createDefaultAffixLibraryState,
 } from '../src/utils/affixLibrary.ts'
 import {
   solveOptimalAffixAllocation,
@@ -39,6 +48,7 @@ import {
   evaluateAffixCounts,
   optimalHitDependsOnMainAffixPanel,
 } from '../src/utils/optimalAffixAlloc.ts'
+import { affixTargetLabel as affixTargetLabelOf, statKeyOfTarget } from '../src/utils/affixLibrary.ts'
 import {
   buildPanelSourceValuesBySlotMap,
   invalidateBuffCatalogCache,
@@ -153,7 +163,8 @@ console.log('\n[1] 与全排列穷举对比（预算 6 档）')
         const counts = { ...createEmptyAffixCounts() }
         for (const e of subset) {
           const n = rolls[e.id] ?? 0
-          if (n > 0) counts[e.affixKey] += n
+          const key = statKeyOfTarget(e.target)
+          if (n > 0 && key) counts[key] += n
         }
         const total = evaluateAffixCounts(ctx, counts).grandTotal
         if (total > bestTotal) {
@@ -269,18 +280,379 @@ console.log('\n[3] 结果一致性')
   console.log(`    引擎调用 ${solved.engineCalls} 次，截断=${solved.truncated}`)
 }
 
-// ---------- 4. 互斥组 ----------
-console.log('\n[4] 互斥组')
+// ---------- 4. 分组额度（组 cap） ----------
+console.log('\n[4] 分组额度')
 {
-  const grouped = library.map((e) =>
-    e.id === 'substat:atkPercent' ? { ...e, group: 'main' } : e,
-  ).map((e) =>
-    e.id === 'substat:hpPercent' ? { ...e, group: 'main' } : e,
+  const four = library.filter((e) =>
+    ['substat:atkPercent', 'substat:atkFlat', 'substat:critRate', 'substat:critDmg'].includes(e.id),
   )
-  const solved = solveOptimalAffixAllocation({ ctx, entries: grouped, maxTotalRolls: 30 })
-  const chosen = grouped.filter((e) => (solved.rollsByEntryId[e.id] ?? 0) > 0 && e.group === 'main')
-  check('互斥组至多选 1 条', chosen.length <= 1,
-    chosen.map((e) => `${e.label}×${solved.rollsByEntryId[e.id]}`).join(', ') || '未选')
+  const setGroup = (entries, id, group, cap, perRoll) =>
+    entries.map((e) =>
+      e.id === id ? { ...e, group, ...(cap != null ? { cap } : {}), ...(perRoll != null ? { perRoll } : {}) } : e,
+    )
+
+  // 4.0 显式额度 1：同组合计至多 1 档。
+  // 这条在 2026-09-12 之前会失败 —— 2-swap 用了「撤档后」的旧快照，
+  // 会把同组第二条也加进来（见 步骤 24 的 bug 记录）。
+  {
+    let worst = 0
+    let detail = ''
+    const entries = setGroup(
+      setGroup(four, 'substat:atkPercent', 'g0', 0, 100),
+      'substat:atkFlat', 'g0', 0, 1000,
+    )
+    for (const budget of [2, 3, 4, 6, 10, 20]) {
+      const solved = solveOptimalAffixAllocation({
+        ctx, entries, maxTotalRolls: budget, groupCaps: { g0: 1 },
+      })
+      const used =
+        (solved.rollsByEntryId['substat:atkPercent'] ?? 0) +
+        (solved.rollsByEntryId['substat:atkFlat'] ?? 0)
+      if (used > worst) {
+        worst = used
+        detail = `预算 ${budget}：攻击%=${solved.rollsByEntryId['substat:atkPercent'] ?? 0}、` +
+          `固定攻击=${solved.rollsByEntryId['substat:atkFlat'] ?? 0}`
+      }
+    }
+    check('额度 1：组内合计至多 1 档', worst <= 1, detail || '各预算档均 ≤ 1')
+  }
+
+  // 4.1 组额度和条数预算是两回事：A cap 3 + B cap 4，组额度 5 → 合计 ≤ 5，各自 ≤ 自己 cap
+  {
+    let ok = true
+    let detail = ''
+    const entries = setGroup(
+      setGroup(four, 'substat:atkPercent', 'g1', 3, 100),
+      'substat:atkFlat', 'g1', 4, 2000,
+    )
+    for (const budget of [5, 8, 20, 46]) {
+      const solved = solveOptimalAffixAllocation({
+        ctx, entries, maxTotalRolls: budget, groupCaps: { g1: 5 },
+      })
+      const a = solved.rollsByEntryId['substat:atkPercent'] ?? 0
+      const b = solved.rollsByEntryId['substat:atkFlat'] ?? 0
+      if (a + b > 5 || a > 3 || b > 4) {
+        ok = false
+        detail = `预算 ${budget}：攻击%=${a}、固定攻击=${b}`
+      }
+    }
+    check('组额度 5：A+B ≤ 5 且各自不超自己 cap', ok, detail || '各预算档均满足')
+  }
+
+  // 4.2 组额度会真的被用满（否则 4.1 可能只是「两条都没被选」而"通过"）
+  {
+    const entries = setGroup(
+      setGroup(four, 'substat:atkPercent', 'g2', 3, 100),
+      'substat:atkFlat', 'g2', 4, 2000,
+    )
+    const solved = solveOptimalAffixAllocation({
+      ctx, entries, maxTotalRolls: 46, groupCaps: { g2: 5 },
+    })
+    const used =
+      (solved.rollsByEntryId['substat:atkPercent'] ?? 0) +
+      (solved.rollsByEntryId['substat:atkFlat'] ?? 0)
+    check('组额度 5 在额度充足时被用满', used === 5, `实际合计 ${used}`)
+  }
+
+  // 4.3 额度 1 对 cap>1 的单条也生效：cap 3 的条目最多只加 1 档
+  {
+    const entries = setGroup(four, 'substat:atkPercent', 'g3', 3, 100)
+    const solved = solveOptimalAffixAllocation({
+      ctx, entries, maxTotalRolls: 46, groupCaps: { g3: 1 },
+    })
+    const a = solved.rollsByEntryId['substat:atkPercent'] ?? 0
+    check('额度 1：cap 3 的单条也最多 1 档', a <= 1, `实际 ${a} 档`)
+  }
+
+  // 4.4 不同组互不影响：各自额度 1，两条可以各拿 1 档
+  {
+    const entries = setGroup(
+      setGroup(four, 'substat:atkPercent', 'gA', 1, 100),
+      'substat:atkFlat', 'gB', 1, 2000,
+    )
+    const solved = solveOptimalAffixAllocation({
+      ctx, entries, maxTotalRolls: 46, groupCaps: { gA: 1, gB: 1 },
+    })
+    const a = solved.rollsByEntryId['substat:atkPercent'] ?? 0
+    const b = solved.rollsByEntryId['substat:atkFlat'] ?? 0
+    check('不同组互不影响（各 1 档可共存）', a === 1 && b === 1, `攻击%=${a}、固定攻击=${b}`)
+  }
+
+  // 4.5 额度 0 = 不限：组只是个归类页，不构成约束
+  {
+    const entries = setGroup(
+      setGroup(four, 'substat:atkPercent', 'gFree', 0, 100),
+      'substat:atkFlat', 'gFree', 0, 2000,
+    )
+    const unlimited = solveOptimalAffixAllocation({
+      ctx, entries, maxTotalRolls: 46, groupCaps: { gFree: 0 },
+    })
+    const limited = solveOptimalAffixAllocation({
+      ctx, entries, maxTotalRolls: 46, groupCaps: { gFree: 1 },
+    })
+    const sumOf = (solved) =>
+      (solved.rollsByEntryId['substat:atkPercent'] ?? 0) +
+      (solved.rollsByEntryId['substat:atkFlat'] ?? 0)
+    const free = sumOf(unlimited)
+    const capped = sumOf(limited)
+    check('额度 0 = 不限（组不构成约束）', free > 10 && capped <= 1,
+      `不限时组内 ${free} 档、额度 1 时 ${capped} 档`)
+  }
+
+  // 4.6 组名不在额度表里 → 按不限算（静默加约束会改变结果，方向反了）
+  {
+    const entries = setGroup(four, 'substat:atkPercent', 'gMissing', 0, 100)
+    const solved = solveOptimalAffixAllocation({ ctx, entries, maxTotalRolls: 46 })
+    const a = solved.rollsByEntryId['substat:atkPercent'] ?? 0
+    check('组名不在表里 → 按不限算', a > 1, `实际 ${a} 档`)
+  }
+
+  // 4.7 回归：5 号位「增伤 30% / 穿透率 24%」同组、额度 1，不得同时上榜。
+  // 修复前实测四个预算档全部出现「两条同时上榜」。两条现已进预设（`main:slot5:*`）。
+  {
+    const panelTwo = createDriveDiscMainStatAffixEntries().filter((e) =>
+      ['main:slot5:dmgBonus', 'main:slot5:penRate'].includes(e.id),
+    )
+    const entries = [...library, ...panelTwo]
+    let ok = true
+    let detail = ''
+    for (const budget of [6, 10, 16, 24, 46]) {
+      const solved = solveOptimalAffixAllocation({
+        ctx, entries, maxTotalRolls: budget, groupCaps: { '5号位': 1 },
+      })
+      const dmg = solved.rollsByEntryId['main:slot5:dmgBonus'] ?? 0
+      const pen = solved.rollsByEntryId['main:slot5:penRate'] ?? 0
+      if (dmg + pen > 1) {
+        ok = false
+        detail = `预算 ${budget}：增伤%=${dmg}、穿透率%=${pen}`
+      }
+    }
+    check('真实候选池：同组两条不同时上榜', ok, detail || '各预算档均至多一条')
+  }
+
+  // 4.7b 2 件套：11 条同组、额度 1，任何预算下都至多选一条（且总档数 ≤ 1）
+  {
+    const twoPiece = createDriveDiscTwoPieceAffixEntries()
+    const entries = [...library, ...twoPiece]
+    let ok = true
+    let detail = ''
+    for (const budget of [6, 10, 16, 24, 46]) {
+      const solved = solveOptimalAffixAllocation({
+        ctx, entries, maxTotalRolls: budget, groupCaps: { '2件套': 1 },
+      })
+      const used = twoPiece.reduce((sum, e) => sum + (solved.rollsByEntryId[e.id] ?? 0), 0)
+      const picked = twoPiece.filter((e) => (solved.rollsByEntryId[e.id] ?? 0) > 0)
+      if (used > 1) {
+        ok = false
+        detail = `预算 ${budget}：用了 ${used} 档（${picked.map((e) => e.label).join('+')}）`
+      }
+    }
+    check('2件套：11 条同组额度 1 → 至多选一条', ok, detail || '各预算档均至多一条')
+  }
+
+  // 4.8 预设条目自带「副词条」组（额度不限），不传额度表时求解结果不受影响
+  {
+    const groupsInPreset = [...new Set(library.map((e) => e.group))]
+    const solved = solveOptimalAffixAllocation({ ctx, entries: library, maxTotalRolls: 30 })
+    check('预设条目都落在「副词条」组', groupsInPreset.length === 1 && groupsInPreset[0] === '副词条',
+      groupsInPreset.join(', '))
+    check('未传额度表时预设求解不受组约束', solved.usedRolls === 30, `用档 ${solved.usedRolls}`)
+  }
+}
+
+// ---------- 4.9 存档读取：预设分组必须补回来 ----------
+console.log('\n[4.9] 存档读取与分组补齐')
+{
+  // 这次改造之前的存档：没有 groups 字段（用户实际踩到的就是这个）
+  const legacy = coerceAffixLibraryState({
+    customEntries: [],
+    enabledOverride: {},
+    overrides: {},
+    removedEntryIds: [],
+  })
+  const names = legacy.groups.map((g) => g.name)
+  check(
+    '老存档（无分组字段）读回来带 5 个预设组',
+    names.join(',') === '4号位,5号位,6号位,2件套,副词条',
+    names.join(', '),
+  )
+
+  // 条目引用了一个表里没有的组名 → 补组，且额度按「互斥」的老语义取 1
+  const withLegacyGroup = coerceAffixLibraryState({
+    customEntries: [],
+    enabledOverride: {},
+    overrides: { 'panel:reduceDefense': { group: '老组' }, 'panel:resPen': { group: '老组' } },
+    removedEntryIds: [],
+  })
+  const legacyGroup = withLegacyGroup.groups.find((g) => g.name === '老组')
+  check('条目引用的未知组名会被补出页签', Boolean(legacyGroup), legacyGroup ? '已补' : '未补')
+  check('补出来的额度是 1（保留「二选一」的老意图）', legacyGroup?.cap === 1,
+    `cap=${legacyGroup?.cap}`)
+
+  // 删掉的预设组不能复活
+  const removed = removeAffixLibraryGroup(createDefaultAffixLibraryState(), '6号位')
+  const reopened = coerceAffixLibraryState(removed)
+  check(
+    '删掉的预设组读盘后不复活',
+    !reopened.groups.some((g) => g.name === '6号位'),
+    reopened.groups.map((g) => g.name).join(', '),
+  )
+  // 被删组里的预设条目（4/5/6 号位主属性）不能还挂着已删组名 —— 挂着就会被兜底补回来
+  const reopenedSlot6 = resolveAffixLibraryAll(reopened).filter(
+    (e) => e.id.startsWith('main:slot6:'),
+  )
+  check(
+    '被删组里的预设条目回落未分组（不再引用已删组名）',
+    reopenedSlot6.length > 0 && reopenedSlot6.every((e) => e.group === ''),
+    reopenedSlot6.map((e) => `${e.id}=${e.group || '(空)'}`).join(', '),
+  )
+
+  // 改名的预设组：新名留下、原名不复活、组内条目跟着改名
+  const renamed = renameAffixLibraryGroup(createDefaultAffixLibraryState(), '5号位', '五号位')
+  const reopenedRenamed = coerceAffixLibraryState(renamed)
+  const reopenNames = reopenedRenamed.groups.map((g) => g.name)
+  check(
+    '改名的预设组：原名不复活、新名在',
+    !reopenNames.includes('5号位') && reopenNames.includes('五号位'),
+    reopenNames.join(', '),
+  )
+  const presetEntryGroup = resolveAffixLibraryAll(renamed).find(
+    (e) => e.id === 'substat:atkPercent',
+  )?.group
+  check('改名不影响条目（条目本就不在该组）', presetEntryGroup === '副词条', String(presetEntryGroup))
+  // 被改名组里的预设条目要跟着走，否则它们还引用旧组名 → 旧组被兜底补回来
+  const renamedSlot5 = resolveAffixLibraryAll(reopenedRenamed).filter(
+    (e) => e.id.startsWith('main:slot5:'),
+  )
+  check(
+    '被改名组里的预设条目跟着改名',
+    renamedSlot5.length > 0 && renamedSlot5.every((e) => e.group === '五号位'),
+    renamedSlot5.map((e) => `${e.id}=${e.group || '(空)'}`).join(', '),
+  )
+
+  // 建回一个被删过的预设组名 → 撤销「删过」记录
+  const recreated = addAffixLibraryGroup(removed, '6号位', 1)
+  const reopenedRecreated = coerceAffixLibraryState(recreated)
+  check(
+    '重新建回同名预设组后不再被滤掉',
+    reopenedRecreated.groups.some((g) => g.name === '6号位'),
+    reopenedRecreated.groups.map((g) => g.name).join(', '),
+  )
+}
+
+// ---------- 4.10 同字段多条：各按自己的每档折算 ----------
+console.log('\n[4.10] 同字段多条目的折算')
+{
+  // 用户场景：副词条「局外攻击力% 3%/档」+ 5 号位主属性「局外攻击力 30%/档」
+  const pair = [
+    byId.get('substat:atkPercent'),
+    {
+      id: 'main:slot5:atkPercent',
+      label: '局外攻击力 30%',
+      target: 'stat:atkPercent',
+      perRoll: 30,
+      cap: 1,
+      group: '5号位',
+      rollCost: 1,
+      enabledByDefault: true,
+    },
+  ]
+  const sixPlusOne = entryRollsToEvalInput(pair, {
+    'substat:atkPercent': 6,
+    'main:slot5:atkPercent': 1,
+  })
+  // 6×3% + 1×30% = 48 个百分点（修前：7 档 × 被顶掉的 30% = 210）
+  const atkPercentPoints =
+    (sixPlusOne.counts.atkPercent ?? 0) * sixPlusOne.valuePerCount.atkPercent
+  check(
+    '副词条 6 档×3% + 主属性 1 档×30% = 48 个百分点',
+    Math.abs(atkPercentPoints - 48) < 1e-9,
+    `实际 ${atkPercentPoints} 个百分点`,
+  )
+
+  const mainOnly = entryRollsToEvalInput(pair, { 'main:slot5:atkPercent': 1 })
+  const mainOnlyPoints = (mainOnly.counts.atkPercent ?? 0) * mainOnly.valuePerCount.atkPercent
+  check('只选主属性 1 档 = 30 个百分点', Math.abs(mainOnlyPoints - 30) < 1e-9,
+    `实际 ${mainOnlyPoints}`)
+
+  // 每档值与常量表一致的条目：折算前后行为不变（既有库不受影响）
+  const plain = entryRollsToEvalInput([byId.get('substat:atkPercent')], {
+    'substat:atkPercent': 6,
+  })
+  const plainPoints = (plain.counts.atkPercent ?? 0) * plain.valuePerCount.atkPercent
+  check('每档=常量表的条目行为不变（6 档 × 3% = 18）', Math.abs(plainPoints - 18) < 1e-9,
+    `实际 ${plainPoints}`)
+
+  // 预设的 4/5/6 号位条目必须落在对应组、且各自是独立条目（同字段不合并）
+  const preset = createPresetAffixLibraryEntries()
+  const slotEntries = preset.filter((e) => /号位$/.test(e.group))
+  const ids = new Set(slotEntries.map((e) => e.id))
+  check('预设含 4/5/6 号位条目且 id 唯一', ids.size === slotEntries.length && slotEntries.length > 0,
+    `${slotEntries.length} 条`)
+  const slot5 = preset.filter((e) => e.group === '5号位')
+  check('5 号位预设条目数 = 5（3 通用 + 增伤 / 穿透率）', slot5.length === 5,
+    slot5.map((e) => e.label).join(' / '))
+  const slot6 = preset.filter((e) => e.group === '6号位')
+  check(
+    '6 号位含异常掌控 / 冲击力 / 能量恢复（选项表 5 条 + 通用 3 条）',
+    slot6.some((e) => e.label.includes('异常掌控')) &&
+      slot6.some((e) => e.label.includes('能量恢复')) &&
+      slot6.some((e) => e.label.includes('冲击力')),
+    slot6.map((e) => e.label).join(' / '),
+  )
+  const impactEntry = preset.find((e) => e.id === 'main:slot6:impact')
+  check(
+    '6 号位冲击力条目：18 点、落 panel:impact、归 6号位组、默认启用',
+    impactEntry?.perRoll === 18 &&
+      impactEntry.target === 'panel:impact' &&
+      impactEntry.group === '6号位' &&
+      impactEntry.enabledByDefault === true,
+    impactEntry ? `${impactEntry.label} perRoll=${impactEntry.perRoll} → ${impactEntry.target}` : '(缺)',
+  )
+  check('4/5/6 号位条目默认启用（官方预设库口径，见 impl-log 步骤 28）',
+    slotEntries.every((e) => e.enabledByDefault === true))
+  check('扩展条目（不分槽位的伤害字段）默认不启用',
+    preset
+      .filter((e) => e.group === '副词条' && e.id.startsWith('panel:'))
+      .every((e) => e.enabledByDefault === false))
+
+  // 2 件套：按「效果」去重后的 11 条（用户 2026-09-12 口径，见 impl-log 步骤 32）
+  const twoPiece = preset.filter((e) => e.group === '2件套')
+  check('2件套组共 11 条（按效果去重）', twoPiece.length === 11,
+    twoPiece.map((e) => e.label).join(' / '))
+  check('2件套条目 id 唯一', new Set(twoPiece.map((e) => e.id)).size === twoPiece.length)
+  check('2件套条目默认不启用（避免与自己佩戴的那套双算）',
+    twoPiece.every((e) => e.enabledByDefault === false))
+  check('2件套条目各自 cap = 1', twoPiece.every((e) => e.cap === 1))
+  check('2件套名称＝效果（与 4/5/6 号位同一套格式，不含套装名）',
+    twoPiece.every((e) => !/套装|Suit/.test(e.label) && typeof affixTargetLabelOf(e.target) === 'string'),
+    twoPiece.map((e) => `${e.label}→${affixTargetLabelOf(e.target)}`).join(' / '))
+  // 名称就是效果：逐条核对（与手册步骤 32 的清单一致）。爆伤/暴击伤害是刻意简写，同 4号位。
+  const EXPECTED_TWO_PIECE = [
+    '暴击 8%=stat:critRate',
+    '爆伤 16%=stat:critDmg',
+    '精通 30=stat:mastery',
+    '局外攻击力 10%=stat:atkPercent',
+    '局外生命值 10%=stat:hpPercent',
+    '局外防御力 16%=stat:defPercent',
+    '增伤 10%=panel:dmgBonus',
+    '穿透率 8%=panel:penRate',
+    '能量恢复 20%=panel:energyRegen',
+    '异常掌控 8%=panel:anomalyControl',
+    '冲击力 6%=panel:impact',
+  ]
+  const actual = twoPiece.map((e) => `${e.label}=${e.target}`).sort()
+  check('2件套 11 条的名称与目标逐条符合手册清单',
+    JSON.stringify(actual) === JSON.stringify([...EXPECTED_TWO_PIECE].sort()),
+    actual.join(' , '))
+  // 去重的意义：组内不得出现「目标 + 每档」完全相同的两条
+  const sig = new Set(twoPiece.map((e) => `${e.target}=${e.perRoll}`))
+  check('2件套组内无重复效果', sig.size === twoPiece.length, `${sig.size} 种 / ${twoPiece.length} 条`)
+  // 震星迪斯科那条按说明文字填的冲击力
+  const impactSet = twoPiece.find((e) => e.label === '冲击力 6%')
+  check('震星迪斯科「冲击力 6%」在列（按说明文字填）',
+    impactSet?.target === 'panel:impact' && impactSet?.perRoll === 6,
+    impactSet ? `${impactSet.target}=${impactSet.perRoll}` : '(缺)')
 }
 
 // ---------- 5. 引擎调用上限 ----------
@@ -299,19 +671,32 @@ console.log('\n[5] 安全网')
 console.log('\n[6] 词条库解析')
 {
   const state = createDefaultAffixLibraryState()
-  // 默认参与 = 10 条副词条；14 条扩展（主词条/Buff 来源）默认不参与
+  // 默认参与 = 预设里默认启用的条目（副词条 + 4/5/6 号位主属性，见 impl-log 步骤 28）
   const active = resolveAffixLibrary(state)
-  check('默认参与 10 条副词条', active.length === 10, String(active.length))
+  const presetEnabled = createPresetAffixLibraryEntries().filter((e) => e.enabledByDefault)
+  check(
+    `默认参与 = 预设默认启用条数（${presetEnabled.length}）`,
+    active.length === presetEnabled.length,
+    String(active.length),
+  )
   const all = resolveAffixLibraryAll(state)
-  check('全量 24 条（含默认关闭的扩展）', all.length === 24, String(all.length))
-  check('扩展条目默认不参与',
-    all.filter((e) => !e.enabledByDefault).length === 14,
+  // 数量从预设构造器派生：新增预设条目时这里不该再变成陈旧断言
+  const presetTotal = createPresetAffixLibraryEntries().length
+  const presetOff = createPresetAffixLibraryEntries().filter((e) => !e.enabledByDefault).length
+  check(
+    `全量 = 预设条目数（${presetTotal}）`,
+    all.length === presetTotal,
+    String(all.length),
+  )
+  check('默认关闭的预设条目数与构造器一致',
+    all.filter((e) => !e.enabledByDefault).length === presetOff,
     String(all.filter((e) => !e.enabledByDefault).length))
-  const enabledOne = setAffixLibraryEntryEnabled(state, 'panel:dmgBonus', true)
-  check('显式启用增伤后 11 条', resolveAffixLibrary(enabledOne).length === 11,
+  const enabledOne = setAffixLibraryEntryEnabled(state, 'panel:reduceDefense', true)
+  check('显式启用一条默认关闭的条目后多 1 条',
+    resolveAffixLibrary(enabledOne).length === active.length + 1,
     String(resolveAffixLibrary(enabledOne).length))
   const disabledOne = setAffixLibraryEntryEnabled(state, 'substat:critRate', false)
-  check('禁用暴击率后 9 条', resolveAffixLibrary(disabledOne).length === 9,
+  check('禁用暴击率后少 1 条', resolveAffixLibrary(disabledOne).length === active.length - 1,
     String(resolveAffixLibrary(disabledOne).length))
 }
 

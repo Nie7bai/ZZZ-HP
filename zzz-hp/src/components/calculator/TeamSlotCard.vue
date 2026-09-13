@@ -7,7 +7,8 @@ import { computed } from 'vue'
 
 const props = defineProps<{
   index: number
-  slot: TeamSlot
+  /** 该槽位数据。prop 名不用 `slot` —— Vue 3 里 `slot` 是废弃的保留属性写法 */
+  slotData: TeamSlot
   agent?: AgentBuffDoc
   wengine?: WengineBuffDoc
   twoPieceDisc?: DriveDiscBuffDoc
@@ -55,10 +56,10 @@ const wengineProfessionMatch = computed(() => {
           min="0"
           max="6"
           step="1"
-          :value="slot.rank"
+          :value="slotData.rank"
           @input="emit('update:rank', Number(($event.target as HTMLInputElement).value))"
         />
-        <span class="rank-label">{{ slot.rank }}影</span>
+        <span class="rank-label">{{ slotData.rank }}影</span>
       </div>
 
       <div class="gear-row" :class="{ 'off-spec-wengine': wengine && !wengineProfessionMatch }" @click.stop>
@@ -77,11 +78,11 @@ const wengineProfessionMatch = computed(() => {
               min="1"
               max="5"
               step="1"
-              :value="slot.wengineRefine"
+              :value="slotData.wengineRefine"
               :disabled="!wengine || wengine.id === 'none' || !wengineProfessionMatch"
               @input="emit('update:refine', Number(($event.target as HTMLInputElement).value))"
             />
-            <span class="rank-label">{{ wengine ? (wengineProfessionMatch ? `精${slot.wengineRefine}` : '精-') : '-' }}</span>
+            <span class="rank-label">{{ wengine ? (wengineProfessionMatch ? `精${slotData.wengineRefine}` : '精-') : '-' }}</span>
           </div>
         </div>
       </div>

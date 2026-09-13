@@ -22,6 +22,7 @@ import {
 } from '@/types/calculatorPanel'
 import {
   AFFIX_VALUE_PER_COUNT,
+  applyAffixCountsOntoExternalPanel,
   applyAffixCountsToFixedParts,
   buildAffixExternalFixedParts,
   computeExternalPanelFromTeamSlot,
@@ -71,6 +72,7 @@ import { isEffectEnabled } from '@/utils/buffEffect'
 import {
   collectAllBuffEffects,
   computeFinalPanel,
+  hasExternalPanelForSlot,
   parseSourceKeySlotIndex,
   resolveAnomalyReleaseMultFields,
   type BuffSelectionState,
@@ -291,6 +293,20 @@ export interface OptimalEvalContext {
   driveDiscSelection: AffixPanelCalcInput['driveDiscSelection']
   driveDiscMainStats: AffixDriveDiscMainStats
   driveDiscs: DriveDiscBuffDoc[]
+  /**
+   * 主 C 的基准局外面板，来自「角色配置」（导入录入写入的 `activeSlotPanels`）。
+   *
+   * 有值时候选词条**叠加在它之上**（词条 = 在面板上再加 N 条，面板本身不动）；
+   * 无值时 `computeExternalForEval` 回退到按槽位配置推导 —— 与改造前逐位等价。
+   */
+  mainBaseExternalPanel?: PanelStats | null
+  /**
+   * 词条「每档值」表（由词条库条目的 `perRoll` 算出），省略时按 `AFFIX_VALUE_PER_COUNT`。
+   *
+   * 放进上下文而不是逐函数传参：柱图扫掠 / 详情 / 收益表 / 基准总伤都从 ctx 取面板，
+   * 少传一条路就会出现「同一套词条，两处数字不一样」——即 2026-09-11 修过的那类分叉。
+   */
+  valuePerCount?: AffixValuePerCount
   panelContext: PanelCalcContext
   enemyInput: DamageEnemyInput
   baseDamageSource: BaseDamageSource
@@ -392,7 +408,7 @@ function clampInt(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.round(value)))
 }
 
-function resolveAffixOutPercentCap(caps: AffixRollCaps, isMb: boolean, isFengYu: boolean): number {
+export function resolveAffixOutPercentCap(caps: AffixRollCaps, isMb: boolean, isFengYu: boolean): number {
   if (isMb) return caps.hpPercent
   if (isFengYu) return caps.defPercent
   return caps.atkPercent
@@ -683,7 +699,7 @@ function resolveExternalForAgent(
   if (slotIndex === ctx.panelContext.mainSlotIndex) return mainExternal
   const mapped = ctx.panelContext.slotExternalPanels?.[slotIndex]
   if (mapped) return fillPanelStatsDefaults(mapped)
-  const anomaly = ctx.panelContext.anomalySlotPanels?.[agentId]
+  const anomaly = ctx.panelContext.activeSlotPanels?.[agentId]
   if (anomaly) return fillPanelStatsDefaults(anomaly)
   return createDefaultExternalPanel()
 }
@@ -789,10 +805,23 @@ function resolveLuminousTeamModifiersForOptimal(
 
 export function evaluateOptimalEventDetail(
   ctx: OptimalEvalContext,
-  mainExternal: PanelStats,
+  mainExternal: PanelStats | null,
   hit: ResolvedHit,
-  options?: { includeDetails?: boolean },
+  options?: {
+    includeDetails?: boolean
+    /**
+     * 要求「该角色有面板」才出伤害（伤害页四条入口传 true；最优分配的候选评估不传）。
+     *
+     * 必要条件（所有者口径 2026-09-12）：没点导入 → 没有面板 → 没有伤害。
+     * 关掉它，Buff 里的固定攻击/暴击仍会算出一份不小的数 —— 那会让人以为面板还在。
+     */
+    requirePanel?: boolean
+  },
 ): OptimalEventEvalDetail | null {
+  // mainPanel 为 null 时（「伤害面板」3 选 1 选了角色配置面板），用主槽激活面板兜底：
+  // 普通模式的事件明细同样要能点开（同一套流程计算）。
+  const mainSlotAgentId = ctx.panelContext.teamSlots[ctx.panelContext.mainSlotIndex ?? -1]?.agentId
+  const mainPanel = mainExternal ?? (mainSlotAgentId ? ctx.panelContext.activeSlotPanels?.[mainSlotAgentId] : undefined) ?? null
   const includeDetails = options?.includeDetails !== false
   const panelOpts = includeDetails ? undefined : PANEL_NUMBERS_ONLY
   const skipReason = getHitSkipReason(hit, {
@@ -800,6 +829,8 @@ export function evaluateOptimalEventDetail(
     agents: ctx.panelContext.agents,
   })
   if (skipReason) return null
+  // 主 C 没面板时任何事件明细都算不出（主 C 面板是全部事件的参照基底）
+  if (!mainPanel) return null
 
   const damageType = hit.skill.damageType
   const anomalySubKind = hit.anomalySubKind
@@ -813,6 +844,18 @@ export function evaluateOptimalEventDetail(
 
   const evtPowerAgentId = hit.anomalyPowerAgentId
   if (eventNeedsTrigger && !evtPowerAgentId) return null
+
+  if (options?.requirePanel) {
+    // 出手的角色没面板 → 这一条不出伤害
+    if (!hasExternalPanelForSlot(ownerSlotIndex, ctx.panelContext)) return null
+    // 异常类还要强度提供者的面板（它身上的精通/异常增伤才配得出来）
+    if (eventNeedsTrigger && evtPowerAgentId) {
+      const providerSlotIndex = ctx.panelContext.teamSlots.findIndex(
+        (slot) => slot.agentId === evtPowerAgentId,
+      )
+      if (!hasExternalPanelForSlot(providerSlotIndex, ctx.panelContext)) return null
+    }
+  }
 
   const ownerAgent = ctx.panelContext.agents.find((item) => item.id === ownerAgentId)
   const evtOwnerIsMb = ownerAgent?.profession === MB_PROFESSION
@@ -838,7 +881,7 @@ export function evaluateOptimalEventDetail(
     ctx,
     ownerAgentId,
     ownerSlotIndex,
-    mainExternal,
+    mainPanel,
   )
   const ownerExtraMods = buildOptimalExtraModsForEvent(ctx, hit, ownerAgentId)
   const evtPanelCtx = {
@@ -846,7 +889,7 @@ export function evaluateOptimalEventDetail(
       ctx,
       ownerSlotIndex,
       ownerExternal,
-      mainExternal,
+      mainPanel,
       ownerExtraMods,
     ),
     skillContext: skillCtx,
@@ -891,13 +934,13 @@ export function evaluateOptimalEventDetail(
       producerExternalPanel = ownerExternal
       producerBreakdown = evtBreakdown
     } else {
-      const tExternal = resolveExternalForAgent(ctx, evtPowerAgentId, tSlotIndex, mainExternal)
+      const tExternal = resolveExternalForAgent(ctx, evtPowerAgentId, tSlotIndex, mainPanel)
       producerExternalPanel = tExternal
       const tExtraMods = buildOptimalExtraModsForEvent(ctx, hit, evtPowerAgentId)
       producerBreakdown = computeFinalPanel(
         tExternal,
         {
-          ...buildPanelContextForSlot(ctx, tSlotIndex, tExternal, mainExternal, tExtraMods),
+          ...buildPanelContextForSlot(ctx, tSlotIndex, tExternal, mainPanel, tExtraMods),
           skillContext: buildSkillContextFromHit(hit, tAgent?.element),
         },
         panelOpts,
@@ -945,12 +988,11 @@ export function evaluateOptimalEventDetail(
   }
 
   const sub = ctx.resolveSubcategory?.(hit.skill.buffAnchorId ?? null) ?? null
-  const overrides = hit.multOverrides
   // 倍率修正只写面板，避免与 resolveSkillMults 双重相乘
   const effectiveSub =
     sub && panelOverrides ? mergeSkillSubcategoryMultOverrides(sub, panelOverrides) : sub
 
-  const luminousMods = resolveLuminousTeamModifiersForOptimal(ctx, mainExternal, includeDetails)
+  const luminousMods = resolveLuminousTeamModifiersForOptimal(ctx, mainPanel, includeDetails)
 
   // 属性异常/异放/耀变类型增伤取触发者；紊乱/乱流取持有者；直伤回落 owner
   let anomalyTriggerPanel = evtFinalPanel
@@ -967,7 +1009,7 @@ export function evaluateOptimalEventDetail(
         ctx,
         hit.triggerAgentId,
         trigSlotIndex,
-        mainExternal,
+        mainPanel,
       )
       const trigAgent = ctx.panelContext.agents.find((item) => item.id === hit.triggerAgentId)
       bonusBreakdown = computeFinalPanel(
@@ -977,7 +1019,7 @@ export function evaluateOptimalEventDetail(
             ctx,
             trigSlotIndex,
             trigExternal,
-            mainExternal,
+            mainPanel,
             buildOptimalExtraModsForEvent(ctx, hit, hit.triggerAgentId),
           ),
           // 元素（属性系别）恒取异常强度提供者，避免触发者自身属性误匹配元素限定增益
@@ -1015,7 +1057,7 @@ export function evaluateOptimalEventDetail(
       const trigExternal =
         triggerId === ownerAgentId
           ? ownerExternal
-          : resolveExternalForAgent(ctx, triggerId, trigSlotIndex, mainExternal)
+          : resolveExternalForAgent(ctx, triggerId, trigSlotIndex, mainPanel)
       const trigAgent = ctx.panelContext.agents.find((item) => item.id === triggerId)
       const trigPanelCtx =
         triggerId === ownerAgentId
@@ -1025,7 +1067,7 @@ export function evaluateOptimalEventDetail(
                 ctx,
                 trigSlotIndex,
                 trigExternal,
-                mainExternal,
+                mainPanel,
                 buildOptimalExtraModsForEvent(ctx, hit, triggerId),
               ),
               // 元素（属性系别）恒取异常强度提供者，避免触发者自身属性误匹配元素限定增益
@@ -1121,7 +1163,7 @@ export function evaluateOptimalEventDetail(
     remielSelfRadianceCalc: resolveRemielSelfRadianceCalcForOptimal(
       ctx,
       evtPowerAgentId,
-      mainExternal,
+      mainPanel,
       skillCtx,
     ),
     disorderZoneMultOverride: zoneMultResolved.disorderZoneMult,
@@ -1158,8 +1200,8 @@ export function evaluateOptimalEventDetail(
   let remielSelfSources: OptimalPanelBreakdown['sources'] | undefined
   let remielSelfFinalPanel: PanelStats | undefined
   if (includeDetails && result.remielSelfRadianceActive && remiel) {
-    const remielExternal = resolveExternalForAgent(ctx, remiel.id, remiel.slotIndex, mainExternal)
-    const remielCtx = buildPanelContextForSlot(ctx, remiel.slotIndex, remielExternal, mainExternal)
+    const remielExternal = resolveExternalForAgent(ctx, remiel.id, remiel.slotIndex, mainPanel)
+    const remielCtx = buildPanelContextForSlot(ctx, remiel.slotIndex, remielExternal, mainPanel)
     const restricted = collectRemielSelfRestrictedContributions(
       remielExternal,
       { ...remielCtx, skillContext: skillCtx },
@@ -1363,7 +1405,7 @@ export function evaluateAffixCountsForSweep(
   panelDeltas?: AffixPanelDeltaMap,
 ): { grandTotal: number; eventLines: OptimalEventDamageLine[] } {
   resetAffixEvalCacheIfNeeded(ctx)
-  const cacheKey = affixCountsCacheKey(affixCounts, panelDeltas)
+  const cacheKey = affixEvalCacheKey(affixCounts, panelDeltas, ctx.valuePerCount)
   const cached = affixSweepCache.get(cacheKey)
   if (cached) return cached
 
@@ -1371,8 +1413,7 @@ export function evaluateAffixCountsForSweep(
 
   let payload: { grandTotal: number; eventLines: OptimalEventDamageLine[] }
   if (ctx.hits?.length) {
-    payload = computeEventDamageLinesForSweep(ctx, external)
-  } else {
+    payload = computeEventDamageLinesForSweep(ctx, external)  } else {
     const breakdown = computeFinalPanel(
       external,
       {
@@ -1434,6 +1475,20 @@ export function evaluateAffixCountsForSweep(
 
 const AFFIX_EVAL_CACHE_MAX = 800
 let affixEvalCacheCtxSig = ''
+/**
+ * 当前上下文在**缓存键里**用的短标识。
+ *
+ * 缺陷与实测（2026-09-11，用户报「词条计算变慢」）：此前缓存键直接把上下文签名
+ * （`affixEvalCacheCtxSig`）拼在前面，而签名含全量角色 / 音擎 / 驱动盘文档 ——
+ * 实测一次 30 词条求解里键长 **4,217,995 字符**，241 次评估中仅「拼键 + Map 查找 +
+ * Map 写入」就花掉 **13.2 s**（真算只占 0.84 s），把求解从 888 ms 拖到 14 s。
+ * 每次拼键都会新建一个 4 MB 字符串、每次哈希都要重算，纯属浪费。
+ *
+ * 签名本身只需回答「变没变」（`resetAffixEvalCacheIfNeeded` 比的是它，变了就整体清缓存），
+ * 因此缓存键里改成用**等价的短 id**：签名一变、id 必变，隔断语义与原来逐位相同。
+ */
+let affixEvalCacheCtxKey = ''
+let affixEvalCacheCtxSeq = 0
 /** 自定义词条（panelField 类）叠加到局外面板的增量表 */
 export type AffixPanelDeltaMap = Partial<Record<AffixPanelDeltaField, number>>
 const affixEvalCache = new Map<
@@ -1449,19 +1504,75 @@ const affixEvalCache = new Map<
   }
 >()
 
+/**
+ * 词条计数各字段的「每档值」。
+ *
+ * 由词条库条目决定（`entryRollsToEvalInput` 产出）：`stat:` 目标的条目用自己的
+ * `perRoll` 覆盖对应字段，未覆盖的字段回落 `AFFIX_VALUE_PER_COUNT`。
+ * 省略时全部走常量表 —— 柱图（词条计算页）等调用点因此行为不变。
+ */
+export type AffixValuePerCount = Record<keyof AffixCounts, number>
+
+/** valuePerCount 是否与默认常量表一致（一致就不进缓存键，保持既有键形态稳定） */
+function isDefaultValuePerCount(valuePerCount: AffixValuePerCount): boolean {
+  const keys = Object.keys(AFFIX_VALUE_PER_COUNT) as (keyof AffixCounts)[]
+  for (const key of keys) {
+    if (valuePerCount[key] !== AFFIX_VALUE_PER_COUNT[key]) return false
+  }
+  return true
+}
+
 function affixCountsCacheKey(
   affixCounts: AffixCounts,
   panelDeltas?: AffixPanelDeltaMap,
+  valuePerCount?: AffixValuePerCount,
 ): string {
   // 必须覆盖 AffixCounts 的全部字段：锋御走 defFlat/defPercent，
   // 漏掉会让不同防御档数命中同一条缓存，返回错误伤害。
   const base = `${affixCounts.hpFlat},${affixCounts.hpPercent},${affixCounts.atkFlat},${affixCounts.atkPercent},${affixCounts.defFlat},${affixCounts.defPercent},${affixCounts.pen},${affixCounts.critRate},${affixCounts.critDmg},${affixCounts.mastery}`
-  if (!panelDeltas) return base
+  /**
+   * 每档值必须进键。
+   *
+   * 本项目已因「缓存键漏字段」栽过两次（`defFlat/defPercent`、`agentBase/wengineAdvanced`）。
+   * 漏掉 `valuePerCount` 会以新形式复发同一个病症：
+   * **改「每档」数字，伤害一动不动** —— 正是本次词条库改造要修的东西。
+   * 默认值不进键，让柱图等既有调用点的键形态与改造前完全一致。
+   */
+  const valuePart =
+    valuePerCount && !isDefaultValuePerCount(valuePerCount)
+      ? `|vpc:${(Object.keys(AFFIX_VALUE_PER_COUNT) as (keyof AffixCounts)[])
+          .map((key) => valuePerCount[key])
+          .join(',')}`
+      : ''
+  if (!panelDeltas) return `${base}${valuePart}`
   const parts = (Object.keys(panelDeltas) as AffixPanelDeltaField[])
     .sort()
     .filter((key) => Boolean(panelDeltas[key]))
     .map((key) => `${key}=${panelDeltas[key]}`)
-  return parts.length ? `${base}|${parts.join(',')}` : base
+  const deltaPart = parts.length ? `|${parts.join(',')}` : ''
+  return `${base}${valuePart}${deltaPart}`
+}
+
+/**
+ * 评估缓存键 = **上下文短标识** + 词条数。
+ *
+ * 只按词条数做键时，同一套词条在不同上下文下会互相命中：实测（2026-09-11，真实方案）
+ * 主属性组合试算用 `mainBaseExternalPanel: null` 评估（换主属性必须重新推导面板），
+ * 它把「无基准」的结果写进缓存；随后柱图/详情再评估同一套词条直接命中该条，
+ * 详情总伤从 74,222,437 掉成 56,758,629 —— 就是用户看到的「柱图与详情对不上」。
+ *
+ * 标识由 `resetAffixEvalCacheIfNeeded()` 在调用前备好（同一份 ctx 走记忆化，不增开销），
+ * 这里直接复用；这样即便将来签名又漏了字段，也不会跨上下文串值。
+ *
+ * 注意**不要**把签名原文（几 MB）拼进键：那会让每次评估都新建并哈希一个巨型字符串，
+ * 实测把求解从 888 ms 拖到 14 s（见 `affixEvalCacheCtxKey` 的说明）。
+ */
+function affixEvalCacheKey(
+  affixCounts: AffixCounts,
+  panelDeltas?: AffixPanelDeltaMap,
+  valuePerCount?: AffixValuePerCount,
+): string {
+  return `${affixEvalCacheCtxKey}|${affixCountsCacheKey(affixCounts, panelDeltas, valuePerCount)}`
 }
 
 function serializeBuffSelection(state: BuffSelectionState | null | undefined): string {
@@ -1540,12 +1651,29 @@ function computeAffixEvalContextSignature(ctx: OptimalEvalContext): string {
     JSON.stringify(ctx.wengineAdvanced ?? null),
     ctx.baseDamageSource ?? '',
     JSON.stringify(ctx.driveDiscMainStats),
+    /**
+     * 基准局外面板必须入签名。
+     *
+     * 主属性组合试算会用 `mainBaseExternalPanel: null` 评估「换一套主属性会怎样」
+     * （见组件 `evaluateMainStatComboDamage`：主属性变了面板必须重新推导），
+     * 而它的主属性/套装在「当前这套」时与常规 ctx 完全相同 —— 也就是说**只有基准不同**。
+     * 漏掉它，两者签名一致 → 共用同一份缓存 → 谁先算谁的值被另一边读走。
+     */
+    JSON.stringify(ctx.mainBaseExternalPanel ?? null),
+    /**
+     * 每档值必须入签名。
+     *
+     * 它与 `agentBase` / `wengineAdvanced` 同类：都影响「由词条数算出来的局外面板」。
+     * 词条库改「每档」后若签名不变，柱图 / 详情 / 基准总伤会共用同一条旧缓存，
+     * 表现为「改了每档，数字一动不动」。
+     */
+    JSON.stringify(ctx.valuePerCount ?? null),
     // 主词条组合试算会改 2/4 件套；缺失会导致同词条数命中旧缓存，伤害不变
     JSON.stringify(ctx.driveDiscSelection),
     JSON.stringify(ctx.enemyInput),
     JSON.stringify(ctx.panelContext.skillContext),
     JSON.stringify(ctx.extraGains ?? []),
-    JSON.stringify(ctx.panelContext.anomalySlotPanels ?? {}),
+    JSON.stringify(ctx.panelContext.activeSlotPanels ?? {}),
     JSON.stringify(ctx.panelContext.convertSlotPanels ?? {}),
     events,
     serializeMultiSlotBuffSelection(ctx.slotBuffSelections),
@@ -1584,6 +1712,16 @@ function computeAffixEvalContextSignature(ctx: OptimalEvalContext): string {
     ctx.panelContext.bangbooRefine ?? 1,
     JSON.stringify(ctx.panelContext.buffSelection ?? null),
     JSON.stringify(ctx.panelContext.extraMods ?? null),
+    /**
+     * 场地 / 环境 Buff（危局、Boss 场地、防卫房间）必须入签名，且要含**内容**。
+     *
+     * 缺陷与实测（2026-09-11，`scripts/test-env-buff-cache-key.mjs`）：
+     * 原先只有 `buffSelection`（勾选状态）。同一 effect id、勾选不变、仅改数值
+     * （+30% → +60%）时签名不变 → 词条评估沿用旧值（实测两次都是 1484）。
+     * 同批把 `panelBuffCalc.environmentBuffsKey` 也从「只用 sourceKey」改为含内容，
+     * 否则面板级目录缓存同样会停在旧 mods；两处缺一不可。
+     */
+    JSON.stringify(ctx.panelContext.environmentBuffs ?? null),
     ctx.panelContext.liveExternalSlotIndex ?? '',
   ].join('|')
 }
@@ -1610,6 +1748,9 @@ function resetAffixEvalCacheIfNeeded(ctx: OptimalEvalContext) {
     stableEventLinesByHitId = null
     mainAgentTeamConvertReadsPanelCached = null
     affixEvalCacheCtxSig = sig
+    // 签名变了 → 换一把短 id，缓存键里的上下文段随之失效（见 affixEvalCacheCtxKey）
+    affixEvalCacheCtxSeq += 1
+    affixEvalCacheCtxKey = `c${affixEvalCacheCtxSeq}`
   }
 }
 
@@ -1620,6 +1761,8 @@ export function clearAffixEvalCache() {
   stableEventLinesByHitId = null
   mainAgentTeamConvertReadsPanelCached = null
   affixEvalCacheCtxSig = ''
+  affixEvalCacheCtxSeq += 1
+  affixEvalCacheCtxKey = `c${affixEvalCacheCtxSeq}`
 }
 
 function getAffixExternalFixedParts(ctx: OptimalEvalContext): AffixExternalFixedParts {
@@ -1637,19 +1780,55 @@ function getAffixExternalFixedParts(ctx: OptimalEvalContext): AffixExternalFixed
   return affixExternalFixedParts
 }
 
+/**
+ * 本次评估用的主 C 局外面板 —— 求解 / 扫掠 / 收益表唯一的「取面板」入口。
+ *
+ * 有基准面板（「角色配置」录入的那份，`activeSlotPanels`）时：**面板是起点，
+ * 候选词条叠加其上** —— 词条是「在面板上再加 N 条」，不反推也不扣减面板里已有的词条。
+ * 百分比词条按「角色基础 + 音擎基础」折算，与 `applyAffixCountsToFixedParts` 同口径。
+ *
+ * 没有基准面板时回退到按槽位配置推导，行为与改造前逐位等价。
+ */
 function computeExternalForEval(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
   panelDeltas?: AffixPanelDeltaMap,
+  valuePerCount?: AffixValuePerCount,
 ): PanelStats {
-  const external = applyAffixCountsToFixedParts(getAffixExternalFixedParts(ctx), affixCounts)
-  return panelDeltas ? applyPanelDeltas(external, panelDeltas) : external
+  // 显式参数优先（求解器 / 收益表按自己的条目表算），否则用上下文里那份 ——
+  // 页面所有展示路径共用同一个 ctx，因此「每档」在哪儿改，哪儿就跟着变。
+  const vpc = valuePerCount ?? ctx.valuePerCount
+  const base = ctx.mainBaseExternalPanel
+  const external = base
+    ? applyAffixCountsOntoExternalPanel(
+        base,
+        affixCounts,
+        {
+          hp: ctx.agentBase?.hp ?? 0,
+          atk: (ctx.agentBase?.atk ?? 0) + (ctx.wengineBaseAtk ?? 0),
+          def: (ctx.agentBase?.def ?? 0) + (ctx.wengineBaseDef ?? 0),
+        },
+        vpc,
+      )
+    : applyAffixCountsToFixedParts(getAffixExternalFixedParts(ctx), affixCounts, vpc)
+  if (!panelDeltas) return external
+  /**
+   * 条目贡献的折算基础：**主 C 槽位的角色基础面板**，与主属性 / Buff 同口径。
+   *
+   * 不传就会让「异常掌控 / 能量恢复」这两个按基础值乘算的字段贡献归零 ——
+   * 所以这里是必填参数，漏传由类型检查拦住（见 `applyPanelDeltas`）。
+   */
+  return applyPanelDeltas(external, panelDeltas, {
+    anomalyControl: ctx.agentBase?.anomalyControl ?? 0,
+    energyRegen: ctx.agentBase?.energyRegen ?? 0,
+  })
 }
 
 function evaluateAffixCountsUncached(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
   panelDeltas?: AffixPanelDeltaMap,
+  valuePerCount?: AffixValuePerCount,
 ): {
   finalPanel: PanelStats
   result: DamageCalcResult
@@ -1659,7 +1838,7 @@ function evaluateAffixCountsUncached(
   grandTotal: number
   eventLines: OptimalEventDamageLine[]
 } {
-  const external = computeExternalForEval(ctx, affixCounts, panelDeltas)
+  const external = computeExternalForEval(ctx, affixCounts, panelDeltas, valuePerCount)
 
   if (ctx.hits?.length) {
     const { grandTotal, eventLines, firstResult, firstBreakdown } = computeEventDamageLines(
@@ -1795,13 +1974,15 @@ export function evaluateAffixCountsWithCacheInfo(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
   panelDeltas?: AffixPanelDeltaMap,
+  valuePerCount?: AffixValuePerCount,
 ): { value: AffixCountsEvalResult; cacheHit: boolean } {
   resetAffixEvalCacheIfNeeded(ctx)
-  const cacheKey = affixCountsCacheKey(affixCounts, panelDeltas)
+  const vpc = valuePerCount ?? ctx.valuePerCount
+  const cacheKey = affixEvalCacheKey(affixCounts, panelDeltas, vpc)
   const cached = affixEvalCache.get(cacheKey)
   if (cached) return { value: cached, cacheHit: true }
 
-  const result = evaluateAffixCountsUncached(ctx, affixCounts, panelDeltas)
+  const result = evaluateAffixCountsUncached(ctx, affixCounts, panelDeltas, vpc)
   if (affixEvalCache.size >= AFFIX_EVAL_CACHE_MAX) {
     const firstKey = affixEvalCache.keys().next().value
     if (firstKey) affixEvalCache.delete(firstKey)
@@ -1814,8 +1995,38 @@ export function evaluateAffixCounts(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
   panelDeltas?: AffixPanelDeltaMap,
+  valuePerCount?: AffixValuePerCount,
 ): AffixCountsEvalResult {
-  return evaluateAffixCountsWithCacheInfo(ctx, affixCounts, panelDeltas).value
+  return evaluateAffixCountsWithCacheInfo(ctx, affixCounts, panelDeltas, valuePerCount).value
+}
+
+/**
+ * 「只改了固定词条（精通/穿透/小攻等）」时，能否原地刷新既有柱体而不重新枚举结构。
+ *
+ * 结构条件：既有各柱仍是「局外大% + 爆伤 = 剩余档数」。
+ *
+ * **上限条件同样必须满足**（2026-09-11 补）：4/5/6 主属性变化会改变主词条上限
+ * （36 − 6×同类数）。上限收紧后若仍原地刷新，就会留下完整扫掠本会跳过的柱 ——
+ * 实测（局外大防御上限 30 → 24，总词条 30）：完整扫掠出 25 根，原地刷新保留 31 根，
+ * 柱图里凭空多出 25~30 档「已超上限」的柱，且与 X 轴上限规则自相矛盾。
+ */
+export function canReuseDirectSweepStructure(
+  points: DirectSweepPoint[],
+  state: DirectAllocState,
+  isMb: boolean,
+  isFengYu: boolean,
+  mainStats: AffixDriveDiscMainStats,
+): boolean {
+  const crit = Math.round(state.critRate)
+  const total = Math.round(state.totalRolls)
+  const fixedAtk = isMb ? Math.round(state.atkPercent) : 0
+  const remain = isMb ? total - crit - fixedAtk : total - crit
+  if (remain < 0 || !points.length) return false
+  if (!points.every((p) => p.outPercent + p.critDmg === remain)) return false
+  const caps = getAffixRollCaps(mainStats)
+  if (crit > caps.critRate) return false
+  const outCap = resolveAffixOutPercentCap(caps, isMb, isFengYu)
+  return points.every((p) => p.outPercent <= outCap && p.critDmg <= caps.critDmg)
 }
 
 export function sweepDirectDamage(
@@ -2495,8 +2706,21 @@ export function buildOptimalEvalContext(input: {
   skillContext?: SkillCalcContext | null
   buffSelection?: BuffSelectionState | null
   slotBuffSelections?: MultiSlotBuffSelection | null
-  anomalySlotPanels?: Record<string, PanelStats>
+  /** 已解析的激活面板（每人一份）：调用方解析完来源再传进来 */
+  activeSlotPanels?: Record<string, PanelStats>
+  /** 主 C「词条导入」那一路的词条数（没有存面板时用来现推局外） */
+  mainAffixCounts?: AffixCounts
   convertSlotPanels?: import('@/utils/panelBuffCalc').ConvertSlotPanels
+  /**
+   * 各槽位局外面板（`index → PanelStats`），**整份覆盖**默认解析。
+   *
+   * 为什么需要：默认解析是「激活面板，取不到则按配置推导」（本文件下方 `Object.fromEntries`），
+   * 而面板计算链路取不到时会回落到「转模部分面板 → 默认面板」。两条链路的回落不同，
+   * 合并时由调用方把自己那份解析结果传进来，保证逐位一致
+   * （见 `dev-docs/affix-calc-manual.md` §4；实施见提交「计算链路统一·步骤①」）。
+   * 省略 = 保持原有解析。
+   */
+  slotExternalPanels?: Record<number, PanelStats>
   hits?: ResolvedHit[]
   /** 页级异常强度提供者 id（命名含 trigger，实为 power） */
   triggerAnomalyAgentId?: string | null
@@ -2504,6 +2728,11 @@ export function buildOptimalEvalContext(input: {
   skillSubcategories?: SkillSubcategory[]
   followUpSkillRules?: import('@/types/calculator').FollowUpSkillRule[]
   environmentBuffs?: import('@/utils/environmentBuffCalc').EnvironmentBuffEntry[]
+  /**
+   * 词条「每档值」表（词条库条目的 `perRoll`）。省略 = 按 `AFFIX_VALUE_PER_COUNT`，
+   * 与改造前的行为逐位一致。
+   */
+  valuePerCount?: AffixValuePerCount
 }): OptimalEvalContext {
   // 深解包响应式代理：引擎会对这批数据做海量属性读取，走 Proxy 陷阱会慢 3 倍以上
   // （实测 16.4ms → 5.3ms/次评估，见 reactiveUnwrap.ts）。只换引用不改值，
@@ -2517,9 +2746,24 @@ export function buildOptimalEvalContext(input: {
       ? input.wengines.find((w) => w.id === mainSlot.wengineId)
       : null
 
+  /**
+   * 主 C 的**基准局外面板**：来自「角色配置」（导入录入写入的 `activeSlotPanels`）。
+   *
+   * 面板是起点，候选词条在它之上叠加 —— 见 `computeExternalForEval`。取不到时留 null，
+   * 由 `computeExternalForEval` 回退到「按槽位配置推导」（改造前的行为，逐位等价）。
+   */
+  const mainSavedPanel = mainSlot.agentId ? input.activeSlotPanels?.[mainSlot.agentId] : undefined
+  const mainBaseExternalPanel =
+    mainSavedPanel && !isPlaceholderExternalPanel(mainSavedPanel)
+      ? fillPanelStatsDefaults(mainSavedPanel)
+      : null
+
   return {
     isMb: input.isMb,
     isFengYu: Boolean(input.isFengYu),
+    mainBaseExternalPanel,
+    // 词条库条目的「每档值」：不放这里就得在每个展示路径上各传一次，漏一处就分叉
+    valuePerCount: input.valuePerCount,
     agentBase: mainAgent?.basePanel ?? createEmptyAgentBasePanel(),
     wengineBaseAtk: mainWengine?.baseAtk ?? 0,
     wengineBaseDef: mainWengine?.baseDef ?? 0,
@@ -2541,41 +2785,43 @@ export function buildOptimalEvalContext(input: {
       driveDiscs: input.driveDiscs,
       skillContext: input.skillContext,
       buffSelection: input.buffSelection,
-      anomalySlotPanels: input.anomalySlotPanels,
+      activeSlotPanels: input.activeSlotPanels,
       convertSlotPanels: input.convertSlotPanels,
-      slotExternalPanels: Object.fromEntries(
-        input.teamSlots.flatMap((slot, index) => {
-          if (!slot.agentId) return []
-          // 主 C：由最优词条扫掠推导；队友：优先用手填局外，避免盖掉「导入」录入
-          if (index !== input.mainSlotIndex) {
-            const saved = input.anomalySlotPanels?.[slot.agentId]
+      slotExternalPanels:
+        input.slotExternalPanels ??
+        Object.fromEntries(
+          input.teamSlots.flatMap((slot, index) => {
+            if (!slot.agentId) return []
+            // 局外面板统一以「角色配置」为准（导入录入写入的 activeSlotPanels）；
+            // 主 C 的候选词条叠加不在这里，见 computeExternalForEval。
+            const saved = input.activeSlotPanels?.[slot.agentId]
             if (saved && !isPlaceholderExternalPanel(saved)) {
               return [[index, fillPanelStatsDefaults(saved)]]
             }
-          }
-          return [
-            [
-              index,
-              computeExternalPanelFromTeamSlot({
-                slot,
-                agents: input.agents,
-                wengines: input.wengines,
-                driveDiscs: input.driveDiscs,
-                overrideAffix:
-                  index === input.mainSlotIndex
-                    ? {
-                        affixCounts: {
-                          ...createEmptyAffixCounts(),
-                          ...slot.affixCounts,
-                        },
-                        affixDriveDiscMainStats: input.driveDiscMainStats,
-                      }
-                    : undefined,
-              }),
-            ],
-          ]
-        }),
-      ),
+            return [
+              [
+                index,
+                computeExternalPanelFromTeamSlot({
+                  slot,
+                  agents: input.agents,
+                  wengines: input.wengines,
+                  driveDiscs: input.driveDiscs,
+                  overrideAffix:
+                    index === input.mainSlotIndex
+                      ? {
+                          // 词条数来自「词条导入」那份来源记录（老方案经 v4 迁移后同在一处）
+                          affixCounts: {
+                            ...createEmptyAffixCounts(),
+                            ...input.mainAffixCounts,
+                          },
+                          affixDriveDiscMainStats: input.driveDiscMainStats,
+                        }
+                      : undefined,
+                }),
+              ],
+            ]
+          }),
+        ),
       baseAnomalyControl: mainAgent?.basePanel.anomalyControl ?? 0,
       baseEnergyRegen: mainAgent?.basePanel.energyRegen ?? 0,
       environmentBuffs: input.environmentBuffs,

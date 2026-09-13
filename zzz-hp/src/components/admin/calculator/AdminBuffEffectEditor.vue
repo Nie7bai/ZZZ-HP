@@ -94,7 +94,7 @@ const followUpSubcategories = computed(() => {
   })
 })
 
-function skillTargetOptionsFor(_effect: BuffEffect) {
+function skillTargetOptionsFor() {
   return BUFF_SKILL_TARGET_OPTIONS
 }
 
@@ -664,7 +664,7 @@ defineExpose({
                 "
               >
                 <option
-                  v-for="opt in skillTargetOptionsFor(effect)"
+                  v-for="opt in skillTargetOptionsFor()"
                   :key="opt.id"
                   :value="opt.id"
                 >

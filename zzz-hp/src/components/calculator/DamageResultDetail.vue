@@ -94,11 +94,6 @@ const props = defineProps<{
 
 const anomalySubKind = computed(() => props.anomalySubKind ?? 'anomaly')
 
-function round(v: number, p = 2) {
-  const f = 10 ** p
-  return Math.round(v * f) / f
-}
-
 function formatNumber(v: number) {
   return Math.round(v).toLocaleString('en-US')
 }
@@ -183,19 +178,6 @@ const disorderFormulaParts = computed(() => {
     formatFormulaNumber(p.disorderZone),
     formatFormulaNumber(p.disorderDmgBonusZone),
   ]
-})
-
-const turbulenceFormulaParts = computed(() => {
-  const p = props.calcParts
-  const parts = [
-    formatNumber(anomalyBaseWithMutation.value),
-    formatFormulaNumber(p.turbulenceZone),
-    formatFormulaNumber(p.turbulenceCombinedDmgBonusZone),
-  ]
-  if (p.turbulenceUsesAnomalyCrit) {
-    parts.push(formatFormulaNumber(p.anomalyCritZone))
-  }
-  return parts
 })
 
 type ValueTipsKey =
@@ -1467,14 +1449,14 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
             :key="`general-${term.label}`"
           >
             <span v-if="index > 0" class="formula-aligned-op" aria-hidden="true">×</span>
-            <div class="formula-aligned-term">
+            <div class="formula-aligned-term formula-aligned-term--inline">
               <span class="formula-aligned-term-label">{{ term.label }}</span>
               <span class="formula-aligned-term-value">
                 <StatValueWithSources :value="term.value" :groups="valueTips[term.tipsKey]" />
               </span>
             </div>
           </template>
-          <span class="formula-aligned-op" aria-hidden="true">=</span>
+          <span class="formula-aligned-op" aria-hidden="true">→</span>
           <div class="formula-aligned-result">
             <StatValueWithSources
               :value="alignedGeneralFormula.result"
@@ -1540,7 +1522,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
                 </span>
               </div>
             </template>
-            <span class="formula-aligned-op" aria-hidden="true">=</span>
+            <span class="formula-aligned-op" aria-hidden="true">→</span>
             <div v-if="group.dualResults?.length" class="formula-aligned-dual">
               <div
                 v-for="item in group.dualResults"
@@ -1684,80 +1666,89 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
   flex-direction: column;
 }
 
+/* ===== 标题层：墨色、字重对比（editorial 风格） ===== */
 .result-section-title {
-  margin: 0.85rem 0 0.45rem;
-  font-size: 0.88rem;
-  color: #e8d4a8;
+  margin: 0.9rem 0 0.5rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--calc-text, #1c212a);
+  letter-spacing: 0.01em;
 }
 
 .result-section-title:first-child {
-  margin-top: 0;
+  margin-top: 0.1rem;
 }
 
 .result-subsection-title {
   grid-column: 1 / -1;
-  margin: 0.65rem 0 0.15rem;
+  margin: 0.75rem 0 0.25rem;
   font-size: 0.82rem;
-  color: #c9a55c;
-  font-weight: 600;
+  font-weight: 700;
+  color: var(--calc-text, #1c212a);
 }
 
 .result-subsection-title:first-child {
   margin-top: 0;
 }
 
+/* ===== 公式卡片：白底 + 1px 细边框 + 大方角；宽度按内容自适应（右端不撑满） ===== */
 .formula-block {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  margin: 0.35rem 0 0.55rem;
-  padding: 0.65rem 0.75rem;
-  border: 1px solid #2d323a;
-  border-radius: 10px;
-  background: #0f1217;
+  margin: 0.35rem 0 0.6rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--calc-border, #d5dae3);
+  border-radius: 8px;
+  background: var(--calc-surface-2, #f1efe9);
+  width: fit-content;
+  max-width: 100%;
 }
 
 .formula-label {
   display: inline-block;
   min-width: 6.5em;
-  margin-right: 0.45rem;
-  color: #e8d4a8;
-  font-weight: 600;
+  margin-right: 0.22rem;
+  color: var(--calc-text, #1c212a);
+  font-weight: 700;
 }
 
 .formula-block--aligned {
   gap: 0;
 }
 
+/* 公式组：左 label 列 + 右公式行，垂直居中（列间距收紧） */
 .formula-aligned-group {
   display: grid;
   grid-template-columns: 6.95em minmax(0, 1fr);
-  gap: 0.35rem 0.45rem;
-  padding: 0.55rem 0;
-  align-items: start;
+  gap: 0.5rem 0.3rem;
+  padding: 0.6rem 0;
+  align-items: center;
 }
 
 .formula-aligned-group + .formula-aligned-group {
-  border-top: 1px solid #252a32;
+  border-top: 1px solid var(--calc-border, #d5dae3);
 }
 
 .formula-agent-label {
-  color: #6eb6ff;
+  color: var(--calc-text, #1c212a);
   font-weight: 600;
 }
 
 .formula-aligned-title {
   margin: 0;
-  padding-top: 0.15rem;
   line-height: 1.45;
 }
 
+/* 公式行：术语与值并排（与直伤期望公式同风格），一行放不下横向滚动 */
 .formula-aligned-body {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 0.35rem 0.45rem;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.3rem 0.5rem;
   min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 0.1rem;
 }
 
 .formula-aligned-term {
@@ -1765,21 +1756,30 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
   flex-direction: column;
   align-items: center;
   gap: 0.2rem;
-  min-width: 0;
+  min-width: 4.2em;
+}
+
+.formula-aligned-term--inline {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 0.28rem;
+  flex-shrink: 0;
 }
 
 .formula-aligned-term-label {
   font-size: 0.75rem;
   line-height: 1.35;
-  color: #b7c0cd;
+  color: var(--calc-text, #1c212a);
   text-align: center;
   white-space: nowrap;
+  letter-spacing: 0.02em;
 }
 
 .formula-aligned-hint {
   display: block;
   margin-top: 0.15rem;
-  color: #8a93a0;
+  color: var(--calc-text, #1c212a);
   font-size: 0.68rem;
   font-weight: 400;
   line-height: 1.35;
@@ -1787,39 +1787,40 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
 }
 
 .formula-aligned-term-value {
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   line-height: 1.4;
-  color: #d4dbe6;
+  color: var(--calc-text, #1c212a);
   text-align: center;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .formula-aligned-term-value :deep(.stat-value > strong) {
-  color: #d4dbe6;
-  font-weight: 400;
+  color: var(--calc-text, #1c212a);
+  font-weight: 600;
 }
 
 .formula-aligned-op {
   flex: 0 0 auto;
   align-self: center;
-  padding-bottom: 0.15rem;
-  color: #8a93a0;
+  color: var(--calc-text, #1c212a);
   font-size: 0.78rem;
 }
 
 .formula-aligned-result {
   flex: 0 0 auto;
-  align-self: flex-end;
-  padding-bottom: 0.05rem;
-  font-size: 0.8rem;
-  font-weight: 600;
+  align-self: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--calc-accent, #c9a55c);
+  font-variant-numeric: tabular-nums;
 }
 
 .formula-aligned-dual {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  align-self: flex-end;
+  align-self: center;
 }
 
 .formula-aligned-result--dual {
@@ -1829,36 +1830,56 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
   align-items: flex-start;
 }
 
+/* ===== 参数表：两列（参数名称左对齐 | 数值右对齐），每行一项，行分隔线 ===== */
 .result-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.4rem 0.6rem;
-  margin-top: 0.35rem;
+  grid-template-columns: 1fr;
+  gap: 0;
+  margin-top: 0.5rem;
   font-size: 0.82rem;
-  color: #c5cad3;
+  color: var(--calc-text, #1c212a);
 }
 
 .result-grid p {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 0.6rem;
   margin: 0;
+  padding: 0.3rem 0.1rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--calc-border, #d5dae3) 55%, transparent);
 }
 
+.result-grid p > :last-child {
+  flex-shrink: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 汇总行：整行跨列 + 上边框强调 + 结果加粗高亮 */
 .result-total {
   grid-column: 1 / -1;
-  margin-top: 0.3rem !important;
-  border-top: 1px solid #2a2f36;
-  padding-top: 0.5rem;
+  margin-top: 0.45rem !important;
+  border-top: 1px solid var(--calc-border, #d5dae3);
+  border-bottom: none !important;
+  padding-top: 0.55rem;
+  font-weight: 700;
+  color: var(--calc-accent, #c9a55c);
 }
 
 .result-subtotal {
   grid-column: 1 / -1;
-  margin-top: 0.15rem !important;
-  border-top: 1px dashed #2a2f36;
-  padding-top: 0.35rem;
+  margin-top: 0.3rem !important;
+  border-top: 1px dashed var(--calc-border, #d5dae3);
+  border-bottom: none !important;
+  padding-top: 0.45rem;
+  font-weight: 700;
+  color: var(--calc-accent, #c9a55c);
 }
 
 @media (max-width: 980px) {
   .result-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1871,5 +1892,16 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
     flex-wrap: wrap;
     gap: 0.35rem;
   }
+}
+
+
+/* 暗夜模式：组件根重定义 --calc-*（照抄仓库既有约定：AffixBenefitTable 的 benefit-workbench 写法） */
+:global([data-theme='dark'] .damage-result-detail) {
+  --calc-surface-2: rgba(0, 0, 0, 0.25);
+  --calc-border: #2a2f37;
+  --calc-text: #e8eaed;
+  --calc-muted: #9aa3b0;
+  --calc-input-bg: #171a1f;
+  --calc-accent-bg: rgba(201, 165, 92, 0.14);
 }
 </style>

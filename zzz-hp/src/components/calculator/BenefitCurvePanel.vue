@@ -53,22 +53,7 @@ const mode = defineModel<'cumulative' | 'marginal'>('mode', { default: 'cumulati
   align-items: center;
 }
 
-.chip {
-  border: 1px solid #333841;
-  border-radius: 999px;
-  background: #1a1e25;
-  color: #d5dae3;
-  font: inherit;
-  font-size: 0.8rem;
-  padding: 0.3rem 0.75rem;
-  cursor: pointer;
-}
-
-.chip.active {
-  border-color: rgba(191, 255, 9, 0.45);
-  background: rgba(191, 255, 9, 0.12);
-  color: #bfff09;
-}
+/* 曲线模式切换用统一 chip：见 `assets/calculatorChip.css`（改造前这里自带一套青柠色选中） */
 
 .hint {
   margin: 0;

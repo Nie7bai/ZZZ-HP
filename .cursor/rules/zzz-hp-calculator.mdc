@@ -16,13 +16,14 @@ globs:
 - **额外 Buff「自身」= 编队正在编辑的角色**，不跟招式持有者走。全队仍打全队。
 - 主链路：`panelBuffCalc.computeFinalPanel` → `resolvedHit.resolveFlow` → `damageCalc.computeDamageResult`（旧 `damageEvent` 封装还在，拆旧见 `dev-docs/skill-flow-todo.md`）。
 - **局内通用面板不吃招式限定 Buff**（`coords: []`）。普攻 +20% 这类只在对应直伤招式结算时进乘区，见 `buildGenericPanelSkillContext` / `buildSkillContextFromHit`。
-- 局外手填走 `anomalySlotPanels`；词条推导走 `affixPanelCalc.ts`，不经局内 Buff 层。伤害计算页顶 Tab 决定三人一起用手填还是用词条公式（没有槽位 `entryMode`）。
-- 页顶三个 Tab：面板计算 / 词条计算 / 最优词条分配。最优输入独立、三人共用一组 4/5/6，不进方案。
-- 词条 / 面板从哪来：`dev-docs/affix-calc-manual.md`。**改这块必须回写该手册。**
-- 词条卡顿 / 预聚合：`dev-docs/affix-perf-vs-zzz-dev.md`（已落地、先停口径、还可动都在这份）。改词条时非转模加成应复用目录缓存，只重折转模。招式伤害照实走，不缓存柱伤害。最优柱图与招式总伤以「开始计算」为锚点；改暴击/总词条不自动重扫。「开始计算」不做「计算过程」细账，点开那一页再做。
+- **局外面板：每人两份、一份激活**（`slotPanels[agentId]`，类型 `AgentPanelSources`：`importedPanel` / `affixDerivedPanel` / `active`）。取面板**只有一个入口** `agentPanelSources.resolveActivePanel`；下游不分来源、不按模式二次分流。两份都没有 → 空面板 → 不出伤害。
+- 左侧「面板导入 / 词条导入」两个按钮**已冻结**（会改掉算进伤害的面板，2026-09-11），只作展示、不可点；面板照常在「代理人 → 导入」里录入。只有「最优词条分配」可点。
+- 词条数 / 4-5-6 主属性跟「词条导入」那份**同一条记录**、**随方案走**；最优页读主 C 那条。
+- 词条 / 面板口径：`dev-docs/affix-calc-manual.md`（§1 双来源、§2 冻结、§3 归属、§4 伤害面板三选项、§5 搜索口径、§7 局内缓存）。**改这块必须回写该手册。**
+- 词条卡顿 / 局内缓存：`dev-docs/affix-calc-manual.md` §7 面板层级与局内缓存口径。改词条时非转模加成应复用目录缓存，只重折转模。招式伤害照实走，不缓存柱伤害。最优柱图与招式总伤以「开始计算」为锚点；改暴击/总词条不自动重扫。「开始计算」不做「计算过程」细账，点开那一页再做。
 - 改公式前读：`ZZZ-HP/CALCULATOR_FORMULAS.md`、`dev-docs/dev-manual.md`；索引见 `dev-docs/zzz-hp-main-index.md`。
 - 招式库改造：方案 `dev-docs/skill-flow-redesign.md`，待办 `dev-docs/skill-flow-todo.md`，未来改造 `dev-docs/skill-flow-future.md`（现在不做，勿当开工项）。
-- 招式流程 UI：计算页**页内展开**；详情 / 新建才 Teleport。`skill-flow-modal-spec.md` 是 8-13 弹窗稿，主界面以代码为准。
+- 招式流程 UI：计算页**页内展开**；详情 / 新建才 Teleport。以代码为准。
 - 公共预设只有按元素拆的**属性异常**（无流明；含霜）。倍率写在招式上，与面板默认值同一套（电 125、火 50、以太 62.5），不再额外乘。见 `publicAnomalySkills.ts`。
 - UI：`.chip.active`（金边金底）vs `.chip.highlight`（蓝虚线无底，`!important`）；不用 `:not(.active)`。
 - 亮色主题：`calculatorLight.css` 用 `[data-theme='light']` 覆盖 scoped 暗色。

@@ -3,9 +3,12 @@ import { computed, watch } from 'vue'
 import type { AgentBuffDoc, CharacterAttrKey, DriveDiscBuffDoc, WengineBuffDoc } from '@/types/calculator'
 import { CHARACTER_ATTR_OPTIONS } from '@/types/calculator'
 import {
-  createDefaultExternalPanel,
+  createEmptyExternalPanelDraft,
+  EXTERNAL_PANEL_INPUT_FIELDS,
   type AffixCounts,
   type AffixDriveDiscMainStats,
+  type ExternalPanelDraft,
+  type ExternalPanelInputKey,
   type PanelCalcMode,
   type PanelStats,
 } from '@/types/calculatorPanel'
@@ -54,8 +57,12 @@ const props = defineProps<{
   disabled?: boolean
 }>()
 
-const externalPanel = defineModel<PanelStats>('externalPanel', {
-  default: () => createDefaultExternalPanel(),
+/**
+ * 局外面板草稿：录入项允许**留空**（null = 用户还没填），不预填占位毕业面板。
+ * 面板 Tab 用；词条 Tab 不看它。
+ */
+const externalPanel = defineModel<ExternalPanelDraft>('externalPanel', {
+  default: () => createEmptyExternalPanelDraft(),
 })
 const affixCounts = defineModel<AffixCounts>('affixCounts', { required: true })
 const affixDriveDiscMainStats = defineModel<AffixDriveDiscMainStats>('affixDriveDiscMainStats', {
@@ -115,7 +122,10 @@ const derivedExternal = computed(() =>
   }),
 )
 
-const displayPanel = computed(() => (isAffixMode.value ? derivedExternal.value : externalPanel.value))
+/** 录入项留空（清空输入框）= null，不是 0 —— 「没填」和「填了 0」是两回事 */
+function onExternalPanelInput(key: ExternalPanelInputKey, raw: string) {
+  externalPanel.value[key] = raw === '' ? null : Number(raw)
+}
 
 const driveDiscSummary = computed(() => {
   const four = props.driveDiscs.find((d) => d.id === props.fourPieceId)?.name
@@ -151,20 +161,11 @@ function fieldConvertClass(key: string, panel: 'external' | 'final') {
   return externalConvertFieldClass({ key, id: key }, convertAttrs.value)
 }
 
-const EXTERNAL_FIELDS: { key: keyof PanelStats; label: string }[] = [
-  { key: 'hp', label: '生命值' },
-  { key: 'atk', label: '攻击力' },
-  { key: 'def', label: '防御力' },
-  { key: 'critRate', label: '暴击率%' },
-  { key: 'critDmg', label: '爆伤%' },
-  { key: 'dmgBonus', label: '增伤%' },
-  { key: 'penRate', label: '穿透率%' },
-  { key: 'pen', label: '穿透值' },
-  { key: 'reduceDefense', label: '无视防御/减防%' },
-  { key: 'mastery', label: '精通' },
-  { key: 'anomalyControl', label: '异常掌控' },
-  { key: 'energyRegen', label: '能量回复效率%' },
-]
+/** 录入项清单来自类型层的单一事实来源（表单渲染与「填没填完」判定共用一份） */
+const EXTERNAL_FIELDS = EXTERNAL_PANEL_INPUT_FIELDS
+
+/** 4/5/6 主属性的「空」选项：可以什么都不选（按不提供该主属性计），默认就是空 */
+const MAIN_STAT_EMPTY_LABEL = '未选择（空）'
 
 const FINAL_FIELDS: { key: keyof PanelStats; label: string }[] = [
   { key: 'hp', label: '生命值' },
@@ -180,6 +181,7 @@ const FINAL_FIELDS: { key: keyof PanelStats; label: string }[] = [
   { key: 'mastery', label: '精通' },
   { key: 'anomalyControl', label: '异常掌控' },
   { key: 'energyRegen', label: '能量回复效率%' },
+  { key: 'impact', label: '冲击力' },
   { key: 'anomalyCritRate', label: '异常暴击%' },
   { key: 'anomalyCritDmg', label: '异常爆伤%' },
   { key: 'anomalyDmgBonus', label: '异常增伤%' },
@@ -203,6 +205,7 @@ function formatValue(key: keyof PanelStats, value: number) {
     key === 'pen' ||
     key === 'mastery' ||
     key === 'anomalyControl' ||
+    key === 'impact' ||
     key === 'anomalyDuration'
   ) {
     return Math.round(value).toLocaleString('en-US')
@@ -267,6 +270,7 @@ function formatValue(key: keyof PanelStats, value: number) {
         <label class="field">
           <span>4 号盘主属性</span>
           <select v-model="affixDriveDiscMainStats.slot4MainStat" :disabled="disabled">
+            <option value="">{{ MAIN_STAT_EMPTY_LABEL }}</option>
             <option v-for="option in DRIVE_DISC_SLOT_4_OPTIONS" :key="option.id" :value="option.id">
               {{ option.label }}
             </option>
@@ -275,6 +279,7 @@ function formatValue(key: keyof PanelStats, value: number) {
         <label class="field">
           <span>5 号盘主属性</span>
           <select v-model="affixDriveDiscMainStats.slot5MainStat" :disabled="disabled">
+            <option value="">{{ MAIN_STAT_EMPTY_LABEL }}</option>
             <option v-for="option in DRIVE_DISC_SLOT_5_OPTIONS" :key="option.id" :value="option.id">
               {{ option.label }}
             </option>
@@ -283,6 +288,7 @@ function formatValue(key: keyof PanelStats, value: number) {
         <label class="field">
           <span>6 号盘主属性</span>
           <select v-model="affixDriveDiscMainStats.slot6MainStat" :disabled="disabled">
+            <option value="">{{ MAIN_STAT_EMPTY_LABEL }}</option>
             <option v-for="option in DRIVE_DISC_SLOT_6_OPTIONS" :key="option.id" :value="option.id">
               {{ option.label }}
             </option>
@@ -342,14 +348,15 @@ function formatValue(key: keyof PanelStats, value: number) {
           <span>{{ field.label }}</span>
           <input
             v-if="!isAffixMode"
-            v-model.number="externalPanel[field.key]"
+            :value="externalPanel[field.key]"
             type="number"
             step="any"
             :disabled="disabled"
+            @input="onExternalPanelInput(field.key, ($event.target as HTMLInputElement).value)"
           />
           <input
             v-else
-            :value="formatValue(field.key, displayPanel[field.key])"
+            :value="formatValue(field.key, derivedExternal[field.key])"
             type="text"
             readonly
             :disabled="disabled"

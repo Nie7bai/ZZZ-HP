@@ -1,12 +1,17 @@
 import type { AffixCounts } from '@/types/calculatorPanel'
 import {
-  entryRollsToAffixCounts,
-  entryRollsToPanelDeltas,
+  affixRollsToEquivalentRolls,
+  affixValuePerCountFromEntries,
+  entryRollsToEvalInput,
+  panelFieldOfTarget,
+  statKeyOfTarget,
   type AffixLibraryEntry,
+  type AffixLibraryEntryTarget,
 } from '@/utils/affixLibrary'
 import {
   evaluateAffixCounts,
   type AffixPanelDeltaMap,
+  type AffixValuePerCount,
   type OptimalEvalContext,
 } from '@/utils/optimalAffixAlloc'
 
@@ -24,19 +29,19 @@ import {
 export interface AffixBenefitRow {
   entryId: string
   label: string
-  /** 当前已投入档数（按当前分配回填） */
-  currentRolls: number
+  /** 条目落点（用于按字段单位格式化「每档」显示） */
+  target: AffixLibraryEntryTarget
   /** 每档增量 */
   perRoll: number
   /** 再 +1 档的总伤增量 */
   damageDelta: number
   /** 再 +1 档的收益率（%） */
   percentDelta: number
-  /** 相对权重 = 本行收益率 / 最大收益率，0~1 */
+  /** 相对权重 = 本行收益率 / 最大收益率，0~1（**整表**口径：分母是全表最大收益率） */
   weight: number
-  /** 是否因上限（cap 或主词条约束）不可再加 */
+  /** 是否因上限不可再加。**预留字段：当前一律 `false`**（收益表暂不判上限） */
   capped: boolean
-  /** 上限提示 */
+  /** 上限提示。**预留字段：当前不产出** */
   note?: string
 }
 
@@ -50,7 +55,7 @@ export interface AffixBenefitSeries {
   cumulativePercent: number[]
   /** 逐档边际收益率（%） */
   marginalPercent: number[]
-  /** 该档是否已因上限不可再加（曲线图用） */
+  /** 该档是否已因上限不可再加（曲线图用）。**预留字段：当前全 `false`** */
   cappedAt: boolean[]
 }
 
@@ -62,6 +67,22 @@ export interface AffixBenefitTable {
   evaluatedCount: number
   /** 逐档收益曲线（用于折线图），按最大收益率取前 N 条 */
   series: AffixBenefitSeries[]
+}
+
+/**
+ * 相对权重：分母是**传入这组行**里的最大收益率（0~1）。
+ *
+ * 两处调用，区别只在分母范围：
+ * - `computeAffixBenefitTable` 传全部行 → `row.weight`（整表口径的数据契约）；
+ * - 收益表显示时传**当前显示的行**（筛选之后）→ 筛掉最高那条以后，显示出来的行里最强的仍然是 1.000。
+ *   否则整列柱子会一起变短，看不出这批里谁强谁弱。
+ *
+ * 分母 ≤ 0（全为 0 或全为负）时一律 0：负收益率之间比大小没有意义，
+ * 不这样做还会出现「越负越满格」。
+ */
+export function affixRelativeWeights(rows: { percentDelta: number }[]): number[] {
+  const maxPercent = rows.reduce((max, row) => Math.max(max, row.percentDelta), 0)
+  return rows.map((row) => (maxPercent > 0 ? row.percentDelta / maxPercent : 0))
 }
 
 export interface AffixBenefitInput {
@@ -112,21 +133,23 @@ export function computeAffixBenefitTable(input: AffixBenefitInput): AffixBenefit
   const { ctx, baseCounts, entries } = input
   const step = Math.max(1, Math.round(input.rollsPerStep ?? 1))
   const basePanelDeltas = input.basePanelDeltas
+  // 每档值以词条库条目为准（合并后副词条也读 entry.perRoll）
+  const valuePerCount = affixValuePerCountFromEntries(entries)
 
-  const baseEval = evaluateAffixCounts(ctx, baseCounts, basePanelDeltas)
+  const baseEval = evaluateAffixCounts(ctx, baseCounts, basePanelDeltas, valuePerCount)
   const baselineDamage = metricOf(baseEval)
 
   const rows: AffixBenefitRow[] = []
   for (const entry of entries) {
     const nextCounts = bumpEntryCounts(baseCounts, entry, step)
     const nextDeltas = bumpEntryPanelDeltas(basePanelDeltas, entry, step)
-    const evaluated = evaluateAffixCounts(ctx, nextCounts, nextDeltas)
+    const evaluated = evaluateAffixCounts(ctx, nextCounts, nextDeltas, valuePerCount)
     const damageDelta = metricOf(evaluated) - baselineDamage
     const percentDelta = baselineDamage > 0 ? (damageDelta / baselineDamage) * 100 : 0
     rows.push({
       entryId: entry.id,
       label: entry.label,
-      currentRolls: currentRollsOf(baseCounts, basePanelDeltas, entry),
+      target: entry.target,
       perRoll: entry.perRoll,
       damageDelta,
       percentDelta,
@@ -135,10 +158,11 @@ export function computeAffixBenefitTable(input: AffixBenefitInput): AffixBenefit
     })
   }
 
-  const maxPercent = rows.reduce((max, row) => Math.max(max, row.percentDelta), 0)
-  for (const row of rows) {
-    row.weight = maxPercent > 0 ? row.percentDelta / maxPercent : 0
-  }
+  // 整表口径的权重（显示层筛过之后会按「显示出来的行」再归一，见 affixRelativeWeights）
+  const weights = affixRelativeWeights(rows)
+  rows.forEach((row, index) => {
+    row.weight = weights[index] ?? 0
+  })
   rows.sort((a, b) => b.percentDelta - a.percentDelta)
 
   const series = input.includeSeries === false
@@ -196,6 +220,7 @@ function computeAffixBenefitSeries(input: {
   const { ctx, baseCounts, basePanelDeltas, baselineDamage, rankedRows } = input
   if (baselineDamage <= 0) return []
   const entryById = new Map(input.entries.map((entry) => [entry.id, entry]))
+  const valuePerCount = affixValuePerCountFromEntries(input.entries)
   const picked = rankedRows.slice(0, input.maxCurveSeries)
   const series: AffixBenefitSeries[] = []
 
@@ -208,7 +233,7 @@ function computeAffixBenefitSeries(input: {
     for (let n = 1; n <= input.maxCurveRolls; n += 1) {
       const counts = bumpEntryCounts(baseCounts, entry, n)
       const deltas = bumpEntryPanelDeltas(basePanelDeltas, entry, n)
-      const evaluated = evaluateAffixCounts(ctx, counts, deltas)
+      const evaluated = evaluateAffixCounts(ctx, counts, deltas, valuePerCount)
       const damage = metricOf(evaluated)
       cumulativePercent.push(((damage - baselineDamage) / baselineDamage) * 100)
       marginalPercent.push(prevDamage > 0 ? ((damage - prevDamage) / prevDamage) * 100 : 0)
@@ -233,10 +258,12 @@ function bumpEntryCounts(
   entry: AffixLibraryEntry,
   step: number,
 ): AffixCounts {
-  const key = entry.affixKey
-  if (entry.kind !== 'substat' || !key) return counts
+  const key = statKeyOfTarget(entry.target)
+  if (!key) return counts
   const next = { ...counts }
-  next[key] = (next[key] ?? 0) + step
+  // 与 entryRollsToEvalInput 同口径：按条目自己的每档值折成等效档数，
+  // 这样同字段多条（副词条 3%/档 与 主属性 30%/档）互不顶掉
+  next[key] = (next[key] ?? 0) + affixRollsToEquivalentRolls(entry, key, step)
   return next
 }
 
@@ -245,43 +272,36 @@ function bumpEntryPanelDeltas(
   entry: AffixLibraryEntry,
   step: number,
 ): AffixPanelDeltaMap | undefined {
-  const field = entry.panelField
-  if (entry.kind !== 'panelField' || !field) return deltas
+  const field = panelFieldOfTarget(entry.target)
+  if (!field) return deltas
   const next: AffixPanelDeltaMap = { ...(deltas ?? {}) }
   next[field] = (next[field] ?? 0) + step * entry.perRoll
   return next
 }
 
-function currentRollsOf(
-  counts: AffixCounts,
-  deltas: AffixPanelDeltaMap | undefined,
-  entry: AffixLibraryEntry,
-): number {
-  if (entry.kind === 'substat') {
-    return entry.affixKey ? (counts[entry.affixKey] ?? 0) : 0
-  }
-  const total = entry.panelField ? (deltas?.[entry.panelField] ?? 0) : 0
-  return entry.perRoll > 0 ? total / entry.perRoll : 0
-}
-
-/** 把「条目档数表」换算成求解器可直接使用的 (counts, panelDeltas) */
+/** 把「条目档数表」换算成求解器可直接使用的 (counts, panelDeltas, valuePerCount) */
 export function rollsToEvalInput(
   entries: AffixLibraryEntry[],
   rollsByEntryId: Record<string, number>,
   baseCounts: AffixCounts,
   basePanelDeltas?: AffixPanelDeltaMap,
-): { counts: AffixCounts; panelDeltas: AffixPanelDeltaMap | undefined } {
-  const substatRolls = entryRollsToAffixCounts(entries, rollsByEntryId)
+): {
+  counts: AffixCounts
+  panelDeltas: AffixPanelDeltaMap | undefined
+  valuePerCount: AffixValuePerCount
+} {
+  const input = entryRollsToEvalInput(entries, rollsByEntryId)
   const counts = { ...baseCounts }
-  for (const key of Object.keys(substatRolls) as (keyof AffixCounts)[]) {
-    counts[key] = (counts[key] ?? 0) + (substatRolls[key] ?? 0)
+  for (const key of Object.keys(input.counts) as (keyof AffixCounts)[]) {
+    counts[key] = (counts[key] ?? 0) + (input.counts[key] ?? 0)
   }
-  const entryDeltas = entryRollsToPanelDeltas(entries, rollsByEntryId)
-  const deltaKeys = Object.keys(entryDeltas) as (keyof typeof entryDeltas)[]
-  if (!deltaKeys.length) return { counts, panelDeltas: basePanelDeltas }
+  const deltaKeys = Object.keys(input.deltas) as (keyof typeof input.deltas)[]
+  if (!deltaKeys.length) {
+    return { counts, panelDeltas: basePanelDeltas, valuePerCount: input.valuePerCount }
+  }
   const panelDeltas: AffixPanelDeltaMap = { ...(basePanelDeltas ?? {}) }
   for (const key of deltaKeys) {
-    panelDeltas[key] = (panelDeltas[key] ?? 0) + (entryDeltas[key] ?? 0)
+    panelDeltas[key] = (panelDeltas[key] ?? 0) + (input.deltas[key] ?? 0)
   }
-  return { counts, panelDeltas }
+  return { counts, panelDeltas, valuePerCount: input.valuePerCount }
 }

@@ -58,6 +58,13 @@ export interface AffixDriveDiscMainStatContribution {
   mastery: number
   anomalyControl: number
   energyRegen: number
+  /**
+   * 冲击力 18%（6 号位）。
+   *
+   * 口径（用户 2026-09-12：**没填的一律按 0**）：与同组的异常掌控 / 能量恢复一样
+   * **按点数加**。不是「基础冲击力 × 18%」—— 角色基础冲击力没有入库，那样算不出来。
+   */
+  impact: number
 }
 
 export function createEmptyAffixDriveDiscMainStatContribution(): AffixDriveDiscMainStatContribution {
@@ -72,6 +79,7 @@ export function createEmptyAffixDriveDiscMainStatContribution(): AffixDriveDiscM
     mastery: 0,
     anomalyControl: 0,
     energyRegen: 0,
+    impact: 0,
   }
 }
 
@@ -83,9 +91,9 @@ function findSlotOption<T extends { id: string; value: number }>(
 }
 
 export function collectAffixDriveDiscMainStatContribution(input: {
-  slot4MainStat: DriveDiscSlot4StatId
-  slot5MainStat: DriveDiscSlot5StatId
-  slot6MainStat: DriveDiscSlot6StatId
+  slot4MainStat: DriveDiscSlot4StatId | ''
+  slot5MainStat: DriveDiscSlot5StatId | ''
+  slot6MainStat: DriveDiscSlot6StatId | ''
 }): AffixDriveDiscMainStatContribution {
   const result = createEmptyAffixDriveDiscMainStatContribution()
 
@@ -122,6 +130,9 @@ export function collectAffixDriveDiscMainStatContribution(input: {
         break
       case 'anomalyControl':
         result.anomalyControl += option.value
+        break
+      case 'impact':
+        result.impact += option.value
         break
       case 'energyRegen':
         result.energyRegen += option.value

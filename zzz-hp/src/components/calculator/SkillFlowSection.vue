@@ -62,6 +62,11 @@ import {
 } from '@/utils/skillTalentLevels'
 
 import { teamSlotDisplayLabel } from '@/utils/teamSlotLabel'
+import { formatCalcDecimal } from '@/utils/calcNumberFormat'
+import type { PanelStats } from '@/types/calculatorPanel'
+import type { AgentPanelSourceKind } from '@/types/damageCalcHistory'
+import { AGENT_PANEL_SOURCE_LABELS, AGENT_PANEL_SOURCE_ORDER } from '@/utils/agentPanelSources'
+import type { SkillFlowDisplayOption } from '@/utils/skillFlowPanelSource'
 
 const props = defineProps<{
   teamSlots: TeamSlot[]
@@ -73,6 +78,25 @@ const props = defineProps<{
   skillTalentLevelsByAgent?: Record<string, SkillTalentLevels | Partial<SkillTalentLevels>>
   /** 当前加载的方案名；未归档为空 */
   schemeName?: string
+  /** 招式流程「用哪份面板」三选项，见 `utils/skillFlowPanelSource.ts` */
+  panelSourceMode?: 'config' | 'allocation' | 'sweep'
+  /** 各来源能否选（数据算过且未过期）与禁用原因 */
+  panelSourceAvailability?: Record<
+    'config' | 'allocation' | 'sweep',
+    { enabled: boolean; reason?: string | null; detail?: string | null }
+  >
+  /** 面板展示专用：②③ 的局外 + 局内（词条分析侧独立通道上报，见 `SkillFlowDisplayOption`） */
+  displayPanelSources?: Partial<Record<'allocation' | 'sweep', SkillFlowDisplayOption | null>>
+  /** 面板展示（config 选项）：与顶部槽位卡片**同一份**预览（局外 + 局内 + 生效来源），保证数据完全一致 */
+  configPanelPreview?: {
+    external: PanelStats
+    final: PanelStats | null
+    sourceKind?: AgentPanelSourceKind | null
+  } | null
+}>()
+
+const emit = defineEmits<{
+  'update:panelSourceMode': [mode: 'config' | 'allocation' | 'sweep']
 }>()
 
 const slots = defineModel<SchemeSlot[]>('slots', { required: true })
@@ -1993,22 +2017,6 @@ function clearMemberOverride(entryId: string, member: { order: number; skillId: 
   if (!entry.memberOverrides.length) entry.memberOverrides = null
 }
 
-type ExtraModKey = 'baseMult' | 'settlementMult' | 'dmgBonus' | 'critRate' | 'critDmg'
-
-function extraNumber(prepared: PreparedSkill, key: ExtraModKey) {
-  const value = prepared.extraMods?.[key]
-  return value == null ? '' : String(value)
-}
-
-function setExtraNumber(prepared: PreparedSkill, key: ExtraModKey, raw: string) {
-  const nextMods = { ...(prepared.extraMods ?? {}) }
-  if (raw.trim() === '') delete nextMods[key]
-  else nextMods[key] = Number(raw)
-  updatePrepared(prepared.id, {
-    extraMods: Object.keys(nextMods).length ? nextMods : null,
-  })
-}
-
 watch(expanded, (open) => {
   if (!open) {
     detail.value = null
@@ -2096,6 +2104,147 @@ onMounted(() => window.addEventListener('keydown', onModalKeydown))
 onUnmounted(() => window.removeEventListener('keydown', onModalKeydown))
 
 defineExpose({ expand })
+
+/** 三选项的展示态：可用性由页级判定（数据算过且未过期） */
+const panelSourceOptions = computed(() => {
+  const availability = props.panelSourceAvailability
+  return [
+    {
+      mode: 'config' as const,
+      label: '角色配置面板',
+      enabled: availability?.config?.enabled ?? true,
+      reason: availability?.config?.reason ?? null,
+      detail: availability?.config?.detail ?? null,
+      help: '用「代理人 → 导入」里录入的激活面板',
+    },
+    {
+      mode: 'allocation' as const,
+      label: '词条分析 · 最优分配',
+      enabled: availability?.allocation?.enabled ?? false,
+      reason: availability?.allocation?.reason ?? null,
+      detail: availability?.allocation?.detail ?? null,
+      help: '用求解出的词条数叠加在基准面板上',
+    },
+    {
+      mode: 'sweep' as const,
+      label: '词条分析 · 当前点击柱',
+      enabled: availability?.sweep?.enabled ?? false,
+      reason: availability?.sweep?.reason ?? null,
+      detail: availability?.sweep?.detail ?? null,
+      help: '用柱图上当前点击那根柱的词条数叠加',
+    },
+  ]
+})
+
+/** 按钮 tooltip：可用时给「用的是哪一组词条」，不可用时说明原因 */
+function panelSourceTitle(option: {
+  enabled: boolean
+  reason: string | null
+  detail: string | null
+  help: string
+}): string {
+  if (!option.enabled) return option.reason ?? '暂不可用'
+  return option.detail ? `${option.detail} —— ${option.help}` : option.help
+}
+
+/** 选中项失效时的提示（回落 ① 的理由要说清楚，避免看着像 bug） */
+const panelSourceNotice = computed(() => {
+  const mode = props.panelSourceMode ?? 'config'
+  if (mode === 'config') return null
+  const option = panelSourceOptions.value.find((item) => item.mode === mode)
+  if (!option || option.enabled) return null
+  return `${option.label}：${option.reason ?? '暂不可用'}（已回落到角色配置面板）`
+})
+
+/**
+ * 「查看面板」展示：字段表与格式化与顶部槽位卡片同口径（TeamSlotSwitcher）。
+ * 保持单一事实来源的折中：这是纯展示常量，复制维护并注明来源。
+ */
+const EXTERNAL_PREVIEW_FIELDS: { key: keyof PanelStats; label: string }[] = [
+  { key: 'hp', label: '生命值' },
+  { key: 'atk', label: '攻击力' },
+  { key: 'def', label: '防御力' },
+  { key: 'critRate', label: '暴击率%' },
+  { key: 'critDmg', label: '爆伤%' },
+  { key: 'penRate', label: '穿透率%' },
+  { key: 'pen', label: '穿透值' },
+  { key: 'dmgBonus', label: '增伤%' },
+  { key: 'reduceDefense', label: '无视防御/减防%' },
+  { key: 'mastery', label: '精通' },
+  { key: 'anomalyControl', label: '异常掌控' },
+  { key: 'energyRegen', label: '能量回复效率%' },
+  { key: 'impact', label: '冲击力' },
+]
+
+/** 局内面板比局外多出的字段（与顶部「局内面板」一致）：锋御专属锐爆 + 异常系 5 项 */
+const FINAL_EXTRA_PREVIEW_FIELDS: { key: keyof PanelStats; label: string }[] = [
+  { key: 'sharpenCritDmgBonus', label: '锐爆伤害%' },
+  { key: 'anomalyCritRate', label: '异常暴击%' },
+  { key: 'anomalyCritDmg', label: '异常爆伤%' },
+  { key: 'anomalyDmgBonus', label: '异常增伤%' },
+  { key: 'disorderDmgBonus', label: '紊乱增伤%' },
+  { key: 'turbulenceDmgBonus', label: '乱流增伤%' },
+]
+
+/** 局内展示字段：通用 12 项 + （锋御加锐爆）+ 异常系 5 项（同顶部「局内面板」） */
+const showcaseFinalFields = computed(() => {
+  const slot = props.teamSlots[activeSlotIndex.value]
+  const agent = slot?.agentId ? props.agents.find((item) => item.id === slot.agentId) : undefined
+  if (agent?.profession === '锋御') return [...EXTERNAL_PREVIEW_FIELDS, ...FINAL_EXTRA_PREVIEW_FIELDS]
+  return [
+    ...EXTERNAL_PREVIEW_FIELDS,
+    ...FINAL_EXTRA_PREVIEW_FIELDS.filter((field) => field.key !== 'sharpenCritDmgBonus'),
+  ]
+})
+
+function formatPanelStat(key: keyof PanelStats, value: number): string {
+  if (
+    key === 'hp' ||
+    key === 'atk' ||
+    key === 'def' ||
+    key === 'pen' ||
+    key === 'mastery' ||
+    key === 'anomalyControl'
+  ) {
+    return Math.round(value).toLocaleString('en-US')
+  }
+  return formatCalcDecimal(value, 2)
+}
+
+/** 面板展示开关：三选项下方的「查看面板」按钮控制 */
+const panelShowcaseOpen = ref(false)
+
+const showcaseMode = computed<'config' | 'allocation' | 'sweep'>(
+  () => props.panelSourceMode ?? 'config',
+)
+
+/** ②③ 展示数据（config 用顶部同源预览，不走这条通道） */
+const showcaseDisplayOption = computed<SkillFlowDisplayOption | null>(() => {
+  const mode = showcaseMode.value
+  if (mode === 'config') return null
+  return props.displayPanelSources?.[mode] ?? null
+})
+
+/** ②③ 未算 / 签名过期的原因（直接引用页级 availability 的口径，不重复判断） */
+const showcaseUnavailableReason = computed<string | null>(() => {
+  if (showcaseMode.value === 'config') return null
+  const option = panelSourceOptions.value.find((item) => item.mode === showcaseMode.value)
+  return option && !option.enabled ? (option.reason ?? '暂不可用') : null
+})
+
+/** 当前展示的对象：局外 + 局内（②③ 有签名判定；config 就是顶部卡片同源数据） */
+const showcasePanel = computed<{ external: PanelStats; final: PanelStats | null } | null>(() => {
+  const mode = showcaseMode.value
+  if (mode === 'config') return props.configPanelPreview ?? null
+  const option = showcaseDisplayOption.value
+  if (!option || showcaseUnavailableReason.value) return null
+  return { external: option.mainExternal, final: option.finalPanel }
+})
+
+const showcaseTitle = computed(() => {
+  const option = panelSourceOptions.value.find((item) => item.mode === showcaseMode.value)
+  return option?.label ?? '角色配置面板'
+})
 </script>
 
 <template>
@@ -2127,6 +2276,90 @@ defineExpose({ expand })
       <button type="button" class="sf-toggle-btn" @click="expanded = !expanded">
         {{ expanded ? '收起' : '展开' }}
       </button>
+    </div>
+
+    <!--
+      用哪份面板（三选项）。三态共用同一张按输入分键的记忆表，切来源时各自留着自己的结果。
+      未算过 / 配置改动过的选项禁用（宁可禁用也不显示过期数字），见 utils/skillFlowPanelSource.ts。
+    -->
+    <div class="sf-panel-source" role="radiogroup" aria-label="招式伤害用哪份面板">
+      <span class="sf-panel-source-label">伤害面板</span>
+      <button
+        v-for="option in panelSourceOptions"
+        :key="option.mode"
+        type="button"
+        role="radio"
+        class="chip"
+        :class="{ active: (panelSourceMode ?? 'config') === option.mode }"
+        :aria-checked="(panelSourceMode ?? 'config') === option.mode"
+        :disabled="!option.enabled"
+        :title="panelSourceTitle(option)"
+        @click="emit('update:panelSourceMode', option.mode)"
+      >
+        {{ option.label }}
+      </button>
+      <span v-if="panelSourceNotice" class="sf-panel-source-notice">{{ panelSourceNotice }}</span>
+    </div>
+
+    <!-- 查看面板：三选项下方按钮，点击展示当前选项的局外 + 局内（风格与顶部槽位卡片一致） -->
+    <div class="sf-panel-showcase">
+      <button
+        type="button"
+        class="sf-panel-showcase-toggle"
+        :aria-expanded="panelShowcaseOpen"
+        @click="panelShowcaseOpen = !panelShowcaseOpen"
+      >
+        {{ panelShowcaseOpen ? '收起面板' : '查看面板' }}
+      </button>
+      <div v-if="panelShowcaseOpen" class="sf-panel-showcase-body">
+        <div class="sf-panel-showcase-head">
+          <p class="sf-panel-showcase-title">{{ showcaseTitle }}</p>
+          <span
+            v-if="showcaseMode === 'config' && configPanelPreview?.sourceKind"
+            class="sf-panel-showcase-tags"
+          >
+            <span
+              v-for="kind in AGENT_PANEL_SOURCE_ORDER"
+              :key="`src-${kind}`"
+              class="sf-panel-showcase-tag"
+              :class="{ active: configPanelPreview?.sourceKind === kind }"
+            >
+              {{ AGENT_PANEL_SOURCE_LABELS[kind] }}
+            </span>
+          </span>
+        </div>
+        <p v-if="showcaseUnavailableReason" class="sf-panel-showcase-empty">
+          {{ showcaseUnavailableReason }}（先用「角色配置面板」）→ 去「词条配比分析」里算一次再回来看
+        </p>
+        <template v-else-if="showcasePanel">
+          <p class="sf-panel-showcase-sub">局外面板</p>
+          <dl class="sf-panel-showcase-grid">
+            <div
+              v-for="field in EXTERNAL_PREVIEW_FIELDS"
+              :key="`ext-${field.key}`"
+              class="sf-panel-showcase-item"
+            >
+              <dt>{{ field.label }}</dt>
+              <dd>{{ formatPanelStat(field.key, showcasePanel.external[field.key]) }}</dd>
+            </div>
+          </dl>
+          <template v-if="showcasePanel.final">
+            <p class="sf-panel-showcase-sub sf-panel-showcase-sub--final">局内面板（含增益）</p>
+            <dl class="sf-panel-showcase-grid">
+              <div
+                v-for="field in showcaseFinalFields"
+                :key="`fin-${field.key}`"
+                class="sf-panel-showcase-item"
+              >
+                <dt>{{ field.label }}</dt>
+                <dd>{{ formatPanelStat(field.key, showcasePanel.final![field.key]) }}</dd>
+              </div>
+            </dl>
+          </template>
+          <p v-else class="sf-panel-showcase-empty">暂无局内结果</p>
+        </template>
+        <p v-else class="sf-panel-showcase-empty">暂无可展示的面板数据</p>
+      </div>
     </div>
 
     <div v-show="expanded" class="skill-flow-modal skill-flow-editor">
@@ -3347,6 +3580,200 @@ defineExpose({ expand })
   background: #3a3018;
   color: #f7e7c0;
 }
+
+/* 「伤害面板」三选项：直接用统一 chip（见 assets/calculatorChip.css），这里只管布局与禁用态 */
+.sf-panel-source {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.55rem;
+}
+.sf-panel-source-label {
+  color: #9aa3b0;
+  font-size: 0.82rem;
+}
+/* 禁用态：划掉 + 压暗，明确「这个来源还没算过 / 已经过期」 */
+.sf-panel-source .chip:disabled {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+.sf-panel-source-notice {
+  color: #d8a25c;
+  font-size: 0.78rem;
+}
+.sf-panel-showcase {
+  margin-top: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+.sf-panel-showcase-toggle {
+  appearance: none;
+  border: 1px solid rgba(201, 165, 92, 0.55);
+  background: rgba(201, 165, 92, 0.14);
+  color: #c9a55c;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.32rem 0.85rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+.sf-panel-showcase-toggle:hover {
+  background: rgba(201, 165, 92, 0.26);
+}
+/* 展示卡片：与顶部槽位卡片同款视觉（渐变背景 + 金边 + 金色内阴影，见 .slot-btn.active）；
+   宽度同顶部悬浮卡片 min(38rem, 94vw)，不撑满整行 */
+.sf-panel-showcase-body {
+  width: min(38rem, 94vw);
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid rgba(201, 165, 92, 0.75);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #242a36 0%, #1c212b 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(201, 165, 92, 0.28),
+    0 12px 32px rgba(0, 0, 0, 0.45);
+  color: #d7dde8;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.sf-panel-showcase-title {
+  margin: 0 0 0.2rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #c9a55c;
+}
+/* 标题行：标题与来源胶囊同一行，右侧对齐（同顶部卡片） */
+.sf-panel-showcase-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.1rem;
+}
+.sf-panel-showcase-head .sf-panel-showcase-title {
+  margin: 0;
+}
+.sf-panel-showcase-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+/* 两枚胶囊：生效那份绿框，另一枚淡灰（同顶部卡片 panel-source-tag） */
+.sf-panel-showcase-tag {
+  padding: 0.05rem 0.45rem;
+  border: 1px solid #3a4658;
+  border-radius: 999px;
+  color: #7b8698;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.sf-panel-showcase-tag.active {
+  border-color: #7dd3a0;
+  color: #7dd3a0;
+  font-weight: 650;
+}
+.sf-panel-showcase-sub {
+  margin: 0.35rem 0 0;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #8fbc7a;
+}
+/* 局内小节：与顶部「局内面板」标题一样带分隔线 */
+.sf-panel-showcase-sub--final {
+  padding-top: 0.45rem;
+  border-top: 1px solid #343a44;
+}
+.sf-panel-showcase-grid {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.28rem 0.85rem;
+}
+.sf-panel-showcase-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.55rem;
+  min-width: 0;
+}
+.sf-panel-showcase-item dt {
+  margin: 0;
+  flex: 1 1 auto;
+  font-size: 0.72rem;
+  color: #8b93a3;
+  line-height: 1.35;
+}
+.sf-panel-showcase-item dd {
+  margin: 0;
+  flex: 0 0 auto;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #e8edf5;
+  font-variant-numeric: tabular-nums;
+}
+.sf-panel-showcase-empty {
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
+  color: #d8a25c;
+}
+
+/* ── 亮色主题覆盖 ──
+   注意：scoped 下必须把「整个选择器」放进一个 :global()，
+   `:global([data-theme='light']) .xxx` 会编译成只剩 [data-theme='light']，
+   永远不会命中（2026-09-12 实测 compileStyle 验证）。 */
+:global([data-theme='light'] .sf-panel-showcase-body) {
+  background: linear-gradient(180deg, #faf8f2 0%, #efece2 100%);
+  border-color: rgba(140, 110, 50, 0.6);
+  box-shadow:
+    inset 0 0 0 1px rgba(140, 110, 50, 0.22),
+    0 12px 32px rgba(0, 0, 0, 0.16);
+  color: #3c3a34;
+}
+:global([data-theme='light'] .sf-panel-showcase-title) {
+  color: #8a6a1f;
+}
+:global([data-theme='light'] .sf-panel-showcase-tag) {
+  border-color: #c9c2b2;
+  color: #8a8578;
+}
+:global([data-theme='light'] .sf-panel-showcase-tag.active) {
+  border-color: #4c9a6a;
+  color: #3e7d57;
+}
+:global([data-theme='light'] .sf-panel-showcase-sub) {
+  color: #5d7a45;
+}
+:global([data-theme='light'] .sf-panel-showcase-sub--final) {
+  border-top-color: #d8d2c4;
+}
+:global([data-theme='light'] .sf-panel-showcase-item dt) {
+  color: #8a8578;
+}
+:global([data-theme='light'] .sf-panel-showcase-item dd) {
+  color: #221f18;
+}
+:global([data-theme='light'] .sf-panel-showcase-empty) {
+  color: #a0701e;
+}
+:global([data-theme='light'] .sf-panel-showcase-toggle) {
+  background: rgba(140, 110, 50, 0.12);
+  border-color: rgba(140, 110, 50, 0.5);
+  color: #8a6a1f;
+}
+:global([data-theme='light'] .sf-panel-showcase-toggle:hover) {
+  background: rgba(140, 110, 50, 0.22);
+}
 .primary-btn {
   border: 1px solid #c9a55c;
   background: rgba(201, 165, 92, 0.16);
@@ -3695,24 +4122,7 @@ defineExpose({ expand })
   flex-wrap: wrap;
   gap: 0.35rem;
 }
-.chip {
-  border: 1px solid #343a44;
-  border-radius: 999px;
-  background: #12161d;
-  color: #d5dae4;
-  padding: 0.22rem 0.6rem;
-  font-size: 0.74rem;
-  cursor: pointer;
-}
-.chip.active {
-  border-color: #c9a55c;
-  background: rgba(201, 165, 92, 0.14);
-  color: #f0d7a2;
-}
-.chip.highlight {
-  border-color: #4a90d9 !important;
-  border-style: dashed !important;
-}
+/* 招式流程的选择按钮一律用统一 chip：见 `assets/calculatorChip.css`（改造前这里自带一套更小的） */
 
 .mini-btn {
   border: 1px solid #3a4150;

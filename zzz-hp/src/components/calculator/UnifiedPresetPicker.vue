@@ -7,25 +7,32 @@ import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
 import type { AgentBuffDoc, DriveDiscBuffDoc, WengineBuffDoc } from '@/types/calculator'
 import type { PanelScreenshotRecognition } from '@/types/panelScreenshot'
 import {
-  createDefaultAffixDriveDiscMainStats,
-  createDefaultExternalPanel,
   createEmptyAffixCounts,
-  createExternalPanelFromAgentBase,
+  createEmptyAffixDriveDiscMainStats,
+  createEmptyExternalPanelDraft,
   fillPanelStatsDefaults,
+  isPlaceholderExternalPanel,
+  missingExternalPanelInputs,
+  resolveExternalPanelDraft,
   type AffixCounts,
   type AffixDriveDiscMainStats,
+  type ExternalPanelDraft,
   type PanelCalcMode,
   type PanelStats,
 } from '@/types/calculatorPanel'
-import { inferAffixCountsFromExternalPanel, computeExternalPanelFromTeamSlot } from '@/utils/affixPanelCalc'
+import { computeExternalPanelFromTeamSlot } from '@/utils/affixPanelCalc'
+import {
+  describePanelSources,
+  formatPanelImportedAt,
+  panelOfSource,
+} from '@/utils/agentPanelSources'
+import type { AgentPanelSourceKind, AgentPanelSources } from '@/types/damageCalcHistory'
 import {
   AGENT_ELEMENTS,
   AGENT_ROLES,
   WENGINE_RARITIES,
-  createEmptyAgentBasePanel,
   createEmptyBuffStatModifiers,
   createEmptyRefinementMods,
-  createEmptyWengineAdvancedStats,
   isWengineProfessionMatch,
 } from '@/utils/calculatorUi'
 import {
@@ -38,6 +45,7 @@ import {
   fillSkillTalentLevels,
   type SkillTalentLevels,
 } from '@/utils/skillTalentLevels'
+import { shouldResetDraftsOnAgentChange } from '@/utils/presetPickerDraftReset'
 
 const EMPTY_BANGBOO: BangbooBuffDoc = {
   id: 'none',
@@ -60,6 +68,10 @@ export type UnifiedPresetConfirmPayload = {
   affixCounts: AffixCounts
   affixDriveDiscMainStats: AffixDriveDiscMainStats
   skillTalentLevels: SkillTalentLevels
+  /** 点确定时所在的子页决定写哪一份面板（面板导入 / 词条导入） */
+  panelSource: AgentPanelSourceKind
+  /** 面板导入那份的来历：截图识别还是手打（仅元数据） */
+  panelSourceDetail: 'screenshot' | 'manual'
 }
 
 const props = defineProps<{
@@ -70,7 +82,8 @@ const props = defineProps<{
   activeSlot: number
   /** 打开时的默认录入模式；用户可在弹窗内切换，不再跟随页面计算方式 */
   preferredEntryMode?: Extract<PanelCalcMode, 'panel' | 'affix'>
-  anomalySlotPanels?: Record<string, PanelStats>
+  /** 每个角色的两份局外面板（面板导入 / 词条导入）+ 当前激活那份 */
+  slotPanels?: Record<string, AgentPanelSources>
   /** 每人五大类技能等级；打开/换人时回填 */
   skillTalentLevelsByAgent?: Record<string, SkillTalentLevels | Partial<SkillTalentLevels>>
   finalPanelPreview?: PanelStats | null
@@ -83,6 +96,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   confirm: [payload: UnifiedPresetConfirmPayload]
+  /** 手动切换某角色当前生效的那份面板（只改 active） */
+  'update:activePanelSource': [agentId: string, kind: AgentPanelSourceKind]
 }>()
 
 const open = defineModel<boolean>('open', { default: false })
@@ -99,14 +114,37 @@ const selected = ref({
   fourPieceId: 'none',
 })
 
-const draftExternalPanel = reactive<PanelStats>(createDefaultExternalPanel())
+/**
+ * 面板草稿：录入项留空就是 null（「空就是空」）。
+ *
+ * 回归（2026-09-12）：曾经初始化为 `createDefaultExternalPanel()`（占位毕业面板 攻击 4008 /
+ * 生命 9873），于是**没导入过的角色**打开弹窗，面板页显示的是一组看起来像配置的假数字；
+ * 用户只改其中一两项再确定导入，剩下的假数字就被当成他填的写进记录。
+ */
+const draftExternalPanel = reactive<ExternalPanelDraft>(createEmptyExternalPanelDraft())
 const draftAffixCounts = reactive(createEmptyAffixCounts())
-const draftAffixMains = reactive(createDefaultAffixDriveDiscMainStats())
+const draftAffixMains = reactive(createEmptyAffixDriveDiscMainStats())
 const draftSkillTalentLevels = reactive<SkillTalentLevels>(createDefaultSkillTalentLevels())
 /** 面板 Tab 独立切换：面板导入 / 词条导入 */
 const entryMode = ref<Extract<PanelCalcMode, 'panel' | 'affix'>>(
   props.preferredEntryMode ?? 'panel',
 )
+/** 面板草稿是不是来自截图识别（只用于记录来历，元数据） */
+let draftFromRecognition = false
+/** 识别写进草稿的那份数值快照：用来区分「识别来的」与「后来手改的」 */
+let recognitionPanelSignature = ''
+watch(
+  draftExternalPanel,
+  () => {
+    if (draftFromRecognition && JSON.stringify(draftExternalPanel) !== recognitionPanelSignature) {
+      draftFromRecognition = false
+    }
+  },
+  { deep: true },
+)
+
+/** 草稿填齐了才是完整面板；没填齐就是 null（空就是空，不进计算、也不预览） */
+const committedDraftPanel = computed(() => resolveExternalPanelDraft(draftExternalPanel))
 
 /** 导入区局内：草稿局外/词条推导 + 当前增益实时结算（对齐改前内嵌面板） */
 const liveFinalPanel = computed(() => {
@@ -135,7 +173,9 @@ const liveFinalPanel = computed(() => {
           wengines: props.wengines,
           driveDiscs: props.driveDiscs,
         })
-      : fillPanelStatsDefaults({ ...draftExternalPanel })
+      : committedDraftPanel.value
+  // 面板页没填齐 → 不预览：拿半份草稿算出来的局内数字只会误导
+  if (!external) return null
   return props.resolveFinalPanel(external) ?? props.finalPanelPreview ?? null
 })
 
@@ -172,12 +212,18 @@ const draftConvertSourceMarks = computed((): ConvertSourceMark[] => {
 function resetDraftPanelFromSlot() {
   const slot = props.teamSlots[props.activeSlot]
   const agentId = selected.value.agentId || slot?.agentId || ''
-  const agent = props.agents.find((item) => item.id === agentId)
-  Object.assign(draftAffixCounts, createEmptyAffixCounts(), slot?.affixCounts)
+  /**
+   * 草稿只读**该角色自己存着的那份**：有就显示，没有就是空。
+   *
+   * 空是合法状态（所有者口径 2026-09-12）：没有就是没有，不拿角色基础面板、
+   * 也不拿另一份面板来顶替 —— 那些都不是用户导入过的数，填进来会让人以为「已经配好」。
+   */
+  const sources = agentId ? props.slotPanels?.[agentId] : undefined
+  Object.assign(draftAffixCounts, createEmptyAffixCounts(), sources?.affixCounts)
   Object.assign(
     draftAffixMains,
-    createDefaultAffixDriveDiscMainStats(),
-    slot?.affixDriveDiscMainStats,
+    createEmptyAffixDriveDiscMainStats(),
+    sources?.affixDriveDiscMainStats,
   )
   Object.assign(
     draftSkillTalentLevels,
@@ -187,59 +233,84 @@ function resetDraftPanelFromSlot() {
       selected.value.rank || slot?.rank || 0,
     ),
   )
-  const saved = agentId ? props.anomalySlotPanels?.[agentId] : undefined
-  if (saved) {
-    Object.assign(draftExternalPanel, createDefaultExternalPanel(), saved)
-  } else if (agent) {
-    Object.assign(draftExternalPanel, createExternalPanelFromAgentBase(agent.basePanel))
-  } else {
-    Object.assign(draftExternalPanel, createDefaultExternalPanel())
-  }
+  const saved = agentId ? panelOfSource(props.slotPanels?.[agentId], 'imported') : undefined
+  Object.assign(draftExternalPanel, createEmptyExternalPanelDraft(), saved ?? {})
+  draftFromRecognition = false
 }
 
+/** 当前选中角色的来源一览（激活标记 + 导入时间），供面板页显示与切换 */
+const currentSlotPanelSources = computed(() =>
+  describePanelSources(selected.value.agentId ? props.slotPanels?.[selected.value.agentId] : undefined),
+)
+/** 只列有数据的那份（§4.3）：某份从未导入过时它就不会出现在切换项里 */
+const switchablePanelSources = computed(() =>
+  currentSlotPanelSources.value.filter((item) => item.hasData),
+)
+
+function switchActivePanelSource(kind: AgentPanelSourceKind) {
+  const agentId = selected.value.agentId
+  if (!agentId) return
+  emit('update:activePanelSource', agentId, kind)
+}
+
+/**
+ * 打开弹窗时按槽位回填的角色 id。
+ *
+ * 打开时 `selected` 被整体改写（agentId 从空变成槽位角色），这次变化是「回填」而不是
+ * 用户换人：紧接着执行的角色 watch 要跳过它，否则会把刚回填的草稿清掉 ——
+ * 表现为刷新后第一次打开配置全空，关掉再打开才正常。
+ */
+let agentIdRestoredOnOpen: string | null = null
+
 watch(open, (isOpen) => {
-  if (isOpen) {
-    entryMode.value = props.preferredEntryMode ?? 'panel'
-    const slot = props.teamSlots[props.activeSlot]
-    if (!slot) return
-    selected.value = {
-      agentId: slot.agentId || '',
-      rank: slot.rank,
-      wengineId: slot.wengineId,
-      wengineRefine: slot.wengineRefine,
-      twoPieceId: slot.twoPieceDriveDiscId,
-      fourPieceId: slot.fourPieceDriveDiscId,
-    }
-    agentRoleFilter.value = ''
-    agentElementFilter.value = ''
-    wengineRoleFilter.value = ''
-    wengineRarityFilter.value = ''
-    agentSearch.value = ''
-    wengineSearch.value = ''
-    discSearch.value = ''
-    activeTab.value = 'agent'
-    resetDraftPanelFromSlot()
+  if (!isOpen) {
+    // 关闭时清掉，避免标记留到下一次打开
+    agentIdRestoredOnOpen = null
+    return
   }
+  entryMode.value = props.preferredEntryMode ?? 'panel'
+  const slot = props.teamSlots[props.activeSlot]
+  if (!slot) return
+  selected.value = {
+    agentId: slot.agentId || '',
+    rank: slot.rank,
+    wengineId: slot.wengineId,
+    wengineRefine: slot.wengineRefine,
+    twoPieceId: slot.twoPieceDriveDiscId,
+    fourPieceId: slot.fourPieceDriveDiscId,
+  }
+  agentRoleFilter.value = ''
+  agentElementFilter.value = ''
+  wengineRoleFilter.value = ''
+  wengineRarityFilter.value = ''
+  agentSearch.value = ''
+  wengineSearch.value = ''
+  discSearch.value = ''
+  activeTab.value = 'agent'
+  agentIdRestoredOnOpen = selected.value.agentId || null
+  resetDraftPanelFromSlot()
 })
 
 watch(
   () => selected.value.agentId,
   (newId, oldId) => {
-    if (!open.value || !newId || newId === oldId) return
-    const agent = props.agents.find((item) => item.id === newId)
-    // 选中代理人后面板草稿固定回落该角色基础面板（不沿用旧导入）
-    if (agent) {
-      Object.assign(draftExternalPanel, createExternalPanelFromAgentBase(agent.basePanel))
-    } else {
-      Object.assign(draftExternalPanel, createDefaultExternalPanel())
+    // 回填标记只消费一次：无论本次是否重置，都清掉它
+    const restoredOnOpen = agentIdRestoredOnOpen
+    agentIdRestoredOnOpen = null
+    if (
+      !shouldResetDraftsOnAgentChange({
+        isOpen: open.value,
+        oldAgentId: oldId,
+        newAgentId: newId,
+        agentIdRestoredOnOpen: restoredOnOpen,
+      })
+    ) {
+      return
     }
-    Object.assign(draftAffixCounts, createEmptyAffixCounts())
-    Object.assign(draftAffixMains, createDefaultAffixDriveDiscMainStats())
-    Object.assign(
-      draftSkillTalentLevels,
-      createDefaultSkillTalentLevels(selected.value.rank),
-      fillSkillTalentLevels(props.skillTalentLevelsByAgent?.[newId], selected.value.rank),
-    )
+    // 换人：只读该角色自己存着的数据（面板 / 词条数 / 4-5-6 主属性 / 技能等级）。
+    // 不塞默认值、不清空 —— 那些默认值会让人以为「面板/词条已经被填过」，
+    // 而且点确定导入时会把这些没录入过的数字写成真面板。
+    resetDraftPanelFromSlot()
   },
 )
 
@@ -409,9 +480,11 @@ const summary = computed(() => {
   } else if (entryMode.value === 'affix') {
     const total = Object.values(draftAffixCounts).reduce((sum, n) => sum + (Number(n) || 0), 0)
     parts.push(`词条 ${total} 条`)
+  } else if (!committedDraftPanel.value) {
+    parts.push('面板未配置')
   } else {
     parts.push(
-      `局外 生命${Math.round(draftExternalPanel.hp)} / 攻击${Math.round(draftExternalPanel.atk)}`,
+      `局外 生命${Math.round(committedDraftPanel.value.hp)} / 攻击${Math.round(committedDraftPanel.value.atk)}`,
     )
   }
   return parts.join('  |  ')
@@ -425,53 +498,69 @@ function applyRecognitionToDraft(result: PanelScreenshotRecognition) {
   if (result.twoPieceDriveDiscId) selected.value.twoPieceId = result.twoPieceDriveDiscId
   if (result.fourPieceDriveDiscId) selected.value.fourPieceId = result.fourPieceDriveDiscId
 
-  Object.assign(
-    draftExternalPanel,
-    createDefaultExternalPanel(),
-    fillPanelStatsDefaults(result.externalPanel),
-  )
+  // 只写识别到的那几项，其余留空 —— 让用户看清哪些没读出来，不是替他补个默认数
+  Object.assign(draftExternalPanel, createEmptyExternalPanelDraft(), result.externalPanel)
 
   const mains = result.driveDiscMainStats
   if (mains?.slot4MainStat) draftAffixMains.slot4MainStat = mains.slot4MainStat
   if (mains?.slot5MainStat) draftAffixMains.slot5MainStat = mains.slot5MainStat
   if (mains?.slot6MainStat) draftAffixMains.slot6MainStat = mains.slot6MainStat
 
-  const agent = props.agents.find((item) => item.id === selected.value.agentId)
-  const wengine = props.wengines.find((item) => item.id === selected.value.wengineId)
-  const inferred = inferAffixCountsFromExternalPanel({
-    target: result.externalPanel,
-    agentBase: agent?.basePanel ?? createEmptyAgentBasePanel(),
-    wengineBaseAtk: wengine?.baseAtk ?? 0,
-    wengineAdvanced: wengine?.advancedStats ?? createEmptyWengineAdvancedStats(),
-    driveDiscSelection: {
-      twoPieceDriveDiscId: selected.value.twoPieceId,
-      fourPieceDriveDiscId: selected.value.fourPieceId,
-    },
-    driveDiscMainStats: { ...draftAffixMains },
-    driveDiscs: props.driveDiscs,
-  })
-  Object.assign(draftAffixCounts, createEmptyAffixCounts(), inferred.affixCounts)
+  draftFromRecognition = true
+  recognitionPanelSignature = JSON.stringify(draftExternalPanel)
   activeTab.value = 'panel'
 }
 
+/** 点「确定导入」时的校验提示（空就是空：没有实际内容就不写盘、不生成面板） */
+const confirmHint = ref('')
+
+// 草稿补齐后提示就该消失 —— 否则会一边写着「还缺 12 项」一边已经填满
+watch(
+  [() => committedDraftPanel.value, () => JSON.stringify(draftAffixMains)],
+  () => {
+    confirmHint.value = ''
+  },
+)
+
 function confirm() {
   if (!selected.value.agentId) return
-  const external =
-    entryMode.value === 'affix'
-      ? computeExternalPanelFromTeamSlot({
-          slot: {
-            agentId: selected.value.agentId,
-            wengineId: selected.value.wengineId,
-            twoPieceDriveDiscId: selected.value.twoPieceId,
-            fourPieceDriveDiscId: selected.value.fourPieceId,
-            affixCounts: { ...draftAffixCounts },
-            affixDriveDiscMainStats: { ...draftAffixMains },
-          },
-          agents: props.agents,
-          wengines: props.wengines,
-          driveDiscs: props.driveDiscs,
-        })
-      : { ...draftExternalPanel }
+  confirmHint.value = ''
+  // 限制：必须有**这次导入的内容**才写盘 —— 否则会凭空生成一份没有数据的面板
+  let external: PanelStats
+  let panelSource: AgentPanelSourceKind
+  if (entryMode.value === 'affix') {
+    // 4/5/6 主属性允许空：空就是不提供该主属性（按 0 计入），不挡写盘（所有者口径 2026-09-12）
+    external = computeExternalPanelFromTeamSlot({
+      slot: {
+        agentId: selected.value.agentId,
+        wengineId: selected.value.wengineId,
+        twoPieceDriveDiscId: selected.value.twoPieceId,
+        fourPieceDriveDiscId: selected.value.fourPieceId,
+        affixCounts: { ...draftAffixCounts },
+        affixDriveDiscMainStats: { ...draftAffixMains },
+      },
+      agents: props.agents,
+      wengines: props.wengines,
+      driveDiscs: props.driveDiscs,
+    })
+    panelSource = 'affixDerived'
+  } else {
+    const panel = committedDraftPanel.value
+    if (!panel) {
+      // 空字段按「用户没给这个数」处理：不替他补 0、更不补占位面板
+      const missing = missingExternalPanelInputs(draftExternalPanel)
+      confirmHint.value = `面板还缺 ${missing.length} 项没填：${missing
+        .map((item) => item.label)
+        .join('、')}`
+      return
+    }
+    if (isPlaceholderExternalPanel(panel)) {
+      confirmHint.value = '请先填写或识别面板，再确定导入'
+      return
+    }
+    external = panel
+    panelSource = 'imported'
+  }
   emit('confirm', {
     agentId: selected.value.agentId,
     rank: selected.value.rank,
@@ -483,6 +572,8 @@ function confirm() {
     affixCounts: { ...draftAffixCounts },
     affixDriveDiscMainStats: { ...draftAffixMains },
     skillTalentLevels: fillSkillTalentLevels(draftSkillTalentLevels, selected.value.rank),
+    panelSource,
+    panelSourceDetail: draftFromRecognition ? 'screenshot' : 'manual',
   })
   open.value = false
 }
@@ -757,6 +848,26 @@ const canConfirm = computed(() => !!selected.value.agentId)
               <p class="panel-locked-desc">请先在「角色」Tab 选择代理人，再录入或识别局外面板。</p>
             </div>
             <div v-else class="panel-import-stack">
+              <div class="panel-source-bar">
+                <span class="panel-source-title">面板来源</span>
+                <button
+                  v-for="item in switchablePanelSources"
+                  :key="item.kind"
+                  type="button"
+                  class="panel-source-btn"
+                  :class="{ active: item.active }"
+                  :title="item.active ? '当前使用这份' : '切换为这份'"
+                  @click="switchActivePanelSource(item.kind)"
+                >
+                  <template v-if="item.active">当前 · </template>{{ item.label }}
+                  <template v-if="item.importedAt">
+                    · {{ formatPanelImportedAt(item.importedAt) }}
+                  </template>
+                </button>
+                <span v-if="!switchablePanelSources.length" class="panel-source-empty">
+                  还没有面板数据 —— 请在下方录入或截图识别后点「确定导入」
+                </span>
+              </div>
               <PanelScreenshotUploadSection
                 embedded
                 :agents="agents"
@@ -790,6 +901,7 @@ const canConfirm = computed(() => !!selected.value.agentId)
           <div class="footer-summary">
             <p class="summary-title">导入预览</p>
             <p class="summary-text">{{ summary }}</p>
+            <p v-if="confirmHint" class="summary-hint">{{ confirmHint }}</p>
           </div>
           <div class="footer-actions">
             <button type="button" class="cancel-btn" @click="open = false">取消</button>
@@ -927,6 +1039,38 @@ const canConfirm = computed(() => !!selected.value.agentId)
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+/* 当前使用哪一份面板（面板导入 / 词条导入）：点一下即切换，不用重新导入 */
+.panel-source-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+}
+
+.panel-source-title {
+  color: #8b97a8;
+}
+
+.panel-source-btn {
+  padding: 0.15rem 0.55rem;
+  border: 1px solid #3a4658;
+  border-radius: 999px;
+  background: transparent;
+  color: #cbd5e1;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+
+.panel-source-btn.active {
+  border-color: #7dd3a0;
+  color: #7dd3a0;
+}
+
+.panel-source-empty {
+  color: #6b7688;
 }
 
 .panel-locked-state {

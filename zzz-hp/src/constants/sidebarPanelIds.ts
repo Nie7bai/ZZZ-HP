@@ -35,6 +35,7 @@ export const ADMIN_CALCULATOR_PANELS: readonly AdminCalculatorPanel[] = [
   'drive-disc',
   'skill-subcategory',
   'skill-library',
+  'affix-preset',
   'import-export',
 ] as const
 

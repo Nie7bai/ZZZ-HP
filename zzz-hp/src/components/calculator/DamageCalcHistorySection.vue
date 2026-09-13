@@ -56,13 +56,17 @@ const confirmEnabled = ref(true)
 try {
   const cv = localStorage.getItem(CONFIRM_KEY)
   if (cv !== null) confirmEnabled.value = cv === '1'
-} catch (_) {}
+} catch {
+  /* 隐私模式 / 配额：读不到就用默认值 */
+}
 
 function toggleConfirmLock(e: Event) {
   confirmEnabled.value = (e.target as HTMLInputElement).checked
   try {
     localStorage.setItem(CONFIRM_KEY, confirmEnabled.value ? '1' : '0')
-  } catch (_) {}
+  } catch {
+    /* 写不进去不影响本次会话 */
+  }
 }
 
 interface PendingConfirm {
@@ -358,10 +362,6 @@ const currentEntries = computed(() => {
 
 function enterFolder(path: string) {
   currentFolder.value = path
-}
-
-function goUp() {
-  currentFolder.value = parentFolder(currentFolder.value)
 }
 
 // 整理模式下点击目录卡本体（非复选框、非重命名编辑中）→ 钻入该目录

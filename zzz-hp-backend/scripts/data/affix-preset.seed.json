@@ -1,0 +1,582 @@
+{
+  "exportedAt": "2026-09-12T15:57:20.554Z",
+  "entries": [
+    {
+      "id": "substat:hpFlat",
+      "label": "固定生命值",
+      "target": "stat:hpFlat",
+      "perRoll": 112,
+      "cap": 0,
+      "group": "副词条",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 0
+    },
+    {
+      "id": "substat:hpPercent",
+      "label": "局外生命值%",
+      "target": "stat:hpPercent",
+      "perRoll": 3,
+      "cap": 0,
+      "group": "副词条",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 1
+    },
+    {
+      "id": "substat:atkFlat",
+      "label": "固定攻击力",
+      "target": "stat:atkFlat",
+      "perRoll": 19,
+      "cap": 0,
+      "group": "副词条",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 2
+    },
+    {
+      "id": "substat:atkPercent",
+      "label": "局外攻击力%",
+      "target": "stat:atkPercent",
+      "perRoll": 3,
+      "cap": 0,
+      "group": "副词条",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 3
+    },
+    {
+      "id": "substat:defFlat",
+      "label": "固定防御力",
+      "target": "stat:defFlat",
+      "perRoll": 15,
+      "cap": 0,
+      "group": "副词条",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 4
+    },
+    {
+      "id": "substat:defPercent",
+      "label": "局外防御力%",
+      "target": "stat:defPercent",
+      "perRoll": 4.8,
+      "cap": 0,
+      "group": "副词条",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 5
+    },
+    {
+      "id": "substat:pen",
+      "label": "固定穿透",
+      "target": "stat:pen",
+      "perRoll": 9,
+      "cap": 0,
+      "group": "副词条",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 6
+    },
+    {
+      "id": "substat:critRate",
+      "label": "暴击率%",
+      "target": "stat:critRate",
+      "perRoll": 2.4,
+      "cap": 0,
+      "group": "副词条",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 7
+    },
+    {
+      "id": "substat:critDmg",
+      "label": "暴击伤害%",
+      "target": "stat:critDmg",
+      "perRoll": 4.8,
+      "cap": 0,
+      "group": "副词条",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 8
+    },
+    {
+      "id": "substat:mastery",
+      "label": "异常精通",
+      "target": "stat:mastery",
+      "perRoll": 9,
+      "cap": 0,
+      "group": "副词条",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 9
+    },
+    {
+      "id": "panel:reduceDefense",
+      "label": "减防%",
+      "target": "panel:reduceDefense",
+      "perRoll": 30,
+      "cap": 1,
+      "group": "副词条",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 10
+    },
+    {
+      "id": "panel:ignoreDefense",
+      "label": "无视防御%",
+      "target": "panel:ignoreDefense",
+      "perRoll": 30,
+      "cap": 1,
+      "group": "副词条",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 11
+    },
+    {
+      "id": "panel:resPen",
+      "label": "抗性穿透%",
+      "target": "panel:resPen",
+      "perRoll": 24,
+      "cap": 1,
+      "group": "副词条",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 12
+    },
+    {
+      "id": "panel:anomalyDmgBonus",
+      "label": "异常增伤%",
+      "target": "panel:anomalyDmgBonus",
+      "perRoll": 30,
+      "cap": 1,
+      "group": "副词条",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 13
+    },
+    {
+      "id": "panel:anomalyCritRate",
+      "label": "异常暴击率%",
+      "target": "panel:anomalyCritRate",
+      "perRoll": 24,
+      "cap": 1,
+      "group": "副词条",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 14
+    },
+    {
+      "id": "panel:anomalyCritDmg",
+      "label": "异常暴击伤害%",
+      "target": "panel:anomalyCritDmg",
+      "perRoll": 48,
+      "cap": 1,
+      "group": "副词条",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 15
+    },
+    {
+      "id": "panel:anomalyReleaseDmgBonus",
+      "label": "异放增伤%",
+      "target": "panel:anomalyReleaseDmgBonus",
+      "perRoll": 30,
+      "cap": 1,
+      "group": "副词条",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 16
+    },
+    {
+      "id": "panel:disorderDmgBonus",
+      "label": "紊乱增伤%",
+      "target": "panel:disorderDmgBonus",
+      "perRoll": 30,
+      "cap": 1,
+      "group": "副词条",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 17
+    },
+    {
+      "id": "panel:turbulenceDmgBonus",
+      "label": "乱流增伤%",
+      "target": "panel:turbulenceDmgBonus",
+      "perRoll": 30,
+      "cap": 1,
+      "group": "副词条",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 18
+    },
+    {
+      "id": "panel:radianceDmgBonus",
+      "label": "耀变增伤%",
+      "target": "panel:radianceDmgBonus",
+      "perRoll": 30,
+      "cap": 1,
+      "group": "副词条",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 19
+    },
+    {
+      "id": "panel:radianceResPen",
+      "label": "耀变抗性穿透%",
+      "target": "panel:radianceResPen",
+      "perRoll": 24,
+      "cap": 1,
+      "group": "副词条",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 20
+    },
+    {
+      "id": "panel:specialMult",
+      "label": "特殊倍率%",
+      "target": "panel:specialMult",
+      "perRoll": 30,
+      "cap": 1,
+      "group": "副词条",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 21
+    },
+    {
+      "id": "main:slot4:critDmg",
+      "label": "爆伤 48%",
+      "target": "stat:critDmg",
+      "perRoll": 48,
+      "cap": 1,
+      "group": "4号位",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 22
+    },
+    {
+      "id": "main:slot4:critRate",
+      "label": "暴击 24%",
+      "target": "stat:critRate",
+      "perRoll": 24,
+      "cap": 1,
+      "group": "4号位",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 23
+    },
+    {
+      "id": "main:slot4:externalAtkPercent",
+      "label": "局外攻击力 30%",
+      "target": "stat:atkPercent",
+      "perRoll": 30,
+      "cap": 1,
+      "group": "4号位",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 24
+    },
+    {
+      "id": "main:slot4:externalHpPercent",
+      "label": "局外生命值 30%",
+      "target": "stat:hpPercent",
+      "perRoll": 30,
+      "cap": 1,
+      "group": "4号位",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 25
+    },
+    {
+      "id": "main:slot4:mastery",
+      "label": "精通 92",
+      "target": "stat:mastery",
+      "perRoll": 92,
+      "cap": 1,
+      "group": "4号位",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 26
+    },
+    {
+      "id": "main:slot4:externalDefPercent",
+      "label": "局外防御力 48%",
+      "target": "stat:defPercent",
+      "perRoll": 48,
+      "cap": 1,
+      "group": "4号位",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 27
+    },
+    {
+      "id": "main:slot5:externalAtkPercent",
+      "label": "局外攻击力 30%",
+      "target": "stat:atkPercent",
+      "perRoll": 30,
+      "cap": 1,
+      "group": "5号位",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 28
+    },
+    {
+      "id": "main:slot5:externalHpPercent",
+      "label": "局外生命值 30%",
+      "target": "stat:hpPercent",
+      "perRoll": 30,
+      "cap": 1,
+      "group": "5号位",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 29
+    },
+    {
+      "id": "main:slot5:externalDefPercent",
+      "label": "局外防御力 48%",
+      "target": "stat:defPercent",
+      "perRoll": 48,
+      "cap": 1,
+      "group": "5号位",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 30
+    },
+    {
+      "id": "main:slot5:dmgBonus",
+      "label": "增伤30%",
+      "target": "panel:dmgBonus",
+      "perRoll": 30,
+      "cap": 1,
+      "group": "5号位",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 31
+    },
+    {
+      "id": "main:slot5:penRate",
+      "label": "穿透率24%",
+      "target": "panel:penRate",
+      "perRoll": 24,
+      "cap": 1,
+      "group": "5号位",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 32
+    },
+    {
+      "id": "main:slot6:externalAtkPercent",
+      "label": "局外攻击力 30%",
+      "target": "stat:atkPercent",
+      "perRoll": 30,
+      "cap": 1,
+      "group": "6号位",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 33
+    },
+    {
+      "id": "main:slot6:externalHpPercent",
+      "label": "局外生命值 30%",
+      "target": "stat:hpPercent",
+      "perRoll": 30,
+      "cap": 1,
+      "group": "6号位",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 34
+    },
+    {
+      "id": "main:slot6:externalDefPercent",
+      "label": "局外防御力 48%",
+      "target": "stat:defPercent",
+      "perRoll": 48,
+      "cap": 1,
+      "group": "6号位",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 35
+    },
+    {
+      "id": "main:slot6:anomalyControl",
+      "label": "异常掌控 30%",
+      "target": "panel:anomalyControl",
+      "perRoll": 30,
+      "cap": 1,
+      "group": "6号位",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 36
+    },
+    {
+      "id": "main:slot6:impact",
+      "label": "冲击力 18%",
+      "target": "panel:impact",
+      "perRoll": 18,
+      "cap": 1,
+      "group": "6号位",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 37
+    },
+    {
+      "id": "main:slot6:energyRegen",
+      "label": "能量恢复 60%",
+      "target": "panel:energyRegen",
+      "perRoll": 60,
+      "cap": 1,
+      "group": "6号位",
+      "rollCost": 1,
+      "enabledByDefault": true,
+      "sortOrder": 38
+    },
+    {
+      "id": "set:dmgBonus:10",
+      "label": "增伤 10%",
+      "target": "panel:dmgBonus",
+      "perRoll": 10,
+      "cap": 1,
+      "group": "2件套",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 39
+    },
+    {
+      "id": "set:mastery:30",
+      "label": "精通 30",
+      "target": "stat:mastery",
+      "perRoll": 30,
+      "cap": 1,
+      "group": "2件套",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 40
+    },
+    {
+      "id": "set:energyRegen:20",
+      "label": "能量恢复 20%",
+      "target": "panel:energyRegen",
+      "perRoll": 20,
+      "cap": 1,
+      "group": "2件套",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 41
+    },
+    {
+      "id": "set:externalAtkPercent:10",
+      "label": "局外攻击力 10%",
+      "target": "stat:atkPercent",
+      "perRoll": 10,
+      "cap": 1,
+      "group": "2件套",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 42
+    },
+    {
+      "id": "set:externalHpPercent:10",
+      "label": "局外生命值 10%",
+      "target": "stat:hpPercent",
+      "perRoll": 10,
+      "cap": 1,
+      "group": "2件套",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 43
+    },
+    {
+      "id": "set:externalDefPercent:16",
+      "label": "局外防御力 16%",
+      "target": "stat:defPercent",
+      "perRoll": 16,
+      "cap": 1,
+      "group": "2件套",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 44
+    },
+    {
+      "id": "set:critRate:8",
+      "label": "暴击 8%",
+      "target": "stat:critRate",
+      "perRoll": 8,
+      "cap": 1,
+      "group": "2件套",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 45
+    },
+    {
+      "id": "set:critDmg:16",
+      "label": "爆伤 16%",
+      "target": "stat:critDmg",
+      "perRoll": 16,
+      "cap": 1,
+      "group": "2件套",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 46
+    },
+    {
+      "id": "set:penRate:8",
+      "label": "穿透率 8%",
+      "target": "panel:penRate",
+      "perRoll": 8,
+      "cap": 1,
+      "group": "2件套",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 47
+    },
+    {
+      "id": "set:anomalyControlPercent:8",
+      "label": "异常掌控 8%",
+      "target": "panel:anomalyControl",
+      "perRoll": 8,
+      "cap": 1,
+      "group": "2件套",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 48
+    },
+    {
+      "id": "set:impact:6",
+      "label": "冲击力 6%",
+      "target": "panel:impact",
+      "perRoll": 6,
+      "cap": 1,
+      "group": "2件套",
+      "rollCost": 1,
+      "enabledByDefault": false,
+      "sortOrder": 49
+    }
+  ],
+  "groups": [
+    {
+      "name": "4号位",
+      "cap": 1,
+      "sortOrder": 0
+    },
+    {
+      "name": "5号位",
+      "cap": 1,
+      "sortOrder": 1
+    },
+    {
+      "name": "6号位",
+      "cap": 1,
+      "sortOrder": 2
+    },
+    {
+      "name": "2件套",
+      "cap": 1,
+      "sortOrder": 3
+    },
+    {
+      "name": "副词条",
+      "cap": 0,
+      "sortOrder": 4
+    }
+  ]
+}

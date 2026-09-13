@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import type { DamageOwnerShareSummary } from '@/utils/damageEventOwner'
 
 const props = defineProps<{
@@ -35,6 +35,49 @@ watch(summaryStructureKey, () => {
   expandedOwnerIds.value = new Set()
 })
 
+/**
+ * 视口稳定 + 平滑收起：
+ * - 展开（id 非空）：详情内容渲染后（高度过渡 0.28s 完成），若底部超出滚动容器，
+ *   平滑滚到底部可见（nearest 对「部分可见」不滚动，最底下的事件会直接出现——这里统一判断）
+ * - 收起（onEventClick 收起分支）：先手动做高度收缩动画（内容仍在 DOM），
+ *   动画完成后再清空选中（内容移除）——页面跟随收缩平滑上移，事件行不跳
+ */
+const rootEl = ref<HTMLElement | null>(null)
+
+function findScrollParent(el: HTMLElement): HTMLElement {
+  let p = el.parentElement
+  while (p) {
+    if (p.scrollHeight > p.clientHeight + 1) return p
+    p = p.parentElement
+  }
+  return (document.scrollingElement as HTMLElement) ?? document.body
+}
+
+watch(
+  () => props.selectedEventId,
+  async (id) => {
+    if (!id) return
+    await nextTick()
+    // 等详情内容实际渲染完成（detail 计算可能慢，高度 > 0 才视为就绪），
+    // 避免按动画中间值/空内容误判不滚动
+    let el: HTMLElement | null | undefined = null
+    for (let i = 0; i < 15; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 80))
+      el = rootEl.value?.querySelector<HTMLElement>('.owner-event-detail-anchor--open')
+      if (el && el.offsetHeight > 10) break
+    }
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const vh = findScrollParent(el).clientHeight
+    if (rect.bottom > vh || rect.top < 0) {
+      el.scrollIntoView({
+        block: rect.bottom > vh ? 'end' : 'start',
+        behavior: 'smooth',
+      })
+    }
+  },
+)
+
 function formatNumber(v: number) {
   return Math.round(v).toLocaleString('zh-CN')
 }
@@ -49,12 +92,53 @@ function isExpanded(agentId: string) {
 
 function toggleOwner(agentId: string) {
   const next = new Set(expandedOwnerIds.value)
-  if (next.has(agentId)) {
+  const wasExpanded = next.has(agentId)
+  if (wasExpanded) {
     next.delete(agentId)
+    // 收起产生者：若其内部有选中的事件详情，一并收起（再次展开时不再自动展开详情）
+    clearSelectedIfInOwner(agentId)
   } else {
+    // 互斥：只展开当前产生者，其他自动合上（并清空它们内部的选中详情）
+    for (const otherId of next) {
+      if (otherId !== agentId) clearSelectedIfInOwner(otherId)
+    }
+    next.clear()
     next.add(agentId)
+    // 展开产生者：事件列表渲染后若超出视口，平滑滚动到可见（与事件详情展开同款稳定）
+    void scrollOwnerListIntoView(agentId)
   }
   expandedOwnerIds.value = next
+}
+
+/** 若选中事件属于该产生者，清空选中（详情收起） */
+function clearSelectedIfInOwner(agentId: string) {
+  if (!props.selectedEventId) return
+  const share = (props.summary?.shares ?? []).find((item) => item.agentId === agentId)
+  if (share?.events.some((event) => event.eventId === props.selectedEventId)) {
+    emit('select-event', '')
+  }
+}
+
+/** 产生者展开后：轮询等待事件列表渲染完成，超出视口则平滑滚到可见 */
+async function scrollOwnerListIntoView(agentId: string) {
+  await nextTick()
+  for (let i = 0; i < 10; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    const list = rootEl.value?.querySelector<HTMLElement>(
+      `.owner-share-item[data-owner-id="${agentId}"] .owner-event-list`,
+    )
+    if (list && list.children.length > 0) {
+      const rect = list.getBoundingClientRect()
+      const vh = findScrollParent(list).clientHeight
+      if (rect.bottom > vh || rect.top < 0) {
+        list.scrollIntoView({
+          block: rect.bottom > vh ? 'end' : 'start',
+          behavior: 'smooth',
+        })
+      }
+      return
+    }
+  }
 }
 
 function onOwnerKeydown(event: KeyboardEvent, agentId: string) {
@@ -65,6 +149,12 @@ function onOwnerKeydown(event: KeyboardEvent, agentId: string) {
 }
 
 function onEventClick(eventId: string) {
+  // 再次点击已选中事件：收起详情（直接关闭，无动画/滚动/定时器——稳定无竞态）
+  if (props.selectedEventId === eventId) {
+    emit('select-event', '')
+    return
+  }
+  // 点击其他事件：选中它（互斥——selectedEventId 单值，旧事件详情自动关闭）
   emit('select-event', eventId)
 }
 
@@ -81,12 +171,28 @@ function eventMetaText(event: {
   }
   return formatNumber(event.total)
 }
+
+/** displayName = 「角色名 · 招式名」：拆分出角色名（可能不含前缀） */
+function eventOwnerName(event: { displayName: string }): string {
+  const idx = event.displayName.indexOf(' · ')
+  return idx > 0 ? event.displayName.slice(0, idx) : ''
+}
+
+/** displayName 中「 · 」之后的招式名 */
+function eventSkillName(event: { displayName: string }): string {
+  const idx = event.displayName.indexOf(' · ')
+  return idx > 0 ? event.displayName.slice(idx + 3) : event.displayName
+}
 </script>
 
 <template>
-  <section v-if="summary?.shares.length || skippedEvents?.length" class="owner-share-block">
+  <section
+    ref="rootEl"
+    v-if="summary?.shares.length || skippedEvents?.length"
+    class="owner-share-block"
+  >
     <div class="owner-share-header">
-      <h3 class="owner-share-title">产生者伤害占比</h3>
+      <h3 class="owner-share-title">事件详情 · 产生者伤害占比</h3>
       <p class="owner-share-hint">
         {{
           hint ??
@@ -101,7 +207,12 @@ function eventMetaText(event: {
     </p>
 
     <ul v-if="summary?.shares.length" class="owner-share-list">
-      <li v-for="item in summary.shares" :key="item.agentId" class="owner-share-item">
+      <li
+        v-for="item in summary.shares"
+        :key="item.agentId"
+        class="owner-share-item"
+        :data-owner-id="item.agentId"
+      >
         <div
           class="owner-share-trigger"
           :class="{
@@ -152,13 +263,17 @@ function eventMetaText(event: {
             :key="event.eventId"
             class="owner-event-item"
             :class="{ 'owner-event-item--active': selectedEventId === event.eventId }"
+            :data-event-id="event.eventId"
             role="button"
             tabindex="0"
             @click.stop="onEventClick(event.eventId)"
             @keydown.enter.prevent.stop="onEventClick(event.eventId)"
             @keydown.space.prevent.stop="onEventClick(event.eventId)"
           >
-            <span class="owner-event-name" :title="event.displayName">{{ event.displayName }}</span>
+            <span class="owner-event-name" :title="event.displayName">
+              <span v-if="eventOwnerName(event)" class="owner-event-owner">{{ eventOwnerName(event) }} · </span>
+              <span class="owner-event-skill">{{ eventSkillName(event) }}</span>
+            </span>
             <span class="owner-event-meta">
               <span class="owner-event-ratio-total">{{ formatPct(event.ratio) }}</span>
               <span class="owner-share-sep" aria-hidden="true">·</span>
@@ -172,6 +287,15 @@ function eventMetaText(event: {
                 class="owner-event-bar"
                 :style="{ width: `${Math.max(event.ratio * 100, 0.5)}%` }"
               />
+            </div>
+            <!-- 选中事件的详细计算过程：内嵌在该事件正下方；展开/收起用 grid-template-rows 平滑过渡（元素常驻） -->
+            <div
+              class="owner-event-detail-anchor"
+              :class="{
+                'owner-event-detail-anchor--open': selectedEventId === event.eventId,
+              }"
+            >
+              <slot name="event-detail" />
             </div>
           </li>
         </ul>
@@ -218,7 +342,7 @@ function eventMetaText(event: {
 .owner-share-hint {
   margin: 0;
   font-size: 0.74rem;
-  color: var(--calc-muted, #9aa3b0);
+  color: var(--color-heading, #f5f5f0);
   line-height: 1.4;
   max-width: 36rem;
 }
@@ -238,7 +362,7 @@ function eventMetaText(event: {
 
 .owner-share-total-label {
   font-size: 0.8rem;
-  color: var(--calc-muted, #9aa3b0);
+  color: var(--color-heading, #f5f5f0);
 }
 
 .owner-share-total-value {
@@ -251,7 +375,7 @@ function eventMetaText(event: {
 .owner-share-empty {
   margin: 0.55rem 0 0;
   font-size: 0.78rem;
-  color: var(--calc-muted, #9aa3b0);
+  color: var(--color-heading, #f5f5f0);
 }
 
 .owner-share-list {
@@ -282,7 +406,7 @@ function eventMetaText(event: {
 
 .owner-share-trigger--expandable:hover,
 .owner-share-trigger--expanded {
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--calc-text, #e8eaed) 4%, transparent);
 }
 
 .owner-share-head {
@@ -308,7 +432,7 @@ function eventMetaText(event: {
   width: 0.85rem;
   font-size: 0.95rem;
   line-height: 1;
-  color: var(--calc-muted, #9aa3b0);
+  color: var(--color-heading, #f5f5f0);
   transform: rotate(0deg);
   transition: transform 0.15s ease;
 }
@@ -318,7 +442,7 @@ function eventMetaText(event: {
 }
 
 .owner-share-meta {
-  color: var(--calc-muted, #9aa3b0);
+  color: var(--color-heading, #f5f5f0);
   font-variant-numeric: tabular-nums;
 }
 
@@ -344,11 +468,7 @@ function eventMetaText(event: {
   height: 100%;
   min-width: 2px;
   border-radius: inherit;
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--calc-accent, #c9a55c) 85%, #fff 15%),
-    var(--calc-accent, #c9a55c)
-  );
+  background: var(--calc-accent, #c9a55c);
 }
 
 .owner-event-list {
@@ -371,29 +491,50 @@ function eventMetaText(event: {
 }
 
 .owner-event-item:hover {
-  background: rgba(255, 255, 255, 0.03);
-  border-color: var(--calc-border, #3a414c);
+  background: color-mix(in srgb, var(--calc-text, #e8eaed) 3%, transparent);
+  border-color: var(--calc-border, #2a2f37);
 }
 
+/*
+ * 选中行：白天是浅米底（`--calc-accent-bg` 由 `.calculator-page.theme-light` 给出 #fff8eb），
+ * 暗夜下该变量未定义，若这里兜底写浅色就会整行变米色、里面的浅色字全部看不见
+ * （2026-09-13 用户实测「伤害详情黑夜的样式没了」）。兜底取深色下的金底选中态，
+ * 与 `AffixBenefitTable` / `DamageResultDetail` 的暗色块同值。
+ */
 .owner-event-item--active {
-  background: rgba(201, 165, 92, 0.1);
-  border-color: rgba(201, 165, 92, 0.45);
+  background: var(--calc-accent-bg, rgba(201, 165, 92, 0.14));
+  border-color: color-mix(in srgb, var(--calc-accent, #c9a55c) 45%, transparent);
 }
 
 .owner-event-name {
   display: block;
   font-size: 0.78rem;
-  color: var(--calc-text, #c5cdd8);
+  color: var(--color-heading, #f5f5f0);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 招式名：放大加粗；角色名保持小字 */
+.owner-event-owner {
+  font-weight: 400;
+  /* 角色名前缀：比招式名浅，但白天必须可读（58% 透明太淡，取 72%）。
+     兜底取暗色主文字色 —— 暗夜下 `--calc-text` 未定义，写浅色会变近黑而消失。 */
+  color: color-mix(in srgb, var(--calc-text, #e8eaed) 72%, transparent);
+}
+
+.owner-event-skill {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--calc-text, #d5dae3);
 }
 
 .owner-event-meta {
   display: block;
   margin-top: 0.12rem;
   font-size: 0.74rem;
-  color: var(--calc-muted, #9aa3b0);
+  /* 单次/合计/占比是伤害数值，必须清楚：直接主文字色（差异靠字号与字重） */
+  color: var(--color-heading, #f5f5f0);
   font-variant-numeric: tabular-nums;
 }
 
@@ -414,6 +555,41 @@ function eventMetaText(event: {
   border-radius: 999px;
   background: var(--calc-surface-3, rgba(255, 255, 255, 0.05));
   overflow: hidden;
+}
+
+/* 事件内嵌详情：与事件行之间留出分隔，左缘对齐事件文本 */
+.owner-event-item > :deep(.damage-result-detail) {
+  margin-top: 0.5rem;
+  padding-left: 0.1rem;
+}
+
+/* 详情展开/收起：默认高度 0 隐藏；选中时 auto 显示；收起时由 onEventClick 手动驱动 height 收缩 */
+.owner-event-detail-anchor {
+  height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition:
+    height 0.28s ease,
+    opacity 0.2s ease;
+}
+
+.owner-event-detail-anchor--open {
+  height: auto;
+  opacity: 1;
+}
+
+/* 详情展开/收起过渡：淡入淡出 + 轻微位移（收起时高度保持到动画结束，页面不跳） */
+.event-detail-enter-active,
+.event-detail-leave-active {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.event-detail-enter-from,
+.event-detail-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
 }
 
 .owner-event-bar {

@@ -432,7 +432,6 @@
 
 /* 鈥斺€?璁＄畻鏂瑰紡 / chip 鈥斺€?*/
 .calculator-page.theme-light .calc-mode-tab,
-.calculator-page.theme-light .chip,
 .calculator-page.theme-light .result-mode-btn,
 .calculator-page.theme-light .mindscape-tab,
 .calculator-page.theme-light .ocr-json-btn,
@@ -443,8 +442,30 @@
   color: var(--calc-text) !important;
 }
 
+/*
+ * chip 单独一份，且与导入弹窗（`assets/calculatorChip.css` 的浅色覆盖）逐值一致 ——
+ * 否则页面内的 chip 与弹窗里的 chip 各是一种浅灰，正是要统一掉的那种差异。
+ */
+.calculator-page.theme-light .chip {
+  border-color: #d5dae3 !important;
+  background: #f5f7fa !important;
+  background-color: #f5f7fa !important;
+  color: #344054 !important;
+}
+
+.calculator-page.theme-light .chip:hover:not(:disabled) {
+  border-color: #c9a55c !important;
+  color: #1c212a !important;
+}
+
+.calculator-page.theme-light .chip.active {
+  border-color: #c9a55c !important;
+  background: #fff8eb !important;
+  background-color: #fff8eb !important;
+  color: #1c212a !important;
+}
+
 .calculator-page.theme-light .calc-mode-tab:hover,
-.calculator-page.theme-light .chip:hover,
 .calculator-page.theme-light .ocr-json-btn:hover,
 .calculator-page.theme-light .image-picker-btn:hover {
   background: var(--calc-surface-3) !important;
@@ -474,7 +495,6 @@
 }
 
 .calculator-page.theme-light .calc-mode-tab.active,
-.calculator-page.theme-light .chip.active,
 .calculator-page.theme-light .result-mode-btn.active,
 .calculator-page.theme-light .mindscape-tab.active,
 .calculator-page.theme-light .slot-card.active,
@@ -623,7 +643,7 @@
 
 .calculator-page.theme-light .formula-label,
 .calculator-page.theme-light .formula-aligned-term-label {
-  color: var(--calc-muted) !important;
+  color: var(--calc-text) !important;
 }
 
 .calculator-page.theme-light .formula-value,
@@ -943,21 +963,15 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear:hover 
   color: var(--calc-muted) !important;
 }
 
-.calculator-page.theme-light .opt-section .kind-tab,
-.calculator-page.theme-light .opt-section .kind-mode-tab,
-.calculator-page.theme-light .opt-section .detail-tab,
+/*
+ * 动作按钮（重新计算收益 / 计算敏感度 …）保持方角按钮；
+ * 原先这里的 `.kind-tab` / `.kind-mode-tab` / `.detail-tab` 三类已并入统一 chip（见
+ * `assets/calculatorChip.css`），组件里不再有这些类名，故一并删掉。
+ */
 .calculator-page.theme-light .opt-section .ghost-btn {
   border-color: var(--calc-border) !important;
   background: var(--calc-surface-2) !important;
   color: var(--calc-text) !important;
-}
-
-.calculator-page.theme-light .opt-section .kind-tab.active,
-.calculator-page.theme-light .opt-section .kind-mode-tab.active,
-.calculator-page.theme-light .opt-section .detail-tab.active {
-  border-color: var(--calc-accent) !important;
-  background: var(--calc-accent-bg) !important;
-  color: #5c4818 !important;
 }
 
 .calculator-page.theme-light .opt-section .detail {
@@ -1172,7 +1186,7 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear:hover 
 
 .calculator-page.theme-light .opt-section .owner-share-meta,
 .calculator-page.theme-light .opt-section .owner-share-events {
-  color: var(--calc-muted) !important;
+  color: var(--calc-text) !important;
 }
 
 .calculator-page.theme-light .opt-section .owner-share-track {
@@ -1180,7 +1194,7 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear:hover 
 }
 
 .calculator-page.theme-light .opt-section .owner-share-hint {
-  color: var(--calc-muted) !important;
+  color: var(--calc-text) !important;
 }
 
 .calculator-page.theme-light .opt-section .owner-share-trigger--expandable:hover,
@@ -1208,7 +1222,7 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear:hover 
 
 .calculator-page.theme-light .opt-section .owner-event-meta,
 .calculator-page.theme-light .opt-section .owner-event-ratio-owner {
-  color: var(--calc-muted) !important;
+  color: var(--calc-text) !important;
 }
 
 .calculator-page.theme-light .opt-section .owner-event-track {
@@ -1270,7 +1284,7 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear:hover 
 .calculator-page.theme-light .opt-section .damage-result-detail .formula-aligned-term-label,
 .calculator-page.theme-light .opt-section .damage-result-detail .formula-aligned-hint,
 .calculator-page.theme-light .opt-section .damage-result-detail .formula-aligned-op {
-  color: var(--calc-muted) !important;
+  color: var(--calc-text) !important;
 }
 
 .calculator-page.theme-light .opt-section .damage-result-detail .formula-aligned-group + .formula-aligned-group {
@@ -2185,7 +2199,7 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear,
 
 .calculator-page.theme-light .owner-share-meta,
 .calculator-page.theme-light .owner-share-events {
-  color: var(--calc-muted) !important;
+  color: var(--calc-text) !important;
 }
 
 .calculator-page.theme-light .owner-share-track {
@@ -2193,7 +2207,7 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear,
 }
 
 .calculator-page.theme-light .owner-share-hint {
-  color: var(--calc-muted) !important;
+  color: var(--calc-text) !important;
 }
 
 .calculator-page.theme-light .owner-share-trigger--expandable:hover,
@@ -2221,7 +2235,7 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear,
 
 .calculator-page.theme-light .owner-event-meta,
 .calculator-page.theme-light .owner-event-ratio-owner {
-  color: var(--calc-muted) !important;
+  color: var(--calc-text) !important;
 }
 
 .calculator-page.theme-light .owner-event-track {
@@ -3459,13 +3473,13 @@ body:has(.calculator-page.theme-light) .preset-preview li,
 [data-theme='light'] .skill-detail-panel .chip {
   border-color: #d5dae3 !important;
   background: #f5f7fa !important;
-  color: #1c212a !important;
+  color: #344054 !important;
 }
 [data-theme='light'] .skill-flow-modal .chip.active,
 [data-theme='light'] .skill-detail-panel .chip.active {
   border-color: #c9a55c !important;
   background: #fff8eb !important;
-  color: #8a6a1f !important;
+  color: #1c212a !important;
 }
 [data-theme='light'] .skill-flow-modal .chip-group + .chip-group {
   border-left-color: #d5dae3 !important;
@@ -3573,4 +3587,182 @@ body:has(.calculator-page.theme-light) .preset-preview li,
 }
 [data-theme='light'] .skill-detail-panel .sf-card .sf-name {
   color: #1c212a !important;
+}
+
+/*
+ * 词条库弹窗（AffixLibraryModal）：Teleport 到 body，用 [data-theme='light'] 覆盖。
+ * 配色与 UnifiedPresetPicker 保持一致。
+ */
+[data-theme='light'] .affix-library-overlay {
+  background: rgba(15, 23, 42, 0.35) !important;
+}
+
+[data-theme='light'] .affix-library-modal {
+  border-color: #d5dae3 !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f6f8fb 100%) !important;
+  color: #1c212a !important;
+  box-shadow: 0 18px 48px rgba(16, 24, 40, 0.12) !important;
+}
+
+[data-theme='light'] .affix-library-modal .modal-header {
+  border-bottom-color: #e4e7ec !important;
+}
+
+[data-theme='light'] .affix-library-modal .modal-header h2 {
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .affix-library-modal .close-btn {
+  color: #667085 !important;
+}
+
+[data-theme='light'] .affix-library-modal .close-btn:hover {
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .affix-library-modal .set-pane {
+  border-right-color: #e4e7ec !important;
+}
+
+[data-theme='light'] .affix-library-modal .pane-title,
+[data-theme='light'] .affix-library-modal .add-entry h5 {
+  color: #344054 !important;
+}
+
+[data-theme='light'] .affix-library-modal .field-input,
+[data-theme='light'] .affix-library-modal .inline-input,
+[data-theme='light'] .affix-library-modal .add-grid input,
+[data-theme='light'] .affix-library-modal .add-grid select {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .affix-library-modal .set-item {
+  border-color: #e4e7ec !important;
+  background: #fafbfc !important;
+}
+
+[data-theme='light'] .affix-library-modal .set-item.active {
+  border-color: #c9a55c !important;
+  background: #fff8eb !important;
+}
+
+[data-theme='light'] .affix-library-modal .set-name {
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .affix-library-modal .set-meta,
+[data-theme='light'] .affix-library-modal .type-cell,
+[data-theme='light'] .affix-library-modal .unit-hint,
+[data-theme='light'] .affix-library-modal .add-grid label,
+[data-theme='light'] .affix-library-modal .footnote {
+  color: #667085 !important;
+}
+
+[data-theme='light'] .affix-library-modal .set-badge {
+  background: #fff3d6 !important;
+  color: #5c4818 !important;
+}
+
+[data-theme='light'] .affix-library-modal .pane-actions {
+  border-top-color: #e4e7ec !important;
+}
+
+[data-theme='light'] .affix-library-modal .entry-scroll {
+  border-color: #e4e7ec !important;
+}
+
+[data-theme='light'] .affix-library-modal .library-table th {
+  background: #f1efe9 !important;
+  color: #667085 !important;
+  border-bottom-color: #e4e7ec !important;
+}
+
+[data-theme='light'] .affix-library-modal .library-table td {
+  border-bottom-color: #f0f1f4 !important;
+}
+
+[data-theme='light'] .affix-library-modal .mini-btn {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+  color: #344054 !important;
+}
+
+[data-theme='light'] .affix-library-modal .mini-btn:hover:not(:disabled) {
+  border-color: #c9a55c !important;
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .affix-library-modal .mini-btn.ok,
+[data-theme='light'] .affix-library-modal .btn-primary {
+  border-color: #c9a55c !important;
+  background: #fff8eb !important;
+  color: #5c4818 !important;
+}
+
+[data-theme='light'] .affix-library-modal .del-btn {
+  color: #667085 !important;
+}
+
+[data-theme='light'] .affix-library-modal .confirm-row {
+  color: #344054 !important;
+}
+
+/*
+ * 危险确认句（删除这套库）：普通正文色看不出是危险操作（用户 2026-09-13
+ * 「辨识度太低了，改成红色字体」）。上一条只管普通确认句，这条单独覆盖 danger，
+ * 用仓库统一的浅色危险红（与 .err / .mini-btn.danger 一致）。
+ */
+[data-theme='light'] .affix-library-modal .confirm-row.danger {
+  color: #b42318 !important;
+}
+
+[data-theme='light'] .affix-library-modal .err {
+  color: #b42318 !important;
+}
+
+[data-theme='light'] .affix-library-modal .ok-msg {
+  color: #027a48 !important;
+}
+
+/*
+ * 以下为步骤 34/35 新增区块（新建表单、库列表说明、页签、组页首行）的浅色配色。
+ * 这些元素是后加的，之前漏在浅色主题外 —— 深色底 + 近白字浮在浅色弹窗上（用户实测反馈）。
+ */
+[data-theme='light'] .affix-library-modal .set-list-hint,
+[data-theme='light'] .affix-library-modal .option-caption,
+[data-theme='light'] .affix-library-modal .origin-desc,
+[data-theme='light'] .affix-library-modal .group-head-hint,
+[data-theme='light'] .affix-library-modal .advanced-switch,
+[data-theme='light'] .affix-library-modal .target-cell,
+[data-theme='light'] .affix-library-modal .empty-cell {
+  color: #667085 !important;
+}
+
+[data-theme='light'] .affix-library-modal .set-new-panel {
+  border-color: #e4e7ec !important;
+  background: #f7f8fa !important;
+}
+
+[data-theme='light'] .affix-library-modal .origin-option {
+  color: #344054 !important;
+}
+
+[data-theme='light'] .affix-library-modal .origin-option--placeholder {
+  color: #98a2b3 !important;
+}
+
+/* 分页页签与组页按钮用的是统一 chip（assets/calculatorChip.css），这里不再单独覆盖 */
+
+[data-theme='light'] .affix-library-modal .group-head {
+  color: #344054 !important;
+}
+
+[data-theme='light'] .affix-library-modal .group-head-name {
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .affix-library-modal .group-head-cap strong {
+  color: #8a6d28 !important;
 }

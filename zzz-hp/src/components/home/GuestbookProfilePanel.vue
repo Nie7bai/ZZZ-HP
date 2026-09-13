@@ -622,11 +622,6 @@ async function confirmUnbanRequest() {
   }
 }
 
-function openSocialTab(tab: 'followers' | 'following') {
-  activeTab.value = tab
-  void loadActiveTab()
-}
-
 async function loadMyPosts() {
   const id = targetUserId.value
   if (!id) {
@@ -755,10 +750,6 @@ async function saveProfileDisplay() {
   } finally {
     saving.value = false
   }
-}
-
-function openPostsTabFromMenu() {
-  openProfileDisplayMenu()
 }
 
 async function toggleProfilePin(item: GuestbookEntry) {

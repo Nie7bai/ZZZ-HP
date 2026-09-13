@@ -12,24 +12,6 @@ export function resolveEventOwnerAgentId(
   return mainAgentId
 }
 
-export function collectParticipantAgentIds(
-  events: DamageEvent[],
-  mainAgentId: string,
-): string[] {
-  const ids = new Set<string>()
-  for (const event of events) {
-    const ownerId = resolveEventOwnerAgentId(event, mainAgentId)
-    if (ownerId && ownerId !== mainAgentId) ids.add(ownerId)
-    if (eventNeedsAnomalyProducer(event.kind)) {
-      const triggerId = event.triggerAgentId
-      if (triggerId && triggerId !== TRIGGER_AGENT_AT_CALC && triggerId !== mainAgentId) {
-        ids.add(triggerId)
-      }
-    }
-  }
-  return [...ids]
-}
-
 /** 自定义伤害模式缓存键：主 C + 全部事件产生者/异常触发者（排序后拼接） */
 export function collectDamageModeTeamAgentIds(
   events: DamageEvent[],
@@ -198,49 +180,6 @@ export type DamageEventAgentOption = {
   id: string
   name: string
   element?: string
-}
-
-/**
- * 队内选项 ∪ 事件已引用的产生者/异常触发者。
- * 已下阵角色仍保留展示（标注「未上阵」），不清空存储。
- */
-export function mergeDamageEventAgentOptions(
-  teamOptions: DamageEventAgentOption[],
-  catalog: Array<{ id: string; name: string; element?: string | null }>,
-  events: DamageEvent[],
-  mainAgentId: string,
-  formatName: (agent: { id: string; name: string; element?: string | null }, offTeam: boolean) => string = (
-    agent,
-    offTeam,
-  ) => (offTeam ? `${agent.name}（未上阵）` : agent.name),
-): DamageEventAgentOption[] {
-  const map = new Map<string, DamageEventAgentOption>()
-  for (const opt of teamOptions) {
-    map.set(opt.id, opt)
-  }
-
-  const ensure = (agentId: string | null | undefined) => {
-    if (!agentId || agentId === TRIGGER_AGENT_AT_CALC) return
-    if (map.has(agentId)) return
-    const agent = catalog.find((item) => item.id === agentId)
-    if (!agent) {
-      map.set(agentId, { id: agentId, name: `${agentId}（未上阵）` })
-      return
-    }
-    map.set(agentId, {
-      id: agent.id,
-      name: formatName(agent, true),
-      element: agent.element ?? undefined,
-    })
-  }
-
-  for (const event of events) {
-    if (event.ownerAgentId) ensure(event.ownerAgentId)
-    ensure(resolveEventOwnerAgentId(event, mainAgentId))
-    if (eventNeedsAnomalyProducer(event.kind)) ensure(event.triggerAgentId)
-  }
-
-  return [...map.values()]
 }
 
 export const RADIANCE_SELF_TRIGGER_HINT =

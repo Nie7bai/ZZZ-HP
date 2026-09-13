@@ -22,11 +22,6 @@ function formatProcessNumber(value: number, precision = 4) {
   return text.toFixed(precision)
 }
 
-/** 面板百分点 → 乘区小数，用于展示：33% = 0.33 */
-export function formatPercentAsRatio(percent: number, precision = 4) {
-  return formatProcessNumber(percent / 100, precision)
-}
-
 function fieldLabel(key: BuffStatKey) {
   const field = BUFF_STAT_FIELDS.find((item) => item.key === key)
   return field ? buffStatFieldLabel(field) : key

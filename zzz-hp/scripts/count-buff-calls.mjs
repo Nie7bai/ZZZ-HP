@@ -6,6 +6,8 @@
  * 用法：npx vite-node scripts/count-buff-calls.mjs
  */
 import fs from 'node:fs'
+import { schemeActivePanels, schemeAffixInputs } from '../src/utils/agentPanelSources.ts'
+import { BUFFS_JSON, resolveSchemePath } from './_paths.mjs'
 
 const SRC = 'src/utils/panelBuffCalc.ts'
 const original = fs.readFileSync(SRC, 'utf8')
@@ -40,8 +42,8 @@ async function main() {
 
   const DIRECT_EVALS = 200 // 求解大致的评估次数，仅用于换算每次评估的平均调用数
 
-  const BUFFS = 'D:/WB_agent_out/applications/ZZZ-HP/zzz-hp-backend/scripts/data/zzz-hp-calculator-buffs.json'
-  const SCHEME = process.argv[2] ?? 'D:/WB_agent_out/ZZZ-HP/artifacts/profiles/scheme-dan.json'
+  const BUFFS = BUFFS_JSON
+  const SCHEME = resolveSchemePath(process.argv[2])
 
   const buffs = JSON.parse(fs.readFileSync(BUFFS, 'utf8'))
   const schemePack = JSON.parse(fs.readFileSync(SCHEME, 'utf8'))
@@ -72,7 +74,7 @@ async function main() {
     bangbooRefine: 1,
     driveDiscs: buffs.driveDiscs,
     mainSlotIndex,
-    driveDiscMainStats: mainSlot.affixDriveDiscMainStats ?? {
+    driveDiscMainStats: schemeAffixInputs(scheme, mainSlot.agentId).affixDriveDiscMainStats ?? {
       slot4MainStat: 'mastery', slot5MainStat: 'dmgBonus', slot6MainStat: 'energyRegen',
     },
     enemyInput: {
@@ -83,7 +85,7 @@ async function main() {
       mainAgent?.profession === '命破' ? 'pierce' : mainAgent?.profession === '锋御' ? 'def' : 'atk',
     buffSelection: null,
     slotBuffSelections: scheme.multiSlotBuffSelection ?? null,
-    anomalySlotPanels: scheme.anomalySlotPanels ?? undefined,
+    activeSlotPanels: schemeActivePanels(scheme),
     convertSlotPanels: scheme.convertSlotPanels ?? undefined,
     hits: flowResult.hits,
     resolveSubcategory: (id) => buffs.skillSubcategories.find((x) => x.id === id) ?? null,

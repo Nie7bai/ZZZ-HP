@@ -25,11 +25,13 @@ import {
 import { computeAffixBenefitTable } from '../src/utils/affixBenefitAnalysis.ts'
 import { createEmptyAffixCounts } from '../src/types/calculatorPanel.ts'
 import { createDefaultAffixLibrary } from '../src/utils/affixLibrary.ts'
+import { schemeActivePanels, schemeAffixInputs } from '../src/utils/agentPanelSources.ts'
+import { ARTIFACTS_DIR, BUFFS_JSON, resolveSchemePath } from './_paths.mjs'
 
-const BUFFS = 'D:/WB_agent_out/applications/ZZZ-HP/zzz-hp-backend/scripts/data/zzz-hp-calculator-buffs.json'
-const ARTIFACTS = 'D:/WB_agent_out/ZZZ-HP/artifacts'
-/** 用户导出的方案库 JSON（放在工作区 artifacts/profiles 下）；可用 argv[2] 覆盖 */
-const SCHEME = process.argv[2] ?? `${ARTIFACTS}/profiles/scheme-dan.json`
+const BUFFS = BUFFS_JSON
+const ARTIFACTS = ARTIFACTS_DIR
+/** 用户导出的方案库 JSON（放开发目录 artifacts/profiles）；可用 argv[2] 覆盖 */
+const SCHEME = resolveSchemePath(process.argv[2])
 
 const buffs = JSON.parse(fs.readFileSync(BUFFS, 'utf8'))
 const schemePack = JSON.parse(fs.readFileSync(SCHEME, 'utf8'))
@@ -42,7 +44,7 @@ const skillById = new Map(
 // ---------- 1. 解析流程 → hits ----------
 const flowResult = resolveFlow({
   slots: scheme.slots,
-  teamSlots: scheme.teamSlots.map((s) => ({ agentId: s.agentId })),
+  teamSlots: scheme.teamSlots.map((s) => ({ agentId: s.agentId, rank: s.rank })),
   findSkill: (id) => skillById.get(id) ?? null,
   skillSubcategories: buffs.skillSubcategories,
 })
@@ -72,7 +74,7 @@ const ctx = buildOptimalEvalContext({
   bangbooRefine: 1,
   driveDiscs: buffs.driveDiscs,
   mainSlotIndex,
-  driveDiscMainStats: mainSlot.affixDriveDiscMainStats ?? {
+  driveDiscMainStats: schemeAffixInputs(scheme, mainSlot.agentId).affixDriveDiscMainStats ?? {
     slot4MainStat: 'mastery', slot5MainStat: 'dmgBonus', slot6MainStat: 'energyRegen',
   },
   enemyInput: {
@@ -83,7 +85,7 @@ const ctx = buildOptimalEvalContext({
     mainAgent?.profession === '命破' ? 'pierce' : mainAgent?.profession === '锋御' ? 'def' : 'atk',
   buffSelection: null,
   slotBuffSelections: scheme.multiSlotBuffSelection ?? null,
-  anomalySlotPanels: scheme.anomalySlotPanels ?? undefined,
+  activeSlotPanels: schemeActivePanels(scheme),
   convertSlotPanels: scheme.convertSlotPanels ?? undefined,
   hits,
   resolveSubcategory: (id) => buffs.skillSubcategories.find((x) => x.id === id) ?? null,

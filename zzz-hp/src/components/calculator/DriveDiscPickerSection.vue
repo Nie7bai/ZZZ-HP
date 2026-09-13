@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
 import type { AgentBuffDoc, DriveDiscBuffDoc } from '@/types/calculator'
@@ -12,9 +12,6 @@ const props = defineProps<{
   activeSlot: number
   activeAgent?: AgentBuffDoc
 }>()
-
-const twoPiecePickerOpen = ref(false)
-const fourPiecePickerOpen = ref(false)
 
 const activeSlotData = computed(() => props.teamSlots[props.activeSlot]!)
 
@@ -29,16 +26,6 @@ const selectedTwoPiece = computed(() =>
 const selectedFourPiece = computed(() =>
   props.driveDiscs.find((item) => item.id === activeSlotData.value.fourPieceDriveDiscId),
 )
-
-function selectTwoPiece(id: string) {
-  const slot = activeSlotData.value
-  slot.twoPieceDriveDiscId = slot.twoPieceDriveDiscId === id ? 'none' : id
-}
-
-function selectFourPiece(id: string) {
-  const slot = activeSlotData.value
-  slot.fourPieceDriveDiscId = slot.fourPieceDriveDiscId === id ? 'none' : id
-}
 </script>
 
 <template>

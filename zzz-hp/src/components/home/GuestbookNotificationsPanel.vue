@@ -719,11 +719,6 @@ function openActorById(event: Event, userId: number) {
   if (userId > 0) emitOpenUser(userId)
 }
 
-function openPeerProfile() {
-  const peerId = activeDmConversation.value?.peerId
-  if (peerId) emitOpenUser(peerId)
-}
-
 function selectTab(tab: GuestbookKnockTab) {
   if (activeTab.value === tab) return
   activeTab.value = tab

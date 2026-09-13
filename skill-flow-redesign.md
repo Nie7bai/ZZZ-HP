@@ -53,6 +53,12 @@
 
 有结算 → 最终倍率区 ×100（紊乱/乱流含时间×补偿）。计算过程仍列区小数，并拆「基础倍率 / 倍率区」。删除自定义招式用站内确认弹窗（白天主题可用）。
 
+### 异常类招式的锚点（2026-09-11 补记）
+
+§4.3「两者都留空」已成历史。现行规则：**招式类型留空、增益锚点保留**，
+配套开关是 `appliesToAnomaly`（`BuffEffect.appliesToAnomaly === true` 才会作用到异常伤害）。
+迁移侧 `eventToSkill` 会保留旧小类 id 作锚点，`resolvedHit` 再带上锚点所属大类产出匹配坐标。
+
 ---
 
 # 第一部分：新架构
@@ -141,8 +147,14 @@
 
 ### 4.3 异常类招式
 
-**招式类型留空、增益锚点留空。** 于是招式限定 Buff 天然一条都不命中。  
+**招式类型留空。**（2026-08-16 起：**增益锚点保留**，不再留空 —— 见下方说明。）  
 公共异常没有招式名的概念。
+
+锚点保留的原因：异常伤害的「招式限定 Buff」由 `appliesToAnomaly` 开关决定是否生效
+（`buffEffect.shouldApplyEffect`：`scope=skill` 且 `damageKind=anomaly` 时须 `appliesToAnomaly === true`），
+而这类 Buff 要先靠锚点认出招式。若迁移时把锚点丢掉，管理员为异常伤害配的招式限定增益永远无法命中
+（后端脚本 `zzz-hp-backend/scripts/fix-skill-anomaly-applies.mjs` 正是在给固有异常乘区补该标记）。
+`skillTypes` 仍为空：异常伤害不吃「按招式类型」的限定。
 
 ## 5. 三个「谁」
 
@@ -204,7 +216,7 @@ Skill（招式库）
   source                     preset | custom
   damageType                 一条只有一个
   skillTypes: []             多选；异常类留空
-  buffAnchorId?              至多一个，沿用旧 subcategoryId；异常类留空
+  buffAnchorId?              至多一个，沿用旧 subcategoryId；异常类亦**保留**（见 §4.3）
   baseMult
   settlementMult?            仅直伤可选
 ```

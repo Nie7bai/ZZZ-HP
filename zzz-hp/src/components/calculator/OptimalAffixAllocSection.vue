@@ -10,12 +10,12 @@ import {
 } from 'vue'
 import { storeToRefs } from 'pinia'
 import { type ExtraBuffGain } from '@/components/calculator/ExtraBuffGainEditor.vue'
-import DamageResultDetail from '@/components/calculator/DamageResultDetail.vue'
 import BenefitCurvePanel from '@/components/calculator/BenefitCurvePanel.vue'
 import OptimalDamageBarChart from '@/components/calculator/OptimalDamageBarChart.vue'
 import AffixBenefitTable from '@/components/calculator/AffixBenefitTable.vue'
 import AffixAllocationResult from '@/components/calculator/AffixAllocationResult.vue'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
+import type { AgentPanelSources } from '@/types/damageCalcHistory'
 import type {
   AgentBuffDoc,
   AnomalyDamageSubKind,
@@ -27,7 +27,6 @@ import type {
 import {
   createDefaultAffixDriveDiscMainStats,
   createEmptyAffixCounts,
-  createExternalPanelFromAgentBase,
   fillPanelStatsDefaults,
   isPlaceholderExternalPanel,
   type AffixCounts,
@@ -38,9 +37,6 @@ import {
   type PanelStats,
 } from '@/types/calculatorPanel'
 import {
-  AFFIX_DRIVE_DISC_SLOT_1_HP,
-  AFFIX_DRIVE_DISC_SLOT_2_ATK,
-  AFFIX_DRIVE_DISC_SLOT_3_DEF,
   DRIVE_DISC_SLOT_4_OPTIONS,
   DRIVE_DISC_SLOT_5_OPTIONS,
   DRIVE_DISC_SLOT_6_OPTIONS,
@@ -49,7 +45,6 @@ import {
   createEmptyBuffStatModifiers,
   createEmptyRefinementMods,
 } from '@/utils/calculatorUi'
-import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 import type { DamageCalcResult } from '@/utils/damageCalc'
 import { type DamageEnemyInput } from '@/utils/enemyResistance'
 import {
@@ -57,6 +52,7 @@ import {
   BENEFIT_CURVE_MAX_ADDED,
   DIRECT_CONSTRAINTS,
   buildOptimalEvalContext,
+  canReuseDirectSweepStructure,
   computeBenefitCurves,
   computeDiffAnalysis,
   computeEventAffixImpact,
@@ -64,7 +60,6 @@ import {
   evaluateAffixCountsForSweep,
   clearAffixEvalCache,
   evaluateOptimalEventDetail,
-  optimalHitDependsOnMainAffixPanel,
   buildDirectAffixCounts,
   buildAnomalyAffixCounts,
   flatStatLabel,
@@ -86,22 +81,30 @@ import {
 import EquipPickerModal from '@/components/calculator/EquipPickerModal.vue'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import {
-  omitAgentFromAnomalySlotPanels,
   resolveBuffSelectionForSlot,
-  slotParticipatesInConvertBuff,
-  teamHasConvertSupportSlots,
   computeFinalPanel,
   type ConvertSlotPanels,
 } from '@/utils/panelBuffCalc'
-import { useDamageProcessEvents } from '@/composables/useDamageProcessEvents'
 
-import DamageProcessPanel from '@/components/calculator/DamageProcessPanel.vue'
 import {
   DAMAGE_EVENT_CRIT_MODE_OPTIONS,
   DAMAGE_EVENT_KIND_OPTIONS,
   eventNeedsAnomalyProducer,
 } from '@/utils/damageEvent'
 import { buildGenericPanelSkillContext } from '@/utils/resolvedHit'
+import {
+  buildSkillFlowPageSignature,
+  formatAffixCountsSummary,
+  type SkillFlowDisplayOption,
+  type SkillFlowPanelOption,
+} from '@/utils/skillFlowPanelSource'
+import {
+  buildHitEvalFingerprint,
+  hitEvalCacheKey,
+  internHitEvalContext,
+  readHitEvalCache,
+  writeHitEvalCache,
+} from '@/utils/hitEvalCache'
 
 import {
   computeAffixBenefitSeriesForTable,
@@ -110,16 +113,23 @@ import {
   type AffixBenefitTable as AffixBenefitTableData,
 } from '@/utils/affixBenefitAnalysis'
 import {
+  addAffixLibraryGroup,
   addCustomAffixLibraryEntry,
+  affixGroupCaps,
+  affixValuePerCountFromEntries,
   createDefaultAffixLibraryState,
   isAffixLibraryEntryEnabled,
+  isUsingServerAffixPreset,
   loadAffixLibraryState,
   removeAffixLibraryEntry,
+  removeAffixLibraryGroup,
+  renameAffixLibraryGroup,
   resolveAffixLibrary,
   resolveAffixLibraryAll,
   restoreAffixLibraryDefaults,
   saveAffixLibraryState,
   setAffixLibraryEntryEnabled,
+  setAffixLibraryGroupCap,
   updateAffixLibraryEntry,
   type AffixLibraryEntry,
   type AffixLibraryState,
@@ -133,83 +143,6 @@ import {
 
 const MB_PROFESSION = '命破'
 const FENGYU_PROFESSION = '锋御'
-
-const PANEL_FIELDS: { key: keyof PanelStats; label: string }[] = [
-  { key: 'hp', label: '生命值' },
-  { key: 'atk', label: '攻击力' },
-  { key: 'def', label: '防御力' },
-  { key: 'critRate', label: '暴击率%' },
-  { key: 'critDmg', label: '暴伤%' },
-  { key: 'dmgBonus', label: '增伤%' },
-  { key: 'ignoreDefense', label: '无视防御%' },
-  { key: 'reduceDefense', label: '减防%' },
-  { key: 'penRate', label: '穿透率%' },
-  { key: 'pen', label: '穿透值' },
-  { key: 'resPen', label: '抗穿%' },
-  { key: 'mastery', label: '精通' },
-  { key: 'anomalyControl', label: '异常掌控' },
-  { key: 'energyRegen', label: '能量回复效率%' },
-  { key: 'anomalyCritRate', label: '异常暴击%' },
-  { key: 'anomalyCritDmg', label: '异常爆伤%' },
-  { key: 'anomalyDmgBonus', label: '异常增伤%' },
-  { key: 'directDmgMult', label: '直伤倍率%' },
-  { key: 'anomalyMult', label: '异常倍率%' },
-  { key: 'disorderBaseMult', label: '紊乱基础倍率%' },
-  { key: 'anomalyDuration', label: '异常持续时间(s)' },
-  { key: 'disorderCompMult', label: '紊乱补偿倍率%' },
-  { key: 'turbulenceBaseMult', label: '乱流基础倍率%' },
-  { key: 'turbulenceCompMult', label: '乱流补偿倍率%' },
-  { key: 'disorderDmgBonus', label: '紊乱增伤%' },
-  { key: 'turbulenceDmgBonus', label: '乱流增伤%' },
-]
-
-type FinalPanelField =
-  | { id: string; label: string; kind: 'stat'; key: keyof PanelStats }
-  | { id: string; label: string; kind: 'defenseMerged' }
-  | { id: string; label: string; kind: 'special' }
-  | { id: string; label: string; kind: 'pierce' }
-
-const FINAL_PANEL_FIELDS: FinalPanelField[] = [
-  { id: 'hp', label: '生命值', kind: 'stat', key: 'hp' },
-  { id: 'atk', label: '攻击力', kind: 'stat', key: 'atk' },
-  { id: 'critRate', label: '暴击率%', kind: 'stat', key: 'critRate' },
-  { id: 'critDmg', label: '暴伤%', kind: 'stat', key: 'critDmg' },
-  { id: 'sharpenCritDmgBonus', label: '锐爆伤害%', kind: 'stat', key: 'sharpenCritDmgBonus' },
-  { id: 'dmgBonus', label: '增伤%', kind: 'stat', key: 'dmgBonus' },
-  { id: 'defenseMerged', label: '无视防御/减防%', kind: 'defenseMerged' },
-  { id: 'penRate', label: '穿透率%', kind: 'stat', key: 'penRate' },
-  { id: 'pen', label: '穿透值', kind: 'stat', key: 'pen' },
-  { id: 'resPen', label: '抗穿%', kind: 'stat', key: 'resPen' },
-  { id: 'special', label: '特殊补充%', kind: 'special' },
-  { id: 'mastery', label: '精通', kind: 'stat', key: 'mastery' },
-  { id: 'anomalyControl', label: '异常掌控', kind: 'stat', key: 'anomalyControl' },
-  { id: 'energyRegen', label: '能量回复效率%', kind: 'stat', key: 'energyRegen' },
-  { id: 'anomalyCritRate', label: '异常暴击%', kind: 'stat', key: 'anomalyCritRate' },
-  { id: 'anomalyCritDmg', label: '异常爆伤%', kind: 'stat', key: 'anomalyCritDmg' },
-  { id: 'anomalyDmgBonus', label: '异常增伤%', kind: 'stat', key: 'anomalyDmgBonus' },
-  { id: 'directDmgMult', label: '直伤倍率%', kind: 'stat', key: 'directDmgMult' },
-  { id: 'anomalyMult', label: '异常倍率%', kind: 'stat', key: 'anomalyMult' },
-  { id: 'disorderBaseMult', label: '紊乱基础倍率%', kind: 'stat', key: 'disorderBaseMult' },
-  { id: 'anomalyDuration', label: '异常持续时间(s)', kind: 'stat', key: 'anomalyDuration' },
-  { id: 'disorderCompMult', label: '紊乱补偿倍率%', kind: 'stat', key: 'disorderCompMult' },
-  { id: 'turbulenceBaseMult', label: '乱流基础倍率%', kind: 'stat', key: 'turbulenceBaseMult' },
-  { id: 'turbulenceCompMult', label: '乱流补偿倍率%', kind: 'stat', key: 'turbulenceCompMult' },
-  { id: 'disorderDmgBonus', label: '紊乱增伤%', kind: 'stat', key: 'disorderDmgBonus' },
-  { id: 'turbulenceDmgBonus', label: '乱流增伤%', kind: 'stat', key: 'turbulenceDmgBonus' },
-  { id: 'pierce', label: '贯穿力', kind: 'pierce' },
-]
-
-const EXTERNAL_PANEL_FIELDS = PANEL_FIELDS.filter(
-  (field) =>
-    field.key !== 'anomalyCritRate' &&
-    field.key !== 'anomalyCritDmg' &&
-    field.key !== 'anomalyDmgBonus' &&
-    field.key !== 'disorderDmgBonus' &&
-    field.key !== 'turbulenceDmgBonus' &&
-    field.key !== 'ignoreDefense' &&
-    field.key !== 'reduceDefense' &&
-    field.key !== 'resPen',
-)
 
 const props = defineProps<{
   teamSlots: TeamSlot[]
@@ -226,7 +159,10 @@ const props = defineProps<{
   anomalySubKind?: AnomalyDamageSubKind
   /** 页级异常强度提供者（第一击 power）；与逐 hit 字段并存时优先 hit */
   triggerAnomalyAgentId?: string | null
-  anomalySlotPanels?: Record<string, PanelStats>
+  /** 已解析的激活面板（每人一份）：本模块只拿面板本身，不问它是哪一份来源 */
+  activeSlotPanels?: Record<string, PanelStats>
+  /** 原始来源记录：只为读「词条导入」那一路的 4/5/6 主属性（柱体上限规则） */
+  slotPanels?: Record<string, AgentPanelSources>
   convertSlotPanels?: ConvertSlotPanels
   skillCategoryId?: import('@/types/calculator').SkillCategoryId
   skillSubcategoryId?: string | null
@@ -237,6 +173,13 @@ const props = defineProps<{
   /** 准备招式单次预览（与面板计算共用，用于技能卡伤害数字） */
   previewHits?: import('@/utils/resolvedHit').ResolvedHit[]
   environmentBuffs?: import('@/utils/environmentBuffCalc').EnvironmentBuffEntry[]
+  /**
+   * 招式流程「用哪份面板」的覆盖值（三选项的 ②③）。
+   *
+   * 本模块的招式流程映射优先用它；为 null 时按「角色配置的激活面板 → 柱体推导」取值
+   * （见下方 `skillFlowExternal`）。
+   */
+  skillFlowMainExternalOverride?: PanelStats | null
 }>()
 
 const extraGains = defineModel<ExtraBuffGain[]>('extraGains', { default: () => [] })
@@ -244,6 +187,14 @@ const extraGains = defineModel<ExtraBuffGain[]>('extraGains', { default: () => [
 const emit = defineEmits<{
   'update:hitDamages': [value: Record<string, number>]
   'update:hitCalcResults': [value: Record<string, DamageCalcResult>]
+  /** 上报「最优分配 / 当前柱」两个来源的当前编辑角色局外面板与摘要，供招式流程三选项使用 */
+  'update:panelSourceOptions': [
+    value: Partial<Record<'allocation' | 'sweep', SkillFlowPanelOption | null>>,
+  ]
+  /** 面板展示专用通道：上报「最优分配 / 当前柱」的局外 + 局内，供招式流程区「查看面板」展示 */
+  'update:displayPanelSources': [
+    value: Partial<Record<'allocation' | 'sweep', SkillFlowDisplayOption | null>>,
+  ]
 }>()
 
 const emptyBangboo: BangbooBuffDoc = {
@@ -280,8 +231,13 @@ onDeactivated(() => {
   keptAliveActive.value = false
 })
 const isSectionActive = computed(() => props.active !== false && keptAliveActive.value)
-const baseDamageSource = ref<BaseDamageSource>('atk')
-const driveDiscMainStats = reactive(createDefaultAffixDriveDiscMainStats())
+/**
+ * 基础伤害来源：**页级共享**（`v-model:baseDamageSource`）。
+ *
+ * 原先两个 section 各存一份，同一个概念在两处可各选各的 —— 招式流程三选项要求
+ * 「同一份配置只对应一份面板」，因此收到页级（也让页级签名能覆盖它）。
+ */
+const baseDamageSource = defineModel<BaseDamageSource>('baseDamageSource', { default: 'atk' })
 const enemyInput = defineModel<DamageEnemyInput>('enemyInput', { required: true })
 
 function setDamageKind(kind: OptimalDamageKind) {
@@ -322,6 +278,25 @@ const mainSlotIndex = computed(() => {
 
 const mainSlot = computed(() => props.teamSlots[mainSlotIndex.value]!)
 
+/**
+ * 4/5/6 号驱动盘主属性 —— 单一来源：「词条导入」那份来源记录（它只服务这一路）。
+ *
+ * 面板本身由外部配置给出（见 `optimalAffixAlloc.ts` 的 `mainBaseExternalPanel`），
+ * 这里的主属性只服务两件事：
+ * ① 柱体模式的词条上限规则（`36 − 6×同类主属性数`，用户要求「柱体模式照旧」）；
+ * ② 主属性组合试算的相对差（`evaluateMainStatComboDamage`）。
+ */
+const driveDiscMainStats = computed<AffixDriveDiscMainStats>(() => ({
+  ...createDefaultAffixDriveDiscMainStats(),
+  ...(props.slotPanels?.[mainSlot.value.agentId]?.affixDriveDiscMainStats ?? {}),
+}))
+
+/** 当前编辑角色「词条导入」那一路的词条数（没有存面板时用来现推局外） */
+const mainAffixCounts = computed<AffixCounts>(() => ({
+  ...createEmptyAffixCounts(),
+  ...(props.slotPanels?.[mainSlot.value.agentId]?.affixCounts ?? {}),
+}))
+
 const mainAgent = computed(() => props.agents.find((item) => item.id === mainSlot.value.agentId))
 
 const { skillSubcategories, followUpSkillRules } = storeToRefs(useCalculatorBuffStore())
@@ -333,115 +308,56 @@ const selectedBangboo = computed(
     emptyBangboo,
 )
 
-const anomalySupportSlots = computed(() => {
-  const mainId = mainSlot.value.agentId
-  const participantIds = new Set<string>()
-  for (const hit of [...(props.hits ?? []), ...(props.previewHits ?? [])]) {
-    for (const id of [hit.ownerAgentId, hit.anomalyPowerAgentId, hit.triggerAgentId]) {
-      if (id && id !== mainId) participantIds.add(id)
-    }
-  }
-  return props.teamSlots
-    .map((slot, index) => ({ slot, index }))
-    .filter(({ slot }) => Boolean(slot.agentId && participantIds.has(slot.agentId)))
-})
-
-/**
- * 最优模块独立局外 / 转模副本：编辑不写回「面板/词条计算」页。
- */
-const optimalParticipantPanels = reactive<Record<string, PanelStats>>({})
-
-const anomalyProducerAgentIds = computed(() => {
-  const ids = new Set<string>()
-  for (const item of anomalySupportSlots.value) {
-    if (item.slot.agentId) ids.add(item.slot.agentId)
-  }
-  return ids
-})
-
-function seedOptimalParticipantPanel(agentId: string): PanelStats {
-  const existing = optimalParticipantPanels[agentId]
-  if (existing) return existing
-  const fromPage = props.anomalySlotPanels?.[agentId]
-  if (fromPage && !isPlaceholderExternalPanel(fromPage)) {
-    const cloned = fillPanelStatsDefaults({ ...fromPage })
-    optimalParticipantPanels[agentId] = cloned
-    return cloned
-  }
-  const agent = props.agents.find((item) => item.id === agentId)
-  const seeded = createExternalPanelFromAgentBase(agent?.basePanel)
-  optimalParticipantPanels[agentId] = seeded
-  return seeded
-}
-
-/** 参与者局外 UI 已去掉：始终跟页级导入同步，避免面板改完进最优仍用旧副本 */
-function syncOptimalParticipantsFromPage() {
-  for (const [agentId, panel] of Object.entries(props.anomalySlotPanels ?? {})) {
-    if (!panel || isPlaceholderExternalPanel(panel)) continue
-    optimalParticipantPanels[agentId] = fillPanelStatsDefaults({ ...panel })
-  }
-}
-
-const panelSeedReady = ref(false)
-
-watch(
-  () =>
-    props.teamSlots
-      .map((slot) => slot.agentId)
-      .filter((id): id is string => Boolean(id))
-      .join('|'),
-  () => {
-    panelSeedReady.value = false
-    for (const slot of props.teamSlots) {
-      if (slot.agentId) seedOptimalParticipantPanel(slot.agentId)
-    }
-    syncOptimalParticipantsFromPage()
-    panelSeedReady.value = true
-  },
-  { immediate: true },
-)
-
-watch(
-  () => JSON.stringify(props.anomalySlotPanels ?? {}),
-  () => {
-    if (!panelSeedReady.value) return
-    syncOptimalParticipantsFromPage()
-  },
-)
-
-/** 主 C 参与转模链或队伍存在转模增益角色时，主 C 局外由本模块词条推导，不沿用面板页主 C 局外 */
-const optimalConvertModeActive = computed(() => {
-  const ctx = {
-    teamSlots: props.teamSlots,
-    agents: props.agents,
-    wengines: props.wengines,
-    bangboo: selectedBangboo.value,
-    bangbooRefine: props.bangbooRefine,
-    mainSlotIndex: mainSlotIndex.value,
-    driveDiscs: props.driveDiscs,
-    buffSelection: props.buffSelection ?? null,
-    slotBuffSelections: props.slotBuffSelections ?? null,
-  }
-  return (
-    slotParticipatesInConvertBuff(ctx, mainSlotIndex.value) ||
-    teamHasConvertSupportSlots(ctx, { excludeAnomalyAgentIds: anomalyProducerAgentIds.value })
-  )
-})
-
-/** 转模来源统一读各角色完整局外（导入/页级 anomalySlotPanels）；旧方案 convertSlotPanels 仅作兜底 */
+/** 转模来源统一读各角色完整局外（导入/页级 activeSlotPanels）；旧方案 convertSlotPanels 仅作兜底 */
 const evalConvertSlotPanels = computed((): ConvertSlotPanels => props.convertSlotPanels ?? {})
 
+/**
+ * 参与者的局外面板 —— 单一来源：直接读页级「角色配置」（`props.activeSlotPanels`）。
+ *
+ * 这里原先是模块自建的副本 `optimalParticipantPanels`（缺面板时用角色基础面板兜底），
+ * 副本会与页级配置漂移，是「面板改完进最优仍用旧值」这类问题的来源，已删除。
+ *
+ * 也不再剔除当前编辑角色的面板：旧架构下当前编辑角色局外由候选词条推导，所以要把页级那份摘掉以免顶掉
+ * 推导结果；新架构下**页级那份就是基准**，摘掉等于让基准失效（会静默回退到推导路径）。
+ * 当前编辑槽位本身取的是「基准 + 候选词条」的评估结果（`ctx.mainExternalPanel`），
+ * 面板聚合里 live 槽位优先读它，因此不会用到未叠加候选的基准值。
+ */
 const effectiveAnomalySlotPanels = computed(() => {
-  const mainId = mainAgent.value?.id
-  const merged: Record<string, PanelStats> = { ...optimalParticipantPanels }
-  if (mainId && optimalConvertModeActive.value) {
-    return omitAgentFromAnomalySlotPanels(merged, mainId)
+  const merged: Record<string, PanelStats> = {}
+  for (const [agentId, panel] of Object.entries(props.activeSlotPanels ?? {})) {
+    if (!panel || isPlaceholderExternalPanel(panel)) continue
+    merged[agentId] = fillPanelStatsDefaults({ ...panel })
   }
   return merged
 })
 
 const isMb = computed(() => mainAgent.value?.profession === MB_PROFESSION)
 const isFengYu = computed(() => mainAgent.value?.profession === FENGYU_PROFESSION)
+
+/**
+ * 词条功能改造：词条库 + 全词条收益 + 最优分配。
+ *
+ * 声明位置在 `evalCtx` 之前：评估上下文要带词条库的「每档值」，而 computed 首次求值时
+ * 若还没走到声明处会触发 TDZ，所以库状态统一放在这里。
+ */
+const affixLibraryState = ref<AffixLibraryState>(createDefaultAffixLibraryState())
+const affixLibraryEntries = computed<AffixLibraryEntry[]>(() =>
+  resolveAffixLibrary(affixLibraryState.value),
+)
+const affixLibraryAllEntries = computed<AffixLibraryEntry[]>(() =>
+  resolveAffixLibraryAll(affixLibraryState.value),
+)
+const enabledAffixEntryIds = computed(() =>
+  affixLibraryAllEntries.value
+    .filter((entry) => isAffixLibraryEntryEnabled(affixLibraryState.value, entry))
+    .map((entry) => entry.id),
+)
+/**
+ * 词条库的「每档值」表：`stat:` 类目标用条目自己的 `perRoll`，其余字段回落常量表。
+ */
+const affixLibraryValuePerCount = computed(() =>
+  affixValuePerCountFromEntries(affixLibraryEntries.value),
+)
 
 const evalCtx = computed(() =>
   buildOptimalEvalContext({
@@ -454,7 +370,8 @@ const evalCtx = computed(() =>
     bangbooRefine: props.bangbooRefine,
     driveDiscs: props.driveDiscs,
     mainSlotIndex: mainSlotIndex.value,
-    driveDiscMainStats: { ...driveDiscMainStats },
+    driveDiscMainStats: { ...driveDiscMainStats.value },
+    mainAffixCounts: mainAffixCounts.value,
     enemyInput: { ...enemyInput.value },
     baseDamageSource: isMb.value ? 'pierce' : isFengYu.value ? 'def' : baseDamageSource.value,
     extraGains: extraGains.value.map((item) => ({ ...item })),
@@ -465,7 +382,7 @@ const evalCtx = computed(() =>
     }),
     buffSelection: props.buffSelection ?? null,
     slotBuffSelections: props.slotBuffSelections ?? null,
-    anomalySlotPanels: effectiveAnomalySlotPanels.value,
+    activeSlotPanels: effectiveAnomalySlotPanels.value,
     convertSlotPanels: evalConvertSlotPanels.value,
     triggerAnomalyAgentId: props.triggerAnomalyAgentId,
     hits: props.hits,
@@ -473,6 +390,8 @@ const evalCtx = computed(() =>
     skillSubcategories: skillSubcategories.value,
     followUpSkillRules: followUpSkillRules.value,
     environmentBuffs: props.environmentBuffs,
+    // 词条库「每档值」随上下文走：柱图 / 详情 / 收益表 / 基准总伤共用一份，避免分叉
+    valuePerCount: affixLibraryValuePerCount.value,
   }),
 )
 
@@ -480,20 +399,20 @@ const flatLabel = computed(() => flatStatLabel(isMb.value, isFengYu.value))
 const outLabel = computed(() => outPercentLabel(isMb.value, isFengYu.value))
 
 const directError = computed(() =>
-  validateDirectAlloc(directAlloc, isMb.value, driveDiscMainStats, isFengYu.value),
+  validateDirectAlloc(directAlloc, isMb.value, driveDiscMainStats.value, isFengYu.value),
 )
 const anomalyError = computed(() =>
-  validateAnomalyAlloc(anomalyAlloc, isMb.value, driveDiscMainStats, isFengYu.value),
+  validateAnomalyAlloc(anomalyAlloc, isMb.value, driveDiscMainStats.value, isFengYu.value),
 )
 
 const sweepConfigFingerprint = computed(() =>
   JSON.stringify({
     baseDamageSource: baseDamageSource.value,
-    driveDiscMainStats: { ...driveDiscMainStats },
+    driveDiscMainStats: { ...driveDiscMainStats.value },
     enemy: enemyInput.value,
     extraGains: extraGains.value,
     convert: props.convertSlotPanels ?? {},
-    participants: optimalParticipantPanels,
+    participants: props.activeSlotPanels ?? {},
     damageKind: sweepDamageKind.value,
     buffSelection: props.buffSelection,
     slotBuffSelections: props.slotBuffSelections,
@@ -536,7 +455,6 @@ let sweepGeneration = 0
 const pendingConfigDirty = ref(false)
 
 function markSweepConfigDirty() {
-  if (!panelSeedReady.value) return
   // 配置变了（含切换异常强度提供者/触发者）时必须中止旧扫掠，否则会长时间卡在旧结果上
   sweepGeneration += 1
   sweepAbort?.abort()
@@ -583,7 +501,7 @@ async function runSweepRecompute() {
         directPoints.value = []
       } else if (
         directPoints.value.length > 0 &&
-        canReuseDirectSweepStructure(directPoints.value, directAlloc, isMb.value)
+        canReuseCurrentDirectSweep(directPoints.value, directAlloc)
       ) {
         // 仅固定词条（精通/穿透/小攻等）变化：复用扫掠结构，只重算各点伤害
         directPoints.value = await refreshDirectSweepFixedStats(
@@ -633,18 +551,15 @@ async function runSweepRecompute() {
   }
 }
 
-function canReuseDirectSweepStructure(
-  points: DirectSweepPoint[],
-  state: DirectAllocState,
-  mb: boolean,
-) {
-  const crit = Math.round(state.critRate)
-  const total = Math.round(state.totalRolls)
-  const fixedAtk = mb ? Math.round(state.atkPercent) : 0
-  const remain = mb ? total - crit - fixedAtk : total - crit
-  if (remain < 0 || !points.length) return false
-  // 结构仍是「局外大% + 爆伤 = remain」时才能原地刷新
-  return points.every((p) => p.outPercent + p.critDmg === remain)
+function canReuseCurrentDirectSweep(points: DirectSweepPoint[], state: DirectAllocState) {
+  // 结构 + 主词条上限一起判定，见 canReuseDirectSweepStructure 的说明
+  return canReuseDirectSweepStructure(
+    points,
+    state,
+    isMb.value,
+    isFengYu.value,
+    driveDiscMainStats.value,
+  )
 }
 
 async function refreshDirectSweepFixedStats(
@@ -1091,7 +1006,7 @@ const selectedEval = computed(() => {
   const point =
     sweepDamageKind.value === 'direct' ? selectedDirect.value : selectedAnomaly.value
   if (point?.evalSnapshot) return point.evalSnapshot
-  // 过程 Tab 需要完整事件明细；其余场景只算主 C 面板，避免点柱就卡一下
+  // 过程 Tab 需要完整事件明细；其余场景只算当前编辑角色面板，避免点柱就卡一下
   if (detailTab.value === 'process') {
     return evaluateAffixCounts(evalCtx.value, selectedCounts.value)
   }
@@ -1120,7 +1035,7 @@ watch(
   () =>
     JSON.stringify({
       counts: analysisCounts.value,
-      mains: { ...driveDiscMainStats },
+      mains: { ...driveDiscMainStats.value },
     }),
   () => {
     scheduleEventAffixImpactRefresh()
@@ -1128,13 +1043,151 @@ watch(
 )
 
 /**
- * 招式流程用的局外面板：只跟「开始计算」产出的柱体走。
- * 未扫过、或改数字尚未再点开始：不算招式总伤（未扫过返回空；已有柱则沿用上次选中柱）。
+ * 招式流程用的局外面板。优先级：
+ * ① 页级下发的覆盖值（三选项的 ②③）→ ② 角色配置里的激活面板 → ③ 没录入面板时才落回柱体推导
+ * （未扫过且无配置面板 → 空，不算招式总伤）。
  */
 const skillFlowExternal = computed(() => {
+  const override = props.skillFlowMainExternalOverride
+  if (override) return override
+  // ① 角色配置面板：页级已解析的激活面板（与面板侧同一份来源）
+  const mainAgentId = props.teamSlots[mainSlotIndex.value]?.agentId
+  const savedConfigPanel = mainAgentId ? props.activeSlotPanels?.[mainAgentId] : undefined
+  if (savedConfigPanel) return fillPanelStatsDefaults(savedConfigPanel)
+  // 没有录入面板时保留旧行为：只在扫掠过之后按柱体算（未扫过为空）
   if (!sweepPoints.value.length) return null
   return analysisEval.value?.external ?? null
 })
+
+/**
+ * 与页级同一份字段表算出的上下文签名（`buildSkillFlowPageSignature`）。
+ *
+ * 用途：上报来源时**带上「这份面板是在什么配置下算出来的」**，页级据此判过期。
+ * 字段表只有一份（在 util 里），两个调用点各自的取值都来自页级下发的同一批 props，
+ * 因此两边算出来必定一致。
+ */
+const panelSourceSignature = computed(() =>
+  buildSkillFlowPageSignature({
+    teamSlots: props.teamSlots,
+    slotPanels: props.slotPanels,
+    activeSlotPanels: props.activeSlotPanels ?? {},
+    convertSlotPanels: props.convertSlotPanels,
+    mainSlotIndex: mainSlotIndex.value,
+    selectedBangbooId: props.selectedBangbooId,
+    bangbooRefine: props.bangbooRefine,
+    slotBuffSelections: props.slotBuffSelections,
+    environmentBuffIds: (props.environmentBuffs ?? []).map((item) => item.id),
+    extraGains: extraGains.value,
+    enemyInput: enemyInput.value,
+    staggerPhase: props.staggerPhase,
+    damageKind: props.damageKind,
+    anomalySubKind: props.anomalySubKind,
+    skillCategoryId: props.skillCategoryId,
+    skillSubcategoryId: props.skillSubcategoryId,
+    triggerAnomalyAgentId: props.triggerAnomalyAgentId,
+    baseDamageSource: baseDamageSource.value,
+  }),
+)
+
+/**
+ * 上报「最优分配 / 当前柱」两个来源的主 C 局外面板，供招式流程三选项使用。
+ *
+ * 定义位置在 `affixAllocEval` 之后（TDZ）：`affixAllocEval` 在本文件靠后定义，
+ * 提前引用会在 setup 阶段直接抛「Cannot access before initialization」（实测踩过）。
+ *
+ * 报的是**算好的面板**而不是词条数：两个消费者必须拿到同一份数值（各自再叠一次会引入分叉）。
+ * 只在真正算过时上报；未算过的来源报 null（选项据此禁用）。
+ */
+function emitPanelSourceOptions() {
+  const result = affixAllocResult.value
+  const selectedCountsValue = selectedCounts.value
+  emit('update:panelSourceOptions', {
+    allocation: affixAllocEval.value?.external
+      ? buildPanelSourceOption(
+          'allocation',
+          affixAllocEval.value.external,
+          result?.counts ?? null,
+        )
+      : null,
+    sweep: selectedEval.value?.external
+      ? buildPanelSourceOption('sweep', selectedEval.value.external, selectedCountsValue)
+      : null,
+  })
+}
+
+/**
+ * 面板展示专用上报（独立通道，不污染流程计算用的 `panelSourceOptions`）。
+ *
+ * 展示功能需要 ②③ 的局外 + 局内；局内（finalPanel）不在流程计算上报里，
+ * 这里把词条分析侧**已算好的** external / finalPanel 一并上报（同一份数值，
+ * 与词条分析侧「局内（含增益）」结果一致，展示侧不再重复计算）。
+ */
+type DisplayPanelEvalLike = { external: PanelStats; finalPanel: PanelStats } | null | undefined
+
+function buildDisplayPanelSourceOption(
+  mode: 'allocation' | 'sweep',
+  evalResult: DisplayPanelEvalLike,
+  counts: AffixCounts | null | undefined,
+): SkillFlowDisplayOption | null {
+  if (!evalResult?.external || !evalResult.finalPanel) return null
+  const summary = counts
+    ? formatAffixCountsSummary(
+        { ...(counts as unknown as Record<string, number>) },
+        AFFIX_SOURCE_LABELS,
+      )
+    : ''
+  return {
+    mode,
+    mainExternal: evalResult.external,
+    finalPanel: evalResult.finalPanel,
+    label: mode === 'allocation' ? `最优分配（${summary}）` : `当前柱（${summary}）`,
+    signature: panelSourceSignature.value,
+  }
+}
+
+function emitDisplayPanelSources() {
+  const result = affixAllocResult.value
+  const selectedCountsValue = selectedCounts.value
+  emit('update:displayPanelSources', {
+    allocation: buildDisplayPanelSourceOption(
+      'allocation',
+      affixAllocEval.value,
+      result?.counts ?? null,
+    ),
+    sweep: buildDisplayPanelSourceOption('sweep', selectedEval.value, selectedCountsValue),
+  })
+}
+
+function buildPanelSourceOption(
+  mode: 'allocation' | 'sweep',
+  mainExternal: PanelStats,
+  counts: AffixCounts | null | undefined,
+): SkillFlowPanelOption {
+  const summary = counts
+    ? formatAffixCountsSummary({ ...(counts as unknown as Record<string, number>) }, AFFIX_SOURCE_LABELS)
+    : ''
+  return {
+    mode,
+    mainExternal,
+    label: mode === 'allocation' ? `最优分配（${summary}）` : `当前柱（${summary}）`,
+    signature: panelSourceSignature.value,
+    baseDamageSource: baseDamageSource.value,
+  }
+}
+
+/** 选项 tooltip 里的词条名（与 `affixKeyLabel` 同口径，命破/锋御的局外大% 由词条键区分） */
+const AFFIX_SOURCE_LABELS: Record<string, string> = {
+  atkFlat: '攻击力',
+  hpFlat: '生命值',
+  defFlat: '防御力',
+  atkPercent: '局外大攻击',
+  hpPercent: '局外大生命',
+  defPercent: '局外大防御',
+  pen: '穿透值',
+  critRate: '暴击',
+  critDmg: '爆伤',
+  mastery: '精通',
+}
 
 /** 用最优词条面板重算流程/准备招式预览伤害，供招式流程展示（防抖 + per-hit 缓存） */
 const skillFlowHitMapState = ref<{
@@ -1142,50 +1195,7 @@ const skillFlowHitMapState = ref<{
   results: Record<string, DamageCalcResult>
 }>({ map: {}, results: {} })
 
-type SkillFlowLineCache = {
-  signatureById: Record<string, string>
-  lineById: Record<
-    string,
-    { total: number; perHit: number; result: DamageCalcResult }
-  >
-}
-const skillFlowLineStore: SkillFlowLineCache = { signatureById: {}, lineById: {} }
-let skillFlowCacheGlobalSig = ''
 let pendingSkillFlowEmit = false
-
-function clearSkillFlowLineStore() {
-  for (const key of Object.keys(skillFlowLineStore.signatureById)) {
-    delete skillFlowLineStore.signatureById[key]
-  }
-  for (const key of Object.keys(skillFlowLineStore.lineById)) {
-    delete skillFlowLineStore.lineById[key]
-  }
-}
-
-/** 对齐面板 buildResolvedHitSignature，避免改倍率覆写/panelMods 不刷新 */
-function hitFingerprint(hit: import('@/utils/resolvedHit').ResolvedHit) {
-  return JSON.stringify({
-    id: hit.id,
-    ownerAgentId: hit.ownerAgentId,
-    anomalyPowerAgentId: hit.anomalyPowerAgentId,
-    triggerAgentId: hit.triggerAgentId,
-    count: hit.count,
-    staggerPhase: hit.staggerPhase,
-    critMode: hit.critMode,
-    anomalySubKind: hit.anomalySubKind,
-    skillId: hit.skill.id,
-    damageType: hit.skill.damageType,
-    baseMult: hit.skill.baseMult,
-    effectiveBaseMult: hit.effectiveBaseMult,
-    skillTalentLevel: hit.skillTalentLevel,
-    baseMultFactor: hit.skill.baseMultFactor,
-    settlementMult: hit.skill.settlementMult,
-    skillTypes: hit.skill.skillTypes,
-    buffAnchorId: hit.skill.buffAnchorId,
-    multOverrides: hit.multOverrides,
-    panelMods: hit.panelMods,
-  })
-}
 
 const skillFlowContextFingerprint = computed(() =>
   JSON.stringify({
@@ -1194,11 +1204,11 @@ const skillFlowContextFingerprint = computed(() =>
     buffSelection: props.buffSelection,
     slotBuffSelections: props.slotBuffSelections,
     convert: props.convertSlotPanels ?? {},
-    anomaly: props.anomalySlotPanels ?? {},
-    participants: optimalParticipantPanels,
+    anomaly: props.activeSlotPanels ?? {},
+    participants: props.activeSlotPanels ?? {},
     env: (props.environmentBuffs ?? []).map((item) => item.id),
     bangboo: [props.selectedBangbooId, props.bangbooRefine],
-    mains: { ...driveDiscMainStats },
+    mains: { ...driveDiscMainStats.value },
     baseDamageSource: baseDamageSource.value,
     damageKind: sweepDamageKind.value,
     stagger: props.staggerPhase,
@@ -1211,15 +1221,13 @@ const skillFlowHitFingerprint = computed(() => {
   return JSON.stringify({
     context: skillFlowContextFingerprint.value,
     external: external ?? null,
-    hits: (props.hits ?? []).map(hitFingerprint),
-    previews: (props.previewHits ?? []).map(hitFingerprint),
+    hits: (props.hits ?? []).map(buildHitEvalFingerprint),
+    previews: (props.previewHits ?? []).map(buildHitEvalFingerprint),
   })
 })
 
 function recomputeSkillFlowHitMaps() {
   if (!isSectionActive.value) {
-    clearSkillFlowLineStore()
-    skillFlowCacheGlobalSig = ''
     skillFlowHitMapState.value = { map: {}, results: {} }
     return
   }
@@ -1230,60 +1238,36 @@ function recomputeSkillFlowHitMaps() {
     skillFlowHitMapState.value = { map, results }
     return
   }
-  // 流程计入总伤；准备招式只算单次预览。招式库不算。
-  for (const hit of [...(props.hits ?? []), ...(props.previewHits ?? [])]) {
-    for (const id of [hit.ownerAgentId, hit.anomalyPowerAgentId, hit.triggerAgentId]) {
-      if (id) seedOptimalParticipantPanel(id)
-    }
-  }
-
-  const globalSig = skillFlowContextFingerprint.value + '|' + JSON.stringify(external)
-  if (globalSig !== skillFlowCacheGlobalSig) {
-    clearSkillFlowLineStore()
-    skillFlowCacheGlobalSig = globalSig
-  }
 
   const ctx = evalCtx.value
-  const nextSignatures: Record<string, string> = {}
+  // 与面板计算共用同一张记忆表：键里带「用的是哪份面板」，两组输入各占一行，互不覆盖。
+  // 令牌取自响应式指纹（不能从 ctx 取：ctx 是深解包后的原始对象，读取不建立依赖）。
+  const contextToken = internHitEvalContext(skillFlowContextFingerprint.value)
 
   const resolveLine = (hit: import('@/utils/resolvedHit').ResolvedHit, usePerHit: boolean) => {
-    const dependsOnMain = optimalHitDependsOnMainAffixPanel(ctx, hit)
-    const signature = dependsOnMain
-      ? `${hitFingerprint(hit)}|${globalSig}|${usePerHit ? '1' : '0'}`
-      : `${hitFingerprint(hit)}|${skillFlowContextFingerprint.value}|stable-affix|${usePerHit ? '1' : '0'}`
-    nextSignatures[hit.id] = signature
-    const cached = skillFlowLineStore.lineById[hit.id]
-    if (cached && skillFlowLineStore.signatureById[hit.id] === signature) {
-      map[hit.id] = usePerHit ? cached.perHit : cached.total
-      results[hit.id] = cached.result
-      return
+    const key = hitEvalCacheKey(buildHitEvalFingerprint(hit), contextToken, external, false)
+    let entry = readHitEvalCache(key)
+    if (!entry) {
+      const detail = evaluateOptimalEventDetail(ctx, external, hit, {
+        includeDetails: false,
+      })
+      if (!detail) return
+      entry = {
+        hitId: hit.id,
+        total: detail.total,
+        perHit: detail.perHit,
+        result: detail.result,
+      }
+      writeHitEvalCache(key, entry)
     }
-    const detail = evaluateOptimalEventDetail(ctx, external, hit, {
-      includeDetails: false,
-    })
-    if (!detail) {
-      delete skillFlowLineStore.lineById[hit.id]
-      return
-    }
-    skillFlowLineStore.lineById[hit.id] = {
-      total: detail.total,
-      perHit: detail.perHit,
-      result: detail.result,
-    }
-    skillFlowLineStore.signatureById[hit.id] = signature
-    map[hit.id] = usePerHit ? detail.perHit : detail.total
-    results[hit.id] = detail.result
+    // 准备招式（预览）走独立键：按单次伤害展示，不进总伤（总伤只汇总流程事件）
+    const mapKey = usePerHit ? `preview:${hit.id}` : hit.id
+    map[mapKey] = usePerHit ? entry.perHit : entry.total
+    results[hit.id] = entry.result
   }
 
   for (const hit of props.hits ?? []) resolveLine(hit, false)
   for (const hit of props.previewHits ?? []) resolveLine(hit, true)
-
-  for (const key of Object.keys(skillFlowLineStore.signatureById)) {
-    if (!(key in nextSignatures)) {
-      delete skillFlowLineStore.signatureById[key]
-      delete skillFlowLineStore.lineById[key]
-    }
-  }
 
   skillFlowHitMapState.value = { map, results }
 }
@@ -1304,8 +1288,6 @@ watch(
   skillFlowHitFingerprint,
   () => {
     if (!isSectionActive.value) {
-      clearSkillFlowLineStore()
-      skillFlowCacheGlobalSig = ''
       skillFlowHitMapState.value = { map: {}, results: {} }
       return
     }
@@ -1325,44 +1307,6 @@ watch([sweepComputing, isSectionActive], ([computing, active]) => {
     emitSkillFlowHitMaps()
   }, SKILL_FLOW_EMIT_DEBOUNCE_MS)
 })
-
-const displayExternalPierce = computed(() => {
-  const ext = displayEval.value?.external
-  if (!ext) return 0
-  return Math.round((0.1 * ext.hp + 0.3 * ext.atk) * 100) / 100
-})
-
-function formatPanelValue(key: keyof PanelStats | 'pierce' | 'special', value: number) {
-  if (
-    key === 'hp' ||
-    key === 'atk' ||
-    key === 'pen' ||
-    key === 'mastery' ||
-    key === 'pierce' ||
-    key === 'anomalyDuration'
-  ) {
-    return formatNumber(value)
-  }
-  return formatCalcDecimal(value, 4)
-}
-
-function formatFinalPanelField(field: FinalPanelField) {
-  const evalResult = displayEval.value
-  if (!evalResult) return '—'
-  if (field.kind === 'stat') {
-    return formatPanelValue(field.key, evalResult.finalPanel[field.key])
-  }
-  if (field.kind === 'defenseMerged') {
-    return formatPanelValue(
-      'reduceDefense',
-      evalResult.finalPanel.ignoreDefense + evalResult.finalPanel.reduceDefense,
-    )
-  }
-  if (field.kind === 'special') {
-    return formatPanelValue('special', evalResult.breakdown.combatMods.special)
-  }
-  return formatPanelValue('pierce', evalResult.piercePower)
-}
 
 function metricOf(result: DamageCalcResult, grandTotal?: number) {
   if (typeof grandTotal === 'number' && Number.isFinite(grandTotal)) return grandTotal
@@ -1400,41 +1344,6 @@ const mainStatEventScopeHint = computed(() => {
   }
   return `按已选 ${selectedChartEventIds.value.length} 个统计事件计算`
 })
-
-const analysisMetricDamage = computed(() => {
-  if (!analysisEval.value) return 0
-  return resolveAffixMetricDamage(analysisEval.value)
-})
-
-const processDamageTotalLabel = computed(() =>
-  sweepDamageKind.value === 'anomaly' ? '异常伤害事件总伤期望' : '伤害事件总伤期望',
-)
-
-/** 过程明细仅在「计算过程」Tab 展开且模块可见时求值，避免扫掠后全量重算卡顿 */
-/** 扫掠柱图模式：计算过程（与词条分配模式共用 useDamageProcessEvents） */
-const sweepProcess = useDamageProcessEvents({
-  ctx: computed(() => evalCtx.value),
-  external: computed(() => analysisEval.value?.external),
-  grandTotal: computed(() => analysisMetricDamage.value),
-  eventLines: computed(() => analysisEval.value?.eventLines),
-  selectedEventIds: selectedChartEventIds,
-  totalLabel: processDamageTotalLabel,
-  hasEvents: computed(() => hasEventMode.value),
-  active: computed(() => isSectionActive.value),
-  enabled: computed(() => detailTab.value === 'process'),
-  hits: computed(() => props.hits),
-  agents: computed(() => props.agents),
-  teamSlots: computed(() => props.teamSlots),
-  onSelectEvent: () => {
-    detailTab.value = 'process'
-  },
-})
-
-const selectedProcessEventId = sweepProcess.selectedEventId
-const selectedProcessEventDetail = sweepProcess.selectedDetail
-const processOwnerShareSummary = sweepProcess.ownerShareSummary
-const processSkippedEvents = sweepProcess.skippedEvents
-const selectProcessEventFromShare = sweepProcess.selectEvent
 
 const filteredEventAffixImpact = computed(() => {
   if (!hasEventMode.value || !selectedChartEventIds.value.length) {
@@ -1477,9 +1386,9 @@ const rankingComboCount = computed(() => {
   if (!n4 || !n5 || !n6) return 0
   let count = n4 * n5 * n6
   const currentInRange =
-    rankingSlot4Options.value.some((item) => item.id === driveDiscMainStats.slot4MainStat) &&
-    rankingSlot5Options.value.some((item) => item.id === driveDiscMainStats.slot5MainStat) &&
-    rankingSlot6Options.value.some((item) => item.id === driveDiscMainStats.slot6MainStat)
+    rankingSlot4Options.value.some((item) => item.id === driveDiscMainStats.value.slot4MainStat) &&
+    rankingSlot5Options.value.some((item) => item.id === driveDiscMainStats.value.slot5MainStat) &&
+    rankingSlot6Options.value.some((item) => item.id === driveDiscMainStats.value.slot6MainStat)
   if (currentInRange && rankingTwoPieceId.value === currentTwoPieceId.value) count -= 1
   return count
 })
@@ -1578,22 +1487,6 @@ const mainStatDiffLoading = ref(false)
 const benefitData = ref<ReturnType<typeof computeBenefitCurves> | null>(null)
 
 /**
- * 词条功能改造：词条库 + 全词条收益 + 最优分配。
- * 与上方 `benefitData`（二维扫掠的收益曲线）并存，互不影响。
- */
-const affixLibraryState = ref<AffixLibraryState>(createDefaultAffixLibraryState())
-const affixLibraryEntries = computed<AffixLibraryEntry[]>(() =>
-  resolveAffixLibrary(affixLibraryState.value),
-)
-const affixLibraryAllEntries = computed<AffixLibraryEntry[]>(() =>
-  resolveAffixLibraryAll(affixLibraryState.value),
-)
-const enabledAffixEntryIds = computed(() =>
-  affixLibraryAllEntries.value
-    .filter((entry) => isAffixLibraryEntryEnabled(affixLibraryState.value, entry))
-    .map((entry) => entry.id),
-)
-/**
  * 词条分配（新功能，主）与手动扫掠柱图（旧功能，次要）二选一。
  * 两者各有独立的输入与子页签（收益曲线 / 计算过程）。
  */
@@ -1634,31 +1527,23 @@ const affixAllocBaseCounts = computed(() => createEmptyAffixCounts())
 const affixAllocEval = computed(() => {
   const result = affixAllocResult.value
   if (!result) return null
-  return evaluateAffixCounts(evalCtx.value, result.counts, result.panelDeltas)
+  return evaluateAffixCounts(evalCtx.value, result.counts, result.panelDeltas, result.valuePerCount)
 })
 
-/** 词条分配模式：计算过程（与扫掠模式共用 useDamageProcessEvents） */
-const affixAllocProcess = useDamageProcessEvents({
-  ctx: computed(() => evalCtx.value),
-  external: computed(() => affixAllocEval.value?.external),
-  grandTotal: computed(() => affixAllocEval.value?.grandTotal ?? 0),
-  eventLines: computed(() => affixAllocEval.value?.eventLines),
-  selectedEventIds: computed(() => null),
-  totalLabel: computed(() =>
-    sweepDamageKind.value === 'anomaly' ? '异常伤害事件总伤期望' : '伤害事件总伤期望',
-  ),
-  hasEvents: computed(() => hasEventMode.value),
-  active: computed(() => isSectionActive.value),
-  enabled: computed(() => affixAllocDetailTab.value === 'process'),
-  hits: computed(() => props.hits),
-  agents: computed(() => props.agents),
-  teamSlots: computed(() => props.teamSlots),
-})
-
-const affixAllocSelectedProcessEventId = affixAllocProcess.selectedEventId
-const affixAllocSelectedProcessDetail = affixAllocProcess.selectedDetail
-const affixAllocOwnerShareSummary = affixAllocProcess.ownerShareSummary
-const affixAllocSkippedEvents = affixAllocProcess.skippedEvents
+// 两个来源的面板就绪 / 失效时上报给页级（招式流程三选项据此启用与判过期；
+// 面板展示专用通道同一时机一并上报）
+watch(
+  [
+    () => affixAllocEval.value?.external ?? null,
+    () => selectedEval.value?.external ?? null,
+    panelSourceSignature,
+  ],
+  () => {
+    emitPanelSourceOptions()
+    emitDisplayPanelSources()
+  },
+  { immediate: true },
+)
 
 affixLibraryState.value = loadAffixLibraryState()
 
@@ -1673,7 +1558,19 @@ function toggleAffixLibraryEntry(entryId: string, enabled: boolean) {
   persistAffixLibrary(setAffixLibraryEntryEnabled(affixLibraryState.value, entryId, enabled))
 }
 
-function addAffixLibraryEntry(entry: Omit<AffixLibraryEntry, 'id' | 'builtin'>) {
+/**
+ * 一次改多条启用状态（组页的「全选 / 全部取消」）。
+ *
+ * 只落一次盘：逐条走 `persistAffixLibrary` 会让求解重跑 N 次，几十条的组会明显卡。
+ */
+function toggleAffixLibraryEntries(entryIds: string[], enabled: boolean) {
+  if (!entryIds.length) return
+  let next = affixLibraryState.value
+  for (const entryId of entryIds) next = setAffixLibraryEntryEnabled(next, entryId, enabled)
+  persistAffixLibrary(next)
+}
+
+function addAffixLibraryEntry(entry: Omit<AffixLibraryEntry, 'id'>) {
   persistAffixLibrary(addCustomAffixLibraryEntry(affixLibraryState.value, entry))
 }
 
@@ -1686,7 +1583,38 @@ function removeAffixLibraryEntryById(entryId: string) {
 }
 
 function restoreAffixLibraryDefaultsHandler() {
-  persistAffixLibrary(restoreAffixLibraryDefaults())
+  // 保留起点：空配置的库点「恢复默认」仍是空配置；独立库按当前官方预设重新复制一份。
+  // 「独立库要复制官方那份」这一条由弹窗先行把官方数据取到（见 AffixLibraryModal.onRestoreDefaults），
+  // 这里再兜一道：万一没取到就不动手，避免把代码兜底当成官方冻进用户的库。
+  const origin = affixLibraryState.value.origin
+  if (origin === 'copy' && !isUsingServerAffixPreset()) return
+  persistAffixLibrary(restoreAffixLibraryDefaults(origin))
+}
+
+function addAffixLibraryGroupHandler(name: string, cap: number) {
+  persistAffixLibrary(addAffixLibraryGroup(affixLibraryState.value, name, cap))
+}
+
+function setAffixLibraryGroupCapHandler(name: string, cap: number) {
+  persistAffixLibrary(setAffixLibraryGroupCap(affixLibraryState.value, name, cap))
+}
+
+function renameAffixLibraryGroupHandler(from: string, to: string) {
+  persistAffixLibrary(renameAffixLibraryGroup(affixLibraryState.value, from, to))
+}
+
+function removeAffixLibraryGroupHandler(name: string) {
+  persistAffixLibrary(removeAffixLibraryGroup(affixLibraryState.value, name))
+}
+
+/**
+ * 词条库弹窗做了库级变更（切换 / 新建 / 删除 / 导入）。
+ *
+ * 这些操作在弹窗里已经落盘，这里只需把激活那套重新读进来并重算：
+ * `persistAffixLibrary` 会顺带清空旧的分配结果并重跑收益表。
+ */
+function onAffixLibrarySwitched() {
+  persistAffixLibrary(loadAffixLibraryState())
 }
 
 /** 词条分配模式：收益表自动跟随上下文计算，最优分配点按钮才求解 */
@@ -1776,6 +1704,7 @@ async function runAffixAllocation() {
         maxTotalRolls: total,
         candidateWidthMode: affixAllocWidthMode.value,
         manualCandidateWidth: affixAllocManualWidth.value,
+        groupCaps: affixGroupCaps(affixLibraryState.value),
       },
       {
         signal: controller.signal,
@@ -1853,24 +1782,24 @@ function mainStatDiffBuilder() {
   // 与组合试算同一口径：现场按当前主属性重算，避免扫掠快照/无 hits 面板口径错位
   const baseDmg = evaluateMainStatComboDamage(
     {
-      slot4MainStat: driveDiscMainStats.slot4MainStat,
-      slot5MainStat: driveDiscMainStats.slot5MainStat,
-      slot6MainStat: driveDiscMainStats.slot6MainStat,
+      slot4MainStat: driveDiscMainStats.value.slot4MainStat,
+      slot5MainStat: driveDiscMainStats.value.slot5MainStat,
+      slot6MainStat: driveDiscMainStats.value.slot6MainStat,
     },
     counts,
     currentTwoPieceId.value,
   )
 
   return MAIN_STAT_SLOTS.map(({ key, title, options }) => {
-    const currentId = driveDiscMainStats[key]
+    const currentId = driveDiscMainStats.value[key]
     const current = options.find((o) => o.id === currentId)
     const rows = options
       .filter((o) => o.id !== currentId)
       .map((o) => {
         const nextStats: AffixDriveDiscMainStats = {
-          slot4MainStat: driveDiscMainStats.slot4MainStat,
-          slot5MainStat: driveDiscMainStats.slot5MainStat,
-          slot6MainStat: driveDiscMainStats.slot6MainStat,
+          slot4MainStat: driveDiscMainStats.value.slot4MainStat,
+          slot5MainStat: driveDiscMainStats.value.slot5MainStat,
+          slot6MainStat: driveDiscMainStats.value.slot6MainStat,
           [key]: o.id,
         }
         const dmg = evaluateMainStatComboDamage(nextStats, counts, currentTwoPieceId.value)
@@ -1889,9 +1818,9 @@ function mainStatDiffBuilder() {
 function buildCombinedMainStatRankings() {
   if (!analysisCounts.value || !analysisEval.value) return []
   const currentStats: AffixDriveDiscMainStats = {
-    slot4MainStat: driveDiscMainStats.slot4MainStat,
-    slot5MainStat: driveDiscMainStats.slot5MainStat,
-    slot6MainStat: driveDiscMainStats.slot6MainStat,
+    slot4MainStat: driveDiscMainStats.value.slot4MainStat,
+    slot5MainStat: driveDiscMainStats.value.slot5MainStat,
+    slot6MainStat: driveDiscMainStats.value.slot6MainStat,
   }
   const baseDamage = evaluateMainStatComboDamage(
     currentStats,
@@ -2019,7 +1948,7 @@ const diffWatchFingerprint = computed(() =>
     metric: anomalyChartMetric.value,
     tab: detailTab.value,
     events: hasEventMode.value ? selectedChartEventIds.value : null,
-    mains: { ...driveDiscMainStats },
+    mains: { ...driveDiscMainStats.value },
     agents: props.teamSlots.map((s) => s.agentId ?? ''),
     hits: (props.hits ?? []).map(
       (h) =>
@@ -2050,7 +1979,7 @@ watch(detailTab, (tab) => {
 const affixAllocFingerprint = computed(() =>
   JSON.stringify({
     mode: sectionMode.value,
-    mains: { ...driveDiscMainStats },
+    mains: { ...driveDiscMainStats.value },
     agents: props.teamSlots.map((s) => s.agentId ?? ''),
     hits: (props.hits ?? []).map(
       (h) =>
@@ -2084,9 +2013,9 @@ watch(sectionMode, (mode) => {
 
 // 首屏 / 切回本页时先算一次收益表
 watch(
-  [() => hasEventMode.value, () => isSectionActive.value, () => panelSeedReady.value],
-  ([hasEvents, active, ready]) => {
-    if (!hasEvents || !active || !ready) return
+  [() => hasEventMode.value, () => isSectionActive.value],
+  ([hasEvents, active]) => {
+    if (!hasEvents || !active) return
     if (sectionMode.value !== 'allocation') return
     scheduleAffixBenefitRecompute()
   },
@@ -2104,17 +2033,17 @@ function resolveMainStatLabel(
 }
 
 function syncCombinedMainStatDraftFromCurrent() {
-  combinedMainStatDraft.slot4MainStat = driveDiscMainStats.slot4MainStat
-  combinedMainStatDraft.slot5MainStat = driveDiscMainStats.slot5MainStat
-  combinedMainStatDraft.slot6MainStat = driveDiscMainStats.slot6MainStat
+  combinedMainStatDraft.slot4MainStat = driveDiscMainStats.value.slot4MainStat
+  combinedMainStatDraft.slot5MainStat = driveDiscMainStats.value.slot5MainStat
+  combinedMainStatDraft.slot6MainStat = driveDiscMainStats.value.slot6MainStat
   combinedMainStatDraftTwoPieceId.value = currentTwoPieceId.value
 }
 
 watch(
   () => [
-    driveDiscMainStats.slot4MainStat,
-    driveDiscMainStats.slot5MainStat,
-    driveDiscMainStats.slot6MainStat,
+    driveDiscMainStats.value.slot4MainStat,
+    driveDiscMainStats.value.slot5MainStat,
+    driveDiscMainStats.value.slot6MainStat,
     currentTwoPieceId.value,
   ],
   syncCombinedMainStatDraftFromCurrent,
@@ -2145,6 +2074,13 @@ function evaluateMainStatComboDamage(
   const evaled = evaluateAffixCounts(
     {
       ...evalCtx.value,
+      /**
+       * 主属性组合试算是在问「换一套 4/5/6 主属性会怎样」——答案必须由配置重新推导面板，
+       * 不能沿用外部面板（否则主属性改了面板不变，试算恒为 0）。
+       * 故这里显式清掉基准面板，让 `computeExternalForEval` 走推导路径。
+       * 基线与试算两测都走同一路径，差值仍是同口径对比。
+       */
+      mainBaseExternalPanel: null,
       driveDiscMainStats: {
         ...evalCtx.value.driveDiscMainStats,
         ...mainStats,
@@ -2162,9 +2098,9 @@ function evaluateMainStatComboDamage(
 const combinedMainStatPreview = computed(() => {
   if (!analysisCounts.value || !analysisEval.value) return null
   const currentStats: AffixDriveDiscMainStats = {
-    slot4MainStat: driveDiscMainStats.slot4MainStat,
-    slot5MainStat: driveDiscMainStats.slot5MainStat,
-    slot6MainStat: driveDiscMainStats.slot6MainStat,
+    slot4MainStat: driveDiscMainStats.value.slot4MainStat,
+    slot5MainStat: driveDiscMainStats.value.slot5MainStat,
+    slot6MainStat: driveDiscMainStats.value.slot6MainStat,
   }
   const draftStats: AffixDriveDiscMainStats = {
     slot4MainStat: combinedMainStatDraft.slot4MainStat,
@@ -2338,34 +2274,12 @@ defineExpose({
   buffBreakdown: computed(() => displayEval.value?.breakdown ?? null),
   displayEval,
   previewFinalPanel,
-  /** 全槽局外 + 局内（随增益实时重算；主 C 优先用扫掠/预览结算） */
-  slotPanelPreviews: computed(() => {
-    void optimalParticipantPanels
-    void extraGains.value
-    void JSON.stringify(props.slotBuffSelections ?? {})
-    void props.staggerPhase
-    void props.bangbooRefine
-    void selectedBangboo.value.id
-    void props.environmentBuffs
-    void displayEval.value
-    const mainEval = displayEval.value
-    return props.teamSlots.map((slot, index) => {
-      if (!slot.agentId) return null
-      if (index === mainSlotIndex.value && mainEval) {
-        return {
-          external: mainEval.external,
-          final: mainEval.finalPanel,
-        }
-      }
-      const seeded = optimalParticipantPanels[slot.agentId]
-      if (!seeded) return null
-      const external = fillPanelStatsDefaults(seeded)
-      return {
-        external,
-        final: previewFinalPanel(external, index),
-      }
-    })
-  }),
+  /**
+   * 原 `slotPanelPreviews`（把本区结算面板灌进槽位卡片）已删除。
+   *
+   * 槽位卡片是「角色配置」的录入区，不该被临时分析结果覆盖（用户口径 2026-09-11）；
+   * 结果面板改由招式流程区「查看面板」展示（局外 + 局内，基于三选项，见 skillFlowPanelSource.ts）。
+   */
 })
 
 function buildPreviewPanelContext(slotIndex: number) {
@@ -2385,7 +2299,7 @@ function buildPreviewPanelContext(slotIndex: number) {
       staggerPhase: props.staggerPhase ?? 'stagger',
     }),
     buffSelection: resolveBuffSelectionForSlot(props.slotBuffSelections, slotIndex),
-    anomalySlotPanels: effectiveAnomalySlotPanels.value,
+    activeSlotPanels: effectiveAnomalySlotPanels.value,
     convertSlotPanels: props.convertSlotPanels,
     environmentBuffs: props.environmentBuffs,
   }
@@ -2409,14 +2323,14 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 <template>
   <section class="opt-section">
     <header class="opt-header">
-      <h2>最优词条分配</h2>
+      <h2>词条配比分析</h2>
       <p>
-        两种用法二选一：「词条分配」在总词条数约束下求全词条最优分配；
+        两种用法二选一：「最优分配」在总词条数约束下求全词条最优配比；
         「扫掠柱图」手动指定两个维度扫掠对比。
       </p>
     </header>
 
-    <h3 class="block-title">基础伤害来源与驱动盘主属性</h3>
+    <h3 class="block-title">基础伤害来源</h3>
     <div class="grid three">
       <label class="field">
         <span>基础伤害来源</span>
@@ -2428,94 +2342,23 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         <small v-if="isMb" class="hint">命破角色固定使用贯穿力</small>
         <small v-else-if="isFengYu" class="hint">锋御角色固定使用防御力（锐化公式）</small>
       </label>
-      <label class="field">
-        <span>4号主属性</span>
-        <select v-model="driveDiscMainStats.slot4MainStat">
-          <option v-for="opt in DRIVE_DISC_SLOT_4_OPTIONS" :key="opt.id" :value="opt.id">
-            {{ opt.label }}
-          </option>
-        </select>
-      </label>
-      <label class="field">
-        <span>5号主属性</span>
-        <select v-model="driveDiscMainStats.slot5MainStat">
-          <option v-for="opt in DRIVE_DISC_SLOT_5_OPTIONS" :key="opt.id" :value="opt.id">
-            {{ opt.label }}
-          </option>
-        </select>
-      </label>
-      <label class="field">
-        <span>6号主属性</span>
-        <select v-model="driveDiscMainStats.slot6MainStat">
-          <option v-for="opt in DRIVE_DISC_SLOT_6_OPTIONS" :key="opt.id" :value="opt.id">
-            {{ opt.label }}
-          </option>
-        </select>
-      </label>
-      <p class="hint span-2">
-        1号固定生命 {{ AFFIX_DRIVE_DISC_SLOT_1_HP }} · 2号固定攻击 {{ AFFIX_DRIVE_DISC_SLOT_2_ATK }} · 3号固定防御
-        {{ AFFIX_DRIVE_DISC_SLOT_3_DEF }}（已计入词条推导）
-      </p>
-    </div>
-
-    <!--
-      ============ 扫掠柱图模式：局外 / 局内面板 ============
-      面板数据来自 displayEval，其取值链是「选中柱体 → 第一个柱体 → 扫掠输入预览」，
-      与词条分配模式的求解结果（affixAllocEval）无关。
-      放在分配模式里会显示成柱体的面板，误导用户，故仅在扫掠柱图模式渲染。
-    -->
-    <div v-if="sectionMode === 'sweep' && displayEval" class="panel-layout">
-      <section class="panel-block">
-        <header class="panel-block-header">
-          <h3>局外面板（初始）</h3>
-          <p>
-            {{ selectedCounts ? '跟随当前选中分配。' : '按当前词条分配预览（未开算时余量暂记入爆伤/精通）。' }}由词条分配与角色/音擎/驱动盘基础属性推导，仅展示在最优模块。
-            <template v-if="optimalConvertModeActive">
-              主 C 参与转模增益，此处主 C 局外由词条分配推导，不沿用面板页主 C 局外。
-            </template>
-          </p>
-        </header>
-        <div class="grid four">
-          <label v-for="field in EXTERNAL_PANEL_FIELDS" :key="`external-${field.key}`" class="field">
-            <span>{{ field.label }}</span>
-            <input :value="formatPanelValue(field.key, displayEval.external[field.key])" type="text" readonly />
-          </label>
-          <label class="field">
-            <span>贯穿力</span>
-            <input :value="formatPanelValue('pierce', displayExternalPierce)" type="text" readonly />
-          </label>
-        </div>
-      </section>
-
-      <section class="panel-block panel-block--final">
-        <header class="panel-block-header">
-          <h3>局内面板（最终）</h3>
-          <p>叠加自身/队友/音擎/邦布/驱动盘/额外 Buff 后的战斗面板，仅展示。</p>
-        </header>
-        <div class="grid four">
-          <label v-for="field in FINAL_PANEL_FIELDS" :key="`final-${field.id}`" class="field">
-            <span>{{ field.label }}</span>
-            <input :value="formatFinalPanelField(field)" type="text" readonly />
-          </label>
-        </div>
-      </section>
     </div>
 
     <div class="section-mode-row" role="tablist" aria-label="功能模式">
       <button
         type="button"
         role="tab"
-        class="section-mode-tab"
+        class="chip chip--mode"
         :class="{ active: sectionMode === 'allocation' }"
         :aria-selected="sectionMode === 'allocation'"
         @click="sectionMode = 'allocation'"
       >
-        词条分配
+        最优分配
       </button>
       <button
         type="button"
         role="tab"
-        class="section-mode-tab"
+        class="chip chip--mode"
         :class="{ active: sectionMode === 'sweep' }"
         :aria-selected="sectionMode === 'sweep'"
         @click="sectionMode = 'sweep'"
@@ -2548,19 +2391,26 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         </div>
         <p class="hint">
           按「流程全部事件总伤」口径，逐条词条 +{{ affixBenefitStep }} 档评估；
-          相对权重 = 本行收益率 ÷ 最大收益率。
+          相对权重 = 本行收益率 ÷ 当前显示的最大收益率（筛选后按显示的行重算）。
         </p>
         <AffixBenefitTable
           :table="affixBenefitTable"
           :library="affixLibraryAllEntries"
           :enabled-ids="enabledAffixEntryIds"
+          :groups="affixLibraryState.groups"
           :rolls-per-step="affixBenefitStep"
           :loading="affixBenefitLoading"
           @toggle-entry="toggleAffixLibraryEntry"
+          @toggle-entries="toggleAffixLibraryEntries"
           @add-entry="addAffixLibraryEntry"
           @update-entry="updateAffixLibraryEntryPatch"
           @remove-entry="removeAffixLibraryEntryById"
           @restore-defaults="restoreAffixLibraryDefaultsHandler"
+          @add-group="addAffixLibraryGroupHandler"
+          @set-group-cap="setAffixLibraryGroupCapHandler"
+          @rename-group="renameAffixLibraryGroupHandler"
+          @remove-group="removeAffixLibraryGroupHandler"
+          @library-switched="onAffixLibrarySwitched"
         />
 
         <h3 class="block-title">最优分配</h3>
@@ -2621,19 +2471,11 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           <div class="detail-tabs alloc-subtabs">
             <button
               type="button"
-              class="detail-tab"
+              class="chip"
               :class="{ active: affixAllocDetailTab === 'curve' }"
               @click="affixAllocDetailTab = 'curve'"
             >
               收益曲线
-            </button>
-            <button
-              type="button"
-              class="detail-tab"
-              :class="{ active: affixAllocDetailTab === 'process' }"
-              @click="affixAllocDetailTab = 'process'"
-            >
-              计算过程
             </button>
           </div>
 
@@ -2648,21 +2490,6 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
             <p v-else-if="affixBenefitSeriesLoading" class="hint">收益曲线计算中…（首屏只算「+1 档」表，曲线按需补算）</p>
             <p v-else class="hint">暂无收益曲线数据。</p>
           </template>
-
-          <template v-else>
-            <DamageProcessPanel
-              :has-events="hasEventMode"
-              :summary="affixAllocOwnerShareSummary"
-              :skipped-events="affixAllocSkippedEvents"
-              :detail="affixAllocSelectedProcessDetail"
-              :selected-event-id="affixAllocSelectedProcessEventId"
-              :total-label="processDamageTotalLabel"
-              :enemy-input="enemyInput"
-              :is-mb="isMb"
-              hint="按流程全部事件统计。点击产生者展开事件，再点事件查看下方计算过程。"
-              @select-event="affixAllocProcess.selectEvent"
-            />
-          </template>
         </template>
       </template>
     </template>
@@ -2674,7 +2501,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
       <button
         type="button"
         role="tab"
-        class="kind-mode-tab"
+        class="chip"
         :class="{ active: sweepDamageKind === 'direct' }"
         :aria-selected="sweepDamageKind === 'direct'"
         @click="setDamageKind('direct')"
@@ -2684,7 +2511,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
       <button
         type="button"
         role="tab"
-        class="kind-mode-tab"
+        class="chip"
         :class="{ active: sweepDamageKind === 'anomaly' }"
         :aria-selected="sweepDamageKind === 'anomaly'"
         @click="setDamageKind('anomaly')"
@@ -2969,7 +2796,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         <div class="detail-tabs">
           <button
             type="button"
-            class="detail-tab"
+            class="chip"
             :class="{ active: detailTab === 'diff' }"
             @click="detailTab = 'diff'"
           >
@@ -2977,19 +2804,11 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           </button>
           <button
             type="button"
-            class="detail-tab"
+            class="chip"
             :class="{ active: detailTab === 'curve' }"
             @click="detailTab = 'curve'"
           >
             收益曲线
-          </button>
-          <button
-            type="button"
-            class="detail-tab"
-            :class="{ active: detailTab === 'process' }"
-            @click="detailTab = 'process'"
-          >
-            计算过程
           </button>
         </div>
         <p v-if="hasEventMode && mainStatEventScopeHint" class="hint detail-scope-hint">
@@ -3011,55 +2830,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         }}
       </p>
 
-      <template v-if="detailTab === 'process'">
-        <template v-if="hasEventMode">
-          <DamageProcessPanel
-            :has-events="hasEventMode"
-            :summary="processOwnerShareSummary"
-            :skipped-events="processSkippedEvents"
-            :detail="selectedProcessEventDetail"
-            :selected-event-id="selectedProcessEventId"
-            :total-label="processDamageTotalLabel"
-            :enemy-input="enemyInput"
-            :is-mb="isMb"
-            hint="总伤期望已并入本区（口径与柱状图所选统计事件一致）。点击产生者展开事件，再点事件查看下方计算过程。"
-            @select-event="selectProcessEventFromShare"
-          />
-        </template>
-        <template v-else>
-        <div class="result-summary">
-          <p v-if="hasEventMode">
-            伤害事件总伤期望：
-            <strong>{{ formatNumber(analysisMetricDamage) }}</strong>
-          </p>
-          <template v-else-if="sweepDamageKind === 'direct'">
-            <p>直伤期望伤害：<strong>{{ formatNumber(analysisEval!.result.directDamageExpected) }}</strong></p>
-          </template>
-          <template v-else>
-            <p v-if="anomalySubKind === 'anomaly'">异常期望伤害：<strong>{{ formatNumber(analysisEval!.result.anomalyExpected) }}</strong></p>
-            <p v-else-if="anomalySubKind === 'disorder'">紊乱期望伤害：<strong>{{ formatNumber(analysisEval!.result.disorderExpected) }}</strong></p>
-            <p v-else-if="anomalySubKind === 'turbulence'">乱流期望伤害：<strong>{{ formatNumber(analysisEval!.result.turbulenceExpected) }}</strong></p>
-            <p v-else-if="anomalySubKind === 'anomalyRelease'">异放期望伤害：<strong>{{ formatNumber(analysisEval!.result.anomalyReleaseExpected) }}</strong></p>
-            <p v-else-if="anomalySubKind === 'radiance'">耀变期望伤害：<strong>{{ formatNumber(analysisEval!.result.radianceExpected) }}</strong></p>
-            <p v-else>异常期望伤害：<strong>{{ formatNumber(analysisEval!.result.anomalyExpected) }}</strong></p>
-          </template>
-        </div>
-        <DamageResultDetail
-          :calc-parts="analysisEval!.result"
-          :final-panel="analysisEval!.finalPanel"
-          :external-panel="analysisEval!.external"
-          :sources="analysisEval!.breakdown.sources"
-          :pierce-mod="analysisEval!.breakdown.totalMods.pierce"
-          :pierce-power="analysisEval!.piercePower"
-          :enemy-input="enemyInput"
-          :is-mb="isMb"
-          :show="sweepDamageKind"
-          :anomaly-sub-kind="anomalySubKind"
-        />
-        </template>
-      </template>
-
-      <template v-else-if="detailTab === 'diff' && diffAnalysis">
+      <template v-if="detailTab === 'diff' && diffAnalysis">
         <h4 class="sub-title">副词条差异计算（相对当前分配 +1 条）</h4>
         <div class="table-wrap">
           <table>
@@ -3400,9 +3171,9 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         </template>
       </template>
 
-      <p v-else-if="detailTab === 'diff'" class="hint">词条差异计算中…若长时间无结果，请再点一次「开始计算」。</p>
+      <p v-if="detailTab === 'diff'" class="hint">词条差异计算中…若长时间无结果，请再点一次「开始计算」。</p>
 
-      <template v-else-if="detailTab === 'curve' && benefitData">
+      <template v-if="detailTab === 'curve' && benefitData">
         <BenefitCurvePanel
           v-model:mode="curveMode"
           :series="benefitData.series"
@@ -3668,30 +3439,33 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 .section-mode-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem;
+  gap: 0.6rem;
   align-items: center;
   margin: 0.75rem 0 0.5rem;
   padding-bottom: 0.6rem;
   border-bottom: 1px solid #2a2f37;
 }
 
-.section-mode-tab {
-  border: 1px solid #333841;
-  border-radius: 999px;
-  background: #1a1e25;
-  color: #d5dae3;
-  font: inherit;
-  font-size: 0.85rem;
-  font-weight: 700;
-  padding: 0.42rem 1.1rem;
-  cursor: pointer;
+/*
+ * 区级模式切换（最优分配 / 扫掠柱图）：用户 2026-09-13「这2个按钮尺寸弄大点」。
+ *
+ * 它俩是「词条配比分析」整区的**主开关**，但用的是全站统一 `.chip`
+ * （`assets/calculatorChip.css`），尺寸跟正文里那些 `+1 档` / `4号位（6）` 完全一样，
+ * 摆在整片 chip 里看不出层级。这里只放大尺寸，颜色 / 选中态 / 圆角 / 字重一律交给
+ * `.chip` 本体，昼夜两套主题照旧 —— 所以不加任何颜色声明。
+ *
+ * 全局那份不能动：改它等于把全站 28 个 chip 一起放大（本次只要这两颗）。
+ */
+.chip--mode {
+  padding: 0.6rem 1.4rem;
+  font-size: 1rem;
 }
 
-.section-mode-tab.active {
-  border-color: rgba(191, 255, 9, 0.45);
-  background: rgba(191, 255, 9, 0.12);
-  color: #bfff09;
-}
+/*
+ * 模式切换（最优分配 / 扫掠柱图）、伤害模式（直伤 / 异常）、子页签（词条差异 / 收益曲线）
+ * 都直接用统一 chip：见 `assets/calculatorChip.css`。
+ * 改造前它们各自写了一套（其中模式切换还是青柠色选中，且白天主题没有任何覆盖 —— 一直是黑的）。
+ */
 
 .alloc-input-row {
   display: flex;
@@ -3967,24 +3741,6 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   margin-right: 0.15rem;
 }
 
-.kind-mode-tab {
-  border: 1px solid #2d323a;
-  border-radius: 999px;
-  background: #10141a;
-  color: #c5ccd6;
-  font: inherit;
-  font-size: 0.8rem;
-  padding: 0.28rem 0.75rem;
-  cursor: pointer;
-}
-
-.kind-mode-tab.active {
-  border-color: rgba(201, 165, 92, 0.55);
-  background: rgba(201, 165, 92, 0.14);
-  color: #f0d7a2;
-  font-weight: 600;
-}
-
 .calc-commit-row {
   display: flex;
   flex-wrap: wrap;
@@ -4046,10 +3802,8 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   align-items: center;
 }
 
-.kind-tab,
-.detail-tab,
-.ghost-btn,
-.chip {
+/* 动作按钮（重新计算收益 / 计算敏感度 …）：保持既有观感，不并入 chip */
+.ghost-btn {
   border: 1px solid #333841;
   border-radius: 999px;
   background: #1a1e25;
@@ -4059,14 +3813,6 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   font-weight: 700;
   padding: 0.35rem 0.85rem;
   cursor: pointer;
-}
-
-.kind-tab.active,
-.detail-tab.active,
-.chip.active {
-  border-color: rgba(191, 255, 9, 0.45);
-  background: rgba(191, 255, 9, 0.12);
-  color: #bfff09;
 }
 
 .err {

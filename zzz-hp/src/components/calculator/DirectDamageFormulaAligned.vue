@@ -38,7 +38,7 @@ const formulaSegments = computed((): DirectFormulaTerm[][] => {
           </div>
         </template>
       </template>
-      <span class="formula-aligned-op" aria-hidden="true">=</span>
+      <span class="formula-aligned-op" aria-hidden="true">→</span>
       <div class="formula-aligned-result formula-aligned-result--inline">
         <StatValueWithSources :value="group.result" :groups="valueTips[group.key] ?? []" />
       </div>
@@ -50,7 +50,7 @@ const formulaSegments = computed((): DirectFormulaTerm[][] => {
 .formula-aligned-group {
   display: grid;
   grid-template-columns: 6.95em minmax(0, 1fr);
-  gap: 0.35rem 0.45rem;
+  gap: 0.35rem 0.22rem;
   padding: 0.55rem 0;
   align-items: start;
 }
@@ -105,5 +105,7 @@ const formulaSegments = computed((): DirectFormulaTerm[][] => {
   font-size: 0.88rem;
   line-height: 1.35;
   white-space: nowrap;
+  font-weight: 700;
+  color: var(--calc-accent, #c9a55c);
 }
 </style>

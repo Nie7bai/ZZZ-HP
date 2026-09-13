@@ -55,6 +55,10 @@ tmp-*.json
 tmp-backups/
 **/tmp-backups/
 
+# 整库导出（export-db-json.mjs）：含 admin.password / guestbook_user 的
+# phone、password_hash，是凭据而非内容 —— 一律本地留存，禁止入库。
+json备份/zzz-hp-db-full-*.json
+
 # Editor / OS
 .DS_Store
 .idea/

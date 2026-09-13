@@ -10,4 +10,8 @@ alwaysApply: true
 - 短命分支 `feature/*` / `fix/*` / `chore/*` / `release/x.y.z`，PR 合入 `main`。不要在 `3.1.x` 版本分支上 commit / push，不要直推日常改动到 `main`。
 - 提交用 Conventional Commits；一件事一个提交。版本三段 SemVer。
 - 勿提交 `.env`、证书、用户上传、`data/*`、`node_modules`；管理员密码永不入库。
-- **用户明确要求再 push**；本地有意义改动可直接 commit。
+- **本地改动改完即 commit**：不必等指示、不必逐次汇报；一件事一个提交，保持每个提交可独立回滚。手册 `dev-docs/github-guide.md`。
+- **push 分级**（用户 2026-09-12 定的标准）：
+  - **备份远端**（本机 `origin` = Gitee `qzl2077/ZZZ-HP`）：由 Agent 自行判断，必要时可推，作为异地保险；不必每次提交都推。
+  - **权威仓库**（`https://github.com/Nie7bai/ZZZ-HP`，本机 `upstream`）：**仅在用户明确要求时推送**，不主动推。
+- **服务启停只有用户能做**：不自行启动 dev server、不 kill 进程、不改启动脚本 —— 除非当次明确要求。见 `dev-docs/dev-server-ops.md`。

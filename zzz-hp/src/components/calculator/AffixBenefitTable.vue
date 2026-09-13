@@ -1,14 +1,26 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import type { AffixBenefitTable } from '@/utils/affixBenefitAnalysis'
-import type { AffixLibraryEntry } from '@/utils/affixLibrary'
+import { computed, ref, watch } from 'vue'
+import {
+  affixRelativeWeights,
+  type AffixBenefitRow,
+  type AffixBenefitTable,
+} from '@/utils/affixBenefitAnalysis'
+import { formatAffixPerRoll, loadAffixLibraryStore, type AffixLibraryEntry, type AffixLibraryGroup } from '@/utils/affixLibrary'
+import {
+  createDefaultAffixBenefitFilters,
+  collectAffixBenefitKnownGroups,
+  loadAffixBenefitFilters,
+  pruneAffixBenefitFilters,
+  saveAffixBenefitFilters,
+} from '@/utils/affixBenefitFilters'
+import AffixLibraryModal from '@/components/calculator/AffixLibraryModal.vue'
 import { useResizableColumns, type ResizableColumnSpec } from '@/composables/useResizableColumns'
 
 /**
- * 词条收益表 + 词条库编辑（词条功能改造）
+ * 词条收益表（词条功能改造）
  *
- * 上表：每条词条 +N 档的总伤增量、收益率、相对权重。
- * 下表：词条库编辑器，可增删改条目、切换参与状态。
+ * 每条词条 +N 档的总伤增量、收益率、相对权重。
+ * 词条库的编辑与多套库切换收在 `AffixLibraryModal` 里（点「词条库」按钮打开）。
  */
 
 const props = withDefaults(
@@ -17,6 +29,8 @@ const props = withDefaults(
     library: AffixLibraryEntry[]
     /** 条目 id → 是否参与计算 */
     enabledIds: string[]
+    /** 当前激活库的分组（组名 + 组额度） */
+    groups: AffixLibraryGroup[]
     rollsPerStep?: number
     loading?: boolean
   }>(),
@@ -26,55 +40,285 @@ const props = withDefaults(
 const emit = defineEmits<{
   select: [entryId: string]
   toggleEntry: [entryId: string, enabled: boolean]
-  addEntry: [entry: Omit<AffixLibraryEntry, 'id' | 'builtin'>]
+  /** 一次改多条（弹窗里组页的「全选 / 全部取消」） */
+  toggleEntries: [entryIds: string[], enabled: boolean]
+  addEntry: [entry: Omit<AffixLibraryEntry, 'id'>]
   updateEntry: [entryId: string, patch: Partial<AffixLibraryEntry>]
   removeEntry: [entryId: string]
   restoreDefaults: []
+  addGroup: [name: string, cap: number]
+  setGroupCap: [name: string, cap: number]
+  renameGroup: [from: string, to: string]
+  removeGroup: [name: string]
+  /** 弹窗里做了库级变更（切库/导入等），页面应重新载入激活库并重算 */
+  librarySwitched: []
 }>()
 
-const sortKey = ref<'percent' | 'name'>('percent')
-const showLibraryEditor = ref(false)
+const showLibraryModal = ref(false)
 
-const enabledSet = computed(() => new Set(props.enabledIds))
+/**
+ * 筛选状态：**进本机存档**（用户 2026-09-13 第 3 条）。
+ *
+ * 读存档失败 / 没有存档都回落默认；变了就写回（`watch` 在文件下方）。
+ * 默认值见 `createDefaultAffixBenefitFilters()`（两个开关都开着）。
+ */
+const savedFilters = loadAffixBenefitFilters()
 
-const sortedRows = computed(() => {
-  const rows = props.table?.rows ?? []
-  if (sortKey.value === 'name') {
-    return [...rows].sort((a, b) => a.label.localeCompare(b.label, 'zh'))
-  }
-  return rows
+/**
+ * 分组筛选（**多选**）：只记「被关掉的分组」，空集 = 不筛选、全都显示。
+ *
+ * 为什么反着记：库里新增的分组要默认可见。记「选中的」就得在分组增减时同步补名字，
+ * 漏一处新组就凭空消失（而它明明有收益）；记「关掉的」则新组天然是开的。
+ */
+const hiddenGroups = ref<Set<string>>(new Set(savedFilters.hiddenGroups))
+
+/** 未分组条目在筛选条上的显示名（`entry.group` 为空串） */
+const UNGROUPED_GROUP_LABEL = '未分组'
+
+/**
+ * 「隐藏无收益」：只留收益率 **> 0** 的条目（**默认开**，用户 2026-09-13 第 2 条）。
+ *
+ * 口径写死在这里：收益率为 0（改了等于没改）与为负（越改越低）都算「无收益」，
+ * 看收益表时这两类通常是噪声 —— 用户口径「现在所有词条显示太多了」。
+ */
+const hideNoBenefit = ref(savedFilters.hideNoBenefit)
+
+/** 与存量状态对齐：两个开关任一变化就落盘（含「清除筛选」把状态还原成默认） */
+watch([hiddenGroups, hideNoBenefit], () => {
+  saveAffixBenefitFilters({
+    hideNoBenefit: hideNoBenefit.value,
+    hiddenGroups: [...hiddenGroups.value],
+  })
 })
 
-// ---------- 列宽（可拖拽，按比例） ----------
 /**
- * 列宽用**比例**而不是像素：表格占满容器宽度，比例才能「拖多少就是多少」。
- * 默认比例把「词条」列压到 20%（原 auto 布局下它吃掉约 28%），数值列相应放宽。
+ * 现存分组名（整份存档所有库的并集）—— 残名判据。
+ *
+ * 兜底加上当前库快照里的分组与条目：万一盘上内容比页面手里的旧，
+ * 也不该把「正显示在筛选条上的组合」当成残名剪掉。
+ */
+function computeKnownGroupNames(): Set<string> {
+  const names = collectAffixBenefitKnownGroups(loadAffixLibraryStore())
+  for (const group of props.groups) names.add(group.name)
+  for (const entry of props.library) names.add(entry.group)
+  return names
+}
+
+/**
+ * 库一改动（改组名 / 删组 / 换库 / 增删条目）就把存档里的**残名剪掉**。
+ *
+ * 用户口径（2026-09-13）：残名不能留 —— 留着的话将来又建了同名分组，它会悄悄复活。
+ * 依赖用「当前库的分组名 + 条目数」这个签名：分组改名 / 删除 / 换库都会让它变。
+ * `immediate` 让首屏也剪一次（剪完触发上面的落盘 watch，把结果固化）。
+ */
+watch(
+  () => [props.groups.map((group) => group.name).join('\u0000'), props.library.length] as const,
+  () => {
+    const pruned = pruneAffixBenefitFilters(
+      {
+        hideNoBenefit: hideNoBenefit.value,
+        hiddenGroups: [...hiddenGroups.value],
+      },
+      computeKnownGroupNames(),
+    )
+    // 没剪掉东西时返回的是同一个对象（空数组长度也相同）—— 此处只比较长度即可
+    if (pruned.hiddenGroups.length !== hiddenGroups.value.size) {
+      hiddenGroups.value = new Set(pruned.hiddenGroups)
+    }
+  },
+  { immediate: true },
+)
+
+/**
+ * 表行顺序：**永远按收益率降序**（用户 2026-09-13 口径「不需要按名称排序，没意义」）。
+ *
+ * 这里显式再排一次，不吃数据源内部的排序：`computeAffixBenefitTable` 现在也按收益率降序，
+ * 但那是它的实现细节 —— 靠它等价于把「表格顺序」这条契约挂在别处，哪天那边改了顺序，
+ * 表格会静默跟着变。排序是显示层的事，就写在显示层。
+ */
+const sortedRows = computed(() =>
+  [...(props.table?.rows ?? [])].sort((a, b) => b.percentDelta - a.percentDelta),
+)
+
+/** 条目 id → 组名（空串 = 未分组）；筛选条与分组统计都用它 */
+const groupByEntryId = computed(() => {
+  const map = new Map<string, string>()
+  for (const entry of props.library) map.set(entry.id, entry.group)
+  return map
+})
+
+/** 筛选条上的分组：按组表顺序，未分组排最后；只列**当前表里真有条目**的组 */
+const tableGroupNames = computed(() => {
+  const present = new Set<string>()
+  for (const row of sortedRows.value) present.add(groupByEntryId.value.get(row.entryId) ?? '')
+  const ordered = props.groups.map((group) => group.name).filter((name) => present.has(name))
+  // 组表里没有的组名（例如组被删掉、条目还在）也要给一条，否则那些条目筛不出来
+  for (const name of present) {
+    if (name && !ordered.includes(name)) ordered.push(name)
+  }
+  if (present.has('')) ordered.push('')
+  return ordered
+})
+
+/** 某分组在当前表里的条目数（显示在 chip 上，省得点开才看出来） */
+function countInGroup(name: string): number {
+  let count = 0
+  for (const row of sortedRows.value) {
+    if ((groupByEntryId.value.get(row.entryId) ?? '') === name) count += 1
+  }
+  return count
+}
+
+/** 筛选条上的显示名（未分组是空串，得翻译一下） */
+function groupChipLabel(name: string): string {
+  return name || UNGROUPED_GROUP_LABEL
+}
+
+function isGroupVisible(name: string): boolean {
+  return !hiddenGroups.value.has(name)
+}
+
+function toggleGroupFilter(name: string) {
+  const next = new Set(hiddenGroups.value)
+  if (next.has(name)) next.delete(name)
+  else next.add(name)
+  hiddenGroups.value = next
+}
+
+/** 取某行的分组名（空串 = 未分组） */
+function groupNameOf(row: AffixBenefitRow): string {
+  return groupByEntryId.value.get(row.entryId) ?? ''
+}
+
+/**
+ * 表格里真正显示的行。
+ *
+ * 两道处理，顺序有讲究：**先按分组筛，再折叠同效果**。
+ * 反过来的话，「4号位」被关掉时，保留下来的 4号位那条会带着整行一起消失 ——
+ * 而 5/6 号位的同效果条目明明还在（它们是同一条效果，只是分属不同分组）。
+ *
+ * 折叠（「同名折叠」）**常开、没有开关**（用户 2026-09-13 第 2 轮口径）：这张表是
+ * 「看某个效果值多少收益」的，不是「数当前方案有多少条词条」的；同效果的几条行数值
+ * 本来就完全相同（折叠键 = `target + perRoll`，收益由这两者唯一决定），开关只会让
+ * 两次会话看到两张不一样的表。
+ *
+ * 只管显示：不改词条库、不改收益评估、不改求解 —— 折叠掉的行照常参与计算。
+ * 键用 `target + perRoll` 而**不是标签字符串**：这样「效果不同的行永远不会被折叠掉」，
+ * 标签相同的两条若效果不同（例如被手工改过每档），照旧各占一行。
+ * 库里的实际例子：`局外防御力 48%` 是 slot4/5/6 三条主属性，target 都是 `stat:defPercent`、
+ * 每档都是 48 —— 同一条效果，折成一条。
+ */
+const rowDisplay = computed(() => {
+  const afterBenefit = sortedRows.value.filter(
+    (row) => !hideNoBenefit.value || row.percentDelta > 0,
+  )
+  const afterGroup = afterBenefit.filter((row) => !hiddenGroups.value.has(groupNameOf(row)))
+
+  const rows: AffixBenefitRow[] = []
+  /** 保留行的 id → 被折掉了几条（只用来决定基线行要不要给一句说明） */
+  const folded = new Map<string, number>()
+  const keptIdByKey = new Map<string, string>()
+
+  for (const row of afterGroup) {
+    const key = `${row.target}|${row.perRoll}`
+    const keptId = keptIdByKey.get(key)
+    if (keptId === undefined) {
+      keptIdByKey.set(key, row.entryId)
+      rows.push(row)
+      continue
+    }
+    folded.set(keptId, (folded.get(keptId) ?? 1) + 1)
+  }
+  return { rows, folded }
+})
+
+const visibleRows = computed(() => rowDisplay.value.rows)
+
+/** 是否有筛选在生效（决定「清除筛选」可不可点）—— 判据是「与默认视图不同」 */
+const filteringActive = computed(() => {
+  const defaults = createDefaultAffixBenefitFilters()
+  return hiddenGroups.value.size > 0 || hideNoBenefit.value !== defaults.hideNoBenefit
+})
+
+/**
+ * 显示用的相对权重：分母是**当前显示出来的行**里的最大收益率。
+ *
+ * 为什么不直接用 `row.weight`（那是整表口径）：筛掉收益最高的那几组以后，
+ * 显示出来的行里就没有 1.000 了，整列柱子一起变短 —— 看不出这批里谁强谁弱。
+ * 公式与整表口径同一个（`affixRelativeWeights`），只是分母换成显示行。
+ */
+const displayWeights = computed(() => {
+  const rows = visibleRows.value
+  const weights = affixRelativeWeights(rows)
+  const map = new Map<string, number>()
+  rows.forEach((row, index) => map.set(row.entryId, weights[index] ?? 0))
+  return map
+})
+
+/** 取某行显示用权重（没算到就是 0，例如全为负收益） */
+function displayWeightOf(entryId: string): number {
+  return displayWeights.value.get(entryId) ?? 0
+}
+
+/**
+ * 有没有行被折叠掉（只用来决定基线行要不要给一句说明）。
+ *
+ * 说明里**不带次数**（用户 2026-09-13 口径：这张表不负责告知方案有多少条词条），
+ * 但得说一句「已合并、不影响计算」—— 否则「共 38 条 vs 显示 15 行」看着像 bug。
+ */
+const hasFoldedRows = computed(() => rowDisplay.value.folded.size > 0)
+
+/** 「清除筛选」= 回到默认视图（分组全显示、隐藏无收益回到默认），不是「什么都不显示」 */
+function resetFilters() {
+  const defaults = createDefaultAffixBenefitFilters()
+  hiddenGroups.value = new Set()
+  hideNoBenefit.value = defaults.hideNoBenefit
+}
+
+// ---------- 列宽（可拖拽，Excel 式：每列独立像素宽） ----------
+/**
+ * 列宽规则见 `useResizableColumns`：
+ * - 还没拖过：按下面的 `defaultRatio` 铺满容器（首屏与改造前视觉一致）；
+ * - 拖过一次之后：每列都是**独立像素宽**，拖某一列不影响其它列，
+ *   表格总宽 = 各列之和（超出横向滚动、不足右侧留白，与 Excel 一致）。
+ *
+ * 所以 `defaultRatio` 不是持久语义，只在「首次铺满」与「双击复位」时用。
  */
 const BENEFIT_COLUMN_SPECS: ResizableColumnSpec[] = [
-  { key: 'entry', defaultRatio: 20, minWidthPx: 120 },
-  { key: 'perRoll', defaultRatio: 11, minWidthPx: 64 },
-  { key: 'currentRolls', defaultRatio: 13, minWidthPx: 80 },
-  { key: 'damageDelta', defaultRatio: 22, minWidthPx: 110 },
-  { key: 'percentDelta', defaultRatio: 12, minWidthPx: 80 },
-  { key: 'weight', defaultRatio: 22, minWidthPx: 100 },
+  { key: 'entry', defaultRatio: 22, minWidthPx: 120 },
+  { key: 'perRoll', defaultRatio: 12, minWidthPx: 64 },
+  { key: 'damageDelta', defaultRatio: 24, minWidthPx: 110 },
+  { key: 'percentDelta', defaultRatio: 13, minWidthPx: 80 },
+  { key: 'weight', defaultRatio: 29, minWidthPx: 100 },
 ]
 
-const BENEFIT_COLUMN_STORAGE_KEY = 'zzz-hp-affix-benefit-col-ratios'
+const BENEFIT_COLUMN_STORAGE_KEY = 'zzz-hp-affix-benefit-col-widths'
 
 const benefitTableWrap = ref<HTMLElement | null>(null)
 
 const {
-  ratioOf: benefitColumnRatio,
+  hasPixelWidths: benefitHasPixelWidths,
+  totalWidthPx: benefitTotalWidthPx,
+  widthOf: benefitColumnWidth,
   resizingKey: resizingColumnKey,
   startResize: startColumnResize,
   resetColumn: resetColumnWidth,
 } = useResizableColumns(BENEFIT_COLUMN_STORAGE_KEY, BENEFIT_COLUMN_SPECS)
 
+/**
+ * 像素态下必须把表格宽显式设成各列之和。
+ *
+ * 仍旧写 `width: 100%` 的话，浏览器会把差值摊回各列 —— 那就又变成「拖一列、别的列跟着变」，
+ * 正是本次要去掉的行为。
+ */
+const benefitTableStyle = computed(() =>
+  benefitHasPixelWidths.value ? { width: `${benefitTotalWidthPx.value}px` } : undefined,
+)
+
 /** 表头元数据；与 BENEFIT_COLUMN_SPECS 的 key 一一对应 */
 const benefitColumns = computed(() => [
   { key: 'entry', label: '词条', numeric: false },
   { key: 'perRoll', label: '每档', numeric: true },
-  { key: 'currentRolls', label: '当前档数', numeric: true },
   { key: 'damageDelta', label: `+${props.rollsPerStep} 档伤害增量`, numeric: true },
   { key: 'percentDelta', label: '收益率', numeric: true },
   { key: 'weight', label: '相对权重', numeric: true },
@@ -96,126 +340,113 @@ function formatWeight(value: number) {
   return value.toFixed(3)
 }
 
-// ---------- 新增条目表单 ----------
-const draft = ref({
-  label: '',
-  kind: 'substat' as 'substat' | 'panelField',
-  affixKey: 'atkPercent',
-  panelField: 'dmgBonus',
-  perRoll: 3,
-  cap: 0,
-  group: '',
-})
-const draftError = ref<string | null>(null)
-
-const SUBSTAT_OPTIONS = [
-  { id: 'atkPercent', label: '局外攻击力%' },
-  { id: 'atkFlat', label: '固定攻击力' },
-  { id: 'hpPercent', label: '局外生命值%' },
-  { id: 'hpFlat', label: '固定生命值' },
-  { id: 'defPercent', label: '局外防御力%' },
-  { id: 'defFlat', label: '固定防御力' },
-  { id: 'critRate', label: '暴击率%' },
-  { id: 'critDmg', label: '暴击伤害%' },
-  { id: 'mastery', label: '异常精通' },
-  { id: 'pen', label: '固定穿透' },
-]
-
-const PANEL_FIELD_OPTIONS = [
-  { id: 'dmgBonus', label: '增伤%' },
-  { id: 'penRate', label: '穿透率%' },
-  { id: 'reduceDefense', label: '减防%' },
-  { id: 'ignoreDefense', label: '无视防御%' },
-  { id: 'resPen', label: '抗性穿透%' },
-  { id: 'anomalyDmgBonus', label: '异常增伤%' },
-  { id: 'anomalyCritRate', label: '异常暴击率%' },
-  { id: 'anomalyCritDmg', label: '异常暴击伤害%' },
-  { id: 'anomalyReleaseDmgBonus', label: '异放增伤%' },
-  { id: 'disorderDmgBonus', label: '紊乱增伤%' },
-  { id: 'turbulenceDmgBonus', label: '乱流增伤%' },
-  { id: 'radianceDmgBonus', label: '耀变增伤%' },
-  { id: 'radianceResPen', label: '耀变抗性穿透%' },
-  { id: 'specialMult', label: '特殊倍率%' },
-]
-
-function submitDraft() {
-  const label = draft.value.label.trim()
-  if (!label) {
-    draftError.value = '请填写词条名称'
-    return
-  }
-  if (!Number.isFinite(draft.value.perRoll) || draft.value.perRoll <= 0) {
-    draftError.value = '每档数值须为正数'
-    return
-  }
-  draftError.value = null
-  emit('addEntry', {
-    label,
-    kind: draft.value.kind,
-    affixKey: draft.value.kind === 'substat' ? (draft.value.affixKey as never) : undefined,
-    panelField: draft.value.kind === 'panelField' ? (draft.value.panelField as never) : undefined,
-    perRoll: draft.value.perRoll,
-    cap: draft.value.cap,
-    group: draft.value.group.trim(),
-    // 独立功能口径：每条词条 1 档一律占 1 个总词条数
-    rollCost: 1,
-    enabledByDefault: true,
-  })
-  draft.value.label = ''
-  draft.value.cap = 0
-  draft.value.group = ''
+/** 弹窗里做了库级变更：转告页面重新载入激活库并重算 */
+function onLibrarySwitched() {
+  emit('librarySwitched')
 }
+
 </script>
 
 <template>
   <div class="benefit-workbench">
     <div class="toolbar">
-      <span class="ctl-label">排序</span>
       <button
         type="button"
         class="chip"
-        :class="{ active: sortKey === 'percent' }"
-        @click="sortKey = 'percent'"
+        :class="{ active: showLibraryModal }"
+        @click="showLibraryModal = true"
       >
-        收益降序
+        词条库（{{ library.length }} 条）
       </button>
+      <span class="ctl-spacer" />
+      <!-- 排序固定为收益率降序，没有开关；用一句灰字说明口径（点了没反应的东西不如不叫按钮） -->
+      <span class="ctl-label">按收益降序</span>
+    </div>
+
+    <!--
+      筛选条：按组多选 + 隐藏无收益。
+      词条多了以后整表太长，分组是现成的分类维度（用户 2026-09-13 口径「做分类显示」）。
+    -->
+    <div v-if="tableGroupNames.length" class="toolbar filter-bar">
+      <span class="ctl-label">分组</span>
       <button
+        v-for="name in tableGroupNames"
+        :key="name || '__ungrouped__'"
         type="button"
         class="chip"
-        :class="{ active: sortKey === 'name' }"
-        @click="sortKey = 'name'"
+        :class="{ active: isGroupVisible(name) }"
+        :title="isGroupVisible(name) ? '点一下把这组从表里去掉' : '点一下把这组加回表里'"
+        @click="toggleGroupFilter(name)"
       >
-        按名称
+        {{ groupChipLabel(name) }}（{{ countInGroup(name) }}）
       </button>
       <span class="ctl-spacer" />
       <button
         type="button"
         class="chip"
-        :class="{ active: showLibraryEditor }"
-        @click="showLibraryEditor = !showLibraryEditor"
+        :class="{ active: hideNoBenefit }"
+        title="只留收益率大于 0 的条目（收益率为 0 或为负的都算无收益）"
+        @click="hideNoBenefit = !hideNoBenefit"
       >
-        词条库（{{ library.length }} 条）
+        隐藏无收益
+      </button>
+      <button
+        type="button"
+        class="chip"
+        :disabled="!filteringActive"
+        :title="filteringActive ? '回到默认视图（分组全显示、隐藏无收益开着）' : '当前就是默认视图'"
+        @click="resetFilters"
+      >
+        清除筛选
       </button>
     </div>
 
+    <AffixLibraryModal
+      :open="showLibraryModal"
+      :library="library"
+      :enabled-ids="enabledIds"
+      :groups="groups"
+      @close="showLibraryModal = false"
+      @toggle-entry="(id, enabled) => emit('toggleEntry', id, enabled)"
+      @toggle-entries="(ids, enabled) => emit('toggleEntries', ids, enabled)"
+      @add-entry="(entry) => emit('addEntry', entry)"
+      @update-entry="(id, patch) => emit('updateEntry', id, patch)"
+      @remove-entry="(id) => emit('removeEntry', id)"
+      @restore-defaults="emit('restoreDefaults')"
+      @add-group="(name, cap) => emit('addGroup', name, cap)"
+      @set-group-cap="(name, cap) => emit('setGroupCap', name, cap)"
+      @rename-group="(from, to) => emit('renameGroup', from, to)"
+      @remove-group="(name) => emit('removeGroup', name)"
+      @switched="onLibrarySwitched"
+    />
+
     <p v-if="loading" class="hint">正在计算词条收益…</p>
     <p v-else-if="!table || !table.rows.length" class="hint">
-      没有参与计算的词条。请在下方「词条库」中启用条目。
+      没有参与计算的词条。请点右上角「词条库」启用条目。
     </p>
     <template v-else>
       <p class="baseline-line">
         基线总伤：<strong>{{ Math.round(table.baselineDamage).toLocaleString('en-US') }}</strong>
         <span class="summary-hint">
-          （每条按 +{{ rollsPerStep }} 档单独评估，共 {{ table.evaluatedCount }} 条）
+          （每条按 +{{ rollsPerStep }} 档单独评估，共 {{ table.evaluatedCount }} 条<span
+            v-if="visibleRows.length !== table.rows.length"
+          >
+            ，当前显示 {{ visibleRows.length }} 行<span v-if="hasFoldedRows">
+              （同效果条目已合并显示，不影响计算）</span
+            ></span
+          >）
         </span>
       </p>
+      <p v-if="!visibleRows.length" class="hint">
+        当前筛选下没有条目。点「清除筛选」看全部。
+      </p>
       <div ref="benefitTableWrap" class="table-wrap benefit-table-wrap">
-        <table class="benefit-table">
+        <table class="benefit-table" :style="benefitTableStyle">
           <colgroup>
             <col
               v-for="col in benefitColumns"
               :key="col.key"
-              :style="{ width: `${benefitColumnRatio(col.key)}%` }"
+              :style="{ width: benefitColumnWidth(col.key) }"
             />
           </colgroup>
           <thead>
@@ -229,23 +460,22 @@ function submitDraft() {
                 <span
                   class="col-resizer"
                   :class="{ active: resizingColumnKey === col.key }"
-                  title="拖动调整列宽；双击恢复默认"
+                  title="拖动调整列宽；双击恢复本列默认宽"
                   @mousedown="startColumnResize(col.key, $event, benefitTableWrap)"
-                  @dblclick="resetColumnWidth(col.key)"
+                  @dblclick="resetColumnWidth(col.key, benefitTableWrap)"
                 />
               </th>
             </tr>
           </thead>
           <tbody>
             <tr
-              v-for="row in sortedRows"
+              v-for="row in visibleRows"
               :key="row.entryId"
               class="benefit-row"
               @click="emit('select', row.entryId)"
             >
               <td>{{ row.label }}</td>
-              <td class="num-cell">{{ row.perRoll }}</td>
-              <td class="num-cell">{{ row.currentRolls }}</td>
+              <td class="num-cell">{{ formatAffixPerRoll(row.target, row.perRoll) }}</td>
               <td
                 class="num-cell"
                 :class="row.damageDelta > 0 ? 'pos' : row.damageDelta < 0 ? 'neg' : ''"
@@ -261,9 +491,9 @@ function submitDraft() {
               <td class="num-cell weight-cell">
                 <span
                   class="weight-bar"
-                  :style="{ width: `${Math.max(0, Math.min(1, row.weight)) * 100}%` }"
+                  :style="{ width: `${Math.max(0, Math.min(1, displayWeightOf(row.entryId))) * 100}%` }"
                 />
-                <span class="weight-text">{{ formatWeight(row.weight) }}</span>
+                <span class="weight-text">{{ formatWeight(displayWeightOf(row.entryId)) }}</span>
               </td>
             </tr>
           </tbody>
@@ -271,136 +501,6 @@ function submitDraft() {
       </div>
     </template>
 
-    <section v-if="showLibraryEditor" class="library-editor">
-      <header class="library-header">
-        <h4>词条库</h4>
-        <button type="button" class="ghost-btn" @click="emit('restoreDefaults')">恢复默认</button>
-      </header>
-
-      <div class="table-wrap">
-        <table class="library-table">
-          <thead>
-            <tr>
-              <th>参与</th>
-              <th>名称</th>
-              <th>类型</th>
-              <th>每档</th>
-              <th>上限</th>
-              <th>互斥组</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="entry in library" :key="entry.id" :class="{ disabled: !enabledSet.has(entry.id) }">
-              <td>
-                <input
-                  type="checkbox"
-                  :checked="enabledSet.has(entry.id)"
-                  @change="emit('toggleEntry', entry.id, ($event.target as HTMLInputElement).checked)"
-                />
-              </td>
-              <td>
-                <input
-                  class="inline-input"
-                  :value="entry.label"
-                  @change="emit('updateEntry', entry.id, { label: ($event.target as HTMLInputElement).value })"
-                />
-              </td>
-              <td class="type-cell">
-                {{ entry.kind === 'substat' ? '副词条' : '面板字段' }}
-                <span v-if="entry.builtin" class="builtin-tag">内置</span>
-              </td>
-              <td>
-                <input
-                  class="inline-input num"
-                  type="number"
-                  step="0.1"
-                  :value="entry.perRoll"
-                  @change="emit('updateEntry', entry.id, { perRoll: Number(($event.target as HTMLInputElement).value) })"
-                />
-              </td>
-              <td>
-                <input
-                  class="inline-input num"
-                  type="number"
-                  min="0"
-                  step="1"
-                  :value="entry.cap"
-                  title="0 表示不设上限"
-                  @change="emit('updateEntry', entry.id, { cap: Number(($event.target as HTMLInputElement).value) })"
-                />
-              </td>
-              <td>
-                <input
-                  class="inline-input"
-                  :value="entry.group"
-                  placeholder="空=自由"
-                  @change="emit('updateEntry', entry.id, { group: ($event.target as HTMLInputElement).value })"
-                />
-              </td>
-              <td>
-                <button
-                  v-if="!entry.builtin"
-                  type="button"
-                  class="del-btn"
-                  title="删除自建条目"
-                  @click="emit('removeEntry', entry.id)"
-                >
-                  ×
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="add-entry">
-        <h5>新增词条</h5>
-        <div class="add-grid">
-          <label>
-            <span>名称</span>
-            <input v-model="draft.label" type="text" placeholder="如：5号位增伤" />
-          </label>
-          <label>
-            <span>类型</span>
-            <select v-model="draft.kind">
-              <option value="substat">副词条</option>
-              <option value="panelField">面板字段</option>
-            </select>
-          </label>
-          <label v-if="draft.kind === 'substat'">
-            <span>字段</span>
-            <select v-model="draft.affixKey">
-              <option v-for="opt in SUBSTAT_OPTIONS" :key="opt.id" :value="opt.id">
-                {{ opt.label }}
-              </option>
-            </select>
-          </label>
-          <label v-else>
-            <span>字段</span>
-            <select v-model="draft.panelField">
-              <option v-for="opt in PANEL_FIELD_OPTIONS" :key="opt.id" :value="opt.id">
-                {{ opt.label }}
-              </option>
-            </select>
-          </label>
-          <label>
-            <span>每档</span>
-            <input v-model.number="draft.perRoll" type="number" step="0.1" min="0" />
-          </label>
-          <label>
-            <span>上限</span>
-            <input v-model.number="draft.cap" type="number" min="0" step="1" title="0 = 不设上限" />
-          </label>
-          <label>
-            <span>互斥组</span>
-            <input v-model="draft.group" type="text" placeholder="可空" />
-          </label>
-          <button type="button" class="btn-primary" @click="submitDraft">添加</button>
-        </div>
-        <p v-if="draftError" class="err">{{ draftError }}</p>
-      </div>
-    </section>
   </div>
 </template>
 
@@ -423,26 +523,12 @@ function submitDraft() {
   color: var(--calc-muted, #6b7280);
 }
 
-.chip {
-  border: 1px solid var(--calc-border, #d5dae3);
-  border-radius: 999px;
-  background: var(--calc-surface-2, #f1efe9);
-  color: var(--calc-text, #1c212a);
-  font: inherit;
-  font-size: 0.78rem;
-  padding: 0.22rem 0.7rem;
-  cursor: pointer;
-}
-
-.chip:hover {
-  border-color: var(--calc-accent, #c9a55c);
-}
-
-.chip.active {
-  border-color: var(--calc-accent, #c9a55c);
-  background: var(--calc-accent-bg, #fff8eb);
-  color: #5c4818;
-  font-weight: 600;
+/*
+ * 筛选条：与上面排序条同一套控件，视觉上压低一行，避免两条工具栏抢主次。
+ * `.chip` 本体见 `assets/calculatorChip.css`（全站唯一来源），这里只写本组件特有的部分。
+ */
+.filter-bar {
+  margin-top: -0.25rem;
 }
 
 .ctl-spacer {
@@ -503,12 +589,13 @@ th.num-head {
   text-align: right;
 }
 
-/* ---------- 收益表：列宽可拖拽 ---------- */
+/* ---------- 收益表：列宽可拖拽（每列独立像素宽） ---------- */
 
-/* 表格占满容器（保持原有布局），列宽按比例分配 */
+/* 表格默认占满容器（这是「还没拖过」时的观感）；拖过一次后由内联 style 改成各列之和 */
 .benefit-table {
-  /* fixed 布局：列宽严格按 <col> 比例走，拖拽才能精确生效 */
+  /* fixed 布局：列宽严格按 <col> 走，拖拽才能精确生效 */
   table-layout: fixed;
+  width: 100%;
 }
 
 /* 表头与数值同一右侧内边距，保证右对齐仍然对齐；超长内容省略号避免撑破列宽 */
@@ -645,12 +732,18 @@ td.neg {
   font-size: 0.76rem;
 }
 
-.builtin-tag {
-  margin-left: 0.3rem;
-  padding: 0 0.25rem;
-  border-radius: 4px;
-  background: rgba(60, 55, 40, 0.08);
-  font-size: 0.68rem;
+/* 「每档」输入 + 单位后缀：单位不是输入值的一部分，只是提示 */
+.per-roll-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  width: 100%;
+}
+
+.unit-hint {
+  flex: none;
+  color: var(--calc-muted, #6b7280);
+  font-size: 0.76rem;
 }
 
 .inline-input {
@@ -735,6 +828,59 @@ td.neg {
 
 .btn-primary:hover {
   background: #fff3d6;
+  border-color: #b8944a;
+}
+
+/*
+ * ── 暗色主题（用户 2026-09-13「这个没有黑夜模式」）──
+ *
+ * 本组件的颜色一律写成 `var(--calc-*, 浅色兜底)`，而 `--calc-*` 只在
+ * `.calculator-page.theme-light` 下定义（`assets/calculatorLight.css`）。
+ * 暗色下这些变量**未定义**，于是全部落到浅色兜底：表头米白 `#f1efe9`、
+ * 表体近黑字 `#1c212a` —— 黑底黑字，条目名与每档完全看不见。
+ *
+ * 修法：在根元素上按暗色**重定义同一组变量**（底下所有 `var()` 自动跟着变，
+ * 不必逐条重复），再把少量硬编码色对齐 `.opt-section` 那套暗色值 ——
+ * 同区块的兄弟表格就是这么写的（「暗色默认 + 浅色覆盖」）。前缀带
+ * `[data-theme='dark']`，浅色匹配不到，白天一个像素都不动。
+ */
+[data-theme='dark'] .benefit-workbench {
+  --calc-surface-2: rgba(0, 0, 0, 0.25);
+  --calc-border: #2a2f37;
+  --calc-text: #e8eaed;
+  --calc-muted: #9aa3b0;
+  --calc-input-bg: #171a1f;
+  --calc-accent-bg: rgba(201, 165, 92, 0.14);
+}
+
+/* 涨跌色：浅色那对（深绿 / 深红）在黑底上发闷，换成 `.opt-section` 的亮色 */
+[data-theme='dark'] .benefit-workbench td.pos {
+  color: #7dd3a0;
+}
+
+[data-theme='dark'] .benefit-workbench td.neg,
+[data-theme='dark'] .benefit-workbench .err {
+  color: #f07178;
+}
+
+/* 基准行强调：浅色的深金 `#8a6d2e` 在黑底上读不出来，提亮 */
+[data-theme='dark'] .benefit-workbench .baseline-line strong,
+[data-theme='dark'] .benefit-workbench .btn-primary {
+  color: #e0c27a;
+}
+
+/* 列分隔线：浅色那条偏棕，暗色下换成白线 */
+[data-theme='dark'] .benefit-workbench .col-resizer::before {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+[data-theme='dark'] .benefit-workbench .del-btn {
+  border-color: rgba(240, 113, 120, 0.45);
+  color: #f07178;
+}
+
+[data-theme='dark'] .benefit-workbench .btn-primary:hover {
+  background: rgba(201, 165, 92, 0.22);
   border-color: #b8944a;
 }
 </style>

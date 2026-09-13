@@ -13,6 +13,15 @@ export interface PanelStats {
   pen: number
   resPen: number
   mastery: number
+  /**
+   * 冲击力（平铺值，与游戏面板一致，**不是百分比**）。
+   *
+   * 它不进伤害乘区，是**转模来源属性**：青衣「额外能力：阳关三叠」读局内冲击力
+   * `(冲击力 − 120) × 600% → 攻击`，莱特的额外能力 / 影画 2 / 影画 6 读自行设置的冲击力。
+   * 改动前 `PanelStats` 没有这个字段，转模取值恒为 0（青衣那条实测就是 0）。
+   * 口径与缺口见 `dev-docs/affix-calc-manual.md` §1.9。
+   */
+  impact: number
   /** 异常掌控（不进伤害乘区） */
   anomalyControl: number
   /** 能量回复效率（不进伤害乘区） */
@@ -131,9 +140,24 @@ export type DriveDiscSlot6StatId =
   | 'energyRegen'
 
 export interface AffixDriveDiscMainStats {
-  slot4MainStat: DriveDiscSlot4StatId
-  slot5MainStat: DriveDiscSlot5StatId
-  slot6MainStat: DriveDiscSlot6StatId
+  /** 空串 = 未选择（这份记录还没有数据） */
+  slot4MainStat: DriveDiscSlot4StatId | ''
+  slot5MainStat: DriveDiscSlot5StatId | ''
+  slot6MainStat: DriveDiscSlot6StatId | ''
+}
+
+/**
+ * 「未选择」状态：这份记录里还没有任何数据时就是它。
+ *
+ * 与 `createDefaultAffixDriveDiscMainStats()`（爆伤/攻击/生命那种具体配置）不同 ——
+ * 那是**别人的配置**，凭空塞进来会让人以为「已经配好了」。
+ */
+export function createEmptyAffixDriveDiscMainStats(): AffixDriveDiscMainStats {
+  return {
+    slot4MainStat: '',
+    slot5MainStat: '',
+    slot6MainStat: '',
+  }
 }
 
 export function createDefaultAffixDriveDiscMainStats(): AffixDriveDiscMainStats {
@@ -159,24 +183,6 @@ export function createEmptyAffixCounts(): AffixCounts {
   }
 }
 
-export function createEmptyPanelStatDelta(): PanelStatDelta {
-  return {
-    hpFlat: 0,
-    hpPercent: 0,
-    atkFlat: 0,
-    atkPercent: 0,
-    critRate: 0,
-    critDmg: 0,
-    dmgBonus: 0,
-    ignoreDefense: 0,
-    reduceDefense: 0,
-    penRate: 0,
-    pen: 0,
-    resPen: 0,
-  }
-}
-
-
 /** 方案不持久化的乘区入口；缺字段时必须补成数字，否则 `undefined + convert` 会变成 NaN。 */
 export const SCHEME_EXCLUDED_PANEL_DEFAULTS: Pick<
   PanelStats,
@@ -189,7 +195,7 @@ export const SCHEME_EXCLUDED_PANEL_DEFAULTS: Pick<
 /**
  * 默认局外面板的模板。
  *
- * 原先 `createDefaultExternalPanel()` 每次调用都重新写一遍这 44 个字段的字面量。
+ * 原先 `createDefaultExternalPanel()` 每次调用都重新写一遍这 45 个字段的字面量。
  * 它在热路径上（词条求解每评估一次要补面板默认值数千次），实测剖析里
  * `fillPanelStatsDefaults` 自身占 9.8% CPU。模板不可变（全是数字），
  * 复用后仍每次返回新对象，调用方随便改都不会串。
@@ -197,7 +203,7 @@ export const SCHEME_EXCLUDED_PANEL_DEFAULTS: Pick<
 const DEFAULT_EXTERNAL_PANEL: PanelStats = {
   hp: 9873, atk: 4008, def: 0, critRate: 48.2, critDmg: 186, sharpenCritDmgBonus: 0, dmgBonus: 10,
   ignoreDefense: 0, reduceDefense: 0, penRate: 0, pen: 90, resPen: 0, mastery: 0,
-  anomalyControl: 0, energyRegen: 0, anomalyCritRate: 0, anomalyCritDmg: 0,
+  anomalyControl: 0, energyRegen: 0, impact: 0, anomalyCritRate: 0, anomalyCritDmg: 0,
   anomalyDmgBonus: 0, anomalyReleaseCritRate: 0, anomalyReleaseCritDmg: 0,
   anomalyReleaseMult: 0, anomalyReleaseDmgBonus: 0, directDmgMult: 100,
   settlementDmgMult: 0, anomalyMult: 0, disorderBaseMult: 0, anomalyDuration: 0,
@@ -211,6 +217,98 @@ const DEFAULT_EXTERNAL_PANEL: PanelStats = {
 
 export function createDefaultExternalPanel(): PanelStats {
   return { ...DEFAULT_EXTERNAL_PANEL }
+}
+
+/**
+ * 「面板导入」表单里**要用户填**的那些字段（其余键是乘区入口，由模板给默认值，不由用户录入）。
+ *
+ * 单一事实来源：表单渲染与「填没填完」判定都用这一份，避免两处清单各写一半。
+ *
+ * `optional: true` 的字段**只渲染、不参与「填没填完」判定**：冲击力只对青衣/莱特这类
+ * 转模角色有意义，把它设成必填会让别人的面板永远算「没填完」→ 伤害归 0。
+ */
+export const EXTERNAL_PANEL_INPUT_FIELDS: readonly {
+  key: keyof PanelStats
+  label: string
+  optional?: true
+}[] = [
+  { key: 'hp', label: '生命值' },
+  { key: 'atk', label: '攻击力' },
+  { key: 'def', label: '防御力' },
+  { key: 'critRate', label: '暴击率%' },
+  { key: 'critDmg', label: '爆伤%' },
+  { key: 'dmgBonus', label: '增伤%' },
+  { key: 'penRate', label: '穿透率%' },
+  { key: 'pen', label: '穿透值' },
+  { key: 'reduceDefense', label: '无视防御/减防%' },
+  { key: 'mastery', label: '精通' },
+  { key: 'anomalyControl', label: '异常掌控' },
+  { key: 'energyRegen', label: '能量回复效率%' },
+  /** 转模来源（青衣 / 莱特）；不填按 0 算，不影响面板是否算「填齐」 */
+  { key: 'impact', label: '冲击力', optional: true },
+]
+
+export type ExternalPanelInputKey = (typeof EXTERNAL_PANEL_INPUT_FIELDS)[number]['key']
+
+/**
+ * 「没有面板」用的空面板：用户录入的字段一律为 0，乘区入口取中性值。
+ *
+ * 与 `createDefaultExternalPanel()`（占位毕业面板，生命 9873 / 攻击 4008）**不是一回事**：
+ * 那份数值是别人的配置，拿它算会凭空算出伤害。所有者口径（2026-09-12）：
+ * **没有面板就不出伤害**（「没点导入就没有面板」之外的第二个必要条件）。
+ */
+export function createEmptyExternalPanel(): PanelStats {
+  const panel = createDefaultExternalPanel()
+  for (const field of EXTERNAL_PANEL_INPUT_FIELDS) panel[field.key] = 0
+  panel.sharpenCritDmgBonus = 0
+  return panel
+}
+
+/**
+ * 面板导入草稿：录入项**留空就是 null**，不是 0、更不是占位毕业面板。
+ *
+ * 空是合法状态（所有者口径 2026-09-12）：用户没填就是没数据，工具不得替他填一个
+ * 「看起来像配置」的数（那会让人以为已经配好了）。乘区入口那些键仍取模板默认值 ——
+ * 它们不是用户数据，是公式入口。
+ */
+export type ExternalPanelDraft = Omit<PanelStats, ExternalPanelInputKey> &
+  Record<ExternalPanelInputKey, number | null>
+
+/** 空白草稿：录入项全部留空，等用户手填或截图识别填。 */
+export function createEmptyExternalPanelDraft(): ExternalPanelDraft {
+  const draft: ExternalPanelDraft = { ...createDefaultExternalPanel() }
+  for (const field of EXTERNAL_PANEL_INPUT_FIELDS) draft[field.key] = null
+  return draft
+}
+
+/**
+ * 草稿里还没填的录入项（按表单顺序）。
+ *
+ * 可选字段（`optional`，如冲击力）不算「没填」：它们不参与计算、也不该拦住导入。
+ */
+export function missingExternalPanelInputs(
+  draft: ExternalPanelDraft,
+): { key: ExternalPanelInputKey; label: string }[] {
+  return EXTERNAL_PANEL_INPUT_FIELDS.filter(
+    (field) => !field.optional && draft[field.key] == null,
+  ).map((field) => ({
+    key: field.key,
+    label: field.label,
+  }))
+}
+
+/**
+ * 草稿 → 完整面板；还有没填的就返回 null（空就是空，没填完不能进计算）。
+ *
+ * 可选字段留空按 **0** 落库：它们已经进了 `PanelStats`，留 `null` 会在后续加法里变 NaN。
+ */
+export function resolveExternalPanelDraft(draft: ExternalPanelDraft): PanelStats | null {
+  if (missingExternalPanelInputs(draft).length) return null
+  const panel = { ...(draft as PanelStats) }
+  for (const field of EXTERNAL_PANEL_INPUT_FIELDS) {
+    if (field.optional && panel[field.key] == null) panel[field.key] = 0
+  }
+  return panel
 }
 
 /** 读盘 / 队友槽面板可能缺键；用默认值补齐后再进乘区。 */
@@ -230,7 +328,7 @@ export function isPlaceholderExternalPanel(
   return panel.atk === 4008 && panel.hp === 9873 && panel.critRate === 48.2 && panel.critDmg === 186
 }
 
-type AgentBaseLike = {
+export type AgentBaseLike = {
   hp: number
   atk: number
   def: number

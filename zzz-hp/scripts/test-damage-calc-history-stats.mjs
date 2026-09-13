@@ -128,6 +128,48 @@ check(
   acceptedPartialStats,
 )
 
+/**
+ * 冲击力（2026-09-12 新增的转模来源属性）必须能随方案存盘、读回还在。
+ *
+ * 回归意图：它是新增字段，若清洗环节按字段白名单过滤就会**静默丢掉** ——
+ * 用户填了冲击力、青衣转模却还是 0，而且看不出哪儿错了。
+ */
+const readBackPanel = (entry) => {
+  importDamageCalcHistory(
+    JSON.stringify({
+      type: 'zzz-hp-schemes',
+      version: 3,
+      exportedAt: Date.now(),
+      dirs: {},
+      schemes: { [entry.id]: entry },
+      currentId: entry.id,
+      customSkills: [],
+    }),
+  )
+  const listed = listDamageCalcHistory()
+  // 导入会重写 id（`s:/impact` → `s:/impact-panel`），按名字找回来
+  return listed.find((item) => item.name === entry.name) ?? null
+}
+
+check(
+  '面板的冲击力随方案存盘后读回仍在',
+  readBackPanel({
+    ...partialEntryBase,
+    id: 's:/impact',
+    name: 'impact-panel',
+    savedAt: 3,
+    teamSlots: [{ agentId: 'alice' }],
+    slots: [],
+    slotPanels: {
+      alice: {
+        active: 'imported',
+        importedPanel: { hp: 12000, atk: 3000, impact: 170 },
+      },
+    },
+  })?.slotPanels?.alice?.importedPanel?.impact,
+  170,
+)
+
 console.log('')
 console.log(failed === 0 ? '全部通过' : `${failed} 项失败`)
 process.exit(failed === 0 ? 0 : 1)

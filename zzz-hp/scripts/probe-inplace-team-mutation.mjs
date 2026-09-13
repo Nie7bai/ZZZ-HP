@@ -18,9 +18,11 @@ import { resolveFlow } from '../src/utils/resolvedHit.ts'
 import { buildOptimalEvalContext, evaluateAffixCounts, clearAffixEvalCache } from '../src/utils/optimalAffixAlloc.ts'
 import { invalidateBuffCatalogCache } from '../src/utils/panelBuffCalc.ts'
 import { createEmptyAffixCounts } from '../src/types/calculatorPanel.ts'
+import { schemeActivePanels, schemeAffixInputs } from '../src/utils/agentPanelSources.ts'
+import { BUFFS_JSON, resolveSchemePath } from './_paths.mjs'
 
-const BUFFS = 'D:/WB_agent_out/applications/ZZZ-HP/zzz-hp-backend/scripts/data/zzz-hp-calculator-buffs.json'
-const SCHEME = process.argv[2] ?? 'D:/WB_agent_out/ZZZ-HP/artifacts/profiles/scheme-dan.json'
+const BUFFS = BUFFS_JSON
+const SCHEME = resolveSchemePath(process.argv[2])
 
 const buffs = JSON.parse(fs.readFileSync(BUFFS, 'utf8'))
 const schemePack = JSON.parse(fs.readFileSync(SCHEME, 'utf8'))
@@ -54,7 +56,7 @@ function makeCtx() {
     bangbooRefine: 1,
     driveDiscs: buffs.driveDiscs,
     mainSlotIndex,
-    driveDiscMainStats: mainSlot.affixDriveDiscMainStats ?? {
+    driveDiscMainStats: schemeAffixInputs(scheme, mainSlot.agentId).affixDriveDiscMainStats ?? {
       slot4MainStat: 'mastery', slot5MainStat: 'dmgBonus', slot6MainStat: 'energyRegen',
     },
     enemyInput: {
@@ -65,7 +67,7 @@ function makeCtx() {
       mainAgent?.profession === '命破' ? 'pierce' : mainAgent?.profession === '锋御' ? 'def' : 'atk',
     buffSelection: null,
     slotBuffSelections: scheme.multiSlotBuffSelection ?? null,
-    anomalySlotPanels: scheme.anomalySlotPanels ?? undefined,
+    activeSlotPanels: schemeActivePanels(scheme),
     convertSlotPanels: scheme.convertSlotPanels ?? undefined,
     hits: flowResult.hits,
     resolveSubcategory: (id) => buffs.skillSubcategories.find((x) => x.id === id) ?? null,

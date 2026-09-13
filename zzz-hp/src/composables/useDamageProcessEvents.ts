@@ -90,8 +90,9 @@ export function useDamageProcessEvents(source: DamageProcessSource) {
   const eventRows = computed((): DamageProcessEventRow[] => {
     if (!source.enabled.value || !source.active.value || !source.hasEvents.value) return []
     const ctx = source.ctx.value
-    const external = source.external.value
-    if (!ctx || !external) return []
+    if (!ctx) return []
+    // external 为空 = 「角色配置面板」（3 选 1 的 null 口径）；evaluateOptimalEventDetail 内部用主槽激活面板兜底
+    const external = source.external.value ?? null
     return (source.hits.value ?? [])
       .filter((hit) => inScope(hit.id))
       .map((hit) => {
@@ -100,7 +101,9 @@ export function useDamageProcessEvents(source: DamageProcessSource) {
           hit,
           eventId: hit.id,
           displayName: displayNameOf(hit),
-          detail: skipReason ? null : evaluateOptimalEventDetail(ctx, external, hit),
+          detail: skipReason
+            ? null
+            : evaluateOptimalEventDetail(ctx, external, hit, { requirePanel: true }),
           skipReason,
         }
       })
@@ -172,6 +175,11 @@ export function useDamageProcessEvents(source: DamageProcessSource) {
   })
 
   function selectEvent(eventId: string) {
+    // 空字符串 = 取消选中（再次点击已选中事件时收起详情）
+    if (!eventId) {
+      selectedEventId.value = null
+      return
+    }
     const row = eventRows.value.find((item) => item.eventId === eventId)
     if (!row?.detail) return
     source.onSelectEvent?.(eventId)

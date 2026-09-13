@@ -36,17 +36,17 @@ export function computeRemielSelfInCombatPanel(
   })
 }
 
-/**
- * 本人耀变专用：
- * - 局内攻击 = 局外攻击 + 蕾米埃尔自身（影画/角色）攻击力转模
- * - 局内精通 = 局外精通 + 驱动盘4件套全局精通 + 音擎全局精通
- * 不含局内攻击%、队友/邦布，也不吃角色其它固定攻击/精通。
- */
 function formatSignedContribution(value: number) {
   if (value > 0) return `+${value}`
   return String(value)
 }
 
+/**
+ * 本人耀变专用（`collectRemielSelfRestrictedContributions` 的产物）：
+ * - 局内攻击 = 局外攻击 + 蕾米埃尔自身（影画/角色）攻击力转模
+ * - 局内精通 = 局外精通 + 驱动盘4件套全局精通 + 音擎全局精通
+ * 不含局内攻击%、队友/邦布，也不吃角色其它固定攻击/精通。
+ */
 export interface RemielSelfRestrictedContributions {
   inCombatAtk: number
   inCombatMastery: number
