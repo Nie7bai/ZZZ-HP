@@ -2454,73 +2454,77 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
                 重置为当前
               </button>
             </header>
-            <div class="combined-main-stat-compare">
-              <div class="combined-main-stat-col">
-                <p class="combined-col-title">当前主属性</p>
-                <div class="combined-main-stat-slots">
-                  <div class="main-stat-slot-row">
-                    <span class="main-stat-slot-label">4号</span>
-                    <span class="main-stat-slot-value">{{ combinedMainStatPreview.currentLabels.slot4 }}</span>
-                  </div>
-                  <div class="main-stat-slot-row">
-                    <span class="main-stat-slot-label">5号</span>
-                    <span class="main-stat-slot-value">{{ combinedMainStatPreview.currentLabels.slot5 }}</span>
-                  </div>
-                  <div class="main-stat-slot-row">
-                    <span class="main-stat-slot-label">6号</span>
-                    <span class="main-stat-slot-value">{{ combinedMainStatPreview.currentLabels.slot6 }}</span>
-                  </div>
-                  <div class="main-stat-slot-row">
-                    <span class="main-stat-slot-label">2件套</span>
-                    <span class="main-stat-slot-value">{{ combinedMainStatPreview.currentLabels.twoPiece }}</span>
-                  </div>
-                </div>
-              </div>
-              <div class="combined-main-stat-col">
-                <p class="combined-col-title">试算主属性</p>
-                <label class="field field--compact">
-                  <span>4号</span>
-                  <select v-model="combinedMainStatDraft.slot4MainStat">
-                    <option v-for="opt in DRIVE_DISC_SLOT_4_OPTIONS" :key="`alloc-draft-4-${opt.id}`" :value="opt.id">
-                      {{ opt.label }}
-                    </option>
-                  </select>
-                </label>
-                <label class="field field--compact">
-                  <span>5号</span>
-                  <select v-model="combinedMainStatDraft.slot5MainStat">
-                    <option v-for="opt in DRIVE_DISC_SLOT_5_OPTIONS" :key="`alloc-draft-5-${opt.id}`" :value="opt.id">
-                      {{ opt.label }}
-                    </option>
-                  </select>
-                </label>
-                <label class="field field--compact">
-                  <span>6号</span>
-                  <select v-model="combinedMainStatDraft.slot6MainStat">
-                    <option v-for="opt in DRIVE_DISC_SLOT_6_OPTIONS" :key="`alloc-draft-6-${opt.id}`" :value="opt.id">
-                      {{ opt.label }}
-                    </option>
-                  </select>
-                </label>
-                <div class="field field--compact">
-                  <span>2件套</span>
-                  <EquipPickerModal
-                    v-model:open="combinedTwoPiecePickerOpen"
-                    title="选择试算 2 件套"
-                    description="仅影响组合试算，不改队伍实装"
-                    search-placeholder="搜索驱动盘…"
-                    :items="(driveDiscs as unknown as Array<Record<string, unknown>>)"
-                    allow-none
-                    none-label="不佩戴"
-                    :selected-id="combinedMainStatDraftTwoPieceId"
-                    :selected-label="resolveTwoPieceLabel(combinedMainStatDraftTwoPieceId)"
-                    :selected-avatar="resolveTwoPieceAvatar(combinedMainStatDraftTwoPieceId)"
-                    @select="selectCombinedTwoPiece"
-                  />
-                </div>
-              </div>
+
+            <div class="main-stat-stack main-stat-stack--current">
+              <p class="main-stat-stack-title">当前主属性</p>
+              <ul class="main-stat-stack-list">
+                <li>
+                  <span class="main-stat-slot-badge">4</span>
+                  <span class="main-stat-slot-value">{{ combinedMainStatPreview.currentLabels.slot4 }}</span>
+                </li>
+                <li>
+                  <span class="main-stat-slot-badge">5</span>
+                  <span class="main-stat-slot-value">{{ combinedMainStatPreview.currentLabels.slot5 }}</span>
+                </li>
+                <li>
+                  <span class="main-stat-slot-badge">6</span>
+                  <span class="main-stat-slot-value">{{ combinedMainStatPreview.currentLabels.slot6 }}</span>
+                </li>
+                <li>
+                  <span class="main-stat-slot-badge">2</span>
+                  <span class="main-stat-slot-value">{{ combinedMainStatPreview.currentLabels.twoPiece }}</span>
+                </li>
+              </ul>
             </div>
+
+            <i class="combined-main-stat-arrow" aria-hidden="true">→</i>
+
+            <div class="main-stat-selects">
+              <label>
+                <span class="combined-main-stat-label">4号替换为</span>
+                <select v-model="combinedMainStatDraft.slot4MainStat">
+                  <option v-for="opt in DRIVE_DISC_SLOT_4_OPTIONS" :key="`alloc-draft-4-${opt.id}`" :value="opt.id">
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </label>
+              <label>
+                <span class="combined-main-stat-label">5号替换为</span>
+                <select v-model="combinedMainStatDraft.slot5MainStat">
+                  <option v-for="opt in DRIVE_DISC_SLOT_5_OPTIONS" :key="`alloc-draft-5-${opt.id}`" :value="opt.id">
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </label>
+              <label>
+                <span class="combined-main-stat-label">6号替换为</span>
+                <select v-model="combinedMainStatDraft.slot6MainStat">
+                  <option v-for="opt in DRIVE_DISC_SLOT_6_OPTIONS" :key="`alloc-draft-6-${opt.id}`" :value="opt.id">
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </label>
+              <label class="main-stat-two-piece-field">
+                <span class="combined-main-stat-label">2件套替换为</span>
+                <EquipPickerModal
+                  v-model:open="combinedTwoPiecePickerOpen"
+                  title="选择 2 件套"
+                  description="可不佩戴；与 4 件套同套时不重复计入"
+                  search-placeholder="搜索驱动盘…"
+                  :items="(driveDiscs as unknown as Array<Record<string, unknown>>)"
+                  allow-none
+                  none-label="不佩戴"
+                  :selected-id="combinedMainStatDraftTwoPieceId"
+                  :selected-label="resolveTwoPieceLabel(combinedMainStatDraftTwoPieceId)"
+                  :selected-avatar="resolveTwoPieceAvatar(combinedMainStatDraftTwoPieceId)"
+                  @select="selectCombinedTwoPiece"
+                />
+              </label>
+            </div>
+
             <div class="combined-result">
+              <span>总伤害变化</span>
+              <p v-if="mainStatEventScopeHint" class="hint combined-result-scope">{{ mainStatEventScopeHint }}</p>
               <strong :class="combinedMainStatPreview.damageDelta >= 0 ? 'pos' : 'neg'">
                 <template v-if="combinedMainStatPreview.unchanged">与当前相同</template>
                 <template v-else>
