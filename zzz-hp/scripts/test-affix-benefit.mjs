@@ -585,8 +585,9 @@ console.log('\n[?] 收益表筛选状态')
 
   const defaults = createDefaultAffixBenefitFilters()
   check('默认：隐藏无收益 开', defaults.hideNoBenefit === true)
-  check('默认：同名折叠 开', defaults.collapseDuplicates === true)
   check('默认：不关闭任何分组', defaults.hiddenGroups.length === 0)
+  check('存档里没有「同名折叠」字段（它是常开显示规则，不是偏好）',
+    !('collapseDuplicates' in defaults), Object.keys(defaults).join(', '))
 
   check('坏档（字符串 / 数组 / null）一律回落默认',
     JSON.stringify(coerceAffixBenefitFilters('x')) === JSON.stringify(defaults) &&
@@ -595,8 +596,21 @@ console.log('\n[?] 收益表筛选状态')
     JSON.stringify(coerceAffixBenefitFilters('x')))
 
   check('字段类型不对只回落那一个字段',
-    coerceAffixBenefitFilters({ hideNoBenefit: 'yes', collapseDuplicates: false }).hideNoBenefit === true &&
-      coerceAffixBenefitFilters({ hideNoBenefit: 'yes', collapseDuplicates: false }).collapseDuplicates === false)
+    coerceAffixBenefitFilters({ hideNoBenefit: 'yes' }).hideNoBenefit === true)
+  check('老存档里的 collapseDuplicates 被忽略，其余字段照常生效',
+    (() => {
+      const legacy = coerceAffixBenefitFilters({
+        hideNoBenefit: false,
+        collapseDuplicates: false,
+        hiddenGroups: ['4号位'],
+      })
+      return (
+        !('collapseDuplicates' in legacy) &&
+        legacy.hideNoBenefit === false &&
+        JSON.stringify(legacy.hiddenGroups) === JSON.stringify(['4号位'])
+      )
+    })(),
+    JSON.stringify(coerceAffixBenefitFilters({ hideNoBenefit: false, collapseDuplicates: false })))
   check('hiddenGroups 过滤掉非字符串项',
     JSON.stringify(coerceAffixBenefitFilters({ hiddenGroups: ['4号位', 42, null] }).hiddenGroups) ===
       JSON.stringify(['4号位']))
@@ -612,13 +626,16 @@ console.log('\n[?] 收益表筛选状态')
 
   check('没有存档 → 默认', loadAffixBenefitFilters().hideNoBenefit === true)
 
-  saveAffixBenefitFilters({ hideNoBenefit: false, collapseDuplicates: false, hiddenGroups: ['4号位'] })
+  saveAffixBenefitFilters({ hideNoBenefit: false, hiddenGroups: ['4号位'] })
   const readBack = loadAffixBenefitFilters()
   check('写进去能读回来',
     readBack.hideNoBenefit === false &&
-      readBack.collapseDuplicates === false &&
       JSON.stringify(readBack.hiddenGroups) === JSON.stringify(['4号位']),
     JSON.stringify(readBack))
+  check('落盘的 JSON 只含两个字段（不留废弃字段）',
+    store.get(AFFIX_BENEFIT_FILTERS_STORAGE_KEY) ===
+      JSON.stringify({ hideNoBenefit: false, hiddenGroups: ['4号位'] }),
+    store.get(AFFIX_BENEFIT_FILTERS_STORAGE_KEY))
   check('键名稳定（改键名会让所有人回默认）',
     store.has(AFFIX_BENEFIT_FILTERS_STORAGE_KEY))
 
@@ -632,7 +649,7 @@ console.log('\n[?] 收益表筛选状态')
     '../src/utils/affixBenefitFilters.ts'
   )
 
-  const filters = { hideNoBenefit: false, collapseDuplicates: false, hiddenGroups: ['4号位', '已改名的组'] }
+  const filters = { hideNoBenefit: false, hiddenGroups: ['4号位', '已改名的组'] }
   const pruned = pruneAffixBenefitFilters(filters, ['4号位', '5号位'])
   check('残名被剪掉，现存分组保留',
     JSON.stringify(pruned.hiddenGroups) === JSON.stringify(['4号位']),
@@ -674,7 +691,7 @@ console.log('\n[?] 收益表筛选状态')
   check('并集含未分组的空串（条目未分组时保留该筛选）', known.has(''), JSON.stringify([...known]))
   check('并集不含哪都没有的名字', !known.has('已改名的组'))
   check('用并集剪枝：另一套库独有的名字活下来',
-    JSON.stringify(pruneAffixBenefitFilters({ hideNoBenefit: true, collapseDuplicates: true, hiddenGroups: ['幽灵组', '已改名的组'] }, known).hiddenGroups) ===
+    JSON.stringify(pruneAffixBenefitFilters({ hideNoBenefit: true, hiddenGroups: ['幽灵组', '已改名的组'] }, known).hiddenGroups) ===
       JSON.stringify(['幽灵组']))
 }
 

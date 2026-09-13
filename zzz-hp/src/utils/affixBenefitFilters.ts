@@ -1,9 +1,12 @@
 /**
  * 收益表筛选状态的持久化（本机浏览器）。
  *
- * 为什么要存：这一行的开关（同名折叠 / 隐藏无收益 / 分组多选）是**长期偏好**，
- * 不该每次打开页面都重调一遍 —— 尤其「隐藏无收益」默认开着，刷新后忽然冒出一堆
- * 0% 的行会显得像 bug。用户 2026-09-13 口径：「这一行的几个按钮的状态，能不能进浏览器存储」。
+ * 为什么要存：分组多选与「隐藏无收益」是**长期偏好**，不该每次打开页面都重调一遍 ——
+ * 尤其「隐藏无收益」默认开着，刷新后忽然冒出一堆 0% 的行会显得像 bug。
+ * 用户 2026-09-13 口径：「这一行的几个按钮的状态，能不能进浏览器存储」。
+ *
+ * **「同名折叠」不进存档**（用户 2026-09-13 第 2 轮口径）：它是常开的显示规则，不是偏好，
+ * 没有开关可存。老存档里遗留的 `collapseDuplicates` 字段读到即忽略（见 `coerceAffixBenefitFilters`）。
  *
  * 只存本机：换设备 / 清缓存回默认，与词条库（同样存 localStorage）同一处境。
  * 键里**不带库 id** —— 分组筛选对所有库共用一套（同名组在不同库里含义一致，
@@ -18,17 +21,15 @@ import { resolveAffixLibraryAll, type AffixLibraryStore } from '@/utils/affixLib
 export interface AffixBenefitFilters {
   /** 「隐藏无收益」：只留收益率 > 0 的条目。默认 **true**（用户 2026-09-13：改为默认开着） */
   hideNoBenefit: boolean
-  /** 「同名折叠」：同一效果的条目只显示一条（仅显示层，不影响计算）。默认 **true** */
-  collapseDuplicates: boolean
   /** 被关掉的分组名（空数组 = 全显示）；未分组条目用空串表示 */
   hiddenGroups: string[]
 }
 
 export const AFFIX_BENEFIT_FILTERS_STORAGE_KEY = 'zzz-hp-affix-benefit-filters'
 
-/** 默认视图：两个开关都开着、不关闭任何分组 */
+/** 默认视图：隐藏无收益开着、不关闭任何分组 */
 export function createDefaultAffixBenefitFilters(): AffixBenefitFilters {
-  return { hideNoBenefit: true, collapseDuplicates: true, hiddenGroups: [] }
+  return { hideNoBenefit: true, hiddenGroups: [] }
 }
 
 /**
@@ -36,6 +37,9 @@ export function createDefaultAffixBenefitFilters(): AffixBenefitFilters {
  *
  * 字段缺失 / 类型不对一律回落默认值：存档是用户可改的（DevTools 一行就能写坏），
  * 坏一个字段不该让整张表消失。
+ *
+ * 只挑认识的字段（`hideNoBenefit` / `hiddenGroups`）—— 老存档里的 `collapseDuplicates`
+ * 之类遗留字段自然被丢掉，既不影响其它字段，也不会把废弃语义写回存档。
  */
 export function coerceAffixBenefitFilters(raw: unknown): AffixBenefitFilters {
   const fallback = createDefaultAffixBenefitFilters()
@@ -44,10 +48,6 @@ export function coerceAffixBenefitFilters(raw: unknown): AffixBenefitFilters {
   return {
     hideNoBenefit:
       typeof item.hideNoBenefit === 'boolean' ? item.hideNoBenefit : fallback.hideNoBenefit,
-    collapseDuplicates:
-      typeof item.collapseDuplicates === 'boolean'
-        ? item.collapseDuplicates
-        : fallback.collapseDuplicates,
     hiddenGroups: Array.isArray(item.hiddenGroups)
       ? item.hiddenGroups.filter((name): name is string => typeof name === 'string')
       : fallback.hiddenGroups,

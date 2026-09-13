@@ -83,24 +83,10 @@ const UNGROUPED_GROUP_LABEL = '未分组'
  */
 const hideNoBenefit = ref(savedFilters.hideNoBenefit)
 
-/**
- * 「同名折叠」：**同一效果**的条目在表里只显示一条（默认开，用户 2026-09-13 第 1 条）。
- *
- * 只管显示：不改词条库、不改收益评估、不改求解 —— 折叠掉的行照常参与计算，
- * 它们的贡献早已算进各自的收益值里了（同名行数值本来也一样）。
- *
- * 键用 `target + perRoll` 而**不是标签字符串**：这样「效果不同的行永远不会被折叠掉」。
- * 标签相同的两条若效果不同（例如被手工改过每档），照旧各占一行。
- * 库里的实际例子：`局外防御力 48%` 是 slot4/5/6 三条主属性，target 都是 `stat:defPercent`、
- * 每档都是 48 —— 同一条效果，折成一条。
- */
-const collapseDuplicates = ref(savedFilters.collapseDuplicates)
-
-/** 与存量状态对齐：三个开关任一变化就落盘（含「清除筛选」把状态还原成默认） */
-watch([hiddenGroups, hideNoBenefit, collapseDuplicates], () => {
+/** 与存量状态对齐：两个开关任一变化就落盘（含「清除筛选」把状态还原成默认） */
+watch([hiddenGroups, hideNoBenefit], () => {
   saveAffixBenefitFilters({
     hideNoBenefit: hideNoBenefit.value,
-    collapseDuplicates: collapseDuplicates.value,
     hiddenGroups: [...hiddenGroups.value],
   })
 })
@@ -131,7 +117,6 @@ watch(
     const pruned = pruneAffixBenefitFilters(
       {
         hideNoBenefit: hideNoBenefit.value,
-        collapseDuplicates: collapseDuplicates.value,
         hiddenGroups: [...hiddenGroups.value],
       },
       computeKnownGroupNames(),
@@ -208,9 +193,20 @@ function groupNameOf(row: AffixBenefitRow): string {
 /**
  * 表格里真正显示的行。
  *
- * 顺序有讲究：**先按分组筛，再折叠同名**。
+ * 两道处理，顺序有讲究：**先按分组筛，再折叠同效果**。
  * 反过来的话，「4号位」被关掉时，保留下来的 4号位那条会带着整行一起消失 ——
- * 而 5/6 号位的同名条目明明还在（它们是同一条效果，只是分属不同分组）。
+ * 而 5/6 号位的同效果条目明明还在（它们是同一条效果，只是分属不同分组）。
+ *
+ * 折叠（「同名折叠」）**常开、没有开关**（用户 2026-09-13 第 2 轮口径）：这张表是
+ * 「看某个效果值多少收益」的，不是「数当前方案有多少条词条」的；同效果的几条行数值
+ * 本来就完全相同（折叠键 = `target + perRoll`，收益由这两者唯一决定），开关只会让
+ * 两次会话看到两张不一样的表。
+ *
+ * 只管显示：不改词条库、不改收益评估、不改求解 —— 折叠掉的行照常参与计算。
+ * 键用 `target + perRoll` 而**不是标签字符串**：这样「效果不同的行永远不会被折叠掉」，
+ * 标签相同的两条若效果不同（例如被手工改过每档），照旧各占一行。
+ * 库里的实际例子：`局外防御力 48%` 是 slot4/5/6 三条主属性，target 都是 `stat:defPercent`、
+ * 每档都是 48 —— 同一条效果，折成一条。
  */
 const rowDisplay = computed(() => {
   const afterBenefit = sortedRows.value.filter(
@@ -219,11 +215,10 @@ const rowDisplay = computed(() => {
   const afterGroup = afterBenefit.filter((row) => !hiddenGroups.value.has(groupNameOf(row)))
 
   const rows: AffixBenefitRow[] = []
-  /** 被折叠的 id → 同名条目信息（角标与 tooltip 用） */
-  const folded = new Map<string, { count: number; groups: string[] }>()
-  if (!collapseDuplicates.value) return { rows: afterGroup, folded }
-
+  /** 保留行的 id → 被折掉了几条（只用来决定基线行要不要给一句说明） */
+  const folded = new Map<string, number>()
   const keptIdByKey = new Map<string, string>()
+
   for (const row of afterGroup) {
     const key = `${row.target}|${row.perRoll}`
     const keptId = keptIdByKey.get(key)
@@ -232,38 +227,17 @@ const rowDisplay = computed(() => {
       rows.push(row)
       continue
     }
-    const info = folded.get(keptId) ?? { count: 1, groups: [groupNameOf(row)] }
-    info.count += 1
-    const name = groupNameOf(row)
-    if (!info.groups.includes(name)) info.groups.push(name)
-    folded.set(keptId, info)
+    folded.set(keptId, (folded.get(keptId) ?? 1) + 1)
   }
   return { rows, folded }
 })
 
 const visibleRows = computed(() => rowDisplay.value.rows)
 
-/** 这一行背后还折了几条同名（0 = 没折；角标显示 `×总条数`） */
-function foldedCountOf(entryId: string): number {
-  return rowDisplay.value.folded.get(entryId)?.count ?? 0
-}
-
-/** 角标说明：折了哪几条、并强调不影响计算 */
-function foldedTitleOf(entryId: string): string {
-  const info = rowDisplay.value.folded.get(entryId)
-  if (!info) return ''
-  const where = info.groups.map((name) => name || UNGROUPED_GROUP_LABEL).join(' / ')
-  return `另有 ${info.count - 1} 条同效果条目（${where}）：仅显示层折叠，照常参与计算`
-}
-
-/** 是否有筛选在生效（决定「清除筛选」可不可点）—— 判据是「与默认视图不同」，含两个开关 */
+/** 是否有筛选在生效（决定「清除筛选」可不可点）—— 判据是「与默认视图不同」 */
 const filteringActive = computed(() => {
   const defaults = createDefaultAffixBenefitFilters()
-  return (
-    hiddenGroups.value.size > 0 ||
-    hideNoBenefit.value !== defaults.hideNoBenefit ||
-    collapseDuplicates.value !== defaults.collapseDuplicates
-  )
+  return hiddenGroups.value.size > 0 || hideNoBenefit.value !== defaults.hideNoBenefit
 })
 
 /**
@@ -286,19 +260,19 @@ function displayWeightOf(entryId: string): number {
   return displayWeights.value.get(entryId) ?? 0
 }
 
-/** 被同名折叠掉的行数（基线行给一句说明，免得「明明 38 条怎么只显示 17 行」） */
-const foldedRowCount = computed(() => {
-  let count = 0
-  for (const info of rowDisplay.value.folded.values()) count += info.count - 1
-  return count
-})
+/**
+ * 有没有行被折叠掉（只用来决定基线行要不要给一句说明）。
+ *
+ * 说明里**不带次数**（用户 2026-09-13 口径：这张表不负责告知方案有多少条词条），
+ * 但得说一句「已合并、不影响计算」—— 否则「共 38 条 vs 显示 15 行」看着像 bug。
+ */
+const hasFoldedRows = computed(() => rowDisplay.value.folded.size > 0)
 
-/** 「清除筛选」= 回到默认视图（分组全显示、两个开关回到默认值），不是「什么都不显示」 */
+/** 「清除筛选」= 回到默认视图（分组全显示、隐藏无收益回到默认），不是「什么都不显示」 */
 function resetFilters() {
   const defaults = createDefaultAffixBenefitFilters()
   hiddenGroups.value = new Set()
   hideNoBenefit.value = defaults.hideNoBenefit
-  collapseDuplicates.value = defaults.collapseDuplicates
 }
 
 // ---------- 列宽（可拖拽，Excel 式：每列独立像素宽） ----------
@@ -410,15 +384,6 @@ function onLibrarySwitched() {
       <button
         type="button"
         class="chip"
-        :class="{ active: collapseDuplicates }"
-        title="同一效果（同目标、同每档）的条目只显示一条，例如 4/5/6 号位各有一条「局外防御力 48%」；仅显示层折叠，不影响计算"
-        @click="collapseDuplicates = !collapseDuplicates"
-      >
-        同名折叠
-      </button>
-      <button
-        type="button"
-        class="chip"
         :class="{ active: hideNoBenefit }"
         title="只留收益率大于 0 的条目（收益率为 0 或为负的都算无收益）"
         @click="hideNoBenefit = !hideNoBenefit"
@@ -429,7 +394,7 @@ function onLibrarySwitched() {
         type="button"
         class="chip"
         :disabled="!filteringActive"
-        :title="filteringActive ? '回到默认视图（分组全显示、同名折叠与隐藏无收益都开着）' : '当前就是默认视图'"
+        :title="filteringActive ? '回到默认视图（分组全显示、隐藏无收益开着）' : '当前就是默认视图'"
         @click="resetFilters"
       >
         清除筛选
@@ -466,8 +431,8 @@ function onLibrarySwitched() {
           （每条按 +{{ rollsPerStep }} 档单独评估，共 {{ table.evaluatedCount }} 条<span
             v-if="visibleRows.length !== table.rows.length"
           >
-            ，当前显示 {{ visibleRows.length }} 行<span v-if="foldedRowCount">
-              （同名折叠 {{ foldedRowCount }} 行，不影响计算）</span
+            ，当前显示 {{ visibleRows.length }} 行<span v-if="hasFoldedRows">
+              （同效果条目已合并显示，不影响计算）</span
             ></span
           >）
         </span>
@@ -509,17 +474,7 @@ function onLibrarySwitched() {
               class="benefit-row"
               @click="emit('select', row.entryId)"
             >
-              <td>
-                {{ row.label }}
-                <!-- 折叠角标：让「怎么少了几行」一眼有答案（title 里写清折了哪几条、不影响计算） -->
-                <span
-                  v-if="foldedCountOf(row.entryId)"
-                  class="fold-badge"
-                  :title="foldedTitleOf(row.entryId)"
-                >
-                  ×{{ foldedCountOf(row.entryId) }}
-                </span>
-              </td>
+              <td>{{ row.label }}</td>
               <td class="num-cell">{{ formatAffixPerRoll(row.target, row.perRoll) }}</td>
               <td
                 class="num-cell"
@@ -593,18 +548,6 @@ function onLibrarySwitched() {
 .summary-hint {
   color: var(--calc-muted, #6b7280);
   font-size: 0.75rem;
-}
-
-/* 同名折叠角标：低调灰、不抢眼，但要让「少了几行」有答案 */
-.fold-badge {
-  margin-left: 0.3rem;
-  padding: 0 0.3rem;
-  border-radius: 999px;
-  background: var(--calc-surface-2, #f1efe9);
-  border: 1px solid var(--calc-border, #d5dae3);
-  color: var(--calc-muted, #6b7280);
-  font-size: 0.68rem;
-  cursor: help;
 }
 
 .hint {
