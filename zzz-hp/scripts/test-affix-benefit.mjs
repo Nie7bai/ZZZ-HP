@@ -40,7 +40,7 @@ import {
   setAffixLibraryEntryEnabled,
   statKeyOfTarget,
 } from '../src/utils/affixLibrary.ts'
-import { computeAffixBenefitTable } from '../src/utils/affixBenefitAnalysis.ts'
+import { affixRelativeWeights, computeAffixBenefitTable } from '../src/utils/affixBenefitAnalysis.ts'
 import {
   buildOptimalEvalContext,
   computeDiffAnalysis,
@@ -232,6 +232,21 @@ check('最高收益行权重 = 1', Boolean(maxRow) && nearly(maxRow.weight, 1, 1
 check('权重按收益率降序排列',
   table.rows.every((row, i) => i === 0 || table.rows[i - 1].percentDelta >= row.percentDelta),
   table.rows.map((r) => r.percentDelta.toFixed(3)).join(', '))
+
+// 显示层口径：分母换成「当前显示的行」（步骤 38，收益表筛选后用）
+const subset = table.rows.slice(2, 6)
+const subsetWeights = affixRelativeWeights(subset)
+const subsetMax = Math.max(...subset.map((r) => r.percentDelta))
+check('按子集归一：子集里最高的那条 = 1（哪怕它不是全表最高）',
+  nearly(subsetWeights[0], 1, 1e-9) && subsetMax < maxPercent,
+  `子集最高 ${subsetMax.toFixed(4)} vs 全表最高 ${maxPercent.toFixed(4)}`)
+check('按子集归一：其余按子集最大收益率折算',
+  subset.every((row, i) => nearly(subsetWeights[i], row.percentDelta / subsetMax, 1e-9)),
+  subsetWeights.map((w) => w.toFixed(4)).join(', '))
+check('全为负 / 全为 0 → 权重一律 0（不出现越负越满格）',
+  affixRelativeWeights([{ percentDelta: -3 }, { percentDelta: -1 }]).every((w) => w === 0) &&
+    affixRelativeWeights([{ percentDelta: 0 }, { percentDelta: 0 }]).every((w) => w === 0))
+check('空行集不报错', affixRelativeWeights([]).length === 0)
 
 // ---------- 4. panelField 条目确实改变伤害 ----------
 console.log('\n[4] 自定义条目（panelField）')

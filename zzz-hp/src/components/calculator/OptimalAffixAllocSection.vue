@@ -2391,7 +2391,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         </div>
         <p class="hint">
           按「流程全部事件总伤」口径，逐条词条 +{{ affixBenefitStep }} 档评估；
-          相对权重 = 本行收益率 ÷ 最大收益率。
+          相对权重 = 本行收益率 ÷ 当前显示的最大收益率（筛选后按显示的行重算）。
         </p>
         <AffixBenefitTable
           :table="affixBenefitTable"

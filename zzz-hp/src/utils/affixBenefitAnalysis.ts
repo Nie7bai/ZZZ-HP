@@ -37,7 +37,7 @@ export interface AffixBenefitRow {
   damageDelta: number
   /** 再 +1 档的收益率（%） */
   percentDelta: number
-  /** 相对权重 = 本行收益率 / 最大收益率，0~1 */
+  /** 相对权重 = 本行收益率 / 最大收益率，0~1（**整表**口径：分母是全表最大收益率） */
   weight: number
   /** 是否因上限不可再加。**预留字段：当前一律 `false`**（收益表暂不判上限） */
   capped: boolean
@@ -67,6 +67,22 @@ export interface AffixBenefitTable {
   evaluatedCount: number
   /** 逐档收益曲线（用于折线图），按最大收益率取前 N 条 */
   series: AffixBenefitSeries[]
+}
+
+/**
+ * 相对权重：分母是**传入这组行**里的最大收益率（0~1）。
+ *
+ * 两处调用，区别只在分母范围：
+ * - `computeAffixBenefitTable` 传全部行 → `row.weight`（整表口径的数据契约）；
+ * - 收益表显示时传**当前显示的行**（筛选之后）→ 筛掉最高那条以后，显示出来的行里最强的仍然是 1.000。
+ *   否则整列柱子会一起变短，看不出这批里谁强谁弱。
+ *
+ * 分母 ≤ 0（全为 0 或全为负）时一律 0：负收益率之间比大小没有意义，
+ * 不这样做还会出现「越负越满格」。
+ */
+export function affixRelativeWeights(rows: { percentDelta: number }[]): number[] {
+  const maxPercent = rows.reduce((max, row) => Math.max(max, row.percentDelta), 0)
+  return rows.map((row) => (maxPercent > 0 ? row.percentDelta / maxPercent : 0))
 }
 
 export interface AffixBenefitInput {
@@ -142,10 +158,11 @@ export function computeAffixBenefitTable(input: AffixBenefitInput): AffixBenefit
     })
   }
 
-  const maxPercent = rows.reduce((max, row) => Math.max(max, row.percentDelta), 0)
-  for (const row of rows) {
-    row.weight = maxPercent > 0 ? row.percentDelta / maxPercent : 0
-  }
+  // 整表口径的权重（显示层筛过之后会按「显示出来的行」再归一，见 affixRelativeWeights）
+  const weights = affixRelativeWeights(rows)
+  rows.forEach((row, index) => {
+    row.weight = weights[index] ?? 0
+  })
   rows.sort((a, b) => b.percentDelta - a.percentDelta)
 
   const series = input.includeSeries === false

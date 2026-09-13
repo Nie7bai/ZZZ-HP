@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { AffixBenefitTable } from '@/utils/affixBenefitAnalysis'
+import { affixRelativeWeights, type AffixBenefitTable } from '@/utils/affixBenefitAnalysis'
 import { formatAffixPerRoll, type AffixLibraryEntry, type AffixLibraryGroup } from '@/utils/affixLibrary'
 import AffixLibraryModal from '@/components/calculator/AffixLibraryModal.vue'
 import { useResizableColumns, type ResizableColumnSpec } from '@/composables/useResizableColumns'
@@ -130,6 +130,26 @@ const visibleRows = computed(() =>
 const filteringActive = computed(
   () => hiddenGroups.value.size > 0 || hideNoBenefit.value,
 )
+
+/**
+ * 显示用的相对权重：分母是**当前显示出来的行**里的最大收益率。
+ *
+ * 为什么不直接用 `row.weight`（那是整表口径）：筛掉收益最高的那几组以后，
+ * 显示出来的行里就没有 1.000 了，整列柱子一起变短 —— 看不出这批里谁强谁弱。
+ * 公式与整表口径同一个（`affixRelativeWeights`），只是分母换成显示行。
+ */
+const displayWeights = computed(() => {
+  const rows = visibleRows.value
+  const weights = affixRelativeWeights(rows)
+  const map = new Map<string, number>()
+  rows.forEach((row, index) => map.set(row.entryId, weights[index] ?? 0))
+  return map
+})
+
+/** 取某行显示用权重（没算到就是 0，例如全为负收益） */
+function displayWeightOf(entryId: string): number {
+  return displayWeights.value.get(entryId) ?? 0
+}
 
 /** 把筛选一次清干净 */
 function resetFilters() {
@@ -360,9 +380,9 @@ function onLibrarySwitched() {
               <td class="num-cell weight-cell">
                 <span
                   class="weight-bar"
-                  :style="{ width: `${Math.max(0, Math.min(1, row.weight)) * 100}%` }"
+                  :style="{ width: `${Math.max(0, Math.min(1, displayWeightOf(row.entryId))) * 100}%` }"
                 />
-                <span class="weight-text">{{ formatWeight(row.weight) }}</span>
+                <span class="weight-text">{{ formatWeight(displayWeightOf(row.entryId)) }}</span>
               </td>
             </tr>
           </tbody>
