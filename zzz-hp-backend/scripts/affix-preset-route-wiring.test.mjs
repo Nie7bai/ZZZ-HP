@@ -7,7 +7,7 @@
  *
  * 读接口必须**公开**（进计算页就要拿官方预设，不能要求登录）。
  *
- * 写入口只有三个（2026-09-13 起）：整份替换一套方案、新建方案、删除方案。
+ * 写入口四个（2026-09-13 起）：整份替换一套方案、新建方案、重命名方案、删除方案。
  * 管理页是「草稿 + 保存」，保存＝整份替换，所以逐条的 entries / groups 写接口已删除 ——
  * 留在这里的清单要跟着代码走，少一个都不行。
  */
@@ -38,6 +38,7 @@ test('官方预设：全部写接口首中间件必须是 requireAdmin', () => {
   const writeRoutes = [
     ['put', '/'],
     ['post', '/schemes'],
+    ['patch', '/schemes/:name'],
     ['delete', '/schemes/:name'],
   ]
   for (const [method, path] of writeRoutes) {

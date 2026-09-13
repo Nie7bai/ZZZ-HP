@@ -9,6 +9,7 @@ import {
   deleteAffixPresetScheme,
   fetchAffixPreset,
   isAffixPresetAuthError,
+  renameAffixPresetScheme,
   replaceAffixPreset,
   type AffixPresetEntryDoc,
   type AffixPresetGroupDoc,
@@ -670,6 +671,67 @@ async function removeActiveScheme() {
   }
 }
 
+// ---------- 重命名当前方案 ----------
+
+const renameOpen = ref(false)
+const renameName = ref('')
+
+/**
+ * 打开重命名面板：预填现名并聚焦全选（多数时候是在原名上改几个字）。
+ *
+ * **默认方案也能改名**（用户 2026-09-13「方案允许重命名」）：用户侧那条路按
+ * `is_default` 判默认、不看名字，所以改默认方案的名对用户侧无感 ——
+ * 这也是它和「删除」（默认方案禁止）的区别。
+ */
+function openRenameScheme() {
+  if (!activeScheme.value) return
+  renameOpen.value = true
+  renameName.value = activeScheme.value
+  void nextTick(() => {
+    const input = document.querySelector<HTMLInputElement>('.scheme-rename input[type="text"]')
+    input?.focus()
+    input?.select()
+  })
+}
+
+function cancelRenameScheme() {
+  renameOpen.value = false
+  renameName.value = ''
+}
+
+async function renameActiveScheme() {
+  const from = activeScheme.value
+  const to = renameName.value.trim()
+  if (!to) {
+    error.value = '请填写新方案名'
+    return
+  }
+  if (to === from) {
+    error.value = '新方案名和现在一样，没有需要改的'
+    return
+  }
+  if (schemes.value.some((item) => item.name === to)) {
+    error.value = `已有同名方案「${to}」`
+    return
+  }
+  if (!confirmDiscard()) return
+  schemeBusy.value = true
+  message.value = ''
+  error.value = ''
+  try {
+    const renamed = await renameAffixPresetScheme(from, to)
+    clearDraftStash(from)
+    message.value = `已重命名方案「${renamed.renamedFrom}」→「${renamed.name}」`
+    renameOpen.value = false
+    renameName.value = ''
+    await loadScheme(renamed.name)
+  } catch (err) {
+    handleWriteError(err, '重命名方案失败')
+  } finally {
+    schemeBusy.value = false
+  }
+}
+
 /** 新建方案时可以「复制现有方案」——来源清单里当前方案排最前（多数时候就是要复制它） */
 const copySourceOptions = computed(() => {
   const list = [...schemes.value]
@@ -1129,6 +1191,20 @@ onMounted(() => {
         </button>
         <span class="stat-spacer" />
         <!--
+          重命名对**所有**方案开放（含默认方案）—— 与「删除」不同：
+          默认方案的名字不参与用户侧取数（那边按 is_default 判默认），改了无感；
+          删了才是真取不到。所以这里不置灰，删除才置灰。
+        -->
+        <button
+          type="button"
+          class="secondary-btn"
+          :disabled="busy || schemeBusy || !activeScheme"
+          :title="`给方案「${activeScheme}」改个名字（内容不动）`"
+          @click="openRenameScheme"
+        >
+          重命名当前方案
+        </button>
+        <!--
           方案之间是**平级**的（用户 2026-09-13「他们应该是平级的」）：
           删除入口一律显示，只是默认方案不能删 —— 按钮置灰 + 说明为什么，
           而不是「这一套悄悄少了个按钮」。
@@ -1146,6 +1222,33 @@ onMounted(() => {
         >
           删除当前方案
         </button>
+      </div>
+
+      <!-- 重命名方案：只改名字，内容一条不动 -->
+      <div v-if="renameOpen" class="scheme-rename">
+        <div class="scheme-new-grid">
+          <label>
+            <span>新方案名</span>
+            <input
+              v-model="renameName"
+              type="text"
+              maxlength="64"
+              :placeholder="`现在是「${activeScheme}」`"
+              @keyup.enter="renameActiveScheme"
+            />
+          </label>
+          <button type="button" class="primary-btn" :disabled="schemeBusy" @click="renameActiveScheme">
+            {{ schemeBusy ? '改名中…' : '确认改名' }}
+          </button>
+          <button
+            type="button"
+            class="secondary-btn"
+            :disabled="schemeBusy"
+            @click="cancelRenameScheme"
+          >
+            取消
+          </button>
+        </div>
       </div>
 
       <!-- 新建方案：名称 + 内容来源（空白 / 复制现有） -->
@@ -1923,7 +2026,8 @@ onMounted(() => {
   opacity: 0.65;
 }
 
-.scheme-new {
+.scheme-new,
+.scheme-rename {
   border: 1px solid var(--color-border);
   border-radius: 12px;
   background: var(--color-background-soft);

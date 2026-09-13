@@ -3,6 +3,7 @@ import {
   deleteAffixPresetScheme,
   listAffixPreset,
   listAffixSchemes,
+  renameAffixPresetScheme,
   replaceAffixPreset,
 } from '../services/affixPresetService.js'
 import { fail, failInternal, success } from '../utils/response.js'
@@ -13,7 +14,7 @@ import { fail, failInternal, success } from '../utils/response.js'
  * `target` 的强校验在前端（`isAffixLibraryEntryTarget`，那份字段表是唯一事实来源）；
  * 后端只拦明显不属于该命名空间的值 —— 两端都写死一份完整字段表迟早会分叉。
  *
- * 写入口只有三个：整份替换一套方案、新建方案、删除方案。
+ * 写入口四个：整份替换一套方案、新建方案、重命名方案、删除方案。
  * 「改一条」这种粒度在管理页是**草稿 + 保存**（保存＝整份替换），所以没有逐条写接口 ——
  * 留着就是死接口，也会让「保存」出现半份中间状态。
  */
@@ -158,6 +159,24 @@ export async function createAffixPresetSchemeHandler(req, res) {
     const message = err instanceof Error ? err.message : '新建方案失败'
     if (/已有同名方案|不存在|必填|过长/.test(message)) return fail(res, message, 400)
     return failInternal(res, err, '新建方案失败')
+  }
+}
+
+/** 重命名方案（默认方案也能改：读取侧按 is_default 判默认，不看名字） */
+export async function renameAffixPresetSchemeHandler(req, res) {
+  const name = decodeURIComponent(String(req.params.name ?? '')).trim()
+  const newName = typeof req.body?.name === 'string' ? req.body.name.trim() : ''
+  if (!name) return fail(res, '缺少方案名', 400)
+  if (!newName) return fail(res, '新方案名为必填项', 400)
+  try {
+    const renamed = await renameAffixPresetScheme(name, newName)
+    const schemes = await listAffixSchemes()
+    return success(res, { ...renamed, schemes }, `已重命名方案「${renamed.renamedFrom}」→「${renamed.name}」`)
+  } catch (err) {
+    // 校验类错误（不存在 / 撞名 / 同名 / 过长 / 必填）按 400 回；其余按 500
+    const message = err instanceof Error ? err.message : '重命名方案失败'
+    if (/不存在|已有同名方案|必填|过长|相同|缺少方案名/.test(message)) return fail(res, message, 400)
+    return failInternal(res, err, '重命名方案失败')
   }
 }
 

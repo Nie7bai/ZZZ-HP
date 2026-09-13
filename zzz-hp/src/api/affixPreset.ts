@@ -155,3 +155,19 @@ export async function deleteAffixPresetScheme(name: string): Promise<{ name: str
     method: 'DELETE',
   })
 }
+
+/**
+ * 重命名方案（默认方案也能改 —— 服务端按 `is_default` 判默认，不看名字）。
+ *
+ * 名字是三张表的外键，所以服务端是一次事务里改完的；这里只负责发请求。
+ */
+export async function renameAffixPresetScheme(
+  name: string,
+  newName: string,
+): Promise<{ name: string; renamedFrom: string; isDefault: boolean }> {
+  return requestJson(`/api/affix-preset/schemes/${encodeURIComponent(name)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: newName }),
+  })
+}

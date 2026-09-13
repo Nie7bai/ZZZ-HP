@@ -135,8 +135,15 @@ async function migrateToSchemeSchema() {
   }
 }
 
-/** 默认方案那一行必须存在（用户侧不带参数时要能取到它） */
+/**
+ * 默认方案那一行必须存在（用户侧不带参数时要能取到它）。
+ *
+ * 判据是「表里没有任何 `is_default = 1` 的行」而**不是**「有没有叫『默认』的行」——
+ * 默认方案可以改名（步骤 50），按名字判会凭空补出一行第二个默认方案。
+ */
 async function ensureDefaultScheme() {
+  const [rows] = await pool.query(`SELECT name FROM ${SCHEME_TABLE} WHERE is_default = 1 LIMIT 1`)
+  if (rows.length) return
   await pool.query(
     `INSERT IGNORE INTO ${SCHEME_TABLE} (name, is_default, sort_order) VALUES (?, 1, 0)`,
     [DEFAULT_AFFIX_PRESET_SCHEME],
@@ -220,10 +227,21 @@ function rowToGroup(row) {
   }
 }
 
-/** 方案名归一：空值当默认方案 */
-export function resolveAffixPresetScheme(name) {
+/**
+ * 方案名归一：空值 → **当前默认方案的真实名字**。
+ *
+ * 为什么不是写死 `'默认'`（用户 2026-09-13「方案允许重命名」）：
+ * 默认方案也能改名，写死字面量会让用户侧那条路（不带 `scheme` 的读）
+ * 在改名后查一个不存在的名字、取到空。改成按 `is_default` 查名，
+ * 改名对用户侧就完全无感；表里查不到默认行时（全新库）才回落常量。
+ */
+async function resolveSchemeName(name) {
   const trimmed = String(name ?? '').trim()
-  return trimmed || DEFAULT_AFFIX_PRESET_SCHEME
+  if (trimmed) return trimmed
+  const [rows] = await pool.query(
+    `SELECT name FROM ${SCHEME_TABLE} WHERE is_default = 1 ORDER BY name ASC LIMIT 1`,
+  )
+  return rows.length ? String(rows[0].name) : DEFAULT_AFFIX_PRESET_SCHEME
 }
 
 /** 全部方案（默认的排最前），带条目数 —— 管理页的 chip 与「复制自哪套」都用它 */
@@ -250,7 +268,7 @@ export async function listAffixSchemes() {
  */
 export async function listAffixPreset(schemeName) {
   await ensureTables()
-  const scheme = resolveAffixPresetScheme(schemeName)
+  const scheme = await resolveSchemeName(schemeName)
   const [entryRows] = await pool.query(
     `SELECT * FROM ${ENTRY_TABLE} WHERE scheme = ? ORDER BY sort_order ASC, id ASC`,
     [scheme],
@@ -274,7 +292,6 @@ export async function listAffixPreset(schemeName) {
  * 中途失败留下半份数据会让前端拿到残缺预设，比整体失败更难排查。
  */
 export async function replaceAffixPreset({ scheme, entries, groups }) {
-  const schemeName = resolveAffixPresetScheme(scheme)
   const entryList = Array.isArray(entries) ? entries : []
   const groupList = Array.isArray(groups) ? groups : []
 
@@ -284,6 +301,7 @@ export async function replaceAffixPreset({ scheme, entries, groups }) {
   assertUniqueSortValues(groupList, '分组', '个分组')
 
   await ensureTables()
+  const schemeName = await resolveSchemeName(scheme)
   const conn = await pool.getConnection()
   try {
     await conn.beginTransaction()
@@ -418,6 +436,56 @@ export async function createAffixPresetScheme({ name, copyFrom }) {
     copiedFrom: sourceName || null,
     entryCount: readInt(counts[0]?.entry_count, 0),
     groupCount: readInt(counts[0]?.group_count, 0),
+  }
+}
+
+/**
+ * 给一套方案改名（用户 2026-09-13「方案允许重命名」）。
+ *
+ * 方案名是**三张表的外键**（方案登记行 + 条目表 `scheme` 列 + 分组表 `scheme` 列），
+ * 所以改名必须一次事务把三处都改掉 —— 漏一处就会留下一套「孤儿」内容。
+ * `is_default` / `sort_order` / `raw_json` 一律不动：改名只换标签，不换身份。
+ *
+ * **默认方案也能改名**：用户侧那条路（不带 `scheme` 的读）按 `is_default` 查名
+ * （见 `resolveSchemeName`），所以改名对用户侧无感；删默认才是不允许的。
+ */
+export async function renameAffixPresetScheme(name, newName) {
+  await ensureTables()
+  const from = String(name ?? '').trim()
+  const to = String(newName ?? '').trim()
+  if (!from) throw new Error('缺少方案名')
+  if (!to) throw new Error('新方案名为必填项')
+  if (to.length > 64) throw new Error('方案名过长（≤64）')
+  if (to === from) throw new Error('新方案名与原方案名相同，没有需要改的')
+
+  const [rows] = await pool.query(
+    `SELECT name, is_default FROM ${SCHEME_TABLE} WHERE name = ? LIMIT 1`,
+    [from],
+  )
+  if (!rows.length) throw new Error('方案不存在')
+  const [duplicated] = await pool.query(
+    `SELECT name FROM ${SCHEME_TABLE} WHERE name = ? LIMIT 1`,
+    [to],
+  )
+  if (duplicated.length) throw new Error(`已有同名方案「${to}」`)
+
+  const conn = await pool.getConnection()
+  try {
+    await conn.beginTransaction()
+    await conn.query(`UPDATE ${SCHEME_TABLE} SET name = ? WHERE name = ?`, [to, from])
+    await conn.query(`UPDATE ${ENTRY_TABLE} SET scheme = ? WHERE scheme = ?`, [to, from])
+    await conn.query(`UPDATE ${GROUP_TABLE} SET scheme = ? WHERE scheme = ?`, [to, from])
+    await conn.commit()
+  } catch (err) {
+    await conn.rollback()
+    throw err
+  } finally {
+    conn.release()
+  }
+  return {
+    name: to,
+    renamedFrom: from,
+    isDefault: Boolean(Number(rows[0].is_default)),
   }
 }
 
