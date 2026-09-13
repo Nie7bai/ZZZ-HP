@@ -2348,7 +2348,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
       <button
         type="button"
         role="tab"
-        class="chip"
+        class="chip chip--mode"
         :class="{ active: sectionMode === 'allocation' }"
         :aria-selected="sectionMode === 'allocation'"
         @click="sectionMode = 'allocation'"
@@ -2358,7 +2358,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
       <button
         type="button"
         role="tab"
-        class="chip"
+        class="chip chip--mode"
         :class="{ active: sectionMode === 'sweep' }"
         :aria-selected="sectionMode === 'sweep'"
         @click="sectionMode = 'sweep'"
@@ -3439,11 +3439,26 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 .section-mode-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem;
+  gap: 0.6rem;
   align-items: center;
   margin: 0.75rem 0 0.5rem;
   padding-bottom: 0.6rem;
   border-bottom: 1px solid #2a2f37;
+}
+
+/*
+ * 区级模式切换（最优分配 / 扫掠柱图）：用户 2026-09-13「这2个按钮尺寸弄大点」。
+ *
+ * 它俩是「词条配比分析」整区的**主开关**，但用的是全站统一 `.chip`
+ * （`assets/calculatorChip.css`），尺寸跟正文里那些 `+1 档` / `4号位（6）` 完全一样，
+ * 摆在整片 chip 里看不出层级。这里只放大尺寸，颜色 / 选中态 / 圆角 / 字重一律交给
+ * `.chip` 本体，昼夜两套主题照旧 —— 所以不加任何颜色声明。
+ *
+ * 全局那份不能动：改它等于把全站 28 个 chip 一起放大（本次只要这两颗）。
+ */
+.chip--mode {
+  padding: 0.6rem 1.4rem;
+  font-size: 1rem;
 }
 
 /*
