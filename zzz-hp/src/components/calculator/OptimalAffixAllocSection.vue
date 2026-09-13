@@ -78,6 +78,7 @@ import {
   type OptimalEventDamageLine,
   yieldToMain,
 } from '@/utils/optimalAffixAlloc'
+import { remapImportedExternalPanelForMainCombo } from '@/utils/affixPanelCalc'
 import EquipPickerModal from '@/components/calculator/EquipPickerModal.vue'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import {
@@ -1532,7 +1533,7 @@ const affixAllocEval = computed(() => {
 
 /**
  * 主属性组合试算 / 排行的副词条基线：
- * - 最优分配页独立模块：与全词条收益同口径（零副词条基线），不依赖「求最优分配」结果
+ * - 词条分析页独立模块：零副词条；有导入面板时在面板上反推换主属性/2 件套（不叠求解词条）
  * - 扫掠柱图：沿用 analysisCounts（点柱 / 预览）
  */
 const comboBaselineCounts = computed(() => {
@@ -1548,6 +1549,13 @@ const comboBaselineReady = computed(() => {
   }
   return Boolean(analysisCounts.value && analysisEval.value)
 })
+
+/** 词条分析页组合试算能否走「导入面板反推」：需要页级基准局外 */
+const comboUsesImportedPanel = computed(
+  () =>
+    sectionMode.value === 'allocation' &&
+    Boolean(evalCtx.value.mainBaseExternalPanel),
+)
 
 // 两个来源的面板就绪 / 失效时上报给页级（招式流程三选项据此启用与判过期；
 // 面板展示专用通道同一时机一并上报）
@@ -2098,23 +2106,63 @@ function evaluateMainStatComboDamage(
   counts: AffixCounts,
   twoPieceId?: string,
 ) {
+  const ctx = evalCtx.value
+  const nextTwoPieceId = twoPieceId ?? ctx.driveDiscSelection.twoPieceDriveDiscId
+  /**
+   * 词条分析页 + 已有导入局外：在面板数字上反推扣掉当前 4/5/6（及 2 件套）贡献，
+   * 再加回试算组合 —— 不改收益表 / 求解器，也不动扫掠柱图（仍走下方「清基准重推」）。
+   */
+  if (sectionMode.value === 'allocation' && ctx.mainBaseExternalPanel) {
+    const remapped = remapImportedExternalPanelForMainCombo({
+      panel: ctx.mainBaseExternalPanel,
+      fromMains: driveDiscMainStats.value,
+      toMains: {
+        slot4MainStat: mainStats.slot4MainStat,
+        slot5MainStat: mainStats.slot5MainStat,
+        slot6MainStat: mainStats.slot6MainStat,
+      },
+      fromTwoPieceId: currentTwoPieceId.value,
+      toTwoPieceId: nextTwoPieceId,
+      fourPieceDriveDiscId: ctx.driveDiscSelection.fourPieceDriveDiscId,
+      driveDiscs: ctx.driveDiscs,
+      agentHp: ctx.agentBase.hp,
+      atkBase: ctx.agentBase.atk + ctx.wengineBaseAtk,
+      agentDef: ctx.agentBase.def + (ctx.wengineBaseDef ?? 0),
+      anomalyControlBase: ctx.agentBase.anomalyControl,
+      energyRegenBase: ctx.agentBase.energyRegen,
+    })
+    const evaled = evaluateAffixCounts(
+      {
+        ...ctx,
+        mainBaseExternalPanel: remapped,
+        driveDiscMainStats: {
+          ...ctx.driveDiscMainStats,
+          ...mainStats,
+        },
+        driveDiscSelection: {
+          ...ctx.driveDiscSelection,
+          twoPieceDriveDiscId: nextTwoPieceId,
+        },
+      },
+      counts,
+    )
+    return resolveAffixMetricDamage(evaled)
+  }
+
   const evaled = evaluateAffixCounts(
     {
-      ...evalCtx.value,
+      ...ctx,
       /**
-       * 主属性组合试算是在问「换一套 4/5/6 主属性会怎样」——答案必须由配置重新推导面板，
-       * 不能沿用外部面板（否则主属性改了面板不变，试算恒为 0）。
-       * 故这里显式清掉基准面板，让 `computeExternalForEval` 走推导路径。
-       * 基线与试算两测都走同一路径，差值仍是同口径对比。
+       * 扫掠 / 无导入面板：换主属性必须重新推导面板，否则主属性改了面板不变。
        */
       mainBaseExternalPanel: null,
       driveDiscMainStats: {
-        ...evalCtx.value.driveDiscMainStats,
+        ...ctx.driveDiscMainStats,
         ...mainStats,
       },
       driveDiscSelection: {
-        ...evalCtx.value.driveDiscSelection,
-        twoPieceDriveDiscId: twoPieceId ?? evalCtx.value.driveDiscSelection.twoPieceDriveDiscId,
+        ...ctx.driveDiscSelection,
+        twoPieceDriveDiscId: nextTwoPieceId,
       },
     },
     counts,
@@ -2443,8 +2491,10 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 
         <h3 class="block-title">主属性组合试算</h3>
         <p class="hint">
-          与「全词条收益 / 最优分配」同级独立模块：固定零副词条基线（与全词条收益同口径），只替换 4/5/6
-          主属性与 2 件套对比总伤；不改动下方最优分配求解。
+          与「全词条收益 / 最优分配」同级独立模块。有面板导入时：按当前 4/5/6（及 2 件套）从局外数字反推扣减，再加回试算组合；
+          请先在导入里填对当前主属性。无面板时回退为配置推导。不改动下方最优分配求解。
+          <template v-if="comboUsesImportedPanel"> · 当前：已接导入面板</template>
+          <template v-else> · 当前：无导入面板，走配置推导</template>
         </p>
         <template v-if="combinedMainStatPreview">
           <div class="combined-main-stat-card">
