@@ -1708,7 +1708,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
 .formula-label {
   display: inline-block;
   min-width: 6.5em;
-  margin-right: 0.45rem;
+  margin-right: 0.22rem;
   color: var(--zzz-fg, #141412);
   font-weight: 700;
 }
@@ -1717,11 +1717,11 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
   gap: 0;
 }
 
-/* 公式组：左 label 列 + 右公式行，垂直居中 */
+/* 公式组：左 label 列 + 右公式行，垂直居中（列间距收紧） */
 .formula-aligned-group {
   display: grid;
   grid-template-columns: 6.95em minmax(0, 1fr);
-  gap: 0.5rem 0.6rem;
+  gap: 0.5rem 0.3rem;
   padding: 0.6rem 0;
   align-items: center;
 }

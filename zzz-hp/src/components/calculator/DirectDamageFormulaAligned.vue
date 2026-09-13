@@ -50,7 +50,7 @@ const formulaSegments = computed((): DirectFormulaTerm[][] => {
 .formula-aligned-group {
   display: grid;
   grid-template-columns: 6.95em minmax(0, 1fr);
-  gap: 0.35rem 0.45rem;
+  gap: 0.35rem 0.22rem;
   padding: 0.55rem 0;
   align-items: start;
 }
