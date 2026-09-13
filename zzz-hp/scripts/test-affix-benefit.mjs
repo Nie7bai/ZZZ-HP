@@ -572,5 +572,61 @@ console.log('\n[7] 词条库导出 / 导入')
     resolveAffixLibraryAll(coerceAffixLibraryState(bare)).length > 0)
 }
 
+// ---------- 收益表筛选状态的持久化（步骤 40） ----------
+console.log('\n[?] 收益表筛选状态')
+{
+  const {
+    AFFIX_BENEFIT_FILTERS_STORAGE_KEY,
+    coerceAffixBenefitFilters,
+    createDefaultAffixBenefitFilters,
+    loadAffixBenefitFilters,
+    saveAffixBenefitFilters,
+  } = await import('../src/utils/affixBenefitFilters.ts')
+
+  const defaults = createDefaultAffixBenefitFilters()
+  check('默认：隐藏无收益 开', defaults.hideNoBenefit === true)
+  check('默认：同名折叠 开', defaults.collapseDuplicates === true)
+  check('默认：不关闭任何分组', defaults.hiddenGroups.length === 0)
+
+  check('坏档（字符串 / 数组 / null）一律回落默认',
+    JSON.stringify(coerceAffixBenefitFilters('x')) === JSON.stringify(defaults) &&
+      JSON.stringify(coerceAffixBenefitFilters([])) === JSON.stringify(defaults) &&
+      JSON.stringify(coerceAffixBenefitFilters(null)) === JSON.stringify(defaults),
+    JSON.stringify(coerceAffixBenefitFilters('x')))
+
+  check('字段类型不对只回落那一个字段',
+    coerceAffixBenefitFilters({ hideNoBenefit: 'yes', collapseDuplicates: false }).hideNoBenefit === true &&
+      coerceAffixBenefitFilters({ hideNoBenefit: 'yes', collapseDuplicates: false }).collapseDuplicates === false)
+  check('hiddenGroups 过滤掉非字符串项',
+    JSON.stringify(coerceAffixBenefitFilters({ hiddenGroups: ['4号位', 42, null] }).hiddenGroups) ===
+      JSON.stringify(['4号位']))
+
+  // localStorage 桩：读 / 写 / 坏 JSON 三条路都走一遍
+  const originalLocalStorage = globalThis.localStorage
+  const store = new Map()
+  globalThis.localStorage = {
+    getItem: (key) => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => void store.set(key, String(value)),
+    removeItem: (key) => void store.delete(key),
+  }
+
+  check('没有存档 → 默认', loadAffixBenefitFilters().hideNoBenefit === true)
+
+  saveAffixBenefitFilters({ hideNoBenefit: false, collapseDuplicates: false, hiddenGroups: ['4号位'] })
+  const readBack = loadAffixBenefitFilters()
+  check('写进去能读回来',
+    readBack.hideNoBenefit === false &&
+      readBack.collapseDuplicates === false &&
+      JSON.stringify(readBack.hiddenGroups) === JSON.stringify(['4号位']),
+    JSON.stringify(readBack))
+  check('键名稳定（改键名会让所有人回默认）',
+    store.has(AFFIX_BENEFIT_FILTERS_STORAGE_KEY))
+
+  store.set(AFFIX_BENEFIT_FILTERS_STORAGE_KEY, '{ 坏 JSON')
+  check('坏 JSON → 默认，不抛错', loadAffixBenefitFilters().hideNoBenefit === true)
+
+  globalThis.localStorage = originalLocalStorage
+}
+
 console.log(`\n结果：${passed} passed, ${failed} failed`)
 if (failed > 0) process.exit(1)
