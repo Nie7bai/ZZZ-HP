@@ -37,36 +37,46 @@ watch(summaryStructureKey, () => {
 
 /**
  * 视口稳定 + 平滑收起：
- * - 展开（id 非空）：详情淡入后滚到详情锚点（nearest 平滑）
- * - 收起（id 为空）：详情先淡出（高度保持，页面不跳），leave 动画完成后滚回事件行
+ * - 展开（id 非空）：详情内容渲染后（高度过渡 0.28s 完成），若底部超出滚动容器，
+ *   平滑滚到底部可见（nearest 对「部分可见」不滚动，最底下的事件会直接出现——这里统一判断）
+ * - 收起（onEventClick 收起分支）：先手动做高度收缩动画（内容仍在 DOM），
+ *   动画完成后再清空选中（内容移除）——页面跟随收缩平滑上移，事件行不跳
  */
 const rootEl = ref<HTMLElement | null>(null)
-const lastSelectedId = ref<string | null>(null)
+
+function findScrollParent(el: HTMLElement): HTMLElement {
+  let p = el.parentElement
+  while (p) {
+    if (p.scrollHeight > p.clientHeight + 1) return p
+    p = p.parentElement
+  }
+  return (document.scrollingElement as HTMLElement) ?? document.body
+}
+
 watch(
   () => props.selectedEventId,
   async (id) => {
-    if (id) {
-      lastSelectedId.value = id
-      await nextTick()
-      rootEl.value
-        ?.querySelector<HTMLElement>('.owner-event-detail-anchor')
-        ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    if (!id) return
+    await nextTick()
+    // 等详情内容实际渲染完成（detail 计算可能慢，高度 > 0 才视为就绪），
+    // 避免按动画中间值/空内容误判不滚动
+    let el: HTMLElement | null | undefined = null
+    for (let i = 0; i < 15; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 80))
+      el = rootEl.value?.querySelector<HTMLElement>('.owner-event-detail-anchor--open')
+      if (el && el.offsetHeight > 10) break
     }
-    // 收起不在此滚动：等详情 leave 动画结束后由 onDetailLeave 处理，避免「先跳后补滚」
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const vh = findScrollParent(el).clientHeight
+    if (rect.bottom > vh || rect.top < 0) {
+      el.scrollIntoView({
+        block: rect.bottom > vh ? 'end' : 'start',
+        behavior: 'smooth',
+      })
+    }
   },
 )
-
-/** 详情 leave 动画完成（已从 DOM 移除、页面高度恢复）后：平滑滚回刚收起的事件行 */
-function onDetailLeave() {
-  const id = lastSelectedId.value
-  if (!id) return
-  lastSelectedId.value = null
-  nextTick(() => {
-    rootEl.value
-      ?.querySelector<HTMLElement>(`.owner-event-item[data-event-id="${id}"]`)
-      ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  })
-}
 
 function formatNumber(v: number) {
   return Math.round(v).toLocaleString('zh-CN')
@@ -98,9 +108,36 @@ function onOwnerKeydown(event: KeyboardEvent, agentId: string) {
 }
 
 function onEventClick(eventId: string) {
-  // 再次点击已选中事件：收起详情（空字符串 = 取消选中）
+  // 再次点击已选中事件：收起详情——先做高度收缩动画（内容仍在），动画完成后再清空选中
   if (props.selectedEventId === eventId) {
-    emit('select-event', '')
+    const anchor = rootEl.value?.querySelector<HTMLElement>(
+      `.owner-event-item[data-event-id="${eventId}"] .owner-event-detail-anchor`,
+    )
+    if (anchor?.classList.contains('owner-event-detail-anchor--open')) {
+      const li = anchor.closest('.owner-event-item') as HTMLElement | null
+      const scroller = findScrollParent(anchor)
+      // 记录移除前状态：内容移除时浏览器会 clamp scrollTop（页面变短），
+      // 移除后同帧把 scrollTop 设回，让事件行钉在视口 120px 处（无跳变）
+      const scrollTopBefore = scroller.scrollTop
+      const liTopBefore = li ? li.getBoundingClientRect().top : 0
+      // 固定当前高度 → 强制重排 → 收缩到 0（内容在 DOM 中，动画真实可见）
+      anchor.style.height = `${anchor.offsetHeight}px`
+      anchor.style.overflow = 'hidden'
+      void anchor.offsetHeight
+      anchor.style.height = '0px'
+      anchor.style.opacity = '0'
+      setTimeout(() => {
+        emit('select-event', '')
+        if (li && scroller) {
+          requestAnimationFrame(() => {
+            // 事件行绝对定位回视口 120px（文档位置不变，滚动量合理，不会再次 clamp）
+            scroller.scrollTop = scrollTopBefore + liTopBefore - 120
+          })
+        }
+      }, 300)
+    } else {
+      emit('select-event', '')
+    }
     return
   }
   emit('select-event', eventId)
@@ -216,15 +253,15 @@ function eventMetaText(event: {
                 :style="{ width: `${Math.max(event.ratio * 100, 0.5)}%` }"
               />
             </div>
-            <!-- 选中事件的详细计算过程：内嵌在该事件正下方（2026-09-13 起，不再沉到模块底部） -->
-            <Transition name="event-detail" @after-leave="onDetailLeave">
-              <div
-                v-if="selectedEventId === event.eventId"
-                class="owner-event-detail-anchor"
-              >
-                <slot name="event-detail" />
-              </div>
-            </Transition>
+            <!-- 选中事件的详细计算过程：内嵌在该事件正下方；展开/收起用 grid-template-rows 平滑过渡（元素常驻） -->
+            <div
+              class="owner-event-detail-anchor"
+              :class="{
+                'owner-event-detail-anchor--open': selectedEventId === event.eventId,
+              }"
+            >
+              <slot name="event-detail" />
+            </div>
           </li>
         </ul>
       </li>
@@ -468,6 +505,21 @@ function eventMetaText(event: {
 .owner-event-item > :deep(.damage-result-detail) {
   margin-top: 0.5rem;
   padding-left: 0.1rem;
+}
+
+/* 详情展开/收起：默认高度 0 隐藏；选中时 auto 显示；收起时由 onEventClick 手动驱动 height 收缩 */
+.owner-event-detail-anchor {
+  height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition:
+    height 0.28s ease,
+    opacity 0.2s ease;
+}
+
+.owner-event-detail-anchor--open {
+  height: auto;
+  opacity: 1;
 }
 
 /* 详情展开/收起过渡：淡入淡出 + 轻微位移（收起时高度保持到动画结束，页面不跳） */
