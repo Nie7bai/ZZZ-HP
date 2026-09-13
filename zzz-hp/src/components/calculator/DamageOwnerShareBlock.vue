@@ -36,17 +36,27 @@ watch(summaryStructureKey, () => {
 })
 
 /**
- * 视口稳定：选中事件变化后，若内嵌详情超出视口，滚动到最近可见位置。
- * block: 'nearest' 只在详情真正在视口外时才滚动（不剧烈跳页）。
+ * 视口稳定：选中事件变化后，若详情超出视口，滚动到最近可见位置。
+ * - 展开（id 非空）：滚到内嵌详情锚点
+ * - 收起（id 为空）：详情移除后页面缩短，滚回刚收起的事件行，避免视口跳位
+ * block: 'nearest' 只在目标真正在视口外时才滚动（不剧烈跳页）。
  */
 const rootEl = ref<HTMLElement | null>(null)
 watch(
   () => props.selectedEventId,
-  async () => {
+  async (id, prevId) => {
     await nextTick()
-    rootEl.value
-      ?.querySelector<HTMLElement>('.owner-event-detail-anchor')
-      ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    const root = rootEl.value
+    if (!root) return
+    if (id) {
+      root
+        .querySelector<HTMLElement>('.owner-event-detail-anchor')
+        ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    } else if (prevId) {
+      root
+        .querySelector<HTMLElement>(`.owner-event-item[data-event-id="${prevId}"]`)
+        ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
   },
 )
 
@@ -176,6 +186,7 @@ function eventMetaText(event: {
             :key="event.eventId"
             class="owner-event-item"
             :class="{ 'owner-event-item--active': selectedEventId === event.eventId }"
+            :data-event-id="event.eventId"
             role="button"
             tabindex="0"
             @click.stop="onEventClick(event.eventId)"
