@@ -173,7 +173,6 @@ watch(
     editingSetId.value = ''
     setMessage.value = ''
     importError.value = ''
-    pendingImport.value = null
     activeTab.value = 'manage'
     advancedEditing.value = loadAdvancedEditing()
     groupError.value = null
@@ -415,11 +414,7 @@ function confirmDeleteSet() {
 // ---------- 导出 / 导入 ----------
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
-/** 选完文件后要执行哪种导入（点按钮时决定，文件选择器是共用的） */
-const pendingImportMode = ref<'replace' | 'new'>('new')
 const importError = ref('')
-/** 覆盖式导入的二次确认内容（文件名） */
-const pendingImport = ref<{ json: string; fileName: string } | null>(null)
 
 function exportCurrent() {
   const json = exportAffixLibrarySet(store.value)
@@ -434,9 +429,15 @@ function exportCurrent() {
   setMessage.value = `已导出「${activeSet.value.name}」`
 }
 
-function triggerImport(mode: 'replace' | 'new') {
+/**
+ * 导入：只走「新增一套库」这一条路。
+ *
+ * 曾经还有「覆盖当前库」（就地替换、保留库身份）—— 用户 2026-09-13 判定多余，去掉：
+ * 想还原备份就「先删旧库、再导入为新库」。`importAffixLibrarySet` 的 `'replace'`
+ * 模式仍保留在 utils 里（有测试覆盖），恢复按钮只是加个 UI 的事。
+ */
+function triggerImport() {
   importError.value = ''
-  pendingImportMode.value = mode
   fileInputRef.value?.click()
 }
 
@@ -452,37 +453,19 @@ async function onFilePicked(event: Event) {
     importError.value = '读取文件失败'
     return
   }
-  const mode = pendingImportMode.value
-  if (mode === 'replace') {
-    // 覆盖会顶掉当前库内容，先确认再落盘
-    pendingImport.value = { json: text, fileName: file.name }
-    return
-  }
-  applyImport(text, 'new')
+  applyImport(text)
 }
 
-function applyImport(json: string, mode: 'replace' | 'new') {
+function applyImport(json: string) {
   // 先跟盘上内容对齐再解析，理由同 `withLatestActiveState`
-  const result = importAffixLibrarySet(withLatestActiveState(store.value), json, mode)
+  const result = importAffixLibrarySet(withLatestActiveState(store.value), json, 'new')
   if (result.error) {
     importError.value = result.error
     return
   }
   importError.value = ''
-  pendingImport.value = null
   commitStore(result.store)
-  setMessage.value =
-    mode === 'replace' ? `已用文件覆盖当前库（${result.name}）` : `已导入为新库「${result.name}」`
-}
-
-function confirmPendingImport() {
-  const pending = pendingImport.value
-  if (!pending) return
-  applyImport(pending.json, 'replace')
-}
-
-function cancelPendingImport() {
-  pendingImport.value = null
+  setMessage.value = `已导入为新库「${result.name}」`
 }
 
 // ---------- 条目编辑（转发给页面，落盘后刷新本地快照） ----------
@@ -811,10 +794,7 @@ function submitDraft() {
 
             <div class="pane-actions">
               <button type="button" class="mini-btn" @click="exportCurrent">导出当前库</button>
-              <button type="button" class="mini-btn" @click="triggerImport('new')">导入为新库</button>
-              <button type="button" class="mini-btn" @click="triggerImport('replace')">
-                覆盖当前库
-              </button>
+              <button type="button" class="mini-btn" @click="triggerImport">导入为新库</button>
             </div>
             <input
               ref="fileInputRef"
@@ -824,11 +804,6 @@ function submitDraft() {
               @change="onFilePicked"
             />
 
-            <p v-if="pendingImport" class="confirm-row">
-              用「{{ pendingImport.fileName }}」覆盖当前库「{{ activeSet.name }}」？
-              <button type="button" class="mini-btn ok" @click="confirmPendingImport">覆盖</button>
-              <button type="button" class="mini-btn" @click="cancelPendingImport">取消</button>
-            </p>
             <p v-if="importError" class="err">{{ importError }}</p>
             <p v-if="setMessage" class="ok-msg">{{ setMessage }}</p>
           </aside>
