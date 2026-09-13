@@ -1449,7 +1449,7 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
             :key="`general-${term.label}`"
           >
             <span v-if="index > 0" class="formula-aligned-op" aria-hidden="true">×</span>
-            <div class="formula-aligned-term">
+            <div class="formula-aligned-term formula-aligned-term--inline">
               <span class="formula-aligned-term-label">{{ term.label }}</span>
               <span class="formula-aligned-term-value">
                 <StatValueWithSources :value="term.value" :groups="valueTips[term.tipsKey]" />
@@ -1738,13 +1738,15 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
   line-height: 1.45;
 }
 
-/* 公式行：术语等宽，换行整齐 */
+/* 公式行：术语与值并排（与直伤期望公式同风格），一行放不下横向滚动 */
 .formula-aligned-body {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.3rem 0.5rem;
   min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 0.1rem;
 }
 
 .formula-aligned-term {
@@ -1755,8 +1757,16 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
   min-width: 4.2em;
 }
 
+.formula-aligned-term--inline {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 0.28rem;
+  flex-shrink: 0;
+}
+
 .formula-aligned-term-label {
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   line-height: 1.35;
   color: var(--calc-muted, #787774);
   text-align: center;
@@ -1831,8 +1841,8 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
 .result-grid p {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
+  justify-content: flex-start;
+  gap: 0.6rem;
   margin: 0;
   padding: 0.3rem 0.1rem;
   border-bottom: 1px solid color-mix(in srgb, var(--calc-border, #d5dae3) 55%, transparent);
