@@ -6,6 +6,10 @@
  * 所以这里钉住接线本身：谁把 `requireAdmin` 摘掉，这里必须红。
  *
  * 读接口必须**公开**（进计算页就要拿官方预设，不能要求登录）。
+ *
+ * 写入口只有三个（2026-09-13 起）：整份替换一套方案、新建方案、删除方案。
+ * 管理页是「草稿 + 保存」，保存＝整份替换，所以逐条的 entries / groups 写接口已删除 ——
+ * 留在这里的清单要跟着代码走，少一个都不行。
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -32,11 +36,9 @@ test('官方预设：读接口公开（首个中间件是控制器，不是鉴�
 
 test('官方预设：全部写接口首中间件必须是 requireAdmin', () => {
   const writeRoutes = [
-    ['put', '/entries'],
-    ['delete', '/entries/:id'],
-    ['put', '/groups'],
-    ['delete', '/groups/:name'],
     ['put', '/'],
+    ['post', '/schemes'],
+    ['delete', '/schemes/:name'],
   ]
   for (const [method, path] of writeRoutes) {
     const handlers = getRouteHandlers(affixPresetRoutes, method, path)
@@ -46,5 +48,24 @@ test('官方预设：全部写接口首中间件必须是 requireAdmin', () => {
       `${method.toUpperCase()} ${path} 的首个中间件应为 requireAdmin`,
     )
     assert.ok(handlers.length >= 2, `${method.toUpperCase()} ${path} 缺少控制器`)
+  }
+})
+
+test('官方预设：逐条写接口已删除（保存＝整份替换，不给半份状态留口子）', () => {
+  const removed = [
+    ['put', '/entries'],
+    ['delete', '/entries/:id'],
+    ['put', '/groups'],
+    ['delete', '/groups/:name'],
+  ]
+  for (const [method, path] of removed) {
+    const layer = affixPresetRoutes.stack.find(
+      (entry) => entry.route && entry.route.path === path && Boolean(entry.route.methods[method]),
+    )
+    assert.equal(
+      layer,
+      undefined,
+      `${method.toUpperCase()} ${path} 应当已删除：管理页的保存是整份替换`,
+    )
   }
 })

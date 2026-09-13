@@ -1,10 +1,9 @@
 import {
-  deleteAffixPresetEntry,
-  deleteAffixPresetGroup,
+  createAffixPresetScheme,
+  deleteAffixPresetScheme,
   listAffixPreset,
+  listAffixSchemes,
   replaceAffixPreset,
-  upsertAffixPresetEntry,
-  upsertAffixPresetGroup,
 } from '../services/affixPresetService.js'
 import { fail, failInternal, success } from '../utils/response.js'
 
@@ -13,6 +12,10 @@ import { fail, failInternal, success } from '../utils/response.js'
  *
  * `target` 的强校验在前端（`isAffixLibraryEntryTarget`，那份字段表是唯一事实来源）；
  * 后端只拦明显不属于该命名空间的值 —— 两端都写死一份完整字段表迟早会分叉。
+ *
+ * 写入口只有三个：整份替换一套方案、新建方案、删除方案。
+ * 「改一条」这种粒度在管理页是**草稿 + 保存**（保存＝整份替换），所以没有逐条写接口 ——
+ * 留着就是死接口，也会让「保存」出现半份中间状态。
  */
 const TARGET_PREFIXES = ['stat:', 'panel:']
 
@@ -57,62 +60,27 @@ function normalizeGroupPayload(body = {}) {
   if (!name) return { error: '分组名为必填项' }
   if (name.length > 64) return { error: '分组名过长（≤64）' }
   if (!Number.isFinite(cap) || cap < 0) return { error: '组额度须为非负数（0 = 不限）' }
-  return { name, cap: Math.trunc(cap), sortOrder: Number.isFinite(sortOrder) ? Math.trunc(sortOrder) : 0 }
+  return {
+    name,
+    cap: Math.trunc(cap),
+    sortOrder: Number.isFinite(sortOrder) ? Math.trunc(sortOrder) : 0,
+  }
 }
 
-export async function getAffixPreset(_req, res) {
+/** 读：不带 `scheme` 回默认方案；两种情况下都把方案清单一起带上（管理页要画 chip） */
+export async function getAffixPreset(req, res) {
   try {
-    return success(res, await listAffixPreset())
+    const [snapshot, schemes] = await Promise.all([
+      listAffixPreset(req.query?.scheme),
+      listAffixSchemes(),
+    ])
+    return success(res, { ...snapshot, schemes })
   } catch (err) {
     return failInternal(res, err, '获取官方预设词条库失败')
   }
 }
 
-export async function saveAffixPresetEntry(req, res) {
-  const payload = normalizeEntryPayload(req.body)
-  if (payload.error) return fail(res, payload.error, 400)
-  try {
-    return success(res, await upsertAffixPresetEntry(payload), '条目已保存')
-  } catch (err) {
-    return failInternal(res, err, '保存词条失败')
-  }
-}
-
-export async function removeAffixPresetEntry(req, res) {
-  const id = String(req.params.id ?? '').trim()
-  if (!id) return fail(res, '缺少条目 ID', 400)
-  try {
-    const result = await deleteAffixPresetEntry(id)
-    if (!result.deleted) return fail(res, '条目不存在', 404)
-    return success(res, result, '条目已删除')
-  } catch (err) {
-    return failInternal(res, err, '删除词条失败')
-  }
-}
-
-export async function saveAffixPresetGroup(req, res) {
-  const payload = normalizeGroupPayload(req.body)
-  if (payload.error) return fail(res, payload.error, 400)
-  try {
-    return success(res, await upsertAffixPresetGroup(payload), '分组已保存')
-  } catch (err) {
-    return failInternal(res, err, '保存分组失败')
-  }
-}
-
-export async function removeAffixPresetGroup(req, res) {
-  const name = decodeURIComponent(String(req.params.name ?? '')).trim()
-  if (!name) return fail(res, '缺少分组名', 400)
-  try {
-    const result = await deleteAffixPresetGroup(name)
-    if (!result.deleted) return fail(res, '分组不存在', 404)
-    return success(res, result, '分组已删除')
-  } catch (err) {
-    return failInternal(res, err, '删除分组失败')
-  }
-}
-
-/** 整份替换（灌种子 / 管理端导入）—— 覆盖式，事务保证不留半份数据 */
+/** 整份替换（管理页「保存」）—— 只覆盖请求里那一套方案，其他方案不受影响 */
 export async function replaceAffixPresetHandler(req, res) {
   const entries = Array.isArray(req.body?.entries) ? req.body.entries : null
   const groups = Array.isArray(req.body?.groups) ? req.body.groups : null
@@ -126,9 +94,56 @@ export async function replaceAffixPresetHandler(req, res) {
     if (payload.error) return fail(res, `第 ${index + 1} 个分组：${payload.error}`, 400)
   }
   try {
-    const data = await replaceAffixPreset({ entries, groups })
-    return success(res, data, `已替换为 ${data.entries.length} 条 / ${data.groups.length} 组`)
+    const data = await replaceAffixPreset({
+      scheme: req.body?.scheme,
+      entries,
+      groups,
+    })
+    const schemes = await listAffixSchemes()
+    return success(
+      res,
+      { ...data, schemes },
+      `已保存「${data.scheme}」：${data.entries.length} 条 / ${data.groups.length} 组`,
+    )
   } catch (err) {
-    return failInternal(res, err, '替换官方预设词条库失败')
+    return failInternal(res, err, '保存官方预设词条库失败')
+  }
+}
+
+/** 新建方案：`{ name, copyFrom? }`；`copyFrom` 给了就整份复制那套方案 */
+export async function createAffixPresetSchemeHandler(req, res) {
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : ''
+  const copyFrom = typeof req.body?.copyFrom === 'string' ? req.body.copyFrom.trim() : ''
+  if (!name) return fail(res, '方案名为必填项', 400)
+  try {
+    const created = await createAffixPresetScheme({ name, copyFrom })
+    const schemes = await listAffixSchemes()
+    return success(
+      res,
+      { ...created, schemes },
+      created.copiedFrom
+        ? `已新建方案「${created.name}」（复制自「${created.copiedFrom}」：${created.entryCount} 条 / ${created.groupCount} 组）`
+        : `已新建空方案「${created.name}」`,
+    )
+  } catch (err) {
+    // 重名 / 源方案不存在这类是用户输入问题，按 400 回；其余按 500
+    const message = err instanceof Error ? err.message : '新建方案失败'
+    if (/已有同名方案|不存在|必填|过长/.test(message)) return fail(res, message, 400)
+    return failInternal(res, err, '新建方案失败')
+  }
+}
+
+/** 删除方案（默认方案不许删） */
+export async function removeAffixPresetScheme(req, res) {
+  const name = decodeURIComponent(String(req.params.name ?? '')).trim()
+  if (!name) return fail(res, '缺少方案名', 400)
+  try {
+    const result = await deleteAffixPresetScheme(name)
+    const schemes = await listAffixSchemes()
+    return success(res, { ...result, schemes }, `已删除方案「${name}」`)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '删除方案失败'
+    if (/默认方案不能删除|不存在|缺少方案名/.test(message)) return fail(res, message, 400)
+    return failInternal(res, err, '删除方案失败')
   }
 }
