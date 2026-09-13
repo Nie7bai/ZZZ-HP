@@ -92,12 +92,44 @@ function isExpanded(agentId: string) {
 
 function toggleOwner(agentId: string) {
   const next = new Set(expandedOwnerIds.value)
-  if (next.has(agentId)) {
+  const wasExpanded = next.has(agentId)
+  if (wasExpanded) {
     next.delete(agentId)
+    // 收起产生者：若其内部有选中的事件详情，一并收起（再次展开时不再自动展开详情）
+    if (props.selectedEventId) {
+      const share = (props.summary?.shares ?? []).find((item) => item.agentId === agentId)
+      if (share?.events.some((event) => event.eventId === props.selectedEventId)) {
+        emit('select-event', '')
+      }
+    }
   } else {
     next.add(agentId)
+    // 展开产生者：事件列表渲染后若超出视口，平滑滚动到可见（与事件详情展开同款稳定）
+    void scrollOwnerListIntoView(agentId)
   }
   expandedOwnerIds.value = next
+}
+
+/** 产生者展开后：轮询等待事件列表渲染完成，超出视口则平滑滚到可见 */
+async function scrollOwnerListIntoView(agentId: string) {
+  await nextTick()
+  for (let i = 0; i < 10; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    const list = rootEl.value?.querySelector<HTMLElement>(
+      `.owner-share-item[data-owner-id="${agentId}"] .owner-event-list`,
+    )
+    if (list && list.children.length > 0) {
+      const rect = list.getBoundingClientRect()
+      const vh = findScrollParent(list).clientHeight
+      if (rect.bottom > vh || rect.top < 0) {
+        list.scrollIntoView({
+          block: rect.bottom > vh ? 'end' : 'start',
+          behavior: 'smooth',
+        })
+      }
+      return
+    }
+  }
 }
 
 function onOwnerKeydown(event: KeyboardEvent, agentId: string) {
@@ -154,7 +186,12 @@ function eventMetaText(event: {
     </p>
 
     <ul v-if="summary?.shares.length" class="owner-share-list">
-      <li v-for="item in summary.shares" :key="item.agentId" class="owner-share-item">
+      <li
+        v-for="item in summary.shares"
+        :key="item.agentId"
+        class="owner-share-item"
+        :data-owner-id="item.agentId"
+      >
         <div
           class="owner-share-trigger"
           :class="{
