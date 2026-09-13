@@ -2244,7 +2244,7 @@ defineExpose({ scrollToSection })
     </Teleport>
 
     <!-- 统一伤害结果区：链路终点，页面底部常驻（3 选 1 面板 → 一套流程计算 → 出伤害 + 出详情） -->
-    <section class="section-card damage-result-section damage-anchor" aria-label="伤害结果">
+    <section id="damage-result" class="section-card damage-result-section damage-anchor" aria-label="伤害结果">
       <DamageProcessPanel
         :has-events="(hits?.length ?? 0) > 0"
         :summary="damageResultOwnerShareSummary"

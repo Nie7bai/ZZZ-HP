@@ -192,7 +192,7 @@ function eventSkillName(event: { displayName: string }): string {
     class="owner-share-block"
   >
     <div class="owner-share-header">
-      <h3 class="owner-share-title">产生者伤害占比</h3>
+      <h3 class="owner-share-title">事件详情 · 产生者伤害占比</h3>
       <p class="owner-share-hint">
         {{
           hint ??
