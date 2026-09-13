@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { BuffEffect, BuffEffectBlock, SkillSubcategory } from '@/types/calculator'
+import BuffRichText from '@/components/calculator/BuffRichText.vue'
 import { effectSummaryLabel } from '@/utils/buffEffect'
 import { buffStatFieldLabel, BUFF_STAT_FIELDS } from '@/utils/calculatorUi'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
@@ -98,16 +99,22 @@ function showBlockHead(block: BuffEffectBlock) {
         <strong v-if="showBlockTitle(block)" class="effect-block-name">
           <template v-if="provider">{{ provider }} · </template>{{ blockTitle(block) }}
         </strong>
-        <p v-if="block.note?.trim()" class="effect-block-note">{{ block.note }}</p>
+        <p v-if="block.note?.trim()" class="effect-block-note">
+          <BuffRichText :text="block.note" />
+        </p>
       </header>
       <ul class="effect-block-list">
         <li v-for="effect in block.effects" :key="effect.id" class="effect-item">
           <span v-if="situationLabel(effect)" class="effect-situation">{{
             situationLabel(effect)
           }}</span>
-          <strong class="effect-summary">{{
-            effectSummaryLabel(effect, (s) => statLabel(s), resolvedSkillSubcategories)
-          }}</strong>
+          <strong class="effect-summary">
+            <BuffRichText
+              :text="
+                effectSummaryLabel(effect, (s) => statLabel(s), resolvedSkillSubcategories)
+              "
+            />
+          </strong>
         </li>
       </ul>
     </article>
