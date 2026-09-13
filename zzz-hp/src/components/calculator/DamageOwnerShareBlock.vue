@@ -108,38 +108,12 @@ function onOwnerKeydown(event: KeyboardEvent, agentId: string) {
 }
 
 function onEventClick(eventId: string) {
-  // 再次点击已选中事件：收起详情——先做高度收缩动画（内容仍在），动画完成后再清空选中
+  // 再次点击已选中事件：收起详情（直接关闭，无动画/滚动/定时器——稳定无竞态）
   if (props.selectedEventId === eventId) {
-    const anchor = rootEl.value?.querySelector<HTMLElement>(
-      `.owner-event-item[data-event-id="${eventId}"] .owner-event-detail-anchor`,
-    )
-    if (anchor?.classList.contains('owner-event-detail-anchor--open')) {
-      const li = anchor.closest('.owner-event-item') as HTMLElement | null
-      const scroller = findScrollParent(anchor)
-      // 记录移除前状态：内容移除时浏览器会 clamp scrollTop（页面变短），
-      // 移除后同帧把 scrollTop 设回，让事件行钉在视口 120px 处（无跳变）
-      const scrollTopBefore = scroller.scrollTop
-      const liTopBefore = li ? li.getBoundingClientRect().top : 0
-      // 固定当前高度 → 强制重排 → 收缩到 0（内容在 DOM 中，动画真实可见）
-      anchor.style.height = `${anchor.offsetHeight}px`
-      anchor.style.overflow = 'hidden'
-      void anchor.offsetHeight
-      anchor.style.height = '0px'
-      anchor.style.opacity = '0'
-      setTimeout(() => {
-        emit('select-event', '')
-        if (li && scroller) {
-          requestAnimationFrame(() => {
-            // 事件行绝对定位回视口 120px（文档位置不变，滚动量合理，不会再次 clamp）
-            scroller.scrollTop = scrollTopBefore + liTopBefore - 120
-          })
-        }
-      }, 300)
-    } else {
-      emit('select-event', '')
-    }
+    emit('select-event', '')
     return
   }
+  // 点击其他事件：选中它（互斥——selectedEventId 单值，旧事件详情自动关闭）
   emit('select-event', eventId)
 }
 
