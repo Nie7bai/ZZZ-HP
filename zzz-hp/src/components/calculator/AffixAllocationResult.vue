@@ -344,4 +344,32 @@ tbody tr:last-child td {
   background: rgba(201, 165, 92, 0.85);
   transition: width 0.15s ease-out;
 }
+
+/*
+ * ── 暗色主题（与 `AffixBenefitTable.vue` 同一处问题、同一套修法）──
+ *
+ * 颜色写成 `var(--calc-*, 浅色兜底)`，而 `--calc-*` 只在白天主题下定义 ——
+ * 暗色下取不到变量，全部落到浅色兜底：表头米白、表体近黑字（黑底黑字）。
+ * 这里按同一个模式在根元素上重定义变量，并覆盖少量硬编码色；
+ * 前缀带 `[data-theme='dark']`，白天一个像素不动。
+ */
+[data-theme='dark'] .alloc-result {
+  --calc-surface-2: rgba(0, 0, 0, 0.25);
+  --calc-border: #2a2f37;
+  --calc-text: #e8eaed;
+  --calc-muted: #9aa3b0;
+}
+
+/* 提升幅度（.pos）与提示色：浅色的深绿 / 深金在暗底上发闷 */
+[data-theme='dark'] .alloc-result .summary-value.pos {
+  color: #7dd3a0 !important;
+}
+
+[data-theme='dark'] .alloc-result .warn {
+  color: #e0c27a;
+}
+
+[data-theme='dark'] .alloc-result .err {
+  color: #f07178;
+}
 </style>

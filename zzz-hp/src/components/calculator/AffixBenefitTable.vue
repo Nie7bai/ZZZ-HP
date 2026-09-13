@@ -830,4 +830,57 @@ td.neg {
   background: #fff3d6;
   border-color: #b8944a;
 }
+
+/*
+ * ── 暗色主题（用户 2026-09-13「这个没有黑夜模式」）──
+ *
+ * 本组件的颜色一律写成 `var(--calc-*, 浅色兜底)`，而 `--calc-*` 只在
+ * `.calculator-page.theme-light` 下定义（`assets/calculatorLight.css`）。
+ * 暗色下这些变量**未定义**，于是全部落到浅色兜底：表头米白 `#f1efe9`、
+ * 表体近黑字 `#1c212a` —— 黑底黑字，条目名与每档完全看不见。
+ *
+ * 修法：在根元素上按暗色**重定义同一组变量**（底下所有 `var()` 自动跟着变，
+ * 不必逐条重复），再把少量硬编码色对齐 `.opt-section` 那套暗色值 ——
+ * 同区块的兄弟表格就是这么写的（「暗色默认 + 浅色覆盖」）。前缀带
+ * `[data-theme='dark']`，浅色匹配不到，白天一个像素都不动。
+ */
+[data-theme='dark'] .benefit-workbench {
+  --calc-surface-2: rgba(0, 0, 0, 0.25);
+  --calc-border: #2a2f37;
+  --calc-text: #e8eaed;
+  --calc-muted: #9aa3b0;
+  --calc-input-bg: #171a1f;
+  --calc-accent-bg: rgba(201, 165, 92, 0.14);
+}
+
+/* 涨跌色：浅色那对（深绿 / 深红）在黑底上发闷，换成 `.opt-section` 的亮色 */
+[data-theme='dark'] .benefit-workbench td.pos {
+  color: #7dd3a0;
+}
+
+[data-theme='dark'] .benefit-workbench td.neg,
+[data-theme='dark'] .benefit-workbench .err {
+  color: #f07178;
+}
+
+/* 基准行强调：浅色的深金 `#8a6d2e` 在黑底上读不出来，提亮 */
+[data-theme='dark'] .benefit-workbench .baseline-line strong,
+[data-theme='dark'] .benefit-workbench .btn-primary {
+  color: #e0c27a;
+}
+
+/* 列分隔线：浅色那条偏棕，暗色下换成白线 */
+[data-theme='dark'] .benefit-workbench .col-resizer::before {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+[data-theme='dark'] .benefit-workbench .del-btn {
+  border-color: rgba(240, 113, 120, 0.45);
+  color: #f07178;
+}
+
+[data-theme='dark'] .benefit-workbench .btn-primary:hover {
+  background: rgba(201, 165, 92, 0.22);
+  border-color: #b8944a;
+}
 </style>
