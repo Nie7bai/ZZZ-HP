@@ -96,18 +96,27 @@ function toggleOwner(agentId: string) {
   if (wasExpanded) {
     next.delete(agentId)
     // 收起产生者：若其内部有选中的事件详情，一并收起（再次展开时不再自动展开详情）
-    if (props.selectedEventId) {
-      const share = (props.summary?.shares ?? []).find((item) => item.agentId === agentId)
-      if (share?.events.some((event) => event.eventId === props.selectedEventId)) {
-        emit('select-event', '')
-      }
-    }
+    clearSelectedIfInOwner(agentId)
   } else {
+    // 互斥：只展开当前产生者，其他自动合上（并清空它们内部的选中详情）
+    for (const otherId of next) {
+      if (otherId !== agentId) clearSelectedIfInOwner(otherId)
+    }
+    next.clear()
     next.add(agentId)
     // 展开产生者：事件列表渲染后若超出视口，平滑滚动到可见（与事件详情展开同款稳定）
     void scrollOwnerListIntoView(agentId)
   }
   expandedOwnerIds.value = next
+}
+
+/** 若选中事件属于该产生者，清空选中（详情收起） */
+function clearSelectedIfInOwner(agentId: string) {
+  if (!props.selectedEventId) return
+  const share = (props.summary?.shares ?? []).find((item) => item.agentId === agentId)
+  if (share?.events.some((event) => event.eventId === props.selectedEventId)) {
+    emit('select-event', '')
+  }
 }
 
 /** 产生者展开后：轮询等待事件列表渲染完成，超出视口则平滑滚到可见 */
