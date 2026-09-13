@@ -406,7 +406,7 @@ function eventSkillName(event: { displayName: string }): string {
 
 .owner-share-trigger--expandable:hover,
 .owner-share-trigger--expanded {
-  background: color-mix(in srgb, var(--calc-text, #1c212a) 4%, transparent);
+  background: color-mix(in srgb, var(--calc-text, #e8eaed) 4%, transparent);
 }
 
 .owner-share-head {
@@ -491,12 +491,18 @@ function eventSkillName(event: { displayName: string }): string {
 }
 
 .owner-event-item:hover {
-  background: color-mix(in srgb, var(--calc-text, #1c212a) 3%, transparent);
-  border-color: var(--calc-border, #d5dae3);
+  background: color-mix(in srgb, var(--calc-text, #e8eaed) 3%, transparent);
+  border-color: var(--calc-border, #2a2f37);
 }
 
+/*
+ * 选中行：白天是浅米底（`--calc-accent-bg` 由 `.calculator-page.theme-light` 给出 #fff8eb），
+ * 暗夜下该变量未定义，若这里兜底写浅色就会整行变米色、里面的浅色字全部看不见
+ * （2026-09-13 用户实测「伤害详情黑夜的样式没了」）。兜底取深色下的金底选中态，
+ * 与 `AffixBenefitTable` / `DamageResultDetail` 的暗色块同值。
+ */
 .owner-event-item--active {
-  background: var(--calc-accent-bg, #fff8eb);
+  background: var(--calc-accent-bg, rgba(201, 165, 92, 0.14));
   border-color: color-mix(in srgb, var(--calc-accent, #c9a55c) 45%, transparent);
 }
 
@@ -512,8 +518,9 @@ function eventSkillName(event: { displayName: string }): string {
 /* 招式名：放大加粗；角色名保持小字 */
 .owner-event-owner {
   font-weight: 400;
-  /* 角色名前缀：比招式名浅，但白天必须可读（58% 透明太淡，取 72%） */
-  color: color-mix(in srgb, var(--calc-text, #1c212a) 72%, transparent);
+  /* 角色名前缀：比招式名浅，但白天必须可读（58% 透明太淡，取 72%）。
+     兜底取暗色主文字色 —— 暗夜下 `--calc-text` 未定义，写浅色会变近黑而消失。 */
+  color: color-mix(in srgb, var(--calc-text, #e8eaed) 72%, transparent);
 }
 
 .owner-event-skill {
