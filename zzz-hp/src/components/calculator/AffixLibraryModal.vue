@@ -786,7 +786,7 @@ function submitDraft() {
             <div class="tab-strip" role="tablist">
               <button
                 type="button"
-                class="pane-tab"
+                class="chip"
                 :class="{ active: activeTab === 'manage' }"
                 role="tab"
                 :aria-selected="activeTab === 'manage'"
@@ -798,7 +798,7 @@ function submitDraft() {
                 v-for="group in groups"
                 :key="group.name"
                 type="button"
-                class="pane-tab"
+                class="chip"
                 :class="{ active: activeTab === group.name }"
                 role="tab"
                 :aria-selected="activeTab === group.name"
@@ -809,7 +809,7 @@ function submitDraft() {
               <button
                 v-if="hasUngrouped"
                 type="button"
-                class="pane-tab"
+                class="chip"
                 :class="{ active: activeTab === UNGROUPED_TAB }"
                 role="tab"
                 :aria-selected="activeTab === UNGROUPED_TAB"
@@ -835,7 +835,7 @@ function submitDraft() {
               </span>
               <button
                 type="button"
-                class="mini-btn group-select-all"
+                class="chip group-select-all"
                 :disabled="!visibleEntries.length"
                 :title="allVisibleEnabled ? '本页条目全部取消勾选' : '本页条目全部勾选'"
                 @click="toggleAllVisible"
@@ -848,7 +848,7 @@ function submitDraft() {
               <span class="group-head-hint">这些条目不属于任何组，彼此不约束</span>
               <button
                 type="button"
-                class="mini-btn group-select-all"
+                class="chip group-select-all"
                 :disabled="!visibleEntries.length"
                 :title="allVisibleEnabled ? '本页条目全部取消勾选' : '本页条目全部勾选'"
                 @click="toggleAllVisible"
@@ -1250,36 +1250,17 @@ function submitDraft() {
   color: #cfd6e0;
 }
 
-/* 右栏横向分页条（组管理 → 各组 → 未分组） */
+/* 右栏横向分页条（组管理 → 各组 → 未分组）：按钮本体用统一 chip，这里只管排布 */
 .tab-strip {
   display: flex;
-  gap: 0.25rem;
+  gap: 0.35rem;
   overflow-x: auto;
   padding-bottom: 0.2rem;
   flex-shrink: 0;
 }
 
-.pane-tab {
-  border: 1px solid #3a4049;
-  border-radius: 7px;
-  background: #10131a;
-  color: #9aa3b0;
-  font: inherit;
-  font-size: 0.78rem;
-  padding: 0.18rem 0.65rem;
-  cursor: pointer;
-  white-space: nowrap;
+.tab-strip .chip {
   flex-shrink: 0;
-}
-
-.pane-tab:hover {
-  color: #e4e8ef;
-}
-
-.pane-tab.active {
-  border-color: #c9a55c;
-  background: #2a2314;
-  color: #f0dfb4;
 }
 
 /* 高级编辑开关 */

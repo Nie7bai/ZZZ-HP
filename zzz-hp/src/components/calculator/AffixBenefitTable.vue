@@ -46,6 +46,25 @@ const emit = defineEmits<{
 const sortKey = ref<'percent' | 'name'>('percent')
 const showLibraryModal = ref(false)
 
+/**
+ * 分组筛选（**多选**）：只记「被关掉的分组」，空集 = 不筛选、全都显示。
+ *
+ * 为什么反着记：库里新增的分组要默认可见。记「选中的」就得在分组增减时同步补名字，
+ * 漏一处新组就凭空消失（而它明明有收益）；记「关掉的」则新组天然是开的。
+ */
+const hiddenGroups = ref<Set<string>>(new Set())
+
+/** 未分组条目在筛选条上的显示名（`entry.group` 为空串） */
+const UNGROUPED_GROUP_LABEL = '未分组'
+
+/**
+ * 「隐藏无收益」：只留收益率 **> 0** 的条目。
+ *
+ * 口径写死在这里：收益率为 0（改了等于没改）与为负（越改越低）都算「无收益」，
+ * 看收益表时这两类通常是噪声 —— 用户口径「现在所有词条显示太多了」。
+ */
+const hideNoBenefit = ref(false)
+
 const sortedRows = computed(() => {
   const rows = props.table?.rows ?? []
   if (sortKey.value === 'name') {
@@ -53,6 +72,70 @@ const sortedRows = computed(() => {
   }
   return rows
 })
+
+/** 条目 id → 组名（空串 = 未分组）；筛选条与分组统计都用它 */
+const groupByEntryId = computed(() => {
+  const map = new Map<string, string>()
+  for (const entry of props.library) map.set(entry.id, entry.group)
+  return map
+})
+
+/** 筛选条上的分组：按组表顺序，未分组排最后；只列**当前表里真有条目**的组 */
+const tableGroupNames = computed(() => {
+  const present = new Set<string>()
+  for (const row of sortedRows.value) present.add(groupByEntryId.value.get(row.entryId) ?? '')
+  const ordered = props.groups.map((group) => group.name).filter((name) => present.has(name))
+  // 组表里没有的组名（例如组被删掉、条目还在）也要给一条，否则那些条目筛不出来
+  for (const name of present) {
+    if (name && !ordered.includes(name)) ordered.push(name)
+  }
+  if (present.has('')) ordered.push('')
+  return ordered
+})
+
+/** 某分组在当前表里的条目数（显示在 chip 上，省得点开才看出来） */
+function countInGroup(name: string): number {
+  let count = 0
+  for (const row of sortedRows.value) {
+    if ((groupByEntryId.value.get(row.entryId) ?? '') === name) count += 1
+  }
+  return count
+}
+
+/** 筛选条上的显示名（未分组是空串，得翻译一下） */
+function groupChipLabel(name: string): string {
+  return name || UNGROUPED_GROUP_LABEL
+}
+
+function isGroupVisible(name: string): boolean {
+  return !hiddenGroups.value.has(name)
+}
+
+function toggleGroupFilter(name: string) {
+  const next = new Set(hiddenGroups.value)
+  if (next.has(name)) next.delete(name)
+  else next.add(name)
+  hiddenGroups.value = next
+}
+
+/** 表格里真正显示的行：分组筛选 + 「隐藏无收益」两道都过 */
+const visibleRows = computed(() =>
+  sortedRows.value.filter((row) => {
+    if (hideNoBenefit.value && !(row.percentDelta > 0)) return false
+    return !hiddenGroups.value.has(groupByEntryId.value.get(row.entryId) ?? '')
+  }),
+)
+
+/** 是否有筛选在生效（用来决定要不要显示「已被筛掉多少条」的提示） */
+const filteringActive = computed(
+  () => hiddenGroups.value.size > 0 || hideNoBenefit.value,
+)
+
+/** 把筛选一次清干净 */
+function resetFilters() {
+  hiddenGroups.value = new Set()
+  hideNoBenefit.value = false
+}
 
 // ---------- 列宽（可拖拽，Excel 式：每列独立像素宽） ----------
 /**
@@ -157,6 +240,38 @@ function onLibrarySwitched() {
       </button>
     </div>
 
+    <!--
+      筛选条：按组多选 + 隐藏无收益。
+      词条多了以后整表太长，分组是现成的分类维度（用户 2026-09-13 口径「做分类显示」）。
+    -->
+    <div v-if="tableGroupNames.length" class="toolbar filter-bar">
+      <span class="ctl-label">分组</span>
+      <button
+        v-for="name in tableGroupNames"
+        :key="name || '__ungrouped__'"
+        type="button"
+        class="chip"
+        :class="{ active: isGroupVisible(name) }"
+        :title="isGroupVisible(name) ? '点一下把这组从表里去掉' : '点一下把这组加回表里'"
+        @click="toggleGroupFilter(name)"
+      >
+        {{ groupChipLabel(name) }}（{{ countInGroup(name) }}）
+      </button>
+      <span class="ctl-spacer" />
+      <button
+        type="button"
+        class="chip"
+        :class="{ active: hideNoBenefit }"
+        title="只留收益率大于 0 的条目（收益率为 0 或为负的都算无收益）"
+        @click="hideNoBenefit = !hideNoBenefit"
+      >
+        隐藏无收益
+      </button>
+      <button v-if="filteringActive" type="button" class="chip" @click="resetFilters">
+        清除筛选
+      </button>
+    </div>
+
     <AffixLibraryModal
       :open="showLibraryModal"
       :library="library"
@@ -184,8 +299,15 @@ function onLibrarySwitched() {
       <p class="baseline-line">
         基线总伤：<strong>{{ Math.round(table.baselineDamage).toLocaleString('en-US') }}</strong>
         <span class="summary-hint">
-          （每条按 +{{ rollsPerStep }} 档单独评估，共 {{ table.evaluatedCount }} 条）
+          （每条按 +{{ rollsPerStep }} 档单独评估，共 {{ table.evaluatedCount }} 条<span
+            v-if="visibleRows.length !== table.rows.length"
+          >
+            ，当前显示 {{ visibleRows.length }} 条</span
+          >）
         </span>
+      </p>
+      <p v-if="!visibleRows.length" class="hint">
+        当前筛选下没有条目。点「清除筛选」看全部。
       </p>
       <div ref="benefitTableWrap" class="table-wrap benefit-table-wrap">
         <table class="benefit-table" :style="benefitTableStyle">
@@ -216,7 +338,7 @@ function onLibrarySwitched() {
           </thead>
           <tbody>
             <tr
-              v-for="row in sortedRows"
+              v-for="row in visibleRows"
               :key="row.entryId"
               class="benefit-row"
               @click="emit('select', row.entryId)"
@@ -270,26 +392,12 @@ function onLibrarySwitched() {
   color: var(--calc-muted, #6b7280);
 }
 
-.chip {
-  border: 1px solid var(--calc-border, #d5dae3);
-  border-radius: 999px;
-  background: var(--calc-surface-2, #f1efe9);
-  color: var(--calc-text, #1c212a);
-  font: inherit;
-  font-size: 0.78rem;
-  padding: 0.22rem 0.7rem;
-  cursor: pointer;
-}
-
-.chip:hover {
-  border-color: var(--calc-accent, #c9a55c);
-}
-
-.chip.active {
-  border-color: var(--calc-accent, #c9a55c);
-  background: var(--calc-accent-bg, #fff8eb);
-  color: #5c4818;
-  font-weight: 600;
+/*
+ * 筛选条：与上面排序条同一套控件，视觉上压低一行，避免两条工具栏抢主次。
+ * `.chip` 本体见 `assets/calculatorChip.css`（全站唯一来源），这里只写本组件特有的部分。
+ */
+.filter-bar {
+  margin-top: -0.25rem;
 }
 
 .ctl-spacer {

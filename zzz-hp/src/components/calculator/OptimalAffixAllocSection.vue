@@ -2348,7 +2348,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
       <button
         type="button"
         role="tab"
-        class="section-mode-tab"
+        class="chip"
         :class="{ active: sectionMode === 'allocation' }"
         :aria-selected="sectionMode === 'allocation'"
         @click="sectionMode = 'allocation'"
@@ -2358,7 +2358,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
       <button
         type="button"
         role="tab"
-        class="section-mode-tab"
+        class="chip"
         :class="{ active: sectionMode === 'sweep' }"
         :aria-selected="sectionMode === 'sweep'"
         @click="sectionMode = 'sweep'"
@@ -2471,7 +2471,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           <div class="detail-tabs alloc-subtabs">
             <button
               type="button"
-              class="detail-tab"
+              class="chip"
               :class="{ active: affixAllocDetailTab === 'curve' }"
               @click="affixAllocDetailTab = 'curve'"
             >
@@ -2501,7 +2501,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
       <button
         type="button"
         role="tab"
-        class="kind-mode-tab"
+        class="chip"
         :class="{ active: sweepDamageKind === 'direct' }"
         :aria-selected="sweepDamageKind === 'direct'"
         @click="setDamageKind('direct')"
@@ -2511,7 +2511,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
       <button
         type="button"
         role="tab"
-        class="kind-mode-tab"
+        class="chip"
         :class="{ active: sweepDamageKind === 'anomaly' }"
         :aria-selected="sweepDamageKind === 'anomaly'"
         @click="setDamageKind('anomaly')"
@@ -2796,7 +2796,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         <div class="detail-tabs">
           <button
             type="button"
-            class="detail-tab"
+            class="chip"
             :class="{ active: detailTab === 'diff' }"
             @click="detailTab = 'diff'"
           >
@@ -2804,7 +2804,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           </button>
           <button
             type="button"
-            class="detail-tab"
+            class="chip"
             :class="{ active: detailTab === 'curve' }"
             @click="detailTab = 'curve'"
           >
@@ -3446,23 +3446,11 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   border-bottom: 1px solid #2a2f37;
 }
 
-.section-mode-tab {
-  border: 1px solid #333841;
-  border-radius: 999px;
-  background: #1a1e25;
-  color: #d5dae3;
-  font: inherit;
-  font-size: 0.85rem;
-  font-weight: 700;
-  padding: 0.42rem 1.1rem;
-  cursor: pointer;
-}
-
-.section-mode-tab.active {
-  border-color: rgba(191, 255, 9, 0.45);
-  background: rgba(191, 255, 9, 0.12);
-  color: #bfff09;
-}
+/*
+ * 模式切换（最优分配 / 扫掠柱图）、伤害模式（直伤 / 异常）、子页签（词条差异 / 收益曲线）
+ * 都直接用统一 chip：见 `assets/calculatorChip.css`。
+ * 改造前它们各自写了一套（其中模式切换还是青柠色选中，且白天主题没有任何覆盖 —— 一直是黑的）。
+ */
 
 .alloc-input-row {
   display: flex;
@@ -3738,24 +3726,6 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   margin-right: 0.15rem;
 }
 
-.kind-mode-tab {
-  border: 1px solid #2d323a;
-  border-radius: 999px;
-  background: #10141a;
-  color: #c5ccd6;
-  font: inherit;
-  font-size: 0.8rem;
-  padding: 0.28rem 0.75rem;
-  cursor: pointer;
-}
-
-.kind-mode-tab.active {
-  border-color: rgba(201, 165, 92, 0.55);
-  background: rgba(201, 165, 92, 0.14);
-  color: #f0d7a2;
-  font-weight: 600;
-}
-
 .calc-commit-row {
   display: flex;
   flex-wrap: wrap;
@@ -3817,10 +3787,8 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   align-items: center;
 }
 
-.kind-tab,
-.detail-tab,
-.ghost-btn,
-.chip {
+/* 动作按钮（重新计算收益 / 计算敏感度 …）：保持既有观感，不并入 chip */
+.ghost-btn {
   border: 1px solid #333841;
   border-radius: 999px;
   background: #1a1e25;
@@ -3830,14 +3798,6 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   font-weight: 700;
   padding: 0.35rem 0.85rem;
   cursor: pointer;
-}
-
-.kind-tab.active,
-.detail-tab.active,
-.chip.active {
-  border-color: rgba(191, 255, 9, 0.45);
-  background: rgba(191, 255, 9, 0.12);
-  color: #bfff09;
 }
 
 .err {

@@ -2289,11 +2289,8 @@ const showcaseTitle = computed(() => {
         :key="option.mode"
         type="button"
         role="radio"
-        class="sf-panel-source-btn"
-        :class="{
-          active: (panelSourceMode ?? 'config') === option.mode,
-          disabled: !option.enabled,
-        }"
+        class="chip"
+        :class="{ active: (panelSourceMode ?? 'config') === option.mode }"
         :aria-checked="(panelSourceMode ?? 'config') === option.mode"
         :disabled="!option.enabled"
         :title="panelSourceTitle(option)"
@@ -3584,7 +3581,7 @@ const showcaseTitle = computed(() => {
   color: #f7e7c0;
 }
 
-/* 「伤害面板」三选项：与站点其他 chip 观感一致，禁用态明确不可点 */
+/* 「伤害面板」三选项：直接用统一 chip（见 assets/calculatorChip.css），这里只管布局与禁用态 */
 .sf-panel-source {
   display: flex;
   align-items: center;
@@ -3596,38 +3593,10 @@ const showcaseTitle = computed(() => {
   color: #9aa3b0;
   font-size: 0.82rem;
 }
-.sf-panel-source-btn {
-  appearance: none;
-  border: 1px solid #4a5364;
-  background: #1b2130;
-  color: #cbd3df;
-  font: inherit;
-  font-size: 0.8rem;
-  line-height: 1.2;
-  padding: 0.32rem 0.75rem;
-  border-radius: 999px;
-  cursor: pointer;
-  transition:
-    background 0.12s ease,
-    border-color 0.12s ease,
-    color 0.12s ease;
-}
-.sf-panel-source-btn:hover:not(.disabled) {
-  border-color: #6d7a91;
-  color: #eaf0f8;
-}
-.sf-panel-source-btn.active {
-  border-color: #c9a55c;
-  background: rgba(201, 165, 92, 0.18);
-  color: #f0d7a2;
-  font-weight: 600;
-}
-.sf-panel-source-btn.disabled {
-  border-color: #333a47;
-  background: #171c26;
-  color: #5c6675;
+/* 禁用态：划掉 + 压暗，明确「这个来源还没算过 / 已经过期」 */
+.sf-panel-source .chip:disabled {
   text-decoration: line-through;
-  cursor: not-allowed;
+  opacity: 0.5;
 }
 .sf-panel-source-notice {
   color: #d8a25c;
@@ -4153,24 +4122,7 @@ const showcaseTitle = computed(() => {
   flex-wrap: wrap;
   gap: 0.35rem;
 }
-.chip {
-  border: 1px solid #343a44;
-  border-radius: 999px;
-  background: #12161d;
-  color: #d5dae4;
-  padding: 0.22rem 0.6rem;
-  font-size: 0.74rem;
-  cursor: pointer;
-}
-.chip.active {
-  border-color: #c9a55c;
-  background: rgba(201, 165, 92, 0.14);
-  color: #f0d7a2;
-}
-.chip.highlight {
-  border-color: #4a90d9 !important;
-  border-style: dashed !important;
-}
+/* 招式流程的选择按钮一律用统一 chip：见 `assets/calculatorChip.css`（改造前这里自带一套更小的） */
 
 .mini-btn {
   border: 1px solid #3a4150;

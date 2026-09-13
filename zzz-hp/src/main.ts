@@ -1,5 +1,7 @@
 import './assets/main.css'
 import './assets/interknot.css'
+// 计算器统一的 chip（选择/切换按钮）样式：见文件头「全站唯一来源」
+import './assets/calculatorChip.css'
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'

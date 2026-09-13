@@ -1,0 +1,71 @@
+/**
+ * 计算器 · 统一「选择 / 切换」按钮（chip）—— 全站唯一来源。
+ *
+ * 规格照抄**导入弹窗**（`UnifiedPresetPicker`）那一套：药丸形、深底浅字，选中是金色。
+ * 为什么单开一个文件：这套样式原先在十来个组件里各写了一份，颜色 / 内边距 / 字号互相漂移
+ * （词条模式与柱图模式甚至用了青柠色选中，与导入弹窗的金色不是一套，用户实测反馈）。
+ *
+ * 用法：组件里**不要再写 `.chip` 本体**，直接用这里这份；确实要局部微调时加修饰类
+ * （如 `chip--compact`）。注意组件 scoped 里的 `.chip` 优先级更高 —— 迁移时那份要删掉，
+ * 留着就等于没统一。
+ *
+ * 白天主题用 `:where([data-theme='light'])` 包裹，**故意不提高优先级**：弹窗里已有的
+ * 容器级覆盖（如 `[data-theme='light'] .skill-flow-modal .chip`）仍然说了算。
+ */
+
+.chip {
+  border: 1px solid #343a44;
+  border-radius: 999px;
+  background: #12161d;
+  color: #d5dae4;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1;
+  padding: 0.35rem 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chip:hover:not(:disabled) {
+  border-color: #c9a55c;
+  color: #f0f2f6;
+}
+
+.chip.active {
+  border-color: #c9a55c;
+  background: rgba(201, 165, 92, 0.14);
+  color: #f0d7a2;
+}
+
+.chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/*
+ * 系统职业匹配提示（蓝虚线）：无论选没选中都要与 active 的视觉区分开，
+ * 所以这里用 !important 压过选中态。
+ */
+.chip.highlight {
+  border-color: #4a90d9 !important;
+  border-style: dashed !important;
+}
+
+/* 白天主题：与导入弹窗的浅色覆盖一致（`[data-theme='light'] .unified-modal .chip`） */
+:where([data-theme='light']) .chip {
+  border-color: #d5dae3;
+  background: #f5f7fa;
+  color: #344054;
+}
+
+:where([data-theme='light']) .chip:hover:not(:disabled) {
+  border-color: #c9a55c;
+  color: #1c212a;
+}
+
+:where([data-theme='light']) .chip.active {
+  border-color: #c9a55c;
+  background: #fff8eb;
+  color: #1c212a;
+}

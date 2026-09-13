@@ -432,7 +432,6 @@
 
 /* 鈥斺€?璁＄畻鏂瑰紡 / chip 鈥斺€?*/
 .calculator-page.theme-light .calc-mode-tab,
-.calculator-page.theme-light .chip,
 .calculator-page.theme-light .result-mode-btn,
 .calculator-page.theme-light .mindscape-tab,
 .calculator-page.theme-light .ocr-json-btn,
@@ -443,8 +442,30 @@
   color: var(--calc-text) !important;
 }
 
+/*
+ * chip 单独一份，且与导入弹窗（`assets/calculatorChip.css` 的浅色覆盖）逐值一致 ——
+ * 否则页面内的 chip 与弹窗里的 chip 各是一种浅灰，正是要统一掉的那种差异。
+ */
+.calculator-page.theme-light .chip {
+  border-color: #d5dae3 !important;
+  background: #f5f7fa !important;
+  background-color: #f5f7fa !important;
+  color: #344054 !important;
+}
+
+.calculator-page.theme-light .chip:hover:not(:disabled) {
+  border-color: #c9a55c !important;
+  color: #1c212a !important;
+}
+
+.calculator-page.theme-light .chip.active {
+  border-color: #c9a55c !important;
+  background: #fff8eb !important;
+  background-color: #fff8eb !important;
+  color: #1c212a !important;
+}
+
 .calculator-page.theme-light .calc-mode-tab:hover,
-.calculator-page.theme-light .chip:hover,
 .calculator-page.theme-light .ocr-json-btn:hover,
 .calculator-page.theme-light .image-picker-btn:hover {
   background: var(--calc-surface-3) !important;
@@ -474,7 +495,6 @@
 }
 
 .calculator-page.theme-light .calc-mode-tab.active,
-.calculator-page.theme-light .chip.active,
 .calculator-page.theme-light .result-mode-btn.active,
 .calculator-page.theme-light .mindscape-tab.active,
 .calculator-page.theme-light .slot-card.active,
@@ -943,21 +963,15 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear:hover 
   color: var(--calc-muted) !important;
 }
 
-.calculator-page.theme-light .opt-section .kind-tab,
-.calculator-page.theme-light .opt-section .kind-mode-tab,
-.calculator-page.theme-light .opt-section .detail-tab,
+/*
+ * 动作按钮（重新计算收益 / 计算敏感度 …）保持方角按钮；
+ * 原先这里的 `.kind-tab` / `.kind-mode-tab` / `.detail-tab` 三类已并入统一 chip（见
+ * `assets/calculatorChip.css`），组件里不再有这些类名，故一并删掉。
+ */
 .calculator-page.theme-light .opt-section .ghost-btn {
   border-color: var(--calc-border) !important;
   background: var(--calc-surface-2) !important;
   color: var(--calc-text) !important;
-}
-
-.calculator-page.theme-light .opt-section .kind-tab.active,
-.calculator-page.theme-light .opt-section .kind-mode-tab.active,
-.calculator-page.theme-light .opt-section .detail-tab.active {
-  border-color: var(--calc-accent) !important;
-  background: var(--calc-accent-bg) !important;
-  color: #5c4818 !important;
 }
 
 .calculator-page.theme-light .opt-section .detail {
@@ -3459,13 +3473,13 @@ body:has(.calculator-page.theme-light) .preset-preview li,
 [data-theme='light'] .skill-detail-panel .chip {
   border-color: #d5dae3 !important;
   background: #f5f7fa !important;
-  color: #1c212a !important;
+  color: #344054 !important;
 }
 [data-theme='light'] .skill-flow-modal .chip.active,
 [data-theme='light'] .skill-detail-panel .chip.active {
   border-color: #c9a55c !important;
   background: #fff8eb !important;
-  color: #8a6a1f !important;
+  color: #1c212a !important;
 }
 [data-theme='light'] .skill-flow-modal .chip-group + .chip-group {
   border-left-color: #d5dae3 !important;
@@ -3730,22 +3744,7 @@ body:has(.calculator-page.theme-light) .preset-preview li,
   color: #98a2b3 !important;
 }
 
-/* 分页页签：默认浅灰、选中仍是金色强调（与弹窗其余部分同一套色） */
-[data-theme='light'] .affix-library-modal .pane-tab {
-  border-color: #d5dae3 !important;
-  background: #ffffff !important;
-  color: #667085 !important;
-}
-
-[data-theme='light'] .affix-library-modal .pane-tab:hover {
-  color: #1c212a !important;
-}
-
-[data-theme='light'] .affix-library-modal .pane-tab.active {
-  border-color: #c9a55c !important;
-  background: #fff8eb !important;
-  color: #5c4818 !important;
-}
+/* 分页页签与组页按钮用的是统一 chip（assets/calculatorChip.css），这里不再单独覆盖 */
 
 [data-theme='light'] .affix-library-modal .group-head {
   color: #344054 !important;
