@@ -16,6 +16,8 @@
     "import:nanoka-skills:all:write": "node scripts/import-nanoka-skills.mjs --all --write",
     "delete:defense-season": "node scripts/delete-defense-season.mjs",
     "export:calculator-buffs": "node scripts/export-calculator-buffs.mjs",
+    "export:db-json": "node scripts/export-db-json.mjs",
+    "export:affix-preset": "node scripts/export-affix-preset.mjs",
     "sync:calculator-avatars": "node scripts/sync-calculator-public-avatars.mjs",
     "upsert:agent": "node scripts/upsert-agent.mjs",
     "export:guestbook": "node scripts/export-guestbook.mjs",
