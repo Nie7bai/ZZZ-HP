@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import type { AffixCounts } from '@/types/calculatorPanel'
-import { ensureAffixPresetLoaded } from '@/utils/affixPresetLoader'
+import { ensureAffixPresetLoaded, loadAffixPresetScheme } from '@/utils/affixPresetLoader'
 import {
   AFFIX_LIBRARY_SET_NAME_MAX,
   AFFIX_PANEL_DELTA_FIELD_LABELS,
@@ -12,15 +12,16 @@ import {
   affixPerRollUnit,
   affixTargetLabel,
   createAffixLibraryStateForOrigin,
+  createAffixLibraryStateFromPreset,
   createAffixLibrarySet,
+  defaultAffixPresetSchemeName,
   deleteAffixLibrarySet,
   exportAffixLibrarySet,
   importAffixLibrarySet,
   isUsingServerAffixPreset,
   loadAffixLibraryStore,
-  OFFICIAL_AFFIX_PRESET_NAME,
   panelTarget,
-  presetAffixEntriesBase,
+  presetAffixSchemesBase,
   renameAffixLibrarySet,
   resolveAffixLibrary,
   resolveAffixLibraryAll,
@@ -29,7 +30,7 @@ import {
   type AffixLibraryEntry,
   type AffixLibraryEntryTarget,
   type AffixLibraryGroup,
-  type AffixLibrarySetOrigin,
+  type AffixLibraryState,
   type AffixLibraryStore,
   type AffixPanelDeltaField,
 } from '@/utils/affixLibrary'
@@ -282,45 +283,85 @@ const newSetInputRef = ref<HTMLInputElement | null>(null)
 /**
  * 新建库的起点（用户 2026-09-12 口径：新建时给用户选；2026-09-13：**新建完毕就冻结**）。
  *
- * 默认选「预设词条方案」—— 多数人的用法；新建时把**官方那份**整份复制进本库，
- * 此后官方怎么改都与本库无关（用户口径「你不独立，怎么跟官方维护」）。
- * 界面上按用户给的顺序列（空配置在前），选中项一眼可见。
+ * 起点两类：**空配置** 或 **复制某一套官方预设方案**（用户 2026-09-13「要选到新方案」）。
+ * 「复制」时把选中那套方案**整份**搬进本库，此后官方怎么改都与本库无关
+ * （用户口径「你不独立，怎么跟官方维护」）。界面上空配置排前面。
  */
-const newSetOrigin = ref<AffixLibrarySetOrigin>('copy')
+const EMPTY_SET_SOURCE = '__empty__'
+
+/** 当前选中的起点：`EMPTY_SET_SOURCE` 或某个方案名 */
+const newSetSource = ref<string>(EMPTY_SET_SOURCE)
+
+/** 用户是否亲手点过起点（点过就不再被「快照到手」自动改成默认方案） */
+const newSetSourceTouched = ref(false)
 
 /** 正在取官方那份预设（新建「预设词条方案」时先取到再冻结，取的过程里按钮禁用） */
 const newSetBusy = ref(false)
 
-/** 预设条目数（写进选项说明里，免得「官方那 50 条」随预设变动而过时） */
-const presetEntryCount = computed(() => presetAffixEntriesBase().length)
+/** 服务端现有的方案（空数组 = 还没拿到快照） */
+const schemeOptions = computed(() => presetAffixSchemesBase())
+
+/** 默认方案名（新建面板的预选项） */
+const defaultSchemeName = computed(() => defaultAffixPresetSchemeName())
+
+/**
+ * 选中的方案没了（管理员删了方案）就退回默认方案 —— 否则确定时会对着一套不存在的方案发请求。
+ */
+watch(schemeOptions, (list) => {
+  if (!list.length) return
+  if (newSetSource.value === EMPTY_SET_SOURCE) return
+  if (!list.some((scheme) => scheme.name === newSetSource.value)) {
+    newSetSource.value = defaultSchemeName.value
+  }
+})
 
 function startNewSet() {
   newSetMode.value = true
   newSetName.value = ''
-  newSetOrigin.value = 'copy'
-  // 提前把官方那份拉起来：点「确定」时多半已在手，新建就是当场冻结，不用等
-  void ensureAffixPresetLoaded()
+  newSetSourceTouched.value = false
+  newSetSource.value = schemeOptions.value.length ? defaultSchemeName.value : EMPTY_SET_SOURCE
+  /**
+   * 提前把官方那份拉起来：点「确定」时多半已在手，新建就是当场冻结，不用等。
+   * 拉到手才知道有哪些方案 —— 用户没自己点过的话，选中默认方案。
+   */
+  void ensureAffixPresetLoaded().then(() => {
+    if (!newSetSourceTouched.value) newSetSource.value = defaultSchemeName.value
+  })
   void nextTick(() => newSetInputRef.value?.focus())
 }
 
 /**
- * 确定新建：**新建完毕就冻结** —— 选「预设词条方案」时先把官方那份取到，再当场整份复制进新库。
+ * 确定新建：**新建完毕就冻结** —— 先把选中的那套方案取到，再当场整份复制进新库。
  *
  * 为什么等取到才建：新建那一刻要冻的是**官方**那份；若官方还没取到就复制，冻进去的是
  * 代码兜底，与官方对不上且之后不再纠正（用户 2026-09-13「肯定有偏差的」）。
  * 取不到就**不建**，如实告诉用户（可以改用空配置）。
+ *
+ * 「默认方案」走已经在手的那份（`createAffixLibraryStateForOrigin('copy')`）；
+ * 其他方案现拉一份（`loadAffixPresetScheme`，不污染全局快照 —— 那份是计算页在用的）。
  */
 async function commitNewSet() {
   const name = newSetName.value.trim() || '新建词条库'
-  const origin = newSetOrigin.value
+  const source = newSetSource.value
+  let presetState: AffixLibraryState | null = null
 
-  if (origin === 'copy') {
+  if (source !== EMPTY_SET_SOURCE) {
     newSetBusy.value = true
     try {
-      await ensureAffixPresetLoaded()
-      if (!isUsingServerAffixPreset()) {
-        setMessage.value = '拿不到官方预设（服务器没响应），暂时没法复制一份；可以先用「空配置」'
-        return
+      if (source === defaultSchemeName.value) {
+        await ensureAffixPresetLoaded()
+        if (!isUsingServerAffixPreset()) {
+          setMessage.value = '拿不到官方预设（服务器没响应），暂时没法复制一份；可以先用「空配置」'
+          return
+        }
+      } else {
+        try {
+          const snapshot = await loadAffixPresetScheme(source)
+          presetState = createAffixLibraryStateFromPreset(snapshot.entries, snapshot.groups)
+        } catch {
+          setMessage.value = `拿不到方案「${source}」（服务器没响应），暂时没法复制；可以先用「空配置」`
+          return
+        }
       }
     } finally {
       newSetBusy.value = false
@@ -330,9 +371,17 @@ async function commitNewSet() {
   newSetMode.value = false
   newSetName.value = ''
   commitStoreChange((base) =>
-    createAffixLibrarySet(base, name, createAffixLibraryStateForOrigin(origin)),
+    createAffixLibrarySet(
+      base,
+      name,
+      presetState ??
+        createAffixLibraryStateForOrigin(source === EMPTY_SET_SOURCE ? 'empty' : 'copy'),
+    ),
   )
-  setMessage.value = `已新建「${name}」并切了过去`
+  setMessage.value =
+    source === EMPTY_SET_SOURCE
+      ? `已新建空配置库「${name}」并切了过去`
+      : `已新建「${name}」并切了过去（复制自「${source}」）`
 }
 
 function cancelNewSet() {
@@ -639,8 +688,8 @@ function submitDraft() {
 
             <!-- 常驻说明：界面上看不到「官方预设」那一套，它是所有库的底料，容易被误当成 bug -->
             <p class="set-list-hint">
-              官方预设在服务器上、由管理员维护，你改不到它。新建时可复制预设方案；新建后存于本机浏览器，后续由你维护，勾选
-              / 改名 / 每档 / 删除 / 导出 / 导入都只存本机
+              官方预设在服务器上、由管理员维护，你改不到它。新建时可复制其中一套预设方案；
+              新建后存于本机浏览器，后续由你维护，勾选 / 改名 / 每档 / 删除 / 导出 / 导入都只存本机
             </p>
 
             <div v-if="newSetMode" class="set-new-panel">
@@ -657,28 +706,45 @@ function submitDraft() {
 
               <p class="option-caption">从哪来：</p>
               <label class="origin-option">
-                <input v-model="newSetOrigin" type="radio" value="empty" />
+                <input
+                  v-model="newSetSource"
+                  type="radio"
+                  :value="EMPTY_SET_SOURCE"
+                  @change="newSetSourceTouched = true"
+                />
                 <span class="origin-body">
                   <strong>空配置</strong>
                   <span class="origin-desc">不加载官方预设，条目与分组都自己建</span>
                 </span>
               </label>
-              <label class="origin-option">
-                <input v-model="newSetOrigin" type="radio" value="copy" />
+
+              <!-- 官方预设有几套方案就列几项（用户 2026-09-13「要选到新方案」） -->
+              <label
+                v-for="scheme in schemeOptions"
+                :key="scheme.name"
+                class="origin-option"
+              >
+                <input
+                  v-model="newSetSource"
+                  type="radio"
+                  :value="scheme.name"
+                  @change="newSetSourceTouched = true"
+                />
                 <span class="origin-body">
-                  <strong>预设词条方案「{{ OFFICIAL_AFFIX_PRESET_NAME }}」</strong>
+                  <strong>
+                    预设词条方案「{{ scheme.name }}」
+                    <span v-if="scheme.isDefault" class="origin-badge">默认</span>
+                  </strong>
                   <span class="origin-desc">
-                    已加入常见的全部词条，共计{{ presetEntryCount }}条，可以按需勾选
+                    共{{ scheme.entryCount }}条；新建时整份复制进本库，之后官方怎么改都与你无关
                   </span>
                 </span>
               </label>
-              <!-- 预留位：用户 2026-09-12「暂时留空，因为现在就一个预设」 -->
-              <div class="origin-option origin-option--placeholder">
-                <span class="origin-body">
-                  <strong>其他预设方案</strong>
-                  <span class="origin-desc">目前只有这一套官方预设；将来管理员加了方案会出现在这里</span>
-                </span>
-              </div>
+
+              <!-- 快照还没到手：如实说没有方案可选，不假装有 -->
+              <p v-if="!schemeOptions.length" class="origin-desc origin-desc--hint">
+                还没拿到官方预设（服务器没响应），暂时看不到可复制的方案；可以先用「空配置」
+              </p>
 
               <div class="set-new-actions">
                 <button type="button" class="mini-btn ok" :disabled="newSetBusy" @click="commitNewSet">
@@ -1017,7 +1083,8 @@ function submitDraft() {
             </div>
 
             <p v-if="activeTab !== 'manage'" class="footnote">
-              同一字段有多条词条时，档数会合并计算，每档值取列表中靠后的那条。
+              同一字段有多条词条时，档数会<strong>相加</strong>（各条按自己的每档值分别折算后累加），
+              排列顺序不影响结果。
               <span v-if="simpleMode">（「高级编辑」打开后才能改结构）</span>
             </p>
 
@@ -1364,10 +1431,20 @@ function submitDraft() {
   color: #7d8694;
 }
 
-/* 预留位（还没有更多预设方案）：不可点，样式压暗，不跟真选项抢注意力 */
-.origin-option--placeholder {
-  opacity: 0.45;
-  cursor: default;
+/* 「还没拿到预设」这类提示：不跟真选项抢注意力，但要说清为什么没得选 */
+.origin-desc--hint {
+  margin: 0;
+  padding-top: 0.1rem;
+}
+
+/* 默认方案徽标：用户侧拿到的那一份就是它 */
+.origin-badge {
+  margin-left: 0.25rem;
+  padding: 0.02rem 0.3rem;
+  border-radius: 999px;
+  background: #e8d3a0;
+  color: #5c4818;
+  font-size: 0.64rem;
 }
 
 .set-new-actions {

@@ -1,5 +1,12 @@
 import { fetchAffixPreset } from '@/api/affixPreset'
-import { freezePendingAffixLibrarySets, setServerAffixPreset } from '@/utils/affixLibrary'
+import {
+  freezePendingAffixLibrarySets,
+  parseAffixPresetEntries,
+  parseAffixPresetGroups,
+  setServerAffixPreset,
+  type AffixLibraryEntry,
+  type AffixLibraryGroup,
+} from '@/utils/affixLibrary'
 
 /**
  * 拉取官方预设词条库（服务端唯一来源）。
@@ -45,4 +52,26 @@ export function ensureAffixPresetLoaded(): Promise<number> {
 export function reloadAffixPreset(): Promise<number> {
   inflight = null
   return ensureAffixPresetLoaded()
+}
+
+/**
+ * 拉**指定的那套方案**并解析成条目 / 分组（新建库时「从哪个方案复制」走这里）。
+ *
+ * 为什么单独一条路：全局快照（`setServerAffixPreset`）装的是**默认方案**，计算页常驻用它。
+ * 用户临时想看别的方案不该把全局那份顶掉 —— 顶掉之后计算页会瞬间换成另一套词条。
+ * 所以这里只把内容交给调用方，不碰全局状态。
+ *
+ * 失败就抛错：调用方（新建库）据此**不建库**并如实提示，而不是拿半份内容凑一个库出来。
+ */
+export async function loadAffixPresetScheme(scheme: string): Promise<{
+  entries: AffixLibraryEntry[]
+  groups: AffixLibraryGroup[]
+  skipped: number
+}> {
+  const snapshot = await fetchAffixPreset(scheme)
+  const { entries, skipped } = parseAffixPresetEntries(
+    Array.isArray(snapshot.entries) ? snapshot.entries : [],
+  )
+  const groups = parseAffixPresetGroups(Array.isArray(snapshot.groups) ? snapshot.groups : [])
+  return { entries, groups, skipped }
 }

@@ -478,31 +478,37 @@ export const AFFIX_PRESET_DEFAULT_GROUP = '副词条'
  *   但**代码兜底留到入库验证通过为止**（用户原话「丢掉等会再说」）——
  *   删掉兜底只需把下面两个 `…Base()` 改成只读服务端快照。
  */
-const serverAffixPreset = ref<{ entries: AffixLibraryEntry[]; groups: AffixLibraryGroup[] } | null>(
-  null,
-)
+/** 方案清单里的一项（服务端 `affix_preset_scheme` 的形状，管理页与用户侧新建库共用） */
+export interface AffixPresetSchemeInfo {
+  name: string
+  /** 默认方案：用户侧不带参数读到的就是它 */
+  isDefault: boolean
+  sortOrder: number
+  entryCount: number
+}
+
+const serverAffixPreset = ref<{
+  entries: AffixLibraryEntry[]
+  groups: AffixLibraryGroup[]
+  schemes: AffixPresetSchemeInfo[]
+} | null>(null)
 
 /** 服务端条目里被跳过的条数（target 不是本版本认识的字段）—— 供界面/测试读出 */
 export const skippedServerPresetEntries = ref(0)
 
 /**
- * 存入服务端拉到的官方预设。
+ * 校验并解析一份预设条目（纯函数：不碰全局快照）。
  *
- * **逐条校验 target**：认不出的字段（例如后端上了更新版本、前端还是旧的）
- * 直接跳过并计数 —— 脏数据不能进计算，也不能静默变 0。
- * 返回跳过的条数，调用方可据此提示。
+ * 抽出来是为了让**非默认方案**也能走同一套校验 —— `setServerAffixPreset` 写全局快照
+ * （「默认」那份，计算页常驻用），而新建库时选别的方案只是临时拉一份，
+ * 不该把全局那份顶掉（顶掉之后计算页会瞬间变成另一套词条）。
+ *
+ * 认不出的 target 直接跳过并计数：脏数据不能进计算，也不能静默变 0。
  */
-export function setServerAffixPreset(snapshot: {
-  entries?: unknown[]
-  groups?: unknown[]
-} | null): number {
-  if (!snapshot) {
-    serverAffixPreset.value = null
-    skippedServerPresetEntries.value = 0
-    return 0
-  }
-  const rawEntries = Array.isArray(snapshot.entries) ? snapshot.entries : []
-  const rawGroups = Array.isArray(snapshot.groups) ? snapshot.groups : []
+export function parseAffixPresetEntries(rawEntries: unknown[]): {
+  entries: AffixLibraryEntry[]
+  skipped: number
+} {
   let skipped = 0
   const entries: AffixLibraryEntry[] = []
   for (const raw of rawEntries) {
@@ -526,16 +532,63 @@ export function setServerAffixPreset(snapshot: {
       enabledByDefault: Boolean(item.enabledByDefault),
     })
   }
+  return { entries, skipped }
+}
+
+/** 校验并解析一份预设分组（纯函数，理由同上） */
+export function parseAffixPresetGroups(rawGroups: unknown[]): AffixLibraryGroup[] {
   const groups: AffixLibraryGroup[] = []
   for (const raw of rawGroups) {
     const item = raw as Partial<AffixLibraryGroup>
     if (typeof item?.name !== 'string' || !item.name) continue
     groups.push({ name: item.name, cap: Number(item.cap) || 0 })
   }
+  return groups
+}
+
+/**
+ * 存入服务端拉到的官方预设。
+ *
+ * **逐条校验 target**（见 `parseAffixPresetEntries`）：认不出的字段直接跳过并计数。
+ * 返回跳过的条数，调用方可据此提示。
+ */
+export function setServerAffixPreset(snapshot: {
+  entries?: unknown[]
+  groups?: unknown[]
+  schemes?: unknown[]
+} | null): number {
+  if (!snapshot) {
+    serverAffixPreset.value = null
+    skippedServerPresetEntries.value = 0
+    return 0
+  }
+  const rawEntries = Array.isArray(snapshot.entries) ? snapshot.entries : []
+  const rawGroups = Array.isArray(snapshot.groups) ? snapshot.groups : []
+  const { entries, skipped } = parseAffixPresetEntries(rawEntries)
+  const groups = parseAffixPresetGroups(rawGroups)
   skippedServerPresetEntries.value = skipped
   // 条目为空（服务端库是空的/字段全不认识）时保持 null，让调用方回落构造器
-  serverAffixPreset.value = entries.length ? { entries, groups } : null
+  serverAffixPreset.value = entries.length
+    ? { entries, groups, schemes: parseAffixPresetSchemes(snapshot.schemes) }
+    : null
   return skipped
+}
+
+/** 校验并解析方案清单（缺省 = 只有默认方案一项，保持老行为不缺东西） */
+export function parseAffixPresetSchemes(raw?: unknown): AffixPresetSchemeInfo[] {
+  if (!Array.isArray(raw)) return []
+  const out: AffixPresetSchemeInfo[] = []
+  for (const item of raw) {
+    const scheme = item as Partial<AffixPresetSchemeInfo>
+    if (typeof scheme?.name !== 'string' || !scheme.name) continue
+    out.push({
+      name: scheme.name,
+      isDefault: Boolean(scheme.isDefault),
+      sortOrder: Number(scheme.sortOrder) || 0,
+      entryCount: Number(scheme.entryCount) || 0,
+    })
+  }
+  return out
 }
 
 export function clearServerAffixPreset(): void {
@@ -564,6 +617,44 @@ export function presetAffixGroupsBase(): AffixLibraryGroup[] {
   return fromServer && fromServer.length
     ? fromServer.map((group) => ({ ...group }))
     : AFFIX_PRESET_GROUPS.map((group) => ({ ...group }))
+}
+
+/**
+ * 服务端现有哪些方案（新建库时让用户选「从哪来」用）。
+ *
+ * 没拿到快照时返回空数组 —— 界面据此只显示「空配置」并说明原因，
+ * 不假装有方案可选（用户口径：拿不到就不建，别把代码兜底冻成「官方」）。
+ */
+export function presetAffixSchemesBase(): AffixPresetSchemeInfo[] {
+  return (serverAffixPreset.value?.schemes ?? []).map((scheme) => ({ ...scheme }))
+}
+
+/** 默认方案的展示名（服务端 `is_default` 那套；也是不带参数读到的方案） */
+export function defaultAffixPresetSchemeName(): string {
+  const list = presetAffixSchemesBase()
+  return list.find((scheme) => scheme.isDefault)?.name ?? OFFICIAL_AFFIX_PRESET_NAME
+}
+
+/**
+ * 用**指定的一份**预设内容建一套独立库（新建时「复制某个方案」走这里）。
+ *
+ * 与 `createDefaultAffixLibraryState('copy')` 的区别：那份固定复制**默认方案**且要求
+ * 全局快照已在手；这份拿的是调用方刚拉到的内容，可以是任何一个方案。
+ * 冻结语义完全一致：条目整份搬进本库，此后官方怎么改都与它无关。
+ */
+export function createAffixLibraryStateFromPreset(
+  entries: AffixLibraryEntry[],
+  groups: AffixLibraryGroup[],
+): AffixLibraryState {
+  return {
+    origin: 'copy',
+    customEntries: entries.map((entry) => ({ ...entry })),
+    enabledOverride: {},
+    overrides: {},
+    removedEntryIds: [],
+    groups: groups.map((group) => ({ ...group })),
+    removedGroupNames: [],
+  }
 }
 
 export interface AffixLibraryState {

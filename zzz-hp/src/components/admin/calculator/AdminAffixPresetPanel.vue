@@ -1069,12 +1069,6 @@ onMounted(() => {
 
       <!-- 条目页：与用户侧同一张表，多出 ID / 每档占用 / 排序三列 -->
       <template v-if="activeTab !== 'manage'">
-        <!-- 用户 2026-09-13「上限 / 每档占用 分别是什么意思」：把这两列的含义写在表上方 -->
-        <p class="column-legend">
-          <strong>上限</strong>＝这条最多能配几档（0 = 不限）；
-          <strong>每档占用</strong>＝配 1 档要吃几个「总词条数」预算 —— 用户侧每条固定 1，
-          填 2 就是这条 1 档顶别人 2 档；<strong>每档</strong>＝配 1 档加多少。
-        </p>
         <div class="table-scroll">
           <table class="preset-table preset-table--entries">
             <colgroup>
@@ -1091,19 +1085,33 @@ onMounted(() => {
             </colgroup>
             <thead>
               <tr>
-                <th title="勾上 = 新用户拿到这份预设时，这条本来就参与计算">默认启用</th>
-                <th title="条目 ID：条目的对外身份（导出、复制方案、之后新建的库都按它走）">ID</th>
-                <th title="给用户看的名字，自由文本">名称</th>
-                <th title="这条实际加哪个属性；stat: 走词条计数桶、panel: 走局外面板增量">目标</th>
+                <th class="th-admin-only" title="勾上 = 新用户拿到这份预设时，这条本来就参与计算。用户侧只能在自己那份里勾选，改不到这里的默认值">
+                  默认启用
+                </th>
+                <th
+                  class="th-admin-only"
+                  title="条目 ID：条目的对外身份（导出、复制方案、之后新建的库都按它走）。用户侧看不见也改不了"
+                >
+                  ID
+                </th>
+                <th title="给用户看的名字，自由文本；用户侧可改自己那份的副本">名称</th>
+                <th title="这条实际加哪个属性；stat: 走词条计数桶、panel: 走局外面板增量。用户侧只读（改目标＝删了重建）">
+                  目标
+                </th>
                 <th title="配 1 档加多少（数值与该属性的单位一致）">每档</th>
                 <th title="这条最多能配几档；0 = 不设上限（求解器还受组额度与总预算约束）">
                   上限
                 </th>
-                <th title="配 1 档要吃掉几个「总词条数」预算：填 2 就是这条 1 档顶别人 2 档（用户侧固定 1）">
+                <th
+                  class="th-admin-only"
+                  title="配 1 档要吃掉几个「总词条数」预算：填 2 就是这条 1 档顶别人 2 档。用户侧条目固定为 1，改不了"
+                >
                   每档占用
                 </th>
                 <th title="同一组共享一个档数额度；组额度 0 = 组内不互相约束">分组</th>
-                <th title="展示顺序，小的在前（保存后列表按新顺序排列）">排序</th>
+                <th class="th-admin-only" title="展示顺序，小的在前（保存后按新顺序重排）。用户侧没有这个概念">
+                  排序
+                </th>
                 <th></th>
               </tr>
             </thead>
@@ -1356,6 +1364,68 @@ onMounted(() => {
             写错了下面会标红 —— 认不出的字段名计算页会跳过它。
           </p>
         </div>
+
+        <!--
+          列说明（用户 2026-09-13「这种说明统一移到下面」）：原来只有「上限 / 每档占用」两行、
+          还挂在表格上方；现在统一放表格下面，并把每列的含义与排序规则都写全。
+        -->
+        <section class="column-legend">
+          <h4>各列是什么意思</h4>
+          <dl>
+            <dt class="legend-admin-only">默认启用</dt>
+            <dd>
+              勾上＝新用户拿到这份预设时，这条本来就在参与计算。用户侧只在自己那份副本里勾选，改不到这里的默认值。
+            </dd>
+
+            <dt class="legend-admin-only">ID</dt>
+            <dd>
+              条目的对外身份：导出文件、复制方案、之后新建的用户库都按它走。发布后别改（改要按保存时的确认走）。
+              命名规范见上面「新增词条」那段。
+            </dd>
+
+            <dt>名称</dt>
+            <dd>给用户看的名字，自由文本；用户可改自己那份的副本。</dd>
+
+            <dt>目标</dt>
+            <dd>
+              这条<strong>实际</strong>加哪个属性（名称只是文本，可能对不上）。<code>stat:</code>
+              走词条计数桶、<code>panel:</code> 走局外面板增量；认不出的字段名计算页会跳过它
+              （会标红提醒）。
+            </dd>
+
+            <dt>每档</dt>
+            <dd>配 1 档加多少，单位随目标字段（百分比字段显示 <code>%</code>）。</dd>
+
+            <dt>上限</dt>
+            <dd>
+              这条最多能配几档；<strong>0 = 不设上限</strong>。求解器实际取值是三者取最小：
+              自己的上限 − 已用、组额度 − 组内已用、总词条数预算还剩多少。
+            </dd>
+
+            <dt class="legend-admin-only">每档占用</dt>
+            <dd>
+              配 1 档要吃掉几个「总词条数」预算：填 2 就是这条 1 档顶别人 2 档。
+              用户侧条目固定是 1，改不了；只有官方预设能配成别的值。
+            </dd>
+
+            <dt>分组</dt>
+            <dd>
+              同一组共享一个档数额度（额度在「组管理」页维护）。组额度 0 = 组内不互相约束，只是归类。
+            </dd>
+
+            <dt class="legend-admin-only">排序</dt>
+            <dd>
+              列表与页签的先后，<strong>小的在前</strong>。同值时条目按 ID、分组按组名的字母序兜底。
+              <br />
+              规则细节：① 服务端按它取数，所以<strong>保存之后</strong>列表才重排；
+              ② 它<strong>不影响数值</strong> —— 同目标的条目是<strong>相加</strong>的，
+              不存在「取某一条」这回事，顺序只决定谁先出现在列表里。
+            </dd>
+          </dl>
+          <p class="legend-note">
+            <span class="legend-swatch" />红字列＝用户侧只能读、不能改，只在管理侧维护。
+          </p>
+        </section>
       </template>
 
       <!-- 组管理页：建 / 改名 / 改额度 / 改排序 / 删（额度只在这一处维护） -->
@@ -1524,15 +1594,77 @@ onMounted(() => {
 /* 列义说明：给「上限 / 每档占用」这类容易被误读的列配一句 */
 .column-legend {
   margin: 0;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-background-soft);
   font-size: 0.76rem;
   line-height: 1.55;
   color: var(--color-text);
-  opacity: 0.78;
 }
 
-.column-legend strong {
+.column-legend h4 {
+  margin: 0 0 0.45rem;
+  font-size: 0.84rem;
   color: var(--color-heading);
+}
+
+.column-legend dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.3rem 0.7rem;
+  margin: 0;
+}
+
+.column-legend dt {
   font-weight: 600;
+  color: var(--color-heading);
+  white-space: nowrap;
+}
+
+.column-legend dd {
+  margin: 0;
+}
+
+.column-legend code {
+  padding: 0 0.25rem;
+  border-radius: 4px;
+  background: var(--color-background-mute);
+  font-family: var(--zzz-font-mono, monospace);
+  font-size: 0.72rem;
+}
+
+/*
+ * 红字＝用户侧只能读的列（表头也是这个色）。
+ * 选择器带上 `.preset-table` / `.column-legend`：不然会被 `.preset-table th { color: … }`
+ * 与 `.column-legend dt { color: … }` 按优先级压掉（实测：只写类名时颜色不生效）。
+ */
+.preset-table th.th-admin-only,
+.column-legend dt.legend-admin-only {
+  color: #e85d4c;
+}
+
+.legend-note {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.55rem 0 0;
+  font-size: 0.74rem;
+  opacity: 0.85;
+}
+
+.legend-swatch {
+  flex: 0 0 0.6rem;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 2px;
+  background: #e85d4c;
+}
+
+@media (max-width: 720px) {
+  .column-legend dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* ---------- 方案 ---------- */
