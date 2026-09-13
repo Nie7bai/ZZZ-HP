@@ -175,6 +175,11 @@ export function useDamageProcessEvents(source: DamageProcessSource) {
   })
 
   function selectEvent(eventId: string) {
+    // 空字符串 = 取消选中（再次点击已选中事件时收起详情）
+    if (!eventId) {
+      selectedEventId.value = null
+      return
+    }
     const row = eventRows.value.find((item) => item.eventId === eventId)
     if (!row?.detail) return
     source.onSelectEvent?.(eventId)

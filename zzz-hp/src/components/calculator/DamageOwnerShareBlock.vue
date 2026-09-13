@@ -80,6 +80,11 @@ function onOwnerKeydown(event: KeyboardEvent, agentId: string) {
 }
 
 function onEventClick(eventId: string) {
+  // 再次点击已选中事件：收起详情（空字符串 = 取消选中）
+  if (props.selectedEventId === eventId) {
+    emit('select-event', '')
+    return
+  }
   emit('select-event', eventId)
 }
 
