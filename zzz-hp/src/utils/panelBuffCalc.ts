@@ -1155,8 +1155,8 @@ export function resolvePackModsDirect(
 }
 
 /**
- * 角色影画：BuffEffect → EffectInstance → 往返 BuffEffect → 同一套 resolveEffectsToMods。
- * 往返不读 legacyBuffEffect。
+ * Buff pack 执行：BuffEffect → EffectInstance → 往返 BuffEffect → 同一套 resolveEffectsToMods。
+ * 往返不读 legacyBuffEffect。影画 / 音擎 / 驱动盘 / 邦布 / 场地共用。
  */
 export function resolvePackModsViaEffectSpec(
   effects: BuffEffect[],
@@ -1234,7 +1234,7 @@ export function collectSlotDriveDiscMods(
       ctx: defaultSkillContext('direct'),
     })
   }
-  return resolvePackMods(effects, isMain, ctx)
+  return resolvePackModsViaEffectSpec(effects, isMain, ctx)
 }
 
 export function collectTeamDriveDiscMods(
@@ -1798,21 +1798,15 @@ function resolvePackEffectMods(
   const skillCtx = ctx.skillContext ?? defaultSkillContext('direct')
   if (pack.kind === 'bangboo') {
     if (!effects.length) return createEmptyBuffStatModifiers()
-    return resolveEffectsToMods(effects, {
-      ctx: skillCtx,
-      stacksByEffectId: ctx.buffSelection?.stacksByEffectId,
-      convertInputs: ctx.buffSelection?.convertInputs,
-      attrValues: ctx.attrValues,
-      panelSourceValues:
-        ctx.panelSourceValuesBySlot?.get(ctx.mainSlotIndex) ?? ctx.panelSourceValues,
+    return resolvePackModsViaEffectSpec(effects, true, {
+      ...ctx,
+      skillContext: skillCtx,
       skipConvert,
-      selection: ctx.buffSelection,
-      resolveTeamProfessionCount: resolveTeamProfessionCountOption(ctx),
-    })
+    }, ctx.mainSlotIndex)
   }
   if (!effects.length) return createEmptyBuffStatModifiers()
   const isMain = pack.kind !== 'slot' || pack.slotIndex === ctx.mainSlotIndex
-  return resolvePackMods(
+  return resolvePackModsViaEffectSpec(
     effects,
     isMain,
     { ...ctx, skillContext: skillCtx, skipConvert },
@@ -1987,7 +1981,7 @@ function collectPanelBuffModSourcesUncached(ctx: PanelCalcContext): BuffModSourc
             const effects = entry.effects
               .filter(matchesTarget)
               .map((effect) => cloneEffectInstance(effect, sourceKey, entry.blockId))
-            const wengineMods = resolvePackMods(effects, isMain, {
+            const wengineMods = resolvePackModsViaEffectSpec(effects, isMain, {
               ...ctx,
               skillContext: skillCtx,
             }, index)
@@ -2030,7 +2024,7 @@ function collectPanelBuffModSourcesUncached(ctx: PanelCalcContext): BuffModSourc
         const effects = rawEffects
           .filter(matchesTarget)
           .map((effect) => cloneEffectInstance(effect, key, blockId))
-        const mods = resolvePackMods(effects, isMain, {
+        const mods = resolvePackModsViaEffectSpec(effects, isMain, {
           ...ctx,
           skillContext: skillCtx,
         }, index)
@@ -2109,17 +2103,10 @@ function collectPanelBuffModSourcesUncached(ctx: PanelCalcContext): BuffModSourc
     const effects = [...fixedEffects, ...refineEffects].map((effect) =>
       cloneEffectInstance(effect, 'bangboo', 'bangboo'),
     )
-    const bangbooMods = resolveEffectsToMods(effects, {
-      ctx: skillCtx,
-      stacksByEffectId: ctx.buffSelection?.stacksByEffectId,
-      convertInputs: ctx.buffSelection?.convertInputs,
-      attrValues: ctx.attrValues,
-      panelSourceValues:
-        ctx.panelSourceValuesBySlot?.get(ctx.mainSlotIndex) ?? ctx.panelSourceValues,
-      skipConvert: ctx.skipConvert,
-      selection: ctx.buffSelection,
-      resolveTeamProfessionCount: resolveTeamProfessionCountOption(ctx),
-    })
+    const bangbooMods = resolvePackModsViaEffectSpec(effects, true, {
+      ...ctx,
+      skillContext: skillCtx,
+    }, ctx.mainSlotIndex)
     const refineBlockName =
       ctx.bangboo.refinementEffectBlocks?.[refineIndex]?.[0]?.name?.trim() ||
       `精${ctx.bangbooRefine}`
@@ -2147,7 +2134,7 @@ function collectPanelBuffModSourcesUncached(ctx: PanelCalcContext): BuffModSourc
         ...cloneEffectInstance(effect, env.sourceKey, entry.blockId),
       }))
       if (!effects.length) continue
-      const mods = resolvePackMods(effects, true, { ...ctx, skillContext: skillCtx })
+      const mods = resolvePackModsViaEffectSpec(effects, true, { ...ctx, skillContext: skillCtx })
       const kindLabel = environmentBuffKindLabel(env.kind)
       const bossLabel = isBossFieldEnvironmentKind(env.kind)
         ? env.bossName || env.name
