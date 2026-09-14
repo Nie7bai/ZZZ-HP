@@ -2,6 +2,7 @@ import type { PanelStats } from '@/types/calculatorPanel'
 import type { AgentPanelSources } from '@/types/damageCalcHistory'
 import type { BaseDamageSource } from '@/types/calculator'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
+import type { ExtraBuffGain } from '@/utils/extraBuffCalc'
 
 /**
  * 招式流程「用哪份面板」的三态。
@@ -12,6 +13,8 @@ import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
  *
  * 三个选项的差别全在「叠不叠、叠哪一组」，除此之外没有第二套算法
  * （见 `dev-docs/affix-calc-manual.md` §4；实施见提交「计算链路统一·步骤④」）。
+ *
+ * `gain:` 条目不进局外面板，随选项带 `extraGains`；流程重算必须并入。
  */
 export type SkillFlowPanelSourceMode = 'config' | 'allocation' | 'sweep'
 
@@ -31,6 +34,11 @@ export interface SkillFlowPanelOption {
   signature: string
   /** 算出这份面板时用的基础伤害来源（展示/排查用；它已含在页级签名里） */
   baseDamageSource: BaseDamageSource
+  /**
+   * 该次分配的 `gain:` 条目（局内字段）。不进 `mainExternal`。
+   * 选 ②③ 时流程重算必须并入；页级额外 Buff 仍走 `evalCtx.extraGains`。
+   */
+  extraGains?: ExtraBuffGain[]
 }
 
 /**
@@ -149,6 +157,8 @@ export interface ResolvedSkillFlowPanelSource {
   active: boolean
   /** 失效原因（给界面提示用） */
   reason: string | null
+  /** 选 ②③ 时该次分配的 `gain:`；① 或回落为 null */
+  extraGains?: ExtraBuffGain[] | null
 }
 
 /**
@@ -163,16 +173,31 @@ export function resolveSkillFlowPanelSource(input: {
   currentSignature: string
 }): ResolvedSkillFlowPanelSource {
   if (input.mode === 'config') {
-    return { mainExternal: null, active: true, reason: null }
+    return { mainExternal: null, active: true, reason: null, extraGains: null }
   }
   const option = input.options[input.mode] ?? null
   if (!option) {
-    return { mainExternal: null, active: false, reason: '尚未计算，先到「词条配比分析」里算一次' }
+    return {
+      mainExternal: null,
+      active: false,
+      reason: '尚未计算，先到「词条配比分析」里算一次',
+      extraGains: null,
+    }
   }
   if (option.signature !== input.currentSignature) {
-    return { mainExternal: null, active: false, reason: '配置已改动，请重新计算词条分析' }
+    return {
+      mainExternal: null,
+      active: false,
+      reason: '配置已改动，请重新计算词条分析',
+      extraGains: null,
+    }
   }
-  return { mainExternal: option.mainExternal, active: true, reason: null }
+  return {
+    mainExternal: option.mainExternal,
+    active: true,
+    reason: null,
+    extraGains: option.extraGains ?? [],
+  }
 }
 
 /** 词条数的可读摘要（给选项②③的 tooltip 用；词条键到中文名的映射由调用方给） */

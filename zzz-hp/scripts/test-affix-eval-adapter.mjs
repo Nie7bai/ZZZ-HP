@@ -2,7 +2,7 @@
  * 阶段 5：词条库评估输入走适配器分桶（counts / panelDeltas / extraGains）。
  * 运行：npx vite-node scripts/test-affix-eval-adapter.mjs
  */
-import { createEmptyAffixCounts, createDefaultAffixDriveDiscMainStats } from '../src/types/calculatorPanel.ts'
+import { createEmptyAffixCounts, createDefaultAffixDriveDiscMainStats, createEmptyExternalPanel } from '../src/types/calculatorPanel.ts'
 import { createEmptyAgentBasePanel } from '../src/utils/calculatorUi.ts'
 import {
   createDefaultAffixLibrary,
@@ -15,6 +15,8 @@ import {
   buildOptimalEvalContext,
   clearAffixEvalCache,
   evaluateAffixCounts,
+  evaluateOptimalEventDetail,
+  withAffixLibraryExtraGains,
 } from '../src/utils/optimalAffixAlloc.ts'
 import { affixEntry } from './_effectPipelineHarness.mjs'
 
@@ -258,6 +260,87 @@ console.log('\n[6] extraGains 进每评估键，不串缓存')
   check(
     '再评估有 extraGains 仍命中自己的缓存而不是空增益',
     Math.abs(withGainAgain.grandTotal - withGain.grandTotal) < 1e-6,
+  )
+}
+
+console.log('\n[7] 流程明细必须并入 gain: 局内防御，不能只叠局外面板')
+{
+  const hit = {
+    id: 'h0',
+    skill: {
+      id: 's0',
+      name: '锐化',
+      damageType: 'direct',
+      element: '电',
+      category: 'basic',
+      subcategoryId: null,
+      mult: 300,
+    },
+    ownerAgentId: 'a',
+    anomalyPowerAgentId: null,
+    triggerAgentId: null,
+    count: 1,
+    staggerPhase: 'stagger',
+    critMode: 'expected',
+    damageKind: 'direct',
+    anomalySubKind: null,
+    coords: [{ category: 'basic', subcategoryId: null }],
+    isFollowUp: false,
+    multOverrides: { directDmgMult: 300 },
+    panelMods: null,
+  }
+  const panel = { ...createEmptyExternalPanel(), def: 2000, atk: 1000, hp: 9000, critRate: 50, critDmg: 80 }
+  const ctx = makeCtx({
+    isFengYu: true,
+    baseDamageSource: 'def',
+    hits: [hit],
+    activeSlotPanels: { a: panel },
+    agents: [
+      {
+        id: 'a',
+        name: '测试',
+        element: '电',
+        profession: '锋御',
+        basePanel: {
+          ...createEmptyAgentBasePanel(),
+          hp: 9000,
+          atk: 900,
+          def: 700,
+          critRate: 5,
+          critDmg: 50,
+          anomalyControl: 100,
+          energyRegen: 120,
+          directDmgMult: 100,
+          anomalyMult: 125,
+        },
+      },
+    ],
+  })
+  const entry = affixEntry('in-def', 'gain:inCombatDefPercent', 30)
+  const input = entryRollsToEvalInput([entry], { 'in-def': 1 })
+  clearAffixEvalCache()
+  const evaled = evaluateAffixCounts(ctx, zeros, input.deltas, input.valuePerCount, input.extraGains)
+  const flowBare = evaluateOptimalEventDetail(ctx, evaled.external, hit)
+  const flowMerged = evaluateOptimalEventDetail(
+    withAffixLibraryExtraGains(ctx, input.extraGains),
+    evaled.external,
+    hit,
+  )
+  check('收益评估局内防御高于局外', evaled.finalPanel.def > evaled.external.def, `${evaled.external.def} → ${evaled.finalPanel.def}`)
+  check(
+    '未并 extraGains 的流程明细吃不到局内防御',
+    flowBare != null && Math.abs(flowBare.finalPanel.def - evaled.external.def) < 1e-6,
+    `${flowBare?.finalPanel.def} vs 局外 ${evaled.external.def}`,
+  )
+  check(
+    '并入后流程明细与评估同局内防御',
+    flowMerged != null && Math.abs(flowMerged.finalPanel.def - evaled.finalPanel.def) < 1e-6,
+    `${flowMerged?.finalPanel.def} vs ${evaled.finalPanel.def}`,
+  )
+  check(
+    '并入后流程总伤与评估一致',
+    flowMerged != null && Math.abs(flowMerged.total - evaled.grandTotal) < 1e-6,
+    `${flowMerged?.total} vs ${evaled.grandTotal}`,
   )
 }
 

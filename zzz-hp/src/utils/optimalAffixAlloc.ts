@@ -1885,8 +1885,10 @@ function withAffixGainMods(
 /**
  * 库路径 `gain:` 条目的 extraGains：缓存查找之后才并入 ctx 副本。
  * 页级 extraGains 仍在原 ctx 上，走上下文签名。
+ *
+ * 招式流程选「最优分配 / 当前柱」重算时也要走这里：这些增益不在局外面板上。
  */
-function withAffixLibraryExtraGains(
+export function withAffixLibraryExtraGains(
   ctx: OptimalEvalContext,
   extraGains?: ExtraBuffGain[],
 ): OptimalEvalContext {

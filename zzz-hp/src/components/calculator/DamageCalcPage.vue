@@ -636,6 +636,9 @@ const skillFlowPanelResolved = computed(() =>
 )
 
 const skillFlowMainExternalOverride = computed(() => skillFlowPanelResolved.value.mainExternal)
+const skillFlowSourceExtraGains = computed(
+  () => skillFlowPanelResolved.value.extraGains ?? null,
+)
 
 const skillFlowPanelAvailability = computed(() => {
   const signature = skillFlowPageSignature.value
@@ -2205,6 +2208,7 @@ defineExpose({ scrollToSection })
         :preview-hits="previewHits"
         :environment-buffs="activeEnvironmentBuffs"
         :skill-flow-main-external-override="skillFlowMainExternalOverride"
+        :skill-flow-source-extra-gains="skillFlowSourceExtraGains"
         v-model:base-damage-source="baseDamageSource"
         v-model:enemy-input="enemyInput"
         v-model:extra-gains="extraGains"

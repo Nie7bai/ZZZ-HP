@@ -60,6 +60,7 @@ import {
   evaluateAffixCountsForSweep,
   clearAffixEvalCache,
   evaluateOptimalEventDetail,
+  withAffixLibraryExtraGains,
   buildDirectAffixCounts,
   buildAnomalyAffixCounts,
   flatStatLabel,
@@ -181,6 +182,11 @@ const props = defineProps<{
    * （见下方 `skillFlowExternal`）。
    */
   skillFlowMainExternalOverride?: PanelStats | null
+  /**
+   * 招式流程选 ②③ 时，该次分配的 `gain:` extraGains。
+   * ① 或回落配置面板时为空。页级额外 Buff 仍走 v-model extraGains。
+   */
+  skillFlowSourceExtraGains?: ExtraBuffGain[] | null
 }>()
 
 const extraGains = defineModel<ExtraBuffGain[]>('extraGains', { default: () => [] })
@@ -1108,6 +1114,7 @@ function emitPanelSourceOptions() {
           'allocation',
           affixAllocEval.value.external,
           result?.counts ?? null,
+          result?.extraGains,
         )
       : null,
     sweep: selectedEval.value?.external
@@ -1163,6 +1170,7 @@ function buildPanelSourceOption(
   mode: 'allocation' | 'sweep',
   mainExternal: PanelStats,
   counts: AffixCounts | null | undefined,
+  extraGainsForOption?: ExtraBuffGain[],
 ): SkillFlowPanelOption {
   const summary = counts
     ? formatAffixCountsSummary({ ...(counts as unknown as Record<string, number>) }, AFFIX_SOURCE_LABELS)
@@ -1173,6 +1181,7 @@ function buildPanelSourceOption(
     label: mode === 'allocation' ? `最优分配（${summary}）` : `当前柱（${summary}）`,
     signature: panelSourceSignature.value,
     baseDamageSource: baseDamageSource.value,
+    extraGains: extraGainsForOption,
   }
 }
 
@@ -1202,6 +1211,7 @@ const skillFlowContextFingerprint = computed(() =>
   JSON.stringify({
     enemy: enemyInput.value,
     extraGains: extraGains.value,
+    sourceExtraGains: props.skillFlowSourceExtraGains ?? [],
     buffSelection: props.buffSelection,
     slotBuffSelections: props.slotBuffSelections,
     convert: props.convertSlotPanels ?? {},
@@ -1241,6 +1251,10 @@ function recomputeSkillFlowHitMaps() {
   }
 
   const ctx = evalCtx.value
+  const allocatedGains = props.skillFlowMainExternalOverride
+    ? (props.skillFlowSourceExtraGains ?? [])
+    : []
+  const flowCtx = withAffixLibraryExtraGains(ctx, allocatedGains)
   // 与面板计算共用同一张记忆表：键里带「用的是哪份面板」，两组输入各占一行，互不覆盖。
   // 令牌取自响应式指纹（不能从 ctx 取：ctx 是深解包后的原始对象，读取不建立依赖）。
   const contextToken = internHitEvalContext(skillFlowContextFingerprint.value)
@@ -1249,7 +1263,7 @@ function recomputeSkillFlowHitMaps() {
     const key = hitEvalCacheKey(buildHitEvalFingerprint(hit), contextToken, external, false)
     let entry = readHitEvalCache(key)
     if (!entry) {
-      const detail = evaluateOptimalEventDetail(ctx, external, hit, {
+      const detail = evaluateOptimalEventDetail(flowCtx, external, hit, {
         includeDetails: false,
       })
       if (!detail) return
