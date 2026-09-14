@@ -65,14 +65,12 @@ import { deepUnwrapReactive } from '@/utils/reactiveUnwrap'
 import {
   computeMutationZone,
   findLuminousAgentInTeam,
-  isRemielSelfRadiancePowerProvider,
   resolveDamageCalcResistanceElements,
 } from '@/utils/remielUtils'
 import {
-  collectRemielSelfRestrictedContributions,
-  computeRemielSelfInCombatPanel,
-  resolveRemielSelfRadianceCalcInput,
-} from '@/utils/remielSelfRadiancePanel'
+  REMIEL_SELF_RADIANCE_VIEW_POLICY,
+  resolvePanelViewPolicyForRadiance,
+} from '@/utils/panelViewPolicy'
 import { mergeSkillSubcategoryMultOverrides } from '@/utils/skillSubcategoryMult'
 import { isEffectEnabled } from '@/utils/buffEffect'
 import {
@@ -679,13 +677,14 @@ function resolveRemielSelfRadianceCalcForOptimal(
   skillContext?: import('@/types/calculator').SkillCalcContext,
 ) {
   const remiel = findLuminousAgentInTeam(ctx.panelContext.teamSlots, ctx.panelContext.agents)
-  if (!remiel || !isRemielSelfRadiancePowerProvider(anomalyPowerAgentId, remiel.id)) {
+  const policy = resolvePanelViewPolicyForRadiance(anomalyPowerAgentId, remiel?.id)
+  if (policy.id !== 'remiel-self-radiance' || !remiel || !policy.resolveRadianceCalcInput) {
     return undefined
   }
   const external = resolveExternalForAgent(ctx, remiel.id, remiel.slotIndex, mainExternal)
   const agent = ctx.panelContext.agents.find((item) => item.id === remiel.id)
   const baseCtx = buildPanelContextForSlot(ctx, remiel.slotIndex, external, mainExternal)
-  return resolveRemielSelfRadianceCalcInput({
+  return policy.resolveRadianceCalcInput({
     teamSlots: ctx.panelContext.teamSlots,
     agents: ctx.panelContext.agents,
     externalPanel: external,
@@ -1208,12 +1207,12 @@ export function evaluateOptimalEventDetail(
   if (includeDetails && result.remielSelfRadianceActive && remiel) {
     const remielExternal = resolveExternalForAgent(ctx, remiel.id, remiel.slotIndex, mainPanel)
     const remielCtx = buildPanelContextForSlot(ctx, remiel.slotIndex, remielExternal, mainPanel)
-    const restricted = collectRemielSelfRestrictedContributions(
+    const restricted = REMIEL_SELF_RADIANCE_VIEW_POLICY.collectRestrictedContributions!(
       remielExternal,
       { ...remielCtx, skillContext: skillCtx },
       remiel.slotIndex,
     )
-    const selfBreakdown = computeRemielSelfInCombatPanel(
+    const selfBreakdown = REMIEL_SELF_RADIANCE_VIEW_POLICY.computeInCombatPanel(
       remielExternal,
       remielCtx,
       remiel.slotIndex,

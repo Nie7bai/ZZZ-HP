@@ -22,7 +22,10 @@ import {
   type RemielSelfRadianceCalcInput,
 } from '@/utils/remielUtils'
 
-/** 蕾米本人耀变：仅本槽、不含邦布（用于穿透/抗穿/增伤等仍取本槽面板的部分） */
+/**
+ * 蕾米本人耀变：仅本槽、不含邦布（用于穿透/抗穿/增伤等仍取本槽面板的部分）。
+ * 生产入口走 `panelViewPolicy.ts` 的 `remiel-self-radiance`；本文件仍是规则实现。
+ */
 export function computeRemielSelfInCombatPanel(
   externalPanel: PanelStats,
   ctx: PanelCalcContext,

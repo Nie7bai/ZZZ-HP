@@ -1,6 +1,7 @@
 import type { AnomalyDamageSubKind, DamageCalcKind } from '@/types/calculator'
+import type { PanelStats } from '@/types/calculatorPanel'
 
-/** 与 dual-agent-rules.md 一致。phase 3 只锁表；phase 4 才改 damageCalc 读取。 */
+/** 与 dual-agent-rules.md 一致。`computeDamageResult` 用本表选面板，公式本身不动。 */
 export type DamageActorRole = 'owner' | 'powerProvider' | 'anomalyTrigger'
 
 export type DamageZoneId =
@@ -19,6 +20,12 @@ export interface DamageActorRoles {
   owner: string
   powerProvider: string
   anomalyTrigger: string
+}
+
+export interface DamageZonePanels {
+  owner: PanelStats
+  powerProvider: PanelStats
+  anomalyTrigger: PanelStats
 }
 
 const ANOMALY_KINDS = new Set<string>([
@@ -71,4 +78,47 @@ export function pickActorId(
   damageKind: DamageCalcKind | AnomalyDamageSubKind | string,
 ): string {
   return roles[zoneSourceRole(zone, damageKind)]
+}
+
+export function pickZonePanel(
+  panels: DamageZonePanels,
+  zone: DamageZoneId,
+  damageKind: DamageCalcKind | AnomalyDamageSubKind | string,
+): PanelStats {
+  return panels[zoneSourceRole(zone, damageKind)]
+}
+
+/**
+ * 防御区混拼：穿透按表（直伤 owner / 异常 powerProvider）；
+ * 减防/无视始终读 `anomalyTrigger` 这份面板。
+ *
+ * 表上「直伤减防 = owner」只在未传触发者面板（与 owner 同一引用）时成立。
+ * 旧 `computeDamageResult` 的 mainParts 已是这种混拼，阶段 4 保持，不改数字。
+ */
+export function composeDefensePanel(
+  panels: DamageZonePanels,
+  damageKind: DamageCalcKind | AnomalyDamageSubKind | string,
+): Pick<PanelStats, 'penRate' | 'pen' | 'ignoreDefense' | 'reduceDefense'> {
+  const penPanel = pickZonePanel(panels, 'penRate', damageKind)
+  const reducePanel = panels.anomalyTrigger
+  return {
+    penRate: penPanel.penRate,
+    pen: penPanel.pen,
+    ignoreDefense: reducePanel.ignoreDefense,
+    reduceDefense: reducePanel.reduceDefense,
+  }
+}
+
+/**
+ * 抗穿选取。异常且调用方没传触发者面板时，旧引擎回落强度提供者，不是 owner。
+ */
+export function pickResPenPanel(
+  panels: DamageZonePanels,
+  damageKind: DamageCalcKind | AnomalyDamageSubKind | string,
+  anomalyTriggerProvided: boolean,
+): PanelStats {
+  if (isAnomalyCalcKind(damageKind) && !anomalyTriggerProvided) {
+    return panels.powerProvider
+  }
+  return pickZonePanel(panels, 'resPen', damageKind)
 }
