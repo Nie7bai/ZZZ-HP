@@ -27,6 +27,7 @@ import {
 } from '../src/services/skillSubcategoryService.js'
 import { upsertDamageEventMode } from '../src/services/damageEventModeService.js'
 import { upsertSkill } from '../src/services/skillLibraryService.js'
+import { upsertSkillGroup } from '../src/services/skillGroupService.js'
 
 dotenv.config()
 
@@ -178,6 +179,7 @@ const CALCULATOR_REPLACE_TABLES = [
   '`calculator_follow_up_rules`',
   '`calculator_damage_event_modes`',
   '`calculator_skills`',
+  '`calculator_skill_groups`',
 ]
 
 async function emptyCalculatorTables(conn) {
@@ -206,6 +208,7 @@ async function main() {
   const followUpSkillRules = Array.isArray(data.followUpSkillRules) ? data.followUpSkillRules : []
   const damageEventModes = Array.isArray(data.damageEventModes) ? data.damageEventModes : []
   const skills = Array.isArray(data.skills) ? data.skills : []
+  const skillGroups = Array.isArray(data.skillGroups) ? data.skillGroups : []
 
   if (replaceAll && agents.length < 20) {
     throw new Error(
@@ -375,6 +378,11 @@ async function main() {
       await upsertSkill(doc)
       skillCount += 1
     }
+    let skillGroupCount = 0
+    for (const doc of skillGroups) {
+      await upsertSkillGroup(doc)
+      skillGroupCount += 1
+    }
 
     const [[c1]] = await conn.query('SELECT COUNT(*) AS c FROM `character`')
     const [[c2]] = await conn.query('SELECT COUNT(*) AS c FROM `bangboo`')
@@ -383,6 +391,13 @@ async function main() {
     const [[c5]] = await conn.query('SELECT COUNT(*) AS c FROM `calculator_skill_subcategories`')
     const [[c6]] = await conn.query('SELECT COUNT(*) AS c FROM `calculator_damage_event_modes`')
     const [[c7]] = await conn.query('SELECT COUNT(*) AS c FROM `calculator_skills`')
+    let skillGroupTableCount = 0
+    try {
+      const [[c8]] = await conn.query('SELECT COUNT(*) AS c FROM `calculator_skill_groups`')
+      skillGroupTableCount = c8.c
+    } catch (err) {
+      if (err?.errno !== 1146 && err?.code !== 'ER_NO_SUCH_TABLE') throw err
+    }
 
     // Round-trip check: raw_json equals source for a few samples
     const [[sampleAgent]] = await conn.query(
@@ -407,6 +422,7 @@ async function main() {
             followUpSkillRules: followUpCount,
             damageEventModes: modeCount,
             skills: skillCount,
+            skillGroups: skillGroupCount,
           },
           tableCounts: {
             character: c1.c,
@@ -416,6 +432,7 @@ async function main() {
             skillSubcategories: c5.c,
             damageEventModes: c6.c,
             skills: c7.c,
+            skillGroups: skillGroupTableCount,
           },
           sampleAgent,
           sampleDisc,
