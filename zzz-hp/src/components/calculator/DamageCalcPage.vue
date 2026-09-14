@@ -309,9 +309,6 @@ const damageResultEvalCtx = computed(() =>
   }),
 )
 
-/** 统一结果区当前用的主面板：3 选 1 解析结果（null = 角色配置面板） */
-const damageResultExternal = computed(() => skillFlowMainExternalOverride.value)
-
 /** 总伤期望：只汇总「流程事件」的页级 hitDamages（准备招式预览按单次伤害，不计入总伤） */
 const damageResultGrandTotal = computed(() => {
   const flowIds = new Set((hits.value ?? []).map((hit) => hit.id))
@@ -335,30 +332,6 @@ const damageResultEventLines = computed(() =>
     .filter((line) => line.total > 0),
 )
 
-/** 统一结果区：一套流程计算 + 一套详情展示（统计事件默认全部；后续支持事件集选择） */
-const damageResultProcess = useDamageProcessEvents({
-  ctx: damageResultEvalCtx,
-  external: damageResultExternal,
-  grandTotal: damageResultGrandTotal,
-  eventLines: damageResultEventLines,
-  selectedEventIds: computed(() => null),
-  totalLabel: computed(() => '伤害事件总伤期望'),
-  hasEvents: computed(() => (hits.value?.length ?? 0) > 0),
-  active: computed(() => true),
-  enabled: computed(() => true),
-  hits,
-  agents: computed(() => agents.value),
-  teamSlots: computed(() => teamSlots),
-})
-
-/** 顶层解构：模板可直接解包（嵌套对象里的 ref 不会自动解包） */
-const {
-  ownerShareSummary: damageResultOwnerShareSummary,
-  skippedEvents: damageResultSkippedEvents,
-  selectedDetail: damageResultSelectedDetail,
-  selectedEventId: damageResultSelectedEventId,
-  selectEvent: damageResultSelectEvent,
-} = damageResultProcess
 const previewHits = computed(() =>
   resolveSkillPreviews({
     slots: schemeSlots.value,
@@ -639,6 +612,35 @@ const skillFlowMainExternalOverride = computed(() => skillFlowPanelResolved.valu
 const skillFlowSourceExtraGains = computed(
   () => skillFlowPanelResolved.value.extraGains ?? null,
 )
+
+/** 统一结果区当前用的主面板：3 选 1 解析结果（null = 角色配置面板） */
+const damageResultExternal = computed(() => skillFlowMainExternalOverride.value)
+
+/** 统一结果区：一套流程计算 + 一套详情展示（统计事件默认全部；后续支持事件集选择） */
+const damageResultProcess = useDamageProcessEvents({
+  ctx: damageResultEvalCtx,
+  external: damageResultExternal,
+  allocatedExtraGains: skillFlowSourceExtraGains,
+  grandTotal: damageResultGrandTotal,
+  eventLines: damageResultEventLines,
+  selectedEventIds: computed(() => null),
+  totalLabel: computed(() => '伤害事件总伤期望'),
+  hasEvents: computed(() => (hits.value?.length ?? 0) > 0),
+  active: computed(() => true),
+  enabled: computed(() => true),
+  hits,
+  agents: computed(() => agents.value),
+  teamSlots: computed(() => teamSlots),
+})
+
+/** 顶层解构：模板可直接解包（嵌套对象里的 ref 不会自动解包） */
+const {
+  ownerShareSummary: damageResultOwnerShareSummary,
+  skippedEvents: damageResultSkippedEvents,
+  selectedDetail: damageResultSelectedDetail,
+  selectedEventId: damageResultSelectedEventId,
+  selectEvent: damageResultSelectEvent,
+} = damageResultProcess
 
 const skillFlowPanelAvailability = computed(() => {
   const signature = skillFlowPageSignature.value

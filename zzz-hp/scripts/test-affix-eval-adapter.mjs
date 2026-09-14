@@ -326,6 +326,12 @@ console.log('\n[7] 流程明细必须并入 gain: 局内防御，不能只叠局
     evaled.external,
     hit,
   )
+  const flowMergedNumbers = evaluateOptimalEventDetail(
+    withAffixLibraryExtraGains(ctx, input.extraGains),
+    evaled.external,
+    hit,
+    { includeDetails: false },
+  )
   check('收益评估局内防御高于局外', evaled.finalPanel.def > evaled.external.def, `${evaled.external.def} → ${evaled.finalPanel.def}`)
   check(
     '未并 extraGains 的流程明细吃不到局内防御',
@@ -341,6 +347,13 @@ console.log('\n[7] 流程明细必须并入 gain: 局内防御，不能只叠局
     '并入后流程总伤与评估一致',
     flowMerged != null && Math.abs(flowMerged.total - evaled.grandTotal) < 1e-6,
     `${flowMerged?.total} vs ${evaled.grandTotal}`,
+  )
+  check(
+    '明细口径与数字口径总伤一致（详情面板 vs 流程 hit map）',
+    flowMerged != null &&
+      flowMergedNumbers != null &&
+      Math.abs(flowMerged.total - flowMergedNumbers.total) < 1e-6,
+    `${flowMerged?.total} vs ${flowMergedNumbers?.total}`,
   )
 }
 
