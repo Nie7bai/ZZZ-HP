@@ -27,8 +27,10 @@ import type { AffixEffectTemplate } from '@/utils/affixEffectTemplate'
  * （用户 2026-09-12 裁定：「不应该有属性词条直接绕过链路的……就算有判断，
  * 也不是这个功能里判断的，你凭什么在词条功能说这个词条一定不转模，绕过去」）。
  *
- * - `stat:<AffixCounts 字段>`：落到词条计数桶，按字段语义折算成面板增量；
- * - `panel:<局外面板字段>`：落到面板字段贡献，按同一套字段语义折算成面板增量。
+ * - `stat:<字段>` / `panel:<字段>`：分析侧都落到同一张局外增量表（T12），
+ *   按字段语义叠在导入激活面板上；**不再写入导入十格 `AffixCounts`**。
+ *   存储仍可保留 `stat:` / `panel:` 前缀（用户侧下拉暂不改）。
+ * - `gain:<增益字段>`：不进局外，合成 extraGains。
  *
  * 两条都落在**同一份局外面板**上，转模链路读的就是这份面板 —— 所以谁也不能
  * 「不参与转模」，是否参与由**效果数据**决定，不由条目声明。
@@ -237,7 +239,7 @@ export function gainFieldOfTarget(target: AffixLibraryEntryTarget): AffixGainFie
  * 两族共用一张增量表，因为条目只表达「给哪个属性加多少」，
  * **施加阶段由字段决定**（局外字段 → 局外面板；增益字段 → 增益阶段，转模之后）。
  */
-export type AffixDeltaField = AffixPanelDeltaField | AffixGainField
+export type AffixDeltaField = AffixPanelDeltaField | keyof AffixCounts | AffixGainField
 
 /** 增量表：字段 → 累计值（两族同表，取用时按族分流） */
 export type AffixDeltaMap = Partial<Record<AffixDeltaField, number>>
@@ -255,6 +257,7 @@ export function isPanelDeltaField(key: string): key is AffixPanelDeltaField {
  * 同一档会加两次（实测：+24 穿透率 → 局内 48，收益被抬到约 2 倍）。
  */
 export function isGainDeltaField(key: string): key is AffixGainField {
+  if (AFFIX_STAT_KEYS.includes(key as keyof AffixCounts)) return false
   return AFFIX_GAIN_FIELD_SET.has(key) && !isPanelDeltaField(key)
 }
 
@@ -265,7 +268,7 @@ export function isGainDeltaField(key: string): key is AffixGainField {
  * 免得「加了新族但只有一半路径认它」。
  */
 export function deltaFieldOfTarget(target: AffixLibraryEntryTarget): AffixDeltaField | null {
-  return panelFieldOfTarget(target) ?? gainFieldOfTarget(target)
+  return panelFieldOfTarget(target) ?? statKeyOfTarget(target) ?? gainFieldOfTarget(target)
 }
 
 /** 词条库 `gain:` 合成 extraGain 时的 id 前缀（求解复算 / 缓存指纹都认这个） */
@@ -1798,19 +1801,20 @@ export function removeAffixLibraryGroup(
 }
 
 export interface AffixEntryEvalInput {
-  /** 各 `stat:` 目标的档数合计 */
+  /**
+   * 导入十格计数桶。分析侧 T12 起不再往这里写：`stat:` / `panel:` 都进 `deltas`。
+   * 柱图扫掠等仍可单独传入 `AffixCounts`。
+   */
   counts: Partial<AffixCounts>
-  /** 各 `panel:` 目标的局外增量（不再含 `gain:`） */
+  /** 分析侧局外增量（原 `stat:` + `panel:`；不含 `gain:`） */
   deltas: AffixDeltaMap
   /**
    * 各 `gain:` 目标合成的 extraGains（独立于扁平增量表，避免与 `panel:` 重叠键双算）。
    */
   extraGains: ExtraBuffGain[]
   /**
-   * 各词条计数字段的「每档值」。
-   *
-   * 这是本次合并的核心：**每档值以条目为准**，而不是全局常量表。
-   * 未被子条目覆盖的字段回落 `AFFIX_VALUE_PER_COUNT`（保证柱图等既有调用点行为不变）。
+   * 十格「每档值」表。分析侧恒为常量表（每档已折进 `deltas`）；
+   * 柱图等仍按十格 × 本表折算。
    */
   valuePerCount: Record<keyof AffixCounts, number>
 }
@@ -1829,9 +1833,9 @@ export interface AffixEntryEvalInput {
  *   新：6×3% + 1×30% = 48 个百分点  ✓
  * ```
  *
- * 修法：条目自己的 `perRoll` 在这里就折算进「等效档数」（折算是相对常量表
- * `AFFIX_VALUE_PER_COUNT`），`valuePerCount` 因此恒为常量表。
- * 这样 4/5/6 号位主属性（30%/档）与副词条（3%/档）指向同一字段也不会互相污染。
+ * 修法：条目自己的 `perRoll` 在这里就折成局外增量（`档数 × 每档`），
+ * `valuePerCount` 因此恒为常量表。4/5/6 号位主属性（30%/档）与副词条（3%/档）
+ * 指向同一字段也不会互相污染。
  */
 export function entryRollsToEvalInput(
   entries: AffixLibraryEntry[],
@@ -1840,7 +1844,7 @@ export function entryRollsToEvalInput(
   const counts: Partial<AffixCounts> = {}
   const deltas: AffixDeltaMap = {}
   const extraGains: ExtraBuffGain[] = []
-  /** 折算基准，恒为常量表：条目自己的每档值已在下面折进 counts */
+  /** 折算基准，恒为常量表：条目自己的每档值已在下面折进 deltas */
   const valuePerCount: Record<keyof AffixCounts, number> = { ...AFFIX_VALUE_PER_COUNT }
 
   for (const entry of entries) {
@@ -1848,7 +1852,7 @@ export function entryRollsToEvalInput(
     const statKey = statKeyOfTarget(entry.target)
     if (statKey) {
       if (rolls > 0) {
-        counts[statKey] = (counts[statKey] ?? 0) + affixRollsToEquivalentRolls(entry, statKey, rolls)
+        deltas[statKey] = (deltas[statKey] ?? 0) + rolls * entry.perRoll
       }
       continue
     }
@@ -1886,9 +1890,9 @@ export function affixRollsToEquivalentRolls(
  * 每档值表。
  *
  * **恒为常量表**（2026-09-12 起）：条目各自的每档值已由 `entryRollsToEvalInput`
- * 折进等效档数，这里再按字段覆盖一次就会让同字段多条互相顶掉。
- * 保留该函数是为了不动调用方签名 —— 「用户改每档要生效」现在由等效档数承担
- * （改每档 → 等效档数变 → 缓存键里的 counts 变 → 结果随之变）。
+ * 折进局外增量，这里再按字段覆盖一次就会让同字段多条互相顶掉。
+ * 保留该函数是为了不动调用方签名 —— 「用户改每档要生效」现在由局外增量承担
+ * （改每档 → deltas 变 → 缓存键里的 panelDeltas 变 → 结果随之变）。
  */
 export function affixValuePerCountFromEntries(
   entries: AffixLibraryEntry[],
@@ -1911,7 +1915,14 @@ export const AFFIX_PANEL_PERCENT_OF_BASE_FIELDS = ['anomalyControl', 'energyRege
 export type AffixPanelPercentOfBaseField = (typeof AFFIX_PANEL_PERCENT_OF_BASE_FIELDS)[number]
 
 /** 按基础值乘算的字段各自需要的**基础值**（角色基础面板口径） */
-export type AffixPanelDeltaBases = Record<AffixPanelPercentOfBaseField, number>
+export type AffixPanelDeltaBases = Record<AffixPanelPercentOfBaseField, number> & {
+  /** 分析侧 `stat:hpPercent` 折算用；省略当 0 */
+  hp?: number
+  /** 分析侧 `stat:atkPercent` 折算用；省略当 0 */
+  atk?: number
+  /** 分析侧 `stat:defPercent` 折算用；省略当 0 */
+  def?: number
+}
 
 function isPercentOfBaseField(
   key: AffixPanelDeltaField,
@@ -1925,17 +1936,22 @@ function isPercentOfBaseField(
  * **折算口径由字段决定，不由条目决定**（用户 2026-09-12 裁定：词条只表达
  * 「给哪个属性加多少」，怎么折算、是否进入转模都是下游的事）：
  * - 乘算字段（`AFFIX_PANEL_PERCENT_OF_BASE_FIELDS`）：落 `基础 × 值 / 100`，与主属性同口径；
- * - 其余字段：平铺加到面板值上。
+ * - 分析侧原十格字段（`stat:atkPercent` 等）：叠在已有局外上，百分比按角色+音擎基础；
+ * - 其余面板字段：平铺加到面板值上。
  */
 export function applyPanelDeltas(
   panel: PanelStats,
-  deltas: AffixPanelDeltaDraft | AffixDeltaMap,
+  deltas: AffixDeltaMap,
   bases: AffixPanelDeltaBases,
 ): PanelStats {
-  const keys = (Object.keys(deltas) as string[]).filter(isPanelDeltaField)
-  if (!keys.length) return panel
+  const panelKeys = (Object.keys(deltas) as string[]).filter(isPanelDeltaField)
+  const hasStatOverlay = AFFIX_STAT_KEYS.some((key) => {
+    if (key === 'mastery') return false
+    return Boolean(deltas[key])
+  })
+  if (!panelKeys.length && !hasStatOverlay) return panel
   const next = { ...panel }
-  for (const key of keys) {
+  for (const key of panelKeys) {
     const delta = deltas[key]
     if (!delta) continue
     if (isPercentOfBaseField(key)) {
@@ -1944,6 +1960,27 @@ export function applyPanelDeltas(
     }
     next[key] = (next[key] ?? 0) + delta
   }
+  const hpPercent = Number(deltas.hpPercent) || 0
+  const atkPercent = Number(deltas.atkPercent) || 0
+  const defPercent = Number(deltas.defPercent) || 0
+  const hpFlat = Number(deltas.hpFlat) || 0
+  const atkFlat = Number(deltas.atkFlat) || 0
+  const defFlat = Number(deltas.defFlat) || 0
+  const critRate = Number(deltas.critRate) || 0
+  const critDmg = Number(deltas.critDmg) || 0
+  const pen = Number(deltas.pen) || 0
+  if (hpPercent || hpFlat) {
+    next.hp = next.hp + ((bases.hp ?? 0) * hpPercent) / 100 + hpFlat
+  }
+  if (atkPercent || atkFlat) {
+    next.atk = next.atk + ((bases.atk ?? 0) * atkPercent) / 100 + atkFlat
+  }
+  if (defPercent || defFlat) {
+    next.def = next.def + ((bases.def ?? 0) * defPercent) / 100 + defFlat
+  }
+  if (critRate) next.critRate = next.critRate + critRate
+  if (critDmg) next.critDmg = next.critDmg + critDmg
+  if (pen) next.pen = next.pen + pen
   return next
 }
 

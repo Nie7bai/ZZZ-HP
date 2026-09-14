@@ -9,9 +9,9 @@ import { compileCollectedBuffs, compileEffectPlan } from '@/utils/effectCompiler
 import {
   applyPanelDeltas,
   isPanelDeltaField,
+  type AffixDeltaMap,
   type AffixLibraryEntry,
   type AffixPanelDeltaBases,
-  type AffixPanelDeltaDraft,
 } from '@/utils/affixLibrary'
 import {
   applyBuffModsToPanel,
@@ -24,7 +24,7 @@ import {
   type PanelBuffBreakdown,
   type PanelCalcContext,
 } from '@/utils/panelBuffCalc'
-import { remapImportedExternalPanelForMainCombo } from '@/utils/affixPanelCalc'
+import { remapImportedExternalPanelForMainCombo, AFFIX_VALUE_PER_COUNT } from '@/utils/affixPanelCalc'
 import type { AffixDriveDiscMainStats } from '@/types/calculatorPanel'
 import type { DriveDiscBuffDoc } from '@/types/calculator'
 
@@ -135,13 +135,15 @@ export function applyAllocatedAffixEffects(
   plan: EffectExecutionPlan
 } {
   const counts = createEmptyAffixCounts()
-  const panelDeltas: AffixPanelDeltaDraft = {}
+  const panelDeltas: AffixDeltaMap = {}
   const extraGains: ExtraBuffGain[] = []
   const effectInstances: EffectInstance[] = []
 
   for (const item of allocated) {
     if (item.type === 'count') {
-      counts[item.statKey] = (counts[item.statKey] ?? 0) + item.equivalentRolls
+      panelDeltas[item.statKey] =
+        (panelDeltas[item.statKey] ?? 0) +
+        item.equivalentRolls * AFFIX_VALUE_PER_COUNT[item.statKey]
       continue
     }
     const inst = item.instance

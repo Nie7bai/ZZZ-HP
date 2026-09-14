@@ -83,10 +83,11 @@ const evalInputFromRolls = entryRollsToEvalInput(library, {
   'substat:critRate': 2,
 })
 check(
-  '3 档攻击% + 2 档暴击 → 计数',
-  evalInputFromRolls.counts.atkPercent === 3 && evalInputFromRolls.counts.critRate === 2,
-  JSON.stringify(evalInputFromRolls.counts),
+  '3 档攻击% + 2 档暴击 → 局外增量',
+  evalInputFromRolls.deltas.atkPercent === 9 && evalInputFromRolls.deltas.critRate === 4.8,
+  JSON.stringify(evalInputFromRolls.deltas),
 )
+check('分析侧不再写入十格计数桶', Object.keys(evalInputFromRolls.counts).length === 0)
 check(
   '默认条目下每档值表 = 常量表',
   Object.entries(evalInputFromRolls.valuePerCount).every(
@@ -341,19 +342,15 @@ console.log('\n[6] 词条库整改验收')
   const critEntry = resolveAffixLibrary(state0).find((e) => e.id === 'substat:critRate')
   check('默认暴击率条目每档 = 2.4', critEntry?.perRoll === 2.4, `实际 ${critEntry?.perRoll}`)
 
-  const countsWithCrit = { ...createEmptyAffixCounts(), critRate: 10 }
-
   // —— 验收 1：把「每档」从 2.4 改成 4.8，伤害必须真的变 ——
-  // 口径（2026-09-12 修同字段折算后）：每档值表**恒为常量表**，
-  // 「改每档」通过等效档数生效 —— 条目 10 档 × 4.8% 折成 20 个等效档（基准 2.4%）。
   const state48 = updateAffixLibraryEntry(state0, 'substat:critRate', { perRoll: 4.8 })
   const entries48 = resolveAffixLibrary(state48)
   const eval24 = entryRollsToEvalInput(resolveAffixLibrary(state0), { 'substat:critRate': 10 })
   const eval48 = entryRollsToEvalInput(entries48, { 'substat:critRate': 10 })
   check(
-    '改每档 2.4 → 4.8 后等效档数 10 → 20',
-    nearly(eval24.counts.critRate ?? 0, 10) && nearly(eval48.counts.critRate ?? 0, 20),
-    `${eval24.counts.critRate} → ${eval48.counts.critRate}`,
+    '改每档 2.4 → 4.8 后增量 24 → 48',
+    nearly(eval24.deltas.critRate ?? 0, 24) && nearly(eval48.deltas.critRate ?? 0, 48),
+    `${eval24.deltas.critRate} → ${eval48.deltas.critRate}`,
   )
   check(
     '每档值表保持常量表（同字段多条不再互相顶掉）',
@@ -363,14 +360,14 @@ console.log('\n[6] 词条库整改验收')
 
   const dmg24 = evaluateAffixCounts(
     ctx,
-    { ...countsWithCrit, ...eval24.counts },
-    undefined,
+    createEmptyAffixCounts(),
+    eval24.deltas,
     eval24.valuePerCount,
   ).grandTotal
   const dmg48 = evaluateAffixCounts(
     ctx,
-    { ...countsWithCrit, ...eval48.counts },
-    undefined,
+    createEmptyAffixCounts(),
+    eval48.deltas,
     eval48.valuePerCount,
   ).grandTotal
   check('每档 2.4 → 4.8 伤害真的变（这正是原缺陷）', dmg48 > dmg24,
@@ -379,11 +376,11 @@ console.log('\n[6] 词条库整改验收')
   // —— 验收 2：改回 2.4，结果回到原值（缓存不串味） ——
   const dmgBack = evaluateAffixCounts(
     ctx,
-    { ...countsWithCrit, ...eval24.counts },
-    undefined,
+    createEmptyAffixCounts(),
+    eval24.deltas,
     eval24.valuePerCount,
   ).grandTotal
-  check('改回 2.4 后回到原值（缓存键含等效档数，不串味）', nearly(dmgBack, dmg24),
+  check('改回 2.4 后回到原值（缓存不串味）', nearly(dmgBack, dmg24),
     `${dmg24} vs ${dmgBack}`)
 
   // —— 验收 3：等价条目对拍成为恒等（stat:mastery vs panel:mastery，每档都是 9） ——

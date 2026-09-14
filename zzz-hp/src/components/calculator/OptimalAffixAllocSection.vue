@@ -137,6 +137,7 @@ import {
   type AffixLibraryState,
 } from '@/utils/affixLibrary'
 import {
+  formatAffixRollsSummary,
   solveOptimalAffixAllocationAsync,
   type AffixCandidateWidthMode,
   type AffixOptimizerProgress,
@@ -1107,18 +1108,21 @@ const panelSourceSignature = computed(() =>
  */
 function emitPanelSourceOptions() {
   const result = affixAllocResult.value
-  const selectedCountsValue = selectedCounts.value
   emit('update:panelSourceOptions', {
     allocation: affixAllocEval.value?.external
       ? buildPanelSourceOption(
           'allocation',
           affixAllocEval.value.external,
-          result?.counts ?? null,
+          allocationRollsSummary(result),
           result?.extraGains,
         )
       : null,
     sweep: selectedEval.value?.external
-      ? buildPanelSourceOption('sweep', selectedEval.value.external, selectedCountsValue)
+      ? buildPanelSourceOption(
+          'sweep',
+          selectedEval.value.external,
+          sweepCountsSummary(selectedCounts.value),
+        )
       : null,
   })
 }
@@ -1132,18 +1136,25 @@ function emitPanelSourceOptions() {
  */
 type DisplayPanelEvalLike = { external: PanelStats; finalPanel: PanelStats } | null | undefined
 
+function allocationRollsSummary(result: AffixOptimizerResult | null): string {
+  if (!result) return '零词条'
+  return formatAffixRollsSummary(affixLibraryEntries.value, result.rollsByEntryId)
+}
+
+function sweepCountsSummary(counts: AffixCounts | null | undefined): string {
+  if (!counts) return '零词条'
+  return formatAffixCountsSummary(
+    { ...(counts as unknown as Record<string, number>) },
+    AFFIX_SOURCE_LABELS,
+  )
+}
+
 function buildDisplayPanelSourceOption(
   mode: 'allocation' | 'sweep',
   evalResult: DisplayPanelEvalLike,
-  counts: AffixCounts | null | undefined,
+  summary: string,
 ): SkillFlowDisplayOption | null {
   if (!evalResult?.external || !evalResult.finalPanel) return null
-  const summary = counts
-    ? formatAffixCountsSummary(
-        { ...(counts as unknown as Record<string, number>) },
-        AFFIX_SOURCE_LABELS,
-      )
-    : ''
   return {
     mode,
     mainExternal: evalResult.external,
@@ -1155,26 +1166,26 @@ function buildDisplayPanelSourceOption(
 
 function emitDisplayPanelSources() {
   const result = affixAllocResult.value
-  const selectedCountsValue = selectedCounts.value
   emit('update:displayPanelSources', {
     allocation: buildDisplayPanelSourceOption(
       'allocation',
       affixAllocEval.value,
-      result?.counts ?? null,
+      allocationRollsSummary(result),
     ),
-    sweep: buildDisplayPanelSourceOption('sweep', selectedEval.value, selectedCountsValue),
+    sweep: buildDisplayPanelSourceOption(
+      'sweep',
+      selectedEval.value,
+      sweepCountsSummary(selectedCounts.value),
+    ),
   })
 }
 
 function buildPanelSourceOption(
   mode: 'allocation' | 'sweep',
   mainExternal: PanelStats,
-  counts: AffixCounts | null | undefined,
+  summary: string,
   extraGainsForOption?: ExtraBuffGain[],
 ): SkillFlowPanelOption {
-  const summary = counts
-    ? formatAffixCountsSummary({ ...(counts as unknown as Record<string, number>) }, AFFIX_SOURCE_LABELS)
-    : ''
   return {
     mode,
     mainExternal,
@@ -1197,6 +1208,10 @@ const AFFIX_SOURCE_LABELS: Record<string, string> = {
   critRate: '暴击',
   critDmg: '爆伤',
   mastery: '精通',
+  dmgBonus: '增伤',
+  penRate: '穿透率',
+  reduceDefense: '减防',
+  resPen: '抗性穿透',
 }
 
 /** 用最优词条面板重算流程/准备招式预览伤害，供招式流程展示（防抖 + per-hit 缓存） */

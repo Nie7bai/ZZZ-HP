@@ -42,6 +42,7 @@ import {
   solveOptimalAffixAllocation,
   solveOptimalAffixAllocationAsync,
   buildAllocationRows,
+  formatAffixRollsSummary,
   resolveAffixOptimizerBudget,
 } from '../src/utils/affixOptimizer.ts'
 import {
@@ -564,8 +565,7 @@ console.log('\n[4.10] 同字段多条目的折算')
     'main:slot5:atkPercent': 1,
   })
   // 6×3% + 1×30% = 48 个百分点（修前：7 档 × 被顶掉的 30% = 210）
-  const atkPercentPoints =
-    (sixPlusOne.counts.atkPercent ?? 0) * sixPlusOne.valuePerCount.atkPercent
+  const atkPercentPoints = sixPlusOne.deltas.atkPercent ?? 0
   check(
     '副词条 6 档×3% + 主属性 1 档×30% = 48 个百分点',
     Math.abs(atkPercentPoints - 48) < 1e-9,
@@ -573,7 +573,7 @@ console.log('\n[4.10] 同字段多条目的折算')
   )
 
   const mainOnly = entryRollsToEvalInput(pair, { 'main:slot5:atkPercent': 1 })
-  const mainOnlyPoints = (mainOnly.counts.atkPercent ?? 0) * mainOnly.valuePerCount.atkPercent
+  const mainOnlyPoints = mainOnly.deltas.atkPercent ?? 0
   check('只选主属性 1 档 = 30 个百分点', Math.abs(mainOnlyPoints - 30) < 1e-9,
     `实际 ${mainOnlyPoints}`)
 
@@ -581,9 +581,21 @@ console.log('\n[4.10] 同字段多条目的折算')
   const plain = entryRollsToEvalInput([byId.get('substat:atkPercent')], {
     'substat:atkPercent': 6,
   })
-  const plainPoints = (plain.counts.atkPercent ?? 0) * plain.valuePerCount.atkPercent
+  const plainPoints = plain.deltas.atkPercent ?? 0
   check('每档=常量表的条目行为不变（6 档 × 3% = 18）', Math.abs(plainPoints - 18) < 1e-9,
     `实际 ${plainPoints}`)
+  check('分析侧不写十格', Object.keys(sixPlusOne.counts).length === 0)
+  check(
+    '② 标签按条目档数摘要，不拿百分点冒充档数',
+    formatAffixRollsSummary(pair, {
+      'substat:atkPercent': 6,
+      'main:slot5:atkPercent': 1,
+    }) === '局外攻击力% 6 + 局外攻击力 30% 1',
+    formatAffixRollsSummary(pair, {
+      'substat:atkPercent': 6,
+      'main:slot5:atkPercent': 1,
+    }),
+  )
 
   // 预设的 4/5/6 号位条目必须落在对应组、且各自是独立条目（同字段不合并）
   const preset = createPresetAffixLibraryEntries()

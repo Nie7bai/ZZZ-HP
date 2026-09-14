@@ -111,8 +111,8 @@ console.log('\n[1] 默认库：适配器分桶与 entryRollsToEvalInput 同构')
   const viaAdapter = entryRollsToEffectEvalInput(lib, rolls)
   check('counts / deltas / extraGains 一致', sameEvalInput(viaLib, viaAdapter))
   check('默认库 extraGains 为空', viaLib.extraGains.length === 0)
-  check('默认库没有 panelDeltas', Object.keys(viaLib.deltas).length === 0)
-  check('atkPercent 折进计数桶', (viaLib.counts.atkPercent ?? 0) > 0)
+  check('默认库不写十格计数桶', Object.keys(viaLib.counts).length === 0)
+  check('atkPercent / critRate 进局外增量', (viaLib.deltas.atkPercent ?? 0) > 0 && (viaLib.deltas.critRate ?? 0) > 0)
 }
 
 console.log('\n[2] C1：panel:penRate 只加局外一次')

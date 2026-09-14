@@ -910,3 +910,17 @@ export function buildAllocationRows(
   rows.sort((a, b) => b.rolls - a.rolls || a.entry.label.localeCompare(b.entry.label, 'zh'))
   return rows
 }
+
+/**
+ * ② 最优分配标签用：按条目档数摘要，不读十格计数桶。
+ * 分析侧 T12 后 `result.counts` 恒空，不能再拿它拼「暴击 21」。
+ */
+export function formatAffixRollsSummary(
+  entries: AffixLibraryEntry[],
+  rollsByEntryId: Record<string, number>,
+): string {
+  const parts = buildAllocationRows(entries, rollsByEntryId)
+    .slice(0, 3)
+    .map((row) => `${row.entry.label} ${row.rolls}`)
+  return parts.length ? parts.join(' + ') : '零词条'
+}

@@ -16,7 +16,7 @@ import type { AffixCounts } from '@/types/calculatorPanel'
 /**
  * 词条库 → 评估输入（走适配器分桶）。
  *
- * 与 `entryRollsToEvalInput` 同构：`stat:` 计数桶、`panel:` 局外增量、`gain:` extraGains。
+ * 与 `entryRollsToEvalInput` 同构：局外（原 `stat:` / `panel:`）进 deltas、`gain:` extraGains。
  * 不从本文件 import `panelPipeline`（会环）。生产评估仍走旧 `computeFinalPanel`。
  */
 export function entryRollsToEffectEvalInput(
@@ -41,13 +41,14 @@ function applyAllocatedAffix(
   allocated: AllocatedAffix | null,
   entry: AffixLibraryEntry,
   rolls: number,
-  counts: Partial<AffixCounts>,
+  _counts: Partial<AffixCounts>,
   deltas: AffixDeltaMap,
   extraGains: ExtraBuffGain[],
 ): void {
   if (!allocated) return
   if (allocated.type === 'count') {
-    counts[allocated.statKey] = (counts[allocated.statKey] ?? 0) + allocated.equivalentRolls
+    deltas[allocated.statKey] =
+      (deltas[allocated.statKey] ?? 0) + rolls * entry.perRoll
     return
   }
   if (allocated.instance.sourceFamily === 'affix-panel') {

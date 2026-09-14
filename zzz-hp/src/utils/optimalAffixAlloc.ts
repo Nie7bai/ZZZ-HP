@@ -1514,9 +1514,8 @@ const affixEvalCache = new Map<
 /**
  * 词条计数各字段的「每档值」。
  *
- * 由词条库条目决定（`entryRollsToEvalInput` 产出）：`stat:` 目标的条目用自己的
- * `perRoll` 覆盖对应字段，未覆盖的字段回落 `AFFIX_VALUE_PER_COUNT`。
- * 省略时全部走常量表 —— 柱图（词条计算页）等调用点因此行为不变。
+ * 分析侧现在把 `stat:` / `panel:` 都写进 `panelDeltas`，本表对分析路径恒为常量表。
+ * 省略时全部走常量表 —— 柱图（词条计算页）等仍按十格计数 × 本表折算。
  */
 export type AffixValuePerCount = Record<keyof AffixCounts, number>
 
@@ -1848,6 +1847,9 @@ function computeExternalForEval(
   return applyPanelDeltas(external, panelDeltas, {
     anomalyControl: ctx.agentBase?.anomalyControl ?? 0,
     energyRegen: ctx.agentBase?.energyRegen ?? 0,
+    hp: ctx.agentBase?.hp ?? 0,
+    atk: (ctx.agentBase?.atk ?? 0) + (ctx.wengineBaseAtk ?? 0),
+    def: (ctx.agentBase?.def ?? 0) + (ctx.wengineBaseDef ?? 0),
   })
 }
 

@@ -1,12 +1,11 @@
 import type { AffixCounts } from '@/types/calculatorPanel'
 import {
   AFFIX_GAIN_SOURCE_ID_PREFIX,
-  affixRollsToEquivalentRolls,
   affixValuePerCountFromEntries,
+  deltaFieldOfTarget,
   entryRollsToEvalInput,
   extraGainFromLibraryEntry,
-  panelFieldOfTarget,
-  statKeyOfTarget,
+  isGainTarget,
   type AffixDeltaMap,
   type AffixLibraryEntry,
   type AffixLibraryEntryTarget,
@@ -278,16 +277,10 @@ function computeAffixBenefitSeries(input: {
 
 function bumpEntryCounts(
   counts: AffixCounts,
-  entry: AffixLibraryEntry,
-  step: number,
+  _entry: AffixLibraryEntry,
+  _step: number,
 ): AffixCounts {
-  const key = statKeyOfTarget(entry.target)
-  if (!key) return counts
-  const next = { ...counts }
-  // 与 entryRollsToEvalInput 同口径：按条目自己的每档值折成等效档数，
-  // 这样同字段多条（副词条 3%/档 与 主属性 30%/档）互不顶掉
-  next[key] = (next[key] ?? 0) + affixRollsToEquivalentRolls(entry, key, step)
-  return next
+  return counts
 }
 
 function bumpEntryDeltas(
@@ -295,7 +288,8 @@ function bumpEntryDeltas(
   entry: AffixLibraryEntry,
   step: number,
 ): AffixDeltaMap | undefined {
-  const field = panelFieldOfTarget(entry.target)
+  if (isGainTarget(entry.target)) return deltas
+  const field = deltaFieldOfTarget(entry.target)
   if (!field) return deltas
   const next: AffixDeltaMap = { ...(deltas ?? {}) }
   next[field] = (next[field] ?? 0) + step * entry.perRoll
