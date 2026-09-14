@@ -198,6 +198,58 @@ test('normalizeEntryPayload 保留 gain 条件与 effectJson', () => {
   assert.equal(payload.skillSubcategoryId, null)
   assert.equal(payload.appliesToAnomaly, true)
   assert.equal(payload.effectJson.allocation, 'effect')
+  assert.equal(payload.target, 'gain:dmgBonus')
+})
+
+test('normalizeEntryPayload 只交 effectJson 也能派生 target', () => {
+  const payload = normalizeEntryPayload({
+    id: 'panel-crit',
+    label: '暴击',
+    perRoll: 2.4,
+    cap: 0,
+    effectJson: { version: 1, allocation: 'count', legacyTarget: 'panel:critRate' },
+  })
+  assert.equal(payload.error, undefined)
+  assert.equal(payload.target, 'panel:critRate')
+  assert.equal(payload.effectJson.allocation, 'count')
+})
+
+test('normalizeEntryPayload 只交旧 target 仍编出 effectJson（迁移器）', () => {
+  const payload = normalizeEntryPayload({
+    id: 'panel-pen',
+    label: '穿透率',
+    target: 'panel:penRate',
+    perRoll: 24,
+    cap: 1,
+  })
+  assert.equal(payload.error, undefined)
+  assert.equal(payload.target, 'panel:penRate')
+  assert.equal(payload.effectJson.allocation, 'effect')
+  assert.equal(payload.effectJson.legacyTarget, 'panel:penRate')
+  assert.equal(payload.effectJson.spec.stat, 'penRate')
+})
+
+test('normalizeEntryPayload 模板与 body.target 冲突时以模板为准', () => {
+  const payload = normalizeEntryPayload({
+    id: 'x',
+    label: 'x',
+    target: 'panel:dmgBonus',
+    perRoll: 1,
+    cap: 0,
+    effectJson: { version: 1, allocation: 'count', legacyTarget: 'panel:critRate' },
+  })
+  assert.equal(payload.error, undefined)
+  assert.equal(payload.target, 'panel:critRate')
+})
+
+test('normalizeEntryPayload 既无模板也无目标 → 报错', () => {
+  const payload = normalizeEntryPayload({
+    id: 'x',
+    label: 'x',
+    perRoll: 1,
+    cap: 0,
+  })
+  assert.equal(payload.error, '效果模板或目标为必填项')
 })
 
 test('buildAffixEffectTemplate：十格形态 panel 是 count，其余 panel/gain 是 effect', async () => {

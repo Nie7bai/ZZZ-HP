@@ -1,6 +1,6 @@
 import type { ExtraBuffGain } from '@/components/calculator/ExtraBuffGainEditor.vue'
-import type { BuffStatKey } from '@/types/calculator'
-import type { AffixCounts, PanelStats } from '@/types/calculatorPanel'
+import type { BuffStatKey, BuffStatModifiers, DriveDiscBuffDoc } from '@/types/calculator'
+import type { AffixCounts, AffixDriveDiscMainStats, PanelStats } from '@/types/calculatorPanel'
 import { createEmptyAffixCounts } from '@/types/calculatorPanel'
 import type { EffectExecutionPlan, EffectInstance } from '@/types/effectSpec'
 import { adaptAffixLibraryEntry, type AllocatedAffix } from '@/utils/effectAdapters'
@@ -19,9 +19,14 @@ import {
   type PanelBuffBreakdown,
   type PanelCalcContext,
 } from '@/utils/panelBuffCalc'
-import { remapImportedExternalPanelForMainCombo, AFFIX_VALUE_PER_COUNT } from '@/utils/affixPanelCalc'
-import type { AffixDriveDiscMainStats } from '@/types/calculatorPanel'
-import type { DriveDiscBuffDoc } from '@/types/calculator'
+import {
+  AFFIX_VALUE_PER_COUNT,
+  collectAffixTwoPieceMods,
+  readTwoPieceExternalPercents,
+  roundPanelValue,
+  type RemapImportedExternalPanelForMainComboInput,
+} from '@/utils/affixPanelCalc'
+import { collectAffixDriveDiscMainStatContribution } from '@/utils/affixDriveDiscConfig'
 
 export interface PanelPipelineResult {
   externalPanel: PanelStats
@@ -168,20 +173,128 @@ export function applyAllocatedAffixEffects(
   }
 }
 
-export function remapImportedPanelViaEffects(input: {
-  panel: PanelStats
-  fromMains: AffixDriveDiscMainStats
-  toMains: AffixDriveDiscMainStats
-  fromTwoPieceId: string
-  toTwoPieceId: string
-  fourPieceDriveDiscId: string
-  driveDiscs: DriveDiscBuffDoc[]
-  agentHp: number
-  atkBase: number
-  agentDef: number
-  anomalyControlBase: number
-  energyRegenBase: number
-}): PanelStats {
-  // 阶段 3：数值对齐现 remap。阶段 7 再改成撤效果实例。
-  return remapImportedExternalPanelForMainCombo(input)
+type ImportedMainComboPanelEffects = {
+  deltas: AffixDeltaMap
+  leftoverAnomalyControl: number
+  leftoverEnergyRegen: number
+}
+
+function addComboDelta(deltas: AffixDeltaMap, key: keyof AffixDeltaMap, value: number) {
+  if (!value) return
+  deltas[key] = (deltas[key] ?? 0) + value
+}
+
+function compileImportedMainComboPanelEffects(
+  mains: AffixDriveDiscMainStats,
+  twoPieceId: string,
+  fourPieceDriveDiscId: string,
+  driveDiscs: DriveDiscBuffDoc[],
+): ImportedMainComboPanelEffects {
+  const main = collectAffixDriveDiscMainStatContribution(mains)
+  const mods: BuffStatModifiers = collectAffixTwoPieceMods(driveDiscs, {
+    twoPieceDriveDiscId: twoPieceId || 'none',
+    fourPieceDriveDiscId: fourPieceDriveDiscId || 'none',
+  })
+  const ext = readTwoPieceExternalPercents(mods)
+  const deltas: AffixDeltaMap = {}
+  addComboDelta(deltas, 'hpPercent', main.externalHpPercent + ext.externalHpPercent)
+  addComboDelta(deltas, 'atkPercent', main.externalAtkPercent + ext.externalAtkPercent)
+  addComboDelta(deltas, 'defPercent', main.externalDefPercent + ext.externalDefPercent)
+  addComboDelta(deltas, 'hpFlat', mods.hp)
+  addComboDelta(deltas, 'atkFlat', mods.atk)
+  addComboDelta(deltas, 'defFlat', mods.def)
+  addComboDelta(deltas, 'critRate', main.critRate + mods.critRate)
+  addComboDelta(deltas, 'critDmg', main.critDmg + mods.critDmg)
+  addComboDelta(deltas, 'dmgBonus', main.dmgBonus + mods.dmgBonus)
+  addComboDelta(deltas, 'penRate', main.penRate + mods.penRate)
+  addComboDelta(deltas, 'mastery', main.mastery + mods.mastery)
+  addComboDelta(deltas, 'impact', main.impact)
+  addComboDelta(deltas, 'anomalyControl', main.anomalyControl + mods.anomalyControlPercent)
+  addComboDelta(deltas, 'energyRegen', main.energyRegen + mods.energyRegen)
+  addComboDelta(deltas, 'reduceDefense', mods.reduceDefense)
+  addComboDelta(deltas, 'resPen', mods.resPen)
+  return {
+    deltas,
+    leftoverAnomalyControl: mods.anomalyControl,
+    leftoverEnergyRegen: mods.energyRegenFlat,
+  }
+}
+
+function scaleComboDeltas(deltas: AffixDeltaMap, sign: 1 | -1): AffixDeltaMap {
+  const scaled: AffixDeltaMap = {}
+  for (const [key, value] of Object.entries(deltas)) {
+    if (typeof value === 'number' && value) {
+      scaled[key as keyof AffixDeltaMap] = value * sign
+    }
+  }
+  return scaled
+}
+
+function applyImportedComboEffects(
+  panel: PanelStats,
+  combo: ImportedMainComboPanelEffects,
+  bases: AffixPanelDeltaBases,
+  sign: 1 | -1,
+): PanelStats {
+  let next = applyPanelDeltas(panel, scaleComboDeltas(combo.deltas, sign), bases)
+  if (combo.leftoverAnomalyControl) {
+    next = {
+      ...next,
+      anomalyControl: next.anomalyControl + sign * combo.leftoverAnomalyControl,
+    }
+  }
+  if (combo.leftoverEnergyRegen) {
+    next = { ...next, energyRegen: next.energyRegen + sign * combo.leftoverEnergyRegen }
+  }
+  return next
+}
+
+function roundRemappedImportedPanel(panel: PanelStats): PanelStats {
+  return {
+    ...panel,
+    hp: roundPanelValue(panel.hp),
+    atk: roundPanelValue(panel.atk),
+    def: roundPanelValue(panel.def),
+    critRate: roundPanelValue(panel.critRate),
+    critDmg: roundPanelValue(panel.critDmg),
+    dmgBonus: roundPanelValue(panel.dmgBonus),
+    penRate: roundPanelValue(panel.penRate),
+    mastery: roundPanelValue(panel.mastery),
+    impact: roundPanelValue(panel.impact),
+    anomalyControl: roundPanelValue(panel.anomalyControl),
+    energyRegen: roundPanelValue(panel.energyRegen),
+    reduceDefense: roundPanelValue(panel.reduceDefense),
+    resPen: roundPanelValue(panel.resPen),
+  }
+}
+
+/**
+ * 导入局外快照上换 4/5/6 + 2 件套：撤掉旧组合效果，再加上试算组合。
+ * 局外增量走 `applyPanelDeltas`（与词条分配同一施加函数）。
+ */
+export function remapImportedPanelViaEffects(
+  input: RemapImportedExternalPanelForMainComboInput,
+): PanelStats {
+  const bases: AffixPanelDeltaBases = {
+    hp: input.agentHp,
+    atk: input.atkBase,
+    def: input.agentDef,
+    anomalyControl: input.anomalyControlBase,
+    energyRegen: input.energyRegenBase,
+  }
+  const from = compileImportedMainComboPanelEffects(
+    input.fromMains,
+    input.fromTwoPieceId,
+    input.fourPieceDriveDiscId,
+    input.driveDiscs,
+  )
+  const to = compileImportedMainComboPanelEffects(
+    input.toMains,
+    input.toTwoPieceId,
+    input.fourPieceDriveDiscId,
+    input.driveDiscs,
+  )
+  const withdrawn = applyImportedComboEffects(input.panel, from, bases, -1)
+  const added = applyImportedComboEffects(withdrawn, to, bases, 1)
+  return roundRemappedImportedPanel(added)
 }

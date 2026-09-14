@@ -250,7 +250,7 @@ console.log('\n[4] 导入面板换主属性钩子对齐 remap')
   const a = remapImportedExternalPanelForMainCombo(input)
   const b = remapImportedPanelViaEffects(input)
   const diffs = diffSnapshots(snapshotPanel(a), snapshotPanel(b))
-  check('阶段 3 钩子与现 remap 逐字段一致', diffs.length === 0, diffs.join('; ') || 'ok')
+  check('ViaEffects 与字段加减对照逐字段一致', diffs.length === 0, diffs.join('; ') || 'ok')
   check('换成暴击后爆伤下降', b.critDmg < panel.critDmg)
 }
 

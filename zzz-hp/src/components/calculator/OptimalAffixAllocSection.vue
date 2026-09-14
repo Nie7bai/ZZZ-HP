@@ -79,7 +79,7 @@ import {
   type OptimalEventDamageLine,
   yieldToMain,
 } from '@/utils/optimalAffixAlloc'
-import { remapImportedExternalPanelForMainCombo } from '@/utils/affixPanelCalc'
+import { remapImportedPanelViaEffects } from '@/utils/panelPipeline'
 import EquipPickerModal from '@/components/calculator/EquipPickerModal.vue'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import {
@@ -2164,11 +2164,11 @@ function evaluateMainStatComboDamage(
   const ctx = evalCtx.value
   const nextTwoPieceId = twoPieceId ?? ctx.driveDiscSelection.twoPieceDriveDiscId
   /**
-   * 词条分析页 + 已有导入局外：在面板数字上反推扣掉当前 4/5/6（及 2 件套）贡献，
-   * 再加回试算组合 —— 不改收益表 / 求解器，也不动扫掠柱图（仍走下方「清基准重推」）。
+   * 词条分析页 + 已有导入局外：撤掉当前 4/5/6（及 2 件套）效果，再加上试算组合。
+   * 不改收益表 / 求解器，也不动扫掠柱图（仍走下方「清基准重推」）。
    */
   if (sectionMode.value === 'allocation' && ctx.mainBaseExternalPanel) {
-    const remapped = remapImportedExternalPanelForMainCombo({
+    const remapped = remapImportedPanelViaEffects({
       panel: ctx.mainBaseExternalPanel,
       fromMains: driveDiscMainStats.value,
       toMains: {

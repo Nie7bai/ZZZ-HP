@@ -6,13 +6,15 @@ import {
   renameAffixPresetScheme,
   replaceAffixPreset,
 } from '../services/affixPresetService.js'
+import { buildAffixEffectTemplate, parseAffixEffectTemplate } from '../utils/affixEffectTemplate.js'
 import { fail, failInternal, success } from '../utils/response.js'
 
 /**
  * 官方预设词条库：读公开、写需管理员。
  *
- * `target` 的强校验在前端（`isAffixLibraryEntryTarget`，那份字段表是唯一事实来源）；
- * 后端只拦明显不属于该命名空间的值 —— 两端都写死一份完整字段表迟早会分叉。
+ * 写入权威是 `effect_json`。列 `target` 仍 NOT NULL，值从模板 `legacyTarget` 派生，
+ * 不再当独立编辑字段。只交旧 `target` 时仍编模板（兼容迁移器）。
+ * 前缀闸门只拦明显不属于 `panel:` / `gain:` 的值 —— 完整字段表在前端。
  *
  * 写入口四个：整份替换一套方案、新建方案、重命名方案、删除方案。
  * 「改一条」这种粒度在管理页是**草稿 + 保存**（保存＝整份替换），所以没有逐条写接口 ——
@@ -30,7 +32,6 @@ function readOptionalString(value) {
 export function normalizeEntryPayload(body = {}) {
   const id = typeof body.id === 'string' ? body.id.trim() : ''
   const label = typeof body.label === 'string' ? body.label.trim() : ''
-  const target = typeof body.target === 'string' ? body.target.trim() : ''
   const perRoll = Number(body.perRoll)
   const cap = Number(body.cap ?? 0)
   const group = typeof body.group === 'string' ? body.group.trim() : ''
@@ -40,13 +41,21 @@ export function normalizeEntryPayload(body = {}) {
   if (!id) return { error: '条目 ID 为必填项' }
   if (id.length > 64) return { error: '条目 ID 过长（≤64）' }
   if (!label) return { error: '名称为必填项' }
-  if (!target) return { error: '目标为必填项' }
-  if (!TARGET_PREFIXES.some((prefix) => target.startsWith(prefix))) {
-    return { error: `目标须以 ${TARGET_PREFIXES.join(' 或 ')} 开头` }
-  }
   if (!Number.isFinite(perRoll) || perRoll <= 0) return { error: '每档数值须为正数' }
   if (!Number.isFinite(cap) || cap < 0) return { error: '上限须为非负数（0 = 不限）' }
   if (!Number.isFinite(rollCost) || rollCost < 0) return { error: '每档占用须为非负数' }
+
+  const parsedTemplate = parseAffixEffectTemplate(
+    body.effectJson && typeof body.effectJson === 'object' && !Array.isArray(body.effectJson)
+      ? body.effectJson
+      : undefined,
+  )
+  const targetFromBody = typeof body.target === 'string' ? body.target.trim() : ''
+  const target = parsedTemplate?.legacyTarget || targetFromBody
+  if (!target) return { error: '效果模板或目标为必填项' }
+  if (!TARGET_PREFIXES.some((prefix) => target.startsWith(prefix))) {
+    return { error: `目标须以 ${TARGET_PREFIXES.join(' 或 ')} 开头` }
+  }
 
   const applySituation = readOptionalString(body.applySituation)
   const scope = readOptionalString(body.scope)
@@ -56,14 +65,21 @@ export function normalizeEntryPayload(body = {}) {
   const appliesToAnomaly =
     typeof body.appliesToAnomaly === 'boolean' ? body.appliesToAnomaly : undefined
   const effectJson =
-    body.effectJson && typeof body.effectJson === 'object' && !Array.isArray(body.effectJson)
-      ? body.effectJson
-      : undefined
+    parsedTemplate ??
+    buildAffixEffectTemplate({
+      target,
+      applySituation,
+      scope,
+      skillCategory,
+      skillSubcategoryId,
+      appliesToAnomaly,
+    })
+  if (!effectJson) return { error: '无法编出效果模板' }
 
   return {
     id,
     label,
-    target,
+    target: effectJson.legacyTarget,
     perRoll,
     cap: Math.trunc(cap),
     group,
@@ -75,7 +91,7 @@ export function normalizeEntryPayload(body = {}) {
     ...(skillCategory ? { skillCategory } : {}),
     ...(skillSubcategoryId !== undefined ? { skillSubcategoryId } : {}),
     ...(appliesToAnomaly !== undefined ? { appliesToAnomaly } : {}),
-    ...(effectJson ? { effectJson } : {}),
+    effectJson,
   }
 }
 

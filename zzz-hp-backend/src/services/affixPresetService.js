@@ -11,6 +11,7 @@ import { buildAffixEffectTemplate, parseAffixEffectTemplate } from '../utils/aff
  *   改动只对**之后新建**的库生效；
  * - 用户自己的词条库仍在 localStorage，**不上服务器**，管理员侧看不到也不管理；
  * - 不做离线兜底（离线了就别用）。
+ * - 写入权威是 `effect_json`；列 `target` 从模板 `legacyTarget` 派生以满足 NOT NULL。只交旧 `target` 时仍编模板。
  *
  * ## 方案（多套官方预设）
  *
@@ -52,7 +53,7 @@ async function ensureTables() {
       scheme VARCHAR(64) NOT NULL DEFAULT '',
       id VARCHAR(64) NOT NULL,
       label VARCHAR(255) NOT NULL,
-      target VARCHAR(64) NOT NULL,
+      target VARCHAR(64) NOT NULL COMMENT '从 effect_json.legacyTarget 派生，不是独立权威',
       per_roll DECIMAL(12, 2) NOT NULL DEFAULT 0,
       cap INT NOT NULL DEFAULT 0,
       group_name VARCHAR(64) NOT NULL DEFAULT '',
@@ -239,6 +240,13 @@ function effectJsonForDoc(doc) {
   return buildAffixEffectTemplate(doc)
 }
 
+function derivedTargetForDoc(doc, effectJson) {
+  const fromTemplate =
+    typeof effectJson?.legacyTarget === 'string' ? effectJson.legacyTarget.trim() : ''
+  if (fromTemplate) return fromTemplate
+  return String(doc.target ?? '').trim()
+}
+
 function rowToEntry(row) {
   const raw = parseRawJson(row.raw_json)
   const effectJson =
@@ -385,7 +393,16 @@ export async function replaceAffixPreset({ scheme, entries, groups }) {
     await conn.query(`DELETE FROM ${GROUP_TABLE} WHERE scheme = ?`, [schemeName])
     for (const [index, doc] of entryList.entries()) {
       const effectJson = effectJsonForDoc(doc)
-      const raw = doc.raw && typeof doc.raw === 'object' ? { ...doc.raw, ...doc, effectJson } : { ...doc, effectJson }
+      if (!effectJson) {
+        throw new Error(
+          `第 ${index + 1} 条缺少效果模板且无法从目标编出（id=${String(doc.id ?? '').trim() || '空'}）`,
+        )
+      }
+      const target = derivedTargetForDoc(doc, effectJson)
+      const raw =
+        doc.raw && typeof doc.raw === 'object'
+          ? { ...doc.raw, ...doc, target, effectJson }
+          : { ...doc, target, effectJson }
       delete raw.raw
       await conn.query(
         `INSERT INTO ${ENTRY_TABLE}
@@ -395,7 +412,7 @@ export async function replaceAffixPreset({ scheme, entries, groups }) {
           schemeName,
           String(doc.id ?? '').trim(),
           String(doc.label ?? '').trim(),
-          String(doc.target ?? '').trim(),
+          target,
           readNumber(doc.perRoll, 0),
           Math.max(0, readInt(doc.cap, 0)),
           String(doc.group ?? '').trim(),
@@ -403,7 +420,7 @@ export async function replaceAffixPreset({ scheme, entries, groups }) {
           doc.enabledByDefault ? 1 : 0,
           readInt(doc.sortOrder, index),
           JSON.stringify(raw),
-          effectJson ? JSON.stringify(effectJson) : null,
+          JSON.stringify(effectJson),
         ],
       )
     }

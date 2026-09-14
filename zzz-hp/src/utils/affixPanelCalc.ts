@@ -56,11 +56,11 @@ function affixStatTotal(count: number, perCount: number) {
   return safeCount * perCount
 }
 
-function roundPanelValue(value: number) {
+export function roundPanelValue(value: number) {
   return Math.round(value * 100) / 100
 }
 
-function readTwoPieceExternalPercents(mods: BuffStatModifiers) {
+export function readTwoPieceExternalPercents(mods: BuffStatModifiers) {
   return {
     externalHpPercent: mods.externalHpPercent + mods.inCombatHpPercent,
     externalAtkPercent: mods.externalAtkPercent + mods.inCombatAtkPercent,
@@ -462,11 +462,12 @@ export const AFFIX_COUNT_FIELDS: {
 ]
 
 /**
- * 面板导入局外数字上「换 4/5/6 主属性 + 2 件套」：
- * 按已知主属性 / 2 件套贡献反推扣掉旧组合，再加回新组合（百分比项按角色/音擎基础折算）。
+ * 面板导入局外数字上「换 4/5/6 主属性 + 2 件套」的字段加减对照实现。
+ *
+ * 生产走 `remapImportedPanelViaEffects`（先撤后加，经 `applyPanelDeltas`）。
+ * 本函数只给双跑测试钉数字，不要从页面或评估入口再调。
  *
  * 前提：`fromMains` 必须与面板里实际带的主属性一致；空着却面板已含主属性时会少扣。
- * 只服务组合试算；不改词条叠加 / 求解器其它路径。
  */
 export type RemapImportedExternalPanelForMainComboInput = {
   panel: PanelStats
