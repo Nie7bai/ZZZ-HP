@@ -17,7 +17,7 @@ import type { AffixCounts } from '@/types/calculatorPanel'
  * 词条库 → 评估输入（走适配器分桶）。
  *
  * 与 `entryRollsToEvalInput` 同构：局外 `panel:` 进 deltas、`gain:` extraGains。
- * 不从本文件 import `panelPipeline`（会环）。生产评估仍走旧 `computeFinalPanel`。
+ * 不从本文件 import `panelPipeline`（会环）。生产评估走 `computeFinalPanel`（内部是 `computePanelStages`）。
  */
 export function entryRollsToEffectEvalInput(
   entries: AffixLibraryEntry[],
