@@ -2,10 +2,11 @@ import type { AffixCounts } from '@/types/calculatorPanel'
 import {
   AFFIX_GAIN_SOURCE_ID_PREFIX,
   affixValuePerCountFromEntries,
-  deltaFieldOfTarget,
   entryRollsToEvalInput,
   extraGainFromLibraryEntry,
   isGainTarget,
+  panelFieldOfTarget,
+  statKeyOfTarget,
   type AffixDeltaMap,
   type AffixLibraryEntry,
   type AffixLibraryEntryTarget,
@@ -289,7 +290,7 @@ function bumpEntryDeltas(
   step: number,
 ): AffixDeltaMap | undefined {
   if (isGainTarget(entry.target)) return deltas
-  const field = deltaFieldOfTarget(entry.target)
+  const field = panelFieldOfTarget(entry.target) ?? statKeyOfTarget(entry.target)
   if (!field) return deltas
   const next: AffixDeltaMap = { ...(deltas ?? {}) }
   next[field] = (next[field] ?? 0) + step * entry.perRoll

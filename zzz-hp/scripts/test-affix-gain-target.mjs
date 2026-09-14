@@ -28,7 +28,7 @@ import {
   affixTargetLabel,
   createDefaultAffixLibrary,
   deltaFieldOfTarget,
-  gainDeltasOf,
+  entryRollsToEvalInput,
   gainFieldOfTarget,
   gainTarget,
   isAffixLibraryEntryTarget,
@@ -123,7 +123,7 @@ check(
   gainFieldOfTarget(gainTarget('inCombatAtkPercent')) === 'inCombatAtkPercent',
 )
 check(
-  'deltaFieldOfTarget 把 gain: 归到增量表',
+  'deltaFieldOfTarget 认出增益字段',
   deltaFieldOfTarget(gainTarget('inCombatAtkPercent')) === 'inCombatAtkPercent',
 )
 check(
@@ -214,8 +214,15 @@ check('收益率 > 0', row.percentDelta > 0, `+${row.percentDelta.toFixed(3)}%`)
 
 // ---------- 4. 等价性：与「额外增益」同一条链路 ----------
 console.log('\n[4] 等价性：gain: 条目 == 额外增益（同链路，非旁路）')
-// 4a. 条目路径：4 个百分点
-const viaEntry = evaluateAffixCounts(ctx, zeros, { inCombatAtkPercent: 4 })
+const viaLib = entryRollsToEvalInput([gainEntry], { [gainEntry.id]: 1 })
+const viaEntry = evaluateAffixCounts(
+  ctx,
+  viaLib.counts,
+  viaLib.deltas,
+  viaLib.valuePerCount,
+  viaLib.extraGains,
+)
+check('库路径把 gain: 写成 extraGains，不写 deltas', viaLib.extraGains.length === 1 && viaLib.deltas.inCombatAtkPercent == null)
 // 4b. 增益路径：手工把同样 4 个百分点塞进 extraGains
 const ctxWithGain = makeCtx({
   extraGains: [
@@ -362,22 +369,6 @@ check(
 // ---------- 8. 局外/增益重叠字段不得双算（2026-09-14） ----------
 console.log('\n[8] 重叠字段（penRate / dmgBonus）只加一次')
 {
-  const picked = gainDeltasOf({
-    penRate: 24,
-    dmgBonus: 30,
-    reduceDefense: 20,
-    inCombatAtkPercent: 4,
-  })
-  check(
-    'gainDeltasOf 丢掉与局外重叠的键',
-    picked != null &&
-      picked.inCombatAtkPercent === 4 &&
-      picked.penRate == null &&
-      picked.dmgBonus == null &&
-      picked.reduceDefense == null,
-    JSON.stringify(picked),
-  )
-
   const base = evaluateAffixCounts(ctx, zeros, undefined)
   const plusPen = evaluateAffixCounts(ctx, zeros, { penRate: 24 })
   const plusDmg = evaluateAffixCounts(ctx, zeros, { dmgBonus: 30 })

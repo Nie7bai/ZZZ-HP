@@ -226,15 +226,13 @@ export function gainFieldOfTarget(target: AffixLibraryEntryTarget): AffixGainFie
 }
 
 /**
- * 增量表里能出现的一族字段：**局外面板字段** + **增益字段**。
- *
- * 两族共用一张增量表，因为条目只表达「给哪个属性加多少」，
- * **施加阶段由字段决定**（局外字段 → 局外面板；增益字段 → 增益阶段，转模之后）。
+ * 目标字段（展示 / 适配器用）：局外面板字段、十格形态、或增益字段。
+ * 评估增量表 `AffixDeltaMap` 只装局外，不含增益。
  */
-export type AffixDeltaField = AffixPanelDeltaField | keyof AffixCounts | AffixGainField
+export type AffixDeltaField = AffixExternalField | AffixGainField
 
-/** 增量表：字段 → 累计值（两族同表，取用时按族分流） */
-export type AffixDeltaMap = Partial<Record<AffixDeltaField, number>>
+/** 分析侧局外增量：字段 → 累计值。`gain:` 走 extraGains，不进这张表。 */
+export type AffixDeltaMap = Partial<Record<AffixExternalField, number>>
 
 /** 这个键属于「局外面板增量」一族的判定（增益字段必须排除，它们不在 `PanelStats` 上） */
 export function isPanelDeltaField(key: string): key is AffixPanelDeltaField {
@@ -242,19 +240,7 @@ export function isPanelDeltaField(key: string): key is AffixPanelDeltaField {
 }
 
 /**
- * 这个键属于「增益增量」一族的判定。
- *
- * 与局外面板重叠的字段（`penRate` / `dmgBonus` / `reduceDefense` 等）只走
- * `applyPanelDeltas`，不进增益。两族共用扁平增量表时，重叠键若两边都认，
- * 同一档会加两次（实测：+24 穿透率 → 局内 48，收益被抬到约 2 倍）。
- */
-export function isGainDeltaField(key: string): key is AffixGainField {
-  if (AFFIX_STAT_KEYS.includes(key as keyof AffixCounts)) return false
-  return AFFIX_GAIN_FIELD_SET.has(key) && !isPanelDeltaField(key)
-}
-
-/**
- * 目标 → 该写进增量表的字段（两族合一）。
+ * 目标 → 该写的字段名（局外增量或增益字段）。
  *
  * 收益表逐档重算、求解器把档数折成评估输入都用它 —— 新增目标族时只改这一处，
  * 免得「加了新族但只有一半路径认它」。
@@ -329,25 +315,6 @@ export function affixEntryConditionSummary(entry: AffixLibraryEntry): string {
   }
   if (entry.appliesToAnomaly) parts.push('异常也生效')
   return parts.join(' · ')
-}
-
-/**
- * 从增量表里挑出「增益增量」一族（局外字段被排除）。
- *
- * 扁平 API（`{ inCombatAtkPercent: 4 }`）仍走这条路；库路径的 `gain:` 已改成
- * `extraGains`，不再写进这张表。重叠键闸门见 `isGainDeltaField`。
- */
-export function gainDeltasOf(
-  deltas: AffixDeltaMap | AffixPanelDeltaDraft | undefined,
-): Partial<Record<AffixGainField, number>> | null {
-  if (!deltas) return null
-  let out: Partial<Record<AffixGainField, number>> | null = null
-  for (const [key, value] of Object.entries(deltas)) {
-    if (!value || !isGainDeltaField(key)) continue
-    out = out ?? {}
-    out[key] = (out[key] ?? 0) + value
-  }
-  return out
 }
 
 /** 校验一个字符串是不是合法的条目目标 */
@@ -1806,7 +1773,7 @@ export interface AffixEntryEvalInput {
   /** 分析侧局外增量（`panel:`；不含 `gain:`） */
   deltas: AffixDeltaMap
   /**
-   * 各 `gain:` 目标合成的 extraGains（独立于扁平增量表，避免与 `panel:` 重叠键双算）。
+   * 各 `gain:` 目标合成的 extraGains（不进局外增量表）。
    */
   extraGains: ExtraBuffGain[]
   /**

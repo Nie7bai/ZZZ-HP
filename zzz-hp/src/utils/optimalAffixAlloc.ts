@@ -31,9 +31,7 @@ import {
 } from '@/utils/affixPanelCalc'
 import {
   applyPanelDeltas,
-  gainDeltasOf,
   type AffixDeltaMap,
-  type AffixGainField,
   type AffixPanelDeltaField,
 } from '@/utils/affixLibrary'
 import {
@@ -1495,8 +1493,8 @@ let affixEvalCacheCtxSig = ''
 let affixEvalCacheCtxKey = ''
 let affixEvalCacheCtxSeq = 0
 /**
- * 增量表类型已挪到 `affixLibrary.ts`（`AffixDeltaMap`）：它现在同时装
- * **局外面板字段**与**增益字段**两族 —— 施加阶段由字段决定（见步骤 58）。
+ * 增量表类型在 `affixLibrary.ts`（`AffixDeltaMap`）：只装局外增量。
+ * `gain:` 走 `extraGains`，不进这张表。
  */
 const affixEvalCache = new Map<
   string,
@@ -1854,37 +1852,6 @@ function computeExternalForEval(
 }
 
 /**
- * 把 `gain:` 条目的增量合成「给主 C 的增益」，并入 `ctx.extraGains`。
- *
- * 为什么走增益这条路（而不是直写局内面板）：条目只表达「给哪个属性加多少」，
- * **施加阶段由字段决定**（`affix-calc-manual.md` §5.1 的口径）。
- * 增益字段按增益口径在**转模之后**施加 —— 它因而出现在局内面板上，
- * 转模里 `panelSource: 'final'` 的消费者能读到它：**没有任何旁路**。
- *
- * 目标槽位固定为**主 C**（`applySlot` + `applyTarget: 'self'`）：词条是主 C 的驱动盘，
- * 队友的事件与面板不该被它改变（`extraGainAppliesToSlot` 负责过滤）。
- */
-function withAffixGainMods(
-  ctx: OptimalEvalContext,
-  panelDeltas?: AffixDeltaMap,
-): OptimalEvalContext {
-  const gains = gainDeltasOf(panelDeltas)
-  if (!gains) return ctx
-  const applySlot = ctx.panelContext.mainSlotIndex
-  const synthetic: ExtraBuffGain[] = (Object.keys(gains) as AffixGainField[]).map((field) => ({
-    id: `affix-gain:${field}`,
-    name: '词条增益',
-    stat: field,
-    value: gains[field] ?? 0,
-    applySituation: 'global',
-    scope: 'general',
-    applyTarget: 'self',
-    applySlot,
-  }))
-  return { ...ctx, extraGains: [...(ctx.extraGains ?? []), ...synthetic] }
-}
-
-/**
  * 库路径 `gain:` 条目的 extraGains：缓存查找之后才并入 ctx 副本。
  * 页级 extraGains 仍在原 ctx 上，走上下文签名。
  *
@@ -1920,8 +1887,7 @@ function evaluateAffixCountsUncached(
   eventLines: OptimalEventDamageLine[]
 } {
   const external = computeExternalForEval(ctx, affixCounts, panelDeltas, valuePerCount)
-  // 增益字段（`gain:`）不进局外面板：扁平袋走 withAffixGainMods，库路径走 extraGains
-  const evalCtx = withAffixLibraryExtraGains(withAffixGainMods(ctx, panelDeltas), extraGains)
+  const evalCtx = withAffixLibraryExtraGains(ctx, extraGains)
 
   if (ctx.hits?.length) {
     const { grandTotal, eventLines, firstResult, firstBreakdown } = computeEventDamageLines(
