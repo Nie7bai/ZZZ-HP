@@ -3,6 +3,8 @@ import type {
   BuffApplyTarget,
   BuffEffect,
   BuffEffectConvert,
+  BuffEffectKind,
+  BuffScope,
   BuffSkillTarget,
   BuffStatKey,
 } from '@/types/calculator'
@@ -27,12 +29,14 @@ export type EffectBeneficiary = 'self' | 'team' | { slot: number }
 
 export interface EffectConditions {
   applySituation?: BuffApplySituation
+  scope?: BuffScope
   skillTargets?: BuffSkillTarget[]
   elementFilter?: 'all' | string[]
   appliesToAnomaly?: boolean
   applyProfession?: string | null
   teamProfession?: string | null
   teamProfessionValues?: Array<number | null> | null
+  teamProfessionMinCount?: number | null
 }
 
 export type EffectSourcePolicy = 'remiel-self-radiance'
@@ -57,10 +61,23 @@ export interface EffectInstance extends EffectSpec {
   /** 已按 quantity 展开后的施加量（add / percentOfBase 用） */
   magnitude: number
   displayName?: string
+  enabledDefault?: boolean
+  stackable?: boolean
+  maxStacks?: number
+  valuePerStack?: number
+  defaultStacks?: number
+  /** 叠层 / 转模等旧 kind；operation 不表达 stacked */
+  buffKind?: BuffEffectKind
   /** 旧 Buff 执行器回退；生产切换后删除 */
   legacyBuffEffect?: BuffEffect
   /** 迁移期回读旧词条 target */
   legacyAffixTarget?: AffixLibraryEntryTarget
+}
+
+export function beneficiaryToApplyTarget(
+  beneficiary: EffectBeneficiary,
+): BuffApplyTarget {
+  return beneficiary === 'team' ? 'team' : 'self'
 }
 
 export interface EffectExecutionPlan {

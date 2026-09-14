@@ -4,7 +4,11 @@ import type {
   EffectSpec,
   EffectStage,
 } from '@/types/effectSpec'
-import { applyTargetToBeneficiary, EFFECT_SPEC_VERSION } from '@/types/effectSpec'
+import {
+  applyTargetToBeneficiary,
+  beneficiaryToApplyTarget,
+  EFFECT_SPEC_VERSION,
+} from '@/types/effectSpec'
 import {
   affixPanelOperation,
   operationForStat,
@@ -19,7 +23,7 @@ import {
   statKeyOfTarget,
   type AffixLibraryEntry,
 } from '@/utils/affixLibrary'
-import { getEffectSkillTargets } from '@/utils/buffEffect'
+import { createEmptyBuffEffect, getEffectSkillTargets } from '@/utils/buffEffect'
 import type { CollectedEffect } from '@/utils/panelBuffCalc'
 
 export function stageForBuffEffect(effect: BuffEffect): EffectStage {
@@ -39,29 +43,78 @@ export function adaptBuffEffect(effect: BuffEffect): EffectSpec {
     beneficiary: applyTargetToBeneficiary(effect.applyTarget),
     conditions: {
       applySituation: effect.applySituation,
+      scope: effect.scope,
       skillTargets: getEffectSkillTargets(effect),
       elementFilter: effect.elementFilter,
       appliesToAnomaly: effect.appliesToAnomaly,
       applyProfession: effect.applyProfession,
       teamProfession: effect.teamProfession,
       teamProfessionValues: effect.teamProfessionValues,
+      teamProfessionMinCount: effect.teamProfessionMinCount,
     },
     convert: effect.convert,
   }
 }
 
-export function instantiateCollectedEffect(item: CollectedEffect): EffectInstance {
-  const spec = adaptBuffEffect(item.effect)
+export function instantiateBuffEffect(
+  effect: BuffEffect,
+  meta: { sourceKey: string; instanceId?: string; displayName?: string },
+): EffectInstance {
+  const spec = adaptBuffEffect(effect)
   return {
     ...spec,
-    instanceId: item.effect.id,
-    sourceKey: item.sourceKey,
+    instanceId: meta.instanceId ?? effect.id,
+    sourceKey: meta.sourceKey,
     sourceFamily: 'buff',
     quantity: 1,
-    magnitude: item.effect.value ?? 0,
-    displayName: item.blockName || item.sourceLabel,
-    legacyBuffEffect: item.effect,
+    magnitude: effect.value ?? 0,
+    displayName: meta.displayName,
+    enabledDefault: effect.enabledDefault,
+    stackable: effect.stackable,
+    maxStacks: effect.maxStacks,
+    valuePerStack: effect.valuePerStack,
+    defaultStacks: effect.defaultStacks,
+    buffKind: effect.kind,
+    legacyBuffEffect: effect,
   }
+}
+
+/**
+ * 从 EffectInstance 往返 BuffEffect。故意不读 `legacyBuffEffect`，
+ * 避免适配器漏字段时双跑假绿。
+ */
+export function effectInstanceToBuffEffect(instance: EffectInstance): BuffEffect {
+  const skillTargets = instance.conditions.skillTargets
+  return createEmptyBuffEffect({
+    id: instance.instanceId,
+    scope: instance.conditions.scope ?? 'general',
+    applyTarget: beneficiaryToApplyTarget(instance.beneficiary),
+    applySituation: instance.conditions.applySituation ?? 'global',
+    applyProfession: instance.conditions.applyProfession,
+    teamProfession: instance.conditions.teamProfession,
+    teamProfessionValues: instance.conditions.teamProfessionValues,
+    teamProfessionMinCount: instance.conditions.teamProfessionMinCount,
+    skillTargets: skillTargets?.length ? skillTargets : undefined,
+    elementFilter: instance.conditions.elementFilter ?? 'all',
+    kind: instance.buffKind ?? (instance.operation === 'convert' ? 'convert' : 'fixed'),
+    stat: instance.stat,
+    value: instance.magnitude,
+    stackable: instance.stackable,
+    maxStacks: instance.maxStacks,
+    valuePerStack: instance.valuePerStack,
+    defaultStacks: instance.defaultStacks,
+    convert: instance.convert,
+    appliesToAnomaly: instance.conditions.appliesToAnomaly,
+    enabledDefault: instance.enabledDefault,
+  })
+}
+
+export function instantiateCollectedEffect(item: CollectedEffect): EffectInstance {
+  return instantiateBuffEffect(item.effect, {
+    instanceId: item.effect.id,
+    sourceKey: item.sourceKey,
+    displayName: item.blockName || item.sourceLabel,
+  })
 }
 
 export type AllocatedAffix =
@@ -106,10 +159,11 @@ export function adaptAffixLibraryEntry(
     stage,
     beneficiary: 'self',
     conditions: {
-      applySituation: entry.applySituation,
       skillTargets: entry.skillCategory
         ? [{ category: entry.skillCategory, subcategoryId: entry.skillSubcategoryId ?? null }]
         : undefined,
+      applySituation: entry.applySituation,
+      scope: entry.scope,
       appliesToAnomaly: entry.appliesToAnomaly,
     },
     instanceId: `affix:${entry.id}`,

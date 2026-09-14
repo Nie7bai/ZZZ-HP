@@ -46,6 +46,7 @@ console.log('\n[2] BuffEffect 适配')
   check('固定效果 stage=combatPreConvert', spec.stage === 'combatPreConvert')
   check('stat 保留 dmgBonus', spec.stat === 'dmgBonus')
   check('招式条件带上', spec.conditions.skillTargets?.[0]?.category === 'basic')
+  check('scope 招式进 conditions', spec.conditions.scope === 'skill')
 
   const cv = convertEffect('c', 'atk', { from: 'mastery', panelSource: 'final', ratioPercent: 80 })
   const cvSpec = adaptBuffEffect(cv)

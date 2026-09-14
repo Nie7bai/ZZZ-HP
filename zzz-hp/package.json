@@ -24,7 +24,7 @@
     "test:sharpen-crit": "npx vite-node scripts/test-sharpen-crit.mjs",
     "test:guestbook-upload-session": "npx vite-node scripts/test-guestbook-upload-session.mjs",
     "test:skill-talent-levels": "npx vite-node scripts/test-skill-talent-levels.mjs",
-    "test": "run-s test:release-mult test:skill-coords test:history-stats test:crisis-hp-score test:mode-routes test:affix-preagg test:affix-gain-target test:buff-catalog-cache test:user-auth-session test:mult-factor-percent test:formula-align test:sharpen-crit test:guestbook-upload-session test:skill-talent-levels test:remap-imported-panel-main-combo test:legacy-effect-contracts test:effect-model test:panel-pipeline-dual-run test:damage-zone-routing test:affix-eval-adapter test:extra-gain-effect-adapt",
+    "test": "run-s test:release-mult test:skill-coords test:history-stats test:crisis-hp-score test:mode-routes test:affix-preagg test:affix-gain-target test:buff-catalog-cache test:user-auth-session test:mult-factor-percent test:formula-align test:sharpen-crit test:guestbook-upload-session test:skill-talent-levels test:remap-imported-panel-main-combo test:legacy-effect-contracts test:effect-model test:panel-pipeline-dual-run test:damage-zone-routing test:affix-eval-adapter test:extra-gain-effect-adapt test:agent-buff-effect-adapt",
     "lint": "run-s \"lint:*\"",
     "lint:oxlint": "oxlint . --fix",
     "lint:eslint": "eslint . --fix --cache",
@@ -36,7 +36,8 @@
     "test:panel-pipeline-dual-run": "npx vite-node scripts/test-panel-pipeline-dual-run.mjs",
     "test:damage-zone-routing": "npx vite-node scripts/test-damage-zone-routing.mjs",
     "test:affix-eval-adapter": "npx vite-node scripts/test-affix-eval-adapter.mjs",
-    "test:extra-gain-effect-adapt": "npx vite-node scripts/test-extra-gain-effect-adapt.mjs"
+    "test:extra-gain-effect-adapt": "npx vite-node scripts/test-extra-gain-effect-adapt.mjs",
+    "test:agent-buff-effect-adapt": "npx vite-node scripts/test-agent-buff-effect-adapt.mjs"
   },
   "dependencies": {
     "isomorphic-dompurify": "^3.19.0",

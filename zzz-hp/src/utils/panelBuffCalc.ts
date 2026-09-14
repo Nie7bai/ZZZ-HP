@@ -47,6 +47,10 @@ import {
   mergeExtraModsForEvent,
   type ExtraBuffGain,
 } from '@/utils/extraBuffCalc'
+import {
+  effectInstanceToBuffEffect,
+  instantiateBuffEffect,
+} from '@/utils/effectAdapters'
 
 function flattenBlocks(blocks: { effects?: BuffEffect[] }[]): BuffEffect[] {
   return blocks.flatMap((block) => block.effects ?? [])
@@ -1140,6 +1144,33 @@ function resolvePackMods(
   })
 }
 
+/** 旧路径：直接 resolveEffectsToMods。阶段 6 双跑对照用。 */
+export function resolvePackModsDirect(
+  effects: BuffEffect[],
+  isMain: boolean,
+  ctx: PanelCalcContext,
+  slotIndex?: number,
+): BuffStatModifiers {
+  return resolvePackMods(effects, isMain, ctx, slotIndex)
+}
+
+/**
+ * 角色影画：BuffEffect → EffectInstance → 往返 BuffEffect → 同一套 resolveEffectsToMods。
+ * 往返不读 legacyBuffEffect。
+ */
+export function resolvePackModsViaEffectSpec(
+  effects: BuffEffect[],
+  isMain: boolean,
+  ctx: PanelCalcContext,
+  slotIndex?: number,
+): BuffStatModifiers {
+  if (!effects.length) return createEmptyBuffStatModifiers()
+  const reconstructed = effects.map((effect) =>
+    effectInstanceToBuffEffect(instantiateBuffEffect(effect, { sourceKey: 'buff' })),
+  )
+  return resolvePackMods(reconstructed, isMain, ctx, slotIndex)
+}
+
 export function collectSlotDriveDiscEffects(
   driveDiscs: DriveDiscBuffDoc[],
   selection: DriveDiscSelection,
@@ -1918,7 +1949,7 @@ function collectPanelBuffModSourcesUncached(ctx: PanelCalcContext): BuffModSourc
         const effects = entry.effects
           .filter(matchesTarget)
           .map((effect) => cloneEffectInstance(effect, sourceKey, entry.blockId))
-        const mindscapeMods = resolvePackMods(effects, isMain, {
+        const mindscapeMods = resolvePackModsViaEffectSpec(effects, isMain, {
           ...ctx,
           skillContext: skillCtx,
         }, index)
