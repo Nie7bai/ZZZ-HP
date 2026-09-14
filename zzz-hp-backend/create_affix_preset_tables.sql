@@ -10,7 +10,7 @@ USE zzz;
 CREATE TABLE IF NOT EXISTS `affix_preset_entry` (
   `id` VARCHAR(64) NOT NULL COMMENT '条目 ID（稳定，不可改名）',
   `label` VARCHAR(255) NOT NULL COMMENT '显示名（自由文本，如「爆伤 48%」）',
-  `target` VARCHAR(64) NOT NULL COMMENT '实际效果落点：stat:<AffixCounts 字段> / panel:<面板字段> / gain:<增益字段>',
+  `target` VARCHAR(64) NOT NULL COMMENT '实际效果落点：panel:<局外字段> / gain:<增益字段>',
   `per_roll` DECIMAL(12, 2) NOT NULL DEFAULT 0 COMMENT '每档增量',
   `cap` INT NOT NULL DEFAULT 0 COMMENT '该条最大档数，0 = 不设上限',
   `group_name` VARCHAR(64) NOT NULL DEFAULT '' COMMENT '所属分组名（对应 affix_preset_group.name）',

@@ -77,8 +77,8 @@ console.log('\n[3] 词条适配带命名空间')
     'gain: 招式条件进适配器',
     scoped?.type === 'effect' && scoped.instance.conditions.skillTargets?.[0]?.category === 'basic',
   )
-  const stat = adaptAffixLibraryEntry(affixEntry('s', 'stat:atkPercent', 3), 2)
-  check('stat: 仍走计数桶', stat?.type === 'count' && stat.statKey === 'atkPercent')
+  const stat = adaptAffixLibraryEntry(affixEntry('s', 'panel:atkPercent', 3), 2)
+  check('panel:atkPercent 仍走计数桶', stat?.type === 'count' && stat.statKey === 'atkPercent')
 }
 
 console.log('\n[4] 编译器按阶段分桶且稳定')

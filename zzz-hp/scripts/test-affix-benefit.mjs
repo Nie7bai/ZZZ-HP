@@ -69,8 +69,8 @@ console.log('\n[1] 词条库数值口径')
 const library = createDefaultAffixLibrary()
 check('默认词条库 10 条', library.length === 10, `实际 ${library.length}`)
 for (const entry of library) {
-  const statKey = statKeyOfTarget(entry.target)
-  const expected = statKey ? AFFIX_VALUE_PER_COUNT[statKey] : undefined
+  const field = String(entry.target).slice('panel:'.length)
+  const expected = AFFIX_VALUE_PER_COUNT[field]
   check(
     `${entry.label} 每档 = AFFIX_VALUE_PER_COUNT`,
     entry.perRoll === expected,
@@ -109,7 +109,7 @@ check(
   'panelFieldOfTarget / statKeyOfTarget 命名空间解析正确',
   panelFieldOfTarget('panel:reduceDefense') === 'reduceDefense' &&
     panelFieldOfTarget('panel:mastery') === 'mastery' &&
-    statKeyOfTarget('stat:critDmg') === 'critDmg',
+    statKeyOfTarget('panel:critDmg') === 'critDmg',
 )
 // ---------- 2. 与 computeDiffAnalysis 同口径对比 ----------
 console.log('\n[2] 新收益表 vs 现有差异表（共同候选 +1 档）')
@@ -383,7 +383,7 @@ console.log('\n[6] 词条库整改验收')
   check('改回 2.4 后回到原值（缓存不串味）', nearly(dmgBack, dmg24),
     `${dmg24} vs ${dmgBack}`)
 
-  // —— 验收 3：等价条目对拍成为恒等（stat:mastery vs panel:mastery，每档都是 9） ——
+  // —— 验收 3：导入十格 1 档精通 vs 局外增量 9 恒等（每档都是 9） ——
   const statMasteryEval = evaluateAffixCounts(
     ctx,
     { ...createEmptyAffixCounts(), mastery: 1 },
@@ -395,7 +395,7 @@ console.log('\n[6] 词条库整改验收')
     createEmptyAffixCounts(),
     { mastery: 9 },
   ).grandTotal
-  check('stat:mastery(9) 与 panel:mastery(9) 结果恒等', nearly(statMasteryEval, panelMasteryEval),
+  check('十格 1 档精通 与 局外增量 9 结果恒等', nearly(statMasteryEval, panelMasteryEval),
     `${statMasteryEval} vs ${panelMasteryEval}`)
 
   // —— 验收 4：旧 localStorage 迁移（kind/affixKey → target，不丢条目、数值不变） ——
@@ -441,8 +441,8 @@ console.log('\n[6] 词条库整改验收')
 
   check('迁移后条目数不变', migrated.customEntries.length === 2,
     `实际 ${migrated.customEntries.length}`)
-  check('旧 affixKey 条目 → stat: 目标',
-    migrated.customEntries[0]?.target === 'stat:atkPercent',
+  check('旧 affixKey 条目 → panel: 目标',
+    migrated.customEntries[0]?.target === 'panel:atkPercent',
     `实际 ${migrated.customEntries[0]?.target}`)
   check('旧 panelField 条目 → panel: 目标',
     migrated.customEntries[1]?.target === 'panel:dmgBonus',
@@ -677,7 +677,7 @@ console.log('\n[?] 收益表筛选状态')
           ...createDefaultAffixLibraryState(),
           groups: [{ name: '幽灵组', cap: 1 }],
           customEntries: [
-            { id: 'custom:1', label: '未分组条目', target: 'stat:critRate', perRoll: 5, cap: 0, group: '', rollCost: 1, enabledByDefault: true },
+            { id: 'custom:1', label: '未分组条目', target: 'panel:critRate', perRoll: 5, cap: 0, group: '', rollCost: 1, enabledByDefault: true },
           ],
         },
       },

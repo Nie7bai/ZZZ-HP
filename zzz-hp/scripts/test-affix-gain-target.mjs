@@ -350,11 +350,12 @@ check(
 )
 
 // ---------- 7. 既有默认库未被污染 ----------
-console.log('\n[7] 回归：默认词条库仍只有 stat: 族')
+console.log('\n[7] 回归：默认词条库都是 panel: 局外，无 gain:')
 const lib = createDefaultAffixLibrary()
 check(
   '默认库 10 条，且无 gain: 条目',
-  lib.length === 10 && lib.every((entry) => !String(entry.target).startsWith('gain:')),
+  lib.length === 10 &&
+    lib.every((entry) => String(entry.target).startsWith('panel:') && !String(entry.target).startsWith('gain:')),
   `${lib.length} 条`,
 )
 

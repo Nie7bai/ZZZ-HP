@@ -4,7 +4,7 @@
     {
       "id": "substat:hpFlat",
       "label": "固定生命值",
-      "target": "stat:hpFlat",
+      "target": "panel:hpFlat",
       "perRoll": 112,
       "cap": 0,
       "group": "副词条",
@@ -15,7 +15,7 @@
     {
       "id": "substat:hpPercent",
       "label": "局外生命值%",
-      "target": "stat:hpPercent",
+      "target": "panel:hpPercent",
       "perRoll": 3,
       "cap": 0,
       "group": "副词条",
@@ -26,7 +26,7 @@
     {
       "id": "substat:atkFlat",
       "label": "固定攻击力",
-      "target": "stat:atkFlat",
+      "target": "panel:atkFlat",
       "perRoll": 19,
       "cap": 0,
       "group": "副词条",
@@ -37,7 +37,7 @@
     {
       "id": "substat:atkPercent",
       "label": "局外攻击力%",
-      "target": "stat:atkPercent",
+      "target": "panel:atkPercent",
       "perRoll": 3,
       "cap": 0,
       "group": "副词条",
@@ -48,7 +48,7 @@
     {
       "id": "substat:defFlat",
       "label": "固定防御力",
-      "target": "stat:defFlat",
+      "target": "panel:defFlat",
       "perRoll": 15,
       "cap": 0,
       "group": "副词条",
@@ -59,7 +59,7 @@
     {
       "id": "substat:defPercent",
       "label": "局外防御力%",
-      "target": "stat:defPercent",
+      "target": "panel:defPercent",
       "perRoll": 4.8,
       "cap": 0,
       "group": "副词条",
@@ -70,7 +70,7 @@
     {
       "id": "substat:pen",
       "label": "固定穿透",
-      "target": "stat:pen",
+      "target": "panel:pen",
       "perRoll": 9,
       "cap": 0,
       "group": "副词条",
@@ -81,7 +81,7 @@
     {
       "id": "substat:critRate",
       "label": "暴击率%",
-      "target": "stat:critRate",
+      "target": "panel:critRate",
       "perRoll": 2.4,
       "cap": 0,
       "group": "副词条",
@@ -92,7 +92,7 @@
     {
       "id": "substat:critDmg",
       "label": "暴击伤害%",
-      "target": "stat:critDmg",
+      "target": "panel:critDmg",
       "perRoll": 4.8,
       "cap": 0,
       "group": "副词条",
@@ -103,7 +103,7 @@
     {
       "id": "substat:mastery",
       "label": "异常精通",
-      "target": "stat:mastery",
+      "target": "panel:mastery",
       "perRoll": 9,
       "cap": 0,
       "group": "副词条",
@@ -246,7 +246,7 @@
     {
       "id": "main:slot4:critDmg",
       "label": "爆伤 48%",
-      "target": "stat:critDmg",
+      "target": "panel:critDmg",
       "perRoll": 48,
       "cap": 1,
       "group": "4号位",
@@ -257,7 +257,7 @@
     {
       "id": "main:slot4:critRate",
       "label": "暴击 24%",
-      "target": "stat:critRate",
+      "target": "panel:critRate",
       "perRoll": 24,
       "cap": 1,
       "group": "4号位",
@@ -268,7 +268,7 @@
     {
       "id": "main:slot4:externalAtkPercent",
       "label": "局外攻击力 30%",
-      "target": "stat:atkPercent",
+      "target": "panel:atkPercent",
       "perRoll": 30,
       "cap": 1,
       "group": "4号位",
@@ -279,7 +279,7 @@
     {
       "id": "main:slot4:externalHpPercent",
       "label": "局外生命值 30%",
-      "target": "stat:hpPercent",
+      "target": "panel:hpPercent",
       "perRoll": 30,
       "cap": 1,
       "group": "4号位",
@@ -290,7 +290,7 @@
     {
       "id": "main:slot4:mastery",
       "label": "精通 92",
-      "target": "stat:mastery",
+      "target": "panel:mastery",
       "perRoll": 92,
       "cap": 1,
       "group": "4号位",
@@ -301,7 +301,7 @@
     {
       "id": "main:slot4:externalDefPercent",
       "label": "局外防御力 48%",
-      "target": "stat:defPercent",
+      "target": "panel:defPercent",
       "perRoll": 48,
       "cap": 1,
       "group": "4号位",
@@ -312,7 +312,7 @@
     {
       "id": "main:slot5:externalAtkPercent",
       "label": "局外攻击力 30%",
-      "target": "stat:atkPercent",
+      "target": "panel:atkPercent",
       "perRoll": 30,
       "cap": 1,
       "group": "5号位",
@@ -323,7 +323,7 @@
     {
       "id": "main:slot5:externalHpPercent",
       "label": "局外生命值 30%",
-      "target": "stat:hpPercent",
+      "target": "panel:hpPercent",
       "perRoll": 30,
       "cap": 1,
       "group": "5号位",
@@ -334,7 +334,7 @@
     {
       "id": "main:slot5:externalDefPercent",
       "label": "局外防御力 48%",
-      "target": "stat:defPercent",
+      "target": "panel:defPercent",
       "perRoll": 48,
       "cap": 1,
       "group": "5号位",
@@ -367,7 +367,7 @@
     {
       "id": "main:slot6:externalAtkPercent",
       "label": "局外攻击力 30%",
-      "target": "stat:atkPercent",
+      "target": "panel:atkPercent",
       "perRoll": 30,
       "cap": 1,
       "group": "6号位",
@@ -378,7 +378,7 @@
     {
       "id": "main:slot6:externalHpPercent",
       "label": "局外生命值 30%",
-      "target": "stat:hpPercent",
+      "target": "panel:hpPercent",
       "perRoll": 30,
       "cap": 1,
       "group": "6号位",
@@ -389,7 +389,7 @@
     {
       "id": "main:slot6:externalDefPercent",
       "label": "局外防御力 48%",
-      "target": "stat:defPercent",
+      "target": "panel:defPercent",
       "perRoll": 48,
       "cap": 1,
       "group": "6号位",
@@ -444,7 +444,7 @@
     {
       "id": "set:mastery:30",
       "label": "精通 30",
-      "target": "stat:mastery",
+      "target": "panel:mastery",
       "perRoll": 30,
       "cap": 1,
       "group": "2件套",
@@ -466,7 +466,7 @@
     {
       "id": "set:externalAtkPercent:10",
       "label": "局外攻击力 10%",
-      "target": "stat:atkPercent",
+      "target": "panel:atkPercent",
       "perRoll": 10,
       "cap": 1,
       "group": "2件套",
@@ -477,7 +477,7 @@
     {
       "id": "set:externalHpPercent:10",
       "label": "局外生命值 10%",
-      "target": "stat:hpPercent",
+      "target": "panel:hpPercent",
       "perRoll": 10,
       "cap": 1,
       "group": "2件套",
@@ -488,7 +488,7 @@
     {
       "id": "set:externalDefPercent:16",
       "label": "局外防御力 16%",
-      "target": "stat:defPercent",
+      "target": "panel:defPercent",
       "perRoll": 16,
       "cap": 1,
       "group": "2件套",
@@ -499,7 +499,7 @@
     {
       "id": "set:critRate:8",
       "label": "暴击 8%",
-      "target": "stat:critRate",
+      "target": "panel:critRate",
       "perRoll": 8,
       "cap": 1,
       "group": "2件套",
@@ -510,7 +510,7 @@
     {
       "id": "set:critDmg:16",
       "label": "爆伤 16%",
-      "target": "stat:critDmg",
+      "target": "panel:critDmg",
       "perRoll": 16,
       "cap": 1,
       "group": "2件套",

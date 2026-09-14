@@ -139,7 +139,7 @@ test('service：排序值重复在触库之前抛错，不写库', async () => {
 })
 
 /**
- * 第三族落点 `gain:`（增益字段，2026-09-13 步骤 58）。
+ * 增益落点 `gain:`（2026-09-13 步骤 58；合法前缀只剩 `panel:` / `gain:`）。
  *
  * 判读方式：故意让排序值重复 —— 若 `gain:` 被前缀闸门拦下，报错会是「目标须以…开头」；
  * 若它通过校验，报错才是「与第 N 条重复」。**错误文案就是闸门位置的证据**，
@@ -162,7 +162,7 @@ test('控制器：gain: 目标通过前缀校验（不被「目标须以…开�
   assert.match(res.body.message, /与第 1 条重复/)
 })
 
-test('控制器：不属于三族命名空间的目标仍被拦下', async () => {
+test('控制器：不属于 panel:/gain: 命名空间的目标仍被拦下', async () => {
   const res = createRes()
   await replaceAffixPresetHandler(
     {
@@ -200,9 +200,9 @@ test('normalizeEntryPayload 保留 gain 条件与 effectJson', () => {
   assert.equal(payload.effectJson.allocation, 'effect')
 })
 
-test('buildAffixEffectTemplate：stat 是 count，panel/gain 是 effect', async () => {
+test('buildAffixEffectTemplate：十格形态 panel 是 count，其余 panel/gain 是 effect', async () => {
   const { buildAffixEffectTemplate } = await import('../src/utils/affixEffectTemplate.js')
-  const count = buildAffixEffectTemplate({ target: 'stat:critRate' })
+  const count = buildAffixEffectTemplate({ target: 'panel:critRate' })
   assert.equal(count.allocation, 'count')
   const panel = buildAffixEffectTemplate({ target: 'panel:penRate' })
   assert.equal(panel.allocation, 'effect')

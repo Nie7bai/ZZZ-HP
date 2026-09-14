@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import type { AffixCounts } from '@/types/calculatorPanel'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import { clearAdminAuthenticated } from '@/utils/adminAuth'
 import {
@@ -34,7 +33,6 @@ import {
   gainTarget,
   isAffixLibraryEntryTarget,
   panelTarget,
-  statTarget,
   type AffixPanelDeltaField,
 } from '@/utils/affixLibrary'
 import '@/components/admin/calculator/adminCalculatorPanel.css'
@@ -65,7 +63,7 @@ import '@/components/admin/calculator/adminCalculatorPanel.css'
  * `enabledByDefault`（勾给新用户哪几条）、`target` 可填自由字段名。
  */
 
-const TARGET_PREFIXES = ['stat:', 'panel:', 'gain:']
+const TARGET_PREFIXES = ['panel:', 'gain:']
 
 /** 条目 ID 上限，与后端 `normalizeEntryPayload` 同值 */
 const ENTRY_ID_MAX = 64
@@ -81,18 +79,18 @@ const ENTRY_ID_MAX = 64
  * 自动生成时按下面顺序判断（新条目优先用 id 生成器，别手写）：
  * 1. 组名是 `N号位` → `main:slotN:字段`
  * 2. 组名是 `2件套` → `set:字段:每档值`（**数值进 id**：同字段不同数值＝一条新条目）
- * 3. 其余（副词条 / 自建组）→ `stat:` 落点用 `substat:字段`，`panel:` 落点用 `panel:字段`
+ * 3. 其余（副词条 / 自建组）→ 十格形态字段用 `substat:字段`，其余 `panel:` 用 `panel:字段`
  */
 const ENTRY_ID_RULES: { match: string; format: string; example: string }[] = [
   { match: '4 / 5 / 6 号位', format: 'main:slotN:字段', example: 'main:slot5:dmgBonus' },
   { match: '2 件套', format: 'set:字段:每档值', example: 'set:critDmg:16' },
-  { match: '副词条（stat 落点）', format: 'substat:字段', example: 'substat:critRate' },
-  { match: '副词条（panel 落点）', format: 'panel:字段', example: 'panel:resPen' },
+  { match: '副词条（十格形态）', format: 'substat:字段', example: 'substat:critRate' },
+  { match: '副词条（其它局外）', format: 'panel:字段', example: 'panel:resPen' },
   { match: '副词条（gain 落点）', format: 'gain:字段', example: 'gain:inCombatAtkPercent' },
 ]
 
 /**
- * 主属性槽的历史别名：库里 `stat:atkPercent` 的 id 写作 `externalAtkPercent`
+ * 主属性槽的历史别名：库里 `panel:atkPercent` 的 id 写作 `externalAtkPercent`
  * （`main:slot4:externalAtkPercent`），生成器沿用这个写法，免得新老条目两种风格。
  */
 const MAIN_SLOT_FIELD_ALIASES: Record<string, string> = {
@@ -101,20 +99,28 @@ const MAIN_SLOT_FIELD_ALIASES: Record<string, string> = {
   defPercent: 'externalDefPercent',
 }
 
-/** 目标字段的候选清单：按落点分三组给下拉用（管理员多数时候只需要从里面挑） */
+/** 目标字段的候选清单：局外 `panel:` 与增益 `gain:` */
 const TARGET_OPTION_GROUPS = [
   {
-    label: '词条计数桶（stat:）',
-    options: (Object.keys(AFFIX_SUBSTAT_KEY_LABELS) as (keyof AffixCounts)[]).map((key) => ({
-      id: statTarget(key),
-      label: AFFIX_SUBSTAT_KEY_LABELS[key],
-    })),
-  },
-  {
-    label: '面板增量（panel:）',
-    options: (Object.keys(AFFIX_PANEL_DELTA_FIELD_LABELS) as AffixPanelDeltaField[]).map(
-      (field) => ({ id: panelTarget(field), label: AFFIX_PANEL_DELTA_FIELD_LABELS[field] }),
-    ),
+    label: '局外（panel:）',
+    options: (() => {
+      const seen = new Set<string>()
+      const merged: { id: string; label: string }[] = []
+      for (const option of [
+        ...(Object.keys(AFFIX_SUBSTAT_KEY_LABELS) as (keyof typeof AFFIX_SUBSTAT_KEY_LABELS)[]).map(
+          (key) => ({ id: panelTarget(key), label: AFFIX_SUBSTAT_KEY_LABELS[key] }),
+        ),
+        ...(Object.keys(AFFIX_PANEL_DELTA_FIELD_LABELS) as AffixPanelDeltaField[]).map((field) => ({
+          id: panelTarget(field),
+          label: AFFIX_PANEL_DELTA_FIELD_LABELS[field],
+        })),
+      ]) {
+        if (seen.has(option.label)) continue
+        seen.add(option.label)
+        merged.push(option)
+      }
+      return merged
+    })(),
   },
   /**
    * 增益字段（`gain:`）：与增益编辑器同一套词表。
@@ -1049,20 +1055,18 @@ const draftIdTouched = ref(false)
  */
 function suggestEntryId(group: string, target: string, perRoll: number, taken: Set<string>): string {
   const trimmed = group.trim()
-  const field = target.startsWith('stat:')
-    ? target.slice('stat:'.length)
-    : target.startsWith('panel:')
-      ? target.slice('panel:'.length)
-      : target.startsWith('gain:')
-        ? target.slice('gain:'.length)
-        : target
+  const field = target.startsWith('panel:')
+    ? target.slice('panel:'.length)
+    : target.startsWith('gain:')
+      ? target.slice('gain:'.length)
+      : target
   const slotMatch = /^([456])\s*号位$/.exec(trimmed)
   let base: string
   if (slotMatch) {
     base = `main:slot${slotMatch[1]}:${MAIN_SLOT_FIELD_ALIASES[field] ?? field}`
   } else if (trimmed === '2件套') {
     base = `set:${field}:${Number.isFinite(perRoll) ? perRoll : 0}`
-  } else if (target.startsWith('stat:')) {
+  } else if (field in AFFIX_SUBSTAT_KEY_LABELS && field !== 'mastery') {
     base = `substat:${field}`
   } else if (target.startsWith('gain:')) {
     base = `gain:${field}`
@@ -1564,7 +1568,7 @@ onMounted(() => {
                   ID
                 </th>
                 <th title="给用户看的名字，自由文本；用户侧可改自己那份的副本">名称</th>
-                <th title="这条实际加哪个属性；stat: 走词条计数桶、panel: 走局外面板增量。用户侧只读（改目标＝删了重建）">
+                <th title="这条实际加哪个属性；panel: 局外增量、gain: 局内增益。用户侧只读（改目标＝删了重建）">
                   目标
                 </th>
                 <th title="配 1 档加多少（数值与该属性的单位一致）">每档</th>
@@ -1624,7 +1628,7 @@ onMounted(() => {
                     class="cell-input"
                     :value="entry.target"
                     :disabled="busy"
-                    :title="`${entry.target}｜stat: 走词条计数桶、panel: 走面板字段`"
+                    :title="`${entry.target}｜panel: 局外、gain: 增益`"
                     @change="onPickTarget(entry, $event)"
                   >
                     <optgroup
@@ -1644,7 +1648,7 @@ onMounted(() => {
                       v-model="entry.target"
                       class="cell-input target-input"
                       type="text"
-                      placeholder="stat:xxx 或 panel:xxx"
+                      placeholder="panel:xxx 或 gain:xxx"
                       :disabled="busy"
                       @change="onCommitCustomTarget(entry)"
                     />
@@ -1812,7 +1816,7 @@ onMounted(() => {
                 v-model="draft.target"
                 class="target-input"
                 type="text"
-                placeholder="stat:critDmg 或 panel:dmgBonus 或 gain:inCombatAtkPercent"
+                placeholder="panel:critDmg 或 panel:dmgBonus 或 gain:inCombatAtkPercent"
                 @change="onCommitDraftTarget"
               />
             </label>
@@ -1931,8 +1935,8 @@ onMounted(() => {
 
             <dt>目标</dt>
             <dd>
-              这条<strong>实际</strong>加哪个属性（名称只是文本，可能对不上）。<code>stat:</code>
-              走词条计数桶、<code>panel:</code> 走局外面板增量、<code>gain:</code>
+              这条<strong>实际</strong>加哪个属性（名称只是文本，可能对不上）。<code>panel:</code>
+              走局外增量、<code>gain:</code>
               走局内增益（可加作用域 / 招式条件）。认不出的字段名计算页会跳过它
               （会标红提醒）。<code>gain:</code> 行下方可编完整规则，保存进
               <code>effect_json</code>。

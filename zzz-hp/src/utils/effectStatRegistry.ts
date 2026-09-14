@@ -54,7 +54,6 @@ export function affixPanelOperation(field: AffixPanelDeltaField): EffectOperatio
 }
 
 export function stageForAffixTarget(target: AffixLibraryEntryTarget): EffectStage | null {
-  if (target.startsWith('stat:')) return 'external'
   if (target.startsWith('panel:')) return 'external'
   if (target.startsWith('gain:')) return 'combatPreConvert'
   return null

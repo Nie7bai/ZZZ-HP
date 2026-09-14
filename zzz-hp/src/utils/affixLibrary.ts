@@ -27,9 +27,8 @@ import type { AffixEffectTemplate } from '@/utils/affixEffectTemplate'
  * （用户 2026-09-12 裁定：「不应该有属性词条直接绕过链路的……就算有判断，
  * 也不是这个功能里判断的，你凭什么在词条功能说这个词条一定不转模，绕过去」）。
  *
- * - `stat:<字段>` / `panel:<字段>`：分析侧都落到同一张局外增量表（T12），
- *   按字段语义叠在导入激活面板上；**不再写入导入十格 `AffixCounts`**。
- *   存储仍可保留 `stat:` / `panel:` 前缀（用户侧下拉暂不改）。
+ * - `panel:<字段>`：分析侧落到局外增量表（T12），按字段语义叠在导入激活面板上；
+ *   **不再写入导入十格 `AffixCounts`**。原 `stat:` 已并入此前缀。
  * - `gain:<增益字段>`：不进局外，合成 extraGains。
  *
  * 两条都落在**同一份局外面板**上，转模链路读的就是这份面板 —— 所以谁也不能
@@ -70,14 +69,14 @@ import type { AffixEffectTemplate } from '@/utils/affixEffectTemplate'
  *
  * 默认条目的 id 沿用历史前缀（`substat:atkPercent` / `panel:reduceDefense`），**故意不改**：
  * 用户已存的 `enabledOverride` 与 `overrides` 都是按 id 索引的，改 id 会让这些记录全部失配。
- * 因此 id 前缀与 `target` 前缀不要求一致（`substat:x` 对应 `target: 'stat:x'`）。
+ * 因此 id 前缀与 `target` 前缀不要求一致（`substat:x` 对应 `target: 'panel:x'`）。
  */
 
-/** 条目落点：`stat:` = 词条计数桶；`panel:` = 局外面板增量；`gain:` = 增益字段 */
-export type AffixStatTarget = `stat:${keyof AffixCounts}`
-export type AffixPanelTarget = `panel:${AffixPanelDeltaField}`
+/** 条目落点：`panel:` = 局外增量；`gain:` = 增益字段 */
+export type AffixExternalField = AffixPanelDeltaField | keyof AffixCounts
+export type AffixPanelTarget = `panel:${AffixExternalField}`
 export type AffixGainTarget = `gain:${AffixGainField}`
-export type AffixLibraryEntryTarget = AffixStatTarget | AffixPanelTarget | AffixGainTarget
+export type AffixLibraryEntryTarget = AffixPanelTarget | AffixGainTarget
 
 /** 可叠加到局外面板的百分比/加值字段 */
 export type AffixPanelDeltaField =
@@ -172,7 +171,7 @@ const AFFIX_PANEL_DELTA_FIELDS = Object.keys(
   AFFIX_PANEL_DELTA_FIELD_LABELS,
 ) as AffixPanelDeltaField[]
 
-/** `stat:` 目标里按「百分比」理解的字段（其余为固定值） */
+/** `panel:` 里原十格字段按「百分比」理解的（其余为固定值） */
 const PERCENT_STAT_KEYS: ReadonlySet<keyof AffixCounts> = new Set<keyof AffixCounts>([
   'hpPercent',
   'atkPercent',
@@ -186,20 +185,12 @@ const PERCENT_PANEL_FIELDS: ReadonlySet<AffixPanelDeltaField> = new Set<AffixPan
   AFFIX_PANEL_DELTA_FIELDS.filter((field) => field !== 'mastery'),
 )
 
-export function statTarget(key: keyof AffixCounts): AffixStatTarget {
-  return `stat:${key}`
-}
-
-export function panelTarget(field: AffixPanelDeltaField): AffixPanelTarget {
+export function panelTarget(field: AffixExternalField): AffixPanelTarget {
   return `panel:${field}`
 }
 
 export function gainTarget(field: AffixGainField): AffixGainTarget {
   return `gain:${field}`
-}
-
-export function isStatTarget(target: string): target is AffixStatTarget {
-  return target.startsWith('stat:')
 }
 
 export function isPanelTarget(target: string): target is AffixPanelTarget {
@@ -210,10 +201,11 @@ export function isGainTarget(target: string): target is AffixGainTarget {
   return target.startsWith('gain:')
 }
 
-/** `stat:` → 词条计数字段；不是该命名空间或字段非法时返回 null */
+/** `panel:` 里按十格字段叠的那一批（不含精通，精通走面板字段） */
 export function statKeyOfTarget(target: AffixLibraryEntryTarget): keyof AffixCounts | null {
-  if (!isStatTarget(target)) return null
-  const key = target.slice('stat:'.length) as keyof AffixCounts
+  if (!isPanelTarget(target)) return null
+  const key = target.slice('panel:'.length) as keyof AffixCounts
+  if (key === 'mastery') return null
   return AFFIX_STAT_KEYS.includes(key) ? key : null
 }
 
@@ -290,7 +282,7 @@ const AFFIX_BUFF_SCOPES: ReadonlySet<string> = new Set([
  * 把一条 `gain:` 条目折成给主 C 的 extraGain。
  *
  * `applySlot` 在评估入口按 `mainSlotIndex` 覆盖；这里只填默认 0。
- * `stat:` / `panel:` 返回 null。
+ * `panel:` 返回 null。
  */
 export function extraGainFromLibraryEntry(
   entry: AffixLibraryEntry,
@@ -361,9 +353,12 @@ export function gainDeltasOf(
 /** 校验一个字符串是不是合法的条目目标 */
 export function isAffixLibraryEntryTarget(value: unknown): value is AffixLibraryEntryTarget {
   if (typeof value !== 'string') return false
-  if (isStatTarget(value)) return AFFIX_STAT_KEYS.includes(value.slice(5) as keyof AffixCounts)
   if (isPanelTarget(value)) {
-    return AFFIX_PANEL_DELTA_FIELDS.includes(value.slice(6) as AffixPanelDeltaField)
+    const field = value.slice('panel:'.length)
+    return (
+      AFFIX_PANEL_DELTA_FIELDS.includes(field as AffixPanelDeltaField) ||
+      AFFIX_STAT_KEYS.includes(field as keyof AffixCounts)
+    )
   }
   if (isGainTarget(value)) return AFFIX_GAIN_FIELD_SET.has(value.slice(5))
   return false
@@ -393,7 +388,7 @@ export interface AffixLibraryEntry {
   id: string
   /** 显示名 */
   label: string
-  /** 落点：`stat:` 计数桶 / `panel:` 局外面板增量 */
+  /** 落点：`panel:` 局外增量 / `gain:` 增益 */
   target: AffixLibraryEntryTarget
   /** 每档增量（与目标字段同单位：百分比字段为百分点，固定值字段为绝对值） */
   perRoll: number
@@ -448,7 +443,7 @@ export function formatAffixPerRoll(target: AffixLibraryEntryTarget, perRoll: num
 function substatEntry(affixKey: keyof AffixCounts): AffixLibraryEntry {
   return {
     id: `substat:${affixKey}`,
-    target: statTarget(affixKey),
+    target: panelTarget(affixKey),
     label: AFFIX_SUBSTAT_KEY_LABELS[affixKey],
     perRoll: AFFIX_VALUE_PER_COUNT[affixKey],
     cap: 0,
@@ -547,7 +542,7 @@ export function createDriveDiscMainStatAffixEntries(): AffixLibraryEntry[] {
   ]
   return specs.map((spec) => ({
     id: `main:slot${spec.slot}:${spec.key}`,
-    target: spec.statKey ? statTarget(spec.statKey) : panelTarget(spec.field!),
+    target: panelTarget(spec.statKey ?? spec.field!),
     label: spec.label,
     perRoll: spec.perRoll,
     cap: 1,
@@ -570,8 +565,7 @@ export function createDriveDiscMainStatAffixEntries(): AffixLibraryEntry[] {
  * ## 数值来源与口径
  *
  * 来源 = `zzz-hp-backend/scripts/data/zzz-hp-calculator-buffs.json`（30 个驱动盘的
- * 2 件套效果）。落点选择与 4/5/6 号位一致：百分比类走 `stat:`、其余走 `panel:`
- * （两种落点折算口径已在步骤 27 统一，这里只为与相邻条目一致）。
+ * 2 件套效果）。落点一律 `panel:`（百分比类与增伤同类局外；折算口径由字段决定）。
  *
  * ## 为什么只有 11 条（跳过了 5 套）
  *
@@ -609,7 +603,7 @@ export function createDriveDiscTwoPieceAffixEntries(): AffixLibraryEntry[] {
   return specs.map((spec) => ({
     // id 含数值：将来某套的 2 件套数值若不同，新增 id 即可（id 一旦发布不可改名）
     id: `set:${spec.key}:${spec.perRoll}`,
-    target: spec.statKey ? statTarget(spec.statKey) : panelTarget(spec.field!),
+    target: panelTarget(spec.statKey ?? spec.field!),
     label: spec.label,
     perRoll: spec.perRoll,
     cap: 1,
@@ -1062,10 +1056,13 @@ function migrateCustomEntry(raw: unknown): AffixLibraryEntry | null {
   if (!id) return null
 
   let target: AffixLibraryEntryTarget | null = null
-  if (isAffixLibraryEntryTarget(item.target)) {
+  if (typeof item.target === 'string' && item.target.startsWith('stat:')) {
+    const candidate = `panel:${item.target.slice('stat:'.length)}`
+    target = isAffixLibraryEntryTarget(candidate) ? candidate : null
+  } else if (isAffixLibraryEntryTarget(item.target)) {
     target = item.target
   } else if (item.kind === 'substat' && typeof item.affixKey === 'string') {
-    const candidate = `stat:${item.affixKey}`
+    const candidate = `panel:${item.affixKey}`
     target = isAffixLibraryEntryTarget(candidate) ? candidate : null
   } else if (item.kind === 'panelField' && typeof item.panelField === 'string') {
     const candidate = `panel:${item.panelField}`
@@ -1802,11 +1799,11 @@ export function removeAffixLibraryGroup(
 
 export interface AffixEntryEvalInput {
   /**
-   * 导入十格计数桶。分析侧 T12 起不再往这里写：`stat:` / `panel:` 都进 `deltas`。
+   * 导入十格计数桶。分析侧不再往这里写：局外 `panel:` 都进 `deltas`。
    * 柱图扫掠等仍可单独传入 `AffixCounts`。
    */
   counts: Partial<AffixCounts>
-  /** 分析侧局外增量（原 `stat:` + `panel:`；不含 `gain:`） */
+  /** 分析侧局外增量（`panel:`；不含 `gain:`） */
   deltas: AffixDeltaMap
   /**
    * 各 `gain:` 目标合成的 extraGains（独立于扁平增量表，避免与 `panel:` 重叠键双算）。
@@ -1916,11 +1913,11 @@ export type AffixPanelPercentOfBaseField = (typeof AFFIX_PANEL_PERCENT_OF_BASE_F
 
 /** 按基础值乘算的字段各自需要的**基础值**（角色基础面板口径） */
 export type AffixPanelDeltaBases = Record<AffixPanelPercentOfBaseField, number> & {
-  /** 分析侧 `stat:hpPercent` 折算用；省略当 0 */
+  /** 分析侧 `panel:hpPercent` 折算用；省略当 0 */
   hp?: number
-  /** 分析侧 `stat:atkPercent` 折算用；省略当 0 */
+  /** 分析侧 `panel:atkPercent` 折算用；省略当 0 */
   atk?: number
-  /** 分析侧 `stat:defPercent` 折算用；省略当 0 */
+  /** 分析侧 `panel:defPercent` 折算用；省略当 0 */
   def?: number
 }
 
@@ -1936,7 +1933,7 @@ function isPercentOfBaseField(
  * **折算口径由字段决定，不由条目决定**（用户 2026-09-12 裁定：词条只表达
  * 「给哪个属性加多少」，怎么折算、是否进入转模都是下游的事）：
  * - 乘算字段（`AFFIX_PANEL_PERCENT_OF_BASE_FIELDS`）：落 `基础 × 值 / 100`，与主属性同口径；
- * - 分析侧原十格字段（`stat:atkPercent` 等）：叠在已有局外上，百分比按角色+音擎基础；
+ * - 分析侧原十格字段（`panel:atkPercent` 等）：叠在已有局外上，百分比按角色+音擎基础；
  * - 其余面板字段：平铺加到面板值上。
  */
 export function applyPanelDeltas(

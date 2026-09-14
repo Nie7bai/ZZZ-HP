@@ -18,10 +18,10 @@ import { fail, failInternal, success } from '../utils/response.js'
  * 「改一条」这种粒度在管理页是**草稿 + 保存**（保存＝整份替换），所以没有逐条写接口 ——
  * 留着就是死接口，也会让「保存」出现半份中间状态。
  *
- * `gain:`（增益字段，2026-09-13 步骤 58）是第三族落点：词条贡献按**增益口径**在转模之后
+ * `gain:`（增益字段，2026-09-13 步骤 58）是局内落点：词条贡献按**增益口径**在转模之后
  * 施加（因而能被转模的 `panelSource: 'final'` 侧读到）。这里必须放行，否则管理页存不进去。
  */
-const TARGET_PREFIXES = ['stat:', 'panel:', 'gain:']
+const TARGET_PREFIXES = ['panel:', 'gain:']
 
 function readOptionalString(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined

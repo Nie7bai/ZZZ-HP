@@ -552,7 +552,7 @@ console.log('\n[4.10] 同字段多条目的折算')
     {
       id: 'main:slot5:atkPercent',
       label: '局外攻击力 30%',
-      target: 'stat:atkPercent',
+      target: 'panel:atkPercent',
       perRoll: 30,
       cap: 1,
       group: '5号位',
@@ -643,12 +643,12 @@ console.log('\n[4.10] 同字段多条目的折算')
     twoPiece.map((e) => `${e.label}→${affixTargetLabelOf(e.target)}`).join(' / '))
   // 名称就是效果：逐条核对（与手册步骤 32 的清单一致）。爆伤/暴击伤害是刻意简写，同 4号位。
   const EXPECTED_TWO_PIECE = [
-    '暴击 8%=stat:critRate',
-    '爆伤 16%=stat:critDmg',
-    '精通 30=stat:mastery',
-    '局外攻击力 10%=stat:atkPercent',
-    '局外生命值 10%=stat:hpPercent',
-    '局外防御力 16%=stat:defPercent',
+    '暴击 8%=panel:critRate',
+    '爆伤 16%=panel:critDmg',
+    '精通 30=panel:mastery',
+    '局外攻击力 10%=panel:atkPercent',
+    '局外生命值 10%=panel:hpPercent',
+    '局外防御力 16%=panel:defPercent',
     '增伤 10%=panel:dmgBonus',
     '穿透率 8%=panel:penRate',
     '能量恢复 20%=panel:energyRegen',
@@ -1512,7 +1512,7 @@ console.log('\n[21] 词条分配：有条件 gain: 与局外词条同一套预�
   const atk = {
     id: 'stat-atk',
     label: '局外攻击%',
-    target: 'stat:atkPercent',
+    target: 'panel:atkPercent',
     perRoll: 3,
     cap: 1,
     group: '',

@@ -1514,7 +1514,7 @@ const affixEvalCache = new Map<
 /**
  * 词条计数各字段的「每档值」。
  *
- * 分析侧现在把 `stat:` / `panel:` 都写进 `panelDeltas`，本表对分析路径恒为常量表。
+ * 分析侧现在把局外 `panel:` 都写进 `panelDeltas`，本表对分析路径恒为常量表。
  * 省略时全部走常量表 —— 柱图（词条计算页）等仍按十格计数 × 本表折算。
  */
 export type AffixValuePerCount = Record<keyof AffixCounts, number>

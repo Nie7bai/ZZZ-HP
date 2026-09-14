@@ -46,7 +46,6 @@ function validate() {
     else seen.add(id)
     if (!String(entry.label ?? '').trim()) errors.push(`第 ${index + 1} 条（${id}）：缺 label`)
     if (
-      !target.startsWith('stat:') &&
       !target.startsWith('panel:') &&
       !target.startsWith('gain:')
     ) {

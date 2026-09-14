@@ -40,7 +40,6 @@ import {
   resolveAffixLibrary,
   resolveAffixLibraryAll,
   saveAffixLibraryStore,
-  statTarget,
   type AffixGainField,
   type AffixLibraryEntry,
   type AffixLibraryEntryTarget,
@@ -593,27 +592,29 @@ function submitNewGroup() {
 
 // ---------- 条目编辑（新增表单） ----------
 
-/** `stat:` 落点的可选属性 */
-const STAT_TARGET_OPTIONS = (Object.keys(AFFIX_SUBSTAT_KEY_LABELS) as (keyof AffixCounts)[]).map(
-  (key) => ({ id: statTarget(key), label: AFFIX_SUBSTAT_KEY_LABELS[key] }),
-)
-
-/** `panel:` 落点的可选属性 */
-const PANEL_TARGET_OPTIONS = (
-  Object.keys(AFFIX_PANEL_DELTA_FIELD_LABELS) as AffixPanelDeltaField[]
-).map((field) => ({ id: panelTarget(field), label: AFFIX_PANEL_DELTA_FIELD_LABELS[field] }))
+/** `panel:` 局外落点：原十格字段 + 面板字段，同名只列一次 */
+const PANEL_TARGET_OPTIONS = [
+  ...(Object.keys(AFFIX_SUBSTAT_KEY_LABELS) as (keyof AffixCounts)[]).map((key) => ({
+    id: panelTarget(key),
+    label: AFFIX_SUBSTAT_KEY_LABELS[key],
+  })),
+  ...(Object.keys(AFFIX_PANEL_DELTA_FIELD_LABELS) as AffixPanelDeltaField[]).map((field) => ({
+    id: panelTarget(field),
+    label: AFFIX_PANEL_DELTA_FIELD_LABELS[field],
+  })),
+]
 
 /**
- * 「新增条目」的属性清单：两个落点**合并成一个列表**。
+ * 「新增条目」的属性清单：局外字段合并成一个列表。
  *
  * 条目不再区分「词条数 / 面板增量」（用户 2026-09-12 裁定：词条只表达「给哪个属性加多少」，
- * 怎么折算由字段语义决定）。同名属性只列一次 —— `异常精通` 在两个落点里都有，
+ * 怎么折算由字段语义决定）。同名属性只列一次 —— `异常精通` 在两个字段表里都有，
  * 语义相同（平铺加），保留先出现的那个。
  */
 const TARGET_OPTIONS = (() => {
   const seen = new Set<string>()
   const merged: { id: AffixLibraryEntryTarget; label: string }[] = []
-  for (const option of [...STAT_TARGET_OPTIONS, ...PANEL_TARGET_OPTIONS]) {
+  for (const option of PANEL_TARGET_OPTIONS) {
     if (seen.has(option.label)) continue
     seen.add(option.label)
     merged.push(option)
@@ -628,7 +629,7 @@ const GAIN_TARGET_OPTIONS = AFFIX_GAIN_FIELDS.map((field: AffixGainField) => ({
 
 const draft = ref({
   label: '',
-  target: statTarget('atkPercent') as AffixLibraryEntryTarget,
+  target: panelTarget('atkPercent') as AffixLibraryEntryTarget,
   perRoll: 3,
   cap: 0,
   group: '',

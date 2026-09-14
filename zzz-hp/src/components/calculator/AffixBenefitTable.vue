@@ -205,7 +205,7 @@ function groupNameOf(row: AffixBenefitRow): string {
  * 只管显示：不改词条库、不改收益评估、不改求解 —— 折叠掉的行照常参与计算。
  * 键用 `target + perRoll` 而**不是标签字符串**：这样「效果不同的行永远不会被折叠掉」，
  * 标签相同的两条若效果不同（例如被手工改过每档），照旧各占一行。
- * 库里的实际例子：`局外防御力 48%` 是 slot4/5/6 三条主属性，target 都是 `stat:defPercent`、
+ * 库里的实际例子：`局外防御力 48%` 是 slot4/5/6 三条主属性，target 都是 `panel:defPercent`、
  * 每档都是 48 —— 同一条效果，折成一条。
  */
 const rowDisplay = computed(() => {

@@ -85,7 +85,7 @@ console.log('\n[2] 服务端有数据 → 以服务端为准')
   setServerAffixPreset({
     entries: [
       { id: 'srv:1', label: '服务端条目甲', target: 'panel:dmgBonus', perRoll: 12, cap: 2, group: '副词条', rollCost: 1, enabledByDefault: true },
-      { id: 'srv:2', label: '服务端条目乙', target: 'stat:critRate', perRoll: 5, cap: 0, group: '副词条', rollCost: 1, enabledByDefault: false },
+      { id: 'srv:2', label: '服务端条目乙', target: 'panel:critRate', perRoll: 5, cap: 0, group: '副词条', rollCost: 1, enabledByDefault: false },
     ],
     groups: [
       { name: '副词条', cap: 0 },
@@ -157,7 +157,7 @@ console.log('\n[5] 新建即独立 + 过渡态冻结')
   setServerAffixPreset({
     entries: [
       { id: 'off:1', label: '官方甲', target: 'panel:dmgBonus', perRoll: 12, cap: 1, group: '副词条', rollCost: 1, enabledByDefault: true },
-      { id: 'off:2', label: '官方乙', target: 'stat:critRate', perRoll: 5, cap: 0, group: '副词条', rollCost: 1, enabledByDefault: false },
+      { id: 'off:2', label: '官方乙', target: 'panel:critRate', perRoll: 5, cap: 0, group: '副词条', rollCost: 1, enabledByDefault: false },
     ],
     groups: [
       { name: '副词条', cap: 0 },

@@ -361,7 +361,7 @@ const enabledAffixEntryIds = computed(() =>
     .map((entry) => entry.id),
 )
 /**
- * 词条库的「每档值」表：`stat:` 类目标用条目自己的 `perRoll`，其余字段回落常量表。
+ * 词条库的「每档值」表：局外 `panel:` 用条目自己的 `perRoll`，其余字段回落常量表。
  */
 const affixLibraryValuePerCount = computed(() =>
   affixValuePerCountFromEntries(affixLibraryEntries.value),

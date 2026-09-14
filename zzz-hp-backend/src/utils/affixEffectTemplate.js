@@ -2,7 +2,7 @@
  * 官方预设词条条目的版本化效果模板（`effect_json`）。
  *
  * 前端权威在 `zzz-hp/src/utils/affixEffectTemplate.ts`。这里只服务端回填 / 写库用，
- * 规则必须对得上：stat: → count；panel:/gain: → effect spec。
+ * 规则必须对得上：十格形态的 panel: 字段 → count；其余 panel:/gain: → effect spec。
  */
 
 export const AFFIX_EFFECT_TEMPLATE_VERSION = 1
@@ -26,11 +26,25 @@ function conditionsFromEntry(entry) {
 
 export function buildAffixEffectTemplate(entry) {
   const target = String(entry?.target ?? '').trim()
-  if (target.startsWith('stat:')) {
-    return {
-      version: AFFIX_EFFECT_TEMPLATE_VERSION,
-      allocation: 'count',
-      legacyTarget: target,
+  const COUNT_FIELDS = new Set([
+    'hpFlat',
+    'hpPercent',
+    'atkFlat',
+    'atkPercent',
+    'defFlat',
+    'defPercent',
+    'pen',
+    'critRate',
+    'critDmg',
+  ])
+  if (target.startsWith('panel:')) {
+    const field = target.slice('panel:'.length)
+    if (COUNT_FIELDS.has(field)) {
+      return {
+        version: AFFIX_EFFECT_TEMPLATE_VERSION,
+        allocation: 'count',
+        legacyTarget: target,
+      }
     }
   }
   if (!target.startsWith('panel:') && !target.startsWith('gain:')) return null

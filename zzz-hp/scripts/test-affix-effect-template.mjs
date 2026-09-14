@@ -22,9 +22,9 @@ function check(name, ok, detail = '') {
   }
 }
 
-console.log('\n[1] stat: 仍是计数桶')
+console.log('\n[1] 十格形态的 panel: 仍是计数桶')
 {
-  const entry = affixEntry('substat:critRate', 'stat:critRate', 2.4)
+  const entry = affixEntry('substat:critRate', 'panel:critRate', 2.4)
   const template = buildAffixEffectTemplate(entry)
   const allocated = adaptAffixLibraryEntry(entry, 3)
   check('模板 allocation=count', template?.allocation === 'count')
