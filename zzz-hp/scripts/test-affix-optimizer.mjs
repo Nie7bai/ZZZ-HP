@@ -22,6 +22,7 @@ import {
 } from '../src/utils/calculatorUi.ts'
 import {
   addAffixLibraryGroup,
+  affixEntryConditionSummary,
   coerceAffixLibraryState,
   createDefaultAffixLibrary,
   createDefaultAffixLibraryState,
@@ -30,6 +31,7 @@ import {
   createOptionalAffixLibraryEntries,
   createPresetAffixLibraryEntries,
   entryRollsToEvalInput,
+  extraGainFromLibraryEntry,
   removeAffixLibraryGroup,
   renameAffixLibraryGroup,
   resolveAffixLibrary,
@@ -1470,6 +1472,119 @@ console.log('\n[20] 惰性源值地图：闭包 ctx 自带同一张地图时不�
   check('同一地图重复取同一槽位返回同一对象（记忆化生效）',
     !secondThrown && second === resolved,
     secondThrown ? `抛错 ${secondThrown.name}` : `same=${second === resolved}`)
+}
+
+console.log('\n[21] 词条分配：有条件 gain: 与局外词条同一套预算')
+{
+  function makeCategoryHits(category, n = 1) {
+    return makeHits(n).map((hit, index) => ({
+      ...hit,
+      id: `h_${category}_${index}`,
+      skill: { ...hit.skill, category, id: `s_${category}_${index}` },
+      coords: [{ category, subcategoryId: null }],
+    }))
+  }
+
+  const scoped = {
+    id: 'gain-basic-dmg',
+    label: '普攻增伤',
+    target: 'gain:dmgBonus',
+    perRoll: 50,
+    cap: 1,
+    group: '',
+    rollCost: 1,
+    enabledByDefault: true,
+    scope: 'skill',
+    skillCategory: 'basic',
+  }
+  const atk = {
+    id: 'stat-atk',
+    label: '局外攻击%',
+    target: 'stat:atkPercent',
+    perRoll: 3,
+    cap: 1,
+    group: '',
+    rollCost: 1,
+    enabledByDefault: true,
+  }
+  const gain = extraGainFromLibraryEntry(scoped, 1)
+  check('库条目条件抄进 extraGain', gain?.scope === 'skill' && gain.skillCategory === 'basic')
+  check('条件摘要含普通攻击', affixEntryConditionSummary(scoped).includes('普通攻击'))
+
+  const persisted = coerceAffixLibraryState({
+    origin: 'empty',
+    customEntries: [scoped],
+    enabledOverride: { [scoped.id]: true },
+  })
+  check(
+    '存档读回招式条件',
+    persisted.customEntries[0]?.skillCategory === 'basic' && persisted.customEntries[0]?.scope === 'skill',
+  )
+
+  const basicCtx = makeCtx({ hits: makeCategoryHits('basic') })
+  const ultCtx = makeCtx({ hits: makeCategoryHits('ultimate') })
+  const zeros = createEmptyAffixCounts()
+  const scopedInput = entryRollsToEvalInput([scoped], { [scoped.id]: 1 })
+
+  clearAffixEvalCache()
+  const basicBase = evaluateAffixCounts(basicCtx, zeros)
+  const basicPlus = evaluateAffixCounts(
+    basicCtx,
+    zeros,
+    scopedInput.deltas,
+    scopedInput.valuePerCount,
+    scopedInput.extraGains,
+  )
+  const ultBase = evaluateAffixCounts(ultCtx, zeros)
+  const ultPlus = evaluateAffixCounts(
+    ultCtx,
+    zeros,
+    scopedInput.deltas,
+    scopedInput.valuePerCount,
+    scopedInput.extraGains,
+  )
+  check('流程 hits：普攻吃到条件增伤', basicPlus.grandTotal > basicBase.grandTotal)
+  check(
+    '流程 hits：终结技不吃普攻限定',
+    Math.abs(ultPlus.grandTotal - ultBase.grandTotal) < 1e-6,
+    `${ultBase.grandTotal} → ${ultPlus.grandTotal}`,
+  )
+
+  const emptyCoordCtx = makeCtx({ hits: makeHits(1) })
+  clearAffixEvalCache()
+  const emptyBase = evaluateAffixCounts(emptyCoordCtx, zeros)
+  const emptyPlus = evaluateAffixCounts(
+    emptyCoordCtx,
+    zeros,
+    scopedInput.deltas,
+    scopedInput.valuePerCount,
+    scopedInput.extraGains,
+  )
+  check(
+    '空 coords 的 hits 不吃招式限定（与通用面板同规则）',
+    Math.abs(emptyPlus.grandTotal - emptyBase.grandTotal) < 1e-6,
+  )
+
+  const basicSolved = solveOptimalAffixAllocation({
+    ctx: basicCtx,
+    entries: [scoped, atk],
+    maxTotalRolls: 1,
+  })
+  const ultSolved = solveOptimalAffixAllocation({
+    ctx: ultCtx,
+    entries: [scoped, atk],
+    maxTotalRolls: 1,
+  })
+  check(
+    '纯普攻流程把唯一档分给普攻限定增伤',
+    (basicSolved.rollsByEntryId[scoped.id] ?? 0) === 1,
+    JSON.stringify(basicSolved.rollsByEntryId),
+  )
+  check(
+    '纯终结技流程不把档分给普攻限定，改给攻击%',
+    (ultSolved.rollsByEntryId[scoped.id] ?? 0) === 0 && (ultSolved.rollsByEntryId[atk.id] ?? 0) === 1,
+    JSON.stringify(ultSolved.rollsByEntryId),
+  )
 }
 
 console.log(`\n结果：${passed} passed, ${failed} failed`)

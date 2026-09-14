@@ -6,6 +6,10 @@ import type {
   BuffSkillTargetId,
   BuffStatKey,
 } from '@/types/calculator'
+import {
+  BUFF_SCOPE_OPTIONS,
+  BUFF_SKILL_TARGET_OPTIONS,
+} from '@/types/calculator'
 import { AFFIX_VALUE_PER_COUNT } from '@/utils/affixPanelCalc'
 import { BUFF_STAT_FIELDS, buffStatFieldLabel } from '@/utils/calculatorUi'
 import type { ExtraBuffGain } from '@/utils/extraBuffCalc'
@@ -305,6 +309,30 @@ export function extraGainFromLibraryEntry(
     skillSubcategoryId: entry.skillSubcategoryId ?? null,
     appliesToAnomaly: entry.appliesToAnomaly,
   }
+}
+
+const SITUATION_SUMMARY: Record<string, string> = {
+  stagger: '失衡期',
+  non_stagger: '非失衡期',
+}
+
+/** 词条库列表用：有条件才返回文案，通用 `gain:` 返回空串。 */
+export function affixEntryConditionSummary(entry: AffixLibraryEntry): string {
+  if (!isGainTarget(entry.target)) return ''
+  const parts: string[] = []
+  const situation = entry.applySituation
+  if (situation && situation !== 'global') {
+    parts.push(SITUATION_SUMMARY[situation] ?? situation)
+  }
+  if (entry.scope === 'skill' && entry.skillCategory) {
+    const skill = BUFF_SKILL_TARGET_OPTIONS.find((item) => item.id === entry.skillCategory)
+    parts.push(skill?.label ?? entry.skillCategory)
+  } else if (entry.scope && entry.scope !== 'general') {
+    const scope = BUFF_SCOPE_OPTIONS.find((item) => item.id === entry.scope)
+    parts.push(scope?.label ?? entry.scope)
+  }
+  if (entry.appliesToAnomaly) parts.push('异常也生效')
+  return parts.join(' · ')
 }
 
 /**
@@ -1476,7 +1504,20 @@ export function addCustomAffixLibraryEntry(
 export function updateAffixLibraryEntry(
   state: AffixLibraryState,
   entryId: string,
-  patch: Partial<Pick<AffixLibraryEntry, 'label' | 'perRoll' | 'cap' | 'group'>>,
+  patch: Partial<
+    Pick<
+      AffixLibraryEntry,
+      | 'label'
+      | 'perRoll'
+      | 'cap'
+      | 'group'
+      | 'applySituation'
+      | 'scope'
+      | 'skillCategory'
+      | 'skillSubcategoryId'
+      | 'appliesToAnomaly'
+    >
+  >,
 ): AffixLibraryState {
   const isCustom = state.customEntries.some((item) => item.id === entryId)
   if (isCustom) {

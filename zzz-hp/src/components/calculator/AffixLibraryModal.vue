@@ -2,13 +2,25 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import type { AffixCounts } from '@/types/calculatorPanel'
 import { ensureAffixPresetLoaded, loadAffixPresetScheme } from '@/utils/affixPresetLoader'
+import type {
+  BuffApplySituation,
+  BuffScope,
+  BuffSkillTargetId,
+} from '@/types/calculator'
 import {
+  BUFF_SCOPE_OPTIONS,
+  BUFF_SKILL_TARGET_OPTIONS,
+} from '@/types/calculator'
+import {
+  AFFIX_GAIN_FIELDS,
+  AFFIX_GAIN_FIELD_LABELS,
   AFFIX_LIBRARY_SET_NAME_MAX,
   AFFIX_PANEL_DELTA_FIELD_LABELS,
   AFFIX_SUBSTAT_KEY_LABELS,
   DEFAULT_AFFIX_GROUP_CAP,
   activateAffixLibrarySet,
   activeAffixLibrarySet,
+  affixEntryConditionSummary,
   affixPerRollUnit,
   affixTargetLabel,
   createAffixLibraryStateForOrigin,
@@ -17,7 +29,9 @@ import {
   defaultAffixPresetSchemeName,
   deleteAffixLibrarySet,
   exportAffixLibrarySet,
+  gainTarget,
   importAffixLibrarySet,
+  isGainTarget,
   isUsingServerAffixPreset,
   loadAffixLibraryStore,
   panelTarget,
@@ -27,6 +41,7 @@ import {
   resolveAffixLibraryAll,
   saveAffixLibraryStore,
   statTarget,
+  type AffixGainField,
   type AffixLibraryEntry,
   type AffixLibraryEntryTarget,
   type AffixLibraryGroup,
@@ -606,15 +621,24 @@ const TARGET_OPTIONS = (() => {
   return merged
 })()
 
+const GAIN_TARGET_OPTIONS = AFFIX_GAIN_FIELDS.map((field: AffixGainField) => ({
+  id: gainTarget(field),
+  label: `局内·${AFFIX_GAIN_FIELD_LABELS[field] ?? field}`,
+}))
+
 const draft = ref({
   label: '',
   target: statTarget('atkPercent') as AffixLibraryEntryTarget,
   perRoll: 3,
   cap: 0,
   group: '',
+  applySituation: 'global' as BuffApplySituation,
+  scope: 'general' as BuffScope,
+  skillCategory: 'basic' as BuffSkillTargetId,
+  appliesToAnomaly: false,
 })
 const draftError = ref<string | null>(null)
-
+const draftIsGain = computed(() => isGainTarget(draft.value.target))
 const draftPerRollUnit = computed(() =>
   affixPerRollUnit(draft.value.target) === 'percent' ? '%' : '',
 )
@@ -634,21 +658,40 @@ function submitDraft() {
     return
   }
   draftError.value = null
+  const target = draft.value.target
+  const conditionFields = isGainTarget(target)
+    ? {
+        applySituation: draft.value.applySituation,
+        scope: draft.value.scope,
+        ...(draft.value.scope === 'skill'
+          ? {
+              skillCategory: draft.value.skillCategory,
+              skillSubcategoryId: null,
+              appliesToAnomaly: draft.value.appliesToAnomaly,
+            }
+          : {}),
+      }
+    : {}
   forwardEntryEdit(() =>
     emit('addEntry', {
       label,
-      target: draft.value.target,
+      target,
       perRoll: draft.value.perRoll,
       cap: draft.value.cap,
       group: draft.value.group.trim(),
       // 独立功能口径：每条词条 1 档一律占 1 个总词条数
       rollCost: 1,
       enabledByDefault: true,
+      ...conditionFields,
     }),
   )
   draft.value.label = ''
   draft.value.cap = 0
   draft.value.group = ''
+  draft.value.applySituation = 'global'
+  draft.value.scope = 'general'
+  draft.value.skillCategory = 'basic'
+  draft.value.appliesToAnomaly = false
 }
 </script>
 
@@ -944,6 +987,12 @@ function submitDraft() {
                     <!-- 目标只读：名称是自由文本、目标才是实际效果；改目标＝删掉再新增 -->
                     <td class="target-cell" :title="entry.target">
                       {{ affixTargetLabel(entry.target) }}
+                      <span
+                        v-if="affixEntryConditionSummary(entry)"
+                        class="condition-hint"
+                      >
+                        {{ affixEntryConditionSummary(entry) }}
+                      </span>
                     </td>
                     <td>
                       <span class="per-roll-cell">
@@ -1018,11 +1067,51 @@ function submitDraft() {
                 <label>
                   <span>目标</span>
                   <select v-model="draft.target">
-                    <option v-for="opt in TARGET_OPTIONS" :key="opt.id" :value="opt.id">
-                      {{ opt.label }}
-                    </option>
+                    <optgroup label="词条 / 局外">
+                      <option v-for="opt in TARGET_OPTIONS" :key="opt.id" :value="opt.id">
+                        {{ opt.label }}
+                      </option>
+                    </optgroup>
+                    <optgroup label="局内增益（可加招式/失衡条件）">
+                      <option v-for="opt in GAIN_TARGET_OPTIONS" :key="opt.id" :value="opt.id">
+                        {{ opt.label }}
+                      </option>
+                    </optgroup>
                   </select>
                 </label>
+                <template v-if="draftIsGain">
+                  <label>
+                    <span>作用情况</span>
+                    <select v-model="draft.applySituation">
+                      <option value="global">全局</option>
+                      <option value="stagger">失衡期</option>
+                      <option value="non_stagger">非失衡期</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>作用域</span>
+                    <select v-model="draft.scope">
+                      <option v-for="opt in BUFF_SCOPE_OPTIONS" :key="opt.id" :value="opt.id">
+                        {{ opt.label }}
+                      </option>
+                    </select>
+                  </label>
+                  <label v-if="draft.scope === 'skill'">
+                    <span>招式大类</span>
+                    <select v-model="draft.skillCategory">
+                      <option v-for="opt in BUFF_SKILL_TARGET_OPTIONS" :key="opt.id" :value="opt.id">
+                        {{ opt.label }}
+                      </option>
+                    </select>
+                  </label>
+                  <label v-if="draft.scope === 'skill'" class="field-check">
+                    <span>异常结算</span>
+                    <span class="check-row">
+                      <input v-model="draft.appliesToAnomaly" type="checkbox" />
+                      也生效
+                    </span>
+                  </label>
+                </template>
                 <label>
                   <span>每档</span>
                   <span class="per-roll-cell">
@@ -1630,6 +1719,22 @@ function submitDraft() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.condition-hint {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.7rem;
+  color: #c9a55c;
+  white-space: normal;
+}
+
+.check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: #e4e8ef;
+  font-size: 0.8rem;
 }
 
 /* ---------- 列宽（固定表格布局，不锁宽度输入框会把列撑到 200px+） ---------- */
