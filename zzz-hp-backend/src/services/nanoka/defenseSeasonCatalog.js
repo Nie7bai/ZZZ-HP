@@ -57,14 +57,14 @@ export function getDefenseSeasonMeta(version, phase) {
   const fromCatalog = catalogByKey.get(key)
   if (fromCatalog) return fromCatalog
 
-  const displayId = versionPhaseToDisplayId(version, phase)
-  if (!displayId) return null
+  const displayId = versionPhaseToDisplayId(version, phase, [{ version, phase: phaseNum }])
+  if (displayId == null) return null
 
   const dates = DEFENSE_SEASON_DATES[key] ?? null
   return {
     version: String(version).trim(),
     phase: phaseNum,
-    seasonId: displayId,
+    seasonId: String(displayId),
     startDate: dates?.startDate ?? null,
     endDate: dates?.endDate ?? null,
   }

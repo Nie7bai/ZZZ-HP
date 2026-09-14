@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import CalculatorAvatar from '@/components/calculator/CalculatorAvatar.vue'
+import BuffRichText from '@/components/calculator/BuffRichText.vue'
 import NumberStepper from '@/components/common/NumberStepper.vue'
 import type { CharacterAttrKey, SkillSubcategory } from '@/types/calculator'
 import type {
@@ -563,7 +564,9 @@ function close() {
                     <span class="title-sep">|</span>
                     {{ card.blockName }}
                   </strong>
-                  <small v-if="card.note" :title="card.note">{{ card.note }}</small>
+                  <small v-if="card.note" :title="card.note">
+                    <BuffRichText :text="card.note" />
+                  </small>
                 </span>
               </button>
             </div>
@@ -577,7 +580,9 @@ function close() {
                     :checked="isEnabled(item)"
                     @change="toggleEffect(item)"
                   />
-                  <span class="buff-effect-text">{{ effectResultText(item) }}</span>
+                  <span class="buff-effect-text">
+                    <BuffRichText :text="effectResultText(item)" />
+                  </span>
                 </label>
                 <label
                   v-if="isStackable(item)"

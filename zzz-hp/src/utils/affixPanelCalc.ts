@@ -460,3 +460,114 @@ export const AFFIX_COUNT_FIELDS: {
   { key: 'critDmg', label: '爆伤', unitLabel: '条', perCount: AFFIX_VALUE_PER_COUNT.critDmg },
   { key: 'mastery', label: '精通', unitLabel: '条', perCount: AFFIX_VALUE_PER_COUNT.mastery },
 ]
+
+/**
+ * 面板导入局外数字上「换 4/5/6 主属性 + 2 件套」：
+ * 按已知主属性 / 2 件套贡献反推扣掉旧组合，再加回新组合（百分比项按角色/音擎基础折算）。
+ *
+ * 前提：`fromMains` 必须与面板里实际带的主属性一致；空着却面板已含主属性时会少扣。
+ * 只服务组合试算；不改词条叠加 / 求解器其它路径。
+ */
+export type RemapImportedExternalPanelForMainComboInput = {
+  panel: PanelStats
+  fromMains: AffixDriveDiscMainStats
+  toMains: AffixDriveDiscMainStats
+  fromTwoPieceId: string
+  toTwoPieceId: string
+  fourPieceDriveDiscId: string
+  driveDiscs: DriveDiscBuffDoc[]
+  agentHp: number
+  atkBase: number
+  agentDef: number
+  anomalyControlBase: number
+  energyRegenBase: number
+}
+
+export function remapImportedExternalPanelForMainCombo(
+  input: RemapImportedExternalPanelForMainComboInput,
+): PanelStats {
+  const fromMain = collectAffixDriveDiscMainStatContribution(input.fromMains)
+  const toMain = collectAffixDriveDiscMainStatContribution(input.toMains)
+  const fromMods = collectAffixTwoPieceMods(input.driveDiscs, {
+    twoPieceDriveDiscId: input.fromTwoPieceId || 'none',
+    fourPieceDriveDiscId: input.fourPieceDriveDiscId || 'none',
+  })
+  const toMods = collectAffixTwoPieceMods(input.driveDiscs, {
+    twoPieceDriveDiscId: input.toTwoPieceId || 'none',
+    fourPieceDriveDiscId: input.fourPieceDriveDiscId || 'none',
+  })
+  const fromExt = readTwoPieceExternalPercents(fromMods)
+  const toExt = readTwoPieceExternalPercents(toMods)
+
+  const dHpPct =
+    toMain.externalHpPercent +
+    toExt.externalHpPercent -
+    (fromMain.externalHpPercent + fromExt.externalHpPercent)
+  const dAtkPct =
+    toMain.externalAtkPercent +
+    toExt.externalAtkPercent -
+    (fromMain.externalAtkPercent + fromExt.externalAtkPercent)
+  const dDefPct =
+    toMain.externalDefPercent +
+    toExt.externalDefPercent -
+    (fromMain.externalDefPercent + fromExt.externalDefPercent)
+  const dAnomalyControlPct =
+    toMain.anomalyControl +
+    toMods.anomalyControlPercent -
+    (fromMain.anomalyControl + fromMods.anomalyControlPercent)
+  const dEnergyRegenPct =
+    toMain.energyRegen + toMods.energyRegen - (fromMain.energyRegen + fromMods.energyRegen)
+
+  return {
+    ...input.panel,
+    hp: roundPanelValue(
+      input.panel.hp + (input.agentHp * dHpPct) / 100 + (toMods.hp - fromMods.hp),
+    ),
+    atk: roundPanelValue(
+      input.panel.atk + (input.atkBase * dAtkPct) / 100 + (toMods.atk - fromMods.atk),
+    ),
+    def: roundPanelValue(
+      input.panel.def + (input.agentDef * dDefPct) / 100 + (toMods.def - fromMods.def),
+    ),
+    critRate: roundPanelValue(
+      input.panel.critRate +
+        (toMain.critRate - fromMain.critRate) +
+        (toMods.critRate - fromMods.critRate),
+    ),
+    critDmg: roundPanelValue(
+      input.panel.critDmg +
+        (toMain.critDmg - fromMain.critDmg) +
+        (toMods.critDmg - fromMods.critDmg),
+    ),
+    dmgBonus: roundPanelValue(
+      input.panel.dmgBonus +
+        (toMain.dmgBonus - fromMain.dmgBonus) +
+        (toMods.dmgBonus - fromMods.dmgBonus),
+    ),
+    penRate: roundPanelValue(
+      input.panel.penRate +
+        (toMain.penRate - fromMain.penRate) +
+        (toMods.penRate - fromMods.penRate),
+    ),
+    mastery: roundPanelValue(
+      input.panel.mastery +
+        (toMain.mastery - fromMain.mastery) +
+        (toMods.mastery - fromMods.mastery),
+    ),
+    impact: roundPanelValue(input.panel.impact + (toMain.impact - fromMain.impact)),
+    anomalyControl: roundPanelValue(
+      input.panel.anomalyControl +
+        (input.anomalyControlBase * dAnomalyControlPct) / 100 +
+        (toMods.anomalyControl - fromMods.anomalyControl),
+    ),
+    energyRegen: roundPanelValue(
+      input.panel.energyRegen +
+        (input.energyRegenBase * dEnergyRegenPct) / 100 +
+        (toMods.energyRegenFlat - fromMods.energyRegenFlat),
+    ),
+    reduceDefense: roundPanelValue(
+      input.panel.reduceDefense + (toMods.reduceDefense - fromMods.reduceDefense),
+    ),
+    resPen: roundPanelValue(input.panel.resPen + (toMods.resPen - fromMods.resPen)),
+  }
+}

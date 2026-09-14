@@ -19,6 +19,7 @@ import { calcCrisisHpCoeffPercent, getCrisisBaseHpByName } from '@/utils/crisisH
 import { CRISIS_HARD_ROOM_CODE, normalizeCrisisRoomCode } from '@/utils/crisisRoom'
 import { applyReusedMonsterLevel } from '@/utils/adminMonsterReuse'
 import { resolveAssetUrl } from '@/utils/gameData'
+import ElementTraitChips from '@/components/shared/ElementTraitChips.vue'
 
 const props = defineProps<{
   scope: AdminScope
@@ -934,15 +935,13 @@ watch(
         <input v-model="level" type="number" min="1" class="field-input" />
       </label>
 
-      <label class="field">
-        <span class="field-label">弱点</span>
-        <input v-model="weakness" type="text" class="field-input" placeholder="冰、火" />
-      </label>
+      <div class="field">
+        <ElementTraitChips v-model="weakness" label="弱点" variant="weak" />
+      </div>
 
-      <label class="field">
-        <span class="field-label">抗性</span>
-        <input v-model="resistance" type="text" class="field-input" />
-      </label>
+      <div class="field">
+        <ElementTraitChips v-model="resistance" label="抗性" variant="resist" />
+      </div>
 
       <label class="field">
         <span class="field-label">失衡易伤（乘数，1.5 = 150%）</span>

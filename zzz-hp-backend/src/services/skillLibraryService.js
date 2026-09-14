@@ -2,7 +2,7 @@ import pool from '../config/db.js'
 
 const TABLE = '`calculator_skills`'
 
-/** 与前端 `publicAnomalySkills.ts` 保持一致。这 7 条公共属性异常每次启动按表校正倍率/元素。 */
+/** 与前端 `publicAnomalySkills.ts` 保持一致。公共属性异常每次启动按表校正倍率/元素。 */
 const PUBLIC_ANOMALY_SKILLS = [
   { id: 'sk-public-anomaly-wind', element: '风', name: '风属性异常', baseMult: 1250, sortOrder: 10 },
   { id: 'sk-public-anomaly-fire', element: '火', name: '火属性异常', baseMult: 50, sortOrder: 20 },
@@ -10,8 +10,10 @@ const PUBLIC_ANOMALY_SKILLS = [
   { id: 'sk-public-anomaly-physical', element: '物理', name: '物理属性异常', baseMult: 713, sortOrder: 40 },
   { id: 'sk-public-anomaly-ether', element: '以太', name: '以太属性异常', baseMult: 62.5, sortOrder: 50 },
   { id: 'sk-public-anomaly-ice', element: '冰', name: '冰属性异常', baseMult: 500, sortOrder: 60 },
-  { id: 'sk-public-anomaly-frost', element: '霜', name: '霜属性异常', baseMult: 500, sortOrder: 70 },
 ]
+
+/** 已下线公共异常：启动时从招式库删除 */
+const RETIRED_PUBLIC_ANOMALY_IDS = ['sk-public-anomaly-frost']
 
 let ensured = false
 
@@ -97,6 +99,9 @@ async function ensurePublicAnomalySkills() {
          sort_order = VALUES(sort_order)`,
       [skill.id, skill.name, skill.baseMult, skill.sortOrder, skill.element],
     )
+  }
+  if (RETIRED_PUBLIC_ANOMALY_IDS.length) {
+    await pool.query(`DELETE FROM calculator_skills WHERE id IN (${RETIRED_PUBLIC_ANOMALY_IDS.map(() => '?').join(',')})`, RETIRED_PUBLIC_ANOMALY_IDS)
   }
 }
 

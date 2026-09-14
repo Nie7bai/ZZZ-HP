@@ -78,6 +78,7 @@ import {
   type OptimalEventDamageLine,
   yieldToMain,
 } from '@/utils/optimalAffixAlloc'
+import { remapImportedExternalPanelForMainCombo } from '@/utils/affixPanelCalc'
 import EquipPickerModal from '@/components/calculator/EquipPickerModal.vue'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import {
@@ -1324,13 +1325,22 @@ type AffixEvalSnapshot = {
   eventLines: OptimalEventDamageLine[]
 }
 
-/** 事件模式下按「统计事件」筛选求和；非事件模式走原 metric */
+/**
+ * 事件模式下按「统计事件」筛选求和；非事件模式走原 metric。
+ *
+ * 词条分析页的组合试算不依赖扫掠柱图勾选（那边事件列表来自柱体，
+ * 未跑扫掠时 `selectedChartEventIds` 常为空 → 以前会算出 0→0）。
+ * 与「全词条收益」同口径：一律流程全部事件总伤。
+ */
 function resolveAffixMetricDamage(evaled: AffixEvalSnapshot) {
   if (!hasEventMode.value || !evaled.eventLines?.length) {
     return metricOf(evaled.result, evaled.grandTotal)
   }
+  if (sectionMode.value === 'allocation') {
+    return evaled.grandTotal
+  }
   const ids = new Set(selectedChartEventIds.value)
-  if (!ids.size) return 0
+  if (!ids.size) return evaled.grandTotal
   return evaled.eventLines
     .filter((line) => ids.has(line.eventId))
     .reduce((sum, line) => sum + line.total, 0)
@@ -1338,7 +1348,12 @@ function resolveAffixMetricDamage(evaled: AffixEvalSnapshot) {
 
 const mainStatEventScopeHint = computed(() => {
   if (!hasEventMode.value) return ''
-  if (!selectedChartEventIds.value.length) return '未选择统计事件'
+  if (sectionMode.value === 'allocation') {
+    return '按全部统计事件计算'
+  }
+  if (!selectedChartEventIds.value.length) {
+    return '未勾选柱图事件，已按全部事件回退'
+  }
   if (selectedChartEventIds.value.length === chartEventOptions.value.length) {
     return '按全部统计事件计算'
   }
@@ -1529,6 +1544,32 @@ const affixAllocEval = computed(() => {
   if (!result) return null
   return evaluateAffixCounts(evalCtx.value, result.counts, result.panelDeltas, result.valuePerCount)
 })
+
+/**
+ * 主属性组合试算 / 排行的副词条基线：
+ * - 词条分析页独立模块：零副词条；有导入面板时在面板上反推换主属性/2 件套（不叠求解词条）
+ * - 扫掠柱图：沿用 analysisCounts（点柱 / 预览）
+ */
+const comboBaselineCounts = computed(() => {
+  if (sectionMode.value === 'allocation') {
+    return affixAllocBaseCounts.value
+  }
+  return analysisCounts.value
+})
+
+const comboBaselineReady = computed(() => {
+  if (sectionMode.value === 'allocation') {
+    return hasEventMode.value
+  }
+  return Boolean(analysisCounts.value && analysisEval.value)
+})
+
+/** 词条分析页组合试算能否走「导入面板反推」：需要页级基准局外 */
+const comboUsesImportedPanel = computed(
+  () =>
+    sectionMode.value === 'allocation' &&
+    Boolean(evalCtx.value.mainBaseExternalPanel),
+)
 
 // 两个来源的面板就绪 / 失效时上报给页级（招式流程三选项据此启用与判过期；
 // 面板展示专用通道同一时机一并上报）
@@ -1816,7 +1857,8 @@ function mainStatDiffBuilder() {
 }
 
 function buildCombinedMainStatRankings() {
-  if (!analysisCounts.value || !analysisEval.value) return []
+  if (!comboBaselineReady.value || !comboBaselineCounts.value) return []
+  const counts = comboBaselineCounts.value
   const currentStats: AffixDriveDiscMainStats = {
     slot4MainStat: driveDiscMainStats.value.slot4MainStat,
     slot5MainStat: driveDiscMainStats.value.slot5MainStat,
@@ -1824,7 +1866,7 @@ function buildCombinedMainStatRankings() {
   }
   const baseDamage = evaluateMainStatComboDamage(
     currentStats,
-    analysisCounts.value,
+    counts,
     currentTwoPieceId.value,
   )
   const rows: {
@@ -1854,7 +1896,7 @@ function buildCombinedMainStatRankings() {
         }
         const damage = evaluateMainStatComboDamage(
           comboStats,
-          analysisCounts.value,
+          counts,
           rankingTwoPieceId.value,
         )
         const damageDelta = damage - baseDamage
@@ -1921,7 +1963,13 @@ function recomputeBenefitData() {
 }
 
 function loadCombinedMainStatRankings() {
-  if (combinedMainStatRankingsLoading.value || rankingComboCount.value <= 0) return
+  if (
+    combinedMainStatRankingsLoading.value ||
+    rankingComboCount.value <= 0 ||
+    !comboBaselineReady.value
+  ) {
+    return
+  }
   combinedMainStatRankingsLoading.value = true
   window.setTimeout(() => {
     combinedMainStatRankings.value = buildCombinedMainStatRankings()
@@ -2009,8 +2057,9 @@ watch(
 
 watch(sectionMode, (mode) => {
   if (mode === 'allocation') scheduleAffixBenefitRecompute()
+  showCombinedMainStatRankings.value = false
+  combinedMainStatRankings.value = []
 })
-
 // 首屏 / 切回本页时先算一次收益表
 watch(
   [() => hasEventMode.value, () => isSectionActive.value],
@@ -2071,23 +2120,63 @@ function evaluateMainStatComboDamage(
   counts: AffixCounts,
   twoPieceId?: string,
 ) {
+  const ctx = evalCtx.value
+  const nextTwoPieceId = twoPieceId ?? ctx.driveDiscSelection.twoPieceDriveDiscId
+  /**
+   * 词条分析页 + 已有导入局外：在面板数字上反推扣掉当前 4/5/6（及 2 件套）贡献，
+   * 再加回试算组合 —— 不改收益表 / 求解器，也不动扫掠柱图（仍走下方「清基准重推」）。
+   */
+  if (sectionMode.value === 'allocation' && ctx.mainBaseExternalPanel) {
+    const remapped = remapImportedExternalPanelForMainCombo({
+      panel: ctx.mainBaseExternalPanel,
+      fromMains: driveDiscMainStats.value,
+      toMains: {
+        slot4MainStat: mainStats.slot4MainStat,
+        slot5MainStat: mainStats.slot5MainStat,
+        slot6MainStat: mainStats.slot6MainStat,
+      },
+      fromTwoPieceId: currentTwoPieceId.value,
+      toTwoPieceId: nextTwoPieceId,
+      fourPieceDriveDiscId: ctx.driveDiscSelection.fourPieceDriveDiscId,
+      driveDiscs: ctx.driveDiscs,
+      agentHp: ctx.agentBase.hp,
+      atkBase: ctx.agentBase.atk + ctx.wengineBaseAtk,
+      agentDef: ctx.agentBase.def + (ctx.wengineBaseDef ?? 0),
+      anomalyControlBase: ctx.agentBase.anomalyControl,
+      energyRegenBase: ctx.agentBase.energyRegen,
+    })
+    const evaled = evaluateAffixCounts(
+      {
+        ...ctx,
+        mainBaseExternalPanel: remapped,
+        driveDiscMainStats: {
+          ...ctx.driveDiscMainStats,
+          ...mainStats,
+        },
+        driveDiscSelection: {
+          ...ctx.driveDiscSelection,
+          twoPieceDriveDiscId: nextTwoPieceId,
+        },
+      },
+      counts,
+    )
+    return resolveAffixMetricDamage(evaled)
+  }
+
   const evaled = evaluateAffixCounts(
     {
-      ...evalCtx.value,
+      ...ctx,
       /**
-       * 主属性组合试算是在问「换一套 4/5/6 主属性会怎样」——答案必须由配置重新推导面板，
-       * 不能沿用外部面板（否则主属性改了面板不变，试算恒为 0）。
-       * 故这里显式清掉基准面板，让 `computeExternalForEval` 走推导路径。
-       * 基线与试算两测都走同一路径，差值仍是同口径对比。
+       * 扫掠 / 无导入面板：换主属性必须重新推导面板，否则主属性改了面板不变。
        */
       mainBaseExternalPanel: null,
       driveDiscMainStats: {
-        ...evalCtx.value.driveDiscMainStats,
+        ...ctx.driveDiscMainStats,
         ...mainStats,
       },
       driveDiscSelection: {
-        ...evalCtx.value.driveDiscSelection,
-        twoPieceDriveDiscId: twoPieceId ?? evalCtx.value.driveDiscSelection.twoPieceDriveDiscId,
+        ...ctx.driveDiscSelection,
+        twoPieceDriveDiscId: nextTwoPieceId,
       },
     },
     counts,
@@ -2096,7 +2185,8 @@ function evaluateMainStatComboDamage(
 }
 
 const combinedMainStatPreview = computed(() => {
-  if (!analysisCounts.value || !analysisEval.value) return null
+  if (!comboBaselineReady.value || !comboBaselineCounts.value) return null
+  const counts = comboBaselineCounts.value
   const currentStats: AffixDriveDiscMainStats = {
     slot4MainStat: driveDiscMainStats.value.slot4MainStat,
     slot5MainStat: driveDiscMainStats.value.slot5MainStat,
@@ -2116,14 +2206,14 @@ const combinedMainStatPreview = computed(() => {
   // 异步扫掠后 evalSnapshot 常为空，会落到「无 hits」面板口径，事件模式下差值会错一个数量级
   const baseDamage = evaluateMainStatComboDamage(
     currentStats,
-    analysisCounts.value,
+    counts,
     currentTwoPieceId.value,
   )
   const proposedDamage = unchanged
     ? baseDamage
     : evaluateMainStatComboDamage(
         draftStats,
-        analysisCounts.value,
+        counts,
         combinedMainStatDraftTwoPieceId.value,
       )
   const damageDelta = proposedDamage - baseDamage
@@ -2325,7 +2415,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
     <header class="opt-header">
       <h2>词条配比分析</h2>
       <p>
-        两种用法二选一：「最优分配」在总词条数约束下求全词条最优配比；
+        两种用法二选一：「词条分析」在总词条数约束下求全词条最优配比；
         「扫掠柱图」手动指定两个维度扫掠对比。
       </p>
     </header>
@@ -2353,7 +2443,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         :aria-selected="sectionMode === 'allocation'"
         @click="sectionMode = 'allocation'"
       >
-        最优分配
+        词条分析
       </button>
       <button
         type="button"
@@ -2412,6 +2502,245 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           @remove-group="removeAffixLibraryGroupHandler"
           @library-switched="onAffixLibrarySwitched"
         />
+
+        <h3 class="block-title">主属性组合试算</h3>
+        <p class="hint">
+          与「全词条收益 / 最优分配」同级独立模块。有面板导入时：按当前 4/5/6（及 2 件套）从局外数字反推扣减，再加回试算组合；
+          请先在导入里填对当前主属性。无面板时回退为配置推导。不改动下方最优分配求解。
+          <template v-if="comboUsesImportedPanel"> · 当前：已接导入面板</template>
+          <template v-else> · 当前：无导入面板，走配置推导</template>
+        </p>
+        <template v-if="combinedMainStatPreview">
+          <div class="combined-main-stat-card">
+            <header class="combined-main-stat-card__header">
+              <h5>组合试算</h5>
+              <button type="button" class="reset-combination-btn" @click="resetCombinedMainStatDraft">
+                重置为当前
+              </button>
+            </header>
+
+            <div class="main-stat-stack main-stat-stack--current">
+              <p class="main-stat-stack-title">当前主属性</p>
+              <ul class="main-stat-stack-list">
+                <li>
+                  <span class="main-stat-slot-badge">4</span>
+                  <span class="main-stat-slot-value">{{ combinedMainStatPreview.currentLabels.slot4 }}</span>
+                </li>
+                <li>
+                  <span class="main-stat-slot-badge">5</span>
+                  <span class="main-stat-slot-value">{{ combinedMainStatPreview.currentLabels.slot5 }}</span>
+                </li>
+                <li>
+                  <span class="main-stat-slot-badge">6</span>
+                  <span class="main-stat-slot-value">{{ combinedMainStatPreview.currentLabels.slot6 }}</span>
+                </li>
+                <li>
+                  <span class="main-stat-slot-badge">2</span>
+                  <span class="main-stat-slot-value">{{ combinedMainStatPreview.currentLabels.twoPiece }}</span>
+                </li>
+              </ul>
+            </div>
+
+            <i class="combined-main-stat-arrow" aria-hidden="true">→</i>
+
+            <div class="main-stat-selects">
+              <label>
+                <span class="combined-main-stat-label">4号替换为</span>
+                <select v-model="combinedMainStatDraft.slot4MainStat">
+                  <option v-for="opt in DRIVE_DISC_SLOT_4_OPTIONS" :key="`alloc-draft-4-${opt.id}`" :value="opt.id">
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </label>
+              <label>
+                <span class="combined-main-stat-label">5号替换为</span>
+                <select v-model="combinedMainStatDraft.slot5MainStat">
+                  <option v-for="opt in DRIVE_DISC_SLOT_5_OPTIONS" :key="`alloc-draft-5-${opt.id}`" :value="opt.id">
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </label>
+              <label>
+                <span class="combined-main-stat-label">6号替换为</span>
+                <select v-model="combinedMainStatDraft.slot6MainStat">
+                  <option v-for="opt in DRIVE_DISC_SLOT_6_OPTIONS" :key="`alloc-draft-6-${opt.id}`" :value="opt.id">
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </label>
+              <label class="main-stat-two-piece-field">
+                <span class="combined-main-stat-label">2件套替换为</span>
+                <EquipPickerModal
+                  v-model:open="combinedTwoPiecePickerOpen"
+                  title="选择 2 件套"
+                  description="可不佩戴；与 4 件套同套时不重复计入"
+                  search-placeholder="搜索驱动盘…"
+                  :items="(driveDiscs as unknown as Array<Record<string, unknown>>)"
+                  allow-none
+                  none-label="不佩戴"
+                  :selected-id="combinedMainStatDraftTwoPieceId"
+                  :selected-label="resolveTwoPieceLabel(combinedMainStatDraftTwoPieceId)"
+                  :selected-avatar="resolveTwoPieceAvatar(combinedMainStatDraftTwoPieceId)"
+                  @select="selectCombinedTwoPiece"
+                />
+              </label>
+            </div>
+
+            <div class="combined-result">
+              <span>总伤害变化</span>
+              <p v-if="mainStatEventScopeHint" class="hint combined-result-scope">{{ mainStatEventScopeHint }}</p>
+              <strong :class="combinedMainStatPreview.damageDelta >= 0 ? 'pos' : 'neg'">
+                <template v-if="combinedMainStatPreview.unchanged">与当前相同</template>
+                <template v-else>
+                  {{ formatDelta(combinedMainStatPreview.damageDelta) }}
+                  （{{ formatPercent(combinedMainStatPreview.percentDelta) }}）
+                </template>
+              </strong>
+              <p class="hint combined-result-detail">
+                当前 {{ formatNumber(combinedMainStatPreview.baseDamage) }}
+                → 试算 {{ formatNumber(combinedMainStatPreview.proposedDamage) }}
+              </p>
+            </div>
+          </div>
+
+          <section class="ranking-slot-filter">
+            <header class="ranking-slot-filter-header">
+              <h5>限定组合计算范围</h5>
+              <span class="hint">将计算 {{ rankingComboCount }} 种组合（不含当前配置）</span>
+            </header>
+            <div class="ranking-slot-filter-group">
+              <div class="ranking-slot-filter-row ranking-slot-filter-row--select">
+                <span class="ranking-slot-filter-label">2件套</span>
+                <div class="ranking-two-piece-picker">
+                  <EquipPickerModal
+                    v-model:open="rankingTwoPiecePickerOpen"
+                    title="选择 2 件套"
+                    description="单选，替换当前 2 件套数值参与排行计算"
+                    search-placeholder="搜索驱动盘…"
+                    :items="(driveDiscs as unknown as Array<Record<string, unknown>>)"
+                    allow-none
+                    none-label="不佩戴"
+                    :selected-id="rankingTwoPieceId"
+                    :selected-label="resolveTwoPieceLabel(rankingTwoPieceId)"
+                    :selected-avatar="resolveTwoPieceAvatar(rankingTwoPieceId)"
+                    @select="selectRankingTwoPiece"
+                  />
+                </div>
+                <span class="hint">单选，替换当前 2 件套数值参与排行计算</span>
+              </div>
+              <div class="ranking-slot-filter-row">
+                <span class="ranking-slot-filter-label">4号</span>
+                <button type="button" class="chip chip--compact" @click="selectAllRankingSlotOptions(4)">全选</button>
+                <button
+                  v-for="opt in DRIVE_DISC_SLOT_4_OPTIONS"
+                  :key="`alloc-rank-4-${opt.id}`"
+                  type="button"
+                  class="chip chip--compact"
+                  :class="{ active: isRankingSlotOptionSelected(4, opt.id) }"
+                  @click="toggleRankingSlotOption(4, opt.id)"
+                >
+                  {{ opt.label }}
+                </button>
+              </div>
+              <div class="ranking-slot-filter-row">
+                <span class="ranking-slot-filter-label">5号</span>
+                <button type="button" class="chip chip--compact" @click="selectAllRankingSlotOptions(5)">全选</button>
+                <button
+                  v-for="opt in DRIVE_DISC_SLOT_5_OPTIONS"
+                  :key="`alloc-rank-5-${opt.id}`"
+                  type="button"
+                  class="chip chip--compact"
+                  :class="{ active: isRankingSlotOptionSelected(5, opt.id) }"
+                  @click="toggleRankingSlotOption(5, opt.id)"
+                >
+                  {{ opt.label }}
+                </button>
+              </div>
+              <div class="ranking-slot-filter-row">
+                <span class="ranking-slot-filter-label">6号</span>
+                <button type="button" class="chip chip--compact" @click="selectAllRankingSlotOptions(6)">全选</button>
+                <button
+                  v-for="opt in DRIVE_DISC_SLOT_6_OPTIONS"
+                  :key="`alloc-rank-6-${opt.id}`"
+                  type="button"
+                  class="chip chip--compact"
+                  :class="{ active: isRankingSlotOptionSelected(6, opt.id) }"
+                  @click="toggleRankingSlotOption(6, opt.id)"
+                >
+                  {{ opt.label }}
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <div class="lazy-action-row combined-rankings-action">
+            <button
+              type="button"
+              class="chip"
+              :disabled="combinedMainStatRankingsLoading || !comboBaselineCounts || rankingComboCount <= 0"
+              @click="loadCombinedMainStatRankings"
+            >
+              {{
+                combinedMainStatRankingsLoading
+                  ? '排行计算中…'
+                  : showCombinedMainStatRankings
+                    ? '重新计算组合排行'
+                    : '计算组合排行'
+              }}
+            </button>
+            <button
+              v-if="showCombinedMainStatRankings && combinedRankingsExpanded && combinedMainStatRankings.length"
+              type="button"
+              class="chip"
+              @click="collapseCombinedMainStatRankings"
+            >
+              收起排行
+            </button>
+            <button
+              v-else-if="showCombinedMainStatRankings && combinedMainStatRankings.length"
+              type="button"
+              class="chip"
+              @click="expandCombinedMainStatRankings"
+            >
+              展开排行（{{ combinedMainStatRankings.length }} 条）
+            </button>
+            <span v-if="!showCombinedMainStatRankings" class="hint">
+              可先限定 4/5/6 候选与 2 件套再计算，减少运算量。
+            </span>
+          </div>
+
+          <div
+            v-if="showCombinedMainStatRankings && combinedRankingsExpanded && combinedMainStatRankings.length"
+            class="table-wrap combined-main-stat-table"
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th>4 / 5 / 6 主属性组合</th>
+                  <th>伤害差值</th>
+                  <th>百分比差值</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="row in combinedMainStatRankings"
+                  :key="`alloc-${row.slot4}-${row.slot5}-${row.slot6}`"
+                >
+                  <td>{{ row.summaryLabel }}</td>
+                  <td :class="row.damageDelta >= 0 ? 'pos' : 'neg'">{{ formatDelta(row.damageDelta) }}</td>
+                  <td :class="row.percentDelta >= 0 ? 'pos' : 'neg'">{{ formatPercent(row.percentDelta) }}</td>
+                  <td>
+                    <button type="button" class="chip chip--compact" @click="applyCombinedMainStatRanking(row)">
+                      填入试算
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
+        <p v-else class="hint">配置招式流程后即可试算主属性组合。</p>
 
         <h3 class="block-title">最优分配</h3>
         <div class="alloc-input-row">
@@ -2493,7 +2822,6 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         </template>
       </template>
     </template>
-
     <!-- ============ 扫掠柱图模式（原逻辑） ============ -->
     <template v-else>
     <div class="kind-mode-row" role="tablist" aria-label="最优词条伤害模式">

@@ -261,10 +261,16 @@ function formatValue(key: keyof PanelStats, value: number) {
       </div>
     </section>
 
-    <section v-if="isAffixMode" class="panel-block">
+    <section class="panel-block">
       <header class="panel-block-header">
         <h3>驱动盘主属性</h3>
-        <p>{{ driveDiscSummary }} · 1 号盘固定生命 {{ AFFIX_DRIVE_DISC_SLOT_1_HP }}，2 号盘固定攻击 {{ AFFIX_DRIVE_DISC_SLOT_2_ATK }}</p>
+        <p>
+          {{ driveDiscSummary }} · 1 号盘固定生命 {{ AFFIX_DRIVE_DISC_SLOT_1_HP }}，2 号盘固定攻击
+          {{ AFFIX_DRIVE_DISC_SLOT_2_ATK }}
+          <template v-if="!isAffixMode">
+            · 面板导入也可填写；不参与局外数字计算，写入后供词条分析（上限 / 组合试算）使用，可留空
+          </template>
+        </p>
       </header>
       <div class="grid four">
         <label class="field">
