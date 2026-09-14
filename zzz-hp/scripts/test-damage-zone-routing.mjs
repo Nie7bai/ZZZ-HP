@@ -25,7 +25,16 @@ import {
   resolvePanelViewPolicy,
   resolvePanelViewPolicyForRadiance,
 } from '../src/utils/panelViewPolicy.ts'
-import { collectRemielSelfRestrictedContributions } from '../src/utils/remielSelfRadiancePanel.ts'
+import { packFromEffects } from '../src/utils/buffEffect.ts'
+import {
+  createEmptyBuffStatModifiers,
+  createEmptyWengineAdvancedStats,
+  createEmptyWengineRefinementBuffs,
+} from '../src/utils/calculatorUi.ts'
+import {
+  collectRemielSelfRestrictedContributions,
+  collectRemielSelfRestrictedContributionsFromSources,
+} from '../src/utils/remielSelfRadiancePanel.ts'
 import { resolveSchemePath } from './_paths.mjs'
 
 let passed = 0
@@ -188,7 +197,7 @@ console.log('\n[4] 未传 anomalyTriggerPanel 时抗穿回落强度提供者')
   )
 }
 
-console.log('\n[5] PanelViewPolicy 蕾米收集器与旧函数同构')
+console.log('\n[5] PanelViewPolicy 蕾米收集器走 EffectPlan，与来源遍历同构')
 {
   const selfConvert = convertEffect('rem-atk', 'atk', {
     from: 'mastery',
@@ -197,6 +206,8 @@ console.log('\n[5] PanelViewPolicy 蕾米收集器与旧函数同构')
     initialBase: 0,
   })
   const teamAtk = fixedEffect('mate-atk', 'atk', 400, { applyTarget: 'team' })
+  const discMastery = fixedEffect('dd-ms', 'mastery', 30)
+  const wengineMastery = fixedEffect('w-ms', 'mastery', 20)
   const remiel = testAgent('remiel', {
     name: '蕾米',
     profession: '异常',
@@ -210,14 +221,40 @@ console.log('\n[5] PanelViewPolicy 蕾米收集器与旧函数同构')
     name: '邦布',
     effects: [fixedEffect('bb-atk', 'atk', 80, { applyTarget: 'team' })],
   }
+  const drive = {
+    id: 'dd1',
+    name: '测盘',
+    avatar_image: null,
+    twoPieceNote: '',
+    fourPieceNote: '',
+    twoPieceEffects: [],
+    twoPieceMods: createEmptyBuffStatModifiers(),
+    fourPieceBuffs: packFromEffects([discMastery]),
+  }
+  const wengine = {
+    id: 'w1',
+    name: '测音擎',
+    profession: '异常',
+    rarity: 'S',
+    avatar_image: null,
+    note: '',
+    baseAtk: 500,
+    baseDef: 0,
+    advancedStats: createEmptyWengineAdvancedStats(),
+    fixedBuffs: packFromEffects([wengineMastery]),
+    refinementBuffs: createEmptyWengineRefinementBuffs(),
+  }
   const panel = makePanel({ atk: 2000, mastery: 200 })
   const ctx = makePanelCtx({
-    teamSlots: [testSlot('remiel'), testSlot('mate')],
+    teamSlots: [{ ...testSlot('remiel'), wengineId: 'w1', fourPieceDriveDiscId: 'dd1' }, testSlot('mate')],
     agents: [remiel, mate],
     bangboo,
+    wengines: [wengine],
+    driveDiscs: [drive],
     mainSlotIndex: 0,
   })
-  const legacy = collectRemielSelfRestrictedContributions(panel, ctx, 0)
+  const viaPlan = collectRemielSelfRestrictedContributions(panel, ctx, 0)
+  const viaSources = collectRemielSelfRestrictedContributionsFromSources(panel, ctx, 0)
   const viaPolicy = REMIEL_SELF_RADIANCE_VIEW_POLICY.collectRestrictedContributions(panel, ctx, 0)
   check('政策 id', resolvePanelViewPolicy('remiel-self-radiance').id === 'remiel-self-radiance')
   check(
@@ -228,9 +265,15 @@ console.log('\n[5] PanelViewPolicy 蕾米收集器与旧函数同构')
     '强度提供者不是蕾米走 default',
     resolvePanelViewPolicyForRadiance('aria', 'remiel').id === 'default',
   )
-  check('受限攻击与旧函数一致', viaPolicy.inCombatAtk === legacy.inCombatAtk, `${viaPolicy.inCombatAtk}`)
-  check('受限精通与旧函数一致', viaPolicy.inCombatMastery === legacy.inCombatMastery)
-  check('本人耀变攻击只收自身转模', Math.abs(viaPolicy.inCombatAtk - 2100) < 1e-6, `${viaPolicy.inCombatAtk}`)
+  check('Plan 与来源遍历攻击一致', viaPlan.inCombatAtk === viaSources.inCombatAtk, `${viaPlan.inCombatAtk}`)
+  check('Plan 与来源遍历精通一致', viaPlan.inCombatMastery === viaSources.inCombatMastery)
+  check('政策走 Plan 入口', viaPolicy.inCombatAtk === viaPlan.inCombatAtk)
+  check('本人耀变攻击只收自身转模', Math.abs(viaPlan.inCombatAtk - 2100) < 1e-6, `${viaPlan.inCombatAtk}`)
+  check(
+    '受限精通含四件套 30 + 音擎 20',
+    Math.abs(viaPlan.inCombatMastery - 250) < 1e-6,
+    `${viaPlan.inCombatMastery}`,
+  )
 }
 
 console.log('\n[6] 蕾米真方案按名字钉（不算总伤：T9 自建招式可能缺）')

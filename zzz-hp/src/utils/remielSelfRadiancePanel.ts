@@ -9,6 +9,7 @@ import {
 } from '@/utils/buffEffect'
 import {
   applyBuffModsToPanel,
+  collectAllBuffEffects,
   collectPanelBuffMods,
   collectPanelBuffModSources,
   computeFinalPanel,
@@ -16,6 +17,9 @@ import {
   type PanelBuffBreakdown,
   type PanelCalcContext,
 } from '@/utils/panelBuffCalc'
+import { compileCollectedBuffs } from '@/utils/effectCompiler'
+import { effectInstanceToBuffEffect } from '@/utils/effectAdapters'
+import type { EffectInstance } from '@/types/effectSpec'
 import {
   computeMutationZone,
   resolveLuminousEquivalentElement,
@@ -44,6 +48,33 @@ function formatSignedContribution(value: number) {
   return String(value)
 }
 
+function remielAgentPrefix(slotIndex: number) {
+  return `agent-${slotIndex}-`
+}
+
+function remielFourPiecePrefix(slotIndex: number) {
+  return `drive-disc-${slotIndex}-4set`
+}
+
+function remielWenginePrefix(slotIndex: number) {
+  return `wengine-${slotIndex}-`
+}
+
+function isRemielSelfAtkConvert(instance: EffectInstance, slotIndex: number) {
+  return (
+    instance.sourceKey.startsWith(remielAgentPrefix(slotIndex)) &&
+    instance.stat === 'atk' &&
+    (instance.operation === 'convert' || instance.buffKind === 'convert')
+  )
+}
+
+function isRemielSelfMasterySource(sourceKey: string, slotIndex: number) {
+  const fourPiece = remielFourPiecePrefix(slotIndex)
+  const isFourPiece = sourceKey.startsWith(fourPiece) && !sourceKey.includes('-4set-2pc')
+  const isWengine = sourceKey.startsWith(remielWenginePrefix(slotIndex))
+  return { isFourPiece, isWengine, match: isFourPiece || isWengine }
+}
+
 /**
  * 本人耀变专用（`collectRemielSelfRestrictedContributions` 的产物）：
  * - 局内攻击 = 局外攻击 + 蕾米埃尔自身（影画/角色）攻击力转模
@@ -57,7 +88,23 @@ export interface RemielSelfRestrictedContributions {
   masteryItems: string[]
 }
 
-export function collectRemielSelfRestrictedContributions(
+function finishRestrictedContributions(
+  externalPanel: PanelStats,
+  atkConvert: number,
+  masteryBonus: number,
+  atkItems: string[],
+  masteryItems: string[],
+): RemielSelfRestrictedContributions {
+  return {
+    inCombatAtk: Math.max(0, externalPanel.atk + atkConvert),
+    inCombatMastery: Math.max(0, externalPanel.mastery + masteryBonus),
+    atkItems,
+    masteryItems,
+  }
+}
+
+/** 旧路径：手写遍历来源前缀。阶段 4 收尾双跑对照用。 */
+export function collectRemielSelfRestrictedContributionsFromSources(
   externalPanel: PanelStats,
   ctx: PanelCalcContext,
   remielSlotIndex: number,
@@ -81,28 +128,26 @@ export function collectRemielSelfRestrictedContributions(
     panelSourceValues,
   })
 
-  const agentPrefix = `agent-${remielSlotIndex}-`
-  const fourPiecePrefix = `drive-disc-${remielSlotIndex}-4set`
-  const wenginePrefix = `wengine-${remielSlotIndex}-`
   const skillCtx = ctx.skillContext
-
   let atkConvert = 0
   let masteryBonus = 0
   const atkItems: string[] = []
   const masteryItems: string[] = []
 
   for (const source of sources) {
-    // extraMods 等来源可能只有 mods、没有 effects；不可直接 for…of undefined
     for (const effect of source.effects ?? []) {
       if (!isEffectEnabled(effect, ctx.buffSelection)) continue
-      // 与面板结算一致：按失衡阶段 / scope 过滤，不能只收 global
       if (!effectMatchesContext(effect, skillCtx)) continue
 
       const stacks =
         ctx.buffSelection?.stacksByEffectId?.[effect.id] ?? effect.defaultStacks ?? 1
       const convertOverride = ctx.buffSelection?.convertInputs?.[effect.id]
 
-      if (source.key.startsWith(agentPrefix) && effect.kind === 'convert' && effect.stat === 'atk') {
+      if (
+        source.key.startsWith(remielAgentPrefix(remielSlotIndex)) &&
+        effect.kind === 'convert' &&
+        effect.stat === 'atk'
+      ) {
         const value = resolveConvertValue(effect, {}, convertOverride, panelSourceValues)
         if (!value) continue
         atkConvert += value
@@ -110,10 +155,8 @@ export function collectRemielSelfRestrictedContributions(
         continue
       }
 
-      const isFourPiece =
-        source.key.startsWith(fourPiecePrefix) && !source.key.includes('-4set-2pc')
-      const isWengine = source.key.startsWith(wenginePrefix)
-      if (!(isFourPiece || isWengine) || effect.stat !== 'mastery') continue
+      const masterySource = isRemielSelfMasterySource(source.key, remielSlotIndex)
+      if (!masterySource.match || effect.stat !== 'mastery') continue
 
       const value =
         effect.kind === 'convert'
@@ -121,17 +164,84 @@ export function collectRemielSelfRestrictedContributions(
           : resolveEffectBaseValue(effect, stacks)
       if (!value) continue
       masteryBonus += value
-      const kindLabel = isFourPiece ? '四件套全局精通' : '音擎全局精通'
+      const kindLabel = masterySource.isFourPiece ? '四件套全局精通' : '音擎全局精通'
       masteryItems.push(`${source.label} ${kindLabel} ${formatSignedContribution(value)}`)
     }
   }
 
-  return {
-    inCombatAtk: Math.max(0, externalPanel.atk + atkConvert),
-    inCombatMastery: Math.max(0, externalPanel.mastery + masteryBonus),
+  return finishRestrictedContributions(
+    externalPanel,
+    atkConvert,
+    masteryBonus,
     atkItems,
     masteryItems,
+  )
+}
+
+export function collectRemielSelfRestrictedContributions(
+  externalPanel: PanelStats,
+  ctx: PanelCalcContext,
+  remielSlotIndex: number,
+): RemielSelfRestrictedContributions {
+  const restrictedCtx: PanelCalcContext = {
+    ...ctx,
+    mainSlotIndex: remielSlotIndex,
+    restrictToSlotIndex: remielSlotIndex,
+    excludeBangboo: true,
   }
+
+  const interimMods = collectPanelBuffMods({ ...restrictedCtx, skipConvert: true })
+  const interimPanel = applyBuffModsToPanel(externalPanel, interimMods)
+  const panelSourceValues = {
+    external: panelToConvertAttrValues(externalPanel),
+    final: panelToConvertAttrValues(interimPanel),
+  }
+  const plan = compileCollectedBuffs(collectAllBuffEffects(restrictedCtx))
+  const skillCtx = ctx.skillContext
+
+  let atkConvert = 0
+  let masteryBonus = 0
+  const atkItems: string[] = []
+  const masteryItems: string[] = []
+
+  for (const instance of plan.instances) {
+    const effect = effectInstanceToBuffEffect(instance)
+    if (!isEffectEnabled(effect, ctx.buffSelection)) continue
+    if (!effectMatchesContext(effect, skillCtx)) continue
+
+    const stacks =
+      ctx.buffSelection?.stacksByEffectId?.[effect.id] ?? effect.defaultStacks ?? 1
+    const convertOverride = ctx.buffSelection?.convertInputs?.[effect.id]
+    const label = instance.displayName ?? instance.sourceKey
+
+    if (isRemielSelfAtkConvert(instance, remielSlotIndex)) {
+      const value = resolveConvertValue(effect, {}, convertOverride, panelSourceValues)
+      if (!value) continue
+      atkConvert += value
+      atkItems.push(`${label} 攻击力转模 ${formatSignedContribution(value)}`)
+      continue
+    }
+
+    const masterySource = isRemielSelfMasterySource(instance.sourceKey, remielSlotIndex)
+    if (!masterySource.match || instance.stat !== 'mastery') continue
+
+    const value =
+      effect.kind === 'convert'
+        ? resolveConvertValue(effect, {}, convertOverride, panelSourceValues)
+        : resolveEffectBaseValue(effect, stacks)
+    if (!value) continue
+    masteryBonus += value
+    const kindLabel = masterySource.isFourPiece ? '四件套全局精通' : '音擎全局精通'
+    masteryItems.push(`${label} ${kindLabel} ${formatSignedContribution(value)}`)
+  }
+
+  return finishRestrictedContributions(
+    externalPanel,
+    atkConvert,
+    masteryBonus,
+    atkItems,
+    masteryItems,
+  )
 }
 
 export function computeRemielSelfRestrictedAtkAndMastery(
