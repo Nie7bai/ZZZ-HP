@@ -2,7 +2,6 @@ import type { ExtraBuffGain } from '@/components/calculator/ExtraBuffGainEditor.
 import type { BuffStatKey } from '@/types/calculator'
 import type { AffixCounts, PanelStats } from '@/types/calculatorPanel'
 import { createEmptyAffixCounts } from '@/types/calculatorPanel'
-import { fillPanelStatsDefaults } from '@/types/calculatorPanel'
 import type { EffectExecutionPlan, EffectInstance } from '@/types/effectSpec'
 import { adaptAffixLibraryEntry, type AllocatedAffix } from '@/utils/effectAdapters'
 import { compileCollectedBuffs, compileEffectPlan } from '@/utils/effectCompiler'
@@ -14,13 +13,9 @@ import {
   type AffixPanelDeltaBases,
 } from '@/utils/affixLibrary'
 import {
-  applyBuffModsToPanel,
   collectAllBuffEffects,
   collectExtraGainEffects,
-  collectPanelBuffMods,
-  computeFinalPanel,
-  resolveBaseAnomalyControl,
-  resolveBaseEnergyRegen,
+  computePanelStages,
   type PanelBuffBreakdown,
   type PanelCalcContext,
 } from '@/utils/panelBuffCalc'
@@ -37,28 +32,25 @@ export interface PanelPipelineResult {
 }
 
 /**
- * 分阶段编排：与 `computeFinalPanel` 同构。
- * 目录 Buff 仍走 collectPanelBuffMods；本函数把阶段命名写死，并附上 EffectPlan。
- * 阶段 3 的 final 仍委托旧函数，生产路径未切换。
+ * 分阶段编排：与 `computeFinalPanel` 同一入口 `computePanelStages`。
+ * 目录 Buff 从 `collectAllBuffEffects` 编来源；本函数附上 EffectPlan。
  */
 export function runPanelPipeline(
   rawExternalPanel: PanelStats,
   ctx: PanelCalcContext,
   options?: { includeDetails?: boolean },
 ): PanelPipelineResult {
-  const externalPanel = fillPanelStatsDefaults(rawExternalPanel)
-  const preCtx: PanelCalcContext = { ...ctx, skipConvert: true }
-  const preMods = collectPanelBuffMods(preCtx)
-  const preConvertPanel = applyBuffModsToPanel(externalPanel, preMods, {
-    baseAnomalyControl: resolveBaseAnomalyControl(preCtx),
-    baseEnergyRegen: resolveBaseEnergyRegen(preCtx),
-  })
-  const finalBreakdown = computeFinalPanel(externalPanel, ctx, options)
+  const stages = computePanelStages(rawExternalPanel, ctx, options)
   const plan = compileCollectedBuffs([
     ...collectAllBuffEffects(ctx),
     ...collectExtraGainEffects(ctx),
   ])
-  return { externalPanel, preConvertPanel, finalBreakdown, plan }
+  return {
+    externalPanel: stages.externalPanel,
+    preConvertPanel: stages.preConvertPanel,
+    finalBreakdown: stages.finalBreakdown,
+    plan,
+  }
 }
 
 export interface PanelNumericSnapshot {

@@ -1039,6 +1039,13 @@ export interface ComputeFinalPanelOptions {
   includeDetails?: boolean
 }
 
+/** 唯一编排：局外 → 转模前 → 最终。`computeFinalPanel` / `runPanelPipeline` 都走这里。 */
+export interface PanelStages {
+  externalPanel: PanelStats
+  preConvertPanel: PanelStats
+  finalBreakdown: PanelBuffBreakdown
+}
+
 export interface BuffModSource {
   key: string
   label: string
@@ -1299,6 +1306,7 @@ export function collectAllBuffEffects(ctx: PanelCalcContext): CollectedEffect[] 
   }
 
   ctx.teamSlots.forEach((slot, index) => {
+    if (ctx.restrictToSlotIndex != null && index !== ctx.restrictToSlotIndex) return
     if (!slot.agentId) return
     const agent = ctx.agents.find((item) => item.id === slot.agentId)
     if (!agent) return
@@ -1463,7 +1471,12 @@ export function collectAllBuffEffects(ctx: PanelCalcContext): CollectedEffect[] 
     }
   })
 
-  if (ctx.bangboo?.id && ctx.bangboo.id !== 'none') {
+  if (
+    !ctx.excludeBangboo &&
+    ctx.restrictToSlotIndex == null &&
+    ctx.bangboo?.id &&
+    ctx.bangboo.id !== 'none'
+  ) {
     const refineIndex = clampRefine(ctx.bangbooRefine) - 1
     const fixedPack = {
       effectBlocks: ctx.bangboo.effectBlocks?.length
@@ -1907,256 +1920,60 @@ export function collectPanelBuffModSources(ctx: PanelCalcContext): BuffModSource
 }
 
 function collectPanelBuffModSourcesUncached(ctx: PanelCalcContext): BuffModSource[] {
-  const sources: BuffModSource[] = []
-  const mainIndex = ctx.mainSlotIndex
   const skillCtx = ctx.skillContext ?? defaultSkillContext('direct')
+  const ctxForResolve: PanelCalcContext = { ...ctx, skillContext: skillCtx }
+  const sources: BuffModSource[] = []
+  const grouped = new Map<string, CollectedEffect[]>()
 
-  ctx.teamSlots.forEach((slot, index) => {
-    if (ctx.restrictToSlotIndex != null && index !== ctx.restrictToSlotIndex) return
-    if (!slot.agentId) return
+  for (const item of collectAllBuffEffects(ctx)) {
+    const key = item.sourceKey.startsWith('bangboo')
+      ? 'bangboo'
+      : `${item.sourceKey}-${item.blockId}`
+    const list = grouped.get(key)
+    if (list) list.push(item)
+    else grouped.set(key, [item])
+  }
 
-    const agent = ctx.agents.find((item) => item.id === slot.agentId)
-    if (!agent) return
-
-    const isMain = index === mainIndex
-    const roleLabel = isMain ? '自身' : '队友'
-    const matchesTarget = (e: BuffEffect) =>
-      isMain ? e.applyTarget === 'self' || e.applyTarget === 'team' : e.applyTarget === 'team'
-    const clampedRank = Math.min(6, Math.max(0, Math.round(slot.rank)))
-
-    for (let rank = 0; rank <= clampedRank; rank++) {
-      const rankBuffs = agent.mindscapeBuffs[rank] ?? createEmptySelfTeamBuffs()
-      const note = getMindscapeNote(agent, rank)
-      const blockEntries = collectBlockEntriesFromPack(rankBuffs)
-      if (!blockEntries.length && note) {
-        sources.push({
-          key: `agent-${index}-${rank}`,
-          label: `${roleLabel} · ${agent.name} · ${rank}影`,
-          mods: createEmptyBuffStatModifiers(),
-          note: note || undefined,
-          effects: [],
-        })
-        continue
-      }
-      blockEntries.forEach((entry, blockIndex) => {
-        const sourceKey = `agent-${index}-${rank}`
-        const effects = entry.effects
-          .filter(matchesTarget)
-          .map((effect) => cloneEffectInstance(effect, sourceKey, entry.blockId))
-        const mindscapeMods = resolvePackModsViaEffectSpec(effects, isMain, {
-          ...ctx,
-          skillContext: skillCtx,
-        }, index)
-        if (!hasNonZeroBuffMods(mindscapeMods) && !note && !effects.length) return
-        sources.push({
-          key: `agent-${index}-${rank}-${entry.blockId}`,
-          label: `${roleLabel} · ${agent.name} · ${rank}影`,
-          mods: mindscapeMods,
-          note: blockIndex === 0 ? note || undefined : undefined,
-          effects,
-          blockName: entry.blockName,
-        })
-      })
-    }
-
-    if (slot.wengineId !== 'none') {
-      const wengine = ctx.wengines.find((item) => item.id === slot.wengineId)
-      if (wengine && isWengineProfessionMatch(agent.profession, wengine.profession)) {
-        const refineIndex = clampRefine(slot.wengineRefine) - 1
-        const refineBuffsRaw = wengine.refinementBuffs[refineIndex] ?? createEmptySelfTeamBuffs()
-        const allRefineEffects = wengine.refinementBuffs.map((rank) => rank.effects ?? [])
-        const allRefineBlocks = wengine.refinementBuffs.map((rank) => rank.effectBlocks ?? [])
-        const refineBuffs = applyAnomalyFlagsToPack(
-          refineBuffsRaw,
-          allRefineEffects,
-          allRefineBlocks,
-        )
-        const packs = [
-          { key: 'fixed', pack: wengine.fixedBuffs },
-          { key: 'refine', pack: refineBuffs },
-        ]
-        for (const item of packs) {
-          const sourceKey = `wengine-${index}-${item.key}`
-          for (const entry of collectBlockEntriesFromPack(item.pack)) {
-            const effects = entry.effects
-              .filter(matchesTarget)
-              .map((effect) => cloneEffectInstance(effect, sourceKey, entry.blockId))
-            const wengineMods = resolvePackModsViaEffectSpec(effects, isMain, {
-              ...ctx,
-              skillContext: skillCtx,
-            }, index)
-            if (!hasNonZeroBuffMods(wengineMods) && !effects.length) continue
-            sources.push({
-              key: `wengine-${index}-${item.key}-${entry.blockId}`,
-              label: `${roleLabel} · ${agent.name} · 音擎 · ${wengine.name}（精${slot.wengineRefine}）`,
-              mods: wengineMods,
-              effects,
-              blockName: entry.blockName,
-            })
-          }
-        }
-      }
-    }
-
-    // 驱动盘：与 collectAllBuffEffects 相同拆分，避免与影画/其他来源串 id
-    {
-      const selection = {
-        twoPieceId: slot.twoPieceDriveDiscId,
-        fourPieceId: slot.fourPieceDriveDiscId,
-      }
-      const fourDisc =
-        selection.fourPieceId !== 'none'
-          ? ctx.driveDiscs.find((item) => item.id === selection.fourPieceId)
-          : undefined
-      const twoDisc =
-        selection.twoPieceId !== 'none'
-          ? ctx.driveDiscs.find((item) => item.id === selection.twoPieceId)
-          : undefined
-      const baseKey = `drive-disc-${index}`
-
-      const pushDiscSource = (
-        key: string,
-        label: string,
-        blockId: string,
-        blockName: string,
-        rawEffects: BuffEffect[],
-      ) => {
-        const effects = rawEffects
-          .filter(matchesTarget)
-          .map((effect) => cloneEffectInstance(effect, key, blockId))
-        const mods = resolvePackModsViaEffectSpec(effects, isMain, {
-          ...ctx,
-          skillContext: skillCtx,
-        }, index)
-        if (!hasNonZeroBuffMods(mods) && !effects.length) return
-        sources.push({
-          key: `${key}-${blockId}`,
-          label,
-          mods,
-          effects,
-          blockName,
-        })
-      }
-
-      if (isMain && fourDisc) {
-        for (const entry of collectTwoPieceBlockEntries(fourDisc)) {
-          pushDiscSource(
-            `${baseKey}-4set-2pc`,
-            `${roleLabel} · ${agent.name} · 驱动盘 · ${fourDisc.name}（2件）`,
-            entry.blockId,
-            entry.blockName,
-            entry.effects.map((effect) => ({ ...effect, enabledDefault: false })),
-          )
-        }
-        for (const entry of collectBlockEntriesFromPack(fourDisc.fourPieceBuffs)) {
-          pushDiscSource(
-            `${baseKey}-4set`,
-            `${roleLabel} · ${agent.name} · 驱动盘 · ${fourDisc.name}（4件）`,
-            entry.blockId,
-            entry.blockName,
-            entry.effects,
-          )
-        }
-      }
-      if (isMain && twoDisc && twoDisc.id !== fourDisc?.id) {
-        for (const entry of collectTwoPieceBlockEntries(twoDisc)) {
-          pushDiscSource(
-            `${baseKey}-2set`,
-            `${roleLabel} · ${agent.name} · 驱动盘 · ${twoDisc.name}（2件）`,
-            entry.blockId,
-            entry.blockName,
-            entry.effects.map((effect) => ({ ...effect, enabledDefault: false })),
-          )
-        }
-      }
-      if (!isMain && fourDisc) {
-        for (const entry of collectBlockEntriesFromPack(fourDisc.fourPieceBuffs)) {
-          pushDiscSource(
-            `${baseKey}-4set`,
-            `${roleLabel} · ${agent.name} · 驱动盘 · ${fourDisc.name}（4件）`,
-            entry.blockId,
-            entry.blockName,
-            entry.effects,
-          )
-        }
-      }
-    }
-  })
-
-  if (
-    !ctx.excludeBangboo &&
-    ctx.restrictToSlotIndex == null &&
-    ctx.bangboo?.id &&
-    ctx.bangboo.id !== 'none'
-  ) {
-    const refineIndex = clampRefine(ctx.bangbooRefine) - 1
-    const fixedEffects = ctx.bangboo.effectBlocks?.length
-      ? flattenBlocks(ctx.bangboo.effectBlocks)
-      : (ctx.bangboo.effects ?? [])
-    const refineEffects = withRefinementAnomalyFlags(
-      ctx.bangboo.refinementEffectBlocks?.[refineIndex]?.length
-        ? flattenBlocks(ctx.bangboo.refinementEffectBlocks[refineIndex]!)
-        : (ctx.bangboo.refinementEffects?.[refineIndex] ?? []),
-      ctx.bangboo.refinementEffects ?? [],
-      ctx.bangboo.refinementEffectBlocks,
-    )
-    const effects = [...fixedEffects, ...refineEffects].map((effect) =>
-      cloneEffectInstance(effect, 'bangboo', 'bangboo'),
-    )
-    const bangbooMods = resolvePackModsViaEffectSpec(effects, true, {
-      ...ctx,
-      skillContext: skillCtx,
-    }, ctx.mainSlotIndex)
-    const refineBlockName =
-      ctx.bangboo.refinementEffectBlocks?.[refineIndex]?.[0]?.name?.trim() ||
-      `精${ctx.bangbooRefine}`
+  for (const [key, items] of grouped) {
+    const first = items[0]
+    if (!first) continue
+    const effects = items.map((item) => item.effect)
+    const slotIndex = key === 'bangboo' ? ctx.mainSlotIndex : parseSourceKeySlotIndex(first.sourceKey)
+    const isMain = slotIndex == null || slotIndex === ctx.mainSlotIndex
+    const mods = resolvePackModsViaEffectSpec(effects, isMain, ctxForResolve, slotIndex ?? undefined)
+    if (!hasNonZeroBuffMods(mods) && !effects.length && !first.blockNote) continue
     sources.push({
-      key: 'bangboo',
-      label: `邦布 · ${ctx.bangboo.name}（精${ctx.bangbooRefine}）`,
-      mods: bangbooMods,
+      key,
+      label: first.sourceLabel,
+      mods,
       effects,
-      blockName: refineBlockName,
+      blockName: first.blockName,
+      note: first.blockNote || undefined,
     })
   }
 
-  for (const env of ctx.environmentBuffs ?? []) {
-    if (!env.effectBlocks?.length) continue
-    const defenseRoomTitle =
-      env.kind === 'defense-room' && env.roomIndex != null ? `第${env.roomIndex}间` : ''
-    for (const entry of collectBlockEntriesFromPack({
-      effectBlocks: env.effectBlocks.map((block) => ({
-        ...block,
-        name: mapEnvBuffBlockDisplayName(env, block),
-      })),
-      effects: [],
-    })) {
-      const effects = entry.effects.map((effect) => ({
-        ...cloneEffectInstance(effect, env.sourceKey, entry.blockId),
-      }))
-      if (!effects.length) continue
-      const mods = resolvePackModsViaEffectSpec(effects, true, { ...ctx, skillContext: skillCtx })
-      const kindLabel = environmentBuffKindLabel(env.kind)
-      const bossLabel = isBossFieldEnvironmentKind(env.kind)
-        ? env.bossName || env.name
-        : env.name
+  const mainIndex = ctx.mainSlotIndex
+  ctx.teamSlots.forEach((slot, index) => {
+    if (ctx.restrictToSlotIndex != null && index !== ctx.restrictToSlotIndex) return
+    if (!slot.agentId) return
+    const agent = ctx.agents.find((item) => item.id === slot.agentId)
+    if (!agent) return
+    const clampedRank = Math.min(6, Math.max(0, Math.round(slot.rank)))
+    const roleLabel = index === mainIndex ? '自身' : '队友'
+    for (let rank = 0; rank <= clampedRank; rank++) {
+      const note = getMindscapeNote(agent, rank)
+      if (!note) continue
+      const rankBuffs = agent.mindscapeBuffs[rank] ?? createEmptySelfTeamBuffs()
+      if (collectBlockEntriesFromPack(rankBuffs).length) continue
       sources.push({
-        key: `${env.sourceKey}-${entry.blockId}`,
-        label: [kindLabel, bossLabel, defenseRoomTitle].filter(Boolean).join(' · '),
-        mods,
-        effects,
-        blockName: mapEnvBuffBlockDisplayName(env, {
-          name: entry.blockName || env.name,
-        }),
-        note: mergeBuffDisplayNotes(
-          env.text,
-          env.kind === 'defense-room' && env.roomBosses?.length
-            ? `房间 Boss：${env.roomBosses.map((b) => b.name).join('、')}`
-            : '',
-          entry.blockNote,
-        ) || undefined,
+        key: `agent-${index}-${rank}`,
+        label: `${roleLabel} · ${agent.name} · ${rank}影`,
+        mods: createEmptyBuffStatModifiers(),
+        note,
+        effects: [],
       })
     }
-  }
+  })
 
   if (ctx.extraGains?.length || ctx.extraMods) {
     const extraEffects = (ctx.extraGains ?? [])
@@ -2401,11 +2218,11 @@ export function resolveAnomalyReleaseMultFields(
   }
 }
 
-export function computeFinalPanel(
+export function computePanelStages(
   rawExternalPanel: PanelStats,
   ctx: PanelCalcContext,
   options?: ComputeFinalPanelOptions,
-): PanelBuffBreakdown {
+): PanelStages {
   const externalPanel = fillPanelStatsDefaults(rawExternalPanel)
   const includeDetails = options?.includeDetails !== false
   const liveIndex = resolveLiveExternalSlotIndex(ctx)
@@ -2429,7 +2246,7 @@ export function computeFinalPanel(
   const baseAnomalyControl = resolveBaseAnomalyControl(baseCtx)
   const baseEnergyRegen = resolveBaseEnergyRegen(baseCtx)
   const interimMods = collectPanelBuffMods(baseCtx)
-  const interimPanel = applyBuffModsToPanel(externalPanel, interimMods, {
+  const preConvertPanel = applyBuffModsToPanel(externalPanel, interimMods, {
     baseAnomalyControl,
     baseEnergyRegen,
   })
@@ -2438,7 +2255,7 @@ export function computeFinalPanel(
     ...mainExtras,
     pierceMod: 0,
   })
-  const finalAttrs = panelToConvertAttrValues(interimPanel, {
+  const finalAttrs = panelToConvertAttrValues(preConvertPanel, {
     ...mainExtras,
     pierceMod: interimMods.pierce,
   })
@@ -2466,14 +2283,26 @@ export function computeFinalPanel(
   const combatMods = extractCombatMods(totalMods)
   applyFengYuSharpenCritMods(combatMods, fullCtx)
   return {
-    totalMods,
-    combatMods,
-    finalPanel: {
-      ...finalPanel,
-      sharpenCritDmgBonus: combatMods.sharpenCritDmgBonus,
+    externalPanel,
+    preConvertPanel,
+    finalBreakdown: {
+      totalMods,
+      combatMods,
+      finalPanel: {
+        ...finalPanel,
+        sharpenCritDmgBonus: combatMods.sharpenCritDmgBonus,
+      },
+      sources: includeDetails ? totalSources : [],
     },
-    sources: includeDetails ? totalSources : [],
   }
+}
+
+export function computeFinalPanel(
+  rawExternalPanel: PanelStats,
+  ctx: PanelCalcContext,
+  options?: ComputeFinalPanelOptions,
+): PanelBuffBreakdown {
+  return computePanelStages(rawExternalPanel, ctx, options).finalBreakdown
 }
 
 export function buildDefaultBuffSelection(

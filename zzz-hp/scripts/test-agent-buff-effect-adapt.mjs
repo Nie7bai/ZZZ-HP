@@ -224,5 +224,33 @@ console.log('\n[4] 生产 computeFinalPanel 吃影画往返')
   )
 }
 
+console.log('\n[5] collectAllBuffEffects 遵守 restrictToSlotIndex / excludeBangboo')
+{
+  const addA = fixedEffect('a-atk', 'inCombatAtkPercent', 10)
+  const addB = fixedEffect('b-atk', 'inCombatAtkPercent', 20)
+  const ctx = makePanelCtx({
+    teamSlots: [testSlot('a'), testSlot('b')],
+    agents: [
+      testAgent('a', { mindscapeBuffs: mindscapeWithEffects([addA]) }),
+      testAgent('b', { mindscapeBuffs: mindscapeWithEffects([addB]) }),
+    ],
+    restrictToSlotIndex: 0,
+    excludeBangboo: true,
+  })
+  const collected = collectAllBuffEffects(ctx)
+  check(
+    'restrict 后没有队友槽位',
+    collected.every((item) => !String(item.sourceKey).startsWith('agent-1-')),
+  )
+  check(
+    'restrict 后仍有本槽影画',
+    collected.some((item) => String(item.sourceKey).startsWith('agent-0-')),
+  )
+  check(
+    'restrict 后没有邦布',
+    collected.every((item) => !String(item.sourceKey).startsWith('bangboo')),
+  )
+}
+
 console.log(`\n结果：${passed} passed, ${failed} failed`)
 process.exit(failed === 0 ? 0 : 1)
