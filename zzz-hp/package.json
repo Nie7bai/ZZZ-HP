@@ -24,12 +24,16 @@
     "test:sharpen-crit": "npx vite-node scripts/test-sharpen-crit.mjs",
     "test:guestbook-upload-session": "npx vite-node scripts/test-guestbook-upload-session.mjs",
     "test:skill-talent-levels": "npx vite-node scripts/test-skill-talent-levels.mjs",
-    "test": "run-s test:release-mult test:skill-coords test:history-stats test:crisis-hp-score test:mode-routes test:affix-preagg test:affix-gain-target test:buff-catalog-cache test:user-auth-session test:mult-factor-percent test:formula-align test:sharpen-crit test:guestbook-upload-session test:skill-talent-levels",
+    "test": "run-s test:release-mult test:skill-coords test:history-stats test:crisis-hp-score test:mode-routes test:affix-preagg test:affix-gain-target test:buff-catalog-cache test:user-auth-session test:mult-factor-percent test:formula-align test:sharpen-crit test:guestbook-upload-session test:skill-talent-levels test:remap-imported-panel-main-combo test:legacy-effect-contracts test:effect-model test:panel-pipeline-dual-run",
     "lint": "run-s \"lint:*\"",
     "lint:oxlint": "oxlint . --fix",
     "lint:eslint": "eslint . --fix --cache",
     "format": "prettier --write --experimental-cli src/",
-    "test:affix-gain-target": "npx vite-node scripts/test-affix-gain-target.mjs"
+    "test:affix-gain-target": "npx vite-node scripts/test-affix-gain-target.mjs",
+    "test:remap-imported-panel-main-combo": "npx vite-node scripts/test-remap-imported-panel-main-combo.mjs",
+    "test:legacy-effect-contracts": "npx vite-node scripts/test-legacy-effect-contracts.mjs",
+    "test:effect-model": "npx vite-node scripts/test-effect-model.mjs",
+    "test:panel-pipeline-dual-run": "npx vite-node scripts/test-panel-pipeline-dual-run.mjs"
   },
   "dependencies": {
     "isomorphic-dompurify": "^3.19.0",
