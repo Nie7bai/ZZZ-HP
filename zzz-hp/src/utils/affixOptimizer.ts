@@ -5,6 +5,7 @@ import {
   type AffixDeltaMap,
   type AffixLibraryEntry,
 } from '@/utils/affixLibrary'
+import type { ExtraBuffGain } from '@/utils/extraBuffCalc'
 import {
   evaluateAffixCountsWithCacheInfo,
   yieldToMain,
@@ -89,10 +90,11 @@ export interface AffixOptimizerResult {
   rollsByEntryId: Record<string, number>
   counts: AffixCounts
   panelDeltas: AffixDeltaMap | undefined
+  extraGains: ExtraBuffGain[] | undefined
   /**
    * 本次求解用的「每档值」表（由参与求解的条目决定）。
    *
-   * 消费方拿 `counts`/`panelDeltas` 复算总伤时**必须**一并传入，
+   * 消费方拿 `counts`/`panelDeltas`/`extraGains` 复算总伤时**必须**一并传入，
    * 否则会按默认常量表算，与求解器报告的数字对不上。
    */
   valuePerCount: AffixValuePerCount
@@ -176,6 +178,7 @@ function entryRolls(
 ): {
   counts: AffixCounts
   panelDeltas: AffixDeltaMap | undefined
+  extraGains: ExtraBuffGain[] | undefined
   valuePerCount: AffixValuePerCount
 } {
   return rollsToEvalInput(entries, rollsByEntryId, baseCounts, basePanelDeltas)
@@ -286,6 +289,7 @@ type SolveState = {
   total: number
   counts: AffixCounts
   panelDeltas: AffixDeltaMap | undefined
+  extraGains: ExtraBuffGain[] | undefined
 }
 
 interface SearchOutcome {
@@ -369,12 +373,17 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
 
   /** 真实评估一次（缓存命中不计入计算量） */
   const evaluate = (rollsByEntryId: Record<string, number>): SolveState => {
-    const { counts, panelDeltas, valuePerCount } = entryRolls(entries, rollsByEntryId, emptyCounts)
+    const { counts, panelDeltas, extraGains, valuePerCount } = entryRolls(
+      entries,
+      rollsByEntryId,
+      emptyCounts,
+    )
     const { value, cacheHit } = evaluateAffixCountsWithCacheInfo(
       ctx,
       counts,
       panelDeltas,
       valuePerCount,
+      extraGains,
     )
     if (cacheHit) {
       cacheHits += 1
@@ -382,7 +391,7 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
       engineCalls += 1
       workUsed += pricePerEval
     }
-    return { total: value.grandTotal, counts, panelDeltas }
+    return { total: value.grandTotal, counts, panelDeltas, extraGains }
   }
 
   /**
@@ -520,7 +529,10 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
   ): Generator<AffixOptimizerProgress, { rolls: Record<string, number>; state: SolveState }, void> {
     const rolls: Record<string, number> = { ...fixedRolls }
     let current: SolveState = {
-      total: baselineDamage, counts: baseline.counts, panelDeltas: baseline.panelDeltas,
+      total: baselineDamage,
+      counts: baseline.counts,
+      panelDeltas: baseline.panelDeltas,
+      extraGains: baseline.extraGains,
     }
     let used = usedRollsOf(entries, rolls)
 
@@ -776,6 +788,7 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
     total: baselineDamage,
     counts: baseline.counts,
     panelDeltas: baseline.panelDeltas,
+    extraGains: baseline.extraGains,
   }
   phase = 'done'
 
@@ -805,6 +818,7 @@ function toResult(input: AffixOptimizerInput, outcome: SearchOutcome): AffixOpti
     rollsByEntryId: outcome.rollsByEntryId,
     counts: state.counts,
     panelDeltas: state.panelDeltas,
+    extraGains: state.extraGains,
     valuePerCount: affixValuePerCountFromEntries(input.entries),
     totalDamage: state.total,
     baselineDamage,

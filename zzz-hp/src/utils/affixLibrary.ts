@@ -1,8 +1,14 @@
 import { ref } from 'vue'
 import type { AffixCounts, PanelStats } from '@/types/calculatorPanel'
-import type { BuffStatKey } from '@/types/calculator'
+import type {
+  BuffApplySituation,
+  BuffScope,
+  BuffSkillTargetId,
+  BuffStatKey,
+} from '@/types/calculator'
 import { AFFIX_VALUE_PER_COUNT } from '@/utils/affixPanelCalc'
 import { BUFF_STAT_FIELDS, buffStatFieldLabel } from '@/utils/calculatorUi'
+import type { ExtraBuffGain } from '@/utils/extraBuffCalc'
 
 /**
  * 词条库（Affix Library）
@@ -257,12 +263,55 @@ export function deltaFieldOfTarget(target: AffixLibraryEntryTarget): AffixDeltaF
   return panelFieldOfTarget(target) ?? gainFieldOfTarget(target)
 }
 
+/** 词条库 `gain:` 合成 extraGain 时的 id 前缀（求解复算 / 缓存指纹都认这个） */
+export const AFFIX_GAIN_SOURCE_ID_PREFIX = 'affix-gain:'
+
+const AFFIX_APPLY_SITUATIONS: ReadonlySet<string> = new Set(['global', 'stagger', 'non_stagger'])
+const AFFIX_BUFF_SCOPES: ReadonlySet<string> = new Set([
+  'general',
+  'skill',
+  'anomaly',
+  'disorder',
+  'turbulence',
+  'anomalyRelease',
+  'radiance',
+  'mutation',
+])
+
+/**
+ * 把一条 `gain:` 条目折成给主 C 的 extraGain。
+ *
+ * `applySlot` 在评估入口按 `mainSlotIndex` 覆盖；这里只填默认 0。
+ * `stat:` / `panel:` 返回 null。
+ */
+export function extraGainFromLibraryEntry(
+  entry: AffixLibraryEntry,
+  rolls: number,
+): ExtraBuffGain | null {
+  if (!isGainTarget(entry.target) || rolls <= 0) return null
+  const field = gainFieldOfTarget(entry.target)
+  if (!field) return null
+  const scoped = Boolean(entry.skillCategory) || entry.scope === 'skill'
+  return {
+    id: `${AFFIX_GAIN_SOURCE_ID_PREFIX}${entry.id}`,
+    name: entry.label,
+    stat: field,
+    value: rolls * entry.perRoll,
+    applySituation: entry.applySituation ?? 'global',
+    scope: entry.scope ?? (scoped ? 'skill' : 'general'),
+    applyTarget: 'self',
+    applySlot: 0,
+    skillCategory: entry.skillCategory,
+    skillSubcategoryId: entry.skillSubcategoryId ?? null,
+    appliesToAnomaly: entry.appliesToAnomaly,
+  }
+}
+
 /**
  * 从增量表里挑出「增益增量」一族（局外字段被排除）。
  *
- * 评估入口用它把 `gain:` 条目的贡献合成增益（见 `optimalAffixAlloc.ts` 的
- * `affixGainModsOf`）——**这是「不跳过转模」的落点**：贡献以增益身份进入面板计算，
- * 因而同时出现在局内面板上，转模的 `panelSource: 'final'` 侧能读到它。
+ * 扁平 API（`{ inCombatAtkPercent: 4 }`）仍走这条路；库路径的 `gain:` 已改成
+ * `extraGains`，不再写进这张表。重叠键闸门见 `isGainDeltaField`。
  */
 export function gainDeltasOf(
   deltas: AffixDeltaMap | AffixPanelDeltaDraft | undefined,
@@ -324,6 +373,15 @@ export interface AffixLibraryEntry {
   rollCost: number
   /** 是否默认参与分析 */
   enabledByDefault: boolean
+  /**
+   * 可选招式/失衡条件（只对 `gain:` 生效；缺省 = 全局通用）。
+   * 旧存档没有这些键，`migrateCustomEntry` 读成 undefined，不升存储版本。
+   */
+  applySituation?: BuffApplySituation
+  scope?: BuffScope
+  skillCategory?: BuffSkillTargetId
+  skillSubcategoryId?: string | null
+  appliesToAnomaly?: boolean
 }
 
 /** 每档值的单位：百分比字段显示 `3%`，固定值字段显示 `9` */
@@ -924,6 +982,27 @@ function migrateCustomEntry(raw: unknown): AffixLibraryEntry | null {
   const perRoll = Number(item.perRoll)
   if (!label.trim() || !Number.isFinite(perRoll)) return null
 
+  const applySituation =
+    typeof item.applySituation === 'string' && AFFIX_APPLY_SITUATIONS.has(item.applySituation)
+      ? (item.applySituation as BuffApplySituation)
+      : undefined
+  const scope =
+    typeof item.scope === 'string' && AFFIX_BUFF_SCOPES.has(item.scope)
+      ? (item.scope as BuffScope)
+      : undefined
+  const skillCategory =
+    typeof item.skillCategory === 'string' && item.skillCategory
+      ? (item.skillCategory as BuffSkillTargetId)
+      : undefined
+  const skillSubcategoryId =
+    item.skillSubcategoryId === null
+      ? null
+      : typeof item.skillSubcategoryId === 'string'
+        ? item.skillSubcategoryId
+        : undefined
+  const appliesToAnomaly =
+    typeof item.appliesToAnomaly === 'boolean' ? item.appliesToAnomaly : undefined
+
   return {
     id,
     label,
@@ -933,6 +1012,11 @@ function migrateCustomEntry(raw: unknown): AffixLibraryEntry | null {
     group: typeof item.group === 'string' ? item.group : '',
     rollCost: Number.isFinite(Number(item.rollCost)) ? Number(item.rollCost) : 1,
     enabledByDefault: item.enabledByDefault !== false,
+    ...(applySituation ? { applySituation } : {}),
+    ...(scope ? { scope } : {}),
+    ...(skillCategory ? { skillCategory } : {}),
+    ...(skillSubcategoryId !== undefined ? { skillSubcategoryId } : {}),
+    ...(appliesToAnomaly !== undefined ? { appliesToAnomaly } : {}),
   }
 }
 
@@ -1611,8 +1695,12 @@ export function removeAffixLibraryGroup(
 export interface AffixEntryEvalInput {
   /** 各 `stat:` 目标的档数合计 */
   counts: Partial<AffixCounts>
-  /** 各 `panel:` / `gain:` 目标的增量合计（同表；施加阶段由字段决定） */
+  /** 各 `panel:` 目标的局外增量（不再含 `gain:`） */
   deltas: AffixDeltaMap
+  /**
+   * 各 `gain:` 目标合成的 extraGains（独立于扁平增量表，避免与 `panel:` 重叠键双算）。
+   */
+  extraGains: ExtraBuffGain[]
   /**
    * 各词条计数字段的「每档值」。
    *
@@ -1646,26 +1734,30 @@ export function entryRollsToEvalInput(
 ): AffixEntryEvalInput {
   const counts: Partial<AffixCounts> = {}
   const deltas: AffixDeltaMap = {}
+  const extraGains: ExtraBuffGain[] = []
   /** 折算基准，恒为常量表：条目自己的每档值已在下面折进 counts */
   const valuePerCount: Record<keyof AffixCounts, number> = { ...AFFIX_VALUE_PER_COUNT }
 
   for (const entry of entries) {
+    const rolls = rollsByEntryId[entry.id] ?? 0
     const statKey = statKeyOfTarget(entry.target)
     if (statKey) {
-      const rolls = rollsByEntryId[entry.id] ?? 0
       if (rolls > 0) {
         counts[statKey] = (counts[statKey] ?? 0) + affixRollsToEquivalentRolls(entry, statKey, rolls)
       }
       continue
     }
-    const field = deltaFieldOfTarget(entry.target)
-    if (!field) continue
-    const rolls = rollsByEntryId[entry.id] ?? 0
-    if (rolls <= 0) continue
-    deltas[field] = (deltas[field] ?? 0) + rolls * entry.perRoll
+    const panelField = panelFieldOfTarget(entry.target)
+    if (panelField) {
+      if (rolls <= 0) continue
+      deltas[panelField] = (deltas[panelField] ?? 0) + rolls * entry.perRoll
+      continue
+    }
+    const gain = extraGainFromLibraryEntry(entry, rolls)
+    if (gain) extraGains.push(gain)
   }
 
-  return { counts, deltas, valuePerCount }
+  return { counts, deltas, extraGains, valuePerCount }
 }
 
 /**

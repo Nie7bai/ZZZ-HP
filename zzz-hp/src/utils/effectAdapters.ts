@@ -105,7 +105,13 @@ export function adaptAffixLibraryEntry(
     operation,
     stage,
     beneficiary: 'self',
-    conditions: {},
+    conditions: {
+      applySituation: entry.applySituation,
+      skillTargets: entry.skillCategory
+        ? [{ category: entry.skillCategory, subcategoryId: entry.skillSubcategoryId ?? null }]
+        : undefined,
+      appliesToAnomaly: entry.appliesToAnomaly,
+    },
     instanceId: `affix:${entry.id}`,
     sourceKey: `affix:${entry.id}`,
     sourceFamily: isGainTarget(entry.target) ? 'affix-gain' : 'affix-panel',

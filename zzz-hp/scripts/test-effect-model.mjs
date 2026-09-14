@@ -68,6 +68,14 @@ console.log('\n[3] 词条适配带命名空间')
       panel.instance.stage === 'external' &&
       gain.instance.stage === 'combatPreConvert',
   )
+  const scoped = adaptAffixLibraryEntry(
+    { ...affixEntry('sc', 'gain:dmgBonus', 15), scope: 'skill', skillCategory: 'basic' },
+    1,
+  )
+  check(
+    'gain: 招式条件进适配器',
+    scoped?.type === 'effect' && scoped.instance.conditions.skillTargets?.[0]?.category === 'basic',
+  )
   const stat = adaptAffixLibraryEntry(affixEntry('s', 'stat:atkPercent', 3), 2)
   check('stat: 仍走计数桶', stat?.type === 'count' && stat.statKey === 'atkPercent')
 }

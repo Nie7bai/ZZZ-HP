@@ -1,9 +1,11 @@
 import type { AffixCounts } from '@/types/calculatorPanel'
 import {
+  AFFIX_GAIN_SOURCE_ID_PREFIX,
   affixRollsToEquivalentRolls,
   affixValuePerCountFromEntries,
-  deltaFieldOfTarget,
   entryRollsToEvalInput,
+  extraGainFromLibraryEntry,
+  panelFieldOfTarget,
   statKeyOfTarget,
   type AffixDeltaMap,
   type AffixLibraryEntry,
@@ -14,6 +16,7 @@ import {
   type AffixValuePerCount,
   type OptimalEvalContext,
 } from '@/utils/optimalAffixAlloc'
+import type { ExtraBuffGain } from '@/utils/extraBuffCalc'
 
 /**
  * 全词条收益分析（词条功能改造 · 阶段 1）
@@ -91,6 +94,8 @@ export interface AffixBenefitInput {
   baseCounts: AffixCounts
   /** 当前自定义条目的面板增量 */
   basePanelDeltas?: AffixDeltaMap
+  /** 当前分配里已有的 `gain:` extraGains（不进扁平增量表） */
+  baseExtraGains?: ExtraBuffGain[]
   /** 参与分析的词条库条目 */
   entries: AffixLibraryEntry[]
   /** 每档增量（>1 时按 N 档一起评估，用于「看 +4 档收益」） */
@@ -133,17 +138,31 @@ export function computeAffixBenefitTable(input: AffixBenefitInput): AffixBenefit
   const { ctx, baseCounts, entries } = input
   const step = Math.max(1, Math.round(input.rollsPerStep ?? 1))
   const basePanelDeltas = input.basePanelDeltas
+  const baseExtraGains = input.baseExtraGains
   // 每档值以词条库条目为准（合并后副词条也读 entry.perRoll）
   const valuePerCount = affixValuePerCountFromEntries(entries)
 
-  const baseEval = evaluateAffixCounts(ctx, baseCounts, basePanelDeltas, valuePerCount)
+  const baseEval = evaluateAffixCounts(
+    ctx,
+    baseCounts,
+    basePanelDeltas,
+    valuePerCount,
+    baseExtraGains,
+  )
   const baselineDamage = metricOf(baseEval)
 
   const rows: AffixBenefitRow[] = []
   for (const entry of entries) {
     const nextCounts = bumpEntryCounts(baseCounts, entry, step)
     const nextDeltas = bumpEntryDeltas(basePanelDeltas, entry, step)
-    const evaluated = evaluateAffixCounts(ctx, nextCounts, nextDeltas, valuePerCount)
+    const nextGains = bumpEntryExtraGains(baseExtraGains, entry, step)
+    const evaluated = evaluateAffixCounts(
+      ctx,
+      nextCounts,
+      nextDeltas,
+      valuePerCount,
+      nextGains,
+    )
     const damageDelta = metricOf(evaluated) - baselineDamage
     const percentDelta = baselineDamage > 0 ? (damageDelta / baselineDamage) * 100 : 0
     rows.push({
@@ -171,6 +190,7 @@ export function computeAffixBenefitTable(input: AffixBenefitInput): AffixBenefit
         ctx,
         baseCounts,
         basePanelDeltas,
+        baseExtraGains,
         entries,
         baselineDamage,
         rankedRows: rows,
@@ -195,6 +215,7 @@ export function computeAffixBenefitSeriesForTable(
     ctx: input.ctx,
     baseCounts: input.baseCounts,
     basePanelDeltas: input.basePanelDeltas,
+    baseExtraGains: input.baseExtraGains,
     entries: input.entries,
     baselineDamage: table.baselineDamage,
     rankedRows: table.rows,
@@ -211,13 +232,14 @@ function computeAffixBenefitSeries(input: {
   ctx: OptimalEvalContext
   baseCounts: AffixCounts
   basePanelDeltas?: AffixDeltaMap
+  baseExtraGains?: ExtraBuffGain[]
   entries: AffixLibraryEntry[]
   baselineDamage: number
   rankedRows: AffixBenefitRow[]
   maxCurveRolls: number
   maxCurveSeries: number
 }): AffixBenefitSeries[] {
-  const { ctx, baseCounts, basePanelDeltas, baselineDamage, rankedRows } = input
+  const { ctx, baseCounts, basePanelDeltas, baseExtraGains, baselineDamage, rankedRows } = input
   if (baselineDamage <= 0) return []
   const entryById = new Map(input.entries.map((entry) => [entry.id, entry]))
   const valuePerCount = affixValuePerCountFromEntries(input.entries)
@@ -233,7 +255,8 @@ function computeAffixBenefitSeries(input: {
     for (let n = 1; n <= input.maxCurveRolls; n += 1) {
       const counts = bumpEntryCounts(baseCounts, entry, n)
       const deltas = bumpEntryDeltas(basePanelDeltas, entry, n)
-      const evaluated = evaluateAffixCounts(ctx, counts, deltas, valuePerCount)
+      const gains = bumpEntryExtraGains(baseExtraGains, entry, n)
+      const evaluated = evaluateAffixCounts(ctx, counts, deltas, valuePerCount, gains)
       const damage = metricOf(evaluated)
       cumulativePercent.push(((damage - baselineDamage) / baselineDamage) * 100)
       marginalPercent.push(prevDamage > 0 ? ((damage - prevDamage) / prevDamage) * 100 : 0)
@@ -272,22 +295,36 @@ function bumpEntryDeltas(
   entry: AffixLibraryEntry,
   step: number,
 ): AffixDeltaMap | undefined {
-  const field = deltaFieldOfTarget(entry.target)
+  const field = panelFieldOfTarget(entry.target)
   if (!field) return deltas
   const next: AffixDeltaMap = { ...(deltas ?? {}) }
   next[field] = (next[field] ?? 0) + step * entry.perRoll
   return next
 }
 
-/** 把「条目档数表」换算成求解器可直接使用的 (counts, panelDeltas, valuePerCount) */
+function bumpEntryExtraGains(
+  gains: ExtraBuffGain[] | undefined,
+  entry: AffixLibraryEntry,
+  step: number,
+): ExtraBuffGain[] | undefined {
+  const id = `${AFFIX_GAIN_SOURCE_ID_PREFIX}${entry.id}`
+  const others = (gains ?? []).filter((gain) => gain.id !== id)
+  const added = extraGainFromLibraryEntry(entry, step)
+  if (!added) return others.length ? others : gains
+  return [...others, added]
+}
+
+/** 把「条目档数表」换算成求解器可直接使用的 (counts, panelDeltas, extraGains, valuePerCount) */
 export function rollsToEvalInput(
   entries: AffixLibraryEntry[],
   rollsByEntryId: Record<string, number>,
   baseCounts: AffixCounts,
   basePanelDeltas?: AffixDeltaMap,
+  baseExtraGains?: ExtraBuffGain[],
 ): {
   counts: AffixCounts
   panelDeltas: AffixDeltaMap | undefined
+  extraGains: ExtraBuffGain[] | undefined
   valuePerCount: AffixValuePerCount
 } {
   const input = entryRollsToEvalInput(entries, rollsByEntryId)
@@ -295,13 +332,30 @@ export function rollsToEvalInput(
   for (const key of Object.keys(input.counts) as (keyof AffixCounts)[]) {
     counts[key] = (counts[key] ?? 0) + (input.counts[key] ?? 0)
   }
+  const extraGains = mergeExtraGains(baseExtraGains, input.extraGains)
   const deltaKeys = Object.keys(input.deltas) as (keyof typeof input.deltas)[]
   if (!deltaKeys.length) {
-    return { counts, panelDeltas: basePanelDeltas, valuePerCount: input.valuePerCount }
+    return {
+      counts,
+      panelDeltas: basePanelDeltas,
+      extraGains,
+      valuePerCount: input.valuePerCount,
+    }
   }
   const panelDeltas: AffixDeltaMap = { ...(basePanelDeltas ?? {}) }
   for (const key of deltaKeys) {
     panelDeltas[key] = (panelDeltas[key] ?? 0) + (input.deltas[key] ?? 0)
   }
-  return { counts, panelDeltas, valuePerCount: input.valuePerCount }
+  return { counts, panelDeltas, extraGains, valuePerCount: input.valuePerCount }
+}
+
+function mergeExtraGains(
+  base: ExtraBuffGain[] | undefined,
+  added: ExtraBuffGain[],
+): ExtraBuffGain[] | undefined {
+  if (!added.length) return base?.length ? base : undefined
+  if (!base?.length) return added
+  const byId = new Map(base.map((gain) => [gain.id, gain]))
+  for (const gain of added) byId.set(gain.id, gain)
+  return [...byId.values()]
 }

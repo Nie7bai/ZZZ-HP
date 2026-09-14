@@ -259,7 +259,7 @@ console.log('\n[3] 结果一致性')
 {
   const BUDGET = 20
   const solved = solveOptimalAffixAllocation({ ctx, entries: library, maxTotalRolls: BUDGET })
-  const reEval = evaluateAffixCounts(ctx, solved.counts, solved.panelDeltas)
+  const reEval = evaluateAffixCounts(ctx, solved.counts, solved.panelDeltas, solved.valuePerCount, solved.extraGains)
   check('重算总伤与求解器报告一致',
     Math.abs(reEval.grandTotal - solved.totalDamage) < 1e-6,
     `${reEval.grandTotal} vs ${solved.totalDamage}`)
@@ -865,7 +865,7 @@ console.log('\n[11] 零收益条目出局')
     (solved.rollsByEntryId['substat:defPercent'] ?? 0)
   check('直伤场景不把档数花在防御词条上', defRolls === 0, `防御类档数 ${defRolls}`)
   check('求解结果仍然合法可重算',
-    Math.abs(evaluateAffixCounts(ctx, solved.counts, solved.panelDeltas).grandTotal - solved.totalDamage) < 1e-6)
+    Math.abs(evaluateAffixCounts(ctx, solved.counts, solved.panelDeltas, solved.valuePerCount, solved.extraGains).grandTotal - solved.totalDamage) < 1e-6)
 }
 
 // ---------- 12. 交叉项：零收益条目后续变得有价值时能被补测 ----------
@@ -926,7 +926,7 @@ console.log('\n[13] 预算不足时不产生半成品')
     Math.abs(tiny.totalDamage - tiny.baselineDamage) < 1e-9 || tiny.truncated,
     `总伤 ${tiny.totalDamage}，基线 ${tiny.baselineDamage}，截断 ${tiny.truncated}`)
   check('退回的结果仍可重算一致',
-    Math.abs(evaluateAffixCounts(ctx, tiny.counts, tiny.panelDeltas).grandTotal - tiny.totalDamage) < 1e-6)
+    Math.abs(evaluateAffixCounts(ctx, tiny.counts, tiny.panelDeltas, tiny.valuePerCount, tiny.extraGains).grandTotal - tiny.totalDamage) < 1e-6)
   check('结果不劣于基线', tiny.totalDamage >= tiny.baselineDamage - 1e-9)
 }
 

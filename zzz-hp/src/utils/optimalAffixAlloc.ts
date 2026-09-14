@@ -1533,6 +1533,7 @@ function affixCountsCacheKey(
   affixCounts: AffixCounts,
   panelDeltas?: AffixDeltaMap,
   valuePerCount?: AffixValuePerCount,
+  extraGains?: ExtraBuffGain[],
 ): string {
   // 必须覆盖 AffixCounts 的全部字段：锋御走 defFlat/defPercent，
   // 漏掉会让不同防御档数命中同一条缓存，返回错误伤害。
@@ -1551,13 +1552,31 @@ function affixCountsCacheKey(
           .map((key) => valuePerCount[key])
           .join(',')}`
       : ''
-  if (!panelDeltas) return `${base}${valuePart}`
+  const extraGainPart = extraGainsCachePart(extraGains)
+  if (!panelDeltas) return `${base}${valuePart}${extraGainPart}`
   const parts = (Object.keys(panelDeltas) as AffixPanelDeltaField[])
     .sort()
     .filter((key) => Boolean(panelDeltas[key]))
     .map((key) => `${key}=${panelDeltas[key]}`)
   const deltaPart = parts.length ? `|${parts.join(',')}` : ''
-  return `${base}${valuePart}${deltaPart}`
+  return `${base}${valuePart}${deltaPart}${extraGainPart}`
+}
+
+/**
+ * 候选词条的 extraGains 指纹：进**每评估键**，不进 ctx 签名。
+ *
+ * 若把它们写进 `{ ...ctx, extraGains }` 再当缓存上下文，每次评估都会清整表。
+ * 空数组 / undefined 不进键，默认库路径的键形态与改造前一致。
+ */
+function extraGainsCachePart(extraGains?: ExtraBuffGain[]): string {
+  if (!extraGains?.length) return ''
+  const parts = extraGains
+    .map(
+      (gain) =>
+        `${gain.id}:${gain.stat}:${gain.value}:${gain.applySituation ?? ''}:${gain.scope ?? ''}:${gain.skillCategory ?? ''}:${gain.skillSubcategoryId ?? ''}:${gain.appliesToAnomaly ? '1' : '0'}`,
+    )
+    .sort()
+  return `|eg:${parts.join(',')}`
 }
 
 /**
@@ -1578,8 +1597,9 @@ function affixEvalCacheKey(
   affixCounts: AffixCounts,
   panelDeltas?: AffixDeltaMap,
   valuePerCount?: AffixValuePerCount,
+  extraGains?: ExtraBuffGain[],
 ): string {
-  return `${affixEvalCacheCtxKey}|${affixCountsCacheKey(affixCounts, panelDeltas, valuePerCount)}`
+  return `${affixEvalCacheCtxKey}|${affixCountsCacheKey(affixCounts, panelDeltas, valuePerCount, extraGains)}`
 }
 
 function serializeBuffSelection(state: BuffSelectionState | null | undefined): string {
@@ -1862,11 +1882,30 @@ function withAffixGainMods(
   return { ...ctx, extraGains: [...(ctx.extraGains ?? []), ...synthetic] }
 }
 
+/**
+ * 库路径 `gain:` 条目的 extraGains：缓存查找之后才并入 ctx 副本。
+ * 页级 extraGains 仍在原 ctx 上，走上下文签名。
+ */
+function withAffixLibraryExtraGains(
+  ctx: OptimalEvalContext,
+  extraGains?: ExtraBuffGain[],
+): OptimalEvalContext {
+  if (!extraGains?.length) return ctx
+  const applySlot = ctx.panelContext.mainSlotIndex
+  const tagged = extraGains.map((gain) => ({
+    ...gain,
+    applySlot: gain.applySlot ?? applySlot,
+    applyTarget: gain.applyTarget ?? 'self',
+  }))
+  return { ...ctx, extraGains: [...(ctx.extraGains ?? []), ...tagged] }
+}
+
 function evaluateAffixCountsUncached(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
   panelDeltas?: AffixDeltaMap,
   valuePerCount?: AffixValuePerCount,
+  extraGains?: ExtraBuffGain[],
 ): {
   finalPanel: PanelStats
   result: DamageCalcResult
@@ -1877,8 +1916,8 @@ function evaluateAffixCountsUncached(
   eventLines: OptimalEventDamageLine[]
 } {
   const external = computeExternalForEval(ctx, affixCounts, panelDeltas, valuePerCount)
-  // 增益字段（`gain:`）不进局外面板，合成增益后在**面板计算**里施加（见函数注释）
-  const evalCtx = withAffixGainMods(ctx, panelDeltas)
+  // 增益字段（`gain:`）不进局外面板：扁平袋走 withAffixGainMods，库路径走 extraGains
+  const evalCtx = withAffixLibraryExtraGains(withAffixGainMods(ctx, panelDeltas), extraGains)
 
   if (ctx.hits?.length) {
     const { grandTotal, eventLines, firstResult, firstBreakdown } = computeEventDamageLines(
@@ -2015,14 +2054,15 @@ export function evaluateAffixCountsWithCacheInfo(
   affixCounts: AffixCounts,
   panelDeltas?: AffixDeltaMap,
   valuePerCount?: AffixValuePerCount,
+  extraGains?: ExtraBuffGain[],
 ): { value: AffixCountsEvalResult; cacheHit: boolean } {
   resetAffixEvalCacheIfNeeded(ctx)
   const vpc = valuePerCount ?? ctx.valuePerCount
-  const cacheKey = affixEvalCacheKey(affixCounts, panelDeltas, vpc)
+  const cacheKey = affixEvalCacheKey(affixCounts, panelDeltas, vpc, extraGains)
   const cached = affixEvalCache.get(cacheKey)
   if (cached) return { value: cached, cacheHit: true }
 
-  const result = evaluateAffixCountsUncached(ctx, affixCounts, panelDeltas, vpc)
+  const result = evaluateAffixCountsUncached(ctx, affixCounts, panelDeltas, vpc, extraGains)
   if (affixEvalCache.size >= AFFIX_EVAL_CACHE_MAX) {
     const firstKey = affixEvalCache.keys().next().value
     if (firstKey) affixEvalCache.delete(firstKey)
@@ -2036,8 +2076,15 @@ export function evaluateAffixCounts(
   affixCounts: AffixCounts,
   panelDeltas?: AffixDeltaMap,
   valuePerCount?: AffixValuePerCount,
+  extraGains?: ExtraBuffGain[],
 ): AffixCountsEvalResult {
-  return evaluateAffixCountsWithCacheInfo(ctx, affixCounts, panelDeltas, valuePerCount).value
+  return evaluateAffixCountsWithCacheInfo(
+    ctx,
+    affixCounts,
+    panelDeltas,
+    valuePerCount,
+    extraGains,
+  ).value
 }
 
 /**

@@ -1542,7 +1542,7 @@ const affixAllocBaseCounts = computed(() => createEmptyAffixCounts())
 const affixAllocEval = computed(() => {
   const result = affixAllocResult.value
   if (!result) return null
-  return evaluateAffixCounts(evalCtx.value, result.counts, result.panelDeltas, result.valuePerCount)
+  return evaluateAffixCounts(evalCtx.value, result.counts, result.panelDeltas, result.valuePerCount, result.extraGains)
 })
 
 /**
