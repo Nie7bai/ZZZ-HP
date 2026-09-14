@@ -73,6 +73,7 @@ try {
     rollCost: Number(row.roll_cost ?? 1),
     enabledByDefault: Boolean(Number(row.enabled_by_default)),
     sortOrder: Number(row.sort_order) || 0,
+    effectJson: parseRaw(row.effect_json),
     raw: parseRaw(row.raw_json),
   })
   const toGroup = (row) => ({

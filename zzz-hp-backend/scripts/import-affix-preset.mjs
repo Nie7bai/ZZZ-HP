@@ -45,7 +45,11 @@ function validate() {
     else if (seen.has(id)) errors.push(`第 ${index + 1} 条：id 重复 ${id}`)
     else seen.add(id)
     if (!String(entry.label ?? '').trim()) errors.push(`第 ${index + 1} 条（${id}）：缺 label`)
-    if (!target.startsWith('stat:') && !target.startsWith('panel:')) {
+    if (
+      !target.startsWith('stat:') &&
+      !target.startsWith('panel:') &&
+      !target.startsWith('gain:')
+    ) {
       errors.push(`第 ${index + 1} 条（${id}）：target 前缀非法 ${target}`)
     }
     if (!Number.isFinite(Number(entry.perRoll)) || Number(entry.perRoll) <= 0) {

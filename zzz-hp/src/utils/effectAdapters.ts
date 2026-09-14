@@ -1,4 +1,4 @@
-import type { BuffEffect, BuffStatKey } from '@/types/calculator'
+import type { BuffEffect } from '@/types/calculator'
 import type {
   EffectInstance,
   EffectSpec,
@@ -9,20 +9,17 @@ import {
   beneficiaryToApplyTarget,
   EFFECT_SPEC_VERSION,
 } from '@/types/effectSpec'
-import {
-  affixPanelOperation,
-  operationForStat,
-  stageForAffixTarget,
-} from '@/utils/effectStatRegistry'
+import { operationForStat } from '@/utils/effectStatRegistry'
 import {
   affixRollsToEquivalentRolls,
-  gainFieldOfTarget,
-  isGainTarget,
-  isPanelTarget,
-  panelFieldOfTarget,
   statKeyOfTarget,
   type AffixLibraryEntry,
 } from '@/utils/affixLibrary'
+import {
+  affixTemplateSourceFamily,
+  buildAffixEffectTemplate,
+  parseAffixEffectTemplate,
+} from '@/utils/affixEffectTemplate'
 import { createEmptyBuffEffect, getEffectSkillTargets } from '@/utils/buffEffect'
 import type { CollectedEffect } from '@/utils/panelBuffCalc'
 
@@ -131,8 +128,12 @@ export function adaptAffixLibraryEntry(
   rolls: number,
 ): AllocatedAffix | null {
   if (rolls <= 0) return null
-  const statKey = statKeyOfTarget(entry.target)
-  if (statKey) {
+  const template =
+    parseAffixEffectTemplate(entry.effectTemplate) ?? buildAffixEffectTemplate(entry)
+  if (!template) return null
+  if (template.allocation === 'count') {
+    const statKey = statKeyOfTarget(template.legacyTarget)
+    if (!statKey) return null
     return {
       type: 'count',
       entryId: entry.id,
@@ -141,38 +142,17 @@ export function adaptAffixLibraryEntry(
     }
   }
 
-  const stage = stageForAffixTarget(entry.target)
-  const panelField = panelFieldOfTarget(entry.target)
-  const gainField = gainFieldOfTarget(entry.target)
-  const stat = (panelField ?? gainField) as BuffStatKey | null
-  if (!stage || !stat) return null
-
-  const magnitude = rolls * entry.perRoll
-  const operation = isPanelTarget(entry.target)
-    ? affixPanelOperation(panelField!)
-    : operationForStat(stat)
-
-  const instance: EffectInstance = {
-    version: EFFECT_SPEC_VERSION,
-    stat,
-    operation,
-    stage,
-    beneficiary: 'self',
-    conditions: {
-      skillTargets: entry.skillCategory
-        ? [{ category: entry.skillCategory, subcategoryId: entry.skillSubcategoryId ?? null }]
-        : undefined,
-      applySituation: entry.applySituation,
-      scope: entry.scope,
-      appliesToAnomaly: entry.appliesToAnomaly,
+  return {
+    type: 'effect',
+    instance: {
+      ...template.spec,
+      instanceId: `affix:${entry.id}`,
+      sourceKey: `affix:${entry.id}`,
+      sourceFamily: affixTemplateSourceFamily(template),
+      quantity: rolls,
+      magnitude: rolls * entry.perRoll,
+      displayName: entry.label,
+      legacyAffixTarget: template.legacyTarget,
     },
-    instanceId: `affix:${entry.id}`,
-    sourceKey: `affix:${entry.id}`,
-    sourceFamily: isGainTarget(entry.target) ? 'affix-gain' : 'affix-panel',
-    quantity: rolls,
-    magnitude,
-    displayName: entry.label,
-    legacyAffixTarget: entry.target,
   }
-  return { type: 'effect', instance }
 }

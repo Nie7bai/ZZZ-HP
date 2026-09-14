@@ -5,6 +5,14 @@ import type { AffixCounts } from '@/types/calculatorPanel'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import { clearAdminAuthenticated } from '@/utils/adminAuth'
 import {
+  BUFF_SCOPE_OPTIONS,
+  BUFF_SKILL_TARGET_OPTIONS,
+  type BuffApplySituation,
+  type BuffScope,
+  type BuffSkillTargetId,
+} from '@/types/calculator'
+import { buildAffixEffectTemplate } from '@/utils/affixEffectTemplate'
+import {
   createAffixPresetScheme,
   deleteAffixPresetScheme,
   fetchAffixPreset,
@@ -57,7 +65,7 @@ import '@/components/admin/calculator/adminCalculatorPanel.css'
  * `enabledByDefault`（勾给新用户哪几条）、`target` 可填自由字段名。
  */
 
-const TARGET_PREFIXES = ['stat:', 'panel:']
+const TARGET_PREFIXES = ['stat:', 'panel:', 'gain:']
 
 /** 条目 ID 上限，与后端 `normalizeEntryPayload` 同值 */
 const ENTRY_ID_MAX = 64
@@ -80,6 +88,7 @@ const ENTRY_ID_RULES: { match: string; format: string; example: string }[] = [
   { match: '2 件套', format: 'set:字段:每档值', example: 'set:critDmg:16' },
   { match: '副词条（stat 落点）', format: 'substat:字段', example: 'substat:critRate' },
   { match: '副词条（panel 落点）', format: 'panel:字段', example: 'panel:resPen' },
+  { match: '副词条（gain 落点）', format: 'gain:字段', example: 'gain:inCombatAtkPercent' },
 ]
 
 /**
@@ -159,26 +168,76 @@ function nextKey(): string {
 }
 
 function toEntryRows(list: AffixPresetEntryDoc[]): EntryRow[] {
-  return list.map((entry) => ({ ...entry, _key: nextKey(), _prevId: entry.id }))
+  return list.map((entry) => ({
+    ...entry,
+    ...(isGainTargetText(entry.target)
+      ? {
+          applySituation: entry.applySituation || 'global',
+          scope: entry.scope || 'general',
+          skillCategory: entry.skillCategory || 'basic',
+        }
+      : {}),
+    _key: nextKey(),
+    _prevId: entry.id,
+  }))
 }
 
 function toGroupRows(list: AffixPresetGroupDoc[]): GroupRow[] {
   return list.map((group) => ({ ...group, _key: nextKey(), _lastName: group.name }))
 }
 
+function isGainTargetText(target: string) {
+  return target.trim().startsWith('gain:')
+}
+
+function conditionPatch(row: {
+  target: string
+  applySituation?: string
+  scope?: string
+  skillCategory?: string
+  skillSubcategoryId?: string | null
+  appliesToAnomaly?: boolean
+}) {
+  if (!isGainTargetText(row.target)) return {}
+  const scope = (row.scope as BuffScope | undefined) || 'general'
+  return {
+    applySituation: (row.applySituation as BuffApplySituation | undefined) || 'global',
+    scope,
+    ...(scope === 'skill'
+      ? {
+          skillCategory: (row.skillCategory as BuffSkillTargetId | undefined) || 'basic',
+          skillSubcategoryId: row.skillSubcategoryId ?? null,
+        }
+      : {}),
+    ...(typeof row.appliesToAnomaly === 'boolean' ? { appliesToAnomaly: row.appliesToAnomaly } : {}),
+  }
+}
+
 /** 工作副本 → 落地文档（剥掉本地字段，顺手把首尾空格去掉） */
 function entryDoc(row: EntryRow): AffixPresetEntryDoc {
-  return {
+  const target = row.target.trim()
+  const base = {
     id: row.id.trim(),
     label: row.label.trim(),
-    target: row.target.trim(),
+    target,
     perRoll: Number(row.perRoll),
     cap: Number(row.cap),
     group: row.group,
     rollCost: Number(row.rollCost),
     enabledByDefault: Boolean(row.enabledByDefault),
     sortOrder: Number(row.sortOrder ?? 0),
-    raw: row.raw ?? null,
+    ...conditionPatch(row),
+  }
+  const effectJson = isAffixLibraryEntryTarget(target)
+    ? buildAffixEffectTemplate({
+        target,
+        ...conditionPatch(row),
+      })
+    : null
+  return {
+    ...base,
+    effectJson: effectJson ?? row.effectJson ?? null,
+    raw: row.raw && typeof row.raw === 'object' ? { ...row.raw, ...base, effectJson } : null,
   }
 }
 
@@ -203,6 +262,11 @@ function entrySignature(row: AffixPresetEntryDoc): string {
     Number(row.rollCost),
     Boolean(row.enabledByDefault),
     Number(row.sortOrder ?? 0),
+    row.applySituation ?? '',
+    row.scope ?? '',
+    row.skillCategory ?? '',
+    row.skillSubcategoryId ?? '',
+    row.appliesToAnomaly === true ? 1 : 0,
   ])
 }
 
@@ -870,6 +934,17 @@ async function onPickTarget(row: EntryRow, event: Event) {
   }
   leaveCustomTarget(row._key)
   row.target = select.value
+  if (!isGainTargetText(row.target)) {
+    row.applySituation = undefined
+    row.scope = undefined
+    row.skillCategory = undefined
+    row.skillSubcategoryId = undefined
+    row.appliesToAnomaly = undefined
+  } else if (!row.scope) {
+    row.applySituation = 'global'
+    row.scope = 'general'
+    row.skillCategory = 'basic'
+  }
 }
 
 /** 自定义输入框：值又变回已知字段时自动切回下拉（不用再点一次） */
@@ -947,6 +1022,11 @@ function createDraft() {
     rollCost: 1,
     enabledByDefault: false,
     sortOrder: 0,
+    applySituation: 'global' as BuffApplySituation,
+    scope: 'general' as BuffScope,
+    skillCategory: 'basic' as BuffSkillTargetId,
+    skillSubcategoryId: null as string | null,
+    appliesToAnomaly: false,
   }
 }
 
@@ -973,7 +1053,9 @@ function suggestEntryId(group: string, target: string, perRoll: number, taken: S
     ? target.slice('stat:'.length)
     : target.startsWith('panel:')
       ? target.slice('panel:'.length)
-      : target
+      : target.startsWith('gain:')
+        ? target.slice('gain:'.length)
+        : target
   const slotMatch = /^([456])\s*号位$/.exec(trimmed)
   let base: string
   if (slotMatch) {
@@ -982,6 +1064,8 @@ function suggestEntryId(group: string, target: string, perRoll: number, taken: S
     base = `set:${field}:${Number.isFinite(perRoll) ? perRoll : 0}`
   } else if (target.startsWith('stat:')) {
     base = `substat:${field}`
+  } else if (target.startsWith('gain:')) {
+    base = `gain:${field}`
   } else {
     base = `panel:${field}`
   }
@@ -1023,6 +1107,13 @@ function onPickDraftTarget(event: Event) {
   }
   draftTargetCustom.value = false
   draft.value.target = select.value
+  if (!isGainTargetText(draft.value.target)) {
+    draft.value.applySituation = 'global'
+    draft.value.scope = 'general'
+    draft.value.skillCategory = 'basic'
+    draft.value.skillSubcategoryId = null
+    draft.value.appliesToAnomaly = false
+  }
 }
 
 /** 自定义输入里写回了已知字段就自动切回下拉（与条目行同一套判断） */
@@ -1037,6 +1128,30 @@ const draftPerRollUnit = computed(() =>
     : '',
 )
 
+const draftIsGain = computed(() => isGainTargetText(draft.value.target))
+
+function effectRuleHint(
+  target: string,
+  row?: {
+    applySituation?: string
+    scope?: string
+    skillCategory?: string
+    skillSubcategoryId?: string | null
+    appliesToAnomaly?: boolean
+  },
+) {
+  if (!isAffixLibraryEntryTarget(target)) return ''
+  const template = buildAffixEffectTemplate({
+    target,
+    ...conditionPatch({ target, ...(row ?? {}) }),
+  })
+  if (!template) return ''
+  if (template.allocation === 'count') return '局外计数桶'
+  const stage = template.spec.stage === 'external' ? '局外效果' : '局内效果'
+  const op = template.spec.operation === 'percentOfBase' ? '按基础乘算' : '加算'
+  return `${stage} · ${op}`
+}
+
 /** 新增条目：进草稿（点「保存」才写库） */
 function submitDraft() {
   const id = draft.value.id.trim()
@@ -1046,7 +1161,8 @@ function submitDraft() {
   if (!id) {
     draftError.value = '请填写条目 ID'
     return
-  }  if (id.length > ENTRY_ID_MAX) {
+  }
+  if (id.length > ENTRY_ID_MAX) {
     draftError.value = `条目 ID 过长（≤${ENTRY_ID_MAX}）`
     return
   }
@@ -1099,7 +1215,7 @@ function submitDraft() {
       rollCost: draft.value.rollCost,
       enabledByDefault: draft.value.enabledByDefault,
       sortOrder,
-      // 草稿里新增的：`_prevId` 空，保存时不参与「改 ID」确认
+      ...conditionPatch({ ...draft.value, target }),
       _key: nextKey(),
       _prevId: '',
     },
@@ -1472,10 +1588,12 @@ onMounted(() => {
               </tr>
             </thead>
             <tbody>
+              <template v-for="entry in visibleEntries" :key="entry._key">
               <tr
-                v-for="entry in visibleEntries"
-                :key="entry._key"
-                :class="{ disabled: !entry.enabledByDefault }"
+                :class="{
+                  'row-id-renamed': entry.id.trim() !== entry._prevId && entry._prevId,
+                  disabled: !entry.enabledByDefault,
+                }"
               >
                 <td>
                   <input
@@ -1603,6 +1721,42 @@ onMounted(() => {
                   </button>
                 </td>
               </tr>
+              <tr v-if="isGainTargetText(entry.target)" class="rule-row">
+                <td colspan="10">
+                  <div class="rule-edit">
+                    <span class="rule-hint">{{ effectRuleHint(entry.target, entry) }}</span>
+                    <label>
+                      作用情况
+                      <select v-model="entry.applySituation" :disabled="busy">
+                        <option value="global">全局</option>
+                        <option value="stagger">失衡期</option>
+                        <option value="non_stagger">非失衡期</option>
+                      </select>
+                    </label>
+                    <label>
+                      作用域
+                      <select v-model="entry.scope" :disabled="busy">
+                        <option v-for="opt in BUFF_SCOPE_OPTIONS" :key="opt.id" :value="opt.id">
+                          {{ opt.label }}
+                        </option>
+                      </select>
+                    </label>
+                    <label v-if="entry.scope === 'skill'">
+                      招式大类
+                      <select v-model="entry.skillCategory" :disabled="busy">
+                        <option v-for="opt in BUFF_SKILL_TARGET_OPTIONS" :key="opt.id" :value="opt.id">
+                          {{ opt.label }}
+                        </option>
+                      </select>
+                    </label>
+                    <label v-if="entry.scope === 'skill'" class="rule-check">
+                      <input v-model="entry.appliesToAnomaly" type="checkbox" :disabled="busy" />
+                      异常结算也生效
+                    </label>
+                  </div>
+                </td>
+              </tr>
+              </template>
               <tr v-if="!visibleEntries.length">
                 <td colspan="10" class="empty-cell">这一页没有条目。</td>
               </tr>
@@ -1658,10 +1812,43 @@ onMounted(() => {
                 v-model="draft.target"
                 class="target-input"
                 type="text"
-                placeholder="stat:critDmg 或 panel:dmgBonus"
+                placeholder="stat:critDmg 或 panel:dmgBonus 或 gain:inCombatAtkPercent"
                 @change="onCommitDraftTarget"
               />
             </label>
+            <template v-if="draftIsGain">
+              <label>
+                <span>作用情况</span>
+                <select v-model="draft.applySituation">
+                  <option value="global">全局</option>
+                  <option value="stagger">失衡期</option>
+                  <option value="non_stagger">非失衡期</option>
+                </select>
+              </label>
+              <label>
+                <span>作用域</span>
+                <select v-model="draft.scope">
+                  <option v-for="opt in BUFF_SCOPE_OPTIONS" :key="opt.id" :value="opt.id">
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </label>
+              <label v-if="draft.scope === 'skill'">
+                <span>招式大类</span>
+                <select v-model="draft.skillCategory">
+                  <option v-for="opt in BUFF_SKILL_TARGET_OPTIONS" :key="opt.id" :value="opt.id">
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </label>
+              <label v-if="draft.scope === 'skill'" class="add-grid--check">
+                <span>异常结算</span>
+                <input v-model="draft.appliesToAnomaly" type="checkbox" />
+              </label>
+            </template>
+            <p v-if="draft.target" class="add-grid--wide rule-hint-line">
+              {{ effectRuleHint(draft.target, draft) }}
+            </p>
             <label>
               <span>每档</span>
               <span class="per-roll-cell">
@@ -1745,8 +1932,10 @@ onMounted(() => {
             <dt>目标</dt>
             <dd>
               这条<strong>实际</strong>加哪个属性（名称只是文本，可能对不上）。<code>stat:</code>
-              走词条计数桶、<code>panel:</code> 走局外面板增量；认不出的字段名计算页会跳过它
-              （会标红提醒）。
+              走词条计数桶、<code>panel:</code> 走局外面板增量、<code>gain:</code>
+              走局内增益（可加作用域 / 招式条件）。认不出的字段名计算页会跳过它
+              （会标红提醒）。<code>gain:</code> 行下方可编完整规则，保存进
+              <code>effect_json</code>。
             </dd>
 
             <dt>每档</dt>
@@ -2211,6 +2400,47 @@ onMounted(() => {
 
 .preset-table tr.disabled {
   opacity: 0.55;
+}
+
+.preset-table tr.rule-row td {
+  padding: 0.35rem 0.6rem 0.55rem;
+  background: var(--color-background-soft);
+  border-top: none;
+}
+
+.rule-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.9rem;
+  font-size: 0.78rem;
+}
+
+.rule-edit label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.rule-edit select {
+  padding: 0.15rem 0.3rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-background);
+  color: var(--color-heading);
+  font: inherit;
+}
+
+.rule-hint,
+.rule-hint-line {
+  margin: 0;
+  color: var(--color-text);
+  opacity: 0.75;
+  font-size: 0.76rem;
+}
+
+.rule-check {
+  gap: 0.3rem;
 }
 
 /* 单元格里的输入框要能被列宽约束住（否则固有宽度仍是撑宽的元凶） */

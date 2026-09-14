@@ -1,4 +1,5 @@
 import pool from '../config/db.js'
+import { buildAffixEffectTemplate, parseAffixEffectTemplate } from '../utils/affixEffectTemplate.js'
 
 /**
  * 官方预设词条库（服务端唯一来源）
@@ -59,6 +60,7 @@ async function ensureTables() {
       enabled_by_default TINYINT(1) NOT NULL DEFAULT 0,
       sort_order INT NOT NULL DEFAULT 0,
       raw_json JSON NOT NULL,
+      effect_json JSON NULL,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       PRIMARY KEY (scheme, id),
@@ -79,6 +81,7 @@ async function ensureTables() {
   `)
 
   await migrateToSchemeSchema()
+  await migrateToEffectJsonColumn()
   await ensureDefaultScheme()
 
   ensured = true
@@ -132,6 +135,36 @@ async function migrateToSchemeSchema() {
       DEFAULT_AFFIX_PRESET_SCHEME,
     ])
     await pool.query(`ALTER TABLE ${GROUP_TABLE} DROP PRIMARY KEY, ADD PRIMARY KEY (scheme, name)`)
+  }
+}
+
+/**
+ * 加 `effect_json`，并把空列从旧 `target` + raw 条件回填。幂等。
+ * 写库前须已有 `scripts/data/backups/` 快照（见 restore-affix-preset.mjs）。
+ */
+async function migrateToEffectJsonColumn() {
+  if (!(await columnExists(ENTRY_TABLE, 'effect_json'))) {
+    await pool.query(`ALTER TABLE ${ENTRY_TABLE} ADD COLUMN effect_json JSON NULL AFTER raw_json`)
+  }
+  const [rows] = await pool.query(
+    `SELECT scheme, id, target, raw_json FROM ${ENTRY_TABLE} WHERE effect_json IS NULL`,
+  )
+  for (const row of rows) {
+    const raw = parseRawJson(row.raw_json) ?? {}
+    const template = buildAffixEffectTemplate({
+      target: row.target,
+      applySituation: raw.applySituation,
+      scope: raw.scope,
+      skillCategory: raw.skillCategory,
+      skillSubcategoryId: raw.skillSubcategoryId,
+      appliesToAnomaly: raw.appliesToAnomaly,
+    })
+    if (!template) continue
+    await pool.query(`UPDATE ${ENTRY_TABLE} SET effect_json = ? WHERE scheme = ? AND id = ?`, [
+      JSON.stringify(template),
+      row.scheme,
+      row.id,
+    ])
   }
 }
 
@@ -200,8 +233,20 @@ function parseRawJson(raw) {
   }
 }
 
+function effectJsonForDoc(doc) {
+  const parsed = parseAffixEffectTemplate(doc?.effectJson ?? doc?.effectTemplate)
+  if (parsed) return parsed
+  return buildAffixEffectTemplate(doc)
+}
+
 function rowToEntry(row) {
   const raw = parseRawJson(row.raw_json)
+  const effectJson =
+    parseAffixEffectTemplate(parseRawJson(row.effect_json)) ??
+    parseAffixEffectTemplate(raw?.effectJson) ??
+    parseAffixEffectTemplate(raw?.effectTemplate)
+  const specCond = effectJson?.allocation === 'effect' ? effectJson.spec?.conditions ?? {} : {}
+  const skillFromSpec = Array.isArray(specCond.skillTargets) ? specCond.skillTargets[0] : undefined
   return {
     id: String(row.id),
     label: String(row.label ?? ''),
@@ -212,7 +257,24 @@ function rowToEntry(row) {
     rollCost: readInt(row.roll_cost, 1),
     enabledByDefault: Boolean(Number(row.enabled_by_default)),
     sortOrder: readInt(row.sort_order, 0),
-    // 原始文档里可能有本表没有的字段，读出来让前端决定用不用（防丢字段）
+    applySituation:
+      typeof raw?.applySituation === 'string' ? raw.applySituation : specCond.applySituation,
+    scope: typeof raw?.scope === 'string' ? raw.scope : specCond.scope,
+    skillCategory:
+      typeof raw?.skillCategory === 'string'
+        ? raw.skillCategory
+        : typeof skillFromSpec?.category === 'string'
+          ? skillFromSpec.category
+          : undefined,
+    skillSubcategoryId:
+      raw?.skillSubcategoryId === null || typeof raw?.skillSubcategoryId === 'string'
+        ? raw.skillSubcategoryId
+        : skillFromSpec && 'subcategoryId' in skillFromSpec
+          ? skillFromSpec.subcategoryId
+          : undefined,
+    appliesToAnomaly:
+      typeof raw?.appliesToAnomaly === 'boolean' ? raw.appliesToAnomaly : specCond.appliesToAnomaly,
+    effectJson: effectJson ?? null,
     raw: raw && typeof raw === 'object' ? raw : null,
   }
 }
@@ -322,11 +384,13 @@ export async function replaceAffixPreset({ scheme, entries, groups }) {
     await conn.query(`DELETE FROM ${ENTRY_TABLE} WHERE scheme = ?`, [schemeName])
     await conn.query(`DELETE FROM ${GROUP_TABLE} WHERE scheme = ?`, [schemeName])
     for (const [index, doc] of entryList.entries()) {
-      const raw = doc.raw && typeof doc.raw === 'object' ? doc.raw : doc
+      const effectJson = effectJsonForDoc(doc)
+      const raw = doc.raw && typeof doc.raw === 'object' ? { ...doc.raw, ...doc, effectJson } : { ...doc, effectJson }
+      delete raw.raw
       await conn.query(
         `INSERT INTO ${ENTRY_TABLE}
-          (scheme, id, label, target, per_roll, cap, group_name, roll_cost, enabled_by_default, sort_order, raw_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (scheme, id, label, target, per_roll, cap, group_name, roll_cost, enabled_by_default, sort_order, raw_json, effect_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           schemeName,
           String(doc.id ?? '').trim(),
@@ -339,6 +403,7 @@ export async function replaceAffixPreset({ scheme, entries, groups }) {
           doc.enabledByDefault ? 1 : 0,
           readInt(doc.sortOrder, index),
           JSON.stringify(raw),
+          effectJson ? JSON.stringify(effectJson) : null,
         ],
       )
     }
@@ -406,8 +471,8 @@ export async function createAffixPresetScheme({ name, copyFrom }) {
     if (sourceName) {
       await conn.query(
         `INSERT INTO ${ENTRY_TABLE}
-          (scheme, id, label, target, per_roll, cap, group_name, roll_cost, enabled_by_default, sort_order, raw_json)
-         SELECT ?, id, label, target, per_roll, cap, group_name, roll_cost, enabled_by_default, sort_order, raw_json
+          (scheme, id, label, target, per_roll, cap, group_name, roll_cost, enabled_by_default, sort_order, raw_json, effect_json)
+         SELECT ?, id, label, target, per_roll, cap, group_name, roll_cost, enabled_by_default, sort_order, raw_json, effect_json
            FROM ${ENTRY_TABLE} WHERE scheme = ?`,
         [schemeName, sourceName],
       )

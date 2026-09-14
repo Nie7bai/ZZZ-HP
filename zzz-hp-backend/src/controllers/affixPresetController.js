@@ -23,7 +23,11 @@ import { fail, failInternal, success } from '../utils/response.js'
  */
 const TARGET_PREFIXES = ['stat:', 'panel:', 'gain:']
 
-function normalizeEntryPayload(body = {}) {
+function readOptionalString(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+export function normalizeEntryPayload(body = {}) {
   const id = typeof body.id === 'string' ? body.id.trim() : ''
   const label = typeof body.label === 'string' ? body.label.trim() : ''
   const target = typeof body.target === 'string' ? body.target.trim() : ''
@@ -44,6 +48,18 @@ function normalizeEntryPayload(body = {}) {
   if (!Number.isFinite(cap) || cap < 0) return { error: '上限须为非负数（0 = 不限）' }
   if (!Number.isFinite(rollCost) || rollCost < 0) return { error: '每档占用须为非负数' }
 
+  const applySituation = readOptionalString(body.applySituation)
+  const scope = readOptionalString(body.scope)
+  const skillCategory = readOptionalString(body.skillCategory)
+  const skillSubcategoryId =
+    body.skillSubcategoryId === null ? null : readOptionalString(body.skillSubcategoryId)
+  const appliesToAnomaly =
+    typeof body.appliesToAnomaly === 'boolean' ? body.appliesToAnomaly : undefined
+  const effectJson =
+    body.effectJson && typeof body.effectJson === 'object' && !Array.isArray(body.effectJson)
+      ? body.effectJson
+      : undefined
+
   return {
     id,
     label,
@@ -54,6 +70,12 @@ function normalizeEntryPayload(body = {}) {
     rollCost: Math.trunc(rollCost),
     enabledByDefault: Boolean(body.enabledByDefault),
     sortOrder: Number.isFinite(sortOrder) ? Math.trunc(sortOrder) : 0,
+    ...(applySituation ? { applySituation } : {}),
+    ...(scope ? { scope } : {}),
+    ...(skillCategory ? { skillCategory } : {}),
+    ...(skillSubcategoryId !== undefined ? { skillSubcategoryId } : {}),
+    ...(appliesToAnomaly !== undefined ? { appliesToAnomaly } : {}),
+    ...(effectJson ? { effectJson } : {}),
   }
 }
 
@@ -94,6 +116,7 @@ export async function replaceAffixPresetHandler(req, res) {
   const entries = Array.isArray(req.body?.entries) ? req.body.entries : null
   const groups = Array.isArray(req.body?.groups) ? req.body.groups : null
   if (!entries || !groups) return fail(res, '需要 entries 与 groups 两个数组', 400)
+  const normalizedEntries = []
   const entryOrderSeen = new Map()
   for (const [index, entry] of entries.entries()) {
     const payload = normalizeEntryPayload(entry)
@@ -107,7 +130,9 @@ export async function replaceAffixPresetHandler(req, res) {
       )
     }
     entryOrderSeen.set(payload.sortOrder, index + 1)
+    normalizedEntries.push(payload)
   }
+  const normalizedGroups = []
   const groupOrderSeen = new Map()
   for (const [index, group] of groups.entries()) {
     const payload = normalizeGroupPayload(group)
@@ -121,12 +146,13 @@ export async function replaceAffixPresetHandler(req, res) {
       )
     }
     groupOrderSeen.set(payload.sortOrder, index + 1)
+    normalizedGroups.push(payload)
   }
   try {
     const data = await replaceAffixPreset({
       scheme: req.body?.scheme,
-      entries,
-      groups,
+      entries: normalizedEntries,
+      groups: normalizedGroups,
     })
     const schemes = await listAffixSchemes()
     return success(

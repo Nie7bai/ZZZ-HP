@@ -13,6 +13,7 @@ import {
 import { AFFIX_VALUE_PER_COUNT } from '@/utils/affixPanelCalc'
 import { BUFF_STAT_FIELDS, buffStatFieldLabel } from '@/utils/calculatorUi'
 import type { ExtraBuffGain } from '@/utils/extraBuffCalc'
+import type { AffixEffectTemplate } from '@/utils/affixEffectTemplate'
 
 /**
  * 词条库（Affix Library）
@@ -410,6 +411,11 @@ export interface AffixLibraryEntry {
   skillCategory?: BuffSkillTargetId
   skillSubcategoryId?: string | null
   appliesToAnomaly?: boolean
+  /**
+   * 版本化效果模板（官方预设 `effect_json`）。缺省时由 `target` + 条件字段现编。
+   * 旧存档没有这个键，不升 localStorage 版本。
+   */
+  effectTemplate?: AffixEffectTemplate
 }
 
 /** 每档值的单位：百分比字段显示 `3%`，固定值字段显示 `9` */
@@ -688,6 +694,63 @@ const serverAffixPreset = ref<{
 /** 服务端条目里被跳过的条数（target 不是本版本认识的字段）—— 供界面/测试读出 */
 export const skippedServerPresetEntries = ref(0)
 
+function readPresetConditionString(value: unknown, allowed: ReadonlySet<string>): string | undefined {
+  return typeof value === 'string' && allowed.has(value) ? value : undefined
+}
+
+/**
+ * 官方预设可能把条件写在条目顶栏，或只写在 `effectJson.spec.conditions`。
+ * 两边都认，顶栏优先（管理端刚改过的草稿）。
+ */
+function hoistPresetConditionFields(item: Record<string, unknown>): Partial<AffixLibraryEntry> {
+  const templateRaw = item.effectTemplate ?? item.effectJson
+  const spec =
+    templateRaw && typeof templateRaw === 'object' && !Array.isArray(templateRaw)
+      ? (templateRaw as { spec?: { conditions?: Record<string, unknown> } }).spec
+      : undefined
+  const specCond = spec?.conditions && typeof spec.conditions === 'object' ? spec.conditions : {}
+  const skillFromSpec = Array.isArray(specCond.skillTargets) ? specCond.skillTargets[0] : undefined
+  const applySituation =
+    readPresetConditionString(item.applySituation, AFFIX_APPLY_SITUATIONS) ??
+    readPresetConditionString(specCond.applySituation, AFFIX_APPLY_SITUATIONS)
+  const scope =
+    readPresetConditionString(item.scope, AFFIX_BUFF_SCOPES) ??
+    readPresetConditionString(specCond.scope, AFFIX_BUFF_SCOPES)
+  const skillCategory =
+    (typeof item.skillCategory === 'string' && item.skillCategory
+      ? (item.skillCategory as BuffSkillTargetId)
+      : undefined) ??
+    (skillFromSpec && typeof skillFromSpec === 'object' && typeof (skillFromSpec as { category?: unknown }).category === 'string'
+      ? ((skillFromSpec as { category: string }).category as BuffSkillTargetId)
+      : undefined)
+  const skillSubcategoryId =
+    item.skillSubcategoryId === null
+      ? null
+      : typeof item.skillSubcategoryId === 'string'
+        ? item.skillSubcategoryId
+        : skillFromSpec && typeof skillFromSpec === 'object'
+          ? ((skillFromSpec as { subcategoryId?: string | null }).subcategoryId ?? undefined)
+          : undefined
+  const appliesToAnomaly =
+    typeof item.appliesToAnomaly === 'boolean'
+      ? item.appliesToAnomaly
+      : typeof specCond.appliesToAnomaly === 'boolean'
+        ? specCond.appliesToAnomaly
+        : undefined
+  const effectTemplate =
+    templateRaw && typeof templateRaw === 'object' && !Array.isArray(templateRaw)
+      ? (templateRaw as AffixEffectTemplate)
+      : undefined
+  return {
+    ...(applySituation ? { applySituation: applySituation as BuffApplySituation } : {}),
+    ...(scope ? { scope: scope as BuffScope } : {}),
+    ...(skillCategory ? { skillCategory } : {}),
+    ...(skillSubcategoryId !== undefined ? { skillSubcategoryId } : {}),
+    ...(appliesToAnomaly !== undefined ? { appliesToAnomaly } : {}),
+    ...(effectTemplate ? { effectTemplate } : {}),
+  }
+}
+
 /**
  * 校验并解析一份预设条目（纯函数：不碰全局快照）。
  *
@@ -722,6 +785,7 @@ export function parseAffixPresetEntries(rawEntries: unknown[]): {
       group: typeof item.group === 'string' ? item.group : '',
       rollCost: Number.isFinite(Number(item.rollCost)) ? Number(item.rollCost) : 1,
       enabledByDefault: Boolean(item.enabledByDefault),
+      ...hoistPresetConditionFields(item as Record<string, unknown>),
     })
   }
   return { entries, skipped }

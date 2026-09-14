@@ -25,6 +25,13 @@ export interface AffixPresetEntryDoc {
   rollCost: number
   enabledByDefault: boolean
   sortOrder?: number
+  applySituation?: string
+  scope?: string
+  skillCategory?: string
+  skillSubcategoryId?: string | null
+  appliesToAnomaly?: boolean
+  /** 版本化效果模板；缺省时服务端按 target 回填 */
+  effectJson?: Record<string, unknown> | null
   raw?: Record<string, unknown> | null
 }
 

@@ -12,7 +12,10 @@
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { replaceAffixPresetHandler } from '../src/controllers/affixPresetController.js'
+import {
+  normalizeEntryPayload,
+  replaceAffixPresetHandler,
+} from '../src/controllers/affixPresetController.js'
 import { findDuplicateSortValue, replaceAffixPreset } from '../src/services/affixPresetService.js'
 
 /** 假 res：只用得上 status().json() 链（与 utils/response.js 的用法一致） */
@@ -173,4 +176,44 @@ test('控制器：不属于三族命名空间的目标仍被拦下', async () =>
   )
   assert.equal(res.statusCode, 400)
   assert.match(res.body.message, /目标须以/)
+})
+
+test('normalizeEntryPayload 保留 gain 条件与 effectJson', () => {
+  const payload = normalizeEntryPayload({
+    id: 'gain:basic-dmg',
+    label: '普攻增伤',
+    target: 'gain:dmgBonus',
+    perRoll: 15,
+    cap: 1,
+    applySituation: 'global',
+    scope: 'skill',
+    skillCategory: 'basic',
+    skillSubcategoryId: null,
+    appliesToAnomaly: true,
+    effectJson: { version: 1, allocation: 'effect', legacyTarget: 'gain:dmgBonus' },
+  })
+  assert.equal(payload.error, undefined)
+  assert.equal(payload.scope, 'skill')
+  assert.equal(payload.skillCategory, 'basic')
+  assert.equal(payload.skillSubcategoryId, null)
+  assert.equal(payload.appliesToAnomaly, true)
+  assert.equal(payload.effectJson.allocation, 'effect')
+})
+
+test('buildAffixEffectTemplate：stat 是 count，panel/gain 是 effect', async () => {
+  const { buildAffixEffectTemplate } = await import('../src/utils/affixEffectTemplate.js')
+  const count = buildAffixEffectTemplate({ target: 'stat:critRate' })
+  assert.equal(count.allocation, 'count')
+  const panel = buildAffixEffectTemplate({ target: 'panel:penRate' })
+  assert.equal(panel.allocation, 'effect')
+  assert.equal(panel.spec.stage, 'external')
+  assert.equal(panel.spec.stat, 'penRate')
+  const gain = buildAffixEffectTemplate({
+    target: 'gain:dmgBonus',
+    scope: 'skill',
+    skillCategory: 'basic',
+  })
+  assert.equal(gain.allocation, 'effect')
+  assert.equal(gain.spec.stage, 'combatPreConvert')
+  assert.equal(gain.spec.conditions.skillTargets[0].category, 'basic')
 })
