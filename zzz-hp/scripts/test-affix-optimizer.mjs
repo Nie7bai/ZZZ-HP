@@ -5,7 +5,7 @@
  * 3) 分配结果真实可评估，且总伤与求解器报告一致；
  * 4) 计算量预算与候选宽度（auto 推导 / manual 指定）；
  * 5) 同步与异步结果必须一致，异步可中止；
- * 6) 零收益条目出局、交叉项补测、无半成品；
+ * 6) 零收益条目出局、交叉项补测（含交换阶段）、无半成品；
  * 7) 基础值取值与缓存失效（换音擎 / 换角色基础面板不得吃到旧值）。
  * 运行：npx vite-node scripts/test-affix-optimizer.mjs
  */
@@ -927,6 +927,23 @@ console.log('\n[12] 交叉项补测（暴击为 0 时爆伤增益为 0）')
   check('交叉项场景不劣于穷举最优',
     solved.totalDamage >= bruteTotal - 1e-6,
     `${solved.totalDamage} vs ${bruteTotal}`)
+}
+
+// ---------- 12b. 交换阶段也会补测零收益条目 ----------
+console.log('\n[12b] 交换阶段强制补测零收益条目')
+{
+  clearAffixEvalCache()
+  const solved = solveOptimalAffixAllocation({
+    ctx, entries: library, maxTotalRolls: 20,
+  })
+  const swapRefreshes =
+    (solved.staleRefreshesByPhase.swap1 ?? 0) + (solved.staleRefreshesByPhase.swap2 ?? 0)
+  check('走完 1-swap', solved.phasesCompleted.includes('swap1'))
+  check(
+    '交换阶段补测至少一轮',
+    swapRefreshes > 0,
+    JSON.stringify(solved.staleRefreshesByPhase),
+  )
 }
 
 // ---------- 13. 无半成品：预算耗尽后返回的仍是完整状态 ----------

@@ -1540,6 +1540,7 @@ const sectionMode = ref<'allocation' | 'sweep'>('allocation')
 const affixAllocTotalRolls = ref(30)
 const affixAllocDetailTab = ref<'curve' | 'process'>('curve')
 const affixAllocResult = ref<AffixOptimizerResult | null>(null)
+const affixAllocResultStale = ref(false)
 const affixAllocLoading = ref(false)
 const affixAllocError = ref<string | null>(null)
 /**
@@ -1621,6 +1622,7 @@ function persistAffixLibrary(next: AffixLibraryState) {
   affixLibraryState.value = next
   saveAffixLibraryState(next)
   affixAllocResult.value = null
+  affixAllocResultStale.value = false
   runAffixBenefitOnly()
 }
 
@@ -1790,10 +1792,12 @@ async function runAffixAllocation() {
         },
       },
     )
+    affixAllocResultStale.value = false
   } catch (error) {
     if ((error as DOMException)?.name === 'AbortError') return
     affixAllocError.value = error instanceof Error ? error.message : '计算失败'
     affixAllocResult.value = null
+    affixAllocResultStale.value = false
   } finally {
     if (affixAllocAbort === controller) {
       affixAllocLoading.value = false
@@ -1805,10 +1809,16 @@ async function runAffixAllocation() {
 
 /** 中止正在进行的求解（改参数 / 手动停止时调用） */
 function abortAffixAllocation() {
+  if (affixAllocResult.value) affixAllocResultStale.value = true
   affixAllocAbort?.abort()
   affixAllocAbort = null
   affixAllocLoading.value = false
   affixAllocProgress.value = null
+}
+
+function markAffixAllocationStaleIfIdle() {
+  if (affixAllocLoading.value) return
+  if (affixAllocResult.value) affixAllocResultStale.value = true
 }
 
 function setAffixBenefitStep(step: number) {
@@ -2072,6 +2082,7 @@ watch(affixAllocFingerprint, () => {
   if (sectionMode.value !== 'allocation') return
   // 上下文变了，正在跑的求解结果已经过期：中止它，避免用户对着旧结果判断
   if (affixAllocLoading.value) abortAffixAllocation()
+  else markAffixAllocationStaleIfIdle()
   scheduleAffixBenefitRecompute()
 })
 
@@ -2081,6 +2092,7 @@ watch(
   () => {
     if (sectionMode.value !== 'allocation') return
     if (affixAllocLoading.value) abortAffixAllocation()
+    else markAffixAllocationStaleIfIdle()
   },
 )
 
@@ -2823,6 +2835,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           :loading="affixAllocLoading"
           :error="affixAllocError"
           :progress="affixAllocProgress"
+          :stale="affixAllocResultStale"
         />
 
         <template v-if="affixAllocResult">

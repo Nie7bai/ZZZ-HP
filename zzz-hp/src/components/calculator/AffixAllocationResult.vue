@@ -19,6 +19,8 @@ const props = defineProps<{
   error?: string | null
   /** 求解进度（仅求解中传入） */
   progress?: AffixOptimizerProgress | null
+  /** 上一次完成的结果已过期（中止或条件已变） */
+  stale?: boolean
 }>()
 
 /** 阶段名 → 界面文案 */
@@ -87,6 +89,9 @@ function formatNumber(value: number) {
     <p v-else-if="error" class="err">{{ error }}</p>
     <p v-else-if="!result" class="hint">输入总词条数后点「求最优分配」。</p>
     <template v-else>
+      <p v-if="stale" class="hint warn">
+        此结果已过期：求解已中止，或词条数 / 队伍 / 招式等条件已变。请重新点「求最优分配」。
+      </p>
       <div class="alloc-summary">
         <div class="summary-item">
           <span class="summary-label">最优总伤</span>

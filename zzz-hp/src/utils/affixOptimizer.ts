@@ -124,6 +124,8 @@ export interface AffixOptimizerResult {
   phasesCompleted: string[]
   /** 本次搜索的起点数（候选集已覆盖全部条目时为 1，避免重复劳动） */
   startsRun: number
+  /** 各阶段实际执行过的零收益补测轮数（贪心 / 1-swap / 2-swap） */
+  staleRefreshesByPhase: Partial<Record<'greedy' | 'swap1' | 'swap2', number>>
 }
 
 /** 求解进度快照（异步驱动定期回调，用于 UI 显示） */
@@ -305,6 +307,7 @@ interface SearchOutcome {
   candidateWidthMax: number
   phasesCompleted: string[]
   startsRun: number
+  staleRefreshesByPhase: Partial<Record<'greedy' | 'swap1' | 'swap2', number>>
 }
 
 /** 候选集的排序口径（多起点用不同口径制造多样性） */
@@ -435,6 +438,7 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
 
   /** 上一轮补测时已分配的档数；补测按「档数翻倍」放宽间隔，兼顾发现交叉项与浪费调用 */
   let refreshGateRolls = 0
+  const staleRefreshesByPhase: Partial<Record<'greedy' | 'swap1' | 'swap2', number>> = {}
 
   /**
    * 候选集：在「还能再加档」且「实测增益 > 0」的条目里，按指定口径排序取前 width 条。
@@ -494,20 +498,21 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
    * 例如暴击率为 0 时爆伤增益为 0、暴击率堆起来后爆伤才有收益。
    * 若只按基线测一次，这类条目会被永久误杀。
    *
-   * 触发条件（两个都满足才补测）：
-   * 1. 正收益候选不够填满 width（说明有富余的试算名额）；
-   * 2. 已分配档数 ≥ 上一次补测的门槛档数。
+   * 触发条件（满足其一才补测）：
+   * 1. 贪心：正收益候选不够填满 width，且已分配档数 ≥ 门槛；
+   * 2. 交换阶段每轮开头 `force`：门槛往往已被贪心推过已用档数，不强制则一次都跑不到。
    *
    * 门槛按「档数翻倍」推进（0 → 1 → 2 → 4 → 8 …），所以整个构建过程
-   * 只补测 O(log 总档数) 次，不会让零收益条目每轮都吃掉调用。
+   * 只补测 O(log 总档数) 次；交换阶段每轮最多再强制一次。
    */
   function* refreshStaleEntries(
-    width: number,
+    _width: number,
     baseRolls: Record<string, number>,
     referenceTotal: number,
+    options?: { force?: boolean },
   ): Generator<AffixOptimizerProgress, void, void> {
     const usedRolls = usedRollsOf(entries, baseRolls)
-    if (usedRolls < refreshGateRolls) return
+    if (!options?.force && usedRolls < refreshGateRolls) return
     const stale = entries.filter(
       (entry) => (baseRolls[entry.id] ?? 0) === 0 && (lastGain.get(entry.id) ?? 0) <= 0,
     )
@@ -517,6 +522,9 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
     }
     if (remainingWork() < stale.length * pricePerEval) return
     refreshGateRolls = Math.max(usedRolls + 1, usedRolls * 2)
+    if (phase === 'greedy' || phase === 'swap1' || phase === 'swap2') {
+      staleRefreshesByPhase[phase] = (staleRefreshesByPhase[phase] ?? 0) + 1
+    }
     for (const entry of stale) {
       yield* measureEntry(entry, baseRolls, referenceTotal)
     }
@@ -527,6 +535,7 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
   function* greedyBuild(
     order: CandidateOrder,
   ): Generator<AffixOptimizerProgress, { rolls: Record<string, number>; state: SolveState }, void> {
+    phase = 'greedy'
     const rolls: Record<string, number> = { ...fixedRolls }
     let current: SolveState = {
       total: baselineDamage,
@@ -593,7 +602,9 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
     start: SolveState,
     order: CandidateOrder,
   ): Generator<AffixOptimizerProgress, SolveState, void> {
+    phase = 'swap1'
     let current = start
+    let forcedRefresh = false
     for (;;) {
       const removals = entries.filter((entry) => {
         const removeRolls = rolls[entry.id] ?? 0
@@ -606,27 +617,28 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
         truncated = true
         break
       }
+      if (!forcedRefresh) {
+        yield* refreshStaleEntries(width, rolls, current.total, { force: true })
+        forcedRefresh = true
+      }
       let bestSwap: { removeId: string; addId: string; state: SolveState } | null = null
 
       for (const removeEntry of removals) {
         const removeRolls = rolls[removeEntry.id] ?? 0
         const afterRemove = { ...rolls, [removeEntry.id]: removeRolls - 1 }
         const usedAfter = usedRollsOf(entries, afterRemove)
-        const candidates = pickCandidates(
-          width,
-          order,
-          (entry) =>
-            remainingAllowedRolls(
-              entry,
-              afterRemove[entry.id] ?? 0,
-              budget,
-              usedAfter,
-              afterRemove,
-              entries,
-              maxRollsPerEntry,
-              groupCaps,
-            ) > 0,
-        )
+        const allowedHere = (entry: AffixLibraryEntry) =>
+          remainingAllowedRolls(
+            entry,
+            afterRemove[entry.id] ?? 0,
+            budget,
+            usedAfter,
+            afterRemove,
+            entries,
+            maxRollsPerEntry,
+            groupCaps,
+          ) > 0
+        const candidates = pickCandidates(width, order, allowedHere)
 
         for (const addEntry of candidates) {
           if (addEntry.id === removeEntry.id) continue
@@ -658,7 +670,9 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
     start: SolveState,
     order: CandidateOrder,
   ): Generator<AffixOptimizerProgress, SolveState, void> {
+    phase = 'swap2'
     let current = start
+    let forcedRefresh = false
     for (;;) {
       // 撤法只从「已分配档数的条目」里出（活跃集）：没分到档数的条目无从撤起，
       // 这正是把旧的 O(E⁴) 降到「活跃集²」的关键
@@ -670,6 +684,10 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
       if (remainingWork() < removalCount * width * width * pricePerEval) {
         truncated = true
         break
+      }
+      if (!forcedRefresh) {
+        yield* refreshStaleEntries(width, rolls, current.total, { force: true })
+        forcedRefresh = true
       }
 
       const removals: { rolls: Record<string, number>; usedRolls: number }[] = []
@@ -694,21 +712,18 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
       let bestSwap: { next: Record<string, number>; state: SolveState } | null = null
 
       for (const removal of removals) {
-        const candidates = pickCandidates(
-          width,
-          order,
-          (entry) =>
-            remainingAllowedRolls(
-              entry,
-              removal.rolls[entry.id] ?? 0,
-              budget,
-              removal.usedRolls,
-              removal.rolls,
-              entries,
-              maxRollsPerEntry,
-              groupCaps,
-            ) > 0,
-        )
+        const allowedHere = (entry: AffixLibraryEntry) =>
+          remainingAllowedRolls(
+            entry,
+            removal.rolls[entry.id] ?? 0,
+            budget,
+            removal.usedRolls,
+            removal.rolls,
+            entries,
+            maxRollsPerEntry,
+            groupCaps,
+          ) > 0
+        const candidates = pickCandidates(width, order, allowedHere)
         for (let i = 0; i < candidates.length; i += 1) {
           const a = candidates[i]!
           const aRolls = removal.rolls[a.id] ?? 0
@@ -805,6 +820,7 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
     candidateWidthMax: widthMaxUsed || entries.length,
     phasesCompleted,
     startsRun,
+    staleRefreshesByPhase,
   }
 }
 
@@ -835,6 +851,7 @@ function toResult(input: AffixOptimizerInput, outcome: SearchOutcome): AffixOpti
     truncated: outcome.truncated,
     phasesCompleted: outcome.phasesCompleted,
     startsRun: outcome.startsRun,
+    staleRefreshesByPhase: outcome.staleRefreshesByPhase,
   }
 }
 
