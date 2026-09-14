@@ -9,7 +9,7 @@
 - [伤害计算页改动汇总（2026-09）](./damage-calc-changes-2026-09.md)：本阶段改动、现行行为口径（面板双来源、招式流程三选项、槽位卡片）、验证证据与遗留项。
 - [面板 → 词条二次修改 → 流程计算 链路说明](./panel-affix-flow.md)：说明图（思维导图 [SVG](./panel-affix-flow.svg) + 文字版），非新规格。
 - [最优分配内嵌主属性组合排行](./alloc-embed-main-stat-combo.md)：分配结果固定副词条，嵌入 4/5/6 + 2 件套组合试算（不改分配/扫掠求解结构）。
-- [统一效果计算架构](./unified-effect-pipeline.md)：施工指针；权威手册在开发目录 `dev-docs/unified-effect-pipeline.md`。阶段 4 已完成（词条生产路径未切）。
+- [统一效果计算架构](./unified-effect-pipeline.md)：施工指针；权威手册在开发目录 `dev-docs/unified-effect-pipeline.md`。T1 阶段 1–7 已按批准范围收口（运行期仍用 `panel:` / `gain:` 落点名；T10 界面不在本次）。
 
 ## 历史实现记录
 
