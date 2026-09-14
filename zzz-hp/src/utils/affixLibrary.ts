@@ -1,6 +1,8 @@
 import { ref } from 'vue'
 import type { AffixCounts, PanelStats } from '@/types/calculatorPanel'
+import type { BuffStatKey } from '@/types/calculator'
 import { AFFIX_VALUE_PER_COUNT } from '@/utils/affixPanelCalc'
+import { BUFF_STAT_FIELDS, buffStatFieldLabel } from '@/utils/calculatorUi'
 
 /**
  * 词条库（Affix Library）
@@ -58,10 +60,11 @@ import { AFFIX_VALUE_PER_COUNT } from '@/utils/affixPanelCalc'
  * 因此 id 前缀与 `target` 前缀不要求一致（`substat:x` 对应 `target: 'stat:x'`）。
  */
 
-/** 条目落点：`stat:` = 词条计数桶；`panel:` = 局外面板增量 */
+/** 条目落点：`stat:` = 词条计数桶；`panel:` = 局外面板增量；`gain:` = 增益字段 */
 export type AffixStatTarget = `stat:${keyof AffixCounts}`
 export type AffixPanelTarget = `panel:${AffixPanelDeltaField}`
-export type AffixLibraryEntryTarget = AffixStatTarget | AffixPanelTarget
+export type AffixGainTarget = `gain:${AffixGainField}`
+export type AffixLibraryEntryTarget = AffixStatTarget | AffixPanelTarget | AffixGainTarget
 
 /** 可叠加到局外面板的百分比/加值字段 */
 export type AffixPanelDeltaField =
@@ -88,6 +91,32 @@ export type AffixPanelDeltaField =
 
 /** 条目档数换算出来的局外面板增量（与 `AffixPanelDeltaMap` 同构） */
 export type AffixPanelDeltaDraft = Partial<Record<AffixPanelDeltaField, number>>
+
+/**
+ * 增益字段 = 增益体系（`BuffStatModifiers`）的键。
+ *
+ * 词条目标为 `gain:<字段>` 时，这条贡献**不在局外面板上**，而是合成一条给主 C 的增益，
+ * 在**转模之后**随面板计算施加（与「额外增益」同一条路）。
+ * 详见 `affix-optimizer-impl-log.md` 步骤 58 与 `affix-calc-manual.md` §5.1。
+ */
+export type AffixGainField = BuffStatKey
+
+/** 增益字段的显示名（与增益编辑器同一套文案，见 `BUFF_STAT_FIELDS`） */
+export const AFFIX_GAIN_FIELD_LABELS: Record<string, string> = Object.fromEntries(
+  BUFF_STAT_FIELDS.map((field) => [field.key, buffStatFieldLabel(field)]),
+)
+
+/** 增益字段的候选清单（按增益编辑器的词表，顺序一致） */
+export const AFFIX_GAIN_FIELDS: readonly AffixGainField[] = BUFF_STAT_FIELDS.map(
+  (field) => field.key,
+)
+
+const AFFIX_GAIN_FIELD_SET: ReadonlySet<string> = new Set<string>(AFFIX_GAIN_FIELDS)
+
+/** `gain:` 目标里按「百分比」理解的字段（其余为固定值）——单位取自增益词表 */
+const PERCENT_GAIN_FIELDS: ReadonlySet<string> = new Set<string>(
+  BUFF_STAT_FIELDS.filter((field) => field.unit !== 'flat').map((field) => field.key),
+)
 
 export const AFFIX_PANEL_DELTA_FIELD_LABELS: Record<AffixPanelDeltaField, string> = {
   dmgBonus: '增伤%',
@@ -152,12 +181,20 @@ export function panelTarget(field: AffixPanelDeltaField): AffixPanelTarget {
   return `panel:${field}`
 }
 
+export function gainTarget(field: AffixGainField): AffixGainTarget {
+  return `gain:${field}`
+}
+
 export function isStatTarget(target: string): target is AffixStatTarget {
   return target.startsWith('stat:')
 }
 
 export function isPanelTarget(target: string): target is AffixPanelTarget {
   return target.startsWith('panel:')
+}
+
+export function isGainTarget(target: string): target is AffixGainTarget {
+  return target.startsWith('gain:')
 }
 
 /** `stat:` → 词条计数字段；不是该命名空间或字段非法时返回 null */
@@ -176,6 +213,70 @@ export function panelFieldOfTarget(
   return AFFIX_PANEL_DELTA_FIELDS.includes(field) ? field : null
 }
 
+/** `gain:` → 增益字段；不是该命名空间或字段非法时返回 null */
+export function gainFieldOfTarget(target: AffixLibraryEntryTarget): AffixGainField | null {
+  if (!isGainTarget(target)) return null
+  const field = target.slice('gain:'.length)
+  return AFFIX_GAIN_FIELD_SET.has(field) ? (field as AffixGainField) : null
+}
+
+/**
+ * 增量表里能出现的一族字段：**局外面板字段** + **增益字段**。
+ *
+ * 两族共用一张增量表，因为条目只表达「给哪个属性加多少」，
+ * **施加阶段由字段决定**（局外字段 → 局外面板；增益字段 → 增益阶段，转模之后）。
+ */
+export type AffixDeltaField = AffixPanelDeltaField | AffixGainField
+
+/** 增量表：字段 → 累计值（两族同表，取用时按族分流） */
+export type AffixDeltaMap = Partial<Record<AffixDeltaField, number>>
+
+/** 这个键属于「局外面板增量」一族的判定（增益字段必须排除，它们不在 `PanelStats` 上） */
+export function isPanelDeltaField(key: string): key is AffixPanelDeltaField {
+  return (AFFIX_PANEL_DELTA_FIELDS as readonly string[]).includes(key)
+}
+
+/**
+ * 这个键属于「增益增量」一族的判定。
+ *
+ * 与局外面板重叠的字段（`penRate` / `dmgBonus` / `reduceDefense` 等）只走
+ * `applyPanelDeltas`，不进增益。两族共用扁平增量表时，重叠键若两边都认，
+ * 同一档会加两次（实测：+24 穿透率 → 局内 48，收益被抬到约 2 倍）。
+ */
+export function isGainDeltaField(key: string): key is AffixGainField {
+  return AFFIX_GAIN_FIELD_SET.has(key) && !isPanelDeltaField(key)
+}
+
+/**
+ * 目标 → 该写进增量表的字段（两族合一）。
+ *
+ * 收益表逐档重算、求解器把档数折成评估输入都用它 —— 新增目标族时只改这一处，
+ * 免得「加了新族但只有一半路径认它」。
+ */
+export function deltaFieldOfTarget(target: AffixLibraryEntryTarget): AffixDeltaField | null {
+  return panelFieldOfTarget(target) ?? gainFieldOfTarget(target)
+}
+
+/**
+ * 从增量表里挑出「增益增量」一族（局外字段被排除）。
+ *
+ * 评估入口用它把 `gain:` 条目的贡献合成增益（见 `optimalAffixAlloc.ts` 的
+ * `affixGainModsOf`）——**这是「不跳过转模」的落点**：贡献以增益身份进入面板计算，
+ * 因而同时出现在局内面板上，转模的 `panelSource: 'final'` 侧能读到它。
+ */
+export function gainDeltasOf(
+  deltas: AffixDeltaMap | AffixPanelDeltaDraft | undefined,
+): Partial<Record<AffixGainField, number>> | null {
+  if (!deltas) return null
+  let out: Partial<Record<AffixGainField, number>> | null = null
+  for (const [key, value] of Object.entries(deltas)) {
+    if (!value || !isGainDeltaField(key)) continue
+    out = out ?? {}
+    out[key] = (out[key] ?? 0) + value
+  }
+  return out
+}
+
 /** 校验一个字符串是不是合法的条目目标 */
 export function isAffixLibraryEntryTarget(value: unknown): value is AffixLibraryEntryTarget {
   if (typeof value !== 'string') return false
@@ -183,6 +284,7 @@ export function isAffixLibraryEntryTarget(value: unknown): value is AffixLibrary
   if (isPanelTarget(value)) {
     return AFFIX_PANEL_DELTA_FIELDS.includes(value.slice(6) as AffixPanelDeltaField)
   }
+  if (isGainTarget(value)) return AFFIX_GAIN_FIELD_SET.has(value.slice(5))
   return false
 }
 
@@ -200,6 +302,8 @@ export function affixTargetLabel(target: AffixLibraryEntryTarget): string {
   if (statKey) return AFFIX_SUBSTAT_KEY_LABELS[statKey]
   const field = panelFieldOfTarget(target)
   if (field) return AFFIX_PANEL_DELTA_FIELD_LABELS[field]
+  const gainField = gainFieldOfTarget(target)
+  if (gainField) return AFFIX_GAIN_FIELD_LABELS[gainField] ?? gainField
   return String(target)
 }
 
@@ -230,6 +334,8 @@ export function affixPerRollUnit(target: AffixLibraryEntryTarget): AffixPerRollU
   if (statKey) return PERCENT_STAT_KEYS.has(statKey) ? 'percent' : 'flat'
   const field = panelFieldOfTarget(target)
   if (field) return PERCENT_PANEL_FIELDS.has(field) ? 'percent' : 'flat'
+  const gainField = gainFieldOfTarget(target)
+  if (gainField) return PERCENT_GAIN_FIELDS.has(gainField) ? 'percent' : 'flat'
   return 'flat'
 }
 
@@ -1505,8 +1611,8 @@ export function removeAffixLibraryGroup(
 export interface AffixEntryEvalInput {
   /** 各 `stat:` 目标的档数合计 */
   counts: Partial<AffixCounts>
-  /** 各 `panel:` 目标的增量合计 */
-  deltas: AffixPanelDeltaDraft
+  /** 各 `panel:` / `gain:` 目标的增量合计（同表；施加阶段由字段决定） */
+  deltas: AffixDeltaMap
   /**
    * 各词条计数字段的「每档值」。
    *
@@ -1539,7 +1645,7 @@ export function entryRollsToEvalInput(
   rollsByEntryId: Record<string, number>,
 ): AffixEntryEvalInput {
   const counts: Partial<AffixCounts> = {}
-  const deltas: AffixPanelDeltaDraft = {}
+  const deltas: AffixDeltaMap = {}
   /** 折算基准，恒为常量表：条目自己的每档值已在下面折进 counts */
   const valuePerCount: Record<keyof AffixCounts, number> = { ...AFFIX_VALUE_PER_COUNT }
 
@@ -1552,7 +1658,7 @@ export function entryRollsToEvalInput(
       }
       continue
     }
-    const field = panelFieldOfTarget(entry.target)
+    const field = deltaFieldOfTarget(entry.target)
     if (!field) continue
     const rolls = rollsByEntryId[entry.id] ?? 0
     if (rolls <= 0) continue
@@ -1626,10 +1732,10 @@ function isPercentOfBaseField(
  */
 export function applyPanelDeltas(
   panel: PanelStats,
-  deltas: AffixPanelDeltaDraft,
+  deltas: AffixPanelDeltaDraft | AffixDeltaMap,
   bases: AffixPanelDeltaBases,
 ): PanelStats {
-  const keys = Object.keys(deltas) as AffixPanelDeltaField[]
+  const keys = (Object.keys(deltas) as string[]).filter(isPanelDeltaField)
   if (!keys.length) return panel
   const next = { ...panel }
   for (const key of keys) {

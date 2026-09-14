@@ -1,10 +1,13 @@
 import type { AffixCounts } from '@/types/calculatorPanel'
 import { rollsToEvalInput } from '@/utils/affixBenefitAnalysis'
-import { affixValuePerCountFromEntries, type AffixLibraryEntry } from '@/utils/affixLibrary'
+import {
+  affixValuePerCountFromEntries,
+  type AffixDeltaMap,
+  type AffixLibraryEntry,
+} from '@/utils/affixLibrary'
 import {
   evaluateAffixCountsWithCacheInfo,
   yieldToMain,
-  type AffixPanelDeltaMap,
   type AffixValuePerCount,
   type OptimalEvalContext,
 } from '@/utils/optimalAffixAlloc'
@@ -85,7 +88,7 @@ export interface AffixOptimizerResult {
   /** 最优分配：条目 id → 档数 */
   rollsByEntryId: Record<string, number>
   counts: AffixCounts
-  panelDeltas: AffixPanelDeltaMap | undefined
+  panelDeltas: AffixDeltaMap | undefined
   /**
    * 本次求解用的「每档值」表（由参与求解的条目决定）。
    *
@@ -169,10 +172,10 @@ function entryRolls(
   entries: AffixLibraryEntry[],
   rollsByEntryId: Record<string, number>,
   baseCounts: AffixCounts,
-  basePanelDeltas?: AffixPanelDeltaMap,
+  basePanelDeltas?: AffixDeltaMap,
 ): {
   counts: AffixCounts
-  panelDeltas: AffixPanelDeltaMap | undefined
+  panelDeltas: AffixDeltaMap | undefined
   valuePerCount: AffixValuePerCount
 } {
   return rollsToEvalInput(entries, rollsByEntryId, baseCounts, basePanelDeltas)
@@ -282,7 +285,7 @@ export function resolveAffixOptimizerBudget(
 type SolveState = {
   total: number
   counts: AffixCounts
-  panelDeltas: AffixPanelDeltaMap | undefined
+  panelDeltas: AffixDeltaMap | undefined
 }
 
 interface SearchOutcome {

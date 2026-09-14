@@ -134,3 +134,43 @@ test('service：排序值重复在触库之前抛错，不写库', async () => {
     /分组排序值重复/,
   )
 })
+
+/**
+ * 第三族落点 `gain:`（增益字段，2026-09-13 步骤 58）。
+ *
+ * 判读方式：故意让排序值重复 —— 若 `gain:` 被前缀闸门拦下，报错会是「目标须以…开头」；
+ * 若它通过校验，报错才是「与第 N 条重复」。**错误文案就是闸门位置的证据**，
+ * 且两条用例都在触库之前返回，不碰数据库。
+ */
+test('控制器：gain: 目标通过前缀校验（不被「目标须以…开头」拦住）', async () => {
+  const res = createRes()
+  await replaceAffixPresetHandler(
+    {
+      body: {
+        scheme: '测试方案',
+        entries: [entry('a', 5, { target: 'gain:inCombatAtkPercent' }), entry('b', 5)],
+        groups: [],
+      },
+    },
+    res,
+  )
+  assert.equal(res.statusCode, 400)
+  assert.doesNotMatch(res.body.message, /目标须以/)
+  assert.match(res.body.message, /与第 1 条重复/)
+})
+
+test('控制器：不属于三族命名空间的目标仍被拦下', async () => {
+  const res = createRes()
+  await replaceAffixPresetHandler(
+    {
+      body: {
+        scheme: '测试方案',
+        entries: [entry('a', 5, { target: 'bogus:whatever' })],
+        groups: [],
+      },
+    },
+    res,
+  )
+  assert.equal(res.statusCode, 400)
+  assert.match(res.body.message, /目标须以/)
+})

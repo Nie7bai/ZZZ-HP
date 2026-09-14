@@ -17,8 +17,11 @@ import { fail, failInternal, success } from '../utils/response.js'
  * 写入口四个：整份替换一套方案、新建方案、重命名方案、删除方案。
  * 「改一条」这种粒度在管理页是**草稿 + 保存**（保存＝整份替换），所以没有逐条写接口 ——
  * 留着就是死接口，也会让「保存」出现半份中间状态。
+ *
+ * `gain:`（增益字段，2026-09-13 步骤 58）是第三族落点：词条贡献按**增益口径**在转模之后
+ * 施加（因而能被转模的 `panelSource: 'final'` 侧读到）。这里必须放行，否则管理页存不进去。
  */
-const TARGET_PREFIXES = ['stat:', 'panel:']
+const TARGET_PREFIXES = ['stat:', 'panel:', 'gain:']
 
 function normalizeEntryPayload(body = {}) {
   const id = typeof body.id === 'string' ? body.id.trim() : ''

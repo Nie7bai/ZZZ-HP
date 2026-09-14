@@ -16,11 +16,14 @@ import {
   type AffixPresetSchemeDoc,
 } from '@/api/affixPreset'
 import {
+  AFFIX_GAIN_FIELD_LABELS,
+  AFFIX_GAIN_FIELDS,
   AFFIX_PANEL_DELTA_FIELD_LABELS,
   AFFIX_SUBSTAT_KEY_LABELS,
   DEFAULT_AFFIX_GROUP_CAP,
   affixPerRollUnit,
   affixTargetLabel,
+  gainTarget,
   isAffixLibraryEntryTarget,
   panelTarget,
   statTarget,
@@ -89,7 +92,7 @@ const MAIN_SLOT_FIELD_ALIASES: Record<string, string> = {
   defPercent: 'externalDefPercent',
 }
 
-/** 目标字段的候选清单：按落点分两组给下拉用（管理员多数时候只需要从里面挑） */
+/** 目标字段的候选清单：按落点分三组给下拉用（管理员多数时候只需要从里面挑） */
 const TARGET_OPTION_GROUPS = [
   {
     label: '词条计数桶（stat:）',
@@ -103,6 +106,19 @@ const TARGET_OPTION_GROUPS = [
     options: (Object.keys(AFFIX_PANEL_DELTA_FIELD_LABELS) as AffixPanelDeltaField[]).map(
       (field) => ({ id: panelTarget(field), label: AFFIX_PANEL_DELTA_FIELD_LABELS[field] }),
     ),
+  },
+  /**
+   * 增益字段（`gain:`）：与增益编辑器同一套词表。
+   *
+   * 它按**增益口径**在转模之后施加（因而落在局内面板上），是本系统「任何增益都可分析」
+   * 的落点 —— 局内攻击力这类字段以前在词条库里选不到，就是因为缺这一族。
+   */
+  {
+    label: '增益字段（gain:）',
+    options: AFFIX_GAIN_FIELDS.map((field) => ({
+      id: gainTarget(field),
+      label: AFFIX_GAIN_FIELD_LABELS[field] ?? field,
+    })),
   },
 ]
 

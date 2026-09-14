@@ -29,7 +29,13 @@ import {
   type AffixExternalFixedParts,
   type AffixPanelCalcInput,
 } from '@/utils/affixPanelCalc'
-import { applyPanelDeltas, type AffixPanelDeltaField } from '@/utils/affixLibrary'
+import {
+  applyPanelDeltas,
+  gainDeltasOf,
+  type AffixDeltaMap,
+  type AffixGainField,
+  type AffixPanelDeltaField,
+} from '@/utils/affixLibrary'
 import {
   createEmptyAgentBasePanel,
   createEmptyBuffStatModifiers,
@@ -1402,7 +1408,7 @@ const affixSweepCache = new Map<
 export function evaluateAffixCountsForSweep(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
-  panelDeltas?: AffixPanelDeltaMap,
+  panelDeltas?: AffixDeltaMap,
 ): { grandTotal: number; eventLines: OptimalEventDamageLine[] } {
   resetAffixEvalCacheIfNeeded(ctx)
   const cacheKey = affixEvalCacheKey(affixCounts, panelDeltas, ctx.valuePerCount)
@@ -1489,8 +1495,10 @@ let affixEvalCacheCtxSig = ''
  */
 let affixEvalCacheCtxKey = ''
 let affixEvalCacheCtxSeq = 0
-/** 自定义词条（panelField 类）叠加到局外面板的增量表 */
-export type AffixPanelDeltaMap = Partial<Record<AffixPanelDeltaField, number>>
+/**
+ * 增量表类型已挪到 `affixLibrary.ts`（`AffixDeltaMap`）：它现在同时装
+ * **局外面板字段**与**增益字段**两族 —— 施加阶段由字段决定（见步骤 58）。
+ */
 const affixEvalCache = new Map<
   string,
   {
@@ -1524,7 +1532,7 @@ function isDefaultValuePerCount(valuePerCount: AffixValuePerCount): boolean {
 
 function affixCountsCacheKey(
   affixCounts: AffixCounts,
-  panelDeltas?: AffixPanelDeltaMap,
+  panelDeltas?: AffixDeltaMap,
   valuePerCount?: AffixValuePerCount,
 ): string {
   // 必须覆盖 AffixCounts 的全部字段：锋御走 defFlat/defPercent，
@@ -1569,7 +1577,7 @@ function affixCountsCacheKey(
  */
 function affixEvalCacheKey(
   affixCounts: AffixCounts,
-  panelDeltas?: AffixPanelDeltaMap,
+  panelDeltas?: AffixDeltaMap,
   valuePerCount?: AffixValuePerCount,
 ): string {
   return `${affixEvalCacheCtxKey}|${affixCountsCacheKey(affixCounts, panelDeltas, valuePerCount)}`
@@ -1792,7 +1800,7 @@ function getAffixExternalFixedParts(ctx: OptimalEvalContext): AffixExternalFixed
 function computeExternalForEval(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
-  panelDeltas?: AffixPanelDeltaMap,
+  panelDeltas?: AffixDeltaMap,
   valuePerCount?: AffixValuePerCount,
 ): PanelStats {
   // 显式参数优先（求解器 / 收益表按自己的条目表算），否则用上下文里那份 ——
@@ -1824,10 +1832,41 @@ function computeExternalForEval(
   })
 }
 
+/**
+ * 把 `gain:` 条目的增量合成「给主 C 的增益」，并入 `ctx.extraGains`。
+ *
+ * 为什么走增益这条路（而不是直写局内面板）：条目只表达「给哪个属性加多少」，
+ * **施加阶段由字段决定**（`affix-calc-manual.md` §5.1 的口径）。
+ * 增益字段按增益口径在**转模之后**施加 —— 它因而出现在局内面板上，
+ * 转模里 `panelSource: 'final'` 的消费者能读到它：**没有任何旁路**。
+ *
+ * 目标槽位固定为**主 C**（`applySlot` + `applyTarget: 'self'`）：词条是主 C 的驱动盘，
+ * 队友的事件与面板不该被它改变（`extraGainAppliesToSlot` 负责过滤）。
+ */
+function withAffixGainMods(
+  ctx: OptimalEvalContext,
+  panelDeltas?: AffixDeltaMap,
+): OptimalEvalContext {
+  const gains = gainDeltasOf(panelDeltas)
+  if (!gains) return ctx
+  const applySlot = ctx.panelContext.mainSlotIndex
+  const synthetic: ExtraBuffGain[] = (Object.keys(gains) as AffixGainField[]).map((field) => ({
+    id: `affix-gain:${field}`,
+    name: '词条增益',
+    stat: field,
+    value: gains[field] ?? 0,
+    applySituation: 'global',
+    scope: 'general',
+    applyTarget: 'self',
+    applySlot,
+  }))
+  return { ...ctx, extraGains: [...(ctx.extraGains ?? []), ...synthetic] }
+}
+
 function evaluateAffixCountsUncached(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
-  panelDeltas?: AffixPanelDeltaMap,
+  panelDeltas?: AffixDeltaMap,
   valuePerCount?: AffixValuePerCount,
 ): {
   finalPanel: PanelStats
@@ -1839,17 +1878,19 @@ function evaluateAffixCountsUncached(
   eventLines: OptimalEventDamageLine[]
 } {
   const external = computeExternalForEval(ctx, affixCounts, panelDeltas, valuePerCount)
+  // 增益字段（`gain:`）不进局外面板，合成增益后在**面板计算**里施加（见函数注释）
+  const evalCtx = withAffixGainMods(ctx, panelDeltas)
 
   if (ctx.hits?.length) {
     const { grandTotal, eventLines, firstResult, firstBreakdown } = computeEventDamageLines(
-      ctx,
+      evalCtx,
       external,
     )
     const breakdown =
       firstBreakdown ??
       computeFinalPanel(external, {
-        ...buildPanelContextForSlot(ctx, ctx.panelContext.mainSlotIndex, external, external),
-        skillContext: ctx.panelContext.skillContext ?? undefined,
+        ...buildPanelContextForSlot(evalCtx, evalCtx.panelContext.mainSlotIndex, external, external),
+        skillContext: evalCtx.panelContext.skillContext ?? undefined,
       })
     const piercePower = computePiercePower(
       breakdown.finalPanel.hp,
@@ -1899,8 +1940,8 @@ function evaluateAffixCountsUncached(
   }
 
   const breakdown = computeFinalPanel(external, {
-    ...buildPanelContextForSlot(ctx, ctx.panelContext.mainSlotIndex, external, external),
-    skillContext: ctx.panelContext.skillContext ?? undefined,
+    ...buildPanelContextForSlot(evalCtx, evalCtx.panelContext.mainSlotIndex, external, external),
+    skillContext: evalCtx.panelContext.skillContext ?? undefined,
   })
 
   const piercePower = computePiercePower(
@@ -1973,7 +2014,7 @@ export interface AffixCountsEvalResult {
 export function evaluateAffixCountsWithCacheInfo(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
-  panelDeltas?: AffixPanelDeltaMap,
+  panelDeltas?: AffixDeltaMap,
   valuePerCount?: AffixValuePerCount,
 ): { value: AffixCountsEvalResult; cacheHit: boolean } {
   resetAffixEvalCacheIfNeeded(ctx)
@@ -1994,7 +2035,7 @@ export function evaluateAffixCountsWithCacheInfo(
 export function evaluateAffixCounts(
   ctx: OptimalEvalContext,
   affixCounts: AffixCounts,
-  panelDeltas?: AffixPanelDeltaMap,
+  panelDeltas?: AffixDeltaMap,
   valuePerCount?: AffixValuePerCount,
 ): AffixCountsEvalResult {
   return evaluateAffixCountsWithCacheInfo(ctx, affixCounts, panelDeltas, valuePerCount).value
