@@ -16,6 +16,7 @@ import {
 import {
   applyBuffModsToPanel,
   collectAllBuffEffects,
+  collectExtraGainEffects,
   collectPanelBuffMods,
   computeFinalPanel,
   resolveBaseAnomalyControl,
@@ -53,7 +54,10 @@ export function runPanelPipeline(
     baseEnergyRegen: resolveBaseEnergyRegen(preCtx),
   })
   const finalBreakdown = computeFinalPanel(externalPanel, ctx, options)
-  const plan = compileCollectedBuffs(collectAllBuffEffects(ctx))
+  const plan = compileCollectedBuffs([
+    ...collectAllBuffEffects(ctx),
+    ...collectExtraGainEffects(ctx),
+  ])
   return { externalPanel, preConvertPanel, finalBreakdown, plan }
 }
 
@@ -152,10 +156,13 @@ export function applyAllocatedAffixEffects(
       name: inst.displayName ?? '词条增益',
       stat: inst.stat as BuffStatKey,
       value: inst.magnitude,
-      applySituation: 'global',
-      scope: 'general',
+      applySituation: inst.conditions.applySituation ?? 'global',
+      scope: inst.conditions.skillTargets?.length ? 'skill' : 'general',
       applyTarget: 'self',
       applySlot,
+      skillCategory: inst.conditions.skillTargets?.[0]?.category,
+      skillSubcategoryId: inst.conditions.skillTargets?.[0]?.subcategoryId ?? null,
+      appliesToAnomaly: inst.conditions.appliesToAnomaly,
     })
   }
 

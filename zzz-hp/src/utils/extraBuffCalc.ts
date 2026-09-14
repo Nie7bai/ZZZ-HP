@@ -10,8 +10,10 @@ import type {
 import type { ExtraBuffGain } from '@/components/calculator/ExtraBuffGainEditor.vue'
 import {
   countTeamProfession,
+  createEmptyBuffEffect,
   effectMatchesContext,
   effectMatchesTeamProfessionGate,
+  resolveEffectsToMods,
 } from '@/utils/buffEffect'
 import { createEmptyBuffStatModifiers, mergeBuffStatModifiers } from '@/utils/calculatorUi'
 import { teamSlotDisplayLabel } from '@/utils/teamSlotLabel'
@@ -70,7 +72,7 @@ export function extraGainApplySlotLabel(
 
 export function extraGainToEffect(gain: ExtraBuffGain): BuffEffect {
   const applySlot = resolveExtraGainApplySlot(gain)
-  return {
+  return createEmptyBuffEffect({
     id: gain.id,
     scope: gain.scope ?? 'general',
     applyTarget: applySlot === 'team' ? 'team' : 'self',
@@ -86,7 +88,8 @@ export function extraGainToEffect(gain: ExtraBuffGain): BuffEffect {
     kind: 'fixed',
     stat: gain.stat,
     value: gain.value,
-  }
+    enabledDefault: true,
+  })
 }
 
 export function extraGainMatchesEvent(
@@ -131,19 +134,24 @@ export function resolveExtraGainValue(
   return gain.value
 }
 
-export function mergeExtraModsForEvent(
+export type ExtraGainMergeOptions = {
+  /** 当前正在汇总面板的槽位 */
+  slotIndex: number
+  /** 当前正在汇总面板的 agentId */
+  slotAgentId: string
+  staggerPhase: StaggerPhase
+  resolveAgentProfession?: (agentId: string) => string | undefined
+  teamSlots?: Array<{ agentId?: string | null }>
+  agents?: Array<{ id: string; profession?: string | null; name?: string }>
+}
+
+/**
+ * 旧摊平：直接写 BuffStatModifiers。阶段 6 双跑对照用，生产走 `mergeExtraModsForEvent`。
+ */
+export function mergeExtraModsForEventDirect(
   gains: ExtraBuffGain[],
   skillCtx: SkillCalcContext,
-  options: {
-    /** 当前正在汇总面板的槽位 */
-    slotIndex: number
-    /** 当前正在汇总面板的 agentId */
-    slotAgentId: string
-    staggerPhase: StaggerPhase
-    resolveAgentProfession?: (agentId: string) => string | undefined
-    teamSlots?: Array<{ agentId?: string | null }>
-    agents?: Array<{ id: string; profession?: string | null; name?: string }>
-  },
+  options: ExtraGainMergeOptions,
 ): BuffStatModifiers {
   let total = createEmptyBuffStatModifiers()
   for (const gain of gains) {
@@ -164,6 +172,49 @@ export function mergeExtraModsForEvent(
     total = mergeBuffStatModifiers(total, next)
   }
   return total
+}
+
+/**
+ * 额外增益走 BuffEffect 适配器再 `resolveEffectsToMods`。
+ *
+ * 勾选表强制全开：角色 Buff 的 `isEffectEnabled` 会把「有队内职业人数条件、未进勾选」
+ * 默认关掉；额外增益没有勾选 UI，不能吃那条规则。
+ */
+export function mergeExtraModsViaEffects(
+  gains: ExtraBuffGain[],
+  skillCtx: SkillCalcContext,
+  options: ExtraGainMergeOptions,
+): BuffStatModifiers {
+  const effects: BuffEffect[] = []
+  for (const gain of gains) {
+    const situation: BuffApplySituation = gain.applySituation ?? 'global'
+    if (situation === 'stagger' && options.staggerPhase !== 'stagger') continue
+    if (situation === 'non_stagger' && options.staggerPhase !== 'normal') continue
+    if (!extraGainAppliesToSlot(gain, options.slotIndex)) continue
+    effects.push(extraGainToEffect(gain))
+  }
+  if (!effects.length) return createEmptyBuffStatModifiers()
+  const enabledIds = Object.fromEntries(effects.map((effect) => [effect.id, true]))
+  const teamSlots = options.teamSlots
+  const agents = options.agents
+  return resolveEffectsToMods(effects, {
+    applyTargets: ['self', 'team'],
+    ctx: skillCtx,
+    selection: { enabledIds },
+    beneficiaryProfession: options.resolveAgentProfession?.(options.slotAgentId) ?? null,
+    resolveTeamProfessionCount:
+      teamSlots && agents
+        ? (profession) => countTeamProfession(teamSlots, agents, profession)
+        : undefined,
+  })
+}
+
+export function mergeExtraModsForEvent(
+  gains: ExtraBuffGain[],
+  skillCtx: SkillCalcContext,
+  options: ExtraGainMergeOptions,
+): BuffStatModifiers {
+  return mergeExtraModsViaEffects(gains, skillCtx, options)
 }
 
 export function scopeLabel(scope: BuffScope | undefined): string {

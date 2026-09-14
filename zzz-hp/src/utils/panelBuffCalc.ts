@@ -42,6 +42,8 @@ import {
 import type { EnvironmentBuffEntry } from '@/utils/environmentBuffCalc'
 import { resolveAssetUrl } from '@/utils/gameData'
 import {
+  extraGainAppliesToSlot,
+  extraGainToEffect,
   mergeExtraModsForEvent,
   type ExtraBuffGain,
 } from '@/utils/extraBuffCalc'
@@ -1516,6 +1518,31 @@ export function collectAllBuffEffects(ctx: PanelCalcContext): CollectedEffect[] 
   return collected
 }
 
+/**
+ * 额外增益单独收集，不并入 `collectAllBuffEffects`。
+ * 勾选器 / 异放倍率收集走后者；若 extra 混进去，异放会与 extraMods 路径双算。
+ */
+export function collectExtraGainEffects(ctx: PanelCalcContext): CollectedEffect[] {
+  const collected: CollectedEffect[] = []
+  const mainIndex = ctx.mainSlotIndex
+  if (!ctx.extraGains?.length) return collected
+  for (const gain of ctx.extraGains) {
+    if (!extraGainAppliesToSlot(gain, mainIndex)) continue
+    const effect = extraGainToEffect(gain)
+    collected.push({
+      effect,
+      sourceKey: `extra-${gain.id}`,
+      sourceLabel: '额外 Buff',
+      providerName: gain.name || '额外 Buff',
+      providerAvatar: null,
+      group: '额外 Buff',
+      blockId: gain.id,
+      blockName: gain.name || '额外 Buff',
+    })
+  }
+  return collected
+}
+
 function mergeModsFromSources(sources: BuffModSource[]): BuffStatModifiers {
   let total = createEmptyBuffStatModifiers()
   for (const source of sources) {
@@ -2114,11 +2141,14 @@ function collectPanelBuffModSourcesUncached(ctx: PanelCalcContext): BuffModSourc
   }
 
   if (ctx.extraGains?.length || ctx.extraMods) {
+    const extraEffects = (ctx.extraGains ?? [])
+      .filter((gain) => extraGainAppliesToSlot(gain, ctx.mainSlotIndex))
+      .map((gain) => extraGainToEffect(gain))
     sources.push({
       key: 'extra',
       label: '额外 Buff',
       mods: resolveContextExtraMods(ctx),
-      effects: [],
+      effects: extraEffects,
     })
   }
 
