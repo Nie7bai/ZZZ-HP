@@ -208,10 +208,10 @@ const DEFAULT_MAX_TOTAL_ROLLS = 46
 
 /**
  * 默认计算量预算。
- * 校准依据：旧版默认 `maxEngineCalls = 4000`，典型场景 8 命中（单次计价 9），
- * 即 4000 × 9 = 36000。取该值以保持「典型场景总工作量不变」。
+ * 原先按旧版 `maxEngineCalls = 4000` × 典型 8 命中计价 9 = 36000，
+ * 长流程会在词条档数用尽前先撞上算力上限。auto 可中止，提到 20 万。
  */
-const DEFAULT_WORK_BUDGET = 36000
+const DEFAULT_WORK_BUDGET = 200000
 
 /** 单次评估的计价 = 1 + 命中数（实测 0/3/8/15/30 命中 ≈ 1 : 3.8 : 8.9 : 16 : 29.6） */
 function workPricePerEval(ctx: OptimalEvalContext): number {
@@ -220,7 +220,7 @@ function workPricePerEval(ctx: OptimalEvalContext): number {
 
 /**
  * 单路搜索的计算量上限。manual 不设上限。
- * 穿透专路与普通路共用调用方这一份预算，不另开第二份默认 36000。
+ * 穿透专路与普通路共用调用方这一份预算，不另开第二份默认额度。
  */
 function resolveSearchWorkBudget(input: AffixOptimizerInput): number | null {
   const widthMode: AffixCandidateWidthMode = input.candidateWidthMode ?? 'auto'
