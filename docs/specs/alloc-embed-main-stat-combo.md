@@ -26,3 +26,6 @@
 - `remapImportedExternalPanelForMainCombo` + 词条分析页 `evaluateMainStatComboDamage` 有面板时走 remap；扫掠仍清基准。
 - 词条分析页组合试算伤差一律用 `grandTotal`（不绑扫掠柱图事件勾选）；避免未跑扫掠时出现「未选择统计事件 / 0→0」。
 - 证据：`npx vite-node scripts/test-remap-imported-panel-main-combo.mjs` → ok；`npm run type-check` → ok（2026-09-14）。
+- 后续（2026-09-15）：词条分析页与扫掠柱图的组合试算状态（草稿 / 排行 / 排行筛选 / 2 件套选择）拆分为两套独立实例
+  （`allocationMainCombo` / `sweepMainCombo`），模板沿用旧变量名、由按 `sectionMode` 代理的 computed 转发；
+  切换模式不再清空排行。见 `dev-docs/sweep-event-picker-and-main-combo-independence.md`。

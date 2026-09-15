@@ -12,6 +12,7 @@ import { storeToRefs } from 'pinia'
 import { type ExtraBuffGain } from '@/components/calculator/ExtraBuffGainEditor.vue'
 import BenefitCurvePanel from '@/components/calculator/BenefitCurvePanel.vue'
 import OptimalDamageBarChart from '@/components/calculator/OptimalDamageBarChart.vue'
+import IkModalShell from '@/components/common/IkModalShell.vue'
 import AffixBenefitTable from '@/components/calculator/AffixBenefitTable.vue'
 import AffixAllocationResult from '@/components/calculator/AffixAllocationResult.vue'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
@@ -643,7 +644,6 @@ onBeforeUnmount(() => {
 })
 
 const showEventAffixImpact = ref(false)
-const showCombinedMainStatRankings = ref(false)
 const eventAffixImpactLoading = ref(false)
 const combinedMainStatRankingsLoading = ref(false)
 
@@ -727,6 +727,14 @@ const chartEventSelectionSummary = computed(() => {
   }
   return selected.map((item) => `${item.kindLabel} ${item.label}`).join('；')
 })
+
+/**
+ * 统计事件小窗：事件过多时内联 chip 列表会把页面拉得很长，
+ * 超过 `EVENT_INLINE_LIMIT` 收进弹窗管理，页面只留入口按钮与摘要。
+ */
+const EVENT_INLINE_LIMIT = 8
+const chartEventPickerOpen = ref(false)
+const chartEventOverflow = computed(() => chartEventOptions.value.length > EVENT_INLINE_LIMIT)
 
 /** 柱状图参与统计的事件；默认全选 = 总伤害 */
 const selectedChartEventIds = ref<string[]>([])
@@ -1368,16 +1376,146 @@ const filteredEventAffixImpact = computed(() => {
   return eventAffixImpact.value.filter((row) => ids.has(row.eventId))
 })
 
-const rankingSlot4Ids = ref<DriveDiscSlot4StatId[]>(
-  DRIVE_DISC_SLOT_4_OPTIONS.map((item) => item.id),
+/**
+ * 主属性组合试算状态：词条分析页（`allocation`）与扫掠柱图（`sweep`）各一份，互不共用。
+ *
+ * 此前两侧共用一份草稿 / 排行 / 筛选，切模式会把一侧的选择带跑到另一侧；
+ * 用户口径 2026-09-15「两个是独立的，不要共用数据」。
+ * 模板仍引用旧变量名（`combinedMainStatDraft` 等），由下方代理 computed 转发到当前模式实例，
+ * 因此模板两套 UI 各自操作的是「当前模式」那份状态。
+ */
+type MainComboRankingRow = {
+  slot4: string
+  slot5: string
+  slot6: string
+  summaryLabel: string
+  damageDelta: number
+  percentDelta: number
+}
+
+interface MainComboState {
+  /** 试算草稿（4/5/6 主属性） */
+  draft: AffixDriveDiscMainStats
+  /** 试算草稿的 2 件套 */
+  twoPieceId: string
+  /** 排行候选（4/5/6 各槽位允许的主属性） */
+  rankingSlot4Ids: DriveDiscSlot4StatId[]
+  rankingSlot5Ids: DriveDiscSlot5StatId[]
+  rankingSlot6Ids: DriveDiscSlot6StatId[]
+  /** 排行试算使用的 2 件套（单选） */
+  rankingTwoPieceId: string
+  rankings: MainComboRankingRow[]
+  showRankings: boolean
+  rankingsExpanded: boolean
+  /** 2 件套选择弹窗开合 */
+  twoPiecePickerOpen: boolean
+  rankingTwoPiecePickerOpen: boolean
+}
+
+function createMainComboState(): MainComboState {
+  return {
+    draft: createDefaultAffixDriveDiscMainStats(),
+    twoPieceId: 'none',
+    rankingSlot4Ids: DRIVE_DISC_SLOT_4_OPTIONS.map((item) => item.id),
+    rankingSlot5Ids: DRIVE_DISC_SLOT_5_OPTIONS.map((item) => item.id),
+    rankingSlot6Ids: DRIVE_DISC_SLOT_6_OPTIONS.map((item) => item.id),
+    rankingTwoPieceId: 'none',
+    rankings: [],
+    showRankings: false,
+    rankingsExpanded: false,
+    twoPiecePickerOpen: false,
+    rankingTwoPiecePickerOpen: false,
+  }
+}
+
+const allocationMainCombo = reactive<MainComboState>(createMainComboState())
+const sweepMainCombo = reactive<MainComboState>(createMainComboState())
+
+/**
+ * 词条分配（新功能，主）与手动扫掠柱图（旧功能，次要）二选一。
+ * 两者各有独立的输入与子页签（收益曲线 / 计算过程）。
+ */
+const sectionMode = ref<'allocation' | 'sweep'>('allocation')
+
+/** 当前模式对应的组合试算状态实例 */
+const mainCombo = computed<MainComboState>(() =>
+  sectionMode.value === 'allocation' ? allocationMainCombo : sweepMainCombo,
 )
-const rankingSlot5Ids = ref<DriveDiscSlot5StatId[]>(
-  DRIVE_DISC_SLOT_5_OPTIONS.map((item) => item.id),
-)
-const rankingSlot6Ids = ref<DriveDiscSlot6StatId[]>(
-  DRIVE_DISC_SLOT_6_OPTIONS.map((item) => item.id),
-)
-const combinedRankingsExpanded = ref(false)
+
+/** 以下代理 computed：让模板 / 旧函数继续用既有名字读写「当前模式」那份状态 */
+
+const combinedMainStatDraft = computed<AffixDriveDiscMainStats>(() => mainCombo.value.draft)
+
+const combinedMainStatDraftTwoPieceId = computed<string>({
+  get: () => mainCombo.value.twoPieceId,
+  set: (value) => {
+    mainCombo.value.twoPieceId = value
+  },
+})
+
+const combinedMainStatRankings = computed<MainComboRankingRow[]>({
+  get: () => mainCombo.value.rankings,
+  set: (value) => {
+    mainCombo.value.rankings = value
+  },
+})
+
+const showCombinedMainStatRankings = computed<boolean>({
+  get: () => mainCombo.value.showRankings,
+  set: (value) => {
+    mainCombo.value.showRankings = value
+  },
+})
+
+const rankingSlot4Ids = computed<DriveDiscSlot4StatId[]>({
+  get: () => mainCombo.value.rankingSlot4Ids,
+  set: (value) => {
+    mainCombo.value.rankingSlot4Ids = value
+  },
+})
+
+const rankingSlot5Ids = computed<DriveDiscSlot5StatId[]>({
+  get: () => mainCombo.value.rankingSlot5Ids,
+  set: (value) => {
+    mainCombo.value.rankingSlot5Ids = value
+  },
+})
+
+const rankingSlot6Ids = computed<DriveDiscSlot6StatId[]>({
+  get: () => mainCombo.value.rankingSlot6Ids,
+  set: (value) => {
+    mainCombo.value.rankingSlot6Ids = value
+  },
+})
+
+const combinedRankingsExpanded = computed<boolean>({
+  get: () => mainCombo.value.rankingsExpanded,
+  set: (value) => {
+    mainCombo.value.rankingsExpanded = value
+  },
+})
+
+/** 限定组合排行时使用的 2 件套（单选，替换当前 2 件套数值参与计算） */
+const rankingTwoPieceId = computed<string>({
+  get: () => mainCombo.value.rankingTwoPieceId,
+  set: (value) => {
+    mainCombo.value.rankingTwoPieceId = value
+  },
+})
+
+const combinedTwoPiecePickerOpen = computed<boolean>({
+  get: () => mainCombo.value.twoPiecePickerOpen,
+  set: (value) => {
+    mainCombo.value.twoPiecePickerOpen = value
+  },
+})
+
+const rankingTwoPiecePickerOpen = computed<boolean>({
+  get: () => mainCombo.value.rankingTwoPiecePickerOpen,
+  set: (value) => {
+    mainCombo.value.rankingTwoPiecePickerOpen = value
+  },
+})
 
 const rankingSlot4Options = computed(() => {
   const allowed = new Set(rankingSlot4Ids.value)
@@ -1410,15 +1548,12 @@ const rankingComboCount = computed(() => {
 
 const currentTwoPieceId = computed(() => mainSlot.value.twoPieceDriveDiscId)
 
-/** 限定组合排行时使用的 2 件套（单选，替换当前 2 件套数值参与计算） */
-const rankingTwoPieceId = ref('none')
-const combinedTwoPiecePickerOpen = ref(false)
-const rankingTwoPiecePickerOpen = ref(false)
-
 watch(
   currentTwoPieceId,
   (id) => {
-    rankingTwoPieceId.value = id
+    // 两个模式的排行 2 件套都跟随「当前 2 件套」初始化/重置；各自修改互不影响
+    allocationMainCombo.rankingTwoPieceId = id
+    sweepMainCombo.rankingTwoPieceId = id
   },
   { immediate: true },
 )
@@ -1434,22 +1569,22 @@ function resolveTwoPieceAvatar(id: string) {
 }
 
 function selectCombinedTwoPiece(id: string) {
-  combinedMainStatDraftTwoPieceId.value = id
+  mainCombo.value.twoPieceId = id
 }
 
 function selectRankingTwoPiece(id: string) {
-  rankingTwoPieceId.value = id
+  mainCombo.value.rankingTwoPieceId = id
 }
 
 function isRankingSlotOptionSelected(slot: 4 | 5 | 6, id: string) {
-  if (slot === 4) return rankingSlot4Ids.value.includes(id as DriveDiscSlot4StatId)
-  if (slot === 5) return rankingSlot5Ids.value.includes(id as DriveDiscSlot5StatId)
-  return rankingSlot6Ids.value.includes(id as DriveDiscSlot6StatId)
+  if (slot === 4) return mainCombo.value.rankingSlot4Ids.includes(id as DriveDiscSlot4StatId)
+  if (slot === 5) return mainCombo.value.rankingSlot5Ids.includes(id as DriveDiscSlot5StatId)
+  return mainCombo.value.rankingSlot6Ids.includes(id as DriveDiscSlot6StatId)
 }
 
 function toggleRankingSlotOption(slot: 4 | 5 | 6, id: string) {
   if (slot === 4) {
-    const next = new Set(rankingSlot4Ids.value)
+    const next = new Set(mainCombo.value.rankingSlot4Ids)
     const statId = id as DriveDiscSlot4StatId
     if (next.has(statId)) {
       if (next.size <= 1) return
@@ -1457,11 +1592,11 @@ function toggleRankingSlotOption(slot: 4 | 5 | 6, id: string) {
     } else {
       next.add(statId)
     }
-    rankingSlot4Ids.value = [...next]
+    mainCombo.value.rankingSlot4Ids = [...next]
     return
   }
   if (slot === 5) {
-    const next = new Set(rankingSlot5Ids.value)
+    const next = new Set(mainCombo.value.rankingSlot5Ids)
     const statId = id as DriveDiscSlot5StatId
     if (next.has(statId)) {
       if (next.size <= 1) return
@@ -1469,10 +1604,10 @@ function toggleRankingSlotOption(slot: 4 | 5 | 6, id: string) {
     } else {
       next.add(statId)
     }
-    rankingSlot5Ids.value = [...next]
+    mainCombo.value.rankingSlot5Ids = [...next]
     return
   }
-  const next = new Set(rankingSlot6Ids.value)
+  const next = new Set(mainCombo.value.rankingSlot6Ids)
   const statId = id as DriveDiscSlot6StatId
   if (next.has(statId)) {
     if (next.size <= 1) return
@@ -1480,13 +1615,13 @@ function toggleRankingSlotOption(slot: 4 | 5 | 6, id: string) {
   } else {
     next.add(statId)
   }
-  rankingSlot6Ids.value = [...next]
+  mainCombo.value.rankingSlot6Ids = [...next]
 }
 
 function selectAllRankingSlotOptions(slot: 4 | 5 | 6) {
-  if (slot === 4) rankingSlot4Ids.value = DRIVE_DISC_SLOT_4_OPTIONS.map((item) => item.id)
-  else if (slot === 5) rankingSlot5Ids.value = DRIVE_DISC_SLOT_5_OPTIONS.map((item) => item.id)
-  else rankingSlot6Ids.value = DRIVE_DISC_SLOT_6_OPTIONS.map((item) => item.id)
+  if (slot === 4) mainCombo.value.rankingSlot4Ids = DRIVE_DISC_SLOT_4_OPTIONS.map((item) => item.id)
+  else if (slot === 5) mainCombo.value.rankingSlot5Ids = DRIVE_DISC_SLOT_5_OPTIONS.map((item) => item.id)
+  else mainCombo.value.rankingSlot6Ids = DRIVE_DISC_SLOT_6_OPTIONS.map((item) => item.id)
 }
 
 const MAIN_STAT_SLOTS = [
@@ -1500,12 +1635,6 @@ const mainStatDiff = ref<ReturnType<typeof mainStatDiffBuilder> | null>(null)
 const showMainStatDiff = ref(false)
 const mainStatDiffLoading = ref(false)
 const benefitData = ref<ReturnType<typeof computeBenefitCurves> | null>(null)
-
-/**
- * 词条分配（新功能，主）与手动扫掠柱图（旧功能，次要）二选一。
- * 两者各有独立的输入与子页签（收益曲线 / 计算过程）。
- */
-const sectionMode = ref<'allocation' | 'sweep'>('allocation')
 
 /** 词条分配模式：输入与提交状态 */
 const affixAllocTotalRolls = ref(30)
@@ -1806,17 +1935,6 @@ watch(
   { immediate: true },
 )
 
-const combinedMainStatRankings = ref<
-  {
-    slot4: string
-    slot5: string
-    slot6: string
-    summaryLabel: string
-    damageDelta: number
-    percentDelta: number
-  }[]
->([])
-
 function mainStatDiffBuilder() {
   const counts = analysisCounts.value
   if (!counts || !analysisEval.value) return null
@@ -1972,20 +2090,20 @@ function loadCombinedMainStatRankings() {
   }
   combinedMainStatRankingsLoading.value = true
   window.setTimeout(() => {
-    combinedMainStatRankings.value = buildCombinedMainStatRankings()
-    showCombinedMainStatRankings.value = true
-    combinedRankingsExpanded.value = true
+    mainCombo.value.rankings = buildCombinedMainStatRankings()
+    mainCombo.value.showRankings = true
+    mainCombo.value.rankingsExpanded = true
     combinedMainStatRankingsLoading.value = false
   }, 0)
 }
 
 function collapseCombinedMainStatRankings() {
-  combinedRankingsExpanded.value = false
+  mainCombo.value.rankingsExpanded = false
 }
 
 function expandCombinedMainStatRankings() {
-  if (combinedMainStatRankings.value.length) {
-    combinedRankingsExpanded.value = true
+  if (mainCombo.value.rankings.length) {
+    mainCombo.value.rankingsExpanded = true
   }
 }
 
@@ -2012,8 +2130,8 @@ watch(diffWatchFingerprint, () => {
   showMainStatDiff.value = false
   mainStatDiff.value = null
   if (detailTab.value !== 'diff') {
-    showCombinedMainStatRankings.value = false
-    combinedMainStatRankings.value = []
+    mainCombo.value.showRankings = false
+    mainCombo.value.rankings = []
   }
 })
 
@@ -2057,8 +2175,7 @@ watch(
 
 watch(sectionMode, (mode) => {
   if (mode === 'allocation') scheduleAffixBenefitRecompute()
-  showCombinedMainStatRankings.value = false
-  combinedMainStatRankings.value = []
+  // 主属性组合试算已按模式拆分：切换模式不清空各自的草稿 / 排行 / 筛选
 })
 // 首屏 / 切回本页时先算一次收益表
 watch(
@@ -2071,9 +2188,6 @@ watch(
   { immediate: true },
 )
 
-const combinedMainStatDraft = reactive(createDefaultAffixDriveDiscMainStats())
-const combinedMainStatDraftTwoPieceId = ref('none')
-
 function resolveMainStatLabel(
   options: readonly { id: string; label: string }[],
   id: string,
@@ -2081,11 +2195,12 @@ function resolveMainStatLabel(
   return options.find((item) => item.id === id)?.label ?? id
 }
 
-function syncCombinedMainStatDraftFromCurrent() {
-  combinedMainStatDraft.slot4MainStat = driveDiscMainStats.value.slot4MainStat
-  combinedMainStatDraft.slot5MainStat = driveDiscMainStats.value.slot5MainStat
-  combinedMainStatDraft.slot6MainStat = driveDiscMainStats.value.slot6MainStat
-  combinedMainStatDraftTwoPieceId.value = currentTwoPieceId.value
+/** 把指定模式的草稿同步为「当前主属性 / 当前 2 件套」 */
+function syncMainComboDraftFromCurrent(state: MainComboState) {
+  state.draft.slot4MainStat = driveDiscMainStats.value.slot4MainStat
+  state.draft.slot5MainStat = driveDiscMainStats.value.slot5MainStat
+  state.draft.slot6MainStat = driveDiscMainStats.value.slot6MainStat
+  state.twoPieceId = currentTwoPieceId.value
 }
 
 watch(
@@ -2095,12 +2210,16 @@ watch(
     driveDiscMainStats.value.slot6MainStat,
     currentTwoPieceId.value,
   ],
-  syncCombinedMainStatDraftFromCurrent,
+  () => {
+    // 主属性 / 2 件套配置变化时，两个模式的草稿各自重置回「当前」
+    syncMainComboDraftFromCurrent(allocationMainCombo)
+    syncMainComboDraftFromCurrent(sweepMainCombo)
+  },
   { immediate: true },
 )
 
 function resetCombinedMainStatDraft() {
-  syncCombinedMainStatDraftFromCurrent()
+  syncMainComboDraftFromCurrent(mainCombo.value)
 }
 
 function applyCombinedMainStatRanking(row: {
@@ -2108,11 +2227,12 @@ function applyCombinedMainStatRanking(row: {
   slot5: string
   slot6: string
 }) {
-  combinedMainStatDraft.slot4MainStat = row.slot4 as typeof combinedMainStatDraft.slot4MainStat
-  combinedMainStatDraft.slot5MainStat = row.slot5 as typeof combinedMainStatDraft.slot5MainStat
-  combinedMainStatDraft.slot6MainStat = row.slot6 as typeof combinedMainStatDraft.slot6MainStat
+  const state = mainCombo.value
+  state.draft.slot4MainStat = row.slot4 as typeof state.draft.slot4MainStat
+  state.draft.slot5MainStat = row.slot5 as typeof state.draft.slot5MainStat
+  state.draft.slot6MainStat = row.slot6 as typeof state.draft.slot6MainStat
   // 排行按「限定组合」里的 2 件套试算，套用时一并同步到组合试算草稿
-  combinedMainStatDraftTwoPieceId.value = rankingTwoPieceId.value
+  state.twoPieceId = state.rankingTwoPieceId
 }
 
 function evaluateMainStatComboDamage(
@@ -2187,21 +2307,22 @@ function evaluateMainStatComboDamage(
 const combinedMainStatPreview = computed(() => {
   if (!comboBaselineReady.value || !comboBaselineCounts.value) return null
   const counts = comboBaselineCounts.value
+  const state = mainCombo.value
   const currentStats: AffixDriveDiscMainStats = {
     slot4MainStat: driveDiscMainStats.value.slot4MainStat,
     slot5MainStat: driveDiscMainStats.value.slot5MainStat,
     slot6MainStat: driveDiscMainStats.value.slot6MainStat,
   }
   const draftStats: AffixDriveDiscMainStats = {
-    slot4MainStat: combinedMainStatDraft.slot4MainStat,
-    slot5MainStat: combinedMainStatDraft.slot5MainStat,
-    slot6MainStat: combinedMainStatDraft.slot6MainStat,
+    slot4MainStat: state.draft.slot4MainStat,
+    slot5MainStat: state.draft.slot5MainStat,
+    slot6MainStat: state.draft.slot6MainStat,
   }
   const unchanged =
     draftStats.slot4MainStat === currentStats.slot4MainStat &&
     draftStats.slot5MainStat === currentStats.slot5MainStat &&
     draftStats.slot6MainStat === currentStats.slot6MainStat &&
-    combinedMainStatDraftTwoPieceId.value === currentTwoPieceId.value
+    state.twoPieceId === currentTwoPieceId.value
   // 基准必须与试算同一套 evaluate（含 hits）；不能用 analysisEval：
   // 异步扫掠后 evalSnapshot 常为空，会落到「无 hits」面板口径，事件模式下差值会错一个数量级
   const baseDamage = evaluateMainStatComboDamage(
@@ -2214,7 +2335,7 @@ const combinedMainStatPreview = computed(() => {
     : evaluateMainStatComboDamage(
         draftStats,
         counts,
-        combinedMainStatDraftTwoPieceId.value,
+        state.twoPieceId,
       )
   const damageDelta = proposedDamage - baseDamage
   return {
@@ -2970,8 +3091,13 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         <span v-if="chartEventSelectionSummary" class="chart-event-filter-summary">
           {{ chartEventSelectionSummary }}
         </span>
+        <template v-if="chartEventOverflow">
+          <button type="button" class="ghost-btn" @click="chartEventPickerOpen = true">
+            管理事件（{{ chartEventOptions.length }}）
+          </button>
+        </template>
         <button
-          v-if="selectedChartEventIds.length !== chartEventOptions.length"
+          v-else-if="selectedChartEventIds.length !== chartEventOptions.length"
           type="button"
           class="ghost-btn"
           @click="selectAllChartEvents"
@@ -2979,7 +3105,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           全选
         </button>
       </div>
-      <div class="chart-event-filter-list">
+      <div v-if="!chartEventOverflow" class="chart-event-filter-list">
         <button
           v-for="opt in chartEventOptions"
           :key="opt.id"
@@ -2999,7 +3125,54 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
       <p class="chart-event-filter-hint">
         标注含类型、产生角色（如有）、暴击模式、次数与
         {{ selectedIndex != null ? '当前选中柱体' : '首个扫掠点' }}的期望伤害。
+        <template v-if="chartEventOverflow">事件较多，点「管理事件」在弹窗中勾选。</template>
       </p>
+
+      <IkModalShell
+        v-if="chartEventOverflow"
+        :open="chartEventPickerOpen"
+        size="wide"
+        @close="chartEventPickerOpen = false"
+      >
+        <template #header>
+          <div class="ik-modal-header-row">
+            <h3 class="ik-modal-header-title">统计事件管理</h3>
+            <span class="chart-event-picker-count">
+              已选 {{ selectedChartEventIds.length }} / {{ chartEventOptions.length }}
+            </span>
+          </div>
+        </template>
+        <div class="chart-event-picker">
+          <div class="chart-event-picker-toolbar">
+            <span class="hint">勾选参与柱状图统计的事件；默认全选 = 总伤害。</span>
+            <button
+              v-if="selectedChartEventIds.length !== chartEventOptions.length"
+              type="button"
+              class="ghost-btn"
+              @click="selectAllChartEvents"
+            >
+              全选
+            </button>
+          </div>
+          <div class="chart-event-picker-list">
+            <button
+              v-for="opt in chartEventOptions"
+              :key="opt.id"
+              type="button"
+              class="chart-event-chip"
+              :class="{ active: isChartEventSelected(opt.id) }"
+              :title="opt.metaText"
+              @click="toggleChartEvent(opt.id)"
+            >
+              <span class="chart-event-chip-top">
+                <span class="chart-event-kind">{{ opt.kindLabel }}</span>
+                <span class="chart-event-name">{{ opt.label }}</span>
+              </span>
+              <span class="chart-event-meta">{{ opt.metaText }}</span>
+            </button>
+          </div>
+        </div>
+      </IkModalShell>
     </div>
     <p v-if="!barLabels.length" class="empty">
       <template v-if="sweepDamageKind === 'direct' && directError">{{ directError }}</template>
@@ -3668,6 +3841,41 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   font-size: 0.75rem;
   color: #7a8494;
   line-height: 1.45;
+}
+
+/* 统计事件小窗（事件过多时收进 IkModalShell）：弹窗固定在深色底，无需单独适配浅色主题 */
+.chart-event-picker-count {
+  font-size: 0.78rem;
+  color: #9aa3b0;
+}
+
+.chart-event-picker {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.75rem 0.9rem;
+}
+
+.chart-event-picker-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chart-event-picker-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-content: flex-start;
+  padding: 0.1rem;
 }
 
 .chart-event-chip {
