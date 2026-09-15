@@ -718,14 +718,12 @@ const chartEventOptions = computed(() => {
 
 const chartEventSelectionSummary = computed(() => {
   if (!selectedChartEventIds.value.length) return ''
-  const selected = chartEventOptions.value.filter((item) =>
-    selectedChartEventIds.value.includes(item.id),
-  )
-  if (!selected.length) return ''
-  if (selected.length === chartEventOptions.value.length) {
-    return `已统计全部 ${selected.length} 个事件`
+  const total = chartEventOptions.value.length
+  if (selectedChartEventIds.value.length === total) {
+    return `已统计全部 ${total} 个事件`
   }
-  return selected.map((item) => `${item.kindLabel} ${item.label}`).join('；')
+  // 不逐条列出事件名：事件多时摘要会被拉成超长文本（用户口径 2026-09-15）
+  return `已选 ${selectedChartEventIds.value.length} / ${total} 个事件`
 })
 
 /**
@@ -3093,7 +3091,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         </span>
         <template v-if="chartEventOverflow">
           <button type="button" class="ghost-btn" @click="chartEventPickerOpen = true">
-            管理事件（{{ chartEventOptions.length }}）
+            管理事件（{{ selectedChartEventIds.length }}/{{ chartEventOptions.length }}）
           </button>
         </template>
         <button
@@ -3876,6 +3874,62 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   gap: 0.5rem;
   align-content: flex-start;
   padding: 0.1rem;
+}
+
+/*
+ * 白天主题：统计事件小窗整体切浅色，与白天页面风格一致。
+ * 用 `.ik-dialog:has(.chart-event-picker)` 限定只覆盖本弹窗（内容带组件 scoped 标记），
+ * 不影响留言板等其他 ik 弹窗（项目里 calculatorLight.css 已有 :has 先例）。
+ * 注意：Vue scoped 编译器对「连续两个 :global()」解析会丢选择器，这里整个选择器放一个 :global()。
+ */
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .ik-dialog__outer) {
+  background: #d9dce1;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .ik-dialog__inner) {
+  background: #f2f3f5;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .ik-dialog__header) {
+  background: #ffffff;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .ik-dialog__main) {
+  background: #f2f3f5;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .ik-modal-header-title) {
+  color: #1c212a;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .chart-event-picker-count) {
+  color: #667085;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .chart-event-picker-toolbar .hint) {
+  color: #667085;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .chart-event-picker-toolbar .ghost-btn) {
+  border-color: #d5dae3;
+  background: #ffffff;
+  color: #1c212a;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .chart-event-chip) {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+  color: #1c212a !important;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .chart-event-chip.active) {
+  border-color: #c9a55c !important;
+  background: #fff8eb !important;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .chart-event-chip .chart-event-kind) {
+  background: #eef1f5 !important;
+  color: #475467 !important;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .chart-event-chip.active .chart-event-kind) {
+  background: rgba(201, 165, 92, 0.18) !important;
+  color: #1c212a !important;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .chart-event-chip .chart-event-name) {
+  color: #1c212a !important;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .chart-event-chip .chart-event-meta) {
+  color: #667085 !important;
 }
 
 .chart-event-chip {
