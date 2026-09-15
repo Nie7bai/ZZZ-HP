@@ -102,6 +102,15 @@ const emit = defineEmits<{
 
 const open = defineModel<boolean>('open', { default: false })
 
+let maskDownSelf = false
+function onMaskMouseDown(e: MouseEvent) {
+  maskDownSelf = e.target === e.currentTarget
+}
+function onMaskMouseUp(e: MouseEvent) {
+  if (maskDownSelf && e.target === e.currentTarget) open.value = false
+  maskDownSelf = false
+}
+
 type Tab = 'agent' | 'wengine' | 'disc' | 'panel'
 const activeTab = ref<Tab>('agent')
 
@@ -594,7 +603,8 @@ const canConfirm = computed(() => !!selected.value.agentId)
       v-if="open"
       class="unified-overlay"
       role="presentation"
-      @click.self="open = false"
+      @mousedown="onMaskMouseDown"
+      @mouseup="onMaskMouseUp"
     >
       <div class="unified-modal" role="dialog" aria-modal="true" aria-label="导入预设">
         <!-- Header -->

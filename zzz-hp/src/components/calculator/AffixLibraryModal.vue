@@ -96,6 +96,15 @@ const emit = defineEmits<{
   switched: []
 }>()
 
+let maskDownSelf = false
+function onMaskMouseDown(e: MouseEvent) {
+  maskDownSelf = e.target === e.currentTarget
+}
+function onMaskMouseUp(e: MouseEvent) {
+  if (maskDownSelf && e.target === e.currentTarget) emit('close')
+  maskDownSelf = false
+}
+
 const enabledSet = computed(() => new Set(props.enabledIds))
 
 /**
@@ -698,7 +707,7 @@ function submitDraft() {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="affix-library-overlay" role="presentation" @click.self="emit('close')">
+    <div v-if="open" class="affix-library-overlay" role="presentation" @mousedown="onMaskMouseDown" @mouseup="onMaskMouseUp">
       <div class="affix-library-modal" role="dialog" aria-modal="true" aria-label="词条库">
         <header class="modal-header">
           <h2>词条库</h2>
@@ -715,8 +724,8 @@ function submitDraft() {
 
             <!-- 常驻说明：界面上看不到「官方预设」那一套，它是所有库的底料，容易被误当成 bug -->
             <p class="set-list-hint">
-              官方预设在服务器上、由管理员维护，你改不到它。新建时可复制其中一套预设方案；
-              新建后存于本机浏览器，后续由你维护，勾选 / 改名 / 每档 / 删除 / 导出 / 导入都只存本机
+              官方预设在服务器上、仅由管理员维护。你新建时可以复制其中的预设方案用于快速创建；
+              新建后存于本机浏览器，后续由你维护。
             </p>
 
             <div v-if="newSetMode" class="set-new-panel">

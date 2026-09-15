@@ -205,6 +205,14 @@ function initLoaded() {
 }
 
 // ============ 打开 / 关闭 ============
+let maskDownSelf = false
+function onMaskMouseDown(e: MouseEvent) {
+  maskDownSelf = e.target === e.currentTarget
+}
+function onMaskMouseUp(e: MouseEvent) {
+  if (maskDownSelf && e.target === e.currentTarget) closeModal()
+  maskDownSelf = false
+}
 function openModal() {
   modalOpen.value = true
   formMessage.value = ''
@@ -799,7 +807,8 @@ defineExpose({
       v-if="modalOpen"
       class="history-modal-overlay"
       role="presentation"
-      @click.self="closeModal"
+      @mousedown="onMaskMouseDown"
+      @mouseup="onMaskMouseUp"
     >
       <div
         class="history-modal scheme-modal"
