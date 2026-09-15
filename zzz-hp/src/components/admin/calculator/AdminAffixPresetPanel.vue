@@ -11,6 +11,7 @@ import {
   type BuffSkillTargetId,
 } from '@/types/calculator'
 import { buildAffixEffectTemplate } from '@/utils/affixEffectTemplate'
+import AffixTargetBranchSelect from '@/components/calculator/AffixTargetBranchSelect.vue'
 import {
   createAffixPresetScheme,
   deleteAffixPresetScheme,
@@ -23,19 +24,12 @@ import {
   type AffixPresetSchemeDoc,
 } from '@/api/affixPreset'
 import {
-  AFFIX_GAIN_FIELD_LABELS,
-  AFFIX_GAIN_FIELDS,
-  AFFIX_PANEL_DELTA_FIELD_LABELS,
-  AFFIX_SUBSTAT_KEY_LABELS,
   DEFAULT_AFFIX_GROUP_CAP,
   affixPerRollUnit,
   affixTargetLabel,
-  gainTarget,
   isAffixLibraryEntryTarget,
-  isAffixPanelTargetHiddenFromPicker,
-  panelTarget,
-  type AffixPanelDeltaField,
 } from '@/utils/affixLibrary'
+import { AFFIX_KNOWN_TARGET_IDS } from '@/utils/affixTargetBranches'
 import '@/components/admin/calculator/adminCalculatorPanel.css'
 
 /**
@@ -96,46 +90,8 @@ const MAIN_SLOT_FIELD_ALIASES: Record<string, string> = {
   defPercent: 'externalDefPercent',
 }
 
-/** 目标字段的候选清单：局外 `panel:` 与增益 `gain:` */
-const TARGET_OPTION_GROUPS = [
-  {
-    label: '局外（panel:）',
-    options: (() => {
-      const seen = new Set<string>()
-      const merged: { id: string; label: string }[] = []
-      for (const option of [
-        ...(Object.keys(AFFIX_SUBSTAT_KEY_LABELS) as (keyof typeof AFFIX_SUBSTAT_KEY_LABELS)[]).map(
-          (key) => ({ id: panelTarget(key), label: AFFIX_SUBSTAT_KEY_LABELS[key] }),
-        ),
-        ...(Object.keys(AFFIX_PANEL_DELTA_FIELD_LABELS) as AffixPanelDeltaField[]).map((field) => ({
-          id: panelTarget(field),
-          label: AFFIX_PANEL_DELTA_FIELD_LABELS[field],
-        })),
-      ]) {
-        if (seen.has(option.label)) continue
-        if (isAffixPanelTargetHiddenFromPicker(option.id)) continue
-        seen.add(option.label)
-        merged.push(option)
-      }
-      return merged
-    })(),
-  },
-  {
-    label: '增益字段（gain:）',
-    options: AFFIX_GAIN_FIELDS.map((field) => ({
-      id: gainTarget(field),
-      label: AFFIX_GAIN_FIELD_LABELS[field] ?? field,
-    })),
-  },
-]
-
 /** 已知目标的集合（判断一个目标要不要走「自定义」输入） */
-const KNOWN_TARGETS: ReadonlySet<string> = new Set<string>(
-  TARGET_OPTION_GROUPS.flatMap((group) => group.options.map((option) => option.id)),
-)
-
-/** 下拉里的「自定义字段名…」哨兵值 */
-const CUSTOM_TARGET = '__custom__'
+const KNOWN_TARGETS = AFFIX_KNOWN_TARGET_IDS
 
 /** 「复制现有方案」的哨兵值 */
 const COPY_SOURCE = '__copy__'
@@ -919,19 +875,9 @@ function leaveCustomTarget(key: string) {
   customTargetIds.value = customTargetIds.value.filter((item) => item !== key)
 }
 
-/** 行内「目标」下拉：选已知字段直接进草稿；选「自定义」只切输入框 */
-async function onPickTarget(row: EntryRow, event: Event) {
-  const select = event.target as HTMLSelectElement
-  if (select.value === CUSTOM_TARGET) {
-    const cell = select.parentElement
-    enterCustomTarget(row._key)
-    await nextTick()
-    cell?.querySelector<HTMLInputElement>('.target-input')?.focus()
-    return
-  }
-  leaveCustomTarget(row._key)
-  row.target = select.value
-  if (!isGainTargetText(row.target)) {
+function applyPickedTarget(row: { target: string } & Partial<EntryRow>, target: string) {
+  row.target = target
+  if (!isGainTargetText(target)) {
     row.applySituation = undefined
     row.scope = undefined
     row.skillCategory = undefined
@@ -942,6 +888,20 @@ async function onPickTarget(row: EntryRow, event: Event) {
     row.scope = 'general'
     row.skillCategory = 'basic'
   }
+}
+
+/** 行内「目标」下拉：选已知字段直接进草稿；选「自定义」只切输入框 */
+function onPickTarget(row: EntryRow, target: string) {
+  leaveCustomTarget(row._key)
+  applyPickedTarget(row, target)
+}
+
+async function onCustomTarget(row: EntryRow) {
+  enterCustomTarget(row._key)
+  await nextTick()
+  document
+    .querySelector<HTMLInputElement>(`.target-cell[data-entry-key="${row._key}"] .target-input`)
+    ?.focus()
 }
 
 /** 自定义输入框：值又变回已知字段时自动切回下拉（不用再点一次） */
@@ -1089,24 +1049,23 @@ watch(
 /** 新增表单的「目标」：下拉选已知字段，或切自定义输入 */
 const draftTargetCustom = ref(false)
 
-function onPickDraftTarget(event: Event) {
-  const select = event.target as HTMLSelectElement
-  if (select.value === CUSTOM_TARGET) {
-    draftTargetCustom.value = true
-    void nextTick(() =>
-      document.querySelector<HTMLInputElement>('.add-entry .target-input')?.focus(),
-    )
-    return
-  }
+function onPickDraftTarget(target: string) {
   draftTargetCustom.value = false
-  draft.value.target = select.value
-  if (!isGainTargetText(draft.value.target)) {
+  applyPickedTarget(draft.value, target)
+  if (!isGainTargetText(target)) {
     draft.value.applySituation = 'global'
     draft.value.scope = 'general'
     draft.value.skillCategory = 'basic'
     draft.value.skillSubcategoryId = null
     draft.value.appliesToAnomaly = false
   }
+}
+
+function onDraftCustomTarget() {
+  draftTargetCustom.value = true
+  void nextTick(() =>
+    document.querySelector<HTMLInputElement>('.add-entry .target-input')?.focus(),
+  )
 }
 
 /** 自定义输入里写回了已知字段就自动切回下拉（与条目行同一套判断） */
@@ -1604,41 +1563,33 @@ onMounted(() => {
                   <input v-model="entry.label" class="cell-input" type="text" :disabled="busy" />
                 </td>
                 <td>
-                  <select
-                    v-if="!isCustomTarget(entry)"
-                    class="cell-input"
-                    :value="entry.target"
-                    :disabled="busy"
-                    :title="`${entry.target}｜panel: 局外、gain: 增益`"
-                    @change="onPickTarget(entry, $event)"
-                  >
-                    <optgroup
-                      v-for="group of TARGET_OPTION_GROUPS"
-                      :key="group.label"
-                      :label="group.label"
-                    >
-                      <option v-for="opt in group.options" :key="opt.id" :value="opt.id">
-                        {{ opt.label }}
-                      </option>
-                    </optgroup>
-                    <option :value="CUSTOM_TARGET">自定义字段名（不在这两份清单里）…</option>
-                  </select>
-                  <template v-else>
-                    <input
-                      v-model="entry.target"
-                      class="cell-input target-input"
-                      type="text"
-                      placeholder="panel:xxx 或 gain:xxx"
+                  <div class="target-cell" :data-entry-key="entry._key">
+                    <AffixTargetBranchSelect
+                      v-if="!isCustomTarget(entry)"
+                      :model-value="entry.target"
                       :disabled="busy"
-                      @change="onCommitCustomTarget(entry)"
+                      allow-custom
+                      layout="stack"
+                      @update:model-value="onPickTarget(entry, $event)"
+                      @custom="onCustomTarget(entry)"
                     />
-                    <span
-                      class="cell-hint"
-                      :class="{ 'cell-hint--warn': !targetRecognized(entry.target) }"
-                    >
-                      {{ targetHint(entry.target) }}
-                    </span>
-                  </template>
+                    <template v-else>
+                      <input
+                        v-model="entry.target"
+                        class="cell-input target-input"
+                        type="text"
+                        placeholder="panel:xxx 或 gain:xxx"
+                        :disabled="busy"
+                        @change="onCommitCustomTarget(entry)"
+                      />
+                      <span
+                        class="cell-hint"
+                        :class="{ 'cell-hint--warn': !targetRecognized(entry.target) }"
+                      >
+                        {{ targetHint(entry.target) }}
+                      </span>
+                    </template>
+                  </div>
                 </td>
                 <td>
                   <span class="per-roll-cell">
@@ -1779,18 +1730,14 @@ onMounted(() => {
                 目标
                 <em class="field-note">{{ draftTargetCustom ? '自定义字段名' : '从清单里选' }}</em>
               </span>
-              <select v-if="!draftTargetCustom" :value="draft.target" @change="onPickDraftTarget">
-                <optgroup
-                  v-for="group of TARGET_OPTION_GROUPS"
-                  :key="group.label"
-                  :label="group.label"
-                >
-                  <option v-for="opt in group.options" :key="opt.id" :value="opt.id">
-                    {{ opt.label }}
-                  </option>
-                </optgroup>
-                <option :value="CUSTOM_TARGET">自定义字段名（不在这两份清单里）…</option>
-              </select>
+              <AffixTargetBranchSelect
+                v-if="!draftTargetCustom"
+                :model-value="draft.target"
+                allow-custom
+                layout="stack"
+                @update:model-value="onPickDraftTarget"
+                @custom="onDraftCustomTarget"
+              />
               <input
                 v-else
                 v-model="draft.target"
@@ -2500,6 +2447,10 @@ onMounted(() => {
   opacity: 0.7;
 }
 
+.target-cell {
+  min-width: 0;
+}
+
 /* ---------- 列宽（固定表格布局，不锁宽度输入框会把列撑到 200px+） ---------- */
 
 .preset-table--entries .col-default {
@@ -2512,7 +2463,7 @@ onMounted(() => {
   width: 168px;
 }
 .preset-table--entries .col-target {
-  width: 152px;
+  width: 196px;
 }
 .preset-table--entries .col-perroll {
   width: 96px;

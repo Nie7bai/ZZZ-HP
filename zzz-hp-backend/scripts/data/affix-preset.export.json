@@ -1,6 +1,6 @@
 {
   "kind": "zzz-hp-affix-preset",
-  "exportedAt": "2026-09-14T18:03:47.931Z",
+  "exportedAt": "2026-09-15T07:31:41.169Z",
   "defaultScheme": "默认",
   "schemes": [
     {
@@ -32,6 +32,11 @@
             "perRoll": 112,
             "rollCost": 1,
             "sortOrder": 0,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpFlat"
+            },
             "enabledByDefault": true
           }
         },
@@ -59,6 +64,11 @@
             "perRoll": 3,
             "rollCost": 1,
             "sortOrder": 1,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -86,6 +96,11 @@
             "perRoll": 19,
             "rollCost": 1,
             "sortOrder": 2,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkFlat"
+            },
             "enabledByDefault": true
           }
         },
@@ -113,6 +128,11 @@
             "perRoll": 3,
             "rollCost": 1,
             "sortOrder": 3,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -140,6 +160,11 @@
             "perRoll": 15,
             "rollCost": 1,
             "sortOrder": 4,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defFlat"
+            },
             "enabledByDefault": true
           }
         },
@@ -167,6 +192,11 @@
             "perRoll": 4.8,
             "rollCost": 1,
             "sortOrder": 5,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -194,6 +224,11 @@
             "perRoll": 9,
             "rollCost": 1,
             "sortOrder": 6,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:pen"
+            },
             "enabledByDefault": true
           }
         },
@@ -221,6 +256,11 @@
             "perRoll": 2.4,
             "rollCost": 1,
             "sortOrder": 7,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -248,6 +288,11 @@
             "perRoll": 4.8,
             "rollCost": 1,
             "sortOrder": 8,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critDmg"
+            },
             "enabledByDefault": true
           }
         },
@@ -283,6 +328,19 @@
             "perRoll": 9,
             "rollCost": 1,
             "sortOrder": 9,
+            "effectJson": {
+              "spec": {
+                "stat": "mastery",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:mastery"
+            },
             "enabledByDefault": true
           }
         },
@@ -318,6 +376,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 10,
+            "effectJson": {
+              "spec": {
+                "stat": "reduceDefense",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:reduceDefense"
+            },
             "enabledByDefault": false
           }
         },
@@ -353,356 +424,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 11,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:resPen",
-          "label": "抗性穿透%",
-          "target": "panel:resPen",
-          "perRoll": 24,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 12,
-          "effectJson": {
-            "spec": {
-              "stat": "resPen",
-              "stage": "external",
+            "effectJson": {
+              "spec": {
+                "stat": "ignoreDefense",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
               "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
+              "allocation": "effect",
+              "legacyTarget": "panel:ignoreDefense"
             },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:resPen"
-          },
-          "raw": {
-            "id": "panel:resPen",
-            "cap": 1,
-            "group": "副词条",
-            "label": "抗性穿透%",
-            "target": "panel:resPen",
-            "perRoll": 24,
-            "rollCost": 1,
-            "sortOrder": 12,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyDmgBonus",
-          "label": "异常增伤%",
-          "target": "panel:anomalyDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 13,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyDmgBonus"
-          },
-          "raw": {
-            "id": "panel:anomalyDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异常增伤%",
-            "target": "panel:anomalyDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 13,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyCritRate",
-          "label": "异常暴击率%",
-          "target": "panel:anomalyCritRate",
-          "perRoll": 24,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 14,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyCritRate",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyCritRate"
-          },
-          "raw": {
-            "id": "panel:anomalyCritRate",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异常暴击率%",
-            "target": "panel:anomalyCritRate",
-            "perRoll": 24,
-            "rollCost": 1,
-            "sortOrder": 14,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyCritDmg",
-          "label": "异常暴击伤害%",
-          "target": "panel:anomalyCritDmg",
-          "perRoll": 48,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 15,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyCritDmg",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyCritDmg"
-          },
-          "raw": {
-            "id": "panel:anomalyCritDmg",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异常暴击伤害%",
-            "target": "panel:anomalyCritDmg",
-            "perRoll": 48,
-            "rollCost": 1,
-            "sortOrder": 15,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyReleaseDmgBonus",
-          "label": "异放增伤%",
-          "target": "panel:anomalyReleaseDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 16,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyReleaseDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyReleaseDmgBonus"
-          },
-          "raw": {
-            "id": "panel:anomalyReleaseDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异放增伤%",
-            "target": "panel:anomalyReleaseDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 16,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:disorderDmgBonus",
-          "label": "紊乱增伤%",
-          "target": "panel:disorderDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 17,
-          "effectJson": {
-            "spec": {
-              "stat": "disorderDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:disorderDmgBonus"
-          },
-          "raw": {
-            "id": "panel:disorderDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "紊乱增伤%",
-            "target": "panel:disorderDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 17,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:turbulenceDmgBonus",
-          "label": "乱流增伤%",
-          "target": "panel:turbulenceDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 18,
-          "effectJson": {
-            "spec": {
-              "stat": "turbulenceDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:turbulenceDmgBonus"
-          },
-          "raw": {
-            "id": "panel:turbulenceDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "乱流增伤%",
-            "target": "panel:turbulenceDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 18,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:radianceDmgBonus",
-          "label": "耀变增伤%",
-          "target": "panel:radianceDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 19,
-          "effectJson": {
-            "spec": {
-              "stat": "radianceDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:radianceDmgBonus"
-          },
-          "raw": {
-            "id": "panel:radianceDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "耀变增伤%",
-            "target": "panel:radianceDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 19,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:radianceResPen",
-          "label": "耀变抗性穿透%",
-          "target": "panel:radianceResPen",
-          "perRoll": 24,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 20,
-          "effectJson": {
-            "spec": {
-              "stat": "radianceResPen",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:radianceResPen"
-          },
-          "raw": {
-            "id": "panel:radianceResPen",
-            "cap": 1,
-            "group": "副词条",
-            "label": "耀变抗性穿透%",
-            "target": "panel:radianceResPen",
-            "perRoll": 24,
-            "rollCost": 1,
-            "sortOrder": 20,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:specialMult",
-          "label": "特殊倍率%",
-          "target": "panel:specialMult",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 21,
-          "effectJson": {
-            "spec": {
-              "stat": "specialMult",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:specialMult"
-          },
-          "raw": {
-            "id": "panel:specialMult",
-            "cap": 1,
-            "group": "副词条",
-            "label": "特殊倍率%",
-            "target": "panel:specialMult",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 21,
             "enabledByDefault": false
           }
         },
@@ -730,6 +464,11 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 22,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critDmg"
+            },
             "enabledByDefault": true
           }
         },
@@ -757,6 +496,11 @@
             "perRoll": 24,
             "rollCost": 1,
             "sortOrder": 23,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -784,6 +528,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 24,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -811,6 +560,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 25,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -846,6 +600,19 @@
             "perRoll": 92,
             "rollCost": 1,
             "sortOrder": 26,
+            "effectJson": {
+              "spec": {
+                "stat": "mastery",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:mastery"
+            },
             "enabledByDefault": true
           }
         },
@@ -873,6 +640,11 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 27,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -900,6 +672,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 28,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -927,6 +704,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 29,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -954,6 +736,11 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 30,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -989,6 +776,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 31,
+            "effectJson": {
+              "spec": {
+                "stat": "dmgBonus",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:dmgBonus"
+            },
             "enabledByDefault": true
           }
         },
@@ -1024,6 +824,19 @@
             "perRoll": 24,
             "rollCost": 1,
             "sortOrder": 32,
+            "effectJson": {
+              "spec": {
+                "stat": "penRate",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:penRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -1051,6 +864,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 33,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -1078,6 +896,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 34,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -1105,6 +928,11 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 35,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -1140,6 +968,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 36,
+            "effectJson": {
+              "spec": {
+                "stat": "anomalyControl",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:anomalyControl"
+            },
             "enabledByDefault": true
           }
         },
@@ -1175,6 +1016,19 @@
             "perRoll": 18,
             "rollCost": 1,
             "sortOrder": 37,
+            "effectJson": {
+              "spec": {
+                "stat": "impact",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:impact"
+            },
             "enabledByDefault": true
           }
         },
@@ -1210,6 +1064,19 @@
             "perRoll": 60,
             "rollCost": 1,
             "sortOrder": 38,
+            "effectJson": {
+              "spec": {
+                "stat": "energyRegen",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:energyRegen"
+            },
             "enabledByDefault": true
           }
         },
@@ -1245,6 +1112,19 @@
             "perRoll": 10,
             "rollCost": 1,
             "sortOrder": 39,
+            "effectJson": {
+              "spec": {
+                "stat": "dmgBonus",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:dmgBonus"
+            },
             "enabledByDefault": true
           }
         },
@@ -1280,6 +1160,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 40,
+            "effectJson": {
+              "spec": {
+                "stat": "mastery",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:mastery"
+            },
             "enabledByDefault": true
           }
         },
@@ -1315,6 +1208,19 @@
             "perRoll": 20,
             "rollCost": 1,
             "sortOrder": 41,
+            "effectJson": {
+              "spec": {
+                "stat": "energyRegen",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:energyRegen"
+            },
             "enabledByDefault": true
           }
         },
@@ -1342,6 +1248,11 @@
             "perRoll": 10,
             "rollCost": 1,
             "sortOrder": 42,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -1369,6 +1280,11 @@
             "perRoll": 10,
             "rollCost": 1,
             "sortOrder": 43,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -1396,6 +1312,11 @@
             "perRoll": 16,
             "rollCost": 1,
             "sortOrder": 44,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -1423,6 +1344,11 @@
             "perRoll": 8,
             "rollCost": 1,
             "sortOrder": 45,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -1450,6 +1376,11 @@
             "perRoll": 16,
             "rollCost": 1,
             "sortOrder": 46,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critDmg"
+            },
             "enabledByDefault": true
           }
         },
@@ -1485,6 +1416,19 @@
             "perRoll": 8,
             "rollCost": 1,
             "sortOrder": 47,
+            "effectJson": {
+              "spec": {
+                "stat": "penRate",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:penRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -1520,6 +1464,19 @@
             "perRoll": 8,
             "rollCost": 1,
             "sortOrder": 48,
+            "effectJson": {
+              "spec": {
+                "stat": "anomalyControl",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:anomalyControl"
+            },
             "enabledByDefault": true
           }
         },
@@ -1555,7 +1512,93 @@
             "perRoll": 6,
             "rollCost": 1,
             "sortOrder": 49,
+            "effectJson": {
+              "spec": {
+                "stat": "impact",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:impact"
+            },
             "enabledByDefault": true
+          }
+        },
+        {
+          "id": "set:dmgBonus:15",
+          "label": "普攻增伤15%",
+          "target": "gain:dmgBonus",
+          "perRoll": 15,
+          "cap": 1,
+          "group": "2件套",
+          "rollCost": 1,
+          "enabledByDefault": true,
+          "sortOrder": 50,
+          "effectJson": {
+            "spec": {
+              "stat": "dmgBonus",
+              "stage": "combatPreConvert",
+              "version": 1,
+              "operation": "add",
+              "conditions": {
+                "scope": "skill",
+                "skillTargets": [
+                  {
+                    "category": "basic",
+                    "subcategoryId": null
+                  }
+                ],
+                "applySituation": "global",
+                "appliesToAnomaly": false
+              },
+              "beneficiary": "self"
+            },
+            "version": 1,
+            "allocation": "effect",
+            "legacyTarget": "gain:dmgBonus"
+          },
+          "raw": {
+            "id": "set:dmgBonus:15",
+            "cap": 1,
+            "group": "2件套",
+            "label": "普攻增伤15%",
+            "scope": "skill",
+            "target": "gain:dmgBonus",
+            "perRoll": 15,
+            "rollCost": 1,
+            "sortOrder": 50,
+            "effectJson": {
+              "spec": {
+                "stat": "dmgBonus",
+                "stage": "combatPreConvert",
+                "version": 1,
+                "operation": "add",
+                "conditions": {
+                  "scope": "skill",
+                  "skillTargets": [
+                    {
+                      "category": "basic",
+                      "subcategoryId": null
+                    }
+                  ],
+                  "applySituation": "global",
+                  "appliesToAnomaly": false
+                },
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "gain:dmgBonus"
+            },
+            "skillCategory": "basic",
+            "applySituation": "global",
+            "appliesToAnomaly": false,
+            "enabledByDefault": true,
+            "skillSubcategoryId": null
           }
         }
       ],
@@ -1615,7 +1658,7 @@
     {
       "name": "强攻",
       "isDefault": false,
-      "sortOrder": 2,
+      "sortOrder": 1,
       "entries": [
         {
           "id": "substat:hpFlat",
@@ -1641,7 +1684,12 @@
             "perRoll": 112,
             "rollCost": 1,
             "sortOrder": 0,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpFlat"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -1668,7 +1716,12 @@
             "perRoll": 3,
             "rollCost": 1,
             "sortOrder": 1,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -1695,6 +1748,11 @@
             "perRoll": 19,
             "rollCost": 1,
             "sortOrder": 2,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkFlat"
+            },
             "enabledByDefault": true
           }
         },
@@ -1722,6 +1780,11 @@
             "perRoll": 3,
             "rollCost": 1,
             "sortOrder": 3,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -1749,7 +1812,12 @@
             "perRoll": 15,
             "rollCost": 1,
             "sortOrder": 4,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defFlat"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -1776,7 +1844,12 @@
             "perRoll": 4.8,
             "rollCost": 1,
             "sortOrder": 5,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -1803,6 +1876,11 @@
             "perRoll": 9,
             "rollCost": 1,
             "sortOrder": 6,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:pen"
+            },
             "enabledByDefault": true
           }
         },
@@ -1830,6 +1908,11 @@
             "perRoll": 2.4,
             "rollCost": 1,
             "sortOrder": 7,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -1857,6 +1940,11 @@
             "perRoll": 4.8,
             "rollCost": 1,
             "sortOrder": 8,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critDmg"
+            },
             "enabledByDefault": true
           }
         },
@@ -1892,7 +1980,20 @@
             "perRoll": 9,
             "rollCost": 1,
             "sortOrder": 9,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "mastery",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:mastery"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -1927,6 +2028,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 10,
+            "effectJson": {
+              "spec": {
+                "stat": "reduceDefense",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:reduceDefense"
+            },
             "enabledByDefault": false
           }
         },
@@ -1962,356 +2076,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 11,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:resPen",
-          "label": "抗性穿透%",
-          "target": "panel:resPen",
-          "perRoll": 24,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 12,
-          "effectJson": {
-            "spec": {
-              "stat": "resPen",
-              "stage": "external",
+            "effectJson": {
+              "spec": {
+                "stat": "ignoreDefense",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
               "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
+              "allocation": "effect",
+              "legacyTarget": "panel:ignoreDefense"
             },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:resPen"
-          },
-          "raw": {
-            "id": "panel:resPen",
-            "cap": 1,
-            "group": "副词条",
-            "label": "抗性穿透%",
-            "target": "panel:resPen",
-            "perRoll": 24,
-            "rollCost": 1,
-            "sortOrder": 12,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyDmgBonus",
-          "label": "异常增伤%",
-          "target": "panel:anomalyDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 13,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyDmgBonus"
-          },
-          "raw": {
-            "id": "panel:anomalyDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异常增伤%",
-            "target": "panel:anomalyDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 13,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyCritRate",
-          "label": "异常暴击率%",
-          "target": "panel:anomalyCritRate",
-          "perRoll": 24,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 14,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyCritRate",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyCritRate"
-          },
-          "raw": {
-            "id": "panel:anomalyCritRate",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异常暴击率%",
-            "target": "panel:anomalyCritRate",
-            "perRoll": 24,
-            "rollCost": 1,
-            "sortOrder": 14,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyCritDmg",
-          "label": "异常暴击伤害%",
-          "target": "panel:anomalyCritDmg",
-          "perRoll": 48,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 15,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyCritDmg",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyCritDmg"
-          },
-          "raw": {
-            "id": "panel:anomalyCritDmg",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异常暴击伤害%",
-            "target": "panel:anomalyCritDmg",
-            "perRoll": 48,
-            "rollCost": 1,
-            "sortOrder": 15,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyReleaseDmgBonus",
-          "label": "异放增伤%",
-          "target": "panel:anomalyReleaseDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 16,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyReleaseDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyReleaseDmgBonus"
-          },
-          "raw": {
-            "id": "panel:anomalyReleaseDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异放增伤%",
-            "target": "panel:anomalyReleaseDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 16,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:disorderDmgBonus",
-          "label": "紊乱增伤%",
-          "target": "panel:disorderDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 17,
-          "effectJson": {
-            "spec": {
-              "stat": "disorderDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:disorderDmgBonus"
-          },
-          "raw": {
-            "id": "panel:disorderDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "紊乱增伤%",
-            "target": "panel:disorderDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 17,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:turbulenceDmgBonus",
-          "label": "乱流增伤%",
-          "target": "panel:turbulenceDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 18,
-          "effectJson": {
-            "spec": {
-              "stat": "turbulenceDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:turbulenceDmgBonus"
-          },
-          "raw": {
-            "id": "panel:turbulenceDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "乱流增伤%",
-            "target": "panel:turbulenceDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 18,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:radianceDmgBonus",
-          "label": "耀变增伤%",
-          "target": "panel:radianceDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 19,
-          "effectJson": {
-            "spec": {
-              "stat": "radianceDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:radianceDmgBonus"
-          },
-          "raw": {
-            "id": "panel:radianceDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "耀变增伤%",
-            "target": "panel:radianceDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 19,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:radianceResPen",
-          "label": "耀变抗性穿透%",
-          "target": "panel:radianceResPen",
-          "perRoll": 24,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 20,
-          "effectJson": {
-            "spec": {
-              "stat": "radianceResPen",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:radianceResPen"
-          },
-          "raw": {
-            "id": "panel:radianceResPen",
-            "cap": 1,
-            "group": "副词条",
-            "label": "耀变抗性穿透%",
-            "target": "panel:radianceResPen",
-            "perRoll": 24,
-            "rollCost": 1,
-            "sortOrder": 20,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:specialMult",
-          "label": "特殊倍率%",
-          "target": "panel:specialMult",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 21,
-          "effectJson": {
-            "spec": {
-              "stat": "specialMult",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:specialMult"
-          },
-          "raw": {
-            "id": "panel:specialMult",
-            "cap": 1,
-            "group": "副词条",
-            "label": "特殊倍率%",
-            "target": "panel:specialMult",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 21,
             "enabledByDefault": false
           }
         },
@@ -2339,6 +2116,11 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 22,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critDmg"
+            },
             "enabledByDefault": true
           }
         },
@@ -2366,6 +2148,11 @@
             "perRoll": 24,
             "rollCost": 1,
             "sortOrder": 23,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -2393,6 +2180,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 24,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -2420,7 +2212,12 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 25,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -2455,7 +2252,20 @@
             "perRoll": 92,
             "rollCost": 1,
             "sortOrder": 26,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "mastery",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:mastery"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -2482,7 +2292,12 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 27,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -2509,6 +2324,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 28,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -2536,7 +2356,12 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 29,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -2563,7 +2388,12 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 30,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -2598,6 +2428,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 31,
+            "effectJson": {
+              "spec": {
+                "stat": "dmgBonus",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:dmgBonus"
+            },
             "enabledByDefault": true
           }
         },
@@ -2633,6 +2476,19 @@
             "perRoll": 24,
             "rollCost": 1,
             "sortOrder": 32,
+            "effectJson": {
+              "spec": {
+                "stat": "penRate",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:penRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -2660,6 +2516,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 33,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -2687,7 +2548,12 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 34,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -2714,7 +2580,12 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 35,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -2749,7 +2620,20 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 36,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "anomalyControl",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:anomalyControl"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -2784,7 +2668,20 @@
             "perRoll": 18,
             "rollCost": 1,
             "sortOrder": 37,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "impact",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:impact"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -2819,7 +2716,20 @@
             "perRoll": 60,
             "rollCost": 1,
             "sortOrder": 38,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "energyRegen",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:energyRegen"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -2854,6 +2764,19 @@
             "perRoll": 10,
             "rollCost": 1,
             "sortOrder": 39,
+            "effectJson": {
+              "spec": {
+                "stat": "dmgBonus",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:dmgBonus"
+            },
             "enabledByDefault": true
           }
         },
@@ -2889,7 +2812,20 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 40,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "mastery",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:mastery"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -2924,7 +2860,20 @@
             "perRoll": 20,
             "rollCost": 1,
             "sortOrder": 41,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "energyRegen",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:energyRegen"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -2951,6 +2900,11 @@
             "perRoll": 10,
             "rollCost": 1,
             "sortOrder": 42,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -2978,7 +2932,12 @@
             "perRoll": 10,
             "rollCost": 1,
             "sortOrder": 43,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -3005,7 +2964,12 @@
             "perRoll": 16,
             "rollCost": 1,
             "sortOrder": 44,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -3032,6 +2996,11 @@
             "perRoll": 8,
             "rollCost": 1,
             "sortOrder": 45,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -3059,6 +3028,11 @@
             "perRoll": 16,
             "rollCost": 1,
             "sortOrder": 46,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critDmg"
+            },
             "enabledByDefault": true
           }
         },
@@ -3094,6 +3068,19 @@
             "perRoll": 8,
             "rollCost": 1,
             "sortOrder": 47,
+            "effectJson": {
+              "spec": {
+                "stat": "penRate",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:penRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -3129,7 +3116,20 @@
             "perRoll": 8,
             "rollCost": 1,
             "sortOrder": 48,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "anomalyControl",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:anomalyControl"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -3164,7 +3164,20 @@
             "perRoll": 6,
             "rollCost": 1,
             "sortOrder": 49,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "impact",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:impact"
+            },
+            "enabledByDefault": false
           }
         }
       ],
@@ -3224,7 +3237,7 @@
     {
       "name": "命破",
       "isDefault": false,
-      "sortOrder": 3,
+      "sortOrder": 2,
       "entries": [
         {
           "id": "substat:hpFlat",
@@ -3250,6 +3263,11 @@
             "perRoll": 112,
             "rollCost": 1,
             "sortOrder": 0,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpFlat"
+            },
             "enabledByDefault": true
           }
         },
@@ -3277,6 +3295,11 @@
             "perRoll": 3,
             "rollCost": 1,
             "sortOrder": 1,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -3304,6 +3327,11 @@
             "perRoll": 19,
             "rollCost": 1,
             "sortOrder": 2,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkFlat"
+            },
             "enabledByDefault": true
           }
         },
@@ -3331,6 +3359,11 @@
             "perRoll": 3,
             "rollCost": 1,
             "sortOrder": 3,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -3358,7 +3391,12 @@
             "perRoll": 15,
             "rollCost": 1,
             "sortOrder": 4,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defFlat"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -3385,7 +3423,12 @@
             "perRoll": 4.8,
             "rollCost": 1,
             "sortOrder": 5,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -3412,7 +3455,12 @@
             "perRoll": 9,
             "rollCost": 1,
             "sortOrder": 6,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:pen"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -3439,6 +3487,11 @@
             "perRoll": 2.4,
             "rollCost": 1,
             "sortOrder": 7,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -3466,6 +3519,11 @@
             "perRoll": 4.8,
             "rollCost": 1,
             "sortOrder": 8,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critDmg"
+            },
             "enabledByDefault": true
           }
         },
@@ -3501,7 +3559,20 @@
             "perRoll": 9,
             "rollCost": 1,
             "sortOrder": 9,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "mastery",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:mastery"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -3536,6 +3607,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 10,
+            "effectJson": {
+              "spec": {
+                "stat": "reduceDefense",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:reduceDefense"
+            },
             "enabledByDefault": false
           }
         },
@@ -3571,356 +3655,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 11,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:resPen",
-          "label": "抗性穿透%",
-          "target": "panel:resPen",
-          "perRoll": 24,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 12,
-          "effectJson": {
-            "spec": {
-              "stat": "resPen",
-              "stage": "external",
+            "effectJson": {
+              "spec": {
+                "stat": "ignoreDefense",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
               "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
+              "allocation": "effect",
+              "legacyTarget": "panel:ignoreDefense"
             },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:resPen"
-          },
-          "raw": {
-            "id": "panel:resPen",
-            "cap": 1,
-            "group": "副词条",
-            "label": "抗性穿透%",
-            "target": "panel:resPen",
-            "perRoll": 24,
-            "rollCost": 1,
-            "sortOrder": 12,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyDmgBonus",
-          "label": "异常增伤%",
-          "target": "panel:anomalyDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 13,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyDmgBonus"
-          },
-          "raw": {
-            "id": "panel:anomalyDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异常增伤%",
-            "target": "panel:anomalyDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 13,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyCritRate",
-          "label": "异常暴击率%",
-          "target": "panel:anomalyCritRate",
-          "perRoll": 24,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 14,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyCritRate",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyCritRate"
-          },
-          "raw": {
-            "id": "panel:anomalyCritRate",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异常暴击率%",
-            "target": "panel:anomalyCritRate",
-            "perRoll": 24,
-            "rollCost": 1,
-            "sortOrder": 14,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyCritDmg",
-          "label": "异常暴击伤害%",
-          "target": "panel:anomalyCritDmg",
-          "perRoll": 48,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 15,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyCritDmg",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyCritDmg"
-          },
-          "raw": {
-            "id": "panel:anomalyCritDmg",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异常暴击伤害%",
-            "target": "panel:anomalyCritDmg",
-            "perRoll": 48,
-            "rollCost": 1,
-            "sortOrder": 15,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyReleaseDmgBonus",
-          "label": "异放增伤%",
-          "target": "panel:anomalyReleaseDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 16,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyReleaseDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyReleaseDmgBonus"
-          },
-          "raw": {
-            "id": "panel:anomalyReleaseDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异放增伤%",
-            "target": "panel:anomalyReleaseDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 16,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:disorderDmgBonus",
-          "label": "紊乱增伤%",
-          "target": "panel:disorderDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 17,
-          "effectJson": {
-            "spec": {
-              "stat": "disorderDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:disorderDmgBonus"
-          },
-          "raw": {
-            "id": "panel:disorderDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "紊乱增伤%",
-            "target": "panel:disorderDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 17,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:turbulenceDmgBonus",
-          "label": "乱流增伤%",
-          "target": "panel:turbulenceDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 18,
-          "effectJson": {
-            "spec": {
-              "stat": "turbulenceDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:turbulenceDmgBonus"
-          },
-          "raw": {
-            "id": "panel:turbulenceDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "乱流增伤%",
-            "target": "panel:turbulenceDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 18,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:radianceDmgBonus",
-          "label": "耀变增伤%",
-          "target": "panel:radianceDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 19,
-          "effectJson": {
-            "spec": {
-              "stat": "radianceDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:radianceDmgBonus"
-          },
-          "raw": {
-            "id": "panel:radianceDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "耀变增伤%",
-            "target": "panel:radianceDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 19,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:radianceResPen",
-          "label": "耀变抗性穿透%",
-          "target": "panel:radianceResPen",
-          "perRoll": 24,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 20,
-          "effectJson": {
-            "spec": {
-              "stat": "radianceResPen",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:radianceResPen"
-          },
-          "raw": {
-            "id": "panel:radianceResPen",
-            "cap": 1,
-            "group": "副词条",
-            "label": "耀变抗性穿透%",
-            "target": "panel:radianceResPen",
-            "perRoll": 24,
-            "rollCost": 1,
-            "sortOrder": 20,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:specialMult",
-          "label": "特殊倍率%",
-          "target": "panel:specialMult",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 21,
-          "effectJson": {
-            "spec": {
-              "stat": "specialMult",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:specialMult"
-          },
-          "raw": {
-            "id": "panel:specialMult",
-            "cap": 1,
-            "group": "副词条",
-            "label": "特殊倍率%",
-            "target": "panel:specialMult",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 21,
             "enabledByDefault": false
           }
         },
@@ -3948,6 +3695,11 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 22,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critDmg"
+            },
             "enabledByDefault": true
           }
         },
@@ -3975,6 +3727,11 @@
             "perRoll": 24,
             "rollCost": 1,
             "sortOrder": 23,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -4002,6 +3759,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 24,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -4029,6 +3791,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 25,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -4064,7 +3831,20 @@
             "perRoll": 92,
             "rollCost": 1,
             "sortOrder": 26,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "mastery",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:mastery"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -4091,7 +3871,12 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 27,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -4118,6 +3903,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 28,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -4145,6 +3935,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 29,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -4172,7 +3967,12 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 30,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -4207,6 +4007,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 31,
+            "effectJson": {
+              "spec": {
+                "stat": "dmgBonus",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:dmgBonus"
+            },
             "enabledByDefault": true
           }
         },
@@ -4242,7 +4055,20 @@
             "perRoll": 24,
             "rollCost": 1,
             "sortOrder": 32,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "penRate",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:penRate"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -4269,6 +4095,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 33,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -4296,6 +4127,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 34,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -4323,7 +4159,12 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 35,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -4358,7 +4199,20 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 36,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "anomalyControl",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:anomalyControl"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -4393,7 +4247,20 @@
             "perRoll": 18,
             "rollCost": 1,
             "sortOrder": 37,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "impact",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:impact"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -4428,7 +4295,20 @@
             "perRoll": 60,
             "rollCost": 1,
             "sortOrder": 38,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "energyRegen",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:energyRegen"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -4463,6 +4343,19 @@
             "perRoll": 10,
             "rollCost": 1,
             "sortOrder": 39,
+            "effectJson": {
+              "spec": {
+                "stat": "dmgBonus",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:dmgBonus"
+            },
             "enabledByDefault": true
           }
         },
@@ -4498,7 +4391,20 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 40,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "mastery",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:mastery"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -4533,7 +4439,20 @@
             "perRoll": 20,
             "rollCost": 1,
             "sortOrder": 41,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "energyRegen",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:energyRegen"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -4560,6 +4479,11 @@
             "perRoll": 10,
             "rollCost": 1,
             "sortOrder": 42,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -4587,6 +4511,11 @@
             "perRoll": 10,
             "rollCost": 1,
             "sortOrder": 43,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -4614,7 +4543,12 @@
             "perRoll": 16,
             "rollCost": 1,
             "sortOrder": 44,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -4641,6 +4575,11 @@
             "perRoll": 8,
             "rollCost": 1,
             "sortOrder": 45,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -4668,6 +4607,11 @@
             "perRoll": 16,
             "rollCost": 1,
             "sortOrder": 46,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critDmg"
+            },
             "enabledByDefault": true
           }
         },
@@ -4703,7 +4647,20 @@
             "perRoll": 8,
             "rollCost": 1,
             "sortOrder": 47,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "penRate",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:penRate"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -4738,7 +4695,20 @@
             "perRoll": 8,
             "rollCost": 1,
             "sortOrder": 48,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "anomalyControl",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:anomalyControl"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -4773,7 +4743,20 @@
             "perRoll": 6,
             "rollCost": 1,
             "sortOrder": 49,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "impact",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:impact"
+            },
+            "enabledByDefault": false
           }
         }
       ],
@@ -4833,7 +4816,7 @@
     {
       "name": "异常",
       "isDefault": false,
-      "sortOrder": 4,
+      "sortOrder": 3,
       "entries": [
         {
           "id": "substat:hpFlat",
@@ -4859,7 +4842,12 @@
             "perRoll": 112,
             "rollCost": 1,
             "sortOrder": 0,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpFlat"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -4886,7 +4874,12 @@
             "perRoll": 3,
             "rollCost": 1,
             "sortOrder": 1,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -4913,6 +4906,11 @@
             "perRoll": 19,
             "rollCost": 1,
             "sortOrder": 2,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkFlat"
+            },
             "enabledByDefault": true
           }
         },
@@ -4940,6 +4938,11 @@
             "perRoll": 3,
             "rollCost": 1,
             "sortOrder": 3,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -4967,7 +4970,12 @@
             "perRoll": 15,
             "rollCost": 1,
             "sortOrder": 4,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defFlat"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -4994,7 +5002,12 @@
             "perRoll": 4.8,
             "rollCost": 1,
             "sortOrder": 5,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -5021,6 +5034,11 @@
             "perRoll": 9,
             "rollCost": 1,
             "sortOrder": 6,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:pen"
+            },
             "enabledByDefault": true
           }
         },
@@ -5048,7 +5066,12 @@
             "perRoll": 2.4,
             "rollCost": 1,
             "sortOrder": 7,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critRate"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -5075,7 +5098,12 @@
             "perRoll": 4.8,
             "rollCost": 1,
             "sortOrder": 8,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critDmg"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -5110,6 +5138,19 @@
             "perRoll": 9,
             "rollCost": 1,
             "sortOrder": 9,
+            "effectJson": {
+              "spec": {
+                "stat": "mastery",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:mastery"
+            },
             "enabledByDefault": true
           }
         },
@@ -5145,6 +5186,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 10,
+            "effectJson": {
+              "spec": {
+                "stat": "reduceDefense",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:reduceDefense"
+            },
             "enabledByDefault": false
           }
         },
@@ -5180,356 +5234,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 11,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:resPen",
-          "label": "抗性穿透%",
-          "target": "panel:resPen",
-          "perRoll": 24,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 12,
-          "effectJson": {
-            "spec": {
-              "stat": "resPen",
-              "stage": "external",
+            "effectJson": {
+              "spec": {
+                "stat": "ignoreDefense",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
               "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
+              "allocation": "effect",
+              "legacyTarget": "panel:ignoreDefense"
             },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:resPen"
-          },
-          "raw": {
-            "id": "panel:resPen",
-            "cap": 1,
-            "group": "副词条",
-            "label": "抗性穿透%",
-            "target": "panel:resPen",
-            "perRoll": 24,
-            "rollCost": 1,
-            "sortOrder": 12,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyDmgBonus",
-          "label": "异常增伤%",
-          "target": "panel:anomalyDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 13,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyDmgBonus"
-          },
-          "raw": {
-            "id": "panel:anomalyDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异常增伤%",
-            "target": "panel:anomalyDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 13,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyCritRate",
-          "label": "异常暴击率%",
-          "target": "panel:anomalyCritRate",
-          "perRoll": 24,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 14,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyCritRate",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyCritRate"
-          },
-          "raw": {
-            "id": "panel:anomalyCritRate",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异常暴击率%",
-            "target": "panel:anomalyCritRate",
-            "perRoll": 24,
-            "rollCost": 1,
-            "sortOrder": 14,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyCritDmg",
-          "label": "异常暴击伤害%",
-          "target": "panel:anomalyCritDmg",
-          "perRoll": 48,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 15,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyCritDmg",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyCritDmg"
-          },
-          "raw": {
-            "id": "panel:anomalyCritDmg",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异常暴击伤害%",
-            "target": "panel:anomalyCritDmg",
-            "perRoll": 48,
-            "rollCost": 1,
-            "sortOrder": 15,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyReleaseDmgBonus",
-          "label": "异放增伤%",
-          "target": "panel:anomalyReleaseDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 16,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyReleaseDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyReleaseDmgBonus"
-          },
-          "raw": {
-            "id": "panel:anomalyReleaseDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异放增伤%",
-            "target": "panel:anomalyReleaseDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 16,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:disorderDmgBonus",
-          "label": "紊乱增伤%",
-          "target": "panel:disorderDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 17,
-          "effectJson": {
-            "spec": {
-              "stat": "disorderDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:disorderDmgBonus"
-          },
-          "raw": {
-            "id": "panel:disorderDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "紊乱增伤%",
-            "target": "panel:disorderDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 17,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:turbulenceDmgBonus",
-          "label": "乱流增伤%",
-          "target": "panel:turbulenceDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 18,
-          "effectJson": {
-            "spec": {
-              "stat": "turbulenceDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:turbulenceDmgBonus"
-          },
-          "raw": {
-            "id": "panel:turbulenceDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "乱流增伤%",
-            "target": "panel:turbulenceDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 18,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:radianceDmgBonus",
-          "label": "耀变增伤%",
-          "target": "panel:radianceDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 19,
-          "effectJson": {
-            "spec": {
-              "stat": "radianceDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:radianceDmgBonus"
-          },
-          "raw": {
-            "id": "panel:radianceDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "耀变增伤%",
-            "target": "panel:radianceDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 19,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:radianceResPen",
-          "label": "耀变抗性穿透%",
-          "target": "panel:radianceResPen",
-          "perRoll": 24,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 20,
-          "effectJson": {
-            "spec": {
-              "stat": "radianceResPen",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:radianceResPen"
-          },
-          "raw": {
-            "id": "panel:radianceResPen",
-            "cap": 1,
-            "group": "副词条",
-            "label": "耀变抗性穿透%",
-            "target": "panel:radianceResPen",
-            "perRoll": 24,
-            "rollCost": 1,
-            "sortOrder": 20,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:specialMult",
-          "label": "特殊倍率%",
-          "target": "panel:specialMult",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 21,
-          "effectJson": {
-            "spec": {
-              "stat": "specialMult",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:specialMult"
-          },
-          "raw": {
-            "id": "panel:specialMult",
-            "cap": 1,
-            "group": "副词条",
-            "label": "特殊倍率%",
-            "target": "panel:specialMult",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 21,
             "enabledByDefault": false
           }
         },
@@ -5557,7 +5274,12 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 22,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critDmg"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -5584,7 +5306,12 @@
             "perRoll": 24,
             "rollCost": 1,
             "sortOrder": 23,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critRate"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -5611,6 +5338,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 24,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -5638,7 +5370,12 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 25,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -5673,6 +5410,19 @@
             "perRoll": 92,
             "rollCost": 1,
             "sortOrder": 26,
+            "effectJson": {
+              "spec": {
+                "stat": "mastery",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:mastery"
+            },
             "enabledByDefault": true
           }
         },
@@ -5700,7 +5450,12 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 27,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -5727,6 +5482,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 28,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -5754,7 +5514,12 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 29,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -5781,7 +5546,12 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 30,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -5816,6 +5586,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 31,
+            "effectJson": {
+              "spec": {
+                "stat": "dmgBonus",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:dmgBonus"
+            },
             "enabledByDefault": true
           }
         },
@@ -5851,6 +5634,19 @@
             "perRoll": 24,
             "rollCost": 1,
             "sortOrder": 32,
+            "effectJson": {
+              "spec": {
+                "stat": "penRate",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:penRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -5878,6 +5674,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 33,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -5905,7 +5706,12 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 34,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -5932,7 +5738,12 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 35,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -5967,6 +5778,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 36,
+            "effectJson": {
+              "spec": {
+                "stat": "anomalyControl",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:anomalyControl"
+            },
             "enabledByDefault": true
           }
         },
@@ -6002,7 +5826,20 @@
             "perRoll": 18,
             "rollCost": 1,
             "sortOrder": 37,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "impact",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:impact"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -6037,6 +5874,19 @@
             "perRoll": 60,
             "rollCost": 1,
             "sortOrder": 38,
+            "effectJson": {
+              "spec": {
+                "stat": "energyRegen",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:energyRegen"
+            },
             "enabledByDefault": true
           }
         },
@@ -6072,6 +5922,19 @@
             "perRoll": 10,
             "rollCost": 1,
             "sortOrder": 39,
+            "effectJson": {
+              "spec": {
+                "stat": "dmgBonus",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:dmgBonus"
+            },
             "enabledByDefault": true
           }
         },
@@ -6107,6 +5970,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 40,
+            "effectJson": {
+              "spec": {
+                "stat": "mastery",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:mastery"
+            },
             "enabledByDefault": true
           }
         },
@@ -6142,6 +6018,19 @@
             "perRoll": 20,
             "rollCost": 1,
             "sortOrder": 41,
+            "effectJson": {
+              "spec": {
+                "stat": "energyRegen",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:energyRegen"
+            },
             "enabledByDefault": true
           }
         },
@@ -6169,6 +6058,11 @@
             "perRoll": 10,
             "rollCost": 1,
             "sortOrder": 42,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -6196,7 +6090,12 @@
             "perRoll": 10,
             "rollCost": 1,
             "sortOrder": 43,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -6223,7 +6122,12 @@
             "perRoll": 16,
             "rollCost": 1,
             "sortOrder": 44,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -6250,7 +6154,12 @@
             "perRoll": 8,
             "rollCost": 1,
             "sortOrder": 45,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critRate"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -6277,7 +6186,12 @@
             "perRoll": 16,
             "rollCost": 1,
             "sortOrder": 46,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critDmg"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -6312,6 +6226,19 @@
             "perRoll": 8,
             "rollCost": 1,
             "sortOrder": 47,
+            "effectJson": {
+              "spec": {
+                "stat": "penRate",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:penRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -6347,6 +6274,19 @@
             "perRoll": 8,
             "rollCost": 1,
             "sortOrder": 48,
+            "effectJson": {
+              "spec": {
+                "stat": "anomalyControl",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:anomalyControl"
+            },
             "enabledByDefault": true
           }
         },
@@ -6382,7 +6322,20 @@
             "perRoll": 6,
             "rollCost": 1,
             "sortOrder": 49,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "impact",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:impact"
+            },
+            "enabledByDefault": false
           }
         }
       ],
@@ -6442,7 +6395,7 @@
     {
       "name": "锋御",
       "isDefault": false,
-      "sortOrder": 5,
+      "sortOrder": 4,
       "entries": [
         {
           "id": "substat:hpFlat",
@@ -6468,7 +6421,12 @@
             "perRoll": 112,
             "rollCost": 1,
             "sortOrder": 0,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpFlat"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -6495,7 +6453,12 @@
             "perRoll": 3,
             "rollCost": 1,
             "sortOrder": 1,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -6522,7 +6485,12 @@
             "perRoll": 19,
             "rollCost": 1,
             "sortOrder": 2,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkFlat"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -6549,7 +6517,12 @@
             "perRoll": 3,
             "rollCost": 1,
             "sortOrder": 3,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -6576,6 +6549,11 @@
             "perRoll": 15,
             "rollCost": 1,
             "sortOrder": 4,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defFlat"
+            },
             "enabledByDefault": true
           }
         },
@@ -6603,6 +6581,11 @@
             "perRoll": 4.8,
             "rollCost": 1,
             "sortOrder": 5,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -6630,6 +6613,11 @@
             "perRoll": 9,
             "rollCost": 1,
             "sortOrder": 6,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:pen"
+            },
             "enabledByDefault": true
           }
         },
@@ -6657,6 +6645,11 @@
             "perRoll": 2.4,
             "rollCost": 1,
             "sortOrder": 7,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -6684,6 +6677,11 @@
             "perRoll": 4.8,
             "rollCost": 1,
             "sortOrder": 8,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critDmg"
+            },
             "enabledByDefault": true
           }
         },
@@ -6719,7 +6717,20 @@
             "perRoll": 9,
             "rollCost": 1,
             "sortOrder": 9,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "mastery",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:mastery"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -6754,6 +6765,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 10,
+            "effectJson": {
+              "spec": {
+                "stat": "reduceDefense",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:reduceDefense"
+            },
             "enabledByDefault": false
           }
         },
@@ -6789,356 +6813,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 11,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:resPen",
-          "label": "抗性穿透%",
-          "target": "panel:resPen",
-          "perRoll": 24,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 12,
-          "effectJson": {
-            "spec": {
-              "stat": "resPen",
-              "stage": "external",
+            "effectJson": {
+              "spec": {
+                "stat": "ignoreDefense",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
               "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
+              "allocation": "effect",
+              "legacyTarget": "panel:ignoreDefense"
             },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:resPen"
-          },
-          "raw": {
-            "id": "panel:resPen",
-            "cap": 1,
-            "group": "副词条",
-            "label": "抗性穿透%",
-            "target": "panel:resPen",
-            "perRoll": 24,
-            "rollCost": 1,
-            "sortOrder": 12,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyDmgBonus",
-          "label": "异常增伤%",
-          "target": "panel:anomalyDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 13,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyDmgBonus"
-          },
-          "raw": {
-            "id": "panel:anomalyDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异常增伤%",
-            "target": "panel:anomalyDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 13,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyCritRate",
-          "label": "异常暴击率%",
-          "target": "panel:anomalyCritRate",
-          "perRoll": 24,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 14,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyCritRate",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyCritRate"
-          },
-          "raw": {
-            "id": "panel:anomalyCritRate",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异常暴击率%",
-            "target": "panel:anomalyCritRate",
-            "perRoll": 24,
-            "rollCost": 1,
-            "sortOrder": 14,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyCritDmg",
-          "label": "异常暴击伤害%",
-          "target": "panel:anomalyCritDmg",
-          "perRoll": 48,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 15,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyCritDmg",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyCritDmg"
-          },
-          "raw": {
-            "id": "panel:anomalyCritDmg",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异常暴击伤害%",
-            "target": "panel:anomalyCritDmg",
-            "perRoll": 48,
-            "rollCost": 1,
-            "sortOrder": 15,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyReleaseDmgBonus",
-          "label": "异放增伤%",
-          "target": "panel:anomalyReleaseDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 16,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyReleaseDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyReleaseDmgBonus"
-          },
-          "raw": {
-            "id": "panel:anomalyReleaseDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异放增伤%",
-            "target": "panel:anomalyReleaseDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 16,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:disorderDmgBonus",
-          "label": "紊乱增伤%",
-          "target": "panel:disorderDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 17,
-          "effectJson": {
-            "spec": {
-              "stat": "disorderDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:disorderDmgBonus"
-          },
-          "raw": {
-            "id": "panel:disorderDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "紊乱增伤%",
-            "target": "panel:disorderDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 17,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:turbulenceDmgBonus",
-          "label": "乱流增伤%",
-          "target": "panel:turbulenceDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 18,
-          "effectJson": {
-            "spec": {
-              "stat": "turbulenceDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:turbulenceDmgBonus"
-          },
-          "raw": {
-            "id": "panel:turbulenceDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "乱流增伤%",
-            "target": "panel:turbulenceDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 18,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:radianceDmgBonus",
-          "label": "耀变增伤%",
-          "target": "panel:radianceDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 19,
-          "effectJson": {
-            "spec": {
-              "stat": "radianceDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:radianceDmgBonus"
-          },
-          "raw": {
-            "id": "panel:radianceDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "耀变增伤%",
-            "target": "panel:radianceDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 19,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:radianceResPen",
-          "label": "耀变抗性穿透%",
-          "target": "panel:radianceResPen",
-          "perRoll": 24,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 20,
-          "effectJson": {
-            "spec": {
-              "stat": "radianceResPen",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:radianceResPen"
-          },
-          "raw": {
-            "id": "panel:radianceResPen",
-            "cap": 1,
-            "group": "副词条",
-            "label": "耀变抗性穿透%",
-            "target": "panel:radianceResPen",
-            "perRoll": 24,
-            "rollCost": 1,
-            "sortOrder": 20,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:specialMult",
-          "label": "特殊倍率%",
-          "target": "panel:specialMult",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 21,
-          "effectJson": {
-            "spec": {
-              "stat": "specialMult",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:specialMult"
-          },
-          "raw": {
-            "id": "panel:specialMult",
-            "cap": 1,
-            "group": "副词条",
-            "label": "特殊倍率%",
-            "target": "panel:specialMult",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 21,
             "enabledByDefault": false
           }
         },
@@ -7166,6 +6853,11 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 22,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critDmg"
+            },
             "enabledByDefault": true
           }
         },
@@ -7193,6 +6885,11 @@
             "perRoll": 24,
             "rollCost": 1,
             "sortOrder": 23,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -7220,7 +6917,12 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 24,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -7247,7 +6949,12 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 25,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -7282,7 +6989,20 @@
             "perRoll": 92,
             "rollCost": 1,
             "sortOrder": 26,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "mastery",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:mastery"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -7309,6 +7029,11 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 27,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -7336,7 +7061,12 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 28,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -7363,7 +7093,12 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 29,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -7390,6 +7125,11 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 30,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -7425,6 +7165,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 31,
+            "effectJson": {
+              "spec": {
+                "stat": "dmgBonus",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:dmgBonus"
+            },
             "enabledByDefault": true
           }
         },
@@ -7460,6 +7213,19 @@
             "perRoll": 24,
             "rollCost": 1,
             "sortOrder": 32,
+            "effectJson": {
+              "spec": {
+                "stat": "penRate",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:penRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -7487,7 +7253,12 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 33,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -7514,7 +7285,12 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 34,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -7541,6 +7317,11 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 35,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -7576,7 +7357,20 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 36,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "anomalyControl",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:anomalyControl"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -7611,7 +7405,20 @@
             "perRoll": 18,
             "rollCost": 1,
             "sortOrder": 37,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "impact",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:impact"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -7646,7 +7453,20 @@
             "perRoll": 60,
             "rollCost": 1,
             "sortOrder": 38,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "energyRegen",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:energyRegen"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -7681,6 +7501,19 @@
             "perRoll": 10,
             "rollCost": 1,
             "sortOrder": 39,
+            "effectJson": {
+              "spec": {
+                "stat": "dmgBonus",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:dmgBonus"
+            },
             "enabledByDefault": true
           }
         },
@@ -7716,7 +7549,20 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 40,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "mastery",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:mastery"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -7751,7 +7597,20 @@
             "perRoll": 20,
             "rollCost": 1,
             "sortOrder": 41,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "energyRegen",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:energyRegen"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -7778,7 +7637,12 @@
             "perRoll": 10,
             "rollCost": 1,
             "sortOrder": 42,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -7805,7 +7669,12 @@
             "perRoll": 10,
             "rollCost": 1,
             "sortOrder": 43,
-            "enabledByDefault": true
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -7832,6 +7701,11 @@
             "perRoll": 16,
             "rollCost": 1,
             "sortOrder": 44,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -7859,6 +7733,11 @@
             "perRoll": 8,
             "rollCost": 1,
             "sortOrder": 45,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -7886,6 +7765,11 @@
             "perRoll": 16,
             "rollCost": 1,
             "sortOrder": 46,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critDmg"
+            },
             "enabledByDefault": true
           }
         },
@@ -7921,6 +7805,19 @@
             "perRoll": 8,
             "rollCost": 1,
             "sortOrder": 47,
+            "effectJson": {
+              "spec": {
+                "stat": "penRate",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:penRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -7956,7 +7853,20 @@
             "perRoll": 8,
             "rollCost": 1,
             "sortOrder": 48,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "anomalyControl",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:anomalyControl"
+            },
+            "enabledByDefault": false
           }
         },
         {
@@ -7991,7 +7901,20 @@
             "perRoll": 6,
             "rollCost": 1,
             "sortOrder": 49,
-            "enabledByDefault": true
+            "effectJson": {
+              "spec": {
+                "stat": "impact",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:impact"
+            },
+            "enabledByDefault": false
           }
         }
       ],
@@ -8051,7 +7974,7 @@
     {
       "name": "高级设置",
       "isDefault": false,
-      "sortOrder": 6,
+      "sortOrder": 5,
       "entries": [
         {
           "id": "substat:hpFlat",
@@ -8077,6 +8000,11 @@
             "perRoll": 112,
             "rollCost": 1,
             "sortOrder": 0,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpFlat"
+            },
             "enabledByDefault": true
           }
         },
@@ -8104,6 +8032,11 @@
             "perRoll": 3,
             "rollCost": 1,
             "sortOrder": 1,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -8131,6 +8064,11 @@
             "perRoll": 19,
             "rollCost": 1,
             "sortOrder": 2,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkFlat"
+            },
             "enabledByDefault": true
           }
         },
@@ -8158,6 +8096,11 @@
             "perRoll": 3,
             "rollCost": 1,
             "sortOrder": 3,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -8185,6 +8128,11 @@
             "perRoll": 15,
             "rollCost": 1,
             "sortOrder": 4,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defFlat"
+            },
             "enabledByDefault": true
           }
         },
@@ -8212,6 +8160,11 @@
             "perRoll": 4.8,
             "rollCost": 1,
             "sortOrder": 5,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -8239,6 +8192,11 @@
             "perRoll": 9,
             "rollCost": 1,
             "sortOrder": 6,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:pen"
+            },
             "enabledByDefault": true
           }
         },
@@ -8266,6 +8224,11 @@
             "perRoll": 2.4,
             "rollCost": 1,
             "sortOrder": 7,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -8293,6 +8256,11 @@
             "perRoll": 4.8,
             "rollCost": 1,
             "sortOrder": 8,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critDmg"
+            },
             "enabledByDefault": true
           }
         },
@@ -8328,6 +8296,19 @@
             "perRoll": 9,
             "rollCost": 1,
             "sortOrder": 9,
+            "effectJson": {
+              "spec": {
+                "stat": "mastery",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:mastery"
+            },
             "enabledByDefault": true
           }
         },
@@ -8363,6 +8344,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 10,
+            "effectJson": {
+              "spec": {
+                "stat": "reduceDefense",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:reduceDefense"
+            },
             "enabledByDefault": false
           }
         },
@@ -8398,356 +8392,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 11,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:resPen",
-          "label": "抗性穿透%",
-          "target": "panel:resPen",
-          "perRoll": 24,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 12,
-          "effectJson": {
-            "spec": {
-              "stat": "resPen",
-              "stage": "external",
+            "effectJson": {
+              "spec": {
+                "stat": "ignoreDefense",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
               "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
+              "allocation": "effect",
+              "legacyTarget": "panel:ignoreDefense"
             },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:resPen"
-          },
-          "raw": {
-            "id": "panel:resPen",
-            "cap": 1,
-            "group": "副词条",
-            "label": "抗性穿透%",
-            "target": "panel:resPen",
-            "perRoll": 24,
-            "rollCost": 1,
-            "sortOrder": 12,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyDmgBonus",
-          "label": "异常增伤%",
-          "target": "panel:anomalyDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 13,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyDmgBonus"
-          },
-          "raw": {
-            "id": "panel:anomalyDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异常增伤%",
-            "target": "panel:anomalyDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 13,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyCritRate",
-          "label": "异常暴击率%",
-          "target": "panel:anomalyCritRate",
-          "perRoll": 24,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 14,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyCritRate",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyCritRate"
-          },
-          "raw": {
-            "id": "panel:anomalyCritRate",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异常暴击率%",
-            "target": "panel:anomalyCritRate",
-            "perRoll": 24,
-            "rollCost": 1,
-            "sortOrder": 14,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyCritDmg",
-          "label": "异常暴击伤害%",
-          "target": "panel:anomalyCritDmg",
-          "perRoll": 48,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 15,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyCritDmg",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyCritDmg"
-          },
-          "raw": {
-            "id": "panel:anomalyCritDmg",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异常暴击伤害%",
-            "target": "panel:anomalyCritDmg",
-            "perRoll": 48,
-            "rollCost": 1,
-            "sortOrder": 15,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:anomalyReleaseDmgBonus",
-          "label": "异放增伤%",
-          "target": "panel:anomalyReleaseDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 16,
-          "effectJson": {
-            "spec": {
-              "stat": "anomalyReleaseDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:anomalyReleaseDmgBonus"
-          },
-          "raw": {
-            "id": "panel:anomalyReleaseDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "异放增伤%",
-            "target": "panel:anomalyReleaseDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 16,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:disorderDmgBonus",
-          "label": "紊乱增伤%",
-          "target": "panel:disorderDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 17,
-          "effectJson": {
-            "spec": {
-              "stat": "disorderDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:disorderDmgBonus"
-          },
-          "raw": {
-            "id": "panel:disorderDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "紊乱增伤%",
-            "target": "panel:disorderDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 17,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:turbulenceDmgBonus",
-          "label": "乱流增伤%",
-          "target": "panel:turbulenceDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 18,
-          "effectJson": {
-            "spec": {
-              "stat": "turbulenceDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:turbulenceDmgBonus"
-          },
-          "raw": {
-            "id": "panel:turbulenceDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "乱流增伤%",
-            "target": "panel:turbulenceDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 18,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:radianceDmgBonus",
-          "label": "耀变增伤%",
-          "target": "panel:radianceDmgBonus",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 19,
-          "effectJson": {
-            "spec": {
-              "stat": "radianceDmgBonus",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:radianceDmgBonus"
-          },
-          "raw": {
-            "id": "panel:radianceDmgBonus",
-            "cap": 1,
-            "group": "副词条",
-            "label": "耀变增伤%",
-            "target": "panel:radianceDmgBonus",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 19,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:radianceResPen",
-          "label": "耀变抗性穿透%",
-          "target": "panel:radianceResPen",
-          "perRoll": 24,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 20,
-          "effectJson": {
-            "spec": {
-              "stat": "radianceResPen",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:radianceResPen"
-          },
-          "raw": {
-            "id": "panel:radianceResPen",
-            "cap": 1,
-            "group": "副词条",
-            "label": "耀变抗性穿透%",
-            "target": "panel:radianceResPen",
-            "perRoll": 24,
-            "rollCost": 1,
-            "sortOrder": 20,
-            "enabledByDefault": false
-          }
-        },
-        {
-          "id": "panel:specialMult",
-          "label": "特殊倍率%",
-          "target": "panel:specialMult",
-          "perRoll": 30,
-          "cap": 1,
-          "group": "副词条",
-          "rollCost": 1,
-          "enabledByDefault": false,
-          "sortOrder": 21,
-          "effectJson": {
-            "spec": {
-              "stat": "specialMult",
-              "stage": "external",
-              "version": 1,
-              "operation": "add",
-              "conditions": {},
-              "beneficiary": "self"
-            },
-            "version": 1,
-            "allocation": "effect",
-            "legacyTarget": "panel:specialMult"
-          },
-          "raw": {
-            "id": "panel:specialMult",
-            "cap": 1,
-            "group": "副词条",
-            "label": "特殊倍率%",
-            "target": "panel:specialMult",
-            "perRoll": 30,
-            "rollCost": 1,
-            "sortOrder": 21,
             "enabledByDefault": false
           }
         },
@@ -8775,6 +8432,11 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 22,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critDmg"
+            },
             "enabledByDefault": true
           }
         },
@@ -8802,6 +8464,11 @@
             "perRoll": 24,
             "rollCost": 1,
             "sortOrder": 23,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -8829,6 +8496,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 24,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -8856,6 +8528,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 25,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -8891,6 +8568,19 @@
             "perRoll": 92,
             "rollCost": 1,
             "sortOrder": 26,
+            "effectJson": {
+              "spec": {
+                "stat": "mastery",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:mastery"
+            },
             "enabledByDefault": true
           }
         },
@@ -8918,6 +8608,11 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 27,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -8945,6 +8640,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 28,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -8972,6 +8672,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 29,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -8999,6 +8704,11 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 30,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -9034,6 +8744,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 31,
+            "effectJson": {
+              "spec": {
+                "stat": "dmgBonus",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:dmgBonus"
+            },
             "enabledByDefault": true
           }
         },
@@ -9069,6 +8792,19 @@
             "perRoll": 24,
             "rollCost": 1,
             "sortOrder": 32,
+            "effectJson": {
+              "spec": {
+                "stat": "penRate",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:penRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -9096,6 +8832,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 33,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -9123,6 +8864,11 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 34,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -9150,6 +8896,11 @@
             "perRoll": 48,
             "rollCost": 1,
             "sortOrder": 35,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -9185,6 +8936,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 36,
+            "effectJson": {
+              "spec": {
+                "stat": "anomalyControl",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:anomalyControl"
+            },
             "enabledByDefault": true
           }
         },
@@ -9220,6 +8984,19 @@
             "perRoll": 18,
             "rollCost": 1,
             "sortOrder": 37,
+            "effectJson": {
+              "spec": {
+                "stat": "impact",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:impact"
+            },
             "enabledByDefault": true
           }
         },
@@ -9255,6 +9032,19 @@
             "perRoll": 60,
             "rollCost": 1,
             "sortOrder": 38,
+            "effectJson": {
+              "spec": {
+                "stat": "energyRegen",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:energyRegen"
+            },
             "enabledByDefault": true
           }
         },
@@ -9290,6 +9080,19 @@
             "perRoll": 10,
             "rollCost": 1,
             "sortOrder": 39,
+            "effectJson": {
+              "spec": {
+                "stat": "dmgBonus",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:dmgBonus"
+            },
             "enabledByDefault": true
           }
         },
@@ -9325,6 +9128,19 @@
             "perRoll": 30,
             "rollCost": 1,
             "sortOrder": 40,
+            "effectJson": {
+              "spec": {
+                "stat": "mastery",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:mastery"
+            },
             "enabledByDefault": true
           }
         },
@@ -9360,6 +9176,19 @@
             "perRoll": 20,
             "rollCost": 1,
             "sortOrder": 41,
+            "effectJson": {
+              "spec": {
+                "stat": "energyRegen",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:energyRegen"
+            },
             "enabledByDefault": true
           }
         },
@@ -9387,6 +9216,11 @@
             "perRoll": 10,
             "rollCost": 1,
             "sortOrder": 42,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:atkPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -9414,6 +9248,11 @@
             "perRoll": 10,
             "rollCost": 1,
             "sortOrder": 43,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:hpPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -9441,6 +9280,11 @@
             "perRoll": 16,
             "rollCost": 1,
             "sortOrder": 44,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:defPercent"
+            },
             "enabledByDefault": true
           }
         },
@@ -9468,6 +9312,11 @@
             "perRoll": 8,
             "rollCost": 1,
             "sortOrder": 45,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -9495,6 +9344,11 @@
             "perRoll": 16,
             "rollCost": 1,
             "sortOrder": 46,
+            "effectJson": {
+              "version": 1,
+              "allocation": "count",
+              "legacyTarget": "panel:critDmg"
+            },
             "enabledByDefault": true
           }
         },
@@ -9530,6 +9384,19 @@
             "perRoll": 8,
             "rollCost": 1,
             "sortOrder": 47,
+            "effectJson": {
+              "spec": {
+                "stat": "penRate",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:penRate"
+            },
             "enabledByDefault": true
           }
         },
@@ -9565,6 +9432,19 @@
             "perRoll": 8,
             "rollCost": 1,
             "sortOrder": 48,
+            "effectJson": {
+              "spec": {
+                "stat": "anomalyControl",
+                "stage": "external",
+                "version": 1,
+                "operation": "percentOfBase",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:anomalyControl"
+            },
             "enabledByDefault": true
           }
         },
@@ -9600,6 +9480,19 @@
             "perRoll": 6,
             "rollCost": 1,
             "sortOrder": 49,
+            "effectJson": {
+              "spec": {
+                "stat": "impact",
+                "stage": "external",
+                "version": 1,
+                "operation": "add",
+                "conditions": {},
+                "beneficiary": "self"
+              },
+              "version": 1,
+              "allocation": "effect",
+              "legacyTarget": "panel:impact"
+            },
             "enabledByDefault": true
           }
         }

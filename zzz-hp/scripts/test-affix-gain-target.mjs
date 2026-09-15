@@ -34,6 +34,12 @@ import {
   isAffixLibraryEntryTarget,
   validateAffixLibraryEntry,
 } from '../src/utils/affixLibrary.ts'
+import {
+  AFFIX_KNOWN_TARGET_IDS,
+  groupsForAffixTargetTiming,
+  pickAffixTargetForTiming,
+  findAffixTargetBranchGroup,
+} from '../src/utils/affixTargetBranches.ts'
 import { computeDefenseZone } from '../src/utils/damageCalc.ts'
 import { computeAffixBenefitTable } from '../src/utils/affixBenefitAnalysis.ts'
 import {
@@ -416,6 +422,28 @@ console.log('\n[8] 重叠字段（penRate / dmgBonus）只加一次')
     zoneGain > 10 && zoneGain < 13,
     `${zoneGain.toFixed(3)}%  区 ${zone0.defenseMultiplier.toFixed(4)} → ${zone24.defenseMultiplier.toFixed(4)}`,
   )
+}
+
+console.log('\n[picker] 时机 + 局外重复')
+{
+  const shared = findAffixTargetBranchGroup('panel:critRate')
+  check('暴击局外在「局外重复」', shared?.id === 'shared' && shared.label === '局外重复')
+  check(
+    '局外重复含局内暴击/爆伤/增伤/精通',
+    ['gain:critRate', 'gain:critDmg', 'gain:dmgBonus', 'gain:mastery'].every((id) =>
+      shared?.options.some((option) => option.id === id),
+    ),
+  )
+  check(
+    '切时机暴击 panel→gain 仍在局外重复',
+    pickAffixTargetForTiming('panel:critRate', 'gain') === 'gain:critRate',
+  )
+  check(
+    '选局外时没有属性异常组',
+    !groupsForAffixTargetTiming('panel').some((group) => group.id === 'anomaly'),
+  )
+  check('选单不含已隐藏的局外抗穿', !AFFIX_KNOWN_TARGET_IDS.has('panel:resPen'))
+  check('选单仍有局内抗穿', AFFIX_KNOWN_TARGET_IDS.has('gain:resPen'))
 }
 
 console.log(`\n结果：${passed} passed, ${failed} failed`)

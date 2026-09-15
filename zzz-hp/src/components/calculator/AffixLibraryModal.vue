@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import type { AffixCounts } from '@/types/calculatorPanel'
 import { ensureAffixPresetLoaded, loadAffixPresetScheme } from '@/utils/affixPresetLoader'
 import type {
   BuffApplySituation,
@@ -11,12 +10,9 @@ import {
   BUFF_SCOPE_OPTIONS,
   BUFF_SKILL_TARGET_OPTIONS,
 } from '@/types/calculator'
+import AffixTargetBranchSelect from '@/components/calculator/AffixTargetBranchSelect.vue'
 import {
-  AFFIX_GAIN_FIELDS,
-  AFFIX_GAIN_FIELD_LABELS,
   AFFIX_LIBRARY_SET_NAME_MAX,
-  AFFIX_PANEL_DELTA_FIELD_LABELS,
-  AFFIX_SUBSTAT_KEY_LABELS,
   DEFAULT_AFFIX_GROUP_CAP,
   activateAffixLibrarySet,
   activeAffixLibrarySet,
@@ -29,9 +25,7 @@ import {
   defaultAffixPresetSchemeName,
   deleteAffixLibrarySet,
   exportAffixLibrarySet,
-  gainTarget,
   importAffixLibrarySet,
-  isAffixPanelTargetHiddenFromPicker,
   isGainTarget,
   isUsingServerAffixPreset,
   loadAffixLibraryStore,
@@ -41,13 +35,11 @@ import {
   resolveAffixLibrary,
   resolveAffixLibraryAll,
   saveAffixLibraryStore,
-  type AffixGainField,
   type AffixLibraryEntry,
   type AffixLibraryEntryTarget,
   type AffixLibraryGroup,
   type AffixLibraryState,
   type AffixLibraryStore,
-  type AffixPanelDeltaField,
 } from '@/utils/affixLibrary'
 
 /**
@@ -602,42 +594,6 @@ function submitNewGroup() {
 
 // ---------- 条目编辑（新增表单） ----------
 
-/** `panel:` 局外落点：原十格字段 + 面板字段，同名只列一次 */
-const PANEL_TARGET_OPTIONS = [
-  ...(Object.keys(AFFIX_SUBSTAT_KEY_LABELS) as (keyof AffixCounts)[]).map((key) => ({
-    id: panelTarget(key),
-    label: AFFIX_SUBSTAT_KEY_LABELS[key],
-  })),
-  ...(Object.keys(AFFIX_PANEL_DELTA_FIELD_LABELS) as AffixPanelDeltaField[]).map((field) => ({
-    id: panelTarget(field),
-    label: AFFIX_PANEL_DELTA_FIELD_LABELS[field],
-  })),
-]
-
-/**
- * 「新增条目」的属性清单：局外字段合并成一个列表。
- *
- * 条目不再区分「词条数 / 面板增量」（用户 2026-09-12 裁定：词条只表达「给哪个属性加多少」，
- * 怎么折算由字段语义决定）。同名属性只列一次 —— `异常精通` 在两个字段表里都有，
- * 语义相同（平铺加），保留先出现的那个。
- */
-const TARGET_OPTIONS = (() => {
-  const seen = new Set<string>()
-  const merged: { id: AffixLibraryEntryTarget; label: string }[] = []
-  for (const option of PANEL_TARGET_OPTIONS) {
-    if (seen.has(option.label)) continue
-    if (isAffixPanelTargetHiddenFromPicker(option.id)) continue
-    seen.add(option.label)
-    merged.push(option)
-  }
-  return merged
-})()
-
-const GAIN_TARGET_OPTIONS = AFFIX_GAIN_FIELDS.map((field: AffixGainField) => ({
-  id: gainTarget(field),
-  label: `局内·${AFFIX_GAIN_FIELD_LABELS[field] ?? field}`,
-}))
-
 const draft = ref({
   label: '',
   target: panelTarget('atkPercent') as AffixLibraryEntryTarget,
@@ -1076,20 +1032,9 @@ function submitDraft() {
                   <span>名称</span>
                   <input v-model="draft.label" type="text" placeholder="如：5号位增伤" />
                 </label>
-                <label>
+                <label class="add-grid--wide">
                   <span>目标</span>
-                  <select v-model="draft.target">
-                    <optgroup label="词条 / 局外">
-                      <option v-for="opt in TARGET_OPTIONS" :key="opt.id" :value="opt.id">
-                        {{ opt.label }}
-                      </option>
-                    </optgroup>
-                    <optgroup label="局内增益（可加招式/失衡条件）">
-                      <option v-for="opt in GAIN_TARGET_OPTIONS" :key="opt.id" :value="opt.id">
-                        {{ opt.label }}
-                      </option>
-                    </optgroup>
-                  </select>
+                  <AffixTargetBranchSelect v-model="draft.target" layout="stack" />
                 </label>
                 <template v-if="draftIsGain">
                   <label>
@@ -1874,6 +1819,10 @@ function submitDraft() {
   /* 输入框默认有一份固定的内容宽度，不给 100% 会顶出网格格子 */
   width: 100%;
   min-width: 0;
+}
+
+.add-grid .add-grid--wide {
+  grid-column: 1 / -1;
 }
 
 .btn-primary {
