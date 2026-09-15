@@ -75,7 +75,7 @@ function buildAffixTargetBranchGroups(): AffixTargetBranchGroup[] {
       ...gainOpts('critRate', 'critDmg', 'dmgBonus', 'mastery'),
     ]),
     group('defenseZone', '防御区', [
-      ...panelOpts('penRate', 'reduceDefense', 'ignoreDefense', 'pen'),
+      ...panelOpts('penRate', 'pen'),
       ...gainOpts('penRate', 'reduceDefense'),
     ]),
     group('nonCombat', '非战斗', [

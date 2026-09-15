@@ -112,28 +112,6 @@
       "sortOrder": 9
     },
     {
-      "id": "panel:reduceDefense",
-      "label": "减防%",
-      "target": "panel:reduceDefense",
-      "perRoll": 30,
-      "cap": 1,
-      "group": "副词条",
-      "rollCost": 1,
-      "enabledByDefault": false,
-      "sortOrder": 10
-    },
-    {
-      "id": "panel:ignoreDefense",
-      "label": "无视防御%",
-      "target": "panel:ignoreDefense",
-      "perRoll": 30,
-      "cap": 1,
-      "group": "副词条",
-      "rollCost": 1,
-      "enabledByDefault": false,
-      "sortOrder": 11
-    },
-    {
       "id": "main:slot4:critDmg",
       "label": "爆伤 48%",
       "target": "panel:critDmg",

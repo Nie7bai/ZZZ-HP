@@ -443,7 +443,9 @@ console.log('\n[picker] 时机 + 局外重复')
     !groupsForAffixTargetTiming('panel').some((group) => group.id === 'anomaly'),
   )
   check('选单不含已隐藏的局外抗穿', !AFFIX_KNOWN_TARGET_IDS.has('panel:resPen'))
+  check('选单不含局外减防/无视防御', !AFFIX_KNOWN_TARGET_IDS.has('panel:reduceDefense') && !AFFIX_KNOWN_TARGET_IDS.has('panel:ignoreDefense'))
   check('选单仍有局内抗穿', AFFIX_KNOWN_TARGET_IDS.has('gain:resPen'))
+  check('选单仍有局内减防', AFFIX_KNOWN_TARGET_IDS.has('gain:reduceDefense'))
 }
 
 console.log(`\n结果：${passed} passed, ${failed} failed`)

@@ -170,6 +170,8 @@ export const AFFIX_PANEL_FIELDS_HIDDEN_FROM_PICKER = [
   'radianceDmgBonus',
   'radianceResPen',
   'specialMult',
+  'reduceDefense',
+  'ignoreDefense',
 ] as const satisfies readonly AffixPanelDeltaField[]
 
 export function isAffixPanelTargetHiddenFromPicker(target: string): boolean {
@@ -460,23 +462,11 @@ export function createDefaultAffixLibrary(): AffixLibraryEntry[] {
  * - `group` 默认「副词条」—— 不分槽位的自由条目归在这里（额度不限）。
  *
  * 增伤 / 穿透率**不在这里**：它们是 5 号位主属性。
- * 异常/异放/紊乱/乱流/耀变/抗穿/特殊倍率等局外字段也不在这里：选单已隐藏（几乎只当局内）。
+ * 异常/异放/紊乱/乱流/耀变/抗穿/特殊倍率/减防/无视防御等局外字段也不在这里：
+ * 选单已隐藏（几乎只当局内；减防走 `gain:reduceDefense`）。
  */
 export function createOptionalAffixLibraryEntries(): AffixLibraryEntry[] {
-  const specs: { field: AffixPanelDeltaField; perRoll: number }[] = [
-    { field: 'reduceDefense', perRoll: 30 },
-    { field: 'ignoreDefense', perRoll: 30 },
-  ]
-  return specs.map((spec) => ({
-    id: `panel:${spec.field}`,
-    target: panelTarget(spec.field),
-    label: AFFIX_PANEL_DELTA_FIELD_LABELS[spec.field],
-    perRoll: spec.perRoll,
-    cap: 1,
-    group: AFFIX_PRESET_DEFAULT_GROUP,
-    rollCost: 1,
-    enabledByDefault: false,
-  }))
+  return []
 }
 
 /**
@@ -1362,11 +1352,72 @@ function writeAffixLibraryStore(store: AffixLibraryStore): void {
   }
 }
 
+/**
+ * 用户侧名为「默认」的独立副本：拿掉官方已从选单/预设删掉的局外 `panel:` 条目。
+ * 其它库名不改（冻结副本）。返回原对象表示没有要写盘的变化。
+ */
+export function stripRetiredHiddenPanelAffixFromDefaultCopy(
+  store: AffixLibraryStore,
+): AffixLibraryStore {
+  const hiddenIds = new Set(
+    (AFFIX_PANEL_FIELDS_HIDDEN_FROM_PICKER as readonly string[]).map((field) => `panel:${field}`),
+  )
+  let changed = false
+  const sets = store.sets.map((set) => {
+    if (set.name !== DEFAULT_AFFIX_LIBRARY_SET_NAME || set.state.origin !== 'copy') return set
+    const nextState = stripRetiredHiddenPanelAffixCopyState(set.state, hiddenIds)
+    if (nextState === set.state) return set
+    changed = true
+    return { ...set, state: nextState, updatedAt: Date.now() }
+  })
+  return changed ? { ...store, sets } : store
+}
+
+function stripRetiredHiddenPanelAffixCopyState(
+  state: AffixLibraryState,
+  hiddenIds: ReadonlySet<string>,
+): AffixLibraryState {
+  const nextEntries = state.customEntries.filter(
+    (entry) => !hiddenIds.has(entry.target) && !hiddenIds.has(entry.id),
+  )
+  const dropHiddenKeys = <T extends Record<string, unknown>>(record: T): T => {
+    let dirty = false
+    const next = { ...record }
+    for (const key of Object.keys(next)) {
+      if (!hiddenIds.has(key)) continue
+      delete next[key]
+      dirty = true
+    }
+    return dirty ? next : record
+  }
+  const nextEnabled = dropHiddenKeys(state.enabledOverride)
+  const nextOverrides = dropHiddenKeys(state.overrides)
+  const nextRemoved = state.removedEntryIds.filter((id) => !hiddenIds.has(id))
+  if (
+    nextEntries.length === state.customEntries.length &&
+    nextEnabled === state.enabledOverride &&
+    nextOverrides === state.overrides &&
+    nextRemoved.length === state.removedEntryIds.length
+  ) {
+    return state
+  }
+  return {
+    ...state,
+    customEntries: nextEntries,
+    enabledOverride: nextEnabled,
+    overrides: nextOverrides,
+    removedEntryIds: nextRemoved,
+  }
+}
+
 export function loadAffixLibraryStore(): AffixLibraryStore {
   try {
     const raw = localStorage.getItem(AFFIX_LIBRARY_STORAGE_KEY)
     if (!raw) return createDefaultAffixLibraryStore()
-    return coerceAffixLibraryStore(JSON.parse(raw)) ?? createDefaultAffixLibraryStore()
+    const parsed = coerceAffixLibraryStore(JSON.parse(raw)) ?? createDefaultAffixLibraryStore()
+    const synced = stripRetiredHiddenPanelAffixFromDefaultCopy(parsed)
+    if (synced !== parsed) writeAffixLibraryStore(synced)
+    return synced
   } catch {
     // 存档损坏或隐私模式：回落默认库，不影响计算
     return createDefaultAffixLibraryStore()

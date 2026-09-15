@@ -28,7 +28,6 @@ import {
   createDefaultAffixLibraryState,
   createDriveDiscMainStatAffixEntries,
   createDriveDiscTwoPieceAffixEntries,
-  createOptionalAffixLibraryEntries,
   createPresetAffixLibraryEntries,
   entryRollsToEvalInput,
   extraGainFromLibraryEntry,
@@ -484,7 +483,7 @@ console.log('\n[4.9] 存档读取与分组补齐')
   const withLegacyGroup = coerceAffixLibraryState({
     customEntries: [],
     enabledOverride: {},
-    overrides: { 'panel:reduceDefense': { group: '老组' }, 'panel:resPen': { group: '老组' } },
+    overrides: { 'substat:atkPercent': { group: '老组' }, 'substat:critRate': { group: '老组' } },
     removedEntryIds: [],
   })
   const legacyGroup = withLegacyGroup.groups.find((g) => g.name === '老组')
@@ -705,7 +704,7 @@ console.log('\n[6] 词条库解析')
   check('默认关闭的预设条目数与构造器一致',
     all.filter((e) => !e.enabledByDefault).length === presetOff,
     String(all.filter((e) => !e.enabledByDefault).length))
-  const enabledOne = setAffixLibraryEntryEnabled(state, 'panel:reduceDefense', true)
+  const enabledOne = setAffixLibraryEntryEnabled(state, 'set:dmgBonus:10', true)
   check('显式启用一条默认关闭的条目后多 1 条',
     resolveAffixLibrary(enabledOne).length === active.length + 1,
     String(resolveAffixLibrary(enabledOne).length))

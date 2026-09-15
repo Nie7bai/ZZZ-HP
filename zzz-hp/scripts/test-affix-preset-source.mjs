@@ -24,15 +24,18 @@ import {
   freezePendingAffixLibrarySets,
   importAffixLibrarySet,
   isUsingServerAffixPreset,
+  loadAffixLibraryStore,
   normalizeAffixLibraryStateForSave,
   presetAffixEntriesBase,
   presetAffixGroupsBase,
   resolveAffixLibrary,
   resolveAffixLibraryAll,
   restoreAffixLibraryDefaults,
+  saveAffixLibraryStore,
   setAffixLibraryEntryEnabled,
   setServerAffixPreset,
   skippedServerPresetEntries,
+  stripRetiredHiddenPanelAffixFromDefaultCopy,
   updateAffixLibraryEntry,
 } from '../src/utils/affixLibrary.ts'
 
@@ -354,7 +357,91 @@ console.log('\n[5] 新建即独立 + 过渡态冻结')
     resolveAffixLibraryAll(importedState).map((e) => e.id).join(', '))
 }
 
-// ---------- 6. 收尾：清空，别把状态带给后续 import ----------
+console.log('\n[6] 用户侧「默认」副本同步去掉隐藏局外条目')
+{
+  const keep = {
+    id: 'substat:atkPercent',
+    label: '局外攻击力%',
+    target: 'panel:atkPercent',
+    perRoll: 3,
+    cap: 0,
+    group: '副词条',
+    rollCost: 1,
+    enabledByDefault: true,
+  }
+  const dropReduce = {
+    id: 'panel:reduceDefense',
+    label: '减防%',
+    target: 'panel:reduceDefense',
+    perRoll: 30,
+    cap: 1,
+    group: '副词条',
+    rollCost: 1,
+    enabledByDefault: false,
+  }
+  const dropResPen = {
+    id: 'panel:resPen',
+    label: '抗性穿透%',
+    target: 'panel:resPen',
+    perRoll: 24,
+    cap: 1,
+    group: '副词条',
+    rollCost: 1,
+    enabledByDefault: false,
+  }
+  const copyState = {
+    origin: 'copy',
+    customEntries: [keep, dropReduce, dropResPen],
+    enabledOverride: { 'panel:reduceDefense': true },
+    overrides: {},
+    removedEntryIds: [],
+    groups: [{ name: '副词条', cap: 0 }],
+    removedGroupNames: [],
+  }
+  const store = {
+    version: 2,
+    activeId: 'set:1',
+    sets: [
+      {
+        id: 'set:1',
+        name: '默认',
+        state: copyState,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      {
+        id: 'set:2',
+        name: '我的配装',
+        state: { ...copyState, customEntries: [dropReduce] },
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ],
+  }
+  const synced = stripRetiredHiddenPanelAffixFromDefaultCopy(store)
+  const defaultIds = resolveAffixLibraryAll(synced.sets[0].state).map((entry) => entry.id)
+  check(
+    '默认副本去掉减防和抗穿，留下攻击%',
+    defaultIds.length === 1 && defaultIds[0] === 'substat:atkPercent',
+    defaultIds.join(', '),
+  )
+  check(
+    '其它库名不改',
+    resolveAffixLibraryAll(synced.sets[1].state).some((entry) => entry.id === 'panel:reduceDefense'),
+  )
+  saveAffixLibraryStore(store)
+  const loaded = loadAffixLibraryStore()
+  const loadedDefault = loaded.sets.find((set) => set.name === '默认')
+  check(
+    '载入写盘后默认副本已同步',
+    loadedDefault != null &&
+      resolveAffixLibraryAll(loadedDefault.state).every((entry) => entry.id === 'substat:atkPercent') &&
+      !resolveAffixLibraryAll(loadedDefault.state).some((entry) => entry.id === 'panel:reduceDefense'),
+    loadedDefault ? resolveAffixLibraryAll(loadedDefault.state).map((entry) => entry.id).join(', ') : 'missing',
+  )
+}
+
+// ---------- 收尾：清空，别把状态带给后续 import ----------
 setServerAffixPreset(null)
 
 console.log(`\n结果：${passed} passed, ${failed} failed`)
