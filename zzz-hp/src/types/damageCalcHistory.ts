@@ -297,7 +297,13 @@ export interface DamageCalcHistoryExport {
   currentId?: string | null
   /** 浏览器自建招式库全文。与方案里的 skillId 成套，导入时整包覆盖。 */
   customSkills?: import('@/types/calculator').Skill[]
+  /** 自建组全文 ∪ 方案引用到的组文档（含预设组抄本） */
+  skillGroups?: import('@/types/calculator').SkillGroup[]
+  /** 导出时方案引用了但本机找不到的招式/组 */
+  warnings?: string[]
 }
+
+export type SchemePackImportMode = 'replace' | 'merge'
 
 /** 导入结果 */
 export interface DamageCalcHistoryImportResult {
@@ -305,6 +311,13 @@ export interface DamageCalcHistoryImportResult {
   skipped: number
   errors: string[]
   customSkillCount: number
+  customGroupCount: number
+  renamed: number
+  remappedSkills: number
+  remappedGroups: number
+  missingSkillCount: number
+  missingGroupCount: number
+  mode: SchemePackImportMode
   /** 旧导出包没有自建招式字段，覆盖后流程可能变成「招式已删除」 */
   legacyPack: boolean
   loadedId: string

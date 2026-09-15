@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { AgentBuffDoc } from '@/types/calculator'
-import type { DamageCalcHistoryEntry } from '@/types/damageCalcHistory'
+import type { DamageCalcHistoryEntry, DamageCalcHistoryImportResult } from '@/types/damageCalcHistory'
+import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
+import { isCustomSkillGroup } from '@/utils/skillGroup'
 import {
   batchDeleteSchemes,
   baseName,
@@ -49,6 +51,9 @@ const emit = defineEmits<{
   changed: []
   imported: [loadedId: string]
 }>()
+
+const buffStore = useCalculatorBuffStore()
+const importMode = ref<'replace' | 'merge'>('replace')
 
 // ============ 2次确认锁 + 自定义弹窗（替代浏览器原生 confirm / prompt） ============
 const CONFIRM_KEY = 'zzz-hp-scheme-confirm'
@@ -624,11 +629,29 @@ function clearLoadedScheme() {
 }
 
 // ============ 导出 / 导入 ============
+function presetGroupIds(): string[] {
+  return buffStore.skillGroups.filter((item) => !isCustomSkillGroup(item)).map((item) => item.id)
+}
+
+function formatImportResult(result: DamageCalcHistoryImportResult): string {
+  if (result.errors.length) return result.errors.join('；')
+  if (result.mode === 'merge') {
+    const renameHint = result.renamed ? `（其中改名 ${result.renamed}）` : ''
+    return `已合并 ${result.added} 个方案${renameHint}；自建招式 +${result.customSkillCount}，技能组 +${result.customGroupCount}，招式换号 ${result.remappedSkills}`
+  }
+  const legacyHint = result.legacyPack ? '（旧文件不含自建招式，流程可能显示招式已删除）' : ''
+  const miss: string[] = []
+  if (result.missingSkillCount) miss.push(`${result.missingSkillCount} 条招式已删除`)
+  if (result.missingGroupCount) miss.push(`${result.missingGroupCount} 个技能组已删除`)
+  const missHint = miss.length ? `；${miss.join(' / ')}` : ''
+  return `已覆盖导入 ${result.added} 个方案、${result.customSkillCount} 条自建招式、${result.customGroupCount} 个技能组${legacyHint}${missHint}`
+}
+
 function exportAll() {
   confirmThen(
-    { title: '导出全部方案', message: '确认将当前方案库和自建招式导出为 JSON 文件？' },
+    { title: '导出全部方案', message: '确认将当前方案库、自建招式和技能组导出为 JSON 文件？' },
     () => {
-      const json = exportDamageCalcHistory()
+      const json = exportDamageCalcHistory(buffStore.skillGroups)
       const blob = new Blob([json], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -636,7 +659,11 @@ function exportAll() {
       a.download = `zzz-hp-schemes-${new Date().toISOString().slice(0, 10)}.json`
       a.click()
       URL.revokeObjectURL(url)
-      formMessage.value = '已导出全部方案和自建招式'
+      const parsed = JSON.parse(json) as { warnings?: string[] }
+      const n = parsed.warnings?.length ?? 0
+      formMessage.value = n
+        ? `已导出全部方案、自建招式和技能组（有 ${n} 条引用缺口，见文件 warnings）`
+        : '已导出全部方案、自建招式和技能组'
     },
   )
 }
@@ -646,7 +673,7 @@ function triggerImport() {
     {
       title: '导入会清空本机存档',
       message:
-        '将删除本机全部方案（含准备招式、流程）、全部自建招式，以及当前工作草稿，再用文件内容替换。主题、账号、管理端登录不受影响。请先点「导出全部」在本地存档。确定已存档并继续？',
+        '将删除本机全部方案（含准备招式、流程）、全部自建招式、自建技能组，以及当前工作草稿，再用文件内容替换。主题、账号、管理端登录不受影响。请先点「导出全部」在本地存档。确定已存档并继续？',
       danger: true,
       confirmText: '已存档，继续',
     },
@@ -654,13 +681,28 @@ function triggerImport() {
       confirmThen(
         {
           title: '再次确认导入',
-          message: '确定清空本机方案和自建招式，然后选择导入文件？',
+          message: '确定清空本机方案、自建招式和自建技能组，然后选择导入文件？',
           danger: true,
         },
         () => {
+          importMode.value = 'replace'
           fileInputRef.value?.click()
         },
       )
+    },
+  )
+}
+
+function triggerMergeImport() {
+  confirmAlways(
+    {
+      title: '合并导入',
+      message: '加到本机，不删除已有方案、自建招式和技能组。重名方案会改成「原名-复制」。',
+      confirmText: '选择文件',
+    },
+    () => {
+      importMode.value = 'merge'
+      fileInputRef.value?.click()
     },
   )
 }
@@ -669,34 +711,46 @@ function onFilePicked(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
+  const mode = importMode.value
   const reader = new FileReader()
   reader.onload = () => {
     const json = String(reader.result)
-    confirmAlways(
-      {
-        title: '用文件覆盖本机',
-        message: `即将用「${file.name}」替换本机全部方案和自建招式。此操作无法撤销。`,
-        danger: true,
-        confirmText: '覆盖导入',
-        highlight: file.name,
-      },
-      () => {
-        const result = importDamageCalcHistory(json)
-        if (result.errors.length) {
-          formMessage.value = result.errors.join('；')
-          return
-        }
-        const legacyHint = result.legacyPack
-          ? '（旧文件不含自建招式，流程可能显示招式已删除）'
-          : ''
-        formMessage.value = `已覆盖导入 ${result.added} 个方案、${result.customSkillCount} 条自建招式${legacyHint}`
-        emit('changed')
-        emit('imported', result.loadedId)
-      },
-    )
+    const run = () => {
+      const result = importDamageCalcHistory(json, {
+        mode,
+        presetGroupIds: presetGroupIds(),
+      })
+      formMessage.value = formatImportResult(result)
+      if (result.errors.length) return
+      emit('changed')
+      emit('imported', result.loadedId)
+    }
+    if (mode === 'merge') {
+      confirmAlways(
+        {
+          title: '合并导入',
+          message: `即将把「${file.name}」合并进本机。不删除已有方案。重名方案会改成「原名-复制」。`,
+          confirmText: '合并导入',
+          highlight: file.name,
+        },
+        run,
+      )
+    } else {
+      confirmAlways(
+        {
+          title: '用文件覆盖本机',
+          message: `即将用「${file.name}」替换本机全部方案、自建招式和自建技能组。此操作无法撤销。`,
+          danger: true,
+          confirmText: '覆盖导入',
+          highlight: file.name,
+        },
+        run,
+      )
+    }
   }
   reader.readAsText(file)
   input.value = ''
+  importMode.value = 'replace'
 }
 
 // ============ 过滤 / 排序 / 显示 ============
@@ -869,6 +923,7 @@ defineExpose({
           />
           <button type="button" class="save-btn scheme-export" @click="exportAll">导出全部</button>
           <button type="button" class="save-btn scheme-import" @click="triggerImport">导入全部</button>
+          <button type="button" class="save-btn scheme-merge" @click="triggerMergeImport">合并导入</button>
           <button
             type="button"
             class="save-btn scheme-manage"
@@ -1423,6 +1478,7 @@ defineExpose({
 
 .scheme-export,
 .scheme-import,
+.scheme-merge,
 .scheme-manage,
 .scheme-mkdir {
   flex: 0 0 auto;

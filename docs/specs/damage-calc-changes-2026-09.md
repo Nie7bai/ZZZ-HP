@@ -23,6 +23,7 @@
 | **没有面板就没有伤害** | 无面板记录时不再拿占位毕业面板兜底；改为空面板 + 评估层闸门，伤害为 0 并给提示 | `0e02600` |
 | **4/5/6 号盘主属性可留空** | 下拉加「未选择（空）」项，默认空；空就按空算，不再拦截「确定导入」 | `0e02600` |
 | 废代码清扫 | 净删 895 行（53 个零引用导出、1 个整文件、多处死函数与失效导入），`eslint` 由 25 错清零 | `bdd4add` `c450168` |
+| 方案包自包含 + 合并导入 | 导出带走自建招式和技能组；覆盖连自建组库一起替换；方案库多一个「合并导入」（重名改「原名-复制」） | 见 `feature/scheme-pack-merge` |
 
 ---
 
@@ -166,6 +167,7 @@
 - [计算器增益乘区与公式核查表](../../CALCULATOR_FORMULAS.md)：公式与展示口径的唯一事实来源。
 - [招式库、准备阶段与流程改造说明](../../skill-flow-redesign.md)：招式三层结构的背景。
 - [Git 协作与发布政策](../policies/git-workflow.md)：分支、提交、发布规则。
+- [方案包自包含导出与合并导入](./scheme-pack.md)
 - 开发手册（工作区 `dev-docs/`，不进仓库）：`panel-import-only.md`（面板来源与两条必要条件）、
   `affix-counts-reset-on-scheme-load.md`（词条数清零与脏草稿）、`preset-picker-first-open-blank.md`、
   `preset-panel-not-loaded.md`。

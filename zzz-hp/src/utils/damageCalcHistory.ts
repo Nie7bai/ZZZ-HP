@@ -1,4 +1,9 @@
 import { loadCustomSkills, parseCustomSkillList, replaceCustomSkills } from '@/utils/skillLibrary'
+import {
+  loadCustomSkillGroups,
+  replaceCustomSkillGroups,
+} from '@/utils/skillGroup'
+import type { SkillGroup } from '@/types/calculator'
 import type {
   AgentPanelProvenance,
   AgentPanelSources,
@@ -8,8 +13,20 @@ import type {
   DamageCalcSchemePanelSnapshot,
   DamageCalcWorkingDraft,
   SchemeFolderMeta,
+  SchemePackImportMode,
   SchemeStore,
 } from '@/types/damageCalcHistory'
+import {
+  applyOwnerGroupMap,
+  buildExportedSkillGroups,
+  collectExportWarnings,
+  countMissingCustomRefs,
+  groupsForCustomStore,
+  mergeCustomGroups,
+  mergeCustomSkills,
+  mergeSchemeStores,
+  parseSkillGroupList,
+} from '@/utils/schemePack'
 import { SCHEME_STORE_VERSION } from '@/types/damageCalcHistory'
 import type { AffixCounts, AffixDriveDiscMainStats, PanelStats } from '@/types/calculatorPanel'
 import type { ExtraBuffGain } from '@/components/calculator/ExtraBuffGainEditor.vue'
@@ -973,12 +990,22 @@ export function formatDamageCalcHistoryTime(savedAt: number): string {
 
 // ===================== 导出 / 导入（对齐 dev 的 zzz_schemes 包） =====================
 
-function emptyImportResult(errors: string[]): DamageCalcHistoryImportResult {
+function emptyImportResult(
+  errors: string[],
+  mode: SchemePackImportMode = 'replace',
+): DamageCalcHistoryImportResult {
   return {
     added: 0,
     skipped: 0,
     errors,
     customSkillCount: 0,
+    customGroupCount: 0,
+    renamed: 0,
+    remappedSkills: 0,
+    remappedGroups: 0,
+    missingSkillCount: 0,
+    missingGroupCount: 0,
+    mode,
     legacyPack: false,
     loadedId: '',
   }
@@ -1025,15 +1052,42 @@ function resolveImportedLoadedId(store: SchemeStore, requested?: string | null):
   return Object.values(store.schemes)[0]?.id ?? ''
 }
 
+function attachMissingCounts(
+  result: DamageCalcHistoryImportResult,
+  schemes: Record<string, DamageCalcHistoryEntry>,
+  presetGroupIds: Set<string>,
+): DamageCalcHistoryImportResult {
+  const missing = countMissingCustomRefs({
+    schemes,
+    customSkills: loadCustomSkills(),
+    groups: loadCustomSkillGroups(),
+    presetGroupIds,
+  })
+  result.missingSkillCount = missing.missingSkillCount
+  result.missingGroupCount = missing.missingGroupCount
+  return result
+}
+
 function commitReplacedStore(
   store: SchemeStore,
   customRaw: unknown,
   legacyPack: boolean,
-  requestedId?: string | null,
+  requestedId: string | null | undefined,
+  groupRaw: unknown,
+  hasGroups: boolean,
+  presetGroupIds: Set<string>,
 ): DamageCalcHistoryImportResult {
   const skills = parseCustomSkillList(customRaw)
   if (skills == null) {
     return emptyImportResult(['自建招式数据格式错误，未改动本机数据'])
+  }
+  let groups: SkillGroup[] = loadCustomSkillGroups()
+  if (hasGroups) {
+    const parsedGroups = parseSkillGroupList(groupRaw)
+    if (parsedGroups == null) {
+      return emptyImportResult(['技能组数据格式错误，未改动本机数据'])
+    }
+    groups = replaceCustomSkillGroups(groupsForCustomStore(parsedGroups, presetGroupIds))
   }
   ensureOrders(store)
   store.version = SCHEME_STORE_VERSION
@@ -1042,18 +1096,41 @@ function commitReplacedStore(
   clearWorkingDraft()
   const loadedId = resolveImportedLoadedId(store, requestedId)
   setLoadedSchemeId(loadedId)
-  return {
-    added: Object.keys(store.schemes).length,
-    skipped: 0,
-    errors: [],
-    customSkillCount: skills.length,
-    legacyPack,
-    loadedId,
-  }
+  return attachMissingCounts(
+    {
+      added: Object.keys(store.schemes).length,
+      skipped: 0,
+      errors: [],
+      customSkillCount: skills.length,
+      customGroupCount: groups.length,
+      renamed: 0,
+      remappedSkills: 0,
+      remappedGroups: 0,
+      missingSkillCount: 0,
+      missingGroupCount: 0,
+      mode: 'replace',
+      legacyPack,
+      loadedId,
+    },
+    store.schemes,
+    presetGroupIds,
+  )
 }
 
-export function exportDamageCalcHistory(): string {
+export function exportDamageCalcHistory(knownGroups: SkillGroup[] = []): string {
   const store = readStore()
+  const customSkills = loadCustomSkills()
+  const customGroups = loadCustomSkillGroups()
+  const skillGroups = buildExportedSkillGroups({
+    customGroups,
+    knownGroups,
+    schemes: store.schemes,
+  })
+  const warnings = collectExportWarnings({
+    schemes: store.schemes,
+    customSkills,
+    knownGroups: [...customGroups, ...knownGroups],
+  })
   const payload: DamageCalcHistoryExport = {
     type: 'zzz-hp-schemes',
     version: SCHEME_STORE_VERSION,
@@ -1061,26 +1138,107 @@ export function exportDamageCalcHistory(): string {
     dirs: store.dirs,
     schemes: store.schemes,
     currentId: getLoadedSchemeId(),
-    customSkills: loadCustomSkills(),
+    customSkills,
+    skillGroups,
+    warnings,
   }
   return JSON.stringify(payload, null, 2)
 }
 
-/** 整包覆盖：清空本机方案库、自建招式、工作草稿后再写入。合并导入尚未做。 */
-export function importDamageCalcHistory(json: string): DamageCalcHistoryImportResult {
+export interface ImportDamageCalcHistoryOptions {
+  mode?: SchemePackImportMode
+  presetGroupIds?: Iterable<string>
+}
+
+function mergeIncomingPack(
+  data: Partial<DamageCalcHistoryExport>,
+  incomingSchemes: Record<string, DamageCalcHistoryEntry>,
+  incomingDirs: Record<string, SchemeFolderMeta>,
+  presetGroupIds: Set<string>,
+): DamageCalcHistoryImportResult {
+  const incomingSkills = parseCustomSkillList(data.customSkills)
+  if (incomingSkills == null) {
+    return emptyImportResult(['自建招式数据格式错误，未改动本机数据'], 'merge')
+  }
+  const incomingGroups = parseSkillGroupList(data.skillGroups)
+  if (incomingGroups == null) {
+    return emptyImportResult(['技能组数据格式错误，未改动本机数据'], 'merge')
+  }
+  const skillMerge = mergeCustomSkills(loadCustomSkills(), incomingSkills)
+  const groupMerge = mergeCustomGroups({
+    local: loadCustomSkillGroups(),
+    incoming: incomingGroups,
+    skillIdMap: skillMerge.idMap,
+    presetIds: presetGroupIds,
+  })
+  const skills = applyOwnerGroupMap(skillMerge.skills, groupMerge.idMap, skillMerge.writtenIds)
+  const cleanedSchemes: Record<string, DamageCalcHistoryEntry> = {}
+  for (const [key, entry] of Object.entries(incomingSchemes)) {
+    if (!entry || typeof entry !== 'object') {
+      cleanedSchemes[key] = entry
+      continue
+    }
+    cleanedSchemes[key] = sanitizeSchemeEntry(entry)
+  }
+  const merged = mergeSchemeStores({
+    local: readStore(),
+    incomingDirs,
+    incomingSchemes: cleanedSchemes,
+    skillIdMap: skillMerge.idMap,
+    groupIdMap: groupMerge.idMap,
+  })
+  ensureOrders(merged.store)
+  merged.store.version = SCHEME_STORE_VERSION
+  writeStore(merged.store)
+  replaceCustomSkills(skills)
+  replaceCustomSkillGroups(groupMerge.groups)
+  const loadedId = getLoadedSchemeId()
+  return attachMissingCounts(
+    {
+      added: merged.added,
+      skipped: merged.skippedIdentical + merged.skippedInvalid,
+      errors: [],
+      customSkillCount: skillMerge.added,
+      customGroupCount: groupMerge.added,
+      renamed: merged.renamed,
+      remappedSkills: skillMerge.remapped,
+      remappedGroups: groupMerge.remapped,
+      missingSkillCount: 0,
+      missingGroupCount: 0,
+      mode: 'merge',
+      legacyPack: false,
+      loadedId,
+    },
+    merged.store.schemes,
+    presetGroupIds,
+  )
+}
+
+/** 覆盖导入清空本机方案库、自建招式、自建组（新包）和工作草稿。合并导入不删本机。 */
+export function importDamageCalcHistory(
+  json: string,
+  options: ImportDamageCalcHistoryOptions = {},
+): DamageCalcHistoryImportResult {
+  const mode: SchemePackImportMode = options.mode === 'merge' ? 'merge' : 'replace'
+  const presetGroupIds = new Set(
+    [...(options.presetGroupIds ?? [])].map((id) => String(id).trim()).filter(Boolean),
+  )
   let parsed: unknown
   try {
     parsed = JSON.parse(json)
   } catch {
-    return emptyImportResult(['JSON 解析失败，请检查文件格式'])
+    return emptyImportResult(['JSON 解析失败，请检查文件格式'], mode)
   }
 
   if (Array.isArray(parsed)) {
     const migrated = migrateFromLegacyArray(parsed)
+    if (mode === 'merge') {
+      return mergeIncomingPack({}, migrated.schemes, migrated.dirs, presetGroupIds)
+    }
     const next = createEmptyStore()
     const ingested = ingestSchemes(next, migrated.schemes)
     for (const d of Object.keys(migrated.dirs)) next.dirs[d] = migrated.dirs[d]!
-    const result = commitReplacedStore(next, [], true, null)
+    const result = commitReplacedStore(next, [], true, null, undefined, false, presetGroupIds)
     if (!result.errors.length) {
       result.added = ingested.added
       result.skipped = ingested.skipped
@@ -1090,25 +1248,37 @@ export function importDamageCalcHistory(json: string): DamageCalcHistoryImportRe
 
   const data = parsed as Partial<DamageCalcHistoryExport> & { entries?: unknown[] }
   if (data.type !== 'zzz-hp-schemes' && !Array.isArray(data.entries) && !data.schemes) {
-    return emptyImportResult(['文件类型错误：不是 zzz-hp-schemes 方案库文件'])
+    return emptyImportResult(['文件类型错误：不是 zzz-hp-schemes 方案库文件'], mode)
   }
 
-  const next = createEmptyStore()
-  const incomingDirs = data.dirs || {}
-  for (const d of Object.keys(incomingDirs)) next.dirs[d] = incomingDirs[d]!
-
+  const incomingDirs = { ...(data.dirs || {}) }
   let incomingSchemes: Record<string, DamageCalcHistoryEntry> = data.schemes || {}
   if (Array.isArray(data.entries)) {
     const migrated = migrateFromLegacyArray(data.entries)
     incomingSchemes = migrated.schemes
     for (const d of Object.keys(migrated.dirs)) {
-      if (!next.dirs[d]) next.dirs[d] = migrated.dirs[d]!
+      if (!incomingDirs[d]) incomingDirs[d] = migrated.dirs[d]!
     }
   }
 
+  if (mode === 'merge') {
+    return mergeIncomingPack(data, incomingSchemes, incomingDirs, presetGroupIds)
+  }
+
+  const next = createEmptyStore()
+  for (const d of Object.keys(incomingDirs)) next.dirs[d] = incomingDirs[d]!
   const ingested = ingestSchemes(next, incomingSchemes)
   const legacyPack = !Object.prototype.hasOwnProperty.call(data, 'customSkills')
-  const result = commitReplacedStore(next, legacyPack ? [] : data.customSkills, legacyPack, data.currentId)
+  const hasGroups = Object.prototype.hasOwnProperty.call(data, 'skillGroups')
+  const result = commitReplacedStore(
+    next,
+    legacyPack ? [] : data.customSkills,
+    legacyPack,
+    data.currentId,
+    data.skillGroups,
+    hasGroups,
+    presetGroupIds,
+  )
   if (!result.errors.length) {
     result.added = ingested.added
     result.skipped = ingested.skipped

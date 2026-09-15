@@ -87,6 +87,15 @@ export function isCustomSkillGroup(group: Pick<SkillGroup, 'id' | 'source'>): bo
   return String(group.id ?? '').startsWith('sg-custom-')
 }
 
+export function replaceCustomSkillGroups(list: SkillGroup[]): SkillGroup[] {
+  const next = list
+    .map((item) => normalizeSkillGroup({ ...item, source: 'custom' } as unknown as Record<string, unknown>))
+    .filter((item): item is SkillGroup => item != null)
+    .map((item) => ({ ...item, source: 'custom' as const }))
+  saveCustomSkillGroups(next)
+  return next
+}
+
 export function loadCustomSkillGroups(): SkillGroup[] {
   if (typeof localStorage === 'undefined') return []
   try {

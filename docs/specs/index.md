@@ -10,6 +10,7 @@
 - [面板 → 词条二次修改 → 流程计算 链路说明](./panel-affix-flow.md)：说明图（思维导图 [SVG](./panel-affix-flow.svg) + 文字版），非新规格。
 - [最优分配内嵌主属性组合排行](./alloc-embed-main-stat-combo.md)：分配结果固定副词条，嵌入 4/5/6 + 2 件套组合试算（不改分配/扫掠求解结构）。
 - [统一效果计算架构](./unified-effect-pipeline.md)：施工指针；权威手册在开发目录 `dev-docs/unified-effect-pipeline.md`。T1 阶段 1–7 已按批准范围收口（运行期仍用 `panel:` / `gain:` 落点名；T10 界面不在本次）。
+- [方案包自包含导出与合并导入](./scheme-pack.md)：方案 JSON 带走招式/技能组；覆盖整包替换；合并按路径并目录、方案重名改「-复制」、招式/组按内容指纹换号。
 
 ## 历史实现记录
 
