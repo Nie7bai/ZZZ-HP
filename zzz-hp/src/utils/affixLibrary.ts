@@ -153,6 +153,32 @@ export const AFFIX_PANEL_DELTA_FIELD_LABELS: Record<AffixPanelDeltaField, string
   specialMult: '特殊倍率%',
 }
 
+/**
+ * 词条目标选单不列出这些局外字段：游戏里几乎只作为局内出现。
+ * 计算仍认 `panel:`；已有条目和自定义手写不受影响。
+ */
+export const AFFIX_PANEL_FIELDS_HIDDEN_FROM_PICKER = [
+  'resPen',
+  'anomalyDmgBonus',
+  'anomalyCritRate',
+  'anomalyCritDmg',
+  'anomalyReleaseDmgBonus',
+  'anomalyReleaseCritRate',
+  'anomalyReleaseCritDmg',
+  'disorderDmgBonus',
+  'turbulenceDmgBonus',
+  'radianceDmgBonus',
+  'radianceResPen',
+  'specialMult',
+] as const satisfies readonly AffixPanelDeltaField[]
+
+export function isAffixPanelTargetHiddenFromPicker(target: string): boolean {
+  if (!target.startsWith('panel:')) return false
+  return (AFFIX_PANEL_FIELDS_HIDDEN_FROM_PICKER as readonly string[]).includes(
+    target.slice('panel:'.length),
+  )
+}
+
 export const AFFIX_SUBSTAT_KEY_LABELS: Record<keyof AffixCounts, string> = {
   hpFlat: '固定生命值',
   hpPercent: '局外生命值%',
@@ -433,24 +459,13 @@ export function createDefaultAffixLibrary(): AffixLibraryEntry[] {
  * - `cap: 1` —— 来源最多取一次（副词条可叠，见 createDefaultAffixLibrary）；
  * - `group` 默认「副词条」—— 不分槽位的自由条目归在这里（额度不限）。
  *
- * 增伤 / 穿透率**不在这里**：它们是 5 号位主属性，已由
- * `createDriveDiscMainStatAffixEntries()` 提供（`main:slot5:dmgBonus` / `main:slot5:penRate`），
- * 2026-09-12 按用户当前词条库固化为预设。
+ * 增伤 / 穿透率**不在这里**：它们是 5 号位主属性。
+ * 异常/异放/紊乱/乱流/耀变/抗穿/特殊倍率等局外字段也不在这里：选单已隐藏（几乎只当局内）。
  */
 export function createOptionalAffixLibraryEntries(): AffixLibraryEntry[] {
   const specs: { field: AffixPanelDeltaField; perRoll: number }[] = [
     { field: 'reduceDefense', perRoll: 30 },
     { field: 'ignoreDefense', perRoll: 30 },
-    { field: 'resPen', perRoll: 24 },
-    { field: 'anomalyDmgBonus', perRoll: 30 },
-    { field: 'anomalyCritRate', perRoll: 24 },
-    { field: 'anomalyCritDmg', perRoll: 48 },
-    { field: 'anomalyReleaseDmgBonus', perRoll: 30 },
-    { field: 'disorderDmgBonus', perRoll: 30 },
-    { field: 'turbulenceDmgBonus', perRoll: 30 },
-    { field: 'radianceDmgBonus', perRoll: 30 },
-    { field: 'radianceResPen', perRoll: 24 },
-    { field: 'specialMult', perRoll: 30 },
   ]
   return specs.map((spec) => ({
     id: `panel:${spec.field}`,

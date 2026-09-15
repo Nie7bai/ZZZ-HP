@@ -31,6 +31,7 @@ import {
   exportAffixLibrarySet,
   gainTarget,
   importAffixLibrarySet,
+  isAffixPanelTargetHiddenFromPicker,
   isGainTarget,
   isUsingServerAffixPreset,
   loadAffixLibraryStore,
@@ -625,6 +626,7 @@ const TARGET_OPTIONS = (() => {
   const merged: { id: AffixLibraryEntryTarget; label: string }[] = []
   for (const option of PANEL_TARGET_OPTIONS) {
     if (seen.has(option.label)) continue
+    if (isAffixPanelTargetHiddenFromPicker(option.id)) continue
     seen.add(option.label)
     merged.push(option)
   }

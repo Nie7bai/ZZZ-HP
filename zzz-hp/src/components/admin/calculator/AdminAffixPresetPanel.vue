@@ -32,6 +32,7 @@ import {
   affixTargetLabel,
   gainTarget,
   isAffixLibraryEntryTarget,
+  isAffixPanelTargetHiddenFromPicker,
   panelTarget,
   type AffixPanelDeltaField,
 } from '@/utils/affixLibrary'
@@ -112,6 +113,7 @@ const TARGET_OPTION_GROUPS = [
         })),
       ]) {
         if (seen.has(option.label)) continue
+        if (isAffixPanelTargetHiddenFromPicker(option.id)) continue
         seen.add(option.label)
         merged.push(option)
       }
