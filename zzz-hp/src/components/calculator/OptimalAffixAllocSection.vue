@@ -2884,51 +2884,50 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         <p v-else class="hint">配置招式流程后即可试算主属性组合。</p>
 
         <h3 class="block-title">最优分配</h3>
-        <div class="alloc-input-row">
-          <label class="field">
-            <span>总词条数</span>
-            <input v-model.lazy.number="affixAllocTotalRolls" type="number" min="1" max="60" step="1" />
-          </label>
-          <label class="field">
-            <span>候选宽度</span>
-            <select v-model="affixAllocWidthMode">
-              <option value="auto">自动（按计算量预算推导）</option>
-              <option value="manual">手动指定条数</option>
-            </select>
-          </label>
-          <label v-if="affixAllocWidthMode === 'manual'" class="field">
-            <span>每轮候选条数</span>
-            <input
-              v-model.lazy.number="affixAllocManualWidth"
-              type="number"
-              min="1"
-              :max="Math.max(1, affixLibraryEntries.length)"
-              step="1"
-            />
-          </label>
-          <span class="hint">词条库 {{ affixLibraryEntries.length }} 条 · 每条词条 1 档 = 1 个词条</span>
-        </div>
-        <div class="alloc-run-stack">
-          <div class="alloc-input-row">
-            <button
-              v-if="affixAllocLoading"
-              type="button"
-              class="ghost-btn"
-              @click="abortAffixAllocation"
-            >
-              停止
-            </button>
-            <button
-              v-else
-              type="button"
-              class="calc-run-btn"
-              :disabled="!affixLibraryEntries.length"
-              @click="runAffixAllocation"
-            >
-              求最优分配
-            </button>
+        <div class="alloc-action-grid">
+          <div class="alloc-input-row alloc-fields">
+            <label class="field">
+              <span>总词条数</span>
+              <input v-model.lazy.number="affixAllocTotalRolls" type="number" min="1" max="60" step="1" />
+            </label>
+            <label class="field">
+              <span>候选宽度</span>
+              <select v-model="affixAllocWidthMode">
+                <option value="auto">自动（按计算量预算推导）</option>
+                <option value="manual">手动指定条数</option>
+              </select>
+            </label>
+            <label v-if="affixAllocWidthMode === 'manual'" class="field">
+              <span>每轮候选条数</span>
+              <input
+                v-model.lazy.number="affixAllocManualWidth"
+                type="number"
+                min="1"
+                :max="Math.max(1, affixLibraryEntries.length)"
+                step="1"
+              />
+            </label>
           </div>
-          <div class="alloc-input-row">
+          <button
+            v-if="affixAllocLoading"
+            type="button"
+            class="ghost-btn"
+            @click="abortAffixAllocation"
+          >
+            停止
+          </button>
+          <button
+            v-else
+            type="button"
+            class="calc-run-btn"
+            :disabled="!affixLibraryEntries.length"
+            @click="runAffixAllocation"
+          >
+            求最优分配
+          </button>
+          <span class="hint">计算采用贪心 + 换档兜底；候选宽度越宽，穷举越多、耗时越久，不清楚规则用自动即可</span>
+          <div class="alloc-grid-spacer" aria-hidden="true"></div>
+          <div class="alloc-input-row alloc-game-btns">
             <button
               type="button"
               class="calc-run-btn"
@@ -2940,8 +2939,8 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
             <button type="button" class="ghost-btn" :disabled="affixAllocLoading" @click="gameAffixRulesOpen = true">
               编辑
             </button>
-            <span class="hint">可模拟4/5/6号位主副属性重复时造成的总词条数损失；比上方「求最优分配」慢</span>
           </div>
+          <span class="hint">可模拟4/5/6号位主副属性重复时造成的总词条数损失；比上方「求最优分配」慢</span>
         </div>
         <p v-if="affixAllocWidthMode === 'manual'" class="hint">
           手动模式不设预算上限：条数越大搜索越彻底，也越慢。填满词条库条数即等于不剪枝。
@@ -3974,15 +3973,25 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   margin: 0.6rem 0;
 }
 
-.alloc-run-stack {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0;
+.alloc-action-grid {
+  display: grid;
+  grid-template-columns: max-content max-content minmax(0, 1fr);
+  align-items: end;
+  column-gap: 0.75rem;
+  row-gap: 0.45rem;
+  margin: 0.6rem 0;
 }
 
-.alloc-run-stack .alloc-input-row {
-  margin: 0.35rem 0;
+.alloc-action-grid .alloc-input-row {
+  margin: 0;
+}
+
+.alloc-game-btns {
+  flex-wrap: nowrap;
+}
+
+.alloc-grid-spacer {
+  min-width: 0;
 }
 
 .alloc-input-row .field {
