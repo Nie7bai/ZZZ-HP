@@ -48,7 +48,10 @@ const progressLabel = computed(() => {
   const start = progress.startCount > 1
     ? `（起点 ${progress.startIndex}/${progress.startCount}）`
     : ''
-  return `${phase}${start}`
+  const branch = progress.gameBranch
+    ? `组合 ${progress.gameBranch.index}/${progress.gameBranch.total}（${progress.gameBranch.label}）· `
+    : ''
+  return `${branch}${phase}${start}`
 })
 
 /** 预算进度百分比；manual 模式无预算，用「已评估次数」的相对量给个粗略进度 */

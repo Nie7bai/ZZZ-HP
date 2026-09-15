@@ -1615,5 +1615,32 @@ console.log('\n[21] 词条分配：有条件 gain: 与局外词条同一套预�
   )
 }
 
+console.log('\n[游戏 cap 税] 触发条目占档后目标 cap 减 1')
+{
+  const atk = library.find((e) => e.id === 'substat:atkPercent')
+  const crit = library.find((e) => e.id === 'substat:critRate')
+  if (atk && crit) {
+    const trigger = { ...atk, id: 'main:slot5:externalAtkPercent', cap: 1, group: '5号位', perRoll: 1 }
+    const target = { ...crit, id: 'substat:atkPercent', cap: 1, group: '', perRoll: 1000 }
+    const solved = solveOptimalAffixAllocation({
+      ctx,
+      entries: [trigger, target],
+      maxTotalRolls: 2,
+      groupCaps: { '5号位': 1 },
+      entryCapTaxes: [{ whenEntryId: trigger.id, targetEntryId: target.id, amount: 1 }],
+      maxStarts: 1,
+    })
+    const triggerRolls = solved.rollsByEntryId[trigger.id] ?? 0
+    const targetRolls = solved.rollsByEntryId[target.id] ?? 0
+    check(
+      '选了触发条目后目标不能再占满原 cap',
+      !(triggerRolls >= 1 && targetRolls >= 1),
+      `trigger=${triggerRolls} target=${targetRolls}`,
+    )
+  } else {
+    check('游戏 cap 税：测试条目存在', false)
+  }
+}
+
 console.log(`\n结果：${passed} passed, ${failed} failed`)
 if (failed > 0) process.exit(1)

@@ -81,8 +81,20 @@ export interface AffixOptimizerInput {
    * 表由词条库的 `affixGroupCaps(state)` 给。
    */
   groupCaps?: Record<string, number>
+  /**
+   * 跨条目 cap 税：`whenEntryId` 已有档时，`targetEntryId` 的有效上限再减 `amount`。
+   * 游戏专用规则用来表达「号位选了攻击% → 副词条攻击% 少 1 档」。默认库不传。
+   */
+  entryCapTaxes?: AffixEntryCapTax[]
   /** 多起点贪心的起点数（1~3，默认 3） */
   maxStarts?: number
+}
+
+/** 见 `AffixOptimizerInput.entryCapTaxes` */
+export interface AffixEntryCapTax {
+  whenEntryId: string
+  targetEntryId: string
+  amount: number
 }
 
 export interface AffixOptimizerResult {
@@ -140,6 +152,8 @@ export interface AffixOptimizerProgress {
   workBudget: number | null
   bestTotal: number
   baselineDamage: number
+  /** 游戏专用 8 路外层：当前第几组 */
+  gameBranch?: { index: number; total: number; label: string }
 }
 
 export type AffixOptimizerAsyncOptions = {
@@ -234,7 +248,29 @@ function groupCapFor(groupCaps: Record<string, number>, group: string): number {
   return cap
 }
 
-/** 该条目还能再加多少档（受 cap、组额度、总词条数限制） */
+function capTaxOnTarget(
+  taxes: readonly AffixEntryCapTax[],
+  rolls: Record<string, number>,
+  targetEntryId: string,
+): number {
+  let extra = 0
+  for (const tax of taxes) {
+    if (tax.targetEntryId !== targetEntryId) continue
+    if ((rolls[tax.whenEntryId] ?? 0) > 0) extra += tax.amount
+  }
+  return extra
+}
+
+function entryCapLimit(
+  entry: AffixLibraryEntry,
+  maxRollsPerEntry: number,
+  tax: number,
+): number {
+  const raw = entry.cap > 0 ? entry.cap : maxRollsPerEntry
+  return Math.max(0, raw - tax)
+}
+
+/** 该条目还能再加多少档（受 cap、组额度、总词条数、可选 cap 税限制） */
 function remainingAllowedRolls(
   entry: AffixLibraryEntry,
   current: number,
@@ -244,14 +280,29 @@ function remainingAllowedRolls(
   entries: AffixLibraryEntry[],
   maxRollsPerEntry: number,
   groupCaps: Record<string, number>,
+  capTaxes: readonly AffixEntryCapTax[],
 ): number {
-  const capLimit = entry.cap > 0 ? entry.cap : maxRollsPerEntry
+  const capLimit = entryCapLimit(
+    entry,
+    maxRollsPerEntry,
+    capTaxOnTarget(capTaxes, rolls, entry.id),
+  )
   const rollCap = budget.rollCapOf(entry)
   const byCap = Math.max(
     0,
     Math.min(capLimit, Number.isFinite(rollCap) ? rollCap : capLimit) - current,
   )
   if (byCap <= 0) return 0
+  if (current <= 0) {
+    for (const tax of capTaxes) {
+      if (tax.whenEntryId !== entry.id) continue
+      const target = entries.find((item) => item.id === tax.targetEntryId)
+      if (!target) continue
+      const targetRolls = rolls[target.id] ?? 0
+      const nextTax = capTaxOnTarget(capTaxes, rolls, target.id) + tax.amount
+      if (targetRolls > entryCapLimit(target, maxRollsPerEntry, nextTax)) return 0
+    }
+  }
   let byGroup = Number.POSITIVE_INFINITY
   if (entry.group) {
     const capOfGroup = groupCapFor(groupCaps, entry.group)
@@ -325,6 +376,7 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
   const maxRollsPerEntry = input.maxRollsPerEntry ?? budget.maxTotalRolls
   /** 组额度表：缺省无表，任何组都按 DEFAULT_AFFIX_GROUP_CAP 算 */
   const groupCaps = input.groupCaps ?? {}
+  const capTaxes = input.entryCapTaxes ?? []
   const fixedRolls = input.fixedRollsByEntryId ?? {}
   const maxStarts = Math.max(1, Math.min(3, input.maxStarts ?? 3))
   const widthMode: AffixCandidateWidthMode = input.candidateWidthMode ?? 'auto'
@@ -548,7 +600,7 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
     for (;;) {
       const width = deriveWidth('linear', 1)
       const allowedHere = (entry: AffixLibraryEntry) =>
-        remainingAllowedRolls(
+          remainingAllowedRolls(
           entry,
           rolls[entry.id] ?? 0,
           budget,
@@ -557,6 +609,7 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
           entries,
           maxRollsPerEntry,
           groupCaps,
+          capTaxes,
         ) > 0
       let candidates = pickCandidates(width, order, allowedHere)
       // 候选不足就补测零收益条目（补测门槛按档数翻倍推进，不会无限循环）
@@ -637,6 +690,7 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
             entries,
             maxRollsPerEntry,
             groupCaps,
+            capTaxes,
           ) > 0
         const candidates = pickCandidates(width, order, allowedHere)
 
@@ -722,6 +776,7 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
             entries,
             maxRollsPerEntry,
             groupCaps,
+            capTaxes,
           ) > 0
         const candidates = pickCandidates(width, order, allowedHere)
         for (let i = 0; i < candidates.length; i += 1) {
@@ -745,6 +800,7 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
                 entries,
                 maxRollsPerEntry,
                 groupCaps,
+                capTaxes,
               ) <= 0
             ) continue
             const candidate = { ...afterAddA, [b.id]: bRolls + 1 }

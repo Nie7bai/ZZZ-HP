@@ -14,6 +14,7 @@ import BenefitCurvePanel from '@/components/calculator/BenefitCurvePanel.vue'
 import OptimalDamageBarChart from '@/components/calculator/OptimalDamageBarChart.vue'
 import AffixBenefitTable from '@/components/calculator/AffixBenefitTable.vue'
 import AffixAllocationResult from '@/components/calculator/AffixAllocationResult.vue'
+import GameAffixRulesModal from '@/components/calculator/GameAffixRulesModal.vue'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
 import type { AgentPanelSources } from '@/types/damageCalcHistory'
 import type {
@@ -143,6 +144,13 @@ import {
   type AffixOptimizerProgress,
   type AffixOptimizerResult,
 } from '@/utils/affixOptimizer'
+import {
+  clampGameExtraCost,
+  createGameAffixLibraryEntries,
+  loadGameAffixRulesSettings,
+  saveGameAffixRulesSettings,
+  solveGameAffixAllocationAsync,
+} from '@/utils/gameAffixRules'
 
 const MB_PROFESSION = '命破'
 const FENGYU_PROFESSION = '锋御'
@@ -1138,7 +1146,10 @@ type DisplayPanelEvalLike = { external: PanelStats; finalPanel: PanelStats } | n
 
 function allocationRollsSummary(result: AffixOptimizerResult | null): string {
   if (!result) return '零词条'
-  return formatAffixRollsSummary(affixLibraryEntries.value, result.rollsByEntryId)
+  const library = affixAllocResultLibrary.value.length
+    ? affixAllocResultLibrary.value
+    : affixLibraryEntries.value
+  return formatAffixRollsSummary(library, result.rollsByEntryId)
 }
 
 function sweepCountsSummary(counts: AffixCounts | null | undefined): string {
@@ -1557,6 +1568,11 @@ const affixAllocProgress = ref<AffixOptimizerProgress | null>(null)
 const AFFIX_ALLOC_PROGRESS_THROTTLE_MS = 100
 let lastProgressAt = 0
 let affixAllocAbort: AbortController | null = null
+/** 最近一次求解用的条目（普通库或游戏专用方案），结果表按这个显示 */
+const affixAllocResultLibrary = ref<AffixLibraryEntry[]>([])
+const gameAffixLibraryEntries = createGameAffixLibraryEntries()
+const gameAffixSettings = ref(loadGameAffixRulesSettings(gameAffixLibraryEntries))
+const gameAffixRulesOpen = ref(false)
 const affixBenefitTable = ref<AffixBenefitTableData | null>(null)
 /** 逐档收益曲线：按需补算（首屏不算），失效时置 null */
 const affixBenefitSeries = ref<AffixBenefitSeries[] | null>(null)
@@ -1792,6 +1808,90 @@ async function runAffixAllocation() {
         },
       },
     )
+    affixAllocResultLibrary.value = affixLibraryEntries.value
+    affixAllocResultStale.value = false
+  } catch (error) {
+    if ((error as DOMException)?.name === 'AbortError') return
+    affixAllocError.value = error instanceof Error ? error.message : '计算失败'
+    affixAllocResult.value = null
+    affixAllocResultStale.value = false
+  } finally {
+    if (affixAllocAbort === controller) {
+      affixAllocLoading.value = false
+      affixAllocProgress.value = null
+      affixAllocAbort = null
+    }
+  }
+}
+
+function persistGameAffixSettings() {
+  saveGameAffixRulesSettings(gameAffixSettings.value)
+}
+
+function setGameExtraCost(value: number) {
+  gameAffixSettings.value = {
+    ...gameAffixSettings.value,
+    extraCost: clampGameExtraCost(value),
+  }
+  persistGameAffixSettings()
+}
+
+function toggleGameAffixEntry(entryId: string, enabled: boolean) {
+  const next = new Set(gameAffixSettings.value.enabledIds)
+  if (enabled) next.add(entryId)
+  else next.delete(entryId)
+  gameAffixSettings.value = { ...gameAffixSettings.value, enabledIds: [...next] }
+  persistGameAffixSettings()
+}
+
+function toggleGameAffixEntries(entryIds: string[], enabled: boolean) {
+  const next = new Set(gameAffixSettings.value.enabledIds)
+  for (const entryId of entryIds) {
+    if (enabled) next.add(entryId)
+    else next.delete(entryId)
+  }
+  gameAffixSettings.value = { ...gameAffixSettings.value, enabledIds: [...next] }
+  persistGameAffixSettings()
+}
+
+/** 游戏专用 8 路求解，不读用户词条库 */
+async function runGameAffixAllocation() {
+  if (affixAllocLoading.value) return
+  if (!gameAffixSettings.value.enabledIds.length) {
+    affixAllocError.value = '请先在「编辑」里勾选至少一条词条'
+    return
+  }
+  const total = Math.max(1, Math.min(60, Math.round(affixAllocTotalRolls.value)))
+  affixAllocTotalRolls.value = total
+  affixAllocLoading.value = true
+  affixAllocError.value = null
+  affixAllocProgress.value = null
+  lastProgressAt = 0
+  affixAllocAbort?.abort()
+  const controller = new AbortController()
+  affixAllocAbort = controller
+  try {
+    affixAllocResult.value = await solveGameAffixAllocationAsync(
+      {
+        ctx: evalCtx.value,
+        entries: gameAffixLibraryEntries,
+        enabledIds: gameAffixSettings.value.enabledIds,
+        extraCost: gameAffixSettings.value.extraCost,
+        maxTotalRolls: total,
+        candidateWidthMode: affixAllocWidthMode.value,
+        manualCandidateWidth: affixAllocManualWidth.value,
+      },
+      {
+        signal: controller.signal,
+        onProgress: (progress) => {
+          const now = performance.now()
+          if (now - lastProgressAt < AFFIX_ALLOC_PROGRESS_THROTTLE_MS) return
+          lastProgressAt = now
+          affixAllocProgress.value = progress
+        },
+      },
+    )
+    affixAllocResultLibrary.value = gameAffixLibraryEntries
     affixAllocResultStale.value = false
   } catch (error) {
     if ((error as DOMException)?.name === 'AbortError') return
@@ -2825,17 +2925,42 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           </button>
           <span class="hint">词条库 {{ affixLibraryEntries.length }} 条 · 每条词条 1 档 = 1 个词条</span>
         </div>
+        <div class="alloc-input-row">
+          <button
+            type="button"
+            class="calc-run-btn"
+            :disabled="affixAllocLoading || !gameAffixSettings.enabledIds.length"
+            @click="runGameAffixAllocation"
+          >
+            游戏专用分配规则
+          </button>
+          <button type="button" class="ghost-btn" :disabled="affixAllocLoading" @click="gameAffixRulesOpen = true">
+            编辑
+          </button>
+          <span class="hint">写死方案，8 路比较付费主属性；比上方「求最优分配」慢</span>
+        </div>
         <p v-if="affixAllocWidthMode === 'manual'" class="hint">
           手动模式不设预算上限：条数越大搜索越彻底，也越慢。填满词条库条数即等于不剪枝。
         </p>
         <p v-if="affixAllocError" class="err">{{ affixAllocError }}</p>
         <AffixAllocationResult
           :result="affixAllocResult"
-          :library="affixLibraryEntries"
+          :library="affixAllocResultLibrary.length ? affixAllocResultLibrary : affixLibraryEntries"
           :loading="affixAllocLoading"
           :error="affixAllocError"
           :progress="affixAllocProgress"
           :stale="affixAllocResultStale"
+        />
+        <GameAffixRulesModal
+          :open="gameAffixRulesOpen"
+          :extra-cost="gameAffixSettings.extraCost"
+          :enabled-ids="gameAffixSettings.enabledIds"
+          :entries="gameAffixLibraryEntries"
+          :total-rolls="affixAllocTotalRolls"
+          @close="gameAffixRulesOpen = false"
+          @update:extra-cost="setGameExtraCost"
+          @toggle-entry="toggleGameAffixEntry"
+          @toggle-entries="toggleGameAffixEntries"
         />
 
         <template v-if="affixAllocResult">
