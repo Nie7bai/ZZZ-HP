@@ -71,22 +71,18 @@ const ENTRY_ID_MAX = 64
 /**
  * 条目 ID 的命名规范（从历史数据归纳，写在这里当唯一出处）。
  *
- * 规范本身不是新发明的 —— `utils/affixLibrary.ts` 的构造器就是这么发的 id
- * （`substat:${key}` / `panel:${field}` / `main:slot${slot}:${key}` / `set:${key}:${perRoll}`），
- * 库里现有的 50 条全部符合。之所以还要在管理页把它写出来：id 是条目的**对外身份**
- * （导出文件、方案复制、之后新建的库都按它走），按同一套规律起名，后面维护才不会变成一锅乱麻。
+ * 目标只有 `panel:` / `gain:`。ID 是另一回事：号位、2 件套有专用前缀；
+ * 其余新 ID 跟目标走（`panel:字段` / `gain:字段`）。已有条目的 ID 不要改。
  *
  * 自动生成时按下面顺序判断（新条目优先用 id 生成器，别手写）：
  * 1. 组名是 `N号位` → `main:slotN:字段`
  * 2. 组名是 `2件套` → `set:字段:每档值`（**数值进 id**：同字段不同数值＝一条新条目）
- * 3. 其余（副词条 / 自建组）→ 十格形态字段用 `substat:字段`，其余 `panel:` 用 `panel:字段`
+ * 3. 其余：`gain:` → `gain:字段`，`panel:` → `panel:字段`
  */
-const ENTRY_ID_RULES: { match: string; format: string; example: string }[] = [
+const ENTRY_ID_RULES: { match: string; format?: string; example?: string }[] = [
   { match: '4 / 5 / 6 号位', format: 'main:slotN:字段', example: 'main:slot5:dmgBonus' },
   { match: '2 件套', format: 'set:字段:每档值', example: 'set:critDmg:16' },
-  { match: '副词条（十格形态）', format: 'substat:字段', example: 'substat:critRate' },
-  { match: '副词条（其它局外）', format: 'panel:字段', example: 'panel:resPen' },
-  { match: '副词条（gain 落点）', format: 'gain:字段', example: 'gain:inCombatAtkPercent' },
+  { match: 'main: / set: 只是条目 ID 前缀，没有实际作用' },
 ]
 
 /**
@@ -122,12 +118,6 @@ const TARGET_OPTION_GROUPS = [
       return merged
     })(),
   },
-  /**
-   * 增益字段（`gain:`）：与增益编辑器同一套词表。
-   *
-   * 它按**增益口径**在转模之后施加（因而落在局内面板上），是本系统「任何增益都可分析」
-   * 的落点 —— 局内攻击力这类字段以前在词条库里选不到，就是因为缺这一族。
-   */
   {
     label: '增益字段（gain:）',
     options: AFFIX_GAIN_FIELDS.map((field) => ({
@@ -137,7 +127,7 @@ const TARGET_OPTION_GROUPS = [
   },
 ]
 
-/** 已知目标的集合（判断一个目标要不要走「自定义」输入）；按 `string` 收，界面上的值都是自由字符串 */
+/** 已知目标的集合（判断一个目标要不要走「自定义」输入） */
 const KNOWN_TARGETS: ReadonlySet<string> = new Set<string>(
   TARGET_OPTION_GROUPS.flatMap((group) => group.options.map((option) => option.id)),
 )
@@ -931,7 +921,6 @@ function leaveCustomTarget(key: string) {
 async function onPickTarget(row: EntryRow, event: Event) {
   const select = event.target as HTMLSelectElement
   if (select.value === CUSTOM_TARGET) {
-    // 先抓住单元格：select 会被换成 input，等 nextTick 后它自己已经脱离 DOM
     const cell = select.parentElement
     enterCustomTarget(row._key)
     await nextTick()
@@ -1066,8 +1055,6 @@ function suggestEntryId(group: string, target: string, perRoll: number, taken: S
     base = `main:slot${slotMatch[1]}:${MAIN_SLOT_FIELD_ALIASES[field] ?? field}`
   } else if (trimmed === '2件套') {
     base = `set:${field}:${Number.isFinite(perRoll) ? perRoll : 0}`
-  } else if (field in AFFIX_SUBSTAT_KEY_LABELS && field !== 'mastery') {
-    base = `substat:${field}`
   } else if (target.startsWith('gain:')) {
     base = `gain:${field}`
   } else {
@@ -1150,7 +1137,7 @@ function effectRuleHint(
     ...conditionPatch({ target, ...(row ?? {}) }),
   })
   if (!template) return ''
-  if (template.allocation === 'count') return '局外计数桶'
+  if (template.allocation === 'count') return '局外效果 · 加算'
   const stage = template.spec.stage === 'external' ? '局外效果' : '局内效果'
   const op = template.spec.operation === 'percentOfBase' ? '按基础乘算' : '加算'
   return `${stage} · ${op}`
@@ -1273,13 +1260,7 @@ onMounted(() => {
     <header class="panel-header">
       <h2 class="panel-title">官方预设词条库</h2>
       <p class="panel-desc">
-        这里是<strong>官方预设的唯一来源</strong>：进计算页的人都会拿到这份。用户能复制一份到自己的
-        浏览器里随便改，但改不回这里。用户一旦复制走，那份就是<strong>冻结的副本</strong> ——
-        这里之后怎么改都不会影响它，改动只对<strong>之后新建</strong>的库生效。
-      </p>
-      <p class="panel-desc panel-desc--save">
-        改动先存在本页草稿里，<strong>点「保存」才写进数据库</strong>（整套方案一次提交，要么全成、
-        要么全不成）。没保存就想走，点「放弃改动」退回上次读取的内容。
+        用户侧会复制走一份，改不回这里；已复制的副本不受之后改动影响。点「保存」才写库。
       </p>
     </header>
 
@@ -1422,8 +1403,7 @@ onMounted(() => {
           </button>
         </div>
         <p class="footnote">
-          复制＝把选中那套方案的条目与分组整份搬过来，之后两套各自独立；空方案从零搭。
-          新建出来的方案<strong>不是</strong>默认方案 —— 默认方案决定用户侧拿到哪一份。
+          复制后两套独立。新建的不是默认方案。
         </p>
       </div>
 
@@ -1558,33 +1538,33 @@ onMounted(() => {
             </colgroup>
             <thead>
               <tr>
-                <th class="th-admin-only" title="勾上 = 新用户拿到这份预设时，这条本来就参与计算。用户侧只能在自己那份里勾选，改不到这里的默认值">
+                <th class="th-admin-only" title="用户侧拿到时默认是否启用。用户侧不能改这里">
                   默认启用
                 </th>
                 <th
                   class="th-admin-only"
-                  title="条目 ID：条目的对外身份（导出、复制方案、之后新建的库都按它走）。用户侧看不见也改不了"
+                  title="条目对外身份。用户侧看不见也改不了"
                 >
                   ID
                 </th>
-                <th title="给用户看的名字，自由文本；用户侧可改自己那份的副本">名称</th>
-                <th title="这条实际加哪个属性；panel: 局外增量、gain: 局内增益。用户侧只读（改目标＝删了重建）">
+                <th title="给用户看的名字">名称</th>
+                <th title="实际加哪个属性；panel: 局外、gain: 局内">
                   目标
                 </th>
-                <th title="配 1 档加多少（数值与该属性的单位一致）">每档</th>
-                <th title="这条最多能配几档；0 = 不设上限（求解器还受组额度与总预算约束）">
+                <th title="配 1 档加多少">每档</th>
+                <th title="这条最多几档；0 = 不限">
                   上限
                 </th>
                 <th
                   class="th-admin-only"
-                  title="配 1 档要吃掉几个「总词条数」预算：填 2 就是这条 1 档顶别人 2 档。用户侧条目固定为 1，改不了"
+                  title="1 档占几个总词条数。用户侧固定为 1"
                 >
                   每档占用
                 </th>
-                <th title="同一组共享一个档数额度；组额度 0 = 组内不互相约束">分组</th>
+                <th title="同组共享额度；0 = 不限">分组</th>
                 <th
                   class="th-admin-only"
-                  title="展示顺序，小的在前（保存后按新顺序重排）；同一套方案里不能重复。用户侧没有这个概念"
+                  title="小的在前。保存后才重排。不影响数值"
                 >
                   排序
                 </th>
@@ -1622,7 +1602,6 @@ onMounted(() => {
                   <input v-model="entry.label" class="cell-input" type="text" :disabled="busy" />
                 </td>
                 <td>
-                  <!-- 目标：下拉选已知字段（按落点分组），或切「自定义」手写字段名 -->
                   <select
                     v-if="!isCustomTarget(entry)"
                     class="cell-input"
@@ -1642,7 +1621,6 @@ onMounted(() => {
                     </optgroup>
                     <option :value="CUSTOM_TARGET">自定义字段名（不在这两份清单里）…</option>
                   </select>
-                  <!-- 自定义模式才需要这行小字：下拉里已经显示中文名，再写一遍是噪音 -->
                   <template v-else>
                     <input
                       v-model="entry.target"
@@ -1893,23 +1871,32 @@ onMounted(() => {
 
           <!-- ID 规范：只有一个出处的说明放在这里，避免各处手写各说各话 -->
           <p class="footnote">
-            新增先进草稿，点上方的「保存」才写库。<strong>ID 是条目的对外身份</strong>
-            （导出文件、复制方案、之后新建的库都按它走）；已经复制走的用户库是冻结副本，不受影响。
-            规范：
+            新增先进草稿，点「保存」才写库。ID 是对外身份；已复制走的用户库不受影响。
           </p>
           <ul class="id-rules">
             <li v-for="rule in ENTRY_ID_RULES" :key="rule.match">
               <span class="rule-match">{{ rule.match }}</span>
-              <code>{{ rule.format }}</code>
-              <span class="rule-example">如 <code>{{ rule.example }}</code></span>
+              <code v-if="rule.format">{{ rule.format }}</code>
+              <span v-if="rule.example" class="rule-example">如 <code>{{ rule.example }}</code></span>
             </li>
           </ul>
           <p class="footnote">
-            按这个规范填，之后无论谁看这条 ID 都能一眼认出它从哪来。撞名时生成器接
-            <code>_2</code>（<code>set:</code> 开头的 ID 里已经带数值，不再拼 <code>:2</code>）。
-            目标从清单里选就不用手打字段名；清单里没有的（前端还没支持的新字段）用「自定义」手写，
-            写错了下面会标红 —— 认不出的字段名计算页会跳过它。
+            撞名接 <code>_2</code>。目标从清单选；没有的用手写，认不出的会标红。
+            已有条目的 ID 不要改。新条目按上面生成即可。
           </p>
+          <div class="type-note">
+            <p>
+              <code>panel:</code> = 局外。<code>gain:</code> = 局内，不进局外快照。两者只表示加入时机不同。
+            </p>
+            <p>
+              部分独立计算的乘区，比如局内局外的增伤最终都是乘区内相加，因此局内局外不会影响计算结果。但如果涉及转模，则不同，例如局外增伤转模，只匹配局外增伤。
+            </p>
+            <p>
+              局内回能按角色基础加算%，不是乘在局外面板上。例如基础 1.2、局外已经是 1.92，再局内 +0.6 →
+              1.92 + 0.6×1.2 = 2.64，不是 1.92×1.6。局内攻击才是乘局外面板。
+            </p>
+            <p>招式 / 失衡条件只能选 <code>gain:</code>。</p>
+          </div>
         </div>
 
         <!--
@@ -1920,58 +1907,33 @@ onMounted(() => {
           <h4>各列是什么意思</h4>
           <dl>
             <dt class="legend-admin-only">默认启用</dt>
-            <dd>
-              勾上＝新用户拿到这份预设时，这条本来就在参与计算。用户侧只在自己那份副本里勾选，改不到这里的默认值。
-            </dd>
+            <dd>用户侧拿到这份预设时，默认是否启用。用户侧不能改这里。</dd>
 
             <dt class="legend-admin-only">ID</dt>
-            <dd>
-              条目的对外身份：导出文件、复制方案、之后新建的用户库都按它走。发布后别改（改要按保存时的确认走）。
-              命名规范见上面「新增词条」那段。
-            </dd>
+            <dd>条目对外身份。发布后别改。规范见上方。</dd>
 
             <dt>名称</dt>
-            <dd>给用户看的名字，自由文本；用户可改自己那份的副本。</dd>
+            <dd>给用户看的名字。用户可改自己那份。</dd>
 
             <dt>目标</dt>
             <dd>
-              这条<strong>实际</strong>加哪个属性（名称只是文本，可能对不上）。<code>panel:</code>
-              走局外增量、<code>gain:</code>
-              走局内增益（可加作用域 / 招式条件）。认不出的字段名计算页会跳过它
-              （会标红提醒）。<code>gain:</code> 行下方可编完整规则，保存进
-              <code>effect_json</code>。
+              实际加哪个属性。<code>panel:</code> 局外，<code>gain:</code> 局内。认不出的会标红。
             </dd>
 
             <dt>每档</dt>
-            <dd>配 1 档加多少，单位随目标字段（百分比字段显示 <code>%</code>）。</dd>
+            <dd>配 1 档加多少。</dd>
 
             <dt>上限</dt>
-            <dd>
-              这条最多能配几档；<strong>0 = 不设上限</strong>。求解器实际取值是三者取最小：
-              自己的上限 − 已用、组额度 − 组内已用、总词条数预算还剩多少。
-            </dd>
+            <dd>这条最多几档。<strong>0 = 不限</strong>。还受组额度和总预算约束。</dd>
 
             <dt class="legend-admin-only">每档占用</dt>
-            <dd>
-              配 1 档要吃掉几个「总词条数」预算：填 2 就是这条 1 档顶别人 2 档。
-              用户侧条目固定是 1，改不了；只有官方预设能配成别的值。
-            </dd>
+            <dd>1 档占几个总词条数。用户侧固定为 1。</dd>
 
             <dt>分组</dt>
-            <dd>
-              同一组共享一个档数额度（额度在「组管理」页维护）。组额度 0 = 组内不互相约束，只是归类。
-            </dd>
+            <dd>同组共享额度。额度 0 = 不限，只是归类。</dd>
 
             <dt class="legend-admin-only">排序</dt>
-            <dd>
-              列表与页签的先后，<strong>小的在前</strong>；<strong>同一套方案里必须唯一</strong>——
-              条目一条序列、分组另一条序列，可以跳号（1、50 也行），但不许同号：
-              重复的保存会被拦下（前端先拦一道，后端再拦一道）。
-              <br />
-              规则细节：① 服务端按它取数，所以<strong>保存之后</strong>列表才重排；
-              ② 它<strong>不影响数值</strong> —— 同目标的条目是<strong>相加</strong>的，
-              不存在「取某一条」这回事，顺序只决定谁先出现在列表里。
-            </dd>
+            <dd>小的在前，同方案不能重复。不影响数值。保存后才重排。</dd>
           </dl>
           <p class="legend-note">
             <span class="legend-swatch" />红字列＝用户侧只能读、不能改，只在管理侧维护。
@@ -2087,9 +2049,7 @@ onMounted(() => {
             </button>
           </div>
           <p class="footnote">
-            组额度 = 组内各条档数之和的上限（4/5/6 号位、2 件套用 1：只能选一条）。
-            删分组只删组本身，条目在「分组」下拉里选组；组改名会连同组内条目一起改。
-            新增先进草稿，点上方的「保存」才写库。
+            组额度 = 组内档数之和上限（0 不限）。改名连组内条目一起改。点「保存」才写库。
           </p>
         </div>
       </template>
@@ -2197,7 +2157,6 @@ onMounted(() => {
   gap: 0.35rem;
   margin: 0.55rem 0 0;
   font-size: 0.74rem;
-  opacity: 0.85;
 }
 
 .legend-swatch {
@@ -2701,7 +2660,7 @@ onMounted(() => {
 
 .rule-example {
   margin-left: 0.4rem;
-  opacity: 0.75;
+  color: var(--color-text);
 }
 
 .footnote {
@@ -2709,7 +2668,21 @@ onMounted(() => {
   font-size: 0.74rem;
   line-height: 1.5;
   color: var(--color-text);
-  opacity: 0.7;
+}
+
+.type-note {
+  margin: 0.75rem 0 0;
+  font-size: 0.84rem;
+  line-height: 1.25;
+  color: var(--color-heading);
+}
+
+.type-note p {
+  margin: 0.12rem 0 0;
+}
+
+.type-note p:first-child {
+  margin-top: 0;
 }
 
 @media (max-width: 900px) {
