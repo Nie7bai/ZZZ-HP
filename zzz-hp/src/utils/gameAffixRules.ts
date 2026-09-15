@@ -22,6 +22,9 @@ import type { OptimalEvalContext } from '@/utils/optimalAffixAlloc'
  * 分到档则总分配再扣 extraCost（x），并扣副词条里对应条目 cap 5。
  * 4/5/6 与 2 件套组额度锁 1；副词条组额度 = 总分配 − 4。
  * 外层 8 路（每槽付费/不付费）再跑现有贪心+换档。
+ *
+ * 勾选默认全开（含 2 件套）。已写入本机的勾选原样读取，不再改写。
+ * 官方词条库里 2 件套 `enabledByDefault: false` 只防「求最优分配」叠导入面板，不套用到本方案。
  */
 
 export const GAME_AFFIX_STORAGE_KEY = 'zzz-hp-game-affix-rules-v1'
@@ -102,7 +105,7 @@ export function createGameAffixGroups(maxTotalRolls: number): AffixLibraryGroup[
 }
 
 export function defaultGameAffixEnabledIds(entries: AffixLibraryEntry[]): string[] {
-  return entries.filter((entry) => entry.enabledByDefault).map((entry) => entry.id)
+  return entries.map((entry) => entry.id)
 }
 
 export function clampGameExtraCost(value: number): number {

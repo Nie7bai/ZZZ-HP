@@ -27,9 +27,18 @@ function check(name, ok, detail = '') {
 
 const entries = createGameAffixLibraryEntries()
 const enabledIds = defaultGameAffixEnabledIds(entries)
+const twoPieceIds = entries.filter((entry) => entry.group === '2件套').map((entry) => entry.id)
 
 console.log('\n[游戏专用方案]')
 check('8 个口袋组合', GAME_POCKET_COMBOS.length === 8)
+check(
+  '默认勾选 = 方案全部条目（含 2 件套）',
+  enabledIds.length === entries.length &&
+    twoPieceIds.length > 0 &&
+    twoPieceIds.every((id) => enabledIds.includes(id)) &&
+    enabledIds.includes('set:penRate:8'),
+  `enabled=${enabledIds.length} entries=${entries.length} 2pc=${twoPieceIds.length}`,
+)
 check(
   '副词条条目上限均为 30',
   entries.filter((entry) => entry.group === '副词条').every((entry) => entry.cap === 30) &&
@@ -48,6 +57,7 @@ check(
   const slot4Atk = paid.entries.find((entry) => entry.id === gamePaidMainId(4, 'externalAtkPercent'))
   check('5 号位付费口袋不含付费主属性（本路 5 不付费）', slot5Paid === false)
   check('5 号位不付费口袋含增伤', slot5Dmg === true)
+  check('默认勾选下口袋含 2 件套穿透率', paid.entries.some((entry) => entry.id === 'set:penRate:8'))
   check('4 号位付费攻击 rollCost = 2', slot4Atk?.rollCost === 2)
   check(
     '4 号位攻击会税副词条攻击%',
