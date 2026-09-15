@@ -2906,38 +2906,42 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
               step="1"
             />
           </label>
-          <button
-            v-if="affixAllocLoading"
-            type="button"
-            class="ghost-btn"
-            @click="abortAffixAllocation"
-          >
-            停止
-          </button>
-          <button
-            v-else
-            type="button"
-            class="calc-run-btn"
-            :disabled="!affixLibraryEntries.length"
-            @click="runAffixAllocation"
-          >
-            求最优分配
-          </button>
           <span class="hint">词条库 {{ affixLibraryEntries.length }} 条 · 每条词条 1 档 = 1 个词条</span>
         </div>
-        <div class="alloc-input-row">
-          <button
-            type="button"
-            class="calc-run-btn"
-            :disabled="affixAllocLoading || !gameAffixSettings.enabledIds.length"
-            @click="runGameAffixAllocation"
-          >
-            游戏专用分配规则
-          </button>
-          <button type="button" class="ghost-btn" :disabled="affixAllocLoading" @click="gameAffixRulesOpen = true">
-            编辑
-          </button>
-          <span class="hint">写死方案，8 路比较付费主属性；比上方「求最优分配」慢</span>
+        <div class="alloc-run-stack">
+          <div class="alloc-input-row">
+            <button
+              v-if="affixAllocLoading"
+              type="button"
+              class="ghost-btn"
+              @click="abortAffixAllocation"
+            >
+              停止
+            </button>
+            <button
+              v-else
+              type="button"
+              class="calc-run-btn"
+              :disabled="!affixLibraryEntries.length"
+              @click="runAffixAllocation"
+            >
+              求最优分配
+            </button>
+          </div>
+          <div class="alloc-input-row">
+            <button
+              type="button"
+              class="calc-run-btn"
+              :disabled="affixAllocLoading || !gameAffixSettings.enabledIds.length"
+              @click="runGameAffixAllocation"
+            >
+              游戏专用分配规则
+            </button>
+            <button type="button" class="ghost-btn" :disabled="affixAllocLoading" @click="gameAffixRulesOpen = true">
+              编辑
+            </button>
+            <span class="hint">可模拟4/5/6号位主副属性重复时造成的总词条数损失；比上方「求最优分配」慢</span>
+          </div>
         </div>
         <p v-if="affixAllocWidthMode === 'manual'" class="hint">
           手动模式不设预算上限：条数越大搜索越彻底，也越慢。填满词条库条数即等于不剪枝。
@@ -3968,6 +3972,17 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   gap: 0.75rem;
   flex-wrap: wrap;
   margin: 0.6rem 0;
+}
+
+.alloc-run-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.alloc-run-stack .alloc-input-row {
+  margin: 0.35rem 0;
 }
 
 .alloc-input-row .field {

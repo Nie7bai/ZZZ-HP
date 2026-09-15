@@ -31,8 +31,9 @@ const enabledIds = defaultGameAffixEnabledIds(entries)
 console.log('\n[游戏专用方案]')
 check('8 个口袋组合', GAME_POCKET_COMBOS.length === 8)
 check(
-  '攻击% 副词条 cap 占位为 6',
-  entries.find((entry) => entry.id === 'substat:atkPercent')?.cap === 6,
+  '副词条条目上限均为 30',
+  entries.filter((entry) => entry.group === '副词条').every((entry) => entry.cap === 30) &&
+    entries.some((entry) => entry.group === '副词条'),
 )
 
 {
@@ -54,7 +55,7 @@ check(
       (tax) =>
         tax.whenEntryId === gamePaidMainId(4, 'externalAtkPercent') &&
         tax.targetEntryId === 'substat:atkPercent' &&
-        tax.amount === 1,
+        tax.amount === 5,
     ),
   )
 }

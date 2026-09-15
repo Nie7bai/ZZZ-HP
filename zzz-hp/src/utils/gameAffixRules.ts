@@ -18,15 +18,17 @@ import type { OptimalEvalContext } from '@/utils/optimalAffixAlloc'
 /**
  * 游戏专用分配规则：一份写死方案，不进官方词条库。
  *
- * 4/5/6 号位的攻击 / 生命 / 防御是「付费」口袋：分到档则总分配再扣 extraCost，
- * 并扣副词条里对应条目 cap（数量写死）。4/5/6 与 2 件套组额度锁 1；
- * 副词条组额度 = 总分配 − 4。外层 8 路（每槽付费/不付费）再跑现有贪心+换档。
+ * 副词条每条上限 30。4/5/6 号位选到攻击 / 生命 / 防御是「付费」口袋：
+ * 分到档则总分配再扣 extraCost（x），并扣副词条里对应条目 cap 5。
+ * 4/5/6 与 2 件套组额度锁 1；副词条组额度 = 总分配 − 4。
+ * 外层 8 路（每槽付费/不付费）再跑现有贪心+换档。
  */
 
 export const GAME_AFFIX_STORAGE_KEY = 'zzz-hp-game-affix-rules-v1'
 export const GAME_AFFIX_EXTRA_COST_DEFAULT = 1
 export const GAME_MAIN_SLOT_RESERVE = 4
-export const GAME_PAID_SUBSTAT_TAX = 1
+export const GAME_PAID_SUBSTAT_TAX = 5
+export const GAME_AFFIX_SUBSTAT_ENTRY_CAP = 30
 
 const PAID_MAIN_KEYS = ['externalAtkPercent', 'externalHpPercent', 'externalDefPercent'] as const
 
@@ -34,13 +36,6 @@ const PAID_MAIN_TO_SUBSTAT: Record<(typeof PAID_MAIN_KEYS)[number], string> = {
   externalAtkPercent: 'substat:atkPercent',
   externalHpPercent: 'substat:hpPercent',
   externalDefPercent: 'substat:defPercent',
-}
-
-/** 副词条单词条 cap 占位；用户稍后给正式数。未列出的仍用构造器（0 = 不限）。 */
-export const GAME_AFFIX_SUBSTAT_CAPS: Record<string, number> = {
-  'substat:atkPercent': 6,
-  'substat:hpPercent': 6,
-  'substat:defPercent': 6,
 }
 
 export type GameSlotPocket = 'paid' | 'free'
@@ -92,8 +87,8 @@ export function gamePocketLabel(combo: GamePocketCombo): string {
 
 export function createGameAffixLibraryEntries(): AffixLibraryEntry[] {
   return createPresetAffixLibraryEntries().map((entry) => {
-    const cap = GAME_AFFIX_SUBSTAT_CAPS[entry.id]
-    return cap === undefined ? { ...entry } : { ...entry, cap }
+    if (entry.group !== '副词条') return { ...entry }
+    return { ...entry, cap: GAME_AFFIX_SUBSTAT_ENTRY_CAP }
   })
 }
 
