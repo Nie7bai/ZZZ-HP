@@ -829,12 +829,6 @@ watch(activeTab, (tab) => {
   if (!draft.value.group) draft.value.group = tab
 })
 
-// ---------- 条目编辑（只改草稿） ----------
-
-function toggleEdit(row: EntryRow) {
-  editingKey.value = editingKey.value === row._key ? '' : row._key
-}
-
 function nextEntrySortOrder(): number {
   const orders = entries.value.map((entry) => Number(entry.sortOrder) || 0)
   return orders.length ? Math.max(...orders) + 1 : 0
@@ -1039,6 +1033,52 @@ function onDraftCustomTarget() {
 function onCommitDraftTarget() {
   draft.value.target = draft.value.target.trim()
   if (KNOWN_TARGETS.has(draft.value.target)) draftTargetCustom.value = false
+}
+
+const editingEntry = computed(
+  () => entries.value.find((entry) => entry._key === editingKey.value) ?? null,
+)
+
+const formEntry = computed(() => editingEntry.value ?? draft.value)
+
+const formCustomTarget = computed(() => {
+  const row = editingEntry.value
+  if (row) return isCustomTarget(row)
+  return draftTargetCustom.value
+})
+
+function closeEdit() {
+  editingKey.value = ''
+}
+
+async function toggleEdit(row: EntryRow) {
+  if (editingKey.value === row._key) {
+    closeEdit()
+    return
+  }
+  editingKey.value = row._key
+  await nextTick()
+  document.querySelector('.add-entry')?.scrollIntoView({ block: 'nearest' })
+}
+
+function onFormCustom() {
+  const row = editingEntry.value
+  if (row) void onCustomTarget(row)
+  else onDraftCustomTarget()
+}
+
+function onFormCommitCustom() {
+  const row = editingEntry.value
+  if (row) onCommitCustomTarget(row)
+  else onCommitDraftTarget()
+}
+
+function submitForm() {
+  if (editingKey.value) {
+    closeEdit()
+    return
+  }
+  submitDraft()
 }
 
 function effectRuleHint(
@@ -1540,7 +1580,7 @@ onMounted(() => {
                     type="button"
                     class="edit-btn"
                     :disabled="busy"
-                    :title="editingKey === entry._key ? '收起修改' : '修改目标与局内规则'"
+                    :title="editingKey === entry._key ? '取消修改，回到新增' : '用下方表单改这条'"
                     @click="toggleEdit(entry)"
                   >
                     {{ editingKey === entry._key ? '收起' : '修改' }}
@@ -1556,35 +1596,6 @@ onMounted(() => {
                   </button>
                 </td>
               </tr>
-              <tr v-if="editingKey === entry._key" class="edit-row">
-                <td :colspan="ENTRY_TABLE_COLS">
-                  <div class="add-entry add-entry--row">
-                    <h5>修改词条</h5>
-                    <AffixLibraryEntryFields
-                      :entry="entry"
-                      :groups="groups"
-                      allow-custom
-                      :custom-target="isCustomTarget(entry)"
-                      show-admin-extras
-                      :disabled="busy"
-                      :target-hint="isCustomTarget(entry) ? targetHint(entry.target) : ''"
-                      :target-hint-warn="isCustomTarget(entry) && !targetRecognized(entry.target)"
-                      :rule-hint="effectRuleHint(entry.target, entry)"
-                      @custom="onCustomTarget(entry)"
-                      @commit-custom="onCommitCustomTarget(entry)"
-                    >
-                      <button
-                        type="button"
-                        class="primary-btn"
-                        :disabled="busy"
-                        @click="editingKey = ''"
-                      >
-                        完成
-                      </button>
-                    </AffixLibraryEntryFields>
-                  </div>
-                </td>
-              </tr>
               </template>
               <tr v-if="!visibleEntries.length">
                 <td :colspan="ENTRY_TABLE_COLS" class="empty-cell">这一页没有条目。</td>
@@ -1593,23 +1604,23 @@ onMounted(() => {
           </table>
         </div>
 
-        <div v-if="!editingKey" class="add-entry">
-          <h5>新增词条</h5>
+        <div class="add-entry">
+          <h5>{{ editingKey ? '修改词条' : '新增词条' }}</h5>
           <AffixLibraryEntryFields
-            :entry="draft"
+            :entry="formEntry"
             :groups="groups"
             allow-custom
-            :custom-target="draftTargetCustom"
+            :custom-target="formCustomTarget"
             show-admin-extras
             :disabled="busy"
-            :target-hint="draftTargetCustom ? targetHint(draft.target) : ''"
-            :target-hint-warn="draftTargetCustom && !targetRecognized(draft.target)"
-            :rule-hint="draft.target ? effectRuleHint(draft.target, draft) : ''"
-            @custom="onDraftCustomTarget"
-            @commit-custom="onCommitDraftTarget"
+            :target-hint="formCustomTarget ? targetHint(formEntry.target) : ''"
+            :target-hint-warn="formCustomTarget && !targetRecognized(formEntry.target)"
+            :rule-hint="formEntry.target ? effectRuleHint(formEntry.target, formEntry) : ''"
+            @custom="onFormCustom"
+            @commit-custom="onFormCommitCustom"
           >
-            <button type="button" class="primary-btn" :disabled="busy" @click="submitDraft">
-              添加
+            <button type="button" class="primary-btn" :disabled="busy" @click="submitForm">
+              {{ editingKey ? '完成' : '添加' }}
             </button>
           </AffixLibraryEntryFields>
           <p v-if="draftError" class="form-error">{{ draftError }}</p>
@@ -2106,12 +2117,6 @@ onMounted(() => {
   background: color-mix(in srgb, var(--color-heading) 6%, transparent);
 }
 
-.preset-table tr.edit-row td {
-  padding: 0.45rem 0.55rem 0.65rem;
-  background: var(--color-background-soft);
-  border-top: none;
-}
-
 .rule-edit {
   display: flex;
   flex-wrap: wrap;
@@ -2333,12 +2338,6 @@ onMounted(() => {
   border-radius: 12px;
   background: var(--color-background-soft);
   padding: 0.75rem 0.85rem;
-}
-
-.add-entry--row {
-  border: none;
-  padding: 0.15rem 0;
-  background: transparent;
 }
 
 .add-entry h5 {
