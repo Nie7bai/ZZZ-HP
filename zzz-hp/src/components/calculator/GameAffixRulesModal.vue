@@ -301,4 +301,6 @@ function onExtraCost(event: Event) {
   color: #8b94a1;
   text-align: center;
 }
+
+/* 白天主题：Teleport 到 body，写在 assets/calculatorLight.css */
 </style>

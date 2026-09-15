@@ -236,7 +236,7 @@ function formatValue(key: keyof PanelStats, value: number) {
       >
         词条导入
       </button>
-      <p class="entry-mode-hint">仅影响本导入表单，不跟随页面「计算方式」。</p>
+      <p class="entry-mode-hint">导入方式2者取其一，以最后一次点击「确认导入」时的选择作为基准的局外面板</p>
     </div>
 
     <p v-if="disabled" class="disabled-hint">请先在「角色」Tab 选择代理人后再录入面板。</p>
