@@ -239,7 +239,6 @@ export async function solveGameAffixAllocationAsync(
       minimumBenefitRatio: input.minimumBenefitRatio,
       groupCaps,
       entryCapTaxes: branch.entryCapTaxes,
-      maxStarts: 1,
     }
     const result = await solveOptimalAffixAllocationAsync(branchInput, {
       ...options,

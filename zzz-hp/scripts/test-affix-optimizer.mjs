@@ -36,6 +36,7 @@ import {
   resolveAffixLibrary,
   resolveAffixLibraryAll,
   setAffixLibraryEntryEnabled,
+  affixGroupCaps,
 } from '../src/utils/affixLibrary.ts'
 import {
   solveOptimalAffixAllocation,
@@ -719,22 +720,17 @@ console.log('\n[6] 词条库解析')
     String(resolveAffixLibrary(disabledOne).length))
 }
 
-// ---------- 7. 算法质量：多起点 + 2-swap 是否优于单起点 + 1-swap ----------
-console.log('\n[7] 算法质量对比')
+// ---------- 7. 单起点：每条搜索路只跑一轮贪心 ----------
+console.log('\n[7] 单起点')
 {
   const BUDGET = 30
-  // 用小预算强制发生剪枝，多起点才会与单起点产生差别
-  const full = solveOptimalAffixAllocation({
-    ctx, entries: library, maxTotalRolls: BUDGET, maxStarts: 3, maxWorkUnits: 300,
+  const solved = solveOptimalAffixAllocation({
+    ctx, entries: library, maxTotalRolls: BUDGET, maxWorkUnits: 300,
+    enablePenRatePath: false,
   })
-  const single = solveOptimalAffixAllocation({
-    ctx, entries: library, maxTotalRolls: BUDGET, maxStarts: 1, maxWorkUnits: 300,
-  })
-  console.log(`    多起点 ${full.totalDamage}（${full.engineCalls} 次评估）`)
-  console.log(`    单起点 ${single.totalDamage}（${single.engineCalls} 次评估）`)
-  check('多起点结果不劣于单起点',
-    full.totalDamage >= single.totalDamage - 1e-9,
-    `${full.totalDamage} vs ${single.totalDamage}`)
+  check('关掉专路时起点数为 1',
+    solved.startsRun === 1,
+    String(solved.startsRun))
 }
 
 // ---------- 8. 计算量预算：缓存命中不计入 ----------
@@ -1634,7 +1630,6 @@ console.log('\n[游戏 cap 税] 触发条目占档后目标 cap 减 1')
       maxTotalRolls: 2,
       groupCaps: { '5号位': 1 },
       entryCapTaxes: [{ whenEntryId: trigger.id, targetEntryId: target.id, amount: 1 }],
-      maxStarts: 1,
     })
     const triggerRolls = solved.rollsByEntryId[trigger.id] ?? 0
     const targetRolls = solved.rollsByEntryId[target.id] ?? 0
@@ -1717,7 +1712,6 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、比例→K、共同�
     entries: penEntries,
     maxTotalRolls: 20,
     groupCaps,
-    maxStarts: 1,
     candidateWidthMode: 'manual',
     manualCandidateWidth: 20,
   })
@@ -1739,7 +1733,6 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、比例→K、共同�
     entries: penEntries,
     maxTotalRolls: 20,
     groupCaps,
-    maxStarts: 1,
     enablePenRatePath: false,
     candidateWidthMode: 'manual',
     manualCandidateWidth: 20,
@@ -1755,7 +1748,6 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、比例→K、共同�
     entries: penEntries,
     maxTotalRolls: 12,
     groupCaps,
-    maxStarts: 1,
     enablePenRatePath: false,
     minimumBenefitRatio: 0.8,
     candidateWidthMode: 'manual',
@@ -1771,7 +1763,6 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、比例→K、共同�
     entries: penEntries,
     maxTotalRolls: 12,
     groupCaps,
-    maxStarts: 1,
     enablePenRatePath: false,
     minimumBenefitRatio: 0,
     candidateWidthMode: 'manual',
@@ -1782,11 +1773,11 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、比例→K、共同�
     `kDropped=${kCap.kDropped}`)
 
   const starts = solveOptimalAffixAllocation({
-    ctx, entries: library, maxTotalRolls: 8, maxStarts: 2, maxWorkUnits: 400,
+    ctx, entries: library, maxTotalRolls: 8, maxWorkUnits: 400,
     enablePenRatePath: false,
   })
-  check('删除 gainAsc 后普通路线起点不超过 2',
-    starts.startsRun <= 2,
+  check('普通路线只跑一个起点',
+    starts.startsRun === 1,
     String(starts.startsRun))
 
   clearAffixEvalCache()
@@ -1795,7 +1786,6 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、比例→K、共同�
     entries: penEntries,
     maxTotalRolls: 20,
     groupCaps,
-    maxStarts: 2,
     maxWorkUnits: 9000,
     candidateWidthMode: 'auto',
   })
@@ -1873,19 +1863,38 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、比例→K、共同�
         followUpSkillRules: buffs.followUpSkillRules,
       })
       clearAffixEvalCache()
+      const fixtureT0 = Date.now()
       const fixtureSolved = solveOptimalAffixAllocation({
         ctx: fixtureCtx,
         entries: penEntries,
         maxTotalRolls: 20,
         groupCaps,
-        maxStarts: 1,
         candidateWidthMode: 'manual',
         manualCandidateWidth: 20,
       })
+      const fixtureManualMs = Date.now() - fixtureT0
       check('叶释渊 fixture 空盘选出 24+8',
         (fixtureSolved.rollsByEntryId['main:slot5:penRate'] ?? 0) >= 1
           && (fixtureSolved.rollsByEntryId['set:penRate:8'] ?? 0) >= 1,
-        `path=${fixtureSolved.winningPath} rolls=${JSON.stringify(fixtureSolved.rollsByEntryId)} hits=${flow.hits.length}`)
+        `path=${fixtureSolved.winningPath} rolls=${JSON.stringify(fixtureSolved.rollsByEntryId)} hits=${flow.hits.length} ${fixtureManualMs}ms`)
+
+      let libState = createDefaultAffixLibraryState()
+      libState = setAffixLibraryEntryEnabled(libState, 'set:penRate:8', true)
+      const uiEntries = resolveAffixLibrary(libState)
+      const uiCaps = affixGroupCaps(libState)
+      clearAffixEvalCache()
+      const autoT0 = Date.now()
+      const fixtureAuto = solveOptimalAffixAllocation({
+        ctx: fixtureCtx,
+        entries: uiEntries,
+        maxTotalRolls: 30,
+        groupCaps: uiCaps,
+        candidateWidthMode: 'auto',
+      })
+      const fixtureAutoMs = Date.now() - autoT0
+      console.log(
+        `    [耗时] 求最优分配 auto 全库+2件穿透 ${fixtureAutoMs}ms workUsed=${fixtureAuto.workUsed}/${fixtureAuto.workBudget} engine=${fixtureAuto.engineCalls} starts=${fixtureAuto.startsRun} path=${fixtureAuto.winningPath}`,
+      )
     }
   } catch (error) {
     check('叶释渊 fixture 空盘选出 24+8', false, String(error?.message ?? error))
@@ -1951,7 +1960,6 @@ console.log('\n[锐爆诊断] 小规模穷举，只有真漏解才留回归')
             ctx: sharpenCtx,
             entries: subset,
             maxTotalRolls: budget,
-            maxStarts: 1,
             enablePenRatePath: false,
             candidateWidthMode: 'manual',
             manualCandidateWidth: 8,

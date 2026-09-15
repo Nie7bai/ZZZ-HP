@@ -24,9 +24,9 @@ import {
  *   现存的单条约束只有词条库条目自身的 `cap` 与互斥组，见 `resolveAffixOptimizerBudget`。
  *
  * 搜索策略（每一步都用真实引擎评估，不做可分性假设）：
- * 1. **普通路线**：贪心 + 1-swap + 2-swap。多起点只留 `gainDesc` / `declared`。
- *    倒序起点 `gainAsc` 已删除：倒数就是垃圾。若以后某个明确阈值被证实漏解，
- *    针对该机制加专路，不恢复全局倒序。
+ * 1. **普通路线**：贪心 + 1-swap + 2-swap。每条路只按当前收益从高到低跑一轮。
+ *    列表顺序起点 `declared`、倒序起点 `gainAsc` 都已删除：多起点不是越多越好。
+ *    若以后某个明确阈值被证实漏解，针对该机制加专路，不恢复多种起点。
  * 2. **穿透专路**：把已启用的 `main:slot5:penRate` / `set:penRate:8` 锁满，
  *    在这块面板上重测副词条再跑贪心+swap，与普通路线比最终总伤。
  *    防御区 24+8+固穿是正协同，单档排序看不见整套；专路不进 Top-K。
@@ -102,8 +102,6 @@ export interface AffixOptimizerInput {
    * 游戏专用规则用来表达「号位选了攻击% → 副词条攻击% 少 1 档」。默认库不传。
    */
   entryCapTaxes?: AffixEntryCapTax[]
-  /** 多起点贪心的起点数（1~2，默认 2：gainDesc / declared） */
-  maxStarts?: number
 }
 
 /** 穿透结构只认这两个官方 id，不泛化成所有 penRate 条目 */
@@ -161,7 +159,7 @@ export interface AffixOptimizerResult {
   truncated: boolean
   /** 实际走完的阶段（供 UI 说明搜索结果停在哪一级） */
   phasesCompleted: string[]
-  /** 本次搜索的起点数（候选集已覆盖全部条目时为 1，避免重复劳动） */
+  /** 本次搜索的起点数（普通路 1；跑了穿透专路则两条路合计 2） */
   startsRun: number
   /** 各阶段实际执行过的零收益补测轮数（贪心 / 1-swap / 2-swap） */
   staleRefreshesByPhase: Partial<Record<'greedy' | 'swap1' | 'swap2', number>>
@@ -458,8 +456,6 @@ interface SearchOutcome {
   penRatePathUsed: boolean
 }
 
-/** 候选集的排序口径。倒序 `gainAsc` 已删除，不恢复全局倒序起点。 */
-type CandidateOrder = 'gainDesc' | 'declared'
 
 /**
  * 搜索核心（生成器）。
@@ -475,7 +471,6 @@ function* solveSearch(input: AffixOptimizerInput, searchPath: 'ordinary' | 'penR
   const groupCaps = input.groupCaps ?? {}
   const capTaxes = input.entryCapTaxes ?? []
   const fixedRolls = input.fixedRollsByEntryId ?? {}
-  const maxStarts = Math.max(1, Math.min(2, input.maxStarts ?? 2))
   const widthMode: AffixCandidateWidthMode = input.candidateWidthMode ?? 'auto'
   const entryCount = Math.max(1, entries.length)
   const manualWidth = clampInt(input.manualCandidateWidth ?? entryCount, 1, entryCount)
@@ -510,7 +505,7 @@ function* solveSearch(input: AffixOptimizerInput, searchPath: 'ordinary' | 'penR
   const snapshot = (): AffixOptimizerProgress => ({
     phase,
     startIndex,
-    startCount: startsRun || maxStarts,
+    startCount: startsRun || 1,
     engineCalls,
     cacheHits,
     workUsed,
@@ -596,7 +591,6 @@ function* solveSearch(input: AffixOptimizerInput, searchPath: 'ordinary' | 'penR
    */
   const pickCandidates = (
     width: number,
-    order: CandidateOrder,
     isAllowed: (entry: AffixLibraryEntry) => boolean,
   ): AffixLibraryEntry[] => {
     const gainOf = (entry: AffixLibraryEntry) => lastGain.get(entry.id) ?? 0
@@ -610,7 +604,7 @@ function* solveSearch(input: AffixOptimizerInput, searchPath: 'ordinary' | 'penR
       ? eligible.slice()
       : eligible.filter((entry) => gainOf(entry) >= bestGain * minimumBenefitRatio)
     ratioDropped += eligible.length - afterRatio.length
-    if (order === 'gainDesc') afterRatio.sort((a, b) => gainOf(b) - gainOf(a))
+    afterRatio.sort((a, b) => gainOf(b) - gainOf(a))
     if (afterRatio.length > width) {
       kDropped += afterRatio.length - width
       return afterRatio.slice(0, width)
@@ -701,7 +695,6 @@ function* solveSearch(input: AffixOptimizerInput, searchPath: 'ordinary' | 'penR
   // ---------- 2. 贪心构造 ----------
   phase = 'greedy'
   function* greedyBuild(
-    order: CandidateOrder,
   ): Generator<AffixOptimizerProgress, { rolls: Record<string, number>; state: SolveState }, void> {
     phase = 'greedy'
     const rolls: Record<string, number> = { ...fixedRolls }
@@ -732,11 +725,11 @@ function* solveSearch(input: AffixOptimizerInput, searchPath: 'ordinary' | 'penR
         yield* remesureAllowed(rolls, current.total, allowedHere)
       }
       greedySteps += 1
-      let candidates = pickCandidates(width, order, allowedHere)
+      let candidates = pickCandidates(width, allowedHere)
       // 候选不足就补测零收益条目（补测门槛按档数翻倍推进，不会无限循环）
       if (candidates.length < width) {
         yield* refreshStaleEntries(width, rolls, current.total)
-        candidates = pickCandidates(width, order, allowedHere)
+        candidates = pickCandidates(width, allowedHere)
       }
       if (!candidates.length) break
       // 做不完就不开这一轮：预算不足直接停在这一步，不产生半成品
@@ -774,7 +767,6 @@ function* solveSearch(input: AffixOptimizerInput, searchPath: 'ordinary' | 'penR
   function* localSearch1Swap(
     rolls: Record<string, number>,
     start: SolveState,
-    order: CandidateOrder,
   ): Generator<AffixOptimizerProgress, SolveState, void> {
     phase = 'swap1'
     let current = start
@@ -826,7 +818,7 @@ function* solveSearch(input: AffixOptimizerInput, searchPath: 'ordinary' | 'penR
             groupCaps,
             capTaxes,
           ) > 0
-        const candidates = pickCandidates(width, order, allowedHere)
+        const candidates = pickCandidates(width, allowedHere)
 
         for (const addEntry of candidates) {
           if (addEntry.id === removeEntry.id) continue
@@ -857,7 +849,6 @@ function* solveSearch(input: AffixOptimizerInput, searchPath: 'ordinary' | 'penR
   function* localSearch2Swap(
     rolls: Record<string, number>,
     start: SolveState,
-    order: CandidateOrder,
   ): Generator<AffixOptimizerProgress, SolveState, void> {
     phase = 'swap2'
     let current = start
@@ -926,7 +917,7 @@ function* solveSearch(input: AffixOptimizerInput, searchPath: 'ordinary' | 'penR
             groupCaps,
             capTaxes,
           ) > 0
-        const candidates = pickCandidates(width, order, allowedHere)
+        const candidates = pickCandidates(width, allowedHere)
         for (let i = 0; i < candidates.length; i += 1) {
           const a = candidates[i]!
           const aRolls = removal.rolls[a.id] ?? 0
@@ -972,35 +963,22 @@ function* solveSearch(input: AffixOptimizerInput, searchPath: 'ordinary' | 'penR
     return current
   }
 
-  // ---------- 5. 多起点主循环 ----------
-  /**
-   * 候选集已覆盖全部条目时，多起点之间没有差异（贪心每轮取最优，与顺序无关），
-   * 此时只跑 1 个起点，避免 3 倍重复劳动。
-   */
-  const widthCoversAll = widthMode === 'manual'
-    ? manualWidth >= entries.length
-    : (workBudget ?? 0) / 2 / pricePerEval >= entries.length
-  const orders: CandidateOrder[] = widthCoversAll
-    ? ['gainDesc']
-    : (['gainDesc', 'declared'] as CandidateOrder[]).slice(0, maxStarts)
-  startsRun = orders.length
-
+  // ---------- 5. 单起点：当前收益从高到低 ----------
+  startsRun = 1
+  startIndex = 1
   let bestRolls: Record<string, number> | null = null
   let bestState: SolveState | null = null
-
-  for (let i = 0; i < orders.length; i += 1) {
-    startIndex = i + 1
-    if (remainingWork() <= 0) { truncated = true; break }
-    const built = yield* greedyBuild(orders[i]!)
+  if (remainingWork() <= 0) {
+    truncated = true
+  } else {
+    const built = yield* greedyBuild()
     phasesCompleted.push('greedy')
-    const refined1 = yield* localSearch1Swap(built.rolls, built.state, orders[i]!)
+    const refined1 = yield* localSearch1Swap(built.rolls, built.state)
     phasesCompleted.push('swap1')
-    const refined2 = yield* localSearch2Swap(built.rolls, refined1, orders[i]!)
+    const refined2 = yield* localSearch2Swap(built.rolls, refined1)
     phasesCompleted.push('swap2')
-    if (!bestState || refined2.total > bestState.total) {
-      bestState = refined2
-      bestRolls = { ...built.rolls }
-    }
+    bestState = refined2
+    bestRolls = { ...built.rolls }
   }
 
   const rollsByEntryId = bestRolls ?? { ...fixedRolls }
@@ -1113,7 +1091,7 @@ function* solveSearchWithPenPath(
   const sharedWorkBudget = resolveSearchWorkBudget(input)
   let ordinaryInput = input
   let penWorkUnits: number | undefined
-  // auto：专路吃原 gainAsc 那 1/3，普通路 gainDesc+declared 占 2/3；普通路没用完的还给专路。
+  // auto：专路预留 1/3，普通路 2/3；普通路没用完的还给专路。
   if (sharedWorkBudget != null) {
     const penShare = Math.floor(sharedWorkBudget / 3)
     ordinaryInput = { ...input, maxWorkUnits: sharedWorkBudget - penShare }
@@ -1127,7 +1105,6 @@ function* solveSearchWithPenPath(
   const penInput: AffixOptimizerInput = {
     ...input,
     fixedRollsByEntryId: { ...(input.fixedRollsByEntryId ?? {}), ...locks },
-    maxStarts: 1,
     enablePenRatePath: false,
     ...(sharedWorkBudget != null ? { maxWorkUnits: (penWorkUnits ?? 0) + leftover } : {}),
   }
