@@ -212,6 +212,7 @@ export async function solveGameAffixAllocationAsync(
     maxTotalRolls: number
     candidateWidthMode?: AffixCandidateWidthMode
     manualCandidateWidth?: number
+    minimumBenefitRatio?: number
   },
   options?: AffixOptimizerAsyncOptions,
 ): Promise<AffixOptimizerResult> {
@@ -235,6 +236,7 @@ export async function solveGameAffixAllocationAsync(
       maxTotalRolls: input.maxTotalRolls,
       candidateWidthMode: input.candidateWidthMode,
       manualCandidateWidth: input.manualCandidateWidth,
+      minimumBenefitRatio: input.minimumBenefitRatio,
       groupCaps,
       entryCapTaxes: branch.entryCapTaxes,
       maxStarts: 1,

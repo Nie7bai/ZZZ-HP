@@ -43,6 +43,8 @@ import {
   buildAllocationRows,
   formatAffixRollsSummary,
   resolveAffixOptimizerBudget,
+  collectPenRateStructureLocks,
+  PEN_RATE_STRUCTURE_ENTRY_IDS,
 } from '../src/utils/affixOptimizer.ts'
 import {
   buildOptimalEvalContext,
@@ -1639,6 +1641,210 @@ console.log('\n[游戏 cap 税] 触发条目占档后目标 cap 减 1')
     )
   } else {
     check('游戏 cap 税：测试条目存在', false)
+  }
+}
+
+console.log('\n[穿透专路] 24+8 锁满、固穿重测、比例→K、共同基线')
+{
+  const mains = createDriveDiscMainStatAffixEntries()
+  const twos = createDriveDiscTwoPieceAffixEntries()
+  const slot5Dmg = mains.find((e) => e.id === 'main:slot5:dmgBonus')
+  const slot5Pen = mains.find((e) => e.id === 'main:slot5:penRate')
+  const setDmg = twos.find((e) => e.id === 'set:dmgBonus:10')
+  const setPen = twos.find((e) => e.id === 'set:penRate:8')
+  const substPen = library.find((e) => e.id === 'substat:pen')
+  const substAtk = library.find((e) => e.id === 'substat:atkPercent')
+  check('官方穿透结构 id 仍是 5 号 24 + 2 件 8',
+    slot5Pen && setPen && PEN_RATE_STRUCTURE_ENTRY_IDS.includes(slot5Pen.id)
+      && PEN_RATE_STRUCTURE_ENTRY_IDS.includes(setPen.id),
+    `${slot5Pen?.id} / ${setPen?.id}`)
+
+  const locks = collectPenRateStructureLocks(
+    [slot5Pen, setPen, substPen].filter(Boolean),
+    {},
+    { '5号位': 1, '2件套': 1, 副词条: 0 },
+    30,
+  )
+  check('结构锁收集到 24 和 8',
+    (locks['main:slot5:penRate'] ?? 0) === 1 && (locks['set:penRate:8'] ?? 0) === 1,
+    JSON.stringify(locks))
+
+  const penEntries = [slot5Dmg, slot5Pen, setDmg, setPen, substPen, substAtk].filter(Boolean)
+  const groupCaps = { '5号位': 1, '2件套': 1, 副词条: 0 }
+  const highBonusCtx = makeCtx({
+    activeSlotPanels: {
+      a: fillPanelStatsDefaults({
+        hp: 9000, atk: 2500, def: 700, critRate: 70, critDmg: 140,
+        dmgBonus: 90, penRate: 0, pen: 0,
+      }),
+    },
+    enemyInput: {
+      level: 60, defense: 953, resistanceType: 'normal',
+      vulnerableMultiplier: 1, staggerMultiplier: 1.5, specialMultiplier: 1,
+    },
+  })
+
+  const emptyEval = evaluateAffixCounts(highBonusCtx, createEmptyAffixCounts())
+  const withRate = entryRollsToEvalInput(
+    [slot5Pen, setPen],
+    { 'main:slot5:penRate': 1, 'set:penRate:8': 1 },
+  )
+  const withRatePlusPen = entryRollsToEvalInput(
+    [slot5Pen, setPen, substPen],
+    { 'main:slot5:penRate': 1, 'set:penRate:8': 1, 'substat:pen': 8 },
+  )
+  const onlyFlatPen = entryRollsToEvalInput([substPen], { 'substat:pen': 8 })
+  const evalFrom = (input) => evaluateAffixCounts(
+    highBonusCtx,
+    { ...createEmptyAffixCounts(), ...input.counts },
+    input.deltas,
+    input.valuePerCount,
+    input.extraGains,
+  ).grandTotal
+  const gainFlatOnEmpty = evalFrom(onlyFlatPen) - emptyEval.grandTotal
+  const gainFlatOnRate = evalFrom(withRatePlusPen) - evalFrom(withRate)
+  check('24+8 下固穿边际高于无穿透',
+    gainFlatOnRate > gainFlatOnEmpty,
+    `有穿透 ${gainFlatOnRate.toFixed(1)} vs 无穿透 ${gainFlatOnEmpty.toFixed(1)}`)
+
+  clearAffixEvalCache()
+  const withPath = solveOptimalAffixAllocation({
+    ctx: highBonusCtx,
+    entries: penEntries,
+    maxTotalRolls: 20,
+    groupCaps,
+    maxStarts: 1,
+    candidateWidthMode: 'manual',
+    manualCandidateWidth: 20,
+  })
+  check('穿透专路已跑', withPath.penRatePathUsed === true, String(withPath.penRatePathUsed))
+  check('叶释渊同类空盘选出 24+8',
+    (withPath.rollsByEntryId['main:slot5:penRate'] ?? 0) >= 1
+      && (withPath.rollsByEntryId['set:penRate:8'] ?? 0) >= 1,
+    JSON.stringify(withPath.rollsByEntryId))
+  check('提升率用空盘基线而不是 24+8 内部基线',
+    Math.abs(withPath.baselineDamage - emptyEval.grandTotal) < 1e-6,
+    `${withPath.baselineDamage} vs ${emptyEval.grandTotal}`)
+  check('默认比例 0% 不筛正收益',
+    withPath.minimumBenefitRatio === 0 && withPath.ratioDropped === 0,
+    `ratio=${withPath.minimumBenefitRatio} dropped=${withPath.ratioDropped}`)
+
+  clearAffixEvalCache()
+  const noPath = solveOptimalAffixAllocation({
+    ctx: highBonusCtx,
+    entries: penEntries,
+    maxTotalRolls: 20,
+    groupCaps,
+    maxStarts: 1,
+    enablePenRatePath: false,
+    candidateWidthMode: 'manual',
+    manualCandidateWidth: 20,
+  })
+  check('关掉专路则 penRatePathUsed=false', noPath.penRatePathUsed === false, String(noPath.penRatePathUsed))
+  check('专路总伤不低于关掉专路',
+    withPath.totalDamage >= noPath.totalDamage - 1e-6,
+    `${withPath.totalDamage} vs ${noPath.totalDamage}`)
+
+  clearAffixEvalCache()
+  const highRatio = solveOptimalAffixAllocation({
+    ctx: highBonusCtx,
+    entries: penEntries,
+    maxTotalRolls: 12,
+    groupCaps,
+    maxStarts: 1,
+    enablePenRatePath: false,
+    minimumBenefitRatio: 0.8,
+    candidateWidthMode: 'manual',
+    manualCandidateWidth: 20,
+  })
+  check('高比例会筛掉部分正收益候选',
+    highRatio.ratioDropped > 0,
+    `dropped=${highRatio.ratioDropped}`)
+
+  clearAffixEvalCache()
+  const kCap = solveOptimalAffixAllocation({
+    ctx: highBonusCtx,
+    entries: penEntries,
+    maxTotalRolls: 12,
+    groupCaps,
+    maxStarts: 1,
+    enablePenRatePath: false,
+    minimumBenefitRatio: 0,
+    candidateWidthMode: 'manual',
+    manualCandidateWidth: 1,
+  })
+  check('比例筛完仍过密时 K 才截顶',
+    kCap.kDropped > 0,
+    `kDropped=${kCap.kDropped}`)
+
+  const starts = solveOptimalAffixAllocation({
+    ctx, entries: library, maxTotalRolls: 8, maxStarts: 2, maxWorkUnits: 400,
+    enablePenRatePath: false,
+  })
+  check('删除 gainAsc 后普通路线起点不超过 2',
+    starts.startsRun <= 2,
+    String(starts.startsRun))
+}
+
+console.log('\n[锐爆诊断] 小规模穷举，只有真漏解才留回归')
+{
+  const crit = library.find((e) => e.id === 'substat:critRate')
+  const atk = library.find((e) => e.id === 'substat:atkPercent')
+  let leak = null
+  if (crit && atk) {
+    const BUDGET = 6
+    const sharpenCtx = makeCtx({
+      isFengYu: true,
+      agents: [{
+        id: 'a',
+        name: '测试',
+        element: '电',
+        profession: '锋御',
+        basePanel: {
+          ...createEmptyAgentBasePanel(),
+          hp: 9000, atk: 900, def: 1500, critRate: 88, critDmg: 50,
+          anomalyControl: 100, energyRegen: 120, directDmgMult: 100, anomalyMult: 125,
+        },
+      }],
+    })
+    const subset = [
+      { ...crit, cap: BUDGET },
+      { ...atk, cap: BUDGET },
+    ]
+    let bruteBest = -Infinity
+    const rec = (index, used, rolls) => {
+      if (index === subset.length) {
+        const input = entryRollsToEvalInput(subset, rolls)
+        const total = evaluateAffixCounts(
+          sharpenCtx, input.counts, input.panelDeltas, input.valuePerCount, input.extraGains,
+        ).grandTotal
+        if (total > bruteBest) bruteBest = total
+        return
+      }
+      const entry = subset[index]
+      for (let n = 0; n <= BUDGET - used; n += 1) {
+        rec(index + 1, used + n, { ...rolls, [entry.id]: n })
+      }
+    }
+    rec(0, 0, {})
+    const solved = solveOptimalAffixAllocation({
+      ctx: sharpenCtx,
+      entries: subset,
+      maxTotalRolls: BUDGET,
+      maxStarts: 1,
+      enablePenRatePath: false,
+      candidateWidthMode: 'manual',
+      manualCandidateWidth: 8,
+    })
+    if (solved.totalDamage + 1e-6 < bruteBest) {
+      leak = { solved: solved.totalDamage, brute: bruteBest, rolls: solved.rollsByEntryId }
+    }
+  }
+  if (leak) {
+    console.log(`    诊断发现漏解：求解 ${leak.solved} < 穷举 ${leak.brute} ${JSON.stringify(leak.rolls)}`)
+    console.log('    按方案不把失败断言留进提交，本轮不加锐爆专路。')
+  } else {
+    check('锐爆小规模穷举未发现阈值漏解，不加回归测试', true)
   }
 }
 

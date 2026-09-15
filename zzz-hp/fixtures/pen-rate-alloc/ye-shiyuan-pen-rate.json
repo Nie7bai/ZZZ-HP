@@ -1,0 +1,2393 @@
+{
+  "type": "zzz-hp-schemes",
+  "version": 4,
+  "exportedAt": 1789481571198,
+  "dirs": {
+    "/21叶": {
+      "createdAt": 1787894919787,
+      "order": 1
+    }
+  },
+  "schemes": {
+    "s:/21叶/21叶琉千——叶释渊--测试-带穿透率": {
+      "id": "s:/21叶/21叶琉千——叶释渊--测试-带穿透率",
+      "name": "21叶琉千——叶释渊--测试-带穿透率",
+      "savedAt": 1789481558940,
+      "teamSlots": [
+        {
+          "agentId": "yeshunguang",
+          "rank": 1,
+          "wengineId": "cloudcleave-radiance",
+          "wengineRefine": 1,
+          "twoPieceDriveDiscId": "SuitPufferElectro",
+          "fourPieceDriveDiscId": "SuitWhiteWaterBallad"
+        },
+        {
+          "agentId": "dialyn",
+          "rank": 0,
+          "wengineId": "Steam_Oven",
+          "wengineRefine": 5,
+          "twoPieceDriveDiscId": "SuitMoonlightLullaby",
+          "fourPieceDriveDiscId": "SuitKingoftheSummit"
+        },
+        {
+          "agentId": "sunna",
+          "rank": 0,
+          "wengineId": "Kaboom_The_Cannon",
+          "wengineRefine": 5,
+          "twoPieceDriveDiscId": "none",
+          "fourPieceDriveDiscId": "SuitMoonlightLullaby"
+        }
+      ],
+      "activeSlot": 0,
+      "selectedBangbooId": "none",
+      "bangbooRefine": 1,
+      "panelCalcMode": "optimal",
+      "panelState": {
+        "extraMods": {
+          "hp": 0,
+          "inCombatHpPercent": 0,
+          "inCombatAtkPercent": 0,
+          "inCombatDefPercent": 0,
+          "externalHpPercent": 0,
+          "externalAtkPercent": 0,
+          "externalDefPercent": 0,
+          "atk": 0,
+          "def": 0,
+          "dmgBonus": 0,
+          "critRate": 0,
+          "critDmg": 0,
+          "penRate": 0,
+          "reduceDefense": 0,
+          "resPen": 0,
+          "mastery": 0,
+          "anomalyControl": 0,
+          "anomalyControlPercent": 0,
+          "energyRegen": 0,
+          "energyRegenFlat": 0,
+          "pierce": 0,
+          "pierceDmgBonus": 0,
+          "sharpenDmgBonus": 0,
+          "sharpenCritDmgBonus": 0,
+          "dmgPenalty": 0,
+          "vulnerable": 0,
+          "directVulnerable": 0,
+          "anomalyVulnerable": 0,
+          "dmgReduction": 0,
+          "directDmgReduction": 0,
+          "anomalyDmgReduction": 0,
+          "globalStaggerVulnerable": 0,
+          "staggerVulnerable": 0,
+          "staggerVulnerableOnly": 0,
+          "special": 0,
+          "anomalyCritRate": 0,
+          "anomalyCritDmg": 0,
+          "anomalyDmgBonus": 0,
+          "anomalyReleaseDmgBonus": 0,
+          "anomalyReleaseCritRate": 0,
+          "anomalyReleaseCritDmg": 0,
+          "anomalyReleaseMult": 0,
+          "directDmgMult": 0,
+          "settlementDmgMult": 0,
+          "anomalyMult": 0,
+          "disorderBaseMult": 0,
+          "anomalyDuration": 0,
+          "disorderCompMult": 0,
+          "turbulenceBaseMult": 0,
+          "turbulenceCompMult": 0,
+          "disorderDmgBonus": 0,
+          "turbulenceDmgBonus": 0,
+          "skillDmgBonus": 0,
+          "skillMultiplierBonus": 0,
+          "directDmgMultFactor": 0,
+          "anomalyMultFactor": 0,
+          "anomalyReleaseMultFactor": 0,
+          "disorderBaseMultFactor": 0,
+          "turbulenceBaseMultFactor": 0,
+          "radianceMult": 0,
+          "radianceDmgBonus": 0,
+          "radianceResPen": 0,
+          "specialMult": 0,
+          "mutationCoeff": 0,
+          "radianceMultFactor": 0,
+          "specialMultFactor": 0,
+          "mutationCoeffFactor": 0
+        },
+        "extraGains": [],
+        "enemyInput": {
+          "defense": 953,
+          "resistanceType": "normal",
+          "elementResistance": {
+            "风": "weak",
+            "火": "normal",
+            "电": "res20",
+            "物理": "weak",
+            "以太": "normal",
+            "冰": "weak"
+          },
+          "vulnerableMultiplier": 1,
+          "staggerMultiplier": 1.5,
+          "specialMultiplier": 1,
+          "level": 60,
+          "bossSource": "boss_info",
+          "bossName": "魇缚者·叶释渊",
+          "bossRecordLabel": "3.2 第1期 · 魇缚者·叶释渊",
+          "bossImage": "/boss_image/魇缚者·叶释渊.png"
+        },
+        "skillTalentLevelsByAgent": {
+          "yeshunguang": {
+            "basic": 12,
+            "dodge": 12,
+            "assist": 12,
+            "special": 12,
+            "chainUltimate": 12
+          }
+        },
+        "externalPanel": {
+          "hp": 9873,
+          "atk": 3245.32,
+          "def": 606,
+          "critRate": 50.6,
+          "critDmg": 234,
+          "sharpenCritDmgBonus": 0,
+          "dmgBonus": 40,
+          "ignoreDefense": 0,
+          "reduceDefense": 0,
+          "penRate": 0,
+          "pen": 45,
+          "resPen": 0,
+          "mastery": 93,
+          "anomalyControl": 94,
+          "energyRegen": 120,
+          "impact": 0,
+          "anomalyCritRate": 0,
+          "anomalyCritDmg": 0,
+          "anomalyDmgBonus": 0,
+          "anomalyReleaseCritRate": 0,
+          "anomalyReleaseCritDmg": 0,
+          "anomalyReleaseMult": 0,
+          "anomalyReleaseDmgBonus": 0,
+          "directDmgMult": 100,
+          "settlementDmgMult": 0,
+          "anomalyMult": 713,
+          "disorderBaseMult": 450,
+          "anomalyDuration": 10,
+          "disorderCompMult": 7.5,
+          "turbulenceBaseMult": 800,
+          "turbulenceCompMult": 7.5,
+          "disorderDmgBonus": 0,
+          "turbulenceDmgBonus": 0,
+          "directDmgMultFactor": 100,
+          "anomalyMultFactor": 100,
+          "anomalyReleaseMultFactor": 100,
+          "disorderBaseMultFactor": 100,
+          "turbulenceBaseMultFactor": 100,
+          "radianceMult": 0,
+          "radianceDmgBonus": 0,
+          "radianceResPen": 0,
+          "specialMult": 100,
+          "mutationCoeff": 0,
+          "radianceMultFactor": 100,
+          "specialMultFactor": 100,
+          "mutationCoeffFactor": 100
+        }
+      },
+      "slotPanels": {
+        "yeshunguang": {
+          "active": "affixDerived",
+          "importedPanel": {
+            "hp": 9873,
+            "atk": 3245.32,
+            "def": 606,
+            "critRate": 50.6,
+            "critDmg": 234,
+            "sharpenCritDmgBonus": 0,
+            "dmgBonus": 40,
+            "ignoreDefense": 0,
+            "reduceDefense": 0,
+            "penRate": 0,
+            "pen": 45,
+            "resPen": 0,
+            "mastery": 93,
+            "anomalyControl": 94,
+            "energyRegen": 120,
+            "impact": 0,
+            "anomalyCritRate": 0,
+            "anomalyCritDmg": 0,
+            "anomalyDmgBonus": 0,
+            "anomalyReleaseCritRate": 0,
+            "anomalyReleaseCritDmg": 0,
+            "anomalyReleaseMult": 0,
+            "anomalyReleaseDmgBonus": 0,
+            "directDmgMult": 100,
+            "settlementDmgMult": 0,
+            "anomalyMult": 713,
+            "disorderBaseMult": 450,
+            "anomalyDuration": 10,
+            "disorderCompMult": 7.5,
+            "turbulenceBaseMult": 800,
+            "turbulenceCompMult": 7.5,
+            "disorderDmgBonus": 0,
+            "turbulenceDmgBonus": 0,
+            "directDmgMultFactor": 100,
+            "anomalyMultFactor": 100,
+            "anomalyReleaseMultFactor": 100,
+            "disorderBaseMultFactor": 100,
+            "turbulenceBaseMultFactor": 100,
+            "radianceMult": 0,
+            "radianceDmgBonus": 0,
+            "radianceResPen": 0,
+            "specialMult": 100,
+            "mutationCoeff": 0,
+            "radianceMultFactor": 100,
+            "specialMultFactor": 100,
+            "mutationCoeffFactor": 100
+          },
+          "affixDerivedPanel": {
+            "hp": 9873,
+            "atk": 2854.31,
+            "def": 790,
+            "critRate": 50.6,
+            "critDmg": 251.6,
+            "sharpenCritDmgBonus": 0,
+            "dmgBonus": 10,
+            "ignoreDefense": 0,
+            "reduceDefense": 0,
+            "penRate": 32,
+            "pen": 0,
+            "resPen": 0,
+            "mastery": 93,
+            "anomalyControl": 94,
+            "energyRegen": 120,
+            "impact": 0,
+            "anomalyCritRate": 0,
+            "anomalyCritDmg": 0,
+            "anomalyDmgBonus": 0,
+            "anomalyReleaseCritRate": 0,
+            "anomalyReleaseCritDmg": 0,
+            "anomalyReleaseMult": 0,
+            "anomalyReleaseDmgBonus": 0,
+            "directDmgMult": 100,
+            "settlementDmgMult": 0,
+            "anomalyMult": 713,
+            "disorderBaseMult": 450,
+            "anomalyDuration": 10,
+            "disorderCompMult": 7.5,
+            "turbulenceBaseMult": 800,
+            "turbulenceCompMult": 7.5,
+            "disorderDmgBonus": 0,
+            "turbulenceDmgBonus": 0,
+            "directDmgMultFactor": 100,
+            "anomalyMultFactor": 100,
+            "anomalyReleaseMultFactor": 100,
+            "disorderBaseMultFactor": 100,
+            "turbulenceBaseMultFactor": 100,
+            "radianceMult": 0,
+            "radianceDmgBonus": 0,
+            "radianceResPen": 0,
+            "specialMult": 100,
+            "mutationCoeff": 0,
+            "radianceMultFactor": 100,
+            "specialMultFactor": 100,
+            "mutationCoeffFactor": 100
+          },
+          "affixCounts": {
+            "hpFlat": 0,
+            "hpPercent": 0,
+            "atkFlat": 0,
+            "atkPercent": 7,
+            "defFlat": 0,
+            "defPercent": 0,
+            "pen": 0,
+            "critRate": 3,
+            "critDmg": 32,
+            "mastery": 0
+          },
+          "affixDriveDiscMainStats": {
+            "slot4MainStat": "critRate",
+            "slot5MainStat": "penRate",
+            "slot6MainStat": "externalAtkPercent"
+          },
+          "provenance": {
+            "source": "affix",
+            "importedAt": 1789480743074,
+            "affixDerivedAt": 1789481423531
+          }
+        },
+        "dialyn": {
+          "active": "imported",
+          "importedPanel": {
+            "hp": 8250,
+            "atk": 758,
+            "def": 612,
+            "critRate": 89,
+            "critDmg": 50,
+            "sharpenCritDmgBonus": 0,
+            "dmgBonus": 0,
+            "ignoreDefense": 0,
+            "reduceDefense": 0,
+            "penRate": 0,
+            "pen": 0,
+            "resPen": 0,
+            "mastery": 93,
+            "anomalyControl": 94,
+            "energyRegen": 120,
+            "impact": 0,
+            "anomalyCritRate": 0,
+            "anomalyCritDmg": 0,
+            "anomalyDmgBonus": 0,
+            "anomalyReleaseCritRate": 0,
+            "anomalyReleaseCritDmg": 0,
+            "anomalyReleaseMult": 0,
+            "anomalyReleaseDmgBonus": 0,
+            "directDmgMult": 100,
+            "settlementDmgMult": 0,
+            "anomalyMult": 713,
+            "disorderBaseMult": 450,
+            "anomalyDuration": 10,
+            "disorderCompMult": 7.5,
+            "turbulenceBaseMult": 800,
+            "turbulenceCompMult": 7.5,
+            "disorderDmgBonus": 0,
+            "turbulenceDmgBonus": 0,
+            "directDmgMultFactor": 100,
+            "anomalyMultFactor": 100,
+            "anomalyReleaseMultFactor": 100,
+            "disorderBaseMultFactor": 100,
+            "turbulenceBaseMultFactor": 100,
+            "radianceMult": 0,
+            "radianceDmgBonus": 0,
+            "radianceResPen": 0,
+            "specialMult": 100,
+            "mutationCoeff": 0,
+            "radianceMultFactor": 100,
+            "specialMultFactor": 100,
+            "mutationCoeffFactor": 100
+          },
+          "affixCounts": {
+            "hpFlat": 0,
+            "hpPercent": 0,
+            "atkFlat": 0,
+            "atkPercent": 0,
+            "defFlat": 0,
+            "defPercent": 0,
+            "pen": 0,
+            "critRate": 0,
+            "critDmg": 0,
+            "mastery": 0
+          },
+          "affixDriveDiscMainStats": {
+            "slot4MainStat": "critDmg",
+            "slot5MainStat": "externalAtkPercent",
+            "slot6MainStat": "externalHpPercent"
+          },
+          "provenance": {
+            "source": "manual"
+          }
+        },
+        "sunna": {
+          "active": "imported",
+          "importedPanel": {
+            "hp": 8477,
+            "atk": 3468,
+            "def": 600,
+            "critRate": 5,
+            "critDmg": 50,
+            "sharpenCritDmgBonus": 0,
+            "dmgBonus": 0,
+            "ignoreDefense": 0,
+            "reduceDefense": 0,
+            "penRate": 0,
+            "pen": 0,
+            "resPen": 0,
+            "mastery": 95,
+            "anomalyControl": 96,
+            "energyRegen": 100,
+            "impact": 0,
+            "anomalyCritRate": 0,
+            "anomalyCritDmg": 0,
+            "anomalyDmgBonus": 0,
+            "anomalyReleaseCritRate": 0,
+            "anomalyReleaseCritDmg": 0,
+            "anomalyReleaseMult": 0,
+            "anomalyReleaseDmgBonus": 0,
+            "directDmgMult": 100,
+            "settlementDmgMult": 0,
+            "anomalyMult": 713,
+            "disorderBaseMult": 450,
+            "anomalyDuration": 10,
+            "disorderCompMult": 7.5,
+            "turbulenceBaseMult": 800,
+            "turbulenceCompMult": 7.5,
+            "disorderDmgBonus": 0,
+            "turbulenceDmgBonus": 0,
+            "directDmgMultFactor": 100,
+            "anomalyMultFactor": 100,
+            "anomalyReleaseMultFactor": 100,
+            "disorderBaseMultFactor": 100,
+            "turbulenceBaseMultFactor": 100,
+            "radianceMult": 0,
+            "radianceDmgBonus": 0,
+            "radianceResPen": 0,
+            "specialMult": 100,
+            "mutationCoeff": 0,
+            "radianceMultFactor": 100,
+            "specialMultFactor": 100,
+            "mutationCoeffFactor": 100
+          },
+          "affixCounts": {
+            "hpFlat": 0,
+            "hpPercent": 0,
+            "atkFlat": 0,
+            "atkPercent": 0,
+            "defFlat": 0,
+            "defPercent": 0,
+            "pen": 0,
+            "critRate": 0,
+            "critDmg": 0,
+            "mastery": 0
+          },
+          "affixDriveDiscMainStats": {
+            "slot4MainStat": "critDmg",
+            "slot5MainStat": "externalAtkPercent",
+            "slot6MainStat": "externalHpPercent"
+          },
+          "provenance": {
+            "source": "manual"
+          }
+        }
+      },
+      "convertSlotPanels": {},
+      "slots": [
+        {
+          "prepared": [
+            {
+              "id": "prep-mtuux4lc-1hnug",
+              "skillId": null,
+              "skillGroupId": "sg-yeshunguang-mtsvzpcz",
+              "skillSource": "preset",
+              "anomalyPowerAgentId": null,
+              "triggerAgentId": null,
+              "memberAgents": [],
+              "extraMods": null
+            },
+            {
+              "id": "prep-mtuvb8ri-x4zvo",
+              "skillId": null,
+              "skillGroupId": "sg-yeshunguang-mtuv0bhu",
+              "skillSource": "preset",
+              "anomalyPowerAgentId": null,
+              "triggerAgentId": null,
+              "memberAgents": [],
+              "extraMods": null
+            },
+            {
+              "id": "prep-mtuvb8b2-tnqdp",
+              "skillId": null,
+              "skillGroupId": "sg-yeshunguang-mtuv86yr",
+              "skillSource": "preset",
+              "anomalyPowerAgentId": null,
+              "triggerAgentId": null,
+              "memberAgents": [],
+              "extraMods": null
+            },
+            {
+              "id": "prep-mtuvgzs8-4avpb",
+              "skillId": null,
+              "skillGroupId": "sg-yeshunguang-mtuvgqs9",
+              "skillSource": "preset",
+              "anomalyPowerAgentId": null,
+              "triggerAgentId": null,
+              "memberAgents": [],
+              "extraMods": null
+            },
+            {
+              "id": "prep-mtuvhdtx-9vlg7",
+              "skillId": "sk-yeshunguang-direct-mtsgty6b",
+              "skillGroupId": null,
+              "skillSource": "preset",
+              "anomalyPowerAgentId": null,
+              "triggerAgentId": null,
+              "extraMods": null
+            },
+            {
+              "id": "prep-mtuvhizp-igbz2",
+              "skillId": "sk-yeshunguang-nk-1431025-main",
+              "skillGroupId": null,
+              "skillSource": "preset",
+              "anomalyPowerAgentId": null,
+              "triggerAgentId": null,
+              "extraMods": null
+            },
+            {
+              "id": "prep-mtuvhjhh-3zs1n",
+              "skillId": "sk-yeshunguang-nk-1431027-main",
+              "skillGroupId": null,
+              "skillSource": "preset",
+              "anomalyPowerAgentId": null,
+              "triggerAgentId": null,
+              "extraMods": null
+            }
+          ],
+          "flow": [
+            {
+              "id": "flow-mtuux701-rzljl",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuux4lc-1hnug",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtuvbv7s-s3xg8",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuvb8ri-x4zvo",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtuvbww5-4d517",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuvb8b2-tnqdp",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtuvc1r1-xc1tq",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuux4lc-1hnug",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtuvc3ud-xcyyq",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuvb8ri-x4zvo",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtuvcdzq-z6vhe",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuux4lc-1hnug",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtuvch7q-vzi2r",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuvb8ri-x4zvo",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtuvckta-znhbu",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuvb8b2-tnqdp",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtuvcrc5-0xx5n",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuux4lc-1hnug",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtuvd19y-bt05q",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuvb8ri-x4zvo",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtvpujvy-3mcpa",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuvhdtx-9vlg7",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtvpukn8-4ez4o",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuvgzs8-4avpb",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtvpur3w-y8nzg",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuvhizp-igbz2",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtvpusiv-dhomx",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuvgzs8-4avpb",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            }
+          ]
+        },
+        {
+          "prepared": [],
+          "flow": []
+        },
+        {
+          "prepared": [],
+          "flow": []
+        }
+      ],
+      "staggerPhase": "stagger",
+      "multiSlotBuffSelection": {
+        "team": {
+          "enabledIds": {
+            "crisis-buff-31201::blk-msoe6ztr-wo7yl5::eff-msoe8f3j-mhoc5i": false,
+            "crisis-buff-31201::blk-msoe6ztr-wo7yl5::eff-msoe8s1x-3ushrv": false,
+            "crisis-buff-31202::blk-msoe9sjw-z2eq3m::eff-msoe9sjw-lte6iv": false,
+            "crisis-buff-31202::blk-msoe9sjw-z2eq3m::eff-msoeanuh-vvdfkh": false,
+            "crisis-buff-31202::blk-msoe9sjw-z2eq3m::eff-msoebcgm-wm9ajo": false,
+            "crisis-buff-31202::blk-msoe9sjw-z2eq3m::eff-msoebuv0-z4yi23": false,
+            "crisis-buff-31202::blk-msoe9sjw-z2eq3m::eff-msoecc3b-kj6pol": false,
+            "crisis-buff-31203::blk-msoepi4t-a5dslt::eff-msoepi4t-tl4jsz": false,
+            "crisis-buff-31203::blk-msoepi4t-a5dslt::eff-msoeuj04-i2874h": false,
+            "crisis-buff-31203::blk-msoepi4t-a5dslt::eff-msoevp45-nadcvi": false,
+            "boss-field-基塔布鲁·滞变畸兽::blk-msh5chep-5740tw::eff-msh5chep-ofjsws": false,
+            "boss-field-基塔布鲁·滞变畸兽::blk-msh5chep-5740tw::eff-msh5gf1y-yakx7p": false,
+            "boss-field-魇缚者·叶释渊::blk-mshamjag-5tble3::eff-mshamjag-52uwwl": true,
+            "boss-field-魇缚者·叶释渊::blk-mshamjag-5tble3::eff-mshan99q-y0e6bs": true,
+            "boss-field-秽息司祭::blk-mshb2hjs-qc519s::eff-mshb2hjs-9ckjaw": false,
+            "boss-field-复写体·猎血清道夫::blk-msofv7ci-g0ylss::eff-msofv7ci-730yhf": false,
+            "boss-field-复写体·猎血清道夫::blk-msofv7ci-g0ylss::eff-msofvm8y-u0w648": false,
+            "boss-field-复写体·猎血清道夫::blk-msofv7ci-g0ylss::eff-msofvwnb-m40t6t": false,
+            "boss-field-复写体·猎血清道夫::blk-msofv7ci-g0ylss::eff-msofw6fs-karhpk": false,
+            "boss-field-复写体·猎血清道夫::blk-msofv7ci-g0ylss::eff-msofwu06-3jkdhf": false,
+            "boss-field-复写体·猎血清道夫::blk-msofv7ci-g0ylss::eff-msofwzm9-6lpv43": false,
+            "agent-1-0::blk-legacy::legacy-team-staggerVulnerable": true,
+            "agent-1-0::blk-ms0gb49m-zmm1r1::eff-ms0gcbx4-0zjhr3": true,
+            "drive-disc-1-4set::blk-legacy::legacy-team-critDmg": true,
+            "agent-2-0::blk-ms0ggsrh-ccpjgc::eff-ms0ggsrh-dimooe": true,
+            "agent-2-0::blk-ms0gi1k3-crbdyc::eff-ms0gi1k3-qri3om": true,
+            "agent-2-0::blk-ms0gjf0o-im1afs::eff-ms0gjf0o-355j9v": true,
+            "wengine-2-refine::blk-legacy::legacy-team-inCombatAtkPercent": true,
+            "drive-disc-2-4set::blk-legacy::legacy-team-dmgBonus": true,
+            "crisis-buff-31301::blk-mt5rmwcy-kgja92::eff-mt5rmwcy-b1clax": true,
+            "crisis-buff-31301::blk-mt5rmwcy-kgja92::eff-mt5rni1s-3m3kvt": true,
+            "crisis-buff-31301::blk-mt5rmwcy-kgja92::eff-mt5rntj2-l8yiww": true,
+            "crisis-buff-31301::blk-mt5rmwcy-kgja92::eff-mt5rofm1-3vub34": true,
+            "crisis-buff-31302::blk-mt5rqbl4-7yn2az::eff-mt5rqbl4-x3j2k0": false,
+            "crisis-buff-31302::blk-mt5rqbl4-7yn2az::eff-mt5rqt1t-x7kwsn": false,
+            "crisis-buff-31302::blk-mt5rqbl4-7yn2az::eff-mt5rr1nb-1ct05y": false,
+            "crisis-buff-31303::blk-mt5rs9db-3upjj9::eff-mt5rs9db-0rxy1r": false,
+            "crisis-buff-31303::blk-mt5rs9db-3upjj9::eff-mt5rsr4k-184zqb": false,
+            "crisis-buff-31303::blk-mt5rs9db-3upjj9::eff-mt5rszkv-0gd7z4": false,
+            "crisis-buff-31303::blk-mt5rs9db-3upjj9::eff-mt5rtn0k-1gnqxs": false,
+            "crisis-buff-31303::blk-mt5rs9db-3upjj9::eff-mt5rttzr-r5vas9": false,
+            "crisis-buff-31303::blk-mt5rs9db-3upjj9::eff-mt5rtz6i-vrjfq7": false,
+            "boss-field-初生·死路屠夫::blk-mshb861v-t5bpbc::eff-mshb861v-m5d7qu": false,
+            "boss-field-基塔布鲁::blk-mshahz8w-bj9msd::eff-mshahz8w-ohq6tf": false,
+            "boss-field-基塔布鲁::blk-mshahz8w-bj9msd::eff-mshajd43-qzqtl0": false,
+            "boss-field-基塔布鲁::blk-mshahz8w-bj9msd::eff-mshakbky-j1ybpy": false,
+            "boss-field-太初梦魇·始主::blk-mshalc4m-6i2576::eff-mshalc4m-xkculy": true,
+            "boss-field-太初梦魇·始主::blk-mshalc4m-6i2576::eff-mshalr3h-w9x3lf": true,
+            "agent-2-1::blk-legacy::legacy-team-reduceDefense": true,
+            "boss-field-太初梦魇·「始主」::blk-mshalc4m-6i2576::eff-mshalc4m-xkculy": false,
+            "boss-field-太初梦魇·「始主」::blk-mshalc4m-6i2576::eff-mshalr3h-w9x3lf": false,
+            "crisis-buff-32101::blk-mtw9xu79-ugf13h::eff-mtw9xu79-8ljgq1": false,
+            "crisis-buff-32101::blk-mtw9xu79-ugf13h::eff-mtw9ycr2-vdlyfy": false,
+            "crisis-buff-32101::blk-mtw9xu79-ugf13h::eff-mtw9yo8t-433yfs": false,
+            "crisis-buff-32102::blk-mtw9yypp-rbhu0v::eff-mtw9yypp-x7sawy": true,
+            "crisis-buff-32102::blk-mtw9yypp-rbhu0v::eff-mtw9zl6t-u1t5if": true,
+            "crisis-buff-32102::blk-mtw9yypp-rbhu0v::eff-mtw9ztnh-na2xab": true,
+            "crisis-buff-32103::blk-mtwa0qet-3evbkb::eff-mtwa0qet-t4yo2l": false,
+            "crisis-buff-32103::blk-mtwa0qet-3evbkb::eff-mtwa1sfp-s7kz15": false,
+            "crisis-buff-32103::blk-mtwa0qet-3evbkb::eff-mtwa1zdi-17bnu3": false,
+            "crisis-buff-32103::blk-mtwa0qet-3evbkb::eff-mtwa2uoc-mq2n9o": false,
+            "boss-field-库萨里库::blk-mtvd3liw-ok4u1w::eff-mtvd3liw-uq3v29": false,
+            "boss-field-库萨里库::blk-mtvd3liw-ok4u1w::eff-mtvd42iw-j6ai0c": false,
+            "boss-field-异构·焚昼余火::blk-mtvd1cmg-x6dgf5::eff-mtvd1cmg-hy3wcj": false,
+            "boss-field-异构·焚昼余火::blk-mtvd1cmg-x6dgf5::eff-mtvd2f0h-0e4pkt": false
+          },
+          "stacksByEffectId": {
+            "boss-field-基塔布鲁·滞变畸兽::blk-msh5chep-5740tw::eff-msh5chep-ofjsws": 2,
+            "boss-field-魇缚者·叶释渊::blk-mshamjag-5tble3::eff-mshamjag-52uwwl": 3,
+            "boss-field-秽息司祭::blk-mshb2hjs-qc519s::eff-mshb2hjs-9ckjaw": 2,
+            "drive-disc-1-4set::blk-legacy::legacy-team-critDmg": 2,
+            "wengine-2-refine::blk-legacy::legacy-team-inCombatAtkPercent": 4,
+            "boss-field-初生·死路屠夫::blk-mshb861v-t5bpbc::eff-mshb861v-m5d7qu": 3,
+            "boss-field-基塔布鲁::blk-mshahz8w-bj9msd::eff-mshahz8w-ohq6tf": 3,
+            "boss-field-基塔布鲁::blk-mshahz8w-bj9msd::eff-mshajd43-qzqtl0": 3,
+            "boss-field-基塔布鲁::blk-mshahz8w-bj9msd::eff-mshakbky-j1ybpy": 3,
+            "boss-field-太初梦魇·始主::blk-mshalc4m-6i2576::eff-mshalr3h-w9x3lf": 3,
+            "agent-2-1::blk-legacy::legacy-team-reduceDefense": 3,
+            "boss-field-太初梦魇·「始主」::blk-mshalc4m-6i2576::eff-mshalr3h-w9x3lf": 3,
+            "boss-field-库萨里库::blk-mtvd3liw-ok4u1w::eff-mtvd42iw-j6ai0c": 4
+          },
+          "convertInputs": {
+            "agent-2-0::blk-ms0gi1k3-crbdyc::eff-ms0gi1k3-qri3om": 3500
+          },
+          "manualTouchedIds": {
+            "boss-field-魇缚者·叶释渊::blk-mshamjag-5tble3::eff-mshan99q-y0e6bs": true
+          }
+        },
+        "bySlot": {
+          "0": {
+            "enabledIds": {
+              "agent-0-0::blk-legacy::legacy-self-dmgBonus": true,
+              "agent-0-0::blk-legacy::legacy-self-critRate": true,
+              "agent-0-1::blk-legacy::legacy-self-dmgBonus": true,
+              "agent-0-1::blk-legacy::legacy-self-reduceDefense": true,
+              "wengine-0-refine::blk-legacy::legacy-self-dmgBonus": true,
+              "wengine-0-refine::blk-legacy::legacy-self-critDmg": true,
+              "wengine-0-refine::blk-legacy::legacy-self-resPen": true,
+              "drive-disc-0-4set::blk-legacy::legacy-self-inCombatAtkPercent": true,
+              "drive-disc-0-4set-2pc::blk-ms0dovwq-xb6961::legacy-self-dmgBonus": false,
+              "drive-disc-0-4set::blk-legacy::legacy-self-critRate": true,
+              "drive-disc-0-2set::blk-ms0drnqb-9wfm2r::legacy-self-penRate": false
+            },
+            "stacksByEffectId": {
+              "drive-disc-0-4set::blk-legacy::legacy-self-critRate": 2
+            },
+            "convertInputs": {},
+            "manualTouchedIds": {}
+          },
+          "1": {
+            "enabledIds": {
+              "agent-1-0::blk-ms0gb49m-zmm1r1::eff-ms0gb49m-ch45lz": true,
+              "drive-disc-1-2set::blk-ms0dj8ct-fdj7sx::eff-ms0dj8ct-hm8aaq": false
+            },
+            "stacksByEffectId": {},
+            "convertInputs": {},
+            "manualTouchedIds": {}
+          },
+          "2": {
+            "enabledIds": {
+              "drive-disc-2-4set-2pc::blk-ms0dj8ct-fdj7sx::eff-ms0dj8ct-hm8aaq": false
+            },
+            "stacksByEffectId": {},
+            "convertInputs": {},
+            "manualTouchedIds": {}
+          }
+        }
+      },
+      "folder": "/21叶",
+      "order": 1
+    },
+    "s:/21叶/21叶琉千——叶释渊--测试不带东西": {
+      "id": "s:/21叶/21叶琉千——叶释渊--测试不带东西",
+      "name": "21叶琉千——叶释渊--测试不带东西",
+      "savedAt": 1789481314100,
+      "teamSlots": [
+        {
+          "agentId": "yeshunguang",
+          "rank": 1,
+          "wengineId": "cloudcleave-radiance",
+          "wengineRefine": 1,
+          "twoPieceDriveDiscId": "none",
+          "fourPieceDriveDiscId": "SuitWhiteWaterBallad"
+        },
+        {
+          "agentId": "dialyn",
+          "rank": 0,
+          "wengineId": "Steam_Oven",
+          "wengineRefine": 5,
+          "twoPieceDriveDiscId": "SuitMoonlightLullaby",
+          "fourPieceDriveDiscId": "SuitKingoftheSummit"
+        },
+        {
+          "agentId": "sunna",
+          "rank": 0,
+          "wengineId": "Kaboom_The_Cannon",
+          "wengineRefine": 5,
+          "twoPieceDriveDiscId": "none",
+          "fourPieceDriveDiscId": "SuitMoonlightLullaby"
+        }
+      ],
+      "activeSlot": 0,
+      "selectedBangbooId": "none",
+      "bangbooRefine": 1,
+      "panelCalcMode": "optimal",
+      "panelState": {
+        "extraMods": {
+          "hp": 0,
+          "inCombatHpPercent": 0,
+          "inCombatAtkPercent": 0,
+          "inCombatDefPercent": 0,
+          "externalHpPercent": 0,
+          "externalAtkPercent": 0,
+          "externalDefPercent": 0,
+          "atk": 0,
+          "def": 0,
+          "dmgBonus": 0,
+          "critRate": 0,
+          "critDmg": 0,
+          "penRate": 0,
+          "reduceDefense": 0,
+          "resPen": 0,
+          "mastery": 0,
+          "anomalyControl": 0,
+          "anomalyControlPercent": 0,
+          "energyRegen": 0,
+          "energyRegenFlat": 0,
+          "pierce": 0,
+          "pierceDmgBonus": 0,
+          "sharpenDmgBonus": 0,
+          "sharpenCritDmgBonus": 0,
+          "dmgPenalty": 0,
+          "vulnerable": 0,
+          "directVulnerable": 0,
+          "anomalyVulnerable": 0,
+          "dmgReduction": 0,
+          "directDmgReduction": 0,
+          "anomalyDmgReduction": 0,
+          "globalStaggerVulnerable": 0,
+          "staggerVulnerable": 0,
+          "staggerVulnerableOnly": 0,
+          "special": 0,
+          "anomalyCritRate": 0,
+          "anomalyCritDmg": 0,
+          "anomalyDmgBonus": 0,
+          "anomalyReleaseDmgBonus": 0,
+          "anomalyReleaseCritRate": 0,
+          "anomalyReleaseCritDmg": 0,
+          "anomalyReleaseMult": 0,
+          "directDmgMult": 0,
+          "settlementDmgMult": 0,
+          "anomalyMult": 0,
+          "disorderBaseMult": 0,
+          "anomalyDuration": 0,
+          "disorderCompMult": 0,
+          "turbulenceBaseMult": 0,
+          "turbulenceCompMult": 0,
+          "disorderDmgBonus": 0,
+          "turbulenceDmgBonus": 0,
+          "skillDmgBonus": 0,
+          "skillMultiplierBonus": 0,
+          "directDmgMultFactor": 0,
+          "anomalyMultFactor": 0,
+          "anomalyReleaseMultFactor": 0,
+          "disorderBaseMultFactor": 0,
+          "turbulenceBaseMultFactor": 0,
+          "radianceMult": 0,
+          "radianceDmgBonus": 0,
+          "radianceResPen": 0,
+          "specialMult": 0,
+          "mutationCoeff": 0,
+          "radianceMultFactor": 0,
+          "specialMultFactor": 0,
+          "mutationCoeffFactor": 0
+        },
+        "extraGains": [],
+        "enemyInput": {
+          "defense": 953,
+          "resistanceType": "normal",
+          "elementResistance": {
+            "风": "weak",
+            "火": "normal",
+            "电": "res20",
+            "物理": "weak",
+            "以太": "normal",
+            "冰": "weak"
+          },
+          "vulnerableMultiplier": 1,
+          "staggerMultiplier": 1.5,
+          "specialMultiplier": 1,
+          "level": 60,
+          "bossSource": "boss_info",
+          "bossName": "魇缚者·叶释渊",
+          "bossRecordLabel": "3.2 第1期 · 魇缚者·叶释渊",
+          "bossImage": "/boss_image/魇缚者·叶释渊.png"
+        },
+        "skillTalentLevelsByAgent": {
+          "yeshunguang": {
+            "basic": 12,
+            "dodge": 12,
+            "assist": 12,
+            "special": 12,
+            "chainUltimate": 12
+          }
+        },
+        "externalPanel": {
+          "hp": 9873,
+          "atk": 3245.32,
+          "def": 606,
+          "critRate": 50.6,
+          "critDmg": 234,
+          "sharpenCritDmgBonus": 0,
+          "dmgBonus": 40,
+          "ignoreDefense": 0,
+          "reduceDefense": 0,
+          "penRate": 0,
+          "pen": 45,
+          "resPen": 0,
+          "mastery": 93,
+          "anomalyControl": 94,
+          "energyRegen": 120,
+          "impact": 0,
+          "anomalyCritRate": 0,
+          "anomalyCritDmg": 0,
+          "anomalyDmgBonus": 0,
+          "anomalyReleaseCritRate": 0,
+          "anomalyReleaseCritDmg": 0,
+          "anomalyReleaseMult": 0,
+          "anomalyReleaseDmgBonus": 0,
+          "directDmgMult": 100,
+          "settlementDmgMult": 0,
+          "anomalyMult": 713,
+          "disorderBaseMult": 450,
+          "anomalyDuration": 10,
+          "disorderCompMult": 7.5,
+          "turbulenceBaseMult": 800,
+          "turbulenceCompMult": 7.5,
+          "disorderDmgBonus": 0,
+          "turbulenceDmgBonus": 0,
+          "directDmgMultFactor": 100,
+          "anomalyMultFactor": 100,
+          "anomalyReleaseMultFactor": 100,
+          "disorderBaseMultFactor": 100,
+          "turbulenceBaseMultFactor": 100,
+          "radianceMult": 0,
+          "radianceDmgBonus": 0,
+          "radianceResPen": 0,
+          "specialMult": 100,
+          "mutationCoeff": 0,
+          "radianceMultFactor": 100,
+          "specialMultFactor": 100,
+          "mutationCoeffFactor": 100
+        }
+      },
+      "slotPanels": {
+        "yeshunguang": {
+          "active": "affixDerived",
+          "importedPanel": {
+            "hp": 9873,
+            "atk": 3245.32,
+            "def": 606,
+            "critRate": 50.6,
+            "critDmg": 234,
+            "sharpenCritDmgBonus": 0,
+            "dmgBonus": 40,
+            "ignoreDefense": 0,
+            "reduceDefense": 0,
+            "penRate": 0,
+            "pen": 45,
+            "resPen": 0,
+            "mastery": 93,
+            "anomalyControl": 94,
+            "energyRegen": 120,
+            "impact": 0,
+            "anomalyCritRate": 0,
+            "anomalyCritDmg": 0,
+            "anomalyDmgBonus": 0,
+            "anomalyReleaseCritRate": 0,
+            "anomalyReleaseCritDmg": 0,
+            "anomalyReleaseMult": 0,
+            "anomalyReleaseDmgBonus": 0,
+            "directDmgMult": 100,
+            "settlementDmgMult": 0,
+            "anomalyMult": 713,
+            "disorderBaseMult": 450,
+            "anomalyDuration": 10,
+            "disorderCompMult": 7.5,
+            "turbulenceBaseMult": 800,
+            "turbulenceCompMult": 7.5,
+            "disorderDmgBonus": 0,
+            "turbulenceDmgBonus": 0,
+            "directDmgMultFactor": 100,
+            "anomalyMultFactor": 100,
+            "anomalyReleaseMultFactor": 100,
+            "disorderBaseMultFactor": 100,
+            "turbulenceBaseMultFactor": 100,
+            "radianceMult": 0,
+            "radianceDmgBonus": 0,
+            "radianceResPen": 0,
+            "specialMult": 100,
+            "mutationCoeff": 0,
+            "radianceMultFactor": 100,
+            "specialMultFactor": 100,
+            "mutationCoeffFactor": 100
+          },
+          "affixDerivedPanel": {
+            "hp": 9873,
+            "atk": 1997,
+            "def": 790,
+            "critRate": 19.4,
+            "critDmg": 98,
+            "sharpenCritDmgBonus": 0,
+            "dmgBonus": 10,
+            "ignoreDefense": 0,
+            "reduceDefense": 0,
+            "penRate": 0,
+            "pen": 0,
+            "resPen": 0,
+            "mastery": 93,
+            "anomalyControl": 94,
+            "energyRegen": 120,
+            "impact": 0,
+            "anomalyCritRate": 0,
+            "anomalyCritDmg": 0,
+            "anomalyDmgBonus": 0,
+            "anomalyReleaseCritRate": 0,
+            "anomalyReleaseCritDmg": 0,
+            "anomalyReleaseMult": 0,
+            "anomalyReleaseDmgBonus": 0,
+            "directDmgMult": 100,
+            "settlementDmgMult": 0,
+            "anomalyMult": 713,
+            "disorderBaseMult": 450,
+            "anomalyDuration": 10,
+            "disorderCompMult": 7.5,
+            "turbulenceBaseMult": 800,
+            "turbulenceCompMult": 7.5,
+            "disorderDmgBonus": 0,
+            "turbulenceDmgBonus": 0,
+            "directDmgMultFactor": 100,
+            "anomalyMultFactor": 100,
+            "anomalyReleaseMultFactor": 100,
+            "disorderBaseMultFactor": 100,
+            "turbulenceBaseMultFactor": 100,
+            "radianceMult": 0,
+            "radianceDmgBonus": 0,
+            "radianceResPen": 0,
+            "specialMult": 100,
+            "mutationCoeff": 0,
+            "radianceMultFactor": 100,
+            "specialMultFactor": 100,
+            "mutationCoeffFactor": 100
+          },
+          "affixCounts": {
+            "hpFlat": 0,
+            "hpPercent": 0,
+            "atkFlat": 0,
+            "atkPercent": 0,
+            "defFlat": 0,
+            "defPercent": 0,
+            "pen": 0,
+            "critRate": 0,
+            "critDmg": 0,
+            "mastery": 0
+          },
+          "affixDriveDiscMainStats": {
+            "slot4MainStat": "",
+            "slot5MainStat": "",
+            "slot6MainStat": ""
+          },
+          "provenance": {
+            "source": "affix",
+            "importedAt": 1789480743074,
+            "affixDerivedAt": 1789481138502
+          }
+        },
+        "dialyn": {
+          "active": "imported",
+          "importedPanel": {
+            "hp": 8250,
+            "atk": 758,
+            "def": 612,
+            "critRate": 89,
+            "critDmg": 50,
+            "sharpenCritDmgBonus": 0,
+            "dmgBonus": 0,
+            "ignoreDefense": 0,
+            "reduceDefense": 0,
+            "penRate": 0,
+            "pen": 0,
+            "resPen": 0,
+            "mastery": 93,
+            "anomalyControl": 94,
+            "energyRegen": 120,
+            "impact": 0,
+            "anomalyCritRate": 0,
+            "anomalyCritDmg": 0,
+            "anomalyDmgBonus": 0,
+            "anomalyReleaseCritRate": 0,
+            "anomalyReleaseCritDmg": 0,
+            "anomalyReleaseMult": 0,
+            "anomalyReleaseDmgBonus": 0,
+            "directDmgMult": 100,
+            "settlementDmgMult": 0,
+            "anomalyMult": 713,
+            "disorderBaseMult": 450,
+            "anomalyDuration": 10,
+            "disorderCompMult": 7.5,
+            "turbulenceBaseMult": 800,
+            "turbulenceCompMult": 7.5,
+            "disorderDmgBonus": 0,
+            "turbulenceDmgBonus": 0,
+            "directDmgMultFactor": 100,
+            "anomalyMultFactor": 100,
+            "anomalyReleaseMultFactor": 100,
+            "disorderBaseMultFactor": 100,
+            "turbulenceBaseMultFactor": 100,
+            "radianceMult": 0,
+            "radianceDmgBonus": 0,
+            "radianceResPen": 0,
+            "specialMult": 100,
+            "mutationCoeff": 0,
+            "radianceMultFactor": 100,
+            "specialMultFactor": 100,
+            "mutationCoeffFactor": 100
+          },
+          "affixCounts": {
+            "hpFlat": 0,
+            "hpPercent": 0,
+            "atkFlat": 0,
+            "atkPercent": 0,
+            "defFlat": 0,
+            "defPercent": 0,
+            "pen": 0,
+            "critRate": 0,
+            "critDmg": 0,
+            "mastery": 0
+          },
+          "affixDriveDiscMainStats": {
+            "slot4MainStat": "critDmg",
+            "slot5MainStat": "externalAtkPercent",
+            "slot6MainStat": "externalHpPercent"
+          },
+          "provenance": {
+            "source": "manual"
+          }
+        },
+        "sunna": {
+          "active": "imported",
+          "importedPanel": {
+            "hp": 8477,
+            "atk": 3468,
+            "def": 600,
+            "critRate": 5,
+            "critDmg": 50,
+            "sharpenCritDmgBonus": 0,
+            "dmgBonus": 0,
+            "ignoreDefense": 0,
+            "reduceDefense": 0,
+            "penRate": 0,
+            "pen": 0,
+            "resPen": 0,
+            "mastery": 95,
+            "anomalyControl": 96,
+            "energyRegen": 100,
+            "impact": 0,
+            "anomalyCritRate": 0,
+            "anomalyCritDmg": 0,
+            "anomalyDmgBonus": 0,
+            "anomalyReleaseCritRate": 0,
+            "anomalyReleaseCritDmg": 0,
+            "anomalyReleaseMult": 0,
+            "anomalyReleaseDmgBonus": 0,
+            "directDmgMult": 100,
+            "settlementDmgMult": 0,
+            "anomalyMult": 713,
+            "disorderBaseMult": 450,
+            "anomalyDuration": 10,
+            "disorderCompMult": 7.5,
+            "turbulenceBaseMult": 800,
+            "turbulenceCompMult": 7.5,
+            "disorderDmgBonus": 0,
+            "turbulenceDmgBonus": 0,
+            "directDmgMultFactor": 100,
+            "anomalyMultFactor": 100,
+            "anomalyReleaseMultFactor": 100,
+            "disorderBaseMultFactor": 100,
+            "turbulenceBaseMultFactor": 100,
+            "radianceMult": 0,
+            "radianceDmgBonus": 0,
+            "radianceResPen": 0,
+            "specialMult": 100,
+            "mutationCoeff": 0,
+            "radianceMultFactor": 100,
+            "specialMultFactor": 100,
+            "mutationCoeffFactor": 100
+          },
+          "affixCounts": {
+            "hpFlat": 0,
+            "hpPercent": 0,
+            "atkFlat": 0,
+            "atkPercent": 0,
+            "defFlat": 0,
+            "defPercent": 0,
+            "pen": 0,
+            "critRate": 0,
+            "critDmg": 0,
+            "mastery": 0
+          },
+          "affixDriveDiscMainStats": {
+            "slot4MainStat": "critDmg",
+            "slot5MainStat": "externalAtkPercent",
+            "slot6MainStat": "externalHpPercent"
+          },
+          "provenance": {
+            "source": "manual"
+          }
+        }
+      },
+      "convertSlotPanels": {},
+      "slots": [
+        {
+          "prepared": [
+            {
+              "id": "prep-mtuux4lc-1hnug",
+              "skillId": null,
+              "skillGroupId": "sg-yeshunguang-mtsvzpcz",
+              "skillSource": "preset",
+              "anomalyPowerAgentId": null,
+              "triggerAgentId": null,
+              "memberAgents": [],
+              "extraMods": null
+            },
+            {
+              "id": "prep-mtuvb8ri-x4zvo",
+              "skillId": null,
+              "skillGroupId": "sg-yeshunguang-mtuv0bhu",
+              "skillSource": "preset",
+              "anomalyPowerAgentId": null,
+              "triggerAgentId": null,
+              "memberAgents": [],
+              "extraMods": null
+            },
+            {
+              "id": "prep-mtuvb8b2-tnqdp",
+              "skillId": null,
+              "skillGroupId": "sg-yeshunguang-mtuv86yr",
+              "skillSource": "preset",
+              "anomalyPowerAgentId": null,
+              "triggerAgentId": null,
+              "memberAgents": [],
+              "extraMods": null
+            },
+            {
+              "id": "prep-mtuvgzs8-4avpb",
+              "skillId": null,
+              "skillGroupId": "sg-yeshunguang-mtuvgqs9",
+              "skillSource": "preset",
+              "anomalyPowerAgentId": null,
+              "triggerAgentId": null,
+              "memberAgents": [],
+              "extraMods": null
+            },
+            {
+              "id": "prep-mtuvhdtx-9vlg7",
+              "skillId": "sk-yeshunguang-direct-mtsgty6b",
+              "skillGroupId": null,
+              "skillSource": "preset",
+              "anomalyPowerAgentId": null,
+              "triggerAgentId": null,
+              "extraMods": null
+            },
+            {
+              "id": "prep-mtuvhizp-igbz2",
+              "skillId": "sk-yeshunguang-nk-1431025-main",
+              "skillGroupId": null,
+              "skillSource": "preset",
+              "anomalyPowerAgentId": null,
+              "triggerAgentId": null,
+              "extraMods": null
+            },
+            {
+              "id": "prep-mtuvhjhh-3zs1n",
+              "skillId": "sk-yeshunguang-nk-1431027-main",
+              "skillGroupId": null,
+              "skillSource": "preset",
+              "anomalyPowerAgentId": null,
+              "triggerAgentId": null,
+              "extraMods": null
+            }
+          ],
+          "flow": [
+            {
+              "id": "flow-mtuux701-rzljl",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuux4lc-1hnug",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtuvbv7s-s3xg8",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuvb8ri-x4zvo",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtuvbww5-4d517",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuvb8b2-tnqdp",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtuvc1r1-xc1tq",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuux4lc-1hnug",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtuvc3ud-xcyyq",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuvb8ri-x4zvo",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtuvcdzq-z6vhe",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuux4lc-1hnug",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtuvch7q-vzi2r",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuvb8ri-x4zvo",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtuvckta-znhbu",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuvb8b2-tnqdp",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtuvcrc5-0xx5n",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuux4lc-1hnug",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtuvd19y-bt05q",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuvb8ri-x4zvo",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtvpujvy-3mcpa",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuvhdtx-9vlg7",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtvpukn8-4ez4o",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuvgzs8-4avpb",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtvpur3w-y8nzg",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuvhizp-igbz2",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            },
+            {
+              "id": "flow-mtvpusiv-dhomx",
+              "ownerAgentId": "yeshunguang",
+              "preparedId": "prep-mtuvgzs8-4avpb",
+              "count": 1,
+              "staggerPhase": "stagger",
+              "critMode": "expected"
+            }
+          ]
+        },
+        {
+          "prepared": [],
+          "flow": []
+        },
+        {
+          "prepared": [],
+          "flow": []
+        }
+      ],
+      "staggerPhase": "stagger",
+      "multiSlotBuffSelection": {
+        "team": {
+          "enabledIds": {
+            "crisis-buff-31201::blk-msoe6ztr-wo7yl5::eff-msoe8f3j-mhoc5i": false,
+            "crisis-buff-31201::blk-msoe6ztr-wo7yl5::eff-msoe8s1x-3ushrv": false,
+            "crisis-buff-31202::blk-msoe9sjw-z2eq3m::eff-msoe9sjw-lte6iv": false,
+            "crisis-buff-31202::blk-msoe9sjw-z2eq3m::eff-msoeanuh-vvdfkh": false,
+            "crisis-buff-31202::blk-msoe9sjw-z2eq3m::eff-msoebcgm-wm9ajo": false,
+            "crisis-buff-31202::blk-msoe9sjw-z2eq3m::eff-msoebuv0-z4yi23": false,
+            "crisis-buff-31202::blk-msoe9sjw-z2eq3m::eff-msoecc3b-kj6pol": false,
+            "crisis-buff-31203::blk-msoepi4t-a5dslt::eff-msoepi4t-tl4jsz": false,
+            "crisis-buff-31203::blk-msoepi4t-a5dslt::eff-msoeuj04-i2874h": false,
+            "crisis-buff-31203::blk-msoepi4t-a5dslt::eff-msoevp45-nadcvi": false,
+            "boss-field-基塔布鲁·滞变畸兽::blk-msh5chep-5740tw::eff-msh5chep-ofjsws": false,
+            "boss-field-基塔布鲁·滞变畸兽::blk-msh5chep-5740tw::eff-msh5gf1y-yakx7p": false,
+            "boss-field-魇缚者·叶释渊::blk-mshamjag-5tble3::eff-mshamjag-52uwwl": true,
+            "boss-field-魇缚者·叶释渊::blk-mshamjag-5tble3::eff-mshan99q-y0e6bs": true,
+            "boss-field-秽息司祭::blk-mshb2hjs-qc519s::eff-mshb2hjs-9ckjaw": false,
+            "boss-field-复写体·猎血清道夫::blk-msofv7ci-g0ylss::eff-msofv7ci-730yhf": false,
+            "boss-field-复写体·猎血清道夫::blk-msofv7ci-g0ylss::eff-msofvm8y-u0w648": false,
+            "boss-field-复写体·猎血清道夫::blk-msofv7ci-g0ylss::eff-msofvwnb-m40t6t": false,
+            "boss-field-复写体·猎血清道夫::blk-msofv7ci-g0ylss::eff-msofw6fs-karhpk": false,
+            "boss-field-复写体·猎血清道夫::blk-msofv7ci-g0ylss::eff-msofwu06-3jkdhf": false,
+            "boss-field-复写体·猎血清道夫::blk-msofv7ci-g0ylss::eff-msofwzm9-6lpv43": false,
+            "agent-1-0::blk-legacy::legacy-team-staggerVulnerable": true,
+            "agent-1-0::blk-ms0gb49m-zmm1r1::eff-ms0gcbx4-0zjhr3": true,
+            "drive-disc-1-4set::blk-legacy::legacy-team-critDmg": true,
+            "agent-2-0::blk-ms0ggsrh-ccpjgc::eff-ms0ggsrh-dimooe": true,
+            "agent-2-0::blk-ms0gi1k3-crbdyc::eff-ms0gi1k3-qri3om": true,
+            "agent-2-0::blk-ms0gjf0o-im1afs::eff-ms0gjf0o-355j9v": true,
+            "wengine-2-refine::blk-legacy::legacy-team-inCombatAtkPercent": true,
+            "drive-disc-2-4set::blk-legacy::legacy-team-dmgBonus": true,
+            "crisis-buff-31301::blk-mt5rmwcy-kgja92::eff-mt5rmwcy-b1clax": true,
+            "crisis-buff-31301::blk-mt5rmwcy-kgja92::eff-mt5rni1s-3m3kvt": true,
+            "crisis-buff-31301::blk-mt5rmwcy-kgja92::eff-mt5rntj2-l8yiww": true,
+            "crisis-buff-31301::blk-mt5rmwcy-kgja92::eff-mt5rofm1-3vub34": true,
+            "crisis-buff-31302::blk-mt5rqbl4-7yn2az::eff-mt5rqbl4-x3j2k0": false,
+            "crisis-buff-31302::blk-mt5rqbl4-7yn2az::eff-mt5rqt1t-x7kwsn": false,
+            "crisis-buff-31302::blk-mt5rqbl4-7yn2az::eff-mt5rr1nb-1ct05y": false,
+            "crisis-buff-31303::blk-mt5rs9db-3upjj9::eff-mt5rs9db-0rxy1r": false,
+            "crisis-buff-31303::blk-mt5rs9db-3upjj9::eff-mt5rsr4k-184zqb": false,
+            "crisis-buff-31303::blk-mt5rs9db-3upjj9::eff-mt5rszkv-0gd7z4": false,
+            "crisis-buff-31303::blk-mt5rs9db-3upjj9::eff-mt5rtn0k-1gnqxs": false,
+            "crisis-buff-31303::blk-mt5rs9db-3upjj9::eff-mt5rttzr-r5vas9": false,
+            "crisis-buff-31303::blk-mt5rs9db-3upjj9::eff-mt5rtz6i-vrjfq7": false,
+            "boss-field-初生·死路屠夫::blk-mshb861v-t5bpbc::eff-mshb861v-m5d7qu": false,
+            "boss-field-基塔布鲁::blk-mshahz8w-bj9msd::eff-mshahz8w-ohq6tf": false,
+            "boss-field-基塔布鲁::blk-mshahz8w-bj9msd::eff-mshajd43-qzqtl0": false,
+            "boss-field-基塔布鲁::blk-mshahz8w-bj9msd::eff-mshakbky-j1ybpy": false,
+            "boss-field-太初梦魇·始主::blk-mshalc4m-6i2576::eff-mshalc4m-xkculy": true,
+            "boss-field-太初梦魇·始主::blk-mshalc4m-6i2576::eff-mshalr3h-w9x3lf": true,
+            "agent-2-1::blk-legacy::legacy-team-reduceDefense": true,
+            "boss-field-太初梦魇·「始主」::blk-mshalc4m-6i2576::eff-mshalc4m-xkculy": false,
+            "boss-field-太初梦魇·「始主」::blk-mshalc4m-6i2576::eff-mshalr3h-w9x3lf": false,
+            "crisis-buff-32101::blk-mtw9xu79-ugf13h::eff-mtw9xu79-8ljgq1": false,
+            "crisis-buff-32101::blk-mtw9xu79-ugf13h::eff-mtw9ycr2-vdlyfy": false,
+            "crisis-buff-32101::blk-mtw9xu79-ugf13h::eff-mtw9yo8t-433yfs": false,
+            "crisis-buff-32102::blk-mtw9yypp-rbhu0v::eff-mtw9yypp-x7sawy": true,
+            "crisis-buff-32102::blk-mtw9yypp-rbhu0v::eff-mtw9zl6t-u1t5if": true,
+            "crisis-buff-32102::blk-mtw9yypp-rbhu0v::eff-mtw9ztnh-na2xab": true,
+            "crisis-buff-32103::blk-mtwa0qet-3evbkb::eff-mtwa0qet-t4yo2l": false,
+            "crisis-buff-32103::blk-mtwa0qet-3evbkb::eff-mtwa1sfp-s7kz15": false,
+            "crisis-buff-32103::blk-mtwa0qet-3evbkb::eff-mtwa1zdi-17bnu3": false,
+            "crisis-buff-32103::blk-mtwa0qet-3evbkb::eff-mtwa2uoc-mq2n9o": false,
+            "boss-field-库萨里库::blk-mtvd3liw-ok4u1w::eff-mtvd3liw-uq3v29": false,
+            "boss-field-库萨里库::blk-mtvd3liw-ok4u1w::eff-mtvd42iw-j6ai0c": false,
+            "boss-field-异构·焚昼余火::blk-mtvd1cmg-x6dgf5::eff-mtvd1cmg-hy3wcj": false,
+            "boss-field-异构·焚昼余火::blk-mtvd1cmg-x6dgf5::eff-mtvd2f0h-0e4pkt": false
+          },
+          "stacksByEffectId": {
+            "boss-field-基塔布鲁·滞变畸兽::blk-msh5chep-5740tw::eff-msh5chep-ofjsws": 2,
+            "boss-field-魇缚者·叶释渊::blk-mshamjag-5tble3::eff-mshamjag-52uwwl": 3,
+            "boss-field-秽息司祭::blk-mshb2hjs-qc519s::eff-mshb2hjs-9ckjaw": 2,
+            "drive-disc-1-4set::blk-legacy::legacy-team-critDmg": 2,
+            "wengine-2-refine::blk-legacy::legacy-team-inCombatAtkPercent": 4,
+            "boss-field-初生·死路屠夫::blk-mshb861v-t5bpbc::eff-mshb861v-m5d7qu": 3,
+            "boss-field-基塔布鲁::blk-mshahz8w-bj9msd::eff-mshahz8w-ohq6tf": 3,
+            "boss-field-基塔布鲁::blk-mshahz8w-bj9msd::eff-mshajd43-qzqtl0": 3,
+            "boss-field-基塔布鲁::blk-mshahz8w-bj9msd::eff-mshakbky-j1ybpy": 3,
+            "boss-field-太初梦魇·始主::blk-mshalc4m-6i2576::eff-mshalr3h-w9x3lf": 3,
+            "agent-2-1::blk-legacy::legacy-team-reduceDefense": 3,
+            "boss-field-太初梦魇·「始主」::blk-mshalc4m-6i2576::eff-mshalr3h-w9x3lf": 3,
+            "boss-field-库萨里库::blk-mtvd3liw-ok4u1w::eff-mtvd42iw-j6ai0c": 4
+          },
+          "convertInputs": {
+            "agent-2-0::blk-ms0gi1k3-crbdyc::eff-ms0gi1k3-qri3om": 3500
+          },
+          "manualTouchedIds": {
+            "boss-field-魇缚者·叶释渊::blk-mshamjag-5tble3::eff-mshan99q-y0e6bs": true
+          }
+        },
+        "bySlot": {
+          "0": {
+            "enabledIds": {
+              "agent-0-0::blk-legacy::legacy-self-dmgBonus": true,
+              "agent-0-0::blk-legacy::legacy-self-critRate": true,
+              "agent-0-1::blk-legacy::legacy-self-dmgBonus": true,
+              "agent-0-1::blk-legacy::legacy-self-reduceDefense": true,
+              "wengine-0-refine::blk-legacy::legacy-self-dmgBonus": true,
+              "wengine-0-refine::blk-legacy::legacy-self-critDmg": true,
+              "wengine-0-refine::blk-legacy::legacy-self-resPen": true,
+              "drive-disc-0-4set-2pc::blk-ms0dovwq-xb6961::legacy-self-dmgBonus": false,
+              "drive-disc-0-4set::blk-legacy::legacy-self-inCombatAtkPercent": true,
+              "drive-disc-0-4set::blk-legacy::legacy-self-critRate": true
+            },
+            "stacksByEffectId": {
+              "drive-disc-0-4set::blk-legacy::legacy-self-critRate": 2
+            },
+            "convertInputs": {},
+            "manualTouchedIds": {}
+          },
+          "1": {
+            "enabledIds": {
+              "agent-1-0::blk-ms0gb49m-zmm1r1::eff-ms0gb49m-ch45lz": true,
+              "drive-disc-1-2set::blk-ms0dj8ct-fdj7sx::eff-ms0dj8ct-hm8aaq": false
+            },
+            "stacksByEffectId": {},
+            "convertInputs": {},
+            "manualTouchedIds": {}
+          },
+          "2": {
+            "enabledIds": {
+              "drive-disc-2-4set-2pc::blk-ms0dj8ct-fdj7sx::eff-ms0dj8ct-hm8aaq": false
+            },
+            "stacksByEffectId": {},
+            "convertInputs": {},
+            "manualTouchedIds": {}
+          }
+        }
+      },
+      "folder": "/21叶",
+      "order": 0
+    }
+  },
+  "currentId": "s:/21叶/21叶琉千——叶释渊--测试-带穿透率",
+  "customSkills": [
+    {
+      "id": "dev-6_2010",
+      "name": "异放-小旋风",
+      "agentId": "velina",
+      "source": "custom",
+      "damageType": "anomalyRelease",
+      "skillTypes": [],
+      "buffAnchorId": "velina-special-ms4tnsha",
+      "baseMult": 145,
+      "multSource": null,
+      "element": "风",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2011",
+      "name": "异放-大旋风",
+      "agentId": "velina",
+      "source": "custom",
+      "damageType": "anomalyRelease",
+      "skillTypes": [],
+      "buffAnchorId": "velina-special-ms4tnzvq",
+      "baseMult": 255,
+      "multSource": null,
+      "element": "风",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2012",
+      "name": "异放-大招",
+      "agentId": "velina",
+      "source": "custom",
+      "damageType": "anomalyRelease",
+      "skillTypes": [],
+      "buffAnchorId": null,
+      "baseMult": 680,
+      "multSource": null,
+      "element": "风",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2013",
+      "name": "强特-1段",
+      "agentId": "velina",
+      "source": "custom",
+      "damageType": "direct",
+      "skillTypes": [
+        "specialEnhanced"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 882,
+      "multSource": null,
+      "element": "风",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2014",
+      "name": "强特-2段",
+      "agentId": "velina",
+      "source": "custom",
+      "damageType": "direct",
+      "skillTypes": [
+        "specialEnhanced"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 1451,
+      "multSource": null,
+      "element": "风",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2015",
+      "name": "大旋风前置",
+      "agentId": "velina",
+      "source": "custom",
+      "damageType": "direct",
+      "skillTypes": [
+        "specialEnhanced"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 433,
+      "multSource": null,
+      "element": "风",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2016",
+      "name": "大旋风",
+      "agentId": "velina",
+      "source": "custom",
+      "damageType": "direct",
+      "skillTypes": [],
+      "buffAnchorId": null,
+      "baseMult": 786,
+      "multSource": null,
+      "element": "风",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2017",
+      "name": "小旋风",
+      "agentId": "velina",
+      "source": "custom",
+      "damageType": "direct",
+      "skillTypes": [],
+      "buffAnchorId": null,
+      "baseMult": 66,
+      "multSource": null,
+      "element": "风",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2018",
+      "name": "大招",
+      "agentId": "velina",
+      "source": "custom",
+      "damageType": "direct",
+      "skillTypes": [
+        "ultimate"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 4377,
+      "multSource": null,
+      "element": "风",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2019",
+      "name": "耀变",
+      "agentId": "remiel",
+      "source": "custom",
+      "damageType": "radiance",
+      "skillTypes": [],
+      "buffAnchorId": "remiel-basic-ms8ehm4k",
+      "baseMult": 320,
+      "multSource": null,
+      "element": "流明",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2020",
+      "name": "缭乱终幕",
+      "agentId": "remiel",
+      "source": "custom",
+      "damageType": "radiance",
+      "skillTypes": [],
+      "buffAnchorId": "remiel-ultimate-mswz1sen",
+      "baseMult": 336,
+      "multSource": null,
+      "element": "流明",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2021",
+      "name": "耀变-维",
+      "agentId": "remiel",
+      "source": "custom",
+      "damageType": "radiance",
+      "skillTypes": [],
+      "buffAnchorId": "remiel-basic-ms8ehm4k",
+      "baseMult": 320,
+      "multSource": null,
+      "element": "流明",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2022",
+      "name": "缭乱终幕-维",
+      "agentId": "remiel",
+      "source": "custom",
+      "damageType": "radiance",
+      "skillTypes": [],
+      "buffAnchorId": "remiel-ultimate-mswz1sen",
+      "baseMult": 336,
+      "multSource": null,
+      "element": "流明",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2023",
+      "name": "曙色颂",
+      "agentId": "remiel",
+      "source": "custom",
+      "damageType": "direct",
+      "skillTypes": [
+        "specialEnhanced"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 1443.1,
+      "multSource": null,
+      "element": "流明",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2024",
+      "name": "曙色颂·转辉",
+      "agentId": "remiel",
+      "source": "custom",
+      "damageType": "direct",
+      "skillTypes": [
+        "specialBasic"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 329.7,
+      "multSource": null,
+      "element": "流明",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2025",
+      "name": "花羽轮舞",
+      "agentId": "remiel",
+      "source": "custom",
+      "damageType": "direct",
+      "skillTypes": [
+        "chain"
+      ],
+      "buffAnchorId": "remiel-assist-ms8eijmj",
+      "baseMult": 907.8,
+      "multSource": null,
+      "element": "流明",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2026",
+      "name": "惊鸿",
+      "agentId": "remiel",
+      "source": "custom",
+      "damageType": "direct",
+      "skillTypes": [
+        "basic"
+      ],
+      "buffAnchorId": "remiel-basic-ms8ehm4k",
+      "baseMult": 1194.5,
+      "multSource": null,
+      "element": "流明",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2027",
+      "name": "缭乱终幕-直伤",
+      "agentId": "remiel",
+      "source": "custom",
+      "damageType": "direct",
+      "skillTypes": [
+        "ultimate"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 4019.4,
+      "multSource": null,
+      "element": "流明",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2028",
+      "name": "空中支援-未知",
+      "agentId": "remiel",
+      "source": "custom",
+      "damageType": "direct",
+      "skillTypes": [],
+      "buffAnchorId": null,
+      "baseMult": 9999999999900,
+      "multSource": null,
+      "element": "流明",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2029",
+      "name": "虚曜",
+      "agentId": "remiel",
+      "source": "custom",
+      "damageType": "radiance",
+      "skillTypes": [],
+      "buffAnchorId": "remiel-basic-ms95pjew",
+      "baseMult": 180,
+      "multSource": null,
+      "element": "流明",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2030",
+      "name": "直伤-普闪快",
+      "agentId": "piper",
+      "source": "custom",
+      "damageType": "direct",
+      "skillTypes": [],
+      "buffAnchorId": null,
+      "baseMult": 1000,
+      "multSource": null,
+      "element": "物理",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2031",
+      "name": "物理异常",
+      "agentId": "piper",
+      "source": "custom",
+      "damageType": "anomaly",
+      "skillTypes": [],
+      "buffAnchorId": null,
+      "baseMult": 713,
+      "multSource": null,
+      "element": "物理",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2032",
+      "name": "物理乱流",
+      "agentId": "piper",
+      "source": "custom",
+      "damageType": "turbulence",
+      "skillTypes": [],
+      "buffAnchorId": null,
+      "baseMult": 0,
+      "multSource": null,
+      "element": "物理",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2033",
+      "name": "物理乱流-维150倍率",
+      "agentId": "piper",
+      "source": "custom",
+      "damageType": "turbulence",
+      "skillTypes": [],
+      "buffAnchorId": null,
+      "baseMult": 150,
+      "multSource": null,
+      "element": "物理",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2034",
+      "name": "强特",
+      "agentId": "piper",
+      "source": "custom",
+      "damageType": "direct",
+      "skillTypes": [
+        "specialEnhanced"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 1200,
+      "multSource": null,
+      "element": "物理",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "dev-6_2035",
+      "name": "大招",
+      "agentId": "piper",
+      "source": "custom",
+      "damageType": "direct",
+      "skillTypes": [
+        "ultimate"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 3000,
+      "multSource": null,
+      "element": "物理",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "skill-mu2pgelu-e1z1g",
+      "name": "物理乱流",
+      "agentId": "piper",
+      "source": "custom",
+      "damageType": "turbulence",
+      "skillTypes": [],
+      "buffAnchorId": null,
+      "baseMult": 800,
+      "multSource": null,
+      "element": "物理",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "skill-mu2pgelu-dr284",
+      "name": "物理乱流-维150倍率",
+      "agentId": "piper",
+      "source": "custom",
+      "damageType": "anomaly",
+      "skillTypes": [],
+      "buffAnchorId": null,
+      "baseMult": 150,
+      "multSource": null,
+      "element": "物理",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "skill-mt9opno5-baxyv",
+      "name": "霜灼",
+      "agentId": "miyabi",
+      "source": "custom",
+      "damageType": "direct",
+      "skillTypes": [],
+      "buffAnchorId": null,
+      "baseMult": 1500,
+      "multSource": null,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "skill-mt9p565d-lkkpi",
+      "name": "三蓄",
+      "agentId": "miyabi",
+      "source": "custom",
+      "damageType": "direct",
+      "skillTypes": [
+        "basic"
+      ],
+      "buffAnchorId": "miyabi-basic-ms4mtpk5",
+      "baseMult": 4282.8,
+      "multSource": null,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "skill-mt9p7b1r-off0g",
+      "name": "强化特数技1",
+      "agentId": "miyabi",
+      "source": "custom",
+      "damageType": "direct",
+      "skillTypes": [
+        "specialEnhanced"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 788.3,
+      "multSource": null,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "skill-mt9p7w5s-hzhwz",
+      "name": "终结技",
+      "agentId": "miyabi",
+      "source": "custom",
+      "damageType": "direct",
+      "skillTypes": [
+        "ultimate"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 4776.1,
+      "multSource": null,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "skill-mt9p8btv-rgjhx",
+      "name": "连携技",
+      "agentId": "miyabi",
+      "source": "custom",
+      "damageType": "direct",
+      "skillTypes": [
+        "chain"
+      ],
+      "buffAnchorId": null,
+      "baseMult": 1258.3,
+      "multSource": null,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "skill-mt9p8rlw-hlovk",
+      "name": "烈霜紊乱",
+      "agentId": "miyabi",
+      "source": "custom",
+      "damageType": "disorder",
+      "skillTypes": [],
+      "buffAnchorId": null,
+      "baseMult": 0,
+      "multSource": null,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "skill-mt9pkw9c-72p1y",
+      "name": "烈霜-极性紊乱",
+      "agentId": "miyabi",
+      "source": "custom",
+      "damageType": "disorder",
+      "skillTypes": [],
+      "buffAnchorId": null,
+      "baseMult": 525,
+      "multSource": null,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "skill-mtbdhouw-izudv",
+      "name": "风异放",
+      "agentId": "aria",
+      "source": "custom",
+      "damageType": "anomalyRelease",
+      "skillTypes": [],
+      "buffAnchorId": null,
+      "baseMult": 0,
+      "multSource": null,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "skill-mtbdil21-575fx",
+      "name": "以太乱流",
+      "agentId": "velina",
+      "source": "custom",
+      "damageType": "turbulence",
+      "skillTypes": [],
+      "buffAnchorId": null,
+      "baseMult": 0,
+      "multSource": null,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "skill-mtda66mt-9uhhe",
+      "name": "极性紊乱",
+      "agentId": "nangongyu",
+      "source": "custom",
+      "damageType": "disorder",
+      "skillTypes": [],
+      "buffAnchorId": "nangongyu-basic-ms4dacwf",
+      "baseMult": 0,
+      "multSource": null,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "skill-mtda6ix3-dhli0",
+      "name": "异放",
+      "agentId": "nangongyu",
+      "source": "custom",
+      "damageType": "anomalyRelease",
+      "skillTypes": [],
+      "buffAnchorId": null,
+      "baseMult": 450,
+      "multSource": null,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    },
+    {
+      "id": "skill-mtdah6hg-3ygw2",
+      "name": "以太紊乱",
+      "agentId": "yuzuha",
+      "source": "custom",
+      "damageType": "disorder",
+      "skillTypes": [],
+      "buffAnchorId": null,
+      "baseMult": 0,
+      "multSource": null,
+      "element": "",
+      "ownerGroupId": null,
+      "note": ""
+    }
+  ],
+  "skillGroups": [
+    {
+      "id": "sg-yeshunguang-mtsvzpcz",
+      "agentId": "yeshunguang",
+      "name": "6豆登场技·标准短轴",
+      "note": "2叶标准6豆登场技eaeea长E",
+      "source": "preset",
+      "members": [
+        {
+          "skillId": "sk-yeshunguang-direct-mtsgty6b",
+          "order": 0,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431013-有青溟剑势时",
+          "order": 1,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431009-main",
+          "order": 2,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431018-消耗1点青溟剑势",
+          "order": 3,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431017-main",
+          "order": 4,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431013-有青溟剑势时",
+          "order": 5,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431009-main",
+          "order": 6,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431018-消耗6点青溟剑势",
+          "order": 7,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431019-main",
+          "order": 8,
+          "count": 1,
+          "includeInFlow": true
+        }
+      ]
+    },
+    {
+      "id": "sg-yeshunguang-mtuv86yr",
+      "agentId": "yeshunguang",
+      "name": "开大变身·标准短轴",
+      "note": "2叶开大变身eaeea长Eq",
+      "source": "preset",
+      "members": [
+        {
+          "skillId": "sk-yeshunguang-nk-1431025-main",
+          "order": 0,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431013-有青溟剑势时",
+          "order": 1,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431009-main",
+          "order": 2,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431018-消耗1点青溟剑势",
+          "order": 3,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431017-main",
+          "order": 4,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431013-有青溟剑势时",
+          "order": 5,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431009-main",
+          "order": 6,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431018-消耗6点青溟剑势",
+          "order": 7,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431027-main",
+          "order": 8,
+          "count": 1,
+          "includeInFlow": true
+        }
+      ]
+    },
+    {
+      "id": "sg-yeshunguang-mtuv0bhu",
+      "agentId": "yeshunguang",
+      "name": "琉音抱拳转大·标准短轴",
+      "note": "2叶琉音转大eaeea长E",
+      "source": "preset",
+      "members": [
+        {
+          "skillId": "sk-yeshunguang-nk-1431025-main",
+          "order": 0,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431013-有青溟剑势时",
+          "order": 1,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431009-main",
+          "order": 2,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431018-消耗1点青溟剑势",
+          "order": 3,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431016-main",
+          "order": 4,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431013-有青溟剑势时",
+          "order": 5,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431009-main",
+          "order": 6,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431018-消耗6点青溟剑势",
+          "order": 7,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431019-main",
+          "order": 8,
+          "count": 1,
+          "includeInFlow": true
+        }
+      ]
+    },
+    {
+      "id": "sg-yeshunguang-mtuvgqs9",
+      "agentId": "yeshunguang",
+      "name": "缩轴",
+      "note": "一段下砸+12段飞光",
+      "source": "preset",
+      "members": [
+        {
+          "skillId": "sk-yeshunguang-nk-1431013-有青溟剑势时",
+          "order": 0,
+          "count": 1,
+          "includeInFlow": true
+        },
+        {
+          "skillId": "sk-yeshunguang-nk-1431018-消耗6点青溟剑势",
+          "order": 1,
+          "count": 2,
+          "includeInFlow": true
+        }
+      ]
+    }
+  ],
+  "warnings": [
+    "方案「8金薇专0爱01维21丹」引用自建招式 skill-mtbdp59e-ehk2f，本机库没有",
+    "方案「8金薇专0爱01维21丹」引用自建招式 skill-mtbdurp2-33jt5，本机库没有",
+    "方案「全21薇专爱维丹」引用自建招式 skill-mtbdp59e-ehk2f，本机库没有",
+    "方案「全21薇专爱维丹」引用自建招式 skill-mtbdurp2-33jt5，本机库没有",
+    "方案「21叶01照11千——莎菈 摧心」引用自建招式 skill-mtchdsoj-li7st，本机库没有",
+    "方案「21叶01照11千——莎菈 摧心」引用自建招式 skill-mtchew4a-h8m0e，本机库没有",
+    "方案「21叶01照11千——莎菈 摧心」引用自建招式 skill-mtchgeyi-0rz2v，本机库没有",
+    "方案「21叶01照11千——莎菈 摧心」引用自建招式 skill-mtchjgrz-cnb5r，本机库没有",
+    "方案「21叶01照11千——莎菈 摧心」引用自建招式 skill-mtchk46y-0t1ha，本机库没有",
+    "方案「21叶01照11千——莎菈 摧心」引用自建招式 skill-mtchlbeh-su7kl，本机库没有",
+    "方案「21叶01照11千——莎菈 摧心」引用自建招式 skill-mtchlyao-zulr0，本机库没有",
+    "方案「21叶01照11千——莎菈 摧心」引用自建招式 skill-mtchoquy-pog9c，本机库没有",
+    "方案「21叶01照11千——莎菈 摧心」引用自建招式 skill-mtchphgj-t3vux，本机库没有",
+    "方案「61丹21南千专2柚」引用自建招式 skill-mtd9xw8y-o93ib，本机库没有",
+    "方案「61丹21南千专2柚」引用自建招式 skill-mtbdp59e-ehk2f，本机库没有",
+    "方案「61丹21南千专2柚」引用自建招式 skill-mtbdurp2-33jt5，本机库没有"
+  ]
+}

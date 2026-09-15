@@ -48,10 +48,11 @@ const progressLabel = computed(() => {
   const start = progress.startCount > 1
     ? `（起点 ${progress.startIndex}/${progress.startCount}）`
     : ''
+  const path = progress.searchPath === 'penRate' ? '穿透专路 · ' : ''
   const branch = progress.gameBranch
     ? `组合 ${progress.gameBranch.index}/${progress.gameBranch.total}（${progress.gameBranch.label}）· `
     : ''
-  return `${branch}${phase}${start}`
+  return `${branch}${path}${phase}${start}`
 })
 
 /** 预算进度百分比；manual 模式无预算，用「已评估次数」的相对量给个粗略进度 */
@@ -126,7 +127,8 @@ function formatNumber(value: number) {
             }}{{ result.candidateWidthMode === 'manual' ? '（手动）' : '（按预算推导）' }}
           </strong>
           <span class="budget-hint">
-            每轮参与试算的条目数；流程越贵、宽度越窄，搜得越快也越可能漏解
+            每轮先按最低收益比例筛（本次 {{ Math.round(result.minimumBenefitRatio * 100) }}%，丢掉 {{ result.ratioDropped }} 条），
+            仍过密再用宽度截顶（截掉 {{ result.kDropped }} 条）
           </span>
         </div>
         <div class="budget-item">
@@ -144,6 +146,9 @@ function formatNumber(value: number) {
       <p v-if="result.truncated" class="hint warn">
         搜索达到计算量上限，结果可能不是全局最优。可减少参与词条、调小总词条数，
         或改用「手动指定条数」跑到底。
+      </p>
+      <p v-else-if="result.kDropped > 0" class="hint warn">
+        比例筛完后候选仍超过宽度上限，已按最新收益截顶，副词条结果可能漏解。
       </p>
 
       <div v-if="rows.length" class="table-wrap">
@@ -176,7 +181,9 @@ function formatNumber(value: number) {
       <div class="actions">
         <span class="hint">
           引擎调用 {{ result.engineCalls }} 次 · 起点 {{ result.startsRun }} 个 ·
-          走完阶段 {{ result.phasesCompleted.join(' → ') }}
+          {{ result.winningPath === 'penRate' ? '穿透专路胜出' : '普通路线胜出' }}
+          <template v-if="result.penRatePathUsed"> · 已跑穿透专路</template>
+          · 走完阶段 {{ result.phasesCompleted.join(' → ') }}
         </span>
       </div>
     </template>

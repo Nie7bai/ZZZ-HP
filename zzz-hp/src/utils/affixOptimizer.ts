@@ -24,12 +24,17 @@ import {
  *   现存的单条约束只有词条库条目自身的 `cap` 与互斥组，见 `resolveAffixOptimizerBudget`。
  *
  * 搜索策略（每一步都用真实引擎评估，不做可分性假设）：
- * 1. **多起点贪心**：若干候选优先序各跑一遍，避免单一顺序的结构性偏差。
- * 2. **1-swap 局部搜索**：撤一档 + 加一档，只接受净提升。
- * 3. **2-swap 局部搜索**：撤两档 + 加两档，跳出 1-swap 局部最优。
- *    有的更好分配要一次动两条（典型：暴击和爆伤），1 换 1 走不到。
+ * 1. **普通路线**：贪心 + 1-swap + 2-swap。多起点只留 `gainDesc` / `declared`。
+ *    倒序起点 `gainAsc` 已删除：倒数就是垃圾。若以后某个明确阈值被证实漏解，
+ *    针对该机制加专路，不恢复全局倒序。
+ * 2. **穿透专路**：把已启用的 `main:slot5:penRate` / `set:penRate:8` 锁满，
+ *    在这块面板上重测副词条再跑贪心+swap，与普通路线比最终总伤。
+ *    防御区 24+8+固穿是正协同，单档排序看不见整套；专路不进 Top-K。
+ * 3. **1-swap / 2-swap**：撤一加一 / 撤两加两。暴击和爆伤这类配比 1 换 1 走不到。
  *    不是「局外攻击% 与固定攻击必须一起加减才涨伤」——局外是
  *    基础 × (1+攻击%) + 固定，两者不是相乘。
+ *
+ * 候选筛选：先按最低收益比例切质量，仍超过 K 时才按最新收益取前 K（过载保护）。
  *
  * 为什么不照搬 zzz-dev 的对数 DP：
  * 伤害公式是「和之积」（Σ 在 Π 外），各词条收益不可乘；暴击率/爆伤等
@@ -70,6 +75,15 @@ export interface AffixOptimizerInput {
   candidateWidthMode?: AffixCandidateWidthMode
   /** manual 模式下的每轮候选条数；会被钳到 [1, 词条条数] */
   manualCandidateWidth?: number
+  /**
+   * 最低收益比例（0..1，默认 0）。
+   * 每轮先丢掉「当前边际 < 本轮最强 × 该比例」的条目，再若仍超过 K 才截 Top-K。
+   */
+  minimumBenefitRatio?: number
+  /**
+   * 是否跑穿透专路（默认 true）。测试可关，用来对照「不锁 24+8」时的漏解。
+   */
+  enablePenRatePath?: boolean
   /** 计算量预算（单位：命中-次），仅 auto 模式生效 */
   maxWorkUnits?: number
   /** 兼容旧调用：把调用次数上限换算成计算量预算 */
@@ -88,8 +102,19 @@ export interface AffixOptimizerInput {
    * 游戏专用规则用来表达「号位选了攻击% → 副词条攻击% 少 1 档」。默认库不传。
    */
   entryCapTaxes?: AffixEntryCapTax[]
-  /** 多起点贪心的起点数（1~3，默认 3） */
+  /** 多起点贪心的起点数（1~2，默认 2：gainDesc / declared） */
   maxStarts?: number
+}
+
+/** 穿透结构只认这两个官方 id，不泛化成所有 penRate 条目 */
+export const PEN_RATE_STRUCTURE_ENTRY_IDS = [
+  'main:slot5:penRate',
+  'set:penRate:8',
+] as const
+
+export function clampAffixMinimumBenefitRatio(value: number | undefined): number {
+  if (value == null || !Number.isFinite(value)) return 0
+  return Math.max(0, Math.min(1, value))
 }
 
 /** 见 `AffixOptimizerInput.entryCapTaxes` */
@@ -140,6 +165,16 @@ export interface AffixOptimizerResult {
   startsRun: number
   /** 各阶段实际执行过的零收益补测轮数（贪心 / 1-swap / 2-swap） */
   staleRefreshesByPhase: Partial<Record<'greedy' | 'swap1' | 'swap2', number>>
+  /** 实际生效的最低收益比例 */
+  minimumBenefitRatio: number
+  /** 比例筛掉的候选条数（各轮累计） */
+  ratioDropped: number
+  /** 比例筛完后被 K 截掉的候选条数（各轮累计） */
+  kDropped: number
+  /** 本次是否跑过穿透专路 */
+  penRatePathUsed: boolean
+  /** 最终采用哪条路线 */
+  winningPath: 'ordinary' | 'penRate'
 }
 
 /** 求解进度快照（异步驱动定期回调，用于 UI 显示） */
@@ -156,6 +191,8 @@ export interface AffixOptimizerProgress {
   baselineDamage: number
   /** 游戏专用 8 路外层：当前第几组 */
   gameBranch?: { index: number; total: number; label: string }
+  /** 当前在普通路线还是穿透专路 */
+  searchPath?: 'ordinary' | 'penRate'
 }
 
 export type AffixOptimizerAsyncOptions = {
@@ -319,6 +356,46 @@ function remainingAllowedRolls(
   return Math.max(0, Math.min(byCap, byGroup, rollRoom))
 }
 
+export function collectPenRateStructureLocks(
+  entries: AffixLibraryEntry[],
+  fixedRolls: Record<string, number> = {},
+  groupCaps: Record<string, number> = {},
+  maxTotalRolls = DEFAULT_MAX_TOTAL_ROLLS,
+  capTaxes: readonly AffixEntryCapTax[] = [],
+): Record<string, number> {
+  const budget = {
+    maxTotalRolls,
+    rollCapOf: () => Number.POSITIVE_INFINITY,
+  } as AffixOptimizerBudget
+  const byId = new Map(entries.map((entry) => [entry.id, entry]))
+  const next = { ...fixedRolls }
+  const locks: Record<string, number> = {}
+  for (const id of PEN_RATE_STRUCTURE_ENTRY_IDS) {
+    const entry = byId.get(id)
+    if (!entry) continue
+    if ((next[id] ?? 0) > 0) continue
+    const used = usedRollsOf(entries, next)
+    if (
+      remainingAllowedRolls(
+        entry,
+        next[id] ?? 0,
+        budget,
+        used,
+        next,
+        entries,
+        maxTotalRolls,
+        groupCaps,
+        capTaxes,
+      ) <= 0
+    ) {
+      continue
+    }
+    next[id] = 1
+    locks[id] = 1
+  }
+  return locks
+}
+
 export function resolveAffixOptimizerBudget(
   ctx: OptimalEvalContext,
   maxTotalRolls?: number,
@@ -361,10 +438,15 @@ interface SearchOutcome {
   phasesCompleted: string[]
   startsRun: number
   staleRefreshesByPhase: Partial<Record<'greedy' | 'swap1' | 'swap2', number>>
+  minimumBenefitRatio: number
+  ratioDropped: number
+  kDropped: number
+  searchPath: 'ordinary' | 'penRate'
+  penRatePathUsed: boolean
 }
 
-/** 候选集的排序口径（多起点用不同口径制造多样性） */
-type CandidateOrder = 'gainDesc' | 'gainAsc' | 'declared'
+/** 候选集的排序口径。倒序 `gainAsc` 已删除，不恢复全局倒序起点。 */
+type CandidateOrder = 'gainDesc' | 'declared'
 
 /**
  * 搜索核心（生成器）。
@@ -372,7 +454,7 @@ type CandidateOrder = 'gainDesc' | 'gainAsc' | 'declared'
  * 每次引擎评估后 `yield` 一次进度快照，同步/异步两个驱动共用这一份实现，
  * 因此不存在「同步版与异步版算出不同结果」的可能。
  */
-function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgress, SearchOutcome, void> {
+function* solveSearch(input: AffixOptimizerInput, searchPath: 'ordinary' | 'penRate' = 'ordinary'): Generator<AffixOptimizerProgress, SearchOutcome, void> {
   const { ctx, entries } = input
   const budget = resolveAffixOptimizerBudget(ctx, input.maxTotalRolls)
   const maxRollsPerEntry = input.maxRollsPerEntry ?? budget.maxTotalRolls
@@ -380,10 +462,11 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
   const groupCaps = input.groupCaps ?? {}
   const capTaxes = input.entryCapTaxes ?? []
   const fixedRolls = input.fixedRollsByEntryId ?? {}
-  const maxStarts = Math.max(1, Math.min(3, input.maxStarts ?? 3))
+  const maxStarts = Math.max(1, Math.min(2, input.maxStarts ?? 2))
   const widthMode: AffixCandidateWidthMode = input.candidateWidthMode ?? 'auto'
   const entryCount = Math.max(1, entries.length)
   const manualWidth = clampInt(input.manualCandidateWidth ?? entryCount, 1, entryCount)
+  const minimumBenefitRatio = clampAffixMinimumBenefitRatio(input.minimumBenefitRatio)
   const pricePerEval = workPricePerEval(ctx)
 
   // 计算量预算：manual 模式不设上限（用户口径：跑到底，中途可中止）
@@ -412,6 +495,8 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
   let bestTotalSoFar = 0
   let baselineDamage = 0
   let startsRun = 0
+  let ratioDropped = 0
+  let kDropped = 0
 
   const snapshot = (): AffixOptimizerProgress => ({
     phase,
@@ -423,6 +508,7 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
     workBudget,
     bestTotal: bestTotalSoFar,
     baselineDamage,
+    searchPath,
   })
 
   const remainingWork = (): number =>
@@ -495,15 +581,9 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
   const staleRefreshesByPhase: Partial<Record<'greedy' | 'swap1' | 'swap2', number>> = {}
 
   /**
-   * 候选集：在「还能再加档」且「实测增益 > 0」的条目里，按指定口径排序取前 width 条。
+   * 候选集：当前状态下正收益条目，先按最低收益比例切，仍超过 width 再取前 K。
    *
-   * 两个过滤都是硬约束：
-   * - 增益 ≤ 0：加它不涨分，不该占用引擎调用（如直伤角色加固定防御）。
-   * - 已到上限：加了也不生效，同理由。
-   *
-   * 不做「已分配条目优先」的特殊照顾——那会让已分配条目挤占全部名额，
-   * 使搜索再也加不进新条目（实测：手动 K=4 时总伤只有正确值的一半）。
-   * 已分配条目本身仍参与排序，凭当前边际增益竞争名额。
+   * 增益 ≤ 0 是硬约束。不做「已分配条目优先」。
    */
   const pickCandidates = (
     width: number,
@@ -514,9 +594,19 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
     const eligible = entries.filter(
       (entry) => gainOf(entry) > 0 && isAllowed(entry),
     )
-    if (order === 'gainDesc') eligible.sort((a, b) => gainOf(b) - gainOf(a))
-    else if (order === 'gainAsc') eligible.sort((a, b) => gainOf(a) - gainOf(b))
-    return eligible.slice(0, Math.max(1, width))
+    if (!eligible.length) return []
+    let bestGain = 0
+    for (const entry of eligible) bestGain = Math.max(bestGain, gainOf(entry))
+    const afterRatio = minimumBenefitRatio <= 0
+      ? eligible.slice()
+      : eligible.filter((entry) => gainOf(entry) >= bestGain * minimumBenefitRatio)
+    ratioDropped += eligible.length - afterRatio.length
+    if (order === 'gainDesc') afterRatio.sort((a, b) => gainOf(b) - gainOf(a))
+    if (afterRatio.length > width) {
+      kDropped += afterRatio.length - width
+      return afterRatio.slice(0, width)
+    }
+    return afterRatio
   }
 
   // ---------- 0. 基线 ----------
@@ -544,6 +634,21 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
     yield* measureEntry(entry, fixedRolls, baselineDamage)
   }
   phasesCompleted.push('measure')
+
+  function* remesureAllowed(
+    baseRolls: Record<string, number>,
+    referenceTotal: number,
+    isAllowed: (entry: AffixLibraryEntry) => boolean,
+  ): Generator<AffixOptimizerProgress, void, void> {
+    for (const entry of entries) {
+      if (!isAllowed(entry)) continue
+      if (remainingWork() < pricePerEval) {
+        truncated = true
+        return
+      }
+      yield* measureEntry(entry, baseRolls, referenceTotal)
+    }
+  }
 
   /**
    * 零收益条目的补测。
@@ -598,6 +703,7 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
       extraGains: baseline.extraGains,
     }
     let used = usedRollsOf(entries, rolls)
+    let greedySteps = 0
 
     for (;;) {
       const width = deriveWidth('linear', 1)
@@ -613,6 +719,10 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
           groupCaps,
           capTaxes,
         ) > 0
+      if (greedySteps > 0) {
+        yield* remesureAllowed(rolls, current.total, allowedHere)
+      }
+      greedySteps += 1
       let candidates = pickCandidates(width, order, allowedHere)
       // 候选不足就补测零收益条目（补测门槛按档数翻倍推进，不会无限循环）
       if (candidates.length < width) {
@@ -673,6 +783,19 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
         break
       }
       if (!forcedRefresh) {
+        yield* remesureAllowed(rolls, current.total, (entry) =>
+          remainingAllowedRolls(
+            entry,
+            rolls[entry.id] ?? 0,
+            budget,
+            usedRollsOf(entries, rolls),
+            rolls,
+            entries,
+            maxRollsPerEntry,
+            groupCaps,
+            capTaxes,
+          ) > 0,
+        )
         yield* refreshStaleEntries(width, rolls, current.total, { force: true })
         forcedRefresh = true
       }
@@ -715,6 +838,7 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
       rolls[bestSwap.addId] = (rolls[bestSwap.addId] ?? 0) + 1
       current = bestSwap.state
       if (current.total > bestTotalSoFar) bestTotalSoFar = current.total
+      forcedRefresh = false
     }
     return current
   }
@@ -742,6 +866,19 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
         break
       }
       if (!forcedRefresh) {
+        yield* remesureAllowed(rolls, current.total, (entry) =>
+          remainingAllowedRolls(
+            entry,
+            rolls[entry.id] ?? 0,
+            budget,
+            usedRollsOf(entries, rolls),
+            rolls,
+            entries,
+            maxRollsPerEntry,
+            groupCaps,
+            capTaxes,
+          ) > 0,
+        )
         yield* refreshStaleEntries(width, rolls, current.total, { force: true })
         forcedRefresh = true
       }
@@ -821,6 +958,7 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
       Object.assign(rolls, bestSwap.next)
       current = bestSwap.state
       if (current.total > bestTotalSoFar) bestTotalSoFar = current.total
+      forcedRefresh = false
     }
     return current
   }
@@ -835,7 +973,7 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
     : (workBudget ?? 0) / 2 / pricePerEval >= entries.length
   const orders: CandidateOrder[] = widthCoversAll
     ? ['gainDesc']
-    : (['gainDesc', 'gainAsc', 'declared'] as CandidateOrder[]).slice(0, maxStarts)
+    : (['gainDesc', 'declared'] as CandidateOrder[]).slice(0, maxStarts)
   startsRun = orders.length
 
   let bestRolls: Record<string, number> | null = null
@@ -879,6 +1017,11 @@ function* solveSearch(input: AffixOptimizerInput): Generator<AffixOptimizerProgr
     phasesCompleted,
     startsRun,
     staleRefreshesByPhase,
+    minimumBenefitRatio,
+    ratioDropped,
+    kDropped,
+    searchPath,
+    penRatePathUsed: false,
   }
 }
 
@@ -910,14 +1053,68 @@ function toResult(input: AffixOptimizerInput, outcome: SearchOutcome): AffixOpti
     phasesCompleted: outcome.phasesCompleted,
     startsRun: outcome.startsRun,
     staleRefreshesByPhase: outcome.staleRefreshesByPhase,
+    minimumBenefitRatio: outcome.minimumBenefitRatio,
+    ratioDropped: outcome.ratioDropped,
+    kDropped: outcome.kDropped,
+    penRatePathUsed: outcome.penRatePathUsed,
+    winningPath: outcome.searchPath,
   }
+}
+
+function mergeSearchOutcomes(
+  ordinary: SearchOutcome,
+  pen: SearchOutcome,
+): SearchOutcome {
+  const usePen = pen.state.total > ordinary.state.total
+  const winner = usePen ? pen : ordinary
+  return {
+    ...winner,
+    baselineDamage: ordinary.baselineDamage,
+    engineCalls: ordinary.engineCalls + pen.engineCalls,
+    cacheHits: ordinary.cacheHits + pen.cacheHits,
+    workUsed: ordinary.workUsed + pen.workUsed,
+    truncated: ordinary.truncated || pen.truncated,
+    candidateWidth: Math.min(ordinary.candidateWidth, pen.candidateWidth),
+    candidateWidthMax: Math.max(ordinary.candidateWidthMax, pen.candidateWidthMax),
+    phasesCompleted: [...ordinary.phasesCompleted, ...pen.phasesCompleted],
+    startsRun: ordinary.startsRun + pen.startsRun,
+    ratioDropped: ordinary.ratioDropped + pen.ratioDropped,
+    kDropped: ordinary.kDropped + pen.kDropped,
+    searchPath: usePen ? 'penRate' : 'ordinary',
+    penRatePathUsed: true,
+  }
+}
+
+function* solveSearchWithPenPath(
+  input: AffixOptimizerInput,
+): Generator<AffixOptimizerProgress, SearchOutcome, void> {
+  const ordinary = yield* solveSearch(input, 'ordinary')
+  if (input.enablePenRatePath === false) return ordinary
+
+  const locks = collectPenRateStructureLocks(
+    input.entries,
+    input.fixedRollsByEntryId ?? {},
+    input.groupCaps ?? {},
+    resolveAffixOptimizerBudget(input.ctx, input.maxTotalRolls).maxTotalRolls,
+    input.entryCapTaxes ?? [],
+  )
+  if (!Object.keys(locks).length) return ordinary
+
+  const penInput: AffixOptimizerInput = {
+    ...input,
+    fixedRollsByEntryId: { ...(input.fixedRollsByEntryId ?? {}), ...locks },
+    maxStarts: 1,
+    enablePenRatePath: false,
+  }
+  const pen = yield* solveSearch(penInput, 'penRate')
+  return mergeSearchOutcomes(ordinary, pen)
 }
 
 /** 同步求解（测试与脚本使用；UI 请用 async 版以免卡住主线程） */
 export function solveOptimalAffixAllocation(
   input: AffixOptimizerInput,
 ): AffixOptimizerResult {
-  const generator = solveSearch(input)
+  const generator = solveSearchWithPenPath(input)
   let step = generator.next()
   while (!step.done) step = generator.next()
   return toResult(input, step.value)
@@ -944,7 +1141,7 @@ export async function solveOptimalAffixAllocationAsync(
   const chunkSize = Math.max(1, options?.chunkSize ?? 24)
   const sliceBudgetMs = Math.max(1, options?.sliceBudgetMs ?? 8)
   const signal = options?.signal
-  const generator = solveSearch(input)
+  const generator = solveSearchWithPenPath(input)
 
   const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
   let sinceYield = 0

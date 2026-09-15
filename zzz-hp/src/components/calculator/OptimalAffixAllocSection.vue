@@ -1562,6 +1562,8 @@ const affixAllocError = ref<string | null>(null)
 const affixAllocWidthMode = ref<AffixCandidateWidthMode>('auto')
 /** manual 模式下的候选条数 */
 const affixAllocManualWidth = ref(8)
+/** 最低收益比例（0–100）。0 只丢零/负收益；调高则先按比例筛再由 K 兜底 */
+const affixAllocMinBenefitRatioPercent = ref(0)
 /** 求解进度（仅求解中刷新） */
 const affixAllocProgress = ref<AffixOptimizerProgress | null>(null)
 /** 进度刷新间隔（毫秒）：求解每个时间片都回调，逐次刷新会拖慢求解本身 */
@@ -1792,6 +1794,7 @@ async function runAffixAllocation() {
         maxTotalRolls: total,
         candidateWidthMode: affixAllocWidthMode.value,
         manualCandidateWidth: affixAllocManualWidth.value,
+        minimumBenefitRatio: affixAllocMinBenefitRatioPercent.value / 100,
         groupCaps: affixGroupCaps(affixLibraryState.value),
       },
       {
@@ -1880,6 +1883,7 @@ async function runGameAffixAllocation() {
         maxTotalRolls: total,
         candidateWidthMode: affixAllocWidthMode.value,
         manualCandidateWidth: affixAllocManualWidth.value,
+        minimumBenefitRatio: affixAllocMinBenefitRatioPercent.value / 100,
       },
       {
         signal: controller.signal,
@@ -2188,7 +2192,7 @@ watch(affixAllocFingerprint, () => {
 
 // 求解参数变化同样让正在跑的求解过期
 watch(
-  [affixAllocWidthMode, affixAllocManualWidth, affixAllocTotalRolls],
+  [affixAllocWidthMode, affixAllocManualWidth, affixAllocTotalRolls, affixAllocMinBenefitRatioPercent],
   () => {
     if (sectionMode.value !== 'allocation') return
     if (affixAllocLoading.value) abortAffixAllocation()
@@ -2907,6 +2911,17 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
                 step="1"
               />
             </label>
+            <label class="field">
+              <span>最低收益比例</span>
+              <input
+                v-model.lazy.number="affixAllocMinBenefitRatioPercent"
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+              />
+              <span class="field-suffix">%</span>
+            </label>
           </div>
           <button
             v-if="affixAllocLoading"
@@ -2925,7 +2940,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           >
             求最优分配
           </button>
-          <span class="hint">计算采用贪心 + 换档兜底；候选宽度越宽，穷举越多、耗时越久，不清楚规则用自动即可</span>
+          <span class="hint">计算采用贪心 + 换档兜底；先按最低收益比例筛，候选过密再用宽度截顶。不清楚规则：宽度用自动、比例留 0%</span>
           <div class="alloc-grid-spacer" aria-hidden="true"></div>
           <div class="alloc-input-row alloc-game-btns">
             <button
@@ -2943,7 +2958,10 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           <span class="hint">可模拟4/5/6号位主副属性重复时造成的总词条数损失；比上方「求最优分配」慢</span>
         </div>
         <p v-if="affixAllocWidthMode === 'manual'" class="hint">
-          手动模式不设预算上限：条数越大搜索越彻底，也越慢。填满词条库条数即等于不剪枝。
+          手动模式不设预算上限：条数越大搜索越彻底，也越慢。填满词条库条数即等于不按条数截顶。
+        </p>
+        <p class="hint">
+          最低收益比例提高会加速，也可能丢掉后期才反超的弱词条。0% 只排除 0 收益和负收益。
         </p>
         <p v-if="affixAllocError" class="err">{{ affixAllocError }}</p>
         <AffixAllocationResult
@@ -3994,12 +4012,9 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   min-width: 0;
 }
 
-.alloc-input-row .field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  font-size: 0.78rem;
-  color: #9aa3b0;
+.alloc-input-row .field-suffix {
+  font-size: 0.75rem;
+  color: var(--calc-muted, #6b7280);
 }
 
 .alloc-input-row input {
