@@ -4803,10 +4803,6 @@ th {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  padding: 0.6rem 0.75rem;
-  border: 1px solid #2a3038;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.02);
 }
 
 .sweep-main-stats-head {
