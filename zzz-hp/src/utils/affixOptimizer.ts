@@ -220,6 +220,19 @@ function workPricePerEval(ctx: OptimalEvalContext): number {
   return 1 + (ctx.hits?.length ?? 0)
 }
 
+/**
+ * 单路搜索的计算量上限。manual 不设上限。
+ * 穿透专路与普通路共用调用方这一份预算，不另开第二份默认 36000。
+ */
+function resolveSearchWorkBudget(input: AffixOptimizerInput): number | null {
+  const widthMode: AffixCandidateWidthMode = input.candidateWidthMode ?? 'auto'
+  if (widthMode === 'manual') return null
+  const pricePerEval = workPricePerEval(input.ctx)
+  return input.maxWorkUnits ?? (input.maxEngineCalls != null
+    ? input.maxEngineCalls * pricePerEval
+    : DEFAULT_WORK_BUDGET)
+}
+
 function clampInt(value: number, min: number, max: number): number {
   const n = Math.floor(Number.isFinite(value) ? value : min)
   return Math.max(min, Math.min(max, n))
@@ -470,11 +483,7 @@ function* solveSearch(input: AffixOptimizerInput, searchPath: 'ordinary' | 'penR
   const pricePerEval = workPricePerEval(ctx)
 
   // 计算量预算：manual 模式不设上限（用户口径：跑到底，中途可中止）
-  const workBudget: number | null = widthMode === 'manual'
-    ? null
-    : input.maxWorkUnits ?? (input.maxEngineCalls != null
-      ? input.maxEngineCalls * pricePerEval
-      : DEFAULT_WORK_BUDGET)
+  const workBudget: number | null = resolveSearchWorkBudget(input)
 
   const emptyCounts = {
     hpFlat: 0, hpPercent: 0, atkFlat: 0, atkPercent: 0, defFlat: 0,
@@ -1064,6 +1073,7 @@ function toResult(input: AffixOptimizerInput, outcome: SearchOutcome): AffixOpti
 function mergeSearchOutcomes(
   ordinary: SearchOutcome,
   pen: SearchOutcome,
+  sharedWorkBudget: number | null,
 ): SearchOutcome {
   const usePen = pen.state.total > ordinary.state.total
   const winner = usePen ? pen : ordinary
@@ -1073,6 +1083,7 @@ function mergeSearchOutcomes(
     engineCalls: ordinary.engineCalls + pen.engineCalls,
     cacheHits: ordinary.cacheHits + pen.cacheHits,
     workUsed: ordinary.workUsed + pen.workUsed,
+    workBudget: sharedWorkBudget,
     truncated: ordinary.truncated || pen.truncated,
     candidateWidth: Math.min(ordinary.candidateWidth, pen.candidateWidth),
     candidateWidthMax: Math.max(ordinary.candidateWidthMax, pen.candidateWidthMax),
@@ -1088,8 +1099,7 @@ function mergeSearchOutcomes(
 function* solveSearchWithPenPath(
   input: AffixOptimizerInput,
 ): Generator<AffixOptimizerProgress, SearchOutcome, void> {
-  const ordinary = yield* solveSearch(input, 'ordinary')
-  if (input.enablePenRatePath === false) return ordinary
+  if (input.enablePenRatePath === false) return yield* solveSearch(input, 'ordinary')
 
   const locks = collectPenRateStructureLocks(
     input.entries,
@@ -1098,16 +1108,31 @@ function* solveSearchWithPenPath(
     resolveAffixOptimizerBudget(input.ctx, input.maxTotalRolls).maxTotalRolls,
     input.entryCapTaxes ?? [],
   )
-  if (!Object.keys(locks).length) return ordinary
+  if (!Object.keys(locks).length) return yield* solveSearch(input, 'ordinary')
 
+  const sharedWorkBudget = resolveSearchWorkBudget(input)
+  let ordinaryInput = input
+  let penWorkUnits: number | undefined
+  // auto：专路吃原 gainAsc 那 1/3，普通路 gainDesc+declared 占 2/3；普通路没用完的还给专路。
+  if (sharedWorkBudget != null) {
+    const penShare = Math.floor(sharedWorkBudget / 3)
+    ordinaryInput = { ...input, maxWorkUnits: sharedWorkBudget - penShare }
+    penWorkUnits = penShare
+  }
+
+  const ordinary = yield* solveSearch(ordinaryInput, 'ordinary')
+  const leftover = sharedWorkBudget == null
+    ? 0
+    : Math.max(0, (ordinary.workBudget ?? 0) - ordinary.workUsed)
   const penInput: AffixOptimizerInput = {
     ...input,
     fixedRollsByEntryId: { ...(input.fixedRollsByEntryId ?? {}), ...locks },
     maxStarts: 1,
     enablePenRatePath: false,
+    ...(sharedWorkBudget != null ? { maxWorkUnits: (penWorkUnits ?? 0) + leftover } : {}),
   }
   const pen = yield* solveSearch(penInput, 'penRate')
-  return mergeSearchOutcomes(ordinary, pen)
+  return mergeSearchOutcomes(ordinary, pen, sharedWorkBudget)
 }
 
 /** 同步求解（测试与脚本使用；UI 请用 async 版以免卡住主线程） */

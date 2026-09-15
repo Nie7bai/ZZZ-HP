@@ -57,6 +57,10 @@ import {
   buildPanelSourceValuesBySlotMap,
   invalidateBuffCatalogCache,
 } from '../src/utils/panelBuffCalc.ts'
+import { resolveFlow, buildGenericPanelSkillContext } from '../src/utils/resolvedHit.ts'
+import { schemeActivePanels, schemeAffixInputs } from '../src/utils/agentPanelSources.ts'
+import { FRONTEND_ROOT, BUFFS_JSON, readJson } from './_paths.mjs'
+import path from 'node:path'
 
 let failed = 0
 let passed = 0
@@ -1784,16 +1788,118 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、比例→K、共同�
   check('删除 gainAsc 后普通路线起点不超过 2',
     starts.startsRun <= 2,
     String(starts.startsRun))
+
+  clearAffixEvalCache()
+  const sharedBudget = solveOptimalAffixAllocation({
+    ctx: highBonusCtx,
+    entries: penEntries,
+    maxTotalRolls: 20,
+    groupCaps,
+    maxStarts: 2,
+    maxWorkUnits: 9000,
+    candidateWidthMode: 'auto',
+  })
+  check('专路与普通路共用一份预算',
+    sharedBudget.penRatePathUsed === true
+      && sharedBudget.workBudget === 9000
+      && sharedBudget.workUsed <= 9000,
+    `budget=${sharedBudget.workBudget} used=${sharedBudget.workUsed} pathUsed=${sharedBudget.penRatePathUsed}`)
+
+  const fixturePath = path.join(FRONTEND_ROOT, 'fixtures/pen-rate-alloc/ye-shiyuan-pen-rate.json')
+  const fixtureName = '21叶琉千——叶释渊--测试不带东西'
+  try {
+    const buffs = readJson(BUFFS_JSON)
+    const pack = readJson(fixturePath)
+    const scheme = Object.values(pack.schemes ?? {}).find((s) => s.name === fixtureName)
+    const mainSlot = scheme?.teamSlots?.[Number(scheme.activeSlot ?? 0)]
+    const mainAgent = buffs.agents?.find((a) => a.id === mainSlot?.agentId)
+    if (!scheme || !mainAgent) {
+      check('叶释渊 fixture 空盘方案可加载', false, fixtureName)
+    } else {
+      const skillById = new Map(
+        [...(buffs.skills ?? []), ...(pack.customSkills ?? [])].map((s) => [s.id, s]),
+      )
+      const groupById = new Map((buffs.skillGroups ?? []).map((g) => [g.id, g]))
+      const flow = resolveFlow({
+        slots: scheme.slots,
+        teamSlots: scheme.teamSlots.map((s) => ({ agentId: s.agentId })),
+        findSkill: (id) => skillById.get(id) ?? null,
+        findSkillGroup: (id) => groupById.get(id) ?? null,
+        skillSubcategories: buffs.skillSubcategories,
+      })
+      const affixInputs = schemeAffixInputs(scheme, mainSlot.agentId)
+      const enemyInput = scheme.panelState?.enemyInput ?? {
+        level: 60, defense: 953, resistanceType: 'normal',
+        vulnerableMultiplier: 1, staggerMultiplier: 1.5, specialMultiplier: 1,
+      }
+      const fixtureCtx = buildOptimalEvalContext({
+        isMb: mainAgent.profession === '命破',
+        isFengYu: mainAgent.profession === '锋御',
+        teamSlots: scheme.teamSlots,
+        agents: buffs.agents,
+        wengines: buffs.wengines,
+        bangboo: {
+          id: 'none',
+          name: 'none',
+          avatar_image: null,
+          effects: [],
+          refinementEffects: [],
+          fixedMods: {},
+          refinementMods: {},
+        },
+        bangbooRefine: 1,
+        driveDiscs: buffs.driveDiscs,
+        mainSlotIndex: Number(scheme.activeSlot ?? 0),
+        driveDiscMainStats: affixInputs.affixDriveDiscMainStats ?? {
+          slot4MainStat: 'critDmg',
+          slot5MainStat: 'externalAtkPercent',
+          slot6MainStat: 'externalHpPercent',
+        },
+        enemyInput,
+        baseDamageSource: 'atk',
+        skillContext: buildGenericPanelSkillContext({
+          element: mainAgent.element,
+          staggerPhase: scheme.staggerPhase ?? 'stagger',
+          damageKind: 'direct',
+        }),
+        buffSelection: null,
+        slotBuffSelections: scheme.multiSlotBuffSelection ?? null,
+        activeSlotPanels: schemeActivePanels(scheme),
+        convertSlotPanels: scheme.convertSlotPanels ?? undefined,
+        hits: flow.hits,
+        resolveSubcategory: (id) =>
+          (buffs.skillSubcategories ?? []).find((x) => x.id === id) ?? null,
+        skillSubcategories: buffs.skillSubcategories,
+        followUpSkillRules: buffs.followUpSkillRules,
+      })
+      clearAffixEvalCache()
+      const fixtureSolved = solveOptimalAffixAllocation({
+        ctx: fixtureCtx,
+        entries: penEntries,
+        maxTotalRolls: 20,
+        groupCaps,
+        maxStarts: 1,
+        candidateWidthMode: 'manual',
+        manualCandidateWidth: 20,
+      })
+      check('叶释渊 fixture 空盘选出 24+8',
+        (fixtureSolved.rollsByEntryId['main:slot5:penRate'] ?? 0) >= 1
+          && (fixtureSolved.rollsByEntryId['set:penRate:8'] ?? 0) >= 1,
+        `path=${fixtureSolved.winningPath} rolls=${JSON.stringify(fixtureSolved.rollsByEntryId)} hits=${flow.hits.length}`)
+    }
+  } catch (error) {
+    check('叶释渊 fixture 空盘选出 24+8', false, String(error?.message ?? error))
+  }
 }
 
 console.log('\n[锐爆诊断] 小规模穷举，只有真漏解才留回归')
 {
   const crit = library.find((e) => e.id === 'substat:critRate')
-  const atk = library.find((e) => e.id === 'substat:atkPercent')
+  const defPct = library.find((e) => e.id === 'substat:defPercent')
   let leak = null
-  if (crit && atk) {
-    const BUDGET = 6
-    const sharpenCtx = makeCtx({
+  let sharpenBonus = 0
+  if (crit && defPct) {
+    const makeSharpenCtx = (critRate) => makeCtx({
       isFengYu: true,
       agents: [{
         id: 'a',
@@ -1802,48 +1908,77 @@ console.log('\n[锐爆诊断] 小规模穷举，只有真漏解才留回归')
         profession: '锋御',
         basePanel: {
           ...createEmptyAgentBasePanel(),
-          hp: 9000, atk: 900, def: 1500, critRate: 88, critDmg: 50,
+          hp: 9000, atk: 900, def: 1500, critRate, critDmg: 50,
+          sharpenCritDmgBonus: 150,
           anomalyControl: 100, energyRegen: 120, directDmgMult: 100, anomalyMult: 125,
         },
       }],
+      activeSlotPanels: {
+        a: fillPanelStatsDefaults({
+          hp: 9000, atk: 900, def: 1500, critRate, critDmg: 50,
+          dmgBonus: 10, penRate: 0, pen: 0,
+        }),
+      },
     })
-    const subset = [
-      { ...crit, cap: BUDGET },
-      { ...atk, cap: BUDGET },
-    ]
-    let bruteBest = -Infinity
-    const rec = (index, used, rolls) => {
-      if (index === subset.length) {
-        const input = entryRollsToEvalInput(subset, rolls)
-        const total = evaluateAffixCounts(
-          sharpenCtx, input.counts, input.panelDeltas, input.valuePerCount, input.extraGains,
-        ).grandTotal
-        if (total > bruteBest) bruteBest = total
-        return
-      }
-      const entry = subset[index]
-      for (let n = 0; n <= BUDGET - used; n += 1) {
-        rec(index + 1, used + n, { ...rolls, [entry.id]: n })
+    const probe = evaluateAffixCounts(makeSharpenCtx(88), createEmptyAffixCounts())
+    sharpenBonus = probe.breakdown.combatMods.sharpenCritDmgBonus
+    check('锐爆诊断场景加成有效', sharpenBonus > 0, `B=${sharpenBonus}`)
+    if (sharpenBonus > 0) {
+      for (const critRate of [88, 92, 96]) {
+        for (const budget of [4, 6, 8]) {
+          const sharpenCtx = makeSharpenCtx(critRate)
+          const subset = [
+            { ...crit, cap: budget },
+            { ...defPct, cap: budget },
+          ]
+          let bruteBest = -Infinity
+          const rec = (index, used, rolls) => {
+            if (index === subset.length) {
+              const input = entryRollsToEvalInput(subset, rolls)
+              const total = evaluateAffixCounts(
+                sharpenCtx, input.counts, input.deltas, input.valuePerCount, input.extraGains,
+              ).grandTotal
+              if (total > bruteBest) bruteBest = total
+              return
+            }
+            const entry = subset[index]
+            for (let n = 0; n <= budget - used; n += 1) {
+              rec(index + 1, used + n, { ...rolls, [entry.id]: n })
+            }
+          }
+          rec(0, 0, {})
+          const solved = solveOptimalAffixAllocation({
+            ctx: sharpenCtx,
+            entries: subset,
+            maxTotalRolls: budget,
+            maxStarts: 1,
+            enablePenRatePath: false,
+            candidateWidthMode: 'manual',
+            manualCandidateWidth: 8,
+          })
+          if (solved.totalDamage + 1e-6 < bruteBest) {
+            leak = {
+              critRate,
+              budget,
+              solved: solved.totalDamage,
+              brute: bruteBest,
+              rolls: solved.rollsByEntryId,
+            }
+            break
+          }
+        }
+        if (leak) break
       }
     }
-    rec(0, 0, {})
-    const solved = solveOptimalAffixAllocation({
-      ctx: sharpenCtx,
-      entries: subset,
-      maxTotalRolls: BUDGET,
-      maxStarts: 1,
-      enablePenRatePath: false,
-      candidateWidthMode: 'manual',
-      manualCandidateWidth: 8,
-    })
-    if (solved.totalDamage + 1e-6 < bruteBest) {
-      leak = { solved: solved.totalDamage, brute: bruteBest, rolls: solved.rollsByEntryId }
-    }
+  } else {
+    check('锐爆诊断词条存在', false)
   }
   if (leak) {
-    console.log(`    诊断发现漏解：求解 ${leak.solved} < 穷举 ${leak.brute} ${JSON.stringify(leak.rolls)}`)
+    console.log(
+      `    诊断发现漏解：crit=${leak.critRate} budget=${leak.budget} 求解 ${leak.solved} < 穷举 ${leak.brute} ${JSON.stringify(leak.rolls)}`,
+    )
     console.log('    按方案不把失败断言留进提交，本轮不加锐爆专路。')
-  } else {
+  } else if (sharpenBonus > 0) {
     check('锐爆小规模穷举未发现阈值漏解，不加回归测试', true)
   }
 }
