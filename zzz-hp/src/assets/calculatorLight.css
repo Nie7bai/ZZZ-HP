@@ -3780,3 +3780,84 @@ body:has(.calculator-page.theme-light) .preset-preview li,
 [data-theme='light'] .affix-library-modal .group-head-cap strong {
   color: #8a6d28 !important;
 }
+
+/*
+ * 游戏专用分配规则弹窗：Teleport 到 body，用 [data-theme='light'] 覆盖。
+ * 配色与词条库弹窗同一套。
+ */
+[data-theme='light'] .game-rules-overlay {
+  background: rgba(15, 23, 42, 0.35) !important;
+}
+
+[data-theme='light'] .game-rules-modal {
+  border-color: #d5dae3 !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f6f8fb 100%) !important;
+  color: #1c212a !important;
+  box-shadow: 0 18px 48px rgba(16, 24, 40, 0.12) !important;
+}
+
+[data-theme='light'] .game-rules-modal .modal-header {
+  border-bottom-color: #e4e7ec !important;
+}
+
+[data-theme='light'] .game-rules-modal .modal-header h2 {
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .game-rules-modal .close-btn {
+  color: #667085 !important;
+}
+
+[data-theme='light'] .game-rules-modal .close-btn:hover {
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .game-rules-modal .x-field,
+[data-theme='light'] .game-rules-modal .toolbar-note,
+[data-theme='light'] .game-rules-modal .group-head,
+[data-theme='light'] .game-rules-modal .target-cell,
+[data-theme='light'] .game-rules-modal .empty {
+  color: #667085 !important;
+}
+
+[data-theme='light'] .game-rules-modal .x-field input {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .game-rules-modal .chip {
+  border-color: #d5dae3 !important;
+  background: #f5f7fa !important;
+  color: #344054 !important;
+}
+
+[data-theme='light'] .game-rules-modal .chip:hover:not(:disabled) {
+  border-color: #c9a55c !important;
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .game-rules-modal .chip.active {
+  border-color: #c9a55c !important;
+  background: #fff8eb !important;
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .game-rules-modal .group-head strong {
+  color: #8a6d28 !important;
+}
+
+[data-theme='light'] .game-rules-modal .rules-table th {
+  background: #f1efe9 !important;
+  color: #667085 !important;
+  border-bottom-color: #e4e7ec !important;
+}
+
+[data-theme='light'] .game-rules-modal .rules-table td {
+  border-bottom-color: #f0f1f4 !important;
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .game-rules-modal .rules-table .target-cell {
+  color: #667085 !important;
+}
