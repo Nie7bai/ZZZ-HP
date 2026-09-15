@@ -301,4 +301,84 @@ function onExtraCost(event: Event) {
   color: #8b94a1;
   text-align: center;
 }
+
+/*
+ * Teleport 到 body，白天主题靠 html[data-theme=light] 覆盖（与词条库弹窗同一套）。
+ */
+:global([data-theme='light']) .game-rules-overlay {
+  background: rgba(15, 23, 42, 0.35);
+}
+
+:global([data-theme='light']) .game-rules-modal {
+  border-color: #d5dae3;
+  background: linear-gradient(180deg, #ffffff 0%, #f6f8fb 100%);
+  color: #1c212a;
+  box-shadow: 0 18px 48px rgba(16, 24, 40, 0.12);
+}
+
+:global([data-theme='light']) .game-rules-modal .modal-header {
+  border-bottom-color: #e4e7ec;
+}
+
+:global([data-theme='light']) .game-rules-modal .modal-header h2 {
+  color: #1c212a;
+}
+
+:global([data-theme='light']) .game-rules-modal .close-btn {
+  color: #667085;
+}
+
+:global([data-theme='light']) .game-rules-modal .close-btn:hover {
+  color: #1c212a;
+}
+
+:global([data-theme='light']) .game-rules-modal .x-field,
+:global([data-theme='light']) .game-rules-modal .toolbar-note,
+:global([data-theme='light']) .game-rules-modal .group-head,
+:global([data-theme='light']) .game-rules-modal .target-cell,
+:global([data-theme='light']) .game-rules-modal .empty {
+  color: #667085;
+}
+
+:global([data-theme='light']) .game-rules-modal .x-field input {
+  border-color: #d5dae3;
+  background: #ffffff;
+  color: #1c212a;
+}
+
+:global([data-theme='light']) .game-rules-modal .chip {
+  border-color: #d5dae3;
+  background: #f5f7fa;
+  color: #344054;
+}
+
+:global([data-theme='light']) .game-rules-modal .chip:hover:not(:disabled) {
+  border-color: #c9a55c;
+  color: #1c212a;
+}
+
+:global([data-theme='light']) .game-rules-modal .chip.active {
+  border-color: #c9a55c;
+  background: #fff8eb;
+  color: #1c212a;
+}
+
+:global([data-theme='light']) .game-rules-modal .group-head strong {
+  color: #8a6d28;
+}
+
+:global([data-theme='light']) .game-rules-modal .rules-table th {
+  background: #f1efe9;
+  color: #667085;
+  border-bottom-color: #e4e7ec;
+}
+
+:global([data-theme='light']) .game-rules-modal .rules-table td {
+  border-bottom-color: #f0f1f4;
+  color: #1c212a;
+}
+
+:global([data-theme='light']) .game-rules-modal .rules-table .target-cell {
+  color: #667085;
+}
 </style>
