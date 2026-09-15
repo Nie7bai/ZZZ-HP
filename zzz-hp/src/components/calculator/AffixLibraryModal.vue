@@ -6,11 +6,8 @@ import type {
   BuffScope,
   BuffSkillTargetId,
 } from '@/types/calculator'
-import {
-  BUFF_SCOPE_OPTIONS,
-  BUFF_SKILL_TARGET_OPTIONS,
-} from '@/types/calculator'
-import AffixTargetBranchSelect from '@/components/calculator/AffixTargetBranchSelect.vue'
+import AffixLibraryEntryFields from '@/components/calculator/AffixLibraryEntryFields.vue'
+import { affixTargetPickerSummary } from '@/utils/affixTargetBranches'
 import {
   AFFIX_LIBRARY_SET_NAME_MAX,
   DEFAULT_AFFIX_GROUP_CAP,
@@ -18,7 +15,6 @@ import {
   activeAffixLibrarySet,
   affixEntryConditionSummary,
   affixPerRollUnit,
-  affixTargetLabel,
   createAffixLibraryStateForOrigin,
   createAffixLibraryStateFromPreset,
   createAffixLibrarySet,
@@ -109,6 +105,12 @@ const enabledSet = computed(() => new Set(props.enabledIds))
  */
 const UNGROUPED_TAB = '__ungrouped__'
 const activeTab = ref<string>('manage')
+const editingEntryId = ref('')
+const ENTRY_TABLE_COLS = 7
+
+watch(activeTab, () => {
+  editingEntryId.value = ''
+})
 
 /** 当前页对应的组名；组管理页与未分组页为 '' */
 const activeGroupName = computed(() =>
@@ -187,6 +189,7 @@ watch(
     if (!open) return
     store.value = loadAffixLibraryStore()
     editingSetId.value = ''
+    editingEntryId.value = ''
     setMessage.value = ''
     importError.value = ''
     activeTab.value = 'manage'
@@ -495,6 +498,10 @@ function onUpdateEntry(entryId: string, patch: Partial<AffixLibraryEntry>) {
 }
 
 function onRemoveEntry(entryId: string) {
+  if (editingEntryId.value === entryId) {
+    editingEntryId.value = ''
+    editDraft.value = null
+  }
   forwardEntryEdit(() => emit('removeEntry', entryId))
 }
 
@@ -606,13 +613,99 @@ const draft = ref({
   appliesToAnomaly: false,
 })
 const draftError = ref<string | null>(null)
-const draftIsGain = computed(() => isGainTarget(draft.value.target))
-const draftPerRollUnit = computed(() =>
-  affixPerRollUnit(draft.value.target) === 'percent' ? '%' : '',
-)
+
+type EntryFormDraft = {
+  label: string
+  target: AffixLibraryEntryTarget
+  perRoll: number
+  cap: number
+  group: string
+  applySituation: BuffApplySituation
+  scope: BuffScope
+  skillCategory: BuffSkillTargetId
+  appliesToAnomaly: boolean
+}
+
+const editDraft = ref<EntryFormDraft | null>(null)
+const editError = ref<string | null>(null)
 
 function perRollUnitHint(target: AffixLibraryEntryTarget): string {
   return affixPerRollUnit(target) === 'percent' ? '%' : ''
+}
+
+function conditionFieldsFromForm(row: EntryFormDraft): Partial<AffixLibraryEntry> {
+  if (!isGainTarget(row.target)) {
+    return {
+      applySituation: undefined,
+      scope: undefined,
+      skillCategory: undefined,
+      skillSubcategoryId: undefined,
+      appliesToAnomaly: undefined,
+    }
+  }
+  return {
+    applySituation: row.applySituation,
+    scope: row.scope,
+    ...(row.scope === 'skill'
+      ? {
+          skillCategory: row.skillCategory,
+          skillSubcategoryId: null,
+          appliesToAnomaly: row.appliesToAnomaly,
+        }
+      : {
+          skillCategory: undefined,
+          skillSubcategoryId: undefined,
+          appliesToAnomaly: undefined,
+        }),
+  }
+}
+
+function toggleEdit(entry: AffixLibraryEntry) {
+  if (editingEntryId.value === entry.id) {
+    editingEntryId.value = ''
+    editDraft.value = null
+    editError.value = null
+    return
+  }
+  editingEntryId.value = entry.id
+  editError.value = null
+  editDraft.value = {
+    label: entry.label,
+    target: entry.target,
+    perRoll: entry.perRoll,
+    cap: entry.cap,
+    group: entry.group,
+    applySituation: entry.applySituation || 'global',
+    scope: entry.scope || 'general',
+    skillCategory: entry.skillCategory || 'basic',
+    appliesToAnomaly: entry.appliesToAnomaly === true,
+  }
+}
+
+function submitEdit() {
+  const id = editingEntryId.value
+  const row = editDraft.value
+  if (!id || !row) return
+  const label = row.label.trim()
+  if (!label) {
+    editError.value = '请填写词条名称'
+    return
+  }
+  if (!Number.isFinite(row.perRoll) || row.perRoll <= 0) {
+    editError.value = '每档数值须为正数'
+    return
+  }
+  editError.value = null
+  onUpdateEntry(id, {
+    label,
+    target: row.target,
+    perRoll: row.perRoll,
+    cap: row.cap,
+    group: row.group.trim(),
+    ...conditionFieldsFromForm(row),
+  })
+  editingEntryId.value = ''
+  editDraft.value = null
 }
 
 function submitDraft() {
@@ -627,19 +720,6 @@ function submitDraft() {
   }
   draftError.value = null
   const target = draft.value.target
-  const conditionFields = isGainTarget(target)
-    ? {
-        applySituation: draft.value.applySituation,
-        scope: draft.value.scope,
-        ...(draft.value.scope === 'skill'
-          ? {
-              skillCategory: draft.value.skillCategory,
-              skillSubcategoryId: null,
-              appliesToAnomaly: draft.value.appliesToAnomaly,
-            }
-          : {}),
-      }
-    : {}
   forwardEntryEdit(() =>
     emit('addEntry', {
       label,
@@ -647,10 +727,9 @@ function submitDraft() {
       perRoll: draft.value.perRoll,
       cap: draft.value.cap,
       group: draft.value.group.trim(),
-      // 独立功能口径：每条词条 1 档一律占 1 个总词条数
       rollCost: 1,
       enabledByDefault: true,
-      ...conditionFields,
+      ...conditionFieldsFromForm(draft.value),
     }),
   )
   draft.value.label = ''
@@ -926,10 +1005,9 @@ function submitDraft() {
                   </tr>
                 </thead>
                 <tbody>
+                  <template v-for="entry in visibleEntries" :key="entry.id">
                   <tr
-                    v-for="entry in visibleEntries"
-                    :key="entry.id"
-                    :class="{ disabled: !enabledSet.has(entry.id) }"
+                    :class="{ disabled: !enabledSet.has(entry.id), editing: editingEntryId === entry.id }"
                   >
                     <td>
                       <input
@@ -944,7 +1022,7 @@ function submitDraft() {
                       <input
                         class="inline-input"
                         :value="entry.label"
-                        :disabled="simpleMode"
+                        :disabled="simpleMode || editingEntryId === entry.id"
                         @change="
                           onUpdateEntry(entry.id, {
                             label: ($event.target as HTMLInputElement).value,
@@ -952,9 +1030,8 @@ function submitDraft() {
                         "
                       />
                     </td>
-                    <!-- 目标只读：名称是自由文本、目标才是实际效果；改目标＝删掉再新增 -->
                     <td class="target-cell" :title="entry.target">
-                      {{ affixTargetLabel(entry.target) }}
+                      {{ affixTargetPickerSummary(entry.target) }}
                       <span
                         v-if="affixEntryConditionSummary(entry)"
                         class="condition-hint"
@@ -969,15 +1046,13 @@ function submitDraft() {
                           type="number"
                           step="0.1"
                           :value="entry.perRoll"
-                          :disabled="simpleMode"
+                          :disabled="simpleMode || editingEntryId === entry.id"
                           @change="
                             onUpdateEntry(entry.id, {
                               perRoll: Number(($event.target as HTMLInputElement).value),
                             })
                           "
                         />
-                        <!-- 单位槽恒存在（非百分比行为空串）：用 v-if 会让百分比行的输入框被单位挤窄 13px，
-                             整列右边缘参差不齐（用户 2026-09-12 报的「对齐」）。 -->
                         <span class="unit-hint">{{ perRollUnitHint(entry.target) }}</span>
                       </span>
                     </td>
@@ -989,6 +1064,7 @@ function submitDraft() {
                         step="1"
                         :value="entry.cap"
                         title="0 表示不设上限"
+                        :disabled="editingEntryId === entry.id"
                         @change="
                           onUpdateEntry(entry.id, {
                             cap: Number(($event.target as HTMLInputElement).value),
@@ -1000,7 +1076,7 @@ function submitDraft() {
                       <select
                         class="inline-input"
                         :value="entry.group"
-                        :disabled="simpleMode"
+                        :disabled="simpleMode || editingEntryId === entry.id"
                         @change="onPickGroup(entry.id, ($event.target as HTMLSelectElement).value)"
                       >
                         <option value="">空=自由</option>
@@ -1009,7 +1085,16 @@ function submitDraft() {
                         </option>
                       </select>
                     </td>
-                    <td>
+                    <td class="actions-cell">
+                      <button
+                        v-if="!simpleMode"
+                        type="button"
+                        class="edit-btn"
+                        :title="editingEntryId === entry.id ? '收起修改' : '修改目标与局内规则'"
+                        @click="toggleEdit(entry)"
+                      >
+                        {{ editingEntryId === entry.id ? '收起' : '修改' }}
+                      </button>
                       <button
                         type="button"
                         class="del-btn"
@@ -1021,79 +1106,35 @@ function submitDraft() {
                       </button>
                     </td>
                   </tr>
+                  <tr v-if="!simpleMode && editingEntryId === entry.id && editDraft" class="edit-row">
+                    <td :colspan="ENTRY_TABLE_COLS">
+                      <div class="add-entry add-entry--row">
+                        <h5>修改词条</h5>
+                        <AffixLibraryEntryFields
+                          :entry="editDraft"
+                          :groups="groups"
+                          empty-group-label="空=自由"
+                        >
+                          <button type="button" class="btn-primary" @click="submitEdit">完成</button>
+                        </AffixLibraryEntryFields>
+                        <p v-if="editError" class="err">{{ editError }}</p>
+                      </div>
+                    </td>
+                  </tr>
+                  </template>
                 </tbody>
               </table>
             </div>
 
-            <div v-if="activeTab !== 'manage' && !simpleMode" class="add-entry">
+            <div v-if="activeTab !== 'manage' && !simpleMode && !editingEntryId" class="add-entry">
               <h5>新增词条</h5>
-              <div class="add-grid">
-                <label>
-                  <span>名称</span>
-                  <input v-model="draft.label" type="text" placeholder="如：5号位增伤" />
-                </label>
-                <label class="add-grid--wide">
-                  <span>目标</span>
-                  <AffixTargetBranchSelect v-model="draft.target" layout="stack" />
-                </label>
-                <template v-if="draftIsGain">
-                  <label>
-                    <span>作用情况</span>
-                    <select v-model="draft.applySituation">
-                      <option value="global">全局</option>
-                      <option value="stagger">失衡期</option>
-                      <option value="non_stagger">非失衡期</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>作用域</span>
-                    <select v-model="draft.scope">
-                      <option v-for="opt in BUFF_SCOPE_OPTIONS" :key="opt.id" :value="opt.id">
-                        {{ opt.label }}
-                      </option>
-                    </select>
-                  </label>
-                  <label v-if="draft.scope === 'skill'">
-                    <span>招式大类</span>
-                    <select v-model="draft.skillCategory">
-                      <option v-for="opt in BUFF_SKILL_TARGET_OPTIONS" :key="opt.id" :value="opt.id">
-                        {{ opt.label }}
-                      </option>
-                    </select>
-                  </label>
-                  <label v-if="draft.scope === 'skill'" class="field-check">
-                    <span>异常结算</span>
-                    <span class="check-row">
-                      <input v-model="draft.appliesToAnomaly" type="checkbox" />
-                      也生效
-                    </span>
-                  </label>
-                </template>
-                <label>
-                  <span>每档</span>
-                  <span class="per-roll-cell">
-                    <input v-model.number="draft.perRoll" type="number" step="0.1" min="0" />
-                    <span class="unit-hint">{{ draftPerRollUnit }}</span>
-                  </span>
-                </label>
-                <label>
-                  <span>上限</span>
-                  <input v-model.number="draft.cap" type="number" min="0" step="1" title="0 = 不设上限" />
-                </label>
-                <label>
-                  <span>分组</span>
-                  <select
-                    :value="draft.group"
-                    @change="onPickGroup('draft', ($event.target as HTMLSelectElement).value)"
-                  >
-                    <option value="">空=自由</option>
-                    <option v-for="group in groups" :key="group.name" :value="group.name">
-                      {{ group.name }}
-                    </option>
-                  </select>
-                </label>
+              <AffixLibraryEntryFields
+                :entry="draft"
+                :groups="groups"
+                empty-group-label="空=自由"
+              >
                 <button type="button" class="btn-primary" @click="submitDraft">添加</button>
-              </div>
+              </AffixLibraryEntryFields>
               <p v-if="draftError" class="err">{{ draftError }}</p>
             </div>
 
@@ -1670,7 +1711,17 @@ function submitDraft() {
   opacity: 0.5;
 }
 
-/** 目标列：只读文本，展示条目实际作用的字段（名称是自由文本，可能对不上） */
+.library-table tr.editing td {
+  background: rgba(201, 165, 92, 0.08);
+}
+
+.library-table tr.edit-row td {
+  padding: 0.45rem 0.5rem 0.65rem;
+  background: #161a20;
+  border-top: none;
+}
+
+/** 目标列：只读摘要（时机 · 组 · 叶子）；改目标走「修改」 */
 .target-cell {
   color: #9aa3b0;
   white-space: nowrap;
@@ -1708,7 +1759,7 @@ function submitDraft() {
   width: 190px;
 }
 .library-table--entries .col-target {
-  width: 104px;
+  width: 200px;
 }
 .library-table--entries .col-perroll {
   width: 104px;
@@ -1721,7 +1772,7 @@ function submitDraft() {
 }
 .library-table--entries .col-del,
 .library-table--groups .col-del {
-  width: 34px;
+  width: 88px;
 }
 
 .library-table--groups .col-groupcap {
@@ -1782,8 +1833,32 @@ function submitDraft() {
   color: #f08c8c;
 }
 
+.actions-cell {
+  white-space: nowrap;
+}
+
+.edit-btn {
+  border: 1px solid #3a4049;
+  border-radius: 6px;
+  background: #10131a;
+  color: #e4e8ef;
+  font: inherit;
+  font-size: 0.74rem;
+  padding: 0.12rem 0.4rem;
+  margin-right: 0.2rem;
+  cursor: pointer;
+}
+
+.edit-btn:hover {
+  border-color: #c9a55c;
+}
+
 .add-entry {
   flex-shrink: 0;
+}
+
+.add-entry--row {
+  padding: 0.1rem 0;
 }
 
 .add-entry h5 {

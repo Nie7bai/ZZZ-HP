@@ -1,5 +1,5 @@
 /**
- * 词条目标下拉：先选时机（局外 panel: / 局内 gain:），再选 2 级组 → 叶子。
+ * 词条目标下拉：时机 → 2 级组 → 叶子，三个下拉同一行。
  * 只改选法，不改计算。2 级组名来自 `sandbox/affix-target-classify.xlsx`。
  *
  * 「局外重复」= 局外和局内都可以加的同一属性（暴击 / 爆伤 / 增伤 / 精通），不是删除。
@@ -230,4 +230,27 @@ export function pickAffixTargetForTiming(
     [defaultLeaf]
   const field = fieldOfTarget(current)
   return pool.find((option) => fieldOfTarget(option.id) === field)?.id ?? defaultLeaf.id
+}
+
+/** 切 2 级组：时机不变；字段名对得上就留在对应叶子。 */
+export function pickAffixTargetForGroup(
+  current: string,
+  groupId: string,
+  timing: AffixTargetTiming,
+): AffixLibraryEntryTarget {
+  const groups = groupsForAffixTargetTiming(timing)
+  const group = groups.find((item) => item.id === groupId) ?? groups[0]
+  const defaultLeaf = group?.options[0]
+  if (!defaultLeaf) return pickAffixTargetForTiming(current, timing)
+  const field = fieldOfTarget(current)
+  return group.options.find((option) => fieldOfTarget(option.id) === field)?.id ?? defaultLeaf.id
+}
+
+/** 表内只读摘要：时机 · 2 级组 · 叶子 */
+export function affixTargetPickerSummary(target: string): string {
+  const timingLabel =
+    AFFIX_TARGET_TIMING_OPTIONS.find((item) => item.id === affixTargetTiming(target))?.label ?? ''
+  const groupLabel = findAffixTargetBranchGroup(target)?.label ?? ''
+  const leafLabel = affixTargetLabel(target as AffixLibraryEntryTarget)
+  return [timingLabel, groupLabel, leafLabel].filter(Boolean).join(' · ')
 }

@@ -3,7 +3,9 @@ import { computed } from 'vue'
 import {
   AFFIX_TARGET_TIMING_OPTIONS,
   affixTargetTiming,
+  findAffixTargetBranchGroup,
   groupsForAffixTargetTiming,
+  pickAffixTargetForGroup,
   pickAffixTargetForTiming,
   type AffixTargetTiming,
 } from '@/utils/affixTargetBranches'
@@ -15,9 +17,8 @@ const props = withDefaults(
     modelValue: string
     disabled?: boolean
     allowCustom?: boolean
-    layout?: 'row' | 'stack'
   }>(),
-  { disabled: false, allowCustom: false, layout: 'row' },
+  { disabled: false, allowCustom: false },
 )
 
 const emit = defineEmits<{
@@ -29,9 +30,22 @@ const timing = computed(() => affixTargetTiming(props.modelValue))
 
 const groupOptions = computed(() => groupsForAffixTargetTiming(timing.value))
 
+const selectedGroupId = computed(
+  () => findAffixTargetBranchGroup(props.modelValue)?.id ?? groupOptions.value[0]?.id ?? '',
+)
+
+const leafOptions = computed(
+  () => groupOptions.value.find((item) => item.id === selectedGroupId.value)?.options ?? [],
+)
+
 function onPickTiming(event: Event) {
   const next = (event.target as HTMLSelectElement).value as AffixTargetTiming
   emit('update:modelValue', pickAffixTargetForTiming(props.modelValue, next))
+}
+
+function onPickGroup(event: Event) {
+  const groupId = (event.target as HTMLSelectElement).value
+  emit('update:modelValue', pickAffixTargetForGroup(props.modelValue, groupId, timing.value))
 }
 
 function onPickLeaf(event: Event) {
@@ -46,7 +60,7 @@ function onPickLeaf(event: Event) {
 </script>
 
 <template>
-  <div class="affix-target-branch" :class="`affix-target-branch--${layout}`">
+  <div class="affix-target-branch">
     <select
       class="branch-select branch-select--timing"
       :value="timing"
@@ -59,18 +73,28 @@ function onPickLeaf(event: Event) {
       </option>
     </select>
     <select
+      class="branch-select branch-select--group"
+      :value="selectedGroupId"
+      :disabled="disabled || !groupOptions.length"
+      title="2 级分组"
+      @change="onPickGroup"
+    >
+      <option v-if="!groupOptions.length" value="" disabled>先选时机</option>
+      <option v-for="group in groupOptions" :key="group.id" :value="group.id">
+        {{ group.label }}
+      </option>
+    </select>
+    <select
       class="branch-select branch-select--leaf"
       :value="modelValue"
       :title="modelValue"
-      :disabled="disabled || !groupOptions.length"
+      :disabled="disabled || !leafOptions.length"
       @change="onPickLeaf"
     >
-      <option v-if="!groupOptions.length" value="" disabled>先选时机</option>
-      <optgroup v-for="group in groupOptions" :key="group.id" :label="group.label">
-        <option v-for="opt in group.options" :key="opt.id" :value="opt.id">
-          {{ opt.label }}
-        </option>
-      </optgroup>
+      <option v-if="!leafOptions.length" value="" disabled>先选分组</option>
+      <option v-for="opt in leafOptions" :key="opt.id" :value="opt.id">
+        {{ opt.label }}
+      </option>
       <option v-if="allowCustom" :value="CUSTOM_VALUE">自定义字段名…</option>
     </select>
   </div>
@@ -79,12 +103,11 @@ function onPickLeaf(event: Event) {
 <style scoped>
 .affix-target-branch {
   display: flex;
-  gap: 0.35rem;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.25rem;
   min-width: 0;
-}
-
-.affix-target-branch--stack {
-  flex-direction: column;
+  width: 100%;
 }
 
 .branch-select {
@@ -95,17 +118,17 @@ function onPickLeaf(event: Event) {
   color: inherit;
   font: inherit;
   font-size: 0.8rem;
-  padding: 0.2rem 0.4rem;
-  width: 100%;
+  padding: 0.2rem 0.35rem;
 }
 
 .branch-select--timing {
-  flex: 0 0 auto;
-  width: 5.2rem;
+  flex: 0 0 4.4rem;
+  width: 4.4rem;
 }
 
-.affix-target-branch--stack .branch-select--timing {
-  width: 100%;
+.branch-select--group {
+  flex: 0 0 7.2rem;
+  width: 7.2rem;
 }
 
 .branch-select--leaf {

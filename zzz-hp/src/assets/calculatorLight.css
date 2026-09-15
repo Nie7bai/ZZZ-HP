@@ -3705,6 +3705,24 @@ body:has(.calculator-page.theme-light) .preset-preview li,
   color: #667085 !important;
 }
 
+[data-theme='light'] .affix-library-modal .edit-btn {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .affix-library-modal .library-table tr.edit-row td {
+  background: #f4f6f8 !important;
+}
+
+[data-theme='light'] .affix-library-modal .entry-fields input,
+[data-theme='light'] .affix-library-modal .entry-fields select,
+[data-theme='light'] .affix-library-modal .branch-select {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+  color: #1c212a !important;
+}
+
 [data-theme='light'] .affix-library-modal .confirm-row {
   color: #344054 !important;
 }

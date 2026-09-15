@@ -4,14 +4,12 @@ import { useRouter } from 'vue-router'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import { clearAdminAuthenticated } from '@/utils/adminAuth'
 import {
-  BUFF_SCOPE_OPTIONS,
-  BUFF_SKILL_TARGET_OPTIONS,
   type BuffApplySituation,
   type BuffScope,
   type BuffSkillTargetId,
 } from '@/types/calculator'
 import { buildAffixEffectTemplate } from '@/utils/affixEffectTemplate'
-import AffixTargetBranchSelect from '@/components/calculator/AffixTargetBranchSelect.vue'
+import AffixLibraryEntryFields from '@/components/calculator/AffixLibraryEntryFields.vue'
 import {
   createAffixPresetScheme,
   deleteAffixPresetScheme,
@@ -29,7 +27,7 @@ import {
   affixTargetLabel,
   isAffixLibraryEntryTarget,
 } from '@/utils/affixLibrary'
-import { AFFIX_KNOWN_TARGET_IDS } from '@/utils/affixTargetBranches'
+import { AFFIX_KNOWN_TARGET_IDS, affixTargetPickerSummary } from '@/utils/affixTargetBranches'
 import '@/components/admin/calculator/adminCalculatorPanel.css'
 
 /**
@@ -54,8 +52,8 @@ import '@/components/admin/calculator/adminCalculatorPanel.css'
  * 代价是并发下**后写覆盖先写** —— 本工具只有一个管理员在用，记在手册里。
  *
  * 比用户侧多出来的字段（用户侧没有 / 改不了）：
- * `id`（对外身份）、`sortOrder`（条目与分组的展示顺序）、`rollCost`（每档占用）、
- * `enabledByDefault`（勾给新用户哪几条）、`target` 可填自由字段名。
+ * `sortOrder`（条目与分组的展示顺序）、`enabledByDefault`（勾给新用户哪几条）、
+ * `target` 可填自由字段名。ID / 每档占用仍写入库，界面不再展示（ID 新增时按规范自动生成，占用固定 1）。
  */
 
 const TARGET_PREFIXES = ['panel:', 'gain:']
@@ -780,6 +778,9 @@ const copySourceOptions = computed(() => {
 
 const UNGROUPED_TAB = '__ungrouped__'
 const activeTab = ref<string>('manage')
+/** 正在展开修改表单的行；空 = 没在改 */
+const editingKey = ref('')
+const ENTRY_TABLE_COLS = 8
 
 const activeGroupName = computed(() =>
   activeTab.value === 'manage' || activeTab.value === UNGROUPED_TAB ? '' : activeTab.value,
@@ -823,11 +824,16 @@ watch(hasUngrouped, (has) => {
  * 只在草稿还没选组时填（`!draft.group`）—— 人家手动选过就尊重人家的选择。
  */
 watch(activeTab, (tab) => {
+  editingKey.value = ''
   if (tab === 'manage' || tab === UNGROUPED_TAB) return
   if (!draft.value.group) draft.value.group = tab
 })
 
 // ---------- 条目编辑（只改草稿） ----------
+
+function toggleEdit(row: EntryRow) {
+  editingKey.value = editingKey.value === row._key ? '' : row._key
+}
 
 function nextEntrySortOrder(): number {
   const orders = entries.value.map((entry) => Number(entry.sortOrder) || 0)
@@ -855,11 +861,6 @@ function perRollUnit(target: string): string {
   return isAffixLibraryEntryTarget(target) && affixPerRollUnit(target) === 'percent' ? '%' : ''
 }
 
-/** ID 输入失焦时去掉首尾空格（改 ID 的确认留到保存时统一做） */
-function trimEntryId(row: EntryRow) {
-  row.id = row.id.trim()
-}
-
 /** 条目行是否走「自定义字段名」输入框（管理员手动切的，或草稿里本来就是个认不出的值） */
 const customTargetIds = ref<string[]>([])
 
@@ -875,33 +876,10 @@ function leaveCustomTarget(key: string) {
   customTargetIds.value = customTargetIds.value.filter((item) => item !== key)
 }
 
-function applyPickedTarget(row: { target: string } & Partial<EntryRow>, target: string) {
-  row.target = target
-  if (!isGainTargetText(target)) {
-    row.applySituation = undefined
-    row.scope = undefined
-    row.skillCategory = undefined
-    row.skillSubcategoryId = undefined
-    row.appliesToAnomaly = undefined
-  } else if (!row.scope) {
-    row.applySituation = 'global'
-    row.scope = 'general'
-    row.skillCategory = 'basic'
-  }
-}
-
-/** 行内「目标」下拉：选已知字段直接进草稿；选「自定义」只切输入框 */
-function onPickTarget(row: EntryRow, target: string) {
-  leaveCustomTarget(row._key)
-  applyPickedTarget(row, target)
-}
-
 async function onCustomTarget(row: EntryRow) {
   enterCustomTarget(row._key)
   await nextTick()
-  document
-    .querySelector<HTMLInputElement>(`.target-cell[data-entry-key="${row._key}"] .target-input`)
-    ?.focus()
+  document.querySelector<HTMLInputElement>('.add-entry .target-input')?.focus()
 }
 
 /** 自定义输入框：值又变回已知字段时自动切回下拉（不用再点一次） */
@@ -920,6 +898,7 @@ function removeEntry(row: EntryRow) {
     `删掉条目「${row.label.trim() || row.id}」？\n（还没写库：点「保存」才生效，点「放弃改动」可以撤销）`,
   )
   if (!ok) return
+  if (editingKey.value === row._key) editingKey.value = ''
   entries.value = entries.value.filter((entry) => entry._key !== row._key)
 }
 
@@ -1049,18 +1028,6 @@ watch(
 /** 新增表单的「目标」：下拉选已知字段，或切自定义输入 */
 const draftTargetCustom = ref(false)
 
-function onPickDraftTarget(target: string) {
-  draftTargetCustom.value = false
-  applyPickedTarget(draft.value, target)
-  if (!isGainTargetText(target)) {
-    draft.value.applySituation = 'global'
-    draft.value.scope = 'general'
-    draft.value.skillCategory = 'basic'
-    draft.value.skillSubcategoryId = null
-    draft.value.appliesToAnomaly = false
-  }
-}
-
 function onDraftCustomTarget() {
   draftTargetCustom.value = true
   void nextTick(() =>
@@ -1073,14 +1040,6 @@ function onCommitDraftTarget() {
   draft.value.target = draft.value.target.trim()
   if (KNOWN_TARGETS.has(draft.value.target)) draftTargetCustom.value = false
 }
-
-const draftPerRollUnit = computed(() =>
-  affixPerRollUnit(draft.value.target as Parameters<typeof affixPerRollUnit>[0]) === 'percent'
-    ? '%'
-    : '',
-)
-
-const draftIsGain = computed(() => isGainTargetText(draft.value.target))
 
 function effectRuleHint(
   target: string,
@@ -1138,10 +1097,6 @@ function submitDraft() {
     draftError.value = '上限须为非负数（0 = 不限）'
     return
   }
-  if (!Number.isFinite(draft.value.rollCost) || draft.value.rollCost < 0) {
-    draftError.value = '每档占用须为非负数'
-    return
-  }
 
   draftError.value = null
   const sortOrder = Number.isFinite(draft.value.sortOrder)
@@ -1164,7 +1119,7 @@ function submitDraft() {
       perRoll: draft.value.perRoll,
       cap: draft.value.cap,
       group,
-      rollCost: draft.value.rollCost,
+      rollCost: 1,
       enabledByDefault: draft.value.enabledByDefault,
       sortOrder,
       ...conditionPatch({ ...draft.value, target }),
@@ -1481,18 +1436,16 @@ onMounted(() => {
         </button>
       </div>
 
-      <!-- 条目页：与用户侧同一张表，多出 ID / 每档占用 / 排序三列 -->
+      <!-- 条目页：表内不展示 ID / 每档占用；目标改不完就点「修改」 -->
       <template v-if="activeTab !== 'manage'">
         <div class="table-scroll">
           <table class="preset-table preset-table--entries">
             <colgroup>
               <col class="col-default" />
-              <col class="col-id" />
               <col class="col-label" />
               <col class="col-target" />
               <col class="col-perroll" />
               <col class="col-cap" />
-              <col class="col-rollcost" />
               <col class="col-group" />
               <col class="col-sort" />
               <col class="col-del" />
@@ -1502,12 +1455,6 @@ onMounted(() => {
                 <th class="th-admin-only" title="用户侧拿到时默认是否启用。用户侧不能改这里">
                   默认启用
                 </th>
-                <th
-                  class="th-admin-only"
-                  title="条目对外身份。用户侧看不见也改不了"
-                >
-                  ID
-                </th>
                 <th title="给用户看的名字">名称</th>
                 <th title="实际加哪个属性；panel: 局外、gain: 局内">
                   目标
@@ -1515,12 +1462,6 @@ onMounted(() => {
                 <th title="配 1 档加多少">每档</th>
                 <th title="这条最多几档；0 = 不限">
                   上限
-                </th>
-                <th
-                  class="th-admin-only"
-                  title="1 档占几个总词条数。用户侧固定为 1"
-                >
-                  每档占用
                 </th>
                 <th title="同组共享额度；0 = 不限">分组</th>
                 <th
@@ -1536,7 +1477,7 @@ onMounted(() => {
               <template v-for="entry in visibleEntries" :key="entry._key">
               <tr
                 :class="{
-                  'row-id-renamed': entry.id.trim() !== entry._prevId && entry._prevId,
+                  editing: editingKey === entry._key,
                   disabled: !entry.enabledByDefault,
                 }"
               >
@@ -1547,49 +1488,11 @@ onMounted(() => {
                     :disabled="busy"
                   />
                 </td>
-                <!-- ID 可改：它是条目的对外身份，保存时会列出 旧→新 让人确认一次 -->
-                <td class="id-cell">
-                  <input
-                    v-model="entry.id"
-                    class="cell-input id-input"
-                    type="text"
-                    :maxlength="ENTRY_ID_MAX"
-                    :disabled="busy"
-                    title="条目 ID：条目的对外身份（导出、复制方案、之后新建的库都按它走）"
-                    @change="trimEntryId(entry)"
-                  />
-                </td>
                 <td>
                   <input v-model="entry.label" class="cell-input" type="text" :disabled="busy" />
                 </td>
-                <td>
-                  <div class="target-cell" :data-entry-key="entry._key">
-                    <AffixTargetBranchSelect
-                      v-if="!isCustomTarget(entry)"
-                      :model-value="entry.target"
-                      :disabled="busy"
-                      allow-custom
-                      layout="stack"
-                      @update:model-value="onPickTarget(entry, $event)"
-                      @custom="onCustomTarget(entry)"
-                    />
-                    <template v-else>
-                      <input
-                        v-model="entry.target"
-                        class="cell-input target-input"
-                        type="text"
-                        placeholder="panel:xxx 或 gain:xxx"
-                        :disabled="busy"
-                        @change="onCommitCustomTarget(entry)"
-                      />
-                      <span
-                        class="cell-hint"
-                        :class="{ 'cell-hint--warn': !targetRecognized(entry.target) }"
-                      >
-                        {{ targetHint(entry.target) }}
-                      </span>
-                    </template>
-                  </div>
+                <td class="target-cell" :title="entry.target">
+                  {{ affixTargetPickerSummary(entry.target) }}
                 </td>
                 <td>
                   <span class="per-roll-cell">
@@ -1600,7 +1503,6 @@ onMounted(() => {
                       step="0.1"
                       :disabled="busy"
                     />
-                    <!-- 单位槽恒存在：用 v-if 会让百分比行的输入框被单位挤窄，整列右边缘参差不齐 -->
                     <span class="unit-hint">{{ perRollUnit(entry.target) }}</span>
                   </span>
                 </td>
@@ -1612,17 +1514,6 @@ onMounted(() => {
                     min="0"
                     step="1"
                     title="0 表示不设上限"
-                    :disabled="busy"
-                  />
-                </td>
-                <td>
-                  <input
-                    v-model.number="entry.rollCost"
-                    class="cell-input num"
-                    type="number"
-                    min="0"
-                    step="1"
-                    title="每条词条占几个「总词条数」预算；用户侧固定为 1"
                     :disabled="busy"
                   />
                 </td>
@@ -1644,7 +1535,16 @@ onMounted(() => {
                     :disabled="busy"
                   />
                 </td>
-                <td>
+                <td class="actions-cell">
+                  <button
+                    type="button"
+                    class="edit-btn"
+                    :disabled="busy"
+                    :title="editingKey === entry._key ? '收起修改' : '修改目标与局内规则'"
+                    @click="toggleEdit(entry)"
+                  >
+                    {{ editingKey === entry._key ? '收起' : '修改' }}
+                  </button>
                   <button
                     type="button"
                     class="del-btn"
@@ -1656,171 +1556,66 @@ onMounted(() => {
                   </button>
                 </td>
               </tr>
-              <tr v-if="isGainTargetText(entry.target)" class="rule-row">
-                <td colspan="10">
-                  <div class="rule-edit">
-                    <span class="rule-hint">{{ effectRuleHint(entry.target, entry) }}</span>
-                    <label>
-                      作用情况
-                      <select v-model="entry.applySituation" :disabled="busy">
-                        <option value="global">全局</option>
-                        <option value="stagger">失衡期</option>
-                        <option value="non_stagger">非失衡期</option>
-                      </select>
-                    </label>
-                    <label>
-                      作用域
-                      <select v-model="entry.scope" :disabled="busy">
-                        <option v-for="opt in BUFF_SCOPE_OPTIONS" :key="opt.id" :value="opt.id">
-                          {{ opt.label }}
-                        </option>
-                      </select>
-                    </label>
-                    <label v-if="entry.scope === 'skill'">
-                      招式大类
-                      <select v-model="entry.skillCategory" :disabled="busy">
-                        <option v-for="opt in BUFF_SKILL_TARGET_OPTIONS" :key="opt.id" :value="opt.id">
-                          {{ opt.label }}
-                        </option>
-                      </select>
-                    </label>
-                    <label v-if="entry.scope === 'skill'" class="rule-check">
-                      <input v-model="entry.appliesToAnomaly" type="checkbox" :disabled="busy" />
-                      异常结算也生效
-                    </label>
+              <tr v-if="editingKey === entry._key" class="edit-row">
+                <td :colspan="ENTRY_TABLE_COLS">
+                  <div class="add-entry add-entry--row">
+                    <h5>修改词条</h5>
+                    <AffixLibraryEntryFields
+                      :entry="entry"
+                      :groups="groups"
+                      allow-custom
+                      :custom-target="isCustomTarget(entry)"
+                      show-admin-extras
+                      :disabled="busy"
+                      :target-hint="isCustomTarget(entry) ? targetHint(entry.target) : ''"
+                      :target-hint-warn="isCustomTarget(entry) && !targetRecognized(entry.target)"
+                      :rule-hint="effectRuleHint(entry.target, entry)"
+                      @custom="onCustomTarget(entry)"
+                      @commit-custom="onCommitCustomTarget(entry)"
+                    >
+                      <button
+                        type="button"
+                        class="primary-btn"
+                        :disabled="busy"
+                        @click="editingKey = ''"
+                      >
+                        完成
+                      </button>
+                    </AffixLibraryEntryFields>
                   </div>
                 </td>
               </tr>
               </template>
               <tr v-if="!visibleEntries.length">
-                <td colspan="10" class="empty-cell">这一页没有条目。</td>
+                <td :colspan="ENTRY_TABLE_COLS" class="empty-cell">这一页没有条目。</td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <div class="add-entry">
+        <div v-if="!editingKey" class="add-entry">
           <h5>新增词条</h5>
-          <div class="add-grid">
-            <label class="add-grid--wide">
-              <span>
-                ID
-                <em class="field-note">
-                  {{
-                    draftIdTouched
-                      ? '已手改（跟着分组 / 目标 / 每档自动生成的那份不再覆盖它）'
-                      : `按规范自动生成：${suggestedDraftId || '（先选分组和目标）'}`
-                  }}
-                </em>
-              </span>
-              <input
-                v-model="draft.id"
-                type="text"
-                :maxlength="ENTRY_ID_MAX"
-                placeholder="如 main:slot4:critDmg"
-                @input="draftIdTouched = true"
-              />
-            </label>
-            <label>
-              <span>名称</span>
-              <input v-model="draft.label" type="text" placeholder="如 爆伤 48%" />
-            </label>
-            <label class="add-grid--wide">
-              <span>
-                目标
-                <em class="field-note">{{ draftTargetCustom ? '自定义字段名' : '从清单里选' }}</em>
-              </span>
-              <AffixTargetBranchSelect
-                v-if="!draftTargetCustom"
-                :model-value="draft.target"
-                allow-custom
-                layout="stack"
-                @update:model-value="onPickDraftTarget"
-                @custom="onDraftCustomTarget"
-              />
-              <input
-                v-else
-                v-model="draft.target"
-                class="target-input"
-                type="text"
-                placeholder="panel:critDmg 或 panel:dmgBonus 或 gain:inCombatAtkPercent"
-                @change="onCommitDraftTarget"
-              />
-            </label>
-            <template v-if="draftIsGain">
-              <label>
-                <span>作用情况</span>
-                <select v-model="draft.applySituation">
-                  <option value="global">全局</option>
-                  <option value="stagger">失衡期</option>
-                  <option value="non_stagger">非失衡期</option>
-                </select>
-              </label>
-              <label>
-                <span>作用域</span>
-                <select v-model="draft.scope">
-                  <option v-for="opt in BUFF_SCOPE_OPTIONS" :key="opt.id" :value="opt.id">
-                    {{ opt.label }}
-                  </option>
-                </select>
-              </label>
-              <label v-if="draft.scope === 'skill'">
-                <span>招式大类</span>
-                <select v-model="draft.skillCategory">
-                  <option v-for="opt in BUFF_SKILL_TARGET_OPTIONS" :key="opt.id" :value="opt.id">
-                    {{ opt.label }}
-                  </option>
-                </select>
-              </label>
-              <label v-if="draft.scope === 'skill'" class="add-grid--check">
-                <span>异常结算</span>
-                <input v-model="draft.appliesToAnomaly" type="checkbox" />
-              </label>
-            </template>
-            <p v-if="draft.target" class="add-grid--wide rule-hint-line">
-              {{ effectRuleHint(draft.target, draft) }}
-            </p>
-            <label>
-              <span>每档</span>
-              <span class="per-roll-cell">
-                <input v-model.number="draft.perRoll" type="number" step="0.1" min="0" />
-                <span class="unit-hint">{{ draftPerRollUnit }}</span>
-              </span>
-            </label>
-            <label>
-              <span>上限（0=不限）</span>
-              <input v-model.number="draft.cap" type="number" min="0" step="1" />
-            </label>
-            <label>
-              <span>每档占用</span>
-              <input v-model.number="draft.rollCost" type="number" min="0" step="1" />
-            </label>
-            <label>
-              <span>分组</span>
-              <select v-model="draft.group">
-                <option value="">（未分组）</option>
-                <option v-for="group in groups" :key="group._key" :value="group.name">
-                  {{ group.name }}
-                </option>
-              </select>
-            </label>
-            <label>
-              <span>排序</span>
-              <input v-model.number="draft.sortOrder" type="number" step="1" />
-            </label>
-            <label class="add-grid--check">
-              <span>默认启用</span>
-              <input v-model="draft.enabledByDefault" type="checkbox" />
-            </label>
+          <AffixLibraryEntryFields
+            :entry="draft"
+            :groups="groups"
+            allow-custom
+            :custom-target="draftTargetCustom"
+            show-admin-extras
+            :disabled="busy"
+            :target-hint="draftTargetCustom ? targetHint(draft.target) : ''"
+            :target-hint-warn="draftTargetCustom && !targetRecognized(draft.target)"
+            :rule-hint="draft.target ? effectRuleHint(draft.target, draft) : ''"
+            @custom="onDraftCustomTarget"
+            @commit-custom="onCommitDraftTarget"
+          >
             <button type="button" class="primary-btn" :disabled="busy" @click="submitDraft">
               添加
             </button>
-          </div>
+          </AffixLibraryEntryFields>
           <p v-if="draftError" class="form-error">{{ draftError }}</p>
 
-          <!-- ID 规范：只有一个出处的说明放在这里，避免各处手写各说各话 -->
           <p class="footnote">
-            新增先进草稿，点「保存」才写库。ID 是对外身份；已复制走的用户库不受影响。
+            新增先进草稿，点「保存」才写库。ID 按分组 / 目标 / 每档自动生成；已复制走的用户库不受影响。
           </p>
           <ul class="id-rules">
             <li v-for="rule in ENTRY_ID_RULES" :key="rule.match">
@@ -1831,7 +1626,6 @@ onMounted(() => {
           </ul>
           <p class="footnote">
             撞名接 <code>_2</code>。目标从清单选；没有的用手写，认不出的会标红。
-            已有条目的 ID 不要改。新条目按上面生成即可。
           </p>
           <div class="type-note">
             <p>
@@ -1858,15 +1652,12 @@ onMounted(() => {
             <dt class="legend-admin-only">默认启用</dt>
             <dd>用户侧拿到这份预设时，默认是否启用。用户侧不能改这里。</dd>
 
-            <dt class="legend-admin-only">ID</dt>
-            <dd>条目对外身份。发布后别改。规范见上方。</dd>
-
             <dt>名称</dt>
             <dd>给用户看的名字。用户可改自己那份。</dd>
 
             <dt>目标</dt>
             <dd>
-              实际加哪个属性。<code>panel:</code> 局外，<code>gain:</code> 局内。认不出的会标红。
+              实际加哪个属性。<code>panel:</code> 局外，<code>gain:</code> 局内。点「修改」改目标与局内规则。
             </dd>
 
             <dt>每档</dt>
@@ -1874,9 +1665,6 @@ onMounted(() => {
 
             <dt>上限</dt>
             <dd>这条最多几档。<strong>0 = 不限</strong>。还受组额度和总预算约束。</dd>
-
-            <dt class="legend-admin-only">每档占用</dt>
-            <dd>1 档占几个总词条数。用户侧固定为 1。</dd>
 
             <dt>分组</dt>
             <dd>同组共享额度。额度 0 = 不限，只是归类。</dd>
@@ -2314,8 +2102,12 @@ onMounted(() => {
   opacity: 0.55;
 }
 
-.preset-table tr.rule-row td {
-  padding: 0.35rem 0.6rem 0.55rem;
+.preset-table tr.editing td {
+  background: color-mix(in srgb, var(--color-heading) 6%, transparent);
+}
+
+.preset-table tr.edit-row td {
+  padding: 0.45rem 0.55rem 0.65rem;
   background: var(--color-background-soft);
   border-top: none;
 }
@@ -2449,6 +2241,15 @@ onMounted(() => {
 
 .target-cell {
   min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.8rem;
+  color: var(--color-text);
+}
+
+.actions-cell {
+  white-space: nowrap;
 }
 
 /* ---------- 列宽（固定表格布局，不锁宽度输入框会把列撑到 200px+） ---------- */
@@ -2456,23 +2257,17 @@ onMounted(() => {
 .preset-table--entries .col-default {
   width: 62px;
 }
-.preset-table--entries .col-id {
-  width: 148px;
-}
 .preset-table--entries .col-label {
   width: 168px;
 }
 .preset-table--entries .col-target {
-  width: 196px;
+  width: 220px;
 }
 .preset-table--entries .col-perroll {
   width: 96px;
 }
 .preset-table--entries .col-cap {
   width: 64px;
-}
-.preset-table--entries .col-rollcost {
-  width: 70px;
 }
 .preset-table--entries .col-group {
   width: 108px;
@@ -2484,7 +2279,7 @@ onMounted(() => {
 }
 .preset-table--entries .col-del,
 .preset-table--groups .col-del {
-  width: 32px;
+  width: 88px;
 }
 
 .preset-table--groups .col-groupname {
@@ -2509,6 +2304,21 @@ onMounted(() => {
   cursor: pointer;
 }
 
+.edit-btn {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-background);
+  color: var(--color-heading);
+  font: inherit;
+  font-size: 0.74rem;
+  padding: 0.12rem 0.4rem;
+  cursor: pointer;
+}
+
+.edit-btn:hover:not(:disabled) {
+  border-color: var(--color-heading);
+}
+
 .del-btn:hover:not(:disabled) {
   color: #e85d4c;
 }
@@ -2523,6 +2333,12 @@ onMounted(() => {
   border-radius: 12px;
   background: var(--color-background-soft);
   padding: 0.75rem 0.85rem;
+}
+
+.add-entry--row {
+  border: none;
+  padding: 0.15rem 0;
+  background: transparent;
 }
 
 .add-entry h5 {

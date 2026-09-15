@@ -36,7 +36,9 @@ import {
 } from '../src/utils/affixLibrary.ts'
 import {
   AFFIX_KNOWN_TARGET_IDS,
+  affixTargetPickerSummary,
   groupsForAffixTargetTiming,
+  pickAffixTargetForGroup,
   pickAffixTargetForTiming,
   findAffixTargetBranchGroup,
 } from '../src/utils/affixTargetBranches.ts'
@@ -437,6 +439,15 @@ console.log('\n[picker] 时机 + 局外重复')
   check(
     '切时机暴击 panel→gain 仍在局外重复',
     pickAffixTargetForTiming('panel:critRate', 'gain') === 'gain:critRate',
+  )
+  check(
+    '切 2 级组落到该组该时机的第一条',
+    pickAffixTargetForGroup('panel:atkFlat', 'def', 'panel') === 'panel:defPercent',
+  )
+  check(
+    '摘要含时机和叶子',
+    affixTargetPickerSummary('panel:defFlat').includes('局外') &&
+      affixTargetPickerSummary('panel:defFlat').includes('固定防御力'),
   )
   check(
     '选局外时没有属性异常组',

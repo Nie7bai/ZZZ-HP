@@ -904,8 +904,25 @@ export interface AffixLibraryState {
    * 其余扩展条目（Buff 来源 / 不分槽位的伤害字段）默认不参与。
    */
   enabledOverride: Record<string, boolean>
-  /** 默认条目的覆盖值（用户改了名称/每档/上限/分组时记录） */
-  overrides: Record<string, Partial<Pick<AffixLibraryEntry, 'label' | 'perRoll' | 'cap' | 'group'>>>
+  /** 默认条目的覆盖值（用户改了名称/每档/上限/分组/目标/局内条件时记录） */
+  overrides: Record<
+    string,
+    Partial<
+      Pick<
+        AffixLibraryEntry,
+        | 'label'
+        | 'perRoll'
+        | 'cap'
+        | 'group'
+        | 'target'
+        | 'applySituation'
+        | 'scope'
+        | 'skillCategory'
+        | 'skillSubcategoryId'
+        | 'appliesToAnomaly'
+      >
+    >
+  >
   /**
    * 被用户删掉的默认条目 id。
    *
@@ -1608,6 +1625,7 @@ export function updateAffixLibraryEntry(
       | 'perRoll'
       | 'cap'
       | 'group'
+      | 'target'
       | 'applySituation'
       | 'scope'
       | 'skillCategory'
