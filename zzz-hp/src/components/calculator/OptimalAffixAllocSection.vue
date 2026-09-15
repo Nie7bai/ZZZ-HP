@@ -2913,14 +2913,16 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
             </label>
             <label class="field">
               <span>最低收益比例</span>
-              <input
-                v-model.lazy.number="affixAllocMinBenefitRatioPercent"
-                type="number"
-                min="0"
-                max="100"
-                step="1"
-              />
-              <span class="field-suffix">%</span>
+              <span class="field-input-with-suffix">
+                <input
+                  v-model.lazy.number="affixAllocMinBenefitRatioPercent"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                />
+                <span class="field-suffix">%</span>
+              </span>
             </label>
           </div>
           <button
@@ -4012,9 +4014,16 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   min-width: 0;
 }
 
+.alloc-input-row .field-input-with-suffix {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
 .alloc-input-row .field-suffix {
   font-size: 0.75rem;
   color: var(--calc-muted, #6b7280);
+  line-height: 1;
 }
 
 .alloc-input-row input {
