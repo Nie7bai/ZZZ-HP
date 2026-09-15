@@ -281,6 +281,15 @@ const mainSlotIndex = computed(() => {
 const mainSlot = computed(() => props.teamSlots[mainSlotIndex.value]!)
 
 /**
+ * 词条分配（新功能，主）与手动扫掠柱图（旧功能，次要）二选一。
+ * 两者各有独立的输入与子页签（收益曲线 / 计算过程）。
+ *
+ * 定义在 `driveDiscMainStats` 之前：`activeDriveDiscMainStats` / `evalCtx` 依赖它，
+ * 而它们在 setup 中靠后声明（computed 惰性求值，定义顺序必须先于引用）。
+ */
+const sectionMode = ref<'allocation' | 'sweep'>('allocation')
+
+/**
  * 4/5/6 号驱动盘主属性 —— 单一来源：「词条导入」那份来源记录（它只服务这一路）。
  *
  * 面板本身由外部配置给出（见 `optimalAffixAlloc.ts` 的 `mainBaseExternalPanel`），
@@ -292,6 +301,67 @@ const driveDiscMainStats = computed<AffixDriveDiscMainStats>(() => ({
   ...createDefaultAffixDriveDiscMainStats(),
   ...(props.slotPanels?.[mainSlot.value.agentId]?.affixDriveDiscMainStats ?? {}),
 }))
+
+/**
+ * 扫掠柱图独立的 4/5/6 主属性（用户口径 2026-09-15）：
+ * 切换到扫掠柱图时默认与导入面板的 456 一致，但可在扫掠柱图内单独调整，
+ * 只影响扫掠柱图的计算，不动导入面板、不动词条分析页。
+ */
+const sweepMainStats = ref<AffixDriveDiscMainStats>(createDefaultAffixDriveDiscMainStats())
+/** 用户是否手动调整过扫掠 456：调过后不再跟随导入变化，避免覆盖用户选择 */
+const sweepMainStatsTouched = ref(false)
+
+watch(
+  (): [DriveDiscSlot4StatId | '', DriveDiscSlot5StatId | '', DriveDiscSlot6StatId | ''] => [
+    driveDiscMainStats.value.slot4MainStat,
+    driveDiscMainStats.value.slot5MainStat,
+    driveDiscMainStats.value.slot6MainStat,
+  ],
+  (
+    [slot4MainStat, slot5MainStat, slot6MainStat]: [
+      DriveDiscSlot4StatId | '',
+      DriveDiscSlot5StatId | '',
+      DriveDiscSlot6StatId | '',
+    ],
+  ) => {
+    if (sweepMainStatsTouched.value) return
+    sweepMainStats.value = {
+      slot4MainStat,
+      slot5MainStat,
+      slot6MainStat,
+    }
+  },
+  { immediate: true },
+)
+
+/** 当前模式实际使用的 4/5/6：扫掠柱图用独立那份，词条分析页用导入面板那份 */
+const activeDriveDiscMainStats = computed<AffixDriveDiscMainStats>(() =>
+  sectionMode.value === 'sweep' ? sweepMainStats.value : driveDiscMainStats.value,
+)
+
+/** 把扫掠 456 重置为导入面板的 456，并恢复「跟随导入」 */
+function resetSweepMainStats() {
+  sweepMainStats.value = {
+    slot4MainStat: driveDiscMainStats.value.slot4MainStat,
+    slot5MainStat: driveDiscMainStats.value.slot5MainStat,
+    slot6MainStat: driveDiscMainStats.value.slot6MainStat,
+  }
+  sweepMainStatsTouched.value = false
+}
+
+/** 单独调整扫掠柱图的 4/5/6（只影响扫掠计算，不动导入面板） */
+function setSweepMainStat(
+  slot: 'slot4MainStat' | 'slot5MainStat' | 'slot6MainStat',
+  event: Event,
+) {
+  const value = (event.target as HTMLSelectElement).value
+  const next = { ...sweepMainStats.value }
+  if (slot === 'slot4MainStat') next.slot4MainStat = value as DriveDiscSlot4StatId
+  else if (slot === 'slot5MainStat') next.slot5MainStat = value as DriveDiscSlot5StatId
+  else next.slot6MainStat = value as DriveDiscSlot6StatId
+  sweepMainStats.value = next
+  sweepMainStatsTouched.value = true
+}
 
 /** 当前编辑角色「词条导入」那一路的词条数（没有存面板时用来现推局外） */
 const mainAffixCounts = computed<AffixCounts>(() => ({
@@ -372,7 +442,8 @@ const evalCtx = computed(() =>
     bangbooRefine: props.bangbooRefine,
     driveDiscs: props.driveDiscs,
     mainSlotIndex: mainSlotIndex.value,
-    driveDiscMainStats: { ...driveDiscMainStats.value },
+    // 扫掠柱图用独立可调的 456，词条分析页用导入面板的 456（两者在 allocation 模式相等）
+    driveDiscMainStats: { ...activeDriveDiscMainStats.value },
     mainAffixCounts: mainAffixCounts.value,
     enemyInput: { ...enemyInput.value },
     baseDamageSource: isMb.value ? 'pierce' : isFengYu.value ? 'def' : baseDamageSource.value,
@@ -401,16 +472,16 @@ const flatLabel = computed(() => flatStatLabel(isMb.value, isFengYu.value))
 const outLabel = computed(() => outPercentLabel(isMb.value, isFengYu.value))
 
 const directError = computed(() =>
-  validateDirectAlloc(directAlloc, isMb.value, driveDiscMainStats.value, isFengYu.value),
+  validateDirectAlloc(directAlloc, isMb.value, activeDriveDiscMainStats.value, isFengYu.value),
 )
 const anomalyError = computed(() =>
-  validateAnomalyAlloc(anomalyAlloc, isMb.value, driveDiscMainStats.value, isFengYu.value),
+  validateAnomalyAlloc(anomalyAlloc, isMb.value, activeDriveDiscMainStats.value, isFengYu.value),
 )
 
 const sweepConfigFingerprint = computed(() =>
   JSON.stringify({
     baseDamageSource: baseDamageSource.value,
-    driveDiscMainStats: { ...driveDiscMainStats.value },
+    driveDiscMainStats: { ...activeDriveDiscMainStats.value },
     enemy: enemyInput.value,
     extraGains: extraGains.value,
     convert: props.convertSlotPanels ?? {},
@@ -560,7 +631,7 @@ function canReuseCurrentDirectSweep(points: DirectSweepPoint[], state: DirectAll
     state,
     isMb.value,
     isFengYu.value,
-    driveDiscMainStats.value,
+    activeDriveDiscMainStats.value,
   )
 }
 
@@ -1042,7 +1113,7 @@ watch(
   () =>
     JSON.stringify({
       counts: analysisCounts.value,
-      mains: { ...driveDiscMainStats.value },
+      mains: { ...activeDriveDiscMainStats.value },
     }),
   () => {
     scheduleEventAffixImpactRefresh()
@@ -1215,7 +1286,7 @@ const skillFlowContextFingerprint = computed(() =>
     participants: props.activeSlotPanels ?? {},
     env: (props.environmentBuffs ?? []).map((item) => item.id),
     bangboo: [props.selectedBangbooId, props.bangbooRefine],
-    mains: { ...driveDiscMainStats.value },
+    mains: { ...activeDriveDiscMainStats.value },
     baseDamageSource: baseDamageSource.value,
     damageKind: sweepDamageKind.value,
     stagger: props.staggerPhase,
@@ -1429,12 +1500,6 @@ function createMainComboState(): MainComboState {
 const allocationMainCombo = reactive<MainComboState>(createMainComboState())
 const sweepMainCombo = reactive<MainComboState>(createMainComboState())
 
-/**
- * 词条分配（新功能，主）与手动扫掠柱图（旧功能，次要）二选一。
- * 两者各有独立的输入与子页签（收益曲线 / 计算过程）。
- */
-const sectionMode = ref<'allocation' | 'sweep'>('allocation')
-
 /** 当前模式对应的组合试算状态实例 */
 const mainCombo = computed<MainComboState>(() =>
   sectionMode.value === 'allocation' ? allocationMainCombo : sweepMainCombo,
@@ -1537,9 +1602,9 @@ const rankingComboCount = computed(() => {
   if (!n4 || !n5 || !n6) return 0
   let count = n4 * n5 * n6
   const currentInRange =
-    rankingSlot4Options.value.some((item) => item.id === driveDiscMainStats.value.slot4MainStat) &&
-    rankingSlot5Options.value.some((item) => item.id === driveDiscMainStats.value.slot5MainStat) &&
-    rankingSlot6Options.value.some((item) => item.id === driveDiscMainStats.value.slot6MainStat)
+    rankingSlot4Options.value.some((item) => item.id === activeDriveDiscMainStats.value.slot4MainStat) &&
+    rankingSlot5Options.value.some((item) => item.id === activeDriveDiscMainStats.value.slot5MainStat) &&
+    rankingSlot6Options.value.some((item) => item.id === activeDriveDiscMainStats.value.slot6MainStat)
   if (currentInRange && rankingTwoPieceId.value === currentTwoPieceId.value) count -= 1
   return count
 })
@@ -1937,26 +2002,28 @@ function mainStatDiffBuilder() {
   const counts = analysisCounts.value
   if (!counts || !analysisEval.value) return null
   // 与组合试算同一口径：现场按当前主属性重算，避免扫掠快照/无 hits 面板口径错位
+  // （扫掠柱图模式「当前」= 独立可调的扫掠 456）
+  const currentMains = activeDriveDiscMainStats.value
   const baseDmg = evaluateMainStatComboDamage(
     {
-      slot4MainStat: driveDiscMainStats.value.slot4MainStat,
-      slot5MainStat: driveDiscMainStats.value.slot5MainStat,
-      slot6MainStat: driveDiscMainStats.value.slot6MainStat,
+      slot4MainStat: currentMains.slot4MainStat,
+      slot5MainStat: currentMains.slot5MainStat,
+      slot6MainStat: currentMains.slot6MainStat,
     },
     counts,
     currentTwoPieceId.value,
   )
 
   return MAIN_STAT_SLOTS.map(({ key, title, options }) => {
-    const currentId = driveDiscMainStats.value[key]
+    const currentId = currentMains[key]
     const current = options.find((o) => o.id === currentId)
     const rows = options
       .filter((o) => o.id !== currentId)
       .map((o) => {
         const nextStats: AffixDriveDiscMainStats = {
-          slot4MainStat: driveDiscMainStats.value.slot4MainStat,
-          slot5MainStat: driveDiscMainStats.value.slot5MainStat,
-          slot6MainStat: driveDiscMainStats.value.slot6MainStat,
+          slot4MainStat: currentMains.slot4MainStat,
+          slot5MainStat: currentMains.slot5MainStat,
+          slot6MainStat: currentMains.slot6MainStat,
           [key]: o.id,
         }
         const dmg = evaluateMainStatComboDamage(nextStats, counts, currentTwoPieceId.value)
@@ -1975,10 +2042,11 @@ function mainStatDiffBuilder() {
 function buildCombinedMainStatRankings() {
   if (!comboBaselineReady.value || !comboBaselineCounts.value) return []
   const counts = comboBaselineCounts.value
+  const currentMains = activeDriveDiscMainStats.value
   const currentStats: AffixDriveDiscMainStats = {
-    slot4MainStat: driveDiscMainStats.value.slot4MainStat,
-    slot5MainStat: driveDiscMainStats.value.slot5MainStat,
-    slot6MainStat: driveDiscMainStats.value.slot6MainStat,
+    slot4MainStat: currentMains.slot4MainStat,
+    slot5MainStat: currentMains.slot5MainStat,
+    slot6MainStat: currentMains.slot6MainStat,
   }
   const baseDamage = evaluateMainStatComboDamage(
     currentStats,
@@ -2112,7 +2180,7 @@ const diffWatchFingerprint = computed(() =>
     metric: anomalyChartMetric.value,
     tab: detailTab.value,
     events: hasEventMode.value ? selectedChartEventIds.value : null,
-    mains: { ...driveDiscMainStats.value },
+    mains: { ...activeDriveDiscMainStats.value },
     agents: props.teamSlots.map((s) => s.agentId ?? ''),
     hits: (props.hits ?? []).map(
       (h) =>
@@ -2143,7 +2211,7 @@ watch(detailTab, (tab) => {
 const affixAllocFingerprint = computed(() =>
   JSON.stringify({
     mode: sectionMode.value,
-    mains: { ...driveDiscMainStats.value },
+    mains: { ...activeDriveDiscMainStats.value },
     agents: props.teamSlots.map((s) => s.agentId ?? ''),
     hits: (props.hits ?? []).map(
       (h) =>
@@ -2194,13 +2262,18 @@ function resolveMainStatLabel(
 }
 
 /** 把指定模式的草稿同步为「当前主属性 / 当前 2 件套」 */
-function syncMainComboDraftFromCurrent(state: MainComboState) {
-  state.draft.slot4MainStat = driveDiscMainStats.value.slot4MainStat
-  state.draft.slot5MainStat = driveDiscMainStats.value.slot5MainStat
-  state.draft.slot6MainStat = driveDiscMainStats.value.slot6MainStat
-  state.twoPieceId = currentTwoPieceId.value
+function syncMainComboDraftFromCurrent(
+  state: MainComboState,
+  mains: AffixDriveDiscMainStats,
+  twoPieceId: string,
+) {
+  state.draft.slot4MainStat = mains.slot4MainStat
+  state.draft.slot5MainStat = mains.slot5MainStat
+  state.draft.slot6MainStat = mains.slot6MainStat
+  state.twoPieceId = twoPieceId
 }
 
+/** 词条分析页草稿跟随「导入面板 4/5/6 + 当前 2 件套」 */
 watch(
   () => [
     driveDiscMainStats.value.slot4MainStat,
@@ -2209,15 +2282,37 @@ watch(
     currentTwoPieceId.value,
   ],
   () => {
-    // 主属性 / 2 件套配置变化时，两个模式的草稿各自重置回「当前」
-    syncMainComboDraftFromCurrent(allocationMainCombo)
-    syncMainComboDraftFromCurrent(sweepMainCombo)
+    syncMainComboDraftFromCurrent(
+      allocationMainCombo,
+      driveDiscMainStats.value,
+      currentTwoPieceId.value,
+    )
+  },
+  { immediate: true },
+)
+
+/** 扫掠柱图草稿跟随「扫掠独立 4/5/6 + 当前 2 件套」（用户调扫掠 456 后草稿回到该 456） */
+watch(
+  () => [
+    sweepMainStats.value.slot4MainStat,
+    sweepMainStats.value.slot5MainStat,
+    sweepMainStats.value.slot6MainStat,
+    currentTwoPieceId.value,
+  ],
+  () => {
+    syncMainComboDraftFromCurrent(
+      sweepMainCombo,
+      sweepMainStats.value,
+      currentTwoPieceId.value,
+    )
   },
   { immediate: true },
 )
 
 function resetCombinedMainStatDraft() {
-  syncMainComboDraftFromCurrent(mainCombo.value)
+  const mains =
+    sectionMode.value === 'sweep' ? sweepMainStats.value : driveDiscMainStats.value
+  syncMainComboDraftFromCurrent(mainCombo.value, mains, currentTwoPieceId.value)
 }
 
 function applyCombinedMainStatRanking(row: {
@@ -2307,9 +2402,9 @@ const combinedMainStatPreview = computed(() => {
   const counts = comboBaselineCounts.value
   const state = mainCombo.value
   const currentStats: AffixDriveDiscMainStats = {
-    slot4MainStat: driveDiscMainStats.value.slot4MainStat,
-    slot5MainStat: driveDiscMainStats.value.slot5MainStat,
-    slot6MainStat: driveDiscMainStats.value.slot6MainStat,
+    slot4MainStat: activeDriveDiscMainStats.value.slot4MainStat,
+    slot5MainStat: activeDriveDiscMainStats.value.slot5MainStat,
+    slot6MainStat: activeDriveDiscMainStats.value.slot6MainStat,
   }
   const draftStats: AffixDriveDiscMainStats = {
     slot4MainStat: state.draft.slot4MainStat,
@@ -2969,6 +3064,51 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
     </div>
 
     <template v-if="sweepDamageKind">
+    <div class="sweep-main-stats">
+      <div class="sweep-main-stats-head">
+        <span class="filter-label">4/5/6 号主属性（扫掠专用）</span>
+        <button type="button" class="ghost-btn" @click="resetSweepMainStats">重置为导入</button>
+      </div>
+      <div class="main-stat-selects">
+        <label>
+          <span class="combined-main-stat-label">4号</span>
+          <select
+            :value="sweepMainStats.slot4MainStat"
+            @change="setSweepMainStat('slot4MainStat', $event)"
+          >
+            <option v-for="opt in DRIVE_DISC_SLOT_4_OPTIONS" :key="`sweep-4-${opt.id}`" :value="opt.id">
+              {{ opt.label }}
+            </option>
+          </select>
+        </label>
+        <label>
+          <span class="combined-main-stat-label">5号</span>
+          <select
+            :value="sweepMainStats.slot5MainStat"
+            @change="setSweepMainStat('slot5MainStat', $event)"
+          >
+            <option v-for="opt in DRIVE_DISC_SLOT_5_OPTIONS" :key="`sweep-5-${opt.id}`" :value="opt.id">
+              {{ opt.label }}
+            </option>
+          </select>
+        </label>
+        <label>
+          <span class="combined-main-stat-label">6号</span>
+          <select
+            :value="sweepMainStats.slot6MainStat"
+            @change="setSweepMainStat('slot6MainStat', $event)"
+          >
+            <option v-for="opt in DRIVE_DISC_SLOT_6_OPTIONS" :key="`sweep-6-${opt.id}`" :value="opt.id">
+              {{ opt.label }}
+            </option>
+          </select>
+        </label>
+      </div>
+      <p class="hint">
+        默认与导入面板的 4/5/6 一致；在此调整只影响扫掠柱图的计算（词条上限 / 柱图 / 差异 / 曲线 /
+        组合试算），不改动导入面板与词条分析页。改完需重新点「开始计算」。
+      </p>
+    </div>
     <div class="alloc-layout">
       <div class="alloc-left">
         <template v-if="sweepDamageKind === 'direct'">
@@ -4656,6 +4796,27 @@ th {
   display: flex;
   flex-direction: column;
   gap: 0.22rem;
+}
+
+/* 扫掠柱图独立 4/5/6 主属性选择（默认跟随导入面板，可单独调整） */
+.sweep-main-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sweep-main-stats-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.65rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sweep-main-stats .main-stat-selects {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.5rem;
 }
 
 .main-stat-two-piece-field :deep(.picker-summary) {
