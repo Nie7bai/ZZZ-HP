@@ -134,9 +134,16 @@ const draftExternalPanel = reactive<ExternalPanelDraft>(createEmptyExternalPanel
 const draftAffixCounts = reactive(createEmptyAffixCounts())
 const draftAffixMains = reactive(createEmptyAffixDriveDiscMainStats())
 const draftSkillTalentLevels = reactive<SkillTalentLevels>(createDefaultSkillTalentLevels())
-/** 面板 Tab 独立切换：面板导入 / 词条导入 */
+/** 录入方式跟当前激活那份走：激活词条导入就先显示词条页，不再永远停在面板导入 */
+function entryModeFromAgent(agentId: string): Extract<PanelCalcMode, 'panel' | 'affix'> {
+  const active = props.slotPanels?.[agentId]?.active
+  if (active === 'affixDerived') return 'affix'
+  if (active === 'imported') return 'panel'
+  return props.preferredEntryMode ?? 'panel'
+}
+
 const entryMode = ref<Extract<PanelCalcMode, 'panel' | 'affix'>>(
-  props.preferredEntryMode ?? 'panel',
+  entryModeFromAgent(props.teamSlots[props.activeSlot]?.agentId || ''),
 )
 /** 面板草稿是不是来自截图识别（只用于记录来历，元数据） */
 let draftFromRecognition = false
@@ -277,8 +284,8 @@ watch(open, (isOpen) => {
     agentIdRestoredOnOpen = null
     return
   }
-  entryMode.value = props.preferredEntryMode ?? 'panel'
   const slot = props.teamSlots[props.activeSlot]
+  entryMode.value = entryModeFromAgent(slot?.agentId || '')
   if (!slot) return
   selected.value = {
     agentId: slot.agentId || '',
@@ -320,6 +327,7 @@ watch(
     // 不塞默认值、不清空 —— 那些默认值会让人以为「面板/词条已经被填过」，
     // 而且点确定导入时会把这些没录入过的数字写成真面板。
     resetDraftPanelFromSlot()
+    entryMode.value = entryModeFromAgent(newId)
   },
 )
 
@@ -1075,8 +1083,9 @@ const canConfirm = computed(() => !!selected.value.agentId)
 }
 
 .panel-source-btn.active {
-  border-color: #7dd3a0;
-  color: #7dd3a0;
+  border-color: #e07070;
+  color: #e53935;
+  font-weight: 700;
 }
 
 .panel-source-empty {
@@ -1478,6 +1487,22 @@ const canConfirm = computed(() => !!selected.value.agentId)
 :global([data-theme='light']) .disc-col-header p,
 :global([data-theme='light']) .trigger-hint {
   color: #4d6a80;
+}
+
+:global([data-theme='light']) .panel-source-title,
+:global([data-theme='light']) .panel-source-empty {
+  color: #4d6a80;
+}
+
+:global([data-theme='light']) .panel-source-btn {
+  border-color: #b7d3e8;
+  color: #4d6a80;
+}
+
+:global([data-theme='light']) .panel-source-btn.active {
+  border-color: #e07070;
+  color: #c62828;
+  background: #fff5f5;
 }
 
 :global([data-theme='light']) .panel-locked-state {

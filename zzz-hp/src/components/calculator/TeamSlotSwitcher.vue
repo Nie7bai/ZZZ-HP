@@ -640,7 +640,7 @@ const driveDiscLine = computed(() => {
   flex-shrink: 0;
 }
 
-/* 两枚胶囊：生效那份绿框（同导入弹窗的「面板来源」），另一枚淡灰 */
+/* 两枚胶囊：生效那份红字（同导入弹窗的「面板来源」），另一枚淡灰 */
 .panel-source-tag {
   padding: 0.05rem 0.45rem;
   border: 1px solid #3a4658;
@@ -652,8 +652,8 @@ const driveDiscLine = computed(() => {
 }
 
 .panel-source-tag.active {
-  border-color: #7dd3a0;
-  color: #7dd3a0;
+  border-color: #e07070;
+  color: #e53935;
   font-weight: 650;
 }
 
