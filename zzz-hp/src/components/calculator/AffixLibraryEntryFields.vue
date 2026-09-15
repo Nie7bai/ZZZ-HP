@@ -22,6 +22,8 @@ export interface AffixLibraryEntryFormFields {
   appliesToAnomaly?: boolean
   sortOrder?: number
   enabledByDefault?: boolean
+  id?: string
+  rollCost?: number
 }
 
 const props = withDefaults(
@@ -36,6 +38,8 @@ const props = withDefaults(
     targetHint?: string
     targetHintWarn?: boolean
     ruleHint?: string
+    idNote?: string
+    idMaxLength?: number
   }>(),
   {
     allowCustom: false,
@@ -46,12 +50,15 @@ const props = withDefaults(
     targetHint: '',
     targetHintWarn: false,
     ruleHint: '',
+    idNote: '',
+    idMaxLength: 64,
   },
 )
 
 const emit = defineEmits<{
   custom: []
   'commit-custom': []
+  'id-input': []
 }>()
 
 const isGain = computed(() => isGainTarget(props.entry.target))
@@ -79,6 +86,20 @@ function applyPickedTarget(target: string) {
 
 <template>
   <div class="entry-fields">
+    <label v-if="showAdminExtras" class="entry-fields--target">
+      <span>
+        ID
+        <em v-if="idNote" class="field-note">{{ idNote }}</em>
+      </span>
+      <input
+        v-model="entry.id"
+        type="text"
+        placeholder="如 main:slot4:critDmg"
+        :maxlength="idMaxLength"
+        :disabled="disabled"
+        @input="emit('id-input')"
+      />
+    </label>
     <label>
       <span>名称</span>
       <input v-model="entry.label" type="text" :disabled="disabled" />
@@ -150,6 +171,17 @@ function applyPickedTarget(target: string) {
     <label>
       <span>上限（0=不限）</span>
       <input v-model.number="entry.cap" type="number" min="0" step="1" :disabled="disabled" />
+    </label>
+    <label v-if="showAdminExtras">
+      <span>每档占用</span>
+      <input
+        v-model.number="entry.rollCost"
+        type="number"
+        min="0"
+        step="1"
+        title="每条词条占几个「总词条数」预算；用户侧固定为 1"
+        :disabled="disabled"
+      />
     </label>
     <label>
       <span>分组</span>
@@ -257,5 +289,11 @@ function applyPickedTarget(target: string) {
 .target-hint--warn {
   color: #e85d4c;
   opacity: 1;
+}
+
+.field-note {
+  font-size: 0.68rem;
+  font-style: normal;
+  opacity: 0.7;
 }
 </style>

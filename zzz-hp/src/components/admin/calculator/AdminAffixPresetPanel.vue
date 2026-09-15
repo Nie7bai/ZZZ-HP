@@ -53,7 +53,7 @@ import '@/components/admin/calculator/adminCalculatorPanel.css'
  *
  * 比用户侧多出来的字段（用户侧没有 / 改不了）：
  * `sortOrder`（条目与分组的展示顺序）、`enabledByDefault`（勾给新用户哪几条）、
- * `target` 可填自由字段名。ID / 每档占用仍写入库，界面不再展示（ID 新增时按规范自动生成，占用固定 1）。
+ * `target` 可填自由字段名。ID / 每档占用在**新建/修改表单**里改，表里不展示。
  */
 
 const TARGET_PREFIXES = ['panel:', 'gain:']
@@ -1041,6 +1041,16 @@ const editingEntry = computed(
 
 const formEntry = computed(() => editingEntry.value ?? draft.value)
 
+const formIdNote = computed(() => {
+  if (editingKey.value) return '对外身份，保存时会确认改名'
+  if (draftIdTouched.value) return '已手改（跟着分组 / 目标 / 每档自动生成的那份不再覆盖它）'
+  return `按规范自动生成：${suggestedDraftId.value || '（先选分组和目标）'}`
+})
+
+function onFormIdInput() {
+  if (!editingKey.value) draftIdTouched.value = true
+}
+
 const formCustomTarget = computed(() => {
   const row = editingEntry.value
   if (row) return isCustomTarget(row)
@@ -1137,6 +1147,10 @@ function submitDraft() {
     draftError.value = '上限须为非负数（0 = 不限）'
     return
   }
+  if (!Number.isFinite(draft.value.rollCost) || draft.value.rollCost < 0) {
+    draftError.value = '每档占用须为非负数'
+    return
+  }
 
   draftError.value = null
   const sortOrder = Number.isFinite(draft.value.sortOrder)
@@ -1159,7 +1173,7 @@ function submitDraft() {
       perRoll: draft.value.perRoll,
       cap: draft.value.cap,
       group,
-      rollCost: 1,
+      rollCost: draft.value.rollCost,
       enabledByDefault: draft.value.enabledByDefault,
       sortOrder,
       ...conditionPatch({ ...draft.value, target }),
@@ -1613,11 +1627,14 @@ onMounted(() => {
             :custom-target="formCustomTarget"
             show-admin-extras
             :disabled="busy"
+            :id-note="formIdNote"
+            :id-max-length="ENTRY_ID_MAX"
             :target-hint="formCustomTarget ? targetHint(formEntry.target) : ''"
             :target-hint-warn="formCustomTarget && !targetRecognized(formEntry.target)"
             :rule-hint="formEntry.target ? effectRuleHint(formEntry.target, formEntry) : ''"
             @custom="onFormCustom"
             @commit-custom="onFormCommitCustom"
+            @id-input="onFormIdInput"
           >
             <button type="button" class="primary-btn" :disabled="busy" @click="submitForm">
               {{ editingKey ? '完成' : '添加' }}
@@ -1625,31 +1642,33 @@ onMounted(() => {
           </AffixLibraryEntryFields>
           <p v-if="draftError" class="form-error">{{ draftError }}</p>
 
-          <p class="footnote">
-            新增先进草稿，点「保存」才写库。ID 按分组 / 目标 / 每档自动生成；已复制走的用户库不受影响。
-          </p>
-          <ul class="id-rules">
-            <li v-for="rule in ENTRY_ID_RULES" :key="rule.match">
-              <span class="rule-match">{{ rule.match }}</span>
-              <code v-if="rule.format">{{ rule.format }}</code>
-              <span v-if="rule.example" class="rule-example">如 <code>{{ rule.example }}</code></span>
-            </li>
-          </ul>
-          <p class="footnote">
-            撞名接 <code>_2</code>。目标从清单选；没有的用手写，认不出的会标红。
-          </p>
-          <div class="type-note">
-            <p>
-              <code>panel:</code> = 局外。<code>gain:</code> = 局内，不进局外快照。两者只表示加入时机不同。
+          <div class="add-entry-notes">
+            <p class="footnote">
+              新增先进草稿，点「保存」才写库。ID 按分组 / 目标 / 每档自动生成；已复制走的用户库不受影响。
             </p>
-            <p>
-              部分独立计算的乘区，比如局内局外的增伤最终都是乘区内相加，因此局内局外不会影响计算结果。但如果涉及转模，则不同，例如局外增伤转模，只匹配局外增伤。
+            <ul class="id-rules">
+              <li v-for="rule in ENTRY_ID_RULES" :key="rule.match">
+                <span class="rule-match">{{ rule.match }}</span>
+                <code v-if="rule.format">{{ rule.format }}</code>
+                <span v-if="rule.example" class="rule-example">如 <code>{{ rule.example }}</code></span>
+              </li>
+            </ul>
+            <p class="footnote">
+              撞名接 <code>_2</code>。目标从清单选；没有的用手写，认不出的会标红。
             </p>
-            <p>
-              局内回能按角色基础加算%，不是乘在局外面板上。例如基础 1.2、局外已经是 1.92，再局内 +0.6 →
-              1.92 + 0.6×1.2 = 2.64，不是 1.92×1.6。局内攻击才是乘局外面板。
-            </p>
-            <p>招式 / 失衡条件只能选 <code>gain:</code>。</p>
+            <div class="type-note">
+              <p>
+                <code>panel:</code> = 局外。<code>gain:</code> = 局内，不进局外快照。两者只表示加入时机不同。
+              </p>
+              <p>
+                部分独立计算的乘区，比如局内局外的增伤最终都是乘区内相加，因此局内局外不会影响计算结果。但如果涉及转模，则不同，例如局外增伤转模，只匹配局外增伤。
+              </p>
+              <p>
+                局内回能按角色基础加算%，不是乘在局外面板上。例如基础 1.2、局外已经是 1.92，再局内 +0.6 →
+                1.92 + 0.6×1.2 = 2.64，不是 1.92×1.6。局内攻击才是乘局外面板。
+              </p>
+              <p>招式 / 失衡条件只能选 <code>gain:</code>。</p>
+            </div>
           </div>
         </div>
 
@@ -2344,6 +2363,15 @@ onMounted(() => {
   margin: 0 0 0.45rem;
   font-size: 0.88rem;
   color: var(--color-heading);
+}
+
+/* 表单和底下说明空开约两行，避免挤在一起 */
+.add-entry-notes {
+  margin-top: 2.4em;
+}
+
+.add-entry-notes > .footnote:first-child {
+  margin-top: 0;
 }
 
 .add-grid {

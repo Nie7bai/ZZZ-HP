@@ -1886,4 +1886,8 @@ function submitForm() {
   color: #8b94a1;
   flex-shrink: 0;
 }
+
+.add-entry + .footnote {
+  margin-top: 2.4em;
+}
 </style>
