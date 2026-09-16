@@ -181,6 +181,42 @@ export function isAffixPanelTargetHiddenFromPicker(target: string): boolean {
   )
 }
 
+/**
+ * 防御区字段（**单一事实来源**）：穿透率 / 固定穿透 / 减防 / 无视防御。
+ *
+ * 用途：专路按它挑种子、把这一族从「剩余分配」里排除；将来扩减防链路也按它。
+ * **按 target 的字段判，不按条目 id** —— 加回减防 / 无视防御、或自建同字段条目都自动生效。
+ *
+ * 注意：**不含防御力数值类**（`defFlat` / `defPercent` 等），那是另一回事。
+ */
+export const AFFIX_DEFENSE_ZONE_FIELDS = [
+  'penRate',
+  'pen',
+  'reduceDefense',
+  'ignoreDefense',
+] as const
+
+/** 条目落点是否属于防御区一族（`panel:` 与 `gain:` 两侧同判） */
+export function isDefenseZoneAffixTarget(target: string): boolean {
+  const index = target.indexOf(':')
+  const field = index === -1 ? target : target.slice(index + 1)
+  return (AFFIX_DEFENSE_ZONE_FIELDS as readonly string[]).includes(field)
+}
+
+/** 只要穿透率（专路种子） */
+export function isPenRateAffixTarget(target: string): boolean {
+  const index = target.indexOf(':')
+  const field = index === -1 ? target : target.slice(index + 1)
+  return field === 'penRate'
+}
+
+/** 只要固定穿透（专路要猛堆的那个字段） */
+export function isFlatPenAffixTarget(target: string): boolean {
+  const index = target.indexOf(':')
+  const field = index === -1 ? target : target.slice(index + 1)
+  return field === 'pen'
+}
+
 export const AFFIX_SUBSTAT_KEY_LABELS: Record<keyof AffixCounts, string> = {
   hpFlat: '固定生命值',
   hpPercent: '局外生命值%',

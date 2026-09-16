@@ -31,6 +31,7 @@ import {
   createPresetAffixLibraryEntries,
   entryRollsToEvalInput,
   extraGainFromLibraryEntry,
+  isPenRateAffixTarget,
   removeAffixLibraryGroup,
   renameAffixLibraryGroup,
   resolveAffixLibrary,
@@ -45,8 +46,9 @@ import {
   buildAllocationRows,
   formatAffixRollsSummary,
   resolveAffixOptimizerBudget,
-  collectPenRateStructureLocks,
-  PEN_RATE_STRUCTURE_ENTRY_IDS,
+  collectPenRateFieldLocks,
+  resolveFlatPenLadder,
+  DEFENSE_ZONE_PEN_RATE_CAP,
 } from '../src/utils/affixOptimizer.ts'
 import {
   buildOptimalEvalContext,
@@ -362,6 +364,8 @@ console.log('\n[4] 分组额度')
     )
     const solved = solveOptimalAffixAllocation({
       ctx, entries, maxTotalRolls: 46, groupCaps: { g2: 5 },
+      // 本用例只验「组额度」语义：关掉组内门槛，免得门槛先把组内弱的条目筛掉
+      initialCandidateThreshold: 0,
     })
     const used =
       (solved.rollsByEntryId['substat:atkPercent'] ?? 0) +
@@ -685,10 +689,10 @@ console.log('\n[4.10] 同字段多条目的折算')
 console.log('\n[5] 安全网')
 {
   const solved = solveOptimalAffixAllocation({
-    ctx, entries: library, maxTotalRolls: 46, maxEngineCalls: 50,
+    ctx, entries: library, maxTotalRolls: 46, maxEngineCalls: 12,
   })
   check('达到调用上限时标记 truncated', solved.truncated === true,
-    `engineCalls=${solved.engineCalls}`)
+    `engineCalls=${solved.engineCalls} workUsed=${Math.round(solved.workUsed)}/${solved.workBudget}`)
   check('截断后仍返回合法结果',
     solved.totalDamage >= solved.baselineDamage - 1e-9 && solved.usedRolls >= 0)
 }
@@ -1669,7 +1673,7 @@ console.log('\n[21] 词条分配：有条件 gain: 与局外词条同一套预�
     target: 'gain:dmgBonus',
     perRoll: 50,
     cap: 1,
-    group: '',
+    group: '副词条',
     rollCost: 1,
     enabledByDefault: true,
     scope: 'skill',
@@ -1681,7 +1685,7 @@ console.log('\n[21] 词条分配：有条件 gain: 与局外词条同一套预�
     target: 'panel:atkPercent',
     perRoll: 3,
     cap: 1,
-    group: '',
+    group: '副词条',
     rollCost: 1,
     enabledByDefault: true,
   }
@@ -1771,7 +1775,7 @@ console.log('\n[游戏 cap 税] 触发条目占档后目标 cap 减 1')
   const crit = library.find((e) => e.id === 'substat:critRate')
   if (atk && crit) {
     const trigger = { ...atk, id: 'main:slot5:externalAtkPercent', cap: 1, group: '5号位', perRoll: 1 }
-    const target = { ...crit, id: 'substat:atkPercent', cap: 1, group: '', perRoll: 1000 }
+    const target = { ...crit, id: 'substat:atkPercent', cap: 1, group: '副词条', perRoll: 1000 }
     const solved = solveOptimalAffixAllocation({
       ctx,
       entries: [trigger, target],
@@ -1801,20 +1805,62 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、初始门槛、B 截�
   const setPen = twos.find((e) => e.id === 'set:penRate:8')
   const substPen = library.find((e) => e.id === 'substat:pen')
   const substAtk = library.find((e) => e.id === 'substat:atkPercent')
-  check('官方穿透结构 id 仍是 5 号 24 + 2 件 8',
-    slot5Pen && setPen && PEN_RATE_STRUCTURE_ENTRY_IDS.includes(slot5Pen.id)
-      && PEN_RATE_STRUCTURE_ENTRY_IDS.includes(setPen.id),
-    `${slot5Pen?.id} / ${setPen?.id}`)
+  check('专路种子按字段认穿透率（不写 id）',
+    slot5Pen && setPen && isPenRateAffixTarget(slot5Pen.target) && isPenRateAffixTarget(setPen.target),
+    `${slot5Pen?.target} / ${setPen?.target}`)
 
-  const locks = collectPenRateStructureLocks(
+  const locks = collectPenRateFieldLocks(
     [slot5Pen, setPen, substPen].filter(Boolean),
     {},
     { '5号位': 1, '2件套': 1, 副词条: 0 },
     30,
   )
-  check('结构锁收集到 24 和 8',
-    (locks['main:slot5:penRate'] ?? 0) === 1 && (locks['set:penRate:8'] ?? 0) === 1,
+  check('种子把 24 与 8 各锁 1 档、不锁固穿',
+    (locks['main:slot5:penRate'] ?? 0) === 1 && (locks['set:penRate:8'] ?? 0) === 1
+      && !locks['substat:pen'],
     JSON.stringify(locks))
+
+  check('自建同字段条目一样被种子认（不写 id）',
+    (collectPenRateFieldLocks(
+      [{ id: 'custom:pen30', label: 'x', target: 'panel:penRate', perRoll: 30, cap: 1, group: '5号位', rollCost: 1, enabledByDefault: true }],
+      {},
+      { '5号位': 1 },
+      30,
+    )['custom:pen30'] ?? 0) === 1,
+    `cap=${DEFENSE_ZONE_PEN_RATE_CAP}`)
+
+  check('穿透率锁到 95% 上限就停（再加是浪费）',
+    (collectPenRateFieldLocks(
+      [{ id: 'custom:pen60', label: 'x', target: 'panel:penRate', perRoll: 60, cap: 9, group: '5号位', rollCost: 1, enabledByDefault: true }],
+      {},
+      { '5号位': 0 },
+      30,
+    )['custom:pen60'] ?? 0) === 1)
+
+  // 解析落点：需要固穿 > 可用档数 → 堆到底，候选 {n−1, n}
+  const ladder = resolveFlatPenLadder({
+    entries: [substPen].filter(Boolean),
+    lockedRolls: {},
+    effectiveDefense: 953 * 0.5,
+    groupCaps: { 副词条: 0 },
+    maxTotalRolls: 30,
+  })
+  check('固穿落点解析：候选 = {堆到底−1, 堆到底}',
+    ladder != null && ladder.candidates.length === 2
+      && ladder.candidates[1] - ladder.candidates[0] === 1,
+    JSON.stringify(ladder))
+
+  // 有效防御为 0（已减完）→ n = 0 → 只有一个世界（只绑穿透率）
+  const ladderZero = resolveFlatPenLadder({
+    entries: [substPen].filter(Boolean),
+    lockedRolls: {},
+    effectiveDefense: 0,
+    groupCaps: { 副词条: 0 },
+    maxTotalRolls: 30,
+  })
+  check('防御已减完 → 候选只有 0 档（不再堆固穿）',
+    ladderZero != null && ladderZero.candidates.length === 1 && ladderZero.candidates[0] === 0,
+    JSON.stringify(ladderZero))
 
   const penEntries = [slot5Dmg, slot5Pen, setDmg, setPen, substPen, substAtk].filter(Boolean)
   const groupCaps = { '5号位': 1, '2件套': 1, 副词条: 0 }

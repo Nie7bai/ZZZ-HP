@@ -2,11 +2,15 @@ import type { AffixCounts } from '@/types/calculatorPanel'
 import { rollsToEvalInput } from '@/utils/affixBenefitAnalysis'
 import {
   affixValuePerCountFromEntries,
+  isDefenseZoneAffixTarget,
+  isFlatPenAffixTarget,
+  isPenRateAffixTarget,
   type AffixDeltaMap,
   type AffixLibraryEntry,
 } from '@/utils/affixLibrary'
 import type { ExtraBuffGain } from '@/utils/extraBuffCalc'
 import {
+  evaluateAffixCounts,
   evaluateAffixCountsWithCacheInfo,
   yieldToMain,
   type AffixValuePerCount,
@@ -64,7 +68,12 @@ export type AffixSearchPresetId = 'fast' | 'balanced' | 'fine' | 'custom'
  * 白话解释见 `dev-docs/词条最优分配.md`「改造：自适应 Beam」。
  */
 export interface AffixSearchParams {
-  /** 初始候选门槛（0..1）：永久排除低于「本路最佳初始边际 × 比例」的词条 */
+  /**
+   * 初始候选门槛（0..1）：**组内比例** —— 永久排除低于「本组最高单档收益 × 比例」的词条。
+   *
+   * 度量口径 = 单档收益（只加 1 档），标尺 = 同组最高；**越大筛得越狠**（0 = 只丢负收益）。
+   * 详见 `dev-docs/词条最优分配.md`「施工中：第二轮改造」。
+   */
   initialCandidateThreshold: number
   /** 路线保留比例（0..1）：同层保留「累计提升 ≥ 本层最佳 × 比例」的整条路线 */
   routeRetentionRatio: number
@@ -73,24 +82,24 @@ export interface AffixSearchParams {
 }
 
 /**
- * 预设参数（2026-09-16 实测校准落定）。
+ * 预设参数（2026-09-16 第二轮改造：门槛换成**组内单档比例**）。
  *
- * 三个预设只沿「搜索宽度」一条轴变化：门槛递减、B 递增，其余不动。
- * 实测数据见 `dev-docs/词条最优分配.md` 文末「实测校准」：
+ * ⚠️ **三档的 `R` 由用户最终定**；下面是按实测扫出来的值（越大筛得越狠）：
+ * 同一场景（46 档、合成 8 命中）里 `R=0` 为 100% 基准 ——
  *
- * | 预设 | 真实长流程(96 命中) 耗时 | 真实流程质量 | 合成流程质量 |
- * |---|---|---|---|
- * | 快速 | ~3.4s | 100% | 96.3% |
- * | 均衡 | ~9.7s | 100% | 100% |
- * | 精细 | ~20s 起 | 100% | 100% |
+ * | R | 淘汰 | 质量 |
+ * |---|---|---|
+ * | 0 | 0 条 | 100% |
+ * | 0.05 | 21 条 | 100% |
+ * | 0.10 | 22 条 | 96.3% |
+ * | 0.15 起 | 24 条+ | 73.4% 及以下（质量塌） |
  *
- * ⚠️ 门槛必须很小（≤2%）。实测：门槛 10% 以上时「单档值很低的副词条」会被永久淘汰，
- * 46 档预算只花得掉 10 档，总伤腰斩。所以「快速」也不能激进到 5% 以上。
- * 改这里必须同步改手册。
+ * 所以三档取 `快速 0.1 / 均衡 0.05 / 精细 0`，正好对上手册记的「快速不低于精细的 95%」。
+ * 旧的 2% / 0.5% / 0% 是「占全场最佳满额收益」的旧语义，**不作数**。
  */
 export const AFFIX_SEARCH_PRESETS: Record<Exclude<AffixSearchPresetId, 'custom'>, AffixSearchParams> = {
-  fast: { initialCandidateThreshold: 0.02, routeRetentionRatio: 0.95, maxRetainedRoutes: 4 },
-  balanced: { initialCandidateThreshold: 0.005, routeRetentionRatio: 0.95, maxRetainedRoutes: 8 },
+  fast: { initialCandidateThreshold: 0.1, routeRetentionRatio: 0.95, maxRetainedRoutes: 4 },
+  balanced: { initialCandidateThreshold: 0.05, routeRetentionRatio: 0.95, maxRetainedRoutes: 8 },
   fine: { initialCandidateThreshold: 0, routeRetentionRatio: 0.95, maxRetainedRoutes: 16 },
 }
 
@@ -166,6 +175,13 @@ export interface AffixOptimizerInput {
    * 是否跑穿透专路（默认 true）。测试可关，用来对照「不锁 24+8」时的漏解。
    */
   enablePenRatePath?: boolean
+  /**
+   * 只给**专路世界**用：防御区一族（穿透率 / 固穿 / 减防 / 无视防御）不进候选池。
+   *
+   * 专路把这族定死在落点上之后，剩余分配阶段不再动它们（收益已榨干），
+   * 这一族也就不能参与门槛、不能当组内标尺。
+   */
+  excludeDefenseZoneFromPool?: boolean
   /** 计算量预算（单位：命中-次） */
   maxWorkUnits?: number
   /** 兼容旧调用：把调用次数上限换算成计算量预算 */
@@ -192,11 +208,7 @@ export interface AffixOptimizerInput {
   minimumBenefitRatio?: number
 }
 
-/** 穿透结构只认这两个官方 id，不泛化成所有 penRate 条目 */
-export const PEN_RATE_STRUCTURE_ENTRY_IDS = [
-  'main:slot5:penRate',
-  'set:penRate:8',
-] as const
+/** 专路种子 / 落点都按 **target 字段** 判，不写 id（见 `affixLibrary.AFFIX_DEFENSE_ZONE_FIELDS`） */
 
 /** 见 `AffixOptimizerInput.entryCapTaxes` */
 export interface AffixEntryCapTax {
@@ -360,6 +372,34 @@ function entryRolls(
   return rollsToEvalInput(entries, rollsByEntryId, baseCounts, basePanelDeltas)
 }
 
+/** 空词条数起点（评估入参的底座） */
+function emptyAffixCounts(): AffixCounts {
+  return {
+    hpFlat: 0, hpPercent: 0, atkFlat: 0, atkPercent: 0, defFlat: 0,
+    defPercent: 0, pen: 0, critRate: 0, critDmg: 0, mastery: 0,
+  } as AffixCounts
+}
+
+/**
+ * 真算一个「世界」（一组固定档数）的总伤，并回报这世界的**有效防御**。
+ *
+ * 专路 2.0 专门用它：把穿透率绑死后的世界算一次，`effectiveDefense` 就是
+ * 「还要再堆多少固定穿透点才能把防御吃干净」（单位与固定穿透一致，0 = 已经吃干净）。
+ */
+function evaluateWorldOnce(
+  ctx: OptimalEvalContext,
+  entries: AffixLibraryEntry[],
+  rolls: Record<string, number>,
+): { total: number; effectiveDefense: number } {
+  const { counts, panelDeltas, extraGains, valuePerCount } = entryRolls(
+    entries,
+    rolls,
+    emptyAffixCounts(),
+  )
+  const value = evaluateAffixCounts(ctx, counts, panelDeltas, valuePerCount, extraGains)
+  return { total: value.grandTotal, effectiveDefense: value.result.effectiveDefense }
+}
+
 function usedRollsOf(
   entries: AffixLibraryEntry[],
   rollsByEntryId: Record<string, number>,
@@ -477,7 +517,16 @@ function remainingAllowedRolls(
   return Math.max(0, Math.min(byCap, byGroup, rollRoom))
 }
 
-export function collectPenRateStructureLocks(
+/**
+ * 专路 2.0 · 第一步：把 `penRate` 字段的已启用条目**尽可能选走**（种子）。
+ *
+ * 按 **target 字段** 判，不写 id：默认库的两条（5 号位 24% / 2 件套 8%）自然命中，
+ * 用户自建的同字段条目、将来加回的条目同样认。
+ *
+ * 「尽可能」= 在自身 cap / 组额度 / 总预算都允许的前提下，能加几档加几档；
+ * 穿透率本身有 95% 硬上限（与 `damageCalc.computeDefenseZone` 的 clamp 一致），锁到即停。
+ */
+export function collectPenRateFieldLocks(
   entries: AffixLibraryEntry[],
   fixedRolls: Record<string, number> = {},
   groupCaps: Record<string, number> = {},
@@ -488,18 +537,18 @@ export function collectPenRateStructureLocks(
     maxTotalRolls,
     rollCapOf: () => Number.POSITIVE_INFINITY,
   } as AffixOptimizerBudget
-  const byId = new Map(entries.map((entry) => [entry.id, entry]))
   const next = { ...fixedRolls }
   const locks: Record<string, number> = {}
-  for (const id of PEN_RATE_STRUCTURE_ENTRY_IDS) {
-    const entry = byId.get(id)
-    if (!entry) continue
-    if ((next[id] ?? 0) > 0) continue
-    const used = usedRollsOf(entries, next)
-    if (
-      remainingAllowedRolls(
+  let lockedPenRate = 0
+  for (const entry of entries) {
+    if (!isPenRateAffixTarget(entry.target)) continue
+    // 防呆上限：正常条目会被 cap / 组额度 / 预算先掐住
+    for (let guard = 0; guard < 64; guard += 1) {
+      if (lockedPenRate + entry.perRoll > DEFENSE_ZONE_PEN_RATE_CAP) break
+      const used = usedRollsOf(entries, next)
+      const room = remainingAllowedRolls(
         entry,
-        next[id] ?? 0,
+        next[entry.id] ?? 0,
         budget,
         used,
         next,
@@ -507,14 +556,67 @@ export function collectPenRateStructureLocks(
         maxTotalRolls,
         groupCaps,
         capTaxes,
-      ) <= 0
-    ) {
-      continue
+      )
+      if (room <= 0) break
+      next[entry.id] = (next[entry.id] ?? 0) + 1
+      locks[entry.id] = (locks[entry.id] ?? 0) + 1
+      lockedPenRate += entry.perRoll
     }
-    next[id] = 1
-    locks[id] = 1
   }
   return locks
+}
+
+/** 穿透率硬上限（%，与 `damageCalc.computeDefenseZone` 的 clamp 同值） */
+export const DEFENSE_ZONE_PEN_RATE_CAP = 95
+
+/**
+ * 专路 2.0 · 第二步：解析求「猛堆固定穿透」的落点（不再一档一档试）。
+ *
+ * 用绑定世界真算一次的 `DamageCalcResult.effectiveDefense`（与固定穿透同单位）：
+ * - `需要再堆的点数 = 有效防御`；
+ * - `n = ceil(有效防御 ÷ 每档值)`，再由调用方按 `remainingAllowedRolls` 裁到 cap / 额度 / 预算；
+ * - 候选 = `{max(0, n−1), n}`（去重、升序）—— 最后一条可能只吃得掉一部分（多的浪费），两种开销都试。
+ *
+ * 多固穿条目：只堆**每档值最大**的那条（现状库只有一条；多条堆叠不在本轮范围）。
+ */
+export function resolveFlatPenLadder(input: {
+  entries: AffixLibraryEntry[]
+  lockedRolls: Record<string, number>
+  effectiveDefense: number
+  groupCaps?: Record<string, number>
+  maxTotalRolls?: number
+  capTaxes?: readonly AffixEntryCapTax[]
+}): { entryId: string; candidates: number[] } | null {
+  const penEntries = input.entries.filter((entry) => isFlatPenAffixTarget(entry.target))
+  if (!penEntries.length) return null
+  const primary = penEntries.reduce(
+    (best, item) => (item.perRoll > best.perRoll ? item : best),
+    penEntries[0]!,
+  )
+  const maxTotalRolls = input.maxTotalRolls ?? DEFAULT_MAX_TOTAL_ROLLS
+  const budget = {
+    maxTotalRolls,
+    rollCapOf: () => Number.POSITIVE_INFINITY,
+  } as AffixOptimizerBudget
+  const locked = input.lockedRolls
+  const used = usedRollsOf(input.entries, locked)
+  const room = remainingAllowedRolls(
+    primary,
+    locked[primary.id] ?? 0,
+    budget,
+    used,
+    locked,
+    input.entries,
+    maxTotalRolls,
+    input.groupCaps ?? {},
+    input.capTaxes ?? [],
+  )
+  const need = Math.max(0, input.effectiveDefense)
+  const perRoll = Math.max(1e-9, primary.perRoll)
+  const wanted = need > 0 ? Math.ceil(need / perRoll) : 0
+  const n = Math.max(0, Math.min(wanted, room))
+  const candidates = [...new Set([Math.max(0, n - 1), n])].sort((a, b) => a - b)
+  return { entryId: primary.id, candidates }
 }
 
 export function resolveAffixOptimizerBudget(
@@ -594,6 +696,8 @@ function* solveSearch(
   searchPath: 'ordinary' | 'penRate' = 'ordinary',
 ): Generator<AffixOptimizerProgress, SearchOutcome, void> {
   const { ctx, entries } = input
+  /** 专路世界：防御区一族不进候选池（那一族已被专路定死，收益榨干） */
+  const excludeDefenseZoneFromPool = input.excludeDefenseZoneFromPool === true
   const budget = resolveAffixOptimizerBudget(ctx, input.maxTotalRolls)
   const maxRollsPerEntry = input.maxRollsPerEntry ?? budget.maxTotalRolls
   /** 组额度表：缺省无表，任何组都按不限算（`groupCapFor`） */
@@ -605,10 +709,7 @@ function* solveSearch(
   const workBudget: number | null = resolveSearchWorkBudget(input)
   const maxUsed = budget.maxTotalRolls
 
-  const emptyCounts = {
-    hpFlat: 0, hpPercent: 0, atkFlat: 0, atkPercent: 0, defFlat: 0,
-    defPercent: 0, pen: 0, critRate: 0, critDmg: 0, mastery: 0,
-  } as AffixCounts
+  const emptyCounts = emptyAffixCounts()
 
   let engineCalls = 0
   let cacheHits = 0
@@ -701,18 +802,21 @@ function* solveSearch(
 
   // ---------- 1. 本路基线全量测一次 → 永久候选池 ----------
   //
-  // 探测口径：**满额收益** —— 把这条词条「当前允许投入的档数」一次性全投进去，
-  // 看总共能涨多少分，而不是只投 1 档看第一档的边际。
+  // 探测口径：**单档收益**（2026-09-16 第二轮改造）—— 只给这条词条加 1 档，
+  // 看总伤涨多少。**组内比**：每条只跟自己组的最高值比，不跨组、不看全场。
   //
-  // 为什么不能用「1 档边际」当门槛（2026-09-16 实测教训）：
-  // 主属性条目 cap=1，一档就是 24% 穿透 / 30% 增伤这种大值；副词条一档只有 8%，
-  // 但它能连吃 6 档。按「1 档边际」排序，主属性永远压着副词条，门槛一旦 > 0 就把
-  // 副词条全筛掉，于是候选池只剩几个 cap=1 的主属性 —— 最优解连预算都花不完
-  // （实测：门槛 0.1 时 46 档预算只花掉 10 档，总伤直接腰斩）。
-  // 换成「满额收益」后，比较的是「这条词条能贡献多少」，与能投几档无关。
+  // 为什么不用「满额收益」（旧口径）：满额把「这条能投几档」混进了度量里，
+  // 26 档的副词条天然压过 1 档的号位主属性，门槛一动就整组筛没。
+  // 单档 + 组内 = 每组内部比「第一条值不值」，跨组不互相压。
+  //
+  // 空组条目（临时条目）按规则**不进池**（不测量、不参与最优计算）；
+  // 专路世界额外把防御区一族从池子里摘掉（那一族已按落点定死，收益榨干）。
   phase = 'measure'
+  const poolExcluded = (entry: AffixLibraryEntry): boolean =>
+    !entry.group || (excludeDefenseZoneFromPool && isDefenseZoneAffixTarget(entry.target))
   const initialGain = new Map<string, number>()
   for (const entry of entries) {
+    if (poolExcluded(entry)) continue
     const current = baselineState.rolls[entry.id] ?? 0
     const room = remainingAllowedRolls(
       entry,
@@ -733,22 +837,28 @@ function* solveSearch(
       truncated = true
       break
     }
-    const probe = evalRolls({ ...baselineState.rolls, [entry.id]: current + room })
+    const probe = evalRolls({ ...baselineState.rolls, [entry.id]: current + 1 })
     initialGain.set(entry.id, probe.total - baselineState.total)
   }
 
-  let bestInitialGain = 0
-  for (const gain of initialGain.values()) bestInitialGain = Math.max(bestInitialGain, gain)
-  const pool: AffixLibraryEntry[] = []
-  if (bestInitialGain > 0) {
-    const cutoff = bestInitialGain * params.initialCandidateThreshold
-    for (const entry of entries) {
-      const gain = initialGain.get(entry.id) ?? 0
-      // 零收益保留（门槛为 0 时给交叉项留机会），负收益一律出局
-      if (gain >= 0 && gain >= cutoff) pool.push(entry)
+  /** 组内标尺：该组单档收益的最高值（不跨组、不看全场） */
+  const bestGainByGroup = new Map<string, number>()
+  for (const entry of entries) {
+    if (poolExcluded(entry)) continue
+    const gain = initialGain.get(entry.id) ?? 0
+    if (gain > (bestGainByGroup.get(entry.group) ?? 0)) {
+      bestGainByGroup.set(entry.group, gain)
     }
   }
-  const initialDropped = entries.length - pool.length
+  const pool: AffixLibraryEntry[] = []
+  for (const entry of entries) {
+    if (poolExcluded(entry)) continue
+    const gain = initialGain.get(entry.id) ?? 0
+    // 判定：≥ 0（负收益一律出局）且 ≥ 本组最高 × 比例；组内最高 ≤ 0 时线 ≤ 0，该组 ≥0 全留
+    const cutoff = (bestGainByGroup.get(entry.group) ?? 0) * params.initialCandidateThreshold
+    if (gain >= 0 && gain >= cutoff) pool.push(entry)
+  }
+  const initialDropped = entries.filter((entry) => !poolExcluded(entry)).length - pool.length
   liveInitialDropped = initialDropped
   phasesCompleted.push('measure')
 
@@ -1103,74 +1213,125 @@ function toResult(input: AffixOptimizerInput, outcome: SearchOutcome): AffixOpti
   }
 }
 
+/**
+ * 汇总：普通路 + 全部专路世界，**比最终总伤取最大**（中间不交汇）。
+ *
+ * 统计量跨世界求和（引擎调用 / 计算量 / 存活路线…），`searchPath` 取赢家那条。
+ */
 function mergeSearchOutcomes(
   ordinary: SearchOutcome,
-  pen: SearchOutcome,
+  penWorlds: SearchOutcome[],
   sharedWorkBudget: number | null,
 ): SearchOutcome {
-  const usePen = pen.state.total > ordinary.state.total
-  const winner = usePen ? pen : ordinary
-  const bMins = [ordinary.adaptiveBMin, pen.adaptiveBMin].filter((value) => value > 0)
+  const penBest = penWorlds.reduce(
+    (best, item) => (item.state.total > best.state.total ? item : best),
+    penWorlds[0]!,
+  )
+  const usePen = penBest.state.total > ordinary.state.total
+  const winner = usePen ? penBest : ordinary
+  const all = [ordinary, ...penWorlds]
+  const sum = (pick: (item: SearchOutcome) => number): number =>
+    all.reduce((total, item) => total + pick(item), 0)
+  const bMins = all.map((item) => item.adaptiveBMin).filter((value) => value > 0)
   return {
     ...winner,
     baselineDamage: ordinary.baselineDamage,
-    engineCalls: ordinary.engineCalls + pen.engineCalls,
-    cacheHits: ordinary.cacheHits + pen.cacheHits,
-    workUsed: ordinary.workUsed + pen.workUsed,
+    engineCalls: sum((item) => item.engineCalls),
+    cacheHits: sum((item) => item.cacheHits),
+    workUsed: sum((item) => item.workUsed),
     workBudget: sharedWorkBudget,
-    truncated: ordinary.truncated || pen.truncated,
-    refineSkipped: ordinary.refineSkipped || pen.refineSkipped,
-    phasesCompleted: [...new Set([...ordinary.phasesCompleted, ...pen.phasesCompleted])],
+    truncated: all.some((item) => item.truncated),
+    refineSkipped: all.some((item) => item.refineSkipped),
+    phasesCompleted: [...new Set(all.flatMap((item) => item.phasesCompleted))],
     searchPath: usePen ? 'penRate' : 'ordinary',
     penRatePathUsed: true,
-    beamLayers: Math.max(ordinary.beamLayers, pen.beamLayers),
-    survivedRoutes: ordinary.survivedRoutes + pen.survivedRoutes,
-    expandedRoutes: ordinary.expandedRoutes + pen.expandedRoutes,
-    prunedRoutes: ordinary.prunedRoutes + pen.prunedRoutes,
-    initialDropped: Math.max(ordinary.initialDropped, pen.initialDropped),
-    layerRatioDropped: ordinary.layerRatioDropped + pen.layerRatioDropped,
+    beamLayers: Math.max(...all.map((item) => item.beamLayers)),
+    survivedRoutes: sum((item) => item.survivedRoutes),
+    expandedRoutes: sum((item) => item.expandedRoutes),
+    prunedRoutes: sum((item) => item.prunedRoutes),
+    initialDropped: Math.max(...all.map((item) => item.initialDropped)),
+    layerRatioDropped: sum((item) => item.layerRatioDropped),
     adaptiveBMin: bMins.length ? Math.min(...bMins) : 0,
-    adaptiveBMax: Math.max(ordinary.adaptiveBMax, pen.adaptiveBMax),
-    refinedRoutes: ordinary.refinedRoutes + pen.refinedRoutes,
+    adaptiveBMax: Math.max(...all.map((item) => item.adaptiveBMax)),
+    refinedRoutes: sum((item) => item.refinedRoutes),
   }
 }
 
+/**
+ * 专路 2.0（2026-09-16 用户口径）：先把防御区定死，再分配剩余档数。
+ *
+ * 1. **种子**：`penRate` 字段「尽可能选走」（没有穿透率条目也行 → 只堆固穿的世界）；
+ * 2. **落点解析求**：绑定世界真算一次 → `有效防御` → `n = ceil(有效防御 ÷ 每档值)`，
+ *    被 cap / 额度 / 预算裁过；候选 = `{n−1, n}`（堆到底时只有一个）；
+ * 3. 每个候选跑一条**专路世界**（防御区一族不再进池，其余照跑门槛）；
+ * 4. **先跑专路，剩下的算力给普通路**；最后两边比最终总伤。
+ *
+ * 预算分配是**暂定**的：每个专路世界先拿 `剩余 ÷ (世界数 + 1)`，没用完的留给普通路。
+ * 实测后可能再调（见 `dev-docs/词条最优分配改造方案.md` §6.3）。
+ */
 function* solveSearchWithPenPath(
   input: AffixOptimizerInput,
 ): Generator<AffixOptimizerProgress, SearchOutcome, void> {
   if (input.enablePenRatePath === false) return yield* solveSearch(input, 'ordinary')
 
-  const locks = collectPenRateStructureLocks(
-    input.entries,
-    input.fixedRollsByEntryId ?? {},
-    input.groupCaps ?? {},
-    resolveAffixOptimizerBudget(input.ctx, input.maxTotalRolls).maxTotalRolls,
-    input.entryCapTaxes ?? [],
-  )
-  if (!Object.keys(locks).length) return yield* solveSearch(input, 'ordinary')
-
+  const entries = input.entries
+  const totalRolls = resolveAffixOptimizerBudget(input.ctx, input.maxTotalRolls).maxTotalRolls
+  const baseFixed = normalizeRolls(input.fixedRollsByEntryId ?? {})
+  const groupCaps = input.groupCaps ?? {}
+  const capTaxes = input.entryCapTaxes ?? []
   const sharedWorkBudget = resolveSearchWorkBudget(input)
-  let ordinaryInput = input
-  let penWorkUnits: number | undefined
-  // auto：专路预留 1/3，普通路 2/3；普通路没用完的还给专路。
-  if (sharedWorkBudget != null) {
-    const penShare = Math.floor(sharedWorkBudget / 3)
-    ordinaryInput = { ...input, maxWorkUnits: sharedWorkBudget - penShare }
-    penWorkUnits = penShare
-  }
+  const pricePerEval = workPricePerEval(input.ctx)
 
-  const ordinary = yield* solveSearch(ordinaryInput, 'ordinary')
-  const leftover = sharedWorkBudget == null
-    ? 0
-    : Math.max(0, (ordinary.workBudget ?? 0) - ordinary.workUsed)
-  const penInput: AffixOptimizerInput = {
-    ...input,
-    fixedRollsByEntryId: { ...(input.fixedRollsByEntryId ?? {}), ...locks },
-    enablePenRatePath: false,
-    ...(sharedWorkBudget != null ? { maxWorkUnits: (penWorkUnits ?? 0) + leftover } : {}),
+  // ---------- ① 种子：穿透率「尽可能选走」 ----------
+  const penLocks = collectPenRateFieldLocks(entries, baseFixed, groupCaps, totalRolls, capTaxes)
+  const lockedRolls = { ...baseFixed, ...penLocks }
+  const hasDefenseZoneEntry = entries.some((entry) => isDefenseZoneAffixTarget(entry.target))
+  if (!hasDefenseZoneEntry) return yield* solveSearch(input, 'ordinary')
+
+  // ---------- ② 落点：解析求固穿梯子 ----------
+  const lockedProbe = evaluateWorldOnce(input.ctx, entries, lockedRolls)
+  const planCost = pricePerEval
+  const ladder = resolveFlatPenLadder({
+    entries,
+    lockedRolls,
+    effectiveDefense: lockedProbe.effectiveDefense,
+    groupCaps,
+    maxTotalRolls: totalRolls,
+    capTaxes,
+  })
+
+  // ---------- ③ 专路世界：先跑，剩余算力给普通路 ----------
+  const candidates = ladder?.candidates ?? [0]
+  const penOutcomes: SearchOutcome[] = []
+  let penWorkLeft =
+    sharedWorkBudget == null ? null : Math.max(0, sharedWorkBudget - planCost)
+  for (const extraRolls of candidates) {
+    const worldFixed = { ...lockedRolls }
+    if (ladder) worldFixed[ladder.entryId] = (worldFixed[ladder.entryId] ?? 0) + extraRolls
+    const worldsLeft = candidates.length - penOutcomes.length
+    const allowance =
+      penWorkLeft == null ? undefined : Math.floor(penWorkLeft / Math.max(1, worldsLeft + 1))
+    const worldInput: AffixOptimizerInput = {
+      ...input,
+      fixedRollsByEntryId: worldFixed,
+      enablePenRatePath: false,
+      excludeDefenseZoneFromPool: true,
+      ...(allowance != null ? { maxWorkUnits: allowance } : {}),
+    }
+    const outcome = yield* solveSearch(worldInput, 'penRate')
+    penOutcomes.push(outcome)
+    if (penWorkLeft != null) penWorkLeft = Math.max(0, penWorkLeft - outcome.workUsed)
   }
-  const pen = yield* solveSearch(penInput, 'penRate')
-  return mergeSearchOutcomes(ordinary, pen, sharedWorkBudget)
+  void planCost
+
+  // ---------- ④ 普通路：剩下的算力全给它（兜底） ----------
+  const penUsed = penOutcomes.reduce((total, item) => total + item.workUsed, 0) + planCost
+  const ordinaryInput: AffixOptimizerInput =
+    sharedWorkBudget == null
+      ? input
+      : { ...input, maxWorkUnits: Math.max(0, sharedWorkBudget - penUsed) }
+  const ordinary = yield* solveSearch(ordinaryInput, 'ordinary')
+  return mergeSearchOutcomes(ordinary, penOutcomes, sharedWorkBudget)
 }
 
 /** 同步求解（测试与脚本使用；UI 请用 async 版以免卡住主线程） */

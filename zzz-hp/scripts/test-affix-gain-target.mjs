@@ -203,7 +203,7 @@ const gainEntry = {
   target: gainTarget('inCombatAtkPercent'),
   perRoll: 4,
   cap: 0,
-  group: '',
+  group: '副词条',
   rollCost: 1,
   enabledByDefault: true,
 }
@@ -344,7 +344,7 @@ const panelEntry = {
   target: 'panel:dmgBonus',
   perRoll: 10,
   cap: 0,
-  group: '',
+  group: '副词条',
   rollCost: 1,
   enabledByDefault: true,
 }

@@ -12,7 +12,7 @@ import {
   isGamePaidMainId,
   solveGameAffixAllocationAsync,
 } from '../src/utils/gameAffixRules.ts'
-import { solveOptimalAffixAllocationAsync, collectPenRateStructureLocks } from '../src/utils/affixOptimizer.ts'
+import { solveOptimalAffixAllocationAsync, collectPenRateFieldLocks } from '../src/utils/affixOptimizer.ts'
 import { buildOptimalEvalContext, clearAffixEvalCache } from '../src/utils/optimalAffixAlloc.ts'
 import { createEmptyAgentBasePanel } from '../src/utils/calculatorUi.ts'
 import { createDefaultAffixDriveDiscMainStats } from '../src/types/calculatorPanel.ts'
@@ -278,7 +278,7 @@ console.log('\n[游戏专用方案] 5 号付费袋不锁 24% 穿透')
   })
   check('5 号付费口袋不含穿透率主属性', !paid5.entries.some((entry) => entry.id === 'main:slot5:penRate'))
   // 付费袋里 2 件套 8% 穿透率仍然在，所以专路还是会跑 —— 但它只能锁 8%，锁不到 24%
-  const paidLocks = collectPenRateStructureLocks(paid5.entries, {}, caps, 30, paid5.entryCapTaxes)
+  const paidLocks = collectPenRateFieldLocks(paid5.entries, {}, caps, 30, paid5.entryCapTaxes)
   check('5 号付费袋只锁 2 件套 8%，锁不到 5 号 24%',
     (paidLocks['main:slot5:penRate'] ?? 0) === 0 && (paidLocks['set:penRate:8'] ?? 0) === 1,
     JSON.stringify(paidLocks))
@@ -308,7 +308,7 @@ console.log('\n[游戏专用方案] 5 号付费袋不锁 24% 穿透')
   })
   check('5 号不付费口袋含穿透率主属性',
     free5.entries.some((entry) => entry.id === 'main:slot5:penRate'))
-  const freeLocks = collectPenRateStructureLocks(free5.entries, {}, caps, 30, free5.entryCapTaxes)
+  const freeLocks = collectPenRateFieldLocks(free5.entries, {}, caps, 30, free5.entryCapTaxes)
   check('5 号不付费袋把 24% 与 8% 都锁满',
     (freeLocks['main:slot5:penRate'] ?? 0) === 1 && (freeLocks['set:penRate:8'] ?? 0) === 1,
     JSON.stringify(freeLocks))

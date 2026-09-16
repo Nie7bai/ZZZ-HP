@@ -152,7 +152,9 @@ export function computeAffixBenefitTable(input: AffixBenefitInput): AffixBenefit
   const baselineDamage = metricOf(baseEval)
 
   const rows: AffixBenefitRow[] = []
+  // 临时条目（`group` 为空）不进收益表（2026-09-16 口径：空组属于临时条目，不算正式条目）
   for (const entry of entries) {
+    if (!entry.group) continue
     const nextCounts = bumpEntryCounts(baseCounts, entry, step)
     const nextDeltas = bumpEntryDeltas(basePanelDeltas, entry, step)
     const nextGains = bumpEntryExtraGains(baseExtraGains, entry, step)

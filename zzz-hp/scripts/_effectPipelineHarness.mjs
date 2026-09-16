@@ -148,7 +148,8 @@ export function affixEntry(id, target, perRoll) {
     target,
     perRoll,
     cap: 0,
-    group: '',
+    // 正式条目：给个组名。空组 = 临时条目，既不进最优计算、也不出收益表（2026-09-16 口径）
+    group: '副词条',
     rollCost: 1,
     enabledByDefault: true,
   }
