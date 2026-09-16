@@ -23,9 +23,14 @@ import {
   isTeamBuffApplyTarget,
 } from '@/utils/panelBuffCalc'
 import { formatBuffEffectResultText, formatApplyProfessionLabel, resolveConvertValue } from '@/utils/buffEffect'
+import {
+  isSkillConvertFromKey,
+  SKILL_CONVERT_FROM_TO_TALENT_KEY,
+  type SkillTalentLevels,
+} from '@/utils/skillTalentLevels'
 import { formatCalcSigned } from '@/utils/calcNumberFormat'
 import { buffStatFieldLabel, BUFF_STAT_FIELDS } from '@/utils/calculatorUi'
-import { CHARACTER_ATTR_OPTIONS } from '@/types/calculator'
+import { CONVERT_FROM_OPTIONS } from '@/types/calculator'
 
 const props = defineProps<{
   effects: CollectedEffect[]
@@ -42,6 +47,8 @@ const props = defineProps<{
   teamSlots?: Array<{ agentId?: string | null }>
   /** 代理人列表（读取 profession） */
   agents?: Array<{ id: string; profession?: string | null }>
+  /** 技能等级转模来源：按角色 id 的五大类技能等级 */
+  skillTalentLevelsByAgent?: Record<string, Partial<SkillTalentLevels> | null>
 }>()
 
 function panelSourceValuesForEffect(item: CollectedEffect): PanelSourceValues | undefined {
@@ -103,7 +110,7 @@ function statLabel(stat: string) {
 }
 
 function attrLabel(from: string) {
-  return CHARACTER_ATTR_OPTIONS.find((item) => item.id === from)?.label ?? from
+  return CONVERT_FROM_OPTIONS.find((item) => item.id === from)?.label ?? from
 }
 
 function panelSourceLabel(item: CollectedEffect) {
@@ -177,6 +184,14 @@ function convertLiveBase(item: CollectedEffect) {
   }
   if (convert.defaultBase != null && Number.isFinite(convert.defaultBase)) {
     return convert.defaultBase
+  }
+  // 技能等级转模：取来源角色的对应大类技能等级
+  if (isSkillConvertFromKey(convert.from)) {
+    const slotIndex = parseSourceKeySlotIndex(item.sourceKey)
+    const agentId =
+      slotIndex != null ? props.teamSlots?.[slotIndex]?.agentId : undefined
+    const levels = agentId ? props.skillTalentLevelsByAgent?.[agentId] : undefined
+    return levels?.[SKILL_CONVERT_FROM_TO_TALENT_KEY[convert.from]] ?? 0
   }
   const source = convert.panelSource ?? 'external'
   const panelSources = panelSourceValuesForEffect(item)

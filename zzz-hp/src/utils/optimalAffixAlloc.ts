@@ -1,5 +1,6 @@
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
 import type { ExtraBuffGain } from '@/components/calculator/ExtraBuffGainEditor.vue'
+import type { SkillTalentLevels } from '@/utils/skillTalentLevels'
 import type {
   AgentBuffDoc,
   AnomalyDamageSubKind,
@@ -2721,6 +2722,8 @@ export function buildOptimalEvalContext(input: {
    * 省略 = 保持原有解析。
    */
   slotExternalPanels?: Record<number, PanelStats>
+  /** 技能等级转模来源：按角色 id 的五大类技能等级 */
+  skillTalentLevelsByAgent?: Record<string, Partial<SkillTalentLevels> | null>
   hits?: ResolvedHit[]
   /** 页级异常强度提供者 id（命名含 trigger，实为 power） */
   triggerAnomalyAgentId?: string | null
@@ -2787,6 +2790,7 @@ export function buildOptimalEvalContext(input: {
       buffSelection: input.buffSelection,
       activeSlotPanels: input.activeSlotPanels,
       convertSlotPanels: input.convertSlotPanels,
+      skillTalentLevelsByAgent: input.skillTalentLevelsByAgent,
       slotExternalPanels:
         input.slotExternalPanels ??
         Object.fromEntries(

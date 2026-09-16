@@ -1,4 +1,8 @@
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
+import {
+  isSkillConvertFromKey,
+  type SkillTalentLevels,
+} from '@/utils/skillTalentLevels'
 import type {
   AgentBuffDoc,
   BangbooBuffDoc,
@@ -539,6 +543,8 @@ export interface PanelCalcContext {
   baseEnergyRegen?: number
   /** 跳过转模（两阶段结算用） */
   skipConvert?: boolean
+  /** 技能等级转模来源：按角色 id 的五大类技能等级（缺省 = 无等级转模值） */
+  skillTalentLevelsByAgent?: Record<string, Partial<SkillTalentLevels> | null>
   /** 仅收集指定槽位的 Buff 来源（蕾米埃尔本人耀变：不含队友/邦布） */
   restrictToSlotIndex?: number
   /** 场地 / 环境 Buff（危局全局、Boss 场地、防卫房间） */
@@ -883,6 +889,8 @@ export function collectConvertSourceMarksForSlot(
     if (effect.kind !== 'convert' || !effect.convert) continue
     const source = effect.convert.panelSource ?? 'external'
     if (source !== 'external' && source !== 'final') continue
+    // 技能等级转模没有面板属性值，不参与「转模来源面板属性」收集
+    if (isSkillConvertFromKey(effect.convert.from)) continue
     if (requireEnabled && !isEffectEnabled(effect, ctx.buffSelection)) continue
     if (parseSourceKeySlotIndex(item.sourceKey) !== slotIndex) continue
     const key = `${source}:${effect.convert.from}`
@@ -957,6 +965,8 @@ export function collectConvertSupportSlots(
 
     const agentId = ctx.teamSlots[slotIndex]?.agentId
     if (!agentId || agentId === mainId || anomalyIds.has(agentId)) continue
+    // 技能等级转模没有面板属性值，不参与「转模来源属性收集」
+    if (isSkillConvertFromKey(effect.convert.from)) continue
 
     slotByAgent.set(agentId, slotIndex)
     const set = attrByAgent.get(agentId) ?? new Set<CharacterAttrKey>()
@@ -1122,6 +1132,9 @@ function resolvePackMods(
   const beneficiaryProfession = ctx.agents.find(
     (item) => item.id === ctx.teamSlots[ctx.mainSlotIndex]?.agentId,
   )?.profession
+  // 技能等级转模：取「效果来源角色」的等级（self/team 效果都由来源槽位提供）
+  const slotAgentId =
+    slotIndex != null ? ctx.teamSlots[slotIndex]?.agentId : undefined
   return resolveEffectsToMods(effects, {
     applyTargets: isMain ? ['self', 'team'] : ['team'],
     ctx: skillCtx,
@@ -1132,6 +1145,7 @@ function resolvePackMods(
     convertInputs: ctx.buffSelection?.convertInputs,
     attrValues: ctx.attrValues,
     panelSourceValues,
+    skillTalentLevels: slotAgentId ? ctx.skillTalentLevelsByAgent?.[slotAgentId] : undefined,
     skipConvert: ctx.skipConvert,
     selection: ctx.buffSelection,
     resolveTeamProfessionCount: resolveTeamProfessionCountOption(ctx),

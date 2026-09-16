@@ -94,6 +94,7 @@ import {
   eventNeedsAnomalyProducer,
 } from '@/utils/damageEvent'
 import { buildGenericPanelSkillContext } from '@/utils/resolvedHit'
+import type { SkillTalentLevels } from '@/utils/skillTalentLevels'
 import {
   buildSkillFlowPageSignature,
   formatAffixCountsSummary,
@@ -182,6 +183,8 @@ const props = defineProps<{
    * （见下方 `skillFlowExternal`）。
    */
   skillFlowMainExternalOverride?: PanelStats | null
+  /** 技能等级转模来源：按角色 id 的五大类技能等级 */
+  skillTalentLevelsByAgent?: Record<string, Partial<SkillTalentLevels> | null>
 }>()
 
 const extraGains = defineModel<ExtraBuffGain[]>('extraGains', { default: () => [] })
@@ -463,6 +466,8 @@ const evalCtx = computed(() =>
     skillSubcategories: skillSubcategories.value,
     followUpSkillRules: followUpSkillRules.value,
     environmentBuffs: props.environmentBuffs,
+    // 技能等级转模来源（角色增益按等级转模用）
+    skillTalentLevelsByAgent: props.skillTalentLevelsByAgent,
     // 词条库「每档值」随上下文走：柱图 / 详情 / 收益表 / 基准总伤共用一份，避免分叉
     valuePerCount: affixLibraryValuePerCount.value,
   }),

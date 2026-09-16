@@ -19,8 +19,13 @@ import type {
   SkillCategoryId,
   SkillSubcategory,
 } from '@/types/calculator'
-import { CHARACTER_ATTR_OPTIONS } from '@/types/calculator'
+import { CONVERT_FROM_OPTIONS } from '@/types/calculator'
 import { isLuminousElement } from '@/utils/remielUtils'
+import {
+  isSkillConvertFromKey,
+  SKILL_CONVERT_FROM_TO_TALENT_KEY,
+  type SkillTalentLevels,
+} from '@/utils/skillTalentLevels'
 import { formatCalcDecimal, roundCalc } from '@/utils/calcNumberFormat'
 import { normalizeBuffMultFactorDelta } from '@/utils/multFactorPercent'
 
@@ -446,11 +451,26 @@ export function resolveConvertValue(
     external?: Partial<Record<CharacterAttrKey, number>>
     final?: Partial<Record<CharacterAttrKey, number>>
   },
+  /** 技能等级转模来源：来源角色的五大类技能等级 */
+  skillTalentLevels?: Partial<SkillTalentLevels> | null,
 ): number {
   if (effect.kind !== 'convert' || !effect.convert) return 0
   const source = effect.convert.panelSource ?? 'external'
   let from: number
-  if (source === 'manual') {
+  if (isSkillConvertFromKey(effect.convert.from)) {
+    // 技能等级来源：等级表取来源角色对应大类等级；manual 仍用输入/默认基础值
+    if (source === 'manual') {
+      from =
+        overrideBase != null && Number.isFinite(overrideBase)
+          ? overrideBase
+          : effect.convert.defaultBase != null && Number.isFinite(effect.convert.defaultBase)
+            ? effect.convert.defaultBase
+            : 0
+    } else {
+      const talentKey = SKILL_CONVERT_FROM_TO_TALENT_KEY[effect.convert.from]
+      from = skillTalentLevels?.[talentKey] ?? 0
+    }
+  } else if (source === 'manual') {
     // 自行设置：不读面板，优先用计算页输入，其次配置的 defaultBase
     from =
       overrideBase != null && Number.isFinite(overrideBase)
@@ -741,6 +761,8 @@ export function resolveEffectsToMods(
       external?: Partial<Record<CharacterAttrKey, number>>
       final?: Partial<Record<CharacterAttrKey, number>>
     }
+    /** 技能等级转模来源：效果所属角色的五大类技能等级 */
+    skillTalentLevels?: Partial<SkillTalentLevels> | null
     /** 跳过转模效果（用于先叠非转模再算转模） */
     skipConvert?: boolean
     selection?: { enabledIds?: Record<string, boolean> } | null
@@ -787,6 +809,7 @@ export function resolveEffectsToMods(
               ? options.convertInputs[effect.id]
               : null,
             options.panelSourceValues,
+            options.skillTalentLevels,
           )
         : resolveEffectBaseValue(effect, stacks)
     if (isBuffMultFactorKey(effect.stat)) {
@@ -1179,7 +1202,7 @@ function convertSourceAttrLabel(convert: BuffEffectConvert): string {
         ? '自行'
         : '局外'
   const from =
-    CHARACTER_ATTR_OPTIONS.find((item) => item.id === convert.from)?.label ?? convert.from
+    CONVERT_FROM_OPTIONS.find((item) => item.id === convert.from)?.label ?? convert.from
   return `${source}·${from}`
 }
 

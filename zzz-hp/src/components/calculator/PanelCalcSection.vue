@@ -3,6 +3,7 @@ import { computed, onUnmounted, reactive, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { type ExtraBuffGain } from '@/components/calculator/ExtraBuffGainEditor.vue'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
+import type { SkillTalentLevels } from '@/utils/skillTalentLevels'
 import type {
   AgentBuffDoc,
   AnomalyDamageSubKind,
@@ -155,6 +156,8 @@ const props = defineProps<{
   calcSuspended?: boolean
   /** 环境 / 场地 Buff（危局全局、Boss 场地、防卫房间） */
   environmentBuffs?: import('@/utils/environmentBuffCalc').EnvironmentBuffEntry[]
+  /** 技能等级转模来源：按角色 id 的五大类技能等级 */
+  skillTalentLevelsByAgent?: Record<string, Partial<SkillTalentLevels> | null>
   /**
    * 当前编辑角色的局外面板覆盖值（招式流程三选项的「词条分析」两态）。
    *
@@ -427,6 +430,7 @@ function buildPanelCalcContextForSlot(
     mainExternalPanel: resolveExternalPanelForSlotIndex(mainSlotIndex.value),
     attrValues: getAttrDefaultsForSlot(slotIndex),
     environmentBuffs: props.environmentBuffs,
+    skillTalentLevelsByAgent: props.skillTalentLevelsByAgent,
   }
 }
 

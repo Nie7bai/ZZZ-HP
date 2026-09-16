@@ -2117,6 +2117,7 @@ defineExpose({ scrollToSection })
       :attr-defaults="panelCalcSectionRef?.getAttrDefaultsForSlot?.(buffPickerViewSlotIndex) ?? panelCalcSectionRef?.convertAttrDefaults ?? {}"
       :panel-source-values="panelCalcSectionRef?.getPanelSourceValuesForSlot?.(buffPickerViewSlotIndex) ?? panelCalcSectionRef?.convertPanelSourceValues ?? undefined"
       :panel-source-values-by-slot="panelCalcSectionRef?.panelSourceValuesBySlot ?? undefined"
+      :skill-talent-levels-by-agent="skillTalentLevelsByAgent"
       :skill-subcategories="skillSubcategories"
     >
       <template #environment-filter>
@@ -2162,6 +2163,7 @@ defineExpose({ scrollToSection })
       :trigger-anomaly-agent-id="triggerAnomalyAgentId"
       :slot-panels="slotPanels"
       :convert-slot-panels="convertSlotPanels"
+      :skill-talent-levels-by-agent="skillTalentLevelsByAgent"
       :skill-category-id="skillCategoryId"
       :skill-subcategory-id="skillSubcategoryId"
       :slot-buff-selections="multiSlotBuffSelection"
@@ -2213,6 +2215,7 @@ defineExpose({ scrollToSection })
         :preview-hits="previewHits"
         :environment-buffs="activeEnvironmentBuffs"
         :skill-flow-main-external-override="skillFlowMainExternalOverride"
+        :skill-talent-levels-by-agent="skillTalentLevelsByAgent"
         v-model:base-damage-source="baseDamageSource"
         v-model:enemy-input="enemyInput"
         v-model:extra-gains="extraGains"
