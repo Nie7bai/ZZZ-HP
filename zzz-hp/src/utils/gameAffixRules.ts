@@ -5,6 +5,7 @@ import {
   type AffixLibraryGroup,
 } from '@/utils/affixLibrary'
 import {
+  DEFAULT_WORK_BUDGET,
   solveOptimalAffixAllocationAsync,
   type AffixEntryCapTax,
   type AffixOptimizerAsyncOptions,
@@ -252,9 +253,14 @@ export interface GameAffixAllocationResult extends AffixOptimizerResult {
  * 游戏专用 4 口袋求解。
  *
  * 用户 2026-09-16 口径：预设 / 高级参数**透传给每个口袋**，**每袋都完整跑 Beam**，
- * 不先粗筛口袋；每袋同等参数、独立公平预算，最后按总伤取最高。
+ * 不先粗筛口袋；每袋同等参数、**共享一个预算池**（每袋公平额度 × 袋数，先跑的口袋没用完的
+ * 顺延给后面的口袋 —— 与普通模式「先专路、剩余给普通路」同构），最后按总伤取最高。
  * 4 号位主属性全付费，故外层只有 5 / 6 两维 = **4 袋**（`GAME_POCKET_COMBOS`）。
  * 5 号付费口袋自然排除 24% 穿透专路（付费号位里没有 `main:slot5:penRate`）。
+ *
+ * **为什么不做成"一次搜索"**（2026-09-16 复核）：4 袋的差别不只是代价（付费已用 `rollCost` +
+ * cap 税表达），更关键是**候选集本身不同** —— 5 号付费袋里没有 `penRate` 条目。同一号位组的
+ * 候选集随"买不买"变化，单次搜索表达不了，所以外层枚举是当前表达力下的必要代价。
  */
 export async function solveGameAffixAllocationAsync(
   input: {
@@ -273,7 +279,7 @@ export async function solveGameAffixAllocationAsync(
     routeRetentionRatio?: number
     /** 最大保留路线 B；显式值覆盖预设 */
     maxRetainedRoutes?: number
-    /** 每袋的公平预算（各袋一致） */
+    /** 每袋的公平预算（各袋一致）；先跑的口袋没用完的，顺延给后面的口袋 */
     maxWorkUnits?: number
   },
   options?: AffixOptimizerAsyncOptions,
@@ -295,16 +301,32 @@ export async function solveGameAffixAllocationAsync(
     maxRetainedRoutes: input.maxRetainedRoutes,
   }
 
-  for (let index = 0; index < total; index += 1) {
-    const combo = GAME_POCKET_COMBOS[index]!
-    const branch = buildGameAffixBranch({
+  // 先列出「真正会跑的口袋」（纯数据构造、零评估），好算共享预算池
+  const pocketPlans = GAME_POCKET_COMBOS.map((combo, index) => ({
+    combo,
+    index,
+    branch: buildGameAffixBranch({
       entries: input.entries,
       enabledIds: input.enabledIds,
       combo,
       extraCost: input.extraCost,
-    })
-    if (!branch.entries.length) continue
+    }),
+  })).filter((plan) => plan.branch.entries.length)
+
+  /**
+   * 共享预算池 = **每袋额度 × 袋数**；**先跑的口袋没用完的顺延给后面的口袋**
+   * （与普通模式「先专路、剩余给普通路」同构）。每袋拿的是「剩余池 ÷ 剩余袋数」，
+   * 所以任何一袋都不会低于自己的公平额度（默认额度 = `DEFAULT_WORK_BUDGET`）。
+   */
+  const perPocketBudget = input.maxWorkUnits ?? DEFAULT_WORK_BUDGET
+  const budgetPool = perPocketBudget * pocketPlans.length
+  let poolUsed = 0
+
+  for (let planIndex = 0; planIndex < pocketPlans.length; planIndex += 1) {
+    const { combo, index, branch } = pocketPlans[planIndex]!
     const label = gamePocketLabel(combo)
+    const pocketsLeft = Math.max(1, pocketPlans.length - planIndex)
+    const allowance = Math.max(0, Math.floor((budgetPool - poolUsed) / pocketsLeft))
     // 已完成口袋的累计（进度里给「赢家 + 各袋总计」）
     const doneWork = workUsed
     const doneCalls = engineCalls
@@ -313,7 +335,7 @@ export async function solveGameAffixAllocationAsync(
       entries: branch.entries,
       maxTotalRolls: input.maxTotalRolls,
       ...sharedParams,
-      ...(input.maxWorkUnits != null ? { maxWorkUnits: input.maxWorkUnits } : {}),
+      maxWorkUnits: allowance,
       groupCaps,
       entryCapTaxes: branch.entryCapTaxes,
     }
@@ -332,6 +354,7 @@ export async function solveGameAffixAllocationAsync(
     })
     pockets += 1
     workUsed += result.workUsed
+    poolUsed += result.workUsed
     engineCalls += result.engineCalls
     cacheHits += result.cacheHits
     if (!best || result.totalDamage > best.totalDamage) {

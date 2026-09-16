@@ -343,11 +343,11 @@ export type AffixOptimizerAsyncOptions = {
 const DEFAULT_MAX_TOTAL_ROLLS = 46
 
 /**
- * 默认计算量预算。
+ * 默认计算量预算（导出：游戏专用 4 口袋要按「每袋默认额度 × 袋数」建共享池）。
  * 原先按旧版 `maxEngineCalls = 4000` × 典型 8 命中计价 9 = 36000，
  * 长流程会在词条档数用尽前先撞上算力上限。提到 20 万。
  */
-const DEFAULT_WORK_BUDGET = 200000
+export const DEFAULT_WORK_BUDGET = 200000
 
 /** 单次评估的计价 = 1 + 命中数（实测 0/3/8/15/30 命中 ≈ 1 : 3.8 : 8.9 : 16 : 29.6） */
 function workPricePerEval(ctx: OptimalEvalContext): number {
