@@ -1,4 +1,4 @@
-import type { Skill, SkillTypeId } from '@/types/calculator'
+import type { Skill, SkillConvertFromKey, SkillTypeId } from '@/types/calculator'
 
 /** 面板导入配置的五大类技能等级（连携/终结共用一档） */
 export type SkillTalentLevelKey =
@@ -9,6 +9,22 @@ export type SkillTalentLevelKey =
   | 'chainUltimate'
 
 export type SkillTalentLevels = Record<SkillTalentLevelKey, number>
+
+/** 转模来源「技能等级键」→ 五大类等级键（buffEffect.resolveConvertValue 用） */
+export const SKILL_CONVERT_FROM_TO_TALENT_KEY: Record<
+  SkillConvertFromKey,
+  SkillTalentLevelKey
+> = {
+  skillLevelBasic: 'basic',
+  skillLevelDodge: 'dodge',
+  skillLevelAssist: 'assist',
+  skillLevelSpecial: 'special',
+  skillLevelChainUltimate: 'chainUltimate',
+}
+
+export function isSkillConvertFromKey(value: string): value is SkillConvertFromKey {
+  return value in SKILL_CONVERT_FROM_TO_TALENT_KEY
+}
 
 export const SKILL_TALENT_LEVEL_KEYS: SkillTalentLevelKey[] = [
   'basic',

@@ -50,6 +50,7 @@ import type {
 } from '@/types/calculator'
 import {
   buildSkillBaseMultNote,
+  createDefaultSkillTalentLevels,
   fillSkillTalentLevels,
   type SkillTalentLevels,
 } from '@/utils/skillTalentLevels'
@@ -240,16 +241,17 @@ const resolvedFlow = computed(() =>
   }),
 )
 
-/** 槽位影画变更时，把已存技能等级钳进该影画上下限 */
+/** 槽位影画变更时，技能等级跟随新影画档位上限（升档自动补高；语义见 dev-docs/skill-talent-level-rank-sync.md）。
+ * 导入确认也会改 slot.rank（applyUnifiedImport），那一路的等级由 payload 显式写入，
+ * 用 importRankGuard 跳过 watch，避免把用户刚确认的等级覆盖成上限。 */
+let importRankGuard = false
 watch(
   () => teamSlots.map((slot) => `${slot.agentId}:${slot.rank}`).join('|'),
   () => {
+    if (importRankGuard) return
     for (const slot of teamSlots) {
-      if (!slot.agentId || !skillTalentLevelsByAgent[slot.agentId]) continue
-      skillTalentLevelsByAgent[slot.agentId] = fillSkillTalentLevels(
-        skillTalentLevelsByAgent[slot.agentId],
-        slot.rank,
-      )
+      if (!slot.agentId) continue
+      skillTalentLevelsByAgent[slot.agentId] = createDefaultSkillTalentLevels(slot.rank)
     }
   },
 )
@@ -307,6 +309,7 @@ const damageResultEvalCtx = computed(() =>
     skillSubcategories: skillSubcategories.value,
     followUpSkillRules: followUpSkillRules.value,
     environmentBuffs: activeEnvironmentBuffs.value,
+    skillTalentLevelsByAgent,
   }),
 )
 
@@ -1442,6 +1445,8 @@ const activeFinalPanelPreview = computed(() => {
 function applyUnifiedImport(payload: UnifiedPresetConfirmPayload) {
   const slot = teamSlots[activeSlot.value]
   if (!slot) return
+  // 导入确认引起的 rank 变化不走「影画→重置等级上限」watch，等级以 payload 为准
+  importRankGuard = true
   slot.rank = payload.rank
   slot.wengineId = payload.wengineId
   slot.wengineRefine = payload.wengineRefine
@@ -1471,6 +1476,8 @@ function applyUnifiedImport(payload: UnifiedPresetConfirmPayload) {
   )
   slot.agentId = agentId
   nextTick(() => {
+    // 本轮导入的 rank 变更已消费完毕，恢复影画 watch（watch 默认 flush pre，先于 nextTick 回调执行）
+    importRankGuard = false
     panelCalcSectionRef.value?.syncLivePanelFromCommitted?.()
   })
 }
@@ -2117,6 +2124,7 @@ defineExpose({ scrollToSection })
       :attr-defaults="panelCalcSectionRef?.getAttrDefaultsForSlot?.(buffPickerViewSlotIndex) ?? panelCalcSectionRef?.convertAttrDefaults ?? {}"
       :panel-source-values="panelCalcSectionRef?.getPanelSourceValuesForSlot?.(buffPickerViewSlotIndex) ?? panelCalcSectionRef?.convertPanelSourceValues ?? undefined"
       :panel-source-values-by-slot="panelCalcSectionRef?.panelSourceValuesBySlot ?? undefined"
+      :skill-talent-levels-by-agent="skillTalentLevelsByAgent"
       :skill-subcategories="skillSubcategories"
     >
       <template #environment-filter>
@@ -2162,6 +2170,7 @@ defineExpose({ scrollToSection })
       :trigger-anomaly-agent-id="triggerAnomalyAgentId"
       :slot-panels="slotPanels"
       :convert-slot-panels="convertSlotPanels"
+      :skill-talent-levels-by-agent="skillTalentLevelsByAgent"
       :skill-category-id="skillCategoryId"
       :skill-subcategory-id="skillSubcategoryId"
       :slot-buff-selections="multiSlotBuffSelection"
@@ -2213,6 +2222,7 @@ defineExpose({ scrollToSection })
         :preview-hits="previewHits"
         :environment-buffs="activeEnvironmentBuffs"
         :skill-flow-main-external-override="skillFlowMainExternalOverride"
+        :skill-talent-levels-by-agent="skillTalentLevelsByAgent"
         v-model:base-damage-source="baseDamageSource"
         v-model:enemy-input="enemyInput"
         v-model:extra-gains="extraGains"

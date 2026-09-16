@@ -83,6 +83,11 @@ export function collectRemielSelfRestrictedContributions(
   const fourPiecePrefix = `drive-disc-${remielSlotIndex}-4set`
   const wenginePrefix = `wengine-${remielSlotIndex}-`
   const skillCtx = ctx.skillContext
+  // 等级转模来源：效果所属角色 = 蕾米自己（本函数只收集本槽贡献）
+  const selfAgentId = ctx.teamSlots[remielSlotIndex]?.agentId
+  const selfTalentLevels = selfAgentId
+    ? (ctx.skillTalentLevelsByAgent?.[selfAgentId] ?? null)
+    : null
 
   let atkConvert = 0
   let masteryBonus = 0
@@ -101,7 +106,7 @@ export function collectRemielSelfRestrictedContributions(
       const convertOverride = ctx.buffSelection?.convertInputs?.[effect.id]
 
       if (source.key.startsWith(agentPrefix) && effect.kind === 'convert' && effect.stat === 'atk') {
-        const value = resolveConvertValue(effect, {}, convertOverride, panelSourceValues)
+        const value = resolveConvertValue(effect, {}, convertOverride, panelSourceValues, selfTalentLevels)
         if (!value) continue
         atkConvert += value
         atkItems.push(`${source.label} 攻击力转模 ${formatSignedContribution(value)}`)
@@ -115,7 +120,7 @@ export function collectRemielSelfRestrictedContributions(
 
       const value =
         effect.kind === 'convert'
-          ? resolveConvertValue(effect, {}, convertOverride, panelSourceValues)
+          ? resolveConvertValue(effect, {}, convertOverride, panelSourceValues, selfTalentLevels)
           : resolveEffectBaseValue(effect, stacks)
       if (!value) continue
       masteryBonus += value
