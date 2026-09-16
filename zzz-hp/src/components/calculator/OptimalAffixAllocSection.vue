@@ -1563,6 +1563,12 @@ const affixAllocResultStale = ref(false)
 const affixAllocLoading = ref(false)
 const affixAllocError = ref<string | null>(null)
 /**
+ * 最近一次点的是哪种分配方式 —— **只驱动界面上的「二选一」高亮**，不参与计算、不落盘。
+ * 求解结果本身不带模式信息，所以这里单独记一格；失败/中止时也保留高亮，
+ * 好让用户知道刚才点的是哪一个。
+ */
+const affixAllocMode = ref<'default' | 'game' | null>(null)
+/**
  * 词条搜索设置（本机独立存盘）：预设 + 三项搜索参数 + 高级区展开状态。
  *
  * 三项参数各有一句白话解释，见 `dev-docs/词条最优分配.md`「改造：自适应 Beam」：
@@ -1845,6 +1851,7 @@ async function runAffixAllocation() {
   }
   const total = Math.max(1, Math.min(60, Math.round(affixAllocTotalRolls.value)))
   affixAllocTotalRolls.value = total
+  affixAllocMode.value = 'default'
   affixAllocLoading.value = true
   affixAllocError.value = null
   affixAllocProgress.value = null
@@ -1933,6 +1940,7 @@ async function runGameAffixAllocation() {
   }
   const total = Math.max(1, Math.min(60, Math.round(affixAllocTotalRolls.value)))
   affixAllocTotalRolls.value = total
+  affixAllocMode.value = 'game'
   affixAllocLoading.value = true
   affixAllocError.value = null
   affixAllocProgress.value = null
@@ -2956,25 +2964,32 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         <p v-else class="hint">配置招式流程后即可试算主属性组合。</p>
 
         <h3 class="block-title">最优分配</h3>
-        <div class="alloc-action-grid">
+        <!--
+          求解参数。整块**不再是 grid**：改动前每个子项（含两行说明）各占一个格子，
+          第三列 `minmax(0, 1fr)` 在窄屏被挤成 0 宽，两行说明被压成 800~900px 高的竖条、
+          整块高度 1755px；切「高级设置」还会触发 grid 自动排布整体重排（看起来就是"乱飘"）。
+        -->
+        <div class="alloc-input-row alloc-fields">
+          <label class="field">
+            <span>总词条数</span>
+            <input v-model.lazy.number="affixAllocTotalRolls" type="number" min="1" max="60" step="1" />
+          </label>
+          <label class="field">
+            <span>搜索预设</span>
+            <select :value="affixSearchSettings.preset" @change="onAffixSearchPresetChange">
+              <option v-for="presetId in SEARCH_PRESET_ORDER" :key="presetId" :value="presetId">
+                {{ AFFIX_SEARCH_PRESET_LABELS[presetId] }}
+              </option>
+            </select>
+          </label>
+          <button type="button" class="ghost-btn" @click="toggleAffixSearchAdvanced">
+            {{ affixSearchSettings.advancedOpen ? '收起高级' : '高级设置' }}
+          </button>
+        </div>
+
+        <!-- 高级参数：就地展开成下面一行，只把后面的内容往下推，不重排上面的控件 -->
+        <div v-if="affixSearchSettings.advancedOpen" class="alloc-advanced">
           <div class="alloc-input-row alloc-fields">
-            <label class="field">
-              <span>总词条数</span>
-              <input v-model.lazy.number="affixAllocTotalRolls" type="number" min="1" max="60" step="1" />
-            </label>
-            <label class="field">
-              <span>搜索预设</span>
-              <select :value="affixSearchSettings.preset" @change="onAffixSearchPresetChange">
-                <option v-for="presetId in SEARCH_PRESET_ORDER" :key="presetId" :value="presetId">
-                  {{ AFFIX_SEARCH_PRESET_LABELS[presetId] }}
-                </option>
-              </select>
-            </label>
-            <button type="button" class="ghost-btn" @click="toggleAffixSearchAdvanced">
-              {{ affixSearchSettings.advancedOpen ? '收起高级' : '高级设置' }}
-            </button>
-          </div>
-          <div v-if="affixSearchSettings.advancedOpen" class="alloc-input-row alloc-fields">
             <label class="field">
               <span>初始候选门槛</span>
               <span class="field-input-with-suffix">
@@ -2994,47 +3009,68 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
               <input v-model.lazy.number="affixSearchMaxRoutes" type="number" min="1" max="64" step="1" />
             </label>
           </div>
-          <button
-            v-if="affixAllocLoading"
-            type="button"
-            class="ghost-btn"
-            @click="abortAffixAllocation"
-          >
-            停止
-          </button>
-          <button
-            v-else
-            type="button"
-            class="calc-run-btn"
-            :disabled="!affixLibraryEntries.length"
-            @click="runAffixAllocation"
-          >
-            求最优分配
-          </button>
-          <span class="hint">计算采用自适应 Beam：同一预算下并行保留多条分法，再各做一轮换档兜底。不清楚规则：预设用「均衡」</span>
-          <div class="alloc-grid-spacer" aria-hidden="true"></div>
-          <div class="alloc-input-row alloc-game-btns">
+          <p class="alloc-note">
+            初始候选门槛：满额收益低于「全场最佳满额收益 × 门槛」的词条直接出局，省算力。
+            ⚠️ 这个值「越高越激进」：实测调到 5% 及以上，会把能连吃多档的副词条一起淘汰 ——
+            总词条数花不完、总伤明显下降。三个预设分别是 0%（精细）/ 0.5%（均衡）/ 2%（快速）；不确定就别往上调。
+          </p>
+          <p class="alloc-note">
+            路线保留比例越低、最大保留路线越小越快，也越可能漏掉「次优起步、换档后反超」的分法。
+          </p>
+        </div>
+
+        <!-- 分配方式：二选一 —— 两颗独立按钮；正在跑时两颗一起变灰，行尾出现「停止」（不顶掉主按钮，避免跳动） -->
+        <div class="alloc-mode-block">
+          <div class="alloc-mode-row">
+            <span class="alloc-mode-label">分配方式</span>
             <button
               type="button"
-              class="calc-run-btn"
+              class="alloc-mode-btn"
+              :class="{ 'is-active': affixAllocMode === 'default' }"
+              :disabled="affixAllocLoading || !affixLibraryEntries.length"
+              :title="affixLibraryEntries.length ? '' : '词条库为空，请先启用至少一条词条'"
+              @click="runAffixAllocation"
+            >
+              求最优分配
+            </button>
+            <button
+              type="button"
+              class="alloc-mode-btn"
+              :class="{ 'is-active': affixAllocMode === 'game' }"
               :disabled="affixAllocLoading || !gameAffixSettings.enabledIds.length"
+              :title="gameAffixSettings.enabledIds.length ? '' : '请先去「编辑」里勾选至少一条词条'"
               @click="runGameAffixAllocation"
             >
               游戏专用分配规则
             </button>
-            <button type="button" class="ghost-btn" :disabled="affixAllocLoading" @click="gameAffixRulesOpen = true">
+            <button
+              type="button"
+              class="ghost-btn alloc-mode-edit"
+              :disabled="affixAllocLoading"
+              title="编辑游戏专用分配规则"
+              @click="gameAffixRulesOpen = true"
+            >
               编辑
             </button>
+            <button
+              type="button"
+              class="ghost-btn alloc-stop-btn"
+              :class="{ 'is-reserved': !affixAllocLoading }"
+              :disabled="!affixAllocLoading"
+              @click="abortAffixAllocation"
+            >
+              停止
+            </button>
           </div>
-          <span class="hint">可模拟 4 号位主属性与副词条重复、以及 5/6 号位选到攻击/生命/防御时的总词条数损失；比上方「求最优分配」慢</span>
+          <ul class="alloc-mode-notes">
+            <li>
+              <b>求最优分配</b>：自适应 Beam —— 同一预算下并行保留多条分法，再各做一轮换档兜底；不清楚规则就用预设「均衡」。
+            </li>
+            <li>
+              <b>游戏专用分配规则</b>：模拟 4 号位主属性与副词条重复、以及 5/6 号位选到攻击/生命/防御时的总词条数损失，比左边慢。
+            </li>
+          </ul>
         </div>
-        <p v-if="affixSearchSettings.advancedOpen" class="hint">
-          初始候选门槛：把「全投进去也涨不了多少分」的词条直接淘汰，省算力。⚠️ 实测调到 5% 以上会把
-          能连吃多档的副词条一起淘汰，总词条数花不完、总伤明显下降；不确定就保持预设值（0% 只淘汰负收益）。
-        </p>
-        <p class="hint">
-          路线保留比例越低、最大保留路线越小越快，也越可能漏掉「次优起步、换档后反超」的分法。
-        </p>
         <p v-if="affixAllocError" class="err">{{ affixAllocError }}</p>
         <AffixAllocationResult
           :result="affixAllocResult"
@@ -4060,28 +4096,111 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   align-items: flex-end;
   gap: 0.75rem;
   flex-wrap: wrap;
-  margin: 0.6rem 0;
-}
-
-.alloc-action-grid {
-  display: grid;
-  grid-template-columns: max-content max-content minmax(0, 1fr);
-  align-items: end;
-  column-gap: 0.75rem;
-  row-gap: 0.45rem;
-  margin: 0.6rem 0;
-}
-
-.alloc-action-grid .alloc-input-row {
+  /* 竖向间距交给 .opt-section 的 flex gap —— 别再叠加 margin（那是「行距离谱」的一半原因） */
   margin: 0;
 }
 
-.alloc-game-btns {
-  flex-wrap: nowrap;
+/*
+ * 高级参数块：字段和它自己的说明贴在一起。
+ * 说明原来是整块的兄弟段落（折叠时也一直显示），指代的却是收起后看不见的参数，故收进这里。
+ */
+.alloc-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
 }
 
-.alloc-grid-spacer {
-  min-width: 0;
+/*
+ * 分配方式：二选一 —— 两颗独立按钮 + 一个从属的「编辑」；跑起来时两颗一起变灰、行尾出现「停止」。
+ *
+ * 改造前：每个子项（含两行说明）都是 `.alloc-action-grid` 的格子，第三列 `minmax(0, 1fr)`
+ * 在窄屏被挤成 0 宽，说明被压成 800~900px 高的竖条、整块 1755px 高；切「高级设置」还会
+ * 触发 grid 自动排布整体重排（用户反馈的"乱飘"）。现在整块是普通行式布局，只往下推。
+ */
+.alloc-mode-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.alloc-mode-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.alloc-mode-label {
+  font-size: 0.8rem;
+  color: #9aa3b0;
+}
+
+.alloc-mode-btn {
+  border: 1px solid #333841;
+  border-radius: 10px;
+  background: #1a1e25;
+  color: #d5dae3;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 0.5rem 1.1rem;
+  min-width: 10.5rem; /* 两颗等宽 → 一眼看出是「二选一」 */
+  text-align: center;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.alloc-mode-btn:hover:not(:disabled) {
+  border-color: #4a5260;
+}
+
+.alloc-mode-btn.is-active {
+  border-color: var(--calc-run-border);
+  background: var(--calc-run-bg);
+  color: var(--calc-run-text);
+}
+
+.alloc-mode-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.alloc-mode-edit {
+  padding: 0.4rem 0.7rem;
+  font-weight: 400;
+}
+
+/* 「停止」常驻占位：不跑时只隐藏不可见，跑起来就不会把这一行挤换行（零位移） */
+.alloc-stop-btn.is-reserved {
+  visibility: hidden;
+}
+
+.alloc-mode-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: #9aa3b0;
+}
+
+.alloc-mode-notes b {
+  color: #cfd5df;
+  font-weight: 700;
+}
+
+.alloc-note {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: #9aa3b0;
 }
 
 .alloc-input-row .field-input-with-suffix {

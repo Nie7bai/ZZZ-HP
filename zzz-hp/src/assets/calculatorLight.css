@@ -984,6 +984,36 @@ body:has(.calculator-page.theme-light) .history-summary-bar .loaded-clear:hover 
   color: var(--calc-text) !important;
 }
 
+/*
+ * 「最优分配」的二选一按钮（`.alloc-mode-btn`）：深色值写在组件里，这里给浅色一套。
+ * 选中态沿用 `.calc-run-btn` 那套强调色，保证与「正在跑/最近跑过」的含义一致。
+ */
+.calculator-page.theme-light .opt-section .alloc-mode-btn {
+  border-color: var(--calc-border) !important;
+  background: var(--calc-surface-2) !important;
+  color: var(--calc-text) !important;
+}
+
+.calculator-page.theme-light .opt-section .alloc-mode-btn:hover:not(:disabled) {
+  border-color: #b8944a !important;
+}
+
+.calculator-page.theme-light .opt-section .alloc-mode-btn.is-active {
+  border-color: var(--calc-accent) !important;
+  background: var(--calc-accent-bg) !important;
+  color: #5c4818 !important;
+}
+
+.calculator-page.theme-light .opt-section .alloc-mode-label,
+.calculator-page.theme-light .opt-section .alloc-mode-notes,
+.calculator-page.theme-light .opt-section .alloc-note {
+  color: var(--calc-muted) !important;
+}
+
+.calculator-page.theme-light .opt-section .alloc-mode-notes b {
+  color: var(--calc-text) !important;
+}
+
 .calculator-page.theme-light .opt-section .detail {
   border-top-color: var(--calc-border) !important;
 }
