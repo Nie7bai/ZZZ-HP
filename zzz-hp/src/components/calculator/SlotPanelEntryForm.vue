@@ -77,16 +77,8 @@ const talentBounds = computed(() => skillTalentLevelBoundsForRank(props.agentRan
 watch(
   () => props.agentRank,
   (rank) => {
-    const next = { ...skillTalentLevels.value }
-    let changed = false
-    for (const key of SKILL_TALENT_LEVEL_KEYS) {
-      const clamped = clampSkillTalentLevel(next[key], rank)
-      if (clamped !== next[key]) {
-        next[key] = clamped
-        changed = true
-      }
-    }
-    if (changed) skillTalentLevels.value = next
+    // 影画变化：技能等级跟随新影画档位上限（语义见 dev-docs/skill-talent-level-rank-sync.md）
+    skillTalentLevels.value = createDefaultSkillTalentLevels(rank)
   },
 )
 

@@ -125,10 +125,23 @@ const draftExternalPanel = reactive<ExternalPanelDraft>(createEmptyExternalPanel
 const draftAffixCounts = reactive(createEmptyAffixCounts())
 const draftAffixMains = reactive(createEmptyAffixDriveDiscMainStats())
 const draftSkillTalentLevels = reactive<SkillTalentLevels>(createDefaultSkillTalentLevels())
+/** 录入方式记忆 key：记住上次「面板导入 / 词条导入」，下次打开不强制回面板 */
+const ENTRY_MODE_STORAGE_KEY = 'zzz-hp-panel-import-entry-mode'
+
+function readRememberedEntryMode(): Extract<PanelCalcMode, 'panel' | 'affix'> | null {
+  const raw = localStorage.getItem(ENTRY_MODE_STORAGE_KEY)
+  return raw === 'panel' || raw === 'affix' ? raw : null
+}
+
+function rememberEntryMode(mode: Extract<PanelCalcMode, 'panel' | 'affix'>) {
+  localStorage.setItem(ENTRY_MODE_STORAGE_KEY, mode)
+}
+
 /** 面板 Tab 独立切换：面板导入 / 词条导入 */
 const entryMode = ref<Extract<PanelCalcMode, 'panel' | 'affix'>>(
-  props.preferredEntryMode ?? 'panel',
+  readRememberedEntryMode() ?? props.preferredEntryMode ?? 'panel',
 )
+watch(entryMode, (mode) => rememberEntryMode(mode))
 /** 面板草稿是不是来自截图识别（只用于记录来历，元数据） */
 let draftFromRecognition = false
 /** 识别写进草稿的那份数值快照：用来区分「识别来的」与「后来手改的」 */
@@ -268,7 +281,7 @@ watch(open, (isOpen) => {
     agentIdRestoredOnOpen = null
     return
   }
-  entryMode.value = props.preferredEntryMode ?? 'panel'
+  entryMode.value = readRememberedEntryMode() ?? props.preferredEntryMode ?? 'panel'
   const slot = props.teamSlots[props.activeSlot]
   if (!slot) return
   selected.value = {
@@ -318,7 +331,8 @@ watch(
   () => selected.value.rank,
   (rank) => {
     if (!open.value) return
-    Object.assign(draftSkillTalentLevels, fillSkillTalentLevels(draftSkillTalentLevels, rank))
+    // 弹窗内改影画：技能等级草稿跟随新影画档位上限（语义见 dev-docs/skill-talent-level-rank-sync.md）
+    Object.assign(draftSkillTalentLevels, createDefaultSkillTalentLevels(rank))
   },
 )
 
