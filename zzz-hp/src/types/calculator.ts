@@ -491,6 +491,18 @@ export interface Skill {
   damagePercentage?: number
   /** nanoka 每级增长（万分比整数） */
   damagePercentageGrowth?: number
+  /**
+   * 耀变等特殊伤害跟随的五大类技能等级键（蕾米耀变用：倍率随普通攻击/支援攻击/终结等级变化）。
+   * 不给 skillTypes 填对应类型：那会经 buildSkillMatchCoords 生成「普通攻击」等 buff 匹配坐标，
+   * 让耀变错误吃到招式限定增益。缺省时仍按 skillTypes 推断。
+   */
+  radianceTalentKey?:
+    | 'basic'
+    | 'dodge'
+    | 'assist'
+    | 'special'
+    | 'chainUltimate'
+    | null
   /** 备注：计算页招式库/准备行展示 */
   note?: string
 }

@@ -25,6 +25,8 @@ defineProps<{
   hint?: string
   /** 无事件时的提示文案 */
   noEventsHint?: string
+  /** 耀变倍率来源标注（招式 · 等级公式） */
+  skillMultLevelNote?: string | null
   enemyInput: DamageEnemyInput
   isMb: boolean
 }>()
@@ -65,6 +67,7 @@ const emit = defineEmits<{
           :bonus-final-panel="detail.bonusFinalPanel"
           :bonus-external-panel="detail.bonusExternalPanel"
           :bonus-sources="detail.bonusBreakdown?.sources"
+          :skill-mult-level-note="skillMultLevelNote"
           :defense-trigger-final-panel="detail.defenseTriggerFinalPanel"
           :defense-trigger-external-panel="detail.defenseTriggerExternalPanel"
           :defense-trigger-sources="detail.defenseTriggerBreakdown?.sources"

@@ -85,6 +85,8 @@ const props = defineProps<{
   bonusFinalPanel?: PanelStats
   bonusExternalPanel?: PanelStats
   bonusSources?: BuffModSource[]
+  /** 耀变倍率来源标注（招式 · 等级公式，如「普通攻击 Lv.16：200% + 10% × 16 = 360%」） */
+  skillMultLevelNote?: string | null
   /** 减防/无视防御 tip（紊乱/乱流等：异常类触发者；缺省时属性异常/异放/耀变回落 bonus） */
   defenseTriggerFinalPanel?: PanelStats
   defenseTriggerExternalPanel?: PanelStats
@@ -1353,16 +1355,22 @@ const valueTips = computed<Record<ValueTipsKey, StatSourceGroup[]>>(() => {
       ]
     })(),
     radianceMultZone: withTotal(
-      buildStatSourceGroups({
-        keys: ['radianceMult', 'radianceMultFactor'],
-        externalPanel: bonusExternal,
-        sources: bonusSources,
-        externalKeyMap: { radianceMult: null, radianceMultFactor: null },
-        finalValues: {
-          radianceMult: bonusPanel.radianceMult,
-          radianceMultFactor: bonusPanel.radianceMultFactor,
-        },
-      }),
+      [
+        // 招式倍率来源（等级公式）：让「360% 怎么来的」在数值组成里可追溯（用户口径 2026-09-16）
+        ...(props.skillMultLevelNote
+          ? [{ label: '招式倍率来源', items: [props.skillMultLevelNote] }]
+          : []),
+        ...buildStatSourceGroups({
+          keys: ['radianceMult', 'radianceMultFactor'],
+          externalPanel: bonusExternal,
+          sources: bonusSources,
+          externalKeyMap: { radianceMult: null, radianceMultFactor: null },
+          finalValues: {
+            radianceMult: bonusPanel.radianceMult,
+            radianceMultFactor: bonusPanel.radianceMultFactor,
+          },
+        }),
+      ],
       `耀变倍率区 max(0, ${formatFormulaNumber(bonusPanel.radianceMult, 2)}%) × 修正 ${formatFormulaNumber(bonusPanel.radianceMultFactor ?? 100, 2)}% = ${formatFormulaNumber(p.radianceMultZone)}`,
       [
         `加算 ${formatFormulaNumber(bonusPanel.radianceMult, 2)}% → ${formatFormulaNumber(Math.max(0, bonusPanel.radianceMult / 100))}`,
