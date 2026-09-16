@@ -187,10 +187,7 @@ function convertLiveBase(item: CollectedEffect) {
   }
   // 技能等级转模：取来源角色的对应大类技能等级
   if (isSkillConvertFromKey(convert.from)) {
-    const slotIndex = parseSourceKeySlotIndex(item.sourceKey)
-    const agentId =
-      slotIndex != null ? props.teamSlots?.[slotIndex]?.agentId : undefined
-    const levels = agentId ? props.skillTalentLevelsByAgent?.[agentId] : undefined
+    const levels = skillTalentLevelsForItem(item)
     return levels?.[SKILL_CONVERT_FROM_TO_TALENT_KEY[convert.from]] ?? 0
   }
   const source = convert.panelSource ?? 'external'
@@ -202,6 +199,17 @@ function convertLiveBase(item: CollectedEffect) {
     props.attrDefaults ??
     {}
   return map[convert.from] ?? props.attrDefaults?.[convert.from] ?? 0
+}
+
+/** 技能等级转模的来源角色等级表：按效果来源槽位取对应角色的五大类等级 */
+function skillTalentLevelsForItem(
+  item: CollectedEffect,
+): Partial<SkillTalentLevels> | null {
+  const convert = item.effect.convert
+  if (!convert || !isSkillConvertFromKey(convert.from)) return null
+  const slotIndex = parseSourceKeySlotIndex(item.sourceKey)
+  const agentId = slotIndex != null ? props.teamSlots?.[slotIndex]?.agentId : undefined
+  return agentId ? (props.skillTalentLevelsByAgent?.[agentId] ?? null) : null
 }
 
 function hasConvertOverride(item: CollectedEffect) {
@@ -279,6 +287,8 @@ function convertResult(item: CollectedEffect) {
     props.attrDefaults ?? {},
     override,
     panelSourceValuesForEffect(item),
+    // 技能等级转模来源等级表（此前缺失导致等级转模显示 0）
+    skillTalentLevelsForItem(item),
   )
 }
 
