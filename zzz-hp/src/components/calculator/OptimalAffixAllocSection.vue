@@ -140,10 +140,18 @@ import {
 import {
   formatAffixRollsSummary,
   solveOptimalAffixAllocationAsync,
-  type AffixCandidateWidthMode,
+  AFFIX_SEARCH_PRESET_LABELS,
   type AffixOptimizerProgress,
   type AffixOptimizerResult,
+  type AffixSearchParams,
+  type AffixSearchPresetId,
 } from '@/utils/affixOptimizer'
+import {
+  effectiveAffixSearchParams,
+  loadAffixSearchSettings,
+  saveAffixSearchSettings,
+  type AffixSearchSettings,
+} from '@/utils/affixSearchSettings'
 import {
   clampGameExtraCost,
   createGameAffixLibraryEntries,
@@ -1555,15 +1563,73 @@ const affixAllocResultStale = ref(false)
 const affixAllocLoading = ref(false)
 const affixAllocError = ref<string | null>(null)
 /**
- * 候选宽度模式：
- * - auto：每轮候选条数由剩余计算量预算推导（流程便宜就多搜，昂贵就少搜）
- * - manual：用户指定条数，不设预算兜底
+ * 词条搜索设置（本机独立存盘）：预设 + 三项搜索参数 + 高级区展开状态。
+ *
+ * 三项参数各有一句白话解释，见 `dev-docs/词条最优分配.md`「改造：自适应 Beam」：
+ * - 初始候选门槛：把「全投进去也贡献很小」的词条直接出局，后面不再回头捡；
+ * - 路线保留比例：同一档数下只留接近最好的那批分法；
+ * - 最大保留路线：同时最多试多少种分法。
  */
-const affixAllocWidthMode = ref<AffixCandidateWidthMode>('auto')
-/** manual 模式下的候选条数 */
-const affixAllocManualWidth = ref(8)
-/** 最低收益比例（0–100）。0 只丢零/负收益；调高则先按比例筛再由 K 兜底 */
-const affixAllocMinBenefitRatioPercent = ref(0)
+const affixSearchSettings = ref<AffixSearchSettings>(loadAffixSearchSettings())
+/** 预设顺序（下拉展示用） */
+const SEARCH_PRESET_ORDER: AffixSearchPresetId[] = ['fast', 'balanced', 'fine', 'custom']
+/** 当前生效的三项参数：预设直取预设表，自定义取用户值 */
+const affixSearchParams = computed<AffixSearchParams>(() =>
+  effectiveAffixSearchParams(affixSearchSettings.value),
+)
+
+function persistAffixSearchSettings() {
+  saveAffixSearchSettings(affixSearchSettings.value)
+}
+
+function setAffixSearchPreset(preset: AffixSearchPresetId) {
+  // 切到自定义时，从「当前生效值」起步，避免丢掉另外两项
+  const custom = preset === 'custom'
+    ? { ...effectiveAffixSearchParams(affixSearchSettings.value) }
+    : affixSearchSettings.value.custom
+  affixSearchSettings.value = { ...affixSearchSettings.value, preset, custom }
+  persistAffixSearchSettings()
+}
+
+function onAffixSearchPresetChange(event: Event) {
+  const value = (event.target as HTMLSelectElement).value as AffixSearchPresetId
+  setAffixSearchPreset(value)
+}
+
+/** 改任一项都视为「自定义」，并从当前生效值起步 */
+function setAffixSearchCustom(patch: Partial<AffixSearchParams>) {
+  const base = affixSearchSettings.value.preset === 'custom'
+    ? affixSearchSettings.value.custom
+    : effectiveAffixSearchParams(affixSearchSettings.value)
+  affixSearchSettings.value = {
+    ...affixSearchSettings.value,
+    preset: 'custom',
+    custom: { ...base, ...patch },
+  }
+  persistAffixSearchSettings()
+}
+
+function toggleAffixSearchAdvanced() {
+  affixSearchSettings.value = {
+    ...affixSearchSettings.value,
+    advancedOpen: !affixSearchSettings.value.advancedOpen,
+  }
+  persistAffixSearchSettings()
+}
+
+/** 高级区输入（百分比，保留一位小数）↔ 存盘值（0..1） */
+const affixSearchInitialPercent = computed({
+  get: () => Math.round(affixSearchParams.value.initialCandidateThreshold * 1000) / 10,
+  set: (value: number) => setAffixSearchCustom({ initialCandidateThreshold: (Number(value) || 0) / 100 }),
+})
+const affixSearchRetentionPercent = computed({
+  get: () => Math.round(affixSearchParams.value.routeRetentionRatio * 100),
+  set: (value: number) => setAffixSearchCustom({ routeRetentionRatio: (Number(value) || 0) / 100 }),
+})
+const affixSearchMaxRoutes = computed({
+  get: () => affixSearchParams.value.maxRetainedRoutes,
+  set: (value: number) => setAffixSearchCustom({ maxRetainedRoutes: Number(value) || 1 }),
+})
 /** 求解进度（仅求解中刷新） */
 const affixAllocProgress = ref<AffixOptimizerProgress | null>(null)
 /** 进度刷新间隔（毫秒）：求解每个时间片都回调，逐次刷新会拖慢求解本身 */
@@ -1792,9 +1858,10 @@ async function runAffixAllocation() {
         ctx: evalCtx.value,
         entries: affixLibraryEntries.value,
         maxTotalRolls: total,
-        candidateWidthMode: affixAllocWidthMode.value,
-        manualCandidateWidth: affixAllocManualWidth.value,
-        minimumBenefitRatio: affixAllocMinBenefitRatioPercent.value / 100,
+        searchPreset: affixSearchSettings.value.preset,
+        initialCandidateThreshold: affixSearchParams.value.initialCandidateThreshold,
+        routeRetentionRatio: affixSearchParams.value.routeRetentionRatio,
+        maxRetainedRoutes: affixSearchParams.value.maxRetainedRoutes,
         groupCaps: affixGroupCaps(affixLibraryState.value),
       },
       {
@@ -1881,9 +1948,10 @@ async function runGameAffixAllocation() {
         enabledIds: gameAffixSettings.value.enabledIds,
         extraCost: gameAffixSettings.value.extraCost,
         maxTotalRolls: total,
-        candidateWidthMode: affixAllocWidthMode.value,
-        manualCandidateWidth: affixAllocManualWidth.value,
-        minimumBenefitRatio: affixAllocMinBenefitRatioPercent.value / 100,
+        searchPreset: affixSearchSettings.value.preset,
+        initialCandidateThreshold: affixSearchParams.value.initialCandidateThreshold,
+        routeRetentionRatio: affixSearchParams.value.routeRetentionRatio,
+        maxRetainedRoutes: affixSearchParams.value.maxRetainedRoutes,
       },
       {
         signal: controller.signal,
@@ -2192,7 +2260,7 @@ watch(affixAllocFingerprint, () => {
 
 // 求解参数变化同样让正在跑的求解过期
 watch(
-  [affixAllocWidthMode, affixAllocManualWidth, affixAllocTotalRolls, affixAllocMinBenefitRatioPercent],
+  [affixSearchSettings, affixAllocTotalRolls],
   () => {
     if (sectionMode.value !== 'allocation') return
     if (affixAllocLoading.value) abortAffixAllocation()
@@ -2895,34 +2963,35 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
               <input v-model.lazy.number="affixAllocTotalRolls" type="number" min="1" max="60" step="1" />
             </label>
             <label class="field">
-              <span>候选宽度</span>
-              <select v-model="affixAllocWidthMode">
-                <option value="auto">自动（按计算量预算推导）</option>
-                <option value="manual">手动指定条数</option>
+              <span>搜索预设</span>
+              <select :value="affixSearchSettings.preset" @change="onAffixSearchPresetChange">
+                <option v-for="presetId in SEARCH_PRESET_ORDER" :key="presetId" :value="presetId">
+                  {{ AFFIX_SEARCH_PRESET_LABELS[presetId] }}
+                </option>
               </select>
             </label>
-            <label v-if="affixAllocWidthMode === 'manual'" class="field">
-              <span>每轮候选条数</span>
-              <input
-                v-model.lazy.number="affixAllocManualWidth"
-                type="number"
-                min="1"
-                :max="Math.max(1, affixLibraryEntries.length)"
-                step="1"
-              />
-            </label>
+            <button type="button" class="ghost-btn" @click="toggleAffixSearchAdvanced">
+              {{ affixSearchSettings.advancedOpen ? '收起高级' : '高级设置' }}
+            </button>
+          </div>
+          <div v-if="affixSearchSettings.advancedOpen" class="alloc-input-row alloc-fields">
             <label class="field">
-              <span>最低收益比例</span>
+              <span>初始候选门槛</span>
               <span class="field-input-with-suffix">
-                <input
-                  v-model.lazy.number="affixAllocMinBenefitRatioPercent"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="1"
-                />
+                <input v-model.lazy.number="affixSearchInitialPercent" type="number" min="0" max="100" step="0.1" />
                 <span class="field-suffix">%</span>
               </span>
+            </label>
+            <label class="field">
+              <span>路线保留比例</span>
+              <span class="field-input-with-suffix">
+                <input v-model.lazy.number="affixSearchRetentionPercent" type="number" min="0" max="100" step="1" />
+                <span class="field-suffix">%</span>
+              </span>
+            </label>
+            <label class="field">
+              <span>最大保留路线</span>
+              <input v-model.lazy.number="affixSearchMaxRoutes" type="number" min="1" max="64" step="1" />
             </label>
           </div>
           <button
@@ -2942,7 +3011,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           >
             求最优分配
           </button>
-          <span class="hint">计算采用贪心 + 换档兜底；先按最低收益比例筛，候选过密再用宽度截顶。不清楚规则：宽度用自动、比例留 0%</span>
+          <span class="hint">计算采用自适应 Beam：同一预算下并行保留多条分法，再各做一轮换档兜底。不清楚规则：预设用「均衡」</span>
           <div class="alloc-grid-spacer" aria-hidden="true"></div>
           <div class="alloc-input-row alloc-game-btns">
             <button
@@ -2959,11 +3028,12 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           </div>
           <span class="hint">可模拟4/5/6号位主副属性重复时造成的总词条数损失；比上方「求最优分配」慢</span>
         </div>
-        <p v-if="affixAllocWidthMode === 'manual'" class="hint">
-          手动模式不设预算上限：条数越大搜索越彻底，也越慢。填满词条库条数即等于不按条数截顶。
+        <p v-if="affixSearchSettings.advancedOpen" class="hint">
+          初始候选门槛：把「全投进去也涨不了多少分」的词条直接淘汰，省算力。⚠️ 实测调到 5% 以上会把
+          能连吃多档的副词条一起淘汰，总词条数花不完、总伤明显下降；不确定就保持预设值（0% 只淘汰负收益）。
         </p>
         <p class="hint">
-          最低收益比例提高会加速，也可能丢掉后期才反超的弱词条。0% 只排除 0 收益和负收益。
+          路线保留比例越低、最大保留路线越小越快，也越可能漏掉「次优起步、换档后反超」的分法。
         </p>
         <p v-if="affixAllocError" class="err">{{ affixAllocError }}</p>
         <AffixAllocationResult

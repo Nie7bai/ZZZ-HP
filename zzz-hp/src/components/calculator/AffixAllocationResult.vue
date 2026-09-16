@@ -27,7 +27,7 @@ const props = defineProps<{
 const PHASE_LABELS: Record<AffixOptimizerProgress['phase'], string> = {
   baseline: '准备基线',
   measure: '测量各词条单档收益',
-  greedy: '贪心构造',
+  beam: '多路线搜索（Beam）',
   swap1: '一换一优化',
   swap2: '二换二优化',
   done: '已完成',
@@ -45,14 +45,29 @@ const progressLabel = computed(() => {
   const progress = props.progress
   if (!progress) return '正在准备…'
   const phase = PHASE_LABELS[progress.phase] ?? progress.phase
-  const start = progress.startCount > 1
-    ? `（起点 ${progress.startIndex}/${progress.startCount}）`
-    : ''
   const path = progress.searchPath === 'penRate' ? '穿透专路 · ' : ''
   const branch = progress.gameBranch
     ? `组合 ${progress.gameBranch.index}/${progress.gameBranch.total}（${progress.gameBranch.label}）· `
     : ''
-  return `${branch}${path}${phase}${start}`
+  const layer = progress.layerUsedRolls != null ? `第 ${progress.layerUsedRolls} 档层 · ` : ''
+  const routes = progress.survivedRoutes != null ? `存活 ${progress.survivedRoutes} 条 · ` : ''
+  const b = progress.adaptiveB != null ? `本层 B=${progress.adaptiveB} · ` : ''
+  return `${branch}${path}${layer}${routes}${b}${phase}`
+})
+
+/**
+ * 游戏专用结果里的「胜出口袋 + 8 袋合计」。
+ * 普通「求最优分配」没有这段，返回 null。
+ */
+const gameInfo = computed(() => {
+  const result = props.result as
+    | (AffixOptimizerResult & {
+      gameWinner?: { index: number; total: number; label: string }
+      gameTotals?: { workUsed: number; engineCalls: number; cacheHits: number; pockets: number }
+    })
+    | null
+  if (!result?.gameWinner || !result.gameTotals) return null
+  return { winner: result.gameWinner, totals: result.gameTotals }
 })
 
 /** 预算进度百分比；manual 模式无预算，用「已评估次数」的相对量给个粗略进度 */
@@ -118,17 +133,13 @@ function formatNumber(value: number) {
           <span class="budget-hint">每条词条 1 档 = 1 个词条</span>
         </div>
         <div class="budget-item">
-          <span class="budget-label">候选宽度</span>
-          <strong class="budget-value">
-            {{
-              result.candidateWidth === result.candidateWidthMax
-                ? `${result.candidateWidth} 条`
-                : `${result.candidateWidth} ~ ${result.candidateWidthMax} 条`
-            }}{{ result.candidateWidthMode === 'manual' ? '（手动）' : '（按预算推导）' }}
-          </strong>
+          <span class="budget-label">多路线搜索</span>
+          <strong class="budget-value">存活 {{ result.survivedRoutes }} 条</strong>
           <span class="budget-hint">
-            每轮先按最低收益比例筛（本次 {{ Math.round(result.minimumBenefitRatio * 100) }}%，丢掉 {{ result.ratioDropped }} 条），
-            仍过密再用宽度截顶（截掉 {{ result.kDropped }} 条）
+            预算层 {{ result.beamLayers }} 层 · 自适应 B {{ result.adaptiveBMin }}~{{ result.adaptiveBMax }}
+            （上限 {{ result.searchParams.maxRetainedRoutes }}）· 换档 {{ result.refinedRoutes }} 条 ·
+            门槛 {{ Math.round(result.searchParams.initialCandidateThreshold * 1000) / 10 }}%（淘汰 {{ result.initialDropped }} 条）·
+            层内比例 {{ Math.round(result.searchParams.routeRetentionRatio * 100) }}%（淘汰 {{ result.layerRatioDropped }} 条）
           </span>
         </div>
         <div class="budget-item">
@@ -143,12 +154,19 @@ function formatNumber(value: number) {
         </div>
       </div>
 
+      <p v-if="gameInfo" class="hint">
+        胜出口袋：组合 {{ gameInfo.winner.index }}/{{ gameInfo.winner.total }}（{{ gameInfo.winner.label }}）·
+        8 袋合计 {{ formatNumber(gameInfo.totals.workUsed) }} 计算量 / {{ gameInfo.totals.engineCalls }} 次评估
+        （缓存命中 {{ gameInfo.totals.cacheHits }}）· 共 {{ gameInfo.totals.pockets }} 袋
+      </p>
+
       <p v-if="result.truncated" class="hint warn">
         搜索达到计算量上限，结果可能不是全局最优。可减少参与词条、调小总词条数，
-        或改用「手动指定条数」跑到底。
+        或改用更快的搜索预设。
       </p>
-      <p v-else-if="result.kDropped > 0" class="hint warn">
-        比例筛完后候选仍超过宽度上限，已按最新收益截顶，副词条结果可能漏解。
+
+      <p v-else-if="result.refineSkipped" class="hint">
+        多路线搜索已完整跑完；候选太多，跳过了最后的 1/2 档换档微调（降低「最大保留路线」可开启）。
       </p>
 
       <div v-if="rows.length" class="table-wrap">
@@ -180,7 +198,7 @@ function formatNumber(value: number) {
 
       <div class="actions">
         <span class="hint">
-          引擎调用 {{ result.engineCalls }} 次 · 起点 {{ result.startsRun }} 个 ·
+          引擎调用 {{ result.engineCalls }} 次 · 扩展 {{ result.expandedRoutes }} 条路线 · 淘汰 {{ result.prunedRoutes }} 条 ·
           {{ result.winningPath === 'penRate' ? '穿透专路胜出' : '普通路线胜出' }}
           <template v-if="result.penRatePathUsed"> · 已跑穿透专路</template>
           · 走完阶段 {{ result.phasesCompleted.join(' → ') }}

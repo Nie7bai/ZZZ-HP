@@ -6,12 +6,12 @@ import {
 } from '@/utils/affixLibrary'
 import {
   solveOptimalAffixAllocationAsync,
-  type AffixCandidateWidthMode,
   type AffixEntryCapTax,
   type AffixOptimizerAsyncOptions,
   type AffixOptimizerInput,
   type AffixOptimizerProgress,
   type AffixOptimizerResult,
+  type AffixSearchPresetId,
 } from '@/utils/affixOptimizer'
 import type { OptimalEvalContext } from '@/utils/optimalAffixAlloc'
 
@@ -203,6 +203,32 @@ export function gameAffixGroupCaps(maxTotalRolls: number): Record<string, number
   return caps
 }
 
+/** 8 袋合计消耗（含赢家），避免把单袋数字误当成总成本 */
+export interface GameAffixPocketTotals {
+  /** 8 袋合计计算量 */
+  workUsed: number
+  /** 8 袋合计引擎评估次数 */
+  engineCalls: number
+  /** 8 袋合计缓存命中 */
+  cacheHits: number
+  /** 实际参与的口袋数 */
+  pockets: number
+}
+
+export interface GameAffixAllocationResult extends AffixOptimizerResult {
+  /** 胜出口袋 */
+  gameWinner: { index: number; total: number; label: string }
+  /** 8 袋合计 */
+  gameTotals: GameAffixPocketTotals
+}
+
+/**
+ * 游戏专用 8 口袋求解。
+ *
+ * 用户 2026-09-16 口径：预设 / 高级参数**透传给全部 8 袋**，**8 袋都完整跑 Beam**，
+ * 不先粗筛口袋；每袋同等参数、独立公平预算，最后按总伤取最高。
+ * 5 号付费口袋自然排除 24% 穿透专路（付费号位里没有 `main:slot5:penRate`）。
+ */
 export async function solveGameAffixAllocationAsync(
   input: {
     ctx: OptimalEvalContext
@@ -210,15 +236,34 @@ export async function solveGameAffixAllocationAsync(
     enabledIds: Iterable<string>
     extraCost: number
     maxTotalRolls: number
-    candidateWidthMode?: AffixCandidateWidthMode
-    manualCandidateWidth?: number
-    minimumBenefitRatio?: number
+    /** 搜索预设（8 袋统一透传） */
+    searchPreset?: AffixSearchPresetId
+    /** 初始候选门槛（0..1）；显式值覆盖预设 */
+    initialCandidateThreshold?: number
+    /** 路线保留比例（0..1）；显式值覆盖预设 */
+    routeRetentionRatio?: number
+    /** 最大保留路线 B；显式值覆盖预设 */
+    maxRetainedRoutes?: number
+    /** 每袋的公平预算（8 袋一致） */
+    maxWorkUnits?: number
   },
   options?: AffixOptimizerAsyncOptions,
-): Promise<AffixOptimizerResult> {
+): Promise<GameAffixAllocationResult> {
   const groupCaps = gameAffixGroupCaps(input.maxTotalRolls)
   let best: AffixOptimizerResult | null = null
+  let winnerIndex = 0
+  let winnerLabel = ''
+  let workUsed = 0
+  let engineCalls = 0
+  let cacheHits = 0
+  let pockets = 0
   const total = GAME_POCKET_COMBOS.length
+  const sharedParams = {
+    searchPreset: input.searchPreset,
+    initialCandidateThreshold: input.initialCandidateThreshold,
+    routeRetentionRatio: input.routeRetentionRatio,
+    maxRetainedRoutes: input.maxRetainedRoutes,
+  }
 
   for (let index = 0; index < total; index += 1) {
     const combo = GAME_POCKET_COMBOS[index]!
@@ -230,13 +275,15 @@ export async function solveGameAffixAllocationAsync(
     })
     if (!branch.entries.length) continue
     const label = gamePocketLabel(combo)
+    // 已完成口袋的累计（进度里给「赢家 + 8 袋总计」）
+    const doneWork = workUsed
+    const doneCalls = engineCalls
     const branchInput: AffixOptimizerInput = {
       ctx: input.ctx,
       entries: branch.entries,
       maxTotalRolls: input.maxTotalRolls,
-      candidateWidthMode: input.candidateWidthMode,
-      manualCandidateWidth: input.manualCandidateWidth,
-      minimumBenefitRatio: input.minimumBenefitRatio,
+      ...sharedParams,
+      ...(input.maxWorkUnits != null ? { maxWorkUnits: input.maxWorkUnits } : {}),
       groupCaps,
       entryCapTaxes: branch.entryCapTaxes,
     }
@@ -246,14 +293,30 @@ export async function solveGameAffixAllocationAsync(
         options?.onProgress?.({
           ...progress,
           gameBranch: { index: index + 1, total, label },
+          gameTotals: {
+            workUsed: doneWork + progress.workUsed,
+            engineCalls: doneCalls + progress.engineCalls,
+          },
         })
       },
     })
-    if (!best || result.totalDamage > best.totalDamage) best = result
+    pockets += 1
+    workUsed += result.workUsed
+    engineCalls += result.engineCalls
+    cacheHits += result.cacheHits
+    if (!best || result.totalDamage > best.totalDamage) {
+      best = result
+      winnerIndex = index + 1
+      winnerLabel = label
+    }
   }
 
   if (!best) {
     throw new Error('游戏专用方案没有可参与的词条')
   }
-  return best
+  return {
+    ...best,
+    gameWinner: { index: winnerIndex, total, label: winnerLabel },
+    gameTotals: { workUsed, engineCalls, cacheHits, pockets },
+  }
 }
