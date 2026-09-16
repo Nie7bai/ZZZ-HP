@@ -2957,78 +2957,76 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 
         <h3 class="block-title">最优分配</h3>
         <div class="alloc-action-grid">
-          <div class="alloc-settings">
-            <div class="alloc-input-row alloc-fields">
-              <label class="field">
-                <span>总词条数</span>
-                <input v-model.lazy.number="affixAllocTotalRolls" type="number" min="1" max="60" step="1" />
-              </label>
-              <label class="field">
-                <span>搜索预设</span>
-                <select :value="affixSearchSettings.preset" @change="onAffixSearchPresetChange">
-                  <option v-for="presetId in SEARCH_PRESET_ORDER" :key="presetId" :value="presetId">
-                    {{ AFFIX_SEARCH_PRESET_LABELS[presetId] }}
-                  </option>
-                </select>
-              </label>
-              <button type="button" class="ghost-btn" @click="toggleAffixSearchAdvanced">
-                {{ affixSearchSettings.advancedOpen ? '收起高级' : '高级设置' }}
-              </button>
-            </div>
-            <div v-if="affixSearchSettings.advancedOpen" class="alloc-input-row alloc-fields">
-              <label class="field">
-                <span>初始候选门槛</span>
-                <span class="field-input-with-suffix">
-                  <input v-model.lazy.number="affixSearchInitialPercent" type="number" min="0" max="100" step="0.1" />
-                  <span class="field-suffix">%</span>
-                </span>
-              </label>
-              <label class="field">
-                <span>路线保留比例</span>
-                <span class="field-input-with-suffix">
-                  <input v-model.lazy.number="affixSearchRetentionPercent" type="number" min="0" max="100" step="1" />
-                  <span class="field-suffix">%</span>
-                </span>
-              </label>
-              <label class="field">
-                <span>最大保留路线</span>
-                <input v-model.lazy.number="affixSearchMaxRoutes" type="number" min="1" max="64" step="1" />
-              </label>
-            </div>
-            <span class="hint">计算采用自适应 Beam：同一预算下并行保留多条分法，再各做一轮换档兜底。不清楚规则：预设用「均衡」</span>
-          </div>
-          <div class="alloc-run-col">
-            <button
-              v-if="affixAllocLoading"
-              type="button"
-              class="ghost-btn"
-              @click="abortAffixAllocation"
-            >
-              停止
+          <div class="alloc-input-row alloc-fields">
+            <label class="field">
+              <span>总词条数</span>
+              <input v-model.lazy.number="affixAllocTotalRolls" type="number" min="1" max="60" step="1" />
+            </label>
+            <label class="field">
+              <span>搜索预设</span>
+              <select :value="affixSearchSettings.preset" @change="onAffixSearchPresetChange">
+                <option v-for="presetId in SEARCH_PRESET_ORDER" :key="presetId" :value="presetId">
+                  {{ AFFIX_SEARCH_PRESET_LABELS[presetId] }}
+                </option>
+              </select>
+            </label>
+            <button type="button" class="ghost-btn" @click="toggleAffixSearchAdvanced">
+              {{ affixSearchSettings.advancedOpen ? '收起高级' : '高级设置' }}
             </button>
+          </div>
+          <div v-if="affixSearchSettings.advancedOpen" class="alloc-input-row alloc-fields">
+            <label class="field">
+              <span>初始候选门槛</span>
+              <span class="field-input-with-suffix">
+                <input v-model.lazy.number="affixSearchInitialPercent" type="number" min="0" max="100" step="0.1" />
+                <span class="field-suffix">%</span>
+              </span>
+            </label>
+            <label class="field">
+              <span>路线保留比例</span>
+              <span class="field-input-with-suffix">
+                <input v-model.lazy.number="affixSearchRetentionPercent" type="number" min="0" max="100" step="1" />
+                <span class="field-suffix">%</span>
+              </span>
+            </label>
+            <label class="field">
+              <span>最大保留路线</span>
+              <input v-model.lazy.number="affixSearchMaxRoutes" type="number" min="1" max="64" step="1" />
+            </label>
+          </div>
+          <button
+            v-if="affixAllocLoading"
+            type="button"
+            class="ghost-btn"
+            @click="abortAffixAllocation"
+          >
+            停止
+          </button>
+          <button
+            v-else
+            type="button"
+            class="calc-run-btn"
+            :disabled="!affixLibraryEntries.length"
+            @click="runAffixAllocation"
+          >
+            求最优分配
+          </button>
+          <span class="hint">计算采用自适应 Beam：同一预算下并行保留多条分法，再各做一轮换档兜底。不清楚规则：预设用「均衡」</span>
+          <div class="alloc-grid-spacer" aria-hidden="true"></div>
+          <div class="alloc-input-row alloc-game-btns">
             <button
-              v-else
               type="button"
               class="calc-run-btn"
-              :disabled="!affixLibraryEntries.length"
-              @click="runAffixAllocation"
+              :disabled="affixAllocLoading || !gameAffixSettings.enabledIds.length"
+              @click="runGameAffixAllocation"
             >
-              求最优分配
+              游戏专用分配规则
             </button>
-            <div class="alloc-input-row alloc-game-btns">
-              <button
-                type="button"
-                class="calc-run-btn"
-                :disabled="affixAllocLoading || !gameAffixSettings.enabledIds.length"
-                @click="runGameAffixAllocation"
-              >
-                游戏专用分配规则
-              </button>
-              <button type="button" class="ghost-btn" :disabled="affixAllocLoading" @click="gameAffixRulesOpen = true">
-                编辑
-              </button>
-            </div>
+            <button type="button" class="ghost-btn" :disabled="affixAllocLoading" @click="gameAffixRulesOpen = true">
+              编辑
+            </button>
           </div>
+          <span class="hint">可模拟 4 号位主属性与副词条重复、以及 5/6 号位选到攻击/生命/防御时的总词条数损失；比上方「求最优分配」慢</span>
         </div>
         <p v-if="affixSearchSettings.advancedOpen" class="hint">
           初始候选门槛：把「全投进去也涨不了多少分」的词条直接淘汰，省算力。⚠️ 实测调到 5% 以上会把
@@ -3036,9 +3034,6 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         </p>
         <p class="hint">
           路线保留比例越低、最大保留路线越小越快，也越可能漏掉「次优起步、换档后反超」的分法。
-        </p>
-        <p class="hint">
-          可模拟 4 号位主属性与副词条重复、以及 5/6 号位选到攻击/生命/防御时的总词条数损失；比上方「求最优分配」慢
         </p>
         <p v-if="affixAllocError" class="err">{{ affixAllocError }}</p>
         <AffixAllocationResult
@@ -4060,43 +4055,20 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
  * 改造前它们各自写了一套（其中模式切换还是青柠色选中，且白天主题没有任何覆盖 —— 一直是黑的）。
  */
 
-/*
- * 最优分配操作区：左「设置」右「按钮」两栏。
- *
- * 原来是 3 列 grid + 平铺 item，**展开高级时**多出的「三参数行」会被 grid 的自动放置
- * 塞进第 1 行的中间列，把「求最优分配」顶到右列、两条说明也整体错位（用户 2026-09-16 报的
- * 「点高级后布局乱掉」）。改成两栏后，展开 / 收起只让左栏长高，右栏按钮位置不动。
- */
-.alloc-action-grid {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.45rem 1rem;
-  flex-wrap: wrap;
-  margin: 0.6rem 0;
-}
-
-.alloc-settings {
-  flex: 1 1 30rem;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-}
-
-.alloc-run-col {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.45rem;
-  margin-left: auto;
-}
-
 .alloc-input-row {
   display: flex;
   align-items: flex-end;
   gap: 0.75rem;
   flex-wrap: wrap;
+  margin: 0.6rem 0;
+}
+
+.alloc-action-grid {
+  display: grid;
+  grid-template-columns: max-content max-content minmax(0, 1fr);
+  align-items: end;
+  column-gap: 0.75rem;
+  row-gap: 0.45rem;
   margin: 0.6rem 0;
 }
 
@@ -4106,7 +4078,10 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
 
 .alloc-game-btns {
   flex-wrap: nowrap;
-  justify-content: flex-end;
+}
+
+.alloc-grid-spacer {
+  min-width: 0;
 }
 
 .alloc-input-row .field-input-with-suffix {
@@ -4121,9 +4096,14 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   line-height: 1;
 }
 
-/* 宽度统一；边框 / 圆角 / 内边距 / 字体高度统一走下面 `.alloc-action-grid input, select` 那条 */
 .alloc-input-row input {
   width: 7rem;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid #2a2f37;
+  border-radius: 6px;
+  background: #171a1f;
+  color: #e8eaed;
+  font-size: 0.85rem;
 }
 
 .alloc-subtabs {
@@ -4338,37 +4318,6 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   color: #e8eaed;
   padding: 0.45rem 0.55rem;
   font: inherit;
-}
-
-/*
- * 最优分配操作区：输入框 / 下拉框高度统一。
- *
- * 为什么必须显式写：带 `%` 后缀的输入框在 `.field-input-with-suffix` 里，**不是** `.field`
- * 的直接子元素 → 命中不到上面那条 `.field > input`，只能退到 `.alloc-input-row input`
- * （padding 0.3rem / radius 6px / font 0.85rem），于是比同行的「总词条数」矮一截
- * —— 展开高级后三个参数并排，三种高度差一眼可见（用户 2026-09-16 报的）。
- *
- * 放在 `.field > input` **之后**：同优先级靠先后顺序取胜，不靠 !important。
- */
-.alloc-action-grid input,
-.alloc-action-grid select {
-  box-sizing: border-box;
-  height: 2rem;
-  padding: 0 0.45rem;
-  border: 1px solid #333841;
-  border-radius: 8px;
-  background: #0f1217;
-  color: #e8eaed;
-  font-size: 0.85rem;
-  line-height: 1.2;
-}
-
-.alloc-action-grid input {
-  width: 7rem;
-}
-
-.alloc-action-grid select {
-  width: 7rem;
 }
 
 .kind-mode-row {
