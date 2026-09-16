@@ -88,6 +88,12 @@ function normalizeConvert(value) {
     'def',
     'pierce',
     'level',
+    // 技能等级转模来源（与前端 ConvertFromKey 对齐）
+    'skillLevelBasic',
+    'skillLevelDodge',
+    'skillLevelAssist',
+    'skillLevelSpecial',
+    'skillLevelChainUltimate',
   ]
   const rawFrom = value.from
   if (typeof rawFrom !== 'string') return undefined
