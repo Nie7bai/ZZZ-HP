@@ -1,6 +1,7 @@
 import {
   AFFIX_SEARCH_PRESETS,
   DEFAULT_AFFIX_SEARCH_PRESET,
+  clampAffixCandidateFloor,
   clampAffixMaxRetainedRoutes,
   clampAffixUnitRatio,
   type AffixSearchParams,
@@ -68,6 +69,10 @@ export function loadAffixSearchSettings(): AffixSearchSettings {
         initialCandidateThreshold: clampAffixUnitRatio(
           parsed.custom?.initialCandidateThreshold,
           fallback.custom.initialCandidateThreshold,
+        ),
+        initialCandidateFloor: clampAffixCandidateFloor(
+          parsed.custom?.initialCandidateFloor,
+          fallback.custom.initialCandidateFloor,
         ),
         routeRetentionRatio: clampAffixUnitRatio(
           parsed.custom?.routeRetentionRatio,

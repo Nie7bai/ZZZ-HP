@@ -267,6 +267,8 @@ export async function solveGameAffixAllocationAsync(
     searchPreset?: AffixSearchPresetId
     /** 初始候选门槛（0..1）；显式值覆盖预设 */
     initialCandidateThreshold?: number
+    /** 候选兜底：每组保底前 N 名（0 = 关掉）；显式值覆盖预设 */
+    initialCandidateFloor?: number
     /** 路线保留比例（0..1）；显式值覆盖预设 */
     routeRetentionRatio?: number
     /** 最大保留路线 B；显式值覆盖预设 */
@@ -288,6 +290,7 @@ export async function solveGameAffixAllocationAsync(
   const sharedParams = {
     searchPreset: input.searchPreset,
     initialCandidateThreshold: input.initialCandidateThreshold,
+    initialCandidateFloor: input.initialCandidateFloor,
     routeRetentionRatio: input.routeRetentionRatio,
     maxRetainedRoutes: input.maxRetainedRoutes,
   }

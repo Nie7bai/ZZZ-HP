@@ -79,6 +79,27 @@ export interface AffixSearchParams {
   routeRetentionRatio: number
   /** 最大保留路线 B：比例筛后最多留几条，分支规模硬上限 */
   maxRetainedRoutes: number
+  /**
+   * 候选兜底（每组保底前 N 名，0 = 关掉）：按**单档收益**在组内排名前 N 的条目**无论如何保留**。
+   *
+   * 保留判定 = 比例过线 **或** 组内排名 < N（取保留更多者）。**只救有正收益的条目** ——
+   * 零收益仍然只在门槛线 = 0（R=0）时才留下，负收益一律出局。
+   *
+   * 为什么要有它：门槛的线是**在空盘上用单档**画的，天生看不见「基线上不值钱、终局里最值钱」的条目 ——
+   * 典型是副词条爆伤（空盘暴击率只有 5% 时它单档只值组内最高的 ~10%，等暴击率顶满后它才是收益王）。
+   * 兜底保证每组最优秀的那几条不会被比例线剪掉；实测（8 命中合成场景）它能把 R=0.15/0.5 的质量从
+   * 90.91% 拉回 100%。
+   *
+   * 副作用（要有数）：每组 ≤ N 条时，门槛基本失效（只丢排名 ≥ N 的）—— 默认库上真正被筛的是
+   * 「副词条」这种大组（10 条）；号位组（5~6 条）几乎不受门槛影响。
+   */
+  initialCandidateFloor: number
+}
+
+/** 候选兜底的合法范围（每组保底前几名的上限） */
+export function clampAffixCandidateFloor(value: unknown, fallback = 0): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
+  return clampInt(value, 0, 64)
 }
 
 /**
@@ -98,9 +119,9 @@ export interface AffixSearchParams {
  * 旧的 2% / 0.5% / 0% 是「占全场最佳满额收益」的旧语义，**不作数**。
  */
 export const AFFIX_SEARCH_PRESETS: Record<Exclude<AffixSearchPresetId, 'custom'>, AffixSearchParams> = {
-  fast: { initialCandidateThreshold: 0.1, routeRetentionRatio: 0.95, maxRetainedRoutes: 4 },
-  balanced: { initialCandidateThreshold: 0.05, routeRetentionRatio: 0.95, maxRetainedRoutes: 8 },
-  fine: { initialCandidateThreshold: 0, routeRetentionRatio: 0.95, maxRetainedRoutes: 16 },
+  fast: { initialCandidateThreshold: 0.1, initialCandidateFloor: 5, routeRetentionRatio: 0.95, maxRetainedRoutes: 4 },
+  balanced: { initialCandidateThreshold: 0.05, initialCandidateFloor: 5, routeRetentionRatio: 0.95, maxRetainedRoutes: 8 },
+  fine: { initialCandidateThreshold: 0, initialCandidateFloor: 5, routeRetentionRatio: 0.95, maxRetainedRoutes: 16 },
 }
 
 export const AFFIX_SEARCH_PRESET_LABELS: Record<AffixSearchPresetId, string> = {
@@ -128,6 +149,7 @@ export function clampAffixMaxRetainedRoutes(value: number | undefined, fallback 
 export function resolveAffixSearchParams(input: {
   searchPreset?: AffixSearchPresetId
   initialCandidateThreshold?: number
+  initialCandidateFloor?: number
   routeRetentionRatio?: number
   maxRetainedRoutes?: number
 }): AffixSearchParams {
@@ -137,6 +159,10 @@ export function resolveAffixSearchParams(input: {
     initialCandidateThreshold: clampAffixUnitRatio(
       input.initialCandidateThreshold,
       base.initialCandidateThreshold,
+    ),
+    initialCandidateFloor: clampAffixCandidateFloor(
+      input.initialCandidateFloor,
+      base.initialCandidateFloor,
     ),
     routeRetentionRatio: clampAffixUnitRatio(input.routeRetentionRatio, base.routeRetentionRatio),
     maxRetainedRoutes: clampAffixMaxRetainedRoutes(
@@ -167,6 +193,8 @@ export interface AffixOptimizerInput {
   searchPreset?: AffixSearchPresetId
   /** 初始候选门槛（0..1）；显式值覆盖预设 */
   initialCandidateThreshold?: number
+  /** 候选兜底：每组保底前 N 名（0 = 关掉）；显式值覆盖预设 */
+  initialCandidateFloor?: number
   /** 路线保留比例（0..1）；显式值覆盖预设 */
   routeRetentionRatio?: number
   /** 最大保留路线 B；显式值覆盖预设 */
@@ -267,6 +295,8 @@ export interface AffixOptimizerResult {
   prunedRoutes: number
   /** 初始候选门槛永久淘汰的条目数 */
   initialDropped: number
+  /** 其中靠「每组保底前 N 名」兜底救回来的条目数 */
+  initialFloorSaved: number
   /** 层内路线比例淘汰的路线数（各层累计） */
   layerRatioDropped: number
   /** 本次用到的自适应 B 最小值 */
@@ -300,6 +330,8 @@ export interface AffixOptimizerProgress {
   adaptiveB?: number
   /** 初始候选门槛永久淘汰条数 */
   initialDropped?: number
+  /** 靠「每组保底前 N 名」兜底救回的条数 */
+  initialFloorSaved?: number
 }
 
 export type AffixOptimizerAsyncOptions = {
@@ -679,6 +711,8 @@ interface SearchOutcome {
   expandedRoutes: number
   prunedRoutes: number
   initialDropped: number
+  /** 其中靠「每组保底前 N 名」兜底救回来的条目数 */
+  initialFloorSaved: number
   layerRatioDropped: number
   adaptiveBMin: number
   adaptiveBMax: number
@@ -725,6 +759,7 @@ function* solveSearch(
   let liveSurvived = 0
   let liveAdaptiveB = 0
   let liveInitialDropped = 0
+  let liveInitialFloorSaved = 0
   let refineSkipped = false
 
   const snapshot = (): AffixOptimizerProgress => ({
@@ -740,6 +775,7 @@ function* solveSearch(
     ...(liveSurvived > 0 ? { survivedRoutes: liveSurvived } : {}),
     ...(liveAdaptiveB > 0 ? { adaptiveB: liveAdaptiveB } : {}),
     ...(liveInitialDropped > 0 ? { initialDropped: liveInitialDropped } : {}),
+    ...(liveInitialFloorSaved > 0 ? { initialFloorSaved: liveInitialFloorSaved } : {}),
   })
 
   const remainingWork = (): number =>
@@ -851,15 +887,38 @@ function* solveSearch(
     }
   }
   const pool: AffixLibraryEntry[] = []
+  /** 组内名次：比它单档收益更高的**同组**条目数（0 = 组内第一） */
+  const rankInGroup = new Map<string, number>()
   for (const entry of entries) {
     if (poolExcluded(entry)) continue
     const gain = initialGain.get(entry.id) ?? 0
-    // 判定：≥ 0（负收益一律出局）且 ≥ 本组最高 × 比例；组内最高 ≤ 0 时线 ≤ 0，该组 ≥0 全留
+    let rank = 0
+    for (const other of entries) {
+      if (other.id === entry.id || poolExcluded(other) || other.group !== entry.group) continue
+      if ((initialGain.get(other.id) ?? 0) > gain) rank += 1
+    }
+    rankInGroup.set(entry.id, rank)
+  }
+  const floor = Math.max(0, Math.floor(params.initialCandidateFloor))
+  let floorSaved = 0
+  for (const entry of entries) {
+    if (poolExcluded(entry)) continue
+    const gain = initialGain.get(entry.id) ?? 0
+    // 判定：先丢负收益；再过线（≥ 本组最高 × 比例）；没过线但**组内排名 < 兜底名次**的也留
+    if (gain < 0) continue
     const cutoff = (bestGainByGroup.get(entry.group) ?? 0) * params.initialCandidateThreshold
-    if (gain >= 0 && gain >= cutoff) pool.push(entry)
+    if (gain >= cutoff) {
+      pool.push(entry)
+      continue
+    }
+    if (floor > 0 && gain > 0 && (rankInGroup.get(entry.id) ?? Number.POSITIVE_INFINITY) < floor) {
+      pool.push(entry)
+      floorSaved += 1
+    }
   }
   const initialDropped = entries.filter((entry) => !poolExcluded(entry)).length - pool.length
   liveInitialDropped = initialDropped
+  liveInitialFloorSaved = floorSaved
   phasesCompleted.push('measure')
 
   // ---------- 2. Beam 构造 ----------
@@ -1167,6 +1226,7 @@ function* solveSearch(
     expandedRoutes,
     prunedRoutes,
     initialDropped,
+    initialFloorSaved: floorSaved,
     layerRatioDropped,
     adaptiveBMin,
     adaptiveBMax,
@@ -1206,6 +1266,7 @@ function toResult(input: AffixOptimizerInput, outcome: SearchOutcome): AffixOpti
     expandedRoutes: outcome.expandedRoutes,
     prunedRoutes: outcome.prunedRoutes,
     initialDropped: outcome.initialDropped,
+    initialFloorSaved: outcome.initialFloorSaved,
     layerRatioDropped: outcome.layerRatioDropped,
     adaptiveBMin: outcome.adaptiveBMin,
     adaptiveBMax: outcome.adaptiveBMax,
@@ -1250,6 +1311,7 @@ function mergeSearchOutcomes(
     expandedRoutes: sum((item) => item.expandedRoutes),
     prunedRoutes: sum((item) => item.prunedRoutes),
     initialDropped: Math.max(...all.map((item) => item.initialDropped)),
+    initialFloorSaved: Math.max(...all.map((item) => item.initialFloorSaved)),
     layerRatioDropped: sum((item) => item.layerRatioDropped),
     adaptiveBMin: bMins.length ? Math.min(...bMins) : 0,
     adaptiveBMax: Math.max(...all.map((item) => item.adaptiveBMax)),

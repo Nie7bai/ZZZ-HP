@@ -1943,6 +1943,7 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、初始门槛、B 截�
     groupCaps,
     enablePenRatePath: false,
     initialCandidateThreshold: 0,
+    initialCandidateFloor: 0,
   })
   clearAffixEvalCache()
   const highRatio = solveOptimalAffixAllocation({
@@ -1952,10 +1953,41 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、初始门槛、B 截�
     groupCaps,
     enablePenRatePath: false,
     initialCandidateThreshold: 0.8,
+    initialCandidateFloor: 0,
   })
   check('初始门槛越高淘汰越多（且确实有淘汰）',
     highRatio.initialDropped >= looseRatio.initialDropped && highRatio.initialDropped > 0,
     `门槛0.8 → ${highRatio.initialDropped} 条，门槛0 → ${looseRatio.initialDropped} 条`)
+
+  // ---- 门槛 v2 的「候选兜底」：每组保底前 N 名（2026-09-16）----
+  {
+    const mk = (id, perRoll) => ({
+      id, label: id, target: 'panel:atkPercent', perRoll, cap: 1, group: 'g1',
+      rollCost: 1, enabledByDefault: true,
+    })
+    const strong = mk('t:strong', 30)
+    const weak = mk('t:weak', 3)
+    clearAffixEvalCache()
+    const noFloor = solveOptimalAffixAllocation({
+      ctx, entries: [strong, weak], maxTotalRolls: 4,
+      enablePenRatePath: false, initialCandidateThreshold: 0.9, initialCandidateFloor: 0,
+    })
+    clearAffixEvalCache()
+    const withFloor = solveOptimalAffixAllocation({
+      ctx, entries: [strong, weak], maxTotalRolls: 4,
+      enablePenRatePath: false, initialCandidateThreshold: 0.9, initialCandidateFloor: 2,
+    })
+    check('兜底关掉时：比例 0.9 把组内第 2 名剪掉',
+      noFloor.initialDropped === 1 && noFloor.initialFloorSaved === 0,
+      `淘汰 ${noFloor.initialDropped}｜兜底救回 ${noFloor.initialFloorSaved}`)
+    check('兜底 2：组内第 2 名被救回并计数',
+      withFloor.initialDropped === 0 && withFloor.initialFloorSaved === 1,
+      `淘汰 ${withFloor.initialDropped}｜兜底救回 ${withFloor.initialFloorSaved}`)
+    check('预设自带兜底 5',
+      AFFIX_SEARCH_PRESETS.fast.initialCandidateFloor === 5
+        && AFFIX_SEARCH_PRESETS.balanced.initialCandidateFloor === 5,
+      `fast=${AFFIX_SEARCH_PRESETS.fast.initialCandidateFloor} balanced=${AFFIX_SEARCH_PRESETS.balanced.initialCandidateFloor}`)
+  }
 
   clearAffixEvalCache()
   const kCap = solveOptimalAffixAllocation({

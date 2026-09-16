@@ -1634,6 +1634,11 @@ const affixSearchRetentionPercent = computed({
   get: () => Math.round(affixSearchParams.value.routeRetentionRatio * 100),
   set: (value: number) => setAffixSearchCustom({ routeRetentionRatio: (Number(value) || 0) / 100 }),
 })
+/** 候选兜底：每组保底前 N 名（整数，0 = 关掉） */
+const affixSearchCandidateFloor = computed({
+  get: () => affixSearchParams.value.initialCandidateFloor,
+  set: (value: number) => setAffixSearchCustom({ initialCandidateFloor: Math.max(0, Math.round(Number(value) || 0)) }),
+})
 const affixSearchMaxRoutes = computed({
   get: () => affixSearchParams.value.maxRetainedRoutes,
   set: (value: number) => setAffixSearchCustom({ maxRetainedRoutes: Number(value) || 1 }),
@@ -3000,6 +3005,10 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
               </span>
             </label>
             <label class="field">
+              <span>候选兜底（每组前 N 名）</span>
+              <input v-model.lazy.number="affixSearchCandidateFloor" type="number" min="0" max="64" step="1" />
+            </label>
+            <label class="field">
               <span>路线保留比例</span>
               <span class="field-input-with-suffix">
                 <input v-model.lazy.number="affixSearchRetentionPercent" type="number" min="0" max="100" step="1" />
@@ -3014,7 +3023,8 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           <p class="alloc-note">
             初始候选门槛：每条词条先「只加 1 档」看总伤涨多少（单档收益），只跟**自己组内的最高值**比；低于「组内最高 × 门槛」的直接出局，后面不再回头捡。
             ⚠️ 越高越激进（0 = 只丢负收益）：实测 15% 以上会把搜索要用的条目筛没，总伤明显下降。
-            三个预设：0%（精细）/ 5%（均衡）/ 10%（快速）。**空组（临时）条目不参与最优计算，也不显示收益表。**
+            候选兜底：每组按单档收益排**前 N 名**的条目**无论如何保留**（默认 5，0 = 关掉）—— 专门挡住「基线上不值钱、终局里最值钱」的条目（典型：副词条爆伤）被门槛线误剪。
+            默认：门槛 0/5%/10%（精细/均衡/快速）+ 兜底 5。**空组（临时）条目不参与最优计算，也不显示收益表。**
           </p>
           <p class="alloc-note">
             路线保留比例越低、最大保留路线越小越快，也越可能漏掉「次优起步、换档后反超」的分法。
