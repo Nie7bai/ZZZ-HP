@@ -55,6 +55,14 @@ function normalizeSkill(raw: Record<string, unknown>): Skill | null {
     damagePercentageGrowth: Number.isFinite(Number(raw.damagePercentageGrowth))
       ? Number(raw.damagePercentageGrowth)
       : undefined,
+    radianceTalentKey:
+      raw.radianceTalentKey === 'basic' ||
+      raw.radianceTalentKey === 'dodge' ||
+      raw.radianceTalentKey === 'assist' ||
+      raw.radianceTalentKey === 'special' ||
+      raw.radianceTalentKey === 'chainUltimate'
+        ? raw.radianceTalentKey
+        : null,
     element: raw.element == null || raw.element === '' ? '' : String(raw.element),
     ownerGroupId,
     note: typeof raw.note === 'string' ? raw.note.trim() : '',

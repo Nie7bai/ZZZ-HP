@@ -58,6 +58,7 @@ import {
 import { skillTypeLabelsForDisplay } from '@/utils/skillTypes'
 import {
   resolveEffectiveBaseMult,
+  SKILL_TALENT_LEVEL_LABELS,
   type SkillTalentLevels,
 } from '@/utils/skillTalentLevels'
 
@@ -1106,7 +1107,8 @@ const detailZoneRows = computed(() => {
   return buildSkillCalcZoneRows(result, skill.damageType)
 })
 
-/** 详情「倍率%」：最终倍率区换算为百分点；触发者不合规则不展示倍率 */
+/** 详情「倍率%」：最终倍率区换算为百分点；触发者不合规则不展示倍率。
+ *  未结算时回落「按当前槽位技能等级的有效基础倍率」（nanoka/耀变随等级），并标注等级来源 */
 const detailResolvedMultDisplay = computed(() => {
   const skill = detailSkill.value
   const key = detailCalcKey.value
@@ -1118,10 +1120,26 @@ const detailResolvedMultDisplay = computed(() => {
     if (hint) return null
   }
   const result = props.hitCalcResults?.[key]
-  if (!result) return null
-  const ratio = pickSkillMultPercentRatio(result, skill.damageType)
-  if (ratio == null) return null
-  return formatSkillMultZoneAsPercent(ratio)
+  if (result) {
+    const ratio = pickSkillMultPercentRatio(result, skill.damageType)
+    if (ratio != null) return formatSkillMultZoneAsPercent(ratio)
+  }
+  // 未结算：按当前槽位技能等级重算（resolveEffectiveBaseMult 返回百分比数值，如 360 = 360%）
+  const ownerId = currentAgentId.value || skill.agentId
+  const rank = props.teamSlots.find((slot) => slot.agentId === ownerId)?.rank ?? 0
+  const resolved = resolveEffectiveBaseMult(
+    skill,
+    props.skillTalentLevelsByAgent?.[ownerId],
+    rank,
+  )
+  if (!unsetSkillMult(resolved.baseMult)) {
+    const levelSuffix =
+      resolved.talentKey != null && resolved.talentLevel != null
+        ? `（${SKILL_TALENT_LEVEL_LABELS[resolved.talentKey]} Lv.${resolved.talentLevel}）`
+        : ''
+    return `${String(resolved.baseMult)}${levelSuffix}`
+  }
+  return null
 })
 
 function setDetailAgent(field: 'anomalyPowerAgentId' | 'triggerAgentId', raw: string) {

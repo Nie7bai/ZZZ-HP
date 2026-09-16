@@ -77,6 +77,13 @@ async function ensureTable() {
   } catch {
     // column may already exist
   }
+  try {
+    await pool.query(
+      `ALTER TABLE calculator_skills ADD COLUMN radiance_talent_key VARCHAR(32) NULL AFTER damage_percentage_growth`,
+    )
+  } catch {
+    // column may already exist
+  }
   await ensurePublicAnomalySkills()
   ensured = true
 }
@@ -120,6 +127,19 @@ function parseSkillTypes(raw) {
   }
 }
 
+const RADIANCE_TALENT_KEYS = new Set([
+  'basic',
+  'dodge',
+  'assist',
+  'special',
+  'chainUltimate',
+])
+
+function parseRadianceTalentKey(raw) {
+  const value = String(raw ?? '').trim()
+  return RADIANCE_TALENT_KEYS.has(value) ? value : null
+}
+
 function rowToDoc(row) {
   const multSource = String(row.mult_source ?? '').trim() === 'nanoka' ? 'nanoka' : null
   const damagePercentage =
@@ -147,6 +167,9 @@ function rowToDoc(row) {
     multSource,
     ...(Number.isFinite(damagePercentage) ? { damagePercentage } : {}),
     ...(Number.isFinite(damagePercentageGrowth) ? { damagePercentageGrowth } : {}),
+    ...(parseRadianceTalentKey(row.radiance_talent_key)
+      ? { radianceTalentKey: parseRadianceTalentKey(row.radiance_talent_key) }
+      : {}),
     element: String(row.element ?? ''),
     ownerGroupId:
       row.owner_group_id == null || row.owner_group_id === ''
@@ -195,6 +218,7 @@ export async function upsertSkill(doc) {
   const damagePercentageGrowthValue = Number.isFinite(damagePercentageGrowth)
     ? damagePercentageGrowth
     : null
+  const radianceTalentKey = parseRadianceTalentKey(doc.radianceTalentKey)
 
   if (!name) throw new Error('招式名称为必填项')
   if (!damageType) throw new Error('伤害类型为必填项')
@@ -208,8 +232,8 @@ export async function upsertSkill(doc) {
     `INSERT INTO calculator_skills
       (id, agent_id, name, damage_type, skill_types, buff_anchor_id,
        base_mult, base_mult_factor, settlement_mult, sort_order, element, owner_group_id, note,
-       mult_source, damage_percentage, damage_percentage_growth)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+       mult_source, damage_percentage, damage_percentage_growth, radiance_talent_key)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        agent_id = VALUES(agent_id),
        name = VALUES(name),
@@ -224,7 +248,8 @@ export async function upsertSkill(doc) {
        note = VALUES(note),
        mult_source = VALUES(mult_source),
        damage_percentage = VALUES(damage_percentage),
-       damage_percentage_growth = VALUES(damage_percentage_growth)`,
+       damage_percentage_growth = VALUES(damage_percentage_growth),
+       radiance_talent_key = VALUES(radiance_talent_key)`,
     [
       id,
       agentId,
@@ -241,6 +266,7 @@ export async function upsertSkill(doc) {
       multSource,
       damagePercentageValue,
       damagePercentageGrowthValue,
+      radianceTalentKey,
     ],
   )
 

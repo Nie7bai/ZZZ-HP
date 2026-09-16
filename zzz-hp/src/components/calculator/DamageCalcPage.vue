@@ -49,6 +49,7 @@ import type {
   StaggerPhase,
 } from '@/types/calculator'
 import {
+  buildSkillBaseMultNote,
   fillSkillTalentLevels,
   type SkillTalentLevels,
 } from '@/utils/skillTalentLevels'
@@ -359,6 +360,13 @@ const {
   selectedEventId: damageResultSelectedEventId,
   selectEvent: damageResultSelectEvent,
 } = damageResultProcess
+
+/** 选中事件的耀变倍率来源标注（招式等级公式，如「普通攻击 Lv.16：200% + 10% × 16 = 360%」） */
+const damageResultSkillMultLevelNote = computed(() => {
+  const detail = damageResultSelectedDetail.value
+  if (!detail) return null
+  return buildSkillBaseMultNote(detail.hit.skill, detail.hit.skillTalentLevel)
+})
 const previewHits = computed(() =>
   resolveSkillPreviews({
     slots: schemeSlots.value,
@@ -2251,6 +2259,7 @@ defineExpose({ scrollToSection })
         :skipped-events="damageResultSkippedEvents"
         :detail="damageResultSelectedDetail"
         :selected-event-id="damageResultSelectedEventId"
+        :skill-mult-level-note="damageResultSkillMultLevelNote"
         total-label="伤害事件总伤期望"
         :enemy-input="enemyInput"
         :is-mb="isMbMainAgent"
