@@ -276,7 +276,7 @@ export interface AffixOptimizerProgress {
   baselineDamage: number
   /** 当前在普通路线还是穿透专路 */
   searchPath?: 'ordinary' | 'penRate'
-  /** 游戏专用 8 路外层：当前第几组 */
+  /** 游戏专用 4 袋外层：当前第几袋 */
   gameBranch?: { index: number; total: number; label: string }
   /** 游戏专用：已完成口袋累计 + 当前口袋的合计计算量 */
   gameTotals?: { workUsed: number; engineCalls: number }

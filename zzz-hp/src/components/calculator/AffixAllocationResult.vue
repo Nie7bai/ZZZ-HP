@@ -56,7 +56,7 @@ const progressLabel = computed(() => {
 })
 
 /**
- * 游戏专用结果里的「胜出口袋 + 8 袋合计」。
+ * 游戏专用结果里的「胜出口袋 + 各袋合计」。
  * 普通「求最优分配」没有这段，返回 null。
  */
 const gameInfo = computed(() => {
