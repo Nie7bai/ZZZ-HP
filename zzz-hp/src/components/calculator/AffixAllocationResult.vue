@@ -156,7 +156,7 @@ function formatNumber(value: number) {
 
       <p v-if="gameInfo" class="hint">
         胜出口袋：组合 {{ gameInfo.winner.index }}/{{ gameInfo.winner.total }}（{{ gameInfo.winner.label }}）·
-        8 袋合计 {{ formatNumber(gameInfo.totals.workUsed) }} 计算量 / {{ gameInfo.totals.engineCalls }} 次评估
+        各袋合计 {{ formatNumber(gameInfo.totals.workUsed) }} 计算量 / {{ gameInfo.totals.engineCalls }} 次评估
         （缓存命中 {{ gameInfo.totals.cacheHits }}）· 共 {{ gameInfo.totals.pockets }} 袋
       </p>
 

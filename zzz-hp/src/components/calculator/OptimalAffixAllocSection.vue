@@ -3026,7 +3026,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
               编辑
             </button>
           </div>
-          <span class="hint">可模拟4/5/6号位主副属性重复时造成的总词条数损失；比上方「求最优分配」慢</span>
+          <span class="hint">可模拟 4 号位主属性与副词条重复、以及 5/6 号位选到攻击/生命/防御时的总词条数损失；比上方「求最优分配」慢</span>
         </div>
         <p v-if="affixSearchSettings.advancedOpen" class="hint">
           初始候选门槛：把「全投进去也涨不了多少分」的词条直接淘汰，省算力。⚠️ 实测调到 5% 以上会把
