@@ -106,10 +106,10 @@ function formatNumber(value: number) {
       <p class="hint">搜索过程中可点「停止」，或直接改上方参数（会自动中止重算）。</p>
     </template>
     <p v-else-if="error" class="err">{{ error }}</p>
-    <p v-else-if="!result" class="hint">输入总词条数后点「求最优分配」或「游戏专用分配规则」。</p>
+    <p v-else-if="!result" class="hint">输入总词条数后点「求最优分配」或「游戏专用规则分配」。</p>
     <template v-else>
       <p v-if="stale" class="hint warn">
-        此结果已过期：求解已中止，或词条数 / 队伍 / 招式等条件已变。请重新点「求最优分配」或「游戏专用分配规则」。
+        此结果已过期：求解已中止，或词条数 / 队伍 / 招式等条件已变。请重新点「求最优分配」或「游戏专用规则分配」。
       </p>
       <div class="alloc-summary">
         <div class="summary-item">

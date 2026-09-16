@@ -3928,3 +3928,54 @@ body:has(.calculator-page.theme-light) .preset-preview li,
 [data-theme='light'] .game-rules-modal .rules-table .target-cell {
   color: #667085 !important;
 }
+
+/**
+ * 求最优分配 · 高级设置弹窗（`AffixSearchAdvancedModal.vue`）
+ * 与游戏规则弹窗同一套：默认（深色）在组件里，白天主题在这里覆盖。
+ */
+[data-theme='light'] .search-advanced-overlay {
+  background: rgba(15, 23, 42, 0.35) !important;
+}
+
+[data-theme='light'] .search-advanced-modal {
+  border-color: #d5dae3 !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f6f8fb 100%) !important;
+  color: #1c212a !important;
+  box-shadow: 0 18px 48px rgba(16, 24, 40, 0.12) !important;
+}
+
+[data-theme='light'] .search-advanced-modal .modal-header {
+  border-bottom-color: #e4e7ec !important;
+}
+
+[data-theme='light'] .search-advanced-modal .modal-header h2 {
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .search-advanced-modal .close-btn {
+  color: #667085 !important;
+}
+
+[data-theme='light'] .search-advanced-modal .close-btn:hover {
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .search-advanced-modal .field,
+[data-theme='light'] .search-advanced-modal .modal-note,
+[data-theme='light'] .search-advanced-modal .field-suffix {
+  color: #667085 !important;
+}
+
+[data-theme='light'] .search-advanced-modal .modal-note strong {
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .search-advanced-modal .modal-note.dim {
+  color: #98a2b3 !important;
+}
+
+[data-theme='light'] .search-advanced-modal .field input {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+  color: #1c212a !important;
+}

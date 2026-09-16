@@ -3001,13 +3001,13 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
               :title="gameAffixSettings.enabledIds.length ? '' : '请先去「编辑」里勾选至少一条词条'"
               @click="runGameAffixAllocation"
             >
-              游戏专用分配规则
+              游戏专用规则分配
             </button>
             <button
               type="button"
               class="ghost-btn alloc-mode-edit"
               :disabled="affixAllocLoading"
-              title="编辑游戏专用分配规则"
+              title="编辑游戏专用规则分配"
               @click="gameAffixRulesOpen = true"
             >
               编辑
@@ -3027,7 +3027,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
               <b>求最优分配</b>：自适应 Beam —— 同一预算下并行保留多条分法，再各做一轮换档兜底；不清楚规则就用预设「均衡」。
             </li>
             <li>
-              <b>游戏专用分配规则</b>：模拟 4 号位主属性与副词条重复、以及 5/6 号位选到攻击/生命/防御时的总词条数损失，比左边慢。
+              <b>游戏专用规则分配</b>：模拟 4 号位主属性与副词条重复、以及 5/6 号位选到攻击/生命/防御时的总词条数损失，比左边慢。
             </li>
           </ul>
         </div>

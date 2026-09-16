@@ -16,7 +16,7 @@ import {
 import type { OptimalEvalContext } from '@/utils/optimalAffixAlloc'
 
 /**
- * 游戏专用分配规则：一份写死方案，不进官方词条库。
+ * 游戏专用规则分配：一份写死方案，不进官方词条库。
  *
  * 副词条每条上限 30。付费判定标准 =「该主属性字段在副词条池里也有同 target 条目」
  * （游戏里副词条不会与主属性重复）：

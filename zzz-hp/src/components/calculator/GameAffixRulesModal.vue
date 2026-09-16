@@ -74,9 +74,9 @@ function onExtraCost(event: Event) {
       role="presentation"
       @mousedown.self="emit('close')"
     >
-      <div class="game-rules-modal" role="dialog" aria-modal="true" aria-label="游戏专用分配规则">
+      <div class="game-rules-modal" role="dialog" aria-modal="true" aria-label="游戏专用规则分配">
         <header class="modal-header">
-          <h2>游戏专用分配规则</h2>
+          <h2>游戏专用规则分配</h2>
           <button type="button" class="close-btn" aria-label="关闭" @click="emit('close')">×</button>
         </header>
 
