@@ -708,6 +708,7 @@ const skillFlowEvalCtx = computed(() =>
     skillSubcategories: skillSubcategories.value,
     followUpSkillRules: followUpSkillRules.value,
     environmentBuffs: props.environmentBuffs,
+    skillTalentLevelsByAgent: props.skillTalentLevelsByAgent,
   }),
 )
 

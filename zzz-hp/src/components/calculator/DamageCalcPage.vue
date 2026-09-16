@@ -309,6 +309,7 @@ const damageResultEvalCtx = computed(() =>
     skillSubcategories: skillSubcategories.value,
     followUpSkillRules: followUpSkillRules.value,
     environmentBuffs: activeEnvironmentBuffs.value,
+    skillTalentLevelsByAgent,
   }),
 )
 

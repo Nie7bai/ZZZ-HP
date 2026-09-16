@@ -13,6 +13,7 @@ import type {
   BuffStatKey,
   BuffStatModifiers,
   CharacterAttrKey,
+  ConvertFromKey,
   FollowUpSkillRule,
   SkillCalcContext,
   SkillMatchCoord,
@@ -864,7 +865,7 @@ function normalizeConvert(value: unknown): BuffEffect['convert'] {
   const rawFrom = entry.from
   if (typeof rawFrom !== 'string') return undefined
 
-  let from: CharacterAttrKey
+  let from: ConvertFromKey
   let panelSource: 'external' | 'final' | 'manual' =
     entry.panelSource === 'final'
       ? 'final'
@@ -882,6 +883,9 @@ function normalizeConvert(value: unknown): BuffEffect['convert'] {
     ) {
       panelSource = legacy.panelSource
     }
+  } else if (isSkillConvertFromKey(rawFrom)) {
+    // 技能等级转模来源：五大类技能等级（与后端 normalizeConvert 白名单对齐）
+    from = rawFrom
   } else if ((CHARACTER_ATTRS as string[]).includes(rawFrom)) {
     from = rawFrom as CharacterAttrKey
   } else {
