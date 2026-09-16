@@ -173,6 +173,7 @@ function formatNumber(value: number) {
         <table class="alloc-table">
           <thead>
             <tr>
+              <th class="group-head">组</th>
               <th>词条</th>
               <th class="num-head">每档</th>
               <th class="num-head">分配档数</th>
@@ -181,6 +182,7 @@ function formatNumber(value: number) {
           </thead>
           <tbody>
             <tr v-for="row in rows" :key="row.entry.id">
+              <td class="group-cell">{{ row.entry.group || '—' }}</td>
               <td>{{ row.entry.label }}</td>
               <td class="num-cell">{{ formatAffixPerRoll(row.entry.target, row.entry.perRoll) }}</td>
               <td class="num-cell rolls-cell">
@@ -218,6 +220,17 @@ function formatNumber(value: number) {
   margin: 0.25rem 0 0;
   font-size: 0.8rem;
   color: var(--calc-muted, #6b7280);
+}
+
+/**
+ * 「组」列（2026-09-16 加）：同一字段可能同时落在 5 号位与 6 号位两组（标签一样），
+ * 只靠词条名分不清；组名让两行可辨。数据本来按条目 id 记，这里纯显示。
+ */
+.group-head,
+.group-cell {
+  white-space: nowrap;
+  color: var(--calc-muted, #6b7280);
+  font-size: 0.92em;
 }
 
 .err {
