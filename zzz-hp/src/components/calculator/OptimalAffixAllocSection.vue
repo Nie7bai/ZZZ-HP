@@ -14,6 +14,7 @@ import BenefitCurvePanel from '@/components/calculator/BenefitCurvePanel.vue'
 import OptimalDamageBarChart from '@/components/calculator/OptimalDamageBarChart.vue'
 import AffixBenefitTable from '@/components/calculator/AffixBenefitTable.vue'
 import AffixAllocationResult from '@/components/calculator/AffixAllocationResult.vue'
+import AffixSearchAdvancedModal from '@/components/calculator/AffixSearchAdvancedModal.vue'
 import GameAffixRulesModal from '@/components/calculator/GameAffixRulesModal.vue'
 import type { TeamSlot } from '@/components/calculator/DamageCalcPage.vue'
 import type { AgentPanelSources } from '@/types/damageCalcHistory'
@@ -1617,32 +1618,9 @@ function setAffixSearchCustom(patch: Partial<AffixSearchParams>) {
   persistAffixSearchSettings()
 }
 
-function toggleAffixSearchAdvanced() {
-  affixSearchSettings.value = {
-    ...affixSearchSettings.value,
-    advancedOpen: !affixSearchSettings.value.advancedOpen,
-  }
-  persistAffixSearchSettings()
-}
+/** 高级设置弹窗开合（不落盘：弹窗状态没必要持久化） */
+const affixSearchAdvancedOpen = ref(false)
 
-/** 高级区输入（百分比，保留一位小数）↔ 存盘值（0..1） */
-const affixSearchInitialPercent = computed({
-  get: () => Math.round(affixSearchParams.value.initialCandidateThreshold * 1000) / 10,
-  set: (value: number) => setAffixSearchCustom({ initialCandidateThreshold: (Number(value) || 0) / 100 }),
-})
-const affixSearchRetentionPercent = computed({
-  get: () => Math.round(affixSearchParams.value.routeRetentionRatio * 100),
-  set: (value: number) => setAffixSearchCustom({ routeRetentionRatio: (Number(value) || 0) / 100 }),
-})
-/** 候选兜底：每组保底前 N 名（整数，0 = 关掉） */
-const affixSearchCandidateFloor = computed({
-  get: () => affixSearchParams.value.initialCandidateFloor,
-  set: (value: number) => setAffixSearchCustom({ initialCandidateFloor: Math.max(0, Math.round(Number(value) || 0)) }),
-})
-const affixSearchMaxRoutes = computed({
-  get: () => affixSearchParams.value.maxRetainedRoutes,
-  set: (value: number) => setAffixSearchCustom({ maxRetainedRoutes: Number(value) || 1 }),
-})
 /** 求解进度（仅求解中刷新） */
 const affixAllocProgress = ref<AffixOptimizerProgress | null>(null)
 /** 进度刷新间隔（毫秒）：求解每个时间片都回调，逐次刷新会拖慢求解本身 */
@@ -2989,47 +2967,17 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
               </option>
             </select>
           </label>
-          <button type="button" class="ghost-btn" @click="toggleAffixSearchAdvanced">
-            {{ affixSearchSettings.advancedOpen ? '收起高级' : '高级设置' }}
+          <button type="button" class="ghost-btn" @click="affixSearchAdvancedOpen = true">
+            高级设置
           </button>
         </div>
 
-        <!-- 高级参数：就地展开成下面一行，只把后面的内容往下推，不重排上面的控件 -->
-        <div v-if="affixSearchSettings.advancedOpen" class="alloc-advanced">
-          <div class="alloc-input-row alloc-fields">
-            <label class="field">
-              <span>初始候选门槛</span>
-              <span class="field-input-with-suffix">
-                <input v-model.lazy.number="affixSearchInitialPercent" type="number" min="0" max="100" step="0.1" />
-                <span class="field-suffix">%</span>
-              </span>
-            </label>
-            <label class="field">
-              <span>候选兜底（每组前 N 名）</span>
-              <input v-model.lazy.number="affixSearchCandidateFloor" type="number" min="0" max="64" step="1" />
-            </label>
-            <label class="field">
-              <span>路线保留比例</span>
-              <span class="field-input-with-suffix">
-                <input v-model.lazy.number="affixSearchRetentionPercent" type="number" min="0" max="100" step="1" />
-                <span class="field-suffix">%</span>
-              </span>
-            </label>
-            <label class="field">
-              <span>最大保留路线</span>
-              <input v-model.lazy.number="affixSearchMaxRoutes" type="number" min="1" max="64" step="1" />
-            </label>
-          </div>
-          <p class="alloc-note">
-            初始候选门槛：每条词条先「只加 1 档」看总伤涨多少（单档收益），只跟**自己组内的最高值**比；低于「组内最高 × 门槛」的直接出局，后面不再回头捡。
-            ⚠️ 越高越激进（0 = 只丢负收益）：实测 15% 以上会把搜索要用的条目筛没，总伤明显下降。
-            候选兜底：每组按单档收益排**前 N 名**的条目**无论如何保留**（默认 5，0 = 关掉）—— 专门挡住「基线上不值钱、终局里最值钱」的条目（典型：副词条爆伤）被门槛线误剪。
-            默认：门槛 0/5%/10%（精细/均衡/快速）+ 兜底 5。**空组（临时）条目不参与最优计算，也不显示收益表。**
-          </p>
-          <p class="alloc-note">
-            路线保留比例越低、最大保留路线越小越快，也越可能漏掉「次优起步、换档后反超」的分法。
-          </p>
-        </div>
+        <AffixSearchAdvancedModal
+          :open="affixSearchAdvancedOpen"
+          :params="affixSearchParams"
+          @close="affixSearchAdvancedOpen = false"
+          @update="setAffixSearchCustom"
+        />
 
         <!-- 分配方式：二选一 —— 两颗独立按钮；正在跑时两颗一起变灰，行尾出现「停止」（不顶掉主按钮，避免跳动） -->
         <div class="alloc-mode-block">

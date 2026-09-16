@@ -103,25 +103,20 @@ export function clampAffixCandidateFloor(value: unknown, fallback = 0): number {
 }
 
 /**
- * 预设参数（2026-09-16 第二轮改造：门槛换成**组内单档比例**）。
+ * 预设参数（2026-09-16 定稿：门槛是**组内单档比例**，并带**候选兜底**）。
  *
- * ⚠️ **三档的 `R` 由用户最终定**；下面是按实测扫出来的值（越大筛得越狠）：
- * 同一场景（46 档、合成 8 命中）里 `R=0` 为 100% 基准 ——
+ * 用户口径：**均衡 = 门槛 50% / 兜底 5 / 比例 50% / B 8**；快速与精细在均衡基础上
+ * **各 ±30 个百分点**（快速 80%、精细 20%；兜底与 B 三档一致）。
  *
- * | R | 淘汰 | 质量 |
- * |---|---|---|
- * | 0 | 0 条 | 100% |
- * | 0.05 | 21 条 | 100% |
- * | 0.10 | 22 条 | 96.3% |
- * | 0.15 起 | 24 条+ | 73.4% 及以下（质量塌） |
- *
- * 所以三档取 `快速 0.1 / 均衡 0.05 / 精细 0`，正好对上手册记的「快速不低于精细的 95%」。
- * 旧的 2% / 0.5% / 0% 是「占全场最佳满额收益」的旧语义，**不作数**。
+ * 依据（8 命中合成场景、带号位额度、46 档）：带兜底 5 时 `R = 0.1 / 0.15 / 0.5` 质量都是 100%
+ * （兜底挡住「基线上不值钱、终局里最值钱」的副词条爆伤）；真实 fixture 上 `R=0.1 ∪ 前5`
+ * 比纯比例还省（引擎 801 → 712：池子更大，但自适应 B 的除数变大）。
+ * 旧的 2% / 0.5% / 0%（占全场最佳满额收益）**作废**。
  */
 export const AFFIX_SEARCH_PRESETS: Record<Exclude<AffixSearchPresetId, 'custom'>, AffixSearchParams> = {
-  fast: { initialCandidateThreshold: 0.1, initialCandidateFloor: 5, routeRetentionRatio: 0.95, maxRetainedRoutes: 4 },
-  balanced: { initialCandidateThreshold: 0.05, initialCandidateFloor: 5, routeRetentionRatio: 0.95, maxRetainedRoutes: 8 },
-  fine: { initialCandidateThreshold: 0, initialCandidateFloor: 5, routeRetentionRatio: 0.95, maxRetainedRoutes: 16 },
+  fast: { initialCandidateThreshold: 0.8, initialCandidateFloor: 5, routeRetentionRatio: 0.8, maxRetainedRoutes: 8 },
+  balanced: { initialCandidateThreshold: 0.5, initialCandidateFloor: 5, routeRetentionRatio: 0.5, maxRetainedRoutes: 8 },
+  fine: { initialCandidateThreshold: 0.2, initialCandidateFloor: 5, routeRetentionRatio: 0.2, maxRetainedRoutes: 8 },
 }
 
 export const AFFIX_SEARCH_PRESET_LABELS: Record<AffixSearchPresetId, string> = {
