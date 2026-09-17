@@ -5,7 +5,7 @@ import type { AffixSearchParams } from '@/utils/affixOptimizer'
 /**
  * 词条「求最优分配」高级设置弹窗（2026-09-16；2026-09-17 定稿「比例 + 最小/最大保留路线」三件套）。
  *
- * 五件事：初始候选门槛（%）、候选兜底（每组前 N 名）、路线保留比例（%）、最小保留路线、最大保留路线。
+ * 五件事：初始候选门槛（%）、候选兜底（每组前 N 名）、路线保留比例（%）、保留路线（最小 / 最大成对）。
  * 只负责编辑与回传，存盘在主区块（`affixSearchSettings`）——这里不碰 localStorage。
  */
 const props = defineProps<{
@@ -70,14 +70,29 @@ const maxRoutes = computed({
                 <span class="field-suffix">%</span>
               </span>
             </label>
-            <label class="field">
-              <span>最小保留路线</span>
-              <input v-model.lazy.number="minRoutes" type="number" min="1" max="64" step="1" />
-            </label>
-            <label class="field">
-              <span>最大保留路线</span>
-              <input v-model.lazy.number="maxRoutes" type="number" min="1" max="64" step="1" />
-            </label>
+            <div class="field">
+              <span>保留路线（最小 / 最大）</span>
+              <div class="field-pair">
+                <input
+                  v-model.lazy.number="minRoutes"
+                  type="number"
+                  min="1"
+                  max="64"
+                  step="1"
+                  aria-label="最小保留路线"
+                  title="最小保留路线：比例筛完不足这么多条时按累计提升补足"
+                />
+                <input
+                  v-model.lazy.number="maxRoutes"
+                  type="number"
+                  min="1"
+                  max="64"
+                  step="1"
+                  aria-label="最大保留路线"
+                  title="最大保留路线：比例筛完超过这么多条时按累计提升截顶"
+                />
+              </div>
+            </div>
           </div>
 
           <p class="modal-note">
@@ -194,13 +209,29 @@ const maxRoutes = computed({
 }
 
 .field-input-with-suffix {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
+  position: relative;
+  display: block;
+}
+
+/* `%` 放进框内右侧：所有输入框因此都是整格宽，不会一个长一个短 */
+.field-input-with-suffix input {
+  padding-right: 1.5rem;
 }
 
 .field-suffix {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
   color: #9aa3b0;
+  pointer-events: none;
+}
+
+/* 最小 / 最大成对出现，两格等宽 */
+.field-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
 }
 
 .modal-note {
