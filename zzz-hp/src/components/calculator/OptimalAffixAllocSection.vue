@@ -134,6 +134,7 @@ import {
   saveAffixLibraryState,
   setAffixLibraryEntryEnabled,
   setAffixLibraryGroupCap,
+  setAffixLibraryGroupEntryCaps,
   updateAffixLibraryEntry,
   type AffixLibraryEntry,
   type AffixLibraryState,
@@ -1791,6 +1792,11 @@ function setAffixLibraryGroupCapHandler(name: string, cap: number) {
   persistAffixLibrary(setAffixLibraryGroupCap(affixLibraryState.value, name, cap))
 }
 
+/** 批量把某组每条的单词条上限设成同一个值（`name = ''` = 未分组） */
+function setAffixLibraryGroupEntryCapsHandler(name: string, cap: number) {
+  persistAffixLibrary(setAffixLibraryGroupEntryCaps(affixLibraryState.value, name, cap))
+}
+
 function renameAffixLibraryGroupHandler(from: string, to: string) {
   persistAffixLibrary(renameAffixLibraryGroup(affixLibraryState.value, from, to))
 }
@@ -2776,6 +2782,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           @restore-defaults="restoreAffixLibraryDefaultsHandler"
           @add-group="addAffixLibraryGroupHandler"
           @set-group-cap="setAffixLibraryGroupCapHandler"
+          @set-group-entry-caps="setAffixLibraryGroupEntryCapsHandler"
           @rename-group="renameAffixLibraryGroupHandler"
           @remove-group="removeAffixLibraryGroupHandler"
           @library-switched="onAffixLibrarySwitched"

@@ -77,6 +77,8 @@ const emit = defineEmits<{
   addGroup: [name: string, cap: number]
   /** 改组额度 */
   setGroupCap: [name: string, cap: number]
+  /** 批量设定某组所有条目的单词条上限（`name = ''` 表示未分组） */
+  setGroupEntryCaps: [name: string, cap: number]
   /** 改组名（页面负责同步条目引用） */
   renameGroup: [from: string, to: string]
   /** 只删分组，组内条目变回自由条目 */
@@ -553,6 +555,54 @@ function onSetGroupCap(name: string, value: number) {
   forwardEntryEdit(() => emit('setGroupCap', name, value))
 }
 
+/**
+ * 「本组单词条上限」批量入口（2026-09-17 加）：
+ * 把当前页签这一组每条的 `cap` 一次设成同一个值（0 = 不限）。
+ *
+ * 与「组额度」是两层：本行改的是**每条各自的档数上限**，组额度仍在组管理页改。
+ * 未分组页签也走这里 —— `activeGroupName` 对未分组返回 `''`，与库里 `group === ''` 的口径一致。
+ */
+const batchEntryCap = ref(0)
+
+/** 本组当前上限分布，例：`30 ×8、6 ×2`；只有一种值时写 `全部 30（0 = 不限）` */
+const entryCapSummary = computed(() => {
+  const counts = new Map<number, number>()
+  for (const entry of visibleEntries.value) {
+    const cap = Math.max(0, Math.round(entry.cap))
+    counts.set(cap, (counts.get(cap) ?? 0) + 1)
+  }
+  const parts = [...counts.entries()].sort((a, b) => a[0] - b[0])
+  if (!parts.length) return '—'
+  if (parts.length === 1) {
+    const [cap, count] = parts[0]!
+    return cap === 0 ? `全部不限（${count} 条）` : `全部 ${cap}（${count} 条）`
+  }
+  return parts.map(([cap, count]) => `${cap === 0 ? '不限' : cap} ×${count}`).join('、')
+})
+
+/** 切页签时把输入框预填成该组「最常见的上限」（次数相同取较大的那个），省得每次手打 */
+watch(
+  () => [activeTab.value, visibleEntries.value.map((entry) => entry.cap).join(',')] as const,
+  () => {
+    const counts = new Map<number, number>()
+    for (const entry of visibleEntries.value) {
+      const cap = Math.max(0, Math.round(entry.cap))
+      counts.set(cap, (counts.get(cap) ?? 0) + 1)
+    }
+    const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])
+    if (!ranked.length) return
+    batchEntryCap.value = ranked[0]![0]
+  },
+  { immediate: true },
+)
+
+function applyGroupEntryCaps() {
+  if (!visibleEntries.value.length) return
+  const cap = Math.max(0, Math.round(Number(batchEntryCap.value) || 0))
+  batchEntryCap.value = cap
+  forwardEntryEdit(() => emit('setGroupEntryCaps', activeGroupName.value, cap))
+}
+
 /** 改组名：空名 / 重名一律拒绝，并把输入框还原成原值（否则界面与实际不符） */
 function onRenameGroup(from: string, event: Event) {
   const input = event.target as HTMLInputElement
@@ -968,6 +1018,31 @@ function submitForm() {
               >
                 {{ allVisibleEnabled ? '全部取消' : '全选' }}
               </button>
+            </div>
+
+            <!-- 批量改本组单词条上限：简单模式也显示（单词条上限在简单模式下本就能逐条调） -->
+            <div v-if="activeTab !== 'manage'" class="group-cap-row">
+              <span class="group-cap-label">本组单词条上限</span>
+              <input
+                v-model.lazy.number="batchEntryCap"
+                class="group-cap-input"
+                type="number"
+                min="0"
+                step="1"
+                title="0 = 不限；点右边按钮把本组每条的单词条上限都设成这个值"
+              />
+              <button
+                type="button"
+                class="chip group-cap-apply"
+                :disabled="!visibleEntries.length"
+                :title="`把本组 ${visibleEntries.length} 条的单词条上限都设成 ${batchEntryCap}`"
+                @click="applyGroupEntryCaps"
+              >
+                应用到本组 {{ visibleEntries.length }} 条
+              </button>
+              <span class="group-cap-now">
+                本组当前：<strong>{{ entryCapSummary }}</strong>
+              </span>
             </div>
 
             <div v-if="activeTab !== 'manage'" class="entry-scroll">
@@ -1399,6 +1474,36 @@ function submitForm() {
 .group-select-all {
   margin-left: auto;
   flex-shrink: 0;
+}
+
+/* 批量改本组单词条上限：一行（标签 + 输入 + 应用 + 当前分布） */
+.group-cap-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  color: #cfd6e0;
+}
+
+.group-cap-input {
+  width: 4.5rem;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid #3a4049;
+  border-radius: 6px;
+  background: #10131a;
+  color: #e4e8ef;
+  font: inherit;
+}
+
+.group-cap-now {
+  color: #8b94a1;
+  font-size: 0.74rem;
+}
+
+.group-cap-now strong {
+  color: #d7dde7;
 }
 
 .empty-cell {

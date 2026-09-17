@@ -1788,6 +1788,29 @@ export function setAffixLibraryGroupCap(
 }
 
 /**
+ * 把「某个组」里所有条目的**单词条上限**统一设成同一个值（0 = 不限）。
+ *
+ * 与 `setAffixLibraryGroupCap` 的区别（两层约束，别混）：
+ * - 本函数改**每条各自的 `cap`**：这一条最多能投几档；
+ * - `setAffixLibraryGroupCap` 改**组额度**：组内各条档数之和的上限。
+ *
+ * `groupName === ''` 表示「未分组」那批条目（与弹窗页签口径一致）。
+ * 自建条目改本体、预设条目记进 `overrides` —— 与 `updateAffixLibraryEntry` 同一套写法，
+ * 所以整批改完只产生**一个**新 state，页面一次落盘、一次重算。
+ */
+export function setAffixLibraryGroupEntryCaps(
+  state: AffixLibraryState,
+  groupName: string,
+  cap: number,
+): AffixLibraryState {
+  const nextCap = Number.isFinite(cap) ? Math.max(0, Math.round(cap)) : 0
+  const members = resolveAffixLibrary(state).filter((entry) => (entry.group ?? '') === groupName)
+  let next = state
+  for (const entry of members) next = updateAffixLibraryEntry(next, entry.id, { cap: nextCap })
+  return next
+}
+
+/**
  * 把**预设条目**的组名从 `from` 改写成 `to`（写成条目级 override）。
  *
  * 为什么必需：预设条目每次读盘都按内置 `group` 重建。只改 `groups` 表与已有

@@ -38,6 +38,9 @@ import {
   resolveAffixLibrary,
   resolveAffixLibraryAll,
   setAffixLibraryEntryEnabled,
+  setAffixLibraryGroupCap,
+  setAffixLibraryGroupEntryCaps,
+  updateAffixLibraryEntry,
   affixGroupCaps,
 } from '../src/utils/affixLibrary.ts'
 import {
@@ -581,6 +584,46 @@ console.log('\n[4.9] 存档读取与分组补齐')
     reopenedRecreated.groups.some((g) => g.name === '6号位'),
     reopenedRecreated.groups.map((g) => g.name).join(', '),
   )
+
+  // ---------- 批量改「本组单词条上限」（2026-09-17 用户口径） ----------
+  {
+    const base = createDefaultAffixLibraryState()
+    // 先把组额度设成非 0，否则「组额度不变」这条会 0 → 0 假通过
+    const baseWithGroupCap = setAffixLibraryGroupCap(base, '副词条', 7)
+    const before = resolveAffixLibrary(baseWithGroupCap)
+    const substatIds = before.filter((e) => e.group === '副词条').map((e) => e.id)
+    const groupCapBefore = baseWithGroupCap.groups.find((g) => g.name === '副词条')?.cap
+    const capped = setAffixLibraryGroupEntryCaps(baseWithGroupCap, '副词条', 6)
+    const capById = (state) =>
+      Object.fromEntries(resolveAffixLibrary(state).map((e) => [e.id, e.cap]))
+    const after = capById(capped)
+    check('批量改上限：本组每条都被设成 6',
+      substatIds.length > 0 && substatIds.every((id) => after[id] === 6),
+      `${substatIds.length} 条：${[...new Set(substatIds.map((id) => after[id]))].join(',')}`)
+    check('批量改上限：不碰别的组',
+      before.filter((e) => e.group !== '副词条').every((e) => after[e.id] === e.cap),
+      '其他组条目 cap 不变')
+    check('批量改上限：**组额度**不变（两层约束别混）',
+      groupCapBefore === 7 && capped.groups.find((g) => g.name === '副词条')?.cap === 7,
+      `组额度 ${groupCapBefore} → ${capped.groups.find((g) => g.name === '副词条')?.cap}`)
+
+    const unlimited = setAffixLibraryGroupEntryCaps(baseWithGroupCap, '副词条', 0)
+    check('批量改上限：0 = 不限（原样写入 0）',
+      substatIds.every((id) => capById(unlimited)[id] === 0),
+      '全部 0')
+    const rounded = setAffixLibraryGroupEntryCaps(baseWithGroupCap, '副词条', -3.7)
+    check('批量改上限：负数/小数被钳到 ≥0 的整数',
+      substatIds.every((id) => capById(rounded)[id] === 0),
+      `-3.7 → ${capById(rounded)[substatIds[0]]}`)
+
+    // 未分组作用域：groupName = '' 只动未分组条目
+    const withUngrouped = updateAffixLibraryEntry(baseWithGroupCap, substatIds[0], { group: '' })
+    const ungroupedAfter = capById(setAffixLibraryGroupEntryCaps(withUngrouped, '', 3))
+    check('批量改上限：groupName 为空串时只动「未分组」条目',
+      ungroupedAfter[substatIds[0]] === 3 &&
+        ungroupedAfter[substatIds[1]] === capById(withUngrouped)[substatIds[1]],
+      `未分组条目 ${ungroupedAfter[substatIds[0]]}，同组其他条目 ${ungroupedAfter[substatIds[1]]}`)
+  }
 }
 
 // ---------- 4.10 同字段多条：各按自己的每档折算 ----------
@@ -2075,6 +2118,32 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、初始门槛、B 截�
         start >= 0 && missing.length === 0,
         start < 0 ? '源码里找不到这个调用点' : (missing.length ? `缺：${missing.join(' / ')}` : '五个参数都在'))
     }
+  }
+
+  // 词条库「本组单词条上限」批量入口：三处必须在（弹窗入口 / 事件 / 页面落盘），
+  // 且**不锁在高级编辑里**（用户 2026-09-17 明确：简单模式也要显示）
+  {
+    const modalSource = readFileSync(
+      new URL('../src/components/calculator/AffixLibraryModal.vue', import.meta.url),
+      'utf8',
+    )
+    const sectionSource = readFileSync(
+      new URL('../src/components/calculator/OptimalAffixAllocSection.vue', import.meta.url),
+      'utf8',
+    )
+    check('词条库弹窗有「本组单词条上限」入口，且不锁在高级编辑里',
+      modalSource.includes('本组单词条上限') &&
+        modalSource.includes("emit('setGroupEntryCaps'") &&
+        modalSource.includes('@click="applyGroupEntryCaps"') &&
+        !/v-if="advancedEditing"[^>]*group-cap-row/.test(modalSource),
+      '入口 + 事件 + 无条件渲染')
+    check('词条库批量入口显示了「本组当前」上限分布',
+      modalSource.includes('本组当前') && modalSource.includes('entryCapSummary'),
+      'entryCapSummary 已接进模板')
+    check('页面接了 @set-group-entry-caps 并落盘',
+      sectionSource.includes('@set-group-entry-caps="setAffixLibraryGroupEntryCapsHandler"') &&
+        sectionSource.includes('persistAffixLibrary(setAffixLibraryGroupEntryCaps('),
+      '事件 → 库函数 → 落盘')
   }
 
   clearAffixEvalCache()
