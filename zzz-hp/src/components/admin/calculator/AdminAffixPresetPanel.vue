@@ -799,6 +799,50 @@ const activeGroup = computed(
 /** 有未分组条目才给页签（删组或新增未选组的条目时它会冒出来） */
 const hasUngrouped = computed(() => entries.value.some((entry) => !entry.group))
 
+/**
+ * 「本组单词条上限」批量入口（2026-09-17 用户要求：与用户侧词条库弹窗那一行同样）。
+ *
+ * 把当前页签这一组条目的 `cap` 一次设成同一个值（0 = 不限）。未分组页签也走这里
+ * （`activeTab === UNGROUPED_TAB` 时 `visibleEntries` 就是那批未分组条目）。
+ *
+ * 与「组额度」是两层，别混：本行改的是**每条各自的档数上限**，组额度仍在组头部显示（改在组管理页）。
+ * 改动只落在**内存草稿**（`entries` 工作副本），不发请求 —— 照样走面板既有的「保存 / 放弃改动」。
+ *
+ * ⚠️ 输入框**故意不预填**（与用户侧同一口径）：它是一次性动作的入参，当前状态由右边「本组当前」说。
+ */
+const batchEntryCapInput = ref('')
+
+/** 输入框里的合法值（空 / 非数字 → null，此时按钮禁用） */
+const batchEntryCapValue = computed<number | null>(() => {
+  const raw = batchEntryCapInput.value.trim()
+  if (!raw) return null
+  const n = Number(raw)
+  return Number.isFinite(n) ? Math.max(0, Math.round(n)) : null
+})
+
+/**
+ * 本组当前上限的显示口径（与用户侧一字不差）：
+ * - 全部一致 → `全部 30（10 条）` / `全部不限（10 条）`
+ * - **只要有一条不一样 → `上限不一致`**（不列分布：批量入口只需要回答"能不能一次改"，明细在表里看）
+ */
+const entryCapSummary = computed(() => {
+  const caps = visibleEntries.value.map((entry) => Math.max(0, Math.round(entry.cap)))
+  if (!caps.length) return '—'
+  const first = caps[0]!
+  if (caps.every((cap) => cap === first)) {
+    return first === 0 ? `全部不限（${caps.length} 条）` : `全部 ${first}（${caps.length} 条）`
+  }
+  return '上限不一致'
+})
+
+function applyGroupEntryCaps() {
+  const cap = batchEntryCapValue.value
+  if (!visibleEntries.value.length || cap == null) return
+  // 应用后清空：这个框是「一次性动作」的入参，不是状态显示
+  batchEntryCapInput.value = ''
+  for (const entry of visibleEntries.value) entry.cap = cap
+}
+
 const enabledCount = computed(() => entries.value.filter((entry) => entry.enabledByDefault).length)
 
 const allVisibleEnabled = computed(
@@ -1490,6 +1534,38 @@ onMounted(() => {
         </button>
       </div>
 
+      <!-- 批量改本组单词条上限：与用户侧词条库弹窗那一行**同款**（口径见手册 §10.5）
+           输入框故意不预填：它是一次性动作的入参，当前状态由右边「本组当前」说；
+           这里改的是内存草稿，要按「保存」才写库 -->
+      <div v-if="activeTab !== 'manage'" class="group-cap-row">
+        <span class="group-cap-label">本组单词条上限统一改成</span>
+        <input
+          v-model.lazy="batchEntryCapInput"
+          class="group-cap-input"
+          type="number"
+          min="0"
+          step="1"
+          title="0 = 不限；填好再点右边按钮"
+          :disabled="busy"
+        />
+        <button
+          type="button"
+          class="chip group-cap-apply"
+          :disabled="busy || !visibleEntries.length || batchEntryCapValue == null"
+          :title="
+            batchEntryCapValue == null
+              ? '先填一个上限（0 = 不限）'
+              : `把本组 ${visibleEntries.length} 条的单词条上限都设成 ${batchEntryCapValue}`
+          "
+          @click="applyGroupEntryCaps"
+        >
+          应用到本组 {{ visibleEntries.length }} 条
+        </button>
+        <span class="group-cap-now">
+          本组当前：<strong>{{ entryCapSummary }}</strong>
+        </span>
+      </div>
+
       <!-- 条目页：表内不展示 ID / 每档占用；目标改不完就点「修改」 -->
       <template v-if="activeTab !== 'manage'">
         <div class="table-scroll">
@@ -2080,6 +2156,46 @@ onMounted(() => {
 .group-head-hint {
   font-size: 0.78rem;
   opacity: 0.7;
+}
+
+/* 批量改本组单词条上限：一行（对应用户侧词条库弹窗那一行，口径见手册 §10.5）
+   颜色走本面板既有的主题变量 → 白天/黑夜自动跟随，不另写一套 */
+.group-cap-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  color: var(--color-text);
+}
+
+.group-cap-input {
+  width: 4.5rem;
+  box-sizing: border-box;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-background);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.group-cap-input:disabled {
+  opacity: 0.6;
+}
+
+.group-cap-now {
+  font-size: 0.78rem;
+}
+
+/* 与组头部「组额度」的强调色同一对（浅色 #a8781f / 深色 #f0d7a2） */
+.group-cap-now strong {
+  color: #a8781f;
+}
+
+[data-theme='dark'] .group-cap-now strong {
+  color: #f0d7a2;
 }
 
 /* 组页「全部默认启用」：靠右站，不跟组名抢位置 */
