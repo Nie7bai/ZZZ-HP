@@ -9,6 +9,7 @@
  * 7) 基础值取值与缓存失效（换音擎 / 换角色基础面板不得吃到旧值）。
  * 运行：npx vite-node scripts/test-affix-optimizer.mjs
  */
+import { readFileSync } from 'node:fs'
 import {
   createEmptyAffixCounts,
   createDefaultAffixDriveDiscMainStats,
@@ -1987,6 +1988,31 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、初始门槛、B 截�
       AFFIX_SEARCH_PRESETS.fast.initialCandidateFloor === 5
         && AFFIX_SEARCH_PRESETS.balanced.initialCandidateFloor === 5,
       `fast=${AFFIX_SEARCH_PRESETS.fast.initialCandidateFloor} balanced=${AFFIX_SEARCH_PRESETS.balanced.initialCandidateFloor}`)
+  }
+
+  // ---- 界面 → 求解器的参数透传（源码级守卫，2026-09-17）----
+  // 真机事故：界面两处调用**都没传** `initialCandidateFloor` —— 高级设置弹窗里改「候选兜底」
+  // 不生效，实际恒等于预设的 5。求解器自己的用例覆盖不到「界面有没有往下传」，所以直接在
+  // 源码上钉一条：两个调用点必须各自把四个搜索参数都传上。
+  {
+    const componentSource = readFileSync(
+      new URL('../src/components/calculator/OptimalAffixAllocSection.vue', import.meta.url),
+      'utf8',
+    )
+    const requiredArgs = [
+      'initialCandidateThreshold: affixSearchParams.value.initialCandidateThreshold',
+      'initialCandidateFloor: affixSearchParams.value.initialCandidateFloor',
+      'routeRetentionRatio: affixSearchParams.value.routeRetentionRatio',
+      'maxRetainedRoutes: affixSearchParams.value.maxRetainedRoutes',
+    ]
+    for (const call of ['await solveOptimalAffixAllocationAsync(', 'await solveGameAffixAllocationAsync(']) {
+      const start = componentSource.indexOf(call)
+      const block = start >= 0 ? componentSource.slice(start, start + 1200) : ''
+      const missing = requiredArgs.filter((line) => !block.includes(line))
+      check(`界面调用 ${call.trim()} 透传全部搜索参数`,
+        start >= 0 && missing.length === 0,
+        start < 0 ? '源码里找不到这个调用点' : (missing.length ? `缺：${missing.join(' / ')}` : '四个参数都在'))
+    }
   }
 
   clearAffixEvalCache()
