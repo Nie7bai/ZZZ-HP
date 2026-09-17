@@ -296,6 +296,28 @@ console.log('\n[3] 结果一致性')
   const rowSum = rows.reduce((s, r) => s + r.rolls * r.entry.rollCost, 0)
   check('展示行档数合计 = 已用总词条数', rowSum === solved.usedRolls,
     `${rowSum} vs ${solved.usedRolls}`)
+
+  // 展示行排序契约（2026-09-17 用户定）：组优先 → 组内档数降序 → 名称中文序
+  {
+    const base = library[0]
+    const synthetic = [
+      { ...base, id: 'ord:sub:a', group: '副词条', label: '甲', perRoll: 1 },
+      { ...base, id: 'ord:slot6', group: '6号位', label: '乙', perRoll: 1 },
+      { ...base, id: 'ord:slot4', group: '4号位', label: '丙', perRoll: 1 },
+      { ...base, id: 'ord:sub:b', group: '副词条', label: '丁', perRoll: 1 },
+      { ...base, id: 'ord:set2', group: '2件套', label: '戊', perRoll: 1 },
+      { ...base, id: 'ord:mine', group: '自建组', label: '己', perRoll: 1 },
+    ]
+    const ordered = buildAllocationRows(synthetic, {
+      'ord:sub:a': 3, 'ord:slot6': 1, 'ord:slot4': 1, 'ord:sub:b': 5, 'ord:set2': 2, 'ord:mine': 9,
+    })
+    const groups = ordered.map((row) => row.entry.group)
+    const subRolls = ordered.filter((row) => row.entry.group === '副词条').map((row) => row.rolls)
+    check('展示行：组优先（4→5→6→2件套→副词条→自建组），组内按档数降序',
+      JSON.stringify(groups) === JSON.stringify(['4号位', '6号位', '2件套', '副词条', '副词条', '自建组']) &&
+        JSON.stringify(subRolls) === JSON.stringify([5, 3]),
+      `${groups.join(' → ')}｜副词条档数 ${subRolls.join(',')}（自建组 9 档但仍排最后）`)
+  }
   console.log(`    引擎调用 ${solved.engineCalls} 次，截断=${solved.truncated}`)
 }
 
@@ -608,7 +630,7 @@ console.log('\n[4.10] 同字段多条目的折算')
     formatAffixRollsSummary(pair, {
       'substat:atkPercent': 6,
       'main:slot5:atkPercent': 1,
-    }) === '局外攻击力% 6 + 局外攻击力 30% 1',
+    }) === '局外攻击力 30% 1 + 局外攻击力% 6',
     formatAffixRollsSummary(pair, {
       'substat:atkPercent': 6,
       'main:slot5:atkPercent': 1,

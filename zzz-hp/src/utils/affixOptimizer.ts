@@ -1297,7 +1297,28 @@ export async function solveOptimalAffixAllocationAsync(
   }
 }
 
-/** 把求解结果整理成展示行（按档数降序） */
+/**
+ * 展示行（结果表 / 标签摘要共用）的**排序契约**（2026-09-17 用户定）：
+ *
+ * 1. **组优先**：4 号位 → 5 号位 → 6 号位 → 2 件套 → 副词条（与游戏专用弹窗的页签同序）；
+ *    库外自定义组排在最后，组间按组名中文序；
+ * 2. 组内按**分配档数降序**；
+ * 3. 同档数按词条名中文序；名字也相同则保持条目在库内的原始顺序（sort 稳定）。
+ *
+ * 为什么组优先：只看档数时表会「跳组」（副词条顶到最前、号位散在后面），读起来像没规则。
+ */
+export const AFFIX_ALLOC_GROUP_ORDER = ['4号位', '5号位', '6号位', '2件套', '副词条'] as const
+
+function compareAllocGroup(a: string, b: string): number {
+  const rank = (group: string): number => {
+    const index = (AFFIX_ALLOC_GROUP_ORDER as readonly string[]).indexOf(group)
+    return index >= 0 ? index : AFFIX_ALLOC_GROUP_ORDER.length
+  }
+  const diff = rank(a) - rank(b)
+  return diff !== 0 ? diff : a.localeCompare(b, 'zh')
+}
+
+/** 把求解结果整理成展示行（组优先 → 组内按档数降序，见 `AFFIX_ALLOC_GROUP_ORDER`） */
 export function buildAllocationRows(
   entries: AffixLibraryEntry[],
   rollsByEntryId: Record<string, number>,
@@ -1308,7 +1329,11 @@ export function buildAllocationRows(
     if (rolls <= 0) continue
     rows.push({ entry, rolls, totalValue: rolls * entry.perRoll })
   }
-  rows.sort((a, b) => b.rolls - a.rolls || a.entry.label.localeCompare(b.entry.label, 'zh'))
+  rows.sort((a, b) =>
+    compareAllocGroup(a.entry.group, b.entry.group) ||
+    b.rolls - a.rolls ||
+    a.entry.label.localeCompare(b.entry.label, 'zh'),
+  )
   return rows
 }
 
