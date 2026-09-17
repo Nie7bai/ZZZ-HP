@@ -155,6 +155,7 @@ import {
 } from '@/utils/affixSearchSettings'
 import {
   clampGameExtraCost,
+  clampGameSubstatEntryCap,
   createGameAffixLibraryEntries,
   loadGameAffixRulesSettings,
   saveGameAffixRulesSettings,
@@ -1668,8 +1669,13 @@ let lastProgressAt = 0
 let affixAllocAbort: AbortController | null = null
 /** 最近一次求解用的条目（普通库或游戏专用方案），结果表按这个显示 */
 const affixAllocResultLibrary = ref<AffixLibraryEntry[]>([])
-const gameAffixLibraryEntries = createGameAffixLibraryEntries()
-const gameAffixSettings = ref(loadGameAffixRulesSettings(gameAffixLibraryEntries))
+/** 只为「已知条目 id 列表 + 默认值」而建；真正的求解条目见 `gameAffixLibraryEntries` */
+const gameAffixBaseEntries = createGameAffixLibraryEntries()
+const gameAffixSettings = ref(loadGameAffixRulesSettings(gameAffixBaseEntries))
+/** 游戏专用方案条目：副词条每条的上限跟着设置走（0 = 无上限） */
+const gameAffixLibraryEntries = computed(() =>
+  createGameAffixLibraryEntries(gameAffixSettings.value.substatEntryCap),
+)
 const gameAffixRulesOpen = ref(false)
 const affixBenefitTable = ref<AffixBenefitTableData | null>(null)
 /** 逐档收益曲线：按需补算（首屏不算），失效时置 null */
@@ -1944,6 +1950,19 @@ function setGameExtraCost(value: number) {
   persistGameAffixSettings()
 }
 
+/**
+ * 「所有副词条条目上限」：0 = 无上限，对副词条组内每条分别生效。
+ *
+ * 它会改变求解输入（每个副词条条目的 cap），所以除了写盘，还要把已显示的结果标成过期。
+ */
+function setGameSubstatEntryCap(value: number) {
+  const next = clampGameSubstatEntryCap(value)
+  if (next === gameAffixSettings.value.substatEntryCap) return
+  gameAffixSettings.value = { ...gameAffixSettings.value, substatEntryCap: next }
+  persistGameAffixSettings()
+  markAffixAllocationStaleIfIdle()
+}
+
 function toggleGameAffixEntry(entryId: string, enabled: boolean) {
   const next = new Set(gameAffixSettings.value.enabledIds)
   if (enabled) next.add(entryId)
@@ -1984,7 +2003,7 @@ async function runGameAffixAllocation() {
     affixAllocResult.value = await solveGameAffixAllocationAsync(
       {
         ctx: evalCtx.value,
-        entries: gameAffixLibraryEntries,
+        entries: gameAffixLibraryEntries.value,
         enabledIds: gameAffixSettings.value.enabledIds,
         extraCost: gameAffixSettings.value.extraCost,
         maxTotalRolls: total,
@@ -2005,7 +2024,7 @@ async function runGameAffixAllocation() {
         },
       },
     )
-    affixAllocResultLibrary.value = gameAffixLibraryEntries
+    affixAllocResultLibrary.value = gameAffixLibraryEntries.value
     affixAllocResultStale.value = false
   } catch (error) {
     if ((error as DOMException)?.name === 'AbortError') {
@@ -3098,11 +3117,13 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         <GameAffixRulesModal
           :open="gameAffixRulesOpen"
           :extra-cost="gameAffixSettings.extraCost"
+          :substat-entry-cap="gameAffixSettings.substatEntryCap"
           :enabled-ids="gameAffixSettings.enabledIds"
           :entries="gameAffixLibraryEntries"
           :total-rolls="affixAllocTotalRolls"
           @close="gameAffixRulesOpen = false"
           @update:extra-cost="setGameExtraCost"
+          @update:substat-entry-cap="setGameSubstatEntryCap"
           @toggle-entry="toggleGameAffixEntry"
           @toggle-entries="toggleGameAffixEntries"
         />

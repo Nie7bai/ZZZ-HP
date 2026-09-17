@@ -15,6 +15,8 @@ import {
 const props = defineProps<{
   open: boolean
   extraCost: number
+  /** 副词条每条的上限（0 = 无上限）；默认 30 */
+  substatEntryCap: number
   enabledIds: string[]
   entries: AffixLibraryEntry[]
   totalRolls: number
@@ -23,6 +25,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   'update:extraCost': [value: number]
+  'update:substatEntryCap': [value: number]
   toggleEntry: [entryId: string, enabled: boolean]
   toggleEntries: [entryIds: string[], enabled: boolean]
 }>()
@@ -64,6 +67,10 @@ function toggleAllVisible() {
 function onExtraCost(event: Event) {
   emit('update:extraCost', Number((event.target as HTMLInputElement).value))
 }
+
+function onSubstatEntryCap(event: Event) {
+  emit('update:substatEntryCap', Number((event.target as HTMLInputElement).value))
+}
 </script>
 
 <template>
@@ -92,9 +99,24 @@ function onExtraCost(event: Event) {
               @change="onExtraCost"
             />
           </label>
+          <label class="x-field">
+            <span>所有副词条条目上限（默认 30）</span>
+            <input
+              :value="substatEntryCap"
+              type="number"
+              min="0"
+              max="64"
+              step="1"
+              title="0 = 无上限；对副词条组内每个条目分别生效"
+              @change="onSubstatEntryCap"
+            />
+          </label>
           <p class="toolbar-note">
             与常规方案库无关。方案写死，不能加词条或改组。
-            所有副词条条目上限 30。4 号位主属性全部按付费处理；5 / 6 号位选到攻击、生命、防御时按付费处理。付费 = 总分配多扣 x 档，并把副词条里对应条目的上限扣 5。
+            <strong>所有副词条条目上限</strong>默认 30，填 <strong>0 = 无上限</strong>；
+            它<b>对副词条组内每个条目分别生效</b>（不是整组共享）。
+            4 号位主属性全部按付费处理；5 / 6 号位选到攻击、生命、防御时按付费处理。
+            付费 = 总分配多扣 x 档，并把副词条里对应条目的上限扣 5。
           </p>
         </div>
 
@@ -205,6 +227,7 @@ function onExtraCost(event: Event) {
 
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   gap: 0.85rem;
   padding: 0.7rem 1rem 0.35rem;
@@ -231,6 +254,8 @@ function onExtraCost(event: Event) {
 
 .toolbar-note {
   margin: 0;
+  /* 说明整行独占：两个输入格并排后，挤在右边会变成窄条 */
+  flex: 1 1 100%;
   font-size: 0.74rem;
   line-height: 1.45;
   color: #9aa3b0;

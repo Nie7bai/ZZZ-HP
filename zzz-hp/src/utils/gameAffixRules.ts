@@ -19,7 +19,8 @@ import type { OptimalEvalContext } from '@/utils/optimalAffixAlloc'
 /**
  * 游戏专用规则分配：一份写死方案，不进官方词条库。
  *
- * 副词条每条上限 30。付费判定标准 =「该主属性字段在副词条池里也有同 target 条目」
+ * 副词条每条上限**可设**（`substatEntryCap`，默认 30，0 = 无上限；对副词条组内每条分别生效）。
+ * 付费判定标准 =「该主属性字段在副词条池里也有同 target 条目」
  * （游戏里副词条不会与主属性重复）：
  *
  * - **4 号位 6 条全部付费** —— 爆伤 / 暴击 / 攻击 / 生命 / 精通 / 防御 在副词条池里全都有；
@@ -39,7 +40,13 @@ export const GAME_AFFIX_STORAGE_KEY = 'zzz-hp-game-affix-rules-v1'
 export const GAME_AFFIX_EXTRA_COST_DEFAULT = 1
 export const GAME_MAIN_SLOT_RESERVE = 4
 export const GAME_PAID_SUBSTAT_TAX = 5
-export const GAME_AFFIX_SUBSTAT_ENTRY_CAP = 30
+/**
+ * 副词条**每条**的默认上限（用户可在弹窗里改；0 = 无上限）。
+ *
+ * 口径：对**副词条组内每个条目分别生效**（不是整组共享），与 `createGameAffixGroups`
+ * 给的「组额度 = 总词条数 − 4」是两层约束 —— 组额度管总量，这个管单条能叠多少档。
+ */
+export const GAME_AFFIX_SUBSTAT_ENTRY_CAP_DEFAULT = 30
 
 /**
  * 每个槽位算「付费」的主属性 key。
@@ -80,6 +87,12 @@ export interface GamePocketCombo {
 
 export interface GameAffixRulesSettings {
   extraCost: number
+  /**
+   * 副词条**每条**的档数上限（0 = 无上限）；默认 30。
+   *
+   * 弹窗里那个「所有副词条条目上限（默认 30）」输入格，对副词条组内**每个条目分别**生效。
+   */
+  substatEntryCap: number
   enabledIds: string[]
 }
 
@@ -114,10 +127,14 @@ export function gamePocketLabel(combo: GamePocketCombo): string {
   return `5${bit(combo.slot5)} 6${bit(combo.slot6)}`
 }
 
-export function createGameAffixLibraryEntries(): AffixLibraryEntry[] {
+export function createGameAffixLibraryEntries(
+  substatEntryCap: number = GAME_AFFIX_SUBSTAT_ENTRY_CAP_DEFAULT,
+): AffixLibraryEntry[] {
+  // 0 = 不限（模型里 cap 0 就是"不限"，与词条库一致）
+  const cap = clampGameSubstatEntryCap(substatEntryCap)
   return createPresetAffixLibraryEntries().map((entry) => {
     if (entry.group !== '副词条') return { ...entry }
-    return { ...entry, cap: GAME_AFFIX_SUBSTAT_ENTRY_CAP }
+    return { ...entry, cap }
   })
 }
 
@@ -139,9 +156,25 @@ export function clampGameExtraCost(value: number): number {
   return Math.min(20, Math.round(value))
 }
 
+/**
+ * 副词条条目上限的合法范围：**0..64，0 = 无上限**。
+ *
+ * 非法值（NaN / 负数 / 非数字）走 `fallback`（默认 30），不是走 0 ——
+ * 存档损坏时保持"默认 30"的老行为，比悄悄变成"不限"安全（不限会放大搜索空间）。
+ */
+export function clampGameSubstatEntryCap(
+  value: unknown,
+  fallback: number = GAME_AFFIX_SUBSTAT_ENTRY_CAP_DEFAULT,
+): number {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n < 0) return fallback
+  return Math.min(64, Math.round(n))
+}
+
 export function loadGameAffixRulesSettings(entries: AffixLibraryEntry[]): GameAffixRulesSettings {
   const fallback: GameAffixRulesSettings = {
     extraCost: GAME_AFFIX_EXTRA_COST_DEFAULT,
+    substatEntryCap: GAME_AFFIX_SUBSTAT_ENTRY_CAP_DEFAULT,
     enabledIds: defaultGameAffixEnabledIds(entries),
   }
   if (typeof localStorage === 'undefined') return fallback
@@ -155,6 +188,8 @@ export function loadGameAffixRulesSettings(entries: AffixLibraryEntry[]): GameAf
       : fallback.enabledIds
     return {
       extraCost: clampGameExtraCost(Number(parsed.extraCost)),
+      // 老存档没有这个键 → 默认 30（等于旧行为）；`undefined` 会让 Number() 变 NaN → 走 fallback ✓
+      substatEntryCap: clampGameSubstatEntryCap(parsed.substatEntryCap, fallback.substatEntryCap),
       enabledIds: enabledIds.length ? enabledIds : fallback.enabledIds,
     }
   } catch {
@@ -168,6 +203,7 @@ export function saveGameAffixRulesSettings(settings: GameAffixRulesSettings): vo
     GAME_AFFIX_STORAGE_KEY,
     JSON.stringify({
       extraCost: clampGameExtraCost(settings.extraCost),
+      substatEntryCap: clampGameSubstatEntryCap(settings.substatEntryCap),
       enabledIds: settings.enabledIds,
     }),
   )

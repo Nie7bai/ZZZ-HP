@@ -3,16 +3,22 @@
  * 运行：npx vite-node scripts/test-game-affix-rules.mjs
  */
 import {
+  GAME_AFFIX_STORAGE_KEY,
+  GAME_AFFIX_SUBSTAT_ENTRY_CAP_DEFAULT,
   GAME_POCKET_COMBOS,
   buildGameAffixBranch,
+  clampGameSubstatEntryCap,
   createGameAffixLibraryEntries,
   defaultGameAffixEnabledIds,
   gameAffixGroupCaps,
   gamePaidMainId,
   isGamePaidMainId,
+  loadGameAffixRulesSettings,
+  saveGameAffixRulesSettings,
   solveGameAffixAllocationAsync,
 } from '../src/utils/gameAffixRules.ts'
-import { solveOptimalAffixAllocationAsync, collectPenRateFieldLocks } from '../src/utils/affixOptimizer.ts'
+import { solveOptimalAffixAllocation, solveOptimalAffixAllocationAsync, collectPenRateFieldLocks } from '../src/utils/affixOptimizer.ts'
+import { readFileSync } from 'node:fs'
 import { buildOptimalEvalContext, clearAffixEvalCache } from '../src/utils/optimalAffixAlloc.ts'
 import { createEmptyAgentBasePanel } from '../src/utils/calculatorUi.ts'
 import { createDefaultAffixDriveDiscMainStats } from '../src/types/calculatorPanel.ts'
@@ -45,10 +51,66 @@ check(
   `enabled=${enabledIds.length} entries=${entries.length} 2pc=${twoPieceIds.length}`,
 )
 check(
-  '副词条条目上限均为 30',
+  '副词条条目上限默认为 30',
   entries.filter((entry) => entry.group === '副词条').every((entry) => entry.cap === 30) &&
     entries.some((entry) => entry.group === '副词条'),
 )
+
+// 上限可填（2026-09-17）：对副词条组内**每个条目分别**生效；0 = 无上限；非副词条条目不受影响
+{
+  const capOf = (list) => list.filter((e) => e.group === '副词条').map((e) => e.cap)
+  const othersOf = (list) => list.filter((e) => e.group !== '副词条').map((e) => e.cap)
+  const custom = createGameAffixLibraryEntries(7)
+  check('传 N → 副词条每条都是 N（分别生效）',
+    capOf(custom).length > 0 && capOf(custom).every((cap) => cap === 7),
+    `caps=${[...new Set(capOf(custom))].join(',')}`)
+  check('传 0 → 副词条每条都是 0（0 = 无上限）',
+    capOf(createGameAffixLibraryEntries(0)).every((cap) => cap === 0),
+    `caps=${[...new Set(capOf(createGameAffixLibraryEntries(0)))].join(',')}`)
+  check('非副词条条目的 cap 不受这个参数影响',
+    JSON.stringify(othersOf(custom)) === JSON.stringify(othersOf(entries)),
+    `非副词条 cap 一致=${JSON.stringify(othersOf(custom)) === JSON.stringify(othersOf(entries))}`)
+  check('clamp：负数/NaN 回落默认 30，超过 64 截到 64，小数取整',
+    clampGameSubstatEntryCap(-1) === 30 &&
+      clampGameSubstatEntryCap(Number.NaN) === 30 &&
+      clampGameSubstatEntryCap(999) === 64 &&
+      clampGameSubstatEntryCap(12.6) === 13 &&
+      clampGameSubstatEntryCap(0) === 0,
+    `${clampGameSubstatEntryCap(-1)}/${clampGameSubstatEntryCap(Number.NaN)}/${clampGameSubstatEntryCap(999)}/${clampGameSubstatEntryCap(12.6)}/${clampGameSubstatEntryCap(0)}`)
+}
+
+// 存档读写（用一次性 localStorage 替身；node 里没有真 localStorage）
+{
+  const store = new Map()
+  globalThis.localStorage = {
+    getItem: (key) => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => store.set(key, String(value)),
+    removeItem: (key) => store.delete(key),
+  }
+  const defaults = loadGameAffixRulesSettings(entries)
+  check('没有存档时：副词条上限 = 默认 30（且与常量一致）',
+    defaults.substatEntryCap === 30 && GAME_AFFIX_SUBSTAT_ENTRY_CAP_DEFAULT === 30,
+    `cap=${defaults.substatEntryCap}`)
+  saveGameAffixRulesSettings({ ...defaults, substatEntryCap: 12 })
+  check('存档回读：12 生效', loadGameAffixRulesSettings(entries).substatEntryCap === 12,
+    `cap=${loadGameAffixRulesSettings(entries).substatEntryCap}`)
+  saveGameAffixRulesSettings({ ...defaults, substatEntryCap: 0 })
+  check('存档回读：0（无上限）能存能读',
+    loadGameAffixRulesSettings(entries).substatEntryCap === 0,
+    `cap=${loadGameAffixRulesSettings(entries).substatEntryCap}`)
+  // 老存档：没有 substatEntryCap 这个键 → 必须读回 30（旧行为不变）
+  store.set(GAME_AFFIX_STORAGE_KEY, JSON.stringify({ extraCost: 2, enabledIds: enabledIds }))
+  const legacy = loadGameAffixRulesSettings(entries)
+  check('老存档（无该键）读回 30，不变成「无上限」',
+    legacy.substatEntryCap === 30 && legacy.extraCost === 2,
+    `cap=${legacy.substatEntryCap} extraCost=${legacy.extraCost}`)
+  // 坏值：负数 → 回落 30（不是 0）
+  store.set(GAME_AFFIX_STORAGE_KEY, JSON.stringify({ extraCost: 1, substatEntryCap: -5, enabledIds: enabledIds }))
+  check('存档里是坏值（负数）→ 回落 30，不变成「无上限」',
+    loadGameAffixRulesSettings(entries).substatEntryCap === 30,
+    `cap=${loadGameAffixRulesSettings(entries).substatEntryCap}`)
+  delete globalThis.localStorage
+}
 
 {
   const paid = buildGameAffixBranch({
@@ -329,6 +391,79 @@ console.log('\n[游戏专用方案] 5 号付费袋不锁 24% 穿透')
   check('5 号不付费袋的 4 号位额度没破',
     groupRollsOf(free5Solved.rollsByEntryId, '4号位') <= 1,
     `4号位 ${groupRollsOf(free5Solved.rollsByEntryId, '4号位')} 档`)
+}
+
+console.log('\n[游戏专用方案] 「所有副词条条目上限」真的约束到求解')
+{
+  const LIMIT = 2
+  const RUN_ROLLS = 20
+  const capped = createGameAffixLibraryEntries(LIMIT)
+  const cappedIds = defaultGameAffixEnabledIds(capped)
+  const keep = (entry) => cappedIds.includes(entry.id)
+  const branchOf = (list) =>
+    buildGameAffixBranch({ entries: list, enabledIds: cappedIds, combo: { slot5: 'free', slot6: 'free' }, extraCost: EXTRA_COST })
+  const branch = branchOf(capped)
+  const substatIds = branch.entries.filter((entry) => keep(entry) && entry.group === '副词条').map((entry) => entry.id)
+  check('测试前提：副词条条目确实在池子里（否则下面的断言是假通过）',
+    substatIds.length > 0, `${substatIds.length} 条`)
+
+  const solveWith = (list) => {
+    const b = branchOf(list)
+    clearAffixEvalCache()
+    return solveOptimalAffixAllocation({
+      ctx,
+      entries: b.entries.filter(keep),
+      maxTotalRolls: RUN_ROLLS,
+      groupCaps: gameAffixGroupCaps(RUN_ROLLS),
+      entryCapTaxes: b.entryCapTaxes,
+      searchPreset: 'fast',
+      maxWorkUnits: 12000,
+    })
+  }
+  const rollsOfSubstats = (rolls) => Math.max(0, ...substatIds.map((id) => rolls[id] ?? 0))
+
+  const solved = solveWith(capped)
+  const worst = rollsOfSubstats(solved.rollsByEntryId)
+  const solvedUncapped = solveWith(createGameAffixLibraryEntries(0))
+  const worstUncapped = rollsOfSubstats(solvedUncapped.rollsByEntryId)
+
+  check(`上限 ${LIMIT} 时：结果里没有副词条条目超过 ${LIMIT} 档`,
+    worst <= LIMIT,
+    `最大副词条档数=${worst}`)
+  check('上限放开到 0（不限）时确实会叠得更高 —— 证明上限真的在起作用',
+    worstUncapped > LIMIT,
+    `不限=${worstUncapped} > 上限${LIMIT}=${worst}`)
+  check('上限只压副词条：两次运行的组额度都合法（4/5/6 与 2 件套各 ≤ 1）',
+    ['4号位', '5号位', '6号位', '2件套'].every((group) =>
+      [solved, solvedUncapped].every((r) =>
+        branch.entries.filter((e) => e.group === group).reduce((sum, e) => sum + (r.rollsByEntryId[e.id] ?? 0), 0) <= 1)),
+    `上限2：${['4号位', '5号位', '6号位', '2件套'].map((g) => g + '=' + branch.entries.filter((e) => e.group === g).reduce((s, e) => s + (solved.rollsByEntryId[e.id] ?? 0), 0)).join(' ')}`)
+}
+
+console.log('\n[游戏专用方案] 界面接线守卫（源码级）')
+{
+  // 真机事故复现过的坑：界面改了参数但没往求解器传（见 dev-docs/词条分配规则.md「容易误解的点」）。
+  // 「所有副词条条目上限」是一条会改变求解输入的参数，必须在三处都接上：
+  //   ① 弹窗有那个输入格 → ② 事件透出 → ③ 页面把设置交给求解 + 用它建条目
+  const modalSource = readFileSync(
+    new URL('../src/components/calculator/GameAffixRulesModal.vue', import.meta.url),
+    'utf8',
+  )
+  const sectionSource = readFileSync(
+    new URL('../src/components/calculator/OptimalAffixAllocSection.vue', import.meta.url),
+    'utf8',
+  )
+  check('弹窗里有「所有副词条条目上限（默认 30）」输入格',
+    modalSource.includes('所有副词条条目上限（默认 30）') &&
+      modalSource.includes("emit('update:substatEntryCap'"),
+    '弹窗文案 + 事件都齐')
+  check('页面传 :substat-entry-cap 并处理 @update:substat-entry-cap',
+    sectionSource.includes(':substat-entry-cap="gameAffixSettings.substatEntryCap"') &&
+      sectionSource.includes('@update:substat-entry-cap="setGameSubstatEntryCap"'),
+    'props 与事件都接上')
+  check('求解条目跟着设置走（computed，而不是模块级常量）',
+    /const gameAffixLibraryEntries = computed\(\(\) =>\s*\n?\s*createGameAffixLibraryEntries\(gameAffixSettings\.value\.substatEntryCap\)/.test(sectionSource),
+    'createGameAffixLibraryEntries(gameAffixSettings.value.substatEntryCap)')
 }
 
 console.log(`\n结果：${passed} passed, ${failed} failed`)
