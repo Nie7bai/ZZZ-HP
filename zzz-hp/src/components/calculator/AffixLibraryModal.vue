@@ -1017,11 +1017,14 @@ function submitForm() {
             </div>
 
             <!-- 批量改本组单词条上限：简单模式也显示（单词条上限在简单模式下本就能逐条调）
-                 输入框**故意不预填**：它是一次性动作的入参，当前状态由右边「本组当前」说 -->
+                 输入框**故意不预填**：它是一次性动作的入参，当前状态由右边「本组当前」说。
+                 ⚠️ 这里**不能**用 `v-model.lazy`（2026-09-17 用户真机：填了数字直接点按钮没反应）：
+                 lazy 只在失焦/回车时提交 → 按钮处于禁用态 → 禁用按钮既不接收点击、又不会让输入框失焦
+                 → 值永远提交不上去，死锁。必须实时绑定，让按钮可用性跟着输入走。 -->
             <div v-if="activeTab !== 'manage'" class="group-cap-row">
               <span class="group-cap-label">本组单词条上限统一改成</span>
               <input
-                v-model.lazy="batchEntryCapInput"
+                v-model="batchEntryCapInput"
                 class="group-cap-input"
                 type="number"
                 min="0"

@@ -73,6 +73,32 @@ check(
   '管理侧：输入框不预填（留空等用户填）',
   /const batchEntryCapInput = ref\(''\)/.test(adminSource),
 )
+/**
+ * 2026-09-17 用户真机反馈：管理侧「应用到本组 N 条」填了数字**点不动**；用户随即确认**用户侧同样**有这个问题
+ *（用户的原话判断：「应该是把默认值去掉的缘故」—— 对：不预填 → 值初始为空 → 按钮禁用 → 死锁）。
+ * 真因 = 输入框用了 `v-model.lazy`（失焦/回车才提交）+ 按钮以该值为禁用条件：
+ * 值没提交 → 按钮禁用 → 禁用按钮不接收点击、也不会让输入框失焦 → 死锁。
+ * 这条守卫钉住「两侧都别再写回 .lazy」——它是**唯一**能防住这个死锁的静态约束。
+ */
+const lazyBind = /v-model\.lazy="batchEntryCapInput"/
+check(
+  '管理侧：输入框是实时绑定（用 .lazy 会让按钮在未失焦时永远禁用 → 点不动）',
+  !lazyBind.test(adminSource),
+  'lazy + 「值为空则禁用」= 死锁：禁用按钮不接收点击、也不会让输入框失焦',
+)
+check(
+  '用户侧：输入框同样是实时绑定（同款死锁，2026-09-17 用户要求两侧一起修）',
+  !lazyBind.test(modalSource),
+  '两侧是各写一份，必须各查一遍',
+)
+check(
+  '两侧一致：都没有把「不预填」改回预填（用户口径：当前状态由「本组当前」说）',
+  /const batchEntryCapInput = ref\(''\)/.test(adminSource) && /const batchEntryCapInput = ref\(''\)/.test(modalSource),
+)
+check(
+  '管理侧：按钮仍按「有没有填有效值」置灰（口径没被改掉）',
+  /:disabled="busy \|\| !visibleEntries\.length \|\| batchEntryCapValue == null"/.test(adminSource),
+)
 const derivedSummary = /first === 0 \? `全部不限（\$\{caps\.length\} 条）` : `全部 \$\{first\}（\$\{caps\.length\} 条）`/
 check(
   '两侧一致：汇总都是按本组 caps 现算（不是写死的条数）',
