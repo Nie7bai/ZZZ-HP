@@ -205,6 +205,11 @@ export function collectRemielSelfRestrictedContributions(
   }
   const plan = compileCollectedBuffs(collectAllBuffEffects(restrictedCtx))
   const skillCtx = ctx.skillContext
+  // 等级转模来源：效果所属角色 = 蕾米自己（与上游那条路径同口径；2026-09-17 合并时发现本路径漏传）
+  const selfAgentId = ctx.teamSlots[remielSlotIndex]?.agentId
+  const selfTalentLevels = selfAgentId
+    ? (ctx.skillTalentLevelsByAgent?.[selfAgentId] ?? null)
+    : null
 
   let atkConvert = 0
   let masteryBonus = 0
@@ -222,7 +227,7 @@ export function collectRemielSelfRestrictedContributions(
     const label = instance.displayName ?? instance.sourceKey
 
     if (isRemielSelfAtkConvert(instance, remielSlotIndex)) {
-      const value = resolveConvertValue(effect, {}, convertOverride, panelSourceValues)
+      const value = resolveConvertValue(effect, {}, convertOverride, panelSourceValues, selfTalentLevels)
       if (!value) continue
       atkConvert += value
       atkItems.push(`${label} 攻击力转模 ${formatSignedContribution(value)}`)
@@ -234,7 +239,7 @@ export function collectRemielSelfRestrictedContributions(
 
     const value =
       effect.kind === 'convert'
-        ? resolveConvertValue(effect, {}, convertOverride, panelSourceValues)
+        ? resolveConvertValue(effect, {}, convertOverride, panelSourceValues, selfTalentLevels)
         : resolveEffectBaseValue(effect, stacks)
     if (!value) continue
     masteryBonus += value
