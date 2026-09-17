@@ -125,23 +125,55 @@ const draftExternalPanel = reactive<ExternalPanelDraft>(createEmptyExternalPanel
 const draftAffixCounts = reactive(createEmptyAffixCounts())
 const draftAffixMains = reactive(createEmptyAffixDriveDiscMainStats())
 const draftSkillTalentLevels = reactive<SkillTalentLevels>(createDefaultSkillTalentLevels())
-/** 录入方式记忆 key：记住上次「面板导入 / 词条导入」，下次打开不强制回面板 */
-const ENTRY_MODE_STORAGE_KEY = 'zzz-hp-panel-import-entry-mode'
+/** 录入方式记忆 key 前缀 —— **按角色**存（`<前缀>::<agentId>`）：
+ *  全局一个键会让 A/B 角色互相串（用户 2026-09-17 口径：「怎么可能全局」）。 */
+const ENTRY_MODE_STORAGE_KEY_PREFIX = 'zzz-hp-panel-import-entry-mode'
 
-function readRememberedEntryMode(): Extract<PanelCalcMode, 'panel' | 'affix'> | null {
-  const raw = localStorage.getItem(ENTRY_MODE_STORAGE_KEY)
-  return raw === 'panel' || raw === 'affix' ? raw : null
+function entryModeStorageKey(agentId: string): string | null {
+  return agentId ? `${ENTRY_MODE_STORAGE_KEY_PREFIX}::${agentId}` : null
 }
 
-function rememberEntryMode(mode: Extract<PanelCalcMode, 'panel' | 'affix'>) {
-  localStorage.setItem(ENTRY_MODE_STORAGE_KEY, mode)
+function readRememberedEntryMode(agentId: string): Extract<PanelCalcMode, 'panel' | 'affix'> | null {
+  const key = entryModeStorageKey(agentId)
+  if (!key) return null
+  try {
+    const raw = localStorage.getItem(key)
+    return raw === 'panel' || raw === 'affix' ? raw : null
+  } catch {
+    return null
+  }
 }
+
+function rememberEntryMode(agentId: string, mode: Extract<PanelCalcMode, 'panel' | 'affix'>) {
+  const key = entryModeStorageKey(agentId)
+  if (!key) return
+  try {
+    localStorage.setItem(key, mode)
+  } catch {
+    /* 存不下就算了：它只是回落，不参与正确性 */
+  }
+}
+
+/**
+ * 打开时的默认录入方式（用户口径 2026-09-17：**按角色**判，不是全局）：
+ * 1. 该角色**激活的是哪一份** → 激活词条导入就开词条页、激活面板导入就开面板页（主判据）；
+ * 2. 该角色还没有面板记录时，回落它**上次手点的页签**（按角色存的记忆）；
+ * 3. 再回落 `preferredEntryMode`，最后面板导入。
+ */
+function entryModeForAgent(agentId: string): Extract<PanelCalcMode, 'panel' | 'affix'> {
+  const active = props.slotPanels?.[agentId]?.active
+  if (active === 'affixDerived') return 'affix'
+  if (active === 'imported') return 'panel'
+  return readRememberedEntryMode(agentId) ?? props.preferredEntryMode ?? 'panel'
+}
+
+const currentAgentId = () => props.teamSlots[props.activeSlot]?.agentId || ''
 
 /** 面板 Tab 独立切换：面板导入 / 词条导入 */
 const entryMode = ref<Extract<PanelCalcMode, 'panel' | 'affix'>>(
-  readRememberedEntryMode() ?? props.preferredEntryMode ?? 'panel',
+  entryModeForAgent(currentAgentId()),
 )
-watch(entryMode, (mode) => rememberEntryMode(mode))
+watch(entryMode, (mode) => rememberEntryMode(currentAgentId(), mode))
 /** 面板草稿是不是来自截图识别（只用于记录来历，元数据） */
 let draftFromRecognition = false
 /** 识别写进草稿的那份数值快照：用来区分「识别来的」与「后来手改的」 */
@@ -281,7 +313,7 @@ watch(open, (isOpen) => {
     agentIdRestoredOnOpen = null
     return
   }
-  entryMode.value = readRememberedEntryMode() ?? props.preferredEntryMode ?? 'panel'
+  entryMode.value = entryModeForAgent(props.teamSlots[props.activeSlot]?.agentId || '')
   const slot = props.teamSlots[props.activeSlot]
   if (!slot) return
   selected.value = {
@@ -324,6 +356,8 @@ watch(
     // 不塞默认值、不清空 —— 那些默认值会让人以为「面板/词条已经被填过」，
     // 而且点确定导入时会把这些没录入过的数字写成真面板。
     resetDraftPanelFromSlot()
+    // 录入方式也按角色重判（用户口径 2026-09-17：按角色的激活份，不是全局记忆）
+    if (open.value) entryMode.value = entryModeForAgent(newId || '')
   },
 )
 
