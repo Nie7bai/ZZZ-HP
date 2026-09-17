@@ -561,45 +561,41 @@ function onSetGroupCap(name: string, value: number) {
  *
  * 与「组额度」是两层：本行改的是**每条各自的档数上限**，组额度仍在组管理页改。
  * 未分组页签也走这里 —— `activeGroupName` 对未分组返回 `''`，与库里 `group === ''` 的口径一致。
+ *
+ * ⚠️ **故意不预填**（用户 2026-09-17 口径）：输入框默认留空，只放占位提示。
+ * 试过"预填本组最常见的上限"，但那个数字不管取什么值都容易被当成"本组当前的设置"来读，
+ * 表意不清 —— 当前状态由右边「本组当前：…」负责说，输入框只回答"你想改成几"。
  */
-const batchEntryCap = ref(0)
+const batchEntryCapInput = ref('')
 
-/** 本组当前上限分布，例：`30 ×8、6 ×2`；只有一种值时写 `全部 30（0 = 不限）` */
-const entryCapSummary = computed(() => {
-  const counts = new Map<number, number>()
-  for (const entry of visibleEntries.value) {
-    const cap = Math.max(0, Math.round(entry.cap))
-    counts.set(cap, (counts.get(cap) ?? 0) + 1)
-  }
-  const parts = [...counts.entries()].sort((a, b) => a[0] - b[0])
-  if (!parts.length) return '—'
-  if (parts.length === 1) {
-    const [cap, count] = parts[0]!
-    return cap === 0 ? `全部不限（${count} 条）` : `全部 ${cap}（${count} 条）`
-  }
-  return parts.map(([cap, count]) => `${cap === 0 ? '不限' : cap} ×${count}`).join('、')
+/** 输入框里的合法值（空 / 非数字 → null，此时按钮禁用） */
+const batchEntryCapValue = computed<number | null>(() => {
+  const raw = batchEntryCapInput.value.trim()
+  if (!raw) return null
+  const n = Number(raw)
+  return Number.isFinite(n) ? Math.max(0, Math.round(n)) : null
 })
 
-/** 切页签时把输入框预填成该组「最常见的上限」（次数相同取较大的那个），省得每次手打 */
-watch(
-  () => [activeTab.value, visibleEntries.value.map((entry) => entry.cap).join(',')] as const,
-  () => {
-    const counts = new Map<number, number>()
-    for (const entry of visibleEntries.value) {
-      const cap = Math.max(0, Math.round(entry.cap))
-      counts.set(cap, (counts.get(cap) ?? 0) + 1)
-    }
-    const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])
-    if (!ranked.length) return
-    batchEntryCap.value = ranked[0]![0]
-  },
-  { immediate: true },
-)
+/**
+ * 本组当前上限的显示口径（用户 2026-09-17 定）：
+ * - 全部一致 → `全部 30（10 条）` / `全部不限（10 条）`
+ * - **只要有一条不一样 → `上限不一致`**（不列分布：批量入口只需要回答"能不能一次改"，明细在表里看）
+ */
+const entryCapSummary = computed(() => {
+  const caps = visibleEntries.value.map((entry) => Math.max(0, Math.round(entry.cap)))
+  if (!caps.length) return '—'
+  const first = caps[0]!
+  if (caps.every((cap) => cap === first)) {
+    return first === 0 ? `全部不限（${caps.length} 条）` : `全部 ${first}（${caps.length} 条）`
+  }
+  return '上限不一致'
+})
 
 function applyGroupEntryCaps() {
-  if (!visibleEntries.value.length) return
-  const cap = Math.max(0, Math.round(Number(batchEntryCap.value) || 0))
-  batchEntryCap.value = cap
+  const cap = batchEntryCapValue.value
+  if (!visibleEntries.value.length || cap == null) return
+  // 应用后清空：这个框是「一次性动作」的入参，不是状态显示
+  batchEntryCapInput.value = ''
   forwardEntryEdit(() => emit('setGroupEntryCaps', activeGroupName.value, cap))
 }
 
@@ -1020,22 +1016,27 @@ function submitForm() {
               </button>
             </div>
 
-            <!-- 批量改本组单词条上限：简单模式也显示（单词条上限在简单模式下本就能逐条调） -->
+            <!-- 批量改本组单词条上限：简单模式也显示（单词条上限在简单模式下本就能逐条调）
+                 输入框**故意不预填**：它是一次性动作的入参，当前状态由右边「本组当前」说 -->
             <div v-if="activeTab !== 'manage'" class="group-cap-row">
-              <span class="group-cap-label">本组单词条上限</span>
+              <span class="group-cap-label">本组单词条上限统一改成</span>
               <input
-                v-model.lazy.number="batchEntryCap"
+                v-model.lazy="batchEntryCapInput"
                 class="group-cap-input"
                 type="number"
                 min="0"
                 step="1"
-                title="0 = 不限；点右边按钮把本组每条的单词条上限都设成这个值"
+                title="0 = 不限；填好再点右边按钮"
               />
               <button
                 type="button"
                 class="chip group-cap-apply"
-                :disabled="!visibleEntries.length"
-                :title="`把本组 ${visibleEntries.length} 条的单词条上限都设成 ${batchEntryCap}`"
+                :disabled="!visibleEntries.length || batchEntryCapValue == null"
+                :title="
+                  batchEntryCapValue == null
+                    ? '先填一个上限（0 = 不限）'
+                    : `把本组 ${visibleEntries.length} 条的单词条上限都设成 ${batchEntryCapValue}`
+                "
                 @click="applyGroupEntryCaps"
               >
                 应用到本组 {{ visibleEntries.length }} 条
@@ -1476,15 +1477,16 @@ function submitForm() {
   flex-shrink: 0;
 }
 
-/* 批量改本组单词条上限：一行（标签 + 输入 + 应用 + 当前分布） */
+/* 批量改本组单词条上限：一行（标签 + 输入 + 应用 + 当前值）
+   颜色不硬写：跟着所在表格的正文色走，白天主题由 calculatorLight.css 覆盖 */
 .group-cap-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 0.5rem;
   flex-shrink: 0;
-  font-size: 0.78rem;
-  color: #cfd6e0;
+  font-size: 0.8rem;
+  color: inherit;
 }
 
 .group-cap-input {
@@ -1497,13 +1499,14 @@ function submitForm() {
   font: inherit;
 }
 
+/* 「本组当前」跟标签同色（之前用注释灰 → 白天主题下几乎看不见） */
 .group-cap-now {
-  color: #8b94a1;
-  font-size: 0.74rem;
+  color: inherit;
+  font-size: 0.78rem;
 }
 
 .group-cap-now strong {
-  color: #d7dde7;
+  color: #f0dfb4;
 }
 
 .empty-cell {

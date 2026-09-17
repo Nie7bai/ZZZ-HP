@@ -2120,11 +2120,17 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、初始门槛、B 截�
     }
   }
 
-  // 词条库「本组单词条上限」批量入口：三处必须在（弹窗入口 / 事件 / 页面落盘），
-  // 且**不锁在高级编辑里**（用户 2026-09-17 明确：简单模式也要显示）
+  // 词条库「本组单词条上限」批量入口：**三跳都要在**（弹窗入口 / 弹窗→收益表转发 / 收益表→页面落盘），
+  // 且**不锁在高级编辑里**（用户 2026-09-17 明确：简单模式也要显示）。
+  // ⚠️ 2026-09-17 真机 bug：弹窗是嵌在 `AffixBenefitTable` 里的，只接了「收益表→页面」那一跳，
+  //    中间没转发 → 点了「应用到本组 N 条」毫无反应。这条守卫就是为此加的。
   {
     const modalSource = readFileSync(
       new URL('../src/components/calculator/AffixLibraryModal.vue', import.meta.url),
+      'utf8',
+    )
+    const benefitSource = readFileSync(
+      new URL('../src/components/calculator/AffixBenefitTable.vue', import.meta.url),
       'utf8',
     )
     const sectionSource = readFileSync(
@@ -2137,9 +2143,18 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、初始门槛、B 截�
         modalSource.includes('@click="applyGroupEntryCaps"') &&
         !/v-if="advancedEditing"[^>]*group-cap-row/.test(modalSource),
       '入口 + 事件 + 无条件渲染')
-    check('词条库批量入口显示了「本组当前」上限分布',
-      modalSource.includes('本组当前') && modalSource.includes('entryCapSummary'),
-      'entryCapSummary 已接进模板')
+    check('输入框不预填（用户口径：预填值表意不清），没填时按钮禁用',
+      modalSource.includes('batchEntryCapValue == null') &&
+        !/batchEntryCap\.value =/.test(modalSource) &&
+        !/v-model\.lazy\.number="batchEntryCap/.test(modalSource),
+      '空值 → 禁用；没有预填逻辑')
+    check('弹窗→收益表：中间层转发了 setGroupEntryCaps（漏了就点了没反应）',
+      benefitSource.includes('setGroupEntryCaps: [name: string, cap: number]') &&
+        benefitSource.includes("(name, cap) => emit('setGroupEntryCaps', name, cap)"),
+      'AffixBenefitTable 声明 + 转发')
+    check('「本组当前」按用户口径显示（一致时写全部 X，不一致时写「上限不一致」）',
+      modalSource.includes('上限不一致') && modalSource.includes('全部不限（'),
+      '两种口径都在模板/计算里')
     check('页面接了 @set-group-entry-caps 并落盘',
       sectionSource.includes('@set-group-entry-caps="setAffixLibraryGroupEntryCapsHandler"') &&
         sectionSource.includes('persistAffixLibrary(setAffixLibraryGroupEntryCaps('),

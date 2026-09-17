@@ -3750,6 +3750,25 @@ body:has(.calculator-page.theme-light) .preset-preview li,
   border-bottom-color: #f0f1f4 !important;
 }
 
+/* 「本组单词条上限」批量行：亮色下要能看清（2026-09-17 用户反馈这行被写成注释灰） */
+[data-theme='light'] .affix-library-modal .group-cap-row {
+  color: #344054 !important;
+}
+
+[data-theme='light'] .affix-library-modal .group-cap-input {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+  color: #1c212a !important;
+}
+
+[data-theme='light'] .affix-library-modal .group-cap-now {
+  color: #475467 !important;
+}
+
+[data-theme='light'] .affix-library-modal .group-cap-now strong {
+  color: #8a6a1f !important;
+}
+
 [data-theme='light'] .affix-library-modal .mini-btn {
   border-color: #d5dae3 !important;
   background: #ffffff !important;
