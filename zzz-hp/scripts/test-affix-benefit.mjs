@@ -735,6 +735,27 @@ console.log('\n[8] 收益曲线：组内对比（2026-09-17 用户口径）')
     '第 0 档一律是基线 0%',
     groupSeries.every((series) => series.cumulativePercent[0] === 0 && series.marginalPercent[0] === 0),
   )
+
+  // 只画正收益条目（2026-09-17 第二轮口径）：把整张表的行（含 0 / 负收益）都交进去，画出来的必须一条都不含
+  const nonPositiveIds = new Set(
+    mixedTable.rows.filter((row) => row.percentDelta <= 0).map((row) => row.entryId),
+  )
+  const positiveRows = mixedTable.rows.filter((row) => row.percentDelta > 0)
+  check('这套库里确实有 0 / 负收益条目（否则下面两条测不到东西）', nonPositiveIds.size > 0, `共 ${nonPositiveIds.size} 条`)
+  const allRowsSeries = computeAffixBenefitSeriesForTable(
+    { ctx, baseCounts, entries: mixedLibrary, rollsPerStep: 1, maxCurveRolls: 2, maxCurveSeries: 40 },
+    { baselineDamage: mixedTable.baselineDamage, rows: mixedTable.rows },
+  )
+  check(
+    '0 收益与负收益条目一条都不进曲线',
+    allRowsSeries.every((series) => !nonPositiveIds.has(series.entryId)),
+    `线数 ${allRowsSeries.length}：${allRowsSeries.map((s) => s.entryId).join(', ')}`,
+  )
+  check(
+    '曲线条数 = 正收益条数（上限内不再被 0 / 负收益占名额）',
+    allRowsSeries.length === Math.min(40, positiveRows.length),
+    `实际 ${allRowsSeries.length}，正收益 ${positiveRows.length}`,
+  )
 }
 
 console.log(`\n结果：${passed} passed, ${failed} failed`)

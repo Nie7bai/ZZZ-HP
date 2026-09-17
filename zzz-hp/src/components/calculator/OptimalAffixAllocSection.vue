@@ -3426,6 +3426,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           </div>
 
           <template v-if="affixAllocDetailTab === 'curve'">
+            <!-- 空数组也渲染：分组 chip 在面板里，选到「没有正收益条目」的组时得留个换回去的入口 -->
             <BenefitCurvePanel
               v-if="affixAllocCurveData"
               v-model:mode="affixAllocCurveMode"
@@ -3433,10 +3434,13 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
               :series="affixAllocCurveData"
               :max-added="affixAllocCurveMaxRolls"
               :groups="affixAllocCurveGroups"
-              hint="逐档真实重算；只比同组条目，画本组收益率最高的前几条"
+              hint="逐档真实重算；只比同组条目，画本组正收益里最高的前几条"
             />
+            <p v-if="affixAllocCurveData && !affixAllocCurveData.length" class="hint">
+              本组没有正收益条目（0 收益与负收益不画）；换一组看看。
+            </p>
             <p v-else-if="affixBenefitSeriesLoading" class="hint">收益曲线计算中…（首屏只算「+1 档」表，曲线按需补算）</p>
-            <p v-else class="hint">暂无收益曲线数据。</p>
+            <p v-else-if="!affixAllocCurveData" class="hint">暂无收益曲线数据。</p>
           </template>
         </template>
       </template>

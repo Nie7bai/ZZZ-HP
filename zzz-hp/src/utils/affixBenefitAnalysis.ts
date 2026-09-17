@@ -229,6 +229,9 @@ export function computeAffixBenefitSeriesForTable(
 /**
  * 逐档收益曲线：对收益最高的若干条目，逐档累加并真实重算。
  * 第 0 档为基线（0%），第 n 档为「该条目累计 n 档」相对基线的收益率。
+ *
+ * **只画正收益条目**：`rankedRows` 里 `percentDelta <= 0` 的条目一律不进曲线。
+ * 调用方按分组切好 `rankedRows` 就得到「组内对比」，本函数只负责「取正收益里的前 N 条」。
  */
 function computeAffixBenefitSeries(input: {
   ctx: OptimalEvalContext
@@ -245,7 +248,10 @@ function computeAffixBenefitSeries(input: {
   if (baselineDamage <= 0) return []
   const entryById = new Map(input.entries.map((entry) => [entry.id, entry]))
   const valuePerCount = affixValuePerCountFromEntries(input.entries)
-  const picked = rankedRows.slice(0, input.maxCurveSeries)
+  // 只画正收益条目（用户 2026-09-17 口径「排除 0 收益和负收益的」）：
+  // 0 收益画出来是贴着横轴的平线、负收益是下降线，两者都没有信息量，还会白占「前 N 条」的名额。
+  // 判据与收益表的「隐藏无收益」同口径（`percentDelta > 0`）。`rankedRows` 已按收益率降序，筛完顺序照旧。
+  const picked = rankedRows.filter((row) => row.percentDelta > 0).slice(0, input.maxCurveSeries)
   const series: AffixBenefitSeries[] = []
 
   picked.forEach((row, index) => {
