@@ -2092,6 +2092,16 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、初始门槛、B 截�
       && sharedBudget.workBudget === 9000
       && sharedBudget.workUsed <= 9000,
     `budget=${sharedBudget.workBudget} used=${sharedBudget.workUsed} pathUsed=${sharedBudget.penRatePathUsed}`)
+  // 恒等式：凡是计数的评估都按同一单价计费（= 1 + 命中数）。
+  // 注意它**测不出**「专路世界探测漏记」那类问题（漏记时两边同时变小，恒等式照样成立）——
+  // 2026-09-17 修的正是那一处（`evaluateWorldOnce` 走原始引擎、不经计数通道），
+  // 证据是 fixture 上的前后对拍：632 次 / 61304 → 633 次 / 61401（+97 = 单价），见 dev-docs/词条最优分配.md。
+  {
+    const price = 1 + (ctx.hits?.length ?? 0)
+    check('工作量恒等式：计算量 = 单价 × 评估次数',
+      Math.abs(sharedBudget.workUsed - price * sharedBudget.engineCalls) < 1e-6,
+      `${Math.round(sharedBudget.workUsed)} = ${price} × ${sharedBudget.engineCalls}`)
+  }
 
   const fixturePath = path.join(FRONTEND_ROOT, 'fixtures/pen-rate-alloc/ye-shiyuan-pen-rate.json')
   const fixtureName = '21叶琉千——叶释渊--测试不带东西'

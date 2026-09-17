@@ -140,16 +140,23 @@ function formatDuration(ms: number) {
         <div class="budget-item">
           <span class="budget-label">总词条数</span>
           <strong class="budget-value">{{ result.usedRolls }} / {{ result.maxTotalRolls }}</strong>
-          <span class="budget-hint">每条词条 1 档 = 1 个词条</span>
+          <span class="budget-hint">
+            {{ gameInfo ? '普通条目 1 档 = 1 个词条，付费条目额外多花' : '每条词条 1 档 = 1 个词条' }}
+          </span>
         </div>
         <div class="budget-item">
           <span class="budget-label">多路线搜索</span>
           <strong class="budget-value">存活 {{ result.survivedRoutes }} 条</strong>
           <span class="budget-hint">
             预算层 {{ result.beamLayers }} 层 ·
-            保留路线 {{ result.searchParams.minRetainedRoutes }}–{{ result.searchParams.maxRetainedRoutes }} 条
-            （保底补回 {{ result.routeFloorSaved }} 条 · 上限截掉 {{ result.routeCapDropped }} 条）·
-            门槛 {{ Math.round(result.searchParams.initialCandidateThreshold * 1000) / 10 }}%（淘汰 {{ result.initialDropped }} 条）·
+            保留路线 {{ result.searchParams.minRetainedRoutes }}–{{ result.searchParams.maxRetainedRoutes }} 条<template
+              v-if="result.routeFloorSaved > 0"
+            >（下限补足 {{ result.routeFloorSaved }} 条）</template><template
+              v-if="result.routeCapDropped > 0"
+            >（上限截掉 {{ result.routeCapDropped }} 条）</template>·
+            门槛 {{ Math.round(result.searchParams.initialCandidateThreshold * 1000) / 10 }}%（淘汰 {{ result.initialDropped }} 条<template
+              v-if="result.initialFloorSaved > 0"
+            > · 兜底救回 {{ result.initialFloorSaved }} 条</template>）·
             层内比例 {{ Math.round(result.searchParams.routeRetentionRatio * 100) }}%（淘汰 {{ result.layerRatioDropped }} 条）
           </span>
         </div>
@@ -159,7 +166,7 @@ function formatDuration(ms: number) {
             {{ result.engineCalls }} 次评估
           </strong>
           <span class="budget-hint">
-            缓存命中 {{ result.cacheHits }} 次（不计入预算）·
+            真实引擎调用（缓存命中 {{ result.cacheHits }} 次不计价）·
             计算量 {{ Math.round(result.workUsed) }}<template v-if="result.workBudget != null"> / {{ result.workBudget }}</template>
           </span>
         </div>

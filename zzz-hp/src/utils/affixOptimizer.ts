@@ -1122,11 +1122,16 @@ function toResult(input: AffixOptimizerInput, outcome: SearchOutcome): AffixOpti
  * 汇总：普通路 + 全部专路世界，**比最终总伤取最大**（中间不交汇）。
  *
  * 统计量跨世界求和（引擎调用 / 计算量 / 存活路线…），`searchPath` 取赢家那条。
+ *
+ * `probeCost` = 专路开跑前那次「锁满穿透率的世界真算」（`evaluateWorldOnce`，走原始引擎、
+ * 不经过缓存与计数通道）。它本来就是真实开销、也已被预算预留（`planCost`），
+ * 所以在这里补记一次评估 —— 不补的话「N 次评估 / 计算量 X」会比实际少一次（2026-09-17 修）。
  */
 function mergeSearchOutcomes(
   ordinary: SearchOutcome,
   penWorlds: SearchOutcome[],
   sharedWorkBudget: number | null,
+  probeCost = 0,
 ): SearchOutcome {
   const penBest = penWorlds.reduce(
     (best, item) => (item.state.total > best.state.total ? item : best),
@@ -1140,9 +1145,9 @@ function mergeSearchOutcomes(
   return {
     ...winner,
     baselineDamage: ordinary.baselineDamage,
-    engineCalls: sum((item) => item.engineCalls),
+    engineCalls: sum((item) => item.engineCalls) + (probeCost > 0 ? 1 : 0),
     cacheHits: sum((item) => item.cacheHits),
-    workUsed: sum((item) => item.workUsed),
+    workUsed: sum((item) => item.workUsed) + probeCost,
     workBudget: sharedWorkBudget,
     truncated: all.some((item) => item.truncated),
     phasesCompleted: [...new Set(all.flatMap((item) => item.phasesCompleted))],
@@ -1224,8 +1229,6 @@ function* solveSearchWithPenPath(
     penOutcomes.push(outcome)
     if (penWorkLeft != null) penWorkLeft = Math.max(0, penWorkLeft - outcome.workUsed)
   }
-  void planCost
-
   // ---------- ④ 普通路：剩下的算力全给它（兜底） ----------
   const penUsed = penOutcomes.reduce((total, item) => total + item.workUsed, 0) + planCost
   const ordinaryInput: AffixOptimizerInput =
@@ -1233,7 +1236,7 @@ function* solveSearchWithPenPath(
       ? input
       : { ...input, maxWorkUnits: Math.max(0, sharedWorkBudget - penUsed) }
   const ordinary = yield* solveSearch(ordinaryInput, 'ordinary')
-  return mergeSearchOutcomes(ordinary, penOutcomes, sharedWorkBudget)
+  return mergeSearchOutcomes(ordinary, penOutcomes, sharedWorkBudget, planCost)
 }
 
 /** 同步求解（测试与脚本使用；UI 请用 async 版以免卡住主线程） */
