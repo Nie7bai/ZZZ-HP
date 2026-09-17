@@ -12,6 +12,7 @@ import { storeToRefs } from 'pinia'
 import { type ExtraBuffGain } from '@/components/calculator/ExtraBuffGainEditor.vue'
 import BenefitCurvePanel from '@/components/calculator/BenefitCurvePanel.vue'
 import OptimalDamageBarChart from '@/components/calculator/OptimalDamageBarChart.vue'
+import IkModalShell from '@/components/common/IkModalShell.vue'
 import AffixBenefitTable from '@/components/calculator/AffixBenefitTable.vue'
 import AffixAllocationResult from '@/components/calculator/AffixAllocationResult.vue'
 import AffixSearchAdvancedModal from '@/components/calculator/AffixSearchAdvancedModal.vue'
@@ -96,6 +97,7 @@ import {
   eventNeedsAnomalyProducer,
 } from '@/utils/damageEvent'
 import { buildGenericPanelSkillContext } from '@/utils/resolvedHit'
+import type { SkillTalentLevels } from '@/utils/skillTalentLevels'
 import {
   buildSkillFlowPageSignature,
   formatAffixCountsSummary,
@@ -207,6 +209,8 @@ const props = defineProps<{
    * ① 或回落配置面板时为空。页级额外 Buff 仍走 v-model extraGains。
    */
   skillFlowSourceExtraGains?: ExtraBuffGain[] | null
+  /** 技能等级转模来源：按角色 id 的五大类技能等级 */
+  skillTalentLevelsByAgent?: Record<string, Partial<SkillTalentLevels> | null>
 }>()
 
 const extraGains = defineModel<ExtraBuffGain[]>('extraGains', { default: () => [] })
@@ -306,6 +310,15 @@ const mainSlotIndex = computed(() => {
 const mainSlot = computed(() => props.teamSlots[mainSlotIndex.value]!)
 
 /**
+ * 词条分配（新功能，主）与手动扫掠柱图（旧功能，次要）二选一。
+ * 两者各有独立的输入与子页签（收益曲线 / 计算过程）。
+ *
+ * 定义在 `driveDiscMainStats` 之前：`activeDriveDiscMainStats` / `evalCtx` 依赖它，
+ * 而它们在 setup 中靠后声明（computed 惰性求值，定义顺序必须先于引用）。
+ */
+const sectionMode = ref<'allocation' | 'sweep'>('allocation')
+
+/**
  * 4/5/6 号驱动盘主属性 —— 单一来源：「词条导入」那份来源记录（它只服务这一路）。
  *
  * 面板本身由外部配置给出（见 `optimalAffixAlloc.ts` 的 `mainBaseExternalPanel`），
@@ -317,6 +330,67 @@ const driveDiscMainStats = computed<AffixDriveDiscMainStats>(() => ({
   ...createDefaultAffixDriveDiscMainStats(),
   ...(props.slotPanels?.[mainSlot.value.agentId]?.affixDriveDiscMainStats ?? {}),
 }))
+
+/**
+ * 扫掠柱图独立的 4/5/6 主属性（用户口径 2026-09-15）：
+ * 切换到扫掠柱图时默认与导入面板的 456 一致，但可在扫掠柱图内单独调整，
+ * 只影响扫掠柱图的计算，不动导入面板、不动词条分析页。
+ */
+const sweepMainStats = ref<AffixDriveDiscMainStats>(createDefaultAffixDriveDiscMainStats())
+/** 用户是否手动调整过扫掠 456：调过后不再跟随导入变化，避免覆盖用户选择 */
+const sweepMainStatsTouched = ref(false)
+
+watch(
+  (): [DriveDiscSlot4StatId | '', DriveDiscSlot5StatId | '', DriveDiscSlot6StatId | ''] => [
+    driveDiscMainStats.value.slot4MainStat,
+    driveDiscMainStats.value.slot5MainStat,
+    driveDiscMainStats.value.slot6MainStat,
+  ],
+  (
+    [slot4MainStat, slot5MainStat, slot6MainStat]: [
+      DriveDiscSlot4StatId | '',
+      DriveDiscSlot5StatId | '',
+      DriveDiscSlot6StatId | '',
+    ],
+  ) => {
+    if (sweepMainStatsTouched.value) return
+    sweepMainStats.value = {
+      slot4MainStat,
+      slot5MainStat,
+      slot6MainStat,
+    }
+  },
+  { immediate: true },
+)
+
+/** 当前模式实际使用的 4/5/6：扫掠柱图用独立那份，词条分析页用导入面板那份 */
+const activeDriveDiscMainStats = computed<AffixDriveDiscMainStats>(() =>
+  sectionMode.value === 'sweep' ? sweepMainStats.value : driveDiscMainStats.value,
+)
+
+/** 把扫掠 456 重置为导入面板的 456，并恢复「跟随导入」 */
+function resetSweepMainStats() {
+  sweepMainStats.value = {
+    slot4MainStat: driveDiscMainStats.value.slot4MainStat,
+    slot5MainStat: driveDiscMainStats.value.slot5MainStat,
+    slot6MainStat: driveDiscMainStats.value.slot6MainStat,
+  }
+  sweepMainStatsTouched.value = false
+}
+
+/** 单独调整扫掠柱图的 4/5/6（只影响扫掠计算，不动导入面板） */
+function setSweepMainStat(
+  slot: 'slot4MainStat' | 'slot5MainStat' | 'slot6MainStat',
+  event: Event,
+) {
+  const value = (event.target as HTMLSelectElement).value
+  const next = { ...sweepMainStats.value }
+  if (slot === 'slot4MainStat') next.slot4MainStat = value as DriveDiscSlot4StatId
+  else if (slot === 'slot5MainStat') next.slot5MainStat = value as DriveDiscSlot5StatId
+  else next.slot6MainStat = value as DriveDiscSlot6StatId
+  sweepMainStats.value = next
+  sweepMainStatsTouched.value = true
+}
 
 /** 当前编辑角色「词条导入」那一路的词条数（没有存面板时用来现推局外） */
 const mainAffixCounts = computed<AffixCounts>(() => ({
@@ -397,7 +471,8 @@ const evalCtx = computed(() =>
     bangbooRefine: props.bangbooRefine,
     driveDiscs: props.driveDiscs,
     mainSlotIndex: mainSlotIndex.value,
-    driveDiscMainStats: { ...driveDiscMainStats.value },
+    // 扫掠柱图用独立可调的 456，词条分析页用导入面板的 456（两者在 allocation 模式相等）
+    driveDiscMainStats: { ...activeDriveDiscMainStats.value },
     mainAffixCounts: mainAffixCounts.value,
     enemyInput: { ...enemyInput.value },
     baseDamageSource: isMb.value ? 'pierce' : isFengYu.value ? 'def' : baseDamageSource.value,
@@ -417,6 +492,8 @@ const evalCtx = computed(() =>
     skillSubcategories: skillSubcategories.value,
     followUpSkillRules: followUpSkillRules.value,
     environmentBuffs: props.environmentBuffs,
+    // 技能等级转模来源（角色增益按等级转模用）
+    skillTalentLevelsByAgent: props.skillTalentLevelsByAgent,
     // 词条库「每档值」随上下文走：柱图 / 详情 / 收益表 / 基准总伤共用一份，避免分叉
     valuePerCount: affixLibraryValuePerCount.value,
   }),
@@ -426,16 +503,16 @@ const flatLabel = computed(() => flatStatLabel(isMb.value, isFengYu.value))
 const outLabel = computed(() => outPercentLabel(isMb.value, isFengYu.value))
 
 const directError = computed(() =>
-  validateDirectAlloc(directAlloc, isMb.value, driveDiscMainStats.value, isFengYu.value),
+  validateDirectAlloc(directAlloc, isMb.value, activeDriveDiscMainStats.value, isFengYu.value),
 )
 const anomalyError = computed(() =>
-  validateAnomalyAlloc(anomalyAlloc, isMb.value, driveDiscMainStats.value, isFengYu.value),
+  validateAnomalyAlloc(anomalyAlloc, isMb.value, activeDriveDiscMainStats.value, isFengYu.value),
 )
 
 const sweepConfigFingerprint = computed(() =>
   JSON.stringify({
     baseDamageSource: baseDamageSource.value,
-    driveDiscMainStats: { ...driveDiscMainStats.value },
+    driveDiscMainStats: { ...activeDriveDiscMainStats.value },
     enemy: enemyInput.value,
     extraGains: extraGains.value,
     convert: props.convertSlotPanels ?? {},
@@ -585,7 +662,7 @@ function canReuseCurrentDirectSweep(points: DirectSweepPoint[], state: DirectAll
     state,
     isMb.value,
     isFengYu.value,
-    driveDiscMainStats.value,
+    activeDriveDiscMainStats.value,
   )
 }
 
@@ -670,7 +747,6 @@ onBeforeUnmount(() => {
 })
 
 const showEventAffixImpact = ref(false)
-const showCombinedMainStatRankings = ref(false)
 const eventAffixImpactLoading = ref(false)
 const combinedMainStatRankingsLoading = ref(false)
 
@@ -745,15 +821,21 @@ const chartEventOptions = computed(() => {
 
 const chartEventSelectionSummary = computed(() => {
   if (!selectedChartEventIds.value.length) return ''
-  const selected = chartEventOptions.value.filter((item) =>
-    selectedChartEventIds.value.includes(item.id),
-  )
-  if (!selected.length) return ''
-  if (selected.length === chartEventOptions.value.length) {
-    return `已统计全部 ${selected.length} 个事件`
+  const total = chartEventOptions.value.length
+  if (selectedChartEventIds.value.length === total) {
+    return `已统计全部 ${total} 个事件`
   }
-  return selected.map((item) => `${item.kindLabel} ${item.label}`).join('；')
+  // 不逐条列出事件名：事件多时摘要会被拉成超长文本（用户口径 2026-09-15）
+  return `已选 ${selectedChartEventIds.value.length} / ${total} 个事件`
 })
+
+/**
+ * 统计事件小窗：事件过多时内联 chip 列表会把页面拉得很长，
+ * 超过 `EVENT_INLINE_LIMIT` 收进弹窗管理，页面只留入口按钮与摘要。
+ */
+const EVENT_INLINE_LIMIT = 8
+const chartEventPickerOpen = ref(false)
+const chartEventOverflow = computed(() => chartEventOptions.value.length > EVENT_INLINE_LIMIT)
 
 /** 柱状图参与统计的事件；默认全选 = 总伤害 */
 const selectedChartEventIds = ref<string[]>([])
@@ -1063,7 +1145,7 @@ watch(
   () =>
     JSON.stringify({
       counts: analysisCounts.value,
-      mains: { ...driveDiscMainStats.value },
+      mains: { ...activeDriveDiscMainStats.value },
     }),
   () => {
     scheduleEventAffixImpactRefresh()
@@ -1257,7 +1339,7 @@ const skillFlowContextFingerprint = computed(() =>
     participants: props.activeSlotPanels ?? {},
     env: (props.environmentBuffs ?? []).map((item) => item.id),
     bangboo: [props.selectedBangbooId, props.bangbooRefine],
-    mains: { ...driveDiscMainStats.value },
+    mains: { ...activeDriveDiscMainStats.value },
     baseDamageSource: baseDamageSource.value,
     damageKind: sweepDamageKind.value,
     stagger: props.staggerPhase,
@@ -1420,16 +1502,140 @@ const filteredEventAffixImpact = computed(() => {
   return eventAffixImpact.value.filter((row) => ids.has(row.eventId))
 })
 
-const rankingSlot4Ids = ref<DriveDiscSlot4StatId[]>(
-  DRIVE_DISC_SLOT_4_OPTIONS.map((item) => item.id),
+/**
+ * 主属性组合试算状态：词条分析页（`allocation`）与扫掠柱图（`sweep`）各一份，互不共用。
+ *
+ * 此前两侧共用一份草稿 / 排行 / 筛选，切模式会把一侧的选择带跑到另一侧；
+ * 用户口径 2026-09-15「两个是独立的，不要共用数据」。
+ * 模板仍引用旧变量名（`combinedMainStatDraft` 等），由下方代理 computed 转发到当前模式实例，
+ * 因此模板两套 UI 各自操作的是「当前模式」那份状态。
+ */
+type MainComboRankingRow = {
+  slot4: string
+  slot5: string
+  slot6: string
+  summaryLabel: string
+  damageDelta: number
+  percentDelta: number
+}
+
+interface MainComboState {
+  /** 试算草稿（4/5/6 主属性） */
+  draft: AffixDriveDiscMainStats
+  /** 试算草稿的 2 件套 */
+  twoPieceId: string
+  /** 排行候选（4/5/6 各槽位允许的主属性） */
+  rankingSlot4Ids: DriveDiscSlot4StatId[]
+  rankingSlot5Ids: DriveDiscSlot5StatId[]
+  rankingSlot6Ids: DriveDiscSlot6StatId[]
+  /** 排行试算使用的 2 件套（单选） */
+  rankingTwoPieceId: string
+  rankings: MainComboRankingRow[]
+  showRankings: boolean
+  rankingsExpanded: boolean
+  /** 2 件套选择弹窗开合 */
+  twoPiecePickerOpen: boolean
+  rankingTwoPiecePickerOpen: boolean
+}
+
+function createMainComboState(): MainComboState {
+  return {
+    draft: createDefaultAffixDriveDiscMainStats(),
+    twoPieceId: 'none',
+    rankingSlot4Ids: DRIVE_DISC_SLOT_4_OPTIONS.map((item) => item.id),
+    rankingSlot5Ids: DRIVE_DISC_SLOT_5_OPTIONS.map((item) => item.id),
+    rankingSlot6Ids: DRIVE_DISC_SLOT_6_OPTIONS.map((item) => item.id),
+    rankingTwoPieceId: 'none',
+    rankings: [],
+    showRankings: false,
+    rankingsExpanded: false,
+    twoPiecePickerOpen: false,
+    rankingTwoPiecePickerOpen: false,
+  }
+}
+
+const allocationMainCombo = reactive<MainComboState>(createMainComboState())
+const sweepMainCombo = reactive<MainComboState>(createMainComboState())
+
+/** 当前模式对应的组合试算状态实例 */
+const mainCombo = computed<MainComboState>(() =>
+  sectionMode.value === 'allocation' ? allocationMainCombo : sweepMainCombo,
 )
-const rankingSlot5Ids = ref<DriveDiscSlot5StatId[]>(
-  DRIVE_DISC_SLOT_5_OPTIONS.map((item) => item.id),
-)
-const rankingSlot6Ids = ref<DriveDiscSlot6StatId[]>(
-  DRIVE_DISC_SLOT_6_OPTIONS.map((item) => item.id),
-)
-const combinedRankingsExpanded = ref(false)
+
+/** 以下代理 computed：让模板 / 旧函数继续用既有名字读写「当前模式」那份状态 */
+
+const combinedMainStatDraft = computed<AffixDriveDiscMainStats>(() => mainCombo.value.draft)
+
+const combinedMainStatDraftTwoPieceId = computed<string>({
+  get: () => mainCombo.value.twoPieceId,
+  set: (value) => {
+    mainCombo.value.twoPieceId = value
+  },
+})
+
+const combinedMainStatRankings = computed<MainComboRankingRow[]>({
+  get: () => mainCombo.value.rankings,
+  set: (value) => {
+    mainCombo.value.rankings = value
+  },
+})
+
+const showCombinedMainStatRankings = computed<boolean>({
+  get: () => mainCombo.value.showRankings,
+  set: (value) => {
+    mainCombo.value.showRankings = value
+  },
+})
+
+const rankingSlot4Ids = computed<DriveDiscSlot4StatId[]>({
+  get: () => mainCombo.value.rankingSlot4Ids,
+  set: (value) => {
+    mainCombo.value.rankingSlot4Ids = value
+  },
+})
+
+const rankingSlot5Ids = computed<DriveDiscSlot5StatId[]>({
+  get: () => mainCombo.value.rankingSlot5Ids,
+  set: (value) => {
+    mainCombo.value.rankingSlot5Ids = value
+  },
+})
+
+const rankingSlot6Ids = computed<DriveDiscSlot6StatId[]>({
+  get: () => mainCombo.value.rankingSlot6Ids,
+  set: (value) => {
+    mainCombo.value.rankingSlot6Ids = value
+  },
+})
+
+const combinedRankingsExpanded = computed<boolean>({
+  get: () => mainCombo.value.rankingsExpanded,
+  set: (value) => {
+    mainCombo.value.rankingsExpanded = value
+  },
+})
+
+/** 限定组合排行时使用的 2 件套（单选，替换当前 2 件套数值参与计算） */
+const rankingTwoPieceId = computed<string>({
+  get: () => mainCombo.value.rankingTwoPieceId,
+  set: (value) => {
+    mainCombo.value.rankingTwoPieceId = value
+  },
+})
+
+const combinedTwoPiecePickerOpen = computed<boolean>({
+  get: () => mainCombo.value.twoPiecePickerOpen,
+  set: (value) => {
+    mainCombo.value.twoPiecePickerOpen = value
+  },
+})
+
+const rankingTwoPiecePickerOpen = computed<boolean>({
+  get: () => mainCombo.value.rankingTwoPiecePickerOpen,
+  set: (value) => {
+    mainCombo.value.rankingTwoPiecePickerOpen = value
+  },
+})
 
 const rankingSlot4Options = computed(() => {
   const allowed = new Set(rankingSlot4Ids.value)
@@ -1453,24 +1659,21 @@ const rankingComboCount = computed(() => {
   if (!n4 || !n5 || !n6) return 0
   let count = n4 * n5 * n6
   const currentInRange =
-    rankingSlot4Options.value.some((item) => item.id === driveDiscMainStats.value.slot4MainStat) &&
-    rankingSlot5Options.value.some((item) => item.id === driveDiscMainStats.value.slot5MainStat) &&
-    rankingSlot6Options.value.some((item) => item.id === driveDiscMainStats.value.slot6MainStat)
+    rankingSlot4Options.value.some((item) => item.id === activeDriveDiscMainStats.value.slot4MainStat) &&
+    rankingSlot5Options.value.some((item) => item.id === activeDriveDiscMainStats.value.slot5MainStat) &&
+    rankingSlot6Options.value.some((item) => item.id === activeDriveDiscMainStats.value.slot6MainStat)
   if (currentInRange && rankingTwoPieceId.value === currentTwoPieceId.value) count -= 1
   return count
 })
 
 const currentTwoPieceId = computed(() => mainSlot.value.twoPieceDriveDiscId)
 
-/** 限定组合排行时使用的 2 件套（单选，替换当前 2 件套数值参与计算） */
-const rankingTwoPieceId = ref('none')
-const combinedTwoPiecePickerOpen = ref(false)
-const rankingTwoPiecePickerOpen = ref(false)
-
 watch(
   currentTwoPieceId,
   (id) => {
-    rankingTwoPieceId.value = id
+    // 两个模式的排行 2 件套都跟随「当前 2 件套」初始化/重置；各自修改互不影响
+    allocationMainCombo.rankingTwoPieceId = id
+    sweepMainCombo.rankingTwoPieceId = id
   },
   { immediate: true },
 )
@@ -1486,22 +1689,22 @@ function resolveTwoPieceAvatar(id: string) {
 }
 
 function selectCombinedTwoPiece(id: string) {
-  combinedMainStatDraftTwoPieceId.value = id
+  mainCombo.value.twoPieceId = id
 }
 
 function selectRankingTwoPiece(id: string) {
-  rankingTwoPieceId.value = id
+  mainCombo.value.rankingTwoPieceId = id
 }
 
 function isRankingSlotOptionSelected(slot: 4 | 5 | 6, id: string) {
-  if (slot === 4) return rankingSlot4Ids.value.includes(id as DriveDiscSlot4StatId)
-  if (slot === 5) return rankingSlot5Ids.value.includes(id as DriveDiscSlot5StatId)
-  return rankingSlot6Ids.value.includes(id as DriveDiscSlot6StatId)
+  if (slot === 4) return mainCombo.value.rankingSlot4Ids.includes(id as DriveDiscSlot4StatId)
+  if (slot === 5) return mainCombo.value.rankingSlot5Ids.includes(id as DriveDiscSlot5StatId)
+  return mainCombo.value.rankingSlot6Ids.includes(id as DriveDiscSlot6StatId)
 }
 
 function toggleRankingSlotOption(slot: 4 | 5 | 6, id: string) {
   if (slot === 4) {
-    const next = new Set(rankingSlot4Ids.value)
+    const next = new Set(mainCombo.value.rankingSlot4Ids)
     const statId = id as DriveDiscSlot4StatId
     if (next.has(statId)) {
       if (next.size <= 1) return
@@ -1509,11 +1712,11 @@ function toggleRankingSlotOption(slot: 4 | 5 | 6, id: string) {
     } else {
       next.add(statId)
     }
-    rankingSlot4Ids.value = [...next]
+    mainCombo.value.rankingSlot4Ids = [...next]
     return
   }
   if (slot === 5) {
-    const next = new Set(rankingSlot5Ids.value)
+    const next = new Set(mainCombo.value.rankingSlot5Ids)
     const statId = id as DriveDiscSlot5StatId
     if (next.has(statId)) {
       if (next.size <= 1) return
@@ -1521,10 +1724,10 @@ function toggleRankingSlotOption(slot: 4 | 5 | 6, id: string) {
     } else {
       next.add(statId)
     }
-    rankingSlot5Ids.value = [...next]
+    mainCombo.value.rankingSlot5Ids = [...next]
     return
   }
-  const next = new Set(rankingSlot6Ids.value)
+  const next = new Set(mainCombo.value.rankingSlot6Ids)
   const statId = id as DriveDiscSlot6StatId
   if (next.has(statId)) {
     if (next.size <= 1) return
@@ -1532,13 +1735,13 @@ function toggleRankingSlotOption(slot: 4 | 5 | 6, id: string) {
   } else {
     next.add(statId)
   }
-  rankingSlot6Ids.value = [...next]
+  mainCombo.value.rankingSlot6Ids = [...next]
 }
 
 function selectAllRankingSlotOptions(slot: 4 | 5 | 6) {
-  if (slot === 4) rankingSlot4Ids.value = DRIVE_DISC_SLOT_4_OPTIONS.map((item) => item.id)
-  else if (slot === 5) rankingSlot5Ids.value = DRIVE_DISC_SLOT_5_OPTIONS.map((item) => item.id)
-  else rankingSlot6Ids.value = DRIVE_DISC_SLOT_6_OPTIONS.map((item) => item.id)
+  if (slot === 4) mainCombo.value.rankingSlot4Ids = DRIVE_DISC_SLOT_4_OPTIONS.map((item) => item.id)
+  else if (slot === 5) mainCombo.value.rankingSlot5Ids = DRIVE_DISC_SLOT_5_OPTIONS.map((item) => item.id)
+  else mainCombo.value.rankingSlot6Ids = DRIVE_DISC_SLOT_6_OPTIONS.map((item) => item.id)
 }
 
 const MAIN_STAT_SLOTS = [
@@ -1552,12 +1755,6 @@ const mainStatDiff = ref<ReturnType<typeof mainStatDiffBuilder> | null>(null)
 const showMainStatDiff = ref(false)
 const mainStatDiffLoading = ref(false)
 const benefitData = ref<ReturnType<typeof computeBenefitCurves> | null>(null)
-
-/**
- * 词条分配（新功能，主）与手动扫掠柱图（旧功能，次要）二选一。
- * 两者各有独立的输入与子页签（收益曲线 / 计算过程）。
- */
-const sectionMode = ref<'allocation' | 'sweep'>('allocation')
 
 /** 词条分配模式：输入与提交状态 */
 const affixAllocTotalRolls = ref(30)
@@ -2088,41 +2285,32 @@ watch(
   { immediate: true },
 )
 
-const combinedMainStatRankings = ref<
-  {
-    slot4: string
-    slot5: string
-    slot6: string
-    summaryLabel: string
-    damageDelta: number
-    percentDelta: number
-  }[]
->([])
-
 function mainStatDiffBuilder() {
   const counts = analysisCounts.value
   if (!counts || !analysisEval.value) return null
   // 与组合试算同一口径：现场按当前主属性重算，避免扫掠快照/无 hits 面板口径错位
+  // （扫掠柱图模式「当前」= 独立可调的扫掠 456）
+  const currentMains = activeDriveDiscMainStats.value
   const baseDmg = evaluateMainStatComboDamage(
     {
-      slot4MainStat: driveDiscMainStats.value.slot4MainStat,
-      slot5MainStat: driveDiscMainStats.value.slot5MainStat,
-      slot6MainStat: driveDiscMainStats.value.slot6MainStat,
+      slot4MainStat: currentMains.slot4MainStat,
+      slot5MainStat: currentMains.slot5MainStat,
+      slot6MainStat: currentMains.slot6MainStat,
     },
     counts,
     currentTwoPieceId.value,
   )
 
   return MAIN_STAT_SLOTS.map(({ key, title, options }) => {
-    const currentId = driveDiscMainStats.value[key]
+    const currentId = currentMains[key]
     const current = options.find((o) => o.id === currentId)
     const rows = options
       .filter((o) => o.id !== currentId)
       .map((o) => {
         const nextStats: AffixDriveDiscMainStats = {
-          slot4MainStat: driveDiscMainStats.value.slot4MainStat,
-          slot5MainStat: driveDiscMainStats.value.slot5MainStat,
-          slot6MainStat: driveDiscMainStats.value.slot6MainStat,
+          slot4MainStat: currentMains.slot4MainStat,
+          slot5MainStat: currentMains.slot5MainStat,
+          slot6MainStat: currentMains.slot6MainStat,
           [key]: o.id,
         }
         const dmg = evaluateMainStatComboDamage(nextStats, counts, currentTwoPieceId.value)
@@ -2141,10 +2329,11 @@ function mainStatDiffBuilder() {
 function buildCombinedMainStatRankings() {
   if (!comboBaselineReady.value || !comboBaselineCounts.value) return []
   const counts = comboBaselineCounts.value
+  const currentMains = activeDriveDiscMainStats.value
   const currentStats: AffixDriveDiscMainStats = {
-    slot4MainStat: driveDiscMainStats.value.slot4MainStat,
-    slot5MainStat: driveDiscMainStats.value.slot5MainStat,
-    slot6MainStat: driveDiscMainStats.value.slot6MainStat,
+    slot4MainStat: currentMains.slot4MainStat,
+    slot5MainStat: currentMains.slot5MainStat,
+    slot6MainStat: currentMains.slot6MainStat,
   }
   const baseDamage = evaluateMainStatComboDamage(
     currentStats,
@@ -2254,20 +2443,20 @@ function loadCombinedMainStatRankings() {
   }
   combinedMainStatRankingsLoading.value = true
   window.setTimeout(() => {
-    combinedMainStatRankings.value = buildCombinedMainStatRankings()
-    showCombinedMainStatRankings.value = true
-    combinedRankingsExpanded.value = true
+    mainCombo.value.rankings = buildCombinedMainStatRankings()
+    mainCombo.value.showRankings = true
+    mainCombo.value.rankingsExpanded = true
     combinedMainStatRankingsLoading.value = false
   }, 0)
 }
 
 function collapseCombinedMainStatRankings() {
-  combinedRankingsExpanded.value = false
+  mainCombo.value.rankingsExpanded = false
 }
 
 function expandCombinedMainStatRankings() {
-  if (combinedMainStatRankings.value.length) {
-    combinedRankingsExpanded.value = true
+  if (mainCombo.value.rankings.length) {
+    mainCombo.value.rankingsExpanded = true
   }
 }
 
@@ -2278,7 +2467,7 @@ const diffWatchFingerprint = computed(() =>
     metric: anomalyChartMetric.value,
     tab: detailTab.value,
     events: hasEventMode.value ? selectedChartEventIds.value : null,
-    mains: { ...driveDiscMainStats.value },
+    mains: { ...activeDriveDiscMainStats.value },
     agents: props.teamSlots.map((s) => s.agentId ?? ''),
     hits: (props.hits ?? []).map(
       (h) =>
@@ -2294,8 +2483,8 @@ watch(diffWatchFingerprint, () => {
   showMainStatDiff.value = false
   mainStatDiff.value = null
   if (detailTab.value !== 'diff') {
-    showCombinedMainStatRankings.value = false
-    combinedMainStatRankings.value = []
+    mainCombo.value.showRankings = false
+    mainCombo.value.rankings = []
   }
 })
 
@@ -2309,7 +2498,7 @@ watch(detailTab, (tab) => {
 const affixAllocFingerprint = computed(() =>
   JSON.stringify({
     mode: sectionMode.value,
-    mains: { ...driveDiscMainStats.value },
+    mains: { ...activeDriveDiscMainStats.value },
     agents: props.teamSlots.map((s) => s.agentId ?? ''),
     hits: (props.hits ?? []).map(
       (h) =>
@@ -2341,8 +2530,7 @@ watch(
 
 watch(sectionMode, (mode) => {
   if (mode === 'allocation') scheduleAffixBenefitRecompute()
-  showCombinedMainStatRankings.value = false
-  combinedMainStatRankings.value = []
+  // 主属性组合试算已按模式拆分：切换模式不清空各自的草稿 / 排行 / 筛选
 })
 // 首屏 / 切回本页时先算一次收益表
 watch(
@@ -2355,9 +2543,6 @@ watch(
   { immediate: true },
 )
 
-const combinedMainStatDraft = reactive(createDefaultAffixDriveDiscMainStats())
-const combinedMainStatDraftTwoPieceId = ref('none')
-
 function resolveMainStatLabel(
   options: readonly { id: string; label: string }[],
   id: string,
@@ -2365,13 +2550,19 @@ function resolveMainStatLabel(
   return options.find((item) => item.id === id)?.label ?? id
 }
 
-function syncCombinedMainStatDraftFromCurrent() {
-  combinedMainStatDraft.slot4MainStat = driveDiscMainStats.value.slot4MainStat
-  combinedMainStatDraft.slot5MainStat = driveDiscMainStats.value.slot5MainStat
-  combinedMainStatDraft.slot6MainStat = driveDiscMainStats.value.slot6MainStat
-  combinedMainStatDraftTwoPieceId.value = currentTwoPieceId.value
+/** 把指定模式的草稿同步为「当前主属性 / 当前 2 件套」 */
+function syncMainComboDraftFromCurrent(
+  state: MainComboState,
+  mains: AffixDriveDiscMainStats,
+  twoPieceId: string,
+) {
+  state.draft.slot4MainStat = mains.slot4MainStat
+  state.draft.slot5MainStat = mains.slot5MainStat
+  state.draft.slot6MainStat = mains.slot6MainStat
+  state.twoPieceId = twoPieceId
 }
 
+/** 词条分析页草稿跟随「导入面板 4/5/6 + 当前 2 件套」 */
 watch(
   () => [
     driveDiscMainStats.value.slot4MainStat,
@@ -2379,12 +2570,38 @@ watch(
     driveDiscMainStats.value.slot6MainStat,
     currentTwoPieceId.value,
   ],
-  syncCombinedMainStatDraftFromCurrent,
+  () => {
+    syncMainComboDraftFromCurrent(
+      allocationMainCombo,
+      driveDiscMainStats.value,
+      currentTwoPieceId.value,
+    )
+  },
+  { immediate: true },
+)
+
+/** 扫掠柱图草稿跟随「扫掠独立 4/5/6 + 当前 2 件套」（用户调扫掠 456 后草稿回到该 456） */
+watch(
+  () => [
+    sweepMainStats.value.slot4MainStat,
+    sweepMainStats.value.slot5MainStat,
+    sweepMainStats.value.slot6MainStat,
+    currentTwoPieceId.value,
+  ],
+  () => {
+    syncMainComboDraftFromCurrent(
+      sweepMainCombo,
+      sweepMainStats.value,
+      currentTwoPieceId.value,
+    )
+  },
   { immediate: true },
 )
 
 function resetCombinedMainStatDraft() {
-  syncCombinedMainStatDraftFromCurrent()
+  const mains =
+    sectionMode.value === 'sweep' ? sweepMainStats.value : driveDiscMainStats.value
+  syncMainComboDraftFromCurrent(mainCombo.value, mains, currentTwoPieceId.value)
 }
 
 function applyCombinedMainStatRanking(row: {
@@ -2392,11 +2609,12 @@ function applyCombinedMainStatRanking(row: {
   slot5: string
   slot6: string
 }) {
-  combinedMainStatDraft.slot4MainStat = row.slot4 as typeof combinedMainStatDraft.slot4MainStat
-  combinedMainStatDraft.slot5MainStat = row.slot5 as typeof combinedMainStatDraft.slot5MainStat
-  combinedMainStatDraft.slot6MainStat = row.slot6 as typeof combinedMainStatDraft.slot6MainStat
+  const state = mainCombo.value
+  state.draft.slot4MainStat = row.slot4 as typeof state.draft.slot4MainStat
+  state.draft.slot5MainStat = row.slot5 as typeof state.draft.slot5MainStat
+  state.draft.slot6MainStat = row.slot6 as typeof state.draft.slot6MainStat
   // 排行按「限定组合」里的 2 件套试算，套用时一并同步到组合试算草稿
-  combinedMainStatDraftTwoPieceId.value = rankingTwoPieceId.value
+  state.twoPieceId = state.rankingTwoPieceId
 }
 
 function evaluateMainStatComboDamage(
@@ -2471,21 +2689,22 @@ function evaluateMainStatComboDamage(
 const combinedMainStatPreview = computed(() => {
   if (!comboBaselineReady.value || !comboBaselineCounts.value) return null
   const counts = comboBaselineCounts.value
+  const state = mainCombo.value
   const currentStats: AffixDriveDiscMainStats = {
-    slot4MainStat: driveDiscMainStats.value.slot4MainStat,
-    slot5MainStat: driveDiscMainStats.value.slot5MainStat,
-    slot6MainStat: driveDiscMainStats.value.slot6MainStat,
+    slot4MainStat: activeDriveDiscMainStats.value.slot4MainStat,
+    slot5MainStat: activeDriveDiscMainStats.value.slot5MainStat,
+    slot6MainStat: activeDriveDiscMainStats.value.slot6MainStat,
   }
   const draftStats: AffixDriveDiscMainStats = {
-    slot4MainStat: combinedMainStatDraft.slot4MainStat,
-    slot5MainStat: combinedMainStatDraft.slot5MainStat,
-    slot6MainStat: combinedMainStatDraft.slot6MainStat,
+    slot4MainStat: state.draft.slot4MainStat,
+    slot5MainStat: state.draft.slot5MainStat,
+    slot6MainStat: state.draft.slot6MainStat,
   }
   const unchanged =
     draftStats.slot4MainStat === currentStats.slot4MainStat &&
     draftStats.slot5MainStat === currentStats.slot5MainStat &&
     draftStats.slot6MainStat === currentStats.slot6MainStat &&
-    combinedMainStatDraftTwoPieceId.value === currentTwoPieceId.value
+    state.twoPieceId === currentTwoPieceId.value
   // 基准必须与试算同一套 evaluate（含 hits）；不能用 analysisEval：
   // 异步扫掠后 evalSnapshot 常为空，会落到「无 hits」面板口径，事件模式下差值会错一个数量级
   const baseDamage = evaluateMainStatComboDamage(
@@ -2498,7 +2717,7 @@ const combinedMainStatPreview = computed(() => {
     : evaluateMainStatComboDamage(
         draftStats,
         counts,
-        combinedMainStatDraftTwoPieceId.value,
+        state.twoPieceId,
       )
   const damageDelta = proposedDamage - baseDamage
   return {
@@ -3189,6 +3408,51 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
     </div>
 
     <template v-if="sweepDamageKind">
+    <div class="sweep-main-stats">
+      <div class="sweep-main-stats-head">
+        <span class="filter-label">4/5/6 号主属性（扫掠专用）</span>
+        <button type="button" class="ghost-btn" @click="resetSweepMainStats">重置为导入</button>
+      </div>
+      <div class="main-stat-selects">
+        <label>
+          <span class="combined-main-stat-label">4号</span>
+          <select
+            :value="sweepMainStats.slot4MainStat"
+            @change="setSweepMainStat('slot4MainStat', $event)"
+          >
+            <option v-for="opt in DRIVE_DISC_SLOT_4_OPTIONS" :key="`sweep-4-${opt.id}`" :value="opt.id">
+              {{ opt.label }}
+            </option>
+          </select>
+        </label>
+        <label>
+          <span class="combined-main-stat-label">5号</span>
+          <select
+            :value="sweepMainStats.slot5MainStat"
+            @change="setSweepMainStat('slot5MainStat', $event)"
+          >
+            <option v-for="opt in DRIVE_DISC_SLOT_5_OPTIONS" :key="`sweep-5-${opt.id}`" :value="opt.id">
+              {{ opt.label }}
+            </option>
+          </select>
+        </label>
+        <label>
+          <span class="combined-main-stat-label">6号</span>
+          <select
+            :value="sweepMainStats.slot6MainStat"
+            @change="setSweepMainStat('slot6MainStat', $event)"
+          >
+            <option v-for="opt in DRIVE_DISC_SLOT_6_OPTIONS" :key="`sweep-6-${opt.id}`" :value="opt.id">
+              {{ opt.label }}
+            </option>
+          </select>
+        </label>
+      </div>
+      <p class="hint">
+        默认与导入面板的 4/5/6 一致；在此调整只影响扫掠柱图的计算（词条上限 / 柱图 / 差异 / 曲线 /
+        组合试算），不改动导入面板与词条分析页。改完需重新点「开始计算」。
+      </p>
+    </div>
     <div class="alloc-layout">
       <div class="alloc-left">
         <template v-if="sweepDamageKind === 'direct'">
@@ -3309,8 +3573,13 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
         <span v-if="chartEventSelectionSummary" class="chart-event-filter-summary">
           {{ chartEventSelectionSummary }}
         </span>
+        <template v-if="chartEventOverflow">
+          <button type="button" class="ghost-btn" @click="chartEventPickerOpen = true">
+            管理事件（{{ selectedChartEventIds.length }}/{{ chartEventOptions.length }}）
+          </button>
+        </template>
         <button
-          v-if="selectedChartEventIds.length !== chartEventOptions.length"
+          v-else-if="selectedChartEventIds.length !== chartEventOptions.length"
           type="button"
           class="ghost-btn"
           @click="selectAllChartEvents"
@@ -3318,7 +3587,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           全选
         </button>
       </div>
-      <div class="chart-event-filter-list">
+      <div v-if="!chartEventOverflow" class="chart-event-filter-list">
         <button
           v-for="opt in chartEventOptions"
           :key="opt.id"
@@ -3338,7 +3607,54 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
       <p class="chart-event-filter-hint">
         标注含类型、产生角色（如有）、暴击模式、次数与
         {{ selectedIndex != null ? '当前选中柱体' : '首个扫掠点' }}的期望伤害。
+        <template v-if="chartEventOverflow">事件较多，点「管理事件」在弹窗中勾选。</template>
       </p>
+
+      <IkModalShell
+        v-if="chartEventOverflow"
+        :open="chartEventPickerOpen"
+        size="wide"
+        @close="chartEventPickerOpen = false"
+      >
+        <template #header>
+          <div class="ik-modal-header-row">
+            <h3 class="ik-modal-header-title">统计事件管理</h3>
+            <span class="chart-event-picker-count">
+              已选 {{ selectedChartEventIds.length }} / {{ chartEventOptions.length }}
+            </span>
+          </div>
+        </template>
+        <div class="chart-event-picker">
+          <div class="chart-event-picker-toolbar">
+            <span class="hint">勾选参与柱状图统计的事件；默认全选 = 总伤害。</span>
+            <button
+              v-if="selectedChartEventIds.length !== chartEventOptions.length"
+              type="button"
+              class="ghost-btn"
+              @click="selectAllChartEvents"
+            >
+              全选
+            </button>
+          </div>
+          <div class="chart-event-picker-list">
+            <button
+              v-for="opt in chartEventOptions"
+              :key="opt.id"
+              type="button"
+              class="chart-event-chip"
+              :class="{ active: isChartEventSelected(opt.id) }"
+              :title="opt.metaText"
+              @click="toggleChartEvent(opt.id)"
+            >
+              <span class="chart-event-chip-top">
+                <span class="chart-event-kind">{{ opt.kindLabel }}</span>
+                <span class="chart-event-name">{{ opt.label }}</span>
+              </span>
+              <span class="chart-event-meta">{{ opt.metaText }}</span>
+            </button>
+          </div>
+        </div>
+      </IkModalShell>
     </div>
     <p v-if="!barLabels.length" class="empty">
       <template v-if="sweepDamageKind === 'direct' && directError">{{ directError }}</template>
@@ -4007,6 +4323,97 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
   font-size: 0.75rem;
   color: #7a8494;
   line-height: 1.45;
+}
+
+/* 统计事件小窗（事件过多时收进 IkModalShell）：弹窗固定在深色底，无需单独适配浅色主题 */
+.chart-event-picker-count {
+  font-size: 0.78rem;
+  color: #9aa3b0;
+}
+
+.chart-event-picker {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.75rem 0.9rem;
+}
+
+.chart-event-picker-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chart-event-picker-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-content: flex-start;
+  padding: 0.1rem;
+}
+
+/*
+ * 白天主题：统计事件小窗整体切浅色，与白天页面风格一致。
+ * 用 `.ik-dialog:has(.chart-event-picker)` 限定只覆盖本弹窗（内容带组件 scoped 标记），
+ * 不影响留言板等其他 ik 弹窗（项目里 calculatorLight.css 已有 :has 先例）。
+ * 注意：Vue scoped 编译器对「连续两个 :global()」解析会丢选择器，这里整个选择器放一个 :global()。
+ */
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .ik-dialog__outer) {
+  background: #d9dce1;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .ik-dialog__inner) {
+  background: #f2f3f5;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .ik-dialog__header) {
+  background: #ffffff;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .ik-dialog__main) {
+  background: #f2f3f5;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .ik-modal-header-title) {
+  color: #1c212a;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .chart-event-picker-count) {
+  color: #667085;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .chart-event-picker-toolbar .hint) {
+  color: #667085;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .chart-event-picker-toolbar .ghost-btn) {
+  border-color: #d5dae3;
+  background: #ffffff;
+  color: #1c212a;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .chart-event-chip) {
+  border-color: #d5dae3 !important;
+  background: #ffffff !important;
+  color: #1c212a !important;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .chart-event-chip.active) {
+  border-color: #c9a55c !important;
+  background: #fff8eb !important;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .chart-event-chip .chart-event-kind) {
+  background: #eef1f5 !important;
+  color: #475467 !important;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .chart-event-chip.active .chart-event-kind) {
+  background: rgba(201, 165, 92, 0.18) !important;
+  color: #1c212a !important;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .chart-event-chip .chart-event-name) {
+  color: #1c212a !important;
+}
+:global(html[data-theme='light'] .ik-dialog:has(.chart-event-picker) .chart-event-chip .chart-event-meta) {
+  color: #667085 !important;
 }
 
 .chart-event-chip {
@@ -4841,6 +5248,27 @@ th {
   display: flex;
   flex-direction: column;
   gap: 0.22rem;
+}
+
+/* 扫掠柱图独立 4/5/6 主属性选择（默认跟随导入面板，可单独调整） */
+.sweep-main-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sweep-main-stats-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.65rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sweep-main-stats .main-stat-selects {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.5rem;
 }
 
 .main-stat-two-piece-field :deep(.picker-summary) {

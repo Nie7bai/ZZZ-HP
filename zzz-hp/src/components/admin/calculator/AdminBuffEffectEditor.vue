@@ -12,7 +12,7 @@ import type {
 } from '@/types/calculator'
 import {
   BUFF_SKILL_TARGET_OPTIONS,
-  CHARACTER_ATTR_OPTIONS,
+  CONVERT_FROM_OPTIONS,
   CONVERT_PANEL_SOURCE_OPTIONS,
   BUFF_SCOPE_OPTIONS,
   SKILL_CATEGORY_OPTIONS,
@@ -428,7 +428,7 @@ function convertPreviewText(effect: BuffEffect): string {
   const convert = effect.convert
   if (!convert) return ''
   const attrLabel =
-    CHARACTER_ATTR_OPTIONS.find((item) => item.id === convert.from)?.label ?? convert.from
+    CONVERT_FROM_OPTIONS.find((item) => item.id === convert.from)?.label ?? convert.from
   const statLabel = buffStatFieldLabel(
     BUFF_STAT_FIELDS.find((item) => item.key === effect.stat) ?? BUFF_STAT_FIELDS[0]!,
   )
@@ -862,7 +862,7 @@ defineExpose({
           <label class="field">
             <span>来源属性</span>
             <select v-model="ensureConvert(effect).from">
-              <option v-for="opt in CHARACTER_ATTR_OPTIONS" :key="opt.id" :value="opt.id">
+              <option v-for="opt in CONVERT_FROM_OPTIONS" :key="opt.id" :value="opt.id">
                 {{ opt.label }}
               </option>
             </select>

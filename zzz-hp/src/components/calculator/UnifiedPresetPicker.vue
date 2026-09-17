@@ -102,15 +102,6 @@ const emit = defineEmits<{
 
 const open = defineModel<boolean>('open', { default: false })
 
-let maskDownSelf = false
-function onMaskMouseDown(e: MouseEvent) {
-  maskDownSelf = e.target === e.currentTarget
-}
-function onMaskMouseUp(e: MouseEvent) {
-  if (maskDownSelf && e.target === e.currentTarget) open.value = false
-  maskDownSelf = false
-}
-
 type Tab = 'agent' | 'wengine' | 'disc' | 'panel'
 const activeTab = ref<Tab>('agent')
 
@@ -134,17 +125,23 @@ const draftExternalPanel = reactive<ExternalPanelDraft>(createEmptyExternalPanel
 const draftAffixCounts = reactive(createEmptyAffixCounts())
 const draftAffixMains = reactive(createEmptyAffixDriveDiscMainStats())
 const draftSkillTalentLevels = reactive<SkillTalentLevels>(createDefaultSkillTalentLevels())
-/** 录入方式跟当前激活那份走：激活词条导入就先显示词条页，不再永远停在面板导入 */
-function entryModeFromAgent(agentId: string): Extract<PanelCalcMode, 'panel' | 'affix'> {
-  const active = props.slotPanels?.[agentId]?.active
-  if (active === 'affixDerived') return 'affix'
-  if (active === 'imported') return 'panel'
-  return props.preferredEntryMode ?? 'panel'
+/** 录入方式记忆 key：记住上次「面板导入 / 词条导入」，下次打开不强制回面板 */
+const ENTRY_MODE_STORAGE_KEY = 'zzz-hp-panel-import-entry-mode'
+
+function readRememberedEntryMode(): Extract<PanelCalcMode, 'panel' | 'affix'> | null {
+  const raw = localStorage.getItem(ENTRY_MODE_STORAGE_KEY)
+  return raw === 'panel' || raw === 'affix' ? raw : null
 }
 
+function rememberEntryMode(mode: Extract<PanelCalcMode, 'panel' | 'affix'>) {
+  localStorage.setItem(ENTRY_MODE_STORAGE_KEY, mode)
+}
+
+/** 面板 Tab 独立切换：面板导入 / 词条导入 */
 const entryMode = ref<Extract<PanelCalcMode, 'panel' | 'affix'>>(
-  entryModeFromAgent(props.teamSlots[props.activeSlot]?.agentId || ''),
+  readRememberedEntryMode() ?? props.preferredEntryMode ?? 'panel',
 )
+watch(entryMode, (mode) => rememberEntryMode(mode))
 /** 面板草稿是不是来自截图识别（只用于记录来历，元数据） */
 let draftFromRecognition = false
 /** 识别写进草稿的那份数值快照：用来区分「识别来的」与「后来手改的」 */
@@ -284,8 +281,8 @@ watch(open, (isOpen) => {
     agentIdRestoredOnOpen = null
     return
   }
+  entryMode.value = readRememberedEntryMode() ?? props.preferredEntryMode ?? 'panel'
   const slot = props.teamSlots[props.activeSlot]
-  entryMode.value = entryModeFromAgent(slot?.agentId || '')
   if (!slot) return
   selected.value = {
     agentId: slot.agentId || '',
@@ -327,7 +324,6 @@ watch(
     // 不塞默认值、不清空 —— 那些默认值会让人以为「面板/词条已经被填过」，
     // 而且点确定导入时会把这些没录入过的数字写成真面板。
     resetDraftPanelFromSlot()
-    entryMode.value = entryModeFromAgent(newId)
   },
 )
 
@@ -335,7 +331,8 @@ watch(
   () => selected.value.rank,
   (rank) => {
     if (!open.value) return
-    Object.assign(draftSkillTalentLevels, fillSkillTalentLevels(draftSkillTalentLevels, rank))
+    // 弹窗内改影画：技能等级草稿跟随新影画档位上限（语义见 dev-docs/skill-talent-level-rank-sync.md）
+    Object.assign(draftSkillTalentLevels, createDefaultSkillTalentLevels(rank))
   },
 )
 
@@ -611,8 +608,7 @@ const canConfirm = computed(() => !!selected.value.agentId)
       v-if="open"
       class="unified-overlay"
       role="presentation"
-      @mousedown="onMaskMouseDown"
-      @mouseup="onMaskMouseUp"
+      @click.self="open = false"
     >
       <div class="unified-modal" role="dialog" aria-modal="true" aria-label="导入预设">
         <!-- Header -->
@@ -1083,9 +1079,8 @@ const canConfirm = computed(() => !!selected.value.agentId)
 }
 
 .panel-source-btn.active {
-  border-color: #e07070;
-  color: #e53935;
-  font-weight: 700;
+  border-color: #7dd3a0;
+  color: #7dd3a0;
 }
 
 .panel-source-empty {
@@ -1487,22 +1482,6 @@ const canConfirm = computed(() => !!selected.value.agentId)
 :global([data-theme='light']) .disc-col-header p,
 :global([data-theme='light']) .trigger-hint {
   color: #4d6a80;
-}
-
-:global([data-theme='light']) .panel-source-title,
-:global([data-theme='light']) .panel-source-empty {
-  color: #4d6a80;
-}
-
-:global([data-theme='light']) .panel-source-btn {
-  border-color: #b7d3e8;
-  color: #4d6a80;
-}
-
-:global([data-theme='light']) .panel-source-btn.active {
-  border-color: #e07070;
-  color: #c62828;
-  background: #fff5f5;
 }
 
 :global([data-theme='light']) .panel-locked-state {

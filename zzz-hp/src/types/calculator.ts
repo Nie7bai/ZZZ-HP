@@ -127,6 +127,31 @@ export const CHARACTER_ATTR_OPTIONS: { id: CharacterAttrKey; label: string }[] =
   { id: 'level', label: '等级' },
 ]
 
+/** 转模来源：五大类技能等级（普通攻击/闪避/支援/特殊/连携终结） */
+export type SkillConvertFromKey =
+  | 'skillLevelBasic'
+  | 'skillLevelDodge'
+  | 'skillLevelAssist'
+  | 'skillLevelSpecial'
+  | 'skillLevelChainUltimate'
+
+/** 转模来源（面板属性 | 技能等级） */
+export type ConvertFromKey = CharacterAttrKey | SkillConvertFromKey
+
+export const SKILL_LEVEL_CONVERT_OPTIONS: { id: SkillConvertFromKey; label: string }[] = [
+  { id: 'skillLevelBasic', label: '普通攻击等级' },
+  { id: 'skillLevelDodge', label: '闪避等级' },
+  { id: 'skillLevelAssist', label: '支援攻击等级' },
+  { id: 'skillLevelSpecial', label: '特殊技等级' },
+  { id: 'skillLevelChainUltimate', label: '连携/终结等级' },
+]
+
+/** 转模来源下拉全集（面板属性 + 技能等级） */
+export const CONVERT_FROM_OPTIONS: { id: ConvertFromKey; label: string }[] = [
+  ...CHARACTER_ATTR_OPTIONS,
+  ...SKILL_LEVEL_CONVERT_OPTIONS,
+]
+
 export const CONVERT_PANEL_SOURCE_OPTIONS: { id: ConvertPanelSource; label: string }[] = [
   { id: 'external', label: '根据局外面板' },
   { id: 'final', label: '根据局内面板' },
@@ -260,7 +285,7 @@ export interface BuffStatModifiers {
 export type BuffStatKey = keyof BuffStatModifiers
 
 export interface BuffEffectConvert {
-  from: CharacterAttrKey
+  from: ConvertFromKey
   /** external/final 读面板；manual 自行设置基础值（不看面板） */
   panelSource?: ConvertPanelSource
   ratioPercent: number
@@ -491,6 +516,18 @@ export interface Skill {
   damagePercentage?: number
   /** nanoka 每级增长（万分比整数） */
   damagePercentageGrowth?: number
+  /**
+   * 耀变等特殊伤害跟随的五大类技能等级键（蕾米耀变用：倍率随普通攻击/支援攻击/终结等级变化）。
+   * 不给 skillTypes 填对应类型：那会经 buildSkillMatchCoords 生成「普通攻击」等 buff 匹配坐标，
+   * 让耀变错误吃到招式限定增益。缺省时仍按 skillTypes 推断。
+   */
+  radianceTalentKey?:
+    | 'basic'
+    | 'dodge'
+    | 'assist'
+    | 'special'
+    | 'chainUltimate'
+    | null
   /** 备注：计算页招式库/准备行展示 */
   note?: string
 }

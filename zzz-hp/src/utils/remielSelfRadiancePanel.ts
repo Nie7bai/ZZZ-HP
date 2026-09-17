@@ -27,7 +27,8 @@ import {
 } from '@/utils/remielUtils'
 
 /**
- * 蕾米本人耀变：仅本槽、不含邦布（用于穿透/抗穿/增伤等仍取本槽面板的部分）。
+ * 蕾米本人耀变：仅本槽、不含邦布（用于攻击/精通/穿透/耀变抗穿等仍取本槽面板的部分；
+ * 抗性穿透 resPen 例外，改取完整面板以吃到队友 team resPen，见 resolveRemielSelfRadianceCalcInput）。
  * 生产入口走 `panelViewPolicy.ts` 的 `remiel-self-radiance`；本文件仍是规则实现。
  */
 export function computeRemielSelfInCombatPanel(
@@ -129,6 +130,12 @@ export function collectRemielSelfRestrictedContributionsFromSources(
   })
 
   const skillCtx = ctx.skillContext
+  // 等级转模来源：效果所属角色 = 蕾米自己（本函数只收集本槽贡献）
+  const selfAgentId = ctx.teamSlots[remielSlotIndex]?.agentId
+  const selfTalentLevels = selfAgentId
+    ? (ctx.skillTalentLevelsByAgent?.[selfAgentId] ?? null)
+    : null
+
   let atkConvert = 0
   let masteryBonus = 0
   const atkItems: string[] = []
@@ -148,7 +155,7 @@ export function collectRemielSelfRestrictedContributionsFromSources(
         effect.kind === 'convert' &&
         effect.stat === 'atk'
       ) {
-        const value = resolveConvertValue(effect, {}, convertOverride, panelSourceValues)
+        const value = resolveConvertValue(effect, {}, convertOverride, panelSourceValues, selfTalentLevels)
         if (!value) continue
         atkConvert += value
         atkItems.push(`${source.label} 攻击力转模 ${formatSignedContribution(value)}`)
@@ -160,7 +167,7 @@ export function collectRemielSelfRestrictedContributionsFromSources(
 
       const value =
         effect.kind === 'convert'
-          ? resolveConvertValue(effect, {}, convertOverride, panelSourceValues)
+          ? resolveConvertValue(effect, {}, convertOverride, panelSourceValues, selfTalentLevels)
           : resolveEffectBaseValue(effect, stacks)
       if (!value) continue
       masteryBonus += value
@@ -342,6 +349,16 @@ export function resolveRemielSelfRadianceCalcInput(options: {
     options.remielSlotIndex,
     finalMutationPanel,
   )
+  /**
+   * 抗性穿透取蕾米**完整局内面板**（含队友影画/音擎/驱动盘 team 效果与邦布），
+   * 与招式流程链路一致：队友（如柚叶影画1「甜蜜惊吓」team resPen +10）必须计入，
+   * 否则蕾米自身耀变的抗性区吃不到队友抗性穿透（用户口径 2026-09-16）。
+   * 其余字段（攻击/精通/穿透/耀变抗穿等）仍取本槽受限面板（上方 stats）。
+   */
+  const fullPanelResPen = computeFinalPanel(options.externalPanel, {
+    ...options.panelCtx,
+    mainSlotIndex: options.remielSlotIndex,
+  }).finalPanel.resPen
   return {
     agentLevel: options.agentLevel,
     inCombatAtk: stats.inCombatAtk,
@@ -349,7 +366,7 @@ export function resolveRemielSelfRadianceCalcInput(options: {
     mutationZone: stats.mutationZone,
     penRate: stats.penRate,
     pen: stats.pen,
-    resPen: stats.resPen,
+    resPen: fullPanelResPen,
     radianceResPen: stats.radianceResPen,
     radianceDmgBonus: stats.radianceDmgBonus,
     anomalyDmgBonus: stats.anomalyDmgBonus,

@@ -1,4 +1,4 @@
-import type { Skill, SkillTypeId } from '@/types/calculator'
+import type { Skill, SkillConvertFromKey, SkillTypeId } from '@/types/calculator'
 
 /** 面板导入配置的五大类技能等级（连携/终结共用一档） */
 export type SkillTalentLevelKey =
@@ -9,6 +9,22 @@ export type SkillTalentLevelKey =
   | 'chainUltimate'
 
 export type SkillTalentLevels = Record<SkillTalentLevelKey, number>
+
+/** 转模来源「技能等级键」→ 五大类等级键（buffEffect.resolveConvertValue 用） */
+export const SKILL_CONVERT_FROM_TO_TALENT_KEY: Record<
+  SkillConvertFromKey,
+  SkillTalentLevelKey
+> = {
+  skillLevelBasic: 'basic',
+  skillLevelDodge: 'dodge',
+  skillLevelAssist: 'assist',
+  skillLevelSpecial: 'special',
+  skillLevelChainUltimate: 'chainUltimate',
+}
+
+export function isSkillConvertFromKey(value: string): value is SkillConvertFromKey {
+  return value in SKILL_CONVERT_FROM_TO_TALENT_KEY
+}
 
 export const SKILL_TALENT_LEVEL_KEYS: SkillTalentLevelKey[] = [
   'basic',
@@ -122,8 +138,36 @@ export function computeNanokaBaseMultPercent(
 }
 
 /**
+ * 招式倍率来源标注（等级公式）：如「普通攻击 Lv.16：200% + 10% × 16 = 360%」。
+ * nanoka 参数缺失（非等级公式招式）或等级为空时返回 null（调用方不展示该组）。
+ * 数据侧 damagePercentage 为万分比且按 L1 = base + growth 折算，因此 base = dp/100 − growth。
+ */
+export function buildSkillBaseMultNote(
+  skill: Pick<
+    Skill,
+    'damagePercentage' | 'damagePercentageGrowth' | 'radianceTalentKey' | 'skillTypes'
+  >,
+  talentLevel: number | null | undefined,
+): string | null {
+  if (talentLevel == null || !Number.isFinite(Number(talentLevel))) return null
+  const key = skill.radianceTalentKey ?? resolveSkillTalentLevelKey(skill.skillTypes)
+  if (!key) return null
+  const dp = Number(skill.damagePercentage)
+  if (!Number.isFinite(dp) || dp === 0) return null
+  // dp / growth 均为万分比（3120 = 31.20%），换算成百分数展示
+  const growthPercent = (Number(skill.damagePercentageGrowth) || 0) / 100
+  const basePercent = Math.round((dp / 100 - growthPercent) * 1000) / 1000
+  const level = Math.max(1, Math.round(Number(talentLevel)))
+  const total = Math.round((basePercent + growthPercent * level) * 1000) / 1000
+  const label = SKILL_TALENT_LEVEL_LABELS[key]
+  const growthText = growthPercent > 0 ? ` + ${growthPercent}% × ${level}` : ''
+  return `招式倍率：${label} Lv.${level} → ${basePercent}%${growthText} = ${total}%`
+}
+
+/**
  * 结算/展示用有效基础倍率%。
- * 仅 nanoka 直伤（含锐爆）且能映射到五大类时按等级重算；否则用库内 baseMult。
+ * 仅 nanoka 直伤（含锐爆）/ 耀变且能映射到五大类时按等级重算；否则用库内 baseMult。
+ * 耀变招式用 `radianceTalentKey` 显式指定等级类别（不依赖 skillTypes，避免 buff 匹配副作用）。
  */
 export function resolveEffectiveBaseMult(
   skill: Pick<
@@ -134,15 +178,19 @@ export function resolveEffectiveBaseMult(
     | 'multSource'
     | 'damagePercentage'
     | 'damagePercentageGrowth'
+    | 'radianceTalentKey'
   >,
   levels?: Partial<SkillTalentLevels> | null,
   rank: number | null | undefined = 0,
 ): { baseMult: number; talentLevel: number | null; talentKey: SkillTalentLevelKey | null } {
-  const talentKey = resolveSkillTalentLevelKey(skill.skillTypes)
+  const talentKey =
+    skill.radianceTalentKey ?? resolveSkillTalentLevelKey(skill.skillTypes)
   const talentLevel = talentKey ? fillSkillTalentLevels(levels, rank)[talentKey] : null
   const canScale =
     skill.multSource === 'nanoka' &&
-    (skill.damageType === 'direct' || skill.damageType === 'sharpen') &&
+    (skill.damageType === 'direct' ||
+      skill.damageType === 'sharpen' ||
+      skill.damageType === 'radiance') &&
     talentKey != null &&
     Number.isFinite(Number(skill.damagePercentage))
 

@@ -145,14 +145,19 @@ const baseMultPlaceholder = computed(() => {
   return '可不填'
 })
 
-/** 未填时输入框留空，不默认显 0；有结算最终倍率时优先显示（紊乱/乱流不挡在已填基础倍率前） */
+/**
+ * 基础倍率由结算/公式决定的类型（紊乱/乱流=最终倍率区；耀变=随技能等级公式）：
+ * 优先显示已结算的有效倍率，而不是招式定义里的固定 baseMult。
+ */
+function isSettledMultType(type: string): boolean {
+  return type === 'disorder' || type === 'turbulence' || type === 'radiance'
+}
+
+/** 未填时输入框留空，不默认显 0；有结算最终倍率时优先显示（紊乱/乱流/耀变不挡在已填基础倍率前） */
 const baseMultInput = computed({
   get: () => {
     const type = draft.value.damageType
-    if (
-      (type === 'disorder' || type === 'turbulence') &&
-      props.resolvedMultDisplay
-    ) {
+    if (isSettledMultType(type) && props.resolvedMultDisplay) {
       return props.resolvedMultDisplay
     }
     if (!unsetSkillMult(draft.value.baseMult)) return draft.value.baseMult
@@ -181,13 +186,10 @@ const settlementMultInput = computed({
   },
 })
 
-/** 只读：紊乱/乱流优先最终倍率区 → 填写值 → 固有 → 等待提示 */
+/** 只读：紊乱/乱流/耀变优先最终倍率区 → 填写值 → 固有 → 等待提示 */
 const readonlyBaseMultDisplay = computed(() => {
   const type = draft.value.damageType
-  if (
-    (type === 'disorder' || type === 'turbulence') &&
-    props.resolvedMultDisplay
-  ) {
+  if (isSettledMultType(type) && props.resolvedMultDisplay) {
     return props.resolvedMultDisplay
   }
   const filled = Number(draft.value.baseMult)

@@ -133,7 +133,9 @@ function pushRemielSelfRadianceRows(rows: SkillCalcZoneRow[], result: DamageCalc
   push(rows, '易伤区', result.anomalyVulnerableMultiplier)
   push(rows, '失衡易伤区', result.staggerMultiplier)
   push(rows, '耀变综合增伤区', result.radianceCombinedDmgBonusZone)
-  push(rows, '耀变倍率区', result.radianceMultZone)
+  // 耀变倍率区按百分比展示（3.6 → 360）：倍率区与防御/抗性等乘数区分开，避免误读成 3.6%
+  // （用户口径 2026-09-16；仅耀变如此展示，其他类型倍率区保持区小数）
+  push(rows, '耀变倍率区', result.radianceMultZone * 100)
   push(rows, '特殊倍率乘区', result.specialMultZone)
   push(rows, '特殊乘区', result.specialMultiplier)
   push(rows, '期望伤害', result.radianceExpected, true)
@@ -243,7 +245,8 @@ export function buildSkillCalcZoneRows(
 
   if (damageType === 'radiance') {
     push(rows, '耀变综合增伤区', result.radianceCombinedDmgBonusZone)
-    push(rows, '耀变倍率区', result.radianceMultZone)
+    // 百分比展示，同 pushRemielSelfRadianceRows 的耀变倍率区
+    push(rows, '耀变倍率区', result.radianceMultZone * 100)
     push(rows, '期望伤害', result.radianceExpected, true)
   }
 
