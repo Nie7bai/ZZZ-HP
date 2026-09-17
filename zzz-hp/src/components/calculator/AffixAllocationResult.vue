@@ -21,6 +21,10 @@ const props = defineProps<{
   progress?: AffixOptimizerProgress | null
   /** 上一次完成的结果已过期（中止或条件已变） */
   stale?: boolean
+  /** 最近一次求解的实际耗时（毫秒）：从点下按钮到返回，含门槛测量 / 专路 / Beam / 换档；中止或没跑过为 null */
+  elapsedMs?: number | null
+  /** 求解中的实时耗时（毫秒，由外层每 200ms 推一次）；没在跑为 null */
+  liveMs?: number | null
 }>()
 
 /** 阶段名 → 界面文案 */
@@ -87,12 +91,21 @@ function barWidth(rolls: number) {
 function formatNumber(value: number) {
   return Math.round(value).toLocaleString('en-US')
 }
+
+/** 耗时显示：10 秒以内保留一位小数，超过给整秒 */
+function formatDuration(ms: number) {
+  const seconds = Math.max(0, ms) / 1000
+  return seconds < 10 ? `${seconds.toFixed(1)}s` : `${Math.round(seconds)}s`
+}
 </script>
 
 <template>
   <div class="alloc-result">
     <template v-if="loading">
-      <p class="hint">{{ progressLabel }}</p>
+      <p class="hint">
+        {{ progressLabel }}
+        <template v-if="liveMs != null"> · 已用 {{ formatDuration(liveMs) }}</template>
+      </p>
       <div v-if="progress && progress.workBudget != null" class="progress-track">
         <div class="progress-fill" :style="{ width: `${progressPercent}%` }" />
       </div>
@@ -204,6 +217,7 @@ function formatNumber(value: number) {
           {{ result.winningPath === 'penRate' ? '穿透专路胜出' : '普通路线胜出' }}
           <template v-if="result.penRatePathUsed"> · 已跑穿透专路</template>
           · 走完阶段 {{ result.phasesCompleted.join(' → ') }}
+          <template v-if="elapsedMs != null"> · 耗时 {{ formatDuration(elapsedMs) }}</template>
         </span>
       </div>
     </template>

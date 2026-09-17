@@ -663,6 +663,7 @@ onBeforeUnmount(() => {
   if (skillFlowEmitTimer) clearTimeout(skillFlowEmitTimer)
   if (panelPreviewTimer) clearTimeout(panelPreviewTimer)
   if (eventAffixImpactTimer) clearTimeout(eventAffixImpactTimer)
+  stopAllocTimer(false) // 计时器也要清，别在组件卸载后还跳
   sweepAbort?.abort()
 })
 
@@ -1569,6 +1570,43 @@ const affixAllocError = ref<string | null>(null)
  * 好让用户知道刚才点的是哪一个。
  */
 const affixAllocMode = ref<'default' | 'game' | null>(null)
+
+/**
+ * 求解计时（纯界面，不落盘、不参与计算）。
+ *
+ * 口径：从「点下按钮」到「求解返回」的墙钟时间，**包含**门槛测量 / 专路 / Beam / 换档，
+ * 不包含之后的渲染。中止时不留时间（没有结果就没有耗时可言）。
+ * 游戏专用模式跑 4 个口袋，这个时间就是**全部口袋加起来**的（各袋单独耗时没有需求，没记）。
+ */
+const affixAllocStartedAt = ref<number | null>(null)
+const affixAllocElapsedMs = ref<number | null>(null)
+const affixAllocTickMs = ref<number | null>(null)
+let affixAllocTickTimer: ReturnType<typeof setInterval> | null = null
+
+function startAllocTimer() {
+  stopAllocTimer(false) // 清掉上一条（含没清干净的 interval）
+  affixAllocStartedAt.value = performance.now()
+  affixAllocElapsedMs.value = null
+  affixAllocTickMs.value = 0
+  affixAllocTickTimer = setInterval(() => {
+    if (affixAllocStartedAt.value != null) {
+      affixAllocTickMs.value = performance.now() - affixAllocStartedAt.value
+    }
+  }, 200)
+}
+
+/** 停表；`keepElapsed = false` 用于中止（不留耗时）。重复调用无副作用。 */
+function stopAllocTimer(keepElapsed = true) {
+  if (affixAllocTickTimer != null) {
+    clearInterval(affixAllocTickTimer)
+    affixAllocTickTimer = null
+  }
+  const startedAt = affixAllocStartedAt.value
+  if (startedAt == null) return
+  if (keepElapsed) affixAllocElapsedMs.value = performance.now() - startedAt
+  affixAllocStartedAt.value = null
+  affixAllocTickMs.value = null
+}
 /**
  * 词条搜索设置（本机独立存盘）：预设 + 三项搜索参数 + 高级区展开状态。
  *
@@ -1838,6 +1876,7 @@ async function runAffixAllocation() {
   affixAllocTotalRolls.value = total
   affixAllocMode.value = 'default'
   affixAllocLoading.value = true
+  startAllocTimer()
   affixAllocError.value = null
   affixAllocProgress.value = null
   lastProgressAt = 0
@@ -1874,11 +1913,15 @@ async function runAffixAllocation() {
     affixAllocResultLibrary.value = affixLibraryEntries.value
     affixAllocResultStale.value = false
   } catch (error) {
-    if ((error as DOMException)?.name === 'AbortError') return
+    if ((error as DOMException)?.name === 'AbortError') {
+      stopAllocTimer(false) // 中止：不留耗时
+      return
+    }
     affixAllocError.value = error instanceof Error ? error.message : '计算失败'
     affixAllocResult.value = null
     affixAllocResultStale.value = false
   } finally {
+    stopAllocTimer()
     if (affixAllocAbort === controller) {
       affixAllocLoading.value = false
       affixAllocProgress.value = null
@@ -1928,6 +1971,7 @@ async function runGameAffixAllocation() {
   affixAllocTotalRolls.value = total
   affixAllocMode.value = 'game'
   affixAllocLoading.value = true
+  startAllocTimer()
   affixAllocError.value = null
   affixAllocProgress.value = null
   lastProgressAt = 0
@@ -1961,11 +2005,15 @@ async function runGameAffixAllocation() {
     affixAllocResultLibrary.value = gameAffixLibraryEntries
     affixAllocResultStale.value = false
   } catch (error) {
-    if ((error as DOMException)?.name === 'AbortError') return
+    if ((error as DOMException)?.name === 'AbortError') {
+      stopAllocTimer(false) // 中止：不留耗时
+      return
+    }
     affixAllocError.value = error instanceof Error ? error.message : '计算失败'
     affixAllocResult.value = null
     affixAllocResultStale.value = false
   } finally {
+    stopAllocTimer()
     if (affixAllocAbort === controller) {
       affixAllocLoading.value = false
       affixAllocProgress.value = null
@@ -3041,6 +3089,8 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           :error="affixAllocError"
           :progress="affixAllocProgress"
           :stale="affixAllocResultStale"
+          :elapsed-ms="affixAllocElapsedMs"
+          :live-ms="affixAllocLoading ? affixAllocTickMs : null"
         />
         <GameAffixRulesModal
           :open="gameAffixRulesOpen"
