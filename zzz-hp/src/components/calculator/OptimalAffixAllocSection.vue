@@ -115,6 +115,7 @@ import {
 import {
   computeAffixBenefitSeriesForTable,
   computeAffixBenefitTable,
+  type AffixBenefitRow,
   type AffixBenefitSeries,
   type AffixBenefitTable as AffixBenefitTableData,
 } from '@/utils/affixBenefitAnalysis'
@@ -1878,6 +1879,8 @@ const gameAffixRulesOpen = ref(false)
 const affixBenefitTable = ref<AffixBenefitTableData | null>(null)
 /** 逐档收益曲线：按需补算（首屏不算），失效时置 null */
 const affixBenefitSeries = ref<AffixBenefitSeries[] | null>(null)
+/** 上面这份曲线属于哪一组（曲线只做组内对比，换组要重算） */
+const affixBenefitSeriesGroup = ref('')
 /** 曲线补算中（首屏不算曲线，切到「收益曲线」时才补） */
 const affixBenefitSeriesLoading = ref(false)
 const affixBenefitLoading = ref(false)
@@ -2018,6 +2021,7 @@ function runAffixBenefitOnly() {
   if (!affixLibraryEntries.value.length) {
     affixBenefitTable.value = null
     affixBenefitSeries.value = null
+    affixBenefitSeriesGroup.value = ''
     return
   }
   affixBenefitLoading.value = true
@@ -2033,6 +2037,7 @@ function runAffixBenefitOnly() {
         includeSeries: false,
       })
       affixBenefitSeries.value = null
+      affixBenefitSeriesGroup.value = ''
     } finally {
       affixBenefitLoading.value = false
     }
@@ -2041,12 +2046,24 @@ function runAffixBenefitOnly() {
 
 /**
  * 补算逐档收益曲线（用户真的要看折线图时）。
- * 已算过或正在算则直接返回，避免重复点击反复重算；放到下一个宏任务里算，避免卡住点击。
+ *
+ * **只做组内对比**（2026-09-17 用户口径）：曲线只画当前分组内的条目 ——
+ * 4 号位 / 5 号位 / 6 号位 / 2 件套 / 副词条 抢的不是同一份资源，混在一张图上没有可比性。
+ * 换组才重算（缓存按组比对）；组内按 +1 档收益率取前 N 条由 `computeAffixBenefitSeriesForTable` 负责。
  */
 function ensureAffixBenefitSeries() {
-  if (affixBenefitSeries.value || affixBenefitSeriesLoading.value) return
+  if (affixBenefitSeriesLoading.value) return
   const table = affixBenefitTable.value
   if (!table || !table.rows.length) return
+  const groups = affixAllocCurveGroups.value
+  if (!groups.length) return
+  // 首次（或所选组已消失）落定到「当前最强条目所在组」；落定之后跟着用户选，不自动漂移
+  if (!groups.includes(affixAllocCurveGroup.value)) {
+    const topGroup = affixGroupByEntryId.value.get(table.rows[0]!.entryId) ?? ''
+    affixAllocCurveGroup.value = groups.includes(topGroup) ? topGroup : groups[0]!
+  }
+  const group = affixAllocCurveGroup.value
+  if (affixBenefitSeries.value && affixBenefitSeriesGroup.value === group) return
   const input = {
     ctx: evalCtx.value,
     baseCounts: affixAllocBaseCounts.value,
@@ -2054,9 +2071,15 @@ function ensureAffixBenefitSeries() {
     rollsPerStep: affixBenefitStep.value,
   }
   affixBenefitSeriesLoading.value = true
+  // 换组先把上一组的线清掉：留着的话新组的标题下画的是旧组的曲线
+  affixBenefitSeries.value = null
   window.setTimeout(() => {
     try {
-      affixBenefitSeries.value = computeAffixBenefitSeriesForTable(input, table)
+      affixBenefitSeries.value = computeAffixBenefitSeriesForTable(input, {
+        baselineDamage: table.baselineDamage,
+        rows: affixCurveRowsOfGroup(group),
+      })
+      affixBenefitSeriesGroup.value = group
     } finally {
       affixBenefitSeriesLoading.value = false
     }
@@ -2268,15 +2291,51 @@ function setAffixBenefitStep(step: number) {
   runAffixBenefitOnly()
 }
 
-/** 词条分配模式的收益曲线数据：复用收益表的逐档曲线 */
+/** 词条分配模式的收益曲线数据：复用收益表的逐档曲线（只画当前分组内的条目） */
 const affixAllocCurveMode = ref<'cumulative' | 'marginal'>('cumulative')
 const affixAllocCurveMaxRolls = 10
+/** 曲线当前分组（用户选择；空串或所选组已消失时，由 `ensureAffixBenefitSeries` 落定） */
+const affixAllocCurveGroup = ref('')
 /** 曲线数据按需补算：未算过时为 null，模板据此显示「正在准备曲线」而不是空图 */
 const affixAllocCurveData = computed(() => affixBenefitSeries.value)
 
+/** 条目 id → 组名（收益表的行只有 id，组名得回词条库查） */
+const affixGroupByEntryId = computed(() => {
+  const map = new Map<string, string>()
+  for (const entry of affixLibraryEntries.value) map.set(entry.id, entry.group)
+  return map
+})
+
+/**
+ * 曲线可选的分组：当前收益表里**真有行**的组，按词条库组表顺序（与收益表筛选条同口径）；
+ * 组表里没有的组名（组被删掉、条目还在）也列出来，否则那些条目在曲线上没法单独看。
+ */
+const affixAllocCurveGroups = computed(() => {
+  const present = new Set<string>()
+  for (const row of affixBenefitTable.value?.rows ?? []) {
+    const name = affixGroupByEntryId.value.get(row.entryId) ?? ''
+    if (name) present.add(name)
+  }
+  const ordered = affixLibraryState.value.groups
+    .map((group) => group.name)
+    .filter((name) => present.has(name))
+  for (const name of present) {
+    if (!ordered.includes(name)) ordered.push(name)
+  }
+  return ordered
+})
+
+/** 某分组在当前收益表里的行（曲线只画这些行 —— 组内对比） */
+function affixCurveRowsOfGroup(group: string): AffixBenefitRow[] {
+  return (affixBenefitTable.value?.rows ?? []).filter(
+    (row) => (affixGroupByEntryId.value.get(row.entryId) ?? '') === group,
+  )
+}
+
 // 折线图只在「收益曲线」子页签且已有求解结果时渲染；在那之前不必付曲线的计算成本
+// 分组变化也要过这里：换组 = 换一份行子集，交给 `ensureAffixBenefitSeries` 判断要不要重算
 watch(
-  [affixAllocDetailTab, affixAllocResult, affixBenefitTable],
+  [affixAllocDetailTab, affixAllocResult, affixBenefitTable, affixAllocCurveGroup],
   () => {
     if (affixAllocDetailTab.value !== 'curve') return
     if (!affixAllocResult.value) return
@@ -3370,9 +3429,11 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
             <BenefitCurvePanel
               v-if="affixAllocCurveData"
               v-model:mode="affixAllocCurveMode"
+              v-model:group="affixAllocCurveGroup"
               :series="affixAllocCurveData"
               :max-added="affixAllocCurveMaxRolls"
-              hint="逐档真实重算；只画收益率最高的前几条词条"
+              :groups="affixAllocCurveGroups"
+              hint="逐档真实重算；只比同组条目，画本组收益率最高的前几条"
             />
             <p v-else-if="affixBenefitSeriesLoading" class="hint">收益曲线计算中…（首屏只算「+1 档」表，曲线按需补算）</p>
             <p v-else class="hint">暂无收益曲线数据。</p>

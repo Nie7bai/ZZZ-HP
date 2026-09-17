@@ -7,6 +7,9 @@ import type { BenefitCurveSeries } from '@/utils/optimalAffixAlloc'
  *
  * 扫掠柱图与词条分配共用同一份实现，只注入 series 与档数上限；
  * 模式切换（累计/边际）由本组件内部维护，避免各调用方重复实现。
+ *
+ * 分组 chip 只在调用方给了 `groups` 时出现：词条分配模式**只做组内对比**
+ * （同一张图里的条目抢的是同一份资源，跨组混画没有可比性），扫掠模式没有分组概念。
  */
 withDefaults(
   defineProps<{
@@ -15,11 +18,15 @@ withDefaults(
     maxAdded: number
     /** 右侧说明文案 */
     hint?: string
+    /** 可选分组（顺序由调用方定；空数组 = 不显示分组 chip） */
+    groups?: string[]
   }>(),
-  { hint: '' },
+  { hint: '', groups: () => [] },
 )
 
 const mode = defineModel<'cumulative' | 'marginal'>('mode', { default: 'cumulative' })
+/** 当前分组（调用方给了 `groups` 时才有意义） */
+const group = defineModel<string>('group', { default: '' })
 </script>
 
 <template>
@@ -42,6 +49,20 @@ const mode = defineModel<'cumulative' | 'marginal'>('mode', { default: 'cumulati
     </button>
     <span v-if="hint" class="hint">{{ hint }}</span>
   </div>
+  <div v-if="groups.length" class="curve-groups">
+    <span class="group-label">分组</span>
+    <button
+      v-for="name in groups"
+      :key="name"
+      type="button"
+      class="chip"
+      :class="{ active: group === name }"
+      :title="`只看「${name}」组内的条目`"
+      @click="group = name"
+    >
+      {{ name }}
+    </button>
+  </div>
   <OptimalBenefitCurveChart :series="series" :mode="mode" :max-added="maxAdded" />
 </template>
 
@@ -57,6 +78,20 @@ const mode = defineModel<'cumulative' | 'marginal'>('mode', { default: 'cumulati
 
 .hint {
   margin: 0;
+  font-size: 0.8rem;
+  color: #9aa3b0;
+}
+
+/* 分组 chip 行：与收益表的筛选条同款，视觉上压在模式行下面一行 */
+.curve-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  margin-top: 0.4rem;
+}
+
+.group-label {
   font-size: 0.8rem;
   color: #9aa3b0;
 }

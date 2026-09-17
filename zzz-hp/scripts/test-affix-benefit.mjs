@@ -40,7 +40,7 @@ import {
   setAffixLibraryEntryEnabled,
   statKeyOfTarget,
 } from '../src/utils/affixLibrary.ts'
-import { affixRelativeWeights, computeAffixBenefitTable } from '../src/utils/affixBenefitAnalysis.ts'
+import { affixRelativeWeights, computeAffixBenefitSeriesForTable, computeAffixBenefitTable } from '../src/utils/affixBenefitAnalysis.ts'
 import {
   buildOptimalEvalContext,
   computeDiffAnalysis,
@@ -690,6 +690,51 @@ console.log('\n[?] 收益表筛选状态')
   check('用并集剪枝：另一套库独有的名字活下来',
     JSON.stringify(pruneAffixBenefitFilters({ hideNoBenefit: true, hiddenGroups: ['幽灵组', '已改名的组'] }, known).hiddenGroups) ===
       JSON.stringify(['幽灵组']))
+}
+
+// ---------- 8. 收益曲线只做组内对比 ----------
+console.log('\n[8] 收益曲线：组内对比（2026-09-17 用户口径）')
+{
+  // 跨组词条库：副词条（默认 10 条）+ 4/5/6 号位主属性候选 —— 与官方预设库的分组一致
+  const mixedLibrary = [...createDefaultAffixLibrary(), ...createDriveDiscMainStatAffixEntries()]
+  const mixedTable = computeAffixBenefitTable({
+    ctx,
+    baseCounts,
+    entries: mixedLibrary,
+    rollsPerStep: 1,
+    includeSeries: false,
+  })
+  const groupOfEntryId = new Map(mixedLibrary.map((entry) => [entry.id, entry.group]))
+  const groupsInTable = [...new Set(mixedTable.rows.map((row) => groupOfEntryId.get(row.entryId)))]
+  check('跨组库：收益表里出现多个分组', groupsInTable.length >= 2, groupsInTable.join(' / '))
+
+  // 只把某一组的行交给曲线补算 —— 页面上的「可选组」就是这么做的
+  const pickedGroup = groupsInTable[0]
+  const rowsOfGroup = mixedTable.rows.filter((row) => groupOfEntryId.get(row.entryId) === pickedGroup)
+  const outsideIds = new Set(
+    mixedTable.rows
+      .filter((row) => groupOfEntryId.get(row.entryId) !== pickedGroup)
+      .map((row) => row.entryId),
+  )
+  const groupSeries = computeAffixBenefitSeriesForTable(
+    { ctx, baseCounts, entries: mixedLibrary, rollsPerStep: 1, maxCurveRolls: 2, maxCurveSeries: 3 },
+    { baselineDamage: mixedTable.baselineDamage, rows: rowsOfGroup },
+  )
+  check(
+    `曲线只含所选组（${pickedGroup}）的条目`,
+    groupSeries.length > 0 && groupSeries.every((series) => !outsideIds.has(series.entryId)),
+    `线数 ${groupSeries.length}：${groupSeries.map((s) => s.entryId).join(', ')}`,
+  )
+  check('曲线最多画本组前 N 条', groupSeries.length <= 3, `实际 ${groupSeries.length}`)
+  check(
+    '每条曲线 = 0 档基线 + N 档（长度对得上）',
+    groupSeries.every((series) => series.cumulativePercent.length === 3 && series.marginalPercent.length === 3),
+    `实际 ${groupSeries[0]?.cumulativePercent.length}`,
+  )
+  check(
+    '第 0 档一律是基线 0%',
+    groupSeries.every((series) => series.cumulativePercent[0] === 0 && series.marginalPercent[0] === 0),
+  )
 }
 
 console.log(`\n结果：${passed} passed, ${failed} failed`)
