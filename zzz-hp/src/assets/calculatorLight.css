@@ -148,6 +148,13 @@
   color: #c62828 !important;
 }
 
+/* 卡面「当前生效的面板来源」标签（只读）：浅色下与悬停卡里那份 active 同色系 */
+.calculator-page.theme-light .team-slot-sticky .panel-source-dot {
+  border-color: #e07070 !important;
+  background: color-mix(in srgb, #fdecec 70%, #ffffff) !important;
+  color: #c62828 !important;
+}
+
 .calculator-page.theme-light .team-slot-sticky .panel-hover-title--final {
   border-top-color: #d5e4f0 !important;
   color: #526b36 !important;

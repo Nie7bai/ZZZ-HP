@@ -113,6 +113,18 @@ function panelSourceKindOf(index: number): AgentPanelSourceKind | null {
   return props.panelSourceKinds?.[index] ?? null
 }
 
+/**
+ * 卡面标签的文字：该槽位**当前生效**那份面板的名字；没导入过 → 空串（卡面整块不渲染）。
+ *
+ * 只读，且**故意不提供切换**（用户 2026-09-17 口径：卡片上那个点击只负责"选谁在编辑"，
+ * 不该有改配置的能力 —— 切换激活份是改计算取数来源，去下方「局外面板」块走
+ * `update:active-panel-source`）。口径与悬停卡右上那两个胶囊一致：只回答"现在算的是哪一份"。
+ */
+function panelSourceLabelOf(index: number): string {
+  const kind = panelSourceKindOf(index)
+  return kind ? AGENT_PANEL_SOURCE_LABELS[kind] : ''
+}
+
 /** 胶囊 tooltip：说清「标的是生效那份」以及去哪切换 */
 function panelSourceTitle(kind: AgentPanelSourceKind, index: number) {
   const current = panelSourceKindOf(index)
@@ -236,6 +248,13 @@ const driveDiscLine = computed(() => {
           />
           <span class="slot-name">{{ label(slot, index) }}</span>
           <span v-if="isConvertSlot(index)" class="convert-dot" title="该角色影画/音擎/驱动盘含局外或局内转模">转模</span>
+          <!-- 当前生效的面板来源（**只读**）：只显示激活那一份，没导入过不显示；切换在下方「局外面板」块 -->
+          <span
+            v-if="panelSourceLabelOf(index)"
+            class="panel-source-dot"
+            :title="`当前生效的面板来源：${panelSourceLabelOf(index)}（另一份仍保留；要切换去下方「局外面板」块）`"
+            >{{ panelSourceLabelOf(index) }}</span
+          >
           <span v-if="activeIndex === index" class="editing-dot">编辑中</span>
         </button>
         <div
@@ -438,6 +457,25 @@ const driveDiscLine = computed(() => {
   border-color: rgba(126, 168, 200, 0.4);
   background: rgba(126, 168, 200, 0.14);
   color: #c5d8ea;
+}
+
+/*
+ * 卡面「当前生效的面板来源」标签：只读，观感与悬停卡里 `.panel-source-tag.active` 同色系
+ * （红 = 当前生效那份）。只显示激活那一份；没导入过整块不渲染。
+ * **不提供点击** —— 卡片的点击是"选谁在编辑"，不该有改配置的能力（用户 2026-09-17 口径）。
+ */
+.panel-source-dot {
+  flex-shrink: 0;
+  border-radius: 6px;
+  border: 1px solid rgba(224, 112, 112, 0.45);
+  background: rgba(224, 112, 112, 0.12);
+  color: #f0a8a8;
+  font-size: 0.64rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  padding: 0.1rem 0.38rem;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .slot-btn:not(:has(.convert-dot)) .editing-dot {
