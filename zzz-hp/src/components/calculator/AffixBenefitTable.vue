@@ -354,7 +354,7 @@ function onLibrarySwitched() {
     <div class="toolbar">
       <button
         type="button"
-        class="chip"
+        class="chip chip--lg"
         :class="{ active: showLibraryModal }"
         @click="showLibraryModal = true"
       >
