@@ -1,0 +1,81 @@
+/* 录入方式（面板导入 / 词条导入）二选一的按钮 —— **全站唯一来源**（2026-09-17 用户口径）。
+ *
+ * 用它的两处：
+ * - 导入弹窗本体：`SlotPanelEntryForm.vue` 的「录入方式」行；
+ * - 首次导入的选择入口：`UnifiedPresetPicker.vue`（该角色一份都没导入过时）。
+ *
+ * 为什么要单独一份文件：弹窗 Teleport 到 body，SFC 的 scoped 样式跨不过去，
+ * 白天主题也不能用 `.calculator-page.theme-light` 前缀（那个类不在 body 上）。
+ * 所以基础值写深色、白天用 `:where([data-theme='light'])` 覆盖（故意不提高优先级，
+ * 与 `calculatorChip.css` 同一套约定）。
+ */
+
+.entry-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
+}
+
+.entry-mode-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #c9a55c;
+}
+
+.entry-mode-tab {
+  appearance: none;
+  border: 1px solid #343a44;
+  border-radius: 8px;
+  background: #12161d;
+  color: #9aa3b0;
+  padding: 0.28rem 0.7rem;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.entry-mode-tab:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.entry-mode-tab.active {
+  border-color: #c9a55c;
+  background: rgba(201, 165, 92, 0.16);
+  color: #f0d7a2;
+}
+
+.entry-mode-hint {
+  margin: 0;
+  font-size: 0.72rem;
+  color: #8f96a3;
+}
+
+/* 白天主题（弹窗在 body 上，靠 data-theme 判定；取值沿用原先写在本处的
+ * `[data-theme='light'] .unified-modal .entry-mode-*` 那套，2026-09-17 收进本文件） */
+:where([data-theme='light']) .entry-mode-label {
+  color: #8a6d2e;
+}
+
+:where([data-theme='light']) .entry-mode-tab {
+  border-color: #d5dae3;
+  background: #ffffff;
+  color: #667085;
+}
+
+:where([data-theme='light']) .entry-mode-tab:hover:not(:disabled) {
+  border-color: #c9a55c;
+  color: #1c212a;
+}
+
+:where([data-theme='light']) .entry-mode-tab.active {
+  border-color: #c9a55c;
+  background: #fff8eb;
+  color: #6a4e1d;
+}
+
+:where([data-theme='light']) .entry-mode-hint {
+  color: #667085;
+}

@@ -3004,26 +3004,6 @@ body:has(.calculator-page.theme-light) .preset-preview li,
   background: #fff5f5 !important;
 }
 
-[data-theme='light'] .unified-modal .entry-mode-label {
-  color: #8a6d2e !important;
-}
-
-[data-theme='light'] .unified-modal .entry-mode-tab {
-  border-color: #d5dae3 !important;
-  background: #ffffff !important;
-  color: #667085 !important;
-}
-
-[data-theme='light'] .unified-modal .entry-mode-tab.active {
-  border-color: #c9a55c !important;
-  background: #fff8eb !important;
-  color: #6a4e1d !important;
-}
-
-[data-theme='light'] .unified-modal .entry-mode-hint {
-  color: #667085 !important;
-}
-
 /* 顶部槽位悬停局外面板小窗 */
 .calculator-page.theme-light .panel-hover-card {
   border-color: #c9a55c !important;

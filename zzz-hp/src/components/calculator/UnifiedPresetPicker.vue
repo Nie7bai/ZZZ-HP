@@ -873,25 +873,16 @@ const canConfirm = computed(() => !!selected.value.agentId)
               <p class="panel-locked-desc">请先在「角色」Tab 选择代理人，再录入或识别局外面板。</p>
             </div>
             <div v-else-if="entryMode === null" class="panel-locked-state" role="status">
-              <p class="panel-locked-title">还没有面板记录</p>
+              <p class="panel-locked-title">当前角色首次导入面板</p>
               <p class="panel-locked-desc">
-                这个角色一份面板都还没导入过 —— 两种录入方式**严格区分、不替他默认**，先选一种：
+                两种录入方式严格区分、独立保存<br />
+                请选一种：
               </p>
-              <div class="panel-source-bar">
-                <button
-                  type="button"
-                  class="panel-source-btn"
-                  title="直接录入 / 截图识别游戏里的局外面板"
-                  @click="entryMode = 'panel'"
-                >
+              <div class="entry-mode-row">
+                <button type="button" class="entry-mode-tab" @click="entryMode = 'panel'">
                   面板导入
                 </button>
-                <button
-                  type="button"
-                  class="panel-source-btn"
-                  title="按词条数 + 4/5/6 号盘主属性反推出局外面板"
-                  @click="entryMode = 'affix'"
-                >
+                <button type="button" class="entry-mode-tab" @click="entryMode = 'affix'">
                   词条导入
                 </button>
               </div>

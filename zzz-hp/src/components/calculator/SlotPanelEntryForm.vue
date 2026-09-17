@@ -408,48 +408,11 @@ function formatValue(key: keyof PanelStats, value: number) {
   font-size: 0.78rem;
 }
 
-.entry-mode-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem 0.55rem;
-}
-
-.entry-mode-label {
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: #c9a55c;
-}
-
-.entry-mode-tab {
-  appearance: none;
-  border: 1px solid #343a44;
-  border-radius: 8px;
-  background: #12161d;
-  color: #9aa3b0;
-  padding: 0.28rem 0.7rem;
-  font: inherit;
-  font-size: 0.76rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.entry-mode-tab:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.entry-mode-tab.active {
-  border-color: #c9a55c;
-  background: rgba(201, 165, 92, 0.16);
-  color: #f0d7a2;
-}
-
-.entry-mode-hint {
-  margin: 0;
-  font-size: 0.72rem;
-  color: #8f96a3;
-}
+/*
+ * 「录入方式」按钮（.entry-mode-*）的样式已提为**全站唯一来源**：
+ * `src/assets/entryModeTabs.css`（弹窗 Teleport 到 body，scoped 样式跨不过去；
+ * 白天主题也在那份里用 :where([data-theme='light']) 覆盖）。这里不要再写一份。
+ */
 
 .panel-block {
   border: 1px solid #2d323a;
