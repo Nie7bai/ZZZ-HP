@@ -3,9 +3,9 @@ import { computed } from 'vue'
 import type { AffixSearchParams } from '@/utils/affixOptimizer'
 
 /**
- * 词条「求最优分配」高级设置弹窗（2026-09-16）。
+ * 词条「求最优分配」高级设置弹窗（2026-09-16；2026-09-17 定稿「比例 + 最小/最大保留路线」三件套）。
  *
- * 四件事：初始候选门槛（%）、候选兜底（每组前 N 名）、路线保留比例（%）、最大保留路线 B。
+ * 五件事：初始候选门槛（%）、候选兜底（每组前 N 名）、路线保留比例（%）、最小保留路线、最大保留路线。
  * 只负责编辑与回传，存盘在主区块（`affixSearchSettings`）——这里不碰 localStorage。
  */
 const props = defineProps<{
@@ -30,6 +30,10 @@ const retentionPercent = computed({
 const floorCount = computed({
   get: () => props.params.initialCandidateFloor,
   set: (value: number) => emit('update', { initialCandidateFloor: Math.max(0, Math.round(Number(value) || 0)) }),
+})
+const minRoutes = computed({
+  get: () => props.params.minRetainedRoutes,
+  set: (value: number) => emit('update', { minRetainedRoutes: Math.max(1, Math.round(Number(value) || 1)) }),
 })
 const maxRoutes = computed({
   get: () => props.params.maxRetainedRoutes,
@@ -67,6 +71,10 @@ const maxRoutes = computed({
               </span>
             </label>
             <label class="field">
+              <span>最小保留路线</span>
+              <input v-model.lazy.number="minRoutes" type="number" min="1" max="64" step="1" />
+            </label>
+            <label class="field">
               <span>最大保留路线</span>
               <input v-model.lazy.number="maxRoutes" type="number" min="1" max="64" step="1" />
             </label>
@@ -82,12 +90,20 @@ const maxRoutes = computed({
             ⚠️ 每组 ≤ N 条时门槛基本失效（默认库上真正被筛的是副词条这种大组）。
           </p>
           <p class="modal-note">
-            <strong>路线保留比例</strong>：Beam 每一层只留「累计提升 ≥ 本层最佳 × 比例」的分法（低于线当场丢掉）。
+            <strong>路线保留比例</strong>：Beam 每一层只留「累计提升 ≥ 本层最佳 × 比例」的分法（低于线当场丢掉，
+            除非被「最小保留路线」保底补回来）。
             它和门槛的区别：门槛筛<strong>条目</strong>（开跑前一次），比例筛<strong>分法</strong>（每层反复）。
           </p>
           <p class="modal-note">
-            <strong>最大保留路线</strong>：比例筛之后每层最多留几条路线；实际值会按剩余算力自动缩小。
-            越大越全、越费算力；越小越快、越可能漏掉「先落后、后反超」的分法。
+            <strong>最小保留路线</strong>：比例筛之后每组（每层）<strong>至少保留</strong>这么多条路线，防止被筛空
+            —— 只从「有正提升」的路线里按累计提升从高到低补。
+          </p>
+          <p class="modal-note">
+            <strong>最大保留路线</strong>：比例筛之后每组（每层）<strong>最多保留</strong>这么多条，超出的按累计提升从高到低丢掉
+            （只从「有正提升」的路线里补）。
+            为什么必须有它：比例线是「相对本层最佳」的，同层常常有一大批路线都在这条线以内
+            ——<strong>比例管不住宽度，上限才是防爆宽度的保险</strong>（实测去上限后 34 档只走完 9 层、预算只花掉两成）。
+            上限截顶是设计内行为，不算「搜索被截断」。上限恒 ≥ 下限（存档里写反了时压低下限）。
           </p>
           <p class="modal-note dim">
             空组（临时）条目不参与最优计算，也不显示收益表。

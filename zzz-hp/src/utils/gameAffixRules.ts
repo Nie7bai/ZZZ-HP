@@ -277,7 +277,9 @@ export async function solveGameAffixAllocationAsync(
     initialCandidateFloor?: number
     /** 路线保留比例（0..1）；显式值覆盖预设 */
     routeRetentionRatio?: number
-    /** 最大保留路线 B；显式值覆盖预设 */
+    /** 最小保留路线数（1..64）：比例筛完不足这么多条时保底补足；显式值覆盖预设 */
+    minRetainedRoutes?: number
+    /** 最大保留路线数（1..64）：比例筛完超过这么多条时按总伤截顶；显式值覆盖预设 */
     maxRetainedRoutes?: number
     /** 每袋的公平预算（各袋一致）；先跑的口袋没用完的，顺延给后面的口袋 */
     maxWorkUnits?: number
@@ -298,6 +300,7 @@ export async function solveGameAffixAllocationAsync(
     initialCandidateThreshold: input.initialCandidateThreshold,
     initialCandidateFloor: input.initialCandidateFloor,
     routeRetentionRatio: input.routeRetentionRatio,
+    minRetainedRoutes: input.minRetainedRoutes,
     maxRetainedRoutes: input.maxRetainedRoutes,
   }
 

@@ -47,6 +47,7 @@ import {
   buildAllocationRows,
   formatAffixRollsSummary,
   resolveAffixOptimizerBudget,
+  resolveAffixSearchParams,
   collectPenRateFieldLocks,
   resolveFlatPenLadder,
   DEFENSE_ZONE_PEN_RATE_CAP,
@@ -732,43 +733,62 @@ console.log('\n[6] 词条库解析')
 }
 
 // ---------- 7. 多路线 Beam：B>1 不劣于 B=1，且真的并行保留多条路线 ----------
-console.log('\n[7] 多路线 Beam（B=1 与 B>1 对照）')
+console.log('\n[7] 多路线 Beam（比例 / 最小保留 / 最大保留 三件套）')
 {
   const BUDGET = 6
   const subset = library.filter((e) =>
     ['substat:atkPercent', 'substat:atkFlat', 'substat:critRate', 'substat:critDmg'].includes(e.id),
   )
+  // 三件套语义（2026-09-17 二次定稿）：比例筛 → 不足 min 条补足 → 超过 max 条截顶。
+  // 上限是防爆宽度的唯一保险（比例筛管不住宽度：同层大量路线都在比例线以内）。
   clearAffixEvalCache()
-  const single = solveOptimalAffixAllocation({
+  const capped = solveOptimalAffixAllocation({
     ctx, entries: subset, maxTotalRolls: BUDGET,
     enablePenRatePath: false,
-    maxRetainedRoutes: 1, initialCandidateThreshold: 0, routeRetentionRatio: 0,
+    minRetainedRoutes: 1, maxRetainedRoutes: 2,
+    initialCandidateThreshold: 0, routeRetentionRatio: 0, // 比例不筛 → 全靠上限截顶
   })
   clearAffixEvalCache()
-  const multi = solveOptimalAffixAllocation({
+  const uncapped = solveOptimalAffixAllocation({
     ctx, entries: subset, maxTotalRolls: BUDGET,
     enablePenRatePath: false,
-    maxRetainedRoutes: 8, initialCandidateThreshold: 0, routeRetentionRatio: 0,
+    minRetainedRoutes: 1, maxRetainedRoutes: 64,
+    initialCandidateThreshold: 0, routeRetentionRatio: 0, // 上不截顶
   })
   const brute = bruteForceOptimal(ctx, subset, BUDGET)
-  console.log(`    B=1 总伤 ${single.totalDamage}（存活 ${single.survivedRoutes} 条）`)
-  console.log(`    B=8 总伤 ${multi.totalDamage}（存活 ${multi.survivedRoutes} 条）｜穷举 ${brute.bestTotal}`)
-  check('B=1 时自适应 B 恒为 1（退化为单路）',
-    single.adaptiveBMax === 1, `adaptiveBMax=${single.adaptiveBMax}`)
-  check('B=8 时确实并行保留多条路线',
-    multi.survivedRoutes > 1, `存活 ${multi.survivedRoutes} 条`)
-  check('B>1 保留的路线不少于 B=1',
-    multi.survivedRoutes >= single.survivedRoutes,
-    `${multi.survivedRoutes} >= ${single.survivedRoutes}`)
-  check('B>1 的总伤不低于 B=1（多路线不会更差）',
-    multi.totalDamage >= single.totalDamage - 1e-6,
-    `${multi.totalDamage} vs ${single.totalDamage}`)
-  check('B>1 达到穷举最优（无漏解）',
-    multi.totalDamage >= brute.bestTotal - 1e-6,
-    `${multi.totalDamage} vs 穷举 ${brute.bestTotal}`)
-  check('前 min(3, B) 名各跑了一轮换档',
-    multi.refinedRoutes === Math.min(3, 8, multi.survivedRoutes),
-    `refinedRoutes=${multi.refinedRoutes} survived=${multi.survivedRoutes}`)
+  console.log(`    上限 2 总伤 ${capped.totalDamage}（存活 ${capped.survivedRoutes} 条，截顶丢 ${capped.routeCapDropped}）`)
+  console.log(`    上限 64 总伤 ${uncapped.totalDamage}（存活 ${uncapped.survivedRoutes} 条）｜穷举 ${brute.bestTotal}`)
+  check('上限生效：比例不筛时也留不过 max 条，并把截掉的数量记账',
+    capped.survivedRoutes < uncapped.survivedRoutes && capped.routeCapDropped > 0,
+    `存活 ${capped.survivedRoutes} < ${uncapped.survivedRoutes}｜截顶丢 ${capped.routeCapDropped}`)
+  check('上限截顶不算 truncated（设计内行为，不是预算吃紧）',
+    !capped.truncated, `truncated=${capped.truncated}`)
+  check('去掉上限后确实并行保留更多路线（同一比例下）',
+    uncapped.survivedRoutes > capped.survivedRoutes,
+    `${uncapped.survivedRoutes} > ${capped.survivedRoutes}`)
+  check('宽光束达到穷举最优（无漏解）',
+    uncapped.totalDamage >= brute.bestTotal - 1e-6,
+    `${uncapped.totalDamage} vs 穷举 ${brute.bestTotal}`)
+
+  // 下限本身：比例定到最狠（1）+ 下限 3 + 上限 64 → 一定有路线是被保底救回来的
+  clearAffixEvalCache()
+  const floored = solveOptimalAffixAllocation({
+    ctx, entries: subset, maxTotalRolls: BUDGET,
+    enablePenRatePath: false,
+    minRetainedRoutes: 3, maxRetainedRoutes: 64,
+    initialCandidateThreshold: 0, routeRetentionRatio: 1,
+  })
+  check('最小保留路线生效：比例筛完不足 3 条时补足到 3 条并计数',
+    floored.survivedRoutes >= 3 && floored.routeFloorSaved > 0,
+    `存活 ${floored.survivedRoutes}｜保底救回 ${floored.routeFloorSaved}`)
+
+  // 上下限写成矛盾值时：上限优先（界面上的「最大保留 N 条」必须字面成立）
+  const contradictory = resolveAffixSearchParams({
+    minRetainedRoutes: 8, maxRetainedRoutes: 2,
+  })
+  check('上下限矛盾时上限优先（min 被压到 max）',
+    contradictory.maxRetainedRoutes === 2 && contradictory.minRetainedRoutes === 2,
+    `min ${contradictory.minRetainedRoutes} / max ${contradictory.maxRetainedRoutes}`)
 }
 
 // ---------- 8. 计算量预算：缓存命中不计入 ----------
@@ -806,9 +826,10 @@ console.log('\n[9] 搜索预设与三项参数')
     })
     const ms = Date.now() - t0
     console.log(
-      `    ${presetId}：门槛 ${result.searchParams.initialCandidateThreshold}／比例 ${result.searchParams.routeRetentionRatio}／B≤${result.searchParams.maxRetainedRoutes}` +
-      `｜实际 B ${result.adaptiveBMin}~${result.adaptiveBMax}｜淘汰 ${result.initialDropped} 条｜存活 ${result.survivedRoutes}` +
-      `｜用档 ${result.usedRolls}｜计算量 ${Math.round(result.workUsed)}｜${ms}ms｜截断 ${result.truncated}｜跳过精修 ${result.refineSkipped}｜总伤 ${result.totalDamage.toFixed(1)}`,
+      `    ${presetId}：门槛 ${result.searchParams.initialCandidateThreshold}／比例 ${result.searchParams.routeRetentionRatio}` +
+      `／保留 ${result.searchParams.minRetainedRoutes}-${result.searchParams.maxRetainedRoutes} 条` +
+      `｜淘汰 ${result.initialDropped} 条｜存活 ${result.survivedRoutes}（保底救回 ${result.routeFloorSaved}／上限截顶 ${result.routeCapDropped}）` +
+      `｜用档 ${result.usedRolls}｜计算量 ${Math.round(result.workUsed)}｜${ms}ms｜截断 ${result.truncated}｜总伤 ${result.totalDamage.toFixed(1)}`,
     )
     return { result, ms }
   }
@@ -822,12 +843,29 @@ console.log('\n[9] 搜索预设与三项参数')
     ctx: hits30, entries: all, maxTotalRolls: 46, searchPreset: 'fine',
   })
 
+  check('预设三件套与用户口径一致（快速 1-2/95%、均衡 2-5/90%、精细 4-8/50%）',
+    AFFIX_SEARCH_PRESETS.fast.minRetainedRoutes === 1 &&
+      AFFIX_SEARCH_PRESETS.fast.maxRetainedRoutes === 2 &&
+      AFFIX_SEARCH_PRESETS.fast.routeRetentionRatio === 0.95 &&
+      AFFIX_SEARCH_PRESETS.balanced.minRetainedRoutes === 2 &&
+      AFFIX_SEARCH_PRESETS.balanced.maxRetainedRoutes === 5 &&
+      AFFIX_SEARCH_PRESETS.balanced.routeRetentionRatio === 0.9 &&
+      AFFIX_SEARCH_PRESETS.fine.minRetainedRoutes === 4 &&
+      AFFIX_SEARCH_PRESETS.fine.maxRetainedRoutes === 8 &&
+      AFFIX_SEARCH_PRESETS.fine.routeRetentionRatio === 0.5,
+    JSON.stringify({
+      fast: AFFIX_SEARCH_PRESETS.fast,
+      balanced: AFFIX_SEARCH_PRESETS.balanced,
+      fine: AFFIX_SEARCH_PRESETS.fine,
+    }))
   check('预设 fast 生效',
-    fast.searchParams.maxRetainedRoutes === AFFIX_SEARCH_PRESETS.fast.maxRetainedRoutes &&
+    fast.searchParams.minRetainedRoutes === AFFIX_SEARCH_PRESETS.fast.minRetainedRoutes &&
+      fast.searchParams.maxRetainedRoutes === AFFIX_SEARCH_PRESETS.fast.maxRetainedRoutes &&
       fast.searchParams.initialCandidateThreshold === AFFIX_SEARCH_PRESETS.fast.initialCandidateThreshold,
     JSON.stringify(fast.searchParams))
   check('预设 fine 生效',
-    fine.searchParams.maxRetainedRoutes === AFFIX_SEARCH_PRESETS.fine.maxRetainedRoutes &&
+    fine.searchParams.minRetainedRoutes === AFFIX_SEARCH_PRESETS.fine.minRetainedRoutes &&
+      fine.searchParams.maxRetainedRoutes === AFFIX_SEARCH_PRESETS.fine.maxRetainedRoutes &&
       fine.searchParams.initialCandidateThreshold === AFFIX_SEARCH_PRESETS.fine.initialCandidateThreshold,
     JSON.stringify(fine.searchParams))
   check('门槛越高淘汰越多（fast ≥ balanced ≥ fine）',
@@ -839,7 +877,7 @@ console.log('\n[9] 搜索预设与三项参数')
   check('三个预设都没有撞上计算量上限被截断',
     !fast.truncated && !balanced.truncated && !fine.truncated,
     `fast ${Math.round(fast.workUsed)}／balanced ${Math.round(balanced.workUsed)}／fine ${Math.round(fine.workUsed)}`)
-  // 计算量不保证在 fast/balanced 之间单调（自适应 B 与候选池规模互相影响），
+  // 计算量不保证在 fast/balanced 之间单调（保留路线数与候选池规模互相影响），
   // 但放宽预设一定更贵，所以只跟「精细」比。
   check('更宽松的预设不会更省算力（fast / balanced ≤ fine）',
     fast.workUsed <= fine.workUsed && balanced.workUsed <= fine.workUsed,
@@ -856,16 +894,15 @@ console.log('\n[9] 搜索预设与三项参数')
   clearAffixEvalCache()
   const custom = solveOptimalAffixAllocation({
     ctx: hits8, entries: all, maxTotalRolls: 46,
-    initialCandidateThreshold: 0.5, routeRetentionRatio: 0.5, maxRetainedRoutes: 3,
+    initialCandidateThreshold: 0.5, routeRetentionRatio: 0.5,
+    minRetainedRoutes: 3, maxRetainedRoutes: 7,
   })
   check('显式参数覆盖预设',
     custom.searchParams.initialCandidateThreshold === 0.5 &&
       custom.searchParams.routeRetentionRatio === 0.5 &&
-      custom.searchParams.maxRetainedRoutes === 3,
+      custom.searchParams.minRetainedRoutes === 3 &&
+      custom.searchParams.maxRetainedRoutes === 7,
     JSON.stringify(custom.searchParams))
-  check('昂贵流程的自适应 B 不大于便宜流程（预算紧就少开路线）',
-    expensive.adaptiveBMax <= fine.adaptiveBMax,
-    `${expensive.adaptiveBMax} <= ${fine.adaptiveBMax}`)
 
   // ---- 预设实测校准（只打印、不断言：这些数字用来定 AFFIX_SEARCH_PRESETS）----
   // 关键结论：门槛按「单档边际 / 本路最佳单档边际」比较时，cap=1 的主属性条目
@@ -876,25 +913,25 @@ console.log('\n[9] 搜索预设与三项参数')
     const t0 = Date.now()
     const r = solveOptimalAffixAllocation({
       ctx: hits8, entries: all, maxTotalRolls: 46,
-      routeRetentionRatio: 0.95, maxRetainedRoutes: 8, ...extra,
+      routeRetentionRatio: 0.95, minRetainedRoutes: 1, maxRetainedRoutes: 8, ...extra,
     })
     console.log(
-      `      ${label}：淘汰 ${r.initialDropped}／存活 ${r.survivedRoutes}／B ${r.adaptiveBMin}~${r.adaptiveBMax}` +
-      `／用档 ${r.usedRolls}／计算量 ${Math.round(r.workUsed)}／${Date.now() - t0}ms／截断 ${r.truncated}／跳过精修 ${r.refineSkipped}／总伤 ${r.totalDamage.toFixed(1)}`,
+      `      ${label}：淘汰 ${r.initialDropped}／存活 ${r.survivedRoutes}（保底救回 ${r.routeFloorSaved}／上限截顶 ${r.routeCapDropped}）` +
+      `／保留 ${r.searchParams.minRetainedRoutes}-${r.searchParams.maxRetainedRoutes}／用档 ${r.usedRolls}／计算量 ${Math.round(r.workUsed)}／${Date.now() - t0}ms／截断 ${r.truncated}／总伤 ${r.totalDamage.toFixed(1)}`,
     )
     return r
   }
-  console.log('    [校准] 初始门槛扫描（比例 0.95、B≤8）')
+  console.log('    [校准] 初始门槛扫描（比例 0.95、保留 1-8）')
   for (const t of [0, 0.001, 0.002, 0.003, 0.005, 0.008, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3]) {
     sweep(`门槛 ${t}`, { initialCandidateThreshold: t })
   }
-  console.log('    [校准] 层内比例扫描（门槛 0.005、B≤8）')
+  console.log('    [校准] 层内比例扫描（门槛 0.005、保留 1-8）')
   for (const ratio of [1, 0.99, 0.95, 0.9, 0.8, 0.5, 0]) {
     sweep(`比例 ${ratio}`, { initialCandidateThreshold: 0.005, routeRetentionRatio: ratio })
   }
-  console.log('    [校准] 最大保留路线 B 扫描（门槛 0.005、比例 0.95）')
-  for (const b of [1, 2, 4, 8, 16, 24]) {
-    sweep(`B ${b}`, { initialCandidateThreshold: 0.005, maxRetainedRoutes: b })
+  console.log('    [校准] 最大保留路线扫描（门槛 0.005、比例 0.95）')
+  for (const b of [1, 2, 3, 5, 8, 16]) {
+    sweep(`上限 ${b}`, { initialCandidateThreshold: 0.005, maxRetainedRoutes: b })
   }
 }
 
@@ -1049,13 +1086,13 @@ console.log('\n[12b] 层内比例筛、去重与预算分桶')
   clearAffixEvalCache()
   const keepAll = solveOptimalAffixAllocation({
     ctx, entries: library, maxTotalRolls: 20,
-    enablePenRatePath: false, routeRetentionRatio: 0, maxRetainedRoutes: 8,
+    enablePenRatePath: false, routeRetentionRatio: 0, minRetainedRoutes: 8, maxRetainedRoutes: 64,
     initialCandidateThreshold: 0,
   })
   clearAffixEvalCache()
   const strict = solveOptimalAffixAllocation({
     ctx, entries: library, maxTotalRolls: 20,
-    enablePenRatePath: false, routeRetentionRatio: 1, maxRetainedRoutes: 8,
+    enablePenRatePath: false, routeRetentionRatio: 1, minRetainedRoutes: 8, maxRetainedRoutes: 64,
     initialCandidateThreshold: 0,
   })
   check('走完 beam 阶段', keepAll.phasesCompleted.includes('beam'))
@@ -1066,7 +1103,9 @@ console.log('\n[12b] 层内比例筛、去重与预算分桶')
   check('比例把存活路线压下来',
     strict.survivedRoutes <= keepAll.survivedRoutes,
     `${strict.survivedRoutes} <= ${keepAll.survivedRoutes}`)
-  check('走完 1-swap', keepAll.phasesCompleted.includes('swap1'))
+  check('阶段里不再有换档（swap1 / swap2 已删）',
+    !keepAll.phasesCompleted.includes('swap1') && !keepAll.phasesCompleted.includes('swap2'),
+    keepAll.phasesCompleted.join(' → '))
 
   // 去重：两条目、预算 2 的完整状态集合 = 1(空) + 2(各 1 档) + 3(AA/BB/AB) = 6。
   // 若不做规范化去重，AB 会从 A 起手和 B 起手各记一遍 → 7。
@@ -1076,7 +1115,7 @@ console.log('\n[12b] 层内比例筛、去重与预算分桶')
   clearAffixEvalCache()
   const dedup = solveOptimalAffixAllocation({
     ctx, entries: pair, maxTotalRolls: 2,
-    enablePenRatePath: false, routeRetentionRatio: 0, maxRetainedRoutes: 8,
+    enablePenRatePath: false, routeRetentionRatio: 0, minRetainedRoutes: 8, maxRetainedRoutes: 64,
     initialCandidateThreshold: 0,
   })
   check('按规范化分配去重（两条目预算 2 → 6 个状态）',
@@ -1917,9 +1956,9 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、初始门槛、B 截�
   check('提升率用空盘基线而不是 24+8 内部基线',
     Math.abs(withPath.baselineDamage - emptyEval.grandTotal) < 1e-6,
     `${withPath.baselineDamage} vs ${emptyEval.grandTotal}`)
-  check('专路按预设 fine 生效（门槛 0 / B 上限 16）',
+  check('专路按预设 fine 生效（门槛 0.2 / 最小保留 4）',
     withPath.searchParams.initialCandidateThreshold === AFFIX_SEARCH_PRESETS.fine.initialCandidateThreshold
-      && withPath.searchParams.maxRetainedRoutes === AFFIX_SEARCH_PRESETS.fine.maxRetainedRoutes,
+      && withPath.searchParams.minRetainedRoutes === AFFIX_SEARCH_PRESETS.fine.minRetainedRoutes,
     JSON.stringify(withPath.searchParams))
 
   clearAffixEvalCache()
@@ -2003,6 +2042,7 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、初始门槛、B 截�
       'initialCandidateThreshold: affixSearchParams.value.initialCandidateThreshold',
       'initialCandidateFloor: affixSearchParams.value.initialCandidateFloor',
       'routeRetentionRatio: affixSearchParams.value.routeRetentionRatio',
+      'minRetainedRoutes: affixSearchParams.value.minRetainedRoutes',
       'maxRetainedRoutes: affixSearchParams.value.maxRetainedRoutes',
     ]
     for (const call of ['await solveOptimalAffixAllocationAsync(', 'await solveGameAffixAllocationAsync(']) {
@@ -2011,7 +2051,7 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、初始门槛、B 截�
       const missing = requiredArgs.filter((line) => !block.includes(line))
       check(`界面调用 ${call.trim()} 透传全部搜索参数`,
         start >= 0 && missing.length === 0,
-        start < 0 ? '源码里找不到这个调用点' : (missing.length ? `缺：${missing.join(' / ')}` : '四个参数都在'))
+        start < 0 ? '源码里找不到这个调用点' : (missing.length ? `缺：${missing.join(' / ')}` : '五个参数都在'))
     }
   }
 
@@ -2023,11 +2063,13 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、初始门槛、B 截�
     groupCaps,
     enablePenRatePath: false,
     initialCandidateThreshold: 0,
-    maxRetainedRoutes: 1,
+    minRetainedRoutes: 1,
+    maxRetainedRoutes: 3,
   })
-  check('比例不筛时过密仍由 B 截顶',
-    kCap.adaptiveBMax === 1 && kCap.prunedRoutes > 0,
-    `B=${kCap.adaptiveBMax} pruned=${kCap.prunedRoutes}`)
+  // 三件套语义（2026-09-17 二次定稿）：比例不筛时由**上限**截顶，且上限截顶不算 truncated。
+  check('上限截顶：比例不筛时每层也留不过 max 条，并记账截掉的数量',
+    kCap.routeCapDropped > 0 && !kCap.truncated,
+    `存活 ${kCap.survivedRoutes} 条｜截顶丢 ${kCap.routeCapDropped}｜truncated=${kCap.truncated}`)
 
   const starts = solveOptimalAffixAllocation({
     ctx, entries: library, maxTotalRolls: 8, maxWorkUnits: 400,
@@ -2147,7 +2189,7 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、初始门槛、B 截�
       })
       const fixtureAutoMs = Date.now() - autoT0
       console.log(
-        `    [耗时] 求最优分配 均衡预设 全库+2件穿透 ${fixtureAutoMs}ms workUsed=${fixtureAuto.workUsed}/${fixtureAuto.workBudget} engine=${fixtureAuto.engineCalls} 存活=${fixtureAuto.survivedRoutes} B≤${fixtureAuto.adaptiveBMax} path=${fixtureAuto.winningPath}`,
+        `    [耗时] 求最优分配 均衡预设 全库+2件穿透 ${fixtureAutoMs}ms workUsed=${fixtureAuto.workUsed}/${fixtureAuto.workBudget} engine=${fixtureAuto.engineCalls} 存活=${fixtureAuto.survivedRoutes} path=${fixtureAuto.winningPath}`,
       )
 
       // 真实长流程（96 命中）下的预设实测：只在 AFFIX_CALIBRATE=1 时跑，平时不拖慢回归。
@@ -2157,7 +2199,7 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、初始门槛、B 截�
           ['精细 fine', { searchPreset: 'fine' }],
           ['均衡 balanced', { searchPreset: 'balanced' }],
           ['快速 fast', { searchPreset: 'fast' }],
-          ['参考(门槛0/比例0/B16)', { initialCandidateThreshold: 0, routeRetentionRatio: 0, maxRetainedRoutes: 16 }],
+          ['参考(门槛0/比例0/保留16)', { initialCandidateThreshold: 0, routeRetentionRatio: 0, minRetainedRoutes: 16, maxRetainedRoutes: 16 }],
         ]
         let ref = 0
         for (const [label, extra] of candidates) {
@@ -2170,9 +2212,9 @@ console.log('\n[穿透专路] 24+8 锁满、固穿重测、初始门槛、B 截�
           const ms = Date.now() - t0
           if (!ref) ref = r.totalDamage
           console.log(
-            `      ${label}：门槛 ${r.searchParams.initialCandidateThreshold}／比例 ${r.searchParams.routeRetentionRatio}／B≤${r.searchParams.maxRetainedRoutes}` +
-            `｜淘汰 ${r.initialDropped}／实际 B ${r.adaptiveBMin}~${r.adaptiveBMax}／用档 ${r.usedRolls}` +
-            `｜计算量 ${Math.round(r.workUsed)}／${ms}ms／截断 ${r.truncated}／跳过精修 ${r.refineSkipped}` +
+            `      ${label}：门槛 ${r.searchParams.initialCandidateThreshold}／比例 ${r.searchParams.routeRetentionRatio}／保留 ${r.searchParams.minRetainedRoutes}-${r.searchParams.maxRetainedRoutes}` +
+            `｜淘汰 ${r.initialDropped}／存活 ${r.survivedRoutes}（保底救回 ${r.routeFloorSaved}／上限截顶 ${r.routeCapDropped}）／用档 ${r.usedRolls}` +
+            `｜计算量 ${Math.round(r.workUsed)}／${ms}ms／截断 ${r.truncated}` +
             `／总伤 ${r.totalDamage.toFixed(1)}／相对参考 ${((r.totalDamage / ref) * 100).toFixed(3)}%`,
           )
         }

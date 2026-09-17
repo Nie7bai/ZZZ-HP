@@ -3,6 +3,7 @@ import {
   DEFAULT_AFFIX_SEARCH_PRESET,
   clampAffixCandidateFloor,
   clampAffixMaxRetainedRoutes,
+  clampAffixMinRetainedRoutes,
   clampAffixUnitRatio,
   type AffixSearchParams,
   type AffixSearchPresetId,
@@ -11,7 +12,7 @@ import {
 /**
  * 词条「求最优分配」搜索设置（本机独立存盘）。
  *
- * 存的是三项搜索参数（预设 + 自定义值）与高级区展开状态。
+ * 存的是四项搜索参数（预设 + 自定义值）与高级区展开状态。
  * **不混入**词条库、方案包或游戏规则那套 `localStorage` 键，见 `dev-docs/词条最优分配.md`。
  */
 export const AFFIX_SEARCH_SETTINGS_STORAGE_KEY = 'zzz-hp-affix-search-settings-v1'
@@ -63,6 +64,12 @@ export function loadAffixSearchSettings(): AffixSearchSettings {
       custom?: Partial<AffixSearchParams>
     }
     const fallback = cloneDefaults()
+    // 上限 / 下限成对读取：老存档里只有 `maxRetainedRoutes`（当时是「最大保留路线」上限，
+    // 数值范围一样）时按上限用，下限走兜底值 —— 2026-09-17 三件套定稿后键名语义已归位。
+    const maxRetainedRoutes = clampAffixMaxRetainedRoutes(
+      parsed.custom?.maxRetainedRoutes,
+      fallback.custom.maxRetainedRoutes,
+    )
     return {
       preset: isAffixSearchPresetId(parsed.preset) ? parsed.preset : fallback.preset,
       custom: {
@@ -78,9 +85,14 @@ export function loadAffixSearchSettings(): AffixSearchSettings {
           parsed.custom?.routeRetentionRatio,
           fallback.custom.routeRetentionRatio,
         ),
-        maxRetainedRoutes: clampAffixMaxRetainedRoutes(
-          parsed.custom?.maxRetainedRoutes,
-          fallback.custom.maxRetainedRoutes,
+        maxRetainedRoutes,
+        // 上限永远是上限：存档里「最小 > 最大」时压低下限（与 resolveAffixSearchParams 同口径）
+        minRetainedRoutes: Math.min(
+          clampAffixMinRetainedRoutes(
+            parsed.custom?.minRetainedRoutes,
+            fallback.custom.minRetainedRoutes,
+          ),
+          maxRetainedRoutes,
         ),
       },
       advancedOpen: parsed.advancedOpen === true,

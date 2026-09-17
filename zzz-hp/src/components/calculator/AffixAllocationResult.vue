@@ -32,8 +32,6 @@ const PHASE_LABELS: Record<AffixOptimizerProgress['phase'], string> = {
   baseline: '准备基线',
   measure: '测量各词条单档收益',
   beam: '多路线搜索（Beam）',
-  swap1: '一换一优化',
-  swap2: '二换二优化',
   done: '已完成',
 }
 
@@ -55,8 +53,7 @@ const progressLabel = computed(() => {
     : ''
   const layer = progress.layerUsedRolls != null ? `第 ${progress.layerUsedRolls} 档层 · ` : ''
   const routes = progress.survivedRoutes != null ? `存活 ${progress.survivedRoutes} 条 · ` : ''
-  const b = progress.adaptiveB != null ? `本层 B=${progress.adaptiveB} · ` : ''
-  return `${branch}${path}${layer}${routes}${b}${phase}`
+  return `${branch}${path}${layer}${routes}${phase}`
 })
 
 /**
@@ -149,8 +146,9 @@ function formatDuration(ms: number) {
           <span class="budget-label">多路线搜索</span>
           <strong class="budget-value">存活 {{ result.survivedRoutes }} 条</strong>
           <span class="budget-hint">
-            预算层 {{ result.beamLayers }} 层 · 自适应 B {{ result.adaptiveBMin }}~{{ result.adaptiveBMax }}
-            （上限 {{ result.searchParams.maxRetainedRoutes }}）· 换档 {{ result.refinedRoutes }} 条 ·
+            预算层 {{ result.beamLayers }} 层 ·
+            保留路线 {{ result.searchParams.minRetainedRoutes }}–{{ result.searchParams.maxRetainedRoutes }} 条
+            （保底补回 {{ result.routeFloorSaved }} 条 · 上限截掉 {{ result.routeCapDropped }} 条）·
             门槛 {{ Math.round(result.searchParams.initialCandidateThreshold * 1000) / 10 }}%（淘汰 {{ result.initialDropped }} 条）·
             层内比例 {{ Math.round(result.searchParams.routeRetentionRatio * 100) }}%（淘汰 {{ result.layerRatioDropped }} 条）
           </span>
@@ -176,10 +174,6 @@ function formatDuration(ms: number) {
       <p v-if="result.truncated" class="hint warn">
         搜索达到计算量上限，结果可能不是全局最优。可减少参与词条、调小总词条数，
         或改用更快的搜索预设。
-      </p>
-
-      <p v-else-if="result.refineSkipped" class="hint">
-        多路线搜索已完整跑完；候选太多，跳过了最后的 1/2 档换档微调（降低「最大保留路线」可开启）。
       </p>
 
       <div v-if="rows.length" class="table-wrap">
@@ -213,7 +207,7 @@ function formatDuration(ms: number) {
 
       <div class="actions">
         <span class="hint">
-          引擎调用 {{ result.engineCalls }} 次 · 扩展 {{ result.expandedRoutes }} 条路线 · 淘汰 {{ result.prunedRoutes }} 条 ·
+          引擎调用 {{ result.engineCalls }} 次 · 扩展 {{ result.expandedRoutes }} 条路线 ·
           {{ result.winningPath === 'penRate' ? '穿透专路胜出' : '普通路线胜出' }}
           <template v-if="result.penRatePathUsed"> · 已跑穿透专路</template>
           · 走完阶段 {{ result.phasesCompleted.join(' → ') }}

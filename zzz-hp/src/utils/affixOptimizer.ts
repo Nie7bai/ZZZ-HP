@@ -27,7 +27,7 @@ import {
  * - 柱图那套「36 − 6×同类主词条数」的档数上限**不适用**（用户 2026-09-10 决定）；
  *   现存的单条约束只有词条库条目自身的 `cap` 与互斥组，见 `resolveAffixOptimizerBudget`。
  *
- * ## 搜索策略：自适应 Beam（2026-09-16 改造，取代单路贪心）
+ * ## 搜索策略：比例 + 保底的多路线 Beam（2026-09-17 定稿：删换档、删自适应 B）
  *
  * 旧版是「每条路一个起点、贪心 + 1/2-swap」，单条链一旦选错就回不来。
  * 现改为**保留多条完整分配路线**、最后比总伤的 Beam：
@@ -40,15 +40,20 @@ import {
  *    （完整保留 `rollCost` / 组 cap / 总词条预算 / `entryCapTaxes` 语义）。
  * 4. 按**规范化 `rollsByEntryId`** 去重。不同条目即使临时伤害相同也不按评估值合并，
  *    否则会丢掉后续 cap / 税差异。
- * 5. 同一 `usedRolls` 桶内先按**累计提升比例**（`routeRetentionRatio`）筛，
- *    再按**自适应 B** 截顶（用户 `maxRetainedRoutes` 是上限）。
- * 6. 自适应 B 由「剩余计算量 × 剩余预算层 × 候选池规模」反推；预算不足以
- *    完成整层时**保留上一层完整状态**（无半成品）。
- * 7. Beam 结束后对**前 `min(3, B)` 个状态**各跑一次 1-swap / 2-swap，
- *    再选最终赢家 —— 避免只优化第一名、漏掉「第二名换档后反超」。
+ * 5. 同一 `usedRolls` 桶内按**三件套**定宽度：先按**累计提升比例**（`routeRetentionRatio`）筛；
+ *    筛完不足 `minRetainedRoutes` 条时按累计提升从高到低**补足**（只补正提升）；
+ *    超过 `maxRetainedRoutes` 条时按累计提升从高到低**截顶**（设计内行为，不算 truncated）。
+ * 6. `maxWorkUnits` 只是**刹车**：预算**只挡在每次真实评估之前**（缓存命中不计价），
+ *    本层按总伤从高到低开，**花光为止**；已经评估过的路线照常进终选。
+ *    它**不参与任何宽度决策**（不截顶，也不因为"下一层估不满"就停掉整个搜索）。
+ *
+ * 2026-09-17 删掉的两样（用户口径，别再往回加）：
+ * - **1/2-swap 换档精修**：实测 0 贡献（200k 与 600k 预算总伤完全相同），纯成本；
+ * - **自适应 B**：由剩余预算反推宽度会让「同一份参数在不同机器/流程上留不同条数」，
+ *   不可解释、不可复现；宽度改成只由路线保留比例 + 最小保留路线决定。
  *
  * **穿透专路**：把已启用的 `main:slot5:penRate` / `set:penRate:8` 锁满（它们**绕过**
- * 初始门槛、路线比例和 B，直接进 `fixedRolls`），在带穿透率的面板上重新测量、
+ * 初始门槛、路线比例与保底，直接进 `fixedRolls`），在带穿透率的面板上重新测量、
  * 形成**专路独立候选池**，再跑同一套 Beam；最后与普通路比最终总伤。
  * 防御区 24+8+固穿是正协同，单档排序看不见整套，所以必须另开一路。
  *
@@ -56,8 +61,9 @@ import {
  *
  * - 一次评估的计价 = `1 + 命中数`（实测拟合良好，见 `dev-docs/affix-optimizer-impl-log.md`）。
  * - 缓存命中只花真算约 1% 的时间，因此**不计入**计算量消耗。
- * - `maxWorkUnits` 是**总刹车**（默认 20 万），不再兼「候选宽度」。原「手动不设上限跑到底」
- *   由「最大保留路线 = 全池 + 大预算」表达。
+ * - `maxWorkUnits` 是**纯刹车**（默认 20 万）：只决定「跑不跑得完」，不决定宽度。
+ *   撞到它时**不停整个搜索**，只是停止花钱：本层按总伤从高到低能开多少开多少，
+ *   后面的层不再扩展（已评估的状态照常参与终选），并把 `truncated` 标成 true。
  */
 
 /** 搜索预设 id */
@@ -77,7 +83,21 @@ export interface AffixSearchParams {
   initialCandidateThreshold: number
   /** 路线保留比例（0..1）：同层保留「累计提升 ≥ 本层最佳 × 比例」的整条路线 */
   routeRetentionRatio: number
-  /** 最大保留路线 B：比例筛后最多留几条，分支规模硬上限 */
+  /**
+   * 最小保留路线数（1..64）：比例筛完**不足这么多条**时，按本层累计提升从高到低**补足**
+   * （只补有正提升的路线）。
+   *
+   * 语义与候选级的 `initialCandidateFloor` 同构：比例挡的是「不像赢家」，它挡的是「被筛空」。
+   * 它是**下限**，与 `maxRetainedRoutes`（上限）成对使用。
+   */
+  minRetainedRoutes: number
+  /**
+   * 最大保留路线数（1..64）：比例筛完**超过这么多条**时，按本层累计提升从高到低**截顶**。
+   *
+   * 2026-09-17 用户口径：比例筛管不住宽度（同层大量路线都在比例线以内），
+   * 所以「比例 + 下限 + 上限」三件套缺一不可 —— 上限是防爆宽度的唯一保险。
+   * 上限截顶不算 `truncated`（它是设计内行为，不是预算吃紧）。
+   */
   maxRetainedRoutes: number
   /**
    * 候选兜底（每组保底前 N 名，0 = 关掉）：按**单档收益**在组内排名前 N 的条目**无论如何保留**。
@@ -103,20 +123,25 @@ export function clampAffixCandidateFloor(value: unknown, fallback = 0): number {
 }
 
 /**
- * 预设参数（2026-09-16 定稿：门槛是**组内单档比例**，并带**候选兜底**）。
+ * 预设参数（2026-09-17 二次定稿：**比例 + 最小保留路线 + 最大保留路线**三件套）。
  *
- * 用户口径：**均衡 = 门槛 50% / 兜底 5 / 比例 50% / B 8**；快速与精细在均衡基础上
- * **各 ±30 个百分点**（快速 80%、精细 20%；兜底与 B 三档一致）。
+ * 用户口径（原话数值）：
+ * - 快速：1-2 条 / 比例 95%
+ * - 均衡：2-5 条 / 比例 90%
+ * - 精细：4-8 条 / 比例 50%
  *
- * 依据（8 命中合成场景、带号位额度、46 档）：带兜底 5 时 `R = 0.1 / 0.15 / 0.5` 质量都是 100%
- * （兜底挡住「基线上不值钱、终局里最值钱」的副词条爆伤）；真实 fixture 上 `R=0.1 ∪ 前5`
- * 比纯比例还省（引擎 801 → 712：池子更大，但自适应 B 的除数变大）。
- * 旧的 2% / 0.5% / 0%（占全场最佳满额收益）**作废**。
+ * 为什么必须有上限：比例筛的度量是「累计提升 ≥ 本层最佳 × 比例」，同层大量路线都在这条线以内
+ * （实测 9 池 34 档场景，比例 80% 时单层能活几百条），**比例管不住宽度**——
+ * 去上限那版实测把预算刹车逼停（20 万只花掉 3.9 万、34 档只走 9 层），
+ * 所以宽度 = 「比例筛 → 不足 min 补足 → 超过 max 截顶」。
+ *
+ * 同时保留 `initialCandidateThreshold`（组内单档比例）与 `initialCandidateFloor`（候选兜底 5）：
+ * 依据见 `dev-docs/词条最优分配.md`「实测口径」。
  */
 export const AFFIX_SEARCH_PRESETS: Record<Exclude<AffixSearchPresetId, 'custom'>, AffixSearchParams> = {
-  fast: { initialCandidateThreshold: 0.8, initialCandidateFloor: 5, routeRetentionRatio: 0.8, maxRetainedRoutes: 8 },
-  balanced: { initialCandidateThreshold: 0.5, initialCandidateFloor: 5, routeRetentionRatio: 0.5, maxRetainedRoutes: 8 },
-  fine: { initialCandidateThreshold: 0.2, initialCandidateFloor: 5, routeRetentionRatio: 0.2, maxRetainedRoutes: 8 },
+  fast: { initialCandidateThreshold: 0.8, initialCandidateFloor: 5, routeRetentionRatio: 0.95, minRetainedRoutes: 1, maxRetainedRoutes: 2 },
+  balanced: { initialCandidateThreshold: 0.5, initialCandidateFloor: 5, routeRetentionRatio: 0.9, minRetainedRoutes: 2, maxRetainedRoutes: 5 },
+  fine: { initialCandidateThreshold: 0.2, initialCandidateFloor: 5, routeRetentionRatio: 0.5, minRetainedRoutes: 4, maxRetainedRoutes: 8 },
 }
 
 export const AFFIX_SEARCH_PRESET_LABELS: Record<AffixSearchPresetId, string> = {
@@ -133,7 +158,22 @@ export function clampAffixUnitRatio(value: number | undefined, fallback = 0): nu
   return Math.max(0, Math.min(1, value))
 }
 
-export function clampAffixMaxRetainedRoutes(value: number | undefined, fallback = 8): number {
+/**
+ * 最小保留路线数的合法范围（1..64）。
+ *
+ * `fallback` 默认 3 = 均衡预设值：调用方没给值时按「均衡」兜底。
+ */
+export function clampAffixMinRetainedRoutes(value: number | undefined, fallback = 3): number {
+  if (value == null || !Number.isFinite(value)) return fallback
+  return Math.max(1, Math.min(64, Math.round(value)))
+}
+
+/**
+ * 最大保留路线数的合法范围（1..64）。
+ *
+ * `fallback` 默认 5 = 均衡预设值：调用方没给值时按「均衡」兜底。
+ */
+export function clampAffixMaxRetainedRoutes(value: number | undefined, fallback = 5): number {
   if (value == null || !Number.isFinite(value)) return fallback
   return Math.max(1, Math.min(64, Math.round(value)))
 }
@@ -146,6 +186,7 @@ export function resolveAffixSearchParams(input: {
   initialCandidateThreshold?: number
   initialCandidateFloor?: number
   routeRetentionRatio?: number
+  minRetainedRoutes?: number
   maxRetainedRoutes?: number
 }): AffixSearchParams {
   const preset = input.searchPreset ?? DEFAULT_AFFIX_SEARCH_PRESET
@@ -160,14 +201,20 @@ export function resolveAffixSearchParams(input: {
       base.initialCandidateFloor,
     ),
     routeRetentionRatio: clampAffixUnitRatio(input.routeRetentionRatio, base.routeRetentionRatio),
+    // 上限永远是上限：给了「最小 > 最大」这种矛盾输入时压低的是下限（保底让位于截顶），
+    // 这样界面上的「最大保留 N 条」在任何参数组合下都字面成立。
     maxRetainedRoutes: clampAffixMaxRetainedRoutes(
       input.maxRetainedRoutes,
       base.maxRetainedRoutes,
     ),
+    minRetainedRoutes: Math.min(
+      clampAffixMinRetainedRoutes(input.minRetainedRoutes, base.minRetainedRoutes),
+      clampAffixMaxRetainedRoutes(input.maxRetainedRoutes, base.maxRetainedRoutes),
+    ),
   }
 }
 
-/** @deprecated 旧的候选宽度模式，已被「自适应 B + 三项搜索参数」取代；保留仅为旧脚本不报错。 */
+/** @deprecated 旧的候选宽度模式，已被「初始候选门槛 + 路线保留比例 + 最小保留路线」取代；保留仅为旧脚本不报错。 */
 export type AffixCandidateWidthMode = 'auto' | 'manual'
 
 export interface AffixOptimizerBudget {
@@ -192,7 +239,9 @@ export interface AffixOptimizerInput {
   initialCandidateFloor?: number
   /** 路线保留比例（0..1）；显式值覆盖预设 */
   routeRetentionRatio?: number
-  /** 最大保留路线 B；显式值覆盖预设 */
+  /** 最小保留路线数（1..64）：比例筛完不足这么多条时的保底下限；显式值覆盖预设 */
+  minRetainedRoutes?: number
+  /** 最大保留路线数（1..64）：比例筛完超过这么多条时的截顶上限；显式值覆盖预设 */
   maxRetainedRoutes?: number
   /**
    * 是否跑穿透专路（默认 true）。测试可关，用来对照「不锁 24+8」时的漏解。
@@ -223,9 +272,9 @@ export interface AffixOptimizerInput {
    * 游戏专用规则用来表达「号位选了攻击% → 副词条攻击% 少 1 档」。默认库不传。
    */
   entryCapTaxes?: AffixEntryCapTax[]
-  /** @deprecated 被 `maxRetainedRoutes` 取代，传入即忽略。 */
+  /** @deprecated 被 `minRetainedRoutes` 取代，传入即忽略。 */
   candidateWidthMode?: AffixCandidateWidthMode
-  /** @deprecated 被 `maxRetainedRoutes` 取代，传入即忽略。 */
+  /** @deprecated 被 `minRetainedRoutes` 取代，传入即忽略。 */
   manualCandidateWidth?: number
   /** @deprecated 被 `initialCandidateThreshold` / `routeRetentionRatio` 取代，传入即忽略。 */
   minimumBenefitRatio?: number
@@ -270,8 +319,6 @@ export interface AffixOptimizerResult {
   workBudget: number | null
   /** 是否因预算耗尽而提前停止 */
   truncated: boolean
-  /** 是否因候选池太大而跳过了可选的 1/2-swap 精修（Beam 本身已完整走完） */
-  refineSkipped: boolean
   /** 实际走完的阶段（供 UI 说明搜索结果停在哪一级） */
   phasesCompleted: string[]
   /** 本次是否跑过穿透专路 */
@@ -286,25 +333,21 @@ export interface AffixOptimizerResult {
   survivedRoutes: number
   /** 累计扩展评估的路线条数 */
   expandedRoutes: number
-  /** 累计被比例 / B 淘汰的路线条数 */
-  prunedRoutes: number
   /** 初始候选门槛永久淘汰的条目数 */
   initialDropped: number
   /** 其中靠「每组保底前 N 名」兜底救回来的条目数 */
   initialFloorSaved: number
-  /** 层内路线比例淘汰的路线数（各层累计） */
+  /** 层内路线比例淘汰的路线数（各层累计；**含后来被最小保留路线补回的那些**） */
   layerRatioDropped: number
-  /** 本次用到的自适应 B 最小值 */
-  adaptiveBMin: number
-  /** 本次用到的自适应 B 最大值 */
-  adaptiveBMax: number
-  /** 进入 1/2-swap 换档的终选状态数（min(3, B)） */
-  refinedRoutes: number
+  /** 靠「最小保留路线」保底补回来的路线数（各层累计） */
+  routeFloorSaved: number
+  /** 被「最大保留路线」截顶丢掉的路线数（各层累计；设计内行为，不算 truncated） */
+  routeCapDropped: number
 }
 
 /** 求解进度快照（异步驱动定期回调，用于 UI 显示） */
 export interface AffixOptimizerProgress {
-  phase: 'baseline' | 'measure' | 'beam' | 'swap1' | 'swap2' | 'done'
+  phase: 'baseline' | 'measure' | 'beam' | 'done'
   engineCalls: number
   cacheHits: number
   workUsed: number
@@ -319,10 +362,8 @@ export interface AffixOptimizerProgress {
   gameTotals?: { workUsed: number; engineCalls: number }
   /** 当前预算层（已用词条数） */
   layerUsedRolls?: number
-  /** 当前层存活路线数 */
+  /** 当前层存活路线数（比例筛 + 最小保留补足之后的**最终**条数） */
   survivedRoutes?: number
-  /** 当前层实际 B */
-  adaptiveB?: number
   /** 初始候选门槛永久淘汰条数 */
   initialDropped?: number
   /** 靠「每组保底前 N 名」兜底救回的条数 */
@@ -689,14 +730,6 @@ interface SearchOutcome {
   workUsed: number
   workBudget: number | null
   truncated: boolean
-  /**
-   * 因为候选池太大而跳过了 1/2-swap 精修。
-   *
-   * 与 `truncated` 分开：截断 = Beam 没走完、结果不完整；跳过精修 = Beam 已完整走完、
-   * 只是没做最后那道可选的换档。两者对用户的含义完全不同（前者“结果可能不是最优、
-   * 建议换更快预设”，后者“已完整搜索，只是没做2档微调”）。
-   */
-  refineSkipped: boolean
   phasesCompleted: string[]
   searchPath: 'ordinary' | 'penRate'
   penRatePathUsed: boolean
@@ -704,14 +737,14 @@ interface SearchOutcome {
   beamLayers: number
   survivedRoutes: number
   expandedRoutes: number
-  prunedRoutes: number
   initialDropped: number
   /** 其中靠「每组保底前 N 名」兜底救回来的条目数 */
   initialFloorSaved: number
   layerRatioDropped: number
-  adaptiveBMin: number
-  adaptiveBMax: number
-  refinedRoutes: number
+  /** 靠「最小保留路线」保底补回来的路线数（各层累计） */
+  routeFloorSaved: number
+  /** 被「最大保留路线」截顶丢掉的路线数（各层累计） */
+  routeCapDropped: number
 }
 
 /**
@@ -752,10 +785,8 @@ function* solveSearch(
   let baselineDamage = 0
   let layerUsedRolls = -1
   let liveSurvived = 0
-  let liveAdaptiveB = 0
   let liveInitialDropped = 0
   let liveInitialFloorSaved = 0
-  let refineSkipped = false
 
   const snapshot = (): AffixOptimizerProgress => ({
     phase,
@@ -768,7 +799,6 @@ function* solveSearch(
     searchPath,
     ...(layerUsedRolls >= 0 ? { layerUsedRolls } : {}),
     ...(liveSurvived > 0 ? { survivedRoutes: liveSurvived } : {}),
-    ...(liveAdaptiveB > 0 ? { adaptiveB: liveAdaptiveB } : {}),
     ...(liveInitialDropped > 0 ? { initialDropped: liveInitialDropped } : {}),
     ...(liveInitialFloorSaved > 0 ? { initialFloorSaved: liveInitialFloorSaved } : {}),
   })
@@ -806,24 +836,6 @@ function* solveSearch(
       panelDeltas,
       extraGains,
     }
-  }
-
-  /**
-   * 自适应 B：以用户 B 为上限，由「剩余计算量 × 剩余预算层 × 候选池规模」反推。
-   *
-   * 下一层扩展成本 ≈ 存活数 × 池大小，于是 `B ≈ (剩余评估数 / 剩余层数) / 池大小`。
-   * 预算紧时自然退化到 B=1（等价贪心），松时才展开多路线。
-   */
-  const deriveAdaptiveB = (remainingLayers: number, poolSize: number): number => {
-    const upper = params.maxRetainedRoutes
-    if (upper <= 1) return 1
-    const remaining = remainingWork()
-    if (!Number.isFinite(remaining)) return upper
-    const affordableEvals = remaining / pricePerEval
-    const layersLeft = Math.max(1, remainingLayers)
-    const perLayer = affordableEvals / layersLeft
-    const raw = Math.floor(perLayer / Math.max(1, poolSize))
-    return clampInt(raw, 1, upper)
   }
 
   // ---------- 0. 基线（固定档数，不参与优化） ----------
@@ -926,10 +938,13 @@ function* solveSearch(
 
   let beamLayers = 0
   let expandedRoutes = 0
-  let prunedRoutes = 0
   let layerRatioDropped = 0
-  let adaptiveBMin = 0
-  let adaptiveBMax = 0
+  let routeFloorSaved = 0
+  let routeCapDropped = 0
+  /** 最小保留路线数（1..64）：比例筛完不足这么多条时补足 */
+  const minRetained = clampInt(params.minRetainedRoutes, 1, 64)
+  /** 最大保留路线数（1..64）：比例筛完超过这么多条时按总伤截顶 */
+  const maxRetained = clampInt(params.maxRetainedRoutes, 1, 64)
 
   if (pool.length) {
     for (let used = baselineState.usedRolls; used <= maxUsed; used += 1) {
@@ -961,16 +976,27 @@ function* solveSearch(
         )
       layerRatioDropped += unique.length - afterRatio.length
 
-      // 自适应 B 截顶
-      const adaptiveB = deriveAdaptiveB(Math.max(1, maxUsed - used), Math.max(1, pool.length))
-      if (adaptiveBMin === 0) adaptiveBMin = adaptiveB
-      adaptiveBMin = Math.min(adaptiveBMin, adaptiveB)
-      adaptiveBMax = Math.max(adaptiveBMax, adaptiveB)
-      liveAdaptiveB = adaptiveB
-
+      // 最小保留路线：比例筛完不足 N 条时，按本层累计提升从高到低补足（**只补正提升**）。
+      // 语义与候选级的「每组保底前 N 名」同构：比例管"像不像赢家"，它管"别被筛空"。
       afterRatio.sort((a, b) => b.total - a.total)
-      const finalStates = afterRatio.slice(0, adaptiveB)
-      prunedRoutes += afterRatio.length - finalStates.length
+      let finalStates = afterRatio
+      if (afterRatio.length < minRetained) {
+        const inRatio = new Set(afterRatio)
+        const saved = unique
+          .filter((state) => !inRatio.has(state) && state.total - baselineDamage > 0)
+          .sort((a, b) => b.total - a.total)
+          .slice(0, minRetained - afterRatio.length)
+        if (saved.length) {
+          routeFloorSaved += saved.length
+          finalStates = [...afterRatio, ...saved]
+        }
+      }
+      // 最大保留路线：比例筛管不住宽度（同层大量路线都在比例线内），超上限就按总伤截顶。
+      // 上限截顶是**设计内行为**，不算 truncated（不是预算吃紧）。
+      if (finalStates.length > maxRetained) {
+        routeCapDropped += finalStates.length - maxRetained
+        finalStates = finalStates.slice(0, maxRetained)
+      }
       survivorsByUsed.set(used, finalStates)
       beamLayers += 1
       layerUsedRolls = used
@@ -979,13 +1005,11 @@ function* solveSearch(
 
       if (!finalStates.length) continue
 
-      // 预算不足以完成整层 → 停在上一层完整状态（无半成品）
-      const estimated = finalStates.length * pool.length
-      if (remainingWork() < estimated * pricePerEval) {
-        truncated = true
-        break
-      }
-
+      // 预算刹车（2026-09-17 重写）：旧写法按「本层路线数 × 池大小 × 单价」估下一层最坏成本，
+      // 估不满就**停掉整个搜索** —— 去掉上限之后一层动辄几百条路线，这个最坏估算必然爆表
+      // （实测：预算 20 万只花掉 3.9 万，34 档只走了 9 层）。
+      // 新写法：预算只挡在**每次真实评估之前**（缓存命中不计价），按总伤从高到低开，花光为止。
+      let budgetHit = false
       for (const state of finalStates) {
         const allowedOf = (entry: AffixLibraryEntry) =>
           remainingAllowedRolls(
@@ -1000,6 +1024,10 @@ function* solveSearch(
             capTaxes,
           ) > 0
         for (const entry of pool) {
+          if (remainingWork() < pricePerEval) {
+            budgetHit = true
+            break
+          }
           if (!allowedOf(entry)) continue
           const nextRolls = { ...state.rolls, [entry.id]: (state.rolls[entry.id] ?? 0) + 1 }
           const nextUsed = usedRollsOf(entries, nextRolls)
@@ -1011,199 +1039,26 @@ function* solveSearch(
           if (arr) arr.push(nextState)
           else pendingByUsed.set(nextUsed, [nextState])
         }
+        if (budgetHit) break
       }
+      if (budgetHit) truncated = true
     }
   }
   phasesCompleted.push('beam')
 
-  // ---------- 3. 终选：前 min(3, B) 条路线各跑 1/2-swap ----------
+  // ---------- 3. 终选：全部存活路线里比总伤，取最大 ----------
+  //
+  // 2026-09-17 去掉 1/2-swap 换档精修（实测 0 贡献，见文件头「搜索策略」说明）：
+  // 终选就是「所有层留下的完整路线里，总伤最高的那条」。
   const finalists: BeamState[] = []
   for (const states of survivorsByUsed.values()) finalists.push(...states)
   finalists.sort((a, b) => b.total - a.total)
+  const bestState: BeamState = finalists[0] ?? baselineState
 
-  const refineCount = Math.min(3, params.maxRetainedRoutes, finalists.length)
-  let bestState: BeamState = finalists[0] ?? baselineState
-  let bestRolls: Record<string, number> = { ...bestState.rolls }
-  let refinedRoutes = 0
-
-  /** 1-swap：撤一档、加一档（池内候选） */
-  function* localSearch1Swap(
-    rolls: Record<string, number>,
-    start: BeamState,
-  ): Generator<AffixOptimizerProgress, BeamState, void> {
-    phase = 'swap1'
-    let current = start
-    for (;;) {
-      const removals = entries.filter((entry) => {
-        const removeRolls = rolls[entry.id] ?? 0
-        return removeRolls > 0 && (fixedRolls[entry.id] ?? 0) < removeRolls
-      })
-      if (!removals.length) break
-      const poolSize = Math.max(1, pool.length)
-      if (remainingWork() < removals.length * poolSize * pricePerEval) {
-        refineSkipped = true
-        break
-      }
-      let bestSwap: { rolls: Record<string, number>; state: BeamState } | null = null
-      for (const removeEntry of removals) {
-        const removeRolls = rolls[removeEntry.id] ?? 0
-        const afterRemove = normalizeRolls({ ...rolls, [removeEntry.id]: removeRolls - 1 })
-        const usedAfter = usedRollsOf(entries, afterRemove)
-        for (const addEntry of pool) {
-          if (addEntry.id === removeEntry.id) continue
-          const addRolls = afterRemove[addEntry.id] ?? 0
-          if (
-            remainingAllowedRolls(
-              addEntry,
-              addRolls,
-              budget,
-              usedAfter,
-              afterRemove,
-              entries,
-              maxRollsPerEntry,
-              groupCaps,
-              capTaxes,
-            ) <= 0
-          ) continue
-          const evaluated = evalRolls({ ...afterRemove, [addEntry.id]: addRolls + 1 })
-          yield snapshot()
-          if (evaluated.total > current.total &&
-              (!bestSwap || evaluated.total > bestSwap.state.total)) {
-            bestSwap = { rolls: { ...evaluated.rolls }, state: evaluated }
-          }
-        }
-      }
-      if (!bestSwap) break
-      for (const key of Object.keys(rolls)) delete rolls[key]
-      Object.assign(rolls, bestSwap.rolls)
-      current = bestSwap.state
-    }
-    return current
-  }
-
-  /** 2-swap：撤两档、加两档（池内候选；撤法只从活跃集里出） */
-  function* localSearch2Swap(
-    rolls: Record<string, number>,
-    start: BeamState,
-  ): Generator<AffixOptimizerProgress, BeamState, void> {
-    phase = 'swap2'
-    let current = start
-    for (;;) {
-      // 撤法只从「已分配档数的条目」里出（活跃集）：没分到档数的条目无从撤起，
-      // 这正是把旧的 O(E⁴) 降到「活跃集²」的关键
-      const active = entries.filter((entry) => (rolls[entry.id] ?? 0) > 0)
-      if (!active.length) break
-      const removalCount = Math.max(1, (active.length * (active.length + 1)) / 2)
-      const poolSize = Math.max(1, pool.length)
-      const pairCount = Math.max(1, (poolSize * (poolSize + 1)) / 2)
-      // 做不完就不开这一轮：宁可停在上一级完成的结果，也不给半成品
-      if (remainingWork() < removalCount * pairCount * pricePerEval) {
-        refineSkipped = true
-        break
-      }
-
-      const removals: { rolls: Record<string, number>; usedRolls: number }[] = []
-      for (let i = 0; i < active.length; i += 1) {
-        const a = active[i]!
-        const aRolls = rolls[a.id] ?? 0
-        const aFixed = fixedRolls[a.id] ?? 0
-        if (aRolls - 2 >= aFixed) {
-          const next = normalizeRolls({ ...rolls, [a.id]: aRolls - 2 })
-          removals.push({ rolls: next, usedRolls: usedRollsOf(entries, next) })
-        }
-        for (let j = i + 1; j < active.length; j += 1) {
-          const b = active[j]!
-          const bRolls = rolls[b.id] ?? 0
-          const bFixed = fixedRolls[b.id] ?? 0
-          if (aRolls - 1 < aFixed || bRolls - 1 < bFixed) continue
-          const next = normalizeRolls({ ...rolls, [a.id]: aRolls - 1, [b.id]: bRolls - 1 })
-          removals.push({ rolls: next, usedRolls: usedRollsOf(entries, next) })
-        }
-      }
-
-      let bestSwap: { rolls: Record<string, number>; state: BeamState } | null = null
-      for (const removal of removals) {
-        const candidatesA: AffixLibraryEntry[] = []
-        for (const entry of pool) {
-          if (
-            remainingAllowedRolls(
-              entry,
-              removal.rolls[entry.id] ?? 0,
-              budget,
-              removal.usedRolls,
-              removal.rolls,
-              entries,
-              maxRollsPerEntry,
-              groupCaps,
-              capTaxes,
-            ) > 0
-          ) candidatesA.push(entry)
-        }
-        for (let i = 0; i < candidatesA.length; i += 1) {
-          const a = candidatesA[i]!
-          const aRolls = removal.rolls[a.id] ?? 0
-          const afterAddA = { ...removal.rolls, [a.id]: aRolls + 1 }
-          const usedA = usedRollsOf(entries, afterAddA)
-          for (let j = i; j < candidatesA.length; j += 1) {
-            const b = candidatesA[j]!
-            const bRolls = afterAddA[b.id] ?? 0
-            // 传 afterAddA 而不是 removal.rolls：这一轮已经加了 a 一档，
-            // 同组额度必须把 a 算进去（否则同组两条会同时被加进来）
-            if (
-              remainingAllowedRolls(
-                b,
-                bRolls,
-                budget,
-                usedA,
-                afterAddA,
-                entries,
-                maxRollsPerEntry,
-                groupCaps,
-                capTaxes,
-              ) <= 0
-            ) continue
-            const candidate = { ...afterAddA, [b.id]: bRolls + 1 }
-            const evaluated = evalRolls(candidate)
-            yield snapshot()
-            if (evaluated.total > current.total &&
-                (!bestSwap || evaluated.total > bestSwap.state.total)) {
-              bestSwap = { rolls: { ...evaluated.rolls }, state: evaluated }
-            }
-          }
-        }
-      }
-
-      if (!bestSwap) break
-      for (const key of Object.keys(rolls)) delete rolls[key]
-      Object.assign(rolls, bestSwap.rolls)
-      current = bestSwap.state
-    }
-    return current
-  }
-
-  if (refineCount > 0) {
-    const canRefine = (): boolean => remainingWork() > 0
-    for (const candidate of finalists.slice(0, refineCount)) {
-      if (!canRefine()) {
-        truncated = true
-        break
-      }
-      const rolls = { ...candidate.rolls }
-      const refined1 = yield* localSearch1Swap(rolls, candidate)
-      if (!phasesCompleted.includes('swap1')) phasesCompleted.push('swap1')
-      const refined2 = yield* localSearch2Swap(rolls, refined1)
-      if (!phasesCompleted.includes('swap2')) phasesCompleted.push('swap2')
-      refinedRoutes += 1
-      if (refined2.total > bestState.total) {
-        bestState = refined2
-        bestRolls = { ...rolls }
-      }
-    }
-  }
   phase = 'done'
 
   return {
-    rollsByEntryId: normalizeRolls(bestRolls),
+    rollsByEntryId: normalizeRolls(bestState.rolls),
     state: bestState,
     baselineDamage,
     engineCalls,
@@ -1211,7 +1066,6 @@ function* solveSearch(
     workUsed,
     workBudget,
     truncated,
-    refineSkipped,
     phasesCompleted,
     searchPath,
     penRatePathUsed: false,
@@ -1219,13 +1073,11 @@ function* solveSearch(
     beamLayers,
     survivedRoutes: finalists.length,
     expandedRoutes,
-    prunedRoutes,
     initialDropped,
     initialFloorSaved: floorSaved,
     layerRatioDropped,
-    adaptiveBMin,
-    adaptiveBMax,
-    refinedRoutes,
+    routeFloorSaved,
+    routeCapDropped,
   }
 }
 
@@ -1251,7 +1103,6 @@ function toResult(input: AffixOptimizerInput, outcome: SearchOutcome): AffixOpti
     workUsed: outcome.workUsed,
     workBudget: outcome.workBudget,
     truncated: outcome.truncated,
-    refineSkipped: outcome.refineSkipped,
     phasesCompleted: outcome.phasesCompleted,
     penRatePathUsed: outcome.penRatePathUsed,
     winningPath: outcome.searchPath,
@@ -1259,13 +1110,11 @@ function toResult(input: AffixOptimizerInput, outcome: SearchOutcome): AffixOpti
     beamLayers: outcome.beamLayers,
     survivedRoutes: outcome.survivedRoutes,
     expandedRoutes: outcome.expandedRoutes,
-    prunedRoutes: outcome.prunedRoutes,
     initialDropped: outcome.initialDropped,
     initialFloorSaved: outcome.initialFloorSaved,
     layerRatioDropped: outcome.layerRatioDropped,
-    adaptiveBMin: outcome.adaptiveBMin,
-    adaptiveBMax: outcome.adaptiveBMax,
-    refinedRoutes: outcome.refinedRoutes,
+    routeFloorSaved: outcome.routeFloorSaved,
+    routeCapDropped: outcome.routeCapDropped,
   }
 }
 
@@ -1288,7 +1137,6 @@ function mergeSearchOutcomes(
   const all = [ordinary, ...penWorlds]
   const sum = (pick: (item: SearchOutcome) => number): number =>
     all.reduce((total, item) => total + pick(item), 0)
-  const bMins = all.map((item) => item.adaptiveBMin).filter((value) => value > 0)
   return {
     ...winner,
     baselineDamage: ordinary.baselineDamage,
@@ -1297,20 +1145,17 @@ function mergeSearchOutcomes(
     workUsed: sum((item) => item.workUsed),
     workBudget: sharedWorkBudget,
     truncated: all.some((item) => item.truncated),
-    refineSkipped: all.some((item) => item.refineSkipped),
     phasesCompleted: [...new Set(all.flatMap((item) => item.phasesCompleted))],
     searchPath: usePen ? 'penRate' : 'ordinary',
     penRatePathUsed: true,
     beamLayers: Math.max(...all.map((item) => item.beamLayers)),
     survivedRoutes: sum((item) => item.survivedRoutes),
     expandedRoutes: sum((item) => item.expandedRoutes),
-    prunedRoutes: sum((item) => item.prunedRoutes),
     initialDropped: Math.max(...all.map((item) => item.initialDropped)),
     initialFloorSaved: Math.max(...all.map((item) => item.initialFloorSaved)),
     layerRatioDropped: sum((item) => item.layerRatioDropped),
-    adaptiveBMin: bMins.length ? Math.min(...bMins) : 0,
-    adaptiveBMax: Math.max(...all.map((item) => item.adaptiveBMax)),
-    refinedRoutes: sum((item) => item.refinedRoutes),
+    routeFloorSaved: sum((item) => item.routeFloorSaved),
+    routeCapDropped: sum((item) => item.routeCapDropped),
   }
 }
 

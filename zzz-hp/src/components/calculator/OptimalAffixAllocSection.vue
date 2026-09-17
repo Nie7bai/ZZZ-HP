@@ -1608,12 +1608,13 @@ function stopAllocTimer(keepElapsed = true) {
   affixAllocTickMs.value = null
 }
 /**
- * 词条搜索设置（本机独立存盘）：预设 + 三项搜索参数 + 高级区展开状态。
+ * 词条搜索设置（本机独立存盘）：预设 + 五项搜索参数 + 高级区展开状态。
  *
- * 三项参数各有一句白话解释，见 `dev-docs/词条最优分配.md`「改造：自适应 Beam」：
+ * 参数各有白话解释，见 `dev-docs/词条最优分配.md`「改造：自适应 Beam」：
  * - 初始候选门槛：单档收益只跟**本组最高**比，差太远的直接出局、后面不再回头捡；
+ * - 候选兜底：每组按单档收益排前 N 名的一定保留；
  * - 路线保留比例：同一档数下只留接近最好的那批分法；
- * - 最大保留路线：同时最多试多少种分法。
+ * - 最小保留路线 / 最大保留路线：比例筛之后的**下限 / 上限**（上限是防爆宽度的唯一保险）。
  *
  * ⚠️ 空组（临时）条目不参与最优计算，也不显示收益表。
  */
@@ -1893,6 +1894,7 @@ async function runAffixAllocation() {
         initialCandidateThreshold: affixSearchParams.value.initialCandidateThreshold,
         initialCandidateFloor: affixSearchParams.value.initialCandidateFloor,
         routeRetentionRatio: affixSearchParams.value.routeRetentionRatio,
+        minRetainedRoutes: affixSearchParams.value.minRetainedRoutes,
         maxRetainedRoutes: affixSearchParams.value.maxRetainedRoutes,
         groupCaps: affixGroupCaps(affixLibraryState.value),
       },
@@ -1990,6 +1992,7 @@ async function runGameAffixAllocation() {
         initialCandidateThreshold: affixSearchParams.value.initialCandidateThreshold,
         initialCandidateFloor: affixSearchParams.value.initialCandidateFloor,
         routeRetentionRatio: affixSearchParams.value.routeRetentionRatio,
+        minRetainedRoutes: affixSearchParams.value.minRetainedRoutes,
         maxRetainedRoutes: affixSearchParams.value.maxRetainedRoutes,
       },
       {
