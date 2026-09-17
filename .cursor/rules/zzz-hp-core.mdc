@@ -39,7 +39,7 @@ alwaysApply: true
 
 ## 开工与收工（务实）
 
-- **新任务**：先读 `dev-docs/current-status.md`；涉及伤害计算时，按 `dev-docs/TASK_ROUTER.md` 找文档再改代码。
+- **新任务**：先读 `dev-docs/current-status.md` **顶部「一、现状」**（底部「二、历史与流水」是低优先级，追溯时才看）；涉及伤害计算时，按 `dev-docs/TASK_ROUTER.md` 找文档再改代码。
 - **未读 current-status 前**，不直接：改 git remote、全量 DB seed、后台起停 dev 服务。
-- **收工**：有进度、新约定或踩坑 → 更新 `dev-docs/current-status.md`；红线级约定 → 同步本目录 rules；技术细节 → `dev-docs/`。
+- **收工**：现状有变（分支/进度/缺陷/环境）→ 改 `current-status.md` **顶部「一、现状」**；过程、数字证据、踩坑经过 → 记**底部「二、历史与流水」**（或出处手册）；红线级约定 → 同步本目录 rules；技术细节 → `dev-docs/`。
 - 小修小补、纯问答可跳过收工更新。
