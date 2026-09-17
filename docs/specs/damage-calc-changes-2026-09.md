@@ -3,7 +3,7 @@
 > **范围**：ZZZ-HP 角色计算器 · 伤害计算页（`zzz-hp/src/components/calculator/`）。
 > **用途**：汇总 2026-09 阶段落地的改动、现行行为口径、验证证据与遗留项，供评审与后续维护参考。
 > **不在本文维护**：动态分支状态（用 Git 查询，见 [Git 协作与发布政策](../policies/git-workflow.md)）、伤害公式本身（见 [`CALCULATOR_FORMULAS.md`](../../CALCULATOR_FORMULAS.md)）。
-> **详细开发手册**在开发者工作区 `dev-docs/`（不进仓库）：`panel-import-only.md`、`affix-counts-reset-on-scheme-load.md`、`preset-picker-first-open-blank.md`、`preset-panel-not-loaded.md`。
+> **详细开发手册**在开发者工作区 `dev-docs/`（不进仓库）：面板/词条口径与链路见 `affix-calc-manual.md`（§1–§3 口径、§8 链路图、§9 已闭环事故）；分配规则见 `词条分配规则.md`；搜索策略见 `词条最优分配.md`。
 
 ---
 
@@ -226,7 +226,6 @@
 - [招式库、准备阶段与流程改造说明](../../skill-flow-redesign.md)：招式三层结构的背景。
 - [Git 协作与发布政策](../policies/git-workflow.md)：分支、提交、发布规则。
 - [方案包自包含导出与合并导入](./scheme-pack.md)
-- 开发手册（工作区 `dev-docs/`，不进仓库）：`词条最优分配.md`（穿透专路 / 比例 / 计算量）、
-  `panel-import-only.md`（面板来源与两条必要条件）、
-  `affix-counts-reset-on-scheme-load.md`（词条数清零与脏草稿）、`preset-picker-first-open-blank.md`、
-  `preset-panel-not-loaded.md`。
+- 开发手册（工作区 `dev-docs/`，不进仓库）：`affix-calc-manual.md`（面板来源与两条必要条件、词条数归属、
+  §8 面板→词条→流程链路图、§9 已闭环的四起事故表）、`词条分配规则.md`（分配规则汇总）、
+  `词条最优分配.md`（搜索策略 / 逐轮施工记录 / 决策与实测）。
