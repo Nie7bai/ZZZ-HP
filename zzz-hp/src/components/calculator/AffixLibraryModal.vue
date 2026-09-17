@@ -8,6 +8,8 @@ import type {
 } from '@/types/calculator'
 import AffixLibraryEntryFields from '@/components/calculator/AffixLibraryEntryFields.vue'
 import { affixTargetPickerSummary } from '@/utils/affixTargetBranches'
+// 批量上限入口的纯计算（与「照另写一份」的管理侧共用同一份解析口径，见文件头注释）
+import { parseBatchEntryCapInput, summarizeEntryCaps } from '@/utils/affixBatchEntryCap'
 import {
   AFFIX_LIBRARY_SET_NAME_MAX,
   DEFAULT_AFFIX_GROUP_CAP,
@@ -565,31 +567,22 @@ function onSetGroupCap(name: string, value: number) {
  * ⚠️ **故意不预填**（用户 2026-09-17 口径）：输入框默认留空，只放占位提示。
  * 试过"预填本组最常见的上限"，但那个数字不管取什么值都容易被当成"本组当前的设置"来读，
  * 表意不清 —— 当前状态由右边「本组当前：…」负责说，输入框只回答"你想改成几"。
+ *
+ * ⚠️ 类型：`<input type="number">` + `v-model` 会**自动按数字解析**，所以这里可能是 **number 而不是字符串**
+ * （空输入则是 `''`）。所以 ref 声明成 `string | number`，解析一律走 `parseBatchEntryCapInput`
+ * —— 2026-09-17 事故：写成 `.trim()` 时 computed 抛错、渲染整体崩掉，按钮永远停在禁用态（"填了数字点不动"）。
  */
-const batchEntryCapInput = ref('')
+const batchEntryCapInput = ref<string | number>('')
 
 /** 输入框里的合法值（空 / 非数字 → null，此时按钮禁用） */
-const batchEntryCapValue = computed<number | null>(() => {
-  const raw = batchEntryCapInput.value.trim()
-  if (!raw) return null
-  const n = Number(raw)
-  return Number.isFinite(n) ? Math.max(0, Math.round(n)) : null
-})
+const batchEntryCapValue = computed<number | null>(() => parseBatchEntryCapInput(batchEntryCapInput.value))
 
 /**
  * 本组当前上限的显示口径（用户 2026-09-17 定）：
  * - 全部一致 → `全部 30（10 条）` / `全部不限（10 条）`
  * - **只要有一条不一样 → `上限不一致`**（不列分布：批量入口只需要回答"能不能一次改"，明细在表里看）
  */
-const entryCapSummary = computed(() => {
-  const caps = visibleEntries.value.map((entry) => Math.max(0, Math.round(entry.cap)))
-  if (!caps.length) return '—'
-  const first = caps[0]!
-  if (caps.every((cap) => cap === first)) {
-    return first === 0 ? `全部不限（${caps.length} 条）` : `全部 ${first}（${caps.length} 条）`
-  }
-  return '上限不一致'
-})
+const entryCapSummary = computed(() => summarizeEntryCaps(visibleEntries.value.map((entry) => entry.cap)))
 
 function applyGroupEntryCaps() {
   const cap = batchEntryCapValue.value

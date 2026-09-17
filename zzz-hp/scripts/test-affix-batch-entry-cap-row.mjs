@@ -13,6 +13,10 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import {
+  parseBatchEntryCapInput,
+  summarizeEntryCaps,
+} from '../src/utils/affixBatchEntryCap.ts'
 
 let failed = 0
 let passed = 0
@@ -34,6 +38,29 @@ const adminSource = fs.readFileSync(adminPath, 'utf8')
 const modalSource = fs.readFileSync(modalPath, 'utf8')
 
 console.log('本组单词条上限批量入口：')
+
+/**
+ * 2026-09-17 真机事故（用户：填了数字点不动；管理侧先报、用户侧同款）：
+ * `<input type="number">` + `v-model` 会给**number**，而实现里写的是 `.trim()`
+ * → computed 抛 `trim is not a function` → 渲染崩 → 按钮永远禁用。
+ * 下面这组是**逻辑级**回归（不是字符串守卫）：把数种真实输入都钉住。
+ */
+console.log('  解析输入（<input type=number> 给的是 number，也可能是空串）：')
+check('number 6 → 6（事故就是这条：以前会抛 .trim is not a function）', parseBatchEntryCapInput(6) === 6)
+check('字符串 "6" → 6', parseBatchEntryCapInput('6') === 6)
+check('字符串 " 12 " 去空格 → 12', parseBatchEntryCapInput(' 12 ') === 12)
+check('空串 → null（按钮置灰）', parseBatchEntryCapInput('') === null)
+check('null / undefined → null', parseBatchEntryCapInput(null) === null && parseBatchEntryCapInput(undefined) === null)
+check('非数字 "abc" → null', parseBatchEntryCapInput('abc') === null)
+check('负数/小数钳到 ≥0 整数：-3.7 → 0，2.6 → 3', parseBatchEntryCapInput(-3.7) === 0 && parseBatchEntryCapInput(2.6) === 3)
+check('0 → 0（= 不限，是合法值，不能当成"空"）', parseBatchEntryCapInput(0) === 0)
+check('布尔/对象当非法 → null', parseBatchEntryCapInput(true) === null && parseBatchEntryCapInput({}) === null)
+
+console.log('  汇总当前值：')
+check('全部不限（3 条）', summarizeEntryCaps([0, 0, 0]) === '全部不限（3 条）')
+check('全部 30（2 条）', summarizeEntryCaps([30, 30]) === '全部 30（2 条）')
+check('只要一条不同 → 上限不一致', summarizeEntryCaps([0, 1]) === '上限不一致')
+check('没有条目 → —', summarizeEntryCaps([]) === '—')
 
 /** 三段文案 + 一个动态条数，两侧都必须一字不差（用户口径） */
 const COPY = {
@@ -71,7 +98,7 @@ check(
 )
 check(
   '管理侧：输入框不预填（留空等用户填）',
-  /const batchEntryCapInput = ref\(''\)/.test(adminSource),
+  /const batchEntryCapInput = ref<string \| number>\(''\)/.test(adminSource),
 )
 /**
  * 2026-09-17 用户真机反馈：管理侧「应用到本组 N 条」填了数字**点不动**；用户随即确认**用户侧同样**有这个问题
@@ -92,17 +119,42 @@ check(
   '两侧是各写一份，必须各查一遍',
 )
 check(
+  '两侧都走同一个解析函数（不是各写一份 .trim()）',
+  /parseBatchEntryCapInput\(batchEntryCapInput\.value\)/.test(adminSource) &&
+    /parseBatchEntryCapInput\(batchEntryCapInput\.value\)/.test(modalSource),
+)
+/**
+ * 事故的形状守卫：只要谁把 `.trim()` 直接写在那个 ref 上，就说明又回到了「假设它是字符串」的老路
+ *（`<input type="number">` 给的是 number → 一调用就抛 → 渲染崩 → 按钮永远禁用）。
+ */
+check(
+  '两侧都没有对输入 ref 直接调 .trim()（type=number 给的是 number，调用即崩）',
+  !/batchEntryCapInput\.value\.trim\(\)/.test(adminSource) &&
+    !/batchEntryCapInput\.value\.trim\(\)/.test(modalSource),
+)
+check(
+  '两侧都声明成 string | number（不写死 string，免得下次又假设错）',
+  /const batchEntryCapInput = ref<string \| number>\(''\)/.test(adminSource) &&
+    /const batchEntryCapInput = ref<string \| number>\(''\)/.test(modalSource),
+)
+check(
   '两侧一致：都没有把「不预填」改回预填（用户口径：当前状态由「本组当前」说）',
-  /const batchEntryCapInput = ref\(''\)/.test(adminSource) && /const batchEntryCapInput = ref\(''\)/.test(modalSource),
+  /const batchEntryCapInput = ref<string \| number>\(''\)/.test(adminSource) &&
+    /const batchEntryCapInput = ref<string \| number>\(''\)/.test(modalSource),
 )
 check(
   '管理侧：按钮仍按「有没有填有效值」置灰（口径没被改掉）',
   /:disabled="busy \|\| !visibleEntries\.length \|\| batchEntryCapValue == null"/.test(adminSource),
 )
-const derivedSummary = /first === 0 \? `全部不限（\$\{caps\.length\} 条）` : `全部 \$\{first\}（\$\{caps\.length\} 条）`/
 check(
-  '两侧一致：汇总都是按本组 caps 现算（不是写死的条数）',
-  derivedSummary.test(adminSource) && derivedSummary.test(modalSource),
+  '两侧一致：汇总都调同一个 summarizeEntryCaps（不是各写一份拼接）',
+  /summarizeEntryCaps\(visibleEntries\.value\.map\(\(entry\) => entry\.cap\)\)/.test(adminSource) &&
+    /summarizeEntryCaps\(visibleEntries\.value\.map\(\(entry\) => entry\.cap\)\)/.test(modalSource),
+)
+const derivedSummary = /first === 0 \? `全部不限（\$\{list\.length\} 条）` : `全部 \$\{first\}（\$\{list\.length\} 条）`/
+check(
+  '汇总实现只有一处（utils/affixBatchEntryCap.ts）：按本组 caps 现算，不是写死条数',
+  derivedSummary.test(fs.readFileSync(path.join(root, 'src/utils/affixBatchEntryCap.ts'), 'utf8')),
 )
 
 console.log(`\n结果：${passed} PASS / ${failed} FAIL`)

@@ -28,6 +28,8 @@ import {
   isAffixLibraryEntryTarget,
 } from '@/utils/affixLibrary'
 import { AFFIX_KNOWN_TARGET_IDS, affixTargetPickerSummary } from '@/utils/affixTargetBranches'
+// 批量上限入口的纯计算：与用户侧共用同一份解析（`<input type="number">` 会给出 number，不是字符串）
+import { parseBatchEntryCapInput, summarizeEntryCaps } from '@/utils/affixBatchEntryCap'
 import '@/components/admin/calculator/adminCalculatorPanel.css'
 
 /**
@@ -810,30 +812,17 @@ const hasUngrouped = computed(() => entries.value.some((entry) => !entry.group))
  *
  * ⚠️ 输入框**故意不预填**（与用户侧同一口径）：它是一次性动作的入参，当前状态由右边「本组当前」说。
  */
-const batchEntryCapInput = ref('')
+const batchEntryCapInput = ref<string | number>('')
 
 /** 输入框里的合法值（空 / 非数字 → null，此时按钮禁用） */
-const batchEntryCapValue = computed<number | null>(() => {
-  const raw = batchEntryCapInput.value.trim()
-  if (!raw) return null
-  const n = Number(raw)
-  return Number.isFinite(n) ? Math.max(0, Math.round(n)) : null
-})
+const batchEntryCapValue = computed<number | null>(() => parseBatchEntryCapInput(batchEntryCapInput.value))
 
 /**
- * 本组当前上限的显示口径（与用户侧一字不差）：
+ * 本组当前上限的显示口径（与用户侧一字不差，同一份实现）：
  * - 全部一致 → `全部 30（10 条）` / `全部不限（10 条）`
  * - **只要有一条不一样 → `上限不一致`**（不列分布：批量入口只需要回答"能不能一次改"，明细在表里看）
  */
-const entryCapSummary = computed(() => {
-  const caps = visibleEntries.value.map((entry) => Math.max(0, Math.round(entry.cap)))
-  if (!caps.length) return '—'
-  const first = caps[0]!
-  if (caps.every((cap) => cap === first)) {
-    return first === 0 ? `全部不限（${caps.length} 条）` : `全部 ${first}（${caps.length} 条）`
-  }
-  return '上限不一致'
-})
+const entryCapSummary = computed(() => summarizeEntryCaps(visibleEntries.value.map((entry) => entry.cap)))
 
 function applyGroupEntryCaps() {
   const cap = batchEntryCapValue.value
