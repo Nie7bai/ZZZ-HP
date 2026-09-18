@@ -14,6 +14,19 @@ const props = withDefaults(
 
 const padding = { top: 16, right: 16, bottom: 32, left: 48 }
 
+/**
+ * 图例开关（2026-09-18 用户要求「点击下面的点，可以让线条消失」）：
+ * 点图例项切换该系列的显示；只影响渲染，不影响数据。
+ */
+const hiddenKeys = ref<Set<string>>(new Set())
+function toggleSeries(key: string) {
+  const next = new Set(hiddenKeys.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  hiddenKeys.value = next
+}
+const isHidden = (key: string) => hiddenKeys.value.has(key)
+
 const containerEl = ref<HTMLElement | null>(null)
 const containerWidth = ref(560)
 let resizeObserver: ResizeObserver | null = null
@@ -184,6 +197,7 @@ function formatTipPrimary(row: { value: number; marginal: number; capped: boolea
 
       <path
         v-for="s in series"
+        v-show="!isHidden(s.key)"
         :key="s.key"
         :d="linePath(s)"
         fill="none"
@@ -195,6 +209,7 @@ function formatTipPrimary(row: { value: number; marginal: number; capped: boolea
       <template v-for="s in series" :key="`d-${s.key}`">
         <circle
           v-for="n in pointsX"
+          v-show="!isHidden(s.key)"
           :key="`${s.key}-${n}`"
           :cx="xPos(n)"
           :cy="yPos((mode === 'cumulative' ? s.cumulativePercent : s.marginalPercent)[n] ?? 0)"
@@ -232,10 +247,18 @@ function formatTipPrimary(row: { value: number; marginal: number; capped: boolea
     </div>
     </div>
     <div class="legend">
-      <span v-for="s in series" :key="s.key" class="legend-item">
+      <button
+        v-for="s in series"
+        :key="s.key"
+        type="button"
+        class="legend-item"
+        :class="{ 'legend-item--off': isHidden(s.key) }"
+        :title="isHidden(s.key) ? `点击显示「${s.label}」` : `点击隐藏「${s.label}」`"
+        @click="toggleSeries(s.key)"
+      >
         <i :style="{ background: s.color }" />
         {{ s.label }}
-      </span>
+      </button>
     </div>
   </div>
 </template>
@@ -320,6 +343,22 @@ function formatTipPrimary(row: { value: number; marginal: number; capped: boolea
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* 图例关掉的系列：灰化 + 色点变空心（点一下再显示回来） */
+.legend-item--off {
+  opacity: 0.45;
+}
+
+.legend-item--off i {
+  box-shadow: inset 0 0 0 1px currentColor;
+  background: transparent !important;
 }
 
 .legend-item i {
