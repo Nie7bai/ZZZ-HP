@@ -738,6 +738,21 @@ const allocSweepFingerprint = computed(() =>
 
 watch(allocSweepFingerprint, markSweepConfigDirty)
 
+/**
+ * 换人（编辑中角色变了）→ **直接清掉求解结果**（用户 2026-09-18 口径：「应该直接清」）。
+ *
+ * 结果依赖上下文（角色 / 面板 / 队伍），换人之后那份分配已经不成立 —— 原来既不标过期也不清，
+ * 界面上一份作废的最优分配大大方方摆着，照着用就会得出错结论。
+ * 只清求解结果；收益表与曲线会由 `scheduleAffixBenefitRecompute` 按新上下文自己重算。
+ */
+watch(
+  () => props.editedSlotIndex,
+  () => {
+    affixAllocResult.value = null
+    affixAllocResultStale.value = false
+  },
+)
+
 onBeforeUnmount(() => {
   if (diffTimer) clearTimeout(diffTimer)
   if (skillFlowEmitTimer) clearTimeout(skillFlowEmitTimer)
