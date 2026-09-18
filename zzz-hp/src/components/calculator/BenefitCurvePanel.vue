@@ -25,6 +25,8 @@ withDefaults(
 const mode = defineModel<'cumulative' | 'marginal'>('mode', { default: 'cumulative' })
 /** 曲线最多画多少档（2026-09-18：10 / 20 / 50 可选，默认 20） */
 const maxAdded = defineModel<number>('maxAdded', { default: 20 })
+/** 框选模式开关（2026-09-18）：十字线 ↔ 框选，只影响图内交互 */
+const selectMode = defineModel<boolean>('selectMode', { default: false })
 /** 当前分组（调用方给了 `groups` 时才有意义） */
 const group = defineModel<string>('group', { default: '' })
 </script>
@@ -59,6 +61,19 @@ const group = defineModel<string>('group', { default: '' })
     >
       {{ n }}
     </button>
+    <button
+      type="button"
+      class="chip"
+      :class="{ active: selectMode }"
+      :title="
+        selectMode
+          ? '框选模式：在图上按住拖出区间缩放，双击复位（点一下回到十字线）'
+          : '十字线模式：悬停看数值（点一下切到框选）'
+      "
+      @click="selectMode = !selectMode"
+    >
+      {{ selectMode ? '框选' : '十字线' }}
+    </button>
     <span v-if="hint" class="hint">{{ hint }}</span>
   </div>
   <div v-if="groups.length" class="curve-groups">
@@ -75,7 +90,12 @@ const group = defineModel<string>('group', { default: '' })
       {{ name }}
     </button>
   </div>
-  <OptimalBenefitCurveChart :series="series" :mode="mode" :max-added="maxAdded" />
+  <OptimalBenefitCurveChart
+    :series="series"
+    :mode="mode"
+    :max-added="maxAdded"
+    :select-mode="selectMode"
+  />
 </template>
 
 <style scoped>

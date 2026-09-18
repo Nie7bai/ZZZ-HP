@@ -8,8 +8,10 @@ const props = withDefaults(
     mode: 'cumulative' | 'marginal'
     maxAdded?: number
     height?: number
+    /** 框选模式（2026-09-18）：true 时关掉悬停十字线，改为拖拽选区缩放 */
+    selectMode?: boolean
   }>(),
-  { maxAdded: 10, height: 240 },
+  { maxAdded: 10, height: 240, selectMode: false },
 )
 
 const padding = { top: 16, right: 16, bottom: 32, left: 48 }
@@ -26,6 +28,80 @@ function toggleSeries(key: string) {
   hiddenKeys.value = next
 }
 const isHidden = (key: string) => hiddenKeys.value.has(key)
+
+/**
+ * 框选缩放（2026-09-18 用户要求「我要看 17-30 这一段，这样一拉」）。
+ *
+ * 交互由**模式开关**区分（用户方案，比"移动 >4px 才算拖动"的阈值猜法确定）：
+ * - `selectMode = false`（默认）：悬停十字线 + 提示，保持原行为；
+ * - `selectMode = true`：悬停十字线关闭；在绘图区**按住拖出选区** → 松手把 X 轴缩到那一段；**双击复位**。
+ */
+const viewFrom = ref(1)
+const viewTo = ref(0) // 0 = 还没初始化，跟 maxAdded 走
+const viewRange = computed(() => {
+  const to = viewTo.value || props.maxAdded
+  const from = Math.max(1, Math.min(viewFrom.value, to))
+  return { from, to }
+})
+const dragging = ref(false)
+const dragStartX = ref(0)
+const dragCurrentX = ref(0)
+const hasSelection = computed(() => dragging.value && Math.abs(dragCurrentX.value - dragStartX.value) > 4)
+
+/** 选区半透明矩形的样式（相对 `.opt-line-chart__inner`，所以要加回 padding.left） */
+const selectRectStyle = computed(() => {
+  const left = Math.min(dragStartX.value, dragCurrentX.value) + padding.left
+  const w = Math.abs(dragCurrentX.value - dragStartX.value)
+  return {
+    left: `${left}px`,
+    width: `${w}px`,
+    top: `${padding.top}px`,
+    height: `${plotH.value}px`,
+  }
+})
+
+/** 事件坐标 → 绘图区内的像素 x（以绘图区左边缘为 0） */
+function plotXOf(event: PointerEvent): number {
+  const rect = containerEl.value?.getBoundingClientRect()
+  if (!rect) return 0
+  return Math.max(0, Math.min(plotW.value, event.clientX - rect.left - padding.left))
+}
+/** 绘图区像素 x → 档位（1..maxAdded） */
+function rollAtX(x: number): number {
+  const { from, to } = viewRange.value
+  const span = to - from + 1
+  const n = from + Math.round((x / Math.max(1, plotW.value)) * span - 0.5)
+  return Math.max(1, Math.min(props.maxAdded, n))
+}
+function onSelectPointerDown(event: PointerEvent) {
+  if (!props.selectMode) return
+  dragging.value = true
+  dragStartX.value = plotXOf(event)
+  dragCurrentX.value = dragStartX.value
+  ;(event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId)
+}
+function onSelectPointerMove(event: PointerEvent) {
+  if (!dragging.value) return
+  dragCurrentX.value = plotXOf(event)
+}
+function onSelectPointerUp() {
+  if (!dragging.value) return
+  const wasSelection = hasSelection.value
+  const x1 = dragStartX.value
+  const x2 = dragCurrentX.value
+  dragging.value = false
+  if (!wasSelection) return
+  const a = rollAtX(Math.min(x1, x2))
+  const b = rollAtX(Math.max(x1, x2))
+  if (b - a >= 1) {
+    viewFrom.value = a
+    viewTo.value = b
+  }
+}
+function resetView() {
+  viewFrom.value = 1
+  viewTo.value = 0
+}
 
 const containerEl = ref<HTMLElement | null>(null)
 const containerWidth = ref(560)
@@ -52,15 +128,16 @@ const plotW = computed(() => width.value - padding.left - padding.right)
 const plotH = computed(() => props.height - padding.top - padding.bottom)
 
 const pointsX = computed(() => {
-  const n = props.maxAdded
-  return Array.from({ length: n }, (_, i) => i + 1)
+  const { from, to } = viewRange.value
+  return Array.from({ length: to - from + 1 }, (_, i) => from + i)
 })
 
 const maxY = computed(() => {
   let max = 0
+  const { from, to } = viewRange.value
   for (const s of props.series) {
     const arr = props.mode === 'cumulative' ? s.cumulativePercent : s.marginalPercent
-    for (let i = 1; i <= props.maxAdded; i += 1) {
+    for (let i = from; i <= to; i += 1) {
       const v = arr[i] ?? 0
       if (v > max) max = v
     }
@@ -69,7 +146,8 @@ const maxY = computed(() => {
 })
 
 function xPos(n: number) {
-  return padding.left + ((n - 0.5) / props.maxAdded) * plotW.value
+  const { from, to } = viewRange.value
+  return padding.left + ((n - from + 0.5) / (to - from + 1)) * plotW.value
 }
 
 function yPos(v: number) {
@@ -155,7 +233,16 @@ function formatTipPrimary(row: { value: number; marginal: number; capped: boolea
 
 <template>
   <div ref="containerEl" class="opt-line-chart">
-    <div class="opt-line-chart__inner" :style="{ width: `${width}px`, position: 'relative' }">
+    <div
+      class="opt-line-chart__inner"
+      :class="{ 'opt-line-chart__inner--select': selectMode }"
+      :style="{ width: `${width}px`, position: 'relative' }"
+      @pointerdown="onSelectPointerDown"
+      @pointermove="onSelectPointerMove"
+      @pointerup="onSelectPointerUp"
+      @pointercancel="onSelectPointerUp"
+      @dblclick="resetView"
+    >
     <svg
       class="opt-line-chart__svg"
       :width="width"
@@ -238,7 +325,8 @@ function formatTipPrimary(row: { value: number; marginal: number; capped: boolea
         @mouseleave="hoverN = null"
       />
     </svg>
-    <div v-if="hoverN != null" class="line-tip" :style="tipStyle">
+    <div v-if="hasSelection" class="select-rect" :style="selectRectStyle" />
+    <div v-if="hoverN != null && !selectMode" class="line-tip" :style="tipStyle">
       <p class="line-tip__label">新增 {{ hoverN }} 词条</p>
       <p v-for="row in hoverTipRows" :key="row.key" class="line-tip__row">
         <i :style="{ background: row.color }" />
@@ -366,4 +454,17 @@ function formatTipPrimary(row: { value: number; marginal: number; capped: boolea
   height: 8px;
   border-radius: 999px;
 }
+/* 框选模式（2026-09-18）：光标改十字；拖拽时的选区矩形 */
+.opt-line-chart__inner--select {
+  cursor: crosshair;
+}
+
+.select-rect {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(110, 182, 255, 0.16);
+  border-left: 1px solid rgba(110, 182, 255, 0.7);
+  border-right: 1px solid rgba(110, 182, 255, 0.7);
+}
+
 </style>
