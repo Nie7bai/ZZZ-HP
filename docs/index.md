@@ -71,6 +71,10 @@
 - [changelog-format.md](../.cursor/skills/zzz-hp-release/changelog-format.md)：`seed_changelog.mjs` 条目格式
 - [tag-release.md](../.cursor/skills/zzz-hp-release/tag-release.md)：合入后打 annotated tag
 
+## 使用说明（面向使用者）
+
+- [词条最优分配 · 使用说明](./guides/词条分析使用说明.md)：怎么用、怎么读结果、名词讲人话、什么情况下会错。
+
 ## 规格文档
 
 - [规格文档索引](./specs/index.md)：当前功能与技术规格、历史实现记录及编写约定。
