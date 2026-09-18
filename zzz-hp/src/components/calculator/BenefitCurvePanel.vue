@@ -14,8 +14,6 @@ import type { BenefitCurveSeries } from '@/utils/optimalAffixAlloc'
 withDefaults(
   defineProps<{
     series: BenefitCurveSeries[]
-    /** 曲线最多画多少档 */
-    maxAdded: number
     /** 右侧说明文案 */
     hint?: string
     /** 可选分组（顺序由调用方定；空数组 = 不显示分组 chip） */
@@ -25,6 +23,8 @@ withDefaults(
 )
 
 const mode = defineModel<'cumulative' | 'marginal'>('mode', { default: 'cumulative' })
+/** 曲线最多画多少档（2026-09-18：10 / 20 / 50 可选，默认 20） */
+const maxAdded = defineModel<number>('maxAdded', { default: 20 })
 /** 当前分组（调用方给了 `groups` 时才有意义） */
 const group = defineModel<string>('group', { default: '' })
 </script>
@@ -46,6 +46,18 @@ const group = defineModel<string>('group', { default: '' })
       @click="mode = 'marginal'"
     >
       边际收益
+    </button>
+    <span class="group-label">档数</span>
+    <button
+      v-for="n in [10, 20, 50]"
+      :key="`rolls-${n}`"
+      type="button"
+      class="chip"
+      :class="{ active: maxAdded === n }"
+      :title="`曲线最多画到第 ${n} 档`"
+      @click="maxAdded = n"
+    >
+      {{ n }}
     </button>
     <span v-if="hint" class="hint">{{ hint }}</span>
   </div>

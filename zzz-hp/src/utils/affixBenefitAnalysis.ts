@@ -248,15 +248,9 @@ function computeAffixBenefitSeries(input: {
   if (baselineDamage <= 0) return []
   const entryById = new Map(input.entries.map((entry) => [entry.id, entry]))
   const valuePerCount = affixValuePerCountFromEntries(input.entries)
-  // 只画正收益条目（用户 2026-09-17 口径「排除 0 收益和负收益的」）：
-  // 0 收益画出来是贴着横轴的平线、负收益是下降线，两者都没有信息量，还会白占「前 N 条」的名额。
-  // 判据与收益表的「隐藏无收益」同口径（`percentDelta > 0`）。`rankedRows` 已按收益率降序，筛完顺序照旧。
-  const picked = rankedRows.filter((row) => row.percentDelta > 0).slice(0, input.maxCurveSeries)
-  const series: AffixBenefitSeries[] = []
 
-  picked.forEach((row, index) => {
-    const entry = entryById.get(row.entryId)
-    if (!entry) return
+  /** 算一条完整曲线（第 0 档 = 基线，第 n 档 = 这条累计 n 档） */
+  const buildSeries = (row: AffixBenefitRow, entry: AffixLibraryEntry, index: number): AffixBenefitSeries => {
     const cumulativePercent: number[] = [0]
     const marginalPercent: number[] = [0]
     let prevDamage = baselineDamage
@@ -270,7 +264,7 @@ function computeAffixBenefitSeries(input: {
       marginalPercent.push(prevDamage > 0 ? ((damage - prevDamage) / prevDamage) * 100 : 0)
       prevDamage = damage
     }
-    series.push({
+    return {
       entryId: entry.id,
       key: entry.id,
       label: entry.label,
@@ -278,10 +272,29 @@ function computeAffixBenefitSeries(input: {
       cumulativePercent,
       marginalPercent,
       cappedAt: cumulativePercent.map(() => false),
-    })
-  })
+    }
+  }
 
-  return series
+  // 画谁（2026-09-18 用户口径：**整条曲线都 ≤ 0 才排除**）：
+  // - 正收益的照旧取前 N 条；
+  // - `+1 档 ≤ 0` 的**不再一律排除**：只要在 `maxCurveRolls` 档内出现过正收益（阈值型收益 ——
+  //   典型是"前段 0、越过某个阈值后暴涨"），就把它救回来，最多再 N 条；
+  // - 整条都 ≤ 0 的（纯平线 / 下降线）仍然不画（画出来没信息量，还白占名额）。
+  // 代价：本组条目都要算一遍曲线（组不大，可接受）；这也正是"50 档"的意义所在。
+  const built: { row: AffixBenefitRow; series: AffixBenefitSeries }[] = []
+  rankedRows.forEach((row, index) => {
+    const entry = entryById.get(row.entryId)
+    if (!entry) return
+    built.push({ row, series: buildSeries(row, entry, index) })
+  })
+  const positive = built.filter((item) => item.row.percentDelta > 0).slice(0, input.maxCurveSeries)
+  const rescued = built
+    .filter((item) => !(item.row.percentDelta > 0) && item.series.cumulativePercent.some((v) => v > 0))
+    .slice(0, input.maxCurveSeries)
+  return [...positive, ...rescued].map((item, index) => ({
+    ...item.series,
+    color: CURVE_COLORS[index % CURVE_COLORS.length]!,
+  }))
 }
 
 function bumpEntryCounts(
