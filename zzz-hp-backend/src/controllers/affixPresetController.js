@@ -106,6 +106,11 @@ function normalizeGroupPayload(body = {}) {
     name,
     cap: Math.trunc(cap),
     sortOrder: Number.isFinite(sortOrder) ? Math.trunc(sortOrder) : 0,
+    // 组规则「不消耗总词条数」：**只透传布尔值**，不是布尔就整个不带这个键 ——
+    // 不带 = 保留 raw 里原有的值（备份回灌那条路靠它保真）；带 false = 明确关掉（service 会删掉 raw 里的值）。
+    ...(typeof body.excludedFromTotalRolls === 'boolean'
+      ? { excludedFromTotalRolls: body.excludedFromTotalRolls }
+      : {}),
   }
 }
 

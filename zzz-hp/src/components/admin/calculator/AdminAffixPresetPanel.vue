@@ -200,8 +200,8 @@ function groupDoc(row: GroupRow): AffixPresetGroupDoc {
     name: row.name.trim(),
     cap: Number(row.cap),
     sortOrder: Number(row.sortOrder ?? 0),
-    // 组规则「不消耗总词条数」：只送显式 true（false / undefined 一律不送，后端会把 raw 里的旧值删掉）
-    ...(row.excludedFromTotalRolls === true ? { excludedFromTotalRolls: true } : {}),
+    // 组规则「不消耗总词条数」：**显式送布尔值**（false 也要送 —— 后端靠它区分"明确关掉"与"没带这个字段"）
+    excludedFromTotalRolls: row.excludedFromTotalRolls === true,
     raw: row.raw ?? null,
   }
 }

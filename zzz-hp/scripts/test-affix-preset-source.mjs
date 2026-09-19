@@ -461,9 +461,9 @@ console.log('\n[7] 组规则「不占词条数」：预设链路（源码级守�
     '列 + 勾选框都在',
   )
   check(
-    '管理端保存载荷带上该字段（关掉时不送）',
-    adminSource.includes('...(row.excludedFromTotalRolls === true ? { excludedFromTotalRolls: true } : {})'),
-    'groupDoc 只送显式 true',
+    '管理端保存载荷带上该字段（显式布尔值，false 也要送）',
+    adminSource.includes('excludedFromTotalRolls: row.excludedFromTotalRolls === true'),
+    'groupDoc 显式送布尔',
   )
   check(
     '草稿脏标记认得这个字段（勾了要能保存）',
@@ -477,10 +477,27 @@ console.log('\n[7] 组规则「不占词条数」：预设链路（源码级守�
     'rowToGroup',
   )
   check(
-    '后端写时收进 raw、没送就删掉旧值',
+    '后端写时收进 raw、送 false 才删、没送则保留（备份回灌保真）',
     serviceSource.includes('if (doc.excludedFromTotalRolls === true) raw.excludedFromTotalRolls = true') &&
-      serviceSource.includes('else delete raw.excludedFromTotalRolls'),
+      serviceSource.includes('else if (doc.excludedFromTotalRolls === false) delete raw.excludedFromTotalRolls'),
     'replaceAffixPreset 的组写入',
+  )
+  // 2026-09-19 事故：控制器 normalizeGroupPayload 是白名单，第一版没带这个字段 → 前端勾了也存不住。
+  // 守卫补在这一层（当初漏的就是它）。
+  const controllerSource = readFileSync(
+    new URL('../../zzz-hp-backend/src/controllers/affixPresetController.js', import.meta.url),
+    'utf8',
+  )
+  check(
+    '控制器白名单透传该字段（只认布尔）',
+    /typeof body\.excludedFromTotalRolls === 'boolean'/.test(controllerSource) &&
+      /excludedFromTotalRolls: body\.excludedFromTotalRolls/.test(controllerSource),
+    'normalizeGroupPayload',
+  )
+  check(
+    '复制方案时 raw 整份拷（规则跟着走）',
+    /INSERT INTO \$\{GROUP_TABLE\}[\s\S]{0,120}SELECT \?, name, cap, sort_order, raw_json/.test(serviceSource),
+    'createAffixPresetScheme 的 INSERT ... SELECT',
   )
   check(
     '用户侧读预设时认这个字段',

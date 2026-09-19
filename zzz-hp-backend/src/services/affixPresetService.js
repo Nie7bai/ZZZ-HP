@@ -430,11 +430,13 @@ export async function replaceAffixPreset({ scheme, entries, groups }) {
       )
     }
     for (const [index, doc] of groupList.entries()) {
-      // 组规则「不消耗总词条数」收进 raw：送 true 就写入，没送 / 送 false 就把旧值删掉（不留残值）
+      // 组规则「不消耗总词条数」收进 raw：
+      //   true  → 写入；false → 删掉（明确关掉）；**未送该字段 → 保留 raw 里原有的值**
+      //   （备份回灌 / 导入那条路只带 raw，靠它保真，不能被清掉）
       const raw = doc.raw && typeof doc.raw === 'object' ? { ...doc.raw } : { ...doc }
       delete raw.raw
       if (doc.excludedFromTotalRolls === true) raw.excludedFromTotalRolls = true
-      else delete raw.excludedFromTotalRolls
+      else if (doc.excludedFromTotalRolls === false) delete raw.excludedFromTotalRolls
       await conn.query(
         `INSERT INTO ${GROUP_TABLE} (scheme, name, cap, sort_order, raw_json) VALUES (?, ?, ?, ?, ?)`,
         [
