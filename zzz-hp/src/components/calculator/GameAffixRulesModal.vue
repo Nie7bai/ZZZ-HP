@@ -52,12 +52,14 @@ function groupCapText(group: AffixLibraryGroup): string {
   return String(group.cap)
 }
 
-/** 组额度后面那句说明：副词条不是锁死，而是随总分配数变 */
+/** 组额度后面那句说明：副词条不是锁死，而是随总分配数变；2 件套 / 4 / 5 / 6 号位额外标出「不占词条数」 */
 function groupCapNote(group: AffixLibraryGroup): string {
   if (group.name === '副词条') {
     return '（买主属性 / 2 件套 才占预算，没买就不占）'
   }
-  return '（锁 1：本组至多选一条）'
+  return group.excludedFromTotalRolls
+    ? '（锁 1：本组至多选一条 · 不占词条数）'
+    : '（锁 1：本组至多选一条）'
 }
 
 function perRollHint(entry: AffixLibraryEntry): string {

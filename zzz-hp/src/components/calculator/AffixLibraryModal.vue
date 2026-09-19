@@ -1208,6 +1208,7 @@ function submitForm() {
                   <colgroup>
                     <col class="col-groupname" />
                     <col class="col-groupcap" />
+                    <col class="col-groupexclude" />
                     <col class="col-groupnote" />
                     <col class="col-del" />
                   </colgroup>
@@ -1215,6 +1216,7 @@ function submitForm() {
                     <tr>
                       <th>组名</th>
                       <th>组额度</th>
+                      <th>不占词条数</th>
                       <th>说明</th>
                       <th></th>
                     </tr>
@@ -1247,10 +1249,11 @@ function submitForm() {
                           "
                         />
                       </td>
-                      <td class="type-cell">
+                      <td class="group-exclude-cell">
                         <label class="group-exclude-toggle" :title="GROUP_EXCLUDE_HINT">
                           <input
                             type="checkbox"
+                            aria-label="不占词条数"
                             :checked="group.excludedFromTotalRolls === true"
                             :disabled="simpleMode"
                             @change="
@@ -1260,11 +1263,10 @@ function submitForm() {
                               )
                             "
                           />
-                          不占词条数
                         </label>
-                        <span class="group-cap-note">
-                          {{ group.cap === 0 ? GROUP_CAP_UNLIMITED_HINT : GROUP_CAP_HINT }}
-                        </span>
+                      </td>
+                      <td class="type-cell">
+                        {{ group.cap === 0 ? GROUP_CAP_UNLIMITED_HINT : GROUP_CAP_HINT }}
                       </td>
                       <td>
                         <button
@@ -1891,8 +1893,16 @@ function submitForm() {
 .library-table--groups .col-groupcap {
   width: 96px;
 }
+/* 「不占词条数」单独一列：与说明文字分开，别再挤在一格里（用户 2026-09-18） */
+.library-table--groups .col-groupexclude {
+  width: 96px;
+}
 .library-table--groups .col-groupnote {
   width: 260px;
+}
+
+.group-exclude-cell {
+  text-align: center;
 }
 
 .inline-input {
