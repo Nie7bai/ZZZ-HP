@@ -33,6 +33,19 @@ const props = defineProps<{
    * x = 0 时同样不显示（没有额外扣除，写出来只会误导）。
    */
   conflictExtraCost?: number | null
+  /**
+   * 游戏专用：词条数拆账（用户主要看副词条那个数）。
+   *
+   * `null` = 普通模式（按老口径写「每条词条 1 档 = 1 个词条」）。
+   */
+  rollSplit?: {
+    /** 副词条档数（总词条数 − 冲突额外） */
+    substat: number
+    /** 冲突条目额外多花的档数 */
+    conflictExtra: number
+    /** 2 件套 / 4 / 5 / 6 号位实际选中的档数（这些组不占词条数） */
+    excludedBase: number
+  } | null
 }>()
 
 /** 阶段名 → 界面文案 */
@@ -166,7 +179,13 @@ function formatDuration(ms: number) {
           <span class="budget-label">总词条数</span>
           <strong class="budget-value">{{ result.usedRolls }} / {{ result.maxTotalRolls }}</strong>
           <span class="budget-hint">
-            {{ gameInfo ? '普通条目 1 档 = 1 个词条，付费条目额外多花' : '每条词条 1 档 = 1 个词条' }}
+            <template v-if="rollSplit">
+              副词条 <strong>{{ rollSplit.substat }}</strong> 档 ·
+              主属性 / 2 件套 {{ rollSplit.excludedBase }} 档不占词条数<template
+                v-if="rollSplit.conflictExtra > 0"
+              >（冲突额外 {{ rollSplit.conflictExtra }} 档）</template>
+            </template>
+            <template v-else>{{ gameInfo ? '普通条目 1 档 = 1 个词条，付费条目额外多花' : '每条词条 1 档 = 1 个词条' }}</template>
           </span>
         </div>
         <div class="budget-item">

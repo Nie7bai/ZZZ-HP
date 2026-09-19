@@ -8,6 +8,7 @@ import {
   GAME_POCKET_COMBOS,
   buildGameAffixBranch,
   clampGameSubstatEntryCap,
+  createGameAffixGroups,
   createGameAffixLibraryEntries,
   defaultGameAffixEnabledIds,
   gameAffixGroupCaps,
@@ -18,6 +19,7 @@ import {
   solveGameAffixAllocationAsync,
 } from '../src/utils/gameAffixRules.ts'
 import { solveOptimalAffixAllocation, solveOptimalAffixAllocationAsync, collectPenRateFieldLocks } from '../src/utils/affixOptimizer.ts'
+import { affixExcludedGroupBaseRollsUsed, affixGroupRollBudgetRefund } from '../src/utils/affixLibrary.ts'
 import { readFileSync } from 'node:fs'
 import { buildOptimalEvalContext, clearAffixEvalCache } from '../src/utils/optimalAffixAlloc.ts'
 import { createEmptyAgentBasePanel } from '../src/utils/calculatorUi.ts'
@@ -198,6 +200,35 @@ check(
     '勾掉它们不影响副词条额度（额度只看总分配数）',
     gameAffixGroupCaps(30)['副词条'] === 30 && withoutSet.entries.some((entry) => entry.group === '副词条'),
   )
+  // 组规则：2 件套 / 4 / 5 / 6 号位「不消耗总词条数」（2026-09-18 用户方案）
+  const gameGroups = createGameAffixGroups(30)
+  const excludedNames = gameGroups.filter((group) => group.excludedFromTotalRolls).map((group) => group.name)
+  check(
+    '2 件套 / 4 / 5 / 6 号位都带「不消耗总词条数」规则',
+    ['2件套', '4号位', '5号位', '6号位'].every((name) => excludedNames.includes(name)) &&
+      !excludedNames.includes('副词条'),
+    excludedNames.join(' / '),
+  )
+  check(
+    '退回量 = 这四个组的基础档合计（各锁 1 → 4）',
+    affixGroupRollBudgetRefund(gameGroups, entries, defaultGameAffixEnabledIds(entries)) === 4,
+    String(affixGroupRollBudgetRefund(gameGroups, entries, defaultGameAffixEnabledIds(entries))),
+  )
+  check(
+    '实际用掉的基础档只算这四个组（副词条不计）',
+    affixExcludedGroupBaseRollsUsed(gameGroups, entries, {
+      'main:slot4:critDmg': 1,
+      'set:dmgBonus:10': 1,
+      'substat:critRate': 7,
+    }) === 2,
+    String(
+      affixExcludedGroupBaseRollsUsed(gameGroups, entries, {
+        'main:slot4:critDmg': 1,
+        'set:dmgBonus:10': 1,
+        'substat:critRate': 7,
+      }),
+    ),
+  )
 }
 
 check('付费 id 识别', isGamePaidMainId('main:slot5:externalAtkPercent'))
@@ -325,7 +356,8 @@ console.log('\n[游戏专用方案] 4 口袋都跑 Beam，再按总伤取最高'
     const winnerAlone = await solveOptimalAffixAllocationAsync({
       ctx,
       entries: winnerBranch.entries,
-      maxTotalRolls: 30,
+      // 与游戏专用入口同一口径：预算放宽「不占数组」的基础档（2 件套 / 4 / 5 / 6 号位各 1 → +4）
+      maxTotalRolls: 30 + affixGroupRollBudgetRefund(createGameAffixGroups(30), entries, enabledIds),
       groupCaps: gameAffixGroupCaps(30),
       entryCapTaxes: winnerBranch.entryCapTaxes,
       searchPreset: 'fast',
@@ -347,6 +379,24 @@ console.log('\n[游戏专用方案] 4 口袋都跑 Beam，再按总伤取最高'
   check('胜出分配没有超出总词条数',
     game.usedRolls <= game.maxTotalRolls,
     `${game.usedRolls} <= ${game.maxTotalRolls}`)
+  // 「不占数组」的账：总词条数只由 副词条 + 冲突额外 构成（2 件套 / 4 / 5 / 6 号位选了也不算）
+  {
+    const winnerConflictExtra = entries
+      .filter((entry) => isGamePaidMainId(entry.id))
+      .reduce((sum, entry) => sum + (game.rollsByEntryId[entry.id] ?? 0) * EXTRA_COST, 0)
+    const winnerSubstatRolls = groupRollsOf(game.rollsByEntryId, '副词条')
+    const winnerExcludedBase = affixExcludedGroupBaseRollsUsed(
+      createGameAffixGroups(30),
+      entries,
+      game.rollsByEntryId,
+    )
+    check('总词条数 = 副词条档数 + 冲突额外（不占数组不算进去）',
+      game.usedRolls === winnerSubstatRolls + winnerConflictExtra,
+      `${game.usedRolls} = 副词条 ${winnerSubstatRolls} + 冲突额外 ${winnerConflictExtra}`)
+    check('放宽的预算没漏进结果：报出来的总词条数 ≤ 用户输入的 30',
+      game.usedRolls <= 30 && game.maxTotalRolls === 30,
+      `usedRolls=${game.usedRolls} maxTotalRolls=${game.maxTotalRolls}（这些组实际占 ${winnerExcludedBase} 档）`)
+  }
 }
 
 console.log('\n[游戏专用方案] 5 号付费袋不锁 24% 穿透')

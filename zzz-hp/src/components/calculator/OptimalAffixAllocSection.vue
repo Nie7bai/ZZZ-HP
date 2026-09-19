@@ -122,6 +122,7 @@ import {
 import {
   addAffixLibraryGroup,
   addCustomAffixLibraryEntry,
+  affixExcludedGroupBaseRollsUsed,
   affixGroupCaps,
   affixValuePerCountFromEntries,
   createDefaultAffixLibraryState,
@@ -160,7 +161,9 @@ import {
 import {
   clampGameExtraCost,
   clampGameSubstatEntryCap,
+  createGameAffixGroups,
   createGameAffixLibraryEntries,
+  isGamePaidMainId,
   loadGameAffixRulesSettings,
   saveGameAffixRulesSettings,
   solveGameAffixAllocationAsync,
@@ -1897,6 +1900,39 @@ const affixAllocConflictExtraCost = computed<number | null>(() => {
   if (!result?.gameWinner) return null
   return gameAffixSettings.value.extraCost
 })
+
+/**
+ * 游戏专用结果的「词条数拆账」——用户主要看的就是副词条那个数，别让他自己加。
+ *
+ * - `conflictExtra`：冲突条目（`isGamePaidMainId`）多花的档数 = 档数 × x；
+ * - `excludedBase`：2 件套 / 4 / 5 / 6 号位**实际选中**的档数（这些组不占词条数，只在明细里给个交代）；
+ * - `substat`：副词条档数 = 结果的 `总词条数 − conflictExtra`
+ *   （游戏方案里"不占数"的组只有那四个，剩下的档全在副词条组，所以不用去查组名）。
+ *
+ * 判据同样是**结果自带 `gameWinner`**（普通模式返回 null，一个字都不显示）。
+ */
+const affixAllocRollSplit = computed<{
+  substat: number
+  conflictExtra: number
+  excludedBase: number
+} | null>(() => {
+  const result = affixAllocResult.value as { gameWinner?: unknown } | null
+  if (!result?.gameWinner) return null
+  const rolls = affixAllocResult.value?.rollsByEntryId ?? {}
+  const groups = createGameAffixGroups(affixAllocTotalRolls.value)
+  const excludedBase = affixExcludedGroupBaseRollsUsed(groups, affixAllocResultLibrary.value, rolls)
+  const extraCost = Math.max(0, Math.round(gameAffixSettings.value.extraCost))
+  let conflictExtra = 0
+  for (const entry of affixAllocResultLibrary.value) {
+    if (!isGamePaidMainId(entry.id)) continue
+    conflictExtra += Math.max(0, Math.round(rolls[entry.id] ?? 0)) * extraCost
+  }
+  return {
+    substat: Math.max(0, (affixAllocResult.value?.usedRolls ?? 0) - conflictExtra),
+    conflictExtra,
+    excludedBase,
+  }
+})
 /** 只为「已知条目 id 列表 + 默认值」而建；真正的求解条目见 `gameAffixLibraryEntries` */
 const gameAffixBaseEntries = createGameAffixLibraryEntries()
 const gameAffixSettings = ref(loadGameAffixRulesSettings(gameAffixBaseEntries))
@@ -3440,6 +3476,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           :elapsed-ms="affixAllocElapsedMs"
           :live-ms="affixAllocLoading ? affixAllocTickMs : null"
           :conflict-extra-cost="affixAllocConflictExtraCost"
+          :roll-split="affixAllocRollSplit"
         />
         <GameAffixRulesModal
           :open="gameAffixRulesOpen"

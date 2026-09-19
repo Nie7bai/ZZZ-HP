@@ -636,6 +636,17 @@ export interface AffixLibraryGroup {
   name: string
   /** 组额度；`AFFIX_GROUP_UNLIMITED`（0）表示不构成约束 */
   cap: number
+  /**
+   * 该组**基础占用**不计入总词条数（2026-09-18 用户口径的「组规则」）。
+   *
+   * 语义：组内条目的「每档 1 个词条」不算进总词条数 —— 买了不占数，没买也不亏。
+   * **冲突额外仍照扣**（付费条目的 x）：x 是"与副词条重复"的代价，不是基础占用。
+   * 游戏专用方案给 2 件套 / 4 / 5 / 6 号位都打开它（见 `createGameAffixGroups`）。
+   *
+   * 实现见 `affixGroupRollBudgetRefund`：求解预算按「该组最多能占的基础档」放宽，结果里再减回去。
+   * 注意：该机制要求这些组的额度**有限**（额度 0 = 不限时退化成组内启用条目 cap 之和；两者都无界则不退）。
+   */
+  excludedFromTotalRolls?: boolean
 }
 
 /**
@@ -1744,6 +1755,68 @@ export function affixGroupCaps(state: AffixLibraryState): Record<string, number>
   const caps: Record<string, number> = {}
   for (const group of state.groups) caps[group.name] = group.cap
   return caps
+}
+
+/**
+ * 「该组不消耗总词条数」的组最多能退回多少**基础档**（求解预算的补偿值）。
+ *
+ * 语义见 `AffixLibraryGroup.excludedFromTotalRolls`：这些组每档的基础占用（1 个词条）不算进总词条数。
+ * 求解时把预算放宽这么多（`maxTotalRolls + refund`），结果里再把**实际用掉**的基础档减回去
+ * （见 `affixExcludedGroupBaseRollsUsed` 与 `solveGameAffixAllocationAsync`）——
+ * 这样不必动求解器内核（它的层推进假设「每加一条至少花 1 档」）。
+ *
+ * 退回量 = 该组最多可能占的基础档：
+ * - 组额度有限（> 0）→ 就是组额度（2 件套 / 4 / 5 / 6 号位各 1 → 共 4）；
+ * - 组额度不限（0）→ 退化成组内**启用条目**的 cap 之和；其中只要有条目 cap 0（不限），
+ *   该组就是无界，退回量按 **0** 处理 —— 无界的"不占数"没法用预算补偿表达（那种组要豁免只能改内核）。
+ */
+export function affixGroupRollBudgetRefund(
+  groups: AffixLibraryGroup[],
+  entries: AffixLibraryEntry[],
+  enabledIds?: Iterable<string>,
+): number {
+  const enabled = enabledIds ? new Set(enabledIds) : null
+  let refund = 0
+  for (const group of groups) {
+    if (!group.excludedFromTotalRolls) continue
+    if (group.cap > 0) {
+      refund += group.cap
+      continue
+    }
+    let entryCaps = 0
+    let unbounded = false
+    for (const entry of entries) {
+      if (entry.group !== group.name) continue
+      if (enabled && !enabled.has(entry.id)) continue
+      if (entry.cap <= 0) {
+        unbounded = true
+        break
+      }
+      entryCaps += entry.cap
+    }
+    if (!unbounded) refund += entryCaps
+  }
+  return refund
+}
+
+/**
+ * 这些组**实际**用掉的基础档 = 组内各条档数之和（每档的基础占用恒为 1，与 `rollCost` 无关）。
+ *
+ * 用途：把放宽掉的预算从结果里减回去 —— `总词条数 = 求解用的档数 − 这个值`。
+ */
+export function affixExcludedGroupBaseRollsUsed(
+  groups: AffixLibraryGroup[],
+  entries: AffixLibraryEntry[],
+  rollsByEntryId: Record<string, number>,
+): number {
+  const excluded = new Set(groups.filter((group) => group.excludedFromTotalRolls).map((group) => group.name))
+  if (!excluded.size) return 0
+  let used = 0
+  for (const entry of entries) {
+    if (!excluded.has(entry.group)) continue
+    used += Math.max(0, Math.round(rollsByEntryId[entry.id] ?? 0))
+  }
+  return used
 }
 
 /** 该组名是否已被占用（新建 / 改名时查重） */
