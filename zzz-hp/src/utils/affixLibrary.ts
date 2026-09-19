@@ -1766,7 +1766,8 @@ export function affixGroupCaps(state: AffixLibraryState): Record<string, number>
  * 这样不必动求解器内核（它的层推进假设「每加一条至少花 1 档」）。
  *
  * 退回量 = 该组最多可能占的基础档：
- * - 组额度有限（> 0）→ 就是组额度（2 件套 / 4 / 5 / 6 号位各 1 → 共 4）；
+ * - 组**一条启用条目都没有**（全不勾）→ **0**（勾掉就不该多给预算，2026-09-18 用户口径）；
+ * - 组额度有限（> 0）→ 就是组额度，但不超过组内启用条目的 cap 之和（2 件套 / 4 / 5 / 6 号位各 1 → 共 4）；
  * - 组额度不限（0）→ 退化成组内**启用条目**的 cap 之和；其中只要有条目 cap 0（不限），
  *   该组就是无界，退回量按 **0** 处理 —— 无界的"不占数"没法用预算补偿表达（那种组要豁免只能改内核）。
  */
@@ -1779,22 +1780,28 @@ export function affixGroupRollBudgetRefund(
   let refund = 0
   for (const group of groups) {
     if (!group.excludedFromTotalRolls) continue
-    if (group.cap > 0) {
-      refund += group.cap
-      continue
-    }
-    let entryCaps = 0
+    // **组全不勾 → 这条规则一分预算都不多给**（2026-09-18 用户口径：勾掉就不该多给）。
+    // 少了这一步，勾掉 2 件套 之后退回量仍是 4，那多出来的 1 档会被副词条吃掉（实测能到 29，本该 28）。
+    let entryCapSum = 0
     let unbounded = false
+    let hasEnabledEntry = false
     for (const entry of entries) {
       if (entry.group !== group.name) continue
       if (enabled && !enabled.has(entry.id)) continue
+      hasEnabledEntry = true
       if (entry.cap <= 0) {
         unbounded = true
         break
       }
-      entryCaps += entry.cap
+      entryCapSum += entry.cap
     }
-    if (!unbounded) refund += entryCaps
+    if (!hasEnabledEntry) continue
+    if (group.cap > 0) {
+      // 额度有限：最多就是额度；额度比"组内启用条目 cap 之和"还大时，按后者封顶
+      refund += unbounded ? group.cap : Math.min(group.cap, entryCapSum)
+      continue
+    }
+    if (!unbounded) refund += entryCapSum
   }
   return refund
 }

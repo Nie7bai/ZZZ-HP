@@ -214,6 +214,22 @@ check(
     affixGroupRollBudgetRefund(gameGroups, entries, defaultGameAffixEnabledIds(entries)) === 4,
     String(affixGroupRollBudgetRefund(gameGroups, entries, defaultGameAffixEnabledIds(entries))),
   )
+  // 勾掉的组不该再给预算（2026-09-18 用户口径：2 件套全不勾 → 退回量要少 1）
+  {
+    const allEnabled = defaultGameAffixEnabledIds(entries)
+    const withoutSet = allEnabled.filter((id) => !id.startsWith('set:'))
+    const withoutSetAnd6 = withoutSet.filter((id) => !id.startsWith('main:slot6:'))
+    check(
+      '2 件套全不勾 → 退回量 4 → 3',
+      affixGroupRollBudgetRefund(gameGroups, entries, withoutSet) === 3,
+      String(affixGroupRollBudgetRefund(gameGroups, entries, withoutSet)),
+    )
+    check(
+      '2 件套 + 6 号位全不勾 → 退回量 4 → 2',
+      affixGroupRollBudgetRefund(gameGroups, entries, withoutSetAnd6) === 2,
+      String(affixGroupRollBudgetRefund(gameGroups, entries, withoutSetAnd6)),
+    )
+  }
   check(
     '实际用掉的基础档只算这四个组（副词条不计）',
     affixExcludedGroupBaseRollsUsed(gameGroups, entries, {
