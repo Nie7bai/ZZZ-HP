@@ -139,6 +139,7 @@ import {
   setAffixLibraryEntryEnabled,
   setAffixLibraryGroupCap,
   setAffixLibraryGroupEntryCaps,
+  setAffixLibraryGroupExcluded,
   updateAffixLibraryEntry,
   type AffixLibraryEntry,
   type AffixLibraryState,
@@ -2059,6 +2060,11 @@ function setAffixLibraryGroupCapHandler(name: string, cap: number) {
   persistAffixLibrary(setAffixLibraryGroupCap(affixLibraryState.value, name, cap))
 }
 
+/** 组管理里开关「不消耗总词条数」：写盘后重算（`persistAffixLibrary` 会清结果并重跑收益表） */
+function setAffixLibraryGroupExcludedHandler(name: string, excluded: boolean) {
+  persistAffixLibrary(setAffixLibraryGroupExcluded(affixLibraryState.value, name, excluded))
+}
+
 /** 批量把某组每条的单词条上限设成同一个值（`name = ''` = 未分组） */
 function setAffixLibraryGroupEntryCapsHandler(name: string, cap: number) {
   persistAffixLibrary(setAffixLibraryGroupEntryCaps(affixLibraryState.value, name, cap))
@@ -3142,6 +3148,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           @restore-defaults="restoreAffixLibraryDefaultsHandler"
           @add-group="addAffixLibraryGroupHandler"
           @set-group-cap="setAffixLibraryGroupCapHandler"
+        @set-group-excluded="setAffixLibraryGroupExcludedHandler"
           @set-group-entry-caps="setAffixLibraryGroupEntryCapsHandler"
           @rename-group="renameAffixLibraryGroupHandler"
           @remove-group="removeAffixLibraryGroupHandler"

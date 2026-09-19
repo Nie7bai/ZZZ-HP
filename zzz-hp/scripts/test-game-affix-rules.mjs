@@ -364,6 +364,14 @@ console.log('\n[游戏专用方案] 4 口袋都跑 Beam，再按总伤取最高'
     check('最终结果就是胜出口袋单独跑出来的结果（总伤一致）',
       Math.abs(winnerAlone.totalDamage - game.totalDamage) < 1e-6,
       `${winnerAlone.totalDamage} vs ${game.totalDamage}`)
+    // 直接调求解器（不经游戏入口）也要吃「不占数」：预算只算 副词条 + 冲突额外
+    const aloneSubstat = groupRollsOf(winnerAlone.rollsByEntryId, '副词条')
+    const aloneExtra = entries
+      .filter((entry) => isGamePaidMainId(entry.id))
+      .reduce((sum, entry) => sum + (winnerAlone.rollsByEntryId[entry.id] ?? 0) * EXTRA_COST, 0)
+    check('求解器直调：usedRolls = 副词条 + 冲突额外（豁免组的基础档不算）',
+      winnerAlone.usedRolls === aloneSubstat + aloneExtra,
+      `${winnerAlone.usedRolls} = ${aloneSubstat} + ${aloneExtra}`)
   }
   check('胜出结果不劣于基线',
     game.totalDamage >= game.baselineDamage - 1e-9,

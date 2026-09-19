@@ -814,7 +814,10 @@ export function parseAffixPresetGroups(rawGroups: unknown[]): AffixLibraryGroup[
   for (const raw of rawGroups) {
     const item = raw as Partial<AffixLibraryGroup>
     if (typeof item?.name !== 'string' || !item.name) continue
-    groups.push({ name: item.name, cap: Number(item.cap) || 0 })
+    const group: AffixLibraryGroup = { name: item.name, cap: Number(item.cap) || 0 }
+    // 组规则「不消耗总词条数」：预设快照里也可能带（服务端只认显式 true）
+    if (item.excludedFromTotalRolls === true) group.excludedFromTotalRolls = true
+    groups.push(group)
   }
   return groups
 }
@@ -1210,11 +1213,13 @@ function coerceAffixLibraryGroups(raw: unknown): AffixLibraryGroup[] {
   const seen = new Set<string>()
   for (const item of raw) {
     if (!item || typeof item !== 'object') continue
-    const name = typeof (item as AffixLibraryGroup).name === 'string'
-      ? (item as AffixLibraryGroup).name.trim()
-      : ''
+    const source = item as AffixLibraryGroup
+    const name = typeof source.name === 'string' ? source.name.trim() : ''
     if (!name || seen.has(name)) continue
-    out.push({ name, cap: coerceGroupCap((item as AffixLibraryGroup).cap) })
+    const group: AffixLibraryGroup = { name, cap: coerceGroupCap(source.cap) }
+    // 组规则「不消耗总词条数」：只认显式 true（老存档没有这个键 → 不豁免，行为不变）
+    if (source.excludedFromTotalRolls === true) group.excludedFromTotalRolls = true
+    out.push(group)
     seen.add(name)
   }
   return out
@@ -1817,6 +1822,31 @@ export function setAffixLibraryGroupCap(
     groups: state.groups.map((group) =>
       group.name === name ? { ...group, cap: safeCap } : group,
     ),
+  }
+}
+
+/**
+ * 开关某组的「不消耗总词条数」规则（组管理里的那个 chip）。
+ *
+ * 语义见 `AffixLibraryGroup.excludedFromTotalRolls`：组内条目的基础占用不算进总词条数，
+ * 冲突额外 x 照算。**普通「求最优分配」与游戏专用都吃这条规则**（求解器按 `freeRollGroups` 处理）。
+ * 关掉时把字段整个删掉（不留 `false`），存档干净、也不会被 `coerce` 当垃圾字段。
+ */
+export function setAffixLibraryGroupExcluded(
+  state: AffixLibraryState,
+  name: string,
+  excluded: boolean,
+): AffixLibraryState {
+  return {
+    ...state,
+    groups: state.groups.map((group) => {
+      if (group.name !== name) return group
+      if (!excluded) {
+        const { excludedFromTotalRolls: _drop, ...rest } = group
+        return rest
+      }
+      return { ...group, excludedFromTotalRolls: true }
+    }),
   }
 }
 

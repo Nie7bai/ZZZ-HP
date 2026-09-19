@@ -48,6 +48,8 @@ const emit = defineEmits<{
   restoreDefaults: []
   addGroup: [name: string, cap: number]
   setGroupCap: [name: string, cap: number]
+  /** 开关某组的「不消耗总词条数」（普通与游戏专用都吃这条规则） */
+  setGroupExcluded: [name: string, excluded: boolean]
   /** 批量设定某组所有条目的单词条上限（`name = ''` = 未分组）—— 由弹窗转发 */
   setGroupEntryCaps: [name: string, cap: number]
   renameGroup: [from: string, to: string]
@@ -417,6 +419,7 @@ function onLibrarySwitched() {
       @restore-defaults="emit('restoreDefaults')"
       @add-group="(name, cap) => emit('addGroup', name, cap)"
       @set-group-cap="(name, cap) => emit('setGroupCap', name, cap)"
+      @set-group-excluded="(name, excluded) => emit('setGroupExcluded', name, excluded)"
       @set-group-entry-caps="(name, cap) => emit('setGroupEntryCaps', name, cap)"
       @rename-group="(from, to) => emit('renameGroup', from, to)"
       @remove-group="(name) => emit('removeGroup', name)"

@@ -79,6 +79,8 @@ const emit = defineEmits<{
   addGroup: [name: string, cap: number]
   /** 改组额度 */
   setGroupCap: [name: string, cap: number]
+  /** 开关某组的「不消耗总词条数」规则（见 `AffixLibraryGroup.excludedFromTotalRolls`） */
+  setGroupExcluded: [name: string, excluded: boolean]
   /** 批量设定某组所有条目的单词条上限（`name = ''` 表示未分组） */
   setGroupEntryCaps: [name: string, cap: number]
   /** 改组名（页面负责同步条目引用） */
@@ -540,6 +542,10 @@ async function onRestoreDefaults() {
 /** 组额度说明：一句话讲清这个数字管什么 */
 const GROUP_CAP_HINT = '组内各条档数之和 ≤ 额度'
 
+/** 组规则「不消耗总词条数」的说明（用户 2026-09-18 口径） */
+const GROUP_EXCLUDE_HINT =
+  '打开后：本组条目的基础占用不计入总词条数（买了不占数）；与副词条冲突的额外 x 仍照扣'
+
 /** 额度 0 的说明：别只说「不限」，要说清它还是一种约束的关闭状态 */
 const GROUP_CAP_UNLIMITED_HINT = '0 = 不限制（这几条可以同时用满各自上限）'
 
@@ -555,6 +561,11 @@ function onPickGroup(target: string, value: string) {
 
 function onSetGroupCap(name: string, value: number) {
   forwardEntryEdit(() => emit('setGroupCap', name, value))
+}
+
+/** 开关某组的「不消耗总词条数」（组管理页里的勾选框） */
+function onSetGroupExcluded(name: string, excluded: boolean) {
+  forwardEntryEdit(() => emit('setGroupExcluded', name, excluded))
 }
 
 /**
@@ -1237,7 +1248,23 @@ function submitForm() {
                         />
                       </td>
                       <td class="type-cell">
-                        {{ group.cap === 0 ? GROUP_CAP_UNLIMITED_HINT : GROUP_CAP_HINT }}
+                        <label class="group-exclude-toggle" :title="GROUP_EXCLUDE_HINT">
+                          <input
+                            type="checkbox"
+                            :checked="group.excludedFromTotalRolls === true"
+                            :disabled="simpleMode"
+                            @change="
+                              onSetGroupExcluded(
+                                group.name,
+                                ($event.target as HTMLInputElement).checked,
+                              )
+                            "
+                          />
+                          不占词条数
+                        </label>
+                        <span class="group-cap-note">
+                          {{ group.cap === 0 ? GROUP_CAP_UNLIMITED_HINT : GROUP_CAP_HINT }}
+                        </span>
                       </td>
                       <td>
                         <button
@@ -1475,6 +1502,20 @@ function submitForm() {
 
 /* 批量改本组单词条上限：一行（标签 + 输入 + 应用 + 当前值）
    颜色不硬写：跟着所在表格的正文色走，白天主题由 calculatorLight.css 覆盖 */
+/* 组管理：不占词条数的勾选 + 额度说明（配色不硬写，跟着所在表格的正文字色走） */
+.group-exclude-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  cursor: pointer;
+}
+
+.group-cap-note {
+  display: block;
+  margin-top: 0.15rem;
+  opacity: 0.75;
+}
+
 .group-cap-row {
   display: flex;
   align-items: center;

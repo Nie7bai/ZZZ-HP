@@ -38,6 +38,7 @@ import {
   resolveAffixLibraryAll,
   resolveAffixLibrary,
   setAffixLibraryEntryEnabled,
+  setAffixLibraryGroupExcluded,
   statKeyOfTarget,
 } from '../src/utils/affixLibrary.ts'
 import { affixRelativeWeights, computeAffixBenefitSeriesForTable, computeAffixBenefitTable } from '../src/utils/affixBenefitAnalysis.ts'
@@ -755,6 +756,32 @@ console.log('\n[8] 收益曲线：组内对比（2026-09-17 用户口径）')
     '曲线条数 = 正收益条数（上限内不再被 0 / 负收益占名额）',
     allRowsSeries.length === Math.min(40, positiveRows.length),
     `实际 ${allRowsSeries.length}，正收益 ${positiveRows.length}`,
+  )
+}
+
+// ---------- 9. 组规则「不消耗总词条数」的读写 ----------
+console.log('\n[9] 组规则：不占词条数（2026-09-18 用户口径，普通与游戏专用都吃）')
+{
+  const baseState = createDefaultAffixLibraryState()
+  const groupName = baseState.groups[0]?.name ?? '4号位'
+  const on = setAffixLibraryGroupExcluded(baseState, groupName, true)
+  check(
+    `打开后「${groupName}」带 excludedFromTotalRolls`,
+    on.groups.find((group) => group.name === groupName)?.excludedFromTotalRolls === true,
+  )
+  const off = setAffixLibraryGroupExcluded(on, groupName, false)
+  const offGroup = off.groups.find((group) => group.name === groupName) ?? {}
+  check('关掉后字段整个删掉（不留 false）', !('excludedFromTotalRolls' in offGroup))
+  check('开关不改动别的组', off.groups.length === baseState.groups.length)
+  const reloaded = coerceAffixLibraryState(JSON.parse(JSON.stringify(on)))
+  check(
+    '存读往返保留该规则',
+    reloaded.groups.find((group) => group.name === groupName)?.excludedFromTotalRolls === true,
+  )
+  const legacy = coerceAffixLibraryState(JSON.parse(JSON.stringify(baseState)))
+  check(
+    '老存档没有这个键 → 不豁免（行为不变）',
+    legacy.groups.every((group) => group.excludedFromTotalRolls !== true),
   )
 }
 
