@@ -3408,7 +3408,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
               title="编辑游戏专用规则分配"
               @click="gameAffixRulesOpen = true"
             >
-              编辑
+              编辑游戏专用规则
             </button>
             <button
               type="button"
