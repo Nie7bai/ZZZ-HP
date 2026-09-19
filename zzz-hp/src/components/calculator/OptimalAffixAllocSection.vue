@@ -1903,6 +1903,18 @@ const affixAllocConflictExtraCost = computed<number | null>(() => {
 })
 
 /**
+ * 普通模式里「不占词条数」的组名（词条库 → 组管理里勾的）——只给结果面板写一行提示用。
+ *
+ * 为什么不复用游戏专用那套拆账：普通模式没有冲突额外 x、也不按"胜出口袋"选解，
+ * 只要告诉用户"这几个组不占数"，总词条数那行就不会看起来像少算了。
+ */
+const affixAllocFreeRollGroupNames = computed(() =>
+  affixLibraryState.value.groups
+    .filter((group) => group.excludedFromTotalRolls)
+    .map((group) => group.name),
+)
+
+/**
  * 游戏专用结果的「词条数拆账」——用户主要看的就是副词条那个数，别让他自己加。
  *
  * - `conflictExtra`：冲突条目（`isGamePaidMainId`）多花的档数 = 档数 × x；
@@ -3489,6 +3501,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           :live-ms="affixAllocLoading ? affixAllocTickMs : null"
           :conflict-extra-cost="affixAllocConflictExtraCost"
           :roll-split="affixAllocRollSplit"
+          :free-roll-groups="affixAllocFreeRollGroupNames"
         />
         <GameAffixRulesModal
           :open="gameAffixRulesOpen"

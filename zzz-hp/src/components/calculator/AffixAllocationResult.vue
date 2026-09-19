@@ -46,6 +46,13 @@ const props = defineProps<{
     /** 2 件套 / 4 / 5 / 6 号位实际选中的档数（这些组不占词条数） */
     excludedBase: number
   } | null
+  /**
+   * 普通模式里「不占词条数」的组名（词条库 → 组管理里勾的）。
+   *
+   * 只用来在总词条数那行补一句「· 不占词条数：X」—— 否则用户看到「4 档被吃掉了」会以为规则没生效。
+   * 游戏专用结果走 `rollSplit`，不用这个。
+   */
+  freeRollGroups?: string[]
 }>()
 
 /** 阶段名 → 界面文案 */
@@ -185,7 +192,11 @@ function formatDuration(ms: number) {
                 v-if="rollSplit.conflictExtra > 0"
               >（冲突额外 {{ rollSplit.conflictExtra }} 档）</template>
             </template>
-            <template v-else>{{ gameInfo ? '普通条目 1 档 = 1 个词条，付费条目额外多花' : '每条词条 1 档 = 1 个词条' }}</template>
+            <template v-else>
+              {{ gameInfo ? '普通条目 1 档 = 1 个词条，付费条目额外多花' : '每条词条 1 档 = 1 个词条' }}<template
+                v-if="!gameInfo && (freeRollGroups?.length ?? 0) > 0"
+              > · 不占词条数：{{ freeRollGroups!.join('、') }}</template>
+            </template>
           </span>
         </div>
         <div class="budget-item">
