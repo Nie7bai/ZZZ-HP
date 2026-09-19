@@ -4,6 +4,7 @@ import { buildAllocationRows } from '@/utils/affixOptimizer'
 import type { AffixOptimizerProgress, AffixOptimizerResult } from '@/utils/affixOptimizer'
 import type { AffixLibraryEntry } from '@/utils/affixLibrary'
 import { formatAffixPerRoll } from '@/utils/affixLibrary'
+import { isGamePaidMainId } from '@/utils/gameAffixRules'
 
 /**
  * 最优分配结果面板
@@ -25,6 +26,13 @@ const props = defineProps<{
   elapsedMs?: number | null
   /** 求解中的实时耗时（毫秒，由外层每 200ms 推一次）；没在跑为 null */
   liveMs?: number | null
+  /**
+   * 游戏专用：与副词条冲突的主属性额外多扣的档数（x）。
+   *
+   * `null` = 当前展示的结果不是游戏专用（普通模式没有冲突概念）→ 一个字都不显示。
+   * x = 0 时同样不显示（没有额外扣除，写出来只会误导）。
+   */
+  conflictExtraCost?: number | null
 }>()
 
 /** 阶段名 → 界面文案 */
@@ -84,6 +92,23 @@ function barWidth(rolls: number) {
   if (maxRolls.value <= 0) return '0%'
   return `${(rolls / maxRolls.value) * 100}%`
 }
+
+/**
+ * 「与副词条冲突，额外扣除总词条数 x」——只给游戏专用结果里的冲突条目（`isGamePaidMainId`）写。
+ *
+ * 冲突 = 该主属性字段在副词条池里也有同 target 条目（4 号位 6 条全部；5 / 6 号位只有攻 / 生 / 防）。
+ * 没有冲突、或 x = 0（没有额外扣除）都**不写** —— 用户口径「没有冲突就不写」。
+ */
+function conflictNoteOf(entry: AffixLibraryEntry): string {
+  const extra = props.conflictExtraCost
+  if (extra == null || extra <= 0) return ''
+  if (!isGamePaidMainId(entry.id)) return ''
+  return `与副词条冲突，额外扣除总词条数 ${Math.round(extra)}`
+}
+
+/** 悬停补齐完整规则：除了多扣 x 档，还会把对应副词条条目的上限扣 5 */
+const CONFLICT_NOTE_TITLE =
+  '该主属性与副词条重复：总词条数额外多扣 x 档，并把对应副词条条目的上限扣 5（GAME_PAID_SUBSTAT_TAX）'
 
 function formatNumber(value: number) {
   return Math.round(value).toLocaleString('en-US')
@@ -197,7 +222,14 @@ function formatDuration(ms: number) {
           <tbody>
             <tr v-for="row in rows" :key="row.entry.id">
               <td class="group-cell">{{ row.entry.group || '—' }}</td>
-              <td>{{ row.entry.label }}</td>
+              <td>
+                {{ row.entry.label }}
+                <span
+                  v-if="conflictNoteOf(row.entry)"
+                  class="conflict-note"
+                  :title="CONFLICT_NOTE_TITLE"
+                >{{ conflictNoteOf(row.entry) }}</span>
+              </td>
               <td class="num-cell">{{ formatAffixPerRoll(row.entry.target, row.entry.perRoll) }}</td>
               <td class="num-cell rolls-cell">
                 <span class="rolls-bar" :style="{ width: barWidth(row.rolls) }" />
@@ -246,6 +278,16 @@ function formatDuration(ms: number) {
   white-space: nowrap;
   color: var(--calc-muted, #6b7280);
   font-size: 0.92em;
+}
+
+/*
+ * 冲突提示（游戏专用才有）：跟在词条名后面的一句小字，说明这条主属性与副词条冲突、
+ * 额外多扣了 x 档总词条数。配色与「组额度」那套强调色一致（浅 #a8781f / 深 #f0d7a2）。
+ */
+.conflict-note {
+  margin-left: 0.4rem;
+  font-size: 0.72rem;
+  color: #a8781f;
 }
 
 .err {
@@ -424,6 +466,11 @@ tbody tr:last-child td {
 /* 提升幅度（.pos）与提示色：浅色的深绿 / 深金在暗底上发闷 */
 [data-theme='dark'] .alloc-result .summary-value.pos {
   color: #7dd3a0 !important;
+}
+
+/* 冲突提示：与「组额度」同一对强调色（浅 #a8781f / 深 #f0d7a2） */
+[data-theme='dark'] .alloc-result .conflict-note {
+  color: #f0d7a2;
 }
 
 [data-theme='dark'] .alloc-result .warn {

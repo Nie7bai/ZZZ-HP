@@ -473,6 +473,10 @@ console.log('\n[游戏专用方案] 界面接线守卫（源码级）')
     new URL('../src/components/calculator/OptimalAffixAllocSection.vue', import.meta.url),
     'utf8',
   )
+  const resultSource = readFileSync(
+    new URL('../src/components/calculator/AffixAllocationResult.vue', import.meta.url),
+    'utf8',
+  )
   check('弹窗里有「所有副词条条目上限（默认 30）」输入格',
     modalSource.includes('所有副词条条目上限（默认 30）') &&
       modalSource.includes("emit('update:substatEntryCap'"),
@@ -484,6 +488,17 @@ console.log('\n[游戏专用方案] 界面接线守卫（源码级）')
   check('求解条目跟着设置走（computed，而不是模块级常量）',
     /const gameAffixLibraryEntries = computed\(\(\) =>\s*\n?\s*createGameAffixLibraryEntries\(gameAffixSettings\.value\.substatEntryCap\)/.test(sectionSource),
     'createGameAffixLibraryEntries(gameAffixSettings.value.substatEntryCap)')
+  // 冲突提示（2026-09-18 用户口径）：结果表里给冲突条目写「额外扣除总词条数 x」，没冲突不写、普通模式不显示
+  check('结果表：冲突条目后面写「与副词条冲突，额外扣除总词条数 x」',
+    resultSource.includes('与副词条冲突，额外扣除总词条数') && resultSource.includes('isGamePaidMainId'),
+    '文案 + 冲突判据都在组件里')
+  check('结果表：x ≤ 0 或没传 x（普通模式）时一个字都不写',
+    /const extra = props\.conflictExtraCost\s*\n\s*if \(extra == null \|\| extra <= 0\) return ''/.test(resultSource),
+    "if (extra == null || extra <= 0) return ''")
+  check('页面只在游戏专用结果上给 x（判据 = 结果自带 gameWinner）',
+    sectionSource.includes(':conflict-extra-cost="affixAllocConflictExtraCost"') &&
+      /const affixAllocConflictExtraCost = computed<number \| null>\(\(\) => \{[\s\S]{0,240}?if \(!result\?\.gameWinner\) return null/.test(sectionSource),
+    'prop 接线 + gameWinner 判据')
 }
 
 console.log(`\n结果：${passed} passed, ${failed} failed`)

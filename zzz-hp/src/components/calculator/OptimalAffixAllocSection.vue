@@ -1883,6 +1883,20 @@ let lastProgressAt = 0
 let affixAllocAbort: AbortController | null = null
 /** 最近一次求解用的条目（普通库或游戏专用方案），结果表按这个显示 */
 const affixAllocResultLibrary = ref<AffixLibraryEntry[]>([])
+
+/**
+ * 结果表里「与副词条冲突，额外扣除总词条数 x」用的 x（付费占用档数）。
+ *
+ * 只在**当前展示的结果确实是游戏专用**时给值（判据 = 结果自带 `gameWinner`）：
+ * 普通模式没有冲突概念，给 `null` 让结果表一个字都不显示。
+ * 用结果自身判断而不是用 `affixAllocMode`：结果可能是上一次另一种模式跑出来的，
+ * 按结果判定才不会张冠李戴（与 `AffixAllocationResult` 里 `gameInfo` 同一判据）。
+ */
+const affixAllocConflictExtraCost = computed<number | null>(() => {
+  const result = affixAllocResult.value as { gameWinner?: unknown } | null
+  if (!result?.gameWinner) return null
+  return gameAffixSettings.value.extraCost
+})
 /** 只为「已知条目 id 列表 + 默认值」而建；真正的求解条目见 `gameAffixLibraryEntries` */
 const gameAffixBaseEntries = createGameAffixLibraryEntries()
 const gameAffixSettings = ref(loadGameAffixRulesSettings(gameAffixBaseEntries))
@@ -3425,6 +3439,7 @@ function previewFinalPanel(external: PanelStats, slotIndex?: number): PanelStats
           :stale="affixAllocResultStale"
           :elapsed-ms="affixAllocElapsedMs"
           :live-ms="affixAllocLoading ? affixAllocTickMs : null"
+          :conflict-extra-cost="affixAllocConflictExtraCost"
         />
         <GameAffixRulesModal
           :open="gameAffixRulesOpen"
