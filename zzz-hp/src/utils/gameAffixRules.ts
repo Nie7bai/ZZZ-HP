@@ -1,7 +1,5 @@
 import {
   AFFIX_PRESET_GROUPS,
-  affixExcludedGroupBaseRollsUsed,
-  affixGroupRollBudgetRefund,
   createPresetAffixLibraryEntries,
   type AffixLibraryEntry,
   type AffixLibraryGroup,
@@ -337,13 +335,15 @@ export async function solveGameAffixAllocationAsync(
   const groupCaps = gameAffixGroupCaps(input.maxTotalRolls)
   const groups = createGameAffixGroups(input.maxTotalRolls)
   /**
-   * 「不消耗总词条数」的组能退回的基础档（2 件套 / 4 / 5 / 6 号位各 1 → 4）。
+   * 「不消耗总词条数」的组名（2 件套 / 4 / 5 / 6 号位）。
    *
-   * 求解时把每袋的预算放宽这么多、结果里再按**实际用掉**的基础档减回去 —— 等价于"这些组不占数"，
-   * 但不必动求解器内核（内核的层推进假设每加一条至少花 1 档，见 `affixLibrary` 的字段注释）。
+   * 交给求解器按**预算口径**处理：这些组的基础档不计入总词条数，冲突额外 x 照算
+   * （见 `AffixOptimizerInput.freeRollGroups`）。**不再用"放宽预算 + 事后减回"那种补丁** ——
+   * 那个补丁在"组勾了但一条没选"时会把多出来的档漏给副词条（2026-09-18 用户指出）。
    */
-  const budgetRefund = affixGroupRollBudgetRefund(groups, input.entries, input.enabledIds)
-  const solverTotalRolls = Math.max(1, Math.round(input.maxTotalRolls)) + budgetRefund
+  const freeRollGroups = groups
+    .filter((group) => group.excludedFromTotalRolls)
+    .map((group) => group.name)
   let best: AffixOptimizerResult | null = null
   let winnerIndex = 0
   let winnerLabel = ''
@@ -393,10 +393,11 @@ export async function solveGameAffixAllocationAsync(
     const branchInput: AffixOptimizerInput = {
       ctx: input.ctx,
       entries: branch.entries,
-      maxTotalRolls: solverTotalRolls,
+      maxTotalRolls: Math.max(1, Math.round(input.maxTotalRolls)),
       ...sharedParams,
       maxWorkUnits: allowance,
       groupCaps,
+      freeRollGroups,
       entryCapTaxes: branch.entryCapTaxes,
     }
     const result = await solveOptimalAffixAllocationAsync(branchInput, {
@@ -427,14 +428,9 @@ export async function solveGameAffixAllocationAsync(
   if (!best) {
     throw new Error('游戏专用方案没有可参与的词条')
   }
-  // 把放宽掉的预算减回去：赢家实际用掉的「不占数组」基础档（没买就是 0），
-  // 于是对用户看到的 `总词条数 = 求解用的档数 − 该组基础档`（≤ 用户输入值），
-  // 而副词条行之和 = 总词条数 − 冲突额外。
-  const baseRollsRefund = affixExcludedGroupBaseRollsUsed(groups, input.entries, best.rollsByEntryId)
+  // `usedRolls` 已由求解器按预算口径给（豁免组的基础档不算、冲突额外照算），这里不再事后减回
   return {
     ...best,
-    usedRolls: Math.max(0, best.usedRolls - baseRollsRefund),
-    maxTotalRolls: Math.max(1, Math.round(input.maxTotalRolls)),
     gameWinner: { index: winnerIndex, total, label: winnerLabel },
     gameTotals: { workUsed, engineCalls, cacheHits, pockets },
   }

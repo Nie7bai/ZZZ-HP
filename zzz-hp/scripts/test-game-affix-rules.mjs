@@ -19,7 +19,7 @@ import {
   solveGameAffixAllocationAsync,
 } from '../src/utils/gameAffixRules.ts'
 import { solveOptimalAffixAllocation, solveOptimalAffixAllocationAsync, collectPenRateFieldLocks } from '../src/utils/affixOptimizer.ts'
-import { affixExcludedGroupBaseRollsUsed, affixGroupRollBudgetRefund } from '../src/utils/affixLibrary.ts'
+import { affixExcludedGroupBaseRollsUsed } from '../src/utils/affixLibrary.ts'
 import { readFileSync } from 'node:fs'
 import { buildOptimalEvalContext, clearAffixEvalCache } from '../src/utils/optimalAffixAlloc.ts'
 import { createEmptyAgentBasePanel } from '../src/utils/calculatorUi.ts'
@@ -210,27 +210,6 @@ check(
     excludedNames.join(' / '),
   )
   check(
-    '退回量 = 这四个组的基础档合计（各锁 1 → 4）',
-    affixGroupRollBudgetRefund(gameGroups, entries, defaultGameAffixEnabledIds(entries)) === 4,
-    String(affixGroupRollBudgetRefund(gameGroups, entries, defaultGameAffixEnabledIds(entries))),
-  )
-  // 勾掉的组不该再给预算（2026-09-18 用户口径：2 件套全不勾 → 退回量要少 1）
-  {
-    const allEnabled = defaultGameAffixEnabledIds(entries)
-    const withoutSet = allEnabled.filter((id) => !id.startsWith('set:'))
-    const withoutSetAnd6 = withoutSet.filter((id) => !id.startsWith('main:slot6:'))
-    check(
-      '2 件套全不勾 → 退回量 4 → 3',
-      affixGroupRollBudgetRefund(gameGroups, entries, withoutSet) === 3,
-      String(affixGroupRollBudgetRefund(gameGroups, entries, withoutSet)),
-    )
-    check(
-      '2 件套 + 6 号位全不勾 → 退回量 4 → 2',
-      affixGroupRollBudgetRefund(gameGroups, entries, withoutSetAnd6) === 2,
-      String(affixGroupRollBudgetRefund(gameGroups, entries, withoutSetAnd6)),
-    )
-  }
-  check(
     '实际用掉的基础档只算这四个组（副词条不计）',
     affixExcludedGroupBaseRollsUsed(gameGroups, entries, {
       'main:slot4:critDmg': 1,
@@ -372,9 +351,12 @@ console.log('\n[游戏专用方案] 4 口袋都跑 Beam，再按总伤取最高'
     const winnerAlone = await solveOptimalAffixAllocationAsync({
       ctx,
       entries: winnerBranch.entries,
-      // 与游戏专用入口同一口径：预算放宽「不占数组」的基础档（2 件套 / 4 / 5 / 6 号位各 1 → +4）
-      maxTotalRolls: 30 + affixGroupRollBudgetRefund(createGameAffixGroups(30), entries, enabledIds),
+      // 与游戏专用入口同一口径：预算就是用户输入的总词条数（「不占数」组由 freeRollGroups 表达）
+      maxTotalRolls: 30,
       groupCaps: gameAffixGroupCaps(30),
+      freeRollGroups: createGameAffixGroups(30)
+        .filter((group) => group.excludedFromTotalRolls)
+        .map((group) => group.name),
       entryCapTaxes: winnerBranch.entryCapTaxes,
       searchPreset: 'fast',
       maxWorkUnits: POCKET_BUDGET,
@@ -413,6 +395,38 @@ console.log('\n[游戏专用方案] 4 口袋都跑 Beam，再按总伤取最高'
       game.usedRolls <= 30 && game.maxTotalRolls === 30,
       `usedRolls=${game.usedRolls} maxTotalRolls=${game.maxTotalRolls}（这些组实际占 ${winnerExcludedBase} 档）`)
   }
+}
+
+console.log('\n[游戏专用方案] 「不占数」组勾了但一条没选：不许把省下的档漏给副词条')
+{
+  // 2 件套 只留一条对强攻零收益的条目（局外防御力 16%）→ 求解器不会选它 → 它不该多给任何预算。
+  // 老写法（放宽预算 + 事后按"实际用掉的基础档"减回）在这里会漏：退回量按容量给，勾着就退 1 档，
+  // 副词条因此能到 29（本该 30 − 冲突额外）。这条就是那个漏洞的回归守卫。
+  const uselessSetOnly = enabledIds.filter(
+    (id) => !id.startsWith('set:') || id === 'set:externalDefPercent:16',
+  )
+  clearAffixEvalCache()
+  const solved = await solveGameAffixAllocationAsync({
+    ctx,
+    entries,
+    enabledIds: uselessSetOnly,
+    extraCost: EXTRA_COST,
+    maxTotalRolls: 30,
+    searchPreset: 'fast',
+    maxWorkUnits: POCKET_BUDGET,
+  })
+  const setRolls = groupRollsOf(solved.rollsByEntryId, '2件套')
+  const conflictExtra = entries
+    .filter((entry) => isGamePaidMainId(entry.id))
+    .reduce((sum, entry) => sum + (solved.rollsByEntryId[entry.id] ?? 0) * EXTRA_COST, 0)
+  const substatRolls = groupRollsOf(solved.rollsByEntryId, '副词条')
+  check('前提：2 件套 确实一条都没被选（否则这条测不到东西）', setRolls === 0, `2件套 ${setRolls} 档`)
+  check('副词条 ≤ 总词条数 − 冲突额外（没选的组不给预算）',
+    substatRolls <= 30 - conflictExtra,
+    `副词条 ${substatRolls} ≤ ${30 - conflictExtra}（冲突额外 ${conflictExtra}）`)
+  check('总词条数口径一致：usedRolls = 副词条 + 冲突额外',
+    solved.usedRolls === substatRolls + conflictExtra,
+    `${solved.usedRolls} = ${substatRolls} + ${conflictExtra}`)
 }
 
 console.log('\n[游戏专用方案] 5 号付费袋不锁 24% 穿透')

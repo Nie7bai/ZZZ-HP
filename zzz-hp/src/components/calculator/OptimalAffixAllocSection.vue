@@ -2205,6 +2205,11 @@ async function runAffixAllocation() {
         minRetainedRoutes: affixSearchParams.value.minRetainedRoutes,
         maxRetainedRoutes: affixSearchParams.value.maxRetainedRoutes,
         groupCaps: affixGroupCaps(affixLibraryState.value),
+        // 组规则「不消耗总词条数」：普通库今天还没有这个开关（字段未落盘、无 UI），所以这里通常是空数组；
+        // 先按同一套口径接上，等词条库弹窗加上开关就能直接用（见 dev-docs/词条分配规则.md §3.5）。
+        freeRollGroups: affixLibraryState.value.groups
+          .filter((group) => group.excludedFromTotalRolls)
+          .map((group) => group.name),
       },
       {
         signal: controller.signal,

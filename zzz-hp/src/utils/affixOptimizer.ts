@@ -268,6 +268,19 @@ export interface AffixOptimizerInput {
    */
   groupCaps?: Record<string, number>
   /**
+   * 「不消耗总词条数」的组名（组规则 `AffixLibraryGroup.excludedFromTotalRolls`，见 `affixLibrary`）。
+   *
+   * 语义：这些组条目的**基础占用**不计入总词条数（每档那 1 个词条不算），**冲突额外 x 照算**
+   * （付费条目 `rollCost = 1 + x` → 预算里只记 `rollCost − 1`）。
+   *
+   * **层推进不受影响**：层仍按 `rollCost` 计（每加一条至少推进 1 档），所以搜索结构、同层比较完全不变 ——
+   * 变的只是"还剩多少预算"这一个数。这正是"预算轴分前后、组间不分前后"的精确写法：
+   * 不必先放宽预算再事后减回（那种补丁在"组勾了但一条没选"时会把多出来的档漏给副词条）。
+   *
+   * 缺省空数组 = 所有条目照常占预算（普通模式的默认行为）。
+   */
+  freeRollGroups?: string[]
+  /**
    * 跨条目 cap 税：`whenEntryId` 已有档时，`targetEntryId` 的有效上限再减 `amount`。
    * 游戏专用规则用来表达「号位选了攻击% → 副词条攻击% 少 1 档」。默认库不传。
    */
@@ -482,6 +495,68 @@ function usedRollsOf(
 }
 
 /**
+ * 该条目在**预算**里要花几档。
+ *
+ * 与 `usedRollsOf`（层推进 / 显示口径）的区别只有一处：「不消耗总词条数」的组（`freeRollGroups`）
+ * **基础占用不算**，只算冲突额外 —— 付费条目 `rollCost = 1 + x`，于是预算记 `x`；普通条目记 0。
+ */
+function budgetRollCostOf(entry: AffixLibraryEntry, freeRollGroups: ReadonlySet<string>): number {
+  const cost = Math.max(1, entry.rollCost)
+  return freeRollGroups.has(entry.group) ? Math.max(0, cost - 1) : cost
+}
+
+/** 已用**预算**（`usedRollsOf` 的预算版：豁免组的基础档不算） */
+function budgetUsedRollsOf(
+  entries: AffixLibraryEntry[],
+  rollsByEntryId: Record<string, number>,
+  freeRollGroups: ReadonlySet<string>,
+): number {
+  let used = 0
+  for (const entry of entries) {
+    const count = rollsByEntryId[entry.id] ?? 0
+    if (count <= 0) continue
+    used += count * budgetRollCostOf(entry, freeRollGroups)
+  }
+  return used
+}
+
+/**
+ * 解析出**真正生效**的「不占数」组，并算出层循环需要多走多少档。
+ *
+ * - 只认**有界**的组：组额度与组内条目 cap 都有限才算（无界会让层推进没有上界，搜索一直长下去）；
+ * - 层推进按 `rollCost` 计，而这些组的基础档不进预算 → 层循环上界要把它们补回来
+ *   （否则"拿了豁免组条目"的状态会被 `nextUsed > maxUsed` 提前丢掉）。
+ */
+function resolveFreeRollGroups(
+  input: AffixOptimizerInput,
+  entries: AffixLibraryEntry[],
+  groupCaps: Record<string, number>,
+  maxRollsPerEntry: number,
+): { groups: Set<string>; layerHeadroom: number } {
+  const groups = new Set<string>()
+  let layerHeadroom = 0
+  for (const name of input.freeRollGroups ?? []) {
+    const capOfGroup = groupCapFor(groupCaps, name)
+    let headroom = 0
+    let bounded = true
+    for (const entry of entries) {
+      if (entry.group !== name) continue
+      const perEntry = entryCapLimit(entry, maxRollsPerEntry, 0)
+      const maxCount = Number.isFinite(capOfGroup) ? Math.min(capOfGroup, perEntry) : perEntry
+      if (!Number.isFinite(maxCount)) {
+        bounded = false
+        break
+      }
+      headroom += maxCount * Math.max(1, entry.rollCost)
+    }
+    if (!bounded) continue
+    groups.add(name)
+    layerHeadroom += headroom
+  }
+  return { groups, layerHeadroom }
+}
+
+/**
  * 某组当前已占用的档数（组内所有条目已分配档数之和）。
  *
  * `rolls` 必须是**当前正在评估的那份**档数快照：局部搜索里一次会连加两条，
@@ -543,12 +618,15 @@ function remainingAllowedRolls(
   entry: AffixLibraryEntry,
   current: number,
   budget: AffixOptimizerBudget,
-  usedRolls: number,
+  /** 已用**预算**档数（不是层口径：豁免组的基础档不算） */
+  budgetUsedRolls: number,
   rolls: Record<string, number>,
   entries: AffixLibraryEntry[],
   maxRollsPerEntry: number,
   groupCaps: Record<string, number>,
   capTaxes: readonly AffixEntryCapTax[],
+  /** 该条目在预算里要花几档（豁免组只算冲突额外，可能为 0 = 不花预算） */
+  budgetCost: number,
 ): number {
   const capLimit = entryCapLimit(
     entry,
@@ -580,8 +658,10 @@ function remainingAllowedRolls(
       byGroup = groupRoom
     }
   }
-  const cost = Math.max(1, entry.rollCost)
-  const rollRoom = Math.floor((budget.maxTotalRolls - usedRolls) / cost)
+  const rollRoom =
+    budgetCost <= 0
+      ? Number.POSITIVE_INFINITY
+      : Math.floor((budget.maxTotalRolls - budgetUsedRolls) / budgetCost)
   return Math.max(0, Math.min(byCap, byGroup, rollRoom))
 }
 
@@ -600,11 +680,14 @@ export function collectPenRateFieldLocks(
   groupCaps: Record<string, number> = {},
   maxTotalRolls = DEFAULT_MAX_TOTAL_ROLLS,
   capTaxes: readonly AffixEntryCapTax[] = [],
+  /** 「不消耗总词条数」的组（见 `AffixOptimizerInput.freeRollGroups`）—— 种子也要按**预算**口径判 */
+  freeRollGroups: Iterable<string> = [],
 ): Record<string, number> {
   const budget = {
     maxTotalRolls,
     rollCapOf: () => Number.POSITIVE_INFINITY,
   } as AffixOptimizerBudget
+  const freeGroups = new Set(freeRollGroups)
   const next = { ...fixedRolls }
   const locks: Record<string, number> = {}
   let lockedPenRate = 0
@@ -613,7 +696,7 @@ export function collectPenRateFieldLocks(
     // 防呆上限：正常条目会被 cap / 组额度 / 预算先掐住
     for (let guard = 0; guard < 64; guard += 1) {
       if (lockedPenRate + entry.perRoll > DEFENSE_ZONE_PEN_RATE_CAP) break
-      const used = usedRollsOf(entries, next)
+      const used = budgetUsedRollsOf(entries, next, freeGroups)
       const room = remainingAllowedRolls(
         entry,
         next[entry.id] ?? 0,
@@ -624,6 +707,7 @@ export function collectPenRateFieldLocks(
         maxTotalRolls,
         groupCaps,
         capTaxes,
+        budgetRollCostOf(entry, freeGroups),
       )
       if (room <= 0) break
       next[entry.id] = (next[entry.id] ?? 0) + 1
@@ -654,6 +738,8 @@ export function resolveFlatPenLadder(input: {
   groupCaps?: Record<string, number>
   maxTotalRolls?: number
   capTaxes?: readonly AffixEntryCapTax[]
+  /** 「不消耗总词条数」的组（见 `AffixOptimizerInput.freeRollGroups`）—— 梯子也按预算口径裁 */
+  freeRollGroups?: string[]
 }): { entryId: string; candidates: number[] } | null {
   const penEntries = input.entries.filter((entry) => isFlatPenAffixTarget(entry.target))
   if (!penEntries.length) return null
@@ -667,7 +753,8 @@ export function resolveFlatPenLadder(input: {
     rollCapOf: () => Number.POSITIVE_INFINITY,
   } as AffixOptimizerBudget
   const locked = input.lockedRolls
-  const used = usedRollsOf(input.entries, locked)
+  const freeGroups = new Set(input.freeRollGroups ?? [])
+  const used = budgetUsedRollsOf(input.entries, locked, freeGroups)
   const room = remainingAllowedRolls(
     primary,
     locked[primary.id] ?? 0,
@@ -678,6 +765,7 @@ export function resolveFlatPenLadder(input: {
     maxTotalRolls,
     input.groupCaps ?? {},
     input.capTaxes ?? [],
+    budgetRollCostOf(primary, freeGroups),
   )
   const need = Math.max(0, input.effectiveDefense)
   const perRoll = Math.max(1e-9, primary.perRoll)
@@ -718,7 +806,10 @@ type SolveState = {
 /** Beam 下的一个完整状态（一条分配路线） */
 type BeamState = SolveState & {
   rolls: Record<string, number>
+  /** 层口径：按 `rollCost` 累加（每加一条至少 +1），决定"这是第几层" */
   usedRolls: number
+  /** 预算口径：豁免组（`freeRollGroups`）的基础档不算，只算冲突额外 */
+  budgetUsed: number
 }
 
 interface SearchOutcome {
@@ -769,7 +860,14 @@ function* solveSearch(
   const params = resolveAffixSearchParams(input)
   const pricePerEval = workPricePerEval(ctx)
   const workBudget: number | null = resolveSearchWorkBudget(input)
-  const maxUsed = budget.maxTotalRolls
+  // 「不占数」组：预算里不算它们的基础档（冲突额外 x 照算），层推进照旧按 rollCost 计
+  const { groups: freeRollGroups, layerHeadroom } = resolveFreeRollGroups(
+    input,
+    entries,
+    groupCaps,
+    maxRollsPerEntry,
+  )
+  const maxUsed = budget.maxTotalRolls + layerHeadroom
 
   const emptyCounts = emptyAffixCounts()
 
@@ -831,6 +929,7 @@ function* solveSearch(
     return {
       rolls: normalizeRolls(rolls),
       usedRolls: usedRollsOf(entries, rolls),
+      budgetUsed: budgetUsedRollsOf(entries, rolls, freeRollGroups),
       total,
       counts,
       panelDeltas,
@@ -865,12 +964,13 @@ function* solveSearch(
       entry,
       current,
       budget,
-      baselineState.usedRolls,
+      baselineState.budgetUsed,
       baselineState.rolls,
       entries,
       maxRollsPerEntry,
       groupCaps,
       capTaxes,
+      budgetRollCostOf(entry, freeRollGroups),
     )
     if (room <= 0) {
       initialGain.set(entry.id, 0)
@@ -1016,12 +1116,13 @@ function* solveSearch(
             entry,
             state.rolls[entry.id] ?? 0,
             budget,
-            state.usedRolls,
+            state.budgetUsed,
             state.rolls,
             entries,
             maxRollsPerEntry,
             groupCaps,
             capTaxes,
+            budgetRollCostOf(entry, freeRollGroups),
           ) > 0
         for (const entry of pool) {
           if (remainingWork() < pricePerEval) {
@@ -1086,6 +1187,13 @@ function toResult(input: AffixOptimizerInput, outcome: SearchOutcome): AffixOpti
   const improvementPercent = baselineDamage > 0
     ? ((state.total - baselineDamage) / baselineDamage) * 100
     : 0
+  // 报给用户看的 `usedRolls` 是**预算口径**（「不占数」组的基础档不算）——与求解时的约束同一套算法
+  const { groups: freeRollGroups } = resolveFreeRollGroups(
+    input,
+    input.entries,
+    input.groupCaps ?? {},
+    input.maxRollsPerEntry ?? resolveAffixOptimizerBudget(input.ctx, input.maxTotalRolls).maxTotalRolls,
+  )
 
   return {
     rollsByEntryId: outcome.rollsByEntryId,
@@ -1096,7 +1204,7 @@ function toResult(input: AffixOptimizerInput, outcome: SearchOutcome): AffixOpti
     totalDamage: state.total,
     baselineDamage,
     improvementPercent,
-    usedRolls: usedRollsOf(input.entries, outcome.rollsByEntryId),
+    usedRolls: budgetUsedRollsOf(input.entries, outcome.rollsByEntryId, freeRollGroups),
     maxTotalRolls: resolveAffixOptimizerBudget(input.ctx, input.maxTotalRolls).maxTotalRolls,
     engineCalls: outcome.engineCalls,
     cacheHits: outcome.cacheHits,
@@ -1190,7 +1298,14 @@ function* solveSearchWithPenPath(
   const pricePerEval = workPricePerEval(input.ctx)
 
   // ---------- ① 种子：穿透率「尽可能选走」 ----------
-  const penLocks = collectPenRateFieldLocks(entries, baseFixed, groupCaps, totalRolls, capTaxes)
+  const penLocks = collectPenRateFieldLocks(
+    entries,
+    baseFixed,
+    groupCaps,
+    totalRolls,
+    capTaxes,
+    input.freeRollGroups ?? [],
+  )
   const lockedRolls = { ...baseFixed, ...penLocks }
   const hasDefenseZoneEntry = entries.some((entry) => isDefenseZoneAffixTarget(entry.target))
   if (!hasDefenseZoneEntry) return yield* solveSearch(input, 'ordinary')
@@ -1205,6 +1320,7 @@ function* solveSearchWithPenPath(
     groupCaps,
     maxTotalRolls: totalRolls,
     capTaxes,
+    freeRollGroups: input.freeRollGroups ?? [],
   })
 
   // ---------- ③ 专路世界：先跑，剩余算力给普通路 ----------

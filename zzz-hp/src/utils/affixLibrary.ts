@@ -643,8 +643,9 @@ export interface AffixLibraryGroup {
    * **冲突额外仍照扣**（付费条目的 x）：x 是"与副词条重复"的代价，不是基础占用。
    * 游戏专用方案给 2 件套 / 4 / 5 / 6 号位都打开它（见 `createGameAffixGroups`）。
    *
-   * 实现见 `affixGroupRollBudgetRefund`：求解预算按「该组最多能占的基础档」放宽，结果里再减回去。
-   * 注意：该机制要求这些组的额度**有限**（额度 0 = 不限时退化成组内启用条目 cap 之和；两者都无界则不退）。
+   * 实现：调用方把这些组的组名传进 `AffixOptimizerInput.freeRollGroups`，求解器按**预算口径**处理
+   * （基础档成本 0、冲突额外记 `rollCost − 1`）—— 层推进不变，搜索结构不变。
+   * 要求这些组**有界**（组额度或组内条目 cap 有限）：无界会让层推进没有上界，求解器会忽略该组的豁免。
    */
   excludedFromTotalRolls?: boolean
 }
@@ -1758,58 +1759,10 @@ export function affixGroupCaps(state: AffixLibraryState): Record<string, number>
 }
 
 /**
- * 「该组不消耗总词条数」的组最多能退回多少**基础档**（求解预算的补偿值）。
- *
- * 语义见 `AffixLibraryGroup.excludedFromTotalRolls`：这些组每档的基础占用（1 个词条）不算进总词条数。
- * 求解时把预算放宽这么多（`maxTotalRolls + refund`），结果里再把**实际用掉**的基础档减回去
- * （见 `affixExcludedGroupBaseRollsUsed` 与 `solveGameAffixAllocationAsync`）——
- * 这样不必动求解器内核（它的层推进假设「每加一条至少花 1 档」）。
- *
- * 退回量 = 该组最多可能占的基础档：
- * - 组**一条启用条目都没有**（全不勾）→ **0**（勾掉就不该多给预算，2026-09-18 用户口径）；
- * - 组额度有限（> 0）→ 就是组额度，但不超过组内启用条目的 cap 之和（2 件套 / 4 / 5 / 6 号位各 1 → 共 4）；
- * - 组额度不限（0）→ 退化成组内**启用条目**的 cap 之和；其中只要有条目 cap 0（不限），
- *   该组就是无界，退回量按 **0** 处理 —— 无界的"不占数"没法用预算补偿表达（那种组要豁免只能改内核）。
- */
-export function affixGroupRollBudgetRefund(
-  groups: AffixLibraryGroup[],
-  entries: AffixLibraryEntry[],
-  enabledIds?: Iterable<string>,
-): number {
-  const enabled = enabledIds ? new Set(enabledIds) : null
-  let refund = 0
-  for (const group of groups) {
-    if (!group.excludedFromTotalRolls) continue
-    // **组全不勾 → 这条规则一分预算都不多给**（2026-09-18 用户口径：勾掉就不该多给）。
-    // 少了这一步，勾掉 2 件套 之后退回量仍是 4，那多出来的 1 档会被副词条吃掉（实测能到 29，本该 28）。
-    let entryCapSum = 0
-    let unbounded = false
-    let hasEnabledEntry = false
-    for (const entry of entries) {
-      if (entry.group !== group.name) continue
-      if (enabled && !enabled.has(entry.id)) continue
-      hasEnabledEntry = true
-      if (entry.cap <= 0) {
-        unbounded = true
-        break
-      }
-      entryCapSum += entry.cap
-    }
-    if (!hasEnabledEntry) continue
-    if (group.cap > 0) {
-      // 额度有限：最多就是额度；额度比"组内启用条目 cap 之和"还大时，按后者封顶
-      refund += unbounded ? group.cap : Math.min(group.cap, entryCapSum)
-      continue
-    }
-    if (!unbounded) refund += entryCapSum
-  }
-  return refund
-}
-
-/**
  * 这些组**实际**用掉的基础档 = 组内各条档数之和（每档的基础占用恒为 1，与 `rollCost` 无关）。
  *
- * 用途：把放宽掉的预算从结果里减回去 —— `总词条数 = 求解用的档数 − 这个值`。
+ * 用途：结果面板的「词条数拆账」——告诉用户「主属性 / 2 件套 选了 N 档，但不占词条数」。
+ * 求解侧的"不占数"由 `AffixOptimizerInput.freeRollGroups` 按预算口径直接处理（不需要"放宽再减回"）。
  */
 export function affixExcludedGroupBaseRollsUsed(
   groups: AffixLibraryGroup[],
