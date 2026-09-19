@@ -9,6 +9,7 @@
  *
  * 运行：npx vite-node scripts/test-affix-preset-source.mjs
  */
+import { readFileSync } from 'node:fs'
 import {
   AFFIX_PRESET_GROUPS,
   activeAffixLibrarySet,
@@ -438,6 +439,55 @@ console.log('\n[6] 用户侧「默认」副本同步去掉隐藏局外条目')
       resolveAffixLibraryAll(loadedDefault.state).every((entry) => entry.id === 'substat:atkPercent') &&
       !resolveAffixLibraryAll(loadedDefault.state).some((entry) => entry.id === 'panel:reduceDefense'),
     loadedDefault ? resolveAffixLibraryAll(loadedDefault.state).map((entry) => entry.id).join(', ') : 'missing',
+  )
+}
+
+// ---------- [7] 组规则「不占词条数」的接线（源码级） ----------
+console.log('\n[7] 组规则「不占词条数」：预设链路（源码级守卫）')
+{
+  const adminSource = readFileSync(
+    new URL('../src/components/admin/calculator/AdminAffixPresetPanel.vue', import.meta.url),
+    'utf8',
+  )
+  const apiSource = readFileSync(new URL('../src/api/affixPreset.ts', import.meta.url), 'utf8')
+  const serviceSource = readFileSync(
+    new URL('../../zzz-hp-backend/src/services/affixPresetService.js', import.meta.url),
+    'utf8',
+  )
+  check(
+    '管理端组管理表有「不占词条数」列（勾选框绑到草稿）',
+    adminSource.includes('v-model="group.excludedFromTotalRolls"') &&
+      adminSource.includes('col-groupexclude'),
+    '列 + 勾选框都在',
+  )
+  check(
+    '管理端保存载荷带上该字段（关掉时不送）',
+    adminSource.includes('...(row.excludedFromTotalRolls === true ? { excludedFromTotalRolls: true } : {})'),
+    'groupDoc 只送显式 true',
+  )
+  check(
+    '草稿脏标记认得这个字段（勾了要能保存）',
+    /function groupSignature[\s\S]{0,260}?row\.excludedFromTotalRolls === true/.test(adminSource),
+    'groupSignature 含该字段',
+  )
+  check('前端 API 类型有该字段', apiSource.includes('excludedFromTotalRolls?: boolean'))
+  check(
+    '后端读时在顶层透出该字段',
+    serviceSource.includes('group.excludedFromTotalRolls = true'),
+    'rowToGroup',
+  )
+  check(
+    '后端写时收进 raw、没送就删掉旧值',
+    serviceSource.includes('if (doc.excludedFromTotalRolls === true) raw.excludedFromTotalRolls = true') &&
+      serviceSource.includes('else delete raw.excludedFromTotalRolls'),
+    'replaceAffixPreset 的组写入',
+  )
+  check(
+    '用户侧读预设时认这个字段',
+    readFileSync(new URL('../src/utils/affixLibrary.ts', import.meta.url), 'utf8').includes(
+      'if (item.excludedFromTotalRolls === true) group.excludedFromTotalRolls = true',
+    ),
+    'parseAffixPresetGroups',
   )
 }
 

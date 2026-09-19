@@ -200,6 +200,8 @@ function groupDoc(row: GroupRow): AffixPresetGroupDoc {
     name: row.name.trim(),
     cap: Number(row.cap),
     sortOrder: Number(row.sortOrder ?? 0),
+    // 组规则「不消耗总词条数」：只送显式 true（false / undefined 一律不送，后端会把 raw 里的旧值删掉）
+    ...(row.excludedFromTotalRolls === true ? { excludedFromTotalRolls: true } : {}),
     raw: row.raw ?? null,
   }
 }
@@ -225,7 +227,13 @@ function entrySignature(row: AffixPresetEntryDoc): string {
 }
 
 function groupSignature(row: AffixPresetGroupDoc): string {
-  return JSON.stringify([row.name.trim(), Number(row.cap), Number(row.sortOrder ?? 0)])
+  return JSON.stringify([
+    row.name.trim(),
+    Number(row.cap),
+    Number(row.sortOrder ?? 0),
+    // 组规则也是草稿的一部分：不加进来，勾了「不占词条数」不会算作「未保存改动」
+    row.excludedFromTotalRolls === true,
+  ])
 }
 
 // ---------- 状态 ----------
@@ -1782,6 +1790,7 @@ onMounted(() => {
             <colgroup>
               <col class="col-groupname" />
               <col class="col-groupcap" />
+              <col class="col-groupexclude" />
               <col class="col-groupsort" />
               <col class="col-groupnote" />
               <col class="col-del" />
@@ -1790,6 +1799,7 @@ onMounted(() => {
               <tr>
                 <th title="改名会连同组内条目的分组一起改（保存时一次写库）">组名</th>
                 <th title="组内各条档数之和的上限；0 = 不限">组额度</th>
+                <th title="打开后：本组条目的基础占用不计入总词条数；与副词条冲突的额外 x 仍照扣">不占词条数</th>
                 <th title="分组展示顺序，小的在前；同一套方案里不能重复">排序</th>
                 <th>说明</th>
                 <th></th>
@@ -1815,6 +1825,15 @@ onMounted(() => {
                     min="0"
                     step="1"
                     title="组内各条档数之和的上限；0 = 不限"
+                    :disabled="busy"
+                  />
+                </td>
+                <td class="group-exclude-cell">
+                  <input
+                    v-model="group.excludedFromTotalRolls"
+                    type="checkbox"
+                    aria-label="不占词条数"
+                    title="打开后：本组条目的基础占用不计入总词条数（买了不占数）；与副词条冲突的额外 x 仍照扣"
                     :disabled="busy"
                   />
                 </td>
@@ -2423,8 +2442,16 @@ onMounted(() => {
 .preset-table--groups .col-groupsort {
   width: 70px;
 }
+/* 「不占词条数」单独一列：与用户侧同款（见 AffixLibraryModal） */
+.preset-table--groups .col-groupexclude {
+  width: 96px;
+}
 .preset-table--groups .col-groupnote {
   width: auto;
+}
+
+.group-exclude-cell {
+  text-align: center;
 }
 
 .del-btn {

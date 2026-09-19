@@ -289,12 +289,17 @@ function rowToEntry(row) {
 
 function rowToGroup(row) {
   const raw = parseRawJson(row.raw_json)
-  return {
+  const group = {
     name: String(row.name ?? ''),
     cap: readInt(row.cap, 0),
     sortOrder: readInt(row.sort_order, 0),
     raw: raw && typeof raw === 'object' ? raw : null,
   }
+  // 组规则「不消耗总词条数」存在 raw 里（不占表结构），读时在顶层透出给前端用
+  if (raw && typeof raw === 'object' && raw.excludedFromTotalRolls === true) {
+    group.excludedFromTotalRolls = true
+  }
+  return group
 }
 
 /**
@@ -425,7 +430,11 @@ export async function replaceAffixPreset({ scheme, entries, groups }) {
       )
     }
     for (const [index, doc] of groupList.entries()) {
-      const raw = doc.raw && typeof doc.raw === 'object' ? doc.raw : doc
+      // 组规则「不消耗总词条数」收进 raw：送 true 就写入，没送 / 送 false 就把旧值删掉（不留残值）
+      const raw = doc.raw && typeof doc.raw === 'object' ? { ...doc.raw } : { ...doc }
+      delete raw.raw
+      if (doc.excludedFromTotalRolls === true) raw.excludedFromTotalRolls = true
+      else delete raw.excludedFromTotalRolls
       await conn.query(
         `INSERT INTO ${GROUP_TABLE} (scheme, name, cap, sort_order, raw_json) VALUES (?, ?, ?, ?, ?)`,
         [
