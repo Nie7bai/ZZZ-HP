@@ -177,7 +177,27 @@ check(
   const caps = gameAffixGroupCaps(30)
   check('4 号位额度锁 1', caps['4号位'] === 1)
   check('2 件套额度锁 1', caps['2件套'] === 1)
-  check('副词条额度 = 总分配 − 4', caps['副词条'] === 26)
+  // 2026-09-18 用户口径：不再凭空预扣那 4 档（勾掉 / 不买 主属性与 2 件套 时，省下的档要留给副词条）
+  check('副词条额度 = 总分配数（不预扣 4）', caps['副词条'] === 30)
+  check('总分配数变了，副词条额度跟着变', gameAffixGroupCaps(40)['副词条'] === 40)
+  // 勾掉 2 件套 / 5 号位（不进 enabledIds）时，副词条额度不受影响 —— 额度只跟总分配数走
+  const entries = createGameAffixLibraryEntries()
+  const withoutSet = buildGameAffixBranch({
+    entries,
+    enabledIds: defaultGameAffixEnabledIds(entries).filter(
+      (id) => !id.startsWith('set:') && !id.startsWith('main:slot5:'),
+    ),
+    combo: GAME_POCKET_COMBOS[0],
+    extraCost: 1,
+  })
+  check(
+    '勾掉 2 件套与 5 号位后：这些条目确实不在候选里',
+    withoutSet.entries.every((entry) => entry.group !== '2件套' && !entry.id.startsWith('main:slot5:')),
+  )
+  check(
+    '勾掉它们不影响副词条额度（额度只看总分配数）',
+    gameAffixGroupCaps(30)['副词条'] === 30 && withoutSet.entries.some((entry) => entry.group === '副词条'),
+  )
 }
 
 check('付费 id 识别', isGamePaidMainId('main:slot5:externalAtkPercent'))

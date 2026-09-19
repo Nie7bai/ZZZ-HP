@@ -28,7 +28,8 @@ import type { OptimalEvalContext } from '@/utils/optimalAffixAlloc'
  *   这几种在副词条池里没有对应条目（副词条是固定穿透 `pen`，不是穿透率 `penRate`）。
  *
  * 付费 = 分到档则总分配再扣 extraCost（x），并扣副词条里对应条目 cap 5。
- * 4/5/6 与 2 件套组额度锁 1；副词条组额度 = 总分配 − 4。
+ * 4/5/6 与 2 件套组额度锁 1；副词条组额度 = 总分配数（**不预扣**那 4 档 —— 2026-09-18 改：
+ * 那四组买几档就从总预算里扣几档，勾掉或不买时省下的档留给副词条）。
  * 外层 **4 路**（5 / 6 各自付费或不付费；4 号位恒付费，不再有「不付费」分支）
  * 再跑现有 Beam + 换档。
  *
@@ -38,13 +39,12 @@ import type { OptimalEvalContext } from '@/utils/optimalAffixAlloc'
 
 export const GAME_AFFIX_STORAGE_KEY = 'zzz-hp-game-affix-rules-v1'
 export const GAME_AFFIX_EXTRA_COST_DEFAULT = 1
-export const GAME_MAIN_SLOT_RESERVE = 4
 export const GAME_PAID_SUBSTAT_TAX = 5
 /**
  * 副词条**每条**的默认上限（用户可在弹窗里改；0 = 无上限）。
  *
  * 口径：对**副词条组内每个条目分别生效**（不是整组共享），与 `createGameAffixGroups`
- * 给的「组额度 = 总词条数 − 4」是两层约束 —— 组额度管总量，这个管单条能叠多少档。
+ * 给的「组额度 = 总词条数」是两层约束 —— 组额度管总量，这个管单条能叠多少档。
  */
 export const GAME_AFFIX_SUBSTAT_ENTRY_CAP_DEFAULT = 30
 
@@ -139,7 +139,13 @@ export function createGameAffixLibraryEntries(
 }
 
 export function createGameAffixGroups(maxTotalRolls: number): AffixLibraryGroup[] {
-  const substatCap = Math.max(0, Math.round(maxTotalRolls) - GAME_MAIN_SLOT_RESERVE)
+  // 副词条组额度 = 总词条数（**不预扣** 4/5/6 与 2 件套 的那 4 档）。
+  //
+  // 2026-09-18 用户口径：旧写法 `总词条数 − 4` 是凭空预扣 —— 它假设那四组一定各买 1 档，
+  // 可用户能在弹窗里勾掉（例如不带 2 件套），求解器也可能不买（主属性不如副词条划算）。
+  // 买了才占预算：主属性 / 2 件套 的 `rollCost`（付费 1 + x）本来就在总预算里扣，
+  // 总量由 `maxTotalRolls` 兜住，不需要再提前留位。
+  const substatCap = Math.max(0, Math.round(maxTotalRolls))
   return AFFIX_PRESET_GROUPS.map((group) => {
     if (group.name === '副词条') return { ...group, cap: substatCap }
     if (group.name === '2件套' || /号位$/.test(group.name)) return { ...group, cap: 1 }

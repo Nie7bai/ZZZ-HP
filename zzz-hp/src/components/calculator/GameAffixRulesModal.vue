@@ -2,10 +2,7 @@
 import { computed, ref } from 'vue'
 import { affixTargetPickerSummary } from '@/utils/affixTargetBranches'
 import { affixPerRollUnit, type AffixLibraryEntry, type AffixLibraryGroup } from '@/utils/affixLibrary'
-import {
-  GAME_MAIN_SLOT_RESERVE,
-  createGameAffixGroups,
-} from '@/utils/gameAffixRules'
+import { createGameAffixGroups } from '@/utils/gameAffixRules'
 
 /**
  * 游戏专用方案编辑：只读结构 + 勾选参与 + 付费占用 x。
@@ -47,11 +44,20 @@ const activeGroup = computed(
   () => groups.value.find((group) => group.name === activeTab.value) ?? null,
 )
 
+/** 组额度显示：副词条跟着「总分配数」走（不预扣），其余组是固定的 1 */
 function groupCapText(group: AffixLibraryGroup): string {
   if (group.name === '副词条') {
-    return `总分配数 − ${GAME_MAIN_SLOT_RESERVE}（当前 ${group.cap}）`
+    return `总分配数（当前 ${group.cap}）`
   }
   return String(group.cap)
+}
+
+/** 组额度后面那句说明：副词条不是锁死，而是随总分配数变 */
+function groupCapNote(group: AffixLibraryGroup): string {
+  if (group.name === '副词条') {
+    return '（买主属性 / 2 件套 才占预算，没买就不占）'
+  }
+  return '（锁 1：本组至多选一条）'
 }
 
 function perRollHint(entry: AffixLibraryEntry): string {
@@ -135,7 +141,7 @@ function onSubstatEntryCap(event: Event) {
 
         <div v-if="activeGroup" class="group-head">
           <span>{{ activeGroup.name }}</span>
-          <span>组额度：<strong>{{ groupCapText(activeGroup) }}</strong>（锁死）</span>
+          <span>组额度：<strong>{{ groupCapText(activeGroup) }}</strong>{{ groupCapNote(activeGroup) }}</span>
           <button type="button" class="chip" :disabled="!visibleEntries.length" @click="toggleAllVisible">
             {{ allVisibleEnabled ? '全部取消' : '全选' }}
           </button>
