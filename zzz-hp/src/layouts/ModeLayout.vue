@@ -2,6 +2,7 @@
 import { computed, onUnmounted, shallowRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import ModeSidebar from '@/components/ModeSidebar.vue'
+import PanelImageExportActions from '@/components/shared/PanelImageExportActions.vue'
 import HistoryDetailPanel from '@/components/history/HistoryDetailPanel.vue'
 import HpLineChartPanel from '@/components/history/HpLineChartPanel.vue'
 import PhaseComparePanel from '@/components/history/PhaseComparePanel.vue'
@@ -87,7 +88,17 @@ onUnmounted(() => {
       :mode-panel-base-path="modePanelBasePath"
       :back-to="backTo"
       :back-label="backLabel"
-    />
+    >
+      <!-- 只在这里填充，且只在「往期详细」面板出现：
+           角色计算器复用同一个侧栏但不填插槽，因此不会有这组按钮 -->
+      <template #actions>
+        <PanelImageExportActions
+          v-if="activePanel === 'history'"
+          :mode="mode"
+          :panel-id="activePanel"
+        />
+      </template>
+    </ModeSidebar>
     <main
       class="mode-content"
       :class="{

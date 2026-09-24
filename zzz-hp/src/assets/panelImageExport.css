@@ -1,0 +1,29 @@
+/**
+ * 面板导出图片 · 截图期间临时展开样式（唯一来源）。
+ *
+ * 面板有两种滚动形态，见 dev-docs/panel-image-export.md §3.4：
+ * - `.panel-fill--page`（往期详细 / Buff 总览与对比 / 分数血量表等）：面板自身
+ *   `overflow: visible`、自然高度已含全部内容，只是被宿主 `.mode-content` 裁剪；
+ * - `.panel-fill`（危局与防卫的血量折线图、危局的期数对比、单独怪物对比）：
+ *   面板 `flex: 1` + `overflow: hidden`，内部 DualLineChartView 的 `.charts-scroll`
+ *   是「盖在大画布上的可拖拽视口」，必须单独展开。
+ *
+ * html-to-image 会克隆节点后独立渲染，因此宿主 `.mode-content` 的 overflow 不影响成像，
+ * 真正要放开的是面板自身与 `.charts-scroll` 的高度/溢出约束。
+ */
+
+.zzz-capture-expand {
+  flex: none !important;
+  height: auto !important;
+  max-height: none !important;
+  min-height: auto !important;
+  overflow: visible !important;
+}
+
+.zzz-capture-expand .charts-scroll {
+  flex: none !important;
+  height: auto !important;
+  max-height: none !important;
+  min-height: auto !important;
+  overflow: visible !important;
+}
