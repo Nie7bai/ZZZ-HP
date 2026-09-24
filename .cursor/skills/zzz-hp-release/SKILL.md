@@ -8,9 +8,9 @@ description: >-
 
 # ZZZ-HP 发版
 
-权威来源：[docs/policies/git-workflow.md](../../docs/policies/git-workflow.md) §版本与发布。
+权威来源：[docs/policies/git-workflow.md](../../../docs/policies/git-workflow.md) §版本与发布。
 
-用法索引：[docs/index.md § Cursor Skills](../../docs/index.md#cursor-skills)。
+用法索引：[docs/index.md § Cursor Skills](../../../docs/index.md#cursor-skills)。
 
 ## 对话指令示例
 
@@ -75,7 +75,7 @@ cd ../zzz-hp-backend && npm version 3.1.8 --no-git-tag-version
 
 ### 3. 更新站点 changelog
 
-编辑 [zzz-hp-backend/scripts/seed_changelog.mjs](../../zzz-hp-backend/scripts/seed_changelog.mjs)：
+编辑 [zzz-hp-backend/scripts/seed_changelog.mjs](../../../zzz-hp-backend/scripts/seed_changelog.mjs)：
 
 1. 新增 `const content318 = \`...\``（条目格式见 [changelog-format.md](changelog-format.md)）
 2. 在批量 `DELETE ... IN (...)` 列表中加入新版本号（若沿用该模式）

@@ -7,9 +7,9 @@ description: >-
 
 # ZZZ-HP Git 工作流
 
-权威来源：[docs/policies/git-workflow.md](../../docs/policies/git-workflow.md)。冲突时以政策为准。
+权威来源：[docs/policies/git-workflow.md](../../../docs/policies/git-workflow.md)。冲突时以政策为准。
 
-用法索引：[docs/index.md § Cursor Skills](../../docs/index.md#cursor-skills)。
+用法索引：[docs/index.md § Cursor Skills](../../../docs/index.md#cursor-skills)。
 
 ## 对话指令示例
 
@@ -86,7 +86,7 @@ git push origin main
 ## PR
 
 - 标题：Conventional Commits 或清楚说明意图
-- 正文：使用 [.github/PULL_REQUEST_TEMPLATE.md](../../.github/PULL_REQUEST_TEMPLATE.md)
+- 正文：使用 [.github/PULL_REQUEST_TEMPLATE.md](../../../.github/PULL_REQUEST_TEMPLATE.md)
 
 ## 相关 Skill
 
