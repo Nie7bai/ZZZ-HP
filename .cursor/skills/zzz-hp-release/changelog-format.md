@@ -1,6 +1,6 @@
 # seed_changelog 条目格式
 
-文件：[zzz-hp-backend/scripts/seed_changelog.mjs](../../zzz-hp-backend/scripts/seed_changelog.mjs)
+文件：[zzz-hp-backend/scripts/seed_changelog.mjs](../../../zzz-hp-backend/scripts/seed_changelog.mjs)
 
 ## content 变量模板
 

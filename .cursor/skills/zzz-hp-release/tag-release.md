@@ -2,7 +2,7 @@
 
 发版 PR 已合入 `main` 后，在**干净工作区**执行。将 `<release-pr-merge-oid>` 换成实际 merge commit。
 
-完整逻辑见 [docs/policies/git-workflow.md](../../docs/policies/git-workflow.md) 发布脚本。
+完整逻辑见 [docs/policies/git-workflow.md](../../../docs/policies/git-workflow.md) 发布脚本。
 
 ## 要点
 
