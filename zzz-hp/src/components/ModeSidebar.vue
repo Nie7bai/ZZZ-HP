@@ -69,6 +69,8 @@ function closeMobileNav() {
         </RouterLink>
       </nav>
 
+      <slot name="actions" />
+
       <div class="sidebar-foot" aria-hidden="true">ZZZ-HP</div>
     </aside>
   </div>
