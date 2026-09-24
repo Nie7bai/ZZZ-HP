@@ -25,14 +25,16 @@
   源技能根目录，相对仓库根。默认 .cursor/skills。
 
 .PARAMETER TargetRoots
-  目标技能根目录，相对仓库根。默认 .workbuddy/skills 与 .dsh/skills。
+  目标技能根目录，相对仓库根。省略时自动发现仓库根下**已存在**的 <点目录>/skills
+  并排除源自身；显式传入则只同步到传入的这些。不存在的目录不会被创建，要同步到
+  尚未出现的位置请显式传入。
 
 .PARAMETER Skills
   要同步的技能名（即源下的子目录名）。默认 zzz-hp-git-workflow 与 zzz-hp-release。
 
 .EXAMPLE
   .\scripts\sync-skills.ps1
-  同步全部默认技能到全部默认目标。
+  同步默认技能到所有已发现的 <点目录>/skills 目标。
 
 .EXAMPLE
   .\scripts\sync-skills.ps1 -WhatIf
@@ -46,7 +48,7 @@
 param(
   [string]$RepoRoot = '',
   [string]$SourceRoot = '.cursor/skills',
-  [string[]]$TargetRoots = @('.workbuddy/skills', '.dsh/skills'),
+  [string[]]$TargetRoots = @(),
   [string[]]$Skills = @('zzz-hp-git-workflow', 'zzz-hp-release')
 )
 
@@ -163,14 +165,35 @@ function Test-SkillLinks {
 $rootFull = [System.IO.Path]::GetFullPath($RepoRoot)
 $sourceFull = Join-Path $rootFull $SourceRoot
 
-Write-Host "仓库根 : $rootFull"
-Write-Host "源     : $sourceFull"
-Write-Host "目标   : $($TargetRoots -join ', ')"
-Write-Host ''
-
 if (-not (Test-Path -LiteralPath $sourceFull)) {
   throw "源技能根不存在：$sourceFull"
 }
+
+# 省略 -TargetRoots 时，自动发现仓库根下已存在的 <点目录>/skills，并排除源自身。
+# 只认已存在的目录：不会因为跑一次脚本就凭空多出某个工具的技能目录。
+$sourceRelative = $SourceRoot.TrimEnd('\', '/').Replace('\', '/')
+if ($TargetRoots.Count -eq 0) {
+  $TargetRoots = @(
+    Get-ChildItem -LiteralPath $rootFull -Directory -Force |
+      Where-Object { $_.Name -like '.*' -and $_.Name -ne '.git' } |
+      ForEach-Object {
+        if (Test-Path -LiteralPath (Join-Path $_.FullName 'skills') -PathType Container) {
+          $relative = $_.Name + '/skills'
+          if ($relative -ne $sourceRelative) { $relative }
+        }
+      } |
+      Sort-Object
+  )
+}
+
+if ($TargetRoots.Count -eq 0) {
+  Write-Warning '没有发现目标技能根（仓库根下没有 <点目录>/skills）。请用 -TargetRoots 显式指定。'
+}
+
+Write-Host "仓库根 : $rootFull"
+Write-Host "源     : $sourceFull"
+Write-Host "目标   : $(if ($TargetRoots.Count -gt 0) { $TargetRoots -join ', ' } else { '(无)' })"
+Write-Host ''
 
 $allBroken = @()
 
