@@ -85,3 +85,10 @@ __screenshots__/
 
 # Developer handbook (lives outside repo, never committed)
 dev-docs/
+
+# Agent 工具技能副本：由 scripts/sync-skills.ps1 从 .cursor/skills 生成，是产物不是源
+.dsh/
+.workbuddy/skills/
+
+# 横幅制作过程产物（与已忽略的 tmp-banner-*.json 同批）
+banner-2560x640.png
