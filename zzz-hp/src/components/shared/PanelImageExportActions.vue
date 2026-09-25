@@ -44,8 +44,16 @@ const { busy, status, downloadPanelImage, copyPanelImage } = usePanelImageExport
 </template>
 
 <style scoped>
+/*
+ * 配色必须与侧栏其他按键（.sidebar-title-text / .back / .nav-btn）保持一致：
+ * 侧栏是**恒深色**面板（.sidebar 用 --zzz-ink + 固定 #f5f5f0 文字），而
+ * --zzz-fg / --zzz-fg-dim 在浅色主题下会翻成近黑（#141412），落在 --zzz-ink-2
+ * (#1c1c1c) 的按钮底色上就是黑字黑底、与背景融为一体。因此这里一律使用
+ * 侧栏既有的、不随主题翻转的浅色字与描边。
+ */
 .panel-export {
   padding-top: 0.9rem;
+  /* 与 .sidebar-title 的下分隔线同一 token，保持侧栏内分隔线一致 */
   border-top: 1px solid var(--zzz-line);
 }
 
@@ -54,37 +62,47 @@ const { busy, status, downloadPanelImage, copyPanelImage } = usePanelImageExport
   font-family: var(--zzz-font-display);
   font-size: 0.72rem;
   letter-spacing: 0.14em;
-  color: var(--zzz-fg-dim);
+  /* 同 .back */
+  color: rgba(245, 245, 240, 0.55);
   user-select: none;
 }
 
 .panel-export-actions {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.45rem;
 }
 
+/* 视觉配方对齐 .nav-btn：黑色 1px 描边 + 深色底 + 内阴影双层描边 */
 .export-btn {
-  padding: 0.42rem 0.6rem;
-  border: 2px solid var(--zzz-line);
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid #000;
   border-radius: var(--zzz-radius-btn);
   background: var(--zzz-ink-2);
-  color: var(--zzz-fg);
-  font-family: var(--zzz-font-display);
-  font-size: 0.78rem;
-  letter-spacing: 0.06em;
+  color: rgba(245, 245, 240, 0.85);
+  font-size: 0.86rem;
+  font-weight: 600;
   text-align: left;
   cursor: pointer;
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.14),
+    inset 0 0 0 2px #2e2e2e,
+    inset 0 0 0 3px var(--zzz-ink-2);
   transition:
-    border-color 0.15s ease,
-    color 0.15s ease;
+    background-color 0.16s ease-out,
+    color 0.16s ease-out,
+    box-shadow 0.16s ease-out;
 }
 
 .export-btn:hover:not(:disabled),
 .export-btn:focus-visible:not(:disabled) {
-  border-color: var(--zzz-yellow);
-  color: var(--zzz-yellow);
+  color: #f5f5f0;
   outline: none;
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.14),
+    inset 0 0 0 2px var(--zzz-yellow),
+    inset 0 0 0 3px var(--zzz-ink-2);
 }
 
 .export-btn:disabled {
@@ -106,7 +124,8 @@ const { busy, status, downloadPanelImage, copyPanelImage } = usePanelImageExport
 }
 
 .panel-export-status--busy {
-  color: var(--zzz-fg-dim);
+  /* 同 .back */
+  color: rgba(245, 245, 240, 0.55);
 }
 
 .panel-export-status--warn {
