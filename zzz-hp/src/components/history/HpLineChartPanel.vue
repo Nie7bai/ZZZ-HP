@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import DualLineChartView from '@/components/history/DualLineChartView.vue'
 import PhaseDetailModal from '@/components/history/PhaseDetailModal.vue'
 import {
@@ -10,13 +11,31 @@ import {
 import { fetchDeductionPeriodHpChart } from '@/api/deduction'
 import { usePhaseDetailModal } from '@/composables/usePhaseDetailModal'
 import { modeTitles, type ModeKey } from '@/types/history'
+import {
+  buildQueryWithValues,
+  PANEL_MODE_HARD,
+  PANEL_QUERY_KEYS,
+  readSingleQueryValue,
+} from '@/utils/panelUrlState'
 import { createRequestEpoch } from '@/utils/requestEpoch'
 
 const props = defineProps<{
   mode: ModeKey
 }>()
 
-const hpMode = ref<CrisisHpChartMode>('normal')
+const route = useRoute()
+const router = useRouter()
+
+/** 只有危局强袭战有「正常 / 绝境」切换，其余模式不参与 `?mode=` 同步 */
+const supportsHardMode = computed(() => props.mode === 'crisis-assault')
+
+function readHpModeFromQuery(): CrisisHpChartMode {
+  return readSingleQueryValue(route.query, PANEL_QUERY_KEYS.mode) === PANEL_MODE_HARD
+    ? 'hard'
+    : 'normal'
+}
+
+const hpMode = ref<CrisisHpChartMode>(readHpModeFromQuery())
 const points = ref<HpChartPoint[]>([])
 const chartLoadEpoch = createRequestEpoch()
 const loading = ref(false)
@@ -64,9 +83,36 @@ async function loadChartData() {
   }
 }
 
-watch(hpMode, () => {
+/**
+ * 面板内切换 → 写入 URL（`?mode=hard`），使「绝境」也能分享 / 收藏。
+ * 用 replace 而非 push：与对应表一致地反映当前状态，且不往历史里堆条目。
+ */
+function syncHpModeToQuery(value: CrisisHpChartMode) {
+  if (!supportsHardMode.value) return
+  const current = readSingleQueryValue(route.query, PANEL_QUERY_KEYS.mode)
+  const next = value === 'hard' ? PANEL_MODE_HARD : null
+  if ((next ?? undefined) === current) return
+  void router.replace({
+    path: route.path,
+    query: buildQueryWithValues(route.query, { [PANEL_QUERY_KEYS.mode]: next }),
+    hash: route.hash,
+  })
+}
+
+watch(hpMode, (value) => {
+  syncHpModeToQuery(value)
   loadChartData()
 })
+
+// URL 变化（浏览器前进后退 / 直接改地址）→ 同步回面板状态
+watch(
+  () => route.query[PANEL_QUERY_KEYS.mode],
+  () => {
+    if (!supportsHardMode.value) return
+    const next = readHpModeFromQuery()
+    if (next !== hpMode.value) hpMode.value = next
+  },
+)
 
 onMounted(loadChartData)
 </script>

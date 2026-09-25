@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { fetchCrisisAssaultPhases, findPhaseIndexFromChartPoint, type HpChartPoint } from '@/api/crisisAssault'
 import {
   FS_HP_RATIO_NORMAL,
@@ -10,6 +11,13 @@ import { historyData } from '@/data/historyData'
 import { modeTitles, type ModeKey, type PhaseData } from '@/types/history'
 import { formatHp, formatHpDelta, formatHpExpansionPercent, parseHpString, splitBuffLines } from '@/utils/gameData'
 import { createRequestEpoch } from '@/utils/requestEpoch'
+import {
+  buildQueryWithValues,
+  findIndexBySelectionKey,
+  PANEL_QUERY_KEYS,
+  periodSelectionKey,
+  readSingleQueryValue,
+} from '@/utils/panelUrlState'
 import type { AdminBuffSlotContext, AdminMonsterSlotContext } from '@/types/admin'
 import BuffEffectBlocksDisplay from '@/components/calculator/BuffEffectBlocksDisplay.vue'
 import BuffRichText from '@/components/calculator/BuffRichText.vue'
@@ -32,6 +40,9 @@ const emit = defineEmits<{
   'admin-remove-period-buff': [recordId: number, label: string]
 }>()
 
+const route = useRoute()
+const router = useRouter()
+
 const crisisPhases = ref<PhaseData[]>([])
 const crisisLoadEpoch = createRequestEpoch()
 const loading = ref(false)
@@ -50,6 +61,27 @@ const pickerDragStartY = ref(0)
 const pickerDragScrollTop = ref(0)
 
 const currentPhase = computed(() => phases.value[currentIndex.value])
+
+/**
+ * 期 ↔ URL（`?phase=<version>-<期数>`）。
+ *
+ * 管理端不参与：那边的选中项由 adminMode 的还原逻辑负责，写 URL 会污染后台地址。
+ * 用 replace 而非 push：本期/上期按钮连点时不往历史里堆条目。
+ */
+function readPhaseIndexFromQuery(list: readonly PhaseData[]): number {
+  return findIndexBySelectionKey(list, readSingleQueryValue(route.query, PANEL_QUERY_KEYS.phase))
+}
+
+function syncPhaseToQuery(phase: PhaseData | undefined) {
+  if (!phase || props.adminMode) return
+  const next = periodSelectionKey(phase)
+  if (readSingleQueryValue(route.query, PANEL_QUERY_KEYS.phase) === next) return
+  void router.replace({
+    path: route.path,
+    query: buildQueryWithValues(route.query, { [PANEL_QUERY_KEYS.phase]: next }),
+    hash: route.hash,
+  })
+}
 
 const pageTitle = computed(() => modeTitles[props.mode])
 
@@ -397,11 +429,6 @@ function defaultPublicPhaseIndex(list: { isHidden?: boolean }[]): number {
   return list.length - 1
 }
 
-function phaseSelectionKey(phase: PhaseData) {
-  const phaseNum = phase.phase.replace(/\D/g, '')
-  return `${phase.version}-${phaseNum || phase.phase}`
-}
-
 async function loadCrisisAssaultData() {
   const token = crisisLoadEpoch.next()
   if (props.mode !== 'crisis-assault') return
@@ -409,16 +436,20 @@ async function loadCrisisAssaultData() {
   loading.value = true
   loadError.value = ''
   const previousKey =
-    props.adminMode && currentPhase.value ? phaseSelectionKey(currentPhase.value) : null
+    props.adminMode && currentPhase.value ? periodSelectionKey(currentPhase.value) : null
   try {
     const data = await fetchCrisisAssaultPhases()
     if (!crisisLoadEpoch.isCurrent(token)) return
     crisisPhases.value = data
+    const queryIndex = readPhaseIndexFromQuery(crisisPhases.value)
     if (props.chartPoint) {
       applyChartPointSelection()
+    } else if (queryIndex >= 0) {
+      // 深链优先：URL 明确指定了某一期就用它
+      currentIndex.value = queryIndex
     } else if (previousKey) {
       const restoredIndex = crisisPhases.value.findIndex(
-        (item) => phaseSelectionKey(item) === previousKey,
+        (item) => periodSelectionKey(item) === previousKey,
       )
       currentIndex.value =
         restoredIndex >= 0 ? restoredIndex : defaultPublicPhaseIndex(crisisPhases.value)
@@ -462,6 +493,21 @@ watch(
 watch(phases, () => {
   applyChartPointSelection()
 })
+
+// 选中项变化（含列表刚加载完的默认/还原选中）→ 写入 URL
+watch([currentIndex, phases], () => {
+  syncPhaseToQuery(currentPhase.value)
+})
+
+// URL 变化（浏览器前进后退 / 直接改地址）→ 同步回面板状态
+watch(
+  () => route.query[PANEL_QUERY_KEYS.phase],
+  () => {
+    if (props.adminMode) return
+    const index = readPhaseIndexFromQuery(phases.value)
+    if (index >= 0 && index !== currentIndex.value) currentIndex.value = index
+  },
+)
 
 function prevPhase() {
   if (currentIndex.value > 0) currentIndex.value--

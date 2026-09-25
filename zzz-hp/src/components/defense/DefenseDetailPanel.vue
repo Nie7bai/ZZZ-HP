@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import type { HpChartPoint } from '@/api/crisisAssault'
 import { fetchDefenseSeasons } from '@/api/defense'
 import type { DefenseEnemy, DefenseSeason, DefenseVariant } from '@/types/defense'
@@ -15,6 +15,13 @@ import {
 import { findDefenseSeasonIndexFromChartPoint } from '@/utils/defenseCompare'
 import { formatHpDelta } from '@/utils/gameData'
 import { createRequestEpoch } from '@/utils/requestEpoch'
+import {
+  buildQueryWithValues,
+  findIndexBySelectionKey,
+  PANEL_QUERY_KEYS,
+  periodSelectionKey,
+  readSingleQueryValue,
+} from '@/utils/panelUrlState'
 import ElementTraitIcons from '@/components/shared/ElementTraitIcons.vue'
 import BuffRichText from '@/components/calculator/BuffRichText.vue'
 import { hasElementIcons } from '@/utils/elementIcons'
@@ -36,6 +43,7 @@ const emit = defineEmits<{
 }>()
 
 const route = useRoute()
+const router = useRouter()
 
 const defenseVariant = computed<DefenseVariant>(() =>
   props.variantOverride ?? (route.meta.defenseVariant === 'new' ? 'new' : 'old'),
@@ -57,27 +65,29 @@ function defaultPublicSeasonIndex(list: DefenseSeason[]): number {
   return list.length - 1
 }
 
-function seasonSelectionKey(season: DefenseSeason) {
-  const phaseNum = season.phase.replace(/\D/g, '')
-  return `${season.version}-${phaseNum || season.phase}`
-}
-
 async function loadSeasons() {
   const token = seasonsLoadEpoch.next()
   loading.value = true
   loadError.value = ''
   const previousKey =
-    props.adminMode && currentSeason.value ? seasonSelectionKey(currentSeason.value) : null
+    props.adminMode && currentSeason.value ? periodSelectionKey(currentSeason.value) : null
   const previousRoomHpIndex = props.adminMode ? roomHpIndex.value : 0
   try {
     const data = await fetchDefenseSeasons(defenseVariant.value)
     if (!seasonsLoadEpoch.isCurrent(token)) return
     seasons.value = data
+    // 深链优先：URL 明确指定了某一期就用它（管理端不参与 URL 同步）
+    const queryIndex = props.adminMode
+      ? -1
+      : findIndexBySelectionKey(data, readSingleQueryValue(route.query, PANEL_QUERY_KEYS.phase))
     if (props.chartPoint) {
       applyChartPointSelection()
       roomHpIndex.value = 0
+    } else if (queryIndex >= 0) {
+      currentIndex.value = queryIndex
+      roomHpIndex.value = 0
     } else if (previousKey) {
-      const restoredIndex = data.findIndex((item) => seasonSelectionKey(item) === previousKey)
+      const restoredIndex = data.findIndex((item) => periodSelectionKey(item) === previousKey)
       currentIndex.value = restoredIndex >= 0 ? restoredIndex : defaultPublicSeasonIndex(data)
       const options = buildDefenseRoomHpOptions(data[currentIndex.value] ?? data[0]!)
       roomHpIndex.value = options.length
@@ -118,6 +128,41 @@ watch(
 )
 
 const currentSeason = computed(() => seasons.value[currentIndex.value])
+
+/**
+ * 期 ↔ URL（`?phase=<version>-<期数>`）。
+ *
+ * 管理端不参与：那边由 adminMode 的还原逻辑负责，写 URL 会污染后台地址。
+ * 用 replace 而非 push：本期/上期连点时不往历史里堆条目。
+ */
+function syncSeasonToQuery(season: DefenseSeason | undefined) {
+  if (!season || props.adminMode) return
+  const next = periodSelectionKey(season)
+  if (readSingleQueryValue(route.query, PANEL_QUERY_KEYS.phase) === next) return
+  void router.replace({
+    path: route.path,
+    query: buildQueryWithValues(route.query, { [PANEL_QUERY_KEYS.phase]: next }),
+    hash: route.hash,
+  })
+}
+
+// 选中项变化（含列表刚加载完的默认/还原选中）→ 写入 URL
+watch([currentIndex, seasons], () => {
+  syncSeasonToQuery(currentSeason.value)
+})
+
+// URL 变化（浏览器前进后退 / 直接改地址）→ 同步回面板状态
+watch(
+  () => route.query[PANEL_QUERY_KEYS.phase],
+  () => {
+    if (props.adminMode) return
+    const index = findIndexBySelectionKey(
+      seasons.value,
+      readSingleQueryValue(route.query, PANEL_QUERY_KEYS.phase),
+    )
+    if (index >= 0 && index !== currentIndex.value) currentIndex.value = index
+  },
+)
 
 const roomHpOptions = computed(() => {
   if (!currentSeason.value) return []
