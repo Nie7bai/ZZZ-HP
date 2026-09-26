@@ -1,9 +1,9 @@
 {
   "version": 1,
-  "exportedAt": "2026-08-21T06:45:52.213Z",
+  "exportedAt": "2026-09-26T05:31:11.499Z",
   "bossInfo": [
     {
-      "bossName": "亵渎者",
+      "bossName": "「亵渎者」",
       "fieldBuffSets": [
         {
           "id": "legacy",
@@ -33,8 +33,11 @@
                   "valuePerStack": 5,
                   "applySituation": "global",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 },
                 {
                   "id": "eff-mshar0gy-nfcpxx",
@@ -55,9 +58,12 @@
                   "valuePerStack": 5,
                   "applySituation": "global",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
                   "appliesToAnomaly": true,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 },
                 {
                   "id": "eff-mshardja-190f6w",
@@ -75,9 +81,12 @@
                   "valuePerStack": 0,
                   "applySituation": "global",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
                   "appliesToAnomaly": true,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 }
               ],
               "enabledDefault": true
@@ -110,8 +119,11 @@
               "valuePerStack": 5,
               "applySituation": "global",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             },
             {
               "id": "eff-mshar0gy-nfcpxx",
@@ -132,9 +144,12 @@
               "valuePerStack": 5,
               "applySituation": "global",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
               "appliesToAnomaly": true,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             },
             {
               "id": "eff-mshardja-190f6w",
@@ -152,9 +167,12 @@
               "valuePerStack": 0,
               "applySituation": "global",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
               "appliesToAnomaly": true,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             }
           ],
           "enabledDefault": true
@@ -192,9 +210,12 @@
                   "valuePerStack": 25,
                   "applySituation": "global",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
                   "appliesToAnomaly": true,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 }
               ],
               "enabledDefault": true
@@ -227,9 +248,12 @@
               "valuePerStack": 25,
               "applySituation": "global",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
               "appliesToAnomaly": true,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             }
           ],
           "enabledDefault": true
@@ -267,9 +291,12 @@
                   "valuePerStack": 0,
                   "applySituation": "global",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
                   "appliesToAnomaly": true,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 },
                 {
                   "id": "eff-mshasvz4-qjvy8i",
@@ -287,9 +314,12 @@
                   "valuePerStack": 0,
                   "applySituation": "global",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
                   "appliesToAnomaly": true,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 }
               ],
               "enabledDefault": true
@@ -322,9 +352,12 @@
               "valuePerStack": 0,
               "applySituation": "global",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
               "appliesToAnomaly": true,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             },
             {
               "id": "eff-mshasvz4-qjvy8i",
@@ -342,9 +375,12 @@
               "valuePerStack": 0,
               "applySituation": "global",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
               "appliesToAnomaly": true,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             }
           ],
           "enabledDefault": true
@@ -382,9 +418,12 @@
                   "valuePerStack": 7.5,
                   "applySituation": "global",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
                   "appliesToAnomaly": true,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 },
                 {
                   "id": "eff-mshajd43-qzqtl0",
@@ -402,8 +441,11 @@
                   "valuePerStack": 5,
                   "applySituation": "global",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 },
                 {
                   "id": "eff-mshakbky-j1ybpy",
@@ -421,9 +463,12 @@
                   "valuePerStack": 10,
                   "applySituation": "global",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
                   "appliesToAnomaly": true,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 }
               ],
               "enabledDefault": true
@@ -456,9 +501,12 @@
               "valuePerStack": 7.5,
               "applySituation": "global",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
               "appliesToAnomaly": true,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             },
             {
               "id": "eff-mshajd43-qzqtl0",
@@ -476,8 +524,11 @@
               "valuePerStack": 5,
               "applySituation": "global",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             },
             {
               "id": "eff-mshakbky-j1ybpy",
@@ -495,9 +546,12 @@
               "valuePerStack": 10,
               "applySituation": "global",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
               "appliesToAnomaly": true,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             }
           ],
           "enabledDefault": true
@@ -929,7 +983,7 @@
       ]
     },
     {
-      "bossName": "太初梦魇·始主",
+      "bossName": "太初梦魇·「始主」",
       "fieldBuffSets": [
         {
           "id": "legacy",
@@ -959,9 +1013,12 @@
                   "valuePerStack": 0,
                   "applySituation": "global",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
                   "appliesToAnomaly": true,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 },
                 {
                   "id": "eff-mshalr3h-w9x3lf",
@@ -979,8 +1036,11 @@
                   "valuePerStack": 20,
                   "applySituation": "global",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 }
               ],
               "enabledDefault": true
@@ -1013,9 +1073,12 @@
               "valuePerStack": 0,
               "applySituation": "global",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
               "appliesToAnomaly": true,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             },
             {
               "id": "eff-mshalr3h-w9x3lf",
@@ -1033,8 +1096,134 @@
               "valuePerStack": 20,
               "applySituation": "global",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
+            }
+          ],
+          "enabledDefault": true
+        }
+      ]
+    },
+    {
+      "bossName": "库萨里库",
+      "fieldBuffSets": [
+        {
+          "id": "set_mtvd3klr_7v1tr3",
+          "name": "场地 Buff",
+          "text": "",
+          "image": null,
+          "label": null,
+          "effectBlocks": [
+            {
+              "id": "blk-mtvd3liw-ok4u1w",
+              "name": "场地 Buff",
+              "note": "库萨里库受到的属性异常伤害降低40%。\n代理人成功使用[招架支援]应对库萨里库的「裂界闪袭」时，将对其施加1层[识破]，使库萨里库进入失衡状态时，对其施加2层[识破]。每层[识破]会使其受到的锐暴伤害提升10%，[识破]最多叠加4层，持续30秒，重复触发时刷新持续时间。",
+              "effects": [
+                {
+                  "id": "eff-mtvd3liw-uq3v29",
+                  "kind": "fixed",
+                  "note": "",
+                  "stat": "anomalyDmgBonus",
+                  "scope": "general",
+                  "value": -40,
+                  "origin": "",
+                  "maxStacks": 1,
+                  "stackable": false,
+                  "applyTarget": "team",
+                  "defaultStacks": 1,
+                  "elementFilter": "all",
+                  "valuePerStack": 0,
+                  "applySituation": "global",
+                  "enabledDefault": true,
+                  "teamProfession": null,
+                  "applyProfession": null,
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
+                },
+                {
+                  "id": "eff-mtvd42iw-j6ai0c",
+                  "kind": "stacked",
+                  "note": "",
+                  "stat": "sharpenCritDmgBonus",
+                  "scope": "general",
+                  "value": 0,
+                  "origin": "",
+                  "maxStacks": 4,
+                  "stackable": false,
+                  "applyTarget": "team",
+                  "defaultStacks": 4,
+                  "elementFilter": "all",
+                  "valuePerStack": 10,
+                  "applySituation": "global",
+                  "enabledDefault": true,
+                  "teamProfession": null,
+                  "applyProfession": null,
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
+                }
+              ],
+              "enabledDefault": true
+            }
+          ]
+        }
+      ],
+      "fieldBuffName": "场地 Buff",
+      "fieldBuffText": null,
+      "fieldBuffImage": null,
+      "fieldBuffEffectBlocks": [
+        {
+          "id": "blk-mtvd3liw-ok4u1w",
+          "name": "场地 Buff",
+          "note": "库萨里库受到的属性异常伤害降低40%。\n代理人成功使用[招架支援]应对库萨里库的「裂界闪袭」时，将对其施加1层[识破]，使库萨里库进入失衡状态时，对其施加2层[识破]。每层[识破]会使其受到的锐暴伤害提升10%，[识破]最多叠加4层，持续30秒，重复触发时刷新持续时间。",
+          "effects": [
+            {
+              "id": "eff-mtvd3liw-uq3v29",
+              "kind": "fixed",
+              "note": "",
+              "stat": "anomalyDmgBonus",
+              "scope": "general",
+              "value": -40,
+              "origin": "",
+              "maxStacks": 1,
+              "stackable": false,
+              "applyTarget": "team",
+              "defaultStacks": 1,
+              "elementFilter": "all",
+              "valuePerStack": 0,
+              "applySituation": "global",
+              "enabledDefault": true,
+              "teamProfession": null,
+              "applyProfession": null,
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
+            },
+            {
+              "id": "eff-mtvd42iw-j6ai0c",
+              "kind": "stacked",
+              "note": "",
+              "stat": "sharpenCritDmgBonus",
+              "scope": "general",
+              "value": 0,
+              "origin": "",
+              "maxStacks": 4,
+              "stackable": false,
+              "applyTarget": "team",
+              "defaultStacks": 4,
+              "elementFilter": "all",
+              "valuePerStack": 10,
+              "applySituation": "global",
+              "enabledDefault": true,
+              "teamProfession": null,
+              "applyProfession": null,
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             }
           ],
           "enabledDefault": true
@@ -1197,6 +1386,129 @@
       ]
     },
     {
+      "bossName": "异构·焚昼余火",
+      "fieldBuffSets": [
+        {
+          "id": "set_mtvd19ah_xhlcdm",
+          "name": "场地 Buff",
+          "text": "",
+          "image": null,
+          "label": null,
+          "effectBlocks": [
+            {
+              "id": "blk-mtvd1cmg-x6dgf5",
+              "name": "场地 Buff",
+              "note": "对异构·焚昼余火其造成部位破坏或完美反制时，全队锐化伤害提高40%，持续60秒，重复触发时刷新持续时间。\n代理人攻击命中非失衡状态的敌人时，造成的失衡值提升15%。异构·焚昼余火处于失衡状态中时，失衡易伤倍率提升20%。",
+              "effects": [
+                {
+                  "id": "eff-mtvd1cmg-hy3wcj",
+                  "kind": "fixed",
+                  "note": "",
+                  "stat": "sharpenDmgBonus",
+                  "scope": "general",
+                  "value": 40,
+                  "origin": "",
+                  "maxStacks": 1,
+                  "stackable": false,
+                  "applyTarget": "team",
+                  "defaultStacks": 1,
+                  "elementFilter": "all",
+                  "valuePerStack": 0,
+                  "applySituation": "global",
+                  "enabledDefault": true,
+                  "teamProfession": null,
+                  "applyProfession": null,
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
+                },
+                {
+                  "id": "eff-mtvd2f0h-0e4pkt",
+                  "kind": "fixed",
+                  "note": "",
+                  "stat": "staggerVulnerableOnly",
+                  "scope": "general",
+                  "value": 20,
+                  "origin": "",
+                  "maxStacks": 1,
+                  "stackable": false,
+                  "applyTarget": "team",
+                  "defaultStacks": 1,
+                  "elementFilter": "all",
+                  "valuePerStack": 0,
+                  "applySituation": "stagger",
+                  "enabledDefault": true,
+                  "teamProfession": null,
+                  "applyProfession": null,
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
+                }
+              ],
+              "enabledDefault": true
+            }
+          ]
+        }
+      ],
+      "fieldBuffName": "场地 Buff",
+      "fieldBuffText": null,
+      "fieldBuffImage": null,
+      "fieldBuffEffectBlocks": [
+        {
+          "id": "blk-mtvd1cmg-x6dgf5",
+          "name": "场地 Buff",
+          "note": "对异构·焚昼余火其造成部位破坏或完美反制时，全队锐化伤害提高40%，持续60秒，重复触发时刷新持续时间。\n代理人攻击命中非失衡状态的敌人时，造成的失衡值提升15%。异构·焚昼余火处于失衡状态中时，失衡易伤倍率提升20%。",
+          "effects": [
+            {
+              "id": "eff-mtvd1cmg-hy3wcj",
+              "kind": "fixed",
+              "note": "",
+              "stat": "sharpenDmgBonus",
+              "scope": "general",
+              "value": 40,
+              "origin": "",
+              "maxStacks": 1,
+              "stackable": false,
+              "applyTarget": "team",
+              "defaultStacks": 1,
+              "elementFilter": "all",
+              "valuePerStack": 0,
+              "applySituation": "global",
+              "enabledDefault": true,
+              "teamProfession": null,
+              "applyProfession": null,
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
+            },
+            {
+              "id": "eff-mtvd2f0h-0e4pkt",
+              "kind": "fixed",
+              "note": "",
+              "stat": "staggerVulnerableOnly",
+              "scope": "general",
+              "value": 20,
+              "origin": "",
+              "maxStacks": 1,
+              "stackable": false,
+              "applyTarget": "team",
+              "defaultStacks": 1,
+              "elementFilter": "all",
+              "valuePerStack": 0,
+              "applySituation": "stagger",
+              "enabledDefault": true,
+              "teamProfession": null,
+              "applyProfession": null,
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
+            }
+          ],
+          "enabledDefault": true
+        }
+      ]
+    },
+    {
       "bossName": "彷徨猎手",
       "fieldBuffSets": [
         {
@@ -1227,9 +1539,12 @@
                   "valuePerStack": 7,
                   "applySituation": "global",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
                   "appliesToAnomaly": true,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 }
               ],
               "enabledDefault": true
@@ -1262,9 +1577,12 @@
               "valuePerStack": 7,
               "applySituation": "global",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
               "appliesToAnomaly": true,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             }
           ],
           "enabledDefault": true
@@ -1305,9 +1623,12 @@
                   "valuePerStack": 10,
                   "applySituation": "global",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
                   "appliesToAnomaly": true,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 }
               ],
               "enabledDefault": true
@@ -1343,9 +1664,12 @@
               "valuePerStack": 10,
               "applySituation": "global",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
               "appliesToAnomaly": true,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             }
           ],
           "enabledDefault": true
@@ -1383,8 +1707,11 @@
                   "valuePerStack": 15,
                   "applySituation": "global",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 },
                 {
                   "id": "eff-mshaga9w-lnk4dr",
@@ -1402,9 +1729,12 @@
                   "valuePerStack": 0,
                   "applySituation": "global",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
                   "appliesToAnomaly": true,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 }
               ],
               "enabledDefault": true
@@ -1437,8 +1767,11 @@
               "valuePerStack": 15,
               "applySituation": "global",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             },
             {
               "id": "eff-mshaga9w-lnk4dr",
@@ -1456,9 +1789,12 @@
               "valuePerStack": 0,
               "applySituation": "global",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
               "appliesToAnomaly": true,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             }
           ],
           "enabledDefault": true
@@ -1496,9 +1832,12 @@
                   "valuePerStack": 0,
                   "applySituation": "global",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
                   "appliesToAnomaly": true,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 },
                 {
                   "id": "eff-msha0ioz-toe90f",
@@ -1516,9 +1855,12 @@
                   "valuePerStack": 0,
                   "applySituation": "global",
                   "enabledDefault": false,
+                  "teamProfession": null,
                   "applyProfession": null,
                   "appliesToAnomaly": true,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 }
               ],
               "enabledDefault": true
@@ -1551,9 +1893,12 @@
               "valuePerStack": 0,
               "applySituation": "global",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
               "appliesToAnomaly": true,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             },
             {
               "id": "eff-msha0ioz-toe90f",
@@ -1571,9 +1916,12 @@
               "valuePerStack": 0,
               "applySituation": "global",
               "enabledDefault": false,
+              "teamProfession": null,
               "applyProfession": null,
               "appliesToAnomaly": true,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             }
           ],
           "enabledDefault": true
@@ -1611,9 +1959,12 @@
                   "valuePerStack": 25,
                   "applySituation": "global",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
                   "appliesToAnomaly": true,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 }
               ],
               "enabledDefault": true
@@ -1646,9 +1997,12 @@
               "valuePerStack": 25,
               "applySituation": "global",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
               "appliesToAnomaly": true,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             }
           ],
           "enabledDefault": true
@@ -1769,6 +2123,129 @@
       ]
     },
     {
+      "bossName": "熔狱行赭",
+      "fieldBuffSets": [
+        {
+          "id": "set_mtvd5mrk_j2l0h4",
+          "name": "场地 Buff",
+          "text": "",
+          "image": null,
+          "label": null,
+          "effectBlocks": [
+            {
+              "id": "blk-mtvd5nkf-0xfgpb",
+              "name": "场地 Buff",
+              "note": "熔狱行赭进入[熔狱]状态后,其受到的属性异常伤害降低30%;每触发一次[连携招架]首领会获得1层[过热];累计触发两次[招架支援]或[极限闪避]首领会获得1层[过热],每层[过热]会使全队代理人暴击伤害提升25%。最多叠加3层，持续20秒，触发[招架支援]或重复触发[过热]时刷新持续时间。",
+              "effects": [
+                {
+                  "id": "eff-mtvd5nkf-5v3qw3",
+                  "kind": "fixed",
+                  "note": "",
+                  "stat": "anomalyDmgBonus",
+                  "scope": "general",
+                  "value": -30,
+                  "origin": "",
+                  "maxStacks": 1,
+                  "stackable": false,
+                  "applyTarget": "team",
+                  "defaultStacks": 1,
+                  "elementFilter": "all",
+                  "valuePerStack": 0,
+                  "applySituation": "global",
+                  "enabledDefault": true,
+                  "teamProfession": null,
+                  "applyProfession": null,
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
+                },
+                {
+                  "id": "eff-mtvd628v-a2hb68",
+                  "kind": "stacked",
+                  "note": "",
+                  "stat": "critDmg",
+                  "scope": "general",
+                  "value": 0,
+                  "origin": "",
+                  "maxStacks": 3,
+                  "stackable": false,
+                  "applyTarget": "team",
+                  "defaultStacks": 3,
+                  "elementFilter": "all",
+                  "valuePerStack": 25,
+                  "applySituation": "global",
+                  "enabledDefault": true,
+                  "teamProfession": null,
+                  "applyProfession": null,
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
+                }
+              ],
+              "enabledDefault": true
+            }
+          ]
+        }
+      ],
+      "fieldBuffName": "场地 Buff",
+      "fieldBuffText": null,
+      "fieldBuffImage": null,
+      "fieldBuffEffectBlocks": [
+        {
+          "id": "blk-mtvd5nkf-0xfgpb",
+          "name": "场地 Buff",
+          "note": "熔狱行赭进入[熔狱]状态后,其受到的属性异常伤害降低30%;每触发一次[连携招架]首领会获得1层[过热];累计触发两次[招架支援]或[极限闪避]首领会获得1层[过热],每层[过热]会使全队代理人暴击伤害提升25%。最多叠加3层，持续20秒，触发[招架支援]或重复触发[过热]时刷新持续时间。",
+          "effects": [
+            {
+              "id": "eff-mtvd5nkf-5v3qw3",
+              "kind": "fixed",
+              "note": "",
+              "stat": "anomalyDmgBonus",
+              "scope": "general",
+              "value": -30,
+              "origin": "",
+              "maxStacks": 1,
+              "stackable": false,
+              "applyTarget": "team",
+              "defaultStacks": 1,
+              "elementFilter": "all",
+              "valuePerStack": 0,
+              "applySituation": "global",
+              "enabledDefault": true,
+              "teamProfession": null,
+              "applyProfession": null,
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
+            },
+            {
+              "id": "eff-mtvd628v-a2hb68",
+              "kind": "stacked",
+              "note": "",
+              "stat": "critDmg",
+              "scope": "general",
+              "value": 0,
+              "origin": "",
+              "maxStacks": 3,
+              "stackable": false,
+              "applyTarget": "team",
+              "defaultStacks": 3,
+              "elementFilter": "all",
+              "valuePerStack": 25,
+              "applySituation": "global",
+              "enabledDefault": true,
+              "teamProfession": null,
+              "applyProfession": null,
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
+            }
+          ],
+          "enabledDefault": true
+        }
+      ]
+    },
+    {
       "bossName": "牲鬼·布林格",
       "fieldBuffSets": [
         {
@@ -1799,8 +2276,11 @@
                   "valuePerStack": 5,
                   "applySituation": "global",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 },
                 {
                   "id": "eff-mshb4d53-rbjb1x",
@@ -1818,9 +2298,12 @@
                   "valuePerStack": 0,
                   "applySituation": "global",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
                   "appliesToAnomaly": true,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 }
               ],
               "enabledDefault": true
@@ -1853,8 +2336,11 @@
               "valuePerStack": 5,
               "applySituation": "global",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             },
             {
               "id": "eff-mshb4d53-rbjb1x",
@@ -1872,9 +2358,12 @@
               "valuePerStack": 0,
               "applySituation": "global",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
               "appliesToAnomaly": true,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             }
           ],
           "enabledDefault": true
@@ -1912,8 +2401,11 @@
                   "valuePerStack": 0,
                   "applySituation": "global",
                   "enabledDefault": false,
+                  "teamProfession": null,
                   "applyProfession": null,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 },
                 {
                   "id": "eff-mshavtfz-azqwyw",
@@ -1931,9 +2423,12 @@
                   "valuePerStack": 0,
                   "applySituation": "stagger",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
                   "appliesToAnomaly": true,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 },
                 {
                   "id": "eff-mshb12vv-3hvgvs",
@@ -1951,9 +2446,12 @@
                   "valuePerStack": 0,
                   "applySituation": "global",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
                   "appliesToAnomaly": true,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 }
               ],
               "enabledDefault": true
@@ -1986,8 +2484,11 @@
               "valuePerStack": 0,
               "applySituation": "global",
               "enabledDefault": false,
+              "teamProfession": null,
               "applyProfession": null,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             },
             {
               "id": "eff-mshavtfz-azqwyw",
@@ -2005,9 +2506,12 @@
               "valuePerStack": 0,
               "applySituation": "stagger",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
               "appliesToAnomaly": true,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             },
             {
               "id": "eff-mshb12vv-3hvgvs",
@@ -2025,9 +2529,12 @@
               "valuePerStack": 0,
               "applySituation": "global",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
               "appliesToAnomaly": true,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             }
           ],
           "enabledDefault": true
@@ -2065,8 +2572,11 @@
                   "valuePerStack": 30,
                   "applySituation": "global",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 }
               ],
               "enabledDefault": true
@@ -2099,8 +2609,11 @@
               "valuePerStack": 30,
               "applySituation": "global",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             }
           ],
           "enabledDefault": true
@@ -2183,7 +2696,7 @@
       ]
     },
     {
-      "bossName": "自律强袭单位·提丰·破坏者型",
+      "bossName": "自律强袭单位·「提丰·破坏者型」",
       "fieldBuffSets": [
         {
           "id": "legacy",
@@ -2224,9 +2737,12 @@
                   "valuePerStack": 10,
                   "applySituation": "stagger",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
                   "appliesToAnomaly": true,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 }
               ],
               "enabledDefault": true
@@ -2270,9 +2786,12 @@
               "valuePerStack": 10,
               "applySituation": "stagger",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
               "appliesToAnomaly": true,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             }
           ],
           "enabledDefault": true
@@ -2310,9 +2829,12 @@
                   "valuePerStack": 15,
                   "applySituation": "global",
                   "enabledDefault": true,
+                  "teamProfession": null,
                   "applyProfession": null,
                   "appliesToAnomaly": true,
-                  "skillSubcategoryId": null
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
                 }
               ],
               "enabledDefault": true
@@ -2345,9 +2867,12 @@
               "valuePerStack": 15,
               "applySituation": "global",
               "enabledDefault": true,
+              "teamProfession": null,
               "applyProfession": null,
               "appliesToAnomaly": true,
-              "skillSubcategoryId": null
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
             }
           ],
           "enabledDefault": true
@@ -2563,6 +3088,30 @@
       "phase": "2",
       "bossName": "魇缚者·叶释渊",
       "fieldBuffSetId": "set_mt2jann5_mwusr2"
+    },
+    {
+      "version": "3.1",
+      "phase": "3",
+      "bossName": "初生·死路屠夫",
+      "fieldBuffSetId": "legacy"
+    },
+    {
+      "version": "3.1",
+      "phase": "3",
+      "bossName": "基塔布鲁",
+      "fieldBuffSetId": "legacy"
+    },
+    {
+      "version": "3.1",
+      "phase": "3",
+      "bossName": "复写体·猎血清道夫",
+      "fieldBuffSetId": "legacy"
+    },
+    {
+      "version": "3.1",
+      "phase": "3",
+      "bossName": "太初梦魇·「始主」",
+      "fieldBuffSetId": "legacy"
     }
   ]
 }
