@@ -11947,7 +11947,7 @@
                   "defaultStacks": 1,
                   "convert": {
                     "from": "atk",
-                    "panelSource": "manual",
+                    "panelSource": "external",
                     "ratioPercent": 30,
                     "cap": 1050,
                     "defaultBase": 3500,
@@ -12037,7 +12037,7 @@
               "defaultStacks": 1,
               "convert": {
                 "from": "atk",
-                "panelSource": "manual",
+                "panelSource": "external",
                 "ratioPercent": 30,
                 "cap": 1050,
                 "defaultBase": 3500,
@@ -25221,7 +25221,7 @@
                   "defaultStacks": 1,
                   "convert": {
                     "from": "energyRegen",
-                    "panelSource": "manual",
+                    "panelSource": "external",
                     "ratioPercent": 8.3333,
                     "cap": 19,
                     "defaultBase": 368,
@@ -25409,7 +25409,7 @@
               "defaultStacks": 1,
               "convert": {
                 "from": "energyRegen",
-                "panelSource": "manual",
+                "panelSource": "external",
                 "ratioPercent": 8.3333,
                 "cap": 19,
                 "defaultBase": 368,
@@ -25688,7 +25688,7 @@
                   "defaultStacks": 1,
                   "convert": {
                     "from": "energyRegen",
-                    "panelSource": "manual",
+                    "panelSource": "external",
                     "ratioPercent": 3.3333,
                     "cap": 7.6,
                     "defaultBase": 368,
@@ -25696,17 +25696,9 @@
                   },
                   "enabledDefault": true,
                   "note": ""
-                }
-              ],
-              "enabledDefault": true
-            },
-            {
-              "id": "blk-ms4lpjc1-18nt91",
-              "name": "效果块 2",
-              "note": "",
-              "effects": [
+                },
                 {
-                  "id": "eff-ms4lpjc1-o5rpae",
+                  "id": "eff-muhxytb9-dqatvv",
                   "origin": "",
                   "scope": "general",
                   "applyTarget": "team",
@@ -25730,7 +25722,7 @@
                   "note": ""
                 },
                 {
-                  "id": "eff-ms4lq7p4-d4zg5s",
+                  "id": "eff-muhxz5bp-xz0z4z",
                   "origin": "",
                   "scope": "skill",
                   "applyTarget": "self",
@@ -25813,7 +25805,7 @@
               "defaultStacks": 1,
               "convert": {
                 "from": "energyRegen",
-                "panelSource": "manual",
+                "panelSource": "external",
                 "ratioPercent": 3.3333,
                 "cap": 7.6,
                 "defaultBase": 368,
@@ -25823,7 +25815,7 @@
               "note": ""
             },
             {
-              "id": "eff-ms4lpjc1-o5rpae",
+              "id": "eff-muhxytb9-dqatvv",
               "origin": "",
               "scope": "general",
               "applyTarget": "team",
@@ -25847,7 +25839,7 @@
               "note": ""
             },
             {
-              "id": "eff-ms4lq7p4-d4zg5s",
+              "id": "eff-muhxz5bp-xz0z4z",
               "origin": "",
               "scope": "skill",
               "applyTarget": "self",
@@ -69285,7 +69277,7 @@
                   "defaultStacks": 1,
                   "convert": {
                     "from": "atk",
-                    "panelSource": "manual",
+                    "panelSource": "external",
                     "ratioPercent": 35,
                     "cap": 1200,
                     "defaultBase": 3428.56,
@@ -69364,7 +69356,7 @@
               "defaultStacks": 1,
               "convert": {
                 "from": "atk",
-                "panelSource": "manual",
+                "panelSource": "external",
                 "ratioPercent": 35,
                 "cap": 1200,
                 "defaultBase": 3428.56,
@@ -69737,7 +69729,7 @@
                   "defaultStacks": 1,
                   "convert": {
                     "from": "atk",
-                    "panelSource": "manual",
+                    "panelSource": "external",
                     "ratioPercent": 54,
                     "cap": 1600,
                     "defaultBase": 2963,
@@ -69747,7 +69739,7 @@
                   "note": ""
                 },
                 {
-                  "id": "eff-ms38lmcz-qennwz",
+                  "id": "eff-muhxkum2-5x20c1",
                   "origin": "",
                   "scope": "general",
                   "applyTarget": "team",
@@ -69758,21 +69750,13 @@
                   "teamProfessionMinCount": null,
                   "skillSubcategoryId": null,
                   "elementFilter": "all",
-                  "kind": "convert",
+                  "kind": "fixed",
                   "stat": "atk",
-                  "value": 0,
+                  "value": -1200,
                   "stackable": false,
                   "maxStacks": 1,
                   "valuePerStack": 0,
                   "defaultStacks": 1,
-                  "convert": {
-                    "from": "atk",
-                    "panelSource": "manual",
-                    "ratioPercent": -35,
-                    "cap": 1200,
-                    "defaultBase": 3428.56,
-                    "initialBase": 0
-                  },
                   "enabledDefault": true,
                   "note": ""
                 }
@@ -69802,7 +69786,7 @@
               "defaultStacks": 1,
               "convert": {
                 "from": "atk",
-                "panelSource": "manual",
+                "panelSource": "external",
                 "ratioPercent": 54,
                 "cap": 1600,
                 "defaultBase": 2963,
@@ -69812,7 +69796,7 @@
               "note": ""
             },
             {
-              "id": "eff-ms38lmcz-qennwz",
+              "id": "eff-muhxkum2-5x20c1",
               "origin": "",
               "scope": "general",
               "applyTarget": "team",
@@ -69823,21 +69807,13 @@
               "teamProfessionMinCount": null,
               "skillSubcategoryId": null,
               "elementFilter": "all",
-              "kind": "convert",
+              "kind": "fixed",
               "stat": "atk",
-              "value": 0,
+              "value": -1200,
               "stackable": false,
               "maxStacks": 1,
               "valuePerStack": 0,
               "defaultStacks": 1,
-              "convert": {
-                "from": "atk",
-                "panelSource": "manual",
-                "ratioPercent": -35,
-                "cap": 1200,
-                "defaultBase": 3428.56,
-                "initialBase": 0
-              },
               "enabledDefault": true,
               "note": ""
             }
@@ -69919,7 +69895,7 @@
             "externalHpPercent": 0,
             "externalAtkPercent": 0,
             "externalDefPercent": 0,
-            "atk": 0,
+            "atk": -1200,
             "def": 0,
             "dmgBonus": 0,
             "critRate": 0,
@@ -186862,8 +186838,8 @@
           "effectBlocks": [
             {
               "id": "blk-mtsg3tw6-5rsbpt",
-              "name": "暴击率增伤转模",
-              "note": "局内实时规则\n超出100%暴击率时转模\n1%暴击率 转 0.48% 增伤\n转模增伤上限24%",
+              "name": "精1",
+              "note": "装备者暴击率大于100%时，每超出1%暴击率，使装备者造成的伤害提升0.48%，至多提升24%。",
               "effects": [
                 {
                   "id": "eff-mtsg3tw6-gydnli",
@@ -187074,8 +187050,8 @@
           "effectBlocks": [
             {
               "id": "blk-mtsg3tw6-5rsbpt",
-              "name": "暴击率增伤转模",
-              "note": "局内实时规则\n超出100%暴击率时转模\n1%暴击率 转 0.48% 增伤\n转模增伤上限24%",
+              "name": "精2",
+              "note": "装备者暴击率大于100%时，每超出1%暴击率，使装备者造成的伤害提升0.56%，至多提升24%。",
               "effects": [
                 {
                   "id": "eff-mtsg3tw6-gydnli",
@@ -187286,8 +187262,8 @@
           "effectBlocks": [
             {
               "id": "blk-mtsg3tw6-5rsbpt",
-              "name": "暴击率增伤转模",
-              "note": "局内实时规则\n超出100%暴击率时转模\n1%暴击率 转 0.48% 增伤\n转模增伤上限24%",
+              "name": "精3",
+              "note": "装备者暴击率大于100%时，每超出1%暴击率，使装备者造成的伤害提升0.64%，至多提升32%。",
               "effects": [
                 {
                   "id": "eff-mtsg3tw6-gydnli",
@@ -187498,8 +187474,8 @@
           "effectBlocks": [
             {
               "id": "blk-mtsg3tw6-5rsbpt",
-              "name": "暴击率增伤转模",
-              "note": "局内实时规则\n超出100%暴击率时转模\n1%暴击率 转 0.48% 增伤\n转模增伤上限24%",
+              "name": "精4",
+              "note": "装备者暴击率大于100%时，每超出1%暴击率，使装备者造成的伤害提升0.72%，至多提升36%。",
               "effects": [
                 {
                   "id": "eff-mtsg3tw6-gydnli",
@@ -187710,8 +187686,8 @@
           "effectBlocks": [
             {
               "id": "blk-mtsg3tw6-5rsbpt",
-              "name": "暴击率增伤转模",
-              "note": "局内实时规则\n超出100%暴击率时转模\n1%暴击率 转 0.48% 增伤\n转模增伤上限24%",
+              "name": "精5",
+              "note": "装备者暴击率大于100%时，每超出1%暴击率，使装备者造成的伤害提升0.8%，至多提升40%。",
               "effects": [
                 {
                   "id": "eff-mtsg3tw6-gydnli",
