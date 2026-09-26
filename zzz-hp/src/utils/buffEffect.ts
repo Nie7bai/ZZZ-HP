@@ -496,7 +496,8 @@ export function resolveConvertValue(
   const convertible = Math.max(0, from - initialBase)
   let amount = (convertible * effect.convert.ratioPercent) / 100
   if (effect.convert.cap != null && Number.isFinite(effect.convert.cap)) {
-    amount = Math.min(amount, effect.convert.cap)
+    const magnitudeCap = Math.abs(effect.convert.cap)
+    amount = Math.max(-magnitudeCap, Math.min(amount, magnitudeCap))
   }
   // 转模结果统一到 4 位小数，与界面展示一致
   return roundCalc(amount)

@@ -289,6 +289,7 @@ export interface BuffEffectConvert {
   /** external/final 读面板；manual 自行设置基础值（不看面板） */
   panelSource?: ConvertPanelSource
   ratioPercent: number
+  /** 转换结果的绝对值上限；负向转换保留负号，null/缺省表示不限幅 */
   cap?: number | null
   /** 自行设置时的默认基础值；局外/局内模式下仅作兼容旧数据预填 */
   defaultBase?: number | null

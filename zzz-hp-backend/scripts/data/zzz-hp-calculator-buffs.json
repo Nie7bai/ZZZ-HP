@@ -11949,7 +11949,7 @@
                     "from": "atk",
                     "panelSource": "manual",
                     "ratioPercent": 30,
-                    "cap": null,
+                    "cap": 1050,
                     "defaultBase": 3500,
                     "initialBase": 0
                   },
@@ -12039,7 +12039,7 @@
                 "from": "atk",
                 "panelSource": "manual",
                 "ratioPercent": 30,
-                "cap": null,
+                "cap": 1050,
                 "defaultBase": 3500,
                 "initialBase": 0
               },
@@ -13117,7 +13117,7 @@
                   "convert": {
                     "from": "atk",
                     "panelSource": "external",
-                    "ratioPercent": 0.03,
+                    "ratioPercent": 3,
                     "cap": 105,
                     "defaultBase": null,
                     "initialBase": 0
@@ -13174,7 +13174,7 @@
               "convert": {
                 "from": "atk",
                 "panelSource": "external",
-                "ratioPercent": 0.03,
+                "ratioPercent": 3,
                 "cap": 105,
                 "defaultBase": null,
                 "initialBase": 0
@@ -16474,7 +16474,7 @@
                   "defaultStacks": 1,
                   "convert": {
                     "from": "hp",
-                    "panelSource": "final",
+                    "panelSource": "external",
                     "ratioPercent": 2,
                     "cap": null,
                     "defaultBase": 24000,
@@ -16591,7 +16591,7 @@
               "defaultStacks": 1,
               "convert": {
                 "from": "hp",
-                "panelSource": "final",
+                "panelSource": "external",
                 "ratioPercent": 2,
                 "cap": null,
                 "defaultBase": 24000,
@@ -25690,7 +25690,7 @@
                     "from": "energyRegen",
                     "panelSource": "manual",
                     "ratioPercent": 3.3333,
-                    "cap": null,
+                    "cap": 7.6,
                     "defaultBase": 368,
                     "initialBase": 139.999
                   },
@@ -25815,7 +25815,7 @@
                 "from": "energyRegen",
                 "panelSource": "manual",
                 "ratioPercent": 3.3333,
-                "cap": null,
+                "cap": 7.6,
                 "defaultBase": 368,
                 "initialBase": 139.999
               },
@@ -90005,7 +90005,7 @@
                     "from": "impact",
                     "panelSource": "final",
                     "ratioPercent": 600,
-                    "cap": null,
+                    "cap": 600,
                     "defaultBase": null,
                     "initialBase": 120
                   },
@@ -90091,7 +90091,7 @@
                 "from": "impact",
                 "panelSource": "final",
                 "ratioPercent": 600,
-                "cap": null,
+                "cap": 600,
                 "defaultBase": null,
                 "initialBase": 120
               },
@@ -186887,7 +186887,7 @@
                   "convert": {
                     "from": "critRate",
                     "panelSource": "final",
-                    "ratioPercent": 0.48,
+                    "ratioPercent": 48,
                     "cap": 24,
                     "defaultBase": null,
                     "initialBase": 100
@@ -186922,7 +186922,7 @@
               "convert": {
                 "from": "critRate",
                 "panelSource": "final",
-                "ratioPercent": 0.48,
+                "ratioPercent": 48,
                 "cap": 24,
                 "defaultBase": null,
                 "initialBase": 100
@@ -187099,7 +187099,7 @@
                   "convert": {
                     "from": "critRate",
                     "panelSource": "final",
-                    "ratioPercent": 0.56,
+                    "ratioPercent": 56,
                     "cap": 28,
                     "defaultBase": null,
                     "initialBase": 100
@@ -187134,7 +187134,7 @@
               "convert": {
                 "from": "critRate",
                 "panelSource": "final",
-                "ratioPercent": 0.56,
+                "ratioPercent": 56,
                 "cap": 28,
                 "defaultBase": null,
                 "initialBase": 100
@@ -187311,7 +187311,7 @@
                   "convert": {
                     "from": "critRate",
                     "panelSource": "final",
-                    "ratioPercent": 0.64,
+                    "ratioPercent": 64,
                     "cap": 32,
                     "defaultBase": null,
                     "initialBase": 100
@@ -187346,7 +187346,7 @@
               "convert": {
                 "from": "critRate",
                 "panelSource": "final",
-                "ratioPercent": 0.64,
+                "ratioPercent": 64,
                 "cap": 32,
                 "defaultBase": null,
                 "initialBase": 100
@@ -187523,7 +187523,7 @@
                   "convert": {
                     "from": "critRate",
                     "panelSource": "final",
-                    "ratioPercent": 0.72,
+                    "ratioPercent": 72,
                     "cap": 36,
                     "defaultBase": null,
                     "initialBase": 100
@@ -187558,7 +187558,7 @@
               "convert": {
                 "from": "critRate",
                 "panelSource": "final",
-                "ratioPercent": 0.72,
+                "ratioPercent": 72,
                 "cap": 36,
                 "defaultBase": null,
                 "initialBase": 100
@@ -187735,7 +187735,7 @@
                   "convert": {
                     "from": "critRate",
                     "panelSource": "final",
-                    "ratioPercent": 0.8,
+                    "ratioPercent": 80,
                     "cap": 40,
                     "defaultBase": null,
                     "initialBase": 100
@@ -187770,7 +187770,7 @@
               "convert": {
                 "from": "critRate",
                 "panelSource": "final",
-                "ratioPercent": 0.8,
+                "ratioPercent": 80,
                 "cap": 40,
                 "defaultBase": null,
                 "initialBase": 100
