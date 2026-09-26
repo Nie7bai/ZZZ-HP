@@ -32,6 +32,7 @@ import {
   getEffectSkillTargets,
   normalizeTeamProfessionValues,
   packFromBlocks,
+  resolveConvertValue,
   setEffectSkillTargets,
 } from '@/utils/buffEffect'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
@@ -437,19 +438,18 @@ function convertPreviewText(effect: BuffEffect): string {
     initial > 0 ? `，超出初始值 ${formatCalcDecimal(initial)} 的部分参与折算` : ''
   if (convert.panelSource === 'manual') {
     const base = convert.defaultBase ?? 0
-    const excess = Math.max(0, base - initial)
-    let amount = (excess * (convert.ratioPercent ?? 0)) / 100
-    let capped = false
-    if (convert.cap != null && Number.isFinite(convert.cap) && amount > convert.cap) {
-      amount = convert.cap
-      capped = true
-    }
+    const amount = resolveConvertValue(effect, {})
+    const uncappedAmount = resolveConvertValue(
+      { ...effect, convert: { ...convert, cap: null } },
+      {},
+    )
+    const capped = amount !== uncappedAmount
     const rounded = formatCalcDecimal(amount)
     const baseExpr =
       initial > 0
         ? `max(0, ${formatCalcDecimal(base)} − ${formatCalcDecimal(initial)})`
         : formatCalcDecimal(base)
-    return `${attrLabel} ${baseExpr} × ${formatCalcDecimal(convert.ratioPercent ?? 0)}% = ${statLabel} +${rounded}${capped ? '（已达上限）' : ''}${initialHint}`
+    return `${attrLabel} ${baseExpr} × ${formatCalcDecimal(convert.ratioPercent ?? 0)}% = ${statLabel} ${amount < 0 ? '' : '+'}${rounded}${capped ? '（已达上限）' : ''}${initialHint}`
   }
   const sourceLabel = convert.panelSource === 'final' ? '局内' : '局外'
   return `${sourceLabel}${attrLabel} × ${formatCalcDecimal(convert.ratioPercent ?? 0)}% → ${statLabel}，超出初始值部分实时折算${initialHint}`
