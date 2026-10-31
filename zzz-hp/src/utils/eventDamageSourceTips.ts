@@ -735,8 +735,8 @@ const disorderFormulaParts = (() => {
         penRate: panel.penRate,
         pen: external.pen,
         isMb: props.isMb,
-        penRateRole: anomalyLine ? '异常强度提供者' : actualViewLabel(penUsages),
-        defCutRole: anomalyLine ? '异常类触发者' : actualViewLabel(defenseUsages),
+        penRateRole: anomalyLine ? (d.producerAgentLabel ?? '异常强度提供者') : actualViewLabel(penUsages),
+        defCutRole: anomalyLine ? (d.defenseTriggerAgentLabel ?? '异常类触发者') : actualViewLabel(defenseUsages),
       }),
     ),
     piercePower: withTotal(
@@ -1305,12 +1305,12 @@ const disorderFormulaParts = (() => {
           defCutPanel: defTrigPanel,
           defCutExternal: defTrigExternal,
           defCutSources: defTrigSources,
-          defCutLabel: '异常类触发者',
+          defCutLabel: d.defenseTriggerAgentLabel ?? '异常类触发者',
           splitDefCut: true,
           isMb: Boolean(props.remielIsMb),
           mbLabel: '蕾米埃尔',
-          penRateRole: '蕾米埃尔',
-          defCutRole: '异常类触发者',
+          penRateRole: d.producerAgentLabel ?? '蕾米埃尔',
+          defCutRole: d.defenseTriggerAgentLabel ?? '异常类触发者',
         })
       : [],
     remielSelfResistanceMultiplier: p.remielSelfRadianceActive
