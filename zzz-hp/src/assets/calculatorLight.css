@@ -265,12 +265,7 @@
 .calculator-page.theme-light .event-summary-block,
 .calculator-page.theme-light .owner-share-block,
 .calculator-page.theme-light .event-detail-block,
-.calculator-page.theme-light .team-disc-notes,
-.calculator-page.theme-light .disc-note-item,
-.calculator-page.theme-light .disc-group,
 .calculator-page.theme-light .wengine-toolbar,
-.calculator-page.theme-light .slot-toolbar,
-.calculator-page.theme-light .empty-panel,
 .calculator-page.theme-light .card {
   border-color: var(--calc-border) !important;
   background: var(--calc-surface) !important;
@@ -326,12 +321,9 @@
 
 .calculator-page.theme-light .section-header h2,
 .calculator-page.theme-light .wengine-toolbar h3,
-.calculator-page.theme-light .slot-toolbar h3,
 .calculator-page.theme-light .calc-mode-header h2,
 .calculator-page.theme-light .panel-block-header,
 .calculator-page.theme-light .history-header,
-.calculator-page.theme-light .disc-group-header,
-.calculator-page.theme-light .disc-group-header h3,
 .calculator-page.theme-light .recognition-result-title,
 .calculator-page.theme-light .result-section-title,
 .calculator-page.theme-light .result-subsection-title,
@@ -351,14 +343,12 @@
 .calculator-page.theme-light .upload-label,
 .calculator-page.theme-light .filter-label,
 .calculator-page.theme-light .field > span,
-.calculator-page.theme-light .empty-panel,
 .calculator-page.theme-light .team-note-empty,
 .calculator-page.theme-light .history-empty,
 .calculator-page.theme-light .history-item-meta,
 .calculator-page.theme-light .agent-name,
 .calculator-page.theme-light .bangboo-name,
 .calculator-page.theme-light .disc-name,
-.calculator-page.theme-light .disc-group-header p,
 .calculator-page.theme-light .slot-meta {
   color: var(--calc-muted) !important;
 }
@@ -503,10 +493,6 @@
 
 .calculator-page.theme-light .refine-row {
   color: var(--calc-text) !important;
-}
-
-.calculator-page.theme-light .editing-label {
-  color: #8a6d2e !important;
 }
 
 .calculator-page.theme-light .refine-badge {
@@ -788,18 +774,6 @@
 
 .calculator-page.theme-light .team-note-text {
   color: var(--calc-text) !important;
-}
-
-.calculator-page.theme-light .disc-note-item strong {
-  color: #8a6d2e !important;
-}
-
-.calculator-page.theme-light .disc-note-item p {
-  color: var(--calc-text) !important;
-}
-
-.calculator-page.theme-light .disc-note-item + .disc-note-item {
-  border-top-color: var(--calc-border) !important;
 }
 
 .calculator-page.theme-light .slot-badges span,
@@ -3296,47 +3270,6 @@ body:has(.calculator-page.theme-light) .preset-preview li,
 
 .calculator-page.theme-light .wengine-none-bar .wengine-bar-hint {
   color: #98a2b3 !important;
-}
-
-/*
- * DriveDiscPickerSection.vue 鈥?椹卞姩鐩樺凡閫?鏈€夊睍绀烘潯
- * 鍚屼笂锛屽師鏈敱 EquipPickerModal 娓叉煋銆? */
-.calculator-page.theme-light .disc-selected-bar {
-  border-color: #d5dae3 !important;
-  background: #ffffff !important;
-}
-
-.calculator-page.theme-light .disc-selected-bar .disc-bar-name {
-  color: #1c212a !important;
-}
-
-.calculator-page.theme-light .disc-none-bar {
-  border-color: #d5dae3 !important;
-  background: #f5f7fa !important;
-  color: #667085 !important;
-}
-
-/*
- * DriveDiscPickerSection.vue 鈥?鍥㈤槦椹卞姩鐩樻敞閲婏紙team-disc-notes锛? * 鏆楄壊榛樿鏄噾榛勬笎鍙橈紝light 妯″紡鏀逛负娴呴噾璋冧互淇濇寔璇嗗埆鎬т絾涓嶈繃鍒嗐€? */
-.calculator-page.theme-light .team-disc-notes {
-  border-color: #e6d7b0 !important;
-  background: #fff8eb !important;
-}
-
-.calculator-page.theme-light .team-disc-notes h4 {
-  color: #5c4818 !important;
-}
-
-.calculator-page.theme-light .disc-note-item + .disc-note-item {
-  border-top-color: #f0e3c4 !important;
-}
-
-.calculator-page.theme-light .disc-note-item strong {
-  color: #5c4818 !important;
-}
-
-.calculator-page.theme-light .disc-note-item p {
-  color: #344054 !important;
 }
 
 /*
