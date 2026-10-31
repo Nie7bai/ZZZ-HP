@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { buildEventZoneDisplay } from '@/utils/eventDamageSourceTips'
+import { skillCalcZoneGroup } from '@/utils/skillCalcZones'
 import InfoTip from '@/components/common/InfoTip.vue'
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
@@ -1516,6 +1517,40 @@ const detailZoneSplit = computed(() => {
     mixedRows:rows.filter(row=>row.sourceLabel!=='最终伤害'&&!singles.slice(0,2).includes(row.sourceLabel)),
     resultRows:rows.filter(row=>row.sourceLabel==='最终伤害')}
 })
+
+/** 异常类：按格子归属分成「异常强度提供者 / 异常类触发者 / 共用」三块，与伤害统计同一套归属 */
+const detailActorSections = computed(() => {
+  const evaluation = detailZoneCalc.value?.evaluation
+  const kind = evaluation?.kind
+  if (!evaluation || !kind || kind === 'direct' || kind === 'sharpen') return []
+  const pick = (group: 'producer' | 'trigger' | 'mixed') =>
+    detailZoneRows.value.filter((row) => skillCalcZoneGroup(row.label) === group)
+  return [
+    {
+      key: 'producer' as const,
+      label: evaluation.producerAgentLabel ?? '异常强度提供者',
+      className: 'zone-box--producer',
+      rows: pick('producer'),
+    },
+    {
+      key: 'trigger' as const,
+      label: evaluation.defenseTriggerAgentLabel ?? '异常类触发者',
+      className: 'zone-box--trigger',
+      rows: pick('trigger'),
+    },
+    {
+      key: 'mixed' as const,
+      label: '共用 · 敌方与环境',
+      className: 'zone-box--mixed',
+      rows: pick('mixed'),
+    },
+  ].filter((section) => section.rows.length)
+})
+const detailGroupedResultRows = computed(() =>
+  detailActorSections.value.length
+    ? detailZoneRows.value.filter((row) => skillCalcZoneGroup(row.label) === 'result')
+    : [],
+)
 
 interface ZoneTipState {
   label: string
@@ -4144,7 +4179,55 @@ const showcaseTitle = computed(() => {
               />
 
               <p class="detail-section-title">计算过程</p>
-              <template v-if="detailZoneSplit">
+              <template v-if="detailActorSections.length">
+                <section
+                  v-for="section in detailActorSections"
+                  :key="section.key"
+                  class="zone-box"
+                  :class="section.className"
+                >
+                  <header class="zone-box-head">
+                    <strong class="zone-box-name">{{ section.label }}</strong>
+                  </header>
+                  <div class="zone-display-grid">
+                    <div
+                      v-for="row in section.rows"
+                      :key="`${section.key}-${row.label}`"
+                      class="zone-display-item zone-display-item--clickable"
+                      role="button"
+                      tabindex="0"
+                      @pointerenter="showZoneTip(row, $event)"
+                      @pointerleave="scheduleZoneTipHide"
+                      @focus="showZoneTip(row, $event)"
+                      @blur="scheduleZoneTipHide"
+                    >
+                      <span class="zone-display-label">{{ row.label }}</span>
+                      <span class="zone-display-val">{{ row.value }}</span>
+                    </div>
+                  </div>
+                </section>
+
+                <div
+                  v-if="detailGroupedResultRows.length"
+                  class="zone-display-grid zone-result-grid"
+                >
+                  <div
+                    v-for="row in detailGroupedResultRows"
+                    :key="`grouped-result-${row.label}`"
+                    class="zone-display-item zone-display-item--clickable zone-display-item--result"
+                    role="button"
+                    tabindex="0"
+                    @pointerenter="showZoneTip(row, $event)"
+                    @pointerleave="scheduleZoneTipHide"
+                    @focus="showZoneTip(row, $event)"
+                    @blur="scheduleZoneTipHide"
+                  >
+                    <span class="zone-display-label">{{ row.label }}</span>
+                    <span class="zone-display-val">{{ row.value }}</span>
+                  </div>
+                </div>
+              </template>
+              <template v-else-if="detailZoneSplit">
                 <div class="zone-split">
                   <section class="zone-box zone-box--producer">
                     <header class="zone-box-head">

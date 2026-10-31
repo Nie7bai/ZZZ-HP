@@ -376,12 +376,12 @@ const disorderFormulaParts = (() => {
       defCutSources: defTrigSources,
       // 异常类：穿透率/穿透值取异常强度提供者，减防/无视防御取异常类触发者；
       // 直伤没有这两个身份，仍按实际采用的面板标注。
-      defCutLabel: anomalyLine ? '异常类触发者' : defTrigLabel,
+      defCutLabel: anomalyLine ? (d.defenseTriggerAgentLabel ?? '异常类触发者') : defTrigLabel,
       splitDefCut: splitDefenseSources,
       isMb: props.isMb,
       mbLabel: '命破招式持有者',
-      penRateRole: anomalyLine ? '异常强度提供者' : actualViewLabel(penUsages),
-      defCutRole: anomalyLine ? '异常类触发者' : actualViewLabel(defenseUsages),
+      penRateRole: anomalyLine ? (d.producerAgentLabel ?? '异常强度提供者') : actualViewLabel(penUsages),
+      defCutRole: anomalyLine ? (d.defenseTriggerAgentLabel ?? '异常类触发者') : actualViewLabel(defenseUsages),
     }),
     resistanceMultiplier: withTotal(
       [
@@ -796,7 +796,7 @@ const disorderFormulaParts = (() => {
     levelZone: [
       {
         // 异常类的等级区与异常基础同属异常强度提供者；直伤仍按实际采用的面板
-        label: anomalyLine ? '异常强度提供者' : actualViewLabel(baseUsages),
+        label: anomalyLine ? (d.producerAgentLabel ?? '异常强度提供者') : actualViewLabel(baseUsages),
         items: [
           `角色等级 ${Math.round(p.levelZoneAgentLevel)}`,
           `等级区 ${formatFormulaNumber(p.levelZone)} = 1 + (${Math.round(p.levelZoneAgentLevel)} - 1) / 59`,

@@ -17,6 +17,9 @@ const skillMultLevelNote = computed(() =>
   buildSkillBaseMultNote(detail.value.hit.skill, detail.value.hit.skillTalentLevel),
 )
 /** 计算合计：与招式流程详情同一套「期望 × 次数 = 合计」 */
+const isAnomalyLine = computed(
+  () => detail.value.kind !== 'direct' && detail.value.kind !== 'sharpen',
+)
 const damageSummary = computed(() => ({
   perHit: detail.value.perHit,
   count: detail.value.hit.count,
@@ -34,6 +37,9 @@ const damageSummary = computed(() => ({
     <FlowZoneCalculation
       :calculation="calculation"
       :summary="damageSummary"
+      :group-by-actor="isAnomalyLine"
+      :producer-label="detail.producerAgentLabel"
+      :trigger-label="detail.defenseTriggerAgentLabel"
       empty-hint="本段计算过程暂不可用，请检查当前面板来源。"
     />
     <details class="calculation-more">
