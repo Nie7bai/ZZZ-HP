@@ -147,7 +147,7 @@ export function buildEventValueTips(calculation: SkillFlowCalculationDetail): Re
   const defenseUsages = usages.filter(u => u.field === 'ignoreDefense' || u.field === 'reduceDefense')
   const penUsages = usages.filter(u => u.field === 'penRate' || u.field === 'pen')
   const defense = project(defenseUsages)
-  const viewLabels: Record<string, string> = { ownerPanel:'持有者面板',powerProviderPanel:'异常强度面板',anomalyTriggerPanel:'触发者面板',radianceSelfPanel:'本人耀变面板',mutationPanel:'异化面板',releaseMult:'异放倍率',convertSourcePanel:'转模来源面板' }
+  const viewLabels: Record<string, string> = { ownerPanel:'持有者面板',powerProviderPanel:'异常强度提供者',anomalyTriggerPanel:'异常类触发者',radianceSelfPanel:'本人耀变面板',mutationPanel:'异化面板',releaseMult:'异放倍率',convertSourcePanel:'转模来源面板' }
   const actualViewLabel = (selected: EventDamageInputUsage[]) => [...new Set(selected.map(u => viewLabels[u.usedView] ?? '正式采用面板'))].join('、') || '正式采用面板'
   const splitDefenseSources = new Set([...penUsages,...defenseUsages].map(u => u.viewKey)).size > 1
   const resistance = project(usages.filter(u => u.field === 'resPen' && u.resultKey === 'resistanceMultiplier'))
@@ -735,8 +735,8 @@ const disorderFormulaParts = (() => {
         penRate: panel.penRate,
         pen: external.pen,
         isMb: props.isMb,
-        penRateRole: actualViewLabel(penUsages),
-        defCutRole: actualViewLabel(defenseUsages),
+        penRateRole: anomalyLine ? '异常强度提供者' : actualViewLabel(penUsages),
+        defCutRole: anomalyLine ? '异常类触发者' : actualViewLabel(defenseUsages),
       }),
     ),
     piercePower: withTotal(
