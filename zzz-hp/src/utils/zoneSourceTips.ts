@@ -59,7 +59,7 @@ export function buildDefenseZoneFormulaItems(options: {
     `防御因子 = max(0, 1 − 无视 − 减防) = max(0, 1 − ${fmt(defenseCut / 100)}) = ${fmt(parts.defenseFactor)}`,
     `穿透率 ${fmt(options.penRate, 2)}%${penRateLabel} → ${fmt(parts.penRateRatio)}`,
     `折后防御 = 敌方防御 × 防御因子 × (1 − 穿透率) = ${fmt(options.enemyDefense, 2)} × ${fmt(parts.defenseFactor)} × (1 − ${fmt(parts.penRateRatio)}) = ${fmt(defenseAfter, 2)}`,
-    `穿透值 ${fmt(options.pen, 2)}（局外面板，不受增益）`,
+    `穿透值 ${fmt(options.pen, 2)}（${options.penRateRole ? `${options.penRateRole} · 局外，不受增益` : '局外面板，不受增益'}）`,
     `有效防御 = max(0, 折后防御) − 穿透值 = max(0, ${fmt(defenseAfter, 2)}) − ${fmt(options.pen, 2)} = ${fmt(parts.effectiveDefense, 2)}`,
     `防御区 = 794 / (794 + 有效防御) = 794 / (794 + ${fmt(parts.effectiveDefense, 2)}) = ${fmt(parts.defenseMultiplier)}`,
   ]
@@ -105,7 +105,7 @@ export function buildDefenseZoneSourceGroups(options: {
   ]
   if (options.splitDefCut) {
     extraGroups.unshift(
-      { label: options.defCutLabel, items: ['减防/无视防御取此角色'] },
+      { label: options.defCutLabel, items: ['减防/无视防御取自异常类触发者'] },
       ...buildStatSourceGroups({
         keys: ['reduceDefense'],
         externalPanel: options.defCutExternal,
