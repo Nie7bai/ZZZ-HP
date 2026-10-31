@@ -8,6 +8,7 @@ import {
   type AffixDeltaMap,
   type AffixLibraryEntry,
 } from '@/utils/affixLibrary'
+import { PEN_RATE_CAP_PERCENT } from '@/utils/damageCalc'
 import type { ExtraBuffGain } from '@/utils/extraBuffCalc'
 import {
   evaluateAffixCounts,
@@ -672,7 +673,7 @@ function remainingAllowedRolls(
  * 用户自建的同字段条目、将来加回的条目同样认。
  *
  * 「尽可能」= 在自身 cap / 组额度 / 总预算都允许的前提下，能加几档加几档；
- * 穿透率本身有 95% 硬上限（与 `damageCalc.computeDefenseZone` 的 clamp 一致），锁到即停。
+ * 穿透率硬上限见 `DEFENSE_ZONE_PEN_RATE_CAP`（源自 `damageCalc.PEN_RATE_CAP_PERCENT`），锁到即停。
  */
 export function collectPenRateFieldLocks(
   entries: AffixLibraryEntry[],
@@ -718,8 +719,8 @@ export function collectPenRateFieldLocks(
   return locks
 }
 
-/** 穿透率硬上限（%，与 `damageCalc.computeDefenseZone` 的 clamp 同值） */
-export const DEFENSE_ZONE_PEN_RATE_CAP = 95
+/** 穿透率硬上限（%，单一事实来源见 `damageCalc.PEN_RATE_CAP_PERCENT`） */
+export const DEFENSE_ZONE_PEN_RATE_CAP = PEN_RATE_CAP_PERCENT
 
 /**
  * 专路 2.0 · 第二步：解析求「猛堆固定穿透」的落点（不再一档一档试）。
