@@ -323,13 +323,21 @@ function round(value: number, precision = 2) {
   return Math.round(value * factor) / factor
 }
 
+/**
+ * 防御区穿透率硬上限（百分点）。
+ *
+ * 防御区口径的唯一事实来源：主计算链与展示/提示（`computeDefenseZone`）共用，
+ * 词条优化的 `DEFENSE_ZONE_PEN_RATE_CAP` 也引用本常量。
+ */
+export const PEN_RATE_CAP_PERCENT = 95
+
 export function computeDefenseZone(options: {
   defensePanel: Pick<PanelStats, 'penRate' | 'pen' | 'ignoreDefense' | 'reduceDefense'>
   isMb: boolean
   enemyDefense: number
 }) {
   const defense = options.defensePanel
-  const penRateRatio = clamp(defense.penRate / 100, 0, 0.95)
+  const penRateRatio = clamp(defense.penRate / 100, 0, PEN_RATE_CAP_PERCENT / 100)
   const ignoreDefenseRatio = clamp(defense.ignoreDefense / 100, 0, 1)
   const reduceDefenseRatio = clamp(defense.reduceDefense / 100, 0, 1)
   const defenseFactor = Math.max(0, 1 - ignoreDefenseRatio - reduceDefenseRatio)
@@ -491,14 +499,18 @@ function computeGeneralAndAnomalyBase(options: {
   const critDmgRatio = clamp(panel.critDmg / 100, 0, 20)
   const critMultiplier = 1 + critRateRatio * critDmgRatio
 
-  const penRateRatio = clamp(defense.penRate / 100, 0, 0.95)
-  const ignoreDefenseRatio = clamp(defense.ignoreDefense / 100, 0, 1)
-  const reduceDefenseRatio = clamp(defense.reduceDefense / 100, 0, 1)
-  const defenseFactor = Math.max(0, 1 - ignoreDefenseRatio - reduceDefenseRatio)
-  const defenseAfterModifiers = options.enemyInput.defense * defenseFactor * (1 - penRateRatio)
-  // 与 computeDefenseZone 同口径：有效防御整体钳制到 ≥0，防御区恒 ≤ 1
-  const effectiveDefense = Math.max(0, defenseAfterModifiers - defense.pen)
-  const defenseMultiplier = options.isMb ? 1 : 794 / (794 + effectiveDefense)
+  const {
+    penRateRatio,
+    ignoreDefenseRatio,
+    reduceDefenseRatio,
+    defenseFactor,
+    effectiveDefense,
+    defenseMultiplier,
+  } = computeDefenseZone({
+    defensePanel: defense,
+    isMb: options.isMb,
+    enemyDefense: options.enemyInput.defense,
+  })
   const resPenPanel = options.resPenSource ?? panel
   const resistanceMultiplier = 1 - enemyRes + clamp((resPenPanel.resPen + extraResPen) / 100, -2, 2)
 
