@@ -103,6 +103,8 @@ function withTotal(groups: StatSourceGroup[], totalText: string, processItems?: 
 /** 只投影本次正式采用、视图快照和逐效果增量；不重算或重新匹配 Buff。 */
 export function buildEventValueTips(calculation: SkillFlowCalculationDetail): Record<ValueTipsKey, StatSourceGroup[]> {
   const d = calculation.evaluation
+  /** 异常类伤害：防御区的穿透与减防分别来自两个固定身份，不再用面板名标注 */
+  const anomalyLine = d.kind !== 'direct' && d.kind !== 'sharpen'
   if (!d.damageInputUsages || !d.effectRecords || !d.viewSnapshots) throw new Error('Incomplete event source contract')
   // 间接来源记录解释转模基数，不作为伤害公式直接读取的面板字段。
   const usages = d.damageInputUsages.filter(usage => usage.usedView !== 'convertSourcePanel')
@@ -372,12 +374,14 @@ const disorderFormulaParts = (() => {
       defCutPanel: defTrigPanel,
       defCutExternal: defTrigExternal,
       defCutSources: defTrigSources,
-      defCutLabel: defTrigLabel,
+      // 异常类：穿透率/穿透值取异常强度提供者，减防/无视防御取异常类触发者；
+      // 直伤没有这两个身份，仍按实际采用的面板标注。
+      defCutLabel: anomalyLine ? '异常类触发者' : defTrigLabel,
       splitDefCut: splitDefenseSources,
       isMb: props.isMb,
       mbLabel: '命破招式持有者',
-      penRateRole: actualViewLabel(penUsages),
-      defCutRole: actualViewLabel(defenseUsages),
+      penRateRole: anomalyLine ? '异常强度提供者' : actualViewLabel(penUsages),
+      defCutRole: anomalyLine ? '异常类触发者' : actualViewLabel(defenseUsages),
     }),
     resistanceMultiplier: withTotal(
       [
@@ -791,7 +795,8 @@ const disorderFormulaParts = (() => {
     ),
     levelZone: [
       {
-        label: actualViewLabel(baseUsages),
+        // 异常类的等级区与异常基础同属异常强度提供者；直伤仍按实际采用的面板
+        label: anomalyLine ? '异常强度提供者' : actualViewLabel(baseUsages),
         items: [
           `角色等级 ${Math.round(p.levelZoneAgentLevel)}`,
           `等级区 ${formatFormulaNumber(p.levelZone)} = 1 + (${Math.round(p.levelZoneAgentLevel)} - 1) / 59`,
@@ -1300,12 +1305,12 @@ const disorderFormulaParts = (() => {
           defCutPanel: defTrigPanel,
           defCutExternal: defTrigExternal,
           defCutSources: defTrigSources,
-          defCutLabel: defTrigLabel,
+          defCutLabel: '异常类触发者',
           splitDefCut: true,
           isMb: Boolean(props.remielIsMb),
           mbLabel: '蕾米埃尔',
           penRateRole: '蕾米埃尔',
-          defCutRole: actualViewLabel(defenseUsages),
+          defCutRole: '异常类触发者',
         })
       : [],
     remielSelfResistanceMultiplier: p.remielSelfRadianceActive
@@ -1396,8 +1401,14 @@ export function buildEventZoneDisplay(calculation: SkillFlowCalculationDetail): 
       key==='remielSelfInCombatMasteryZone'&&usage.field==='inCombatMastery'||
       key==='mutationZone'&&usage.field==='mutationZone'||
       key==='specialMultZone'&&['specialMult','specialMultFactor'].includes(usage.field))
-    const sourceSlots=[...new Set(selected.map(usage=>d.viewSnapshots![usage.viewKey]!.slotIndex))]
-    const names=[...new Set(selected.map(usage=>d.viewSnapshots![usage.viewKey]!.agentName))]
+    // 等级区没有独立的输入字段，它跟「异常基础」同一组面板（异常类 = 异常强度提供者），
+    // 不属于「多个面板 / 事件参数」，所以显式复用基础字段的来源
+    const levelSelected = key==='levelZone'
+      ? usages.filter(usage=>(usage.field==='atk'||usage.field==='hp'||usage.field==='def') &&
+          (usage.resultKey==='baseDamage'||usage.resultKey==='anomalyBaseExpected'))
+      : selected
+    const sourceSlots=[...new Set(levelSelected.map(usage=>d.viewSnapshots![usage.viewKey]!.slotIndex))]
+    const names=[...new Set(levelSelected.map(usage=>d.viewSnapshots![usage.viewKey]!.agentName))]
     return {...row,sourceSlots,sourceLabel:finalResult?'最终伤害':names.length?'正式采用 · '+names.join('、'):'事件参数',groups:tips[key]}
   })
 }
