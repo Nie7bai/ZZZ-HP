@@ -7,6 +7,8 @@ import { findMemberOverride, sortSkillGroupMembers } from '../src/utils/skillGro
 import { buildAlignedDirectFormulaGroup } from '../src/utils/directDamageDisplay.ts'
 import { buildAlignedAnomalyFormulaGroups } from '../src/utils/anomalyFormulaDisplay.ts'
 import { pickEventDamage } from '../src/utils/damageEvent.ts'
+import { buildEventZoneDisplay } from '../src/utils/eventDamageSourceTips.ts'
+import { skillCalcZoneGroup } from '../src/utils/skillCalcZones.ts'
 import { createDefaultAffixDriveDiscMainStats } from '../src/types/calculatorPanel.ts'
 import { invalidateBuffCatalogCache } from '../src/utils/panelBuffCalc.ts'
 import { makePanel, dummyBangboo, testAgent, testSlot, extraCard } from './_effectPipelineHarness.mjs'
@@ -247,5 +249,28 @@ for (const mode of ['ordinary', 'extra-slot', 'extra-team']) {
   const r5 = r5Fixture(mode)
   check(`R5 ${mode} real release detail`, () => assert.equal(resolveSkillFlowCalculationDetail(r5.context, null, r5.hits[0]).evaluation.defenseTriggerFinalPanel.anomalyReleaseMult, 150))
 }
+
+const { r5Fixture: zoneGroupFixture } = await import('./_eventElementHarness.mjs')
+const zoneGroupRows = buildEventZoneDisplay(
+  resolveSkillFlowCalculationDetail(zoneGroupFixture('ordinary').context, null, zoneGroupFixture('ordinary').hits[0]),
+)
+
+check('乘区归属：易伤与异常/异放/耀变倍率归触发者，紊乱/乱流倍率归提供者', () => {
+  // 所有者 2026-11-01 口径；分组只读这张表，改归属先改这里
+  for (const label of ['易伤区', '非直伤易伤区', '属性异常倍率区', '异放倍率区', '耀变倍率区']) {
+    assert.equal(skillCalcZoneGroup(label), 'trigger', label)
+  }
+  for (const label of ['紊乱倍率区', '乱流倍率区', '紊乱基础倍率', '乱流基础倍率', '紊乱补偿倍率', '乱流补偿倍率']) {
+    assert.equal(skillCalcZoneGroup(label), 'producer', label)
+  }
+})
+check('异常类计算过程按归属拆成提供者 / 触发者 / 共用 / 结果', () => {
+  const groups = new Map(zoneGroupRows.map((row) => [row.label, skillCalcZoneGroup(row.label)]))
+  assert.equal(groups.get('面板攻击力'), 'producer')
+  assert.equal(groups.get('异放倍率区'), 'trigger')
+  assert.equal(groups.get('非直伤易伤区'), 'trigger')
+  assert.equal(groups.get('防御区'), 'mixed')
+  assert.equal(groups.get('期望伤害'), 'result')
+})
 
 console.log(`\n${passed} passed, 0 failed`)
