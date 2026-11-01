@@ -117,6 +117,8 @@ interface AlignedFormulaTerm {
   label: string
   value: string
   tipsKey: ValueTipsKey
+  /** 因子的实际输入方身份（与组标题不同时才标），如「异常类触发者 · 菲欧妮」 */
+  ownerLabel?: string
 }
 
 type AlignedFormulaResultKey =
@@ -298,6 +300,7 @@ const formulaValueTips = computed(() => {
                 <span class="formula-aligned-term-value">
                   <StatValueWithSources :value="term.value" :groups="formulaValueTips[term.tipsKey]" />
                 </span>
+                <span v-if="term.ownerLabel" class="formula-term-owner">{{ term.ownerLabel }}</span>
               </div>
             </template>
             <span class="formula-aligned-op" aria-hidden="true">→</span>
@@ -543,6 +546,17 @@ const formulaValueTips = computed(() => {
 .formula-agent-label {
   color: var(--calc-text, #1c212a);
   font-weight: 600;
+}
+
+/* 单个因子的输入方身份：比组标题小一号，避免抢主标题 */
+.formula-term-owner {
+  display: block;
+  font-size: 0.66rem;
+  font-weight: 400;
+  line-height: 1.25;
+  opacity: 0.78;
+  white-space: nowrap;
+  text-align: center;
 }
 
 .formula-aligned-title {

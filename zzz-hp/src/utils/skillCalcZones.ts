@@ -341,12 +341,22 @@ const MIXED_ZONE_LABELS = new Set(['通用乘区', '防御区'])
 
 const RESULT_ZONE_LABELS = new Set(['暴击伤害', '期望伤害', '不暴击伤害'])
 
+/**
+ * 易伤区 / 直伤易伤区 / 非直伤易伤区是**同一个乘区**，只是按伤害类型取其中一档，
+ * 加成来源统一是异常类触发者（所有者 2026-11-01 口径）。
+ */
+const VULNERABLE_ZONE_LABELS = new Set(['易伤区', '直伤易伤区', '非直伤易伤区'])
+
 export function skillCalcZoneGroup(label: string): SkillCalcZoneGroup {
   if (MIXED_ZONE_LABELS.has(label)) return 'mixed'
   if (PRODUCER_ZONE_LABELS.has(label)) return 'producer'
+  if (VULNERABLE_ZONE_LABELS.has(label)) return 'trigger'
   if (RESULT_ZONE_LABELS.has(label)) return 'result'
   return 'trigger'
 }
+
+const VULNERABLE_ZONE_HINT =
+  '易伤区 / 直伤易伤区 / 非直伤易伤区是同一个乘区，只按伤害类型取对应的一档；加成来源取异常类触发者。'
 
 const ZONE_HINTS: Record<string, string> = {
   局内攻击力: '本人耀变链：局外攻击 + 蕾米埃尔角色/影画「攻击力转模」；不含局内攻击%、队友/邦布、音擎/驱动盘其它攻击增益。',
@@ -363,9 +373,9 @@ const ZONE_HINTS: Record<string, string> = {
   增伤区: '1 + 增伤加成（取异常强度提供者）。',
   防御区: '穿透率与穿透值取异常强度提供者，减防 / 无视防御取异常类触发者；794 / (794 + 敌方防御 × 防御因子 × (1 − 穿透率))。',
   抗性区: '1 − 敌方抗性 + 抗性穿透。',
-  易伤区: '1 + 易伤加成（取异常类触发者）。',
-  非直伤易伤区: '1 + 易伤加成（异常 / 紊乱 / 乱流 / 耀变共用，取异常类触发者）。',
-  直伤易伤区: '1 + 直伤易伤加成（取异常类触发者）。',
+  易伤区: VULNERABLE_ZONE_HINT,
+  非直伤易伤区: VULNERABLE_ZONE_HINT,
+  直伤易伤区: VULNERABLE_ZONE_HINT,
   失衡易伤区: '1 + 失衡易伤（全局与本期加算，取异常类触发者）。',
   通用乘区: '由基础伤害 × 增伤区 × 防御区 × 抗性区 × 失衡易伤区连乘；基础/增伤/失衡取异常强度提供者，防御/抗性取异常类触发者。',
   特殊乘区: '招式与增益提供的独立乘区连乘（取异常类触发者）。',
