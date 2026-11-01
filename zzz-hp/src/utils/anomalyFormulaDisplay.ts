@@ -101,7 +101,7 @@ export function buildAlignedAnomalyFormulaGroups(
     : [
         { label: '通用乘区', value: formatFormulaNumber(p.generalMultiplier, 2), tipsKey: 'generalMultiplier' },
         {
-          label: '非直伤易伤区',
+          label: '易伤区',
           value: formatFormulaNumber(p.anomalyVulnerableMultiplier),
           tipsKey: 'anomalyVulnerableMultiplier',
           // 与直伤易伤区、易伤区是同一个乘区，只按伤害类型取一档；加成来源是异常类触发者

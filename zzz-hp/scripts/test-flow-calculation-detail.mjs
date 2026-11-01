@@ -257,7 +257,7 @@ const zoneGroupRows = buildEventZoneDisplay(
 
 check('乘区归属：易伤与异常/异放/耀变倍率归触发者，紊乱/乱流倍率归提供者', () => {
   // 所有者 2026-11-01 口径；分组只读这张表，改归属先改这里
-  for (const label of ['易伤区', '非直伤易伤区', '属性异常倍率区', '异放倍率区', '耀变倍率区']) {
+  for (const label of ['易伤区', '属性异常倍率区', '异放倍率区', '耀变倍率区']) {
     assert.equal(skillCalcZoneGroup(label), 'trigger', label)
   }
   for (const label of ['紊乱倍率区', '乱流倍率区', '紊乱基础倍率', '乱流基础倍率', '紊乱补偿倍率', '乱流补偿倍率']) {
@@ -268,9 +268,20 @@ check('异常类计算过程按归属拆成提供者 / 触发者 / 共用 / 结�
   const groups = new Map(zoneGroupRows.map((row) => [row.label, skillCalcZoneGroup(row.label)]))
   assert.equal(groups.get('面板攻击力'), 'producer')
   assert.equal(groups.get('异放倍率区'), 'trigger')
-  assert.equal(groups.get('非直伤易伤区'), 'trigger')
+  assert.equal(groups.get('易伤区'), 'trigger')
   assert.equal(groups.get('防御区'), 'mixed')
   assert.equal(groups.get('期望伤害'), 'result')
+})
+check('易伤区在直伤与异常类格子都只显示「易伤区」', () => {
+  const directHit = hits.find((hit) => hit.skill.damageType === 'direct')
+  assert.ok(directHit, '需要一个直伤样本')
+  const directRows = buildEventZoneDisplay(resolveSkillFlowCalculationDetail(context(), null, directHit))
+  const directLabels = directRows.map((row) => row.label)
+  assert.ok(directLabels.includes('易伤区'), directLabels.join('/'))
+  assert.ok(!directLabels.includes('直伤易伤区'), directLabels.join('/'))
+  const anomalyLabels = zoneGroupRows.map((row) => row.label)
+  assert.ok(anomalyLabels.includes('易伤区'), anomalyLabels.join('/'))
+  assert.ok(!anomalyLabels.includes('非直伤易伤区'), anomalyLabels.join('/'))
 })
 
 console.log(`\n${passed} passed, 0 failed`)

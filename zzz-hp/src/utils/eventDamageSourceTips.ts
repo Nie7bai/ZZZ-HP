@@ -441,7 +441,7 @@ const disorderFormulaParts = (() => {
             ? ['dmgReduction', 'anomalyDmgReduction']
             : ['dmgReduction', 'directDmgReduction'],
         finalValue: displayVulnerableMultiplier,
-        resultLabel: props.show === 'anomaly' ? '非直伤易伤区' : '直伤易伤区',
+        resultLabel: '易伤区',
       }),
     ),
     directVulnerableMultiplier: withTotal(
@@ -463,7 +463,7 @@ const disorderFormulaParts = (() => {
           showAdditiveProcess: false,
         }),
       ],
-      `直伤易伤区 ${formatFormulaNumber(p.directVulnerableMultiplier)}`,
+      `易伤区 ${formatFormulaNumber(p.directVulnerableMultiplier)}`,
       buildEnemyCombatProcessItems({
         baseLabel: '易伤基础',
         baseValue: enemy.vulnerableMultiplier,
@@ -471,7 +471,7 @@ const disorderFormulaParts = (() => {
         buffKeys: ['vulnerable', 'directVulnerable'],
         subtractKeys: ['dmgReduction', 'directDmgReduction'],
         finalValue: p.directVulnerableMultiplier,
-        resultLabel: '直伤易伤区',
+        resultLabel: '易伤区',
       }),
     ),
     anomalyVulnerableMultiplier: withTotal(
@@ -493,7 +493,7 @@ const disorderFormulaParts = (() => {
           showAdditiveProcess: false,
         }),
       ],
-      `非直伤易伤区 ${formatFormulaNumber(p.anomalyVulnerableMultiplier)}`,
+      `易伤区 ${formatFormulaNumber(p.anomalyVulnerableMultiplier)}`,
       buildEnemyCombatProcessItems({
         baseLabel: '易伤基础',
         baseValue: enemy.vulnerableMultiplier,
@@ -501,7 +501,7 @@ const disorderFormulaParts = (() => {
         buffKeys: ['vulnerable', 'anomalyVulnerable'],
         subtractKeys: ['dmgReduction', 'anomalyDmgReduction'],
         finalValue: p.anomalyVulnerableMultiplier,
-        resultLabel: '非直伤易伤区',
+        resultLabel: '易伤区',
       }),
     ),
     staggerMultiplier: withTotal(
@@ -1359,7 +1359,7 @@ export interface EventZoneDisplayRow extends SkillCalcZoneRow {
 const zoneTipKeys: Record<string, ValueTipsKey> = {
   面板攻击力:'baseDamage',面板防御力:'baseDamage',面板贯穿力:'baseDamage',基础伤害:'baseDamage',
   增伤:'dmgMultiplier',增伤区:'dmgMultiplier',防御区:'defenseMultiplier',抗性区:'resistanceMultiplier',
-  易伤区:'vulnerableMultiplier',非直伤易伤区:'anomalyVulnerableMultiplier',直伤易伤区:'directVulnerableMultiplier',
+  易伤区:'vulnerableMultiplier',
   失衡易伤区:'staggerMultiplier',特殊乘区:'specialMultiplier',特殊倍率乘区:'specialMultZone',
   暴击区:'critMultiplier',锐爆区:'critMultiplier',贯穿增伤区:'pierceDmgMultiplier',
   技能倍率区:'directDmgMultZone',直伤倍率区:'directDmgMultZone',决算倍率区:'settlementDmgMultZone',
@@ -1388,6 +1388,11 @@ export function buildEventZoneDisplay(calculation: SkillFlowCalculationDetail): 
       if(row.label==='防御区')key='remielSelfDefenseMultiplier'
       if(row.label==='抗性区')key='remielSelfResistanceMultiplier'
       if(row.label==='等级区')key='remielSelfStandardLevelZone'
+    }
+    // 易伤区三个名字（易伤区 / 直伤易伤区 / 非直伤易伤区）其实是同一个乘区，
+    // 格子只显示「易伤区」，来源弹层按伤害类型取对应的那一档
+    if(row.label==='易伤区'&&!d.result.remielSelfRadianceActive){
+      key=d.kind==='direct'||d.kind==='sharpen'?'directVulnerableMultiplier':'anomalyVulnerableMultiplier'
     }
     if(!key)throw new Error('Unmapped event zone: '+row.label)
     const selected=finalResult?usages:usages.filter(usage=>usage.resultKey===key||

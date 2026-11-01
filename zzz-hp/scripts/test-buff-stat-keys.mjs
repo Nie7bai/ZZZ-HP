@@ -287,7 +287,7 @@ console.log('\n[7] 伤害详情公式表：乱流那一格读乱流暴击区，�
     { baseAgent: '异常强度提供者 · 甲', bonusAgent: '异常类触发者 · 乙' },
   )
   const vulnerableTerm = labelledBase.terms.find((term) => term.tipsKey === 'anomalyVulnerableMultiplier')
-  check('非直伤易伤区在公式里标成异常类触发者', vulnerableTerm?.ownerLabel === '异常类触发者 · 乙', vulnerableTerm?.ownerLabel)
+  check('易伤区在公式里标成异常类触发者', vulnerableTerm?.ownerLabel === '异常类触发者 · 乙', vulnerableTerm?.ownerLabel)
 }
 
 console.log('\n[8] 子类暴击互相独立：属性异常暴击不是父类，不会串到异放/乱流/耀变/紊乱')

@@ -171,7 +171,7 @@ export function buildSkillCalcZoneRows(
   pushCommon(rows, result)
 
   if (damageType === 'direct' || damageType === 'sharpen') {
-    push(rows, '直伤易伤区', result.directVulnerableMultiplier)
+    push(rows, '易伤区', result.directVulnerableMultiplier)
     if (result.useSharpenFormula) {
       push(rows, '锐爆区', result.sharpenCritZone)
     } else {
@@ -189,7 +189,7 @@ export function buildSkillCalcZoneRows(
     return rows
   }
 
-  push(rows, '非直伤易伤区', result.anomalyVulnerableMultiplier)
+  push(rows, '易伤区', result.anomalyVulnerableMultiplier)
   push(rows, '精通区', result.masteryZone)
   push(rows, '等级区', result.levelZone)
   if (Number.isFinite(result.mutationZone) && Math.abs(result.mutationZone - 1) > 1e-6) {
@@ -345,7 +345,7 @@ const RESULT_ZONE_LABELS = new Set(['暴击伤害', '期望伤害', '不暴击�
  * 易伤区 / 直伤易伤区 / 非直伤易伤区是**同一个乘区**，只是按伤害类型取其中一档，
  * 加成来源统一是异常类触发者（所有者 2026-11-01 口径）。
  */
-const VULNERABLE_ZONE_LABELS = new Set(['易伤区', '直伤易伤区', '非直伤易伤区'])
+const VULNERABLE_ZONE_LABELS = new Set(['易伤区'])
 
 export function skillCalcZoneGroup(label: string): SkillCalcZoneGroup {
   if (MIXED_ZONE_LABELS.has(label)) return 'mixed'
@@ -374,8 +374,6 @@ const ZONE_HINTS: Record<string, string> = {
   防御区: '穿透率与穿透值取异常强度提供者，减防 / 无视防御取异常类触发者；794 / (794 + 敌方防御 × 防御因子 × (1 − 穿透率))。',
   抗性区: '1 − 敌方抗性 + 抗性穿透。',
   易伤区: VULNERABLE_ZONE_HINT,
-  非直伤易伤区: VULNERABLE_ZONE_HINT,
-  直伤易伤区: VULNERABLE_ZONE_HINT,
   失衡易伤区: '1 + 失衡易伤（全局与本期加算，取异常类触发者）。',
   通用乘区: '由基础伤害 × 增伤区 × 防御区 × 抗性区 × 失衡易伤区连乘；基础/增伤/失衡取异常强度提供者，防御/抗性取异常类触发者。',
   特殊乘区: '招式与增益提供的独立乘区连乘（取异常类触发者）。',
