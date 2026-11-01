@@ -165,7 +165,6 @@ function formatDamageNumber(value: number) {
             v-for="row in section.rows"
             :key="`${section.key}-${row.label}`"
             class="zone-display-item zone-display-item--clickable"
-            :class="{ 'zone-display-item--result': row.label === '最终伤害' }"
             role="button"
             tabindex="0"
             @pointerenter="showZoneTip(row, $event)"
@@ -178,26 +177,24 @@ function formatDamageNumber(value: number) {
           </div>
         </div>
       </section>
-    </template>
-    <div
-      v-if="actorSections.length && groupedResultRows.length"
-      class="zone-display-grid zone-result-grid"
-    >
-      <div
-        v-for="row in groupedResultRows"
-        :key="`grouped-result-${row.label}`"
-        class="zone-display-item zone-display-item--clickable zone-display-item--result"
-        role="button"
-        tabindex="0"
-        @pointerenter="showZoneTip(row, $event)"
-        @pointerleave="scheduleZoneTipHide"
-        @focus="showZoneTip(row, $event)"
-        @blur="scheduleZoneTipHide"
-      >
-        <span class="zone-display-label">{{ row.label }}</span>
-        <span class="zone-display-val">{{ row.value }}</span>
+
+      <div v-if="groupedResultRows.length" class="zone-display-grid zone-result-grid">
+        <div
+          v-for="row in groupedResultRows"
+          :key="`grouped-result-${row.label}`"
+          class="zone-display-item zone-display-item--clickable zone-display-item--result"
+          role="button"
+          tabindex="0"
+          @pointerenter="showZoneTip(row, $event)"
+          @pointerleave="scheduleZoneTipHide"
+          @focus="showZoneTip(row, $event)"
+          @blur="scheduleZoneTipHide"
+        >
+          <span class="zone-display-label">{{ row.label }}</span>
+          <span class="zone-display-val">{{ row.value }}</span>
+        </div>
       </div>
-    </div>
+    </template>
     <template v-else-if="zoneSplit">
       <div class="zone-split">
         <section class="zone-box zone-box--producer">

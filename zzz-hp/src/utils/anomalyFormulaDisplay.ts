@@ -104,7 +104,7 @@ export function buildAlignedAnomalyFormulaGroups(
           label: '易伤区',
           value: formatFormulaNumber(p.anomalyVulnerableMultiplier),
           tipsKey: 'anomalyVulnerableMultiplier',
-          // 与直伤易伤区、易伤区是同一个乘区，只按伤害类型取一档；加成来源是异常类触发者
+          // 与直伤易伤 / 非直伤易伤是同一个乘区，只按伤害类型取一档；加成来源是异常类触发者
           ownerLabel: labels?.bonusAgent,
         },
         { label: '精通区', value: formatFormulaNumber(p.masteryZone), tipsKey: 'masteryZone' },

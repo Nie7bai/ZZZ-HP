@@ -251,8 +251,9 @@ for (const mode of ['ordinary', 'extra-slot', 'extra-team']) {
 }
 
 const { r5Fixture: zoneGroupFixture } = await import('./_eventElementHarness.mjs')
+const zoneGroupCalc = zoneGroupFixture('ordinary')
 const zoneGroupRows = buildEventZoneDisplay(
-  resolveSkillFlowCalculationDetail(zoneGroupFixture('ordinary').context, null, zoneGroupFixture('ordinary').hits[0]),
+  resolveSkillFlowCalculationDetail(zoneGroupCalc.context, null, zoneGroupCalc.hits[0]),
 )
 
 check('乘区归属：易伤与异常/异放/耀变倍率归触发者，紊乱/乱流倍率归提供者', () => {

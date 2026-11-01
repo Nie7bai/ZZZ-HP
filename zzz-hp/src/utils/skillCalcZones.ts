@@ -356,7 +356,7 @@ export function skillCalcZoneGroup(label: string): SkillCalcZoneGroup {
 }
 
 const VULNERABLE_ZONE_HINT =
-  '易伤区 / 直伤易伤区 / 非直伤易伤区是同一个乘区，只按伤害类型取对应的一档；加成来源取异常类触发者。'
+  '易伤区 / 直伤易伤区 / 非直伤易伤区是同一个乘区，按伤害类型取对应的一档；加成与减伤都在这里加算（异常类路径的加成来源取异常类触发者）。'
 
 const ZONE_HINTS: Record<string, string> = {
   局内攻击力: '本人耀变链：局外攻击 + 蕾米埃尔角色/影画「攻击力转模」；不含局内攻击%、队友/邦布、音擎/驱动盘其它攻击增益。',
