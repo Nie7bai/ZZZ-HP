@@ -137,7 +137,7 @@ export const BUFF_STAT_FIELDS: {
   },
   {
     key: 'vulnerable',
-    label: '通用易伤',
+    label: '易伤',
     unit: 'percent',
     hint: '全伤害类型；与直伤易伤 / 非直伤易伤加算进同一易伤区（如 1 + 30% = 1.3）',
   },
