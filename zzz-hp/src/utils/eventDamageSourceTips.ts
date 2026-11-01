@@ -382,6 +382,8 @@ const disorderFormulaParts = (() => {
       mbLabel: '命破招式持有者',
       penRateRole: anomalyLine ? (d.producerAgentLabel ?? '异常强度提供者') : actualViewLabel(penUsages),
       defCutRole: anomalyLine ? (d.defenseTriggerAgentLabel ?? '异常类触发者') : actualViewLabel(defenseUsages),
+      // 只有异常类才有「提供者」身份；直伤沿用实际采用的面板，不额外加括号说明
+      penRatePanelName: anomalyLine ? d.producerAgentLabel : undefined,
     }),
     resistanceMultiplier: withTotal(
       [
@@ -1311,6 +1313,7 @@ const disorderFormulaParts = (() => {
           mbLabel: '蕾米埃尔',
           penRateRole: d.producerAgentLabel ?? '蕾米埃尔',
           defCutRole: d.defenseTriggerAgentLabel ?? '异常类触发者',
+          penRatePanelName: d.producerAgentLabel,
         })
       : [],
     remielSelfResistanceMultiplier: p.remielSelfRadianceActive

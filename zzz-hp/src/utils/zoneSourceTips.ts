@@ -57,9 +57,10 @@ export function buildDefenseZoneFormulaItems(options: {
     `敌方防御 ${fmt(options.enemyDefense, 2)}`,
     `无视防御 ${fmt(options.ignoreDefense, 2)}% + 减防 ${fmt(options.reduceDefense, 2)}%${defCutLabel}`,
     `防御因子 = max(0, 1 − 无视 − 减防) = max(0, 1 − ${fmt(defenseCut / 100)}) = ${fmt(parts.defenseFactor)}`,
+    // 穿透率与穿透值都是提供者局外面板的输入，放在一起读
     `穿透率 ${fmt(options.penRate, 2)}%${penRateLabel} → ${fmt(parts.penRateRatio)}`,
-    `折后防御 = 敌方防御 × 防御因子 × (1 − 穿透率) = ${fmt(options.enemyDefense, 2)} × ${fmt(parts.defenseFactor)} × (1 − ${fmt(parts.penRateRatio)}) = ${fmt(defenseAfter, 2)}`,
     `穿透值 ${fmt(options.pen, 2)}（${options.penRateRole ? `${options.penRateRole} · 局外，不受增益` : '局外面板，不受增益'}）`,
+    `折后防御 = 敌方防御 × 防御因子 × (1 − 穿透率) = ${fmt(options.enemyDefense, 2)} × ${fmt(parts.defenseFactor)} × (1 − ${fmt(parts.penRateRatio)}) = ${fmt(defenseAfter, 2)}`,
     `有效防御 = max(0, 折后防御) − 穿透值 = max(0, ${fmt(defenseAfter, 2)}) − ${fmt(options.pen, 2)} = ${fmt(parts.effectiveDefense, 2)}`,
     `防御区 = 794 / (794 + 有效防御) = 794 / (794 + ${fmt(parts.effectiveDefense, 2)}) = ${fmt(parts.defenseMultiplier)}`,
   ]
@@ -79,6 +80,8 @@ export function buildDefenseZoneSourceGroups(options: {
   mbLabel?: string
   penRateRole?: string
   defCutRole?: string
+  /** 穿透率/穿透值所在面板的归属名（如「异常强度提供者 · 某某」），只在局外面板组标题上显示 */
+  penRatePanelName?: string
 }): StatSourceGroup[] {
   if (options.isMb) {
     return [{ label: options.mbLabel ?? '命破', items: ['防御区固定为 1'] }]
@@ -95,11 +98,11 @@ export function buildDefenseZoneSourceGroups(options: {
   })
   const extraGroups: StatSourceGroup[] = [
     {
-      label: '敌方与环境 / 局外面板',
+      // 穿透值改跟穿透率同组（都在提供者的局外面板上），这里只留敌方侧与减防侧的外部值
+      label: '敌方与环境',
       items: [
         `敌方防御 ${fmt(options.enemyDefense, 2)}`,
         `无视防御 ${fmt(options.defCutExternal.ignoreDefense, 2)}%（局外，不受增益）`,
-        `穿透值 ${fmt(options.penRateExternal.pen, 2)}（局外，不受增益）`,
       ],
     },
   ]
@@ -119,6 +122,11 @@ export function buildDefenseZoneSourceGroups(options: {
       keys: options.splitDefCut ? ['penRate'] : ['reduceDefense', 'penRate'],
       externalPanel: options.penRateExternal,
       sources: options.penRateSources,
+      // 穿透率与穿透值都取提供者的局外面板，同组列出并写明是谁的面板
+      externalLabel: options.penRatePanelName
+        ? `局外面板（${options.penRatePanelName}）`
+        : '局外面板',
+      externalExtraItems: [`穿透值 ${fmt(options.penRateExternal.pen, 2)}（局外，不受增益）`],
       finalValues: options.splitDefCut
         ? { penRate: options.penRatePanel.penRate }
         : {
