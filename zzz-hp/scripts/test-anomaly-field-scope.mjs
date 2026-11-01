@@ -414,6 +414,9 @@ console.log('\n[C5] 中文名与不变项')
   check('保留「初始异常持续时间」', baseLabel('anomalyDuration')?.label === '初始异常持续时间')
   check('保留「异常掌控」', baseLabel('anomalyControl')?.label === '初始异常掌控')
   check('保留「非直伤易伤」标签', buffLabel('anomalyVulnerable')?.label !== undefined)
+  // 所有者 2026-11-01：保留「易伤」这个名字，同时三种易伤标签必须互不相同
+  check('易伤字段标签仍是「易伤」', buffLabel('vulnerable')?.label === '易伤', buffLabel('vulnerable')?.label)
+  check('三个易伤字段标签互不相同', new Set(['vulnerable', 'directVulnerable', 'anomalyVulnerable'].map((key) => buffLabel(key)?.label)).size === 3)
 
   // statRowsForZone：空选择 → 5 条；只选属性异常+紊乱 → 2 条
   const dmgZone = findBuffStatZoneById('zone:anomalyDmg')

@@ -147,7 +147,7 @@ export function buildEventValueTips(calculation: SkillFlowCalculationDetail): Re
   const defenseUsages = usages.filter(u => u.field === 'ignoreDefense' || u.field === 'reduceDefense')
   const penUsages = usages.filter(u => u.field === 'penRate' || u.field === 'pen')
   const defense = project(defenseUsages)
-  const viewLabels: Record<string, string> = { ownerPanel:'持有者面板',powerProviderPanel:'异常强度面板',anomalyTriggerPanel:'触发者面板',radianceSelfPanel:'本人耀变面板',mutationPanel:'异化面板',releaseMult:'异放倍率',convertSourcePanel:'转模来源面板' }
+  const viewLabels: Record<string, string> = { ownerPanel:'持有者面板',powerProviderPanel:'异常强度提供者',anomalyTriggerPanel:'异常类触发者',radianceSelfPanel:'本人耀变面板',mutationPanel:'异化面板',releaseMult:'异放倍率',convertSourcePanel:'转模来源面板' }
   const actualViewLabel = (selected: EventDamageInputUsage[]) => [...new Set(selected.map(u => viewLabels[u.usedView] ?? '正式采用面板'))].join('、') || '正式采用面板'
   const splitDefenseSources = new Set([...penUsages,...defenseUsages].map(u => u.viewKey)).size > 1
   const resistance = project(usages.filter(u => u.field === 'resPen' && u.resultKey === 'resistanceMultiplier'))
@@ -376,12 +376,14 @@ const disorderFormulaParts = (() => {
       defCutSources: defTrigSources,
       // 异常类：穿透率/穿透值取异常强度提供者，减防/无视防御取异常类触发者；
       // 直伤没有这两个身份，仍按实际采用的面板标注。
-      defCutLabel: anomalyLine ? '异常类触发者' : defTrigLabel,
+      defCutLabel: anomalyLine ? (d.defenseTriggerAgentLabel ?? '异常类触发者') : defTrigLabel,
       splitDefCut: splitDefenseSources,
       isMb: props.isMb,
       mbLabel: '命破招式持有者',
-      penRateRole: anomalyLine ? '异常强度提供者' : actualViewLabel(penUsages),
-      defCutRole: anomalyLine ? '异常类触发者' : actualViewLabel(defenseUsages),
+      penRateRole: anomalyLine ? (d.producerAgentLabel ?? '异常强度提供者') : actualViewLabel(penUsages),
+      defCutRole: anomalyLine ? (d.defenseTriggerAgentLabel ?? '异常类触发者') : actualViewLabel(defenseUsages),
+      // 只有异常类才有「提供者」身份；直伤沿用实际采用的面板，不额外加括号说明
+      penRatePanelName: anomalyLine ? d.producerAgentLabel : undefined,
     }),
     resistanceMultiplier: withTotal(
       [
@@ -441,7 +443,7 @@ const disorderFormulaParts = (() => {
             ? ['dmgReduction', 'anomalyDmgReduction']
             : ['dmgReduction', 'directDmgReduction'],
         finalValue: displayVulnerableMultiplier,
-        resultLabel: props.show === 'anomaly' ? '非直伤易伤区' : '直伤易伤区',
+        resultLabel: '易伤区',
       }),
     ),
     directVulnerableMultiplier: withTotal(
@@ -463,7 +465,7 @@ const disorderFormulaParts = (() => {
           showAdditiveProcess: false,
         }),
       ],
-      `直伤易伤区 ${formatFormulaNumber(p.directVulnerableMultiplier)}`,
+      `易伤区 ${formatFormulaNumber(p.directVulnerableMultiplier)}`,
       buildEnemyCombatProcessItems({
         baseLabel: '易伤基础',
         baseValue: enemy.vulnerableMultiplier,
@@ -471,7 +473,7 @@ const disorderFormulaParts = (() => {
         buffKeys: ['vulnerable', 'directVulnerable'],
         subtractKeys: ['dmgReduction', 'directDmgReduction'],
         finalValue: p.directVulnerableMultiplier,
-        resultLabel: '直伤易伤区',
+        resultLabel: '易伤区',
       }),
     ),
     anomalyVulnerableMultiplier: withTotal(
@@ -493,7 +495,7 @@ const disorderFormulaParts = (() => {
           showAdditiveProcess: false,
         }),
       ],
-      `非直伤易伤区 ${formatFormulaNumber(p.anomalyVulnerableMultiplier)}`,
+      `易伤区 ${formatFormulaNumber(p.anomalyVulnerableMultiplier)}`,
       buildEnemyCombatProcessItems({
         baseLabel: '易伤基础',
         baseValue: enemy.vulnerableMultiplier,
@@ -501,7 +503,7 @@ const disorderFormulaParts = (() => {
         buffKeys: ['vulnerable', 'anomalyVulnerable'],
         subtractKeys: ['dmgReduction', 'anomalyDmgReduction'],
         finalValue: p.anomalyVulnerableMultiplier,
-        resultLabel: '非直伤易伤区',
+        resultLabel: '易伤区',
       }),
     ),
     staggerMultiplier: withTotal(
@@ -735,8 +737,8 @@ const disorderFormulaParts = (() => {
         penRate: panel.penRate,
         pen: external.pen,
         isMb: props.isMb,
-        penRateRole: actualViewLabel(penUsages),
-        defCutRole: actualViewLabel(defenseUsages),
+        penRateRole: anomalyLine ? (d.producerAgentLabel ?? '异常强度提供者') : actualViewLabel(penUsages),
+        defCutRole: anomalyLine ? (d.defenseTriggerAgentLabel ?? '异常类触发者') : actualViewLabel(defenseUsages),
       }),
     ),
     piercePower: withTotal(
@@ -796,7 +798,7 @@ const disorderFormulaParts = (() => {
     levelZone: [
       {
         // 异常类的等级区与异常基础同属异常强度提供者；直伤仍按实际采用的面板
-        label: anomalyLine ? '异常强度提供者' : actualViewLabel(baseUsages),
+        label: anomalyLine ? (d.producerAgentLabel ?? '异常强度提供者') : actualViewLabel(baseUsages),
         items: [
           `角色等级 ${Math.round(p.levelZoneAgentLevel)}`,
           `等级区 ${formatFormulaNumber(p.levelZone)} = 1 + (${Math.round(p.levelZoneAgentLevel)} - 1) / 59`,
@@ -1305,12 +1307,13 @@ const disorderFormulaParts = (() => {
           defCutPanel: defTrigPanel,
           defCutExternal: defTrigExternal,
           defCutSources: defTrigSources,
-          defCutLabel: '异常类触发者',
+          defCutLabel: d.defenseTriggerAgentLabel ?? '异常类触发者',
           splitDefCut: true,
           isMb: Boolean(props.remielIsMb),
           mbLabel: '蕾米埃尔',
-          penRateRole: '蕾米埃尔',
-          defCutRole: '异常类触发者',
+          penRateRole: d.producerAgentLabel ?? '蕾米埃尔',
+          defCutRole: d.defenseTriggerAgentLabel ?? '异常类触发者',
+          penRatePanelName: d.producerAgentLabel,
         })
       : [],
     remielSelfResistanceMultiplier: p.remielSelfRadianceActive
@@ -1359,7 +1362,7 @@ export interface EventZoneDisplayRow extends SkillCalcZoneRow {
 const zoneTipKeys: Record<string, ValueTipsKey> = {
   面板攻击力:'baseDamage',面板防御力:'baseDamage',面板贯穿力:'baseDamage',基础伤害:'baseDamage',
   增伤:'dmgMultiplier',增伤区:'dmgMultiplier',防御区:'defenseMultiplier',抗性区:'resistanceMultiplier',
-  易伤区:'vulnerableMultiplier',非直伤易伤区:'anomalyVulnerableMultiplier',直伤易伤区:'directVulnerableMultiplier',
+  易伤区:'vulnerableMultiplier',
   失衡易伤区:'staggerMultiplier',特殊乘区:'specialMultiplier',特殊倍率乘区:'specialMultZone',
   暴击区:'critMultiplier',锐爆区:'critMultiplier',贯穿增伤区:'pierceDmgMultiplier',
   技能倍率区:'directDmgMultZone',直伤倍率区:'directDmgMultZone',决算倍率区:'settlementDmgMultZone',
@@ -1388,6 +1391,11 @@ export function buildEventZoneDisplay(calculation: SkillFlowCalculationDetail): 
       if(row.label==='防御区')key='remielSelfDefenseMultiplier'
       if(row.label==='抗性区')key='remielSelfResistanceMultiplier'
       if(row.label==='等级区')key='remielSelfStandardLevelZone'
+    }
+    // 易伤区三个名字（易伤区 / 直伤易伤区 / 非直伤易伤区）其实是同一个乘区，
+    // 格子只显示「易伤区」，来源弹层按伤害类型取对应的那一档
+    if(row.label==='易伤区'&&!d.result.remielSelfRadianceActive){
+      key=d.kind==='direct'||d.kind==='sharpen'?'directVulnerableMultiplier':'anomalyVulnerableMultiplier'
     }
     if(!key)throw new Error('Unmapped event zone: '+row.label)
     const selected=finalResult?usages:usages.filter(usage=>usage.resultKey===key||

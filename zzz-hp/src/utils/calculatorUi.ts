@@ -139,19 +139,19 @@ export const BUFF_STAT_FIELDS: {
     key: 'vulnerable',
     label: '易伤',
     unit: 'percent',
-    hint: '全伤害类型；与直伤/非直伤易伤加算进同一易伤区（如 1 + 30% = 1.3）',
+    hint: '全伤害类型；与直伤易伤 / 非直伤易伤加算进同一易伤区（如 1 + 30% = 1.3）',
   },
   {
     key: 'directVulnerable',
     label: '直伤易伤',
     unit: 'percent',
-    hint: '仅直伤；与通用易伤加算进直伤易伤区',
+    hint: '仅直伤；与易伤加算进易伤区',
   },
   {
     key: 'anomalyVulnerable',
     label: '非直伤易伤',
     unit: 'percent',
-    hint: '仅异常类（异常/紊乱/乱流/异放/耀变）；与通用易伤加算进非直伤易伤区',
+    hint: '仅异常类（异常/紊乱/乱流/异放/耀变）；与易伤加算进易伤区',
   },
   {
     key: 'dmgReduction',
@@ -163,13 +163,13 @@ export const BUFF_STAT_FIELDS: {
     key: 'directDmgReduction',
     label: '直伤减伤',
     unit: 'percent',
-    hint: '仅直伤；从直伤易伤区加算扣减',
+    hint: '仅直伤；从易伤区加算扣减',
   },
   {
     key: 'anomalyDmgReduction',
     label: '非直伤减伤',
     unit: 'percent',
-    hint: '仅异常类；从非直伤易伤区加算扣减',
+    hint: '仅异常类；从易伤区加算扣减',
   },
   {
     key: 'globalStaggerVulnerable',

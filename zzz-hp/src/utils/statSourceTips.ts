@@ -247,6 +247,10 @@ export function buildStatSourceGroups(options: {
   finalValues?: Partial<Record<BuffStatKey, number>>
   /** 是否附加加减过程，默认 true */
   showAdditiveProcess?: boolean
+  /** 局外面板组的标题，默认「局外面板」；需要写明是谁的面板时覆盖 */
+  externalLabel?: string
+  /** 追加到局外面板组的额外条目（如穿透值这类不来自 Buff 字段的局外面板输入） */
+  externalExtraItems?: string[]
 }): StatSourceGroup[] {
   const groups: StatSourceGroup[] = []
   const externalItems: string[] = []
@@ -261,8 +265,12 @@ export function buildStatSourceGroups(options: {
     externalItems.push(`${fieldLabel(key)} ${value}`)
   }
 
-  if (externalItems.length) {
-    groups.push({ label: '局外面板', items: externalItems })
+  const extraItems = options.externalExtraItems ?? []
+  if (externalItems.length || extraItems.length) {
+    groups.push({
+      label: options.externalLabel ?? '局外面板',
+      items: [...externalItems, ...extraItems],
+    })
   }
 
   if (options.extraGroups?.length) {

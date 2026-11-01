@@ -33,6 +33,11 @@ export interface AlignedFormulaTerm {
   label: string
   value: string
   tipsKey: string
+  /**
+   * 该因子的实际输入方身份（与所在组标题不同时才标），如「异常类触发者 · 菲欧妮」。
+   * 易伤区即属此类：数值参与「异常基础期望」连乘，但加成来源是异常类触发者。
+   */
+  ownerLabel?: string
 }
 
 export type AlignedAnomalyFormulaKey =
@@ -96,9 +101,11 @@ export function buildAlignedAnomalyFormulaGroups(
     : [
         { label: '通用乘区', value: formatFormulaNumber(p.generalMultiplier, 2), tipsKey: 'generalMultiplier' },
         {
-          label: '非直伤易伤区',
+          label: '易伤区',
           value: formatFormulaNumber(p.anomalyVulnerableMultiplier),
           tipsKey: 'anomalyVulnerableMultiplier',
+          // 与直伤易伤 / 非直伤易伤是同一个乘区，只按伤害类型取一档；加成来源是异常类触发者
+          ownerLabel: labels?.bonusAgent,
         },
         { label: '精通区', value: formatFormulaNumber(p.masteryZone), tipsKey: 'masteryZone' },
         { label: '等级区', value: formatFormulaNumber(p.levelZone), tipsKey: 'levelZone' },

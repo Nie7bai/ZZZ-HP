@@ -177,8 +177,8 @@ function summaryStatLabel(summary: EventEffectSummary): string {
 /** 使用视图 → 展示名（Spec §5.2 第 2 项；不暴露内部键） */
 const USE_VIEW_LABELS: Record<string, string> = {
   ownerPanel: '持有者面板',
-  powerProviderPanel: '异常强度面板',
-  anomalyTriggerPanel: '触发者面板',
+  powerProviderPanel: '异常强度提供者',
+  anomalyTriggerPanel: '异常类触发者',
   radianceSelfPanel: '本人耀变受限面板',
   mutationPanel: '异化面板',
   releaseMult: '异放倍率',

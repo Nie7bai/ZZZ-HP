@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { buildEventZoneDisplay, type EventZoneDisplayRow } from '@/utils/eventDamageSourceTips'
+import { skillCalcZoneGroup } from '@/utils/skillCalcZones'
 import type { SkillFlowCalculationDetail } from '@/utils/skillFlowCalculation'
 import type { StatSourceGroup } from '@/utils/statSourceTips'
 
@@ -14,9 +15,55 @@ const props = defineProps<{
   summary?: { perHit: number; count: number; total: number } | null
   /** 没有结算结果时的提示文案 */
   emptyHint?: string
+  /** 异常类：按输入身份分成「异常强度提供者 / 异常类触发者 / 共用」三块列出 */
+  groupByActor?: boolean
+  /** 「异常强度提供者 · 名字」；缺省只显示身份 */
+  producerLabel?: string
+  /** 「异常类触发者 · 名字」；缺省只显示身份 */
+  triggerLabel?: string
 }>()
 
 const rows = computed(() => (props.calculation ? buildEventZoneDisplay(props.calculation) : []))
+
+interface ActorSection {
+  key: 'producer' | 'trigger' | 'mixed'
+  label: string
+  className: string
+  rows: EventZoneDisplayRow[]
+}
+
+/** 异常类：按 skillCalcZoneGroup 的格子归属把乘区行分开列，避免混在一个网格里 */
+const actorSections = computed<ActorSection[]>(() => {
+  if (!props.groupByActor) return []
+  const pick = (group: 'producer' | 'trigger' | 'mixed') =>
+    rows.value.filter((row) => skillCalcZoneGroup(row.label) === group)
+  const sections: ActorSection[] = [
+    {
+      key: 'producer',
+      label: props.producerLabel || '异常强度提供者',
+      className: 'zone-box--producer',
+      rows: pick('producer'),
+    },
+    {
+      key: 'trigger',
+      label: props.triggerLabel || '异常类触发者',
+      className: 'zone-box--trigger',
+      rows: pick('trigger'),
+    },
+    {
+      key: 'mixed',
+      label: '共用 · 敌方与环境',
+      className: 'zone-box--mixed',
+      rows: pick('mixed'),
+    },
+  ]
+  return sections.filter((section) => section.rows.length)
+})
+
+/** 分组模式下最终伤害仍单独成行，与未分组时的结果格同款 */
+const groupedResultRows = computed(() =>
+  props.groupByActor ? rows.value.filter((row) => skillCalcZoneGroup(row.label) === 'result') : [],
+)
 
 const zoneSplit = computed(() => {
   const list = rows.value
@@ -103,7 +150,52 @@ function formatDamageNumber(value: number) {
 
 <template>
   <div class="flow-zone-calculation">
-    <template v-if="zoneSplit">
+    <template v-if="actorSections.length">
+      <section
+        v-for="section in actorSections"
+        :key="section.key"
+        class="zone-box"
+        :class="section.className"
+      >
+        <header class="zone-box-head">
+          <strong class="zone-box-name">{{ section.label }}</strong>
+        </header>
+        <div class="zone-display-grid">
+          <div
+            v-for="row in section.rows"
+            :key="`${section.key}-${row.label}`"
+            class="zone-display-item zone-display-item--clickable"
+            role="button"
+            tabindex="0"
+            @pointerenter="showZoneTip(row, $event)"
+            @pointerleave="scheduleZoneTipHide"
+            @focus="showZoneTip(row, $event)"
+            @blur="scheduleZoneTipHide"
+          >
+            <span class="zone-display-label">{{ row.label }}</span>
+            <span class="zone-display-val">{{ row.value }}</span>
+          </div>
+        </div>
+      </section>
+
+      <div v-if="groupedResultRows.length" class="zone-display-grid zone-result-grid">
+        <div
+          v-for="row in groupedResultRows"
+          :key="`grouped-result-${row.label}`"
+          class="zone-display-item zone-display-item--clickable zone-display-item--result"
+          role="button"
+          tabindex="0"
+          @pointerenter="showZoneTip(row, $event)"
+          @pointerleave="scheduleZoneTipHide"
+          @focus="showZoneTip(row, $event)"
+          @blur="scheduleZoneTipHide"
+        >
+          <span class="zone-display-label">{{ row.label }}</span>
+          <span class="zone-display-val">{{ row.value }}</span>
+        </div>
+      </div>
+    </template>
+    <template v-else-if="zoneSplit">
       <div class="zone-split">
         <section class="zone-box zone-box--producer">
           <header class="zone-box-head">

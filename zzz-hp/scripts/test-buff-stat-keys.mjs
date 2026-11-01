@@ -275,6 +275,19 @@ console.log('\n[7] 伤害详情公式表：乱流那一格读乱流暴击区，�
   const anomalyTerm = anomalyGroup.terms.find((term) => term.tipsKey === 'attributeAnomalyCritZone')
   check('属性异常仍用「属性异常暴击区」', anomalyTerm?.label === '属性异常暴击区', anomalyTerm?.label)
   check('属性异常取期望 attributeAnomalyCritZone（1.27）', anomalyTerm?.value === '1.27', anomalyTerm?.value)
+
+  // 所有者 2026-11-01：易伤区 / 直伤易伤区 / 非直伤易伤区是同一个乘区，来源是异常类触发者，
+  // 所以它虽参与「异常基础期望」连乘，公式行里也要单独标出触发者，不能算到提供者头上
+  const [labelledBase] = buildAlignedAnomalyFormulaGroups(
+    anomaly,
+    'attributeAnomaly',
+    '紊乱',
+    fmt,
+    (v) => String(v),
+    { baseAgent: '异常强度提供者 · 甲', bonusAgent: '异常类触发者 · 乙' },
+  )
+  const vulnerableTerm = labelledBase.terms.find((term) => term.tipsKey === 'anomalyVulnerableMultiplier')
+  check('易伤区在公式里标成异常类触发者', vulnerableTerm?.ownerLabel === '异常类触发者 · 乙', vulnerableTerm?.ownerLabel)
 }
 
 console.log('\n[8] 子类暴击互相独立：属性异常暴击不是父类，不会串到异放/乱流/耀变/紊乱')

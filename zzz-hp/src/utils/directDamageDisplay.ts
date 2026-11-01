@@ -105,7 +105,7 @@ export function buildAlignedDirectFormulaGroup(
       tipsKey: 'generalMultiplier',
     },
     {
-      label: '直伤易伤区',
+      label: '易伤区',
       value: formatFormulaNumber(p.directVulnerableMultiplier),
       tipsKey: 'directVulnerableMultiplier',
     },

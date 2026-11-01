@@ -16,6 +16,7 @@
     "import:nanoka-skills:all:write": "node scripts/import-nanoka-skills.mjs --all --write",
     "delete:defense-season": "node scripts/delete-defense-season.mjs",
     "export:calculator-buffs": "node scripts/export-calculator-buffs.mjs",
+    "export:boss-info": "node scripts/export-boss-info.mjs",
     "export:db-json": "node scripts/export-db-json.mjs",
     "export:affix-preset": "node scripts/export-affix-preset.mjs",
     "restore:affix-preset": "node scripts/restore-affix-preset.mjs",
