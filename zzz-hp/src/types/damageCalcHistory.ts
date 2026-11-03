@@ -300,6 +300,17 @@ export interface DamageCalcHistoryEntry {
   staggerPhase?: StaggerPhase
   /** Buff 勾选状态（按槽位 + 全队） */
   multiSlotBuffSelection?: MultiSlotBuffSelection
+  /**
+   * 危局 / 防卫 / 临界的环境筛选（跟方案走；缺省 = 加载时不切换环境）。
+   * 字段与 `DamageCalcWorkingDraft` 同名同义，恢复路径共用 `applyWorkingState`。
+   */
+  envBuffMode?: 'none' | 'crisis' | 'defense' | 'deduction'
+  envBuffVersion?: string
+  envBuffPhaseId?: string
+  envBuffFrontierId?: string
+  envBuffNodeId?: string
+  /** 环境 Buff 勾选快照：期数或效果 id 失效时按名称 + 数值重建 */
+  envBuffChecks?: import('@/utils/schemeEnvironmentBuff').SchemeEnvironmentBuffChecks
   /** 方案库目录分组（路径，根目录为空串） */
   folder: string
   /** 同目录内排序权重（小在前） */
