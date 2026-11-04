@@ -43,13 +43,18 @@ function check(label, condition, detail) {
 
 const baseHit = {
   id: 'flow-1',
+  // 与真实命中同形：`ResolvedHit` 的字段全部带上（可为 null），避免夹具与生产形状不一致
+  elementOverride: null,
+  buffOverride: null,
   ownerAgentId: 'velina',
   anomalyPowerAgentId: 'piper',
   triggerAgentId: 'remiel',
   count: 3,
   staggerPhase: 'stagger',
   critMode: 'expected',
+  damageKind: 'anomaly',
   anomalySubKind: 'attributeAnomaly',
+  directSubKind: 'normal',
   coords: [],
   isFollowUp: false,
   multOverrides: null,
