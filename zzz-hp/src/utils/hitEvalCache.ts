@@ -125,39 +125,30 @@ export function resetHitFingerprintDebugStats(): void {
 /**
  * 指纹读取的字段集合 —— **唯一来源**：`buildHitEvalFingerprint`（纯函数）与
  * `buildHitEvalFingerprintReused`（跨候选复用）都从这里取，避免两张字段表各自漂移。
+ *
+ * **整条命中参与指纹，不维护字段白名单**（2026-11-04 收紧）：
+ * 一次单条求值的输入就是「这条命中 + 计算上下文」，而上下文另有令牌。任何一条命中字段漏在
+ * 指纹之外，症状都是「数字看着对但是旧的」且不报错。人工白名单曾漏掉 `coords` / `isFollowUp` /
+ * `directSubKind` / `damageKind` 与招式的多个字段（改追击规则、改小类打标后不重算），
+ * 所以改为整条序列化：将来 `ResolvedHit` 加字段，指纹自动带上。
+ *
+ * 代价只是「多算几个字节」：多算原文只可能让缓存多失效（更慢），不会更错。
  */
 function hitEvalFingerprintFields(hit: ResolvedHit): Record<string, unknown> {
-  return {
-    id: hit.id,
-    // 行级增益例外：只影响本行结算 —— 必须进指纹，否则两行会互相命中对方的缓存
-    buffOverride: hit.buffOverride ?? null,
-    elementOverride: hit.elementOverride ?? null,
-    ownerAgentId: hit.ownerAgentId,
-    anomalyPowerAgentId: hit.anomalyPowerAgentId,
-    triggerAgentId: hit.triggerAgentId,
-    count: hit.count,
-    staggerPhase: hit.staggerPhase,
-    critMode: hit.critMode,
-    anomalySubKind: hit.anomalySubKind,
-    skillId: hit.skill.id,
-    damageType: hit.skill.damageType,
-    baseMult: hit.skill.baseMult,
-    effectiveBaseMult: hit.effectiveBaseMult,
-    skillTalentLevel: hit.skillTalentLevel,
-    baseMultFactor: hit.skill.baseMultFactor,
-    settlementMult: hit.skill.settlementMult,
-    skillTypes: hit.skill.skillTypes,
-    buffAnchorId: hit.skill.buffAnchorId,
-    multOverrides: hit.multOverrides,
-    panelMods: hit.panelMods,
-  }
+  // 顶层 `undefined` 统一成 `null`：同一份命中的 `buffOverride` 既可能是 undefined（字段存在但没值），
+  // 也可能被调用方补成 null（`getHitBuffPreview` 的行级例外）。JSON 会丢掉 undefined 键、保留 null 键，
+  // 不归一化就会给同一份内容算出两个指纹 —— 同一视图被重复求值，bench「逐视图阶段恰好一次」会 FAIL。
+  // 只统一顶层（旧白名单也只对 `buffOverride` / `elementOverride` 做过 `?? null`），嵌套内容按原样参与比较。
+  const fields: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(hit)) fields[key] = value === undefined ? null : value
+  return fields
 }
 
 /**
- * 单条招式的指纹：只要这些字段有一个变了，这条招式的伤害就可能不同。
+ * 单条招式的指纹：整条命中的规范化 JSON（见 `hitEvalFingerprintFields`）。
  *
- * 取两份旧指纹（面板侧 `buildResolvedHitSignature` 与最优侧 `hitFingerprint`）的**并集**：
- * 两份原本逐字相同，只差 `anomalySubKind`（它由 `damageType` 推出，属冗余字段，仍然带上）。
+ * 只要命中内容有任何变化，指纹必变；内容相同必得同一指纹。**不依赖人工字段表**，
+ * 因此不存在「加了新字段却忘了进指纹」的漏网。
  */
 export function buildHitEvalFingerprint(hit: ResolvedHit): string {
   hitFingerprintDebug.externalBuilds += 1
@@ -326,5 +317,20 @@ export function hitEvalCacheKey(
   mainExternal: PanelStats,
   withDetails: boolean,
 ): string {
-  return `${fingerprint}|${contextToken}|${stableJson(mainExternal)}|${withDetails ? 'detail' : 'numbers'}`
+  return createHitEvalKeyBuilder(contextToken, mainExternal)(fingerprint, withDetails)
+}
+
+/**
+ * 固定的「上下文令牌 + 主 C 面板」键前缀工厂。
+ *
+ * 同一份运行时里令牌与主 C 面板都不会变，而面板序列化（`stableJson`）与令牌查找原来要
+ * **每条命中各做一次**。工厂把这两段算一次，键格式仍由这里单点维护
+ * （`hitEvalCacheKey` 也走它），调用方只负责拼指纹与明细轴。
+ */
+export function createHitEvalKeyBuilder(
+  contextToken: string,
+  mainExternal: PanelStats,
+): (fingerprint: string, withDetails: boolean) => string {
+  const prefix = `${contextToken}|${stableJson(mainExternal)}`
+  return (fingerprint, withDetails) => `${fingerprint}|${prefix}|${withDetails ? 'detail' : 'numbers'}`
 }
