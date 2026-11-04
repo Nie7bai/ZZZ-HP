@@ -10,7 +10,7 @@ import {
   type OptimalEvalContext,
   type OptimalEventEvalDetail,
 } from '@/utils/optimalAffixAlloc'
-import { readHitEvalCache, writeHitEvalCache, buildHitEvalFingerprint, hitEvalCacheKey, internHitEvalContext, type HitEvalCacheEntry } from '@/utils/hitEvalCache'
+import { readHitEvalCache, writeHitEvalCache, buildHitEvalFingerprint, createHitEvalKeyBuilder, internHitEvalContext, type HitEvalCacheEntry } from '@/utils/hitEvalCache'
 import { computePanelStages, buffMasterDataVersion, buildPanelSourceValuesBySlotRecord, type ConvertResolveInputs, type PanelSourceValues } from '@/utils/panelBuffCalc'
 import { resolveSlotExternalPanel } from '@/utils/panelSourceResolution'
 import { buildSkillFlowHitContextSignature } from '@/utils/skillFlowPanelSource'
@@ -57,7 +57,9 @@ export function createBuffCalculationRuntime(input: BuffCalculationRuntimeInput)
     triggerAnomalyAgentId: source.triggerAnomalyAgentId,
   }) + '|catalog=' + buffMasterDataVersion(source) + '|configuration=' + JSON.stringify(
     Object.fromEntries(Object.entries(source).filter(([key, value]) =>
-      !['agents', 'wengines', 'driveDiscs', 'bangboo'].includes(key) && typeof value !== 'function')),
+      // `hits` 不进上下文：单条求值只读传进来的那一条命中，命中内容由整条指纹承担
+      // （`buildHitEvalFingerprint`）。带上它会让「加一行 / 调序 / 加准备预览」把整条流程全部重算。
+      !['agents', 'wengines', 'driveDiscs', 'bangboo', 'hits'].includes(key) && typeof value !== 'function')),
   )
   const mainSlotIndex = source.mainSlotIndex
   const mainExternal = snapshotCalculationInput(input.mainExternal)
@@ -77,7 +79,9 @@ export function createBuffCalculationRuntime(input: BuffCalculationRuntimeInput)
   })
   const context = withAffixLibraryExtraGains(base, snapshotCalculationInput([...input.sourceExtraGains]))
   const mainPanel = mainExternal ?? context.panelContext.slotExternalPanels![mainSlotIndex]!
-  const token = () => internHitEvalContext(signature)
+  // 令牌与主 C 面板键在运行时内固定：建一次，逐条命中复用（键格式仍由 hitEvalCache 单点维护）
+  const token = internHitEvalContext(signature)
+  const cacheKey = createHitEvalKeyBuilder(token, mainPanel)
   const previews = new Map<string, ConvertResolveInputs>()
   const globalStages = new Map<number, ReturnType<typeof computePanelStages>>()
   function stagesForSlot(slotIndex: number) {
@@ -114,7 +118,7 @@ export function createBuffCalculationRuntime(input: BuffCalculationRuntimeInput)
   function detail(inputHit: ResolvedHit) {
     const hit = snapshotCalculationInput(inputHit)
     return resolveSkillFlowCalculationDetail(context, mainExternal, hit,
-      hitEvalCacheKey(buildHitEvalFingerprint(hit), token(), mainPanel, true))
+      cacheKey(buildHitEvalFingerprint(hit), true))
   }
   return Object.freeze({
     signature,
@@ -123,7 +127,7 @@ export function createBuffCalculationRuntime(input: BuffCalculationRuntimeInput)
     getConfigurationInputs: configuration,
     getHitNumbers(inputHit: ResolvedHit) {
       const hit = snapshotCalculationInput(inputHit)
-      const key = hitEvalCacheKey(buildHitEvalFingerprint(hit), token(), mainPanel, false)
+      const key = cacheKey(buildHitEvalFingerprint(hit), false)
       const cached = readHitEvalCache(key)
       if (cached) return cached
       const value = evaluateSkillFlowHit(context, mainExternal, hit, false)
@@ -136,7 +140,7 @@ export function createBuffCalculationRuntime(input: BuffCalculationRuntimeInput)
     getHitBuffPreview(slotIndex: number, hit: ResolvedHit | null, rowOverride?: FlowBuffOverride | null) {
       if (!hit) return { ...configuration(slotIndex, 'group', rowOverride), contextKind: 'unavailable' as const }
       const effectiveHit = rowOverride === undefined ? snapshotCalculationInput(hit) : { ...snapshotCalculationInput(hit), buffOverride: snapshotCalculationInput(rowOverride) }
-      const key = `${slotIndex}|${token()}|${buildHitEvalFingerprint(effectiveHit)}`
+      const key = `${slotIndex}|${token}|${buildHitEvalFingerprint(effectiveHit)}`
       const cached = previews.get(key)
       if (cached) return cached
       const value = resolveEventBuffPreviewInputs(context, mainExternal, effectiveHit, slotIndex, detail(effectiveHit)?.evaluation ?? null)
