@@ -100,6 +100,12 @@ import { buildDefaultBuffSelection, collectAllBuffEffects, excludeExtraGainEntri
 import { computeExternalPanelFromTeamSlot } from '@/utils/affixPanelCalc'
 import { MULTI_SLOT_BUFF_SELECTION_KEY } from '@/utils/presetBuffScope'
 import {
+  applySchemeEnvironmentBuffChecks,
+  captureSchemeEnvironmentBuffChecks,
+  type SchemeEnvironmentBuffApplyResult,
+  type SchemeEnvironmentBuffChecks,
+} from '@/utils/schemeEnvironmentBuff'
+import {
   migrateLegacyPanelsToSources,
   panelSourceKindsWithData,
   resolveActivePanel,
@@ -301,6 +307,8 @@ const envBuffVersion = ref('')
 const envBuffPhaseId = ref('')
 const envBuffFrontierId = ref('')
 const envBuffNodeId = ref('')
+/** 方案加载时环境恢复的提示（期数不可用 / 勾选按名称重建） */
+const envSchemeNotice = ref('')
 const crisisPhases = ref<PhaseData[]>([])
 const defenseSeasons = ref<DefenseSeason[]>([])
 const deductionPeriods = ref<DeductionPeriod[]>([])
@@ -587,6 +595,7 @@ const skillFlowPanelAvailability = computed(() => {
 
 const envBuffFilterHint = computed(() => {
   if (envBuffLoadError.value) return envBuffLoadError.value
+  if (envSchemeNotice.value) return envSchemeNotice.value
   if (envBuffMode.value === 'none') {
     return '默认不显示危局 / Boss 场地 / 防线 / 临界 Buff。选择模式后出现对应分组。'
   }
@@ -686,6 +695,7 @@ async function loadEnvironmentBuffCatalogs() {
 
 watch(envBuffMode, (mode) => {
   if (restoringWorkingState) return
+  envSchemeNotice.value = ''
   clearEnvironmentBuffSelections()
   envBuffFrontierId.value = ''
   envBuffNodeId.value = ''
@@ -701,6 +711,7 @@ watch(envBuffMode, (mode) => {
 
 watch(envBuffPhaseId, () => {
   if (restoringWorkingState) return
+  envSchemeNotice.value = ''
   clearEnvironmentBuffSelections()
   if (envBuffMode.value === 'defense') applyDefaultDefenseFrontier()
   if (envBuffMode.value === 'deduction') applyDefaultDeductionNode()
@@ -708,12 +719,14 @@ watch(envBuffPhaseId, () => {
 
 watch(envBuffNodeId, () => {
   if (restoringWorkingState) return
+  envSchemeNotice.value = ''
   // 临界换节点：上一节点勾选的局内环境 Buff 清空
   clearEnvironmentBuffSelections()
 })
 
 watch(envBuffFrontierId, () => {
   if (restoringWorkingState) return
+  envSchemeNotice.value = ''
   clearEnvironmentBuffSelections()
 })
 
@@ -1697,6 +1710,18 @@ function pickSlotsToRestore(entry: { slots?: SchemeSlot[]; loadedSchemeId?: stri
   return entry.slots
 }
 
+function describeEnvironmentRestore(
+  result: SchemeEnvironmentBuffApplyResult,
+  phaseMissing: boolean,
+): string {
+  const parts: string[] = []
+  if (phaseMissing) parts.push('方案记录的环境期数已不可用，请重新选择期数')
+  // 完全命中就不打扰：只在重建 / 缺失时说明
+  if (result.remapped) parts.push(`已按名称重建 ${result.remapped} 条环境 Buff 勾选`)
+  if (result.missing) parts.push(`${result.missing} 条效果在当前期数找不到，已跳过`)
+  return parts.join('；')
+}
+
 function applyWorkingState(entry: {
   teamSlots: DamageCalcHistoryEntry['teamSlots']
   activeSlot: number
@@ -1718,9 +1743,12 @@ function applyWorkingState(entry: {
   envBuffPhaseId?: string
   envBuffFrontierId?: string
   envBuffNodeId?: string
+  /** 环境 Buff 勾选快照（方案才有；草稿直接靠 multiSlotBuffSelection 的 id） */
+  envBuffChecks?: SchemeEnvironmentBuffChecks
   preserveBaseDamageSource?: boolean
 }) {
   restoringWorkingState = true
+  envSchemeNotice.value = ''
   panelCalcSectionRef.value?.beginRestore()
   const restoredBuff = entry.multiSlotBuffSelection
     ? (JSON.parse(JSON.stringify(entry.multiSlotBuffSelection)) as MultiSlotBuffSelection)
@@ -1748,6 +1776,20 @@ function applyWorkingState(entry: {
   if (entry.envBuffPhaseId != null) envBuffPhaseId.value = entry.envBuffPhaseId
   if (entry.envBuffFrontierId != null) envBuffFrontierId.value = entry.envBuffFrontierId
   if (entry.envBuffNodeId != null) envBuffNodeId.value = entry.envBuffNodeId
+  // 方案记录的期数在当前目录里找不到（下架 / 重导）：说清楚，别只留一个空下拉。
+  // 目录还没加载完时不判定，避免把「正在加载」误报成「期数不可用」。
+  const envModeCatalogLoaded =
+    entry.envBuffMode === 'crisis'
+      ? crisisPhases.value.length > 0
+      : entry.envBuffMode === 'defense'
+        ? defenseSeasons.value.length > 0
+        : entry.envBuffMode === 'deduction'
+          ? deductionPeriods.value.length > 0
+          : false
+  const envPhaseMissing =
+    envModeCatalogLoaded &&
+    !!entry.envBuffPhaseId &&
+    !envPhaseOptions.value.some((option) => option.id === entry.envBuffPhaseId)
 
   const applyPanelSnapshot = (isRestoreReplay = false) => {
     if (!entry.panelState) return
@@ -1778,6 +1820,17 @@ function applyWorkingState(entry: {
   void nextTick(() => {
     multiSlotBuffSelection.team = restoredBuff.team
     multiSlotBuffSelection.bySlot = restoredBuff.bySlot
+    if (entry.envBuffChecks) {
+      const restored = applySchemeEnvironmentBuffChecks(
+        multiSlotBuffSelection,
+        entry.envBuffChecks,
+        activeEnvironmentBuffs.value,
+      )
+      const notice = describeEnvironmentRestore(restored, envPhaseMissing)
+      if (notice) envSchemeNotice.value = notice
+    } else if (envPhaseMissing) {
+      envSchemeNotice.value = '方案记录的环境期数已不可用，请重新选择期数'
+    }
     applyPanelSnapshot(true)
     void nextTick(() => {
       persistWorkingDraftNow(true)
@@ -1902,6 +1955,21 @@ function restoreWorkingState() {
   })
 }
 
+/** 方案要记住的环境筛选 + 勾选快照（草稿另走自己的 envBuff* 字段，不抓 checks） */
+function captureSchemeEnvironmentState() {
+  return {
+    envBuffMode: envBuffMode.value,
+    envBuffVersion: envBuffVersion.value,
+    envBuffPhaseId: envBuffPhaseId.value,
+    envBuffFrontierId: envBuffFrontierId.value,
+    envBuffNodeId: envBuffNodeId.value,
+    envBuffChecks: captureSchemeEnvironmentBuffChecks(
+      multiSlotBuffSelection,
+      activeEnvironmentBuffs.value,
+    ),
+  }
+}
+
 function saveHistoryEntry(payload: { name: string; folder: string }) {
   const panelState = captureSchemePanelState()
   if (!panelState) return
@@ -1930,6 +1998,7 @@ function saveHistoryEntry(payload: { name: string; folder: string }) {
     slots: JSON.parse(JSON.stringify(schemeSlots.value)),
     staggerPhase: staggerPhase.value,
     multiSlotBuffSelection: JSON.parse(JSON.stringify(multiSlotBuffSelection)),
+    ...captureSchemeEnvironmentState(),
     folder,
     order: Date.now(),
   }
@@ -1954,6 +2023,12 @@ function loadHistoryEntry(entry: DamageCalcHistoryEntry) {
   setLoadedSchemeId(entry.id)
   applyWorkingState({ ...entry, preserveBaseDamageSource: false })
   historyMessage.value = `已加载「${entry.name}」`
+  // 环境恢复结果在下一拍才确定（等勾选回灌）；期数不可用 / 重建数量补进同一条消息
+  void nextTick(() => {
+    if (envSchemeNotice.value) {
+      historyMessage.value = `已加载「${entry.name}」 · ${envSchemeNotice.value}`
+    }
+  })
 }
 
 /** 用当前页面配置覆盖指定方案（保留其 id / 名称 / 目录） */
@@ -1977,6 +2052,7 @@ function overwriteHistoryEntry(id: string) {
     slots: JSON.parse(JSON.stringify(schemeSlots.value)),
     staggerPhase: staggerPhase.value,
     multiSlotBuffSelection: JSON.parse(JSON.stringify(multiSlotBuffSelection)),
+    ...captureSchemeEnvironmentState(),
   }
   historyEntries.value = saveDamageCalcHistory(updated)
   // 同上：覆盖失败不能报「已覆盖」
@@ -2033,7 +2109,11 @@ function defaultEnemyInput(): DamageEnemyInput {
   return createDefaultDamageEnemyInput()
 }
 
-/** 方案边界内的空白页：队伍/面板/额外 Buff/准备流程/敌方。不含方案库、自建招式、流程伤害记录、危局筛选、公式开关。 */
+/**
+ * 方案边界内的空白面板：队伍/面板/额外 Buff/准备流程/敌方。
+ * 不含方案库、自建招式、流程伤害记录、公式开关；环境筛选（危局/防卫/临界）不在这份面板快照里，
+ * 而是与勾选快照一起挂在方案条目上（`envBuff*` / `envBuffChecks`）。
+ */
 function emptySchemePanelState(): DamageCalcSchemePanelSnapshot {
   return {
     externalPanel: resetSchemeExcludedPanelFields(createDefaultExternalPanel()),
