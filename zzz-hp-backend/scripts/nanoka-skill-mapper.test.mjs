@@ -27,6 +27,7 @@ import {
   mapSkillTypes,
   normalizeSkillName,
   parseCalFormula,
+  parseDescDamageDivisor,
   planAgentSkillImport,
   resolveParamDamageType,
   sameOptionalNumber,
@@ -156,6 +157,56 @@ test('parseCalFormula：只解析 {CAL:...}，拒绝非四则运算', () => {
   // 非 CAL / 非法字符
   assert.equal(parseCalFormula('40点'), null)
   assert.equal(parseCalFormula('{CAL:alert(1),1,2}'), null)
+})
+
+test('parseDescDamageDivisor：只认整段的 /N 缩放，其它写法保守按 1', () => {
+  assert.equal(parseDescDamageDivisor('{Skill:1431018, Prop:1001}'), 1)
+  assert.equal(parseDescDamageDivisor('{{Skill:1431018, Prop:1001}/6}'), 6)
+  assert.equal(parseDescDamageDivisor('{{Skill:1431018, Prop:1001} / 6}'), 6)
+  // 乘号、多个模板、夹其它文字都不是「同 id 多档」的口径，不做缩放
+  assert.equal(parseDescDamageDivisor('{Skill:1431018, Prop:1001}*2'), 1)
+  assert.equal(parseDescDamageDivisor('共6段{Skill:1431018, Prop:1001}'), 1)
+  assert.equal(parseDescDamageDivisor('{CAL:225+20*(AvatarSkillLevel(0)-1),1,2}%'), 1)
+  assert.equal(parseDescDamageDivisor(''), 1)
+})
+
+test('extractDamageSegments：叶瞬光「明心境·飞光」1 点档按 desc ÷6，与 6 点档不同', () => {
+  // 真实 nanoka 形状：两档共用同一个 Skill id 与同一组数值，档位差别只在 desc 的 /6
+  const sharedStats = { damage_percentage: 105800, damage_percentage_growth: 9620 }
+  const detail = {
+    skill: {
+      special: {
+        description: [
+          {
+            name: '强化特殊技：明心境·飞光',
+            param: [
+              {
+                name: '消耗1点青溟剑势伤害倍率',
+                desc: '{{Skill:1431018, Prop:1001}/6}',
+                param: { 1431018: sharedStats },
+              },
+              {
+                name: '消耗6点青溟剑势伤害倍率',
+                desc: '{Skill:1431018, Prop:1001}',
+                param: { 1431018: sharedStats },
+              },
+            ],
+          },
+        ],
+      },
+    },
+  }
+  const segments = extractDamageSegments(detail, { level: 12 })
+  assert.equal(segments.length, 2)
+  const onePoint = segments.find((s) => s.paramName.includes('1点'))
+  const sixPoints = segments.find((s) => s.paramName.includes('6点'))
+  assert.equal(onePoint.displayName, '强化特殊技：明心境·飞光·消耗1点青溟剑势')
+  assert.equal(sixPoints.displayName, '强化特殊技：明心境·飞光·消耗6点青溟剑势')
+  assert.equal(sixPoints.baseMult, 2116.2)
+  assert.equal(onePoint.baseMult, 352.7)
+  assert.equal(onePoint.damagePercentage, 17633.333)
+  assert.equal(onePoint.damagePercentageGrowth, 1603.333)
+  assert.deepEqual(onePoint.skillTypes, ['special', 'specialEnhanced'])
 })
 
 test('extractDamageSegments：直伤 + 异放双段，异常段沿用招式名并带 talentKey', () => {

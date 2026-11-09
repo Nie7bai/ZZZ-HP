@@ -825,7 +825,33 @@ export async function searchBossRecords(filters = {}) {
     params,
   )
 
-  return rows.filter((row) => matchesRecordScheme(row, recordScheme))
+  const records = rows.filter((row) => matchesRecordScheme(row, recordScheme))
+  // 失衡易伤以怪物库为准（2026-11-09）：期数行快照仅在基础库无记录时兜底。
+  // 原始 `stagger_multiplier` 保留给管理端编辑；`stagger_multiplier_resolved` 供展示/应用读取。
+  const names = [...new Set(records.map((row) => String(row.boss_name ?? '').trim()).filter(Boolean))]
+  let infoStaggerByName = new Map()
+  if (names.length) {
+    try {
+      const placeholders = names.map(() => '?').join(', ')
+      const [infoRows] = await pool.execute(
+        `SELECT boss_name, stagger_multiplier FROM boss_info
+         WHERE boss_name IN (${placeholders}) AND stagger_multiplier IS NOT NULL`,
+        names,
+      )
+      infoStaggerByName = new Map(
+        infoRows.map((row) => [row.boss_name, normalizeStaggerMultiplier(row.stagger_multiplier)]),
+      )
+    } catch (err) {
+      console.warn('[boss] loadBossInfoStaggerMap fallback:', err.message)
+    }
+  }
+
+  return records.map((row) => ({
+    ...row,
+    stagger_multiplier_resolved:
+      infoStaggerByName.get(row.boss_name) ??
+      normalizeStaggerMultiplier(row.stagger_multiplier),
+  }))
 }
 
 export async function deleteBoss(id) {

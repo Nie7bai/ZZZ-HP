@@ -1,4 +1,4 @@
-import { buildSkillCalcZoneRows, type SkillCalcZoneRow } from '@/utils/skillCalcZones'
+import { buildSkillCalcZoneRows, staggerZoneLabel, type SkillCalcZoneRow } from '@/utils/skillCalcZones'
 import type { SkillFlowCalculationDetail } from '@/utils/skillFlowCalculation'
 import type { EventDamageInputUsage, BuffModSource } from '@/utils/panelBuffCalc'
 import { createEmptyBuffStatModifiers } from '@/utils/calculatorUi'
@@ -164,6 +164,7 @@ export function buildEventValueTips(calculation: SkillFlowCalculationDetail): Re
     remielIsMb: d.remielIsMb, skillMultLevelNote: buildSkillBaseMultNote(d.hit.skill,d.hit.skillTalentLevel),
   }
   const p = d.result
+  const staggerZoneName = staggerZoneLabel(p)
   const sub = d.anomalySubKind
   const ownerPanel = owner.panel, ownerExternal = owner.external, ownerSources = owner.sources
   const panel = base.panel, external = base.external, sources = base.sources
@@ -320,6 +321,35 @@ const disorderFormulaParts = (() => {
       `贯穿力 = 0.1 × ${formatFormulaNumber(panel.hp, 2)} + 0.3 × ${formatFormulaNumber(panel.atk, 2)} + ${formatFormulaNumber(pierceMod, 2)} = ${formatFormulaNumber(props.piercePower, 2)}`,
     ],
   )
+
+  /**
+   * 失衡易伤区过程：普通口径沿用通用过程；帷幕易伤额外展示「最终失衡易伤 → 上限 → 取最小」。
+   */
+  const staggerProcessItems = (() => {
+    const built = buildEnemyCombatProcessItems({
+      baseLabel: '失衡易伤基础',
+      baseValue: enemy.staggerMultiplier,
+      sources: ownerSources,
+      buffKeys: ['globalStaggerVulnerable', 'staggerVulnerable', 'staggerVulnerableOnly'],
+      finalValue: p.staggerMultiplier,
+      resultLabel: staggerZoneName,
+    })
+    const cap = p.staggerZoneKind === 'curtain' ? p.staggerZoneCap : undefined
+    if (cap == null) return built
+    // 合计取结算里的汇总（combatMods），避免某个增益不在展示来源里时少算
+    const combatMods = d.breakdown.combatMods
+    const buffPercent = combatMods.globalStaggerVulnerable
+      + combatMods.staggerVulnerable
+      + combatMods.staggerVulnerableOnly
+    const finalStagger = enemy.staggerMultiplier + buffPercent / 100
+    const capPercent = Math.round(cap * 100)
+    return [
+      ...(built.length ? built.slice(0, -1) : [`失衡易伤基础 ${formatFormulaNumber(enemy.staggerMultiplier)}`]),
+      `最终失衡易伤 ${formatFormulaNumber(finalStagger)}（基础 + 全部失衡类加成）`,
+      `上限 ${capPercent}%（叶瞬光影画：0–3 影 210%，4 影起 300%）`,
+      `min(${formatFormulaNumber(finalStagger)}, ${formatFormulaNumber(cap)}) = ${staggerZoneName} ${formatFormulaNumber(p.staggerMultiplier)}`,
+    ]
+  })()
 
   return {
     baseDamage:
@@ -524,15 +554,8 @@ const disorderFormulaParts = (() => {
           showAdditiveProcess: false,
         }),
       ],
-      `失衡易伤区 ${formatFormulaNumber(p.staggerMultiplier)}`,
-      buildEnemyCombatProcessItems({
-        baseLabel: '失衡易伤基础',
-        baseValue: enemy.staggerMultiplier,
-        sources: ownerSources,
-        buffKeys: ['globalStaggerVulnerable', 'staggerVulnerable', 'staggerVulnerableOnly'],
-        finalValue: p.staggerMultiplier,
-        resultLabel: '失衡易伤区',
-      }),
+      `${staggerZoneName} ${formatFormulaNumber(p.staggerMultiplier)}`,
+      staggerProcessItems,
     ),
     generalMultiplier: [
       {
@@ -542,7 +565,7 @@ const disorderFormulaParts = (() => {
           `增伤区 ${generalFormulaParts[1]}`,
           `防御区 ${generalFormulaParts[2]}`,
           `抗性区 ${generalFormulaParts[3]}`,
-          `失衡易伤区 ${generalFormulaParts[4]}`,
+          `${staggerZoneName} ${generalFormulaParts[4]}`,
           `合计 ${formatFormulaNumber(p.generalMultiplier, 2)}（不含易伤区）`,
         ],
       },
@@ -1198,7 +1221,7 @@ const disorderFormulaParts = (() => {
                 `防御区 ${formatFormulaNumber(p.remielSelfDefenseMultiplier ?? 1)}`,
                 `抗性区 ${formatFormulaNumber(p.remielSelfResistanceMultiplier ?? 1)}`,
                 `易伤区 ${formatFormulaNumber(p.anomalyVulnerableMultiplier)}`,
-                `失衡易伤区 ${formatFormulaNumber(p.staggerMultiplier)}`,
+                `${staggerZoneName} ${formatFormulaNumber(p.staggerMultiplier)}`,
                 `耀变增伤区 ${formatFormulaNumber(p.radianceDmgBonusZone)}`,
                 `耀变倍率区 ${formatFormulaNumber(p.radianceMultZone)}`,
                 `特殊倍率乘区 ${formatFormulaNumber(p.specialMultZone)}`,
@@ -1384,6 +1407,8 @@ export function buildEventZoneDisplay(calculation: SkillFlowCalculationDetail): 
   return buildSkillCalcZoneRows(d.result,d.hit.skill.damageType).filter(row=>row.label!=='通用乘区').map(row=>{
     const finalResult=['期望伤害','暴击伤害','不暴击伤害'].includes(row.label)
     let key=zoneTipKeys[row.label]
+    // 帷幕易伤是失衡易伤区的替换口径：标签带上限，来源仍按 staggerMultiplier 取
+    if(!key&&row.label.startsWith('帷幕易伤区'))key='staggerMultiplier'
     if(finalResult) key=d.kind==='direct'||d.kind==='sharpen'?'directDamageExpected'
       :d.anomalySubKind==='attributeAnomaly'?'attributeAnomalyExpected':d.anomalySubKind==='anomalyRelease'?'anomalyReleaseExpected'
         :d.anomalySubKind==='disorder'?'disorderExpected':d.anomalySubKind==='turbulence'?'turbulenceExpected':'radianceExpected'

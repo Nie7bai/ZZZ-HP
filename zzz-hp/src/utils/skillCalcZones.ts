@@ -111,6 +111,18 @@ export function formatSkillMultZoneAsPercent(zone: number): string {
   return text.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '')
 }
 
+/**
+ * 失衡易伤区标签：叶瞬光指定招式走「帷幕易伤」时带上限说明，
+ * 其余（缺省）保持「失衡易伤区」。
+ */
+export function staggerZoneLabel(
+  result: Pick<DamageCalcResult, 'staggerZoneKind' | 'staggerZoneCap'>,
+): string {
+  if (result.staggerZoneKind !== 'curtain') return '失衡易伤区'
+  const cap = result.staggerZoneCap
+  return cap != null ? `帷幕易伤区（上限 ${Math.round(cap * 100)}%）` : '帷幕易伤区'
+}
+
 function pushCommon(rows: SkillCalcZoneRow[], result: DamageCalcResult) {
   const baseSourceLabel =
     result.baseDamageSource === 'pierce'
@@ -121,7 +133,7 @@ function pushCommon(rows: SkillCalcZoneRow[], result: DamageCalcResult) {
   push(rows, baseSourceLabel, result.baseDamage, true)
   push(rows, '防御区', result.defenseMultiplier)
   push(rows, '抗性区', result.resistanceMultiplier)
-  push(rows, '失衡易伤区', result.staggerMultiplier)
+  push(rows, staggerZoneLabel(result), result.staggerMultiplier)
   push(rows, '通用乘区', result.generalMultiplier)
   push(rows, '特殊乘区', result.specialMultiplier)
 }
@@ -137,7 +149,7 @@ function pushRemielSelfRadianceRows(rows: SkillCalcZoneRow[], result: DamageCalc
   push(rows, '防御区', result.remielSelfDefenseMultiplier ?? result.defenseMultiplier)
   push(rows, '抗性区', result.remielSelfResistanceMultiplier ?? result.resistanceMultiplier)
   push(rows, '易伤区', result.anomalyVulnerableMultiplier)
-  push(rows, '失衡易伤区', result.staggerMultiplier)
+  push(rows, staggerZoneLabel(result), result.staggerMultiplier)
   push(rows, '耀变增伤区', result.radianceDmgBonusZone)
   // 耀变倍率区按百分比展示（3.6 → 360）：倍率区与防御/抗性等乘数区分开，避免误读成 3.6%
   // （用户口径 2026-09-16；仅耀变如此展示，其他类型倍率区保持区小数）
@@ -413,5 +425,8 @@ const ZONE_HINTS: Record<string, string> = {
 }
 
 export function skillCalcZoneHint(label: string): string {
+  if (label.startsWith('帷幕易伤区')) {
+    return '叶瞬光指定招式：取最终失衡易伤（基础 + 全局/失衡/仅失衡加成）后截断到上限，且不分失衡阶段。'
+  }
   return ZONE_HINTS[label] ?? '由结算链路直接给出该乘区数值。'
 }
