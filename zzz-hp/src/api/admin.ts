@@ -135,6 +135,8 @@ export interface BossRecord {
   resistance_high?: string | null
   boss_image: string | null
   stagger_multiplier?: number | null
+  /** 失衡易伤的有效值（怪物库优先，期数快照兜底） */
+  stagger_multiplier_resolved?: number | null
   stagger_time?: number | null
   field_buff_set_id?: string | null
 }

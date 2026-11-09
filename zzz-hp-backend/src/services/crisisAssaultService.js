@@ -139,8 +139,9 @@ function enrichBoss(boss, context = {}) {
   const rowStaggerTime = normalizeStaggerTime(boss.stagger_time)
   const stagger_time =
     rowStaggerTime ?? staggerTimeByName.get(boss.boss_name) ?? null
+  // 失衡易伤以怪物库为准（2026-11-09 所有者口径）：boss_info > 期数行快照；都缺省时回落默认 1.5
   const stagger_multiplier = normalizeStaggerMultiplier(
-    boss.stagger_multiplier ?? staggerMultiplierByName.get(boss.boss_name),
+    staggerMultiplierByName.get(boss.boss_name) ?? boss.stagger_multiplier,
   )
   const resistance_high =
     boss.resistance_high ?? resistanceHighByName.get(boss.boss_name) ?? null
