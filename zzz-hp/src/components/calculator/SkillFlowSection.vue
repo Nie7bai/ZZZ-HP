@@ -2122,7 +2122,8 @@ function addToFlow(prepared: PreparedSkill) {
     ownerAgentId: ownerId,
     preparedId: prepared.id,
     count: 1,
-    staggerPhase: 'stagger',
+    // 新增流程行默认非失衡（失衡由用户按需勾选；2026-11-09 口径）
+    staggerPhase: 'normal',
     critMode: 'expected',
   })
 }
