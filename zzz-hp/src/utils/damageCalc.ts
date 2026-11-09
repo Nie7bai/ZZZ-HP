@@ -78,6 +78,12 @@ export interface DamageCalcInput {
   useSharpenFormula?: boolean
   /** 当前是否处于失衡期 */
   staggerPhase?: 'normal' | 'stagger'
+  /**
+   * 帷幕易伤上限（倍率，如 2.1 = 210%）。非空时该招式改用「帷幕易伤」区：
+   * 不区分失衡阶段，取**最终失衡易伤**（敌人基础 + 全局/失衡/仅失衡 Buff）截断到上限。
+   * 目前仅叶瞬光的明心境招式、两个终结技与登场技传入。
+   */
+  curtainVulnerabilityCap?: number | null
   /** 招式持有者属性（直伤抗性区回落） */
   ownerAgentElement?: string
   /** 招式持有者抗性区基准属性（流明则取下一位非流明队友） */
@@ -177,6 +183,10 @@ export interface DamageCalcResult {
   /** 非直伤（异常类）易伤区 */
   anomalyVulnerableMultiplier: number
   staggerMultiplier: number
+  /** 失衡易伤区口径：curtain = 帷幕易伤（叶瞬光指定招式），缺省为普通失衡易伤 */
+  staggerZoneKind?: 'curtain'
+  /** 帷幕易伤上限（倍率，2.1 / 3）；仅 staggerZoneKind='curtain' 时有值 */
+  staggerZoneCap?: number
   specialMultiplier: number
   /** 贯穿增伤乘区（非贯穿基础时为 1） */
   pierceDmgMultiplier: number
@@ -462,6 +472,8 @@ function computeGeneralAndAnomalyBase(options: {
   combatPierceDmgBonus: number
   combatSharpenDmgBonus?: number
   staggerPhase: 'normal' | 'stagger'
+  /** 帷幕易伤上限（倍率）；非空时失衡易伤区改为 min(最终失衡易伤, 上限)，不分阶段 */
+  curtainVulnerabilityCap?: number | null
   /** 防御区穿透/减防分项；缺省与 panel 一致 */
   defensePanel?: Pick<PanelStats, 'penRate' | 'pen' | 'ignoreDefense' | 'reduceDefense'>
   /** 等级区所用角色等级 */
@@ -536,11 +548,15 @@ function computeGeneralAndAnomalyBase(options: {
   /**
    * 失衡期：怪物失衡易伤 + 全局常驻 + 失衡易伤 + 失衡易伤（仅失衡）
    * 非失衡期：100% + 全局常驻失衡易伤
+   * 帷幕易伤（叶瞬光指定招式）：不分阶段，取最终失衡易伤（基础 + 全部失衡类 Buff）截断上限
    */
+  const curtainCap = options.curtainVulnerabilityCap
   const staggerMultiplier =
-    options.staggerPhase === 'stagger'
-      ? options.enemyInput.staggerMultiplier + globalStagger + phaseStagger
-      : 1 + globalStagger
+    curtainCap != null
+      ? Math.min(options.enemyInput.staggerMultiplier + globalStagger + phaseStagger, curtainCap)
+      : options.staggerPhase === 'stagger'
+        ? options.enemyInput.staggerMultiplier + globalStagger + phaseStagger
+        : 1 + globalStagger
   const specialMultiplier = options.enemyInput.specialMultiplier + options.combatSpecial / 100
   const pierceDmgBonusRatio = options.combatPierceDmgBonus / 100
 
@@ -693,6 +709,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     combatPierceDmgBonus: input.combatPierceDmgBonus ?? 0,
     combatSharpenDmgBonus: input.combatSharpenDmgBonus ?? 0,
     staggerPhase,
+    curtainVulnerabilityCap: input.curtainVulnerabilityCap ?? null,
     agentLevel: ownerAgentLevel,
     resistanceElement: ownerResistanceElement,
     defensePanel: composeDefensePanel(zonePanels, 'direct'),
@@ -726,6 +743,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     combatSpecial: input.combatSpecial,
     combatPierceDmgBonus: input.combatPierceDmgBonus ?? 0,
     staggerPhase,
+    curtainVulnerabilityCap: input.curtainVulnerabilityCap ?? null,
     agentLevel: anomalyBaseLevel,
     resistanceElement: anomalyBaseResistanceElement,
     // 异常基础防御区：穿透取强度提供者（或持有者），减防/无视取异常类触发者
@@ -1058,7 +1076,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     markCombat(anomalyEvent ? 'combatAnomalyDmgReduction' : 'combatDirectDmgReduction',
       anomalyEvent ? 'anomalyDmgReduction' : 'directDmgReduction', 'vulnerableMultiplier')
     markCombat('combatGlobalStaggerVulnerable', 'globalStaggerVulnerable', 'staggerMultiplier')
-    if (staggerPhase === 'stagger') {
+    if (staggerPhase === 'stagger' || input.curtainVulnerabilityCap != null) {
       markCombat('combatStaggerVulnerable', 'staggerVulnerable', 'staggerMultiplier')
       markCombat('combatStaggerVulnerableOnly', 'staggerVulnerableOnly', 'staggerMultiplier')
     }
@@ -1137,6 +1155,8 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     directVulnerableMultiplier: round(mainParts.directVulnerableMultiplier, 4),
     anomalyVulnerableMultiplier: round(triggerParts.anomalyVulnerableMultiplier, 4),
     staggerMultiplier: round(mainParts.staggerMultiplier, 4),
+    staggerZoneKind: input.curtainVulnerabilityCap != null ? 'curtain' : undefined,
+    staggerZoneCap: input.curtainVulnerabilityCap ?? undefined,
     specialMultiplier: round(mainParts.specialMultiplier, 4),
     pierceDmgMultiplier: round(reportedPierceDmg, 4),
     sharpenDmgMultiplier: round(mainParts.sharpenDmgMultiplier, 4),
