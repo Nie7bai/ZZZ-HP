@@ -224,6 +224,22 @@ function evaluateArithmeticExpression(expression) {
 }
 
 /**
+ * 同一 `Skill:<id>` 的多档参数在 nanoka 里共用一组数值，档位差别写在 `desc` 的除法上：
+ * 例如叶瞬光「明心境·飞光·消耗1点青溟剑势」的 desc 是
+ * `{{Skill:1431018, Prop:1001}/6}`（总倍率 ÷6），而 6 点档是 `{Skill:1431018, Prop:1001}`（不除）。
+ *
+ * 只认「整段只有一个模板 + 一个 `/N`」的写法；带乘号、多个模板、夹其它文字等一律按 1 处理，
+ * 避免把远程数据的未知格式误当成缩放。
+ */
+export function parseDescDamageDivisor(desc) {
+  const text = String(desc ?? '').replace(/\s+/g, '')
+  const match = text.match(/^\{?\{Skill:[^{}]+\}(?:\/(\d+(?:\.\d+)?))?\}?%?$/)
+  if (!match?.[1]) return 1
+  const divisor = Number(match[1])
+  return Number.isFinite(divisor) && divisor > 0 ? divisor : 1
+}
+
+/**
  * 技能等级 L 时的伤害倍率%（本库 baseMult）。
  * nanoka 存万分比整数：3120 → 31.20% at L1；每级 +growth。
  */
@@ -238,7 +254,8 @@ export function computeBaseMultPercent(damagePercentage, growth, level = 12) {
 /**
  * 从角色详情拆出倍率候选段（同名同类型去重，保留首条）。
  *
- * - 直伤：`xx伤害倍率`（非失衡），数值取 `param` 里的 `damage_percentage` / `growth`
+ * - 直伤：`xx伤害倍率`（非失衡），数值取 `param` 里的 `damage_percentage` / `growth`；
+ *   `desc` 若对该参数带 `/N`（同 id 多档共用数值，如叶瞬光 1 点/6 点青溟剑势），先按 N 缩放
  * - 异常类（异放 / 耀变 / 紊乱 / 乱流）：参数名命中后，数值优先取 `param`；
  *   没有 `param` 时解析 `desc` 里的 `{CAL:...}` 模板（nanoka 的异放/耀变只写在 desc）
  *
@@ -280,10 +297,13 @@ export function extractDamageSegments(detail, { level = 12 } = {}) {
         let calExpression = null
         if (nanokaSkillId) {
           const stats = paramMap[nanokaSkillId] ?? {}
-          damagePercentage = Number(stats.damage_percentage ?? stats.main) || 0
-          damagePercentageGrowth =
-            Number(stats.damage_percentage_growth ?? stats.growth) || 0
-          baseMult = computeBaseMultPercent(damagePercentage, damagePercentageGrowth, level)
+          // 同 id 的多档参数共用数值，档位缩放写在 desc 的 `/N`（见 parseDescDamageDivisor）
+          const divisor = parseDescDamageDivisor(p?.desc)
+          const rawPercentage = Number(stats.damage_percentage ?? stats.main) || 0
+          const rawGrowth = Number(stats.damage_percentage_growth ?? stats.growth) || 0
+          damagePercentage = Math.round((rawPercentage / divisor) * 1000) / 1000
+          damagePercentageGrowth = Math.round((rawGrowth / divisor) * 1000) / 1000
+          baseMult = computeBaseMultPercent(rawPercentage / divisor, rawGrowth / divisor, level)
         } else {
           // 异常类倍率（异放 / 耀变等）只写在 desc 的 CAL 模板里，没有 param 数值
           const cal = parseCalFormula(p?.desc)
