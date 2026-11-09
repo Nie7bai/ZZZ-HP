@@ -322,6 +322,34 @@ const disorderFormulaParts = (() => {
     ],
   )
 
+  /**
+   * 失衡易伤区过程：普通口径沿用通用过程；帷幕易伤额外展示「最终失衡易伤 → 上限 → 取最小」。
+   */
+  const staggerProcessItems = (() => {
+    const built = buildEnemyCombatProcessItems({
+      baseLabel: '失衡易伤基础',
+      baseValue: enemy.staggerMultiplier,
+      sources: ownerSources,
+      buffKeys: ['globalStaggerVulnerable', 'staggerVulnerable', 'staggerVulnerableOnly'],
+      finalValue: p.staggerMultiplier,
+      resultLabel: staggerZoneName,
+    })
+    const cap = p.staggerZoneKind === 'curtain' ? p.staggerZoneCap : undefined
+    if (cap == null) return built
+    const buffPercent = ownerSources.reduce((sum, source) => sum
+      + (source.mods.globalStaggerVulnerable ?? 0)
+      + (source.mods.staggerVulnerable ?? 0)
+      + (source.mods.staggerVulnerableOnly ?? 0), 0)
+    const finalStagger = enemy.staggerMultiplier + buffPercent / 100
+    const capPercent = Math.round(cap * 100)
+    return [
+      ...(built.length ? built.slice(0, -1) : [`失衡易伤基础 ${formatFormulaNumber(enemy.staggerMultiplier)}`]),
+      `最终失衡易伤 ${formatFormulaNumber(finalStagger)}（基础 + 全部失衡类加成）`,
+      `上限 ${capPercent}%（叶瞬光影画：0–3 影 210%，4 影起 300%）`,
+      `min(${formatFormulaNumber(finalStagger)}, ${formatFormulaNumber(cap)}) = ${staggerZoneName} ${formatFormulaNumber(p.staggerMultiplier)}`,
+    ]
+  })()
+
   return {
     baseDamage:
       p.baseDamageSource === 'atk'
@@ -526,14 +554,7 @@ const disorderFormulaParts = (() => {
         }),
       ],
       `${staggerZoneName} ${formatFormulaNumber(p.staggerMultiplier)}`,
-      buildEnemyCombatProcessItems({
-        baseLabel: '失衡易伤基础',
-        baseValue: enemy.staggerMultiplier,
-        sources: ownerSources,
-        buffKeys: ['globalStaggerVulnerable', 'staggerVulnerable', 'staggerVulnerableOnly'],
-        finalValue: p.staggerMultiplier,
-        resultLabel: staggerZoneName,
-      }),
+      staggerProcessItems,
     ),
     generalMultiplier: [
       {
