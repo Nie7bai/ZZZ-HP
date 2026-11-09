@@ -336,10 +336,11 @@ const disorderFormulaParts = (() => {
     })
     const cap = p.staggerZoneKind === 'curtain' ? p.staggerZoneCap : undefined
     if (cap == null) return built
-    const buffPercent = ownerSources.reduce((sum, source) => sum
-      + (source.mods.globalStaggerVulnerable ?? 0)
-      + (source.mods.staggerVulnerable ?? 0)
-      + (source.mods.staggerVulnerableOnly ?? 0), 0)
+    // 合计取结算里的汇总（combatMods），避免某个增益不在展示来源里时少算
+    const combatMods = d.breakdown.combatMods
+    const buffPercent = combatMods.globalStaggerVulnerable
+      + combatMods.staggerVulnerable
+      + combatMods.staggerVulnerableOnly
     const finalStagger = enemy.staggerMultiplier + buffPercent / 100
     const capPercent = Math.round(cap * 100)
     return [
