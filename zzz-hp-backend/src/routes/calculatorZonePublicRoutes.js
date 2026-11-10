@@ -1,15 +1,17 @@
 import { Router } from 'express'
+import { listRuntimeDamageChains } from '../services/calculatorChainService.js'
 import { listZoneDefinitions, listZoneSchemes } from '../services/calculatorZoneService.js'
 import { failInternal, success } from '../utils/response.js'
 
 /**
- * 乘区方案公共只读接口（Phase 4e）。
+ * 乘区方案 / 计算链路公共只读接口（Phase 4e / 4f）。
  *
- * 用户端计算器需要读取“已启用”的乘区定义与方案；这里只暴露运行时必要字段：
+ * 用户端计算器需要读取“已启用”的乘区定义、方案与计算链路；这里只暴露运行时必要字段：
  * - 定义：zoneKey / label / sortOrder / appliesTo / providers / primitive / params / stats / display / version
  * - 方案：id / scope / targetId / name / priority / version / rules
+ * - 链路：id / chainKey / label / appliesTo / scope / targetId / priority / version / stages
  *
- * 不暴露 updatedBy / updatedAt / enabled 以外的管理信息；写操作只在 `/api/admin/calculator`。
+ * 不暴露 updatedBy / updatedAt 等管理信息，`enabled` 只用于过滤；写操作只在 `/api/admin/calculator`。
  */
 const router = Router()
 
@@ -45,6 +47,16 @@ router.get('/zone-schemes', async (_req, res) => {
     })
   } catch (err) {
     return failInternal(res, err, '获取乘区方案失败')
+  }
+})
+
+/** 计算链路：只返回 enabled，payload 形如 `{ version: 1, chains: [...] }` */
+router.get('/damage-chains', async (_req, res) => {
+  try {
+    const data = await listRuntimeDamageChains()
+    return success(res, data)
+  } catch (err) {
+    return failInternal(res, err, '获取计算链路失败')
   }
 })
 

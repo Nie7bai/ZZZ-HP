@@ -9,6 +9,7 @@ import bossRoutes from './routes/bossRoutes.js'
 import bossInfoRoutes from './routes/bossInfoRoutes.js'
 import buffRoutes from './routes/buffRoutes.js'
 import calculatorBuffRoutes from './routes/calculatorBuffRoutes.js'
+import calculatorChainRoutes from './routes/calculatorChainRoutes.js'
 import calculatorZoneRoutes from './routes/calculatorZoneRoutes.js'
 import calculatorZonePublicRoutes from './routes/calculatorZonePublicRoutes.js'
 import adminAuthRoutes from './routes/adminAuthRoutes.js'
@@ -150,6 +151,8 @@ app.use('/api/calculator-buffs', calculatorBuffRoutes)
 // 乘区方案公共只读（用户端运行时加载）与管理员 CRUD
 app.use('/api/calculator', calculatorZonePublicRoutes)
 app.use('/api/admin/calculator', calculatorZoneRoutes)
+// 计算链路（Damage Chain）：管理端 CRUD 挂在同一管理前缀下
+app.use('/api/admin/calculator', calculatorChainRoutes)
 app.use('/api/changelog', changelogRoutes)
 app.use('/api/site-info', siteInfoRoutes)
 app.use('/api/season-dates', seasonDateRoutes)

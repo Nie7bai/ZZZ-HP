@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test scripts/nanoka-buff-editor.test.mjs scripts/security-hardening.test.mjs scripts/auth-route-wiring.test.mjs scripts/season-display-id.test.mjs scripts/affix-preset-route-wiring.test.mjs scripts/affix-preset-save-validation.test.mjs scripts/anomaly-bar-coefficient.test.mjs scripts/nanoka-basics-mapper.test.mjs scripts/nanoka-skill-mapper.test.mjs scripts/agent-stale-write.test.mjs scripts/site-info-overwrite.test.mjs scripts/shared-scheme-import.test.mjs scripts/boss-weakness-sets.test.mjs scripts/calculator-zone-service.test.mjs",
+    "test": "node --test scripts/nanoka-buff-editor.test.mjs scripts/security-hardening.test.mjs scripts/auth-route-wiring.test.mjs scripts/season-display-id.test.mjs scripts/affix-preset-route-wiring.test.mjs scripts/affix-preset-save-validation.test.mjs scripts/anomaly-bar-coefficient.test.mjs scripts/nanoka-basics-mapper.test.mjs scripts/nanoka-skill-mapper.test.mjs scripts/agent-stale-write.test.mjs scripts/site-info-overwrite.test.mjs scripts/shared-scheme-import.test.mjs scripts/boss-weakness-sets.test.mjs scripts/calculator-zone-service.test.mjs scripts/calculator-chain-service.test.mjs",
     "start": "node src/app.js",
     "dev": "node --watch src/app.js",
     "import:nanoka": "node scripts/import-nanoka.mjs",
