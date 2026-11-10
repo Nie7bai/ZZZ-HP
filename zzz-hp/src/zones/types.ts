@@ -1,7 +1,7 @@
 import type { DamageCalcResult } from '@/utils/damageCalc'
 
 /** 乘区分组：用于展示分区与后续作用域过滤 */
-export type ZoneGroup = 'core' | 'direct' | 'anomaly' | 'radianceSelf' | 'special'
+export type ZoneGroup = 'core' | 'direct' | 'anomaly' | 'radianceSelf' | 'special' | 'custom'
 
 /**
  * 乘区定义（Phase 1a：只登记元数据与结果字段，不改计算）。

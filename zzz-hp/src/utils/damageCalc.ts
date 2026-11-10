@@ -31,6 +31,7 @@ import {
 import type { DamageInputUsage } from '@/utils/panelBuffCalc'
 import { buildZoneResults } from '@/zones/results'
 import { evaluateCoreZones } from '@/zones/builtins'
+import type { CustomZoneFactor } from '@/zones/customZones'
 import {
   applyMutationZone,
   computeAnomalyReleaseZones,
@@ -97,6 +98,11 @@ export interface DamageCalcInput {
    * 数据通路已接通；Phase 4b 接入方案求值后参与计算。
    */
   combatCustom?: Record<string, number>
+  /**
+   * 自定义乘区因子（Phase 3c）：由方案解析 + `evaluateCustomZoneFactors` 得到。
+   * 按顺序连乘进通用乘区，并写入 `zones` 展示；默认空 = 不影响结果。
+   */
+  customZoneFactors?: readonly CustomZoneFactor[]
   /**
    * 锐化路径：防御力基础 + 锐爆区（可溢出）+ 不乘决算/贯穿增伤；
    * 锋御职业或招式 damageType=sharpen 时为 true。
@@ -433,6 +439,8 @@ function computeGeneralAndAnomalyBase(options: {
   staggerPhase: 'normal' | 'stagger'
   /** 帷幕易伤上限（倍率）；非空时失衡易伤区改为 min(最终失衡易伤, 上限)，不分阶段 */
   curtainVulnerabilityCap?: number | null
+  /** 自定义乘区因子连乘（缺省 1） */
+  extraZoneFactor?: number
   /** 防御区穿透/减防分项；缺省与 panel 一致 */
   defensePanel?: Pick<PanelStats, 'penRate' | 'pen' | 'ignoreDefense' | 'reduceDefense'>
   /** 等级区所用角色等级 */
@@ -498,6 +506,7 @@ function computeGeneralAndAnomalyBase(options: {
     combatGlobalStaggerVulnerable: options.combatGlobalStaggerVulnerable,
     combatStaggerVulnerable: options.combatStaggerVulnerable,
     combatStaggerVulnerableOnly: options.combatStaggerVulnerableOnly,
+    extraZoneFactor: options.extraZoneFactor,
   })
 
   const enemyVulnerableBase = options.enemyInput.vulnerableMultiplier
@@ -642,6 +651,11 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       )
     : null
   const hasPolarDisorder = skillMults?.hasPolarDisorder ?? false
+  // 自定义乘区（Phase 3c）：方案解析后的因子按顺序连乘进通用乘区
+  const extraZoneFactor = (input.customZoneFactors ?? []).reduce(
+    (product, factor) => product * factor.value,
+    1,
+  )
 
   const mainParts = computeGeneralAndAnomalyBase({
     panel,
@@ -664,6 +678,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     combatSharpenDmgBonus: input.combatSharpenDmgBonus ?? 0,
     staggerPhase,
     curtainVulnerabilityCap: input.curtainVulnerabilityCap ?? null,
+    extraZoneFactor,
     agentLevel: ownerAgentLevel,
     resistanceElement: ownerResistanceElement,
     defensePanel: composeDefensePanel(zonePanels, 'direct'),
@@ -698,6 +713,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     combatPierceDmgBonus: input.combatPierceDmgBonus ?? 0,
     staggerPhase,
     curtainVulnerabilityCap: input.curtainVulnerabilityCap ?? null,
+    extraZoneFactor,
     agentLevel: anomalyBaseLevel,
     resistanceElement: anomalyBaseResistanceElement,
     // 异常基础防御区：穿透取强度提供者（或持有者），减防/无视取异常类触发者
@@ -1120,5 +1136,15 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     radianceExpectedNoCrit: round(applyMutation(radiance.expectedNoCrit), 0),
     radianceExpectedFullCrit: round(applyMutation(radiance.expectedFullCrit), 0),
   }
-  return { ...result, zones: buildZoneResults(result), zoneSchemeVersion: 1 }
+  const zones = buildZoneResults(result)
+  for (const factor of input.customZoneFactors ?? []) {
+    zones[factor.key] = {
+      key: factor.key,
+      label: factor.label,
+      order: factor.order,
+      group: 'custom',
+      value: factor.value,
+    }
+  }
+  return { ...result, zones, zoneSchemeVersion: 1 }
 }
