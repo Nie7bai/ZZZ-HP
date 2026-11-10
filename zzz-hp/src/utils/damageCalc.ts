@@ -18,8 +18,6 @@ import {
   computeRemielSelfRadianceSpecialLevelZone,
   computeRemielSelfRadianceStandardLevelZone,
   type RemielSelfRadianceCalcInput,
-  computeRadianceMultZone,
-  computeSpecialMultZone,
 } from '@/utils/remielUtils'
 import { resolveSkillMults } from '@/utils/skillSubcategoryMult'
 import {
@@ -33,6 +31,16 @@ import {
 import type { DamageInputUsage } from '@/utils/panelBuffCalc'
 import { buildZoneResults } from '@/zones/results'
 import { evaluateCoreZones } from '@/zones/builtins'
+import {
+  applyMutationZone,
+  computeAnomalyReleaseZones,
+  computeAttributeAnomalyZones,
+  computeDisorderZones,
+  computeRadianceZones,
+  computeTurbulenceZones,
+  resolveMutationMultiplier,
+  type SelfRadianceChain,
+} from '@/zones/anomalyZones'
 import {
   computeCritZones,
   computeDefenseZone,
@@ -759,28 +767,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   }
 
   // 异常乘区：全部异常子类（属性异常/异放/耀变/紊乱/乱流）的类型增伤、倍率与异常暴击均取异常类触发者（bonusPanel）；基础期望取异常强度提供者
-  const attributeAnomalyDmgBonusZone = 1 + bonusPanel.attributeAnomalyDmgBonus / 100
-  const attributeAnomalyMultZone =
-    Math.max(0, bonusPanel.attributeAnomalyMult / 100) * readFactor(bonusPanel.attributeAnomalyMultFactor)
-  const attributeAnomalyCritRateRatio = bonusPanel.attributeAnomalyCritRate / 100
-  const attributeAnomalyCritDmgRatio = clamp(bonusPanel.attributeAnomalyCritDmg / 100, 0, 20)
-  const attributeAnomalyCritZone = 1 + attributeAnomalyCritRateRatio * attributeAnomalyCritDmgRatio
-  const attributeAnomalyFullCritZone = 1 + attributeAnomalyCritDmgRatio
-  const attributeAnomalyNoCritZone = 1
-  // 子类专用暴击（用户 2026-10-16）：各子类**只吃自己的**暴击字段，不再蹭 anomalyCrit*
-  const turbulenceCritRateRatio = bonusPanel.turbulenceCritRate / 100
-  const turbulenceCritDmgRatio = clamp(bonusPanel.turbulenceCritDmg / 100, 0, 20)
-  const turbulenceCritZone = 1 + turbulenceCritRateRatio * turbulenceCritDmgRatio
-  const turbulenceFullCritZone = 1 + turbulenceCritDmgRatio
-  // 紊乱 / 耀变同为异常类暴击，同样只吃自己的暴击字段，且都取异常类触发者面板（bonusPanel）
-  const disorderCritRateRatio = bonusPanel.disorderCritRate / 100
-  const disorderCritDmgRatio = clamp(bonusPanel.disorderCritDmg / 100, 0, 20)
-  const disorderCritZone = 1 + disorderCritRateRatio * disorderCritDmgRatio
-  const disorderFullCritZone = 1 + disorderCritDmgRatio
-  const radianceCritRateRatio = bonusPanel.radianceCritRate / 100
-  const radianceCritDmgRatio = clamp(bonusPanel.radianceCritDmg / 100, 0, 20)
-  const radianceCritZone = 1 + radianceCritRateRatio * radianceCritDmgRatio
-  const radianceFullCritZone = 1 + radianceCritDmgRatio
+  // 各子类**只吃自己的**暴击字段（不再蹭 anomalyCrit*），公式见 `src/zones/anomalyZones.ts`
 
   const remielSelf = subKind === 'radiance' ? (input.remielSelfRadianceCalc ?? null) : null
 
@@ -837,136 +824,69 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       enemyRes +
       clamp((remielSelf.resPen + remielSelf.radianceResPen) / 100, -2, 2)
   }
-  const attributeAnomalyPreCrit =
-    anomalyBaseExpected * attributeAnomalyDmgBonusZone * attributeAnomalyMultZone
-  const attributeAnomalyExpected = attributeAnomalyPreCrit * attributeAnomalyCritZone
-  const attributeAnomalyExpectedNoCrit = attributeAnomalyPreCrit * attributeAnomalyNoCritZone
-  const attributeAnomalyExpectedFullCrit = attributeAnomalyPreCrit * attributeAnomalyFullCritZone
+  // 异常类乘区原语在 `src/zones/anomalyZones.ts`；这里只负责选面板、定顺序与取整。
+  const attributeAnomaly = computeAttributeAnomalyZones({
+    panel: bonusPanel,
+    anomalyBaseExpected,
+  })
 
   // 异放：基础用触发面板；增伤只吃异放增伤自身字段（不再叠加属性异常增伤）；
   // 暴击只吃异放暴击字段
-
-  const anomalyReleaseDmgBonusZone = 1 + bonusPanel.anomalyReleaseDmgBonus / 100
-  const anomalyReleaseMultZone = skillMults
-    ? skillMults.anomalyReleaseMultZone
-    : Math.max(0, bonusPanel.anomalyReleaseMult / 100) *
-        readFactor(bonusPanel.anomalyReleaseMultFactor)
-  const releaseCritRateRatio = bonusPanel.anomalyReleaseCritRate / 100
-  const releaseCritDmgRatio = clamp(bonusPanel.anomalyReleaseCritDmg / 100, 0, 20)
-  const anomalyReleaseCritZone = 1 + releaseCritRateRatio * releaseCritDmgRatio
-  /** 异放满暴击区：1 + 异放爆伤 */
-  const anomalyReleaseFullCritZone = 1 + releaseCritDmgRatio
-  const anomalyReleasePreCrit =
-    anomalyBaseExpected *
-    anomalyReleaseDmgBonusZone *
-    anomalyReleaseMultZone
-  const anomalyReleaseExpected = anomalyReleasePreCrit * anomalyReleaseCritZone
-  const anomalyReleaseExpectedNoCrit = anomalyReleasePreCrit
-  const anomalyReleaseExpectedFullCrit =
-    anomalyReleasePreCrit * anomalyReleaseFullCritZone
+  const anomalyRelease = computeAnomalyReleaseZones({
+    panel: bonusPanel,
+    skillMults,
+    anomalyBaseExpected,
+  })
 
   const effectiveDuration = effectiveAnomalyDuration(
     (useTriggerBase ? triggerPanel : panel).anomalyDuration || bonusPanel.anomalyDuration,
     durationElement,
   )
 
-  const disorderDmgBonusZone = 1 + bonusPanel.disorderDmgBonus / 100
-  const disorderCompMultRatio = multPanel.disorderCompMult / 100
   // 只有紊乱/乱流才真正采用这组倍率面板（同一份 multPanel 读数在其它子类里只是顺带算出）
+  const disorder = computeDisorderZones({
+    panel: bonusPanel,
+    multPanel,
+    skillMults,
+    effectiveDuration,
+    zoneMultOverride: input.disorderZoneMultOverride,
+    zoneMultFactorOverride: input.disorderZoneMultFactorOverride,
+    anomalyBaseExpected: triggerParts.anomalyBaseExpected,
+  })
 
-  const disorderPanelFactor = readFactor(multPanel.disorderBaseMultFactor)
-  let disorderBaseMultRatio: number
-  let disorderMultFactor: number
-  let disorderZone: number
-  if (input.disorderZoneMultOverride != null) {
-    // 招式手填「最终倍率区%」：填写值本身已含有效持续时间 × 补偿倍率，修正直接乘在倍率区上
-    const providedZoneRatio = Math.max(0, input.disorderZoneMultOverride / 100)
-    disorderMultFactor =
-      readFactor(input.disorderZoneMultFactorOverride) * disorderPanelFactor
-    disorderZone = Math.max(0, providedZoneRatio * disorderMultFactor)
-    disorderBaseMultRatio = Math.max(
-      0,
-      providedZoneRatio - effectiveDuration * disorderCompMultRatio,
-    )
-  } else {
-    disorderBaseMultRatio = skillMults
-      ? skillMults.disorderBaseMultRatio
-      : Math.max(0, multPanel.disorderBaseMult / 100)
-    disorderMultFactor = skillMults
-      ? skillMults.disorderMultFactor
-      : disorderPanelFactor
-    disorderZone = Math.max(
-      0,
-      (disorderBaseMultRatio + effectiveDuration * disorderCompMultRatio) *
-        disorderMultFactor,
-    )
-  }
-  const disorderBase = triggerParts.anomalyBaseExpected
-  const disorderPreCrit = disorderBase * disorderZone * disorderDmgBonusZone
-  const disorderExpected = disorderPreCrit * disorderCritZone
-  const disorderExpectedNoCrit = disorderPreCrit
-  const disorderExpectedFullCrit = disorderPreCrit * disorderFullCritZone
-
-  // 乱流增伤只吃乱流增伤自身字段（不再叠加属性异常增伤）
-  const turbulenceDmgBonusZone = 1 + bonusPanel.turbulenceDmgBonus / 100
-  const turbulenceCompMultRatio = multPanel.turbulenceCompMult / 100
-
-  const turbulencePanelFactor = readFactor(multPanel.turbulenceBaseMultFactor)
-  let turbulenceBaseMultRatio: number
-  let turbulenceMultFactor: number
-  let turbulenceZone: number
-  if (input.turbulenceZoneMultOverride != null) {
-    // 招式手填「最终倍率区%」：填写值本身已含有效持续时间 × 补偿倍率，修正直接乘在倍率区上
-    const providedZoneRatio = Math.max(0, input.turbulenceZoneMultOverride / 100)
-    turbulenceMultFactor =
-      readFactor(input.turbulenceZoneMultFactorOverride) * turbulencePanelFactor
-    turbulenceZone = Math.max(0, providedZoneRatio * turbulenceMultFactor)
-    turbulenceBaseMultRatio = Math.max(
-      0,
-      providedZoneRatio - effectiveDuration * turbulenceCompMultRatio,
-    )
-  } else {
-    turbulenceBaseMultRatio = Math.max(0, multPanel.turbulenceBaseMult / 100)
-    turbulenceMultFactor = turbulencePanelFactor
-    turbulenceZone = Math.max(
-      0,
-      (turbulenceBaseMultRatio + effectiveDuration * turbulenceCompMultRatio) *
-        turbulenceMultFactor,
-    )
-  }
-  // 乱流**只吃自己的**暴击（不再蹭异常暴击）
-  const turbulencePreCrit =
-    anomalyBaseExpected * turbulenceZone * turbulenceDmgBonusZone
-  const turbulenceExpected = turbulencePreCrit * turbulenceCritZone
-  const turbulenceExpectedNoCrit = turbulencePreCrit * attributeAnomalyNoCritZone
-  const turbulenceExpectedFullCrit = turbulencePreCrit * turbulenceFullCritZone
+  // 乱流增伤只吃乱流增伤自身字段（不再叠加属性异常增伤）；**只吃自己的**暴击（不再蹭异常暴击）
+  const turbulence = computeTurbulenceZones({
+    panel: bonusPanel,
+    multPanel,
+    effectiveDuration,
+    zoneMultOverride: input.turbulenceZoneMultOverride,
+    zoneMultFactorOverride: input.turbulenceZoneMultFactorOverride,
+    anomalyBaseExpected,
+  })
 
   // 耀变增伤只吃耀变增伤自身字段（取异常类触发者面板，含队友赋予的耀变增伤）；
   // 不再叠加属性异常增伤
-  const radianceDmgBonusZone = 1 + bonusPanel.radianceDmgBonus / 100
-  const radianceMultZone = computeRadianceMultZone(bonusPanel)
-  const specialMultZone = computeSpecialMultZone(bonusPanel)
-  const radiancePreCrit = remielSelfRadianceActive
-    ? anomalyBaseExpected *
-      remielSelfDefenseMultiplier *
-      remielSelfResistanceMultiplier *
-      Math.max(0, mainParts.anomalyVulnerableMultiplier) *
-      Math.max(0, mainParts.staggerMultiplier) *
-      radianceDmgBonusZone *
-      radianceMultZone *
-      specialMultZone *
-      Math.max(0, mainParts.specialMultiplier)
-    : anomalyBaseExpected * radianceDmgBonusZone * radianceMultZone
-  // 耀变暴击对所有触发者成立（普通耀变链与蕾米埃尔本人耀变链都乘同一暴击区）
-  const radianceExpectedRaw = radiancePreCrit * radianceCritZone
-  const radianceExpectedNoCritRaw = radiancePreCrit
-  const radianceExpectedFullCritRaw = radiancePreCrit * radianceFullCritZone
+  const selfRadianceChain: SelfRadianceChain | null = remielSelfRadianceActive
+    ? {
+        defenseMultiplier: remielSelfDefenseMultiplier,
+        resistanceMultiplier: remielSelfResistanceMultiplier,
+        anomalyVulnerableMultiplier: mainParts.anomalyVulnerableMultiplier,
+        staggerMultiplier: mainParts.staggerMultiplier,
+        specialMultiplier: mainParts.specialMultiplier,
+      }
+    : null
+  const radiance = computeRadianceZones({
+    panel: bonusPanel,
+    anomalyBaseExpected,
+    selfRadianceChain,
+  })
 
-  const mutationMultRaw = input.mutationZone
-  const mutationMult =
-    mutationMultRaw != null && Number.isFinite(mutationMultRaw) ? mutationMultRaw : 1
+  const mutationMult = resolveMutationMultiplier(input.mutationZone)
   const applyMutation = (value: number) =>
-    remielSelfRadianceActive ? value : value * mutationMult
+    applyMutationZone(value, {
+      mutationMultiplier: mutationMult,
+      selfRadianceActive: remielSelfRadianceActive,
+    })
 
   if (reportUse) {
     const eventKind = input.eventDamageType ?? (useTriggerBase ? subKind : 'direct')
@@ -1118,14 +1038,14 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     masteryZone: round(triggerParts.masteryZone, 4),
     levelZone: round(triggerParts.levelZone, 4),
     levelZoneAgentLevel: anomalyBaseLevel,
-    attributeAnomalyDmgBonusZone: round(attributeAnomalyDmgBonusZone, 4),
-    attributeAnomalyMultZone: round(attributeAnomalyMultZone, 4),
-    attributeAnomalyCritRateRatio: round(attributeAnomalyCritRateRatio, 4),
-    attributeAnomalyCritDmgRatio: round(attributeAnomalyCritDmgRatio, 4),
-    attributeAnomalyCritZone: round(attributeAnomalyCritZone, 4),
-    attributeAnomalyFullCritZone: round(attributeAnomalyFullCritZone, 4),
-    turbulenceCritZone: round(turbulenceCritZone, 4),
-    turbulenceFullCritZone: round(turbulenceFullCritZone, 4),
+    attributeAnomalyDmgBonusZone: round(attributeAnomaly.dmgBonusZone, 4),
+    attributeAnomalyMultZone: round(attributeAnomaly.multZone, 4),
+    attributeAnomalyCritRateRatio: round(attributeAnomaly.critRateRatio, 4),
+    attributeAnomalyCritDmgRatio: round(attributeAnomaly.critDmgRatio, 4),
+    attributeAnomalyCritZone: round(attributeAnomaly.critZone, 4),
+    attributeAnomalyFullCritZone: round(attributeAnomaly.fullCritZone, 4),
+    turbulenceCritZone: round(turbulence.critZone, 4),
+    turbulenceFullCritZone: round(turbulence.fullCritZone, 4),
     anomalyBaseExpected: round(anomalyBaseExpected, 0),
     remielSelfRadianceActive,
     remielSelfAnomalyBase: remielSelfAnomalyBase
@@ -1152,48 +1072,48 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     remielSelfResistanceMultiplier: remielSelfRadianceActive
       ? round(remielSelfResistanceMultiplier, 4)
       : undefined,
-    attributeAnomalyExpected: round(applyMutation(attributeAnomalyExpected), 0),
-    attributeAnomalyExpectedNoCrit: round(applyMutation(attributeAnomalyExpectedNoCrit), 0),
-    attributeAnomalyExpectedFullCrit: round(applyMutation(attributeAnomalyExpectedFullCrit), 0),
-    anomalyReleaseDmgBonusZone: round(anomalyReleaseDmgBonusZone, 4),
-        anomalyReleaseMultZone: round(anomalyReleaseMultZone, 4),
-    anomalyReleaseCritZone: round(anomalyReleaseCritZone, 4),
-    anomalyReleaseCritRateRatio: round(releaseCritRateRatio, 4),
-    anomalyReleaseCritDmgRatio: round(releaseCritDmgRatio, 4),
-    anomalyReleaseFullCritZone: round(anomalyReleaseFullCritZone, 4),
-    anomalyReleaseExpected: round(applyMutation(anomalyReleaseExpected), 0),
-    anomalyReleaseExpectedNoCrit: round(applyMutation(anomalyReleaseExpectedNoCrit), 0),
-    anomalyReleaseExpectedFullCrit: round(applyMutation(anomalyReleaseExpectedFullCrit), 0),
+    attributeAnomalyExpected: round(applyMutation(attributeAnomaly.expected), 0),
+    attributeAnomalyExpectedNoCrit: round(applyMutation(attributeAnomaly.expectedNoCrit), 0),
+    attributeAnomalyExpectedFullCrit: round(applyMutation(attributeAnomaly.expectedFullCrit), 0),
+    anomalyReleaseDmgBonusZone: round(anomalyRelease.dmgBonusZone, 4),
+    anomalyReleaseMultZone: round(anomalyRelease.multZone, 4),
+    anomalyReleaseCritZone: round(anomalyRelease.critZone, 4),
+    anomalyReleaseCritRateRatio: round(anomalyRelease.critRateRatio, 4),
+    anomalyReleaseCritDmgRatio: round(anomalyRelease.critDmgRatio, 4),
+    anomalyReleaseFullCritZone: round(anomalyRelease.fullCritZone, 4),
+    anomalyReleaseExpected: round(applyMutation(anomalyRelease.expected), 0),
+    anomalyReleaseExpectedNoCrit: round(applyMutation(anomalyRelease.expectedNoCrit), 0),
+    anomalyReleaseExpectedFullCrit: round(applyMutation(anomalyRelease.expectedFullCrit), 0),
     effectiveAnomalyDuration: round(effectiveDuration, 4),
-    disorderBaseMultRatio: round(disorderBaseMultRatio, 4),
-    disorderCompMultRatio: round(disorderCompMultRatio, 4),
-    disorderMultFactor: round(disorderMultFactor, 4),
-    disorderZone: round(disorderZone, 4),
-    disorderDmgBonusZone: round(disorderDmgBonusZone, 4),
-    disorderCritZone: round(disorderCritZone, 4),
-    disorderFullCritZone: round(disorderFullCritZone, 4),
-    disorderExpected: round(applyMutation(disorderExpected), 0),
-    disorderExpectedNoCrit: round(applyMutation(disorderExpectedNoCrit), 0),
-    disorderExpectedFullCrit: round(applyMutation(disorderExpectedFullCrit), 0),
-    turbulenceBaseMultRatio: round(turbulenceBaseMultRatio, 4),
-    turbulenceCompMultRatio: round(turbulenceCompMultRatio, 4),
-    turbulenceMultFactor: round(turbulenceMultFactor, 4),
-    turbulenceZone: round(turbulenceZone, 4),
-    turbulenceDmgBonusZone: round(turbulenceDmgBonusZone, 4),
+    disorderBaseMultRatio: round(disorder.baseMultRatio, 4),
+    disorderCompMultRatio: round(disorder.compMultRatio, 4),
+    disorderMultFactor: round(disorder.multFactor, 4),
+    disorderZone: round(disorder.zone, 4),
+    disorderDmgBonusZone: round(disorder.dmgBonusZone, 4),
+    disorderCritZone: round(disorder.critZone, 4),
+    disorderFullCritZone: round(disorder.fullCritZone, 4),
+    disorderExpected: round(applyMutation(disorder.expected), 0),
+    disorderExpectedNoCrit: round(applyMutation(disorder.expectedNoCrit), 0),
+    disorderExpectedFullCrit: round(applyMutation(disorder.expectedFullCrit), 0),
+    turbulenceBaseMultRatio: round(turbulence.baseMultRatio, 4),
+    turbulenceCompMultRatio: round(turbulence.compMultRatio, 4),
+    turbulenceMultFactor: round(turbulence.multFactor, 4),
+    turbulenceZone: round(turbulence.zone, 4),
+    turbulenceDmgBonusZone: round(turbulence.dmgBonusZone, 4),
     turbulenceUsesAnomalyCrit: false,
-    turbulenceExpected: round(applyMutation(turbulenceExpected), 0),
-    turbulenceExpectedNoCrit: round(applyMutation(turbulenceExpectedNoCrit), 0),
-    turbulenceExpectedFullCrit: round(applyMutation(turbulenceExpectedFullCrit), 0),
+    turbulenceExpected: round(applyMutation(turbulence.expected), 0),
+    turbulenceExpectedNoCrit: round(applyMutation(turbulence.expectedNoCrit), 0),
+    turbulenceExpectedFullCrit: round(applyMutation(turbulence.expectedFullCrit), 0),
     hasPolarDisorder,
-    radianceDmgBonusZone: round(radianceDmgBonusZone, 4),
-    radianceMultZone: round(radianceMultZone, 4),
-    specialMultZone: round(specialMultZone, 4),
+    radianceDmgBonusZone: round(radiance.dmgBonusZone, 4),
+    radianceMultZone: round(radiance.multZone, 4),
+    specialMultZone: round(radiance.specialMultZone, 4),
     mutationZone: round(mutationMult, 4),
-    radianceCritZone: round(radianceCritZone, 4),
-    radianceFullCritZone: round(radianceFullCritZone, 4),
-    radianceExpected: round(applyMutation(radianceExpectedRaw), 0),
-    radianceExpectedNoCrit: round(applyMutation(radianceExpectedNoCritRaw), 0),
-    radianceExpectedFullCrit: round(applyMutation(radianceExpectedFullCritRaw), 0),
+    radianceCritZone: round(radiance.critZone, 4),
+    radianceFullCritZone: round(radiance.fullCritZone, 4),
+    radianceExpected: round(applyMutation(radiance.expected), 0),
+    radianceExpectedNoCrit: round(applyMutation(radiance.expectedNoCrit), 0),
+    radianceExpectedFullCrit: round(applyMutation(radiance.expectedFullCrit), 0),
   }
   return { ...result, zones: buildZoneResults(result), zoneSchemeVersion: 1 }
 }
