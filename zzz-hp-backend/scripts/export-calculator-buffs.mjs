@@ -1,5 +1,6 @@
 /**
- * 从本地 MySQL 导出计算器数据到仓库 JSON 快照（含招式小类、追击规则、伤害事件模式）。
+ * 从本地 MySQL 导出计算器数据到仓库 JSON 快照
+ * （含招式小类、追击规则、伤害事件模式、乘区定义/方案、计算链路）。
  *
  * Usage:
  *   node scripts/export-calculator-buffs.mjs
@@ -15,6 +16,9 @@ import { listCalculatorBuffs } from '../src/services/calculatorBuffService.js'
 import { listDamageEventModes } from '../src/services/damageEventModeService.js'
 import { listSkills } from '../src/services/skillLibraryService.js'
 import { listSkillGroups } from '../src/services/skillGroupService.js'
+import { listZoneDefinitions, listZoneSchemes } from '../src/services/calculatorZoneService.js'
+import { listDamageChains } from '../src/services/calculatorChainService.js'
+import { buildZoneConfigSnapshot } from '../src/utils/calculatorConfigSnapshot.js'
 
 dotenv.config()
 
@@ -41,6 +45,13 @@ try {
     out = JSON.parse(fs.readFileSync(outPath, 'utf8'))
     out.agents = data.agents
   } else {
+    // 乘区定义 / 方案 / 链路：字段口径见 utils/calculatorConfigSnapshot.js
+    // （公共接口字段 + enabled，不带 updatedBy / updatedAt / 自增 id）
+    const [zoneDefinitions, zoneSchemes, damageChains] = await Promise.all([
+      listZoneDefinitions(),
+      listZoneSchemes(),
+      listDamageChains(),
+    ])
     // 全量导出时保留已合并进文件的预设词条库（affixPresets 键），避免被冲掉
     const existing = fs.existsSync(outPath) ? JSON.parse(fs.readFileSync(outPath, 'utf8')) : {}
     out = {
@@ -54,6 +65,11 @@ try {
       skills,
       skillGroups,
       affixPresets: existing.affixPresets,
+      ...buildZoneConfigSnapshot({
+        definitions: zoneDefinitions,
+        schemes: zoneSchemes,
+        chains: damageChains,
+      }),
     }
   }
 
@@ -66,6 +82,9 @@ try {
     )
     console.log(
       `招式小类 ${out.skillSubcategories.length} · 追击规则 ${out.followUpSkillRules.length} · 伤害事件模式 ${out.damageEventModes.length} · 招式 ${out.skills?.length ?? 0} · 技能组 ${out.skillGroups?.length ?? 0}`,
+    )
+    console.log(
+      `乘区定义 ${out.zoneDefinitions.length} · 乘区方案 ${out.zoneSchemes.length} · 计算链路 ${out.damageChains.length}`,
     )
   }
 } finally {

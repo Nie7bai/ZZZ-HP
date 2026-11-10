@@ -122,6 +122,7 @@ export function adaptZoneScheme(remote: RemoteZoneScheme): {
   scope: 'global' | 'profession' | 'agent' | 'skillGroup' | 'skill'
   targetId: string
   priority: number
+  version: number
   entries: ZoneSchemeEntry[]
 } | null {
   const scope = adaptZoneScope(remote.scope)
@@ -130,13 +131,20 @@ export function adaptZoneScheme(remote: RemoteZoneScheme): {
     .map(adaptZoneRule)
     .filter((entry): entry is ZoneSchemeEntry => Boolean(entry))
   if (!entries.length) return null
-  return { scope, targetId: String(remote.targetId ?? '').trim(), priority: Number(remote.priority) || 0, entries }
+  return {
+    scope,
+    targetId: String(remote.targetId ?? '').trim(),
+    priority: Number(remote.priority) || 0,
+    version: Number(remote.version) || 1,
+    entries,
+  }
 }
 
 export function adaptZoneSchemes(config: RemoteZoneConfig | null | undefined): Array<{
   scope: 'global' | 'profession' | 'agent' | 'skillGroup' | 'skill'
   targetId: string
   priority: number
+  version: number
   entries: ZoneSchemeEntry[]
 }> {
   if (!config?.schemes?.length) return []

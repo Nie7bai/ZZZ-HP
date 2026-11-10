@@ -108,6 +108,8 @@ export interface ZoneScheme {
   targetId: string
   /** 同作用域内的覆盖顺序：大的后应用（覆盖小的） */
   priority: number
+  /** 后端发布版本（内置方案没有）；只用于溯源，不参与解析 */
+  version?: number
   entries: readonly ZoneSchemeEntry[]
 }
 

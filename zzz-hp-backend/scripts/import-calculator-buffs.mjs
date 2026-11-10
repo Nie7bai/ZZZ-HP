@@ -9,6 +9,11 @@
  *
  * `--replace`：先清空计算器相关表，再按 JSON 整份写入。
  * 默认 ON DUPLICATE KEY 是增量，库里多出来的 id 不会消失。
+ *
+ * 乘区定义 / 乘区方案 / 计算链路（`zoneDefinitions` / `zoneSchemes` / `damageChains`）：
+ * - 按唯一键 upsert：定义 zone_key、方案 scope+target_id、链路 chain_key+scope+target_id；
+ * - 旧包没有这些键时整块跳过，不报错、也不动库（`--replace` 同样只清「包里有」的块）；
+ * - 导入顺序是定义 → 方案 → 链路，方案里的 `custom:*` 键要能在定义里查到。
  */
 import pool from '../src/config/db.js'
 import dotenv from 'dotenv'
@@ -28,6 +33,9 @@ import {
 import { upsertDamageEventMode } from '../src/services/damageEventModeService.js'
 import { upsertSkill } from '../src/services/skillLibraryService.js'
 import { upsertSkillGroup } from '../src/services/skillGroupService.js'
+import { upsertZoneDefinition, upsertZoneScheme } from '../src/services/calculatorZoneService.js'
+import { upsertDamageChain } from '../src/services/calculatorChainService.js'
+import { readZoneConfigSnapshot } from '../src/utils/calculatorConfigSnapshot.js'
 
 dotenv.config()
 
@@ -182,9 +190,29 @@ const CALCULATOR_REPLACE_TABLES = [
   '`calculator_skill_groups`',
 ]
 
+/** 乘区/链路三块表：`--replace` 时只在「包里有这一块」时才清，旧包不动库 */
+const ZONE_CONFIG_REPLACE_TABLES = {
+  zoneDefinitions: '`calculator_zone_definitions`',
+  zoneSchemes: '`calculator_zone_schemes`',
+  damageChains: '`calculator_damage_chains`',
+}
+
 async function emptyCalculatorTables(conn) {
   await conn.query('SET FOREIGN_KEY_CHECKS = 0')
   for (const table of CALCULATOR_REPLACE_TABLES) {
+    try {
+      await conn.query(`DELETE FROM ${table}`)
+    } catch (err) {
+      if (err?.errno !== 1146 && err?.code !== 'ER_NO_SUCH_TABLE') throw err
+    }
+  }
+  await conn.query('SET FOREIGN_KEY_CHECKS = 1')
+}
+
+async function emptyZoneConfigTables(conn, present) {
+  await conn.query('SET FOREIGN_KEY_CHECKS = 0')
+  for (const [key, table] of Object.entries(ZONE_CONFIG_REPLACE_TABLES)) {
+    if (!present?.[key]) continue
     try {
       await conn.query(`DELETE FROM ${table}`)
     } catch (err) {
@@ -209,6 +237,8 @@ async function main() {
   const damageEventModes = Array.isArray(data.damageEventModes) ? data.damageEventModes : []
   const skills = Array.isArray(data.skills) ? data.skills : []
   const skillGroups = Array.isArray(data.skillGroups) ? data.skillGroups : []
+  // 旧包没有这三块键：读出来是空数组 + present=false，下面整块跳过
+  const zoneConfig = readZoneConfigSnapshot(data)
 
   if (replaceAll && agents.length < 20) {
     throw new Error(
@@ -232,6 +262,7 @@ async function main() {
 
     if (replaceAll) {
       await emptyCalculatorTables(conn)
+      await emptyZoneConfigTables(conn, zoneConfig.present)
       console.log('已清空计算器相关表，按 JSON 整份写入')
     }
 
@@ -384,6 +415,23 @@ async function main() {
       skillGroupCount += 1
     }
 
+    // 乘区定义 → 方案 → 链路：顺序不能反，方案的 `custom:*` 键要在定义里能查到
+    let zoneDefinitionCount = 0
+    for (const doc of zoneConfig.zoneDefinitions) {
+      await upsertZoneDefinition(doc)
+      zoneDefinitionCount += 1
+    }
+    let zoneSchemeCount = 0
+    for (const doc of zoneConfig.zoneSchemes) {
+      await upsertZoneScheme(doc)
+      zoneSchemeCount += 1
+    }
+    let damageChainCount = 0
+    for (const doc of zoneConfig.damageChains) {
+      await upsertDamageChain(doc)
+      damageChainCount += 1
+    }
+
     const [[c1]] = await conn.query('SELECT COUNT(*) AS c FROM `character`')
     const [[c2]] = await conn.query('SELECT COUNT(*) AS c FROM `bangboo`')
     const [[c3]] = await conn.query('SELECT COUNT(*) AS c FROM `drive_disc`')
@@ -397,6 +445,16 @@ async function main() {
       skillGroupTableCount = c8.c
     } catch (err) {
       if (err?.errno !== 1146 && err?.code !== 'ER_NO_SUCH_TABLE') throw err
+    }
+    const zoneTableCounts = {}
+    for (const [key, table] of Object.entries(ZONE_CONFIG_REPLACE_TABLES)) {
+      zoneTableCounts[key] = 0
+      try {
+        const [[row]] = await conn.query(`SELECT COUNT(*) AS c FROM ${table}`)
+        zoneTableCounts[key] = row.c
+      } catch (err) {
+        if (err?.errno !== 1146 && err?.code !== 'ER_NO_SUCH_TABLE') throw err
+      }
     }
 
     // Round-trip check: raw_json equals source for a few samples
@@ -423,6 +481,9 @@ async function main() {
             damageEventModes: modeCount,
             skills: skillCount,
             skillGroups: skillGroupCount,
+            zoneDefinitions: zoneDefinitionCount,
+            zoneSchemes: zoneSchemeCount,
+            damageChains: damageChainCount,
           },
           tableCounts: {
             character: c1.c,
@@ -433,6 +494,7 @@ async function main() {
             damageEventModes: c6.c,
             skills: c7.c,
             skillGroups: skillGroupTableCount,
+            ...zoneTableCounts,
           },
           sampleAgent,
           sampleDisc,

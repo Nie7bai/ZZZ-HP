@@ -90,6 +90,7 @@ import {
   setLoadedSchemeId,
 } from '@/utils/damageCalcHistory'
 import type { SkillFlowDamageRecordSlotMeta } from '@/utils/skillFlowDamageRecords'
+import { getRuntimeConfigVersions } from '@/zones/schemeSource'
 import {
   buildFlowBuffEffectText,
   effectRecipientNote,
@@ -1970,6 +1971,21 @@ function captureSchemeEnvironmentState() {
   }
 }
 
+/**
+ * 版本留痕：记下保存时的运行时乘区方案 / 计算链路版本。
+ * 只写不读（加载与计算都不看这两个字段），用于日后对比「方案是在哪一版配置下算的」。
+ */
+function captureRuntimeConfigVersions(): Pick<
+  DamageCalcHistoryEntry,
+  'zoneSchemeVersion' | 'damageChainVersions'
+> {
+  const versions = getRuntimeConfigVersions()
+  return {
+    zoneSchemeVersion: versions.zoneSchemeVersion,
+    damageChainVersions: versions.damageChainVersions,
+  }
+}
+
 function saveHistoryEntry(payload: { name: string; folder: string }) {
   const panelState = captureSchemePanelState()
   if (!panelState) return
@@ -1999,6 +2015,7 @@ function saveHistoryEntry(payload: { name: string; folder: string }) {
     staggerPhase: staggerPhase.value,
     multiSlotBuffSelection: JSON.parse(JSON.stringify(multiSlotBuffSelection)),
     ...captureSchemeEnvironmentState(),
+    ...captureRuntimeConfigVersions(),
     folder,
     order: Date.now(),
   }
@@ -2053,6 +2070,7 @@ function overwriteHistoryEntry(id: string) {
     staggerPhase: staggerPhase.value,
     multiSlotBuffSelection: JSON.parse(JSON.stringify(multiSlotBuffSelection)),
     ...captureSchemeEnvironmentState(),
+    ...captureRuntimeConfigVersions(),
   }
   historyEntries.value = saveDamageCalcHistory(updated)
   // 同上：覆盖失败不能报「已覆盖」

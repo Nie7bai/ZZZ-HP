@@ -209,6 +209,55 @@ CREATE TABLE IF NOT EXISTS calculator_skill_subcategories (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='计算器招式小类';
 
+-- 乘区定义：`zone_key` + 展示元数据 + 求值原语（白名单）+ 原语参数 + 可吃增益键
+CREATE TABLE IF NOT EXISTS calculator_zone_definitions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  zone_key VARCHAR(64) NOT NULL COMMENT '乘区键：内置键（dmgMultiplier）或 custom:<slug>',
+  label VARCHAR(100) NOT NULL COMMENT '展示名',
+  sort_order INT NOT NULL DEFAULT 100 COMMENT '展示顺序',
+  applies_to JSON NOT NULL COMMENT '适用范围 {damageKinds,agents,skills,providers}',
+  primitive VARCHAR(64) NOT NULL COMMENT '求值原语（白名单）',
+  params JSON NOT NULL COMMENT '原语参数',
+  stats JSON NULL COMMENT '该乘区可吃的增益键',
+  display JSON NULL COMMENT '展示配置',
+  enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
+  version INT NOT NULL DEFAULT 1 COMMENT '发布版本，服务端递增',
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_zone_key (zone_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='计算器乘区定义';
+
+-- 乘区方案：某作用域对定义的引用顺序与覆盖（rules 即方案文档里的 zones 数组）
+CREATE TABLE IF NOT EXISTS calculator_zone_schemes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  scope ENUM('global','profession','agent','skill_group','skill') NOT NULL COMMENT '作用域（global 最弱，skill 最强）',
+  target_id VARCHAR(64) NOT NULL DEFAULT '' COMMENT '作用域目标：global 为空，其余为职业/角色/技能组/招式 id',
+  name VARCHAR(100) NOT NULL COMMENT '方案名',
+  priority INT NOT NULL DEFAULT 10 COMMENT '同作用域覆盖顺序',
+  enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
+  version INT NOT NULL DEFAULT 1 COMMENT '发布版本，服务端递增',
+  rules JSON NOT NULL COMMENT '方案条目数组',
+  updated_by VARCHAR(64) NULL COMMENT '最后修改人',
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_scope_target (scope, target_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='计算器乘区方案';
+
+-- 计算链路：chain_key + 作用域 + 有序阶段数组
+CREATE TABLE IF NOT EXISTS calculator_damage_chains (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  chain_key VARCHAR(64) NOT NULL COMMENT '链路键：内置（direct/anomaly/radiance-self）或 custom:<slug>',
+  label VARCHAR(100) NULL COMMENT '展示名',
+  applies_to JSON NOT NULL COMMENT '命中条件 {damageKinds,subKinds?}',
+  scope ENUM('global','profession','agent','skill_group','skill') NOT NULL COMMENT '作用域（与乘区方案同口径）',
+  target_id VARCHAR(64) NOT NULL DEFAULT '' COMMENT '作用域目标：global 为空',
+  priority INT NOT NULL DEFAULT 0 COMMENT '同作用域覆盖顺序',
+  enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
+  version INT NOT NULL DEFAULT 1 COMMENT '发布版本，服务端递增',
+  stages JSON NOT NULL COMMENT '有序阶段数组',
+  updated_by VARCHAR(64) NULL COMMENT '最后修改人',
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_chain_scope_target (chain_key, scope, target_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='计算器伤害计算链路';
+
 -- ---------------------------------------------------------------------------
 -- 站点更新日志
 -- ---------------------------------------------------------------------------
