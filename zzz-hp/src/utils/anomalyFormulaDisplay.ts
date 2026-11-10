@@ -1,7 +1,7 @@
 import type { AnomalyDamageSubKind, DamageEventCritMode } from '@/types/calculator'
 import type { DamageCalcResult } from '@/utils/damageCalc'
 import { pickEventCritMultiplier, pickEventDamage } from '@/utils/damageEvent'
-import { staggerZoneLabel } from '@/utils/skillCalcZones'
+import { zoneLabel } from '@/zones/display'
 
 export interface AnomalyFormulaAgentLabels {
   /**
@@ -232,7 +232,7 @@ export function buildAlignedAnomalyFormulaGroups(
             tipsKey: 'anomalyVulnerableMultiplier',
           },
           {
-            label: staggerZoneLabel(p),
+            label: zoneLabel(p, 'staggerMultiplier'),
             value: formatFormulaNumber(p.staggerMultiplier),
             tipsKey: 'staggerMultiplier',
           },
