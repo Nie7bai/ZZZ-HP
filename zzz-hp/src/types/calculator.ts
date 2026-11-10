@@ -37,6 +37,7 @@ export type AdminCalculatorPanel =
   | 'skill-library'
   | 'affix-preset'
   | 'shared-schemes'
+  | 'zones'
   | 'import-export'
   | 'nanoka'
   | 'nanoka-buffs'
