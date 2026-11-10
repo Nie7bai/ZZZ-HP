@@ -32,6 +32,7 @@ import {
 // 只作类型导入：记录类型定义在 panelBuffCalc.ts，运行时不反向依赖（Spec §2.5 第 2 项）
 import type { DamageInputUsage } from '@/utils/panelBuffCalc'
 import { buildZoneResults } from '@/zones/results'
+import { evaluateCoreZones } from '@/zones/builtins'
 import type { ZoneResult } from '@/zones/types'
 
 export type { DamageEnemyInput, EnemyResistanceType }
@@ -500,10 +501,6 @@ function computeGeneralAndAnomalyBase(options: {
 }) {
   const panel = options.panel
   const defense = options.defensePanel ?? panel
-  const enemyRes = resolveEnemyResistanceForElement(
-    normalizeDamageEnemyInput(options.enemyInput),
-    options.resistanceElement,
-  )
   const extraResPen = options.extraResPen ?? 0
 
   const { baseDamage, usedBaseSource } = resolveBaseDamageParts({
@@ -514,8 +511,6 @@ function computeGeneralAndAnomalyBase(options: {
     useSharpenFormula: options.useSharpenFormula,
   })
 
-  // 异常链用纯增伤；直伤/锐化终链再扣弱伤（见 computeDamageResult）
-  const dmgMultiplier = 1 + clamp(panel.dmgBonus / 100, -0.95, 20)
   const critRateRatio = clamp(panel.critRate / 100, 0, 1)
   const critDmgRatio = clamp(panel.critDmg / 100, 0, 20)
   const critMultiplier = 1 + critRateRatio * critDmgRatio
@@ -532,8 +527,31 @@ function computeGeneralAndAnomalyBase(options: {
     isMb: options.isMb,
     enemyDefense: options.enemyInput.defense,
   })
-  const resPenPanel = options.resPenSource ?? panel
-  const resistanceMultiplier = 1 - enemyRes + clamp((resPenPanel.resPen + extraResPen) / 100, -2, 2)
+
+  /**
+   * 核心乘区走注册表管线（Phase 1b）：增伤 / 抗性 / 失衡（含帷幕）与通用乘区连乘。
+   * 防御区明细仍由 computeDefenseZone 计算后传入，公式与旧链路逐位一致。
+   */
+  const {
+    dmgMultiplier,
+    resistanceMultiplier,
+    enemyRes,
+    staggerMultiplier,
+    generalMultiplier,
+  } = evaluateCoreZones({
+    baseDamage,
+    panel,
+    defenseMultiplier,
+    enemyInput: options.enemyInput,
+    resistanceElement: options.resistanceElement,
+    resPenSource: options.resPenSource ?? panel,
+    extraResPen,
+    staggerPhase: options.staggerPhase,
+    curtainVulnerabilityCap: options.curtainVulnerabilityCap,
+    combatGlobalStaggerVulnerable: options.combatGlobalStaggerVulnerable,
+    combatStaggerVulnerable: options.combatStaggerVulnerable,
+    combatStaggerVulnerableOnly: options.combatStaggerVulnerableOnly,
+  })
 
   const enemyVulnerableBase = options.enemyInput.vulnerableMultiplier
   const directVulnerableMultiplier = computeVulnerableZone({
@@ -551,31 +569,8 @@ function computeGeneralAndAnomalyBase(options: {
     pathReductionPercent: options.combatAnomalyDmgReduction,
   })
 
-  const globalStagger = options.combatGlobalStaggerVulnerable / 100
-  const phaseStagger =
-    (options.combatStaggerVulnerable + options.combatStaggerVulnerableOnly) / 100
-  /**
-   * 失衡期：怪物失衡易伤 + 全局常驻 + 失衡易伤 + 失衡易伤（仅失衡）
-   * 非失衡期：100% + 全局常驻失衡易伤
-   * 帷幕易伤（叶瞬光指定招式）：不分阶段，取最终失衡易伤（基础 + 全部失衡类 Buff）截断上限
-   */
-  const curtainCap = options.curtainVulnerabilityCap
-  const staggerMultiplier =
-    curtainCap != null
-      ? Math.min(options.enemyInput.staggerMultiplier + globalStagger + phaseStagger, curtainCap)
-      : options.staggerPhase === 'stagger'
-        ? options.enemyInput.staggerMultiplier + globalStagger + phaseStagger
-        : 1 + globalStagger
   const specialMultiplier = options.enemyInput.specialMultiplier + options.combatSpecial / 100
   const pierceDmgBonusRatio = options.combatPierceDmgBonus / 100
-
-  /** 通用乘区不含易伤：易伤按直伤/非直伤路径分别乘入 */
-  const generalMultiplier =
-    baseDamage *
-    dmgMultiplier *
-    defenseMultiplier *
-    resistanceMultiplier *
-    Math.max(0, staggerMultiplier)
 
   const pierceDmgMultiplier =
     usedBaseSource === 'pierce' ? 1 + pierceDmgBonusRatio : 1
