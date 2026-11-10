@@ -21,7 +21,7 @@ const baselinePath = path.join(here, '..', 'fixtures', 'zone-golden.json')
 const writeMode = process.argv.includes('--write')
 
 /** 模块化之后新增、不属于“原有硬编码结果”的字段 */
-const ADDITIVE_RESULT_KEYS = new Set(['zones', 'zoneSchemeVersion'])
+const ADDITIVE_RESULT_KEYS = new Set(['zones', 'zoneSchemeVersion', 'pipeline'])
 
 function stripAdditive(result) {
   const next = { ...result }
@@ -121,6 +121,29 @@ for (const name of names) {
       console.error(`FAIL  ${name}.zones.staggerMultiplier — 标签应为帷幕易伤：${stagger?.label}`)
       failed += 1
     }
+  }
+}
+
+// Phase 4c 附加检查：阶段轨迹存在、链路选择正确、final 阶段有值
+for (const name of names) {
+  const result = actual[name]?.result
+  const pipeline = result?.pipeline
+  if (!pipeline?.stages?.length) {
+    console.error(`FAIL  ${name}.pipeline — 缺少阶段轨迹`)
+    failed += 1
+    continue
+  }
+  const expectedChain = name.startsWith('direct') || name.startsWith('sharpen') || name.startsWith('curtain')
+    ? 'direct'
+    : 'anomaly'
+  if (pipeline.chainId !== expectedChain) {
+    console.error(`FAIL  ${name}.pipeline.chainId — ${pipeline.chainId} ≠ ${expectedChain}`)
+    failed += 1
+  }
+  const finalStage = pipeline.stages.find((stage) => stage.kind === 'final')
+  if (!finalStage || !Number.isFinite(finalStage.value)) {
+    console.error(`FAIL  ${name}.pipeline — 缺少 final 阶段`)
+    failed += 1
   }
 }
 

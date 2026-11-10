@@ -32,6 +32,7 @@ import type { DamageInputUsage } from '@/utils/panelBuffCalc'
 import { buildZoneResults } from '@/zones/results'
 import { evaluateCoreZones } from '@/zones/builtins'
 import type { CustomZoneFactor } from '@/zones/customZones'
+import { buildStageTrace, resolveDamageChainId, type StageTraceEntry } from '@/zones/pipeline'
 import {
   applyMutationZone,
   computeAnomalyReleaseZones,
@@ -226,6 +227,8 @@ export interface DamageCalcResult {
   zones?: Record<string, ZoneResult>
   /** 乘区方案版本（Phase 1 固定为 1；后续与可编辑方案对齐） */
   zoneSchemeVersion?: number
+  /** 完整计算链路的阶段轨迹（Phase 4c）：用户端逐阶段展示的数据源 */
+  pipeline?: { chainId: string; stages: StageTraceEntry[] }
   specialMultiplier: number
   /** 贯穿增伤乘区（非贯穿基础时为 1） */
   pierceDmgMultiplier: number
@@ -1146,5 +1149,68 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       value: factor.value,
     }
   }
-  return { ...result, zones, zoneSchemeVersion: 1 }
+  const chainId = resolveDamageChainId({
+    damageKind: input.eventDamageType ?? (useTriggerBase ? subKind : 'direct'),
+    isSelfRadiance: remielSelfRadianceActive,
+  })
+  const stageValues: Record<string, number | undefined> = {}
+  if (chainId === 'direct') {
+    Object.assign(stageValues, {
+      base: result.baseDamage,
+      dmg: directDmgMultiplier,
+      defense: result.defenseMultiplier,
+      resistance: result.resistanceMultiplier,
+      stagger: result.staggerMultiplier,
+      vulnerable: result.vulnerableMultiplier,
+      crit: reportedCritMultiplier,
+      directMult: result.directDmgMultZone,
+      settlement: result.settlementDmgMultZone,
+      pierce: result.pierceDmgMultiplier,
+      sharpen: result.sharpenDmgMultiplier,
+      special: result.specialMultiplier,
+      final: result.directDamageExpected,
+    })
+  } else if (chainId === 'radiance-self') {
+    Object.assign(stageValues, {
+      selfAtk: result.remielSelfInCombatAtk,
+      selfMastery: result.remielSelfInCombatMasteryZone,
+      specialLevel: result.remielSelfSpecialLevelZone,
+      mutation: result.remielSelfMutationZone,
+      defense: result.remielSelfDefenseMultiplier,
+      resistance: result.remielSelfResistanceMultiplier,
+      vulnerable: result.anomalyVulnerableMultiplier,
+      stagger: result.staggerMultiplier,
+      radianceBonus: result.radianceDmgBonusZone,
+      radianceMult: result.radianceMultZone,
+      crit: result.radianceCritZone,
+      special: result.specialMultiplier,
+      final: result.radianceExpected,
+    })
+  } else {
+    const subtypeZones = subKind === 'attributeAnomaly'
+      ? { bonus: result.attributeAnomalyDmgBonusZone, mult: result.attributeAnomalyMultZone, crit: result.attributeAnomalyCritZone, final: result.attributeAnomalyExpected }
+      : subKind === 'anomalyRelease'
+        ? { bonus: result.anomalyReleaseDmgBonusZone, mult: result.anomalyReleaseMultZone, crit: result.anomalyReleaseCritZone, final: result.anomalyReleaseExpected }
+        : subKind === 'disorder'
+          ? { bonus: result.disorderDmgBonusZone, mult: result.disorderZone, crit: result.disorderCritZone, final: result.disorderExpected }
+          : subKind === 'turbulence'
+            ? { bonus: result.turbulenceDmgBonusZone, mult: result.turbulenceZone, crit: result.turbulenceCritZone, final: result.turbulenceExpected }
+            : { bonus: result.radianceDmgBonusZone, mult: result.radianceMultZone, crit: result.radianceCritZone, final: result.radianceExpected }
+    Object.assign(stageValues, {
+      base: triggerParts.baseDamage,
+      dmg: triggerParts.dmgMultiplier,
+      defense: triggerParts.defenseMultiplier,
+      resistance: triggerParts.resistanceMultiplier,
+      stagger: triggerParts.staggerMultiplier,
+      vulnerable: triggerParts.anomalyVulnerableMultiplier,
+      mastery: triggerParts.masteryZone,
+      level: triggerParts.levelZone,
+      dmgBonus: subtypeZones.bonus,
+      mult: subtypeZones.mult,
+      crit: subtypeZones.crit,
+      special: triggerParts.specialMultiplier,
+      final: subtypeZones.final,
+    })
+  }
+  return { ...result, zones, zoneSchemeVersion: 1, pipeline: buildStageTrace(chainId, stageValues) }
 }
