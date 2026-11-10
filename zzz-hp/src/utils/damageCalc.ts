@@ -191,6 +191,7 @@ export interface DamageCalcInput {
    * 已按运行时配置解析的链路阶段（Phase 4f）。
    * 决定轨迹里「有哪些阶段、什么顺序、叫什么」；阶段值仍按阶段 id 从现有计算映射。
    */
+  chainId?: string
   chainStages?: StageDefinition[]
   /** 运行时方案禁用的阶段 id（用于把禁用反映到结算） */
   chainDisabledStageIds?: string[]
@@ -1158,7 +1159,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       value: factor.value,
     }
   }
-  const chainId = resolveDamageChainId({
+  const chainId = input.chainId ?? resolveDamageChainId({
     damageKind: input.eventDamageType ?? (useTriggerBase ? subKind : 'direct'),
     isSelfRadiance: remielSelfRadianceActive,
   })

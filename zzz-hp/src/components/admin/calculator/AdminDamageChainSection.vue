@@ -318,7 +318,8 @@ function openBuiltin(chainId: string) {
     damageKinds: [...chain.appliesTo.damageKinds],
     subKinds: [],
     stages: rowsFromBuiltin(chainId),
-    readonly: true,
+    // 内置链路允许直接编辑；保存时按同 chainKey 新建 DB 覆盖
+    readonly: false,
   })
   formError.value = ''
   resetStageSelection()
@@ -701,7 +702,7 @@ onMounted(() => {
 
     <div class="chain-layout">
       <div class="item-list">
-        <p class="list-group-title">内置链路（只读）</p>
+        <p class="list-group-title">内置链路（编辑后保存为覆盖）</p>
         <div
           v-for="chain in BUILT_IN_DAMAGE_CHAINS"
           :key="`builtin-${chain.id}`"
@@ -1347,9 +1348,9 @@ onMounted(() => {
   flex-direction: column;
   gap: 0.12rem;
   padding: 0.4rem 0.5rem;
-  border: 1px solid #2a3038;
+  border: 1px solid var(--chain-cell-border, #2a3038);
   border-radius: 8px;
-  background: #12161d;
+  background: var(--chain-cell-bg, #12161d);
   cursor: grab;
   min-width: 0;
 }
@@ -1385,18 +1386,20 @@ onMounted(() => {
 
 .cell-kind {
   font-size: 0.62rem;
-  color: #9aa3b0;
+  color: var(--color-text);
+  opacity: 0.62;
 }
 
 .cell-order {
   font-size: 0.62rem;
-  color: #7c8695;
+  color: var(--color-text);
+  opacity: 0.5;
   font-variant-numeric: tabular-nums;
 }
 
 .cell-label {
   font-size: 0.7rem;
-  color: #9aa3b0;
+  color: var(--color-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1404,7 +1407,7 @@ onMounted(() => {
 
 .cell-module {
   font-size: 0.68rem;
-  color: #cfd7e3;
+  color: var(--color-heading);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1413,12 +1416,27 @@ onMounted(() => {
 .cell-status {
   font-size: 0.72rem;
   font-weight: 700;
-  color: #8fc9ee;
+  color: var(--color-accent, #8fc9ee);
   font-variant-numeric: tabular-nums;
 }
 
 .chain-stage-cell.is-disabled .cell-status {
-  color: #a08f7c;
+  color: var(--color-text);
+  opacity: 0.45;
+}
+
+:global([data-theme='light']) .chain-stage-cell {
+  --chain-cell-border: rgba(60, 55, 40, 0.22);
+  --chain-cell-bg: #faf8f2;
+}
+
+:global([data-theme='light']) .chain-stage-cell:hover {
+  border-color: color-mix(in srgb, #b08a3e 55%, var(--color-border));
+}
+
+:global([data-theme='light']) .chain-stage-cell.is-selected {
+  border-color: #3b7fa8;
+  box-shadow: 0 0 0 1px rgba(59, 127, 168, 0.35);
 }
 
 .stage-editor {

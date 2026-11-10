@@ -44,7 +44,11 @@ export interface StageDefinition {
 export interface DamageChainDefinition {
   id: string
   label: string
-  appliesTo: { damageKinds: readonly string[] }
+  appliesTo: {
+    damageKinds: readonly string[]
+    /** 基础伤害来源（atk/def/pierce）；缺省 = 不限 */
+    baseDamageSources?: readonly string[]
+  }
   stages: readonly StageDefinition[]
   /** 作用域：内置链路为 global，运行时链路可覆盖到更具体的作用域 */
   scope?: ZoneScope
@@ -68,8 +72,8 @@ const RADIANCE_SELF_STAGE_IDS = ['selfAtk', 'selfMastery', 'specialLevel', 'muta
 export const BUILT_IN_DAMAGE_CHAINS: readonly DamageChainDefinition[] = Object.freeze([
   {
     id: 'direct',
-    label: '直伤链路',
-    appliesTo: { damageKinds: ['direct', 'sharpen'] },
+    label: '纯直伤链路',
+    appliesTo: { damageKinds: ['direct', 'sharpen'], baseDamageSources: ['atk', 'def'] },
     scope: 'global',
     targetId: '',
     priority: 0,
@@ -87,6 +91,28 @@ export const BUILT_IN_DAMAGE_CHAINS: readonly DamageChainDefinition[] = Object.f
       { id: 'sharpen', kind: 'multiplier', label: '锐化伤害提升区', group: 'direct', order: 100, module: 'sharpenBonus' },
       { id: 'special', kind: 'multiplier', label: '特殊乘区', group: 'direct', order: 110, module: 'specialMult' },
       { id: 'final', kind: 'final', label: '期望伤害', group: 'direct', order: 120, module: 'product', inputs: DIRECT_STAGE_IDS },
+    ],
+  },
+  {
+    id: 'pierce',
+    label: '命破链路',
+    appliesTo: { damageKinds: ['direct'], baseDamageSources: ['pierce'] },
+    scope: 'global',
+    targetId: '',
+    priority: 0,
+    stages: [
+      { id: 'base', kind: 'source', label: '贯穿力基础', group: 'direct', order: 10, module: 'baseDamage' },
+      { id: 'dmg', kind: 'multiplier', label: '增伤区', group: 'direct', order: 20, module: 'percentSum' },
+      { id: 'defense', kind: 'multiplier', label: '防御区', group: 'direct', order: 30, module: 'defenseMultiplier' },
+      { id: 'resistance', kind: 'multiplier', label: '抗性区', group: 'direct', order: 40, module: 'resistanceMultiplier' },
+      { id: 'stagger', kind: 'multiplier', label: '失衡易伤区', group: 'direct', order: 45, module: 'stagger' },
+      { id: 'vulnerable', kind: 'multiplier', label: '易伤区', group: 'direct', order: 50, module: 'vulnerable' },
+      { id: 'crit', kind: 'multiplier', label: '暴击区', group: 'direct', order: 60, module: 'crit' },
+      { id: 'directMult', kind: 'multiplier', label: '直伤倍率区', group: 'direct', order: 70, module: 'directMult' },
+      { id: 'settlement', kind: 'multiplier', label: '决算倍率区', group: 'direct', order: 80, module: 'settlementMult' },
+      { id: 'pierce', kind: 'multiplier', label: '贯穿增伤区', group: 'direct', order: 90, module: 'pierceBonus' },
+      { id: 'special', kind: 'multiplier', label: '特殊乘区', group: 'direct', order: 110, module: 'specialMult' },
+      { id: 'final', kind: 'final', label: '期望伤害', group: 'direct', order: 120, module: 'product', inputs: ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'crit', 'directMult', 'settlement', 'pierce', 'special'] },
     ],
   },
   {
@@ -200,9 +226,12 @@ export const DAMAGE_CHAIN_MODULE_OPTIONS: readonly ChainModuleOption[] = Object.
 export function resolveDamageChainId(options: {
   damageKind: string
   isSelfRadiance?: boolean
+  baseDamageSource?: string | null
 }): string {
   if (options.isSelfRadiance && options.damageKind === 'radiance') return 'radiance-self'
-  if (options.damageKind === 'direct' || options.damageKind === 'sharpen') return 'direct'
+  if (options.damageKind === 'direct' || options.damageKind === 'sharpen') {
+    return options.baseDamageSource === 'pierce' ? 'pierce' : 'direct'
+  }
   return 'anomaly'
 }
 
@@ -210,6 +239,8 @@ export function resolveDamageChainId(options: {
 export interface DamageChainResolveContext {
   /** 伤害类型；用于链路 `appliesTo.damageKinds` 过滤 */
   damageKind?: string
+  /** 基础伤害来源；用于区分纯直伤 / 命破 */
+  baseDamageSource?: string | null
   agentId?: string | null
   profession?: string | null
   skillGroupId?: string | null
@@ -265,9 +296,10 @@ function chainDamageKindMatches(
   context: DamageChainResolveContext,
 ): boolean {
   const kinds = chain.appliesTo?.damageKinds ?? []
-  if (!kinds.length) return true
-  if (!context.damageKind) return true
-  return kinds.includes(context.damageKind)
+  if (kinds.length && context.damageKind && !kinds.includes(context.damageKind)) return false
+  const sources = chain.appliesTo?.baseDamageSources ?? []
+  if (sources.length && context.baseDamageSource && !sources.includes(context.baseDamageSource)) return false
+  return true
 }
 
 /** 只覆盖补丁里真正写了的字段，避免 `undefined` 把内置值冲掉 */

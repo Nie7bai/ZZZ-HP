@@ -49,16 +49,18 @@ export function getDamageChainLabel(chainId: string | null | undefined): string 
 export function resolveCurrentDamageChain(options: {
   damageKind: string
   isSelfRadiance?: boolean
-  context?: Omit<DamageChainResolveContext, 'damageKind'>
+  baseDamageSource?: string | null
+  context?: Omit<DamageChainResolveContext, 'damageKind' | 'baseDamageSource'>
   chains?: readonly DamageChainDefinition[]
 }): ResolvedDamageChain {
   const chainId = resolveDamageChainId({
     damageKind: options.damageKind,
     isSelfRadiance: options.isSelfRadiance,
+    baseDamageSource: options.baseDamageSource,
   })
   return resolveDamageChain(
     chainId,
-    { ...options.context, damageKind: options.damageKind },
+    { ...options.context, damageKind: options.damageKind, baseDamageSource: options.baseDamageSource },
     options.chains ?? getMergedDamageChains(),
   )
 }

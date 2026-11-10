@@ -127,7 +127,7 @@ check('无运行时覆盖：返回内置阶段原样', () => {
   const resolved = resolveDamageChain('direct', { damageKind: 'direct' }, BUILT_IN_DAMAGE_CHAINS)
   assert.deepEqual(stageIds(resolved), stageIds(getDamageChain('direct')))
   assert.deepEqual(resolved.sources, [])
-  assert.equal(resolved.label, '直伤链路')
+  assert.equal(resolved.label, '纯直伤链路')
 })
 
 check('global 覆盖：字段替换 + 按 order 重排', () => {
@@ -309,7 +309,7 @@ check('resolveCurrentDamageChain：按伤害类型选链路并应用运行时覆
 })
 
 check('getDamageChainLabel：运行时标签优先，未知链路回落 null', () => {
-  assert.equal(getDamageChainLabel('direct'), '直伤链路')
+  assert.equal(getDamageChainLabel('direct'), '纯直伤链路')
   assert.equal(getDamageChainLabel('unknown-chain'), null)
   setRuntimeDamageChains(adaptDamageChains({
     version: 1,

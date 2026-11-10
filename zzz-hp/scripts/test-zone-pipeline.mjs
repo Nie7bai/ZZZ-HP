@@ -28,10 +28,10 @@ function check(name, run) {
 
 console.log('[1] 内置链路')
 
-check('三条链路：direct / anomaly / radiance-self', () => {
+check('四条链路：direct / pierce / anomaly / radiance-self', () => {
   assert.deepEqual(
     BUILT_IN_DAMAGE_CHAINS.map((chain) => chain.id),
-    ['direct', 'anomaly', 'radiance-self'],
+    ['direct', 'pierce', 'anomaly', 'radiance-self'],
   )
 })
 
@@ -51,6 +51,7 @@ console.log('[2] 链路选择')
 check('直伤/锐化 → direct；异常 → anomaly；蕾米本人耀变 → radiance-self', () => {
   assert.equal(resolveDamageChainId({ damageKind: 'direct' }), 'direct')
   assert.equal(resolveDamageChainId({ damageKind: 'sharpen' }), 'direct')
+  assert.equal(resolveDamageChainId({ damageKind: 'direct', baseDamageSource: 'pierce' }), 'pierce')
   assert.equal(resolveDamageChainId({ damageKind: 'attributeAnomaly' }), 'anomaly')
   assert.equal(resolveDamageChainId({ damageKind: 'turbulence' }), 'anomaly')
   assert.equal(resolveDamageChainId({ damageKind: 'radiance' }), 'anomaly')

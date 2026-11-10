@@ -1714,6 +1714,7 @@ export function evaluateOptimalEventDetail(
   const damageChain = resolveCurrentDamageChain({
     damageKind: damageType,
     isSelfRadiance: anomalySubKind === 'radiance' && Boolean(remielSelfRadianceCalc),
+    baseDamageSource: evtBaseDamageSource,
     context: {
       agentId: zoneContext.agentId,
       profession: zoneContext.profession,
@@ -1778,6 +1779,7 @@ export function evaluateOptimalEventDetail(
     turbulenceZoneMultFactorOverride: zoneMultResolved.turbulenceZoneMultFactor,
     curtainVulnerabilityCap: resolveCurtainCap(zoneScheme),
     customZoneFactors,
+    chainId: damageChain.chainId,
     chainStages: damageChain.stages,
     chainDisabledStageIds: damageChain.disabledStageIds,
     chainStageAdjustments: damageChain.stageAdjustments,
