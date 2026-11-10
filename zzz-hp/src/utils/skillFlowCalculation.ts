@@ -14,6 +14,7 @@ import { readHitEvalCache, writeHitEvalCache, buildHitEvalFingerprint, createHit
 import { computePanelStages, buffMasterDataVersion, buildPanelSourceValuesBySlotRecord, type ConvertResolveInputs, type PanelSourceValues } from '@/utils/panelBuffCalc'
 import { resolveSlotExternalPanel } from '@/utils/panelSourceResolution'
 import { buildSkillFlowHitContextSignature } from '@/utils/skillFlowPanelSource'
+import { getRuntimeConfigVersions } from '@/zones/schemeSource'
 import { buildGenericPanelSkillContext } from '@/utils/resolvedHit'
 import type { DamageCalcKind, StaggerPhase } from '@/types/calculator'
 import type { PanelStats } from '@/types/calculatorPanel'
@@ -43,6 +44,7 @@ export interface BuffCalculationRuntime {
 export function createBuffCalculationRuntime(input: BuffCalculationRuntimeInput): BuffCalculationRuntime {
   const source = input.contextInput
   // 在隔离/解包前完成响应式依赖采集。主数据按加载版本共享，元素是可变事件依赖。
+  const runtimeVersions = getRuntimeConfigVersions()
   const signature = buildSkillFlowHitContextSignature({
     baseDamageSource: source.baseDamageSource, teamSlots: source.teamSlots, mainSlotIndex: source.mainSlotIndex,
     agentElements: source.agents.map(agent => [agent.id, agent.element]),
@@ -55,7 +57,10 @@ export function createBuffCalculationRuntime(input: BuffCalculationRuntimeInput)
     damageKind: input.globalDamageKind ?? null, staggerPhase: input.staggerPhase,
     mainExternalPanel: input.mainExternal, calcMode: input.externalPanelPolicy,
     triggerAnomalyAgentId: source.triggerAnomalyAgentId,
-  }) + '|catalog=' + buffMasterDataVersion(source) + '|configuration=' + JSON.stringify(
+  }) + '|catalog=' + buffMasterDataVersion(source)
+    + '|zones=' + (runtimeVersions.zoneSchemeVersion ?? '')
+    + '|chains=' + JSON.stringify(runtimeVersions.damageChainVersions)
+    + '|configuration=' + JSON.stringify(
     Object.fromEntries(Object.entries(source).filter(([key, value]) =>
       // `hits` 不进上下文：单条求值只读传进来的那一条命中，命中内容由整条指纹承担
       // （`buildHitEvalFingerprint`）。带上它会让「加一行 / 调序 / 加准备预览」把整条流程全部重算。
