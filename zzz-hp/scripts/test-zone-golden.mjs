@@ -133,9 +133,11 @@ for (const name of names) {
     failed += 1
     continue
   }
-  const expectedChain = name.startsWith('direct') || name.startsWith('sharpen') || name.startsWith('curtain')
-    ? 'direct'
-    : 'anomaly'
+  const expectedChain = name.startsWith('sharpen')
+    ? 'sharpen'
+    : name.startsWith('direct') || name.startsWith('curtain')
+      ? 'direct'
+      : 'anomaly'
   if (pipeline.chainId !== expectedChain) {
     console.error(`FAIL  ${name}.pipeline.chainId — ${pipeline.chainId} ≠ ${expectedChain}`)
     failed += 1

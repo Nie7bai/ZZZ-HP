@@ -50,17 +50,19 @@ export function resolveCurrentDamageChain(options: {
   damageKind: string
   isSelfRadiance?: boolean
   baseDamageSource?: string | null
-  context?: Omit<DamageChainResolveContext, 'damageKind' | 'baseDamageSource'>
+  useSharpen?: boolean
+  context?: Omit<DamageChainResolveContext, 'damageKind' | 'baseDamageSource' | 'useSharpen'>
   chains?: readonly DamageChainDefinition[]
 }): ResolvedDamageChain {
   const chainId = resolveDamageChainId({
     damageKind: options.damageKind,
     isSelfRadiance: options.isSelfRadiance,
     baseDamageSource: options.baseDamageSource,
+    useSharpen: options.useSharpen,
   })
   return resolveDamageChain(
     chainId,
-    { ...options.context, damageKind: options.damageKind, baseDamageSource: options.baseDamageSource },
+    { ...options.context, damageKind: options.damageKind, baseDamageSource: options.baseDamageSource, useSharpen: options.useSharpen },
     options.chains ?? getMergedDamageChains(),
   )
 }

@@ -73,7 +73,7 @@ export const BUILT_IN_DAMAGE_CHAINS: readonly DamageChainDefinition[] = Object.f
   {
     id: 'direct',
     label: '纯直伤链路',
-    appliesTo: { damageKinds: ['direct', 'sharpen'], baseDamageSources: ['atk', 'def'] },
+    appliesTo: { damageKinds: ['direct'], baseDamageSources: ['atk', 'def'] },
     scope: 'global',
     targetId: '',
     priority: 0,
@@ -91,6 +91,27 @@ export const BUILT_IN_DAMAGE_CHAINS: readonly DamageChainDefinition[] = Object.f
       { id: 'sharpen', kind: 'multiplier', label: '锐化伤害提升区', group: 'direct', order: 100, module: 'sharpenBonus' },
       { id: 'special', kind: 'multiplier', label: '特殊乘区', group: 'direct', order: 110, module: 'specialMult' },
       { id: 'final', kind: 'final', label: '期望伤害', group: 'direct', order: 120, module: 'product', inputs: DIRECT_STAGE_IDS },
+    ],
+  },
+  {
+    id: 'sharpen',
+    label: '锋御·锐化链路',
+    appliesTo: { damageKinds: ['sharpen'], baseDamageSources: ['def'] },
+    scope: 'global',
+    targetId: '',
+    priority: 0,
+    stages: [
+      { id: 'base', kind: 'source', label: '防御力基础', group: 'sharpen', order: 10, module: 'baseDamage' },
+      { id: 'dmg', kind: 'multiplier', label: '增伤区', group: 'sharpen', order: 20, module: 'percentSum' },
+      { id: 'defense', kind: 'multiplier', label: '防御区', group: 'sharpen', order: 30, module: 'defenseMultiplier' },
+      { id: 'resistance', kind: 'multiplier', label: '抗性区', group: 'sharpen', order: 40, module: 'resistanceMultiplier' },
+      { id: 'stagger', kind: 'multiplier', label: '失衡易伤区', group: 'sharpen', order: 45, module: 'stagger' },
+      { id: 'vulnerable', kind: 'multiplier', label: '易伤区', group: 'sharpen', order: 50, module: 'vulnerable' },
+      { id: 'crit', kind: 'multiplier', label: '锐爆区', group: 'sharpen', order: 60, module: 'sharpenCrit' },
+      { id: 'directMult', kind: 'multiplier', label: '直伤倍率区', group: 'sharpen', order: 70, module: 'directMult' },
+      { id: 'sharpen', kind: 'multiplier', label: '锐化伤害提升区', group: 'sharpen', order: 100, module: 'sharpenBonus' },
+      { id: 'special', kind: 'multiplier', label: '特殊乘区', group: 'sharpen', order: 110, module: 'specialMult' },
+      { id: 'final', kind: 'final', label: '期望伤害', group: 'sharpen', order: 120, module: 'product', inputs: ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'crit', 'directMult', 'sharpen', 'special'] },
     ],
   },
   {
@@ -227,9 +248,11 @@ export function resolveDamageChainId(options: {
   damageKind: string
   isSelfRadiance?: boolean
   baseDamageSource?: string | null
+  useSharpen?: boolean
 }): string {
   if (options.isSelfRadiance && options.damageKind === 'radiance') return 'radiance-self'
-  if (options.damageKind === 'direct' || options.damageKind === 'sharpen') {
+  if (options.useSharpen || options.damageKind === 'sharpen') return 'sharpen'
+  if (options.damageKind === 'direct') {
     return options.baseDamageSource === 'pierce' ? 'pierce' : 'direct'
   }
   return 'anomaly'
@@ -241,6 +264,8 @@ export interface DamageChainResolveContext {
   damageKind?: string
   /** 基础伤害来源；用于区分纯直伤 / 命破 */
   baseDamageSource?: string | null
+  /** 锋御锐化公式（职业锋御或招式 damageType=sharpen） */
+  useSharpen?: boolean
   agentId?: string | null
   profession?: string | null
   skillGroupId?: string | null

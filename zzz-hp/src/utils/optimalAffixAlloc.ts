@@ -1715,6 +1715,7 @@ export function evaluateOptimalEventDetail(
     damageKind: damageType,
     isSelfRadiance: anomalySubKind === 'radiance' && Boolean(remielSelfRadianceCalc),
     baseDamageSource: evtBaseDamageSource,
+    useSharpen: evtUseSharpen,
     context: {
       agentId: zoneContext.agentId,
       profession: zoneContext.profession,
