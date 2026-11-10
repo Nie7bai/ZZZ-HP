@@ -97,7 +97,7 @@ check('内置方案有 1 条 agent 作用域方案，条目为 stagger/curtain',
   const scheme = BUILT_IN_ZONE_SCHEMES[0]
   assert.equal(scheme.scope, 'agent')
   assert.equal(scheme.targetId, 'yeshunguang')
-  assert.equal(scheme.priority, 10)
+  assert.equal(scheme.priority, 0)
   assert.equal(scheme.entries.length, 1)
   const entry = scheme.entries[0]
   assert.equal(entry.key, CURTAIN_ZONE_KEY)

@@ -90,8 +90,10 @@ export interface ZoneSchemeParams {
 export interface ZoneSchemeEntry {
   /** 乘区键，例如 `stagger`；同键后应用的方案整条覆盖前一条 */
   key: string
-  /** 求值模块（白名单名，本阶段只用到 `stagger`；自定义乘区为 `percentSum`） */
-  module: string
+  /** 求值模块（白名单名；`stagger` / `percentSum` 等） */
+  module?: string
+  /** 与内置条目的关系：缺省 replace；inherit 仅保留内置；disable 移除该乘区 */
+  action?: 'inherit' | 'replace' | 'disable'
   /** 展示名；缺省回落到注册表或 key */
   label?: string
   params?: ZoneSchemeParams
@@ -179,7 +181,8 @@ export const BUILT_IN_ZONE_SCHEMES: readonly ZoneScheme[] = Object.freeze([
   {
     scope: 'agent',
     targetId: 'yeshunguang',
-    priority: 10,
+    // 内置方案优先级最低：DB 方案（默认 10）总会覆盖它
+    priority: 0,
     entries: [
       {
         key: CURTAIN_ZONE_KEY,
@@ -421,8 +424,15 @@ export function resolveZoneScheme(options: {
   for (const { scheme } of candidates) {
     for (const entry of scheme.entries) {
       if (!evaluateZoneCondition(entry.when, hit, panelContext, context)) continue
+      if (entry.action === 'disable') {
+        delete entries[entry.key]
+        continue
+      }
+      if (entry.action === 'inherit' && !entry.module) continue
+      if (!entry.module) continue
       entries[entry.key] = {
         ...entry,
+        module: entry.module,
         sourceScope: scheme.scope,
         sourceTargetId: scheme.targetId,
         sourcePriority: scheme.priority,

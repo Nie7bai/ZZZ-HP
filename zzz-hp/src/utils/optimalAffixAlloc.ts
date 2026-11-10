@@ -112,6 +112,7 @@ import { formatAnomalyFormulaAgentLabel } from '@/utils/anomalyFormulaDisplay'
 import { buildHitEvalFingerprintReused, resetHitEvalFingerprintReuseState } from '@/utils/hitEvalCache'
 import { resolveCurtainCap, resolveZoneScheme } from '@/zones/scheme'
 import { evaluateCustomZoneFactors } from '@/zones/customZones'
+import { getMergedZoneSchemes } from '@/zones/schemeSource'
 
 /** 扫掠 / 流程总伤只要面板数字，不拼「增益来自哪」明细 */
 const PANEL_NUMBERS_ONLY = { includeDetails: false } as const
@@ -1705,7 +1706,7 @@ export function evaluateOptimalEventDetail(
   }
 
   const remielSelfRadianceCalc = resolveRemielSelfRadianceCalcForOptimal(ctx, evtPowerAgentId, mainPanel, hit, trace)
-  const zoneScheme = resolveZoneScheme({ hit, panelContext: ctx.panelContext })
+  const zoneScheme = resolveZoneScheme({ hit, panelContext: ctx.panelContext, schemes: getMergedZoneSchemes() })
   const customZoneFactors = evaluateCustomZoneFactors(zoneScheme, evtBreakdown.combatMods.custom)
   const result = computeDamageResult({
     eventDamageType: damageType,

@@ -10,6 +10,7 @@ import bossInfoRoutes from './routes/bossInfoRoutes.js'
 import buffRoutes from './routes/buffRoutes.js'
 import calculatorBuffRoutes from './routes/calculatorBuffRoutes.js'
 import calculatorZoneRoutes from './routes/calculatorZoneRoutes.js'
+import calculatorZonePublicRoutes from './routes/calculatorZonePublicRoutes.js'
 import adminAuthRoutes from './routes/adminAuthRoutes.js'
 import uploadRoutes from './routes/uploadRoutes.js'
 import crisisAssaultRoutes from './routes/crisisAssaultRoutes.js'
@@ -146,7 +147,8 @@ app.use('/api/boss', bossRoutes)
 app.use('/api/boss-info', bossInfoRoutes)
 app.use('/api/buff', buffRoutes)
 app.use('/api/calculator-buffs', calculatorBuffRoutes)
-// 乘区定义/方案（管理端 CRUD）：Phase 4a 只落数据层，计算侧仍走代码内置默认方案
+// 乘区方案公共只读（用户端运行时加载）与管理员 CRUD
+app.use('/api/calculator', calculatorZonePublicRoutes)
 app.use('/api/admin/calculator', calculatorZoneRoutes)
 app.use('/api/changelog', changelogRoutes)
 app.use('/api/site-info', siteInfoRoutes)

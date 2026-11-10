@@ -14,6 +14,7 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import { initTheme } from './stores/theme'
+import { loadRuntimeZoneSchemes } from './zones/schemeSource'
 
 initTheme()
 
@@ -23,4 +24,7 @@ const pinia = createPinia()
 app.use(pinia)
 app.use(router)
 
-app.mount('#app')
+// 先拉取已启用的乘区方案（最多 1.5s；失败回落内置方案），再挂载
+void loadRuntimeZoneSchemes().finally(() => {
+  app.mount('#app')
+})
