@@ -32,7 +32,7 @@ import type { DamageInputUsage } from '@/utils/panelBuffCalc'
 import { buildZoneResults } from '@/zones/results'
 import { evaluateCoreZones } from '@/zones/builtins'
 import type { CustomZoneFactor } from '@/zones/customZones'
-import { buildStageTrace, resolveDamageChainId, type StageTraceEntry } from '@/zones/pipeline'
+import { buildStageTrace, resolveDamageChainId, type StageDefinition, type StageTraceEntry } from '@/zones/pipeline'
 import {
   applyMutationZone,
   computeAnomalyReleaseZones,
@@ -187,6 +187,11 @@ export interface DamageCalcInput {
    */
   eventDamageType?: SkillDamageType
   eventCritMode?: DamageEventCritMode
+  /**
+   * 已按运行时配置解析的链路阶段（Phase 4f）。
+   * 决定轨迹里「有哪些阶段、什么顺序、叫什么」；阶段值仍按阶段 id 从现有计算映射。
+   */
+  chainStages?: StageDefinition[]
   /**
    * 实际采用观察器：与正式计算选择面板/字段的分支**同处**，只报告本事件最终用到的依赖。
    * 不传时零开销，行为完全不变。
@@ -1212,5 +1217,5 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       final: subtypeZones.final,
     })
   }
-  return { ...result, zones, zoneSchemeVersion: 1, pipeline: buildStageTrace(chainId, stageValues) }
+  return { ...result, zones, zoneSchemeVersion: 1, pipeline: buildStageTrace(chainId, stageValues, input.chainStages) }
 }

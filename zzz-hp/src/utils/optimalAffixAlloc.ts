@@ -110,9 +110,10 @@ import type { PanelViewPolicyId } from '@/utils/panelViewPolicy'
 import { resolveSlotAttrValues } from '@/utils/panelSourceResolution'
 import { formatAnomalyFormulaAgentLabel } from '@/utils/anomalyFormulaDisplay'
 import { buildHitEvalFingerprintReused, resetHitEvalFingerprintReuseState } from '@/utils/hitEvalCache'
-import { resolveCurtainCap, resolveZoneScheme } from '@/zones/scheme'
+import { buildZoneResolvedContext, evaluateZoneCondition, resolveCurtainCap, resolveZoneScheme } from '@/zones/scheme'
 import { evaluateCustomZoneFactors } from '@/zones/customZones'
 import { getMergedZoneSchemes } from '@/zones/schemeSource'
+import { resolveCurrentDamageChain } from '@/zones/chainSource'
 
 /** 扫掠 / 流程总伤只要面板数字，不拼「增益来自哪」明细 */
 const PANEL_NUMBERS_ONLY = { includeDetails: false } as const
@@ -1706,8 +1707,21 @@ export function evaluateOptimalEventDetail(
   }
 
   const remielSelfRadianceCalc = resolveRemielSelfRadianceCalcForOptimal(ctx, evtPowerAgentId, mainPanel, hit, trace)
+  const zoneContext = buildZoneResolvedContext(hit, ctx.panelContext)
   const zoneScheme = resolveZoneScheme({ hit, panelContext: ctx.panelContext, schemes: getMergedZoneSchemes() })
   const customZoneFactors = evaluateCustomZoneFactors(zoneScheme, evtBreakdown.combatMods.custom)
+  // 计算链路：按伤害类型 + 命中上下文解析（内置链路 + 运行时覆盖），阶段只决定展示顺序与集合
+  const damageChain = resolveCurrentDamageChain({
+    damageKind: damageType,
+    isSelfRadiance: anomalySubKind === 'radiance' && Boolean(remielSelfRadianceCalc),
+    context: {
+      agentId: zoneContext.agentId,
+      profession: zoneContext.profession,
+      skillGroupId: zoneContext.skillGroupId,
+      skillId: zoneContext.skillId,
+      matchesCondition: (when) => evaluateZoneCondition(when, hit, ctx.panelContext, zoneContext),
+    },
+  })
   const result = computeDamageResult({
     eventDamageType: damageType,
     eventCritMode: hit.critMode,
@@ -1764,6 +1778,7 @@ export function evaluateOptimalEventDetail(
     turbulenceZoneMultFactorOverride: zoneMultResolved.turbulenceZoneMultFactor,
     curtainVulnerabilityCap: resolveCurtainCap(zoneScheme),
     customZoneFactors,
+    chainStages: damageChain.stages,
   })
 
   const perHit = pickEventDamage(result, damageType, hit.critMode)

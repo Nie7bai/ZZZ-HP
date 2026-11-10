@@ -112,5 +112,25 @@ check('展示行：顺序不变、伤害类取整、乘数保留小数', () => {
   assert.equal(rows[2].kind, 'final')
 })
 
+check('每条链路阶段都带 module；final 的 inputs 指向本链路已有阶段', () => {
+  for (const chain of BUILT_IN_DAMAGE_CHAINS) {
+    const ids = new Set(chain.stages.map((stage) => stage.id))
+    for (const stage of chain.stages) assert.ok(stage.module, `${chain.id}/${stage.id} 缺 module`)
+    const final = chain.stages.find((stage) => stage.kind === 'final')
+    assert.ok(final?.inputs?.length, `${chain.id} final 缺 inputs`)
+    for (const input of final.inputs) assert.ok(ids.has(input), `${chain.id} final 依赖未知阶段 ${input}`)
+  }
+})
+
+check('传入已解析阶段时按传入顺序输出，缺值阶段跳过', () => {
+  const trace = buildStageTrace('direct', { base: 1000, eliteBonus: 1.3, final: 1300 }, [
+    { id: 'final', kind: 'final', label: '期望伤害', group: 'direct', order: 5 },
+    { id: 'base', kind: 'source', label: '基础伤害', group: 'direct', order: 10 },
+    { id: 'eliteBonus', kind: 'multiplier', label: '对精英增伤区', group: 'direct', order: 20 },
+    { id: 'crit', kind: 'multiplier', label: '暴击区', group: 'direct', order: 30 },
+  ])
+  assert.deepEqual(trace.stages.map((stage) => stage.id), ['final', 'base', 'eliteBonus'])
+})
+
 console.log(`\n${failed === 0 ? '✅ all passed' : '❌ failed'}（${passed} passed / ${failed} failed）`)
 if (failed) process.exit(1)

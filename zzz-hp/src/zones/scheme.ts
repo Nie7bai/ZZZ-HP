@@ -12,7 +12,8 @@
 /** 方案作用域：越靠后越具体，覆盖越靠前的方案 */
 export type ZoneScope = 'global' | 'profession' | 'agent' | 'skillGroup' | 'skill'
 
-const ZONE_SCOPE_RANK: Record<ZoneScope, number> = {
+/** 作用域覆盖顺序（数值越大越具体） */
+export const ZONE_SCOPE_RANK: Record<ZoneScope, number> = {
   global: 0,
   profession: 1,
   agent: 2,
@@ -202,8 +203,8 @@ export const BUILT_IN_ZONE_SCHEMES: readonly ZoneScheme[] = Object.freeze([
   },
 ])
 
-function isZoneScope(value: string): value is ZoneScope {
-  return Object.prototype.hasOwnProperty.call(ZONE_SCOPE_RANK, value)
+export function isZoneScope(value: unknown): value is ZoneScope {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(ZONE_SCOPE_RANK, value)
 }
 
 function isConditionValueArray(value: unknown): value is readonly ZoneConditionValue[] {
@@ -225,7 +226,7 @@ function resolveZoneMindscapeRank(
   return clampZoneMindscapeRank(slot?.rank)
 }
 
-function buildResolvedContext(
+export function buildZoneResolvedContext(
   hit: ZoneSchemeHit,
   panelContext: ZoneSchemePanelContext,
 ): ZoneResolvedContext {
@@ -347,7 +348,7 @@ export function evaluateZoneCondition(
   condition: ZoneCondition | null | undefined,
   hit: ZoneSchemeHit,
   panelContext: ZoneSchemePanelContext,
-  context: ZoneResolvedContext = buildResolvedContext(hit, panelContext),
+  context: ZoneResolvedContext = buildZoneResolvedContext(hit, panelContext),
 ): boolean {
   if (!condition) return true
   if ('and' in condition) {
@@ -405,7 +406,7 @@ export function resolveZoneScheme(options: {
 }): ResolvedZoneScheme {
   const { hit, panelContext } = options
   const schemes = options.schemes ?? BUILT_IN_ZONE_SCHEMES
-  const context = buildResolvedContext(hit, panelContext)
+  const context = buildZoneResolvedContext(hit, panelContext)
 
   const candidates: SchemeCandidate[] = []
   schemes.forEach((scheme, index) => {

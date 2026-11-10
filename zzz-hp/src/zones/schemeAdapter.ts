@@ -51,6 +51,12 @@ const SCOPE_MAP: Record<string, 'global' | 'profession' | 'agent' | 'skillGroup'
   skill: 'skill',
 }
 
+/** 后端作用域写法 → 前端作用域；未知值返回 null（脏配置不参与计算） */
+export function adaptZoneScope(raw: unknown): 'global' | 'profession' | 'agent' | 'skillGroup' | 'skill' | null {
+  if (typeof raw !== 'string') return null
+  return SCOPE_MAP[raw.trim()] ?? null
+}
+
 const OP_MAP: Record<string, 'eq' | 'neq' | 'in' | 'gte' | 'lte'> = {
   '==': 'eq',
   '!=': 'neq',
@@ -59,7 +65,8 @@ const OP_MAP: Record<string, 'eq' | 'neq' | 'in' | 'gte' | 'lte'> = {
   '<=': 'lte',
 }
 
-function adaptCondition(raw: unknown): ZoneCondition | undefined {
+/** 后端条件写法 → 前端条件（单键/比较/and/or/not）；无法识别返回 undefined */
+export function adaptCondition(raw: unknown): ZoneCondition | undefined {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
   const record = raw as Record<string, unknown>
   if ('and' in record && Array.isArray(record.and)) {
@@ -117,7 +124,7 @@ export function adaptZoneScheme(remote: RemoteZoneScheme): {
   priority: number
   entries: ZoneSchemeEntry[]
 } | null {
-  const scope = SCOPE_MAP[remote.scope]
+  const scope = adaptZoneScope(remote.scope)
   if (!scope) return null
   const entries = remote.rules
     .map(adaptZoneRule)

@@ -7,7 +7,8 @@ import type { SkillFlowCalculationDetail } from '@/utils/skillFlowCalculation'
 import { DAMAGE_EVENT_CRIT_MODE_OPTIONS } from '@/utils/damageEvent'
 import { buildSkillBaseMultNote } from '@/utils/skillTalentLevels'
 import { buildPipelineStageRows } from '@/zones/display'
-import { getDamageChain } from '@/zones/pipeline'
+import { STAGE_KIND_LABELS } from '@/zones/pipeline'
+import { getDamageChainLabel } from '@/zones/chainSource'
 
 const props = defineProps<{ calculation: SkillFlowCalculationDetail }>()
 const sourceTips = computed(() => buildEventValueTips(props.calculation))
@@ -28,18 +29,11 @@ const damageSummary = computed(() => ({
   total: detail.value.total,
 }))
 
-/** Phase 4d：完整计算链路（只读阶段视图，编辑仅在管理端） */
+/** Phase 4d/4f：完整计算链路（只读阶段视图；链路名与阶段集合跟随运行时配置，编辑仅在管理端） */
 const pipelineStageRows = computed(() => buildPipelineStageRows(detail.value.result))
-const pipelineChainLabel = computed(() => {
-  const chainId = detail.value.result.pipeline?.chainId
-  return (chainId && getDamageChain(chainId)?.label) || '完整计算链路'
-})
-const stageKindLabels: Record<string, string> = {
-  source: '基础',
-  multiplier: '乘数',
-  combine: '合并',
-  final: '结算',
-}
+const pipelineChainLabel = computed(
+  () => getDamageChainLabel(detail.value.result.pipeline?.chainId) || '完整计算链路',
+)
 </script>
 
 <template>
@@ -66,7 +60,7 @@ const stageKindLabels: Record<string, string> = {
           class="pipeline-stage"
           :class="`pipeline-stage--${stage.kind}`"
         >
-          <span class="pipeline-stage-kind">{{ stageKindLabels[stage.kind] ?? stage.kind }}</span>
+          <span class="pipeline-stage-kind">{{ STAGE_KIND_LABELS[stage.kind] ?? stage.kind }}</span>
           <span class="pipeline-stage-label">{{ stage.label }}</span>
           <span class="pipeline-stage-value">{{ stage.valueText }}</span>
         </li>

@@ -14,6 +14,7 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import { initTheme } from './stores/theme'
+import { loadRuntimeDamageChains } from './zones/chainSource'
 import { loadRuntimeZoneSchemes } from './zones/schemeSource'
 
 initTheme()
@@ -24,7 +25,7 @@ const pinia = createPinia()
 app.use(pinia)
 app.use(router)
 
-// 先拉取已启用的乘区方案（最多 1.5s；失败回落内置方案），再挂载
-void loadRuntimeZoneSchemes().finally(() => {
+// 先并行拉取已启用的乘区方案与计算链路（各自最多 1.5s；失败回落内置），再挂载
+void Promise.allSettled([loadRuntimeZoneSchemes(), loadRuntimeDamageChains()]).finally(() => {
   app.mount('#app')
 })

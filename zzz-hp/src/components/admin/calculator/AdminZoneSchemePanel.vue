@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
+import AdminDamageChainSection from '@/components/admin/calculator/AdminDamageChainSection.vue'
 import {
   ZONE_PRIMITIVE_OPTIONS,
   ZONE_SCHEME_SCOPES,
@@ -1182,6 +1183,8 @@ onMounted(() => {
         </li>
       </ul>
     </section>
+
+    <AdminDamageChainSection />
 
     <AdminConfirmDialog
       :visible="Boolean(pendingDefinitionDelete)"
