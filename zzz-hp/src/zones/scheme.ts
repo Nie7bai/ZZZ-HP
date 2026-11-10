@@ -71,19 +71,29 @@ export interface ZoneCurtainCapRule {
   rankThreshold?: number
 }
 
-/** 模块参数：本阶段只需要 `mode` 与 `cap`，其余参数留待后续模块按需扩展 */
+/** 模块参数：帷幕用 `mode`/`cap`；自定义乘区用 `statKeys`/`cap`/`floor`/`allowNegative` */
 export interface ZoneSchemeParams {
   /** 求值模式；`stagger` 模块的 `curtain` = 帷幕易伤（不分阶段 + 上限） */
   mode?: string
-  cap?: ZoneCurtainCapRule
+  cap?: ZoneCurtainCapRule | number
+  /** 自定义乘区：参与加总的增益键（`custom` 修饰表） */
+  statKeys?: readonly string[]
+  /** 自定义乘区下限（倍率） */
+  floor?: number
+  /** 是否允许负值；缺省 true */
+  allowNegative?: boolean
+  /** 展示/处理顺序 */
+  order?: number
   [param: string]: unknown
 }
 
 export interface ZoneSchemeEntry {
   /** 乘区键，例如 `stagger`；同键后应用的方案整条覆盖前一条 */
   key: string
-  /** 求值模块（白名单名，本阶段只用到 `stagger`） */
+  /** 求值模块（白名单名，本阶段只用到 `stagger`；自定义乘区为 `percentSum`） */
   module: string
+  /** 展示名；缺省回落到注册表或 key */
+  label?: string
   params?: ZoneSchemeParams
   /** 附加条件；缺省 = 恒成立 */
   when?: ZoneCondition
@@ -436,7 +446,8 @@ export function resolveCurtainCap(
   const params = entry?.params
   if (!params || params.mode !== 'curtain') return null
   const cap = params.cap
-  if (typeof cap?.default !== 'number' || typeof cap.rank4 !== 'number') return null
+  if (!cap || typeof cap !== 'object') return null
+  if (typeof cap.default !== 'number' || typeof cap.rank4 !== 'number') return null
   const threshold = typeof cap.rankThreshold === 'number' ? cap.rankThreshold : 4
   const rank = clampZoneMindscapeRank(resolved?.context.mindscapeRank)
   return rank >= threshold ? cap.rank4 : cap.default

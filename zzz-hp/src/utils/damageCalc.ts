@@ -93,6 +93,11 @@ export interface DamageCalcInput {
    */
   combatDmgPenalty?: number
   /**
+   * 自定义乘区增益（Phase 3b）：键由乘区定义登记，值按百分点加总。
+   * 数据通路已接通；Phase 4b 接入方案求值后参与计算。
+   */
+  combatCustom?: Record<string, number>
+  /**
    * 锐化路径：防御力基础 + 锐爆区（可溢出）+ 不乘决算/贯穿增伤；
    * 锋御职业或招式 damageType=sharpen 时为 true。
    */

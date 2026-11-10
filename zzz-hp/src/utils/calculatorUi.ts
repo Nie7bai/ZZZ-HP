@@ -614,6 +614,7 @@ export function createEmptyBuffStatModifiers(): BuffStatModifiers {
     radianceMultFactor: 0,
     specialMultFactor: 0,
     mutationCoeffFactor: 0,
+    custom: {},
   }
 }
 
@@ -758,6 +759,14 @@ export function mergeBuffStatModifiers(
       result[field.key] += Number.isFinite(src) ? src : 0
     }
   }
+  // 自定义乘区增益键（Phase 3b）：按 key 加算，非法值忽略
+  const custom = { ...(target.custom ?? {}) }
+  for (const [key, value] of Object.entries(source.custom ?? {})) {
+    const amount = Number(value)
+    if (!Number.isFinite(amount)) continue
+    custom[key] = (custom[key] ?? 0) + amount
+  }
+  result.custom = custom
   return result
 }
 

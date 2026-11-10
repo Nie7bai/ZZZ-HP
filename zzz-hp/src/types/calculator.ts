@@ -391,9 +391,15 @@ export interface BuffStatModifiers {
   specialMultFactor: number
   /** 异化系数乘算修正（默认 1） */
   mutationCoeffFactor: number
+  /**
+   * 自定义乘区增益（Phase 3b）：键由乘区定义登记，例如 `eliteDmgBonus`。
+   * 与强类型字段分离，避免污染 `BuffStatKey`；聚合后随 `combatMods` 传入计算。
+   */
+  custom?: Record<string, number>
 }
 
-export type BuffStatKey = keyof BuffStatModifiers
+/** 内置（强类型）增益键；`custom` 走乘区定义，不属于此联合 */
+export type BuffStatKey = Exclude<keyof BuffStatModifiers, 'custom'>
 
 export interface BuffEffectConvert {
   from: ConvertFromKey

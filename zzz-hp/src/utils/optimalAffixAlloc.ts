@@ -1729,6 +1729,7 @@ export function evaluateOptimalEventDetail(
     combatSharpenDmgBonus: evtBreakdown.combatMods.sharpenDmgBonus,
     combatSharpenCritDmgBonus: evtBreakdown.combatMods.sharpenCritDmgBonus,
     combatDmgPenalty: evtBreakdown.combatMods.dmgPenalty,
+    combatCustom: evtBreakdown.combatMods.custom,
     useSharpenFormula: evtUseSharpen,
     staggerPhase: hit.staggerPhase,
     ownerAgentElement: ownerAgent?.element ?? '',
@@ -2003,6 +2004,7 @@ function computeEventDamageLines(
         combatSharpenDmgBonus: firstBreakdown.combatMods.sharpenDmgBonus,
         combatSharpenCritDmgBonus: firstBreakdown.combatMods.sharpenCritDmgBonus,
         combatDmgPenalty: firstBreakdown.combatMods.dmgPenalty,
+        combatCustom: firstBreakdown.combatMods.custom,
         mainAgentElement: ctx.mainAgentElement,
         ...resolveDamageCalcResistanceElements(
           ctx.panelContext.teamSlots,

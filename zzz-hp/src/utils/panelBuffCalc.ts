@@ -1070,6 +1070,8 @@ export interface CombatBuffMods {
   sharpenDmgBonus: number
   sharpenCritDmgBonus: number
   dmgPenalty: number
+  /** 自定义乘区增益（Phase 3b）：键由乘区定义登记，值按百分点加总 */
+  custom: Record<string, number>
 }
 
 export interface PanelBuffBreakdown {
@@ -3069,6 +3071,7 @@ export function extractCombatMods(mods: BuffStatModifiers): CombatBuffMods {
     sharpenDmgBonus: mods.sharpenDmgBonus,
     sharpenCritDmgBonus: mods.sharpenCritDmgBonus,
     dmgPenalty: mods.dmgPenalty,
+    custom: { ...(mods.custom ?? {}) },
   }
 }
 
