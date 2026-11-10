@@ -110,6 +110,7 @@ import type { PanelViewPolicyId } from '@/utils/panelViewPolicy'
 import { resolveSlotAttrValues } from '@/utils/panelSourceResolution'
 import { formatAnomalyFormulaAgentLabel } from '@/utils/anomalyFormulaDisplay'
 import { buildHitEvalFingerprintReused, resetHitEvalFingerprintReuseState } from '@/utils/hitEvalCache'
+import { resolveCurtainCap, resolveZoneScheme } from '@/zones/scheme'
 
 /** 扫掠 / 流程总伤只要面板数字，不拼「增益来自哪」明细 */
 const PANEL_NUMBERS_ONLY = { includeDetails: false } as const
@@ -1342,37 +1343,6 @@ function resolveLuminousTeamModifiersForOptimal(
   }
 }
 
-/** 叶瞬光：含「明心境」的招式 + 两个终结技 + 登场技，使用「帷幕易伤」而非普通失衡易伤 */
-const YESHUNGUANG_AGENT_ID = 'yeshunguang'
-const YESHUNGUANG_CURTAIN_SKILL_NAMES = new Set([
-  '终结技：逐云惊霆',
-  '终结技：斩妄开天',
-  '登场技：照影',
-])
-/** 4 影提升帷幕易伤上限：0–3 影 210%，4–6 影 300% */
-const CURTAIN_CAP_BEFORE_M4 = 2.1
-const CURTAIN_CAP_FROM_M4 = 3
-
-function isYeshunguangCurtainSkill(hit: ResolvedHit): boolean {
-  if (String(hit.skill?.agentId ?? '') !== YESHUNGUANG_AGENT_ID) return false
-  const name = String(hit.skill?.name ?? '')
-  return name.includes('明心境') || YESHUNGUANG_CURTAIN_SKILL_NAMES.has(name)
-}
-
-/**
- * 帷幕易伤上限：按叶瞬光自己的影画等级（队伍槽位 rank）取；
- * 不在队伍里时按 0 影处理（210%）。
- */
-function resolveCurtainVulnerabilityCap(
-  panelContext: OptimalEvalContext['panelContext'],
-  hit: ResolvedHit,
-): number | null {
-  if (!isYeshunguangCurtainSkill(hit)) return null
-  const slot = panelContext.teamSlots.find((item) => item.agentId === YESHUNGUANG_AGENT_ID)
-  const rank = Math.min(6, Math.max(0, Math.round(slot?.rank ?? 0)))
-  return rank >= 4 ? CURTAIN_CAP_FROM_M4 : CURTAIN_CAP_BEFORE_M4
-}
-
 export function evaluateOptimalEventDetail(
   ctx: OptimalEvalContext,
   mainExternal: PanelStats | null,
@@ -1787,7 +1757,9 @@ export function evaluateOptimalEventDetail(
     disorderZoneMultFactorOverride: zoneMultResolved.disorderZoneMultFactor,
     turbulenceZoneMultOverride: zoneMultResolved.turbulenceZoneMult,
     turbulenceZoneMultFactorOverride: zoneMultResolved.turbulenceZoneMultFactor,
-    curtainVulnerabilityCap: resolveCurtainVulnerabilityCap(ctx.panelContext, hit),
+    curtainVulnerabilityCap: resolveCurtainCap(
+      resolveZoneScheme({ hit, panelContext: ctx.panelContext }),
+    ),
   })
 
   const perHit = pickEventDamage(result, damageType, hit.critMode)
