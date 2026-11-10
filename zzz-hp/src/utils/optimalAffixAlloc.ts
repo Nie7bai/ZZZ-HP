@@ -1779,6 +1779,8 @@ export function evaluateOptimalEventDetail(
     curtainVulnerabilityCap: resolveCurtainCap(zoneScheme),
     customZoneFactors,
     chainStages: damageChain.stages,
+    chainDisabledStageIds: damageChain.disabledStageIds,
+    chainStageAdjustments: damageChain.stageAdjustments,
   })
 
   const perHit = pickEventDamage(result, damageType, hit.critMode)

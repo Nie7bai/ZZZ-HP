@@ -192,6 +192,10 @@ export interface DamageCalcInput {
    * 决定轨迹里「有哪些阶段、什么顺序、叫什么」；阶段值仍按阶段 id 从现有计算映射。
    */
   chainStages?: StageDefinition[]
+  /** 运行时方案禁用的阶段 id（用于把禁用反映到结算） */
+  chainDisabledStageIds?: string[]
+  /** 阶段参数 `adjustment`（倍率调整，按阶段 id） */
+  chainStageAdjustments?: Record<string, number>
   /**
    * 实际采用观察器：与正式计算选择面板/字段的分支**同处**，只报告本事件最终用到的依赖。
    * 不传时零开销，行为完全不变。
@@ -1216,6 +1220,45 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       special: triggerParts.specialMultiplier,
       final: subtypeZones.final,
     })
+  }
+  // Phase 4f-2：阶段的启用/禁用与 `params.adjustment` 反映到结算
+  let stageAdjustment = 1
+  for (const stageId of input.chainDisabledStageIds ?? []) {
+    const value = stageValues[stageId]
+    if (typeof value === 'number' && Number.isFinite(value) && value !== 0) {
+      stageAdjustment /= value
+    }
+  }
+  for (const ratio of Object.values(input.chainStageAdjustments ?? {})) {
+    if (Number.isFinite(ratio) && ratio >= 0) stageAdjustment *= ratio
+  }
+  if (stageAdjustment !== 1) {
+    const scale = (value: number) => round(value * stageAdjustment, 0)
+    result.directDamageFromDirectMult = scale(result.directDamageFromDirectMult)
+    result.settlementDamageExpected = scale(result.settlementDamageExpected)
+    result.directDamageExpected = scale(result.directDamageExpected)
+    result.attributeAnomalyExpected = scale(result.attributeAnomalyExpected)
+    result.attributeAnomalyExpectedNoCrit = scale(result.attributeAnomalyExpectedNoCrit)
+    result.attributeAnomalyExpectedFullCrit = scale(result.attributeAnomalyExpectedFullCrit)
+    result.anomalyReleaseExpected = scale(result.anomalyReleaseExpected)
+    result.anomalyReleaseExpectedNoCrit = scale(result.anomalyReleaseExpectedNoCrit)
+    result.anomalyReleaseExpectedFullCrit = scale(result.anomalyReleaseExpectedFullCrit)
+    result.disorderExpected = scale(result.disorderExpected)
+    result.disorderExpectedNoCrit = scale(result.disorderExpectedNoCrit)
+    result.disorderExpectedFullCrit = scale(result.disorderExpectedFullCrit)
+    result.turbulenceExpected = scale(result.turbulenceExpected)
+    result.turbulenceExpectedNoCrit = scale(result.turbulenceExpectedNoCrit)
+    result.turbulenceExpectedFullCrit = scale(result.turbulenceExpectedFullCrit)
+    result.radianceExpected = scale(result.radianceExpected)
+    result.radianceExpectedNoCrit = scale(result.radianceExpectedNoCrit)
+    result.radianceExpectedFullCrit = scale(result.radianceExpectedFullCrit)
+    if (chainId === 'direct') stageValues.final = result.directDamageExpected
+    else if (chainId === 'radiance-self') stageValues.final = result.radianceExpected
+    else if (subKind === 'attributeAnomaly') stageValues.final = result.attributeAnomalyExpected
+    else if (subKind === 'anomalyRelease') stageValues.final = result.anomalyReleaseExpected
+    else if (subKind === 'disorder') stageValues.final = result.disorderExpected
+    else if (subKind === 'turbulence') stageValues.final = result.turbulenceExpected
+    else stageValues.final = result.radianceExpected
   }
   return { ...result, zones, zoneSchemeVersion: 1, pipeline: buildStageTrace(chainId, stageValues, input.chainStages) }
 }

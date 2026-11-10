@@ -234,6 +234,10 @@ export interface ResolvedDamageChain {
   stages: StageDefinition[]
   /** 实际参与覆盖的运行时链路（诊断用，按应用顺序） */
   sources: ResolvedDamageChainSource[]
+  /** 被运行时方案禁用的阶段 id（用于把禁用反映到结算） */
+  disabledStageIds: string[]
+  /** 阶段参数里的 `adjustment`（倍率调整，按阶段 id） */
+  stageAdjustments: Record<string, number>
 }
 
 function chainScopeMatches(chain: DamageChainDefinition, context: DamageChainResolveContext): boolean {
@@ -322,7 +326,9 @@ export function resolveDamageChain(
   chains: readonly DamageChainDefinition[] = defaultDamageChains(),
 ): ResolvedDamageChain {
   const base = chains.find((chain) => chain.id === chainId)
-  if (!base) return { chainId, label: chainId, stages: [], sources: [] }
+  if (!base) {
+    return { chainId, label: chainId, stages: [], sources: [], disabledStageIds: [], stageAdjustments: {} }
+  }
 
   const candidates = chains
     .map((chain, index) => ({ chain, index }))
@@ -342,6 +348,8 @@ export function resolveDamageChain(
 
   let label = base.label || chainId
   const sources: ResolvedDamageChainSource[] = []
+  const disabledStageIds: string[] = []
+  const stageAdjustments: Record<string, number> = {}
   /** 无运行时覆盖：直接返回内置阶段（不含合并/排序开销） */
   if (!candidates.length) {
     const fallbackGroup = base.stages[0]?.group || chainId
@@ -349,7 +357,7 @@ export function resolveDamageChain(
       .filter((stage) => stage.enabled !== false && stage.action !== 'disable')
       .filter((stage) => (context.matchesCondition ? context.matchesCondition(stage.when) : true))
       .map((stage) => finalizeStage(stage, fallbackGroup))
-    return { chainId, label, stages, sources }
+    return { chainId, label, stages, sources, disabledStageIds, stageAdjustments }
   }
 
   const stages = base.stages.map((stage) => ({ ...stage }))
@@ -367,10 +375,14 @@ export function resolveDamageChain(
       const index = stages.findIndex((stage) => stage.id === id)
       if (action === 'disable') {
         if (index >= 0) stages.splice(index, 1)
+        if (!disabledStageIds.includes(id)) disabledStageIds.push(id)
         continue
       }
       if (action === 'inherit') continue
       const existing = index >= 0 ? stages[index] : undefined
+      if (patch.params && typeof patch.params.adjustment === 'number' && Number.isFinite(patch.params.adjustment)) {
+        stageAdjustments[id] = patch.params.adjustment
+      }
       if (existing) {
         stages[index] = mergeStage(existing, { ...patch, id })
       } else {
@@ -388,7 +400,7 @@ export function resolveDamageChain(
     .filter((stage) => stage.enabled !== false && stage.action !== 'disable')
     .filter((stage) => (context.matchesCondition ? context.matchesCondition(stage.when) : true))
 
-  return { chainId, label, stages: sorted, sources }
+  return { chainId, label, stages: sorted, sources, disabledStageIds, stageAdjustments }
 }
 
 /**
