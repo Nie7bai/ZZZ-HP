@@ -31,6 +31,8 @@ import {
 } from '@/utils/damageZoneSourcePolicy'
 // 只作类型导入：记录类型定义在 panelBuffCalc.ts，运行时不反向依赖（Spec §2.5 第 2 项）
 import type { DamageInputUsage } from '@/utils/panelBuffCalc'
+import { buildZoneResults } from '@/zones/results'
+import type { ZoneResult } from '@/zones/types'
 
 export type { DamageEnemyInput, EnemyResistanceType }
 
@@ -187,6 +189,13 @@ export interface DamageCalcResult {
   staggerZoneKind?: 'curtain'
   /** 帷幕易伤上限（倍率，2.1 / 3）；仅 staggerZoneKind='curtain' 时有值 */
   staggerZoneCap?: number
+  /**
+   * 模块化乘区结果（Phase 1a 附加信息）：由 `src/zones` 注册表根据现有数值映射，
+   * 不参与计算；旧字段仍是唯一计算来源。
+   */
+  zones?: Record<string, ZoneResult>
+  /** 乘区方案版本（Phase 1 固定为 1；后续与可编辑方案对齐） */
+  zoneSchemeVersion?: number
   specialMultiplier: number
   /** 贯穿增伤乘区（非贯穿基础时为 1） */
   pierceDmgMultiplier: number
@@ -1133,7 +1142,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     }
   }
 
-  return {
+  const result: DamageCalcResult = {
     baseDamage: round(baseParts.baseDamage, 2),
     baseDamageSource: baseParts.usedBaseSource,
     dmgMultiplier: round(reportedDmgMultiplier, 4),
@@ -1254,4 +1263,5 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     radianceExpectedNoCrit: round(applyMutation(radianceExpectedNoCritRaw), 0),
     radianceExpectedFullCrit: round(applyMutation(radianceExpectedFullCritRaw), 0),
   }
+  return { ...result, zones: buildZoneResults(result), zoneSchemeVersion: 1 }
 }
