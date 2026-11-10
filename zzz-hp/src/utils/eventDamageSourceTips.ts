@@ -3,6 +3,7 @@ import { zoneLabel } from '@/zones/display'
 import type { SkillFlowCalculationDetail } from '@/utils/skillFlowCalculation'
 import type { EventDamageInputUsage, BuffModSource } from '@/utils/panelBuffCalc'
 import { createEmptyBuffStatModifiers } from '@/utils/calculatorUi'
+import { addStat } from '@/utils/buffEffect'
 import { createEmptyExternalPanel, type PanelStats } from '@/types/calculatorPanel'
 import { buildSkillBaseMultNote } from '@/utils/skillTalentLevels'
 import { buildAtkPanelProcessItems, buildDefPanelProcessItems, buildEnemyCombatProcessItems, buildStatSourceGroups, type StatSourceGroup } from '@/utils/statSourceTips'
@@ -128,8 +129,7 @@ export function buildEventValueTips(calculation: SkillFlowCalculationDetail): Re
       }
     }
     const sources: BuffModSource[] = records.filter(record => record.usedInputs.some(u => selectedKeys.has(identity(u)))).map(record => {
-      const mods = createEmptyBuffStatModifiers()
-      mods[record.stat] = record.amount
+      const mods = addStat(createEmptyBuffStatModifiers(), record.stat, record.amount)
       const original = views[record.viewKey]?.sources.find(source => source.effects?.some(effect => effect.id === record.effectId))
       return { key: record.viewKey+'|'+record.effectId, label: original?.label ?? record.providerName,
         mods, note: original?.note, effects: original?.effects?.filter(effect => effect.id === record.effectId) }

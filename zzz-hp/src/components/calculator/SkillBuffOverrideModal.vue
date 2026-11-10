@@ -25,6 +25,7 @@ import {
   blockKeyOfCollected,
 } from '@/utils/panelBuffCalc'
 import { BUFF_STAT_FIELDS, buffStatFieldLabel } from '@/utils/calculatorUi'
+import { buffStatLabelOf } from '@/utils/buffStatZones'
 import { formatBuffEffectResultText } from '@/utils/buffEffect'
 import {
   effectRecipientNote as buildEffectRecipientNote,
@@ -245,7 +246,8 @@ function restoreGlobal() {
 
 function statLabel(stat: string): string {
   const field = BUFF_STAT_FIELDS.find((item) => item.key === stat)
-  return field ? buffStatFieldLabel(field) : stat
+  // 自定义乘区键回落到乘区定义登记的 label
+  return field ? buffStatFieldLabel(field) : buffStatLabelOf(stat)
 }
 
 /** 转模折算值：只读共享参数（Spec §5.1 第 5–6 项），不再自行推导 */

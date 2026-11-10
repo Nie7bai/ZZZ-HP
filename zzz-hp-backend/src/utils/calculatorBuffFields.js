@@ -142,6 +142,35 @@ export const BUFF_MULT_FACTOR_KEYS = [
   'mutationCoeffFactor',
 ]
 
+/**
+ * 自定义乘区增益键（乘区定义 `stats` 登记）：`custom:` + 字母开头、字母/数字/下划线/点/连字符，slug ≤64。
+ * 与前端 `zzz-hp/src/utils/buffEffect.ts` 的 `isCustomBuffStatKey` 同源。
+ */
+export const CUSTOM_BUFF_STAT_KEY_PATTERN = /^custom:[A-Za-z][A-Za-z0-9_.-]{0,63}$/
+
+/** 是否为乘区定义登记的 `custom:<key>` 自定义增益键（内置键恒为 false） */
+export function isCustomBuffStatKey(stat) {
+  return typeof stat === 'string' && CUSTOM_BUFF_STAT_KEY_PATTERN.test(stat)
+}
+
+/** `custom:<key>` → `<key>`；非 custom / 格式非法返回 null */
+export function customBuffStatFieldOf(stat) {
+  return isCustomBuffStatKey(stat) ? stat.slice('custom:'.length) : null
+}
+
+/** 归一化 `custom` 修饰表：只保留合法键与有限数字 */
+export function normalizeCustomBuffStatModifiers(value) {
+  const custom = {}
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return custom
+  for (const [key, raw] of Object.entries(value)) {
+    if (!isCustomBuffStatKey(`custom:${key}`)) continue
+    const amount = Number(raw)
+    if (!Number.isFinite(amount)) continue
+    custom[key] = amount
+  }
+  return custom
+}
+
 export function readNumber(value) {
   const num = Number(value)
   return Number.isFinite(num) ? num : 0
@@ -186,6 +215,9 @@ export function normalizeBuffStatModifiers(value) {
   if (readNumber(value.externalDefPercent) && !result.inCombatDefPercent) {
     result.inCombatDefPercent = readNumber(value.externalDefPercent)
   }
+  // 自定义乘区修饰表：合法键保留，非法键剔除（空表不落 `custom` 键，保持旧序列化形状）
+  const custom = normalizeCustomBuffStatModifiers(value.custom)
+  if (Object.keys(custom).length) result.custom = custom
   return result
 }
 

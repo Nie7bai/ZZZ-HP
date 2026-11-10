@@ -11,7 +11,8 @@
  * 类2 是 1 行 ↔ N 条（每个第二级类型一个 stat）；类1/类3 是 1 行 ↔ 1 条。
  * 条件只写 `conditions.damageTypes`，从不改写字段。
  */
-import type { BuffDamageType, BuffStatKey } from '@/types/calculator'
+import { reactive } from 'vue'
+import type { BuffDamageType, BuffStatKey, CustomBuffStatKey } from '@/types/calculator'
 import {
   ANOMALY_DAMAGE_TYPES,
   BUFF_DAMAGE_TYPE_IDS,
@@ -19,6 +20,7 @@ import {
   isAnomalyDamageType,
 } from '@/utils/buffDamageTypes'
 import { BUFF_STAT_FIELDS } from '@/utils/calculatorUi'
+import { isCustomBuffStatKey } from '@/utils/buffEffect'
 
 export type BuffStatZoneTier = 1 | 2 | 3
 
@@ -26,8 +28,8 @@ export interface BuffStatZone {
   id: string
   label: string
   tier: BuffStatZoneTier
-  /** 类1/类3：单一字段 */
-  stat?: BuffStatKey
+  /** 类1/类3：单一字段（类3 追加的自定义乘区为 `custom:<key>`） */
+  stat?: BuffStatKey | CustomBuffStatKey
   /** 类2：第二级类型 → 字段（5 个） */
   statsByType?: Partial<Record<BuffDamageType, BuffStatKey>>
   /** 类1：锁定的伤害类型（灰显不可改） */
@@ -122,23 +124,66 @@ const CLASS3_ZONES: BuffStatZone[] = BUFF_STAT_FIELDS.filter(
   stat: field.key,
 }))
 
-export const BUFF_STAT_ZONES: BuffStatZone[] = [
+/**
+ * 管理侧「属性」下拉的乘区目录（可被运行时乘区定义追加）。
+ *
+ * 内置 61 项在模块加载时构建；`registerCustomBuffStatZones` 把 DB `calculator_zone_definitions.stats`
+ * 登记的增益键追加为类3 乘区（`stat = custom:<key>`），幂等按 id 去重。
+ * 用 `reactive` 是为了让已挂载的管理端下拉在注册后立即出现新选项。
+ */
+export const BUFF_STAT_ZONES: BuffStatZone[] = reactive<BuffStatZone[]>([
   ...CLASS1_ZONES,
   ...CLASS2_ZONES,
   ...CLASS3_ZONES,
-]
+])
 
-const ZONE_BY_ID = new Map(BUFF_STAT_ZONES.map((zone) => [zone.id, zone]))
+const ZONE_BY_ID = new Map<string, BuffStatZone>()
 
 /** stat → { zone, type }（类2 的 5 个子类字段都能反查） */
-const ZONE_BY_STAT = new Map<
-  BuffStatKey,
-  { zone: BuffStatZone; type?: BuffDamageType }
->()
-for (const zone of BUFF_STAT_ZONES) {
+const ZONE_BY_STAT = new Map<string, { zone: BuffStatZone; type?: BuffDamageType }>()
+
+function indexZone(zone: BuffStatZone): void {
+  ZONE_BY_ID.set(zone.id, zone)
   if (zone.stat) ZONE_BY_STAT.set(zone.stat, { zone })
   for (const [type, stat] of Object.entries(zone.statsByType ?? {})) {
     if (stat) ZONE_BY_STAT.set(stat, { zone, type: type as BuffDamageType })
+  }
+}
+
+for (const zone of BUFF_STAT_ZONES) indexZone(zone)
+
+export interface CustomBuffStatZoneInput {
+  /** 增益键（可带 `custom:` 前缀；登记时统一补前缀） */
+  key: string
+  /** 展示名；缺省回落到键名 */
+  label?: string | null
+}
+
+function customZoneIdOf(key: string): string {
+  return `zone:custom:${key}`
+}
+
+/**
+ * 注册乘区定义里登记的增益键，追加到「属性」下拉（类3，幂等）。
+ *
+ * label 用乘区定义 stats 的 label；非法 slug（未通过 `custom:<key>` 格式）直接跳过，
+ * 已有同 id 的项不重复追加，也不覆盖内置项。
+ */
+export function registerCustomBuffStatZones(
+  zones: readonly CustomBuffStatZoneInput[] | null | undefined,
+): void {
+  for (const input of zones ?? []) {
+    const raw = typeof input?.key === 'string' ? input.key.trim() : ''
+    if (!raw) continue
+    const key = raw.startsWith('custom:') ? raw.slice('custom:'.length) : raw
+    const stat = `custom:${key}`
+    if (!isCustomBuffStatKey(stat)) continue
+    const id = customZoneIdOf(key)
+    if (ZONE_BY_ID.has(id)) continue
+    const label = typeof input.label === 'string' && input.label.trim() ? input.label.trim() : key
+    BUFF_STAT_ZONES.push({ id, label, tier: 3, stat })
+    // 索引数组里的（响应式）代理对象，保证 `buffStatZoneOf` 与下拉项同一引用
+    indexZone(BUFF_STAT_ZONES[BUFF_STAT_ZONES.length - 1]!)
   }
 }
 
@@ -147,17 +192,39 @@ export function findBuffStatZoneById(id: string | null | undefined): BuffStatZon
   return ZONE_BY_ID.get(id) ?? null
 }
 
-export function buffStatZoneOf(stat: BuffStatKey | null | undefined): BuffStatZone | null {
+export function buffStatZoneOf(stat: string | null | undefined): BuffStatZone | null {
   if (!stat) return null
   return ZONE_BY_STAT.get(stat)?.zone ?? null
 }
 
+/** 「属性」展示名：内置字段 → 字段 label；自定义键 → 注册表 zone label；再回落键名 */
+export function buffStatLabelOf(stat: string | null | undefined): string {
+  if (!stat) return ''
+  const field = BUFF_STAT_FIELDS.find((item) => item.key === stat)
+  if (field) return field.label
+  const zone = buffStatZoneOf(stat)
+  if (zone) return zone.label
+  return stat.startsWith('custom:') ? stat.slice('custom:'.length) : String(stat)
+}
+
+/** 「属性」单位：内置字段取其 unit；自定义键回落 `percent`（界面显示 `%`） */
+export function buffStatUnitOf(
+  stat: string | null | undefined,
+): 'percent' | 'flat' | 'factor' {
+  const field = BUFF_STAT_FIELDS.find((item) => item.key === stat)
+  return field?.unit ?? 'percent'
+}
+
 /** 类2：stat 对应的第二级类型；类1/类3 返回 null */
-export function anomalyTypeOfStat(stat: BuffStatKey | null | undefined): BuffDamageType | null {
+export function anomalyTypeOfStat(
+  stat: BuffStatKey | CustomBuffStatKey | null | undefined,
+): BuffDamageType | null {
   return anomalyTypeOfStatBase(stat)
 }
 
-export function isAnomalySubtypeStat(stat: BuffStatKey | null | undefined): boolean {
+export function isAnomalySubtypeStat(
+  stat: BuffStatKey | CustomBuffStatKey | null | undefined,
+): boolean {
   return Boolean(stat && anomalyTypeOfStat(stat))
 }
 
@@ -185,7 +252,7 @@ export function isZoneTypeLocked(zone: BuffStatZone): boolean {
 export function statForZoneType(
   zone: BuffStatZone,
   type: BuffDamageType | null | undefined,
-): BuffStatKey | undefined {
+): BuffStatKey | CustomBuffStatKey | undefined {
   if (zone.statsByType) {
     if (!type) return undefined
     return zone.statsByType[type]
@@ -195,7 +262,7 @@ export function statForZoneType(
 
 export interface ZoneStatRow {
   type?: BuffDamageType
-  stat: BuffStatKey
+  stat: BuffStatKey | CustomBuffStatKey
 }
 
 /**
@@ -225,7 +292,7 @@ export function statRowsForZone(
 /** 类2 按 stat 集合反推类型集（保持界面顺序） */
 export function zoneTypesOfStats(
   zone: BuffStatZone,
-  stats: readonly BuffStatKey[],
+  stats: readonly (BuffStatKey | CustomBuffStatKey)[],
 ): BuffDamageType[] {
   if (!zone.statsByType) return []
   const statSet = new Set(stats)
@@ -238,7 +305,7 @@ export function zoneTypesOfStats(
 /** 类2 是否覆盖全部 5 项 */
 export function zoneHasAllAnomalyTypes(
   zone: BuffStatZone,
-  stats: readonly BuffStatKey[],
+  stats: readonly (BuffStatKey | CustomBuffStatKey)[],
 ): boolean {
   if (!zone.statsByType) return false
   const selected = zoneTypesOfStats(zone, stats)

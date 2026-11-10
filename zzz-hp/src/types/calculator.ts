@@ -402,6 +402,14 @@ export interface BuffStatModifiers {
 /** 内置（强类型）增益键；`custom` 走乘区定义，不属于此联合 */
 export type BuffStatKey = Exclude<keyof BuffStatModifiers, 'custom'>
 
+/**
+ * 乘区定义登记的增益键（Phase 3b 命名空间）。
+ *
+ * 效果里写 `custom:<key>`，应用时落到 `BuffStatModifiers.custom[<key>]`（百分点加总），
+ * 与内置键隔离，避免自定义乘区与强类型字段撞名。
+ */
+export type CustomBuffStatKey = `custom:${string}`
+
 export interface BuffEffectConvert {
   from: ConvertFromKey
   /** external/final 读面板；manual 自行设置基础值（不看面板） */
@@ -477,7 +485,8 @@ export interface BuffEffect {
   /** 属性限定（属性增伤/属性异常增伤/抗性穿透等）；可多选 */
   elementFilter?: 'all' | string[]
   kind: BuffEffectKind
-  stat: BuffStatKey
+  /** 内置键，或乘区定义登记的自定义键 `custom:<key>` */
+  stat: BuffStatKey | CustomBuffStatKey
   value?: number
   stackable?: boolean
   maxStacks?: number

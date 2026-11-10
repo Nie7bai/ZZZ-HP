@@ -11,6 +11,7 @@ import type {
   BuffStatKey,
   BuffStatModifiers,
   CharacterAttrKey,
+  CustomBuffStatKey,
   DamageCalcKind,
   DriveDiscBuffDoc,
   SkillCalcContext,
@@ -1121,7 +1122,7 @@ export interface ResolvedEffectParameters {
 /** 判定循环产出的原始记录（不含来源元数据；`buffEffect.ts` 回调给的就是它）。 */
 export interface ResolvedEffectRecord extends ResolvedEffectParameters {
   effectId: string
-  stat: BuffStatKey
+  stat: BuffStatKey | CustomBuffStatKey
   status: BuffEffectApplyStatus
   matchElement?: string | null
 }
@@ -1212,7 +1213,7 @@ export interface EventEffectRecipient {
 /** 同一 effect id 的投影（Spec §3.3 / §3.5）。 */
 export interface EventEffectSummary {
   effectId: string
-  stat: BuffStatKey
+  stat: BuffStatKey | CustomBuffStatKey
   sourceKey: string
   blockId: string
   providerName: string
@@ -3078,7 +3079,7 @@ export function extractCombatMods(mods: BuffStatModifiers): CombatBuffMods {
 /**
  * 主 C 异放倍率：局外基础 + 增益；仅异放倍率类增益按产生角色属性（elementFilter）筛选。
  */
-const RELEASE_MULT_STATS = new Set<BuffStatKey>([
+const RELEASE_MULT_STATS = new Set<string>([
   'anomalyReleaseMult',
   'anomalyReleaseMultFactor',
 ])

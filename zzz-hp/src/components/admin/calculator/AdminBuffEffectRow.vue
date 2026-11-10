@@ -7,6 +7,8 @@ import type {
   BuffEffect,
   BuffSkillTarget,
   BuffSkillTargetId,
+  BuffStatKey,
+  CustomBuffStatKey,
   SkillCategoryId,
   SkillSubcategory,
 } from '@/types/calculator'
@@ -16,7 +18,7 @@ import {
   CONVERT_PANEL_SOURCE_OPTIONS,
   SKILL_CATEGORY_OPTIONS,
 } from '@/types/calculator'
-import { AGENT_ELEMENTS, AGENT_ROLES, BUFF_STAT_FIELDS } from '@/utils/calculatorUi'
+import { AGENT_ELEMENTS, AGENT_ROLES } from '@/utils/calculatorUi'
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 import {
   createDefaultSkillSubcategoryMults,
@@ -36,6 +38,8 @@ import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import {
   BUFF_STAT_ZONES,
   allowedDamageTypesOf,
+  buffStatLabelOf,
+  buffStatUnitOf,
   isZoneTypeLocked,
   statRowsForZone,
 } from '@/utils/buffStatZones'
@@ -101,9 +105,9 @@ const memberLabels = computed(() =>
   }),
 )
 
-function statLabel(stat: string | undefined) {
+function statLabel(stat: BuffStatKey | CustomBuffStatKey | undefined) {
   if (!stat) return '未知属性'
-  return BUFF_STAT_FIELDS.find((field) => field.key === stat)?.label ?? stat
+  return buffStatLabelOf(stat)
 }
 
 /** 组内联动：所有可编辑字段都写到整组 */
@@ -591,9 +595,8 @@ const summaryText = computed(() => {
 })
 
 
-const statUnit = computed(
-  () => BUFF_STAT_FIELDS.find((field) => field.key === first.value?.stat)?.unit ?? 'percent',
-)
+// 自定义乘区键不在内置字段表里：单位回落 `%`（buffStatUnitOf 兜底 percent）
+const statUnit = computed(() => buffStatUnitOf(first.value?.stat))
 const unitSuffix = computed(() => (statUnit.value === 'percent' ? '%' : ''))
 const unitLabel = computed(() => {
   if (statUnit.value === 'percent') return '%'
