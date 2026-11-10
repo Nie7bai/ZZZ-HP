@@ -6,6 +6,8 @@ import FlowZoneCalculation from '@/components/calculator/FlowZoneCalculation.vue
 import type { SkillFlowCalculationDetail } from '@/utils/skillFlowCalculation'
 import { DAMAGE_EVENT_CRIT_MODE_OPTIONS } from '@/utils/damageEvent'
 import { buildSkillBaseMultNote } from '@/utils/skillTalentLevels'
+import { buildPipelineStageRows } from '@/zones/display'
+import { getDamageChain } from '@/zones/pipeline'
 
 const props = defineProps<{ calculation: SkillFlowCalculationDetail }>()
 const sourceTips = computed(() => buildEventValueTips(props.calculation))
@@ -25,6 +27,19 @@ const damageSummary = computed(() => ({
   count: detail.value.hit.count,
   total: detail.value.total,
 }))
+
+/** Phase 4d：完整计算链路（只读阶段视图，编辑仅在管理端） */
+const pipelineStageRows = computed(() => buildPipelineStageRows(detail.value.result))
+const pipelineChainLabel = computed(() => {
+  const chainId = detail.value.result.pipeline?.chainId
+  return (chainId && getDamageChain(chainId)?.label) || '完整计算链路'
+})
+const stageKindLabels: Record<string, string> = {
+  source: '基础',
+  multiplier: '乘数',
+  combine: '合并',
+  final: '结算',
+}
 </script>
 
 <template>
@@ -42,6 +57,21 @@ const damageSummary = computed(() => ({
       :trigger-label="detail.defenseTriggerAgentLabel"
       empty-hint="本段计算过程暂不可用，请检查当前面板来源。"
     />
+    <details class="pipeline-stages" open>
+      <summary>{{ pipelineChainLabel }}</summary>
+      <ol class="pipeline-stage-list">
+        <li
+          v-for="stage in pipelineStageRows"
+          :key="stage.id"
+          class="pipeline-stage"
+          :class="`pipeline-stage--${stage.kind}`"
+        >
+          <span class="pipeline-stage-kind">{{ stageKindLabels[stage.kind] ?? stage.kind }}</span>
+          <span class="pipeline-stage-label">{{ stage.label }}</span>
+          <span class="pipeline-stage-value">{{ stage.valueText }}</span>
+        </li>
+      </ol>
+    </details>
     <details class="calculation-more">
       <summary>完整公式与来源</summary>
       <p class="calculation-hint">悬停、聚焦或轻触公式中的数值，可查看计算组成与增益来源。</p>
@@ -142,5 +172,45 @@ const damageSummary = computed(() => ({
 }
 .calculation-more[open] > summary::before {
   content: '▾ ';
+}
+.pipeline-stages {
+  margin-top: 0.6rem;
+  border-top: 1px dashed color-mix(in srgb, var(--color-border) 60%, transparent);
+  padding-top: 0.45rem;
+}
+.pipeline-stages > summary {
+  cursor: pointer;
+  font-size: 0.74rem;
+  color: var(--color-text-muted, #9aa3b0);
+  list-style: none;
+}
+.pipeline-stages > summary::before {
+  content: '▾ 完整计算链路 · ';
+}
+.pipeline-stage-list {
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.pipeline-stage {
+  display: grid;
+  grid-template-columns: 3.4rem minmax(0, 1fr) auto;
+  gap: 0.45rem;
+  align-items: baseline;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+.pipeline-stage-kind {
+  color: var(--color-text-muted, #9aa3b0);
+  font-size: 0.64rem;
+}
+.pipeline-stage--final {
+  font-weight: 700;
+}
+.pipeline-stage--final .pipeline-stage-value {
+  color: var(--color-accent, #7cc4ff);
 }
 </style>

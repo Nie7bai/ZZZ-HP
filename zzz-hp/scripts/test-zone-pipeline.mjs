@@ -11,6 +11,7 @@ import {
   getDamageChain,
   resolveDamageChainId,
 } from '../src/zones/pipeline.ts'
+import { buildPipelineStageRows } from '../src/zones/display.ts'
 
 let passed = 0
 let failed = 0
@@ -91,6 +92,24 @@ check('蕾米本人耀变链路阶段完整', () => {
     chain.stages.map((stage) => stage.id),
     ['selfAtk', 'selfMastery', 'specialLevel', 'mutation', 'defense', 'resistance', 'vulnerable', 'stagger', 'radianceBonus', 'radianceMult', 'crit', 'special', 'final'],
   )
+})
+
+check('展示行：顺序不变、伤害类取整、乘数保留小数', () => {
+  const rows = buildPipelineStageRows({
+    pipeline: {
+      chainId: 'direct',
+      stages: [
+        { id: 'base', kind: 'source', label: '基础伤害', group: 'direct', order: 10, value: 3000.4 },
+        { id: 'dmg', kind: 'multiplier', label: '增伤区', group: 'direct', order: 20, value: 1.5 },
+        { id: 'final', kind: 'final', label: '期望伤害', group: 'direct', order: 120, value: 4556.2 },
+      ],
+    },
+  })
+  assert.deepEqual(rows.map((row) => row.label), ['基础伤害', '增伤区', '期望伤害'])
+  assert.equal(rows[0].valueText, '3,000')
+  assert.equal(rows[1].valueText, '1.5')
+  assert.equal(rows[2].valueText, '4,556')
+  assert.equal(rows[2].kind, 'final')
 })
 
 console.log(`\n${failed === 0 ? '✅ all passed' : '❌ failed'}（${passed} passed / ${failed} failed）`)
