@@ -17,7 +17,7 @@ import { clearHitEvalCache } from '../src/utils/hitEvalCache.ts'
 import { createEmptyBuffEffect } from '../src/utils/buffEffect.ts'
 import { BUFF_STAT_ZONES } from '../src/utils/buffStatZones.ts'
 import { eventFixture, eventRuntimeInput } from './_eventElementHarness.mjs'
-import { testAgent, makePanel } from './_effectPipelineHarness.mjs'
+import { testAgent, makePanel, mindscapeWithEffects } from './_effectPipelineHarness.mjs'
 import { adaptZoneSchemes } from '../src/zones/schemeAdapter.ts'
 import {
   setRuntimeZoneDefinitions,
@@ -146,6 +146,131 @@ check('定义/方案清理后回到基线', () => {
   assert.equal(after.result.zones?.['custom:smoke'], undefined)
   closeTo(after.total, baseline.total, '总伤')
 })
+
+console.log('[4] providers：owner / team / all 按来源归属取模')
+
+function applyProviderScheme(providerMode) {
+  setRuntimeZoneDefinitions([
+    {
+      zoneKey: 'custom:smoke',
+      label: '烟雾增伤区',
+      sortOrder: 100,
+      providers: providerMode,
+      primitive: 'percentSum',
+      params: {},
+      stats: [{ key: 'smokeBonus', label: '烟雾增伤', valueType: 'percent', sign: 'both' }],
+      version: 1,
+    },
+  ])
+  setRuntimeZoneSchemes(adaptZoneSchemes({
+    version: 1,
+    definitions: [],
+    schemes: [{
+      scope: 'global',
+      targetId: '',
+      name: '烟雾测试',
+      priority: 10,
+      version: 1,
+      rules: [{
+        key: 'custom:smoke',
+        action: 'replace',
+        module: 'percentSum',
+        label: '烟雾增伤区',
+        params: { statKeys: ['smokeBonus'], cap: 5 },
+      }],
+    }],
+  }))
+  clearHitEvalCache()
+}
+
+function providerFixture() {
+  const allyEffects = [createEmptyBuffEffect({
+    id: 'ally-smoke-bonus',
+    stat: 'custom:smokeBonus',
+    value: 20,
+    enabledDefault: true,
+    applyTarget: 'team',
+  })]
+  const agents = [
+    testAgent('owner', { element: '电' }),
+    testAgent('power', { element: '风', mindscapeBuffs: mindscapeWithEffects(allyEffects) }),
+  ]
+  const fixture = eventFixture({
+    mode: 'ordinary',
+    damageType: 'direct',
+    effects: [
+      createEmptyBuffEffect({
+        id: 'owner-smoke-bonus',
+        stat: 'custom:smokeBonus',
+        value: 30,
+        enabledDefault: true,
+        applyTarget: 'team',
+      }),
+    ],
+    agents,
+    panels: { owner: makePanel({ atk: 1500 }), power: makePanel({ atk: 2200 }) },
+  })
+  fixture.skill.baseMult = 1000
+  for (const item of fixture.hits) {
+    item.skill.baseMult = 1000
+    item.effectiveBaseMult = 1000
+  }
+  return fixture
+}
+
+const providerBox = providerFixture()
+const providerHit = providerBox.hits[0]
+
+check('owner：只取命中所有者自身来源 +30% → 1.3', () => {
+  applyProviderScheme('owner')
+  const current = runtimeFor(providerBox).getHitNumbers(providerHit)
+  assert.ok(current)
+  assert.equal(current.result.zones?.['custom:smoke']?.value, 1.3)
+})
+
+check('team：含队友来源 +30% / +20% → 1.5', () => {
+  applyProviderScheme('team')
+  const current = runtimeFor(providerBox).getHitNumbers(providerHit)
+  assert.ok(current)
+  assert.equal(current.result.zones?.['custom:smoke']?.value, 1.5)
+})
+
+check('all：本夹具无环境来源时与 team 一致', () => {
+  applyProviderScheme('all')
+  const current = runtimeFor(providerBox).getHitNumbers(providerHit)
+  assert.ok(current)
+  assert.equal(current.result.zones?.['custom:smoke']?.value, 1.5)
+})
+
+check('team 不含无槽位来源（额外增益），all 含', () => {
+  const extraFixture = eventFixture({
+    mode: 'extra-team',
+    damageType: 'direct',
+    effects: [createEmptyBuffEffect({
+      id: 'extra-smoke-bonus',
+      stat: 'custom:smokeBonus',
+      value: 30,
+      enabledDefault: true,
+    })],
+    panels: { owner: makePanel({ atk: 1500 }), power: makePanel({ atk: 2200 }) },
+  })
+  extraFixture.skill.baseMult = 1000
+  for (const item of extraFixture.hits) {
+    item.skill.baseMult = 1000
+    item.effectiveBaseMult = 1000
+  }
+  const extraHit = extraFixture.hits[0]
+
+  applyProviderScheme('team')
+  assert.equal(runtimeFor(extraFixture).getHitNumbers(extraHit)?.result.zones?.['custom:smoke']?.value, 1)
+
+  applyProviderScheme('all')
+  assert.equal(runtimeFor(extraFixture).getHitNumbers(extraHit)?.result.zones?.['custom:smoke']?.value, 1.3)
+})
+
+setRuntimeZoneSchemes([])
+setRuntimeZoneDefinitions([])
+clearHitEvalCache()
 
 console.log(`\n${failed === 0 ? '✅ all passed' : '❌ failed'}（${passed} passed / ${failed} failed）`)
 if (failed) process.exit(1)

@@ -79,7 +79,6 @@ import {
   collectAllBuffEffects,
   computeFinalPanel,
   hasExternalPanelForSlot,
-  parseSourceKeySlotIndex,
   resolveCollectedEffectSourceSlot,
   resolveAnomalyReleaseMultEvaluation,
   type BuffSelectionState,
@@ -94,6 +93,7 @@ import {
   resolveCollectedEffectParameters,
   type BuffEffectContribution,
   type ComputeFinalPanelOptions,
+  type CustomProviderMods,
   type DamageInputUsage,
   type EventDamageInputUsage,
   type EventEffectRecord,
@@ -111,12 +111,34 @@ import { resolveSlotAttrValues } from '@/utils/panelSourceResolution'
 import { formatAnomalyFormulaAgentLabel } from '@/utils/anomalyFormulaDisplay'
 import { buildHitEvalFingerprintReused, resetHitEvalFingerprintReuseState } from '@/utils/hitEvalCache'
 import { buildZoneResolvedContext, evaluateZoneCondition, resolveCurtainCap, resolveZoneScheme } from '@/zones/scheme'
-import { evaluateCustomZoneFactors } from '@/zones/customZones'
-import { getMergedZoneSchemes } from '@/zones/schemeSource'
+import { evaluateCustomZoneFactors, zoneSchemeNeedsProviderTracking } from '@/zones/customZones'
+import { getMergedZoneSchemes, getRuntimeZoneDefinitions } from '@/zones/schemeSource'
 import { resolveCurrentDamageChain } from '@/zones/chainSource'
 
 /** 扫掠 / 流程总伤只要面板数字，不拼「增益来自哪」明细 */
 const PANEL_NUMBERS_ONLY = { includeDetails: false } as const
+
+/**
+ * providers（Phase 4f-4）：把按提供者归属的自定义修饰折成 `owner` / `team` / `all` 三份。
+ * `owner` 只取命中所有者的槽位，`team` 取全部队伍槽位，`all` 取聚合表（含邦布 / 场地 / 环境）。
+ */
+function buildCustomModsByProvider(
+  providerMods: CustomProviderMods | undefined,
+  ownerSlotIndex: number,
+  aggregate: Record<string, number> | undefined,
+): Record<'owner' | 'team' | 'all', Record<string, number>> | null {
+  if (!providerMods) return null
+  const owner: Record<string, number> = {}
+  const team: Record<string, number> = {}
+  for (const [slotText, bucket] of Object.entries(providerMods.bySlot)) {
+    const slotIndex = Number(slotText)
+    for (const [key, value] of Object.entries(bucket)) {
+      team[key] = (team[key] ?? 0) + value
+      if (slotIndex === ownerSlotIndex) owner[key] = (owner[key] ?? 0) + value
+    }
+  }
+  return { owner, team, all: { ...(aggregate ?? {}) } }
+}
 
 export type OptimalDamageKind = 'direct' | 'anomaly'
 
@@ -1437,7 +1459,21 @@ export function evaluateOptimalEventDetail(
     external: ownerExternal,
   })
   const evtPanelCtx = buildEventPanelContext(ctx, mainPanel, hit, ownerSlotIndex, includeDetails)
-  const evtBreakdown = computeFinalPanel(ownerExternal, evtPanelCtx, ownerView?.options ?? panelOpts)
+  // providers：先解析方案，判定是否需要按来源归属收集自定义修饰（team/owner 才需要）
+  const zoneContext = buildZoneResolvedContext(hit, ctx.panelContext)
+  const zoneScheme = resolveZoneScheme({ hit, panelContext: ctx.panelContext, schemes: getMergedZoneSchemes() })
+  const zoneProviders: Record<string, string> = {}
+  for (const definition of getRuntimeZoneDefinitions()) {
+    zoneProviders[definition.zoneKey] = definition.providers ?? 'team'
+  }
+  const evtPanelOptionsBase = ownerView?.options ?? panelOpts
+  const evtBreakdown = computeFinalPanel(
+    ownerExternal,
+    evtPanelCtx,
+    zoneSchemeNeedsProviderTracking(zoneScheme, zoneProviders)
+      ? { ...evtPanelOptionsBase, customProviderTrack: true }
+      : evtPanelOptionsBase,
+  )
   const zoneMultResolved = splitSkillZoneMultOverrides(damageType, hit.multOverrides)
   const panelOverrides = zoneMultResolved.panelOverrides
   const evtFinalPanel = applyHitPanelMods(
@@ -1707,9 +1743,16 @@ export function evaluateOptimalEventDetail(
   }
 
   const remielSelfRadianceCalc = resolveRemielSelfRadianceCalcForOptimal(ctx, evtPowerAgentId, mainPanel, hit, trace)
-  const zoneContext = buildZoneResolvedContext(hit, ctx.panelContext)
-  const zoneScheme = resolveZoneScheme({ hit, panelContext: ctx.panelContext, schemes: getMergedZoneSchemes() })
-  const customZoneFactors = evaluateCustomZoneFactors(zoneScheme, evtBreakdown.combatMods.custom)
+  // providers：按提供者归属拆 owner / team / all 三份 custom 修饰表
+  const customModsByProvider = buildCustomModsByProvider(
+    evtBreakdown.customProviderMods,
+    ownerSlotIndex,
+    evtBreakdown.combatMods.custom,
+  )
+  const customZoneFactors = evaluateCustomZoneFactors(zoneScheme, evtBreakdown.combatMods.custom, {
+    zoneProviders,
+    ...(customModsByProvider ? { customModsByProvider } : {}),
+  })
   // 计算链路：按伤害类型 + 命中上下文解析（内置链路 + 运行时覆盖），阶段只决定展示顺序与集合
   const damageChain = resolveCurrentDamageChain({
     damageKind: damageType,

@@ -32,6 +32,13 @@ export const ZONE_PRIMITIVE_OPTIONS = [
   { id: 'vulnerable', label: 'vulnerable（易伤 + 增减伤合成）' },
 ] as const
 
+/** providers（自定义修饰来源范围），与后端 `ZONE_PROVIDER_SCOPES` 对齐 */
+export const ZONE_PROVIDER_OPTIONS = [
+  { id: 'owner', label: '仅乘区所有者' },
+  { id: 'team', label: '队伍内全部来源' },
+  { id: 'all', label: '全部来源（含邦布 / 场地 / 环境）' },
+] as const
+
 /** 作用域展示名 */
 export const ZONE_SCHEME_SCOPE_LABELS: Record<ZoneSchemeScope, string> = {
   global: '全局',

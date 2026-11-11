@@ -102,5 +102,46 @@ check('非 percentSum 条目忽略；按 order 排序', () => {
   const factors = evaluateCustomZoneFactors(resolved, { a: 10 })
   assert.deepEqual(factors.map((factor) => factor.key), ['earlier', 'later'])
 })
+console.log('[3] providers 按来源范围取模')
+
+check('owner / team / all 三种口径分别取对应修饰表', () => {
+  const resolved = resolvedWith({
+    shared: { key: 'shared', module: 'percentSum', params: { statKeys: ['a'] } },
+  })
+  const customModsByProvider = {
+    owner: { a: 50 },
+    team: { a: 30 },
+    all: { a: 10 },
+  }
+  for (const [mode, expected] of [['owner', 1.5], ['team', 1.3], ['all', 1.1]]) {
+    const [factor] = evaluateCustomZoneFactors(resolved, { a: 999 }, {
+      zoneProviders: { shared: mode },
+      customModsByProvider,
+    })
+    closeTo(factor.value, expected, mode)
+  }
+})
+
+check('未声明 providers 时缺省 team', () => {
+  const resolved = resolvedWith({
+    shared: { key: 'shared', module: 'percentSum', params: { statKeys: ['a'] } },
+  })
+  const [factor] = evaluateCustomZoneFactors(resolved, { a: 999 }, {
+    customModsByProvider: { owner: { a: 10 }, team: { a: 20 }, all: { a: 30 } },
+  })
+  closeTo(factor.value, 1.2, 'default team')
+})
+
+check('缺少对应口径修饰表时回退到 aggregate', () => {
+  const resolved = resolvedWith({
+    shared: { key: 'shared', module: 'percentSum', params: { statKeys: ['a'] } },
+  })
+  const [factor] = evaluateCustomZoneFactors(resolved, { a: 40 }, {
+    zoneProviders: { shared: 'owner' },
+    customModsByProvider: { team: { a: 10 }, all: { a: 20 } },
+  })
+  closeTo(factor.value, 1.4, 'fallback aggregate')
+})
+
 console.log(`\n${failed === 0 ? '✅ all passed' : '❌ failed'}（${passed} passed / ${failed} failed）`)
 if (failed) process.exit(1)

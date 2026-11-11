@@ -5,6 +5,7 @@ import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import AdminDamageChainSection from '@/components/admin/calculator/AdminDamageChainSection.vue'
 import {
   ZONE_PRIMITIVE_OPTIONS,
+  ZONE_PROVIDER_OPTIONS,
   ZONE_SCHEME_SCOPES,
   ZONE_SCHEME_SCOPE_LABELS,
   deleteZoneDefinition,
@@ -232,6 +233,10 @@ function emptyDefinitionForm(): DefinitionFormState {
 }
 
 const definitionForm = reactive<DefinitionFormState>(emptyDefinitionForm())
+/** providers 显示名（列表摘要用） */
+function providerLabel(mode: string): string {
+  return ZONE_PROVIDER_OPTIONS.find((item) => item.id === mode)?.label ?? mode
+}
 /** 非空 = 正在编辑已有定义（zone_key 是 upsert 主键，编辑时只读） */
 const definitionEditingKey = ref('')
 const definitionFormVisible = ref(false)
@@ -838,6 +843,7 @@ onMounted(() => {
               <span class="config-meta mono">{{ doc.zone_key }}</span>
               <span class="config-meta">
                 {{ doc.primitive }} · 顺序 {{ doc.sort_order }} · v{{ doc.version }}
+                · {{ providerLabel(doc.providers) }}
                 <template v-if="doc.applies_to.damageKinds.length">
                   · 伤害类型 {{ doc.applies_to.damageKinds.length }} 项
                 </template>
@@ -914,6 +920,18 @@ onMounted(() => {
               </span>
             </label>
           </div>
+
+          <label class="field">
+            <span class="field-label">提供者范围（providers）</span>
+            <select v-model="definitionForm.providers" class="field-input">
+              <option v-for="item in ZONE_PROVIDER_OPTIONS" :key="item.id" :value="item.id">
+                {{ item.label }}
+              </option>
+            </select>
+            <span class="field-hint">
+              percentSum 自定义乘区按此范围取加成来源；「仅乘区所有者」只算命中所有者自己的来源。
+            </span>
+          </label>
 
           <div class="field">
             <span class="field-label">适用伤害类型（多选；都不选 = 全部）</span>
@@ -1135,7 +1153,9 @@ onMounted(() => {
       <p class="section-hint">
         用示例 custom 修饰表按当前编辑的 rules 求值，口径与
         <span class="mono">src/zones/customZones.ts</span> 一致：percentSum = 1 + Σ(增益/100)，再套
-        cap / floor / allowNegative。预览不做作用域合并，也不判定条目的 when 条件。
+        cap / floor / allowNegative。预览不做作用域合并，也不判定条目的 when 条件；
+        示例 JSON 视为命中已选来源的总和，实际运行还会按乘区定义的 providers
+        （仅所有者 / 队伍 / 全部来源）过滤。
       </p>
       <label class="field">
         <span class="field-label">示例 custom 修饰 JSON（增益键 → 数值）</span>
