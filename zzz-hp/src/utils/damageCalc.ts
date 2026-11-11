@@ -33,6 +33,7 @@ import { buildZoneResults } from '@/zones/results'
 import { evaluateCoreZones } from '@/zones/builtins'
 import type { CustomZoneFactor } from '@/zones/customZones'
 import { buildStageTrace, resolveDamageChainId, type StageDefinition, type StageTraceEntry } from '@/zones/pipeline'
+import { evaluateStageValue } from '@/zones/stageEval'
 import {
   applyMutationZone,
   computeAnomalyReleaseZones,
@@ -1222,8 +1223,22 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       final: subtypeZones.final,
     })
   }
+  // Phase 4f-3：运行时新增阶段按白名单模块求值；新增 multiplier 阶段作为额外因子
+  let extraStageFactor = 1
+  for (const stage of input.chainStages ?? []) {
+    if (typeof stageValues[stage.id] === 'number') continue
+    const value = evaluateStageValue(stage, stageValues, {
+      panel: panel as unknown as Record<string, number>,
+      enemyInput: input.enemyInput as unknown as Record<string, number>,
+      customMods: input.combatCustom,
+    })
+    if (value == null) continue
+    stageValues[stage.id] = value
+    if (stage.kind === 'multiplier') extraStageFactor *= value
+  }
+
   // Phase 4f-2：阶段的启用/禁用与 `params.adjustment` 反映到结算
-  let stageAdjustment = 1
+  let stageAdjustment = extraStageFactor
   for (const stageId of input.chainDisabledStageIds ?? []) {
     const value = stageValues[stageId]
     if (typeof value === 'number' && Number.isFinite(value) && value !== 0) {
