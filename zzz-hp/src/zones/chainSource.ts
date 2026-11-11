@@ -1,6 +1,7 @@
 import { fetchRuntimeDamageChains } from '@/api/damageChains'
 import {
   BUILT_IN_DAMAGE_CHAINS,
+  findCustomDamageChain,
   registerRuntimeDamageChains,
   resolveDamageChain,
   resolveDamageChainId,
@@ -54,17 +55,21 @@ export function resolveCurrentDamageChain(options: {
   context?: Omit<DamageChainResolveContext, 'damageKind' | 'baseDamageSource' | 'useSharpen'>
   chains?: readonly DamageChainDefinition[]
 }): ResolvedDamageChain {
-  const chainId = resolveDamageChainId({
+  const chains = options.chains ?? getMergedDamageChains()
+  const context = {
+    ...options.context,
+    damageKind: options.damageKind,
+    baseDamageSource: options.baseDamageSource,
+    useSharpen: options.useSharpen,
+  }
+  const customChain = findCustomDamageChain(context, chains)
+  const chainId = customChain?.id ?? resolveDamageChainId({
     damageKind: options.damageKind,
     isSelfRadiance: options.isSelfRadiance,
     baseDamageSource: options.baseDamageSource,
     useSharpen: options.useSharpen,
   })
-  return resolveDamageChain(
-    chainId,
-    { ...options.context, damageKind: options.damageKind, baseDamageSource: options.baseDamageSource, useSharpen: options.useSharpen },
-    options.chains ?? getMergedDamageChains(),
-  )
+  return resolveDamageChain(chainId, context, chains)
 }
 
 export async function loadRuntimeDamageChains(): Promise<void> {

@@ -32,6 +32,7 @@ import {
   type StageKind,
 } from '@/zones/pipeline'
 import { adaptDamageChain } from '@/zones/chainAdapter'
+import { previewDamageChain, type DamageChainPreview } from '@/zones/preview'
 import '@/components/admin/calculator/adminCalculatorPanel.css'
 
 /**
@@ -56,6 +57,8 @@ const STAGE_KINDS: StageKind[] = ['source', 'multiplier', 'combine', 'final']
 const chains = ref<DamageChainDoc[]>([])
 const loading = ref(false)
 const busy = ref(false)
+const previewResult = ref<DamageChainPreview | null>(null)
+const previewError = ref('')
 const error = ref('')
 const message = ref('')
 const authDialogVisible = ref(false)
@@ -546,6 +549,37 @@ function parseStageRow(row: StageFormRow, index: number): ParsedStageRow {
   if (params) stage.params = params
   if (when !== undefined) stage.when = when
   return { stage, error: '' }
+}
+
+function runPreview() {
+  previewError.value = ''
+  previewResult.value = null
+  const stages: StageDefinition[] = []
+  for (const [index, row] of chainForm.stages.entries()) {
+    if (!row.enabled || row.action === 'disable') continue
+    const parsed = parseStageRow(row, index)
+    if (!parsed.stage) {
+      previewError.value = parsed.error
+      return
+    }
+    stages.push({
+      id: parsed.stage.id,
+      kind: parsed.stage.kind,
+      module: parsed.stage.module ?? '',
+      label: parsed.stage.label ?? parsed.stage.id,
+      group: parsed.stage.group ?? chainForm.chainKey,
+      order: parsed.stage.order ?? index * 10,
+      inputs: parsed.stage.inputs,
+      params: parsed.stage.params,
+      when: parsed.stage.when as StageDefinition['when'],
+      enabled: true,
+    })
+  }
+  if (!stages.length) {
+    previewError.value = '没有可预览的启用阶段'
+    return
+  }
+  previewResult.value = previewDamageChain(chainForm.chainKey, stages)
 }
 
 async function saveChain() {
@@ -1088,6 +1122,34 @@ onMounted(() => {
             <button type="button" class="secondary-btn" @click="cancelForm">关闭</button>
           </div>
         </form>
+        <div v-if="!chainForm.readonly" class="chain-preview">
+          <div class="chain-preview-head">
+            <strong>预览示例</strong>
+            <button type="button" class="secondary-btn small" :disabled="busy" @click="runPreview">
+              计算
+            </button>
+          </div>
+          <p v-if="previewError" class="form-error">{{ previewError }}</p>
+          <template v-if="previewResult">
+            <div class="chain-preview-grid">
+              <div v-for="stage in previewResult.stages" :key="`preview-${stage.id}`" class="preview-cell">
+                <span class="preview-kind">{{ STAGE_KIND_LABELS[stage.kind] ?? stage.kind }}</span>
+                <span class="preview-label">{{ stage.label }}</span>
+                <span class="preview-value">{{ Number.isInteger(stage.value) ? stage.value.toLocaleString('en-US') : stage.value }}</span>
+              </div>
+            </div>
+            <p class="field-hint">
+              示例最终伤害 {{ Math.round(previewResult.final).toLocaleString('en-US') }} · 内置链路
+              {{ Math.round(previewResult.baselineFinal).toLocaleString('en-US') }} · 差异
+              {{ previewResult.final === previewResult.baselineFinal
+                ? '0'
+                : `${(previewResult.final - previewResult.baselineFinal >= 0 ? '+' : '')}${(
+                    ((previewResult.final - previewResult.baselineFinal) /
+                      Math.max(1, previewResult.baselineFinal)) * 100
+                  ).toFixed(2)}%` }}
+            </p>
+          </template>
+        </div>
         <p v-else-if="chainForm.stages.length" class="field-hint">
           点击格子选择阶段后编辑模块、参数与条件。
         </p>
@@ -1470,5 +1532,54 @@ onMounted(() => {
   .checkbox-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+.chain-preview {
+  margin-top: 0.6rem;
+  padding: 0.7rem;
+  border: 1px dashed var(--color-border);
+  border-radius: 10px;
+}
+
+.chain-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+}
+
+.chain-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.35rem;
+}
+
+.preview-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: var(--color-background-soft);
+}
+
+.preview-kind {
+  font-size: 0.62rem;
+  color: var(--color-text);
+  opacity: 0.6;
+}
+
+.preview-label {
+  font-size: 0.72rem;
+  color: var(--color-heading);
+}
+
+.preview-value {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--color-accent, #8fc9ee);
+  font-variant-numeric: tabular-nums;
 }
 </style>

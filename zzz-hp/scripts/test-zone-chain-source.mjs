@@ -399,6 +399,27 @@ check('角色级覆盖：阶段改名 / 禁用生效，期望伤害不变', () =
   assert.equal(target.runtime.getHitNumbers(target.hit).perHit, beforePerHit)
 })
 
+check('custom:<slug> 链路按适用范围/作用域自动选中', () => {
+  const custom = adaptDamageChain({
+    chainKey: 'custom:direct-pro',
+    label: '直伤专用链路',
+    appliesTo: { damageKinds: ['direct'] },
+    scope: 'agent',
+    targetId: 'owner',
+    priority: 10,
+    version: 1,
+    stages: BUILT_IN_DAMAGE_CHAINS[0].stages.map((stage) => ({ ...stage })),
+  })
+  setRuntimeDamageChains([custom])
+  const resolved = resolveCurrentDamageChain({
+    damageKind: 'direct',
+    context: { agentId: 'owner', profession: '强攻' },
+    chains: getMergedDamageChains(),
+  })
+  assert.equal(resolved.chainId, 'custom:direct-pro')
+  assert.equal(resolved.label, '直伤专用链路')
+})
+
 setRuntimeDamageChains([])
 console.log(`\n${failed === 0 ? '✅ all passed' : '❌ failed'}（${passed} passed / ${failed} failed）`)
 if (failed) process.exit(1)

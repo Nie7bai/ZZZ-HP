@@ -14,6 +14,7 @@ import assert from 'node:assert/strict'
 import { createDefaultExternalPanel } from '../src/types/calculatorPanel.ts'
 import { computeDamageResult } from '../src/utils/damageCalc.ts'
 import { getDamageChain } from '../src/zones/pipeline.ts'
+import { previewDamageChain } from '../src/zones/preview.ts'
 
 let passed = 0
 let failed = 0
@@ -174,6 +175,26 @@ check('未知模块跳过，不影响结算', () => {
   })
   assert.equal(result.directDamageExpected, baseline.directDamageExpected)
   assert.equal(result.pipeline?.stages.find((item) => item.id === 'unknown'), undefined)
+})
+
+check('preview：逐阶段值 + 与内置最终伤害对比', () => {
+  const builtin = previewDamageChain('direct', directChain.stages)
+  assert.ok(builtin.stages.length > 0)
+  assert.ok(Number.isFinite(builtin.final))
+  const custom = previewDamageChain('direct', [
+    ...directChain.stages,
+    {
+      id: 'eliteBonusPreview',
+      kind: 'multiplier',
+      module: 'percentSum',
+      label: '对精英增伤区',
+      group: 'direct',
+      order: 85,
+      params: { statKeys: ['eliteDmgBonus'] },
+    },
+  ], { eliteDmgBonus: 30 })
+  closeTo(custom.final, builtin.final * 1.3, '预览最终伤害')
+  assert.equal(custom.stages.find((stage) => stage.id === 'eliteBonusPreview')?.value, 1.3)
 })
 
 console.log(`\n${failed === 0 ? '✅ all passed' : '❌ failed'}（${passed} passed / ${failed} failed）`)

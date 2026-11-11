@@ -377,6 +377,32 @@ function newStage(patch: StageDefinition, fallbackGroup: string, fallbackOrder: 
  * - 阶段按 `id` 合并：`inherit` 保留内置、`disable` 或 `enabled=false` 移除、其余字段覆盖；
  * - 合并后按 `order` 升序（同 order 保持定义顺序），再剔除条件不成立的阶段。
  */
+/**
+ * 自定义链路自动选择：id 以 `custom:` 开头、enabled、作用域命中、伤害类型/基础来源匹配的链路，
+ * 按作用域优先级 + priority 取最具体的一条。没有则返回 null（继续用内置链路）。
+ */
+export function findCustomDamageChain(
+  context: DamageChainResolveContext = {},
+  chains: readonly DamageChainDefinition[] = defaultDamageChains(),
+): DamageChainDefinition | null {
+  const candidates = chains
+    .filter((chain) => chain.id.startsWith('custom:'))
+    .filter((chain) => chain.enabled !== false)
+    .filter((chain) => chainScopeMatches(chain, context))
+    .filter((chain) => chainDamageKindMatches(chain, context))
+    .map((chain, index) => ({ chain, index }))
+    .sort((a, b) => {
+      const rankA = ZONE_SCOPE_RANK[(a.chain.scope ?? 'global') as ZoneScope] ?? 0
+      const rankB = ZONE_SCOPE_RANK[(b.chain.scope ?? 'global') as ZoneScope] ?? 0
+      if (rankA !== rankB) return rankA - rankB
+      const priorityA = a.chain.priority ?? 0
+      const priorityB = b.chain.priority ?? 0
+      if (priorityA !== priorityB) return priorityA - priorityB
+      return a.index - b.index
+    })
+  return candidates.at(-1)?.chain ?? null
+}
+
 export function resolveDamageChain(
   chainId: string,
   context: DamageChainResolveContext = {},
