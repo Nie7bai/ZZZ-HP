@@ -71,7 +71,10 @@ test('chain_key 格式：内置键或 custom:<slug>，其余拒绝', () => {
   assert.equal(isCustomChainKey('custom:remielRadiance'), true)
   assert.equal(isCustomChainKey('direct'), false)
   assert.equal(isCustomChainKey('anomaly:attributeAnomaly'), false)
-  assert.deepEqual([...BUILTIN_DAMAGE_CHAIN_KEYS], ['direct', 'anomaly', 'radiance-self'])
+  assert.deepEqual(
+    [...BUILTIN_DAMAGE_CHAIN_KEYS],
+    ['direct', 'sharpen', 'pierce', 'anomaly', 'attributeAnomaly', 'anomalyRelease', 'disorder', 'turbulence', 'radiance-self'],
+  )
 })
 
 test('scope 枚举：五个作用域合法，大小写/未知值被拒', () => {

@@ -197,5 +197,21 @@ check('preview：逐阶段值 + 与内置最终伤害对比', () => {
   assert.equal(custom.stages.find((stage) => stage.id === 'eliteBonusPreview')?.value, 1.3)
 })
 
+check('preview：示例命中决定最终伤害取哪个子类', () => {
+  const attributeChain = getDamageChain('attributeAnomaly')
+  const disorderChain = getDamageChain('disorder')
+  assert.ok(attributeChain)
+  assert.ok(disorderChain)
+  const attribute = previewDamageChain('attributeAnomaly', attributeChain.stages, {}, 'attributeAnomaly')
+  const disorder = previewDamageChain('disorder', disorderChain.stages, {}, 'disorder')
+  assert.equal(attribute.sampleId, 'attributeAnomaly')
+  assert.equal(disorder.sampleId, 'disorder')
+  assert.equal(attribute.sampleLabel, '属性异常')
+  assert.equal(disorder.sampleLabel, '紊乱')
+  // 未指定示例命中时回落到第一个（普通直伤）
+  const fallback = previewDamageChain('direct', getDamageChain('direct').stages)
+  assert.equal(fallback.sampleId, 'direct')
+})
+
 console.log(`\n${failed === 0 ? '✅ all passed' : '❌ failed'}（${passed} passed / ${failed} failed）`)
 if (failed) process.exit(1)

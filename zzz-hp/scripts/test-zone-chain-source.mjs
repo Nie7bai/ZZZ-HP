@@ -301,7 +301,8 @@ check('resolveCurrentDamageChain：按伤害类型选链路并应用运行时覆
   const other = resolveCurrentDamageChain({ damageKind: 'direct', context: { agentId: 'yixuan' } })
   assert.equal(other.stages.find((stage) => stage.id === 'dmg').label, '增伤区')
 
-  assert.equal(resolveCurrentDamageChain({ damageKind: 'attributeAnomaly' }).chainId, 'anomaly')
+  assert.equal(resolveCurrentDamageChain({ damageKind: 'attributeAnomaly' }).chainId, 'attributeAnomaly')
+  assert.equal(resolveCurrentDamageChain({ damageKind: 'disorder' }).chainId, 'disorder')
   assert.equal(
     resolveCurrentDamageChain({ damageKind: 'radiance', isSelfRadiance: true }).chainId,
     'radiance-self',

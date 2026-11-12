@@ -1,5 +1,5 @@
 import { handleAdminSessionExpired, withAdminAuthHeaders } from '@/utils/adminAuth'
-import type { StageAction, StageKind } from '@/zones/pipeline'
+import { BUILT_IN_DAMAGE_CHAINS, type StageAction, type StageKind } from '@/zones/pipeline'
 
 /**
  * 计算链路管理接口（Phase 4f）。
@@ -24,12 +24,11 @@ export const DAMAGE_CHAIN_SCOPE_LABELS: Record<DamageChainScope, string> = {
   skill: '招式',
 }
 
-/** 内置链路键；`custom:<slug>` 为管理员新增链路 */
-export const DAMAGE_CHAIN_KEY_OPTIONS = [
-  { id: 'direct', label: '直伤链路' },
-  { id: 'anomaly', label: '异常链路' },
-  { id: 'radiance-self', label: '蕾米埃尔本人耀变链路' },
-] as const
+/** 内置链路键；`custom:<slug>` 为管理员新增链路。直接从内置定义派生，避免新增链路后漏更新。 */
+export const DAMAGE_CHAIN_KEY_OPTIONS = BUILT_IN_DAMAGE_CHAINS.map((chain) => ({
+  id: chain.id,
+  label: chain.label,
+}))
 
 export interface DamageChainStageDoc {
   id: string

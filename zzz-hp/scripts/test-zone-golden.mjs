@@ -133,11 +133,20 @@ for (const name of names) {
     failed += 1
     continue
   }
+  // 链路选择：直伤/锐化/帷幕走 direct、锋御走 sharpen、异常子类各自成链
   const expectedChain = name.startsWith('sharpen')
     ? 'sharpen'
     : name.startsWith('direct') || name.startsWith('curtain')
       ? 'direct'
-      : 'anomaly'
+      : name.startsWith('attributeAnomaly')
+        ? 'attributeAnomaly'
+        : name.startsWith('anomalyRelease')
+          ? 'anomalyRelease'
+          : name.startsWith('disorder')
+            ? 'disorder'
+            : name.startsWith('turbulence')
+              ? 'turbulence'
+              : 'anomaly'
   if (pipeline.chainId !== expectedChain) {
     console.error(`FAIL  ${name}.pipeline.chainId — ${pipeline.chainId} ≠ ${expectedChain}`)
     failed += 1

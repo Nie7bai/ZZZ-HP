@@ -68,6 +68,58 @@ const DIRECT_STAGE_IDS = ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vu
 const ANOMALY_STAGE_IDS = ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'mastery', 'level', 'dmgBonus', 'mult', 'crit', 'special'] as const
 const RADIANCE_SELF_STAGE_IDS = ['selfAtk', 'selfMastery', 'specialLevel', 'mutation', 'defense', 'resistance', 'vulnerable', 'stagger', 'radianceBonus', 'radianceMult', 'crit', 'special'] as const
 
+/** 异常类子链路：阶段集合与取值逻辑相同，只有子类阶段的语义标签随子类变化。 */
+interface AnomalySubChainSpec {
+  /** 链路 id 与伤害类型 id 一致（`attributeAnomaly` 等） */
+  id: string
+  label: string
+  /** 子类增伤区展示名 */
+  bonusLabel: string
+  /** 子类倍率区展示名 */
+  multLabel: string
+  /** 子类暴击区展示名 */
+  critLabel: string
+}
+
+const ANOMALY_SUB_CHAIN_SPECS: readonly AnomalySubChainSpec[] = Object.freeze([
+  { id: 'attributeAnomaly', label: '属性异常链路', bonusLabel: '属性异常增伤区', multLabel: '属性异常倍率区', critLabel: '属性异常暴击区' },
+  { id: 'anomalyRelease', label: '异放链路', bonusLabel: '异放增伤区', multLabel: '异放倍率区', critLabel: '异放暴击区' },
+  { id: 'disorder', label: '紊乱链路', bonusLabel: '紊乱增伤区', multLabel: '紊乱倍率区', critLabel: '紊乱暴击区' },
+  { id: 'turbulence', label: '乱流链路', bonusLabel: '乱流增伤区', multLabel: '乱流倍率区', critLabel: '乱流暴击区' },
+])
+
+/** 异常通用链路 id：未命中任何子链路时的兜底（子类取值仍按 `anomalySubKind`） */
+export const GENERIC_ANOMALY_CHAIN_ID = 'anomaly'
+
+const ANOMALY_SUB_CHAIN_IDS: ReadonlySet<string> = new Set(ANOMALY_SUB_CHAIN_SPECS.map((spec) => spec.id))
+
+function buildAnomalyChain(spec: AnomalySubChainSpec): DamageChainDefinition {
+  const group = spec.id
+  return {
+    id: spec.id,
+    label: spec.label,
+    appliesTo: { damageKinds: [spec.id] },
+    scope: 'global',
+    targetId: '',
+    priority: 0,
+    stages: [
+      { id: 'base', kind: 'source', label: '异常基础伤害', group, order: 10, module: 'anomalyBase' },
+      { id: 'dmg', kind: 'multiplier', label: '增伤区', group, order: 20, module: 'percentSum' },
+      { id: 'defense', kind: 'multiplier', label: '防御区', group, order: 30, module: 'defenseMultiplier' },
+      { id: 'resistance', kind: 'multiplier', label: '抗性区', group, order: 40, module: 'resistanceMultiplier' },
+      { id: 'stagger', kind: 'multiplier', label: '失衡易伤区', group, order: 45, module: 'stagger' },
+      { id: 'vulnerable', kind: 'multiplier', label: '易伤区', group, order: 50, module: 'vulnerable' },
+      { id: 'mastery', kind: 'multiplier', label: '精通区', group, order: 60, module: 'masteryZone' },
+      { id: 'level', kind: 'multiplier', label: '等级区', group, order: 70, module: 'levelZone' },
+      { id: 'dmgBonus', kind: 'multiplier', label: spec.bonusLabel, group, order: 80, module: 'subtypeBonus' },
+      { id: 'mult', kind: 'multiplier', label: spec.multLabel, group, order: 90, module: 'subtypeMult' },
+      { id: 'crit', kind: 'multiplier', label: spec.critLabel, group, order: 100, module: 'crit' },
+      { id: 'special', kind: 'multiplier', label: '特殊乘区', group, order: 110, module: 'specialMult' },
+      { id: 'final', kind: 'final', label: '期望伤害', group, order: 120, module: 'product', inputs: ANOMALY_STAGE_IDS },
+    ],
+  }
+}
+
 /** 内置链路定义：阶段顺序、展示名与模块名。数值仍由 damageCalc 现有链路产生。 */
 export const BUILT_IN_DAMAGE_CHAINS: readonly DamageChainDefinition[] = Object.freeze([
   {
@@ -137,8 +189,8 @@ export const BUILT_IN_DAMAGE_CHAINS: readonly DamageChainDefinition[] = Object.f
     ],
   },
   {
-    id: 'anomaly',
-    label: '异常链路',
+    id: GENERIC_ANOMALY_CHAIN_ID,
+    label: '异常通用链路',
     appliesTo: { damageKinds: ['attributeAnomaly', 'anomalyRelease', 'disorder', 'turbulence', 'radiance'] },
     scope: 'global',
     targetId: '',
@@ -159,6 +211,7 @@ export const BUILT_IN_DAMAGE_CHAINS: readonly DamageChainDefinition[] = Object.f
       { id: 'final', kind: 'final', label: '期望伤害', group: 'anomaly', order: 120, module: 'product', inputs: ANOMALY_STAGE_IDS },
     ],
   },
+  ...ANOMALY_SUB_CHAIN_SPECS.map(buildAnomalyChain),
   {
     id: 'radiance-self',
     label: '蕾米埃尔本人耀变链路',
@@ -243,7 +296,7 @@ export const DAMAGE_CHAIN_MODULE_OPTIONS: readonly ChainModuleOption[] = Object.
   { id: 'round', label: 'round（取整结算）', kind: 'final' },
 ])
 
-/** 选择链路：蕾米本人耀变优先；其余异常走 `anomaly`；直伤/锐化走 `direct`。 */
+/** 按伤害类型选链路：蕾米本人耀变优先；异常子类各自成链；直伤按基础伤害来源分纯直伤 / 命破。 */
 export function resolveDamageChainId(options: {
   damageKind: string
   isSelfRadiance?: boolean
@@ -255,7 +308,8 @@ export function resolveDamageChainId(options: {
   if (options.damageKind === 'direct') {
     return options.baseDamageSource === 'pierce' ? 'pierce' : 'direct'
   }
-  return 'anomaly'
+  if (ANOMALY_SUB_CHAIN_IDS.has(options.damageKind)) return options.damageKind
+  return GENERIC_ANOMALY_CHAIN_ID
 }
 
 /** 链路解析读取的命中上下文（与乘区方案的作用域口径一致） */

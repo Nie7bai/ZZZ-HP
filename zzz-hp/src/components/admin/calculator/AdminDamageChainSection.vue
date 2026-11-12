@@ -32,7 +32,7 @@ import {
   type StageKind,
 } from '@/zones/pipeline'
 import { adaptDamageChain } from '@/zones/chainAdapter'
-import { previewDamageChain, type DamageChainPreview } from '@/zones/preview'
+import { DAMAGE_CHAIN_SAMPLE_HITS, previewDamageChain, type DamageChainPreview } from '@/zones/preview'
 import '@/components/admin/calculator/adminCalculatorPanel.css'
 
 /**
@@ -59,6 +59,8 @@ const loading = ref(false)
 const busy = ref(false)
 const previewResult = ref<DamageChainPreview | null>(null)
 const previewError = ref('')
+/** 预览用示例命中：选伤害类型，便于验证不同链路 */
+const previewSampleId = ref(DAMAGE_CHAIN_SAMPLE_HITS[0]!.id)
 const error = ref('')
 const message = ref('')
 const authDialogVisible = ref(false)
@@ -579,7 +581,7 @@ function runPreview() {
     previewError.value = '没有可预览的启用阶段'
     return
   }
-  previewResult.value = previewDamageChain(chainForm.chainKey, stages)
+  previewResult.value = previewDamageChain(chainForm.chainKey, stages, {}, previewSampleId.value)
 }
 
 async function saveChain() {
@@ -814,7 +816,7 @@ onMounted(() => {
               class="field-input mono"
               :disabled="chainForm.readonly || chainForm.id != null"
               list="chain-key-options"
-              placeholder="direct / anomaly / radiance-self / custom:xxx"
+              placeholder="direct / sharpen / pierce / anomaly / attributeAnomaly / custom:xxx"
             />
             <datalist id="chain-key-options">
               <option v-for="item in DAMAGE_CHAIN_KEY_OPTIONS" :key="item.id" :value="item.id">
@@ -1125,6 +1127,11 @@ onMounted(() => {
         <div v-if="!chainForm.readonly" class="chain-preview">
           <div class="chain-preview-head">
             <strong>预览示例</strong>
+            <select v-model="previewSampleId" class="field-input preview-sample-select">
+              <option v-for="sample in DAMAGE_CHAIN_SAMPLE_HITS" :key="sample.id" :value="sample.id">
+                {{ sample.label }}
+              </option>
+            </select>
             <button type="button" class="secondary-btn small" :disabled="busy" @click="runPreview">
               计算
             </button>
@@ -1139,7 +1146,9 @@ onMounted(() => {
               </div>
             </div>
             <p class="field-hint">
-              示例最终伤害 {{ Math.round(previewResult.final).toLocaleString('en-US') }} · 内置链路
+              示例命中「{{ previewResult.sampleLabel }}」· 合成面板（攻击 3000 / 增伤 50% / 暴击 50%-100%），
+              与线上真实面板无关。示例最终伤害
+              {{ Math.round(previewResult.final).toLocaleString('en-US') }} · 内置链路
               {{ Math.round(previewResult.baselineFinal).toLocaleString('en-US') }} · 差异
               {{ previewResult.final === previewResult.baselineFinal
                 ? '0'
@@ -1547,6 +1556,12 @@ onMounted(() => {
   justify-content: space-between;
   gap: 0.5rem;
   margin-bottom: 0.45rem;
+}
+
+.preview-sample-select {
+  flex: 1 1 auto;
+  max-width: 14rem;
+  min-width: 8rem;
 }
 
 .chain-preview-grid {

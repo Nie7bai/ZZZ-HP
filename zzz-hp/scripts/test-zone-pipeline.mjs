@@ -28,10 +28,10 @@ function check(name, run) {
 
 console.log('[1] 内置链路')
 
-check('五条链路：direct / sharpen / pierce / anomaly / radiance-self', () => {
+check('九条链路：直伤三条 + 异常通用 + 四子类 + 蕾米本人耀变', () => {
   assert.deepEqual(
     BUILT_IN_DAMAGE_CHAINS.map((chain) => chain.id),
-    ['direct', 'sharpen', 'pierce', 'anomaly', 'radiance-self'],
+    ['direct', 'sharpen', 'pierce', 'anomaly', 'attributeAnomaly', 'anomalyRelease', 'disorder', 'turbulence', 'radiance-self'],
   )
 })
 
@@ -48,13 +48,16 @@ check('每条链路阶段 id 唯一、order 升序、有且仅有一个 final', 
 
 console.log('[2] 链路选择')
 
-check('直伤/锐化 → direct；异常 → anomaly；蕾米本人耀变 → radiance-self', () => {
+check('直伤/锐化 → direct；异常子类各自成链；蕾米本人耀变 → radiance-self', () => {
   assert.equal(resolveDamageChainId({ damageKind: 'direct' }), 'direct')
   assert.equal(resolveDamageChainId({ damageKind: 'sharpen' }), 'sharpen')
   assert.equal(resolveDamageChainId({ damageKind: 'direct', baseDamageSource: 'pierce' }), 'pierce')
   assert.equal(resolveDamageChainId({ damageKind: 'direct', useSharpen: true }), 'sharpen')
-  assert.equal(resolveDamageChainId({ damageKind: 'attributeAnomaly' }), 'anomaly')
-  assert.equal(resolveDamageChainId({ damageKind: 'turbulence' }), 'anomaly')
+  assert.equal(resolveDamageChainId({ damageKind: 'attributeAnomaly' }), 'attributeAnomaly')
+  assert.equal(resolveDamageChainId({ damageKind: 'anomalyRelease' }), 'anomalyRelease')
+  assert.equal(resolveDamageChainId({ damageKind: 'disorder' }), 'disorder')
+  assert.equal(resolveDamageChainId({ damageKind: 'turbulence' }), 'turbulence')
+  // 非蕾米本人的耀变没有独立子链路，回落通用异常链路
   assert.equal(resolveDamageChainId({ damageKind: 'radiance' }), 'anomaly')
   assert.equal(resolveDamageChainId({ damageKind: 'radiance', isSelfRadiance: true }), 'radiance-self')
 })

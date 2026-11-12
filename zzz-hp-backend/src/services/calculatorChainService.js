@@ -8,7 +8,8 @@ import {
 /**
  * 计算链路（Damage Chain）定义存储（Phase 4f 后端）。
  *
- * 一条链路 = `chain_key`（直伤 / 异常 / 蕾米本人耀变 / 自定义）+ 作用域 + 有序阶段数组。
+ * 一条链路 = `chain_key`（直伤 / 锋御 / 命破 / 异常通用 / 异常子类 / 蕾米本人耀变 / 自定义）
+ * + 作用域 + 有序阶段数组。
  * 作用域与乘区方案同口径（global → profession → agent → skill_group → skill），
  * 运行时由前端按「伤害类型命中 + 作用域优先级」挑一条链路，本服务只负责存取与校验。
  *
@@ -36,7 +37,14 @@ export const DAMAGE_CHAIN_STAGE_KINDS = Object.freeze([
 /** 代码内置链路键：库里可以有覆盖行（如 radiance-self 的角色级覆盖），但删除仍受保护 */
 export const BUILTIN_DAMAGE_CHAIN_KEYS = Object.freeze([
   'direct',
+  'sharpen',
+  'pierce',
+  // 异常通用兜底 + 四个子类链路
   'anomaly',
+  'attributeAnomaly',
+  'anomalyRelease',
+  'disorder',
+  'turbulence',
   'radiance-self',
 ])
 
