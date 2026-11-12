@@ -28,13 +28,7 @@ import {
 } from '@/api/adminZones'
 import { clearAdminAuthenticated } from '@/utils/adminAuth'
 import { ZONE_DEFINITIONS } from '@/zones/catalog'
-import { evaluateCustomZoneFactors, type CustomZoneFactor } from '@/zones/customZones'
-import type {
-  ResolvedZoneEntry,
-  ResolvedZoneScheme,
-  ZoneSchemeParams,
-  ZoneScope,
-} from '@/zones/scheme'
+import { ZONE_GROUP_FORMULAS, getZoneFormulaNote } from '@/zones/formulaNotes'
 import { BUFF_DAMAGE_TYPE_GROUPS } from '@/types/calculator'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import '@/components/admin/calculator/adminCalculatorPanel.css'
@@ -42,8 +36,9 @@ import '@/components/admin/calculator/adminCalculatorPanel.css'
 /**
  * 管理端 → 角色计算器 → 乘区方案（Phase 4b）。
  *
- * 三块：内置乘区（只读，来自 `src/zones/catalog.ts`）、乘区定义（DB）、乘区方案（DB）；
- * 外加一块预览：按当前编辑的 rules + 示例 custom 修饰表调 `evaluateCustomZoneFactors`。
+ * 三块：内置乘区（只读，来自 `src/zones/catalog.ts`）、乘区定义（DB）、乘区方案（DB）。
+ * 内置乘区表带「计算公式」列：公式取自 `src/zones/formulaNotes.ts`，
+ * 权威来源是仓库根目录的 `CALCULATOR_FORMULAS.md`，本面板只读展示。
  * 本面板不参与计算，只维护「有哪些乘区、按什么原语求值、在哪个作用域生效」。
  */
 
@@ -125,15 +120,35 @@ const builtinFiltered = computed(() => {
   return ZONE_DEFINITIONS.filter((zone) => {
     if (builtinGroup.value && zone.group !== builtinGroup.value) return false
     if (!keyword) return true
+    const note = getZoneFormulaNote(zone.key)
     return (
-      zone.key.toLowerCase().includes(keyword) || zone.label.toLowerCase().includes(keyword)
+      zone.key.toLowerCase().includes(keyword) ||
+      zone.label.toLowerCase().includes(keyword) ||
+      Boolean(note?.formula.toLowerCase().includes(keyword)) ||
+      Boolean(note?.appliesWhen?.toLowerCase().includes(keyword))
     )
   })
 })
 
+/** 展开查看公式的乘区 key；同时只展开一条，避免表格过长 */
+const expandedZoneKey = ref('')
+
+function toggleZoneFormula(key: string) {
+  expandedZoneKey.value = expandedZoneKey.value === key ? '' : key
+}
+
+function zoneFormula(key: string) {
+  return getZoneFormulaNote(key)
+}
+
+function groupFormula(group: string) {
+  return ZONE_GROUP_FORMULAS[group as keyof typeof ZONE_GROUP_FORMULAS] ?? null
+}
+
 function resetBuiltinFilter() {
   builtinSearch.value = ''
   builtinGroup.value = ''
+  expandedZoneKey.value = ''
 }
 
 // ---- 通用：JSON 文本解析 ----
@@ -430,7 +445,7 @@ function emptySchemeForm(rulesText: string = SAMPLE_RULES_TEXT): SchemeFormState
   }
 }
 
-/** 未选中方案时 rules 为空数组，预览不会凭空显示出示例条目 */
+/** 未选中方案时 rules 为空数组，表单不会凭空带出示例条目 */
 const schemeForm = reactive<SchemeFormState>(emptySchemeForm('[]'))
 const schemeFormVisible = ref(false)
 const schemeFormError = ref('')
@@ -601,104 +616,6 @@ async function confirmDeleteScheme() {
   }
 }
 
-// ---- 预览：按当前编辑的 rules 求值自定义乘区 ----
-
-const PREVIEW_SCOPE: Record<ZoneSchemeScope, ZoneScope> = {
-  global: 'global',
-  profession: 'profession',
-  agent: 'agent',
-  skill_group: 'skillGroup',
-  skill: 'skill',
-}
-
-const previewModsText = ref(prettyJson({ eliteDmgBonus: 30 }))
-
-const previewMods = computed<{ mods: Record<string, number>; error: string }>(() => {
-  const text = previewModsText.value
-  if (!text.trim()) return { mods: {}, error: '' }
-  const parsed = parseJsonText(text)
-  if (!parsed.ok) return { mods: {}, error: `示例修饰 JSON 解析失败：${parsed.error}` }
-  if (!isPlainRecord(parsed.value)) {
-    return { mods: {}, error: '示例修饰必须是 JSON 对象（增益键 → 数值）' }
-  }
-  const mods: Record<string, number> = {}
-  for (const [key, value] of Object.entries(parsed.value)) {
-    const num = typeof value === 'number' ? value : Number(value)
-    if (!Number.isFinite(num)) return { mods: {}, error: `示例修饰 ${key} 必须是数字` }
-    mods[key] = num
-  }
-  return { mods, error: '' }
-})
-
-/** JSON 任意对象 → 方案参数：字段由求值侧按需读取，语言层只做收窄 */
-function toSchemeParams(value: Record<string, unknown> | undefined): ZoneSchemeParams | undefined {
-  return value as ZoneSchemeParams | undefined
-}
-
-/** 预览不做作用域合并、不判定 when：只按 rules 里写的原语与参数求值 */
-const previewResolved = computed<ResolvedZoneScheme | null>(() => {
-  if (rulesParse.value.error) return null
-  const priority = Number(schemeForm.priority)
-  const entries: Record<string, ResolvedZoneEntry> = {}
-  for (const rule of rulesParse.value.rules) {
-    if (rule.action === 'disable') continue
-    entries[rule.key] = {
-      key: rule.key,
-      module: rule.module ?? '',
-      ...(rule.label ? { label: rule.label } : {}),
-      params: toSchemeParams(rule.params),
-      sourceScope: PREVIEW_SCOPE[schemeForm.scope],
-      sourceTargetId: schemeForm.target_id,
-      sourcePriority: Number.isFinite(priority) ? priority : 0,
-    }
-  }
-  return {
-    entries,
-    context: {
-      agentId: '',
-      profession: null,
-      element: null,
-      mindscapeRank: 0,
-      skillId: '',
-      skillName: '',
-      skillGroupId: null,
-    },
-  }
-})
-
-const previewFactors = computed<CustomZoneFactor[]>(() => {
-  if (previewMods.value.error || !previewResolved.value) return []
-  return evaluateCustomZoneFactors(previewResolved.value, previewMods.value.mods)
-})
-
-const previewIgnored = computed<Array<{ key: string; reason: string }>>(() => {
-  const ignored: Array<{ key: string; reason: string }> = []
-  if (rulesParse.value.error) return ignored
-  for (const rule of rulesParse.value.rules) {
-    if (rule.action === 'disable') continue
-    if (rule.module !== 'percentSum') {
-      ignored.push({
-        key: rule.key,
-        reason: rule.module
-          ? `原语 ${rule.module} 不是 percentSum`
-          : '未填 module（条目靠定义继承，预览不展开）',
-      })
-      continue
-    }
-    const statKeys = rule.params?.statKeys
-    if (!Array.isArray(statKeys) || !statKeys.length) {
-      ignored.push({ key: rule.key, reason: '未配置 params.statKeys，没有可加总的增益键' })
-    }
-  }
-  return ignored
-})
-
-function formatPercentDelta(factor: number): string {
-  const percent = (factor - 1) * 100
-  const sign = percent > 0 ? '+' : ''
-  return `${sign}${percent.toFixed(1)}%`
-}
-
 // ---- 载入 ----
 
 async function loadDefinitions() {
@@ -733,6 +650,8 @@ onMounted(() => {
       <p class="panel-desc">
         内置乘区随代码发版；乘区定义与乘区方案存数据库，决定「有哪些乘区、按什么原语求值、在哪个作用域生效」。
         这里只配置组合，算法仍是代码里的白名单原语。
+        每个乘区的计算公式可在下方「内置乘区」表展开查看，权威来源是仓库根目录的
+        <span class="mono">CALCULATOR_FORMULAS.md</span>。
       </p>
     </header>
 
@@ -763,7 +682,7 @@ onMounted(() => {
           v-model="builtinSearch"
           class="field-input"
           type="search"
-          placeholder="搜索名称或 key"
+          placeholder="搜索名称 / key / 公式 / 专属条件"
         />
         <select v-model="builtinGroup" class="field-input">
           <option value="">全部分组</option>
@@ -788,24 +707,90 @@ onMounted(() => {
               <th>key</th>
               <th>分组</th>
               <th class="num">顺序</th>
-              <th>适用字段</th>
+              <th>计算公式</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="zone in builtinFiltered" :key="zone.key">
-              <td>
-                {{ zone.label }}
-                <span v-if="zone.damageValue" class="cell-tag">数值</span>
-              </td>
-              <td class="mono">{{ zone.key }}</td>
-              <td>{{ groupLabel(zone.group) }}</td>
-              <td class="num">{{ zone.order }}</td>
-              <td class="mono">{{ zone.field ?? '—' }}</td>
-            </tr>
+            <template v-for="zone in builtinFiltered" :key="zone.key">
+              <tr
+                class="zone-formula-row"
+                :class="{ expanded: expandedZoneKey === zone.key }"
+                @click="toggleZoneFormula(zone.key)"
+              >
+                <td>
+                  {{ zone.label }}
+                  <span v-if="zone.damageValue" class="cell-tag">数值</span>
+                  <span v-if="zoneFormula(zone.key)?.appliesWhen" class="cell-tag">专属</span>
+                </td>
+                <td class="mono">{{ zone.key }}</td>
+                <td>{{ groupLabel(zone.group) }}</td>
+                <td class="num">{{ zone.order }}</td>
+                <td class="zone-formula-cell">
+                  <template v-if="zoneFormula(zone.key)">
+                    <span class="mono zone-formula-brief">{{ zoneFormula(zone.key)!.formula.split('\n')[0] }}</span>
+                    <span class="zone-formula-toggle">
+                      {{ expandedZoneKey === zone.key ? '收起' : '展开' }}
+                    </span>
+                  </template>
+                  <span v-else class="zone-formula-missing">暂无公式说明</span>
+                </td>
+              </tr>
+              <tr v-if="expandedZoneKey === zone.key && zoneFormula(zone.key)" class="zone-formula-detail-row">
+                <td colspan="5">
+                  <div class="zone-formula-detail">
+                    <pre class="zone-formula-block mono">{{ zoneFormula(zone.key)!.formula }}</pre>
+                    <p v-if="zoneFormula(zone.key)!.appliesWhen" class="zone-formula-meta">
+                      <strong>适用条件：</strong>{{ zoneFormula(zone.key)!.appliesWhen }}
+                    </p>
+                    <p v-if="zoneFormula(zone.key)!.note" class="zone-formula-meta">
+                      <strong>说明：</strong>{{ zoneFormula(zone.key)!.note }}
+                    </p>
+                    <p v-if="zoneFormula(zone.key)!.docSection" class="zone-formula-meta mono">
+                      对照 CALCULATOR_FORMULAS.md {{ zoneFormula(zone.key)!.docSection }}
+                    </p>
+                    <p v-if="zone.field" class="zone-formula-meta mono">
+                      结果字段：{{ zone.field }}
+                    </p>
+                  </div>
+                </td>
+              </tr>
+            </template>
           </tbody>
         </table>
       </div>
       <p v-if="!builtinFiltered.length" class="section-hint">没有匹配的内置乘区。</p>
+    </section>
+
+    <section class="zone-section">
+      <div class="section-head">
+        <h3 class="section-title">分组公式总览</h3>
+        <span class="section-tag">{{ builtinGroups.length }} 组</span>
+      </div>
+      <p class="section-hint">
+        每条链路把乘区连乘成最终伤害；这里给出各组的总式，含角色专属结算。
+      </p>
+      <div
+        v-for="group in builtinGroups"
+        :key="`group-formula-${group}`"
+        class="group-formula-card"
+      >
+        <header class="group-formula-head">
+          <strong>{{ groupLabel(group) }}</strong>
+          <span v-if="groupFormula(group)?.docSection" class="mono group-formula-doc">
+            {{ groupFormula(group)!.docSection }}
+          </span>
+        </header>
+        <template v-if="groupFormula(group)">
+          <pre class="zone-formula-block mono">{{ groupFormula(group)!.formula }}</pre>
+          <p v-if="groupFormula(group)!.appliesWhen" class="zone-formula-meta">
+            <strong>适用条件：</strong>{{ groupFormula(group)!.appliesWhen }}
+          </p>
+          <p v-if="groupFormula(group)!.note" class="zone-formula-meta">
+            <strong>说明：</strong>{{ groupFormula(group)!.note }}
+          </p>
+        </template>
+        <p v-else class="zone-formula-missing">该分组暂无总式说明。</p>
+      </div>
     </section>
 
     <section class="zone-section">
@@ -1143,67 +1128,6 @@ onMounted(() => {
       </div>
     </section>
 
-    <section class="zone-section">
-      <div class="section-head">
-        <h3 class="section-title">方案预览（自定义乘区）</h3>
-        <span class="section-tag">
-          {{ schemeForm.id == null ? '未保存的方案' : `方案 id=${schemeForm.id}` }}
-        </span>
-      </div>
-      <p class="section-hint">
-        用示例 custom 修饰表按当前编辑的 rules 求值，口径与
-        <span class="mono">src/zones/customZones.ts</span> 一致：percentSum = 1 + Σ(增益/100)，再套
-        cap / floor / allowNegative。预览不做作用域合并，也不判定条目的 when 条件；
-        示例 JSON 视为命中已选来源的总和，实际运行还会按乘区定义的 providers
-        （仅所有者 / 队伍 / 全部来源）过滤。
-      </p>
-      <label class="field">
-        <span class="field-label">示例 custom 修饰 JSON（增益键 → 数值）</span>
-        <textarea
-          v-model="previewModsText"
-          class="field-textarea mono"
-          rows="4"
-          spellcheck="false"
-        ></textarea>
-      </label>
-      <p v-if="previewMods.error" class="form-error">{{ previewMods.error }}</p>
-      <p v-if="rulesParse.error" class="form-error">当前 rules 无法解析：{{ rulesParse.error }}</p>
-
-      <div v-if="previewFactors.length" class="table-scroll">
-        <table class="zone-table">
-          <thead>
-            <tr>
-              <th>乘区</th>
-              <th>key</th>
-              <th class="num">因子</th>
-              <th class="num">折算</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="factor in previewFactors" :key="factor.key">
-              <td>{{ factor.label }}</td>
-              <td class="mono">{{ factor.key }}</td>
-              <td class="num">{{ factor.value.toFixed(3) }}</td>
-              <td class="num">{{ formatPercentDelta(factor.value) }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p v-else-if="!rulesParse.error && !previewMods.error" class="section-hint">
-        {{
-          schemeFormVisible
-            ? '当前 rules 没有可求值的 percentSum 自定义乘区（或示例里缺少对应增益键）。'
-            : '先「新建方案」或「编辑」一条方案，预览会跟随当前编辑的 rules。'
-        }}
-      </p>
-
-      <ul v-if="previewIgnored.length" class="ignored-list">
-        <li v-for="item in previewIgnored" :key="item.key">
-          忽略 <span class="mono">{{ item.key }}</span>：{{ item.reason }}
-        </li>
-      </ul>
-    </section>
-
     <AdminDamageChainSection />
 
     <AdminConfirmDialog
@@ -1356,6 +1280,107 @@ onMounted(() => {
   font-size: 0.68rem;
 }
 
+/* ---- 内置乘区公式 ---- */
+
+.zone-formula-row {
+  cursor: pointer;
+}
+
+.zone-formula-row:hover td {
+  background: color-mix(in srgb, var(--color-background-mute) 60%, transparent);
+}
+
+.zone-formula-row.expanded td {
+  background: color-mix(in srgb, var(--color-background-mute) 80%, transparent);
+}
+
+.zone-formula-cell {
+  white-space: normal;
+  max-width: 26rem;
+}
+
+.zone-formula-brief {
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 22rem;
+  vertical-align: bottom;
+  opacity: 0.85;
+}
+
+.zone-formula-toggle {
+  margin-left: 0.5rem;
+  font-size: 0.7rem;
+  color: var(--color-heading);
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
+.zone-formula-missing {
+  opacity: 0.6;
+  font-size: 0.75rem;
+}
+
+.zone-formula-detail-row td {
+  padding: 0.2rem 0.6rem 0.7rem;
+  white-space: normal;
+  background: color-mix(in srgb, var(--color-background-mute) 55%, transparent);
+}
+
+.zone-formula-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.zone-formula-block {
+  margin: 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-background);
+  overflow-x: auto;
+  white-space: pre;
+  line-height: 1.5;
+}
+
+.zone-formula-meta {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--color-text);
+}
+
+.group-formula-card {
+  margin-top: 0.7rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-background-soft);
+}
+
+.group-formula-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.group-formula-doc {
+  opacity: 0.65;
+}
+
+@media (max-width: 900px) {
+  .zone-formula-cell {
+    max-width: 14rem;
+  }
+  .zone-formula-brief {
+    max-width: 10rem;
+  }
+}
+
 .split {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
@@ -1506,14 +1531,6 @@ onMounted(() => {
   padding-left: 1.1rem;
   font-size: 0.8rem;
   color: var(--color-heading);
-}
-
-.ignored-list {
-  margin: 0;
-  padding-left: 1.1rem;
-  font-size: 0.78rem;
-  color: var(--color-text);
-  opacity: 0.75;
 }
 
 @media (max-width: 1100px) {
