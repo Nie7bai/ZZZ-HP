@@ -10,11 +10,9 @@ import {
   type DamageChainScope,
 } from '@/api/adminDamageChains'
 import {
-  ZONE_SCHEME_SCOPE_LABELS,
   fetchZoneSchemes,
   type ZoneSchemeDoc,
   type ZoneSchemeRule,
-  type ZoneSchemeScope,
 } from '@/api/adminZones'
 import { clearAdminAuthenticated } from '@/utils/adminAuth'
 import {
@@ -29,7 +27,7 @@ import {
 import { adaptDamageChain } from '@/zones/chainAdapter'
 import { resolveCurrentDamageChain } from '@/zones/chainSource'
 import { resolveBaseDamageSourceForProfession } from '@/utils/damageCalc'
-import { BUILT_IN_ZONE_SCHEMES, type ZoneScheme } from '@/zones/scheme'
+import { BUILT_IN_ZONE_SCHEMES } from '@/zones/scheme'
 import type { ZoneScope } from '@/zones/scheme'
 import { DAMAGE_CHAIN_SAMPLE_HITS, previewDamageChain, type DamageChainPreview } from '@/zones/preview'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
@@ -185,11 +183,13 @@ function toZoneScope(value: string): ZoneScope {
   return value === 'skill_group' ? 'skillGroup' : (value as ZoneScope)
 }
 
-// ---- 列表：内置链路 + 数据库覆盖 ----
+// ---- 列表：内置链路 + 数据库覆盖 + 角色/招式专属乘区方案 ----
 
 interface ChainRow {
   key: string
-  origin: 'builtin' | 'db'
+  /** chain = 整条计算链路；zoneScheme = 角色/招式专属乘区方案（只替换链路里的部分乘区） */
+  kind: 'chain' | 'zoneScheme'
+  origin: 'builtin' | 'db' | 'zone-builtin' | 'zone-db'
   chainKey: string
   label: string
   scope: ZoneScope
@@ -197,12 +197,27 @@ interface ChainRow {
   priority: number
   enabled: boolean
   damageKinds: string[]
-  /** 该链路解析后的生效阶段（内置链路就是内置定义，覆盖走合并规则） */
+  /** 该链路解析后的生效阶段（内置链路就是内置定义，覆盖走合并规则）；乘区方案把条目转成阶段格 */
   stages: readonly StageDefinition[]
   /** 数据库覆盖行的元信息（内置行为空） */
   doc?: DamageChainDoc
+  /** 乘区方案行的元信息 */
+  zoneSchemeDoc?: ZoneSchemeDoc
   /** 是否有数据库覆盖（内置链路被覆盖时提示） */
   overridden: boolean
+}
+
+function originLabel(row: ChainRow): string {
+  switch (row.origin) {
+    case 'builtin':
+      return '内置链路'
+    case 'db':
+      return '数据库覆盖'
+    case 'zone-builtin':
+      return '内置乘区方案'
+    default:
+      return '数据库乘区方案'
+  }
 }
 
 function resolveStagesFor(doc: DamageChainDoc | undefined, chainKey: string): readonly StageDefinition[] {
@@ -218,6 +233,46 @@ function resolveStagesFor(doc: DamageChainDoc | undefined, chainKey: string): re
   return resolved.stages
 }
 
+interface SchemeEntryLike {
+  key: string
+  label?: string
+  module?: string
+  params?: Record<string, unknown>
+  when?: unknown
+  enabled?: boolean
+  action?: string
+}
+
+/** 乘区方案条目 → 阶段格（只读展示：一个条目就是一个乘区） */
+function entriesToStages(entries: readonly SchemeEntryLike[]): StageDefinition[] {
+  return entries
+    .filter((entry) => entry.enabled !== false)
+    .map((entry, index) => ({
+      id: entry.key,
+      kind: 'multiplier' as const,
+      label: entry.label || entry.key,
+      group: 'scheme',
+      order: index + 1,
+      module: entry.module ?? '',
+      params: entry.params,
+      when: entry.when as StageDefinition['when'],
+      enabled: true,
+      action: entry.action === 'inherit' || entry.action === 'disable' ? entry.action : undefined,
+    }))
+}
+
+/** 目标 id → 展示名（角色 / 技能组 / 招式都能翻出名字） */
+function targetLabelOf(targetId: string): string {
+  if (!targetId) return '全局'
+  const agent = calculatorBuffStore.agents.find((item) => item.id === targetId)
+  if (agent) return agent.name
+  const group = calculatorBuffStore.skillGroups.find((item) => item.id === targetId)
+  if (group) return group.name
+  const skill = calculatorBuffStore.skills.find((item) => item.id === targetId)
+  if (skill) return skill.name
+  return targetId
+}
+
 const chainRows = computed<ChainRow[]>(() => {
   const rows: ChainRow[] = []
   const dbByKey = new Map<string, DamageChainDoc[]>()
@@ -231,6 +286,7 @@ const chainRows = computed<ChainRow[]>(() => {
     const overrides = dbByKey.get(builtin.id) ?? []
     rows.push({
       key: `builtin:${builtin.id}`,
+      kind: 'chain',
       origin: 'builtin',
       chainKey: builtin.id,
       label: builtin.label,
@@ -246,7 +302,8 @@ const chainRows = computed<ChainRow[]>(() => {
 
   for (const doc of chains.value) {
     rows.push({
-      key: `db:${doc.id}`,
+      key: `chain-db:${doc.id}`,
+      kind: 'chain',
       origin: 'db',
       chainKey: doc.chainKey,
       label: doc.label || doc.chainKey,
@@ -257,6 +314,61 @@ const chainRows = computed<ChainRow[]>(() => {
       damageKinds: doc.appliesTo.damageKinds,
       stages: resolveStagesFor(doc, doc.chainKey),
       doc,
+      overridden: false,
+    })
+  }
+
+  // 角色 / 招式专属乘区方案作为「计算链路」一并列出（只列非全局作用域）
+  BUILT_IN_ZONE_SCHEMES.forEach((scheme, index) => {
+    if (scheme.scope === 'global') return
+    const entries: SchemeEntryLike[] = scheme.entries.map((entry) => ({
+      key: entry.key,
+      module: entry.module,
+      params: entry.params as Record<string, unknown> | undefined,
+      when: entry.when,
+      enabled: true,
+    }))
+    rows.push({
+      key: `zone-builtin:${scheme.scope}:${scheme.targetId}:${index}`,
+      kind: 'zoneScheme',
+      origin: 'zone-builtin',
+      chainKey: scheme.targetId || 'global',
+      label: `${targetLabelOf(scheme.targetId)} · 乘区方案（内置）`,
+      scope: scheme.scope,
+      targetId: scheme.targetId,
+      priority: scheme.priority,
+      enabled: true,
+      damageKinds: [],
+      stages: entriesToStages(entries),
+      overridden: false,
+    })
+  })
+
+  for (const doc of zoneSchemes.value) {
+    if (doc.scope === 'global') continue
+    if (!doc.enabled) continue
+    const entries: SchemeEntryLike[] = doc.rules.map((rule: ZoneSchemeRule) => ({
+      key: rule.key,
+      label: rule.label,
+      module: rule.module,
+      params: rule.params,
+      when: rule.when,
+      enabled: rule.enabled !== false && rule.action !== 'disable',
+      action: rule.action,
+    }))
+    rows.push({
+      key: `zone-db:${doc.id}`,
+      kind: 'zoneScheme',
+      origin: 'zone-db',
+      chainKey: doc.target_id || 'global',
+      label: doc.name || `${targetLabelOf(doc.target_id)} · 乘区方案`,
+      scope: toZoneScope(doc.scope),
+      targetId: doc.target_id,
+      priority: doc.priority,
+      enabled: doc.enabled,
+      damageKinds: [],
+      stages: entriesToStages(entries),
+      zoneSchemeDoc: doc,
       overridden: false,
     })
   }
@@ -563,134 +675,8 @@ function auditStageLabels(stages: readonly StageDefinition[]): string {
     .join(' → ')
 }
 
-// ---- 角色专属乘区方案：内置 + 数据库（只列非全局作用域，即“只对特定角色/招式生效”） ----
-
-interface ZoneSchemeAuditRow {
-  key: string
-  origin: 'builtin' | 'db'
-  scope: ZoneSchemeScope
-  targetId: string
-  name: string
-  priority: number
-  enabled: boolean
-  entries: Array<{
-    key: string
-    module: string
-    condition: string
-    params: string
-  }>
-}
-
-interface SchemeEntryLike {
-  key: string
-  module?: string
-  params?: unknown
-  when?: unknown
-}
-
 const zoneSchemes = ref<ZoneSchemeDoc[]>([])
 const zoneSchemeError = ref('')
-const expandedZoneSchemeKey = ref('')
-
-function builtinSchemeToAuditRow(scheme: ZoneScheme, index: number): ZoneSchemeAuditRow {
-  const entries: SchemeEntryLike[] = scheme.entries.map((entry) => ({
-    key: entry.key,
-    module: entry.module,
-    params: entry.params,
-    when: entry.when,
-  }))
-  return {
-    key: `builtin:${scheme.scope}:${scheme.targetId}:${index}`,
-    origin: 'builtin',
-    scope: scheme.scope as ZoneSchemeScope,
-    targetId: scheme.targetId,
-    name: `${scheme.targetId || '全局'} 内置方案`,
-    priority: scheme.priority,
-    enabled: true,
-    entries: entries.map((entry) => ({
-      key: entry.key,
-      module: entry.module ?? '',
-      condition: describeCondition(entry.when),
-      params: describeParams(entry.params),
-    })),
-  }
-}
-
-function dbSchemeToAuditRow(doc: ZoneSchemeDoc): ZoneSchemeAuditRow {
-  return {
-    key: `db:${doc.id}`,
-    origin: 'db',
-    scope: doc.scope,
-    targetId: doc.target_id,
-    name: doc.name,
-    priority: doc.priority,
-    enabled: doc.enabled,
-    entries: doc.rules
-      .filter((rule: ZoneSchemeRule) => rule.enabled !== false)
-      .map((rule) => ({
-        key: rule.key,
-        module: rule.module ?? '',
-        condition: describeCondition(rule.when),
-        params: describeParams(rule.params),
-      })),
-  }
-}
-
-/** 只列非全局作用域：这些才是「只对特定角色 / 职业 / 技能组 / 招式生效」的方案 */
-const agentZoneSchemeRows = computed<ZoneSchemeAuditRow[]>(() => {
-  const rows: ZoneSchemeAuditRow[] = []
-  BUILT_IN_ZONE_SCHEMES.forEach((scheme, index) => {
-    if (scheme.scope === 'global') return
-    rows.push(builtinSchemeToAuditRow(scheme, index))
-  })
-  for (const doc of zoneSchemes.value) {
-    if (doc.scope === 'global') continue
-    if (!doc.enabled) continue
-    rows.push(dbSchemeToAuditRow(doc))
-  }
-  return rows
-})
-
-/** 乘区方案也跟随同一套筛选：层级 + 角色 → 技能组 / 招式 */
-const filteredAgentZoneSchemeRows = computed<ZoneSchemeAuditRow[]>(() => {
-  if (!scopeFilterActive.value) return agentZoneSchemeRows.value
-  return agentZoneSchemeRows.value.filter((row) => {
-    if (scopeFilter.value.includes('profession') && row.scope === 'profession') return true
-    if (scopeFilter.value.includes('agent') && row.scope === 'agent') {
-      if (!agentFilter.value.length || agentFilter.value.includes(row.targetId)) return true
-    }
-    if (scopeFilter.value.includes('skill_group') && row.scope === 'skill_group') {
-      if (skillGroupFilter.value.length) return skillGroupFilter.value.includes(row.targetId)
-      if (!agentFilter.value.length) return true
-      return calculatorBuffStore.skillGroups.some(
-        (group) => group.id === row.targetId && agentFilter.value.includes(group.agentId),
-      )
-    }
-    if (scopeFilter.value.includes('skill') && row.scope === 'skill') {
-      if (skillFilter.value.length) return skillFilter.value.includes(row.targetId)
-      if (!agentFilter.value.length) return true
-      return calculatorBuffStore.skills.some(
-        (skill) => skill.id === row.targetId && agentFilter.value.includes(skill.agentId),
-      )
-    }
-    return false
-  })
-})
-
-function zoneSchemeTargetLabel(row: ZoneSchemeAuditRow): string {
-  if (!row.targetId) return '全局'
-  const agent = calculatorBuffStore.agents.find((item) => item.id === row.targetId)
-  if (agent) return agent.name
-  const group = calculatorBuffStore.skillGroups.find((item) => item.id === row.targetId)
-  if (group) return group.name
-  const skill = calculatorBuffStore.skills.find((item) => item.id === row.targetId)
-  if (skill) return skill.name
-  return row.targetId
-}
-
-function toggleZoneScheme(key: string) {
-  expandedZoneSchemeKey.value = expandedZoneSchemeKey.value === key ? '' : key
-}
 
 // ---- 预览：合成面板按当前链路的阶段顺序算一次，只读 ----
 
@@ -698,7 +684,10 @@ function runPreview() {
   previewError.value = ''
   previewResult.value = null
   const row = selectedRow.value
-  if (!row) return
+  if (!row || row.kind !== 'chain') {
+    previewError.value = '乘区方案只替换链路里的对应乘区，不单独预览'
+    return
+  }
   if (!row.stages.length) {
     previewError.value = '该链路没有可用阶段'
     return
@@ -727,14 +716,14 @@ onMounted(async () => {
 <template>
   <section class="zone-section">
     <header class="chain-header">
-      <h3 class="chain-title">计算链路（只读）</h3>
+      <h3 class="chain-title">计算链路与乘区方案（只读）</h3>
       <span class="chain-count">
         {{ scopeFilterActive ? `${filteredChainRows.length} / ${chainRows.length} 条` : `${chainRows.length} 条` }}
       </span>
     </header>
     <p class="chain-hint">
-      列出代码内置链路与数据库里的作用域覆盖，点击一条查看它的乘区顺序。
-      本面板只读：链路由代码与数据库维护，不在此新增、编辑或删除。
+      列出代码内置链路、数据库覆盖，以及角色 / 招式专属乘区方案（按条件替换链路里的部分乘区），
+      点击一条查看它的乘区顺序。本面板只读：内容由代码与数据库维护，不在此新增、编辑或删除。
     </p>
 
     <div class="chain-filter-block">
@@ -814,6 +803,7 @@ onMounted(async () => {
     </div>
 
     <p v-if="error" class="form-error">{{ error }}</p>
+    <p v-if="zoneSchemeError" class="form-error">{{ zoneSchemeError }}</p>
 
     <div class="chain-display-layout">
       <div class="item-list list-scroll chain-list">
@@ -830,15 +820,18 @@ onMounted(async () => {
           @click="selectRow(row)"
         >
           <span class="list-name">{{ row.label }}</span>
-          <span class="list-meta mono">{{ row.chainKey }}</span>
+          <span v-if="row.kind === 'chain'" class="list-meta mono">{{ row.chainKey }}</span>
           <span class="list-meta">
-            {{ row.origin === 'builtin' ? '内置' : '数据库覆盖' }} · {{ scopeLabel(row.scope) }}
-            <template v-if="row.targetId"> · {{ row.targetId }}</template>
+            {{ originLabel(row) }} · {{ scopeLabel(row.scope) }}
+            <template v-if="row.targetId"> · {{ targetLabelOf(row.targetId) }}</template>
             · {{ row.stages.length }} 个乘区
           </span>
           <span class="list-meta">
-            {{ row.damageKinds.join(' / ') || '全部伤害类型' }}
-            <template v-if="row.origin === 'db'"> · {{ row.enabled ? '已启用' : '已停用' }}</template>
+            <template v-if="row.kind === 'zoneScheme'">按条件替换链路乘区</template>
+            <template v-else>{{ row.damageKinds.join(' / ') || '全部伤害类型' }}</template>
+            <template v-if="row.origin === 'db' || row.origin === 'zone-db'">
+              · {{ row.enabled ? '已启用' : '已停用' }}
+            </template>
           </span>
         </button>
       </div>
@@ -847,11 +840,13 @@ onMounted(async () => {
         <template v-if="selectedRow">
           <header class="chain-header">
             <h4 class="chain-title">{{ selectedRow.label }}</h4>
-            <span class="chain-count mono">{{ selectedRow.chainKey }}</span>
+            <span class="chain-count mono">
+              {{ selectedRow.kind === 'chain' ? selectedRow.chainKey : originLabel(selectedRow) }}
+            </span>
           </header>
           <p class="chain-hint">
             {{ scopeLabel(selectedRow.scope) }}
-            <template v-if="selectedRow.targetId"> · 目标 {{ selectedRow.targetId }}</template>
+            <template v-if="selectedRow.targetId"> · 目标 {{ targetLabelOf(selectedRow.targetId) }}</template>
             · 优先级 {{ selectedRow.priority }}
             <template v-if="selectedRow.overridden"> · 该内置链路存在数据库覆盖行</template>
           </p>
@@ -869,12 +864,17 @@ onMounted(async () => {
               </div>
               <span class="cell-label">{{ stage.label }}</span>
               <span class="cell-module mono">{{ stage.module || '—' }}</span>
-              <span v-if="formatParams(stage)" class="cell-detail mono">{{ formatParams(stage) }}</span>
-              <span v-if="formatWhen(stage)" class="cell-detail mono">条件 {{ formatWhen(stage) }}</span>
+              <span v-if="stage.params" class="cell-detail mono">
+                {{ selectedRow.kind === 'zoneScheme' ? describeParams(stage.params) : formatParams(stage) }}
+              </span>
+              <span v-if="stage.when" class="cell-detail mono">
+                条件
+                {{ selectedRow.kind === 'zoneScheme' ? describeCondition(stage.when) : formatWhen(stage) }}
+              </span>
             </div>
           </div>
 
-          <div class="chain-preview">
+          <div v-if="selectedRow.kind === 'chain'" class="chain-preview">
             <div class="chain-preview-head">
               <strong>预览示例</strong>
               <select v-model="previewSampleId" class="field-input preview-sample-select">
@@ -902,6 +902,10 @@ onMounted(async () => {
               </p>
             </template>
           </div>
+          <p v-else class="chain-hint">
+            乘区方案只替换链路里的对应乘区（按作用域与条件生效），不单独预览；
+            条目、条件与参数见上方乘区格。
+          </p>
         </template>
         <p v-else class="chain-hint">选择左侧链路查看乘区顺序。</p>
       </div>
@@ -919,7 +923,8 @@ onMounted(async () => {
         按角色职业推导常规链路（命破 → 命破链路、锋御 → 锐化链路、其余 → 按伤害类型），
         再对每条招式跑真实解析（含数据库覆盖）。链路 id 或阶段（顺序 / 模块 / 条件 / 参数）
         与常规不一致的角色列在下面，展开可看具体是哪些招式、差在哪。
-        条件类链路在管理端没有面板上下文，按「条件可能成立」参与比对。
+        条件类链路在管理端没有面板上下文，按「条件可能成立」参与比对；
+        角色 / 招式专属乘区方案已并入上方链路列表。
       </p>
       <p v-if="!chainAuditSummary.length" class="chain-empty">所有角色的所有招式都走常规链路，没有角色专属 / 招式专属差异。</p>
       <div v-for="item in chainAuditSummary" :key="item.agentId" class="chain-audit-agent">
@@ -962,59 +967,6 @@ onMounted(async () => {
               </li>
             </ul>
           </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- 角色专属乘区方案：覆盖特定角色 / 技能组 / 招式的乘区求值（含条件与影画阈值） -->
-    <section class="chain-audit">
-      <header class="chain-header">
-        <h4 class="chain-title">角色专属乘区方案</h4>
-        <span class="chain-count">{{ filteredAgentZoneSchemeRows.length }} 条</span>
-      </header>
-      <p class="chain-hint">
-        只列非全局作用域的方案：内置方案随代码发版，数据库方案在管理端外维护（本面板只读）。
-        条件、影画阈值与参数都摊开展示，便于核对「哪些角色 / 招式按另一套乘区求值」。
-      </p>
-      <p v-if="zoneSchemeError" class="form-error">{{ zoneSchemeError }}</p>
-      <p v-if="!filteredAgentZoneSchemeRows.length" class="chain-empty">
-        当前筛选下没有非全局乘区方案。
-      </p>
-      <div
-        v-for="row in filteredAgentZoneSchemeRows"
-        :key="row.key"
-        class="chain-scheme-row"
-        :class="{ 'is-broken': !row.enabled }"
-      >
-        <button
-          type="button"
-          class="chain-audit-head"
-          :aria-expanded="expandedZoneSchemeKey === row.key"
-          @click="toggleZoneScheme(row.key)"
-        >
-          <strong>{{ row.name }}</strong>
-          <span class="list-meta">
-            {{ row.origin === 'builtin' ? '内置' : '数据库' }} ·
-            {{ ZONE_SCHEME_SCOPE_LABELS[row.scope] }} · {{ zoneSchemeTargetLabel(row) }}
-            · 优先级 {{ row.priority }}
-            <template v-if="!row.enabled"> · 已停用</template>
-          </span>
-          <span class="chain-audit-toggle">{{ expandedZoneSchemeKey === row.key ? '收起' : '展开' }}</span>
-        </button>
-        <div v-if="expandedZoneSchemeKey === row.key" class="chain-audit-detail">
-          <div v-for="entry in row.entries" :key="entry.key" class="chain-audit-row">
-            <div class="chain-audit-row-head">
-              <strong class="mono">{{ entry.key }}</strong>
-              <span v-if="entry.module" class="chain-audit-chip mono">{{ entry.module }}</span>
-            </div>
-            <p v-if="entry.condition" class="chain-audit-stages">
-              <span>条件：{{ entry.condition }}</span>
-            </p>
-            <p v-if="entry.params" class="chain-audit-stages">
-              <span>参数：{{ entry.params }}</span>
-            </p>
-          </div>
-          <p v-if="!row.entries.length" class="chain-empty">该方案没有可展示的条目。</p>
         </div>
       </div>
     </section>
@@ -1230,18 +1182,6 @@ onMounted(async () => {
   color: #ffc1c1;
 }
 
-.chain-scheme-row {
-  margin-top: 0.5rem;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  background: var(--color-background-soft);
-  overflow: hidden;
-}
-
-.chain-scheme-row.is-broken {
-  opacity: 0.6;
-}
-
 .chain-audit-chip {
   display: inline-block;
   padding: 0 0.4rem;
@@ -1412,8 +1352,8 @@ onMounted(async () => {
 }
 
 .auth-card {
-  background: #0f172a;
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: var(--color-background-soft);
+  border: 1px solid var(--color-border);
   border-radius: 0.6rem;
   padding: 1.2rem 1.4rem;
   min-width: 16rem;
@@ -1423,22 +1363,10 @@ onMounted(async () => {
 
 <style>
 /*
- * 白天主题：本面板的卡片 / 格子底色改纯白。
- * 页面底色是暖纸灰（--color-background: #f2f0e9），卡片再套浅色会显灰；
- * 组件内 :global 选择器编译后不可靠（见 dev-docs/flow-damage-record-bar-chart.md），
- * 所以浅色覆盖统一写在这个非 scoped 块里。
+ * 白天模式：阶段类型的彩色标签与差异徽标改深字（浅底可读）。
+ * 卡片 / 格子底色统一走主题变量（--color-background-soft），与其它管理端面板同步；
+ * 组件内 :global 选择器编译后不可靠，所以浅色覆盖写在这个非 scoped 块里。
  */
-[data-theme='light'] .chain-stage-cell,
-[data-theme='light'] .preview-cell,
-[data-theme='light'] .chain-filter-block,
-[data-theme='light'] .chain-audit-agent,
-[data-theme='light'] .chain-scheme-row,
-[data-theme='light'] .chain-audit-row,
-[data-theme='light'] .chain-display-layout .item-list {
-  background: #ffffff !important;
-}
-
-/* 白天模式：阶段类型的彩色标签改用深字，避免白底上看不清 */
 [data-theme='light'] .chain-stage-cell--source .cell-kind {
   color: #2f5fae;
 }
@@ -1469,12 +1397,5 @@ onMounted(async () => {
 
 [data-theme='light'] .chain-audit-chip {
   color: #8a6a1f;
-}
-
-/* 登录失效弹窗：白天模式也走白底 */
-[data-theme='light'] .auth-mask .auth-card {
-  background: #ffffff !important;
-  border-color: var(--color-border);
-  color: var(--color-text);
 }
 </style>
