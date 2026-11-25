@@ -14,6 +14,7 @@ import type {
   BuffStatModifiers,
   CharacterAttrKey,
   ConvertFromKey,
+  CustomBuffStatKey,
   FollowUpSkillRule,
   SkillCalcContext,
   SkillMatchCoord,
@@ -184,6 +185,24 @@ const BUFF_MULT_FACTOR_KEYS: BuffStatKey[] = [
 
 function isBuffMultFactorKey(key: string): boolean {
   return (BUFF_MULT_FACTOR_KEYS as string[]).includes(key)
+}
+
+/**
+ * 自定义乘区增益键：`custom:` + 字母开头、字母/数字/下划线/点/连字符，slug ≤64。
+ * 与后端 `zzz-hp-backend/src/utils/calculatorBuffFields.js` 的 `isCustomBuffStatKey` 同源。
+ */
+const CUSTOM_BUFF_STAT_KEY_PATTERN = /^custom:[A-Za-z][A-Za-z0-9_.-]{0,63}$/
+
+/** 是否为乘区定义登记的 `custom:<key>` 自定义增益键（内置键恒为 false） */
+export function isCustomBuffStatKey(
+  stat: string | null | undefined,
+): stat is CustomBuffStatKey {
+  return typeof stat === 'string' && CUSTOM_BUFF_STAT_KEY_PATTERN.test(stat)
+}
+
+/** `custom:<key>` → `<key>`；非 custom / 格式非法返回 null */
+export function customBuffStatFieldOf(stat: string | null | undefined): string | null {
+  return isCustomBuffStatKey(stat) ? stat.slice('custom:'.length) : null
 }
 
 function emptyMods(): BuffStatModifiers {
@@ -365,6 +384,23 @@ export function flatModsToEffects(
       }),
     )
   }
+  // 自定义乘区增益键：`custom[key]` → `custom:<key>` 效果（与后端 flatModsToEffects 同口径）
+  for (const [key, raw] of Object.entries(mods.custom ?? {})) {
+    const amount = Number(raw)
+    const stat = `custom:${key}`
+    if (!Number.isFinite(amount) || !amount || !isCustomBuffStatKey(stat)) continue
+    effects.push(
+      createEmptyBuffEffect({
+        id: idPrefix ? `${idPrefix}-${applyTarget}-${key}` : undefined,
+        scope,
+        applyTarget,
+        kind: 'fixed',
+        stat,
+        value: amount,
+        enabledDefault: true,
+      }),
+    )
+  }
   return effects
 }
 
@@ -419,11 +455,19 @@ export function effectsToFlatMods(
 
 export function addStat(
   mods: BuffStatModifiers,
-  stat: BuffStatKey,
+  stat: BuffStatKey | CustomBuffStatKey,
   amount: number,
 ): BuffStatModifiers {
+  const customField = customBuffStatFieldOf(stat)
+  if (customField) {
+    // 自定义乘区：写 `custom[key]`（百分点加总），缺失时初始化
+    const custom = { ...(mods.custom ?? {}) }
+    const customBase = Number(custom[customField])
+    custom[customField] = (Number.isFinite(customBase) ? customBase : 0) + amount
+    return { ...mods, custom }
+  }
   // 同上：缺键不能当 undefined 用，否则 `undefined + n` 是 NaN
-  const base = Number(mods[stat])
+  const base = Number(mods[stat as BuffStatKey])
   return { ...mods, [stat]: (Number.isFinite(base) ? base : 0) + amount }
 }
 
@@ -577,7 +621,7 @@ function contextDamageType(ctx: SkillCalcContext): BuffDamageType | null {
 function damageTypeMatches(
   types: readonly BuffDamageType[],
   current: BuffDamageType,
-  stat: BuffStatKey,
+  stat: BuffStatKey | CustomBuffStatKey,
 ): boolean {
   if (types.includes(current)) return true
   if (
@@ -1012,10 +1056,12 @@ function normalizeKind(value: unknown): BuffEffectKind {
   return 'fixed'
 }
 
-function normalizeStat(value: unknown): BuffStatKey {
+function normalizeStat(value: unknown): BuffStatKey | CustomBuffStatKey {
   // 旧个人效果可能在字段白名单之前仍写着旧名（`anomalyDmgBonus` 等）：
   // 先按 §4.4 映射转换再做白名单判定（幂等）。
   const migrated = typeof value === 'string' ? ATTRIBUTE_ANOMALY_FIELD_RENAMES[value] ?? value : value
+  // 乘区定义登记的自定义键：合法 `custom:<slug>` 原样保留，不能被回落成 dmgBonus
+  if (typeof migrated === 'string' && isCustomBuffStatKey(migrated)) return migrated
   if (typeof migrated === 'string' && (BUFF_STAT_KEYS as string[]).includes(migrated)) {
     return migrated as BuffStatKey
   }
@@ -1388,7 +1434,7 @@ export function formatSkillTargetsPrefix(
 
 export function effectSummaryLabel(
   effect: BuffEffect,
-  statLabelFn?: (stat: BuffStatKey) => string,
+  statLabelFn?: (stat: BuffStatKey | CustomBuffStatKey) => string,
   skillSubcategories?: SkillSubcategory[] | null,
 ): string {
   const target = effect.applyTarget === 'team' ? '全队' : '自身'
@@ -1441,7 +1487,7 @@ export function formatBuffEffectResultText(
   effect: BuffEffect,
   amountText: string,
   options?: {
-    statLabelFn?: (stat: BuffStatKey) => string
+    statLabelFn?: (stat: BuffStatKey | CustomBuffStatKey) => string
     skillSubcategories?: SkillSubcategory[] | null
     /** 非全局作用情况时加 `[失衡期]` / `[非失衡期]` 前缀 */
     applySituation?: boolean

@@ -8,6 +8,7 @@ import type {
   BuffScope,
   BuffSkillTarget,
   BuffStatKey,
+  CustomBuffStatKey,
 } from '@/types/calculator'
 import type { AffixLibraryEntryTarget } from '@/utils/affixLibrary'
 
@@ -21,8 +22,9 @@ export type EffectOperation = 'add' | 'percentOfBase' | 'multiplyFactor' | 'conv
 /**
  * 稳定 stat 键。运行期禁止再压成无命名空间的裸增量袋。
  * 同一 BuffStatKey 可以出现在不同 stage / sourceFamily，互不覆盖。
+ * 乘区定义登记的增益键以 `custom:<key>` 形式进来。
  */
-export type EffectStatKey = BuffStatKey
+export type EffectStatKey = BuffStatKey | CustomBuffStatKey
 
 export type EffectSourceFamily = 'buff' | 'affix-stat' | 'affix-panel' | 'affix-gain'
 

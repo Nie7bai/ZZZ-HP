@@ -1,6 +1,7 @@
 import type { SkillDamageType } from '@/types/calculator'
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 import type { DamageCalcResult } from '@/utils/damageCalc'
+import { zoneLabel, type ZoneLabelSource } from '@/zones/display'
 
 export interface SkillCalcZoneRow {
   label: string
@@ -112,15 +113,17 @@ export function formatSkillMultZoneAsPercent(zone: number): string {
 }
 
 /**
- * 失衡易伤区标签：叶瞬光指定招式走「帷幕易伤」时带上限说明，
- * 其余（缺省）保持「失衡易伤区」。
+ * 失衡易伤区标签：优先取 `result.zones.staggerMultiplier.label`
+ * （帷幕易伤时结果构建已带上限说明），缺失时按 `staggerZoneKind` / `staggerZoneCap` 现算，
+ * 否则保持「失衡易伤区」。
  */
 export function staggerZoneLabel(
-  result: Pick<DamageCalcResult, 'staggerZoneKind' | 'staggerZoneCap'>,
+  result: Pick<DamageCalcResult, 'staggerZoneKind' | 'staggerZoneCap'> & ZoneLabelSource,
 ): string {
-  if (result.staggerZoneKind !== 'curtain') return '失衡易伤区'
+  if (result.staggerZoneKind !== 'curtain') return zoneLabel(result, 'staggerMultiplier', '失衡易伤区')
   const cap = result.staggerZoneCap
-  return cap != null ? `帷幕易伤区（上限 ${Math.round(cap * 100)}%）` : '帷幕易伤区'
+  const fallback = cap != null ? `帷幕易伤区（上限 ${Math.round(cap * 100)}%）` : '帷幕易伤区'
+  return zoneLabel(result, 'staggerMultiplier', fallback)
 }
 
 function pushCommon(rows: SkillCalcZoneRow[], result: DamageCalcResult) {

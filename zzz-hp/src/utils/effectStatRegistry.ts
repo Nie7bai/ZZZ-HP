@@ -1,4 +1,4 @@
-import type { BuffStatKey } from '@/types/calculator'
+import type { BuffStatKey, CustomBuffStatKey } from '@/types/calculator'
 import type { EffectOperation, EffectStage } from '@/types/effectSpec'
 import {
   AFFIX_PANEL_PERCENT_OF_BASE_FIELDS,
@@ -16,7 +16,7 @@ export interface EffectStatRegistration {
   isMultFactor?: boolean
 }
 
-const MULT_FACTOR_STATS = new Set<BuffStatKey>([
+const MULT_FACTOR_STATS = new Set<string>([
   'directDmgMultFactor',
   'attributeAnomalyMultFactor',
   'anomalyReleaseMultFactor',
@@ -29,20 +29,20 @@ const MULT_FACTOR_STATS = new Set<BuffStatKey>([
 
 const PERCENT_OF_BASE_STATS = new Set<string>(['anomalyControl', 'energyRegen'])
 
-export function statCombineRule(stat: BuffStatKey): StatCombineRule {
+export function statCombineRule(stat: BuffStatKey | CustomBuffStatKey): StatCombineRule {
   if (MULT_FACTOR_STATS.has(stat)) return 'multiplyFactor'
   if (PERCENT_OF_BASE_STATS.has(stat)) return 'percentOfBase'
   return 'add'
 }
 
-export function operationForStat(stat: BuffStatKey): EffectOperation {
+export function operationForStat(stat: BuffStatKey | CustomBuffStatKey): EffectOperation {
   const combine = statCombineRule(stat)
   if (combine === 'multiplyFactor') return 'multiplyFactor'
   if (combine === 'percentOfBase') return 'percentOfBase'
   return 'add'
 }
 
-export function isMultFactorStat(stat: BuffStatKey): boolean {
+export function isMultFactorStat(stat: BuffStatKey | CustomBuffStatKey): boolean {
   return MULT_FACTOR_STATS.has(stat)
 }
 

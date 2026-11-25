@@ -8,6 +8,7 @@ import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import type { DriveDiscBuffEditSectionId } from '@/constants/driveDiscBuffEditNav'
 import type { AgentMindscapeRankBuffs, BuffEffectBlock, DriveDiscBuffDoc } from '@/types/calculator'
 import {
+  addStat,
   flatModsToEffects,
   flattenEffectBlocks,
   normalizeBuffEffectBlocks,
@@ -141,10 +142,10 @@ async function saveItem() {
       (await avatarFieldRef.value?.resolveAvatarImageOnSave(id, previousAvatar)) ?? null
     const twoPieceBlocks = normalizeBuffEffectBlocks(form.value.twoPieceBlocks)
     const twoPieceEffects = flattenEffectBlocks(twoPieceBlocks)
-    const twoPieceMods = createEmptyBuffStatModifiers()
+    let twoPieceMods = createEmptyBuffStatModifiers()
     for (const effect of twoPieceEffects) {
       const amount = Number(effect.value ?? effect.valuePerStack) || 0
-      if (amount) twoPieceMods[effect.stat] += amount
+      if (amount) twoPieceMods = addStat(twoPieceMods, effect.stat, amount)
     }
     const doc: DriveDiscBuffDoc & { clearAvatar?: boolean } = {
       id,

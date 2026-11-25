@@ -8,8 +8,7 @@ import type {
 } from '@/types/calculator'
 import { createEmptyBuffEffect, createEmptyBuffEffectBlock, convertSummaryLabel, packFromBlocks } from '@/utils/buffEffect'
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
-import { BUFF_STAT_FIELDS } from '@/utils/calculatorUi'
-import { findBuffStatZoneById } from '@/utils/buffStatZones'
+import { buffStatLabelOf, buffStatUnitOf, findBuffStatZoneById } from '@/utils/buffStatZones'
 import {
   alignRow,
   buildEffectRows,
@@ -281,10 +280,10 @@ watch(
 function rowNavLabel(row: EffectRow) {
   const first = row.effects[0]
   if (!first) return '（空行）'
-  const field = BUFF_STAT_FIELDS.find((item) => item.key === first.stat)
-  const stat = row.zone?.label ?? field?.label ?? first.stat
+  // 自定义乘区键回落到注册表 label；unit 对 custom 键默认 `%`
+  const stat = row.zone?.label ?? buffStatLabelOf(first.stat)
   const target = (first.applyTarget ?? 'self') === 'team' ? '全队' : '自身'
-  const suffix = field?.unit === 'percent' ? '%' : ''
+  const suffix = buffStatUnitOf(first.stat) === 'percent' ? '%' : ''
   const amount =
     first.kind === 'stacked'
       ? `${formatCalcDecimal(first.valuePerStack ?? 0)}${suffix}×${first.maxStacks ?? 1}层`

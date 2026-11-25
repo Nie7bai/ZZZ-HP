@@ -18,8 +18,6 @@ import {
   computeRemielSelfRadianceSpecialLevelZone,
   computeRemielSelfRadianceStandardLevelZone,
   type RemielSelfRadianceCalcInput,
-  computeRadianceMultZone,
-  computeSpecialMultZone,
 } from '@/utils/remielUtils'
 import { resolveSkillMults } from '@/utils/skillSubcategoryMult'
 import {
@@ -31,6 +29,32 @@ import {
 } from '@/utils/damageZoneSourcePolicy'
 // 只作类型导入：记录类型定义在 panelBuffCalc.ts，运行时不反向依赖（Spec §2.5 第 2 项）
 import type { DamageInputUsage } from '@/utils/panelBuffCalc'
+import { buildZoneResults } from '@/zones/results'
+import { evaluateCoreZones } from '@/zones/builtins'
+import type { CustomZoneFactor } from '@/zones/customZones'
+import { buildStageTrace, resolveDamageChainId, type StageDefinition, type StageTraceEntry } from '@/zones/pipeline'
+import { evaluateStageValue } from '@/zones/stageEval'
+import {
+  applyMutationZone,
+  computeAnomalyReleaseZones,
+  computeAttributeAnomalyZones,
+  computeDisorderZones,
+  computeRadianceZones,
+  computeTurbulenceZones,
+  resolveMutationMultiplier,
+  type SelfRadianceChain,
+} from '@/zones/anomalyZones'
+import {
+  computeCritZones,
+  computeDefenseZone,
+  computeLevelZone,
+  computeMasteryZone,
+  computeSharpenCritExpectedZone,
+  computeSharpenCritFullCritZone,
+  computeSpecialMultiplier,
+  computeVulnerableZone,
+} from '@/zones/primitives'
+import type { ZoneResult } from '@/zones/types'
 
 export type { DamageEnemyInput, EnemyResistanceType }
 
@@ -71,6 +95,16 @@ export interface DamageCalcInput {
    * 弱伤%：仅直伤 / 命破 / 锐化终链从增伤区扣减；不进异常 general。
    */
   combatDmgPenalty?: number
+  /**
+   * 自定义乘区增益（Phase 3b）：键由乘区定义登记，值按百分点加总。
+   * 数据通路已接通；Phase 4b 接入方案求值后参与计算。
+   */
+  combatCustom?: Record<string, number>
+  /**
+   * 自定义乘区因子（Phase 3c）：由方案解析 + `evaluateCustomZoneFactors` 得到。
+   * 按顺序连乘进通用乘区，并写入 `zones` 展示；默认空 = 不影响结果。
+   */
+  customZoneFactors?: readonly CustomZoneFactor[]
   /**
    * 锐化路径：防御力基础 + 锐爆区（可溢出）+ 不乘决算/贯穿增伤；
    * 锋御职业或招式 damageType=sharpen 时为 true。
@@ -155,6 +189,16 @@ export interface DamageCalcInput {
   eventDamageType?: SkillDamageType
   eventCritMode?: DamageEventCritMode
   /**
+   * 已按运行时配置解析的链路阶段（Phase 4f）。
+   * 决定轨迹里「有哪些阶段、什么顺序、叫什么」；阶段值仍按阶段 id 从现有计算映射。
+   */
+  chainId?: string
+  chainStages?: StageDefinition[]
+  /** 运行时方案禁用的阶段 id（用于把禁用反映到结算） */
+  chainDisabledStageIds?: string[]
+  /** 阶段参数 `adjustment`（倍率调整，按阶段 id） */
+  chainStageAdjustments?: Record<string, number>
+  /**
    * 实际采用观察器：与正式计算选择面板/字段的分支**同处**，只报告本事件最终用到的依赖。
    * 不传时零开销，行为完全不变。
    */
@@ -187,6 +231,15 @@ export interface DamageCalcResult {
   staggerZoneKind?: 'curtain'
   /** 帷幕易伤上限（倍率，2.1 / 3）；仅 staggerZoneKind='curtain' 时有值 */
   staggerZoneCap?: number
+  /**
+   * 模块化乘区结果（Phase 1a 附加信息）：由 `src/zones` 注册表根据现有数值映射，
+   * 不参与计算；旧字段仍是唯一计算来源。
+   */
+  zones?: Record<string, ZoneResult>
+  /** 乘区方案版本（Phase 1 固定为 1；后续与可编辑方案对齐） */
+  zoneSchemeVersion?: number
+  /** 完整计算链路的阶段轨迹（Phase 4c）：用户端逐阶段展示的数据源 */
+  pipeline?: { chainId: string; stages: StageTraceEntry[] }
   specialMultiplier: number
   /** 贯穿增伤乘区（非贯穿基础时为 1） */
   pierceDmgMultiplier: number
@@ -334,93 +387,19 @@ function round(value: number, precision = 2) {
 }
 
 /**
- * 防御区穿透率硬上限（百分点）。
- *
- * 防御区口径的唯一事实来源：主计算链与展示/提示（`computeDefenseZone`）共用，
- * 词条优化的 `DEFENSE_ZONE_PEN_RATE_CAP` 也引用本常量。
+ * 乘区原语已迁至 `src/zones/primitives.ts`；此处 re-export，保持既有调用点不变。
  */
-export const PEN_RATE_CAP_PERCENT = 95
-
-export function computeDefenseZone(options: {
-  defensePanel: Pick<PanelStats, 'penRate' | 'pen' | 'ignoreDefense' | 'reduceDefense'>
-  isMb: boolean
-  enemyDefense: number
-}) {
-  const defense = options.defensePanel
-  const penRateRatio = clamp(defense.penRate / 100, 0, PEN_RATE_CAP_PERCENT / 100)
-  const ignoreDefenseRatio = clamp(defense.ignoreDefense / 100, 0, 1)
-  const reduceDefenseRatio = clamp(defense.reduceDefense / 100, 0, 1)
-  const defenseFactor = Math.max(0, 1 - ignoreDefenseRatio - reduceDefenseRatio)
-  const defenseAfterModifiers = options.enemyDefense * defenseFactor * (1 - penRateRatio)
-  // 有效防御整体钳制到 ≥0：减去固定穿透后可能为负，若不再钳制，
-  // 防御区会突破 1 并随穿透值无限增长。钳制后分母 ≥ 794，防御区恒 ≤ 1。
-  const effectiveDefense = Math.max(0, defenseAfterModifiers - defense.pen)
-  const defenseMultiplier = options.isMb ? 1 : 794 / (794 + effectiveDefense)
-  return {
-    penRateRatio,
-    ignoreDefenseRatio,
-    reduceDefenseRatio,
-    defenseFactor,
-    effectiveDefense,
-    defenseMultiplier,
-  }
-}
-
-export function computeLevelZone(level: number) {
-  const safeLevel = clamp(Math.round(level), 1, 60)
-  const raw = 1 + (safeLevel - 1) / 59
-  // trunc(..., 4)：对照站保留小数函数
-  return Math.trunc(raw * 10000) / 10000
-}
-
-/**
- * 易伤区 = max(0, 敌人易伤基础 + 通用易伤% + 路径易伤% − 通用减伤% − 路径减伤%)
- * 敌人易伤基础为通用基础；路径差异由 Buff 解决。
- */
-export function computeVulnerableZone(options: {
-  enemyVulnerableBase: number
-  generalVulnerablePercent: number
-  pathVulnerablePercent: number
-  generalReductionPercent: number
-  pathReductionPercent: number
-}) {
-  return Math.max(
-    0,
-    options.enemyVulnerableBase +
-      options.generalVulnerablePercent / 100 +
-      options.pathVulnerablePercent / 100 -
-      options.generalReductionPercent / 100 -
-      options.pathReductionPercent / 100,
-  )
-}
-
-/**
- * 锐爆期望区。
- * B = 锐爆伤害加成%/100（完全以角色数据为准，无内置基础值）；
- * r = clamp(暴击率%/100, 0, 2)（锋御上限 200%）。
- * r ≤ 1: 1 + r×B
- * r > 1: (1+B) × [1 + B×(r−1)]（首段必暴 + 超出部分再判一次）
- */
-export function computeSharpenCritExpectedZone(
-  critRatePercent: number,
-  sharpenCritDmgBonusPercent: number,
-): number {
-  const B = sharpenCritDmgBonusPercent / 100
-  const r = clamp(critRatePercent / 100, 0, 2)
-  if (r <= 1) return 1 + r * B
-  return (1 + B) * (1 + B * (r - 1))
-}
-
-/** 锐爆必暴击区：首段强制暴击；溢出段仍按 (r−1) 期望 */
-export function computeSharpenCritFullCritZone(
-  critRatePercent: number,
-  sharpenCritDmgBonusPercent: number,
-): number {
-  const B = sharpenCritDmgBonusPercent / 100
-  const r = clamp(critRatePercent / 100, 0, 2)
-  if (r <= 1) return 1 + B
-  return (1 + B) * (1 + B * (r - 1))
-}
+export {
+  PEN_RATE_CAP_PERCENT,
+  computeDefenseZone,
+  computeLevelZone,
+  computeVulnerableZone,
+  computeSharpenCritExpectedZone,
+  computeSharpenCritFullCritZone,
+  computeCritZones,
+  computeMasteryZone,
+  computeSpecialMultiplier,
+} from '@/zones/primitives'
 
 /** @deprecated 异常基础已统一用攻击力；直伤请继续按职业选 pierce/def/atk */
 export function resolveBaseDamageSourceForProfession(
@@ -474,6 +453,8 @@ function computeGeneralAndAnomalyBase(options: {
   staggerPhase: 'normal' | 'stagger'
   /** 帷幕易伤上限（倍率）；非空时失衡易伤区改为 min(最终失衡易伤, 上限)，不分阶段 */
   curtainVulnerabilityCap?: number | null
+  /** 自定义乘区因子连乘（缺省 1） */
+  extraZoneFactor?: number
   /** 防御区穿透/减防分项；缺省与 panel 一致 */
   defensePanel?: Pick<PanelStats, 'penRate' | 'pen' | 'ignoreDefense' | 'reduceDefense'>
   /** 等级区所用角色等级 */
@@ -491,10 +472,6 @@ function computeGeneralAndAnomalyBase(options: {
 }) {
   const panel = options.panel
   const defense = options.defensePanel ?? panel
-  const enemyRes = resolveEnemyResistanceForElement(
-    normalizeDamageEnemyInput(options.enemyInput),
-    options.resistanceElement,
-  )
   const extraResPen = options.extraResPen ?? 0
 
   const { baseDamage, usedBaseSource } = resolveBaseDamageParts({
@@ -505,11 +482,7 @@ function computeGeneralAndAnomalyBase(options: {
     useSharpenFormula: options.useSharpenFormula,
   })
 
-  // 异常链用纯增伤；直伤/锐化终链再扣弱伤（见 computeDamageResult）
-  const dmgMultiplier = 1 + clamp(panel.dmgBonus / 100, -0.95, 20)
-  const critRateRatio = clamp(panel.critRate / 100, 0, 1)
-  const critDmgRatio = clamp(panel.critDmg / 100, 0, 20)
-  const critMultiplier = 1 + critRateRatio * critDmgRatio
+  const { critRateRatio, critDmgRatio, critMultiplier } = computeCritZones(panel)
 
   const {
     penRateRatio,
@@ -523,8 +496,32 @@ function computeGeneralAndAnomalyBase(options: {
     isMb: options.isMb,
     enemyDefense: options.enemyInput.defense,
   })
-  const resPenPanel = options.resPenSource ?? panel
-  const resistanceMultiplier = 1 - enemyRes + clamp((resPenPanel.resPen + extraResPen) / 100, -2, 2)
+
+  /**
+   * 核心乘区走注册表管线（Phase 1b）：增伤 / 抗性 / 失衡（含帷幕）与通用乘区连乘。
+   * 防御区明细仍由 computeDefenseZone 计算后传入，公式与旧链路逐位一致。
+   */
+  const {
+    dmgMultiplier,
+    resistanceMultiplier,
+    enemyRes,
+    staggerMultiplier,
+    generalMultiplier,
+  } = evaluateCoreZones({
+    baseDamage,
+    panel,
+    defenseMultiplier,
+    enemyInput: options.enemyInput,
+    resistanceElement: options.resistanceElement,
+    resPenSource: options.resPenSource ?? panel,
+    extraResPen,
+    staggerPhase: options.staggerPhase,
+    curtainVulnerabilityCap: options.curtainVulnerabilityCap,
+    combatGlobalStaggerVulnerable: options.combatGlobalStaggerVulnerable,
+    combatStaggerVulnerable: options.combatStaggerVulnerable,
+    combatStaggerVulnerableOnly: options.combatStaggerVulnerableOnly,
+    extraZoneFactor: options.extraZoneFactor,
+  })
 
   const enemyVulnerableBase = options.enemyInput.vulnerableMultiplier
   const directVulnerableMultiplier = computeVulnerableZone({
@@ -542,31 +539,11 @@ function computeGeneralAndAnomalyBase(options: {
     pathReductionPercent: options.combatAnomalyDmgReduction,
   })
 
-  const globalStagger = options.combatGlobalStaggerVulnerable / 100
-  const phaseStagger =
-    (options.combatStaggerVulnerable + options.combatStaggerVulnerableOnly) / 100
-  /**
-   * 失衡期：怪物失衡易伤 + 全局常驻 + 失衡易伤 + 失衡易伤（仅失衡）
-   * 非失衡期：100% + 全局常驻失衡易伤
-   * 帷幕易伤（叶瞬光指定招式）：不分阶段，取最终失衡易伤（基础 + 全部失衡类 Buff）截断上限
-   */
-  const curtainCap = options.curtainVulnerabilityCap
-  const staggerMultiplier =
-    curtainCap != null
-      ? Math.min(options.enemyInput.staggerMultiplier + globalStagger + phaseStagger, curtainCap)
-      : options.staggerPhase === 'stagger'
-        ? options.enemyInput.staggerMultiplier + globalStagger + phaseStagger
-        : 1 + globalStagger
-  const specialMultiplier = options.enemyInput.specialMultiplier + options.combatSpecial / 100
+  const specialMultiplier = computeSpecialMultiplier(
+    options.enemyInput.specialMultiplier,
+    options.combatSpecial,
+  )
   const pierceDmgBonusRatio = options.combatPierceDmgBonus / 100
-
-  /** 通用乘区不含易伤：易伤按直伤/非直伤路径分别乘入 */
-  const generalMultiplier =
-    baseDamage *
-    dmgMultiplier *
-    defenseMultiplier *
-    resistanceMultiplier *
-    Math.max(0, staggerMultiplier)
 
   const pierceDmgMultiplier =
     usedBaseSource === 'pierce' ? 1 + pierceDmgBonusRatio : 1
@@ -575,7 +552,7 @@ function computeGeneralAndAnomalyBase(options: {
     ? Math.max(0, 1 + (options.combatSharpenDmgBonus ?? 0) / 100)
     : 1
 
-  const masteryZone = panel.mastery / 100
+  const masteryZone = computeMasteryZone(panel)
   const levelZone = computeLevelZone(options.agentLevel)
   const anomalyBaseExpected =
     generalMultiplier *
@@ -688,6 +665,11 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       )
     : null
   const hasPolarDisorder = skillMults?.hasPolarDisorder ?? false
+  // 自定义乘区（Phase 3c）：方案解析后的因子按顺序连乘进通用乘区
+  const extraZoneFactor = (input.customZoneFactors ?? []).reduce(
+    (product, factor) => product * factor.value,
+    1,
+  )
 
   const mainParts = computeGeneralAndAnomalyBase({
     panel,
@@ -710,6 +692,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     combatSharpenDmgBonus: input.combatSharpenDmgBonus ?? 0,
     staggerPhase,
     curtainVulnerabilityCap: input.curtainVulnerabilityCap ?? null,
+    extraZoneFactor,
     agentLevel: ownerAgentLevel,
     resistanceElement: ownerResistanceElement,
     defensePanel: composeDefensePanel(zonePanels, 'direct'),
@@ -744,6 +727,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     combatPierceDmgBonus: input.combatPierceDmgBonus ?? 0,
     staggerPhase,
     curtainVulnerabilityCap: input.curtainVulnerabilityCap ?? null,
+    extraZoneFactor,
     agentLevel: anomalyBaseLevel,
     resistanceElement: anomalyBaseResistanceElement,
     // 异常基础防御区：穿透取强度提供者（或持有者），减防/无视取异常类触发者
@@ -818,28 +802,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   }
 
   // 异常乘区：全部异常子类（属性异常/异放/耀变/紊乱/乱流）的类型增伤、倍率与异常暴击均取异常类触发者（bonusPanel）；基础期望取异常强度提供者
-  const attributeAnomalyDmgBonusZone = 1 + bonusPanel.attributeAnomalyDmgBonus / 100
-  const attributeAnomalyMultZone =
-    Math.max(0, bonusPanel.attributeAnomalyMult / 100) * readFactor(bonusPanel.attributeAnomalyMultFactor)
-  const attributeAnomalyCritRateRatio = bonusPanel.attributeAnomalyCritRate / 100
-  const attributeAnomalyCritDmgRatio = clamp(bonusPanel.attributeAnomalyCritDmg / 100, 0, 20)
-  const attributeAnomalyCritZone = 1 + attributeAnomalyCritRateRatio * attributeAnomalyCritDmgRatio
-  const attributeAnomalyFullCritZone = 1 + attributeAnomalyCritDmgRatio
-  const attributeAnomalyNoCritZone = 1
-  // 子类专用暴击（用户 2026-10-16）：各子类**只吃自己的**暴击字段，不再蹭 anomalyCrit*
-  const turbulenceCritRateRatio = bonusPanel.turbulenceCritRate / 100
-  const turbulenceCritDmgRatio = clamp(bonusPanel.turbulenceCritDmg / 100, 0, 20)
-  const turbulenceCritZone = 1 + turbulenceCritRateRatio * turbulenceCritDmgRatio
-  const turbulenceFullCritZone = 1 + turbulenceCritDmgRatio
-  // 紊乱 / 耀变同为异常类暴击，同样只吃自己的暴击字段，且都取异常类触发者面板（bonusPanel）
-  const disorderCritRateRatio = bonusPanel.disorderCritRate / 100
-  const disorderCritDmgRatio = clamp(bonusPanel.disorderCritDmg / 100, 0, 20)
-  const disorderCritZone = 1 + disorderCritRateRatio * disorderCritDmgRatio
-  const disorderFullCritZone = 1 + disorderCritDmgRatio
-  const radianceCritRateRatio = bonusPanel.radianceCritRate / 100
-  const radianceCritDmgRatio = clamp(bonusPanel.radianceCritDmg / 100, 0, 20)
-  const radianceCritZone = 1 + radianceCritRateRatio * radianceCritDmgRatio
-  const radianceFullCritZone = 1 + radianceCritDmgRatio
+  // 各子类**只吃自己的**暴击字段（不再蹭 anomalyCrit*），公式见 `src/zones/anomalyZones.ts`
 
   const remielSelf = subKind === 'radiance' ? (input.remielSelfRadianceCalc ?? null) : null
 
@@ -896,136 +859,69 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       enemyRes +
       clamp((remielSelf.resPen + remielSelf.radianceResPen) / 100, -2, 2)
   }
-  const attributeAnomalyPreCrit =
-    anomalyBaseExpected * attributeAnomalyDmgBonusZone * attributeAnomalyMultZone
-  const attributeAnomalyExpected = attributeAnomalyPreCrit * attributeAnomalyCritZone
-  const attributeAnomalyExpectedNoCrit = attributeAnomalyPreCrit * attributeAnomalyNoCritZone
-  const attributeAnomalyExpectedFullCrit = attributeAnomalyPreCrit * attributeAnomalyFullCritZone
+  // 异常类乘区原语在 `src/zones/anomalyZones.ts`；这里只负责选面板、定顺序与取整。
+  const attributeAnomaly = computeAttributeAnomalyZones({
+    panel: bonusPanel,
+    anomalyBaseExpected,
+  })
 
   // 异放：基础用触发面板；增伤只吃异放增伤自身字段（不再叠加属性异常增伤）；
   // 暴击只吃异放暴击字段
-
-  const anomalyReleaseDmgBonusZone = 1 + bonusPanel.anomalyReleaseDmgBonus / 100
-  const anomalyReleaseMultZone = skillMults
-    ? skillMults.anomalyReleaseMultZone
-    : Math.max(0, bonusPanel.anomalyReleaseMult / 100) *
-        readFactor(bonusPanel.anomalyReleaseMultFactor)
-  const releaseCritRateRatio = bonusPanel.anomalyReleaseCritRate / 100
-  const releaseCritDmgRatio = clamp(bonusPanel.anomalyReleaseCritDmg / 100, 0, 20)
-  const anomalyReleaseCritZone = 1 + releaseCritRateRatio * releaseCritDmgRatio
-  /** 异放满暴击区：1 + 异放爆伤 */
-  const anomalyReleaseFullCritZone = 1 + releaseCritDmgRatio
-  const anomalyReleasePreCrit =
-    anomalyBaseExpected *
-    anomalyReleaseDmgBonusZone *
-    anomalyReleaseMultZone
-  const anomalyReleaseExpected = anomalyReleasePreCrit * anomalyReleaseCritZone
-  const anomalyReleaseExpectedNoCrit = anomalyReleasePreCrit
-  const anomalyReleaseExpectedFullCrit =
-    anomalyReleasePreCrit * anomalyReleaseFullCritZone
+  const anomalyRelease = computeAnomalyReleaseZones({
+    panel: bonusPanel,
+    skillMults,
+    anomalyBaseExpected,
+  })
 
   const effectiveDuration = effectiveAnomalyDuration(
     (useTriggerBase ? triggerPanel : panel).anomalyDuration || bonusPanel.anomalyDuration,
     durationElement,
   )
 
-  const disorderDmgBonusZone = 1 + bonusPanel.disorderDmgBonus / 100
-  const disorderCompMultRatio = multPanel.disorderCompMult / 100
   // 只有紊乱/乱流才真正采用这组倍率面板（同一份 multPanel 读数在其它子类里只是顺带算出）
+  const disorder = computeDisorderZones({
+    panel: bonusPanel,
+    multPanel,
+    skillMults,
+    effectiveDuration,
+    zoneMultOverride: input.disorderZoneMultOverride,
+    zoneMultFactorOverride: input.disorderZoneMultFactorOverride,
+    anomalyBaseExpected: triggerParts.anomalyBaseExpected,
+  })
 
-  const disorderPanelFactor = readFactor(multPanel.disorderBaseMultFactor)
-  let disorderBaseMultRatio: number
-  let disorderMultFactor: number
-  let disorderZone: number
-  if (input.disorderZoneMultOverride != null) {
-    // 招式手填「最终倍率区%」：填写值本身已含有效持续时间 × 补偿倍率，修正直接乘在倍率区上
-    const providedZoneRatio = Math.max(0, input.disorderZoneMultOverride / 100)
-    disorderMultFactor =
-      readFactor(input.disorderZoneMultFactorOverride) * disorderPanelFactor
-    disorderZone = Math.max(0, providedZoneRatio * disorderMultFactor)
-    disorderBaseMultRatio = Math.max(
-      0,
-      providedZoneRatio - effectiveDuration * disorderCompMultRatio,
-    )
-  } else {
-    disorderBaseMultRatio = skillMults
-      ? skillMults.disorderBaseMultRatio
-      : Math.max(0, multPanel.disorderBaseMult / 100)
-    disorderMultFactor = skillMults
-      ? skillMults.disorderMultFactor
-      : disorderPanelFactor
-    disorderZone = Math.max(
-      0,
-      (disorderBaseMultRatio + effectiveDuration * disorderCompMultRatio) *
-        disorderMultFactor,
-    )
-  }
-  const disorderBase = triggerParts.anomalyBaseExpected
-  const disorderPreCrit = disorderBase * disorderZone * disorderDmgBonusZone
-  const disorderExpected = disorderPreCrit * disorderCritZone
-  const disorderExpectedNoCrit = disorderPreCrit
-  const disorderExpectedFullCrit = disorderPreCrit * disorderFullCritZone
-
-  // 乱流增伤只吃乱流增伤自身字段（不再叠加属性异常增伤）
-  const turbulenceDmgBonusZone = 1 + bonusPanel.turbulenceDmgBonus / 100
-  const turbulenceCompMultRatio = multPanel.turbulenceCompMult / 100
-
-  const turbulencePanelFactor = readFactor(multPanel.turbulenceBaseMultFactor)
-  let turbulenceBaseMultRatio: number
-  let turbulenceMultFactor: number
-  let turbulenceZone: number
-  if (input.turbulenceZoneMultOverride != null) {
-    // 招式手填「最终倍率区%」：填写值本身已含有效持续时间 × 补偿倍率，修正直接乘在倍率区上
-    const providedZoneRatio = Math.max(0, input.turbulenceZoneMultOverride / 100)
-    turbulenceMultFactor =
-      readFactor(input.turbulenceZoneMultFactorOverride) * turbulencePanelFactor
-    turbulenceZone = Math.max(0, providedZoneRatio * turbulenceMultFactor)
-    turbulenceBaseMultRatio = Math.max(
-      0,
-      providedZoneRatio - effectiveDuration * turbulenceCompMultRatio,
-    )
-  } else {
-    turbulenceBaseMultRatio = Math.max(0, multPanel.turbulenceBaseMult / 100)
-    turbulenceMultFactor = turbulencePanelFactor
-    turbulenceZone = Math.max(
-      0,
-      (turbulenceBaseMultRatio + effectiveDuration * turbulenceCompMultRatio) *
-        turbulenceMultFactor,
-    )
-  }
-  // 乱流**只吃自己的**暴击（不再蹭异常暴击）
-  const turbulencePreCrit =
-    anomalyBaseExpected * turbulenceZone * turbulenceDmgBonusZone
-  const turbulenceExpected = turbulencePreCrit * turbulenceCritZone
-  const turbulenceExpectedNoCrit = turbulencePreCrit * attributeAnomalyNoCritZone
-  const turbulenceExpectedFullCrit = turbulencePreCrit * turbulenceFullCritZone
+  // 乱流增伤只吃乱流增伤自身字段（不再叠加属性异常增伤）；**只吃自己的**暴击（不再蹭异常暴击）
+  const turbulence = computeTurbulenceZones({
+    panel: bonusPanel,
+    multPanel,
+    effectiveDuration,
+    zoneMultOverride: input.turbulenceZoneMultOverride,
+    zoneMultFactorOverride: input.turbulenceZoneMultFactorOverride,
+    anomalyBaseExpected,
+  })
 
   // 耀变增伤只吃耀变增伤自身字段（取异常类触发者面板，含队友赋予的耀变增伤）；
   // 不再叠加属性异常增伤
-  const radianceDmgBonusZone = 1 + bonusPanel.radianceDmgBonus / 100
-  const radianceMultZone = computeRadianceMultZone(bonusPanel)
-  const specialMultZone = computeSpecialMultZone(bonusPanel)
-  const radiancePreCrit = remielSelfRadianceActive
-    ? anomalyBaseExpected *
-      remielSelfDefenseMultiplier *
-      remielSelfResistanceMultiplier *
-      Math.max(0, mainParts.anomalyVulnerableMultiplier) *
-      Math.max(0, mainParts.staggerMultiplier) *
-      radianceDmgBonusZone *
-      radianceMultZone *
-      specialMultZone *
-      Math.max(0, mainParts.specialMultiplier)
-    : anomalyBaseExpected * radianceDmgBonusZone * radianceMultZone
-  // 耀变暴击对所有触发者成立（普通耀变链与蕾米埃尔本人耀变链都乘同一暴击区）
-  const radianceExpectedRaw = radiancePreCrit * radianceCritZone
-  const radianceExpectedNoCritRaw = radiancePreCrit
-  const radianceExpectedFullCritRaw = radiancePreCrit * radianceFullCritZone
+  const selfRadianceChain: SelfRadianceChain | null = remielSelfRadianceActive
+    ? {
+        defenseMultiplier: remielSelfDefenseMultiplier,
+        resistanceMultiplier: remielSelfResistanceMultiplier,
+        anomalyVulnerableMultiplier: mainParts.anomalyVulnerableMultiplier,
+        staggerMultiplier: mainParts.staggerMultiplier,
+        specialMultiplier: mainParts.specialMultiplier,
+      }
+    : null
+  const radiance = computeRadianceZones({
+    panel: bonusPanel,
+    anomalyBaseExpected,
+    selfRadianceChain,
+  })
 
-  const mutationMultRaw = input.mutationZone
-  const mutationMult =
-    mutationMultRaw != null && Number.isFinite(mutationMultRaw) ? mutationMultRaw : 1
+  const mutationMult = resolveMutationMultiplier(input.mutationZone)
   const applyMutation = (value: number) =>
-    remielSelfRadianceActive ? value : value * mutationMult
+    applyMutationZone(value, {
+      mutationMultiplier: mutationMult,
+      selfRadianceActive: remielSelfRadianceActive,
+    })
 
   if (reportUse) {
     const eventKind = input.eventDamageType ?? (useTriggerBase ? subKind : 'direct')
@@ -1133,7 +1029,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     }
   }
 
-  return {
+  const result: DamageCalcResult = {
     baseDamage: round(baseParts.baseDamage, 2),
     baseDamageSource: baseParts.usedBaseSource,
     dmgMultiplier: round(reportedDmgMultiplier, 4),
@@ -1177,14 +1073,14 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     masteryZone: round(triggerParts.masteryZone, 4),
     levelZone: round(triggerParts.levelZone, 4),
     levelZoneAgentLevel: anomalyBaseLevel,
-    attributeAnomalyDmgBonusZone: round(attributeAnomalyDmgBonusZone, 4),
-    attributeAnomalyMultZone: round(attributeAnomalyMultZone, 4),
-    attributeAnomalyCritRateRatio: round(attributeAnomalyCritRateRatio, 4),
-    attributeAnomalyCritDmgRatio: round(attributeAnomalyCritDmgRatio, 4),
-    attributeAnomalyCritZone: round(attributeAnomalyCritZone, 4),
-    attributeAnomalyFullCritZone: round(attributeAnomalyFullCritZone, 4),
-    turbulenceCritZone: round(turbulenceCritZone, 4),
-    turbulenceFullCritZone: round(turbulenceFullCritZone, 4),
+    attributeAnomalyDmgBonusZone: round(attributeAnomaly.dmgBonusZone, 4),
+    attributeAnomalyMultZone: round(attributeAnomaly.multZone, 4),
+    attributeAnomalyCritRateRatio: round(attributeAnomaly.critRateRatio, 4),
+    attributeAnomalyCritDmgRatio: round(attributeAnomaly.critDmgRatio, 4),
+    attributeAnomalyCritZone: round(attributeAnomaly.critZone, 4),
+    attributeAnomalyFullCritZone: round(attributeAnomaly.fullCritZone, 4),
+    turbulenceCritZone: round(turbulence.critZone, 4),
+    turbulenceFullCritZone: round(turbulence.fullCritZone, 4),
     anomalyBaseExpected: round(anomalyBaseExpected, 0),
     remielSelfRadianceActive,
     remielSelfAnomalyBase: remielSelfAnomalyBase
@@ -1211,47 +1107,174 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     remielSelfResistanceMultiplier: remielSelfRadianceActive
       ? round(remielSelfResistanceMultiplier, 4)
       : undefined,
-    attributeAnomalyExpected: round(applyMutation(attributeAnomalyExpected), 0),
-    attributeAnomalyExpectedNoCrit: round(applyMutation(attributeAnomalyExpectedNoCrit), 0),
-    attributeAnomalyExpectedFullCrit: round(applyMutation(attributeAnomalyExpectedFullCrit), 0),
-    anomalyReleaseDmgBonusZone: round(anomalyReleaseDmgBonusZone, 4),
-        anomalyReleaseMultZone: round(anomalyReleaseMultZone, 4),
-    anomalyReleaseCritZone: round(anomalyReleaseCritZone, 4),
-    anomalyReleaseCritRateRatio: round(releaseCritRateRatio, 4),
-    anomalyReleaseCritDmgRatio: round(releaseCritDmgRatio, 4),
-    anomalyReleaseFullCritZone: round(anomalyReleaseFullCritZone, 4),
-    anomalyReleaseExpected: round(applyMutation(anomalyReleaseExpected), 0),
-    anomalyReleaseExpectedNoCrit: round(applyMutation(anomalyReleaseExpectedNoCrit), 0),
-    anomalyReleaseExpectedFullCrit: round(applyMutation(anomalyReleaseExpectedFullCrit), 0),
+    attributeAnomalyExpected: round(applyMutation(attributeAnomaly.expected), 0),
+    attributeAnomalyExpectedNoCrit: round(applyMutation(attributeAnomaly.expectedNoCrit), 0),
+    attributeAnomalyExpectedFullCrit: round(applyMutation(attributeAnomaly.expectedFullCrit), 0),
+    anomalyReleaseDmgBonusZone: round(anomalyRelease.dmgBonusZone, 4),
+    anomalyReleaseMultZone: round(anomalyRelease.multZone, 4),
+    anomalyReleaseCritZone: round(anomalyRelease.critZone, 4),
+    anomalyReleaseCritRateRatio: round(anomalyRelease.critRateRatio, 4),
+    anomalyReleaseCritDmgRatio: round(anomalyRelease.critDmgRatio, 4),
+    anomalyReleaseFullCritZone: round(anomalyRelease.fullCritZone, 4),
+    anomalyReleaseExpected: round(applyMutation(anomalyRelease.expected), 0),
+    anomalyReleaseExpectedNoCrit: round(applyMutation(anomalyRelease.expectedNoCrit), 0),
+    anomalyReleaseExpectedFullCrit: round(applyMutation(anomalyRelease.expectedFullCrit), 0),
     effectiveAnomalyDuration: round(effectiveDuration, 4),
-    disorderBaseMultRatio: round(disorderBaseMultRatio, 4),
-    disorderCompMultRatio: round(disorderCompMultRatio, 4),
-    disorderMultFactor: round(disorderMultFactor, 4),
-    disorderZone: round(disorderZone, 4),
-    disorderDmgBonusZone: round(disorderDmgBonusZone, 4),
-    disorderCritZone: round(disorderCritZone, 4),
-    disorderFullCritZone: round(disorderFullCritZone, 4),
-    disorderExpected: round(applyMutation(disorderExpected), 0),
-    disorderExpectedNoCrit: round(applyMutation(disorderExpectedNoCrit), 0),
-    disorderExpectedFullCrit: round(applyMutation(disorderExpectedFullCrit), 0),
-    turbulenceBaseMultRatio: round(turbulenceBaseMultRatio, 4),
-    turbulenceCompMultRatio: round(turbulenceCompMultRatio, 4),
-    turbulenceMultFactor: round(turbulenceMultFactor, 4),
-    turbulenceZone: round(turbulenceZone, 4),
-    turbulenceDmgBonusZone: round(turbulenceDmgBonusZone, 4),
+    disorderBaseMultRatio: round(disorder.baseMultRatio, 4),
+    disorderCompMultRatio: round(disorder.compMultRatio, 4),
+    disorderMultFactor: round(disorder.multFactor, 4),
+    disorderZone: round(disorder.zone, 4),
+    disorderDmgBonusZone: round(disorder.dmgBonusZone, 4),
+    disorderCritZone: round(disorder.critZone, 4),
+    disorderFullCritZone: round(disorder.fullCritZone, 4),
+    disorderExpected: round(applyMutation(disorder.expected), 0),
+    disorderExpectedNoCrit: round(applyMutation(disorder.expectedNoCrit), 0),
+    disorderExpectedFullCrit: round(applyMutation(disorder.expectedFullCrit), 0),
+    turbulenceBaseMultRatio: round(turbulence.baseMultRatio, 4),
+    turbulenceCompMultRatio: round(turbulence.compMultRatio, 4),
+    turbulenceMultFactor: round(turbulence.multFactor, 4),
+    turbulenceZone: round(turbulence.zone, 4),
+    turbulenceDmgBonusZone: round(turbulence.dmgBonusZone, 4),
     turbulenceUsesAnomalyCrit: false,
-    turbulenceExpected: round(applyMutation(turbulenceExpected), 0),
-    turbulenceExpectedNoCrit: round(applyMutation(turbulenceExpectedNoCrit), 0),
-    turbulenceExpectedFullCrit: round(applyMutation(turbulenceExpectedFullCrit), 0),
+    turbulenceExpected: round(applyMutation(turbulence.expected), 0),
+    turbulenceExpectedNoCrit: round(applyMutation(turbulence.expectedNoCrit), 0),
+    turbulenceExpectedFullCrit: round(applyMutation(turbulence.expectedFullCrit), 0),
     hasPolarDisorder,
-    radianceDmgBonusZone: round(radianceDmgBonusZone, 4),
-    radianceMultZone: round(radianceMultZone, 4),
-    specialMultZone: round(specialMultZone, 4),
+    radianceDmgBonusZone: round(radiance.dmgBonusZone, 4),
+    radianceMultZone: round(radiance.multZone, 4),
+    specialMultZone: round(radiance.specialMultZone, 4),
     mutationZone: round(mutationMult, 4),
-    radianceCritZone: round(radianceCritZone, 4),
-    radianceFullCritZone: round(radianceFullCritZone, 4),
-    radianceExpected: round(applyMutation(radianceExpectedRaw), 0),
-    radianceExpectedNoCrit: round(applyMutation(radianceExpectedNoCritRaw), 0),
-    radianceExpectedFullCrit: round(applyMutation(radianceExpectedFullCritRaw), 0),
+    radianceCritZone: round(radiance.critZone, 4),
+    radianceFullCritZone: round(radiance.fullCritZone, 4),
+    radianceExpected: round(applyMutation(radiance.expected), 0),
+    radianceExpectedNoCrit: round(applyMutation(radiance.expectedNoCrit), 0),
+    radianceExpectedFullCrit: round(applyMutation(radiance.expectedFullCrit), 0),
   }
+  const zones = buildZoneResults(result)
+  for (const factor of input.customZoneFactors ?? []) {
+    zones[factor.key] = {
+      key: factor.key,
+      label: factor.label,
+      order: factor.order,
+      group: 'custom',
+      value: factor.value,
+    }
+  }
+  const chainId = input.chainId ?? resolveDamageChainId({
+    damageKind: input.eventDamageType ?? (useTriggerBase ? subKind : 'direct'),
+    isSelfRadiance: remielSelfRadianceActive,
+  })
+  const stageValues: Record<string, number | undefined> = {}
+  if (chainId === 'direct') {
+    Object.assign(stageValues, {
+      base: result.baseDamage,
+      dmg: directDmgMultiplier,
+      defense: result.defenseMultiplier,
+      resistance: result.resistanceMultiplier,
+      stagger: result.staggerMultiplier,
+      vulnerable: result.vulnerableMultiplier,
+      crit: reportedCritMultiplier,
+      directMult: result.directDmgMultZone,
+      settlement: result.settlementDmgMultZone,
+      pierce: result.pierceDmgMultiplier,
+      sharpen: result.sharpenDmgMultiplier,
+      special: result.specialMultiplier,
+      final: result.directDamageExpected,
+    })
+  } else if (chainId === 'radiance-self') {
+    Object.assign(stageValues, {
+      selfAtk: result.remielSelfInCombatAtk,
+      selfMastery: result.remielSelfInCombatMasteryZone,
+      specialLevel: result.remielSelfSpecialLevelZone,
+      mutation: result.remielSelfMutationZone,
+      defense: result.remielSelfDefenseMultiplier,
+      resistance: result.remielSelfResistanceMultiplier,
+      vulnerable: result.anomalyVulnerableMultiplier,
+      stagger: result.staggerMultiplier,
+      radianceBonus: result.radianceDmgBonusZone,
+      radianceMult: result.radianceMultZone,
+      crit: result.radianceCritZone,
+      special: result.specialMultiplier,
+      final: result.radianceExpected,
+    })
+  } else {
+    const subtypeZones = subKind === 'attributeAnomaly'
+      ? { bonus: result.attributeAnomalyDmgBonusZone, mult: result.attributeAnomalyMultZone, crit: result.attributeAnomalyCritZone, final: result.attributeAnomalyExpected }
+      : subKind === 'anomalyRelease'
+        ? { bonus: result.anomalyReleaseDmgBonusZone, mult: result.anomalyReleaseMultZone, crit: result.anomalyReleaseCritZone, final: result.anomalyReleaseExpected }
+        : subKind === 'disorder'
+          ? { bonus: result.disorderDmgBonusZone, mult: result.disorderZone, crit: result.disorderCritZone, final: result.disorderExpected }
+          : subKind === 'turbulence'
+            ? { bonus: result.turbulenceDmgBonusZone, mult: result.turbulenceZone, crit: result.turbulenceCritZone, final: result.turbulenceExpected }
+            : { bonus: result.radianceDmgBonusZone, mult: result.radianceMultZone, crit: result.radianceCritZone, final: result.radianceExpected }
+    Object.assign(stageValues, {
+      base: triggerParts.baseDamage,
+      dmg: triggerParts.dmgMultiplier,
+      defense: triggerParts.defenseMultiplier,
+      resistance: triggerParts.resistanceMultiplier,
+      stagger: triggerParts.staggerMultiplier,
+      vulnerable: triggerParts.anomalyVulnerableMultiplier,
+      mastery: triggerParts.masteryZone,
+      level: triggerParts.levelZone,
+      dmgBonus: subtypeZones.bonus,
+      mult: subtypeZones.mult,
+      crit: subtypeZones.crit,
+      special: triggerParts.specialMultiplier,
+      final: subtypeZones.final,
+    })
+  }
+  // Phase 4f-3：运行时新增阶段按白名单模块求值；新增 multiplier 阶段作为额外因子
+  let extraStageFactor = 1
+  for (const stage of input.chainStages ?? []) {
+    if (typeof stageValues[stage.id] === 'number') continue
+    const value = evaluateStageValue(stage, stageValues, {
+      panel: panel as unknown as Record<string, number>,
+      enemyInput: input.enemyInput as unknown as Record<string, number>,
+      customMods: input.combatCustom,
+    })
+    if (value == null) continue
+    stageValues[stage.id] = value
+    if (stage.kind === 'multiplier') extraStageFactor *= value
+  }
+
+  // Phase 4f-2：阶段的启用/禁用与 `params.adjustment` 反映到结算
+  let stageAdjustment = extraStageFactor
+  for (const stageId of input.chainDisabledStageIds ?? []) {
+    const value = stageValues[stageId]
+    if (typeof value === 'number' && Number.isFinite(value) && value !== 0) {
+      stageAdjustment /= value
+    }
+  }
+  for (const ratio of Object.values(input.chainStageAdjustments ?? {})) {
+    if (Number.isFinite(ratio) && ratio >= 0) stageAdjustment *= ratio
+  }
+  if (stageAdjustment !== 1) {
+    const scale = (value: number) => round(value * stageAdjustment, 0)
+    result.directDamageFromDirectMult = scale(result.directDamageFromDirectMult)
+    result.settlementDamageExpected = scale(result.settlementDamageExpected)
+    result.directDamageExpected = scale(result.directDamageExpected)
+    result.attributeAnomalyExpected = scale(result.attributeAnomalyExpected)
+    result.attributeAnomalyExpectedNoCrit = scale(result.attributeAnomalyExpectedNoCrit)
+    result.attributeAnomalyExpectedFullCrit = scale(result.attributeAnomalyExpectedFullCrit)
+    result.anomalyReleaseExpected = scale(result.anomalyReleaseExpected)
+    result.anomalyReleaseExpectedNoCrit = scale(result.anomalyReleaseExpectedNoCrit)
+    result.anomalyReleaseExpectedFullCrit = scale(result.anomalyReleaseExpectedFullCrit)
+    result.disorderExpected = scale(result.disorderExpected)
+    result.disorderExpectedNoCrit = scale(result.disorderExpectedNoCrit)
+    result.disorderExpectedFullCrit = scale(result.disorderExpectedFullCrit)
+    result.turbulenceExpected = scale(result.turbulenceExpected)
+    result.turbulenceExpectedNoCrit = scale(result.turbulenceExpectedNoCrit)
+    result.turbulenceExpectedFullCrit = scale(result.turbulenceExpectedFullCrit)
+    result.radianceExpected = scale(result.radianceExpected)
+    result.radianceExpectedNoCrit = scale(result.radianceExpectedNoCrit)
+    result.radianceExpectedFullCrit = scale(result.radianceExpectedFullCrit)
+    if (chainId === 'direct') stageValues.final = result.directDamageExpected
+    else if (chainId === 'radiance-self') stageValues.final = result.radianceExpected
+    else if (subKind === 'attributeAnomaly') stageValues.final = result.attributeAnomalyExpected
+    else if (subKind === 'anomalyRelease') stageValues.final = result.anomalyReleaseExpected
+    else if (subKind === 'disorder') stageValues.final = result.disorderExpected
+    else if (subKind === 'turbulence') stageValues.final = result.turbulenceExpected
+    else stageValues.final = result.radianceExpected
+  }
+  return { ...result, zones, zoneSchemeVersion: 1, pipeline: buildStageTrace(chainId, stageValues, input.chainStages) }
 }

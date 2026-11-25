@@ -16,7 +16,7 @@ import {
   type AnomalyFormulaAgentLabels,
 } from '@/utils/anomalyFormulaDisplay'
 import { buildAlignedDirectFormulaGroup } from '@/utils/directDamageDisplay'
-import { staggerZoneLabel } from '@/utils/skillCalcZones'
+import { zoneLabel } from '@/zones/display'
 
 import type { DamageEventCritMode } from '@/types/calculator'
 import { DAMAGE_EVENT_CRIT_MODE_OPTIONS } from '@/utils/damageEvent'
@@ -151,7 +151,7 @@ const alignedGeneralFormula = computed((): AlignedFormulaGroup => {
       { label: '增伤区', value: formatCalcPlain(p.dmgMultiplier), tipsKey: 'dmgMultiplier' },
       { label: '防御区', value: formatCalcPlain(p.defenseMultiplier), tipsKey: 'defenseMultiplier' },
       { label: '抗性区', value: formatCalcPlain(p.resistanceMultiplier), tipsKey: 'resistanceMultiplier' },
-      { label: staggerZoneLabel(p), value: formatCalcPlain(p.staggerMultiplier), tipsKey: 'staggerMultiplier' },
+      { label: zoneLabel(p, 'staggerMultiplier'), value: formatCalcPlain(p.staggerMultiplier), tipsKey: 'staggerMultiplier' },
     ],
     // 结果（蓝色加粗）与下面两行同口径：取整 + 千分号
     result: formatNumber(p.generalMultiplier),
@@ -249,7 +249,7 @@ const formulaValueTips = computed(() => {
       <p>防御区：<StatValueWithSources :value="formatCalcPlain(calcParts.defenseMultiplier)" :groups="valueTips.defenseMultiplier" /></p>
       <p>抗性区：<StatValueWithSources :value="formatCalcPlain(calcParts.resistanceMultiplier)" :groups="valueTips.resistanceMultiplier" /></p>
       <p>易伤区（含增益）：<StatValueWithSources :value="formatCalcPlain(displayVulnerableMultiplier)" :groups="valueTips.vulnerableMultiplier" /></p>
-      <p>{{ staggerZoneLabel(calcParts) }}（含增益）：<StatValueWithSources :value="formatCalcPlain(calcParts.staggerMultiplier)" :groups="valueTips.staggerMultiplier" /></p>
+      <p>{{ zoneLabel(calcParts, 'staggerMultiplier') }}（含增益）：<StatValueWithSources :value="formatCalcPlain(calcParts.staggerMultiplier)" :groups="valueTips.staggerMultiplier" /></p>
       <p class="result-subtotal">通用乘区：<StatValueWithSources :value="formatNumber(calcParts.generalMultiplier)" :groups="valueTips.generalMultiplier" /></p>
       </div>
     </details>

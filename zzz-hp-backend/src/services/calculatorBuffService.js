@@ -4,6 +4,9 @@ import {
   BUFF_STAT_KEYS,
   BUFF_MULT_FACTOR_KEYS,
   createEmptyBuffStatModifiers,
+  customBuffStatFieldOf,
+  isCustomBuffStatKey,
+  normalizeCustomBuffStatModifiers,
   normalizeAgentBasePanel,
   normalizeBuffMultFactorDelta,
   normalizeBuffStatModifiers,
@@ -69,7 +72,7 @@ export function normalizeBuffScopes(value) {
  * 旧扁平 mods → fixed effects。
  * 2026-10-20 起 BuffEffect 不再写 `scope`（`scope` 只作读入兼容；词条库另有一套 scope）。
  */
-function flatModsToEffects(mods, applyTarget) {
+export function flatModsToEffects(mods, applyTarget) {
   const effects = []
   for (const key of BUFF_STAT_KEYS) {
     let value = readNumber(mods?.[key])
@@ -86,16 +89,38 @@ function flatModsToEffects(mods, applyTarget) {
       enabledDefault: true,
     })
   }
+  // 自定义乘区增益键：`custom[key]` → `custom:<key>` 效果（与前端 flatModsToEffects 同口径）
+  for (const [key, raw] of Object.entries(normalizeCustomBuffStatModifiers(mods?.custom))) {
+    if (!raw) continue
+    const stat = `custom:${key}`
+    if (!isCustomBuffStatKey(stat)) continue
+    effects.push({
+      id: `legacy-${applyTarget}-${key}`,
+      applyTarget,
+      kind: 'fixed',
+      stat,
+      value: raw,
+      enabledDefault: true,
+    })
+  }
   return effects
 }
 
-function effectsToFlatMods(effects, applyTarget) {
+export function effectsToFlatMods(effects, applyTarget) {
   const result = createEmptyBuffStatModifiers()
   for (const effect of effects || []) {
     if (applyTarget && effect.applyTarget !== applyTarget) continue
     // 旧口径：只有「通用」效果进扁平增量表。带伤害类型 / 招式条件的不进。
     if (!effectHasGenericConditions(effect)) continue
     let amount = readNumber(effect.value ?? effect.valuePerStack)
+    // 自定义乘区键写 `custom[key]`（百分点加总），内置键仍写强类型字段
+    const customField = customBuffStatFieldOf(effect.stat)
+    if (customField) {
+      if (!amount) continue
+      result.custom = result.custom ?? {}
+      result.custom[customField] = readNumber(result.custom[customField]) + amount
+      continue
+    }
     if (!BUFF_STAT_KEYS.includes(effect.stat)) continue
     if (BUFF_MULT_FACTOR_KEYS.includes(effect.stat)) {
       amount = normalizeBuffMultFactorDelta(amount)
@@ -104,6 +129,20 @@ function effectsToFlatMods(effects, applyTarget) {
     result[effect.stat] += amount
   }
   return result
+}
+
+/** 两袋内置字段逐键相加，`custom` map 按 key 加总（非法键 / 非有限值丢弃） */
+function mergeModsBags(left, right) {
+  const merged = createEmptyBuffStatModifiers()
+  for (const key of BUFF_STAT_KEYS) {
+    merged[key] = readNumber(left?.[key]) + readNumber(right?.[key])
+  }
+  const custom = normalizeCustomBuffStatModifiers(left?.custom)
+  for (const [key, value] of Object.entries(normalizeCustomBuffStatModifiers(right?.custom))) {
+    custom[key] = readNumber(custom[key]) + value
+  }
+  if (Object.keys(custom).length) merged.custom = custom
+  return merged
 }
 
 function normalizeConvert(value) {
@@ -218,7 +257,14 @@ export function normalizeEffectList(rawValue) {
           ? null
           : String(item.applyProfession).trim()
 
-      const stat = BUFF_STAT_KEYS.includes(item.stat) ? item.stat : 'dmgBonus'
+      // 乘区定义登记的自定义键原样保留；`custom:` 前缀但格式非法 → 整条丢弃（不静默回落 dmgBonus）
+      let stat
+      if (typeof item.stat === 'string' && item.stat.startsWith('custom:')) {
+        if (!isCustomBuffStatKey(item.stat)) return null
+        stat = item.stat
+      } else {
+        stat = BUFF_STAT_KEYS.includes(item.stat) ? item.stat : 'dmgBonus'
+      }
       const effect = {
         id: typeof item.id === 'string' && item.id ? item.id : `eff-${index}`,
         origin: typeof item.origin === 'string' ? item.origin : '',
@@ -582,22 +628,20 @@ function rowToBangboo(row) {
     : []
 
   if (effects.length) {
-    fixedMods = effectsToFlatMods(effects, 'team')
-    const selfFlat = effectsToFlatMods(effects, 'self')
-    for (const key of BUFF_STAT_KEYS) {
-      fixedMods[key] += selfFlat[key]
-    }
+    fixedMods = mergeModsBags(
+      effectsToFlatMods(effects, 'team'),
+      effectsToFlatMods(effects, 'self'),
+    )
   } else if (Object.values(fixedMods).some((v) => v)) {
     effects.push(...flatModsToEffects(fixedMods, 'team'))
   }
 
   if (refinementEffects) {
     refinementMods = refinementEffects.map((list) => {
-      const team = effectsToFlatMods(list, 'team')
-      const self = effectsToFlatMods(list, 'self')
-      const merged = createEmptyBuffStatModifiers()
-      for (const key of BUFF_STAT_KEYS) merged[key] = team[key] + self[key]
-      return merged
+      return mergeModsBags(
+        effectsToFlatMods(list, 'team'),
+        effectsToFlatMods(list, 'self'),
+      )
     })
   }
 
@@ -645,11 +689,10 @@ function rowToDriveDisc(row) {
     parseJson(row.two_piece_mods, raw.twoPieceMods ?? {}),
   )
   if (twoPieceEffects.length) {
-    const team = effectsToFlatMods(twoPieceEffects, 'team')
-    const self = effectsToFlatMods(twoPieceEffects, 'self')
     twoPieceMods = normalizeTwoPieceMods(
-      Object.fromEntries(
-        BUFF_STAT_KEYS.map((key) => [key, team[key] + self[key]]),
+      mergeModsBags(
+        effectsToFlatMods(twoPieceEffects, 'team'),
+        effectsToFlatMods(twoPieceEffects, 'self'),
       ),
     )
   } else if (Object.values(twoPieceMods).some((v) => v)) {
@@ -846,20 +889,17 @@ export async function upsertBangboo(doc) {
     )
   }
   if (payload.effects.length) {
-    const team = effectsToFlatMods(payload.effects, 'team')
-    const self = effectsToFlatMods(payload.effects, 'self')
-    payload.fixedMods = createEmptyBuffStatModifiers()
-    for (const key of BUFF_STAT_KEYS) {
-      payload.fixedMods[key] = team[key] + self[key]
-    }
+    payload.fixedMods = mergeModsBags(
+      effectsToFlatMods(payload.effects, 'team'),
+      effectsToFlatMods(payload.effects, 'self'),
+    )
   }
   if (payload.refinementEffects.length) {
     payload.refinementMods = payload.refinementEffects.map((list) => {
-      const team = effectsToFlatMods(list, 'team')
-      const self = effectsToFlatMods(list, 'self')
-      const merged = createEmptyBuffStatModifiers()
-      for (const key of BUFF_STAT_KEYS) merged[key] = team[key] + self[key]
-      return merged
+      return mergeModsBags(
+        effectsToFlatMods(list, 'team'),
+        effectsToFlatMods(list, 'self'),
+      )
     })
   }
 
@@ -909,10 +949,11 @@ export async function upsertDriveDisc(doc) {
     : normalizeEffectList(doc.twoPieceEffects)
   let twoPieceMods = normalizeTwoPieceMods(doc.twoPieceMods ?? {})
   if (twoPieceEffects.length) {
-    const team = effectsToFlatMods(twoPieceEffects, 'team')
-    const self = effectsToFlatMods(twoPieceEffects, 'self')
     twoPieceMods = normalizeTwoPieceMods(
-      Object.fromEntries(BUFF_STAT_KEYS.map((key) => [key, team[key] + self[key]])),
+      mergeModsBags(
+        effectsToFlatMods(twoPieceEffects, 'team'),
+        effectsToFlatMods(twoPieceEffects, 'self'),
+      ),
     )
   }
 

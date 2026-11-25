@@ -11,6 +11,7 @@ import type {
   BuffStatKey,
   BuffStatModifiers,
   CharacterAttrKey,
+  CustomBuffStatKey,
   DamageCalcKind,
   DriveDiscBuffDoc,
   SkillCalcContext,
@@ -1070,6 +1071,14 @@ export interface CombatBuffMods {
   sharpenDmgBonus: number
   sharpenCritDmgBonus: number
   dmgPenalty: number
+  /** 自定义乘区增益（Phase 3b）：键由乘区定义登记，值按百分点加总 */
+  custom: Record<string, number>
+}
+
+/** 自定义修饰按提供者归属（Phase 4f-4 providers）：仅收录能解析出队伍槽位的来源。 */
+export interface CustomProviderMods {
+  /** 队伍槽位 → 该槽位来源提供的 `custom` 修饰 */
+  bySlot: Record<number, Record<string, number>>
 }
 
 export interface PanelBuffBreakdown {
@@ -1078,6 +1087,8 @@ export interface PanelBuffBreakdown {
   finalPanel: PanelStats
   sources: BuffModSource[]
   effectContributions?: BuffEffectContribution[]
+  /** 收集了来源时给出（明细路径恒定、数值路径按 `customProviderTrack` 开启） */
+  customProviderMods?: CustomProviderMods
 }
 
 /** 一条效果在本次判定里的终态（计算链路收敛 Spec §3.1）。 */
@@ -1119,7 +1130,7 @@ export interface ResolvedEffectParameters {
 /** 判定循环产出的原始记录（不含来源元数据；`buffEffect.ts` 回调给的就是它）。 */
 export interface ResolvedEffectRecord extends ResolvedEffectParameters {
   effectId: string
-  stat: BuffStatKey
+  stat: BuffStatKey | CustomBuffStatKey
   status: BuffEffectApplyStatus
   matchElement?: string | null
 }
@@ -1210,7 +1221,7 @@ export interface EventEffectRecipient {
 /** 同一 effect id 的投影（Spec §3.3 / §3.5）。 */
 export interface EventEffectSummary {
   effectId: string
-  stat: BuffStatKey
+  stat: BuffStatKey | CustomBuffStatKey
   sourceKey: string
   blockId: string
   providerName: string
@@ -1222,6 +1233,11 @@ export interface EventEffectSummary {
 
 export interface ComputeFinalPanelOptions {
   includeDetails?: boolean
+  /**
+   * 数值快路径也可选收集「自定义修饰按提供者归属」（providers，Phase 4f-4）。
+   * 只在存在按 `owner` / `team` 取模的乘区时开启，避免常见路径多付来源收集成本。
+   */
+  customProviderTrack?: boolean
   /**
    * 按需追踪（Spec §2.2 第 2 项）。设置后本次求值会在正式运算处回调逐效果贡献；
    * 不设置时不分配任何记录（数值快路径零开销）。
@@ -3069,13 +3085,14 @@ export function extractCombatMods(mods: BuffStatModifiers): CombatBuffMods {
     sharpenDmgBonus: mods.sharpenDmgBonus,
     sharpenCritDmgBonus: mods.sharpenCritDmgBonus,
     dmgPenalty: mods.dmgPenalty,
+    custom: { ...(mods.custom ?? {}) },
   }
 }
 
 /**
  * 主 C 异放倍率：局外基础 + 增益；仅异放倍率类增益按产生角色属性（elementFilter）筛选。
  */
-const RELEASE_MULT_STATS = new Set<BuffStatKey>([
+const RELEASE_MULT_STATS = new Set<string>([
   'anomalyReleaseMult',
   'anomalyReleaseMultFactor',
 ])
@@ -3323,6 +3340,12 @@ export function computePanelStages(
   const totalMods = includeDetails
     ? mergeModsFromSources(totalSources)
     : collectPanelBuffMods(fullCtx)
+  // providers：数值路径不保留完整来源，仅在需要归属时额外收一遍来源；伤害数值仍走原路径
+  const providerSources = includeDetails
+    ? totalSources
+    : options?.customProviderTrack === true
+      ? collectPanelBuffModSources(fullCtx)
+      : null
   const finalPanel = applyBuffModsToPanel(externalPanel, totalMods, {
     baseAnomalyControl,
     baseEnergyRegen,
@@ -3341,8 +3364,27 @@ export function computePanelStages(
         sharpenCritDmgBonus: combatMods.sharpenCritDmgBonus,
       },
       sources: includeDetails ? totalSources : [],
+      customProviderMods: providerSources ? summariseCustomProviderMods(providerSources) : undefined,
     },
   }
+}
+
+function summariseCustomProviderMods(sources: readonly BuffModSource[]): CustomProviderMods | undefined {
+  const bySlot: Record<number, Record<string, number>> = {}
+  let found = false
+  for (const source of sources) {
+    const custom = source.mods.custom
+    if (!custom) continue
+    const slotIndex = parseSourceKeySlotIndex(source.key)
+    for (const [key, value] of Object.entries(custom)) {
+      if (!Number.isFinite(value) || value === 0) continue
+      found = true
+      if (slotIndex == null) continue
+      const bucket = (bySlot[slotIndex] ??= {})
+      bucket[key] = (bucket[key] ?? 0) + value
+    }
+  }
+  return found ? { bySlot } : undefined
 }
 
 export function computeFinalPanel(

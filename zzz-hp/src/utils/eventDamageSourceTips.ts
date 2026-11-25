@@ -1,7 +1,9 @@
-import { buildSkillCalcZoneRows, staggerZoneLabel, type SkillCalcZoneRow } from '@/utils/skillCalcZones'
+import { buildSkillCalcZoneRows, type SkillCalcZoneRow } from '@/utils/skillCalcZones'
+import { zoneLabel } from '@/zones/display'
 import type { SkillFlowCalculationDetail } from '@/utils/skillFlowCalculation'
 import type { EventDamageInputUsage, BuffModSource } from '@/utils/panelBuffCalc'
 import { createEmptyBuffStatModifiers } from '@/utils/calculatorUi'
+import { addStat } from '@/utils/buffEffect'
 import { createEmptyExternalPanel, type PanelStats } from '@/types/calculatorPanel'
 import { buildSkillBaseMultNote } from '@/utils/skillTalentLevels'
 import { buildAtkPanelProcessItems, buildDefPanelProcessItems, buildEnemyCombatProcessItems, buildStatSourceGroups, type StatSourceGroup } from '@/utils/statSourceTips'
@@ -127,8 +129,7 @@ export function buildEventValueTips(calculation: SkillFlowCalculationDetail): Re
       }
     }
     const sources: BuffModSource[] = records.filter(record => record.usedInputs.some(u => selectedKeys.has(identity(u)))).map(record => {
-      const mods = createEmptyBuffStatModifiers()
-      mods[record.stat] = record.amount
+      const mods = addStat(createEmptyBuffStatModifiers(), record.stat, record.amount)
       const original = views[record.viewKey]?.sources.find(source => source.effects?.some(effect => effect.id === record.effectId))
       return { key: record.viewKey+'|'+record.effectId, label: original?.label ?? record.providerName,
         mods, note: original?.note, effects: original?.effects?.filter(effect => effect.id === record.effectId) }
@@ -164,7 +165,7 @@ export function buildEventValueTips(calculation: SkillFlowCalculationDetail): Re
     remielIsMb: d.remielIsMb, skillMultLevelNote: buildSkillBaseMultNote(d.hit.skill,d.hit.skillTalentLevel),
   }
   const p = d.result
-  const staggerZoneName = staggerZoneLabel(p)
+  const staggerZoneName = zoneLabel(p, 'staggerMultiplier')
   const sub = d.anomalySubKind
   const ownerPanel = owner.panel, ownerExternal = owner.external, ownerSources = owner.sources
   const panel = base.panel, external = base.external, sources = base.sources
@@ -1407,7 +1408,8 @@ export function buildEventZoneDisplay(calculation: SkillFlowCalculationDetail): 
   return buildSkillCalcZoneRows(d.result,d.hit.skill.damageType).filter(row=>row.label!=='通用乘区').map(row=>{
     const finalResult=['期望伤害','暴击伤害','不暴击伤害'].includes(row.label)
     let key=zoneTipKeys[row.label]
-    // 帷幕易伤是失衡易伤区的替换口径：标签带上限，来源仍按 staggerMultiplier 取
+    // 帷幕易伤是失衡易伤区的替换口径：标签取结果里的乘区名（带上限），来源仍按 staggerMultiplier 取
+    if(!key&&row.label===zoneLabel(d.result,'staggerMultiplier'))key='staggerMultiplier'
     if(!key&&row.label.startsWith('帷幕易伤区'))key='staggerMultiplier'
     if(finalResult) key=d.kind==='direct'||d.kind==='sharpen'?'directDamageExpected'
       :d.anomalySubKind==='attributeAnomaly'?'attributeAnomalyExpected':d.anomalySubKind==='anomalyRelease'?'anomalyReleaseExpected'
