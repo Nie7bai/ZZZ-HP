@@ -8,7 +8,7 @@
  *   2. **不写库的函数都是纯函数**：`planBuffApply` / `smartMergeParse` / `sanitizeEffect`…
  *      只吃普通对象、只吐计划；验证这些**不需要数据库**（`dryRun` 也只算不写）。
  *   3. 写库**只走既有唯一路径**：`upsertAgent` / `upsertWengine` / `upsertSkill`；
- *      读库只用 `listCalculatorBuffs()` / `listSkills()`（不改 nanokaBasics* 那条线）。
+ *      读库沿用角色增益与招式库服务。
  *
  * v3 写入槽规则（**按来源判断 + 只按下标定位，绝不按块名匹配**）：
  *
@@ -40,12 +40,13 @@ import {
   simplifyText,
   SLOT_LABELS,
   SLOT_OPTIONS,
+  STAT_LABELS,
   UNABLE,
   unableSlotsOf,
 } from './nanoka/nanokaBuffExtractor.js'
 import { normalizeSkillName } from './nanoka/nanokaSkillMapper.js'
 import { listCalculatorBuffs, normalizeEffectList, upsertAgent, upsertWengine } from './calculatorBuffService.js'
-import { listSkills, upsertSkill } from './skillLibraryService.js'
+import { listAgentSkills, listSkills, upsertSkill } from './skillLibraryService.js'
 import { upsertSkillSubcategory } from './skillSubcategoryService.js'
 
 const KIND_LABELS = { agent: '角色', wengine: '音擎' }
@@ -1024,7 +1025,7 @@ export function planBuffApply({ kind, local, rows = [], skills = [], subcategori
     const effectsDetail = merged.appendedEffects.map((effect, index) => ({
       id: effect.id,
       stat: effect.stat,
-      statLabel: SLOT_LABELS[effect.stat] ?? effect.stat,
+      statLabel: STAT_LABELS[effect.stat] ?? effect.stat,
       kind: effect.kind,
       value: effect.value,
       valuePerStack: effect.valuePerStack,
@@ -1160,7 +1161,7 @@ export function buildLocalDoc({ kind, local, groups = [] } = {}) {
 
 /**
  * 抽取（**不写库**）：浏览器抓来的 nanoka 详情 → 原文项 + 关键字效果（层B/C）。
- * 读库只用 `listCalculatorBuffs()`（本地记录 + 招式小类锚点）。
+ * 读取角色和已有招式锚点，供按实际招式核对烬痕范围。
  */
 export async function extractBuffItems({ kind, nanokaId, meta, detail } = {}) {
   const normalizedKind = kind === 'wengine' ? 'wengine' : kind === 'agent' ? 'agent' : ''
@@ -1168,19 +1169,20 @@ export async function extractBuffItems({ kind, nanokaId, meta, detail } = {}) {
   if (!isPlainObject(detail)) throw new Error('缺少 nanoka 详情 JSON（抓取在浏览器里做，服务端不联网）')
 
   const buffs = await listCalculatorBuffs()
+  const local =
+    normalizedKind === 'agent'
+      ? resolveLocalAgent({ agents: buffs.agents, meta, detail, nanokaId })
+      : resolveLocalWengine({ wengines: buffs.wengines, meta, detail, nanokaId })
   const extracted =
     normalizedKind === 'agent'
       ? extractAgentBuffItems({
           detail,
           nanokaId,
           anchors: buffs.skillSubcategories ?? [],
+          agent: local,
+          skills: await listAgentSkills(local.id),
         })
       : extractWengineBuffItems({ detail, nanokaId, anchors: [] })
-
-  const local =
-    normalizedKind === 'agent'
-      ? resolveLocalAgent({ agents: buffs.agents, meta, detail, nanokaId })
-      : resolveLocalWengine({ wengines: buffs.wengines, meta, detail, nanokaId })
 
   const items = extracted.items.map((item) => ({
     ...item,
@@ -1203,24 +1205,28 @@ export async function extractBuffItems({ kind, nanokaId, meta, detail } = {}) {
  * 「化简」（阶段一）：把（可能被编辑过的）原文重跑阶段1 → 关键字。
  * 纯计算 + 只读锚点；**不写库、不联网**。
  */
-export async function simplifyBuffTexts({ kind, nanokaId, items = [] } = {}) {
+export async function simplifyBuffTexts({ kind, nanokaId, items = [], corePassiveText = '' } = {}) {
   const normalizedKind = kind === 'wengine' ? 'wengine' : 'agent'
-  const buffs = await listCalculatorBuffs()
+  const list = Array.isArray(items) ? items : []
+  const agentId = normalizedKind === 'agent' ? String(list[0]?.agentId ?? nanokaId ?? '') : ''
+  const [buffs, skills] = await Promise.all([listCalculatorBuffs(), listAgentSkills(agentId)])
   const anchors = normalizedKind === 'agent' ? buffs.skillSubcategories ?? [] : []
-  let agentId = ''
-  if (normalizedKind === 'agent') {
-    const list = Array.isArray(items) ? items : []
-    agentId = String(list[0]?.agentId ?? nanokaId ?? '')
+  const agent = (buffs.agents ?? []).find((candidate) => String(candidate.id) === agentId)
+  const emberMarkContext = {
+    corePassiveText: list.find((item) => item?.slot === 'core')?.rawText ?? corePassiveText,
+    profession: agent?.profession,
+    skills,
   }
   return {
     kind: normalizedKind,
-    items: (Array.isArray(items) ? items : []).map((item) => {
+    items: list.map((item) => {
       const simplified = simplifyText({
         text: item?.rawText ?? '',
         origin: String(item?.origin ?? ''),
-        selfNames: Array.isArray(item?.selfNames) ? item.selfNames : [],
+        selfNames: Array.isArray(item?.selfNames) ? item.selfNames : agent?.name ? [agent.name] : [],
         anchors,
         agentId: String(item?.agentId ?? agentId ?? ''),
+        emberMarkContext,
       })
       const byId = new Map(simplified.effects.map((effect) => [effect.id, effect]))
       return {

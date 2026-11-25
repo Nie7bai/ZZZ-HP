@@ -425,6 +425,7 @@ export async function extractNanokaBuffs(payload: {
 export async function simplifyNanokaBuffs(payload: {
   kind: NanokaBuffKind
   nanokaId: string
+  corePassiveText?: string
   items: {
     slot: string
     slotLabel?: string

@@ -365,6 +365,71 @@ test('独立乘区按百分比翻译，普通增伤继续映射到原字段', ()
   assert.throws(() => sanitizeEffect({ stat: 'custom:非法键', value: 20 }), /不是合法增益字段/)
 })
 
+test('烬痕积攒描述可翻译成有限定的增益，结算增幅保留待补', () => {
+  const agent = { id: 'test-ember', name: '测试者', profession: '锋御' }
+  const names = ['普通攻击：先声', '终结技：「微光，共鸣」', '特殊技：追响']
+  const categories = ['basic', 'ultimate', 'special']
+  const anchors = names.map((name, index) => ({ id: `anchor-${index}`, name, categoryId: categories[index], agentId: agent.id }))
+  const skills = names.map((name, index) => ({ name, agentId: agent.id, damageType: 'direct', buffAnchorId: anchors[index].id }))
+  skills.push({ name: '毁伤段', agentId: agent.id, damageType: 'direct', skillTypes: ['destruction'], buffAnchorId: null })
+  const core = '测试者发动[普通攻击：先声]、[终结技：「微光，共鸣」]命中敌人造成伤害时，均可使目标积攒<Term:1000061></Term>，[烬痕]量等同于招式造成的实际伤害的60%；全队代理人造成的[毁伤]也可使目标积攒等同于该次实际伤害40%的[烬痕]。'
+  const secondMindscape = '测试者发动其他招式命中敌人造成锐化伤害时，也可使目标积攒<Term:1000061></Term>，积攒量等同于该次实际伤害的30%；最终结算的[烬痕]量提升35%。'
+  const fourthMindscape = '[烬痕]积攒量提升效果额外提升65%，每180秒内最多触发一次；测试者造成的伤害提升10%。'
+  const detail = {
+    name: agent.name,
+    passive: { level: { 1: { level: 1, desc: [core] } } },
+    talent: [{}, { desc: secondMindscape }, {}, { desc: fourthMindscape }],
+  }
+  const { items } = extractAgentBuffItems({ detail, nanokaId: 'test', agent, anchors, skills })
+  const coreItem = items.find((item) => item.slot === 'core')
+  const secondItem = items.find((item) => item.slot === 'talent-2')
+  const fourthItem = items.find((item) => item.slot === 'talent-4')
+  const [named, destruction] = coreItem.effects
+  const [other, settlement] = secondItem.effects
+  assert.deepEqual(named.anchors.skillTargets, [
+    { category: 'basic', subcategoryId: 'anchor-0' },
+    { category: 'ultimate', subcategoryId: 'anchor-1' },
+  ])
+  assert.deepEqual(destruction.anchors.skillTargets, [{ category: 'destruction', subcategoryId: null }])
+  assert.deepEqual(other.anchors.skillTargets, [{ category: 'special', subcategoryId: 'anchor-2' }])
+  assert.deepEqual(other.layerC.conditions.damageTypes, ['sharpen'])
+  assert.equal(settlement.layerC, null)
+  assert.ok(secondItem.rawText.includes('35%'))
+  assert.deepEqual(fourthItem.effects.filter((effect) => effect.layerC).map((effect) => effect.layerC.value), [10])
+
+  const resimplified = simplifyText({
+    text: secondItem.rawText, agentId: agent.id, selfNames: [agent.name], anchors,
+    emberMarkContext: { corePassiveText: coreItem.rawText, profession: agent.profession, skills },
+  })
+  assert.deepEqual(resimplified.effects[0].layerC.skillTargets, other.layerC.skillTargets)
+
+  const rows = [[coreItem, named], [coreItem, destruction], [secondItem, other]].map(([item, keyword]) => ({
+    key: keyword.id,
+    source: item.source,
+    containerIndex: item.containerIndex,
+    rawText: item.rawText,
+    keywordSlots: keyword.slots,
+    effect: keyword.layerC,
+    anchors: keyword.anchors,
+  }))
+  const plan = planBuffApply({ kind: 'agent', local: agent, rows })
+  assert.equal(plan.updated, 3)
+  const effects = plan.groups.flatMap((group) => group.blocks.flatMap((block) => block.effects))
+  assert.deepEqual(effects.map(({ stat, value, applyTarget }) => [stat, value, applyTarget]), [
+    ['custom:emberMarkRatio', 60, 'self'],
+    ['custom:emberMarkRatio', 40, 'team'],
+    ['custom:emberMarkRatio', 30, 'self'],
+  ])
+  assert.deepEqual(effects[2].conditions.damageTypes, ['sharpen'])
+  assert.ok(plan.groups[1].sourceTexts.some((text) => /35%/.test(text)))
+
+  const sharedAnchorSkills = skills.map((skill) => skill.name === '毁伤段' ? { ...skill, buffAnchorId: 'anchor-2' } : skill)
+  const sharedAnchor = extractAgentBuffItems({ detail, nanokaId: 'test', agent, anchors, skills: sharedAnchorSkills })
+  const blocked = sharedAnchor.items.find((item) => item.slot === 'talent-2').effects[0]
+  assert.equal(blocked.layerC, null)
+  assert.match(blocked.mapping.reason, /共用锚点/)
+})
+
 test('预检**不丢** `无法提取`：动作 / 属性读不出的条目留在阶段2（标 blocked 待补）', () => {
   // 动作读不出（有属性、有数值）→ 留阶段2 等用户补动作（**不是**废原文）
   const actionPending = checkKeywordMappable({ slots: { stat: '暴击率', action: UNABLE, unit: '%' } })

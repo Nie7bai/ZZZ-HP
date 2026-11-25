@@ -995,6 +995,7 @@ async function simplifyOne(slot: string) {
     const { result, message: serverMessage } = await simplifyNanokaBuffs({
       kind: kind.value,
       nanokaId: nanokaId.value,
+      corePassiveText: items.value.find((entry) => entry.slot === 'core')?.rawText,
       items: [
         {
           slot: item.slot,

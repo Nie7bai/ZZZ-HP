@@ -74,8 +74,8 @@ export async function extractNanokaBuffsHandler(req, res) {
 /** POST /api/admin/nanoka-buffs/simplify —— [化简]（阶段一，不写库） */
 export async function simplifyNanokaBuffsHandler(req, res) {
   try {
-    const { kind, nanokaId, items } = req.body ?? {}
-    const data = await simplifyBuffTexts({ kind, nanokaId, items })
+    const { kind, nanokaId, items, corePassiveText } = req.body ?? {}
+    const data = await simplifyBuffTexts({ kind, nanokaId, items, corePassiveText })
     const message = `已化简 ${data.items.length} 段原文（未写入）`
     return success(res, data, message)
   } catch (err) {

@@ -139,6 +139,28 @@ test('采集按倍率参数给毁伤段打招式标签，招式说明不影响�
   assert.equal(destruction.baseMult, 150)
 })
 
+test('共用 Nanoka 毁伤倍率的招式可分别录入并重跑，不使用发起招式的锚点', () => {
+  const agent = { id: 'test-agent' }
+  const titles = ['普通攻击：先声', '普通攻击：追响']
+  const detail = {
+    skill: { basic: { description: titles.map((name) => ({
+      name,
+      param: [{ name: '毁伤伤害倍率', param: { 101: { damage_percentage: 15000 } } }],
+    })) } },
+  }
+  const subcategories = titles.map((name, index) => ({ id: `a-${index}`, agentId: agent.id, categoryId: 'basic', name }))
+  const plan = planAgentSkillImport({ agent, detail, subcategories })
+  assert.equal(new Set(plan.create.map(({ id }) => id)).size, 2)
+  assert.deepEqual(plan.create.map(({ buffAnchorId }) => buffAnchorId), [null, null])
+
+  const partial = planAgentSkillImport({ agent, detail, existingSkills: [plan.create[1]], subcategories })
+  assert.equal(partial.create[0].id, plan.create[0].id)
+  assert.equal(partial.skipSame[0].id, plan.create[1].id)
+  const repeated = planAgentSkillImport({ agent, detail, existingSkills: plan.create, subcategories })
+  assert.equal(repeated.skipSame.length, 2)
+  assert.equal(repeated.create.length, 0)
+})
+
 test('sameSkillTypes / sameOptionalNumber：忽略顺序，空值等价', () => {
   assert.equal(sameSkillTypes(['basic', 'dash'], ['dash', 'basic']), true)
   assert.equal(sameSkillTypes(['basic'], ['basic', 'dash']), false)

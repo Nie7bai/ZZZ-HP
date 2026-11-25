@@ -84,15 +84,15 @@ export const SLOT_LABELS = {
 
 /**
  * **生效范围**的取值（以源码为准）：`zzz-hp/src/types/calculator.ts:63` 的 `BUFF_SCOPE_OPTIONS`
- * = 通用 / 招式 / 属性异常 / 紊乱 / 乱流 / 异放 / 耀变 / 异化系数；编辑器下拉在
- * `AdminBuffEffectEditor.vue:550`。`无` = 通用（阶段2 **不写** scope）。
+ * `无` 表示通用。锐化写入 `conditions.damageTypes`，其余取值沿用原有 `scope`。
  */
-export const SCOPE_OPTIONS = [NONE, '招式', '属性异常', '紊乱', '乱流', '异放', '耀变', '异化系数']
+export const SCOPE_OPTIONS = [NONE, '招式', '锐化', '属性异常', '紊乱', '乱流', '异放', '耀变', '异化系数']
 
-/** 槽位取值（中文）→ `scope` 字段值；`无` → 空串（= 不写 scope） */
+/** 作用域槽位中文名对应的内部取值。 */
 export const SCOPE_SLOT_TO_ID = {
   [NONE]: '',
   招式: 'skill',
+  锐化: 'sharpen',
   属性异常: 'attributeAnomaly',
   紊乱: 'disorder',
   乱流: 'turbulence',
@@ -1158,6 +1158,148 @@ function detectAction(text) {
   return { value: UNABLE, source: 'unable' }
 }
 
+/** 只把按实际伤害折算的积攒量翻成烬痕比例。 */
+const EMBER_MARK_ACCUMULATION_RULES = [
+  {
+    type: 'named',
+    pattern: /^(?<actor>[^，。；\s]+?)发动(?<names>\[[^\]]+\](?:、\[[^\]]+\])*)命中敌人造成伤害时，(?:均)?可使目标积攒(?:\[烬痕\])?，\[烬痕\]量等同于招式造成的实际伤害的(?<percent>\d+(?:\.\d+)?)%$/,
+    description: '自身，按原文明列的招式锚点匹配',
+  },
+  {
+    type: 'destruction',
+    pattern: /^全队(?:代理人)?造成的\[毁伤\](?:也)?可使目标积攒等同于(?:该次)?实际伤害的?(?<percent>\d+(?:\.\d+)?)%的\[烬痕\]$/,
+    description: '全队，招式类型限定毁伤',
+  },
+  {
+    type: 'otherSharpen',
+    pattern: /^(?<actor>[^，。；\s]+?)发动(?:其他|其余)招式命中敌人造成锐化伤害时，(?:也)?可使目标积攒(?<term>\[烬痕\])?，积攒量等同于(?:该次)?实际伤害的(?<percent>\d+(?:\.\d+)?)%$/,
+    description: '自身，排除核心被动已列招式和毁伤段，其余锐化招式按锚点匹配',
+  },
+]
+
+function readEmberMarkAccumulation(text, rule, selfNames) {
+  const groups = rule.pattern.exec(text)?.groups
+  if (!groups) return null
+  if (groups.actor && selfNames.length && ![...selfNames, '自身', '自己'].includes(groups.actor)) return null
+  const names = Array.from((groups.names ?? '').matchAll(/\[([^\]]+)\]/g), ([, name]) => name)
+  return { type: rule.type, names, value: Number(groups.percent), explicit: Boolean(groups.term) }
+}
+
+function resolveEmberMarkTargets({ names, otherSharpen, agentId, profession, skills, anchors }) {
+  const pending = (reason) => ({ ok: false, labels: names, resolved: [], skillTargets: [], reason })
+  if (!names.length) return pending('缺少核心被动的烬痕招式名单，需手工确认其余锐化招式')
+
+  const localSkills = skills.filter((skill) => String(skill.agentId) === agentId)
+  const ordinaryDirectSkills = localSkills.filter((skill) =>
+    ['direct', 'sharpen'].includes(skill.damageType) && !skill.skillTypes?.includes('destruction'),
+  )
+  const namedSkills = new Set()
+  for (const name of names) {
+    const normalized = normalizeSkillName(name)
+    const matches = ordinaryDirectSkills.filter((skill) => {
+      const skillName = normalizeSkillName(skill.name)
+      return skillName === normalized || skillName.startsWith(`${normalized}·`)
+    })
+    if (!matches.length) return pending(`缺少招式「${name}」，请先采集招式或手工补范围`)
+    for (const skill of matches) namedSkills.add(skill)
+  }
+  const selected = otherSharpen
+    ? ordinaryDirectSkills.filter((skill) =>
+        !namedSkills.has(skill) && profession !== '命破' &&
+        (skill.damageType === 'sharpen' || profession === '锋御'),
+      )
+    : [...namedSkills]
+  if (!selected.length) return pending('没有可绑定的其余锐化招式，需手工确认范围')
+
+  const anchorsById = new Map((anchors ?? [])
+    .filter((anchor) => String(anchor.agentId) === agentId)
+    .map((anchor) => [String(anchor.id), anchor]))
+  const selectedAnchors = new Map()
+  for (const skill of selected) {
+    const anchor = anchorsById.get(String(skill.buffAnchorId ?? ''))
+    if (!anchor?.categoryId) return pending(`「${skill.name}」缺少本角色的增益锚点，请绑定后重试`)
+    selectedAnchors.set(String(anchor.id), anchor)
+  }
+  const selectedSkills = new Set(selected)
+  const shared = localSkills.find((skill) => !selectedSkills.has(skill) && selectedAnchors.has(String(skill.buffAnchorId ?? '')))
+  if (shared) return pending(`「${shared.name}」与适用招式共用锚点，需先拆分锚点`)
+
+  const resolved = [...selectedAnchors.values()].map((anchor) => ({
+    name: anchor.name,
+    category: anchor.categoryId,
+    subcategoryId: String(anchor.id),
+    level: 'subcategory',
+  }))
+  return {
+    ok: true,
+    labels: resolved.map((anchor) => anchor.name),
+    resolved,
+    skillTargets: resolved.map(({ category, subcategoryId }) => ({ category, subcategoryId })),
+    reason: '',
+  }
+}
+
+function extractEmberMarkKeyword({ text, unitIndex, index, origin, selfNames, anchors, agentId, emberMarkContext }) {
+  const [namedRule] = EMBER_MARK_ACCUMULATION_RULES
+  for (const rule of EMBER_MARK_ACCUMULATION_RULES) {
+    const accumulation = readEmberMarkAccumulation(text, rule, selfNames)
+    if (!accumulation) continue
+    const { type, value } = accumulation
+    const team = type === 'destruction'
+    const otherSharpen = type === 'otherSharpen'
+    const names = otherSharpen
+      ? splitUnits(emberMarkContext.corePassiveText).flatMap(({ text: unit }) =>
+          readEmberMarkAccumulation(unit, namedRule, selfNames)?.names ?? [],
+        )
+      : accumulation.names
+    // 未展开的术语只有在同一角色核心被动明确记载烬痕时才可视为烬痕。
+    if (otherSharpen && !accumulation.explicit && !names.length) continue
+    const anchorInfo = team
+      ? {
+          ok: true,
+          labels: ['毁伤'],
+          resolved: [],
+          skillTargets: [{ category: 'destruction', subcategoryId: null }],
+          reason: '',
+        }
+      : resolveEmberMarkTargets({
+          names, otherSharpen, agentId, anchors,
+          profession: emberMarkContext.profession,
+          skills: emberMarkContext.skills ?? [],
+        })
+    const slots = createSlots({
+      stat: { value: '烬痕比例' }, action: { value: '提升' }, value: { value }, unit: { value: '%' },
+      target: { value: team ? '全队' : '自身' }, scope: { value: otherSharpen ? '锐化' : '招式' },
+    })
+    const sources = createSources({
+      stat: { source: 'literal' }, action: { source: 'implicit' }, value: { source: 'literal' },
+      unit: { source: 'literal' }, target: { source: team ? 'literal' : 'implicit' }, scope: { source: 'literal' },
+    })
+    const first = anchorInfo.skillTargets[0]
+    return {
+      id: `${origin}#${index}`,
+      origin,
+      index,
+      unitIndex,
+      unitText: text,
+      sentence: text,
+      slots,
+      sources,
+      convert: null,
+      stackMax: null,
+      durationSeconds: null,
+      anchors: {
+        ...anchorInfo,
+        skillCategory: anchorInfo.skillTargets.length === 1 ? first.category : '',
+        skillSubcategoryId: anchorInfo.skillTargets.length === 1 ? first.subcategoryId : null,
+      },
+      recorded: anchorInfo.ok,
+      dropReason: anchorInfo.reason,
+    }
+  }
+  return null
+}
+
 /** 阈值短语（永远当条件，数值不进「数值」槽位） */
 function extractThresholds(text) {
   const found = []
@@ -1459,6 +1601,13 @@ export function buildRulesTable() {
       title: '属性别名（老数据 / 手动补词：属性值 → 阶段2 字段）',
       items: Object.entries(STAT_TABLE).map(([keyword, byUnit]) =>
         items('（手动 / 老字样）', keyword, Object.values(byUnit)[0] ?? '', `单位档：${Object.keys(byUnit).join(' / ')}`),
+      ),
+    },
+    {
+      id: 'ember-mark-accumulation',
+      title: '烬痕积攒量',
+      items: EMBER_MARK_ACCUMULATION_RULES.map(({ pattern, description }) =>
+        items(reText(pattern), '烬痕比例', INDEPENDENT_ZONE_PERCENT_STATS.烬痕比例, description),
       ),
     },
     {
@@ -1923,6 +2072,7 @@ export function extractKeywordEffects({
   selfNames = [],
   anchors = null,
   agentId = '',
+  emberMarkContext = {},
 } = {}) {
   const units = splitUnits(text)
   const effects = []
@@ -1947,6 +2097,14 @@ export function extractKeywordEffects({
     // （抬头句已与下一句合并，见 `splitUnits`），**不跨句泄漏**。
     prefix = ''
     pending = []
+    const emberMark = extractEmberMarkKeyword({
+      text: unit.text, unitIndex, index: effects.length, origin, selfNames, anchors, agentId, emberMarkContext,
+    })
+    if (emberMark) {
+      effects.push(emberMark)
+      lastEffect = null
+      return
+    }
     const unitText = unit.clauses.join('，')
     const stack = readStackInfo(unitText)
     const duration = readDurationInfo(unitText)
@@ -2788,8 +2946,11 @@ export function mapKeywordsToEffect(keyword = {}) {
   // —— 作用域（`scope`，编辑器同名字段）→ `scope`；`无` = 通用（不写 scope 之外的值）
   const scopeSlot = subkindDedicated ? NONE : String(slotValue('scope') ?? NONE).trim()
   const scopeId = SCOPE_SLOT_TO_ID[scopeSlot] ?? ''
+  const sharpenOnly = scopeId === 'sharpen'
   let scope = 'general'
-  if (scopeId) {
+  if (sharpenOnly) {
+    steps.push('作用域=锐化 → conditions.damageTypes=[sharpen]')
+  } else if (scopeId) {
     scope = scopeId
     steps.push(`作用域=${scopeSlot} → scope=${scopeId}`)
   } else {
@@ -2800,7 +2961,9 @@ export function mapKeywordsToEffect(keyword = {}) {
   const anchors = keyword.anchors && isPlainObject(keyword.anchors) ? keyword.anchors : null
   const skillTargets = Array.isArray(anchors?.skillTargets) ? anchors.skillTargets : []
   if (skillTargets.length) {
-    if (!scopeId) {
+    if (sharpenOnly) {
+      scope = 'skill'
+    } else if (!scopeId) {
       scope = 'skill'
       steps.push('有招式锚点但作用域槽位是「无」→ scope=skill（兜底）')
     }
@@ -2912,6 +3075,7 @@ export function mapKeywordsToEffect(keyword = {}) {
          * 阶段1 一次只认一个子类 → 写成单元素数组；以后可多选。
          */
         scope: [scope],
+        ...(sharpenOnly ? { conditions: { damageTypes: ['sharpen'] } } : {}),
         applyTarget,
         applySituation,
         applyProfession: null,
@@ -3003,7 +3167,7 @@ function decorateEffect(effect, rawText) {
  * 一段原文（阶段1 的公开入口）：原文 → 关键字效果（层B/C）+ 废原文。
  * `化简` 按钮、`buildItem`、单测都走这里，保证同源。
  */
-export function simplifyText({ text, origin = '', selfNames = [], anchors = null, agentId = '' } = {}) {
+export function simplifyText({ text, origin = '', selfNames = [], anchors = null, agentId = '', emberMarkContext } = {}) {
   const rawText = cleanNanokaText(text)
   if (!rawText) return { rawText: '', effects: [], waste: [], sentences: [] }
   const { effects, waste, sentences } = extractKeywordEffects({
@@ -3012,6 +3176,7 @@ export function simplifyText({ text, origin = '', selfNames = [], anchors = null
     selfNames,
     anchors,
     agentId,
+    emberMarkContext,
   })
   return {
     rawText,
@@ -3043,9 +3208,10 @@ function buildItem({
   landing,
   anchors,
   agentId,
+  emberMarkContext,
   skillDesc,
 }) {
-  const simplified = simplifyText({ text, origin, selfNames, anchors, agentId })
+  const simplified = simplifyText({ text, origin, selfNames, anchors, agentId, emberMarkContext })
   const rawText = simplified.rawText
   if (!rawText) return null
   const decorated = simplified.effects
@@ -3120,10 +3286,13 @@ const SKILL_SLOT_LABELS = {
  * @param {object} options.detail nanoka 角色详情 JSON
  * @param {string|number} [options.nanokaId]
  * @param {Array<object>|null} [options.anchors] 技能库小类（锚点）
+ * @param {object|null} [options.agent] 本地角色，提供锚点归属和职业
+ * @param {Array<object>} [options.skills] 本地招式库，用于核对烬痕适用招式
  */
-export function extractAgentBuffItems({ detail, nanokaId, anchors = null } = {}) {
+export function extractAgentBuffItems({ detail, nanokaId, anchors = null, agent = null, skills = [] } = {}) {
   if (!isPlainObject(detail)) throw new Error('缺少角色详情 JSON')
   const id = nanokaId === null || nanokaId === undefined ? '' : String(nanokaId)
+  const agentId = String(agent?.id || id)
   const name = cleanNanokaText(detail.name)
   const selfNames = [name, cleanNanokaText(detail.code_name)].filter(Boolean)
   const items = []
@@ -3135,6 +3304,7 @@ export function extractAgentBuffItems({ detail, nanokaId, anchors = null } = {})
 
   // 来源 2：核心被动 + 额外能力（取满级）→ mindscapeBuffs[0]（复用该槽位已有的块）
   const passive = pickMaxPassiveLevel(detail.passive)
+  const emberMarkContext = { corePassiveText: passive?.desc?.[0], profession: agent?.profession, skills }
   if (passive) {
     const names = Array.isArray(passive.name) ? passive.name : []
     const descs = Array.isArray(passive.desc) ? passive.desc : []
@@ -3148,7 +3318,8 @@ export function extractAgentBuffItems({ detail, nanokaId, anchors = null } = {})
       origin: `nanoka:${id}:passive:core`,
       selfNames,
       anchors,
-      agentId: id,
+      agentId,
+      emberMarkContext,
       landing: { ...slot0Landing, blockHint: '核心被动' },
     })
     if (core) items.push(core)
@@ -3162,7 +3333,8 @@ export function extractAgentBuffItems({ detail, nanokaId, anchors = null } = {})
       origin: `nanoka:${id}:passive:extra`,
       selfNames,
       anchors,
-      agentId: id,
+      agentId,
+      emberMarkContext,
       landing: { ...slot0Landing, blockHint: '额外能力' },
     })
     if (extra) items.push(extra)
@@ -3187,7 +3359,8 @@ export function extractAgentBuffItems({ detail, nanokaId, anchors = null } = {})
       origin: `nanoka:${id}:talent:${rank}`,
       selfNames,
       anchors,
-      agentId: id,
+      agentId,
+      emberMarkContext,
       landing: {
         container: 'mindscapeBuffs',
         index: rank,
@@ -3217,9 +3390,10 @@ export function extractAgentBuffItems({ detail, nanokaId, anchors = null } = {})
         origin: `nanoka:${id}:skill:${key}.${index}`,
         selfNames,
         anchors,
-        agentId: id,
+        agentId,
+        emberMarkContext,
         landing: { ...slot0Landing, blockHint: '核心被动' },
-        skillDesc: { agentId: id, skillName, category: key },
+        skillDesc: { agentId, skillName, category: key },
       })
       if (item) items.push(item)
     })
