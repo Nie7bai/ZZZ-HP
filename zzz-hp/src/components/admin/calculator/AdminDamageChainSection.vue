@@ -106,19 +106,65 @@ function toggleSkillFilter(skillId: string) {
   else skillFilter.value.push(skillId)
 }
 
-/** 二级候选：角色（技能组 / 招式都挂在角色下面） */
-const filterAgentOptions = computed(() => calculatorBuffStore.agents)
-
-/** 三级候选：只列已选角色名下的技能组；没选角色时不列（不是把全库摊开） */
-const filterSkillGroupOptions = computed(() => {
-  if (!agentFilter.value.length) return []
-  return calculatorBuffStore.skillGroups.filter((group) => agentFilter.value.includes(group.agentId))
+/** 有特殊链路的角色集合：只列「确实存在角色 / 技能组 / 招式专属链路」的角色 */
+const specialAgentIds = computed(() => {
+  const ids = new Set<string>()
+  for (const row of chainRows.value) {
+    if (!isSpecialRow(row)) continue
+    if (row.scope === 'agent' && row.targetId) {
+      ids.add(row.targetId)
+      continue
+    }
+    if (row.scope === 'skillGroup') {
+      const group = calculatorBuffStore.skillGroups.find((item) => item.id === row.targetId)
+      if (group) ids.add(group.agentId)
+      continue
+    }
+    if (row.scope === 'skill') {
+      const skill = calculatorBuffStore.skills.find((item) => item.id === row.targetId)
+      if (skill) ids.add(skill.agentId)
+      continue
+    }
+    if (row.scope === 'profession') {
+      for (const agent of calculatorBuffStore.agents) {
+        if (agent.profession === row.targetId) ids.add(agent.id)
+      }
+    }
+  }
+  return ids
 })
 
-/** 三级候选：只列已选角色名下的招式 */
+/** 二级候选：只列有特殊链路的角色（技能组 / 招式都挂在角色下面） */
+const filterAgentOptions = computed(() =>
+  calculatorBuffStore.agents.filter((agent) => specialAgentIds.value.has(agent.id)),
+)
+
+/** 三级候选：只列有特殊链路的技能组；选了角色时再按角色收窄 */
+const filterSkillGroupOptions = computed(() => {
+  const ids = new Set(
+    chainRows.value
+      .filter((row) => isSpecialRow(row) && row.scope === 'skillGroup')
+      .map((row) => row.targetId),
+  )
+  return calculatorBuffStore.skillGroups.filter(
+    (group) =>
+      ids.has(group.id) &&
+      (!agentFilter.value.length || agentFilter.value.includes(group.agentId)),
+  )
+})
+
+/** 三级候选：只列有特殊链路的招式；选了角色时再按角色收窄 */
 const filterSkillOptions = computed(() => {
-  if (!agentFilter.value.length) return []
-  return calculatorBuffStore.skills.filter((skill) => agentFilter.value.includes(skill.agentId))
+  const ids = new Set(
+    chainRows.value
+      .filter((row) => isSpecialRow(row) && row.scope === 'skill')
+      .map((row) => row.targetId),
+  )
+  return calculatorBuffStore.skills.filter(
+    (skill) =>
+      ids.has(skill.id) &&
+      (!agentFilter.value.length || agentFilter.value.includes(skill.agentId)),
+  )
 })
 
 const needsAgentTargets = computed(
@@ -189,6 +235,8 @@ interface ChainRow {
   key: string
   /** chain = 整条计算链路；zoneScheme = 角色/招式专属乘区方案（只替换链路里的部分乘区） */
   kind: 'chain' | 'zoneScheme'
+  /** 特殊链路：只对特定角色 / 招式生效（角色专属方案、数据库覆盖、蕾米本人耀变等） */
+  special: boolean
   origin: 'builtin' | 'db' | 'zone-builtin' | 'zone-db'
   chainKey: string
   label: string
@@ -223,15 +271,24 @@ interface SchemeChainView {
 function originLabel(row: ChainRow): string {
   switch (row.origin) {
     case 'builtin':
-      return '内置链路'
+      return row.special ? '特殊链路（内置）' : '通用链路'
     case 'db':
-      return '数据库覆盖'
+      return '特殊链路（数据库覆盖）'
     case 'zone-builtin':
-      return '内置乘区方案'
+      return '特殊链路（内置）'
     default:
-      return '数据库乘区方案'
+      return '特殊链路（数据库）'
   }
 }
+
+/** 是否特殊链路（筛选只列出有特殊链路的角色 / 技能组 / 招式） */
+function isSpecialRow(row: ChainRow): boolean {
+  return row.special || row.kind === 'zoneScheme' || row.origin === 'db'
+}
+
+/** 蕾米埃尔本人耀变链路：内置但只对蕾米生效，按角色级特殊链路处理 */
+const REMIEL_SELF_CHAIN_ID = 'radiance-self'
+const REMIEL_AGENT_ID = 'remiel'
 
 function resolveStagesFor(doc: DamageChainDoc | undefined, chainKey: string): readonly StageDefinition[] {
   const builtin = BUILT_IN_DAMAGE_CHAINS.find((chain) => chain.id === chainKey)
@@ -392,14 +449,17 @@ const chainRows = computed<ChainRow[]>(() => {
 
   for (const builtin of BUILT_IN_DAMAGE_CHAINS) {
     const overrides = dbByKey.get(builtin.id) ?? []
+    const isRemielSelf = builtin.id === REMIEL_SELF_CHAIN_ID
     rows.push({
       key: `builtin:${builtin.id}`,
       kind: 'chain',
+      special: isRemielSelf,
       origin: 'builtin',
       chainKey: builtin.id,
       label: builtin.label,
-      scope: builtin.scope ?? 'global',
-      targetId: builtin.targetId ?? '',
+      // 蕾米本人耀变只在蕾米自己身上生效，按角色级特殊链路展示
+      scope: isRemielSelf ? 'agent' : (builtin.scope ?? 'global'),
+      targetId: isRemielSelf ? REMIEL_AGENT_ID : (builtin.targetId ?? ''),
       priority: builtin.priority ?? 0,
       enabled: true,
       damageKinds: [...builtin.appliesTo.damageKinds],
@@ -412,6 +472,7 @@ const chainRows = computed<ChainRow[]>(() => {
     rows.push({
       key: `chain-db:${doc.id}`,
       kind: 'chain',
+      special: true,
       origin: 'db',
       chainKey: doc.chainKey,
       label: doc.label || doc.chainKey,
@@ -439,9 +500,10 @@ const chainRows = computed<ChainRow[]>(() => {
     rows.push({
       key: `zone-builtin:${scheme.scope}:${scheme.targetId}:${index}`,
       kind: 'zoneScheme',
+      special: true,
       origin: 'zone-builtin',
       chainKey: scheme.targetId || 'global',
-      label: `${targetLabelOf(scheme.targetId)} · 乘区方案（内置）`,
+      label: `${targetLabelOf(scheme.targetId)} · 特殊链路（内置）`,
       scope: scheme.scope,
       targetId: scheme.targetId,
       priority: scheme.priority,
@@ -468,9 +530,10 @@ const chainRows = computed<ChainRow[]>(() => {
     rows.push({
       key: `zone-db:${doc.id}`,
       kind: 'zoneScheme',
+      special: true,
       origin: 'zone-db',
       chainKey: doc.target_id || 'global',
-      label: doc.name || `${targetLabelOf(doc.target_id)} · 乘区方案`,
+      label: doc.name || `${targetLabelOf(doc.target_id)} · 特殊链路`,
       scope: toZoneScope(doc.scope),
       targetId: doc.target_id,
       priority: doc.priority,
@@ -826,14 +889,14 @@ onMounted(async () => {
 <template>
   <section class="zone-section">
     <header class="chain-header">
-      <h3 class="chain-title">计算链路与乘区方案（只读）</h3>
+      <h3 class="chain-title">计算链路（只读）</h3>
       <span class="chain-count">
         {{ scopeFilterActive ? `${filteredChainRows.length} / ${chainRows.length} 条` : `${chainRows.length} 条` }}
       </span>
     </header>
     <p class="chain-hint">
-      列出代码内置链路、数据库覆盖，以及角色 / 招式专属乘区方案（按条件替换链路里的部分乘区），
-      点击一条查看它的乘区顺序。本面板只读：内容由代码与数据库维护，不在此新增、编辑或删除。
+      列出通用链路（按伤害类型）与特殊链路——只对特定角色 / 招式生效的乘区方案、数据库覆盖、
+      蕾米本人耀变等。点击一条查看它的乘区顺序；本面板只读，内容由代码与数据库维护。
     </p>
 
     <div class="chain-filter-block">
@@ -870,7 +933,9 @@ onMounted(async () => {
         >
           {{ agent.name }}
         </button>
-        <span v-if="!filterAgentOptions.length" class="chain-filter-empty">加载角色库中…</span>
+        <span v-if="!filterAgentOptions.length" class="chain-filter-empty">
+          {{ calculatorBuffStore.loaded ? '当前没有角色级特殊链路' : '加载角色库中…' }}
+        </span>
       </div>
       <div v-if="needsSkillGroupTargets" class="chain-filter-row">
         <span class="chain-filter-label">技能组</span>
@@ -885,10 +950,10 @@ onMounted(async () => {
           {{ group.name }}
         </button>
         <span v-if="!agentFilter.length" class="chain-filter-empty">
-          技能组挂在角色下面：先在上面选角色，再挑该角色的技能组
+          技能组挂在角色下面：先选角色，再挑有特殊链路的技能组
         </span>
         <span v-else-if="!filterSkillGroupOptions.length" class="chain-filter-empty">
-          所选角色没有技能组
+          所选角色没有技能组级特殊链路
         </span>
       </div>
       <div v-if="needsSkillTargets" class="chain-filter-row">
@@ -904,10 +969,10 @@ onMounted(async () => {
           {{ skill.name }}
         </button>
         <span v-if="!agentFilter.length" class="chain-filter-empty">
-          招式挂在角色下面：先在上面选角色，再挑该角色的招式
+          招式挂在角色下面：先选角色，再挑有特殊链路的招式
         </span>
         <span v-else-if="!filterSkillOptions.length" class="chain-filter-empty">
-          所选角色没有招式
+          所选角色没有招式级特殊链路
         </span>
       </div>
     </div>
@@ -940,7 +1005,7 @@ onMounted(async () => {
             · {{ row.stages.length }} 个乘区
           </span>
           <span class="list-meta">
-            <template v-if="row.kind === 'zoneScheme'">按条件替换链路乘区</template>
+            <template v-if="row.kind === 'zoneScheme'">特殊链路 · 按条件替换乘区</template>
             <template v-else>{{ row.damageKinds.join(' / ') || '全部伤害类型' }}</template>
             <template v-if="row.origin === 'db' || row.origin === 'zone-db'">
               · {{ row.enabled ? '已启用' : '已停用' }}
@@ -1017,8 +1082,8 @@ onMounted(async () => {
           <!-- 乘区方案：展示受影响招式的完整链路乘区，被本方案覆盖的格子高亮 -->
           <template v-else>
             <p class="chain-hint">
-              下面是受本方案影响的招式所用链路（按伤害类型各列一份），
-              完整乘区顺序取自链路自身；<span class="chain-hint-mark">橙色格子</span>为本方案覆盖 / 新增的乘区。
+              下面是受本特殊链路影响的招式所用链路（按伤害类型各列一份），
+              完整乘区顺序取自链路自身；<span class="chain-hint-mark">橙色格子</span>为本特殊链路覆盖 / 新增的乘区。
             </p>
             <div
               v-for="view in selectedRow.schemeChainViews"
@@ -1055,7 +1120,7 @@ onMounted(async () => {
               目标下没有可套用的招式链路，只能看到方案条目本身。
             </p>
             <p class="chain-hint">
-              乘区方案只替换对应乘区（按作用域与条件生效），不单独预览结算结果。
+              特殊链路只替换对应乘区（按作用域与条件生效），不单独预览结算结果。
             </p>
           </template>
         </template>
@@ -1076,7 +1141,7 @@ onMounted(async () => {
         再对每条招式跑真实解析（含数据库覆盖）。链路 id 或阶段（顺序 / 模块 / 条件 / 参数）
         与常规不一致的角色列在下面，展开可看具体是哪些招式、差在哪。
         条件类链路在管理端没有面板上下文，按「条件可能成立」参与比对；
-        角色 / 招式专属乘区方案已并入上方链路列表。
+        角色 / 招式专属特殊链路已并入上方链路列表。
       </p>
       <p v-if="!chainAuditSummary.length" class="chain-empty">所有角色的所有招式都走常规链路，没有角色专属 / 招式专属差异。</p>
       <div v-for="item in chainAuditSummary" :key="item.agentId" class="chain-audit-agent">
