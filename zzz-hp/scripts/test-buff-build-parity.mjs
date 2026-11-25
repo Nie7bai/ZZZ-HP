@@ -5,13 +5,13 @@
  *   改前：`npx vite-node scripts/test-buff-build-parity.mjs --write`  → 存基线
  *   改后：`npx vite-node scripts/test-buff-build-parity.mjs`          → 与基线逐位比对
  *
- * 快照内容（两个真实方案 + 一条 restrict 路径回归点）：
+ * 快照内容：
  *   - 每个方案的 **总伤**（`evaluateAffixCounts` 的 grandTotal）与**每行数字**（eventLines 的 total，按序）
  *   - **restrict 路径**（N1 回归点）：`restrictToSlotIndex` 非空时，邦布条目应被排除、场地条目应保留
  *     （现状依据：邦布收集条件含 `restrictToSlotIndex == null`，场地分支没有该 gate）
+ *   - 额外增益的实际伤害与收集结果
  *
- * 基线落点：`D:\WB_agent_out\ZZZ-HP\.dim\tmp\buff-build-snapshots\baseline.json`
- *   ⚠️ 该目录在**开发辅助目录**下（`DEV_ROOT`），不在 git 仓库里。
+ * 基线文件位于开发目录 `DEV_ROOT` 下的 `.dim/tmp/buff-build-snapshots/baseline.json`。
  *
  * 用法：
  *   npx vite-node scripts/test-buff-build-parity.mjs [--write]
@@ -180,17 +180,6 @@ function snapshotRestrictCase(panelContext) {
 }
 
 /**
- * 展示快照（防标签漂移）：某槽位作为"主角"时，收集产物的**分组 / 来源标签 / 实效 id**。
- * 数字不变但标签变了同样是回归 —— 阶段 2 把收集拆成"构建 + 筛选"，这份快照钉住展示等价。
- */
-function snapshotDisplay(panelContext, slotIndex) {
-  const items = collectAllBuffEffects({ ...panelContext, mainSlotIndex: slotIndex })
-  return items
-    .map((item) => `${item.providerSlot ?? '-'}|${item.group}|${item.sourceLabel}|${item.effect.id}`)
-    .sort()
-}
-
-/**
  * 额外增益用例（阶段 3 的验收夹具）：加 3 条额外增益后的**数字**与**当前那条通道的产物**。
  * 阶段 3 要把额外增益并入构建、删掉"提前折成数字"的通道 —— 改完必须与本用例逐位相同。
  * 三条覆盖：全队 / 指定槽位 / 带队内职业人数档（后者是"启用口径"最容易踩的那个坑）。
@@ -256,13 +245,6 @@ const snapshot = {
   fixtures: snapshots.map(({ panelContext, evalCtx, ...rest }) => rest),
   restrictCase: snapshots[0] ? snapshotRestrictCase(snapshots[0].panelContext) : null,
   extraGainsCase: snapshots[0] ? snapshotExtraGainsCase(snapshots[0].evalCtx) : null,
-  // 展示等价：主槽 0 / 1 两侧（覆盖"自身视角"与"队友视角"两种标签）
-  displayCases: snapshots[0]
-    ? {
-        main0: snapshotDisplay(snapshots[0].panelContext, 0),
-        main1: snapshotDisplay(snapshots[0].panelContext, 1),
-      }
-    : null,
 }
 
 /** 找出第一处不同（用于报错定位） */
@@ -327,6 +309,8 @@ if (!fs.existsSync(BASELINE)) {
   process.exit(1)
 }
 const baseline = JSON.parse(fs.readFileSync(BASELINE, 'utf8'))
+// 旧展示快照绑定了可随主数据录入变化的增益 ID。
+delete baseline.displayCases
 const diff = firstDiff(baseline, snapshot)
 if (diff) {
   console.error(`\n=== 结果：FAIL（与基线不逐位相同）===\n  第一处不同：${diff}`)
