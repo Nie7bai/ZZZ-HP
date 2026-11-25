@@ -1216,6 +1216,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       vulnerable: triggerParts.anomalyVulnerableMultiplier,
       mastery: triggerParts.masteryZone,
       level: triggerParts.levelZone,
+      mutation: result.mutationZone,
       dmgBonus: subtypeZones.bonus,
       mult: subtypeZones.mult,
       crit: subtypeZones.crit,

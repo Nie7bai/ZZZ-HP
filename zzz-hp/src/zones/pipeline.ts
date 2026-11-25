@@ -65,7 +65,7 @@ export interface StageTraceEntry extends StageDefinition {
 }
 
 const DIRECT_STAGE_IDS = ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'crit', 'directMult', 'settlement', 'pierce', 'sharpen', 'special'] as const
-const ANOMALY_STAGE_IDS = ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'mastery', 'level', 'dmgBonus', 'mult', 'crit', 'special'] as const
+const ANOMALY_STAGE_IDS = ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'mastery', 'level', 'mutation', 'dmgBonus', 'mult', 'crit', 'special'] as const
 const RADIANCE_SELF_STAGE_IDS = ['selfAtk', 'selfMastery', 'specialLevel', 'mutation', 'defense', 'resistance', 'vulnerable', 'stagger', 'radianceBonus', 'radianceMult', 'crit', 'special'] as const
 
 /** 异常类子链路：阶段集合与取值逻辑相同，只有子类阶段的语义标签随子类变化。 */
@@ -113,6 +113,7 @@ function buildAnomalyChain(spec: AnomalySubChainSpec): DamageChainDefinition {
       { id: 'vulnerable', kind: 'multiplier', label: '易伤区', group, order: 50, module: 'vulnerable' },
       { id: 'mastery', kind: 'multiplier', label: '精通区', group, order: 60, module: 'masteryZone' },
       { id: 'level', kind: 'multiplier', label: '等级区', group, order: 70, module: 'levelZone' },
+      { id: 'mutation', kind: 'multiplier', label: '异化系数区', group, order: 75, module: 'mutationZone' },
       { id: 'dmgBonus', kind: 'multiplier', label: spec.bonusLabel, group, order: 80, module: 'subtypeBonus' },
       { id: 'mult', kind: 'multiplier', label: spec.multLabel, group, order: 90, module: 'subtypeMult' },
       { id: 'crit', kind: 'multiplier', label: spec.critLabel, group, order: 100, module: 'crit' },
@@ -206,6 +207,7 @@ export const BUILT_IN_DAMAGE_CHAINS: readonly DamageChainDefinition[] = Object.f
       { id: 'vulnerable', kind: 'multiplier', label: '易伤区', group: 'anomaly', order: 50, module: 'vulnerable' },
       { id: 'mastery', kind: 'multiplier', label: '精通区', group: 'anomaly', order: 60, module: 'masteryZone' },
       { id: 'level', kind: 'multiplier', label: '等级区', group: 'anomaly', order: 70, module: 'levelZone' },
+      { id: 'mutation', kind: 'multiplier', label: '异化系数区', group: 'anomaly', order: 75, module: 'mutationZone' },
       { id: 'dmgBonus', kind: 'multiplier', label: '子类增伤区', group: 'anomaly', order: 80, module: 'subtypeBonus' },
       { id: 'mult', kind: 'multiplier', label: '子类倍率区', group: 'anomaly', order: 90, module: 'subtypeMult' },
       { id: 'crit', kind: 'multiplier', label: '子类暴击区', group: 'anomaly', order: 100, module: 'crit' },

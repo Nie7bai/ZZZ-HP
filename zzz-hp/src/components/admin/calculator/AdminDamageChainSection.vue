@@ -27,6 +27,7 @@ import {
 import { adaptDamageChain } from '@/zones/chainAdapter'
 import { getDamageChainLabel, resolveCurrentDamageChain } from '@/zones/chainSource'
 import { resolveBaseDamageSourceForProfession } from '@/utils/damageCalc'
+import { skillCalcZoneGroup } from '@/utils/skillCalcZones'
 import {
   BUILT_IN_ZONE_SCHEMES,
   buildZoneResolvedContext,
@@ -716,6 +717,45 @@ function selectRow(row: ChainRow) {
   previewError.value = ''
 }
 
+// ---- 异常类乘区归属：异常强度提供者 / 异常类触发者 / 共用 ----
+
+const ACTOR_LABELS = {
+  producer: '异常强度提供者',
+  trigger: '异常类触发者',
+  mixed: '共用',
+  result: '最终伤害',
+} as const
+
+type StageActorGroup = keyof typeof ACTOR_LABELS
+
+/** 异常大类链路（含基础耀变、蕾米本人耀变之外的子类）才区分提供者 / 触发者 */
+const ANOMALY_STAGE_GROUPS = new Set([
+  'anomaly',
+  'attributeAnomaly',
+  'anomalyRelease',
+  'disorder',
+  'turbulence',
+  'radiance',
+])
+
+function isAnomalyStage(stage: StageDefinition): boolean {
+  return ANOMALY_STAGE_GROUPS.has(stage.group)
+}
+
+/** 乘区归属：沿用用户端「计算过程」同一套口径（skillCalcZoneGroup），source 阶段归提供者 */
+function stageActor(stage: StageDefinition): StageActorGroup {
+  if (stage.kind === 'source') return 'producer'
+  return skillCalcZoneGroup(stage.label)
+}
+
+function hasAnomalyStages(stages: readonly StageDefinition[]): boolean {
+  return stages.some(isAnomalyStage)
+}
+
+function schemeHasAnomalyStages(row: ChainRow): boolean {
+  return (row.schemeChainViews ?? []).some((view) => hasAnomalyStages(view.stages))
+}
+
 /** 阶段条件摘要：只读展示，用来提示「这个阶段什么时候生效」 */
 function formatWhen(stage: StageDefinition): string {
   if (stage.when === undefined) return ''
@@ -1173,11 +1213,25 @@ onMounted(async () => {
                   <span class="cell-order">{{ stage.order }}</span>
                 </div>
                 <span class="cell-label">{{ stage.label }}</span>
+                <span
+                  v-if="isAnomalyStage(stage)"
+                  class="cell-actor"
+                  :class="`cell-actor--${stageActor(stage)}`"
+                >
+                  {{ ACTOR_LABELS[stageActor(stage)] }}
+                </span>
                 <span class="cell-module mono">{{ stage.module || '—' }}</span>
                 <span v-if="stage.params" class="cell-detail mono">{{ formatParams(stage) }}</span>
                 <span v-if="stage.when" class="cell-detail mono">条件 {{ formatWhen(stage) }}</span>
               </div>
             </div>
+
+            <p v-if="hasAnomalyStages(selectedRow.stages)" class="chain-actor-legend">
+              乘区归属：
+              <span class="cell-actor cell-actor--producer">异常强度提供者</span>
+              <span class="cell-actor cell-actor--trigger">异常类触发者</span>
+              <span class="cell-actor cell-actor--mixed">共用</span>
+            </p>
 
             <div class="chain-preview">
               <div class="chain-preview-head">
@@ -1211,6 +1265,12 @@ onMounted(async () => {
 
           <!-- 乘区方案：展示受影响招式的完整链路乘区，被本方案覆盖的格子高亮 -->
           <template v-else>
+            <p v-if="schemeHasAnomalyStages(selectedRow)" class="chain-actor-legend">
+              乘区归属：
+              <span class="cell-actor cell-actor--producer">异常强度提供者</span>
+              <span class="cell-actor cell-actor--trigger">异常类触发者</span>
+              <span class="cell-actor cell-actor--mixed">共用</span>
+            </p>
             <p class="chain-hint">
               下面是受本特殊链路影响的招式所用链路（按伤害类型各列一份），
               完整乘区顺序取自链路自身；<span class="chain-hint-mark">橙色格子</span>为本特殊链路覆盖 / 新增的乘区。
@@ -1240,6 +1300,13 @@ onMounted(async () => {
                   </div>
                   <span v-if="stage.overriddenByScheme" class="cell-scheme-badge">方案覆盖</span>
                   <span class="cell-label">{{ stage.label }}</span>
+                  <span
+                    v-if="isAnomalyStage(stage)"
+                    class="cell-actor"
+                    :class="`cell-actor--${stageActor(stage)}`"
+                  >
+                    {{ ACTOR_LABELS[stageActor(stage)] }}
+                  </span>
                   <span class="cell-module mono">{{ stage.module || '—' }}</span>
                   <span v-if="stage.params" class="cell-detail mono">{{ describeParams(stage.params) }}</span>
                   <span v-if="stage.when" class="cell-detail mono">条件 {{ describeCondition(stage.when) }}</span>
@@ -1335,6 +1402,47 @@ onMounted(async () => {
 .chain-list .list-item.is-builtin:not(.active) {
   background: color-mix(in srgb, #6f9fd0 12%, var(--color-background-soft));
   border-color: color-mix(in srgb, #6f9fd0 34%, var(--color-border));
+}
+
+/* 乘区归属徽标：提供者（蓝）/ 触发者（金）/ 共用（灰） */
+.cell-actor {
+  align-self: flex-start;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cell-actor--producer {
+  background: rgba(111, 159, 208, 0.2);
+  color: #9cc4ef;
+}
+
+.cell-actor--trigger {
+  background: rgba(201, 165, 92, 0.2);
+  color: #e8c97d;
+}
+
+.cell-actor--mixed {
+  background: rgba(148, 163, 184, 0.2);
+  color: #c3ccd8;
+}
+
+.cell-actor--result {
+  background: rgba(127, 211, 164, 0.2);
+  color: #b9f0cd;
+}
+
+.chain-actor-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.2rem 0 0.5rem;
+  font-size: 0.72rem;
+  color: var(--color-text);
+  opacity: 0.9;
 }
 
 .chain-scheme-view {
@@ -1788,5 +1896,17 @@ onMounted(async () => {
 
 [data-theme='light'] .chain-audit-chip {
   color: #8a6a1f;
+}
+
+[data-theme='light'] .cell-actor--producer {
+  color: #2f5fae;
+}
+
+[data-theme='light'] .cell-actor--trigger {
+  color: #8a6a1f;
+}
+
+[data-theme='light'] .cell-actor--mixed {
+  color: #5a6572;
 }
 </style>
