@@ -27,8 +27,13 @@ import {
 import { adaptDamageChain } from '@/zones/chainAdapter'
 import { getDamageChainLabel, resolveCurrentDamageChain } from '@/zones/chainSource'
 import { resolveBaseDamageSourceForProfession } from '@/utils/damageCalc'
-import { BUILT_IN_ZONE_SCHEMES } from '@/zones/scheme'
-import type { ZoneScope } from '@/zones/scheme'
+import {
+  BUILT_IN_ZONE_SCHEMES,
+  buildZoneResolvedContext,
+  evaluateZoneCondition,
+  type ZoneCondition,
+  type ZoneScope,
+} from '@/zones/scheme'
 import { DAMAGE_CHAIN_SAMPLE_HITS, previewDamageChain, type DamageChainPreview } from '@/zones/preview'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import '@/components/admin/calculator/adminCalculatorPanel.css'
@@ -131,6 +136,15 @@ const specialAgentIds = computed(() => {
       }
     }
   }
+  // 某些特殊链路挂在角色作用域上，但只对特定招式生效（如叶瞬光帷幕）：
+  // 从「实际覆盖的招式」把所属角色补进来
+  for (const row of chainRows.value) {
+    if (!isSpecialRow(row)) continue
+    for (const skillId of row.appliesToSkillIds) {
+      const skill = calculatorBuffStore.skills.find((item) => item.id === skillId)
+      if (skill) ids.add(skill.agentId)
+    }
+  }
   return ids
 })
 
@@ -146,6 +160,15 @@ const filterSkillGroupOptions = computed(() => {
       .filter((row) => isSpecialRow(row) && row.scope === 'skillGroup')
       .map((row) => row.targetId),
   )
+  // 组里含有被特殊链路覆盖的招式 → 该组也算「有特殊链路」
+  const coveredSkillIds = new Set<string>()
+  for (const row of chainRows.value) {
+    if (!isSpecialRow(row)) continue
+    for (const skillId of row.appliesToSkillIds) coveredSkillIds.add(skillId)
+  }
+  for (const group of calculatorBuffStore.skillGroups) {
+    if (group.members.some((member) => coveredSkillIds.has(member.skillId))) ids.add(group.id)
+  }
   return calculatorBuffStore.skillGroups.filter(
     (group) =>
       ids.has(group.id) &&
@@ -155,11 +178,13 @@ const filterSkillGroupOptions = computed(() => {
 
 /** 三级候选：只列有特殊链路的招式；选了角色时再按角色收窄 */
 const filterSkillOptions = computed(() => {
-  const ids = new Set(
-    chainRows.value
-      .filter((row) => isSpecialRow(row) && row.scope === 'skill')
-      .map((row) => row.targetId),
-  )
+  const ids = new Set<string>()
+  for (const row of chainRows.value) {
+    if (!isSpecialRow(row)) continue
+    // 招式作用域的链路直接按 targetId 收；其余特殊链路按「实际覆盖的招式」收
+    if (row.scope === 'skill') ids.add(row.targetId)
+    for (const skillId of row.appliesToSkillIds) ids.add(skillId)
+  }
   return calculatorBuffStore.skills.filter(
     (skill) =>
       ids.has(skill.id) &&
@@ -253,6 +278,8 @@ interface ChainRow {
   zoneSchemeDoc?: ZoneSchemeDoc
   /** 是否有数据库覆盖（内置链路被覆盖时提示） */
   overridden: boolean
+  /** 这条特殊链路实际覆盖的招式 id（用于「招式」筛选与方案完整链路） */
+  appliesToSkillIds: string[]
   /** 乘区方案行：套用本方案后的完整链路（按影响到的伤害类型各一份） */
   schemeChainViews?: SchemeChainView[]
 }
@@ -426,6 +453,81 @@ function buildSchemeChainViews(
   return views
 }
 
+function agentOfSkill(skill: { agentId: string }) {
+  return calculatorBuffStore.agents.find((agent) => agent.id === skill.agentId)
+}
+
+/** 作用域 + 目标是否命中某条招式 */
+function scopeTargetMatchesSkill(
+  scope: ZoneScope,
+  targetId: string,
+  skill: { id: string; agentId: string; ownerGroupId?: string | null },
+): boolean {
+  switch (scope) {
+    case 'agent':
+      return skill.agentId === targetId
+    case 'profession':
+      return (agentOfSkill(skill)?.profession ?? '') === targetId
+    case 'skillGroup':
+      return (skill.ownerGroupId ?? '') === targetId
+    case 'skill':
+      return skill.id === targetId
+    default:
+      return true
+  }
+}
+
+/** 链路行实际覆盖的招式：作用域目标 + 伤害类型匹配 */
+function chainAppliesToSkillIds(
+  scope: ZoneScope,
+  targetId: string,
+  damageKinds: readonly string[],
+): string[] {
+  return calculatorBuffStore.skills
+    .filter(
+      (skill) =>
+        (!damageKinds.length || damageKinds.includes(skill.damageType)) &&
+        scopeTargetMatchesSkill(scope, targetId, skill),
+    )
+    .map((skill) => skill.id)
+}
+
+/** 乘区方案实际覆盖的招式：作用域目标匹配且至少一个条目的条件成立 */
+function schemeAppliesToSkillIds(
+  scope: ZoneScope,
+  targetId: string,
+  entries: readonly SchemeEntryLike[],
+): string[] {
+  const panelContext = {
+    teamSlots: calculatorBuffStore.agents.map((agent) => ({ agentId: agent.id, rank: 6 })),
+    agents: calculatorBuffStore.agents.map((agent) => ({
+      id: agent.id,
+      profession: agent.profession,
+      element: agent.element,
+    })),
+  }
+  return calculatorBuffStore.skills
+    .filter((skill) => {
+      if (!scopeTargetMatchesSkill(scope, targetId, skill)) return false
+      const hit = {
+        skill: {
+          id: skill.id,
+          name: skill.name,
+          agentId: skill.agentId,
+          skillTypes: skill.skillTypes,
+          ownerGroupId: skill.ownerGroupId ?? null,
+        },
+      }
+      const context = buildZoneResolvedContext(hit, panelContext)
+      return entries.some(
+        (entry) =>
+          !entry.when ||
+          evaluateZoneCondition(entry.when as ZoneCondition, hit, panelContext, context),
+      )
+    })
+    .map((skill) => skill.id)
+}
+
 /** 目标 id → 展示名（角色 / 技能组 / 招式都能翻出名字） */
 function targetLabelOf(targetId: string): string {
   if (!targetId) return '全局'
@@ -465,6 +567,9 @@ const chainRows = computed<ChainRow[]>(() => {
       damageKinds: [...builtin.appliesTo.damageKinds],
       stages: builtin.stages,
       overridden: overrides.length > 0,
+      appliesToSkillIds: isRemielSelf
+        ? chainAppliesToSkillIds('agent', REMIEL_AGENT_ID, builtin.appliesTo.damageKinds)
+        : [],
     })
   }
 
@@ -484,6 +589,11 @@ const chainRows = computed<ChainRow[]>(() => {
       stages: resolveStagesFor(doc, doc.chainKey),
       doc,
       overridden: false,
+      appliesToSkillIds: chainAppliesToSkillIds(
+        toZoneScope(doc.scope),
+        doc.targetId,
+        doc.appliesTo.damageKinds,
+      ),
     })
   }
 
@@ -512,6 +622,7 @@ const chainRows = computed<ChainRow[]>(() => {
       stages: entriesToStages(entries),
       schemeChainViews: buildSchemeChainViews(scheme.scope, scheme.targetId, entries),
       overridden: false,
+      appliesToSkillIds: schemeAppliesToSkillIds(scheme.scope, scheme.targetId, entries),
     })
   })
 
@@ -543,10 +654,21 @@ const chainRows = computed<ChainRow[]>(() => {
       schemeChainViews: buildSchemeChainViews(toZoneScope(doc.scope), doc.target_id, entries),
       zoneSchemeDoc: doc,
       overridden: false,
+      appliesToSkillIds: schemeAppliesToSkillIds(toZoneScope(doc.scope), doc.target_id, entries),
     })
   }
 
   return rows
+})
+
+/** 已选技能组里包含的招式 id（过滤时用来把「组内被覆盖的招式」算进命中） */
+const groupSkillIds = computed(() => {
+  const ids = new Set<string>()
+  for (const group of calculatorBuffStore.skillGroups) {
+    if (!skillGroupFilter.value.includes(group.id)) continue
+    for (const member of group.members) ids.add(member.skillId)
+  }
+  return ids
 })
 
 const selectedRow = computed<ChainRow | null>(
@@ -574,6 +696,14 @@ const filteredChainRows = computed<ChainRow[]>(() => {
       return true
     }
     if (scopeFilter.value.includes('skill') && row.scope === 'skill' && rowMatchesSkillScope(row)) {
+      return true
+    }
+    // 选了具体招式：任何「实际覆盖这条招式」的特殊行都算命中
+    if (skillFilter.value.length && row.appliesToSkillIds.some((id) => skillFilter.value.includes(id))) {
+      return true
+    }
+    // 选了具体技能组：组内含有被这条特殊链路覆盖的招式也算命中
+    if (skillGroupFilter.value.length && row.appliesToSkillIds.some((id) => groupSkillIds.value.has(id))) {
       return true
     }
     return false
@@ -950,7 +1080,7 @@ onMounted(async () => {
           {{ group.name }}
         </button>
         <span v-if="!agentFilter.length" class="chain-filter-empty">
-          技能组挂在角色下面：先选角色，再挑有特殊链路的技能组
+          技能组挂在角色下面：先选角色，再挑组内含特殊链路招式的技能组
         </span>
         <span v-else-if="!filterSkillGroupOptions.length" class="chain-filter-empty">
           所选角色没有技能组级特殊链路
@@ -969,7 +1099,7 @@ onMounted(async () => {
           {{ skill.name }}
         </button>
         <span v-if="!agentFilter.length" class="chain-filter-empty">
-          招式挂在角色下面：先选角色，再挑有特殊链路的招式
+          招式挂在角色下面：先选角色，再挑被特殊链路覆盖的招式（如叶瞬光的明心境 / 终结技 / 登场技）
         </span>
         <span v-else-if="!filterSkillOptions.length" class="chain-filter-empty">
           所选角色没有招式级特殊链路
