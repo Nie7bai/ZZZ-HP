@@ -405,6 +405,9 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  /* 覆盖 .editor-panel 的 1080px 居中限宽：本面板是模块化的宽表格/多列布局，铺满内容区 */
+  max-width: none;
+  margin: 0;
 }
 
 .zone-module-layout {
@@ -436,7 +439,7 @@ onMounted(() => {
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
-  color: var(--color-text);
+  color: var(--color-heading);
   font-size: 0.85rem;
   text-align: left;
   cursor: pointer;

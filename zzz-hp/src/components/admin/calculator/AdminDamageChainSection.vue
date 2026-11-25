@@ -9,6 +9,13 @@ import {
   type DamageChainDoc,
   type DamageChainScope,
 } from '@/api/adminDamageChains'
+import {
+  ZONE_SCHEME_SCOPE_LABELS,
+  fetchZoneSchemes,
+  type ZoneSchemeDoc,
+  type ZoneSchemeRule,
+  type ZoneSchemeScope,
+} from '@/api/adminZones'
 import { clearAdminAuthenticated } from '@/utils/adminAuth'
 import {
   BUILT_IN_DAMAGE_CHAINS,
@@ -20,8 +27,9 @@ import {
   type StageDefinition,
 } from '@/zones/pipeline'
 import { adaptDamageChain } from '@/zones/chainAdapter'
-import { getMergedDamageChains, resolveCurrentDamageChain } from '@/zones/chainSource'
+import { resolveCurrentDamageChain } from '@/zones/chainSource'
 import { resolveBaseDamageSourceForProfession } from '@/utils/damageCalc'
+import { BUILT_IN_ZONE_SCHEMES, type ZoneScheme } from '@/zones/scheme'
 import type { ZoneScope } from '@/zones/scheme'
 import { DAMAGE_CHAIN_SAMPLE_HITS, previewDamageChain, type DamageChainPreview } from '@/zones/preview'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
@@ -54,10 +62,12 @@ const previewResult = ref<DamageChainPreview | null>(null)
 const previewError = ref('')
 const previewSampleId = ref(DAMAGE_CHAIN_SAMPLE_HITS[0]!.id)
 
-// ---- 作用域筛选（一级：层级多选；二级：目标多选） ----
+// ---- 作用域筛选（一级：层级多选；二级：角色；三级：该角色的技能组 / 招式） ----
 
 const scopeFilter = ref<DamageChainScope[]>([])
+/** 二级：角色多选（agent / skill_group / skill 三个层级共用） */
 const agentFilter = ref<string[]>([])
+const skillGroupFilter = ref<string[]>([])
 const skillFilter = ref<string[]>([])
 
 const scopeOptions = computed(() =>
@@ -71,8 +81,9 @@ function toggleScopeFilter(scope: DamageChainScope) {
   const index = scopeFilter.value.indexOf(scope)
   if (index >= 0) scopeFilter.value.splice(index, 1)
   else scopeFilter.value.push(scope)
-  // 换层级时清掉二级选择，避免残留不属于当前层级的目标
+  // 换层级时清掉下级选择，避免残留不属于当前层级的目标
   agentFilter.value = []
+  skillGroupFilter.value = []
   skillFilter.value = []
 }
 
@@ -80,6 +91,15 @@ function toggleAgentFilter(agentId: string) {
   const index = agentFilter.value.indexOf(agentId)
   if (index >= 0) agentFilter.value.splice(index, 1)
   else agentFilter.value.push(agentId)
+  // 角色变了，已选招式 / 技能组可能不属于新角色集合，统一清掉
+  skillFilter.value = []
+  skillGroupFilter.value = []
+}
+
+function toggleSkillGroupFilter(groupId: string) {
+  const index = skillGroupFilter.value.indexOf(groupId)
+  if (index >= 0) skillGroupFilter.value.splice(index, 1)
+  else skillGroupFilter.value.push(groupId)
 }
 
 function toggleSkillFilter(skillId: string) {
@@ -88,26 +108,57 @@ function toggleSkillFilter(skillId: string) {
   else skillFilter.value.push(skillId)
 }
 
-/** 二级候选：选了「角色」列角色；选了「招式」列该角色（或全部）招式 */
+/** 二级候选：角色（技能组 / 招式都挂在角色下面） */
 const filterAgentOptions = computed(() => calculatorBuffStore.agents)
 
-const filterSkillOptions = computed(() => {
-  const skills = calculatorBuffStore.skills
-  if (agentFilter.value.length) return skills.filter((skill) => agentFilter.value.includes(skill.agentId))
-  return skills
+/** 三级候选：只列已选角色名下的技能组；没选角色时不列（不是把全库摊开） */
+const filterSkillGroupOptions = computed(() => {
+  if (!agentFilter.value.length) return []
+  return calculatorBuffStore.skillGroups.filter((group) => agentFilter.value.includes(group.agentId))
 })
 
-/** 是否出现二级筛选：角色 / 技能组 / 招式都要挑具体目标（职业候选来自角色职业去重） */
-const needsAgentTargets = computed(() => scopeFilter.value.includes('agent'))
+/** 三级候选：只列已选角色名下的招式 */
+const filterSkillOptions = computed(() => {
+  if (!agentFilter.value.length) return []
+  return calculatorBuffStore.skills.filter((skill) => agentFilter.value.includes(skill.agentId))
+})
+
+const needsAgentTargets = computed(
+  () => scopeFilter.value.includes('agent') || scopeFilter.value.includes('skill_group') || scopeFilter.value.includes('skill'),
+)
+const needsSkillGroupTargets = computed(() => scopeFilter.value.includes('skill_group'))
 const needsSkillTargets = computed(() => scopeFilter.value.includes('skill'))
 
 function resetScopeFilter() {
   scopeFilter.value = []
   agentFilter.value = []
+  skillGroupFilter.value = []
   skillFilter.value = []
 }
 
 const scopeFilterActive = computed(() => scopeFilter.value.length > 0)
+
+/** 行目标是否命中「角色 → 技能组 / 招式」三级筛选 */
+function rowMatchesAgentScope(row: ChainRow): boolean {
+  if (!agentFilter.value.length) return true
+  return agentFilter.value.includes(row.targetId)
+}
+
+function rowMatchesSkillGroupScope(row: ChainRow): boolean {
+  if (skillGroupFilter.value.length) return skillGroupFilter.value.includes(row.targetId)
+  if (!agentFilter.value.length) return true
+  return calculatorBuffStore.skillGroups.some(
+    (group) => group.id === row.targetId && agentFilter.value.includes(group.agentId),
+  )
+}
+
+function rowMatchesSkillScope(row: ChainRow): boolean {
+  if (skillFilter.value.length) return skillFilter.value.includes(row.targetId)
+  if (!agentFilter.value.length) return true
+  return calculatorBuffStore.skills.some(
+    (skill) => skill.id === row.targetId && agentFilter.value.includes(skill.agentId),
+  )
+}
 
 function handleAuthError(err: unknown): boolean {
   if (!isAdminDamageChainAuthError(err)) return false
@@ -224,19 +275,21 @@ const selectedRow = computed<ChainRow | null>(
  */
 const filteredChainRows = computed<ChainRow[]>(() => {
   if (!scopeFilterActive.value) return chainRows.value
-  const pickedAgents = agentFilter.value
-  const pickedSkills = skillFilter.value
   return chainRows.value.filter((row) => {
     if (scopeFilter.value.includes('global') && row.scope === 'global') return true
     if (scopeFilter.value.includes('profession') && row.scope === 'profession') return true
-    if (scopeFilter.value.includes('agent') && row.scope === 'agent') {
-      if (!pickedAgents.length) return true
-      if (pickedAgents.includes(row.targetId)) return true
+    if (scopeFilter.value.includes('agent') && row.scope === 'agent' && rowMatchesAgentScope(row)) {
+      return true
     }
-    if (scopeFilter.value.includes('skill_group') && row.scope === 'skillGroup') return true
-    if (scopeFilter.value.includes('skill') && row.scope === 'skill') {
-      if (!pickedSkills.length) return true
-      if (pickedSkills.includes(row.targetId)) return true
+    if (
+      scopeFilter.value.includes('skill_group') &&
+      row.scope === 'skillGroup' &&
+      rowMatchesSkillGroupScope(row)
+    ) {
+      return true
+    }
+    if (scopeFilter.value.includes('skill') && row.scope === 'skill' && rowMatchesSkillScope(row)) {
+      return true
     }
     return false
   })
@@ -285,10 +338,17 @@ interface ChainAuditRow {
   expectedStages: readonly StageDefinition[]
   /** 实际生效链路的乘区顺序（resolvedChainId 对应的内置 / 覆盖阶段） */
   resolvedStages: readonly StageDefinition[]
-  /** 乘区阶段序列（id + 顺序）与常规链路不一致 */
-  stageMismatch: boolean
   /** 链路 id 本身与常规推导不一致（角色专属 / 招式专属覆盖） */
   chainMismatch: boolean
+  /** 逐阶段的差异（新增 / 缺失 / 模块或条件或参数不同） */
+  stageDiffs: StageDiff[]
+}
+
+interface StageDiff {
+  stageId: string
+  label: string
+  kind: 'missing' | 'extra' | 'changed'
+  detail: string
 }
 
 /** 按伤害类型 / 基础伤害来源推导常规链路 id（不考虑数据库覆盖） */
@@ -296,25 +356,132 @@ function expectedChainIdFor(damageType: string, baseDamageSource: string, useSha
   return resolveDamageChainId({ damageKind: damageType, baseDamageSource, useSharpen })
 }
 
-function stagesForChainId(chainId: string): readonly StageDefinition[] {
-  const merged = getMergedDamageChains()
-  const fromDb = [...merged].reverse().find((chain) => chain.id === chainId)
-  if (fromDb) return fromDb.stages
-  return getDamageChain(chainId)?.stages ?? []
+/** 稳定序列化（键排序），用于比较 params / when */
+function stableStringify(value: unknown): string {
+  return JSON.stringify(value, (_key, item) => {
+    if (item && typeof item === 'object' && !Array.isArray(item)) {
+      return Object.fromEntries(
+        Object.entries(item as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+      )
+    }
+    return item
+  })
 }
 
-function stagesSignature(stages: readonly StageDefinition[]): string {
-  return stages
-    .filter((stage) => stage.enabled !== false)
-    .map((stage) => `${stage.order}:${stage.id}`)
-    .join(',')
+/** 读条件里的可读摘要（skillName 包含 / in、mindscapeRank 阈值等） */
+function describeCondition(when: unknown): string {
+  if (!when || (typeof when === 'object' && !Object.keys(when as object).length)) return ''
+  if (!when || typeof when !== 'object') return String(when)
+  const record = when as Record<string, unknown>
+  if (Array.isArray(record.or)) {
+    return '或（' + record.or.map((item) => describeCondition(item)).filter(Boolean).join(' / ') + '）'
+  }
+  if (Array.isArray(record.and)) {
+    return '且（' + record.and.map((item) => describeCondition(item)).filter(Boolean).join(' / ') + '）'
+  }
+  if (typeof record.var === 'string') {
+    const op = typeof record.op === 'string' ? record.op : ''
+    const value = record.value
+    const valueText = Array.isArray(value) ? value.join(' / ') : String(value ?? '')
+    return `${record.var} ${op} ${valueText}`.trim()
+  }
+  return stableStringify(when)
+}
+
+/** 读参数里的可读摘要：cap 规则写成「默认 X / ≥N影 Y」 */
+function describeParams(params: unknown): string {
+  if (!params || typeof params !== 'object') return ''
+  const record = params as Record<string, unknown>
+  const parts: string[] = []
+  if (typeof record.mode === 'string') parts.push(`mode=${record.mode}`)
+  const cap = record.cap
+  if (cap && typeof cap === 'object') {
+    const capRecord = cap as Record<string, unknown>
+    const defaultCap = Number(capRecord.default)
+    const rank4 = Number(capRecord.rank4)
+    const threshold = Number(capRecord.rankThreshold ?? 4)
+    if (Number.isFinite(defaultCap)) {
+      parts.push(
+        Number.isFinite(rank4)
+          ? `上限 ${Math.round(defaultCap * 100)}%（≥${threshold}影 ${Math.round(rank4 * 100)}%）`
+          : `上限 ${Math.round(defaultCap * 100)}%`,
+      )
+    }
+  }
+  if (Array.isArray(record.statKeys)) parts.push(`字段 ${record.statKeys.join(' / ')}`)
+  const rest = { ...record }
+  delete rest.mode
+  delete rest.cap
+  delete rest.statKeys
+  if (Object.keys(rest).length) parts.push(stableStringify(rest))
+  return parts.join(' · ')
+}
+
+function stageSignatureWithDetail(stage: StageDefinition): string {
+  return [
+    `order=${stage.order}`,
+    `module=${stage.module ?? ''}`,
+    `label=${stage.label ?? ''}`,
+    `params=${stableStringify(stage.params ?? {})}`,
+    `when=${stableStringify(stage.when ?? {})}`,
+    `enabled=${stage.enabled === false ? 'false' : 'true'}`,
+  ].join('|')
+}
+
+/** 逐阶段对比：缺失 / 新增 / 顺序、模块、条件、参数变化 */
+function diffStages(
+  expected: readonly StageDefinition[],
+  resolved: readonly StageDefinition[],
+): StageDiff[] {
+  const expectedEnabled = expected.filter((stage) => stage.enabled !== false)
+  const resolvedEnabled = resolved.filter((stage) => stage.enabled !== false)
+  const expectedById = new Map(expectedEnabled.map((stage) => [stage.id, stage]))
+  const resolvedById = new Map(resolvedEnabled.map((stage) => [stage.id, stage]))
+  const diffs: StageDiff[] = []
+
+  for (const stage of resolvedEnabled) {
+    const before = expectedById.get(stage.id)
+    if (!before) {
+      diffs.push({ stageId: stage.id, label: stage.label, kind: 'extra', detail: '常规链路没有这个阶段' })
+      continue
+    }
+    if (stageSignatureWithDetail(before) === stageSignatureWithDetail(stage)) continue
+    const changes: string[] = []
+    if (before.order !== stage.order) changes.push(`顺序 ${before.order} → ${stage.order}`)
+    if ((before.module ?? '') !== (stage.module ?? '')) {
+      changes.push(`模块 ${before.module ?? '—'} → ${stage.module ?? '—'}`)
+    }
+    if ((before.label ?? '') !== (stage.label ?? '')) {
+      changes.push(`名称 ${before.label ?? '—'} → ${stage.label ?? '—'}`)
+    }
+    if (stableStringify(before.params ?? {}) !== stableStringify(stage.params ?? {})) {
+      changes.push(
+        `参数 ${describeParams(before.params) || '空'} → ${describeParams(stage.params) || '空'}`,
+      )
+    }
+    if (stableStringify(before.when ?? {}) !== stableStringify(stage.when ?? {})) {
+      changes.push(
+        `条件 ${describeCondition(before.when) || '无条件'} → ${describeCondition(stage.when) || '无条件'}`,
+      )
+    }
+    if (changes.length) {
+      diffs.push({ stageId: stage.id, label: stage.label, kind: 'changed', detail: changes.join('；') })
+    }
+  }
+
+  for (const stage of expectedEnabled) {
+    if (resolvedById.has(stage.id)) continue
+    diffs.push({ stageId: stage.id, label: stage.label, kind: 'missing', detail: '实际链路里没有这个阶段' })
+  }
+
+  return diffs
 }
 
 /**
  * 核查思路：把每个角色按其职业推导基础伤害来源（命破 → pierce、锋御 → def、其余 atk），
  * 对其每条招式按伤害类型解析「常规链路」（无数据库覆盖时的推导结果），
  * 再按同一上下文跑一次真实解析（内置 + 数据库覆盖 + 运行时链路）。
- * 链路 id 不同或乘区序列不同的条目列为「角色/招式特定链路」。
+ * 链路 id 不同或逐阶段（顺序 / 模块 / 条件 / 参数）不同的条目列为「角色/招式特定链路」。
  */
 const chainAuditRows = computed<ChainAuditRow[]>(() => {
   const rows: ChainAuditRow[] = []
@@ -334,11 +501,12 @@ const chainAuditRows = computed<ChainAuditRow[]>(() => {
           skillId: skill.id,
         },
       })
-      const expectedStages = stagesForChainId(expectedChainId)
-      const resolvedStages = stagesForChainId(resolved.chainId)
-      const stageMismatch = stagesSignature(expectedStages) !== stagesSignature(resolvedStages)
+      // 常规链路取内置定义；实际链路取解析结果（已合并数据库覆盖、已剔除禁用与条件不成立的阶段）
+      const expectedStages = getDamageChain(expectedChainId)?.stages ?? []
+      const resolvedStages = resolved.stages
       const chainMismatch = resolved.chainId !== expectedChainId
-      if (!chainMismatch && !stageMismatch) continue
+      const stageDiffs = diffStages(expectedStages, resolvedStages)
+      if (!chainMismatch && !stageDiffs.length) continue
       rows.push({
         agentId: agent.id,
         agentName: agent.name,
@@ -350,8 +518,8 @@ const chainAuditRows = computed<ChainAuditRow[]>(() => {
         expectedChainId,
         expectedStages,
         resolvedStages,
-        stageMismatch,
         chainMismatch,
+        stageDiffs,
       })
     }
   }
@@ -369,16 +537,14 @@ const chainAuditSummary = computed(() => {
   return [...byAgent.entries()].map(([agentId, list]) => {
     const first = list[0]!
     const allSameChain = list.every((row) => row.resolvedChainId === first.resolvedChainId)
-    const allSameStages = new Set(list.map((row) => stagesSignature(row.resolvedStages))).size === 1
     return {
       agentId,
       agentName: first.agentName,
       profession: first.profession,
       skillCount: list.length,
       chainId: allSameChain ? first.resolvedChainId : null,
-      stageSignature: allSameStages ? stagesSignature(first.resolvedStages) : null,
       chainMismatchCount: list.filter((row) => row.chainMismatch).length,
-      stageMismatchCount: list.filter((row) => row.stageMismatch).length,
+      stageDiffCount: list.reduce((total, row) => total + row.stageDiffs.length, 0),
       rows: list,
     }
   })
@@ -395,6 +561,135 @@ function auditStageLabels(stages: readonly StageDefinition[]): string {
     .filter((stage) => stage.enabled !== false)
     .map((stage) => stage.label)
     .join(' → ')
+}
+
+// ---- 角色专属乘区方案：内置 + 数据库（只列非全局作用域，即“只对特定角色/招式生效”） ----
+
+interface ZoneSchemeAuditRow {
+  key: string
+  origin: 'builtin' | 'db'
+  scope: ZoneSchemeScope
+  targetId: string
+  name: string
+  priority: number
+  enabled: boolean
+  entries: Array<{
+    key: string
+    module: string
+    condition: string
+    params: string
+  }>
+}
+
+interface SchemeEntryLike {
+  key: string
+  module?: string
+  params?: unknown
+  when?: unknown
+}
+
+const zoneSchemes = ref<ZoneSchemeDoc[]>([])
+const zoneSchemeError = ref('')
+const expandedZoneSchemeKey = ref('')
+
+function builtinSchemeToAuditRow(scheme: ZoneScheme, index: number): ZoneSchemeAuditRow {
+  const entries: SchemeEntryLike[] = scheme.entries.map((entry) => ({
+    key: entry.key,
+    module: entry.module,
+    params: entry.params,
+    when: entry.when,
+  }))
+  return {
+    key: `builtin:${scheme.scope}:${scheme.targetId}:${index}`,
+    origin: 'builtin',
+    scope: scheme.scope as ZoneSchemeScope,
+    targetId: scheme.targetId,
+    name: `${scheme.targetId || '全局'} 内置方案`,
+    priority: scheme.priority,
+    enabled: true,
+    entries: entries.map((entry) => ({
+      key: entry.key,
+      module: entry.module ?? '',
+      condition: describeCondition(entry.when),
+      params: describeParams(entry.params),
+    })),
+  }
+}
+
+function dbSchemeToAuditRow(doc: ZoneSchemeDoc): ZoneSchemeAuditRow {
+  return {
+    key: `db:${doc.id}`,
+    origin: 'db',
+    scope: doc.scope,
+    targetId: doc.target_id,
+    name: doc.name,
+    priority: doc.priority,
+    enabled: doc.enabled,
+    entries: doc.rules
+      .filter((rule: ZoneSchemeRule) => rule.enabled !== false)
+      .map((rule) => ({
+        key: rule.key,
+        module: rule.module ?? '',
+        condition: describeCondition(rule.when),
+        params: describeParams(rule.params),
+      })),
+  }
+}
+
+/** 只列非全局作用域：这些才是「只对特定角色 / 职业 / 技能组 / 招式生效」的方案 */
+const agentZoneSchemeRows = computed<ZoneSchemeAuditRow[]>(() => {
+  const rows: ZoneSchemeAuditRow[] = []
+  BUILT_IN_ZONE_SCHEMES.forEach((scheme, index) => {
+    if (scheme.scope === 'global') return
+    rows.push(builtinSchemeToAuditRow(scheme, index))
+  })
+  for (const doc of zoneSchemes.value) {
+    if (doc.scope === 'global') continue
+    if (!doc.enabled) continue
+    rows.push(dbSchemeToAuditRow(doc))
+  }
+  return rows
+})
+
+/** 乘区方案也跟随同一套筛选：层级 + 角色 → 技能组 / 招式 */
+const filteredAgentZoneSchemeRows = computed<ZoneSchemeAuditRow[]>(() => {
+  if (!scopeFilterActive.value) return agentZoneSchemeRows.value
+  return agentZoneSchemeRows.value.filter((row) => {
+    if (scopeFilter.value.includes('profession') && row.scope === 'profession') return true
+    if (scopeFilter.value.includes('agent') && row.scope === 'agent') {
+      if (!agentFilter.value.length || agentFilter.value.includes(row.targetId)) return true
+    }
+    if (scopeFilter.value.includes('skill_group') && row.scope === 'skill_group') {
+      if (skillGroupFilter.value.length) return skillGroupFilter.value.includes(row.targetId)
+      if (!agentFilter.value.length) return true
+      return calculatorBuffStore.skillGroups.some(
+        (group) => group.id === row.targetId && agentFilter.value.includes(group.agentId),
+      )
+    }
+    if (scopeFilter.value.includes('skill') && row.scope === 'skill') {
+      if (skillFilter.value.length) return skillFilter.value.includes(row.targetId)
+      if (!agentFilter.value.length) return true
+      return calculatorBuffStore.skills.some(
+        (skill) => skill.id === row.targetId && agentFilter.value.includes(skill.agentId),
+      )
+    }
+    return false
+  })
+})
+
+function zoneSchemeTargetLabel(row: ZoneSchemeAuditRow): string {
+  if (!row.targetId) return '全局'
+  const agent = calculatorBuffStore.agents.find((item) => item.id === row.targetId)
+  if (agent) return agent.name
+  const group = calculatorBuffStore.skillGroups.find((item) => item.id === row.targetId)
+  if (group) return group.name
+  const skill = calculatorBuffStore.skills.find((item) => item.id === row.targetId)
+  if (skill) return skill.name
+  return row.targetId
+}
+
+function toggleZoneScheme(key: string) {
+  expandedZoneSchemeKey.value = expandedZoneSchemeKey.value === key ? '' : key
 }
 
 // ---- 预览：合成面板按当前链路的阶段顺序算一次，只读 ----
@@ -414,13 +709,18 @@ function runPreview() {
 onMounted(async () => {
   loading.value = true
   error.value = ''
+  zoneSchemeError.value = ''
   try {
     chains.value = await fetchDamageChains()
   } catch (err) {
     if (!handleAuthError(err)) error.value = errorText(err, '读取计算链路失败')
-  } finally {
-    loading.value = false
   }
+  try {
+    zoneSchemes.value = await fetchZoneSchemes()
+  } catch (err) {
+    if (!handleAuthError(err)) zoneSchemeError.value = errorText(err, '读取乘区方案失败')
+  }
+  loading.value = false
 })
 </script>
 
@@ -473,6 +773,25 @@ onMounted(async () => {
         </button>
         <span v-if="!filterAgentOptions.length" class="chain-filter-empty">加载角色库中…</span>
       </div>
+      <div v-if="needsSkillGroupTargets" class="chain-filter-row">
+        <span class="chain-filter-label">技能组</span>
+        <button
+          v-for="group in filterSkillGroupOptions"
+          :key="group.id"
+          type="button"
+          class="chip"
+          :class="{ active: skillGroupFilter.includes(group.id) }"
+          @click="toggleSkillGroupFilter(group.id)"
+        >
+          {{ group.name }}
+        </button>
+        <span v-if="!agentFilter.length" class="chain-filter-empty">
+          技能组挂在角色下面：先在上面选角色，再挑该角色的技能组
+        </span>
+        <span v-else-if="!filterSkillGroupOptions.length" class="chain-filter-empty">
+          所选角色没有技能组
+        </span>
+      </div>
       <div v-if="needsSkillTargets" class="chain-filter-row">
         <span class="chain-filter-label">招式</span>
         <button
@@ -485,8 +804,11 @@ onMounted(async () => {
         >
           {{ skill.name }}
         </button>
-        <span v-if="!filterSkillOptions.length" class="chain-filter-empty">
-          {{ needsAgentTargets && !agentFilter.length ? '先选角色或直接看全部招式链路' : '招式库为空' }}
+        <span v-if="!agentFilter.length" class="chain-filter-empty">
+          招式挂在角色下面：先在上面选角色，再挑该角色的招式
+        </span>
+        <span v-else-if="!filterSkillOptions.length" class="chain-filter-empty">
+          所选角色没有招式
         </span>
       </div>
     </div>
@@ -595,8 +917,9 @@ onMounted(async () => {
       </header>
       <p class="chain-hint">
         按角色职业推导常规链路（命破 → 命破链路、锋御 → 锐化链路、其余 → 按伤害类型），
-        再对每条招式跑真实解析（含数据库覆盖）。链路 id 或乘区顺序与常规不一致的角色列在下面，
-        展开可看具体是哪些招式、差在哪。
+        再对每条招式跑真实解析（含数据库覆盖）。链路 id 或阶段（顺序 / 模块 / 条件 / 参数）
+        与常规不一致的角色列在下面，展开可看具体是哪些招式、差在哪。
+        条件类链路在管理端没有面板上下文，按「条件可能成立」参与比对。
       </p>
       <p v-if="!chainAuditSummary.length" class="chain-empty">所有角色的所有招式都走常规链路，没有角色专属 / 招式专属差异。</p>
       <div v-for="item in chainAuditSummary" :key="item.agentId" class="chain-audit-agent">
@@ -610,7 +933,7 @@ onMounted(async () => {
           <span class="list-meta">
             {{ item.profession || '无职业' }} · {{ item.skillCount }} 条招式
             <template v-if="item.chainId"> · 生效链路 {{ item.chainId }}</template>
-            · 链路差异 {{ item.chainMismatchCount }} / 乘区差异 {{ item.stageMismatchCount }}
+            · 链路差异 {{ item.chainMismatchCount }} / 乘区差异 {{ item.stageDiffCount }}
           </span>
           <span class="chain-audit-toggle">{{ auditExpandedAgentId === item.agentId ? '收起' : '展开' }}</span>
         </button>
@@ -620,17 +943,78 @@ onMounted(async () => {
               <strong>{{ row.skillName }}</strong>
               <span class="list-meta mono">{{ row.damageType }}</span>
               <span class="list-meta">
-                {{ row.chainMismatch ? '链路专属' : '链路相同但乘区不同' }}
                 <template v-if="row.chainMismatch">
-                  · {{ row.expectedChainId }} → {{ row.resolvedChainId }}
+                  链路专属 · {{ row.expectedChainId }} → {{ row.resolvedChainId }}
                 </template>
+                <template v-else>链路相同，乘区有差异</template>
               </span>
             </div>
             <p class="chain-audit-stages">
               <span>常规（{{ row.expectedChainId }}）：{{ auditStageLabels(row.expectedStages) || '—' }}</span>
               <span>实际（{{ row.resolvedChainId }}）：{{ auditStageLabels(row.resolvedStages) || '—' }}</span>
             </p>
+            <ul v-if="row.stageDiffs.length" class="chain-audit-diffs">
+              <li v-for="diff in row.stageDiffs" :key="`${row.skillId}-${diff.stageId}`">
+                <span class="chain-audit-diff-kind" :class="`is-${diff.kind}`">
+                  {{ diff.kind === 'missing' ? '缺失' : diff.kind === 'extra' ? '新增' : '变化' }}
+                </span>
+                <strong>{{ diff.label }}</strong> · {{ diff.detail }}
+              </li>
+            </ul>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 角色专属乘区方案：覆盖特定角色 / 技能组 / 招式的乘区求值（含条件与影画阈值） -->
+    <section class="chain-audit">
+      <header class="chain-header">
+        <h4 class="chain-title">角色专属乘区方案</h4>
+        <span class="chain-count">{{ filteredAgentZoneSchemeRows.length }} 条</span>
+      </header>
+      <p class="chain-hint">
+        只列非全局作用域的方案：内置方案随代码发版，数据库方案在管理端外维护（本面板只读）。
+        条件、影画阈值与参数都摊开展示，便于核对「哪些角色 / 招式按另一套乘区求值」。
+      </p>
+      <p v-if="zoneSchemeError" class="form-error">{{ zoneSchemeError }}</p>
+      <p v-if="!filteredAgentZoneSchemeRows.length" class="chain-empty">
+        当前筛选下没有非全局乘区方案。
+      </p>
+      <div
+        v-for="row in filteredAgentZoneSchemeRows"
+        :key="row.key"
+        class="chain-scheme-row"
+        :class="{ 'is-broken': !row.enabled }"
+      >
+        <button
+          type="button"
+          class="chain-audit-head"
+          :aria-expanded="expandedZoneSchemeKey === row.key"
+          @click="toggleZoneScheme(row.key)"
+        >
+          <strong>{{ row.name }}</strong>
+          <span class="list-meta">
+            {{ row.origin === 'builtin' ? '内置' : '数据库' }} ·
+            {{ ZONE_SCHEME_SCOPE_LABELS[row.scope] }} · {{ zoneSchemeTargetLabel(row) }}
+            · 优先级 {{ row.priority }}
+            <template v-if="!row.enabled"> · 已停用</template>
+          </span>
+          <span class="chain-audit-toggle">{{ expandedZoneSchemeKey === row.key ? '收起' : '展开' }}</span>
+        </button>
+        <div v-if="expandedZoneSchemeKey === row.key" class="chain-audit-detail">
+          <div v-for="entry in row.entries" :key="entry.key" class="chain-audit-row">
+            <div class="chain-audit-row-head">
+              <strong class="mono">{{ entry.key }}</strong>
+              <span v-if="entry.module" class="chain-audit-chip mono">{{ entry.module }}</span>
+            </div>
+            <p v-if="entry.condition" class="chain-audit-stages">
+              <span>条件：{{ entry.condition }}</span>
+            </p>
+            <p v-if="entry.params" class="chain-audit-stages">
+              <span>参数：{{ entry.params }}</span>
+            </p>
+          </div>
+          <p v-if="!row.entries.length" class="chain-empty">该方案没有可展示的条目。</p>
         </div>
       </div>
     </section>
@@ -811,6 +1195,63 @@ onMounted(async () => {
   word-break: break-all;
 }
 
+.chain-audit-diffs {
+  margin: 0.3rem 0 0;
+  padding-left: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--color-text);
+}
+
+.chain-audit-diff-kind {
+  display: inline-block;
+  margin-right: 0.3rem;
+  padding: 0 0.35rem;
+  border-radius: 4px;
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.chain-audit-diff-kind.is-changed {
+  background: rgba(201, 165, 92, 0.22);
+  color: #f0d79a;
+}
+
+.chain-audit-diff-kind.is-extra {
+  background: rgba(91, 141, 239, 0.24);
+  color: #b9d2ff;
+}
+
+.chain-audit-diff-kind.is-missing {
+  background: rgba(239, 108, 108, 0.2);
+  color: #ffc1c1;
+}
+
+.chain-scheme-row {
+  margin-top: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-background-soft);
+  overflow: hidden;
+}
+
+.chain-scheme-row.is-broken {
+  opacity: 0.6;
+}
+
+.chain-audit-chip {
+  display: inline-block;
+  padding: 0 0.4rem;
+  border: 1px solid rgba(201, 165, 92, 0.5);
+  border-radius: 999px;
+  background: rgba(201, 165, 92, 0.12);
+  color: #e8c97d;
+  font-size: 0.68rem;
+}
+
 .chain-display-detail {
   min-width: 0;
 }
@@ -828,13 +1269,28 @@ onMounted(async () => {
   gap: 0.25rem;
   padding: 0.5rem 0.6rem;
   border: 1px solid rgba(148, 163, 184, 0.35);
+  border-left-width: 3px;
   border-radius: 0.5rem;
   background: rgba(15, 23, 42, 0.35);
   min-height: 4.5rem;
 }
 
+/* 阶段类型分色：source 蓝、multiplier 金、combine 紫、final 绿；标签不再一律灰 */
+.chain-stage-cell--source {
+  border-left-color: #5b8def;
+}
+
+.chain-stage-cell--multiplier {
+  border-left-color: #c9a55c;
+}
+
+.chain-stage-cell--combine {
+  border-left-color: #a58be0;
+}
+
 .chain-stage-cell--final {
   border-color: rgba(250, 204, 21, 0.55);
+  border-left-color: #7fd3a4;
 }
 
 .cell-head {
@@ -845,26 +1301,57 @@ onMounted(async () => {
 }
 
 .cell-kind {
-  font-size: 0.7rem;
-  opacity: 0.75;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.chain-stage-cell--source .cell-kind {
+  background: rgba(91, 141, 239, 0.2);
+  color: #b9d2ff;
+}
+
+.chain-stage-cell--multiplier .cell-kind {
+  background: rgba(201, 165, 92, 0.2);
+  color: #f0d79a;
+}
+
+.chain-stage-cell--combine .cell-kind {
+  background: rgba(165, 139, 224, 0.2);
+  color: #d9ccff;
+}
+
+.chain-stage-cell--final .cell-kind {
+  background: rgba(127, 211, 164, 0.2);
+  color: #b9f0cd;
 }
 
 .cell-order {
-  font-size: 0.7rem;
-  opacity: 0.6;
+  font-size: 0.68rem;
+  opacity: 0.85;
 }
 
 .cell-label {
   font-size: 0.85rem;
   font-weight: 600;
   line-height: 1.25;
+  color: var(--color-heading);
 }
 
 .cell-module,
 .cell-detail {
   font-size: 0.68rem;
-  opacity: 0.7;
   word-break: break-all;
+}
+
+.cell-module {
+  color: var(--color-heading);
+  opacity: 0.9;
+}
+
+.cell-detail {
+  opacity: 0.75;
 }
 
 .chain-preview {
@@ -934,5 +1421,38 @@ onMounted(async () => {
 :global([data-theme='light']) .chain-stage-cell,
 :global([data-theme='light']) .preview-cell {
   background: #f8fafc;
+}
+
+/* 白天模式：阶段类型的彩色标签改为深字，避免浅底上看不清 */
+:global([data-theme='light']) .chain-stage-cell--source .cell-kind {
+  color: #2f5fae;
+}
+
+:global([data-theme='light']) .chain-stage-cell--multiplier .cell-kind {
+  color: #8a6a1f;
+}
+
+:global([data-theme='light']) .chain-stage-cell--combine .cell-kind {
+  color: #5f4a9e;
+}
+
+:global([data-theme='light']) .chain-stage-cell--final .cell-kind {
+  color: #2f7a52;
+}
+
+:global([data-theme='light']) .chain-audit-diff-kind.is-changed {
+  color: #8a6a1f;
+}
+
+:global([data-theme='light']) .chain-audit-diff-kind.is-extra {
+  color: #2f5fae;
+}
+
+:global([data-theme='light']) .chain-audit-diff-kind.is-missing {
+  color: #a33b3b;
+}
+
+:global([data-theme='light']) .chain-audit-chip {
+  color: #8a6a1f;
 }
 </style>
