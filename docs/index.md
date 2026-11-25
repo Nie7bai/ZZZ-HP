@@ -82,6 +82,7 @@
 
 ## 规划与维护
 
+- [文档落点决策表](../../../ZZZ-HP/dev-docs/document-placement.md)（本机双仓库主检出入口，DEV 仓库内路径为 `dev-docs/document-placement.md`）。
 - [未来规划](../future-roadmap.md)：尚未落地的功能方向和后续设计。
 - [维护清单](../TODO-FOR-OWNER.md)：需要所有者确认的事项、遗留验证和长期结构债。
 
