@@ -22,7 +22,7 @@
  * 槽位内多条**按解析顺序追加**；每条增益在界面上标 `写入：<块位> · 新增/替换`
  * （计划里就是 `details[].effects[].writeLabel`）。
  */
-import { BUFF_STAT_KEYS } from '../utils/calculatorBuffFields.js'
+import { BUFF_STAT_KEYS, isCustomBuffStatKey } from '../utils/calculatorBuffFields.js'
 import {
   normalizeEffectConditionsForStat,
   normalizeGroupId,
@@ -174,8 +174,10 @@ export function resolveLocalWengine({ wengines, meta, detail, nanokaId } = {}) {
 /** 一条效果 → 写库用的完整字段（**只保留 schema 内的键**，界面上的展示字段丢掉） */
 export function sanitizeEffect(input, index = 0) {
   const raw = isPlainObject(input) ? input : {}
-  const stat = STAT_KEY_SET.has(raw.stat) ? String(raw.stat) : ''
-  if (!stat) throw new Error(`第 ${index + 1} 条效果的「属性」不是合法增益字段：${raw.stat ?? ''}`)
+  const stat = raw.stat
+  if (!STAT_KEY_SET.has(stat) && !isCustomBuffStatKey(stat)) {
+    throw new Error(`第 ${index + 1} 条效果的「属性」不是合法增益字段：${stat ?? ''}`)
+  }
   const kind = EFFECT_KINDS.has(raw.kind) ? raw.kind : 'fixed'
   const value = toNumber(raw.value)
   const maxStacks = Math.max(1, Math.round(toNumber(raw.maxStacks, 1) || 1))

@@ -301,6 +301,70 @@ test('可映射性预检：动作 + 属性 去阶段2 词表反查（阶段1 结
   assert.equal(resolveStatField({ stat: '减防', action: '降低' }), 'reduceDefense')
 })
 
+test('独立乘区百分比从关键字进入入库计划并保留原有伤害类型条件', () => {
+  const cases = [
+    {
+      text: '自身的「烬痕比例」提升20%',
+      label: '烬痕比例',
+      stat: 'custom:emberMarkRatio',
+      value: 20,
+      applyTarget: 'self',
+    },
+    {
+      text: '全队的耀变最终伤害比例提高17.5%',
+      label: '最终伤害比例',
+      stat: 'custom:finalDamageRatio',
+      value: 17.5,
+      applyTarget: 'team',
+      damageTypes: ['radiance'],
+    },
+    {
+      text: '一布之力比例降低6%',
+      label: '一布之力比例',
+      stat: 'custom:bangbooMightRatio',
+      value: -6,
+      applyTarget: 'self',
+    },
+  ]
+  const rules = buildRulesTable().groups.find((group) => group.id === 'stat').items
+  for (const { text, label, stat, value, applyTarget, damageTypes } of cases) {
+    const { effects } = simplifyText({ text, origin: 'test' })
+    assert.equal(effects.length, 1, text)
+    const [keyword] = effects
+    assert.equal(keyword.slots.stat, label, text)
+    assert.ok(SLOT_OPTIONS.stat.includes(label))
+    assert.ok(rules.some((rule) => rule.slot === label && rule.field === stat))
+    assert.equal(keyword.layerC?.statLabel, label)
+
+    const plan = planBuffApply({
+      kind: 'agent',
+      local: {},
+      rows: [{
+        key: keyword.id,
+        source: 'passive.core',
+        slot: 'core',
+        containerIndex: 0,
+        rawText: text,
+        effect: keyword.layerC,
+      }],
+    })
+    assert.equal(plan.updated, 1, text)
+    const [saved] = plan.groups[0].blocks[0].effects
+    assert.equal(saved.stat, stat)
+    assert.equal(saved.value, value)
+    assert.equal(saved.applyTarget, applyTarget)
+    assert.deepEqual(saved.conditions?.damageTypes, damageTypes)
+  }
+})
+
+test('独立乘区按百分比翻译，普通增伤继续映射到原字段', () => {
+  assert.equal(firstEffect('说明中提到烬痕比例，造成的伤害提升20%').effect.slots.stat, '增伤')
+  assert.equal(simplifyText({ text: '造成的伤害提升20%' }).effects[0].layerC.stat, 'dmgBonus')
+  assert.equal(simplifyText({ text: '烬痕比例提升20点' }).effects.length, 0)
+  assert.equal(resolveStatField({ stat: '最终伤害比例', action: '无视', unit: '%' }), '')
+  assert.throws(() => sanitizeEffect({ stat: 'custom:非法键', value: 20 }), /不是合法增益字段/)
+})
+
 test('预检**不丢** `无法提取`：动作 / 属性读不出的条目留在阶段2（标 blocked 待补）', () => {
   // 动作读不出（有属性、有数值）→ 留阶段2 等用户补动作（**不是**废原文）
   const actionPending = checkKeywordMappable({ slots: { stat: '暴击率', action: UNABLE, unit: '%' } })

@@ -24,6 +24,7 @@
  *
  * 四类来源（都扫）：核心被动 / 额外能力 / 影画 1–6 / 招式文本 / 音擎精炼 1–5。
  */
+import { isCustomBuffStatKey } from '../../utils/calculatorBuffFields.js'
 import { normalizeSkillName, stripSkillTitlePrefix } from './nanokaSkillMapper.js'
 
 // ================================================================== 槽位定义
@@ -128,8 +129,18 @@ export function detectScope(text) {
 /** 关键字入库前缀（v3 变更 2：关键字入库，带前缀/索引便于检索） */
 export const KEYWORD_PREFIX = '[关键字]'
 
-/** 阶段2 词表里的 stat 键（与仓库 `BUFF_STAT_KEYS` 同源）对应的中文标签 */
+/** 采集词表中的独立乘区属性与正式增益字段。 */
+const INDEPENDENT_ZONE_PERCENT_STATS = {
+  烬痕比例: 'custom:emberMarkRatio',
+  最终伤害比例: 'custom:finalDamageRatio',
+  一布之力比例: 'custom:bangbooMightRatio',
+}
+
+/** 阶段2 词表里的 stat 键对应的中文标签 */
 export const STAT_LABELS = {
+  ...Object.fromEntries(
+    Object.entries(INDEPENDENT_ZONE_PERCENT_STATS).map(([label, stat]) => [stat, label]),
+  ),
   hp: '生命值',
   inCombatHpPercent: '局内生命值',
   inCombatAtkPercent: '局内攻击力',
@@ -197,6 +208,7 @@ export const STAT_OPTIONS = [
   '乱流增伤',
   '耀变增伤',
   '紊乱增伤',
+  ...Object.keys(INDEPENDENT_ZONE_PERCENT_STATS),
   '异放暴击率',
   '异放暴击伤害',
   '乱流暴击率',
@@ -1031,6 +1043,10 @@ export const GAME_LITERAL_REWRITES = [
 
 /** 属性词典（**顺序即优先级**；取值与 `STAT_OPTIONS` 一一对应，写**工具语义**） */
 const STAT_RULES_INTERNAL = [
+  ...Object.keys(INDEPENDENT_ZONE_PERCENT_STATS).map((keyword) => ({
+    keyword,
+    re: new RegExp(`${keyword}[」】\\]]?\\s*(?:额外)?(?:提升|增加|提高|降低|减少|下降|[+＋])`),
+  })),
   // ① 失衡易伤家族（「失衡状态下受到的伤害提升」）：全局/均生效的版本在阶段1 由作用域文本判定
   {
     keyword: '失衡易伤',
@@ -2373,6 +2389,9 @@ export function extractKeywordEffects({
  */
 const STAT_TABLE = {
   // —— 工具语义（阶段1 写进 `属性` 的值）
+  ...Object.fromEntries(
+    Object.entries(INDEPENDENT_ZONE_PERCENT_STATS).map(([label, stat]) => [label, { '%': stat }]),
+  ),
   增伤: { '%': 'dmgBonus', 点: 'dmgBonus' },
   全属性伤害: { '%': 'dmgBonus', 点: 'dmgBonus' },
   招式增伤: { '%': 'skillDmgBonus', 点: 'skillDmgBonus' },
@@ -2470,6 +2489,10 @@ export function resolveStatField({ stat, action, unit = '%', conditions = [], te
     const table = STAT_TABLE[keyword]
     const key = String(unit ?? '').trim()
     if (table) {
+      const percentStat = table['%']
+      if (isCustomBuffStatKey(percentStat)) {
+        return key === '%' && (act === '提升' || act === '降低') ? percentStat : ''
+      }
       field =
         act === '转化'
           ? (table['%'] ?? Object.values(table)[0] ?? '')
@@ -2809,10 +2832,12 @@ export function mapKeywordsToEffect(keyword = {}) {
     }
   }
 
-  // —— 增伤 / 易伤家族 + 动作=降低 → 取负号（易伤区里是减项；增伤同理为负向）
-  const negativeVulnerable = action === '降低' && (VULNERABLE_STATS.has(stat) || stat === 'dmgBonus')
-  const effectValue = negativeVulnerable && Number.isFinite(value) ? -Math.abs(value) : value
-  if (negativeVulnerable) {
+  // —— 加算乘区的「降低」按负值记录。
+  const isNegativeZoneAdjustment =
+    action === '降低' &&
+    (VULNERABLE_STATS.has(stat) || stat === 'dmgBonus' || isCustomBuffStatKey(stat))
+  const effectValue = isNegativeZoneAdjustment && Number.isFinite(value) ? -Math.abs(value) : value
+  if (isNegativeZoneAdjustment) {
     steps.push(`动作=降低 + ${STAT_LABELS[stat] ?? stat} → 取负号 ${effectValue}（加算区里的减项）`)
   }
 
