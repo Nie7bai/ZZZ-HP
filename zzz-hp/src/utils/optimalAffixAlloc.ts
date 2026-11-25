@@ -490,6 +490,40 @@ function resolvePanelOnlyDamageCalcBase(ctx: OptimalEvalContext) {
   }
 }
 
+function customZoneProvidersFromDefinitions(): Record<string, string> {
+  return Object.fromEntries(
+    getRuntimeZoneDefinitions().map((definition) => [definition.zoneKey, definition.providers ?? 'team']),
+  )
+}
+
+function computePanelOnlyBreakdown(ctx: OptimalEvalContext, external: PanelStats, includeDetails = true) {
+  const { mainAgentId, panelContext } = ctx
+  const skillContext = panelContext.skillContext
+  const zoneScheme = resolveZoneScheme({
+    hit: {
+      skill: { id: '', name: '', agentId: mainAgentId },
+      ownerAgentId: mainAgentId,
+      damageKind: skillContext?.damageKind,
+      anomalySubKind: skillContext?.anomalySubKind,
+      directSubKind: skillContext?.directSubKind,
+    },
+    panelContext,
+    schemes: getMergedZoneSchemes(),
+  })
+  const zoneProviders = customZoneProvidersFromDefinitions()
+  const breakdown = computeFinalPanel(external, {
+    ...buildPanelContextForSlot(ctx, panelContext.mainSlotIndex, external, external),
+    skillContext: skillContext ?? undefined,
+  }, { includeDetails, customProviderTrack: zoneSchemeNeedsProviderTracking(zoneScheme, zoneProviders) })
+  const customZoneFactors = evaluateCustomZoneFactors(zoneScheme, breakdown.combatMods.custom, {
+    zoneProviders,
+    customModsByProvider: buildCustomModsByProvider(
+      breakdown.customProviderMods, panelContext.mainSlotIndex, breakdown.combatMods.custom,
+    ) ?? undefined,
+  })
+  return { breakdown, customZoneFactors }
+}
+
 export function flatStatKey(isMb: boolean, isFengYu = false): 'atkFlat' | 'hpFlat' | 'defFlat' {
   if (isMb) return 'hpFlat'
   if (isFengYu) return 'defFlat'
@@ -1462,10 +1496,7 @@ export function evaluateOptimalEventDetail(
   // providers：先解析方案，判定是否需要按来源归属收集自定义修饰（team/owner 才需要）
   const zoneContext = buildZoneResolvedContext(hit, ctx.panelContext)
   const zoneScheme = resolveZoneScheme({ hit, panelContext: ctx.panelContext, schemes: getMergedZoneSchemes() })
-  const zoneProviders: Record<string, string> = {}
-  for (const definition of getRuntimeZoneDefinitions()) {
-    zoneProviders[definition.zoneKey] = definition.providers ?? 'team'
-  }
+  const zoneProviders = customZoneProvidersFromDefinitions()
   const evtPanelOptionsBase = ownerView?.options ?? panelOpts
   const evtBreakdown = computeFinalPanel(
     ownerExternal,
@@ -2043,11 +2074,10 @@ function computeEventDamageLines(
     eventLines.push(line)
     grandTotal += line.total
     if (!firstResult) {
-      firstBreakdown = computeFinalPanel(external, {
-        ...buildPanelContextForSlot(ctx, ctx.panelContext.mainSlotIndex, external, external),
-        skillContext: ctx.panelContext.skillContext ?? undefined,
-      })
+      const { breakdown, customZoneFactors } = computePanelOnlyBreakdown(ctx, external)
+      firstBreakdown = breakdown
       firstResult = computeDamageResult({
+        customZoneFactors,
         finalPanel: firstBreakdown.finalPanel,
         piercePower: computePiercePower(
           firstBreakdown.finalPanel.hp,
@@ -2129,20 +2159,14 @@ export function evaluateAffixCountsForSweep(
   let payload: { grandTotal: number; eventLines: OptimalEventDamageLine[] }
   if (ctx.hits?.length) {
     payload = computeEventDamageLinesForSweep(ctx, external)  } else {
-    const breakdown = computeFinalPanel(
-      external,
-      {
-        ...buildPanelContextForSlot(ctx, ctx.panelContext.mainSlotIndex, external, external),
-        skillContext: ctx.panelContext.skillContext ?? undefined,
-      },
-      PANEL_NUMBERS_ONLY,
-    )
+    const { breakdown, customZoneFactors } = computePanelOnlyBreakdown(ctx, external, false)
     const piercePower = computePiercePower(
       breakdown.finalPanel.hp,
       breakdown.finalPanel.atk,
       breakdown.totalMods.pierce,
     )
     const result = computeDamageResult({
+      customZoneFactors,
       finalPanel: breakdown.finalPanel,
       piercePower,
       ...resolvePanelOnlyDamageCalcBase(ctx),
@@ -2715,20 +2739,16 @@ function evaluateAffixCountsUncached(
     // 事件汇总与全局面板摘要分开取：前者逐事件，后者是主槽面板（Spec §2.7 第 1 项）
     const { eventSummary, globalSummary } = computeEventDamageLines(evalCtx, external)
     const { grandTotal, eventLines } = eventSummary
-    const breakdown =
-      globalSummary?.breakdown ??
-      computeFinalPanel(external, {
-        ...buildPanelContextForSlot(evalCtx, evalCtx.panelContext.mainSlotIndex, external, external),
-        skillContext: evalCtx.panelContext.skillContext ?? undefined,
-      })
+    const summary = globalSummary ?? computePanelOnlyBreakdown(evalCtx, external)
+    const { breakdown } = summary
     const piercePower = computePiercePower(
       breakdown.finalPanel.hp,
       breakdown.finalPanel.atk,
       breakdown.totalMods.pierce,
     )
     const result =
-      globalSummary?.result ??
-      computeDamageResult({
+      'result' in summary ? summary.result : computeDamageResult({
+        customZoneFactors: summary.customZoneFactors,
         finalPanel: breakdown.finalPanel,
         piercePower,
         ...resolvePanelOnlyDamageCalcBase(ctx),
@@ -2768,10 +2788,7 @@ function evaluateAffixCountsUncached(
     }
   }
 
-  const breakdown = computeFinalPanel(external, {
-    ...buildPanelContextForSlot(evalCtx, evalCtx.panelContext.mainSlotIndex, external, external),
-    skillContext: evalCtx.panelContext.skillContext ?? undefined,
-  })
+  const { breakdown, customZoneFactors } = computePanelOnlyBreakdown(evalCtx, external)
 
   const piercePower = computePiercePower(
     breakdown.finalPanel.hp,
@@ -2780,6 +2797,7 @@ function evaluateAffixCountsUncached(
   )
 
   const result = computeDamageResult({
+    customZoneFactors,
     finalPanel: breakdown.finalPanel,
     piercePower,
     ...resolvePanelOnlyDamageCalcBase(ctx),

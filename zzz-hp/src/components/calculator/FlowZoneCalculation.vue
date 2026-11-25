@@ -36,7 +36,7 @@ interface ActorSection {
 const actorSections = computed<ActorSection[]>(() => {
   if (!props.groupByActor) return []
   const pick = (group: 'producer' | 'trigger' | 'mixed') =>
-    rows.value.filter((row) => skillCalcZoneGroup(row.label) === group)
+    rows.value.filter((row) => skillCalcZoneGroup(row.label, row.zoneKey) === group)
   const sections: ActorSection[] = [
     {
       key: 'producer',
@@ -62,7 +62,7 @@ const actorSections = computed<ActorSection[]>(() => {
 
 /** 分组模式下最终伤害仍单独成行，与未分组时的结果格同款 */
 const groupedResultRows = computed(() =>
-  props.groupByActor ? rows.value.filter((row) => skillCalcZoneGroup(row.label) === 'result') : [],
+  props.groupByActor ? rows.value.filter((row) => skillCalcZoneGroup(row.label, row.zoneKey) === 'result') : [],
 )
 
 const zoneSplit = computed(() => {
@@ -105,7 +105,7 @@ function clearZoneTipHideTimer() {
 }
 
 function zoneTipGroups(row: EventZoneDisplayRow): StatSourceGroup[] {
-  const projected = rows.value.find((item) => item.label === row.label)
+  const projected = rows.value.find((item) => item.label === row.label && item.zoneKey === row.zoneKey)
   if (!projected) return []
   return [{ label: row.sourceLabel, items: [`${row.label} ${row.value}`] }, ...projected.groups]
 }
@@ -163,7 +163,7 @@ function formatDamageNumber(value: number) {
         <div class="zone-display-grid">
           <div
             v-for="row in section.rows"
-            :key="`${section.key}-${row.label}`"
+            :key="`${section.key}-${row.zoneKey ?? row.label}`"
             class="zone-display-item zone-display-item--clickable"
             role="button"
             tabindex="0"
@@ -181,7 +181,7 @@ function formatDamageNumber(value: number) {
       <div v-if="groupedResultRows.length" class="zone-display-grid zone-result-grid">
         <div
           v-for="row in groupedResultRows"
-          :key="`grouped-result-${row.label}`"
+          :key="`grouped-result-${row.zoneKey ?? row.label}`"
           class="zone-display-item zone-display-item--clickable zone-display-item--result"
           role="button"
           tabindex="0"
@@ -205,7 +205,7 @@ function formatDamageNumber(value: number) {
           <div class="zone-display-grid">
             <div
               v-for="row in zoneSplit.producerRows"
-              :key="`producer-${row.label}`"
+              :key="`producer-${row.zoneKey ?? row.label}`"
               class="zone-display-item zone-display-item--clickable"
               role="button"
               tabindex="0"
@@ -228,7 +228,7 @@ function formatDamageNumber(value: number) {
           <div class="zone-display-grid">
             <div
               v-for="row in zoneSplit.triggerRows"
-              :key="`trigger-${row.label}`"
+              :key="`trigger-${row.zoneKey ?? row.label}`"
               class="zone-display-item zone-display-item--clickable"
               role="button"
               tabindex="0"
@@ -251,7 +251,7 @@ function formatDamageNumber(value: number) {
         <div class="zone-display-grid">
           <div
             v-for="row in zoneSplit.mixedRows"
-            :key="`mixed-${row.label}`"
+            :key="`mixed-${row.zoneKey ?? row.label}`"
             class="zone-display-item zone-display-item--clickable"
             role="button"
             tabindex="0"
@@ -269,7 +269,7 @@ function formatDamageNumber(value: number) {
       <div v-if="zoneSplit.resultRows.length" class="zone-display-grid zone-result-grid">
         <div
           v-for="row in zoneSplit.resultRows"
-          :key="`result-${row.label}`"
+          :key="`result-${row.zoneKey ?? row.label}`"
           class="zone-display-item zone-display-item--clickable zone-display-item--result"
           role="button"
           tabindex="0"
@@ -287,7 +287,7 @@ function formatDamageNumber(value: number) {
     <div v-else-if="rows.length" class="zone-display-grid">
       <div
         v-for="row in rows"
-        :key="row.label"
+        :key="row.zoneKey ?? row.label"
         class="zone-display-item zone-display-item--clickable"
         role="button"
         tabindex="0"

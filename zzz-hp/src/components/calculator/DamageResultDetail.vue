@@ -294,7 +294,7 @@ const formulaValueTips = computed(() => {
             <span v-if="group.hint" class="formula-aligned-hint">{{ group.hint }}</span>
           </span>
           <div class="formula-aligned-body">
-            <template v-for="(term, index) in group.terms" :key="`${group.key}-${term.label}`">
+            <template v-for="(term, index) in group.terms" :key="`${group.key}-${term.tipsKey}`">
               <span v-if="index > 0" class="formula-aligned-op" aria-hidden="true">×</span>
               <div class="formula-aligned-term">
                 <span class="formula-aligned-term-label">{{ term.label }}</span>

@@ -284645,7 +284645,106 @@
       }
     ]
   },
-  "zoneDefinitions": [],
-  "zoneSchemes": [],
+  "zoneDefinitions": [
+    {
+      "zoneKey": "custom:emberMark",
+      "label": "烬痕",
+      "sortOrder": 200,
+      "providers": "all",
+      "primitive": "percentSum",
+      "stats": [
+        {
+          "key": "emberMarkRatio",
+          "label": "烬痕比例",
+          "valueType": "percent",
+          "sign": "both"
+        }
+      ],
+      "enabled": true,
+      "version": 1
+    },
+    {
+      "zoneKey": "custom:finalDamage",
+      "label": "最终伤害",
+      "sortOrder": 201,
+      "providers": "all",
+      "primitive": "percentSum",
+      "stats": [
+        {
+          "key": "finalDamageRatio",
+          "label": "最终伤害比例",
+          "valueType": "percent",
+          "sign": "both"
+        }
+      ],
+      "enabled": true,
+      "version": 1
+    },
+    {
+      "zoneKey": "custom:bangbooMight",
+      "label": "一布之力",
+      "sortOrder": 202,
+      "providers": "all",
+      "primitive": "percentSum",
+      "stats": [
+        {
+          "key": "bangbooMightRatio",
+          "label": "一布之力比例",
+          "valueType": "percent",
+          "sign": "both"
+        }
+      ],
+      "enabled": true,
+      "version": 1
+    }
+  ],
+  "zoneSchemes": [
+    {
+      "scope": "global",
+      "targetId": "",
+      "name": "普通独立乘区",
+      "priority": 10,
+      "enabled": true,
+      "version": 1,
+      "rules": [
+        {
+          "key": "custom:emberMark",
+          "action": "replace",
+          "module": "percentSum",
+          "label": "烬痕区",
+          "params": {
+            "statKeys": [
+              "emberMarkRatio"
+            ],
+            "order": 200
+          }
+        },
+        {
+          "key": "custom:finalDamage",
+          "action": "replace",
+          "module": "percentSum",
+          "label": "最终伤害区",
+          "params": {
+            "statKeys": [
+              "finalDamageRatio"
+            ],
+            "order": 201
+          }
+        },
+        {
+          "key": "custom:bangbooMight",
+          "action": "replace",
+          "module": "percentSum",
+          "label": "一布之力区",
+          "params": {
+            "statKeys": [
+              "bangbooMightRatio"
+            ],
+            "order": 202
+          }
+        }
+      ]
+    }
+  ],
   "damageChains": []
 }

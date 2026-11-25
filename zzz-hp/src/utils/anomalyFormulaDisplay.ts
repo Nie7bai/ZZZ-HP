@@ -1,7 +1,7 @@
 import type { AnomalyDamageSubKind, DamageEventCritMode } from '@/types/calculator'
 import type { DamageCalcResult } from '@/utils/damageCalc'
 import { pickEventCritMultiplier, pickEventDamage } from '@/utils/damageEvent'
-import { zoneLabel } from '@/zones/display'
+import { customZoneResults, zoneLabel } from '@/zones/display'
 
 export interface AnomalyFormulaAgentLabels {
   /**
@@ -284,11 +284,19 @@ export function buildAlignedAnomalyFormulaGroups(
     result: formatNumber(pickEventDamage(p, 'radiance', critMode)),
   }
 
-  if (sub === 'disorder') return [base, disorder]
-  if (sub === 'turbulence') return [base, turbulence]
-  if (sub === 'anomalyRelease') return [base, release]
-  if (sub === 'radiance') return [base, radianceChain]
-  return [base, anomaly]
+  const damageGroup = {
+    attributeAnomaly: anomaly,
+    disorder,
+    turbulence,
+    anomalyRelease: release,
+    radiance: radianceChain,
+  }[sub]
+  damageGroup.terms.push(...customZoneResults(p).map((zone) => ({
+    label: zone.label,
+    value: formatFormulaNumber(zone.value),
+    tipsKey: zone.key,
+  })))
+  return [base, damageGroup]
 }
 
 export function resolveAnomalyBaseWithMutation(

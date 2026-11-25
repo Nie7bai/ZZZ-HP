@@ -1,5 +1,5 @@
 import { buildSkillCalcZoneRows, type SkillCalcZoneRow } from '@/utils/skillCalcZones'
-import { zoneLabel } from '@/zones/display'
+import { customZoneResults, zoneLabel } from '@/zones/display'
 import type { SkillFlowCalculationDetail } from '@/utils/skillFlowCalculation'
 import type { EventDamageInputUsage, BuffModSource } from '@/utils/panelBuffCalc'
 import { createEmptyBuffStatModifiers } from '@/utils/calculatorUi'
@@ -166,6 +166,8 @@ export function buildEventValueTips(calculation: SkillFlowCalculationDetail): Re
   }
   const p = d.result
   const staggerZoneName = zoneLabel(p, 'staggerMultiplier')
+  const customZones = customZoneResults(p)
+  const customZoneItems = customZones.map((zone) => zone.label + ' ' + formatFormulaNumber(zone.value))
   const sub = d.anomalySubKind
   const ownerPanel = owner.panel, ownerExternal = owner.external, ownerSources = owner.sources
   const panel = base.panel, external = base.external, sources = base.sources
@@ -787,6 +789,7 @@ const disorderFormulaParts = (() => {
       {
         label: '乘区组成',
         items: [
+          ...customZoneItems,
           `通用乘区 ${directFormulaParts[0]}`,
           `${p.useSharpenFormula ? '锐爆区' : '暴击区'} ${directFormulaParts[1]}`,
           `特殊乘区 ${directFormulaParts[2]}`,
@@ -994,6 +997,7 @@ const disorderFormulaParts = (() => {
       {
         label: '乘区组成（含属性异常增伤/倍率/暴击）',
         items: [
+          ...customZoneItems,
           `异常基础期望 ${anomalyExpectedFormulaParts[0]}`,
           `属性异常增伤区 ${anomalyExpectedFormulaParts[1]}`,
           `属性异常倍率区 ${anomalyExpectedFormulaParts[2]}`,
@@ -1096,6 +1100,7 @@ const disorderFormulaParts = (() => {
       {
         label: '乘区组成',
         items: [
+          ...customZoneItems,
           `异常基础期望 ${formatNumber(anomalyBaseWithMutation)}`,
           `紊乱倍率区 ${formatFormulaNumber(p.disorderZone)}`,
           `紊乱增伤区 ${formatFormulaNumber(p.disorderDmgBonusZone)}`,
@@ -1109,7 +1114,7 @@ const disorderFormulaParts = (() => {
         label: '加减过程',
         fullWidth: true,
         items: [
-          `${disorderFormulaParts.join(' × ')}`,
+          `${[...disorderFormulaParts, ...customZones.map((zone) => formatFormulaNumber(zone.value))].join(' × ')}`,
           `= ${formatNumber(p.disorderExpected)}`,
         ],
       },
@@ -1190,6 +1195,7 @@ const disorderFormulaParts = (() => {
       {
         label: '乘区组成',
         items: [
+          ...customZoneItems,
           `异常基础期望 ${formatNumber(anomalyBaseWithMutation)}`,
           `乱流倍率区 ${formatFormulaNumber(p.turbulenceZone)}`,
           `乱流增伤区 ${formatFormulaNumber(p.turbulenceDmgBonusZone)}`,
@@ -1202,6 +1208,7 @@ const disorderFormulaParts = (() => {
       {
         label: '乘区组成',
         items: [
+          ...customZoneItems,
           `异常基础期望 ${formatNumber(anomalyBaseWithMutation)}`,
           `异放增伤区 ${formatFormulaNumber(p.anomalyReleaseDmgBonusZone)}`,
           `异放倍率区 ${formatFormulaNumber(p.anomalyReleaseMultZone)}`,
@@ -1216,6 +1223,7 @@ const disorderFormulaParts = (() => {
       {
         label: '乘区组成',
         items: [
+          ...customZoneItems,
           ...(props.calcParts.remielSelfRadianceActive
             ? [
                 `蕾米埃尔异常基础 ${formatNumber(anomalyBaseWithMutation)}`,
@@ -1405,7 +1413,8 @@ const zoneTipKeys: Record<string, ValueTipsKey> = {
 export function buildEventZoneDisplay(calculation: SkillFlowCalculationDetail): EventZoneDisplayRow[] {
   const d=calculation.evaluation, tips=buildEventValueTips(calculation)
   const usages=d.damageInputUsages!.filter(usage=>usage.usedView!=='convertSourcePanel')
-  return buildSkillCalcZoneRows(d.result,d.hit.skill.damageType).filter(row=>row.label!=='通用乘区').map(row=>{
+  return buildSkillCalcZoneRows(d.result,d.hit.skill.damageType).filter(row=>row.zoneKey || row.label!=='通用乘区').map(row=>{
+    if (row.zoneKey) return { ...row, sourceSlots: [], sourceLabel: '独立乘区', groups: [] }
     const finalResult=['期望伤害','暴击伤害','不暴击伤害'].includes(row.label)
     let key=zoneTipKeys[row.label]
     // 帷幕易伤是失衡易伤区的替换口径：标签取结果里的乘区名（带上限），来源仍按 staggerMultiplier 取
