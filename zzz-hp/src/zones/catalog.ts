@@ -21,6 +21,7 @@ export const ZONE_DEFINITIONS: readonly ZoneDefinition[] = Object.freeze([
   { key: 'settlementDmgMultZone', label: '决算倍率区', order: 92, group: 'direct', field: 'settlementDmgMultZone' },
   { key: 'pierceDmgMultiplier', label: '贯穿增伤区', order: 94, group: 'direct', field: 'pierceDmgMultiplier' },
   { key: 'sharpenDmgMultiplier', label: '锐化伤害提升区', order: 96, group: 'direct', field: 'sharpenDmgMultiplier' },
+  { key: 'imbueDmgMultiplier', label: '浸染增伤区', order: 98, group: 'direct', field: 'imbueDmgMultiplier' },
 
   { key: 'masteryZone', label: '精通区', order: 100, group: 'anomaly', field: 'masteryZone' },
   { key: 'levelZone', label: '等级区', order: 102, group: 'anomaly', field: 'levelZone' },

@@ -126,6 +126,12 @@ export const ZONE_FORMULA_NOTES: Readonly<Record<string, ZoneFormulaNote>> = Obj
     docSection: '§6.1',
     appliesWhen: '仅锐化路径生效',
   },
+  imbueDmgMultiplier: {
+    formula: '浸染增伤区 = 1 + 浸染增伤% / 100',
+    note: '独立乘区，直伤体系通用；异常链（属性异常 / 异放 / 紊乱 / 乱流 / 耀变）不乘。',
+    docSection: '§6',
+    appliesWhen: '普通直伤 / 命破 / 锋御',
+  },
 
   // ---- 异常通用 ----
   masteryZone: {
@@ -347,7 +353,7 @@ export const ZONE_GROUP_FORMULAS: Readonly<Record<ZoneGroup, ZoneFormulaNote>> =
     formula: [
       '直伤期望 = 通用乘区（增伤区扣弱伤）',
       '         × 直伤易伤区 × 暴击期望区',
-      '         × max(0, 特殊区) × max(0, 贯穿增伤区)',
+      '         × max(0, 特殊区) × max(0, 浸染增伤区) × max(0, 贯穿增伤区)',
       '         × 直伤倍率区（+ 决算倍率分量）',
     ].join('\n'),
     note: '增伤区 = 1 + clamp((局内增伤% − 弱伤%) / 100, -0.95, 20)；弱伤仅 Buff dmgPenalty，异常链不扣。',

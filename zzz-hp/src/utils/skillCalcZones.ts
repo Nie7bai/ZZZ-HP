@@ -200,6 +200,9 @@ export function buildSkillCalcZoneRows(
     if (!result.useSharpenFormula && result.baseDamageSource === 'pierce') {
       push(rows, '贯穿增伤区', result.pierceDmgMultiplier)
     }
+    if (isActiveZone(result.imbueDmgMultiplier)) {
+      push(rows, '浸染增伤区', result.imbueDmgMultiplier)
+    }
     push(rows, result.useSharpenFormula ? '技能倍率区' : '直伤倍率区', result.directDmgMultZone)
     if (!result.useSharpenFormula && result.settlementDmgMultZone > 0) {
       push(rows, '决算倍率区', result.settlementDmgMultZone)
@@ -400,6 +403,7 @@ const ZONE_HINTS: Record<string, string> = {
   暴击区: '1 + 暴击率 × 暴击伤害（期望暴击）。',
   锐爆区: '锐化路径的暴击区：1 + 锐爆率 × 锐爆伤害。',
   贯穿增伤区: '贯穿伤害路径的独立增伤乘区。',
+  浸染增伤区: '直伤体系的独立增伤乘区：1 + 浸染增伤% / 100，普通直伤 / 命破 / 锋御都生效，异常链不受影响。',
   技能倍率区: '招式倍率对应的乘区。',
   直伤倍率区: '直伤倍率对应的乘区。',
   决算倍率区: '决算倍率（结算额外倍率）。',

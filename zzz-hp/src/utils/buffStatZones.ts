@@ -3,7 +3,8 @@
  *
  * 用户口径：
  * - 下拉只列**乘区级名称**，不再列 5 个异常子类字段；
- * - 类1 死限制（类型锁定、灰显）：贯穿增伤→命破、锐化伤害提升→锋御、异化系数→异常 5 项；
+ * - 类1 死限制（类型锁定、灰显）：贯穿增伤→命破、锐化伤害提升→锋御、异化系数→异常 5 项、
+ *   浸染增伤→直伤 3 项；
  * - 类2 部分限制：异常类增伤 / 暴击率 / 爆伤 → 只能选异常 5 项，直伤 3 项禁用；
  * - 类3 其余 55 项：全 8 项可选；
  * - **不改任何属性名**；「锐爆伤害加成」保留原名，作为类3 独立属性。
@@ -45,6 +46,13 @@ const CLASS1_ZONES: BuffStatZone[] = [
     tier: 1,
     stat: 'pierceDmgBonus',
     lockedTypes: ['pierce'],
+  },
+  {
+    id: 'zone:imbueDmgBonus',
+    label: '浸染增伤',
+    tier: 1,
+    stat: 'imbueDmgBonus',
+    lockedTypes: ['normal', 'pierce', 'sharpen'],
   },
   {
     id: 'zone:sharpenDmgBonus',
@@ -127,7 +135,7 @@ const CLASS3_ZONES: BuffStatZone[] = BUFF_STAT_FIELDS.filter(
 /**
  * 管理侧「属性」下拉的乘区目录（可被运行时乘区定义追加）。
  *
- * 内置 61 项在模块加载时构建；`registerCustomBuffStatZones` 把 DB `calculator_zone_definitions.stats`
+ * 内置 62 项在模块加载时构建；`registerCustomBuffStatZones` 把 DB `calculator_zone_definitions.stats`
  * 登记的增益键追加为类3 乘区（`stat = custom:<key>`），幂等按 id 去重。
  * 用 `reactive` 是为了让已挂载的管理端下拉在注册后立即出现新选项。
  */

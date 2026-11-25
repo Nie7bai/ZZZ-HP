@@ -1789,6 +1789,8 @@ export function evaluateOptimalEventDetail(
     combatStaggerVulnerableOnly: evtBreakdown.combatMods.staggerVulnerableOnly,
     combatSpecial: evtBreakdown.combatMods.special,
     combatPierceDmgBonus: evtBreakdown.combatMods.pierceDmgBonus,
+
+    combatImbueDmgBonus: evtBreakdown.combatMods.imbueDmgBonus,
     combatSharpenDmgBonus: evtBreakdown.combatMods.sharpenDmgBonus,
     combatSharpenCritDmgBonus: evtBreakdown.combatMods.sharpenCritDmgBonus,
     combatDmgPenalty: evtBreakdown.combatMods.dmgPenalty,
@@ -2067,6 +2069,8 @@ function computeEventDamageLines(
         combatStaggerVulnerableOnly: firstBreakdown.combatMods.staggerVulnerableOnly,
         combatSpecial: firstBreakdown.combatMods.special,
         combatPierceDmgBonus: firstBreakdown.combatMods.pierceDmgBonus,
+
+        combatImbueDmgBonus: firstBreakdown.combatMods.imbueDmgBonus,
         combatSharpenDmgBonus: firstBreakdown.combatMods.sharpenDmgBonus,
         combatSharpenCritDmgBonus: firstBreakdown.combatMods.sharpenCritDmgBonus,
         combatDmgPenalty: firstBreakdown.combatMods.dmgPenalty,
@@ -2158,6 +2162,8 @@ export function evaluateAffixCountsForSweep(
       combatStaggerVulnerableOnly: breakdown.combatMods.staggerVulnerableOnly,
       combatSpecial: breakdown.combatMods.special,
       combatPierceDmgBonus: breakdown.combatMods.pierceDmgBonus,
+
+      combatImbueDmgBonus: breakdown.combatMods.imbueDmgBonus,
       combatSharpenDmgBonus: breakdown.combatMods.sharpenDmgBonus,
       combatSharpenCritDmgBonus: breakdown.combatMods.sharpenCritDmgBonus,
       combatDmgPenalty: breakdown.combatMods.dmgPenalty,
@@ -2744,6 +2750,8 @@ function evaluateAffixCountsUncached(
         combatStaggerVulnerableOnly: breakdown.combatMods.staggerVulnerableOnly,
         combatSpecial: breakdown.combatMods.special,
         combatPierceDmgBonus: breakdown.combatMods.pierceDmgBonus,
+
+        combatImbueDmgBonus: breakdown.combatMods.imbueDmgBonus,
       combatSharpenDmgBonus: breakdown.combatMods.sharpenDmgBonus,
       combatSharpenCritDmgBonus: breakdown.combatMods.sharpenCritDmgBonus,
       combatDmgPenalty: breakdown.combatMods.dmgPenalty,
@@ -2795,6 +2803,8 @@ function evaluateAffixCountsUncached(
     combatStaggerVulnerableOnly: breakdown.combatMods.staggerVulnerableOnly,
     combatSpecial: breakdown.combatMods.special,
     combatPierceDmgBonus: breakdown.combatMods.pierceDmgBonus,
+
+    combatImbueDmgBonus: breakdown.combatMods.imbueDmgBonus,
       combatSharpenDmgBonus: breakdown.combatMods.sharpenDmgBonus,
     combatSharpenCritDmgBonus: breakdown.combatMods.sharpenCritDmgBonus,
     combatDmgPenalty: breakdown.combatMods.dmgPenalty,

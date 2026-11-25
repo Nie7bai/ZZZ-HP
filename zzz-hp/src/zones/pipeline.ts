@@ -64,7 +64,7 @@ export interface StageTraceEntry extends StageDefinition {
   value: number
 }
 
-const DIRECT_STAGE_IDS = ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'crit', 'directMult', 'settlement', 'pierce', 'sharpen', 'special'] as const
+const DIRECT_STAGE_IDS = ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'crit', 'directMult', 'settlement', 'pierce', 'imbue', 'sharpen', 'special'] as const
 const ANOMALY_STAGE_IDS = ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'mastery', 'level', 'mutation', 'dmgBonus', 'mult', 'crit', 'special'] as const
 const RADIANCE_SELF_STAGE_IDS = ['selfAtk', 'selfMastery', 'specialLevel', 'mutation', 'defense', 'resistance', 'vulnerable', 'stagger', 'radianceBonus', 'radianceMult', 'crit', 'special'] as const
 
@@ -144,6 +144,7 @@ export const BUILT_IN_DAMAGE_CHAINS: readonly DamageChainDefinition[] = Object.f
       { id: 'settlement', kind: 'multiplier', label: '决算倍率区', group: 'direct', order: 80, module: 'settlementMult' },
       { id: 'pierce', kind: 'multiplier', label: '贯穿增伤区', group: 'direct', order: 90, module: 'pierceBonus' },
       { id: 'sharpen', kind: 'multiplier', label: '锐化伤害提升区', group: 'direct', order: 100, module: 'sharpenBonus' },
+      { id: 'imbue', kind: 'multiplier', label: '浸染增伤区', group: 'direct', order: 105, module: 'imbueBonus' },
       { id: 'special', kind: 'multiplier', label: '特殊乘区', group: 'direct', order: 110, module: 'specialMult' },
       { id: 'final', kind: 'final', label: '期望伤害', group: 'direct', order: 120, module: 'product', inputs: DIRECT_STAGE_IDS },
     ],
@@ -165,8 +166,9 @@ export const BUILT_IN_DAMAGE_CHAINS: readonly DamageChainDefinition[] = Object.f
       { id: 'crit', kind: 'multiplier', label: '锐爆区', group: 'sharpen', order: 60, module: 'sharpenCrit' },
       { id: 'directMult', kind: 'multiplier', label: '直伤倍率区', group: 'sharpen', order: 70, module: 'directMult' },
       { id: 'sharpen', kind: 'multiplier', label: '锐化伤害提升区', group: 'sharpen', order: 100, module: 'sharpenBonus' },
+      { id: 'imbue', kind: 'multiplier', label: '浸染增伤区', group: 'sharpen', order: 105, module: 'imbueBonus' },
       { id: 'special', kind: 'multiplier', label: '特殊乘区', group: 'sharpen', order: 110, module: 'specialMult' },
-      { id: 'final', kind: 'final', label: '期望伤害', group: 'sharpen', order: 120, module: 'product', inputs: ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'crit', 'directMult', 'sharpen', 'special'] },
+      { id: 'final', kind: 'final', label: '期望伤害', group: 'sharpen', order: 120, module: 'product', inputs: ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'crit', 'directMult', 'sharpen', 'imbue', 'special'] },
     ],
   },
   {
@@ -187,8 +189,9 @@ export const BUILT_IN_DAMAGE_CHAINS: readonly DamageChainDefinition[] = Object.f
       { id: 'directMult', kind: 'multiplier', label: '直伤倍率区', group: 'direct', order: 70, module: 'directMult' },
       { id: 'settlement', kind: 'multiplier', label: '决算倍率区', group: 'direct', order: 80, module: 'settlementMult' },
       { id: 'pierce', kind: 'multiplier', label: '贯穿增伤区', group: 'direct', order: 90, module: 'pierceBonus' },
+      { id: 'imbue', kind: 'multiplier', label: '浸染增伤区', group: 'direct', order: 105, module: 'imbueBonus' },
       { id: 'special', kind: 'multiplier', label: '特殊乘区', group: 'direct', order: 110, module: 'specialMult' },
-      { id: 'final', kind: 'final', label: '期望伤害', group: 'direct', order: 120, module: 'product', inputs: ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'crit', 'directMult', 'settlement', 'pierce', 'special'] },
+      { id: 'final', kind: 'final', label: '期望伤害', group: 'direct', order: 120, module: 'product', inputs: ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'crit', 'directMult', 'settlement', 'pierce', 'imbue', 'special'] },
     ],
   },
   {
@@ -285,6 +288,7 @@ export const DAMAGE_CHAIN_MODULE_OPTIONS: readonly ChainModuleOption[] = Object.
   { id: 'settlementMult', label: 'settlementMult（决算倍率区）', kind: 'multiplier' },
   { id: 'pierceBonus', label: 'pierceBonus（贯穿增伤区）', kind: 'multiplier' },
   { id: 'sharpenBonus', label: 'sharpenBonus（锐化伤害提升区）', kind: 'multiplier' },
+  { id: 'imbueBonus', label: 'imbueBonus（浸染增伤区）', kind: 'multiplier' },
   { id: 'specialMult', label: 'specialMult（特殊乘区）', kind: 'multiplier' },
   { id: 'masteryZone', label: 'masteryZone（精通区）', kind: 'multiplier' },
   { id: 'levelZone', label: 'levelZone（等级区）', kind: 'multiplier' },

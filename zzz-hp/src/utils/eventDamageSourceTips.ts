@@ -69,6 +69,7 @@ export type ValueTipsKey =
   | 'radianceCritZone'
   | 'mutationZone'
   | 'pierceDmgMultiplier'
+  | 'imbueDmgMultiplier'
   | 'sharpenDmgMultiplier'
   | 'remielSelfInCombatAtk'
   | 'remielSelfInCombatMasteryZone'
@@ -204,6 +205,7 @@ const directFormulaParts = (() => {
     formatFormulaNumber(p.directVulnerableMultiplier),
     formatFormulaNumber(p.critMultiplier),
     formatFormulaNumber(p.specialMultiplier),
+    formatFormulaNumber(p.imbueDmgMultiplier),
   ]
   if (p.baseDamageSource === 'pierce') {
     parts.push(formatFormulaNumber(p.pierceDmgMultiplier))
@@ -671,6 +673,21 @@ const disorderFormulaParts = (() => {
         zone: p.pierceDmgMultiplier,
       }),
     ),
+    imbueDmgMultiplier: withTotal(
+      [
+        {
+          label: '乘区说明',
+          items: ['直伤体系的独立增伤乘区：普通直伤 / 命破 / 锋御都生效，异常链不受影响'],
+        },
+        ...buildStatSourceGroups({
+          keys: ['imbueDmgBonus'],
+          externalPanel: external,
+          sources,
+          externalKeyMap: { imbueDmgBonus: null },
+        }),
+      ],
+      `浸染增伤区 ${formatFormulaNumber(p.imbueDmgMultiplier)}`,
+    ),
     sharpenDmgMultiplier: withTotal(
       [
         {
@@ -790,6 +807,7 @@ const disorderFormulaParts = (() => {
           `通用乘区 ${directFormulaParts[0]}`,
           `${p.useSharpenFormula ? '锐爆区' : '暴击区'} ${directFormulaParts[1]}`,
           `特殊乘区 ${directFormulaParts[2]}`,
+          `浸染增伤区 ${formatFormulaNumber(p.imbueDmgMultiplier)}`,
           ...(p.useSharpenFormula
             ? [`锐化伤害提升区 ${formatFormulaNumber(p.sharpenDmgMultiplier)}`]
             : p.baseDamageSource === 'pierce'
@@ -1389,6 +1407,7 @@ const zoneTipKeys: Record<string, ValueTipsKey> = {
   易伤区:'vulnerableMultiplier',
   失衡易伤区:'staggerMultiplier',特殊乘区:'specialMultiplier',特殊倍率乘区:'specialMultZone',
   暴击区:'critMultiplier',锐爆区:'critMultiplier',贯穿增伤区:'pierceDmgMultiplier',
+  浸染增伤区:'imbueDmgMultiplier',
   技能倍率区:'directDmgMultZone',直伤倍率区:'directDmgMultZone',决算倍率区:'settlementDmgMultZone',
   精通区:'masteryZone',等级区:'levelZone',异化系数:'mutationZone',异化系数区:'mutationZone',
   属性异常增伤区:'attributeAnomalyDmgBonusZone',属性异常倍率区:'attributeAnomalyMultZone',属性异常暴击区:'attributeAnomalyCritZone',

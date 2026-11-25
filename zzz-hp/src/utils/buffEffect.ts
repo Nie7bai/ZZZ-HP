@@ -73,6 +73,7 @@ const BUFF_STAT_KEYS: BuffStatKey[] = [
   'energyRegenFlat',
   'pierce',
   'pierceDmgBonus',
+  'imbueDmgBonus',
   'sharpenDmgBonus',
   'sharpenCritDmgBonus',
   'dmgPenalty',

@@ -21,7 +21,13 @@ const baselinePath = path.join(here, '..', 'fixtures', 'zone-golden.json')
 const writeMode = process.argv.includes('--write')
 
 /** 模块化之后新增、不属于“原有硬编码结果”的字段 */
-const ADDITIVE_RESULT_KEYS = new Set(['zones', 'zoneSchemeVersion', 'pipeline'])
+const ADDITIVE_RESULT_KEYS = new Set([
+  'zones',
+  'zoneSchemeVersion',
+  'pipeline',
+  // 新增乘区：基线里没有该字段；数值回归由 test-imbue-dmg-zone 覆盖
+  'imbueDmgMultiplier',
+])
 
 function stripAdditive(result) {
   const next = { ...result }
