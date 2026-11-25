@@ -142,6 +142,7 @@ import {
 } from '@/utils/resolvedHit'
 import type { DamageCalcResult } from '@/utils/damageCalc'
 import { createBuffCalculationRuntime, type SkillFlowCalculationDetail } from '@/utils/skillFlowCalculation'
+import { firstSkillCategoryCoord } from '@/utils/skillTypes'
 
 export interface TeamSlot {
   agentId: string
@@ -292,8 +293,9 @@ const anomalySubKind = computed<AnomalyDamageSubKind>(
 /** 页级回落：第一击的异常强度提供者（非触发者）；逐 hit 请用 hit 字段 */
 const triggerAnomalyAgentId = computed(() => firstHit.value?.anomalyPowerAgentId ?? null)
 const damageKind = computed<DamageCalcKind>(() => firstHit.value?.damageKind ?? 'direct')
-const skillCategoryId = computed(() => firstHit.value?.coords[0]?.category ?? 'basic')
-const skillSubcategoryId = computed(() => firstHit.value?.coords[0]?.subcategoryId ?? null)
+const skillCategoryCoord = computed(() => firstSkillCategoryCoord(firstHit.value?.coords))
+const skillCategoryId = computed(() => skillCategoryCoord.value?.category ?? 'basic')
+const skillSubcategoryId = computed(() => skillCategoryCoord.value?.subcategoryId ?? null)
 
 const buffPickerOpen = ref(false)
 const extraBuffModalOpen = ref(false)

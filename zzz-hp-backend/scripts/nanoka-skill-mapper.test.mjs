@@ -115,6 +115,30 @@ test('mapSkillTypes：终结技挂 chain 下按名纠正，强化特殊技带小
   assert.deepEqual(mapSkillTypes('unknown-category', '没见过的招'), ['basic'])
 })
 
+test('采集按倍率参数给毁伤段打招式标签，招式说明不影响普通段', () => {
+  const detail = {
+    skill: {
+      special: {
+        description: [{
+          name: '强化特殊技：测试招式',
+          desc: '可触发[毁伤]。',
+          param: [
+            { name: '伤害倍率', param: { 101: { damage_percentage: 10000 } } },
+            { name: '毁伤伤害倍率', param: { 102: { damage_percentage: 15000 } } },
+          ],
+        }],
+      },
+    },
+  }
+  const { create } = planAgentSkillImport({ agent: { id: 'test-agent' }, detail })
+  assert.equal(create.length, 2)
+  const [ordinary, destruction] = create
+  assert.deepEqual(ordinary.skillTypes, ['special', 'specialEnhanced'])
+  assert.deepEqual(destruction.skillTypes, ['special', 'specialEnhanced', 'destruction'])
+  assert.equal(destruction.damageType, ordinary.damageType)
+  assert.equal(destruction.baseMult, 150)
+})
+
 test('sameSkillTypes / sameOptionalNumber：忽略顺序，空值等价', () => {
   assert.equal(sameSkillTypes(['basic', 'dash'], ['dash', 'basic']), true)
   assert.equal(sameSkillTypes(['basic'], ['basic', 'dash']), false)

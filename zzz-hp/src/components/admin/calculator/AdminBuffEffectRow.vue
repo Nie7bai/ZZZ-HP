@@ -323,11 +323,11 @@ function openCreateSubcat() {
   creatingSubcat.value = true
   subcatError.value = ''
   subcatMessage.value = ''
+  const category = SKILL_CATEGORY_OPTIONS.find(({ id }) => id === first.value.skillCategory)
   newSubcat.value = {
     agentId: props.agentId || '',
     name: '',
-    categoryId:
-      (first.value.skillCategory as SkillCategoryId) ?? 'basic',
+    categoryId: category?.id ?? 'basic',
     countsAsFollowUp: false,
   }
 }
@@ -901,7 +901,7 @@ onBeforeUnmount(() => {
               </button>
               <div v-if="skillMenuOpen" class="skill-menu" @click.stop>
                 <label class="menu-field">
-                  <span>招式大类</span>
+                  <span>招式类型</span>
                   <select
                     :value="draftSkill.category"
                     @change="
@@ -915,7 +915,7 @@ onBeforeUnmount(() => {
                     </option>
                   </select>
                 </label>
-                <label class="menu-field">
+                <label v-if="draftSkill.category !== 'destruction'" class="menu-field">
                   <span>招式小类</span>
                   <select v-model="draftSkill.subcategoryId">
                     <option :value="null">
@@ -935,7 +935,7 @@ onBeforeUnmount(() => {
                     ＋ 添加动作
                   </button>
                   <button
-                    v-if="!isExtraMode"
+                    v-if="!isExtraMode && draftSkill.category !== 'destruction'"
                     type="button"
                     class="ghost-btn"
                     @click="onCreateSubcatFromMenu"

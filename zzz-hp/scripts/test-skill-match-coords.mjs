@@ -8,8 +8,14 @@
  * 运行：node --import tsx scripts/test-skill-match-coords.mjs
  */
 import { readFileSync } from 'node:fs'
-import { effectMatchesContext } from '../src/utils/buffEffect.ts'
-import { buildSkillMatchCoords, LEGACY_PUBLIC_SUBCATEGORY_ID } from '../src/utils/skillTypes.ts'
+import { effectMatchesContext, normalizeBuffEffect } from '../src/utils/buffEffect.ts'
+import { buildSkillContextFromHit, resolveSkillPreviews } from '../src/utils/resolvedHit.ts'
+import { parseCustomSkillList } from '../src/utils/skillLibrary.ts'
+import {
+  buildSkillMatchCoords,
+  LEGACY_PUBLIC_SUBCATEGORY_ID,
+  skillTypeLabelsForDisplay,
+} from '../src/utils/skillTypes.ts'
 
 const DATA = '../../zzz-hp-backend/scripts/data/zzz-hp-calculator-buffs.json'
 const json = JSON.parse(readFileSync(new URL(DATA, import.meta.url), 'utf8'))
@@ -160,6 +166,39 @@ check(
     anomalyCtx,
   ),
   false,
+)
+
+console.log('')
+console.log('=== 6. 毁伤可与其他招式类型并存 ===')
+const sharpenSkill = { id: 'normal', name: '普通段', agentId: 'sunbringer', damageType: 'sharpen', skillTypes: ['specialEnhanced'] }
+const skills = parseCustomSkillList([
+  sharpenSkill,
+  { ...sharpenSkill, id: 'tagged', name: '毁伤段', skillTypes: ['destruction', 'specialEnhanced'] },
+])
+const [normalHit, taggedHit] = resolveSkillPreviews({
+  slots: [{ prepared: skills.map((skill) => ({ id: skill.id, skillId: skill.id })), flow: [] }],
+  teamSlots: [{ agentId: 'sunbringer' }],
+  findSkill: (id) => skills.find((skill) => skill.id === id) ?? null,
+  resolveAgentProfession: () => '锋御',
+})
+const normalContext = buildSkillContextFromHit(normalHit, '火')
+const taggedContext = buildSkillContextFromHit(taggedHit, '火')
+const destructionBuff = normalizeBuffEffect({
+  ...skillEffect([{ category: 'destruction', subcategoryId: null }]),
+  stat: 'custom:emberMarkRatio',
+  value: 40,
+})
+check('锐化自建招式读回后保留两个标签', skillTypeLabelsForDisplay(taggedHit.skill.skillTypes).join('、'), '强化特殊技、毁伤')
+check('毁伤段沿用锐化分支', taggedContext.directSubKind, 'sharpen')
+check('毁伤没有占用原有招式大类', taggedContext.categoryId, 'special')
+check('毁伤限定命中毁伤段', effectMatchesContext(destructionBuff, taggedContext), true)
+check('毁伤限定不命中同类普通段', effectMatchesContext(destructionBuff, normalContext), false)
+check(
+  '毁伤段仍命中强化特殊技限定',
+  effectMatchesContext(skillEffect([
+    { category: 'special', subcategoryId: LEGACY_PUBLIC_SUBCATEGORY_ID.specialEnhanced },
+  ]), taggedContext),
+  true,
 )
 
 console.log('')

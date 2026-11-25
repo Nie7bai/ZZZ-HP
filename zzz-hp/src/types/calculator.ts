@@ -161,8 +161,10 @@ export type SkillCategoryId =
   | 'chain'
   | 'ultimate'
 
-/** 增益招式目标：真实大类，或伪大类「追加攻击」 */
-export type BuffSkillTargetId = SkillCategoryId | 'follow_up'
+export const DESTRUCTION_SKILL_TYPE_OPTION = { id: 'destruction', label: '毁伤' } as const
+
+/** 增益招式目标：常规大类和可单独限定的招式类型。 */
+export type BuffSkillTargetId = SkillCategoryId | 'follow_up' | typeof DESTRUCTION_SKILL_TYPE_OPTION.id
 
 /**
  * 招式类型（多选）。取代旧「招式大类」，并把旧的 3 条公共招式小类提升为类型。
@@ -180,6 +182,7 @@ export type SkillTypeId =
   | 'chain'
   | 'ultimate'
   | 'followUp'
+  | typeof DESTRUCTION_SKILL_TYPE_OPTION.id
 
 export const SKILL_CATEGORY_OPTIONS: { id: SkillCategoryId; label: string }[] = [
   { id: 'basic', label: '普通攻击' },
@@ -190,10 +193,11 @@ export const SKILL_CATEGORY_OPTIONS: { id: SkillCategoryId; label: string }[] = 
   { id: 'ultimate', label: '终结技' },
 ]
 
-/** 增益编辑器用（含追加攻击伪大类） */
+/** 增益编辑器用 */
 export const BUFF_SKILL_TARGET_OPTIONS: { id: BuffSkillTargetId; label: string }[] = [
   ...SKILL_CATEGORY_OPTIONS,
   { id: 'follow_up', label: '追加攻击' },
+  DESTRUCTION_SKILL_TYPE_OPTION,
 ]
 
 /** 转模来源属性（配合 panelSource；自行设置时仅作展示标签） */
@@ -720,10 +724,9 @@ export interface DamageEventMode {
  * 招式在 Buff 限定体系里的一个坐标。
  * 新架构一条招式可有多个招式类型 + 一个增益锚点，故需要多坐标。
  */
-export interface SkillMatchCoord {
-  category: SkillCategoryId
-  subcategoryId: string | null
-}
+export type SkillMatchCoord =
+  | { category: SkillCategoryId; subcategoryId: string | null }
+  | { category: typeof DESTRUCTION_SKILL_TYPE_OPTION.id; subcategoryId: null }
 
 export interface SkillCalcContext {
   damageKind: DamageCalcKind

@@ -9,7 +9,7 @@ import type {
   SkillSubcategory,
   SkillTypeId,
 } from '@/types/calculator'
-import { DAMAGE_EVENT_KIND_OPTIONS } from '@/utils/damageEvent'
+import { DAMAGE_EVENT_KIND_OPTIONS, mapEventKindToCalc } from '@/utils/damageEvent'
 import { loadCustomModes } from '@/utils/customDamageEventModes'
 import { resolveIsFollowUp } from '@/utils/buffEffect'
 import {
@@ -27,7 +27,7 @@ function normalizeSkill(raw: Record<string, unknown>): Skill | null {
   const id = String(raw.id ?? '').trim()
   if (!id) return null
   const damageType = String(raw.damageType ?? 'direct') as SkillDamageType
-  const isAnomaly = damageType !== 'direct'
+  const isAnomaly = mapEventKindToCalc(damageType).damageKind === 'anomaly'
   const skillTypes = Array.isArray(raw.skillTypes)
     ? raw.skillTypes.map((item) => String(item) as SkillTypeId)
     : []

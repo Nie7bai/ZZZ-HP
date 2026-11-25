@@ -21,7 +21,7 @@ import type {
   SkillCategoryId,
   SkillSubcategory,
 } from '@/types/calculator'
-import { CONVERT_FROM_OPTIONS } from '@/types/calculator'
+import { BUFF_SKILL_TARGET_OPTIONS, CONVERT_FROM_OPTIONS } from '@/types/calculator'
 import {
   ATTRIBUTE_ANOMALY_FIELD_RENAMES,
   migrateAttributeAnomalyNamingDeep,
@@ -126,17 +126,6 @@ const BUFF_STAT_KEYS: BuffStatKey[] = [
   'specialMultFactor',
   'mutationCoeffFactor',
 ]
-
-const SKILL_CATEGORIES: SkillCategoryId[] = [
-  'basic',
-  'dodge',
-  'assist',
-  'special',
-  'chain',
-  'ultimate',
-]
-
-const BUFF_SKILL_TARGETS: BuffSkillTargetId[] = [...SKILL_CATEGORIES, 'follow_up']
 
 const CHARACTER_ATTRS: CharacterAttrKey[] = [
   'hp',
@@ -1069,10 +1058,7 @@ function normalizeStat(value: unknown): BuffStatKey | CustomBuffStatKey {
 }
 
 function normalizeSkillCategory(value: unknown): BuffSkillTargetId | undefined {
-  if (typeof value === 'string' && (BUFF_SKILL_TARGETS as string[]).includes(value)) {
-    return value as BuffSkillTargetId
-  }
-  return undefined
+  return BUFF_SKILL_TARGET_OPTIONS.find(({ id }) => id === value)?.id
 }
 
 function normalizeConvert(value: unknown): BuffEffect['convert'] {
@@ -1370,15 +1356,9 @@ export function collectBlockEntriesFromPack(
   return [{ blockId: 'legacy', blockName: '增益', blockNote: '', effects }]
 }
 
-export const SKILL_CATEGORY_LABELS: Record<BuffSkillTargetId, string> = {
-  basic: '普通攻击',
-  dodge: '闪避',
-  assist: '支援技',
-  special: '特殊技',
-  chain: '连携技',
-  ultimate: '终结技',
-  follow_up: '追加攻击',
-}
+export const SKILL_CATEGORY_LABELS = Object.fromEntries(
+  BUFF_SKILL_TARGET_OPTIONS.map(({ id, label }) => [id, label]),
+) as Record<BuffSkillTargetId, string>
 
 const APPLY_SITUATION_LABELS: Record<string, string> = {
   global: '全局',

@@ -325,6 +325,10 @@ export function extractDamageSegments(detail, { level = 12 } = {}) {
         if (seenNorm.has(norm)) continue
         seenNorm.add(norm)
         const talentKey = CATEGORY_TO_TALENT_KEY[category] ?? null
+        const skillTypes = damageType === 'direct' ? mapSkillTypes(category, skillName) : []
+        if (damageType === 'direct' && shortParamLabel(paramName) === '毁伤') {
+          skillTypes.push('destruction')
+        }
         segments.push({
           category,
           skillName,
@@ -334,7 +338,7 @@ export function extractDamageSegments(detail, { level = 12 } = {}) {
           baseMult,
           damagePercentage,
           damagePercentageGrowth,
-          skillTypes: damageType === 'direct' ? mapSkillTypes(category, skillName) : [],
+          skillTypes,
           titleCore: stripSkillTitlePrefix(skillName),
           damageType,
           talentKey: damageType === 'direct' ? null : talentKey,
