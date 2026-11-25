@@ -3862,6 +3862,16 @@ body:has(.calculator-page.theme-light) .preset-preview li,
 [data-theme='light'] .zone-display-val {
   color: #1c212a !important;
 }
+/* 计算过程格子内的占比填充条：白天模式轨道与增益/减益色 */
+[data-theme='light'] .zone-display-val-zone {
+  background: rgba(28, 33, 42, 0.06) !important;
+}
+[data-theme='light'] .zone-fill--gain {
+  background: rgba(176, 137, 52, 0.3) !important;
+}
+[data-theme='light'] .zone-fill--reduce {
+  background: rgba(63, 105, 180, 0.26) !important;
+}
 /*
  * 招式详情 → 计算过程：数值悬停弹出的「组成 / 乘区明细」（StatValueWithSources）。
  * 弹层 teleport 到 body、样式里写死深色，白天模式必须单独给一套浅色，

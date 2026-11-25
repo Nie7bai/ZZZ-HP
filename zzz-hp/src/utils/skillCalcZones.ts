@@ -6,6 +6,10 @@ import { zoneLabel, type ZoneLabelSource } from '@/zones/display'
 export interface SkillCalcZoneRow {
   label: string
   value: string
+  /** 该行的原始数值（伤害行是伤害值，其余是乘区倍率）；供格子内按值画占比填充条 */
+  zoneValue?: number
+  /** true = 伤害行（期望伤害 / 暴击伤害等），填充条不适用 */
+  isDamage?: boolean
 }
 
 function formatZoneValue(value: number, asDamage = false) {
@@ -22,7 +26,7 @@ function push(
   value: number,
   asDamage = false,
 ) {
-  rows.push({ label, value: formatZoneValue(value, asDamage) })
+  rows.push({ label, value: formatZoneValue(value, asDamage), zoneValue: value, isDamage: asDamage })
 }
 
 /** 乘区是否实质参与（非恒等于 1） */
