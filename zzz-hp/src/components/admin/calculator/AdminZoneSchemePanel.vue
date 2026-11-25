@@ -765,3 +765,26 @@ onMounted(() => {
   }
 }
 </style>
+
+<style>
+/*
+ * 白天主题：模块导航、列表与公式卡片底色改纯白。
+ * 页面底色是暖纸灰（--color-background: #f2f0e9），
+ * --color-background-soft（#faf8f2）仍带暖色，看起来发灰；这里统一给纯白。
+ * 非 scoped：组件内 :global 选择器编译后不可靠（见 dev-docs/flow-damage-record-bar-chart.md）。
+ */
+[data-theme='light'] .zone-panel {
+  background: #ffffff !important;
+  border-radius: 14px;
+  padding: 1rem 1.1rem 1.2rem;
+}
+
+[data-theme='light'] .zone-panel .zone-module-nav,
+[data-theme='light'] .zone-panel .readonly-list,
+[data-theme='light'] .zone-panel .readonly-row,
+[data-theme='light'] .zone-panel .group-formula-card,
+[data-theme='light'] .zone-panel .zone-formula-block,
+[data-theme='light'] .zone-panel .table-scroll {
+  background: #ffffff !important;
+}
+</style>

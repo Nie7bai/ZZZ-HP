@@ -1271,7 +1271,7 @@ onMounted(async () => {
   border: 1px solid rgba(148, 163, 184, 0.35);
   border-left-width: 3px;
   border-radius: 0.5rem;
-  background: rgba(15, 23, 42, 0.35);
+  background: var(--color-background-soft);
   min-height: 4.5rem;
 }
 
@@ -1382,8 +1382,9 @@ onMounted(async () => {
   flex-direction: column;
   gap: 0.15rem;
   padding: 0.4rem 0.5rem;
-  border: 1px solid rgba(148, 163, 184, 0.28);
+  border: 1px solid var(--color-border);
   border-radius: 0.4rem;
+  background: var(--color-background-soft);
 }
 
 .preview-kind {
@@ -1418,41 +1419,62 @@ onMounted(async () => {
   min-width: 16rem;
 }
 
-:global([data-theme='light']) .chain-stage-cell,
-:global([data-theme='light']) .preview-cell {
-  background: #f8fafc;
+</style>
+
+<style>
+/*
+ * 白天主题：本面板的卡片 / 格子底色改纯白。
+ * 页面底色是暖纸灰（--color-background: #f2f0e9），卡片再套浅色会显灰；
+ * 组件内 :global 选择器编译后不可靠（见 dev-docs/flow-damage-record-bar-chart.md），
+ * 所以浅色覆盖统一写在这个非 scoped 块里。
+ */
+[data-theme='light'] .chain-stage-cell,
+[data-theme='light'] .preview-cell,
+[data-theme='light'] .chain-filter-block,
+[data-theme='light'] .chain-audit-agent,
+[data-theme='light'] .chain-scheme-row,
+[data-theme='light'] .chain-audit-row,
+[data-theme='light'] .chain-display-layout .item-list {
+  background: #ffffff !important;
 }
 
-/* 白天模式：阶段类型的彩色标签改为深字，避免浅底上看不清 */
-:global([data-theme='light']) .chain-stage-cell--source .cell-kind {
+/* 白天模式：阶段类型的彩色标签改用深字，避免白底上看不清 */
+[data-theme='light'] .chain-stage-cell--source .cell-kind {
   color: #2f5fae;
 }
 
-:global([data-theme='light']) .chain-stage-cell--multiplier .cell-kind {
+[data-theme='light'] .chain-stage-cell--multiplier .cell-kind {
   color: #8a6a1f;
 }
 
-:global([data-theme='light']) .chain-stage-cell--combine .cell-kind {
+[data-theme='light'] .chain-stage-cell--combine .cell-kind {
   color: #5f4a9e;
 }
 
-:global([data-theme='light']) .chain-stage-cell--final .cell-kind {
+[data-theme='light'] .chain-stage-cell--final .cell-kind {
   color: #2f7a52;
 }
 
-:global([data-theme='light']) .chain-audit-diff-kind.is-changed {
+[data-theme='light'] .chain-audit-diff-kind.is-changed {
   color: #8a6a1f;
 }
 
-:global([data-theme='light']) .chain-audit-diff-kind.is-extra {
+[data-theme='light'] .chain-audit-diff-kind.is-extra {
   color: #2f5fae;
 }
 
-:global([data-theme='light']) .chain-audit-diff-kind.is-missing {
+[data-theme='light'] .chain-audit-diff-kind.is-missing {
   color: #a33b3b;
 }
 
-:global([data-theme='light']) .chain-audit-chip {
+[data-theme='light'] .chain-audit-chip {
   color: #8a6a1f;
+}
+
+/* 登录失效弹窗：白天模式也走白底 */
+[data-theme='light'] .auth-mask .auth-card {
+  background: #ffffff !important;
+  border-color: var(--color-border);
+  color: var(--color-text);
 }
 </style>
