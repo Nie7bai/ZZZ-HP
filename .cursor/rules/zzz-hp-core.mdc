@@ -5,7 +5,7 @@ alwaysApply: true
 
 # 项目核心约定
 
-> 技术手册：`dev-docs/`。当前进度：`dev-docs/current-status.md`。Git 协作：同目录 `git-workflow.mdc`。
+> 进度见 `dev-docs/current-status.md`。Git 协作见同目录 `git-workflow.mdc`。
 
 ## 项目边界
 
@@ -13,18 +13,17 @@ alwaysApply: true
 - **ZZZ-HP 范围外**（除非用户明确要求）：账号、社区、管理端非计算器模块、危局等。
 - 2026-08-15 危局「血量分数转换器」是一次性特例，已推 `3.1.6.4`；**收工后该特例关闭**，再改危局须重新点名。
 - **zzz-dev/**：另一个伤害计算项目，**只读参考**；具体参考哪些由用户指定时再对照，不主动改、不提交。
+- **`.workbuddy/`** 供只读参考。
 
 ## 进程
 
 - **不要**在终端后台启动或停止 Express / Vite；用户手动 `start-all.bat`。
 - 允许：`taskkill` 清僵尸进程；状态查 `status.bat`。
 
-## 文档分工（Cursor 维护）
+## 文档分工
 
-- **规矩**：`.cursor/rules/`（本目录，自动注入）— **只写红线与索引，不复制 dev-docs 全文**
-- **说明书**：`dev-docs/`（功能在哪、代码怎么串、流程细节）
-- **`.workbuddy/`**：只读参考，不修改；有价值内容迁移到上述两处
-- **是否录入 rules**：自行判断；仓库政策（Git → `docs/policies/git-workflow.md`）或 dev-docs 已有完整记录的，rules 最多写「去哪查」
+- [文档落点](../../../../ZZZ-HP/dev-docs/document-placement.md#文档落点决策表)
+- [开工留痕](../../../../ZZZ-HP/dev-docs/document-placement.md#开工前)
 
 ## 推 GitHub 红线
 
@@ -41,5 +40,5 @@ alwaysApply: true
 
 - **新任务**：先读 `dev-docs/current-status.md` **顶部「一、现状」**（底部「二、历史与流水」是低优先级，追溯时才看）；涉及伤害计算时，按 `dev-docs/TASK_ROUTER.md` 找文档再改代码。
 - **未读 current-status 前**，不直接：改 git remote、全量 DB seed、后台起停 dev 服务。
-- **收工**：现状有变（分支/进度/缺陷/环境）→ 改 `current-status.md` **顶部「一、现状」**；过程、数字证据、踩坑经过 → 记**底部「二、历史与流水」**（或出处手册）；红线级约定 → 同步本目录 rules；技术细节 → `dev-docs/`。
-- 小修小补、纯问答可跳过收工更新。
+- 现状确有变化时更新 `dev-docs/current-status.md` 顶部「一、现状」。
+- [验收留痕与改造归档](../../../../ZZZ-HP/dev-docs/document-placement.md#验收后)
