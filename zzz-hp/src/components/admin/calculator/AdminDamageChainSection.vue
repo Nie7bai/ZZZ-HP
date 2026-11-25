@@ -529,6 +529,17 @@ function schemeAppliesToSkillIds(
     .map((skill) => skill.id)
 }
 
+/** 覆盖招式 → 适用伤害类型（去重，保持招式库顺序） */
+function damageKindsOfSkillIds(skillIds: readonly string[]): string[] {
+  const ids = new Set(skillIds)
+  const kinds: string[] = []
+  for (const skill of calculatorBuffStore.skills) {
+    if (!ids.has(skill.id)) continue
+    if (!kinds.includes(skill.damageType)) kinds.push(skill.damageType)
+  }
+  return kinds
+}
+
 /** 目标 id → 展示名（角色 / 技能组 / 招式都能翻出名字） */
 function targetLabelOf(targetId: string): string {
   if (!targetId) return '全局'
@@ -608,6 +619,7 @@ const chainRows = computed<ChainRow[]>(() => {
       when: entry.when,
       enabled: true,
     }))
+    const appliesToSkillIds = schemeAppliesToSkillIds(scheme.scope, scheme.targetId, entries)
     rows.push({
       key: `zone-builtin:${scheme.scope}:${scheme.targetId}:${index}`,
       kind: 'zoneScheme',
@@ -619,11 +631,11 @@ const chainRows = computed<ChainRow[]>(() => {
       targetId: scheme.targetId,
       priority: scheme.priority,
       enabled: true,
-      damageKinds: [],
+      damageKinds: damageKindsOfSkillIds(appliesToSkillIds),
       stages: entriesToStages(entries),
       schemeChainViews: buildSchemeChainViews(scheme.scope, scheme.targetId, entries),
       overridden: false,
-      appliesToSkillIds: schemeAppliesToSkillIds(scheme.scope, scheme.targetId, entries),
+      appliesToSkillIds,
     })
   })
 
@@ -639,6 +651,7 @@ const chainRows = computed<ChainRow[]>(() => {
       enabled: rule.enabled !== false && rule.action !== 'disable',
       action: rule.action,
     }))
+    const appliesToSkillIds = schemeAppliesToSkillIds(toZoneScope(doc.scope), doc.target_id, entries)
     rows.push({
       key: `zone-db:${doc.id}`,
       kind: 'zoneScheme',
@@ -650,12 +663,12 @@ const chainRows = computed<ChainRow[]>(() => {
       targetId: doc.target_id,
       priority: doc.priority,
       enabled: doc.enabled,
-      damageKinds: [],
+      damageKinds: damageKindsOfSkillIds(appliesToSkillIds),
       stages: entriesToStages(entries),
       schemeChainViews: buildSchemeChainViews(toZoneScope(doc.scope), doc.target_id, entries),
       zoneSchemeDoc: doc,
       overridden: false,
-      appliesToSkillIds: schemeAppliesToSkillIds(toZoneScope(doc.scope), doc.target_id, entries),
+      appliesToSkillIds,
     })
   }
 
@@ -1175,7 +1188,9 @@ onMounted(async () => {
             · {{ row.stages.length }} 个乘区
           </span>
           <span class="list-meta">
-            <template v-if="row.kind === 'zoneScheme'">特殊链路 · 按条件替换乘区</template>
+            <template v-if="row.kind === 'zoneScheme'">
+              特殊链路 · {{ row.damageKinds.join(' / ') || '按条件' }} · 按条件替换乘区
+            </template>
             <template v-else>{{ row.damageKinds.join(' / ') || '全部伤害类型' }}</template>
             <template v-if="row.origin === 'db' || row.origin === 'zone-db'">
               · {{ row.enabled ? '已启用' : '已停用' }}
@@ -1195,6 +1210,7 @@ onMounted(async () => {
           <p class="chain-hint">
             {{ scopeLabel(selectedRow.scope) }}
             <template v-if="selectedRow.targetId"> · 目标 {{ targetLabelOf(selectedRow.targetId) }}</template>
+            <template v-if="selectedRow.damageKinds.length"> · 适用 {{ selectedRow.damageKinds.join(' / ') }}</template>
             · 优先级 {{ selectedRow.priority }}
             <template v-if="selectedRow.overridden"> · 该内置链路存在数据库覆盖行</template>
           </p>
