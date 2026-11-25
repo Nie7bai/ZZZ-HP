@@ -133,7 +133,7 @@ for (const name of names) {
     failed += 1
     continue
   }
-  // 链路选择：直伤/锐化/帷幕走 direct、锋御走 sharpen、异常子类各自成链
+  // 链路选择：直伤/锐化/帷幕走 direct、锋御走 sharpen、异常子类（含基础耀变）各自成链
   const expectedChain = name.startsWith('sharpen')
     ? 'sharpen'
     : name.startsWith('direct') || name.startsWith('curtain')
@@ -146,7 +146,9 @@ for (const name of names) {
             ? 'disorder'
             : name.startsWith('turbulence')
               ? 'turbulence'
-              : 'anomaly'
+              : name.startsWith('radiance')
+                ? 'radiance'
+                : 'anomaly'
   if (pipeline.chainId !== expectedChain) {
     console.error(`FAIL  ${name}.pipeline.chainId — ${pipeline.chainId} ≠ ${expectedChain}`)
     failed += 1

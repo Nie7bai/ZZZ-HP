@@ -86,6 +86,8 @@ const ANOMALY_SUB_CHAIN_SPECS: readonly AnomalySubChainSpec[] = Object.freeze([
   { id: 'anomalyRelease', label: '异放链路', bonusLabel: '异放增伤区', multLabel: '异放倍率区', critLabel: '异放暴击区' },
   { id: 'disorder', label: '紊乱链路', bonusLabel: '紊乱增伤区', multLabel: '紊乱倍率区', critLabel: '紊乱暴击区' },
   { id: 'turbulence', label: '乱流链路', bonusLabel: '乱流增伤区', multLabel: '乱流倍率区', critLabel: '乱流暴击区' },
+  // 基础耀变（非蕾米本人）：与其它异常子类同构，只是子类阶段换成耀变口径
+  { id: 'radiance', label: '耀变链路', bonusLabel: '耀变增伤区', multLabel: '耀变倍率区', critLabel: '耀变暴击区' },
 ])
 
 /** 异常通用链路 id：未命中任何子链路时的兜底（子类取值仍按 `anomalySubKind`） */
