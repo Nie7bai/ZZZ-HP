@@ -25,7 +25,7 @@ import {
   type StageDefinition,
 } from '@/zones/pipeline'
 import { adaptDamageChain } from '@/zones/chainAdapter'
-import { resolveCurrentDamageChain } from '@/zones/chainSource'
+import { getDamageChainLabel, resolveCurrentDamageChain } from '@/zones/chainSource'
 import { resolveBaseDamageSourceForProfession } from '@/utils/damageCalc'
 import { BUILT_IN_ZONE_SCHEMES } from '@/zones/scheme'
 import type { ZoneScope } from '@/zones/scheme'
@@ -205,6 +205,19 @@ interface ChainRow {
   zoneSchemeDoc?: ZoneSchemeDoc
   /** 是否有数据库覆盖（内置链路被覆盖时提示） */
   overridden: boolean
+  /** 乘区方案行：套用本方案后的完整链路（按影响到的伤害类型各一份） */
+  schemeChainViews?: SchemeChainView[]
+}
+
+interface SchemeOverlayStage extends StageDefinition {
+  /** 该阶段被本乘区方案的条目覆盖 */
+  overriddenByScheme?: boolean
+}
+
+interface SchemeChainView {
+  chainId: string
+  label: string
+  stages: SchemeOverlayStage[]
 }
 
 function originLabel(row: ChainRow): string {
@@ -259,6 +272,101 @@ function entriesToStages(entries: readonly SchemeEntryLike[]): StageDefinition[]
       enabled: true,
       action: entry.action === 'inherit' || entry.action === 'disable' ? entry.action : undefined,
     }))
+}
+
+
+/** 方案作用域 → 受影响的招式（角色 / 职业 / 技能组 / 招式） */
+function skillsForSchemeScope(scope: ZoneScope, targetId: string) {
+  const skills = calculatorBuffStore.skills
+  switch (scope) {
+    case 'agent':
+      return skills.filter((skill) => skill.agentId === targetId)
+    case 'profession':
+      return skills.filter(
+        (skill) =>
+          calculatorBuffStore.agents.find((agent) => agent.id === skill.agentId)?.profession ===
+          targetId,
+      )
+    case 'skillGroup':
+      return skills.filter((skill) => (skill.ownerGroupId ?? '') === targetId)
+    case 'skill':
+      return skills.filter((skill) => skill.id === targetId)
+    default:
+      return []
+  }
+}
+
+/**
+ * 乘区方案 → 完整计算链路视图。
+ *
+ * 方案本身只覆盖链路里的部分乘区（如 `stagger`），所以按受影响的招式把它们的链路解析出来，
+ * 再把方案条目按阶段 id 覆盖到对应格子上（条目 key 不在链路上时补一格），
+ * 这样详情里能看到「完整乘区 + 哪几格被方案覆盖」。
+ */
+function buildSchemeChainViews(
+  scope: ZoneScope,
+  targetId: string,
+  entries: readonly SchemeEntryLike[],
+): SchemeChainView[] {
+  const entryByKey = new Map(entries.map((entry) => [entry.key, entry]))
+  const seen = new Set<string>()
+  const views: SchemeChainView[] = []
+  for (const skill of skillsForSchemeScope(scope, targetId)) {
+    const agent = calculatorBuffStore.agents.find((item) => item.id === skill.agentId)
+    const baseDamageSource = resolveBaseDamageSourceForProfession(agent?.profession)
+    const useSharpen = skill.damageType === 'sharpen' || agent?.profession === '锋御'
+    const resolved = resolveCurrentDamageChain({
+      damageKind: skill.damageType,
+      baseDamageSource,
+      useSharpen,
+      context: {
+        agentId: skill.agentId,
+        profession: agent?.profession ?? null,
+        skillGroupId: skill.ownerGroupId ?? null,
+        skillId: skill.id,
+      },
+    })
+    const viewKey = `${resolved.chainId}|${baseDamageSource}|${useSharpen ? 's' : ''}`
+    if (seen.has(viewKey)) continue
+    seen.add(viewKey)
+
+    const stages: SchemeOverlayStage[] = resolved.stages.map((stage) => {
+      const entry = entryByKey.get(stage.id)
+      if (!entry) return { ...stage }
+      return {
+        ...stage,
+        label: entry.label || stage.label,
+        module: entry.module ?? stage.module,
+        params: entry.params ?? stage.params,
+        when: (entry.when as StageDefinition['when']) ?? stage.when,
+        overriddenByScheme: true,
+      }
+    })
+    const mappedIds = new Set(stages.map((stage) => stage.id))
+    let maxOrder = stages.reduce((max, stage) => Math.max(max, stage.order), 0)
+    for (const entry of entries) {
+      if (mappedIds.has(entry.key)) continue
+      maxOrder += 10
+      stages.push({
+        id: entry.key,
+        kind: 'multiplier',
+        label: entry.label || entry.key,
+        group: 'scheme',
+        order: maxOrder,
+        module: entry.module ?? '',
+        params: entry.params,
+        when: entry.when as StageDefinition['when'],
+        enabled: true,
+        overriddenByScheme: true,
+      })
+    }
+    views.push({
+      chainId: resolved.chainId,
+      label: getDamageChainLabel(resolved.chainId) ?? resolved.chainId,
+      stages,
+    })
+  }
+  return views
 }
 
 /** 目标 id → 展示名（角色 / 技能组 / 招式都能翻出名字） */
@@ -340,6 +448,7 @@ const chainRows = computed<ChainRow[]>(() => {
       enabled: true,
       damageKinds: [],
       stages: entriesToStages(entries),
+      schemeChainViews: buildSchemeChainViews(scheme.scope, scheme.targetId, entries),
       overridden: false,
     })
   })
@@ -368,6 +477,7 @@ const chainRows = computed<ChainRow[]>(() => {
       enabled: doc.enabled,
       damageKinds: [],
       stages: entriesToStages(entries),
+      schemeChainViews: buildSchemeChainViews(toZoneScope(doc.scope), doc.target_id, entries),
       zoneSchemeDoc: doc,
       overridden: false,
     })
@@ -816,7 +926,10 @@ onMounted(async () => {
           :key="row.key"
           type="button"
           class="list-item"
-          :class="{ active: selectedRowKey === row.key }"
+          :class="{
+            active: selectedRowKey === row.key,
+            'is-builtin': row.origin === 'builtin' || row.origin === 'zone-builtin',
+          }"
           @click="selectRow(row)"
         >
           <span class="list-name">{{ row.label }}</span>
@@ -851,61 +964,100 @@ onMounted(async () => {
             <template v-if="selectedRow.overridden"> · 该内置链路存在数据库覆盖行</template>
           </p>
 
-          <div class="chain-stage-grid">
-            <div
-              v-for="stage in selectedRow.stages"
-              :key="`stage-${stage.id}`"
-              class="chain-stage-cell"
-              :class="`chain-stage-cell--${stage.kind}`"
-            >
-              <div class="cell-head">
-                <span class="cell-kind">{{ STAGE_KIND_LABELS[stage.kind] ?? stage.kind }}</span>
-                <span class="cell-order">{{ stage.order }}</span>
+          <!-- 整条链路：直接展示链路自身的乘区顺序 -->
+          <template v-if="selectedRow.kind === 'chain'">
+            <div class="chain-stage-grid">
+              <div
+                v-for="stage in selectedRow.stages"
+                :key="`stage-${stage.id}`"
+                class="chain-stage-cell"
+                :class="`chain-stage-cell--${stage.kind}`"
+              >
+                <div class="cell-head">
+                  <span class="cell-kind">{{ STAGE_KIND_LABELS[stage.kind] ?? stage.kind }}</span>
+                  <span class="cell-order">{{ stage.order }}</span>
+                </div>
+                <span class="cell-label">{{ stage.label }}</span>
+                <span class="cell-module mono">{{ stage.module || '—' }}</span>
+                <span v-if="stage.params" class="cell-detail mono">{{ formatParams(stage) }}</span>
+                <span v-if="stage.when" class="cell-detail mono">条件 {{ formatWhen(stage) }}</span>
               </div>
-              <span class="cell-label">{{ stage.label }}</span>
-              <span class="cell-module mono">{{ stage.module || '—' }}</span>
-              <span v-if="stage.params" class="cell-detail mono">
-                {{ selectedRow.kind === 'zoneScheme' ? describeParams(stage.params) : formatParams(stage) }}
-              </span>
-              <span v-if="stage.when" class="cell-detail mono">
-                条件
-                {{ selectedRow.kind === 'zoneScheme' ? describeCondition(stage.when) : formatWhen(stage) }}
-              </span>
             </div>
-          </div>
 
-          <div v-if="selectedRow.kind === 'chain'" class="chain-preview">
-            <div class="chain-preview-head">
-              <strong>预览示例</strong>
-              <select v-model="previewSampleId" class="field-input preview-sample-select">
-                <option v-for="sample in DAMAGE_CHAIN_SAMPLE_HITS" :key="sample.id" :value="sample.id">
-                  {{ sample.label }}
-                </option>
-              </select>
-              <button type="button" class="secondary-btn small" @click="runPreview">计算</button>
+            <div class="chain-preview">
+              <div class="chain-preview-head">
+                <strong>预览示例</strong>
+                <select v-model="previewSampleId" class="field-input preview-sample-select">
+                  <option v-for="sample in DAMAGE_CHAIN_SAMPLE_HITS" :key="sample.id" :value="sample.id">
+                    {{ sample.label }}
+                  </option>
+                </select>
+                <button type="button" class="secondary-btn small" @click="runPreview">计算</button>
+              </div>
+              <p v-if="previewError" class="form-error">{{ previewError }}</p>
+              <template v-if="previewResult">
+                <div class="chain-preview-grid">
+                  <div v-for="stage in previewResult.stages" :key="`preview-${stage.id}`" class="preview-cell">
+                    <span class="preview-kind">{{ STAGE_KIND_LABELS[stage.kind] ?? stage.kind }}</span>
+                    <span class="preview-label">{{ stage.label }}</span>
+                    <span class="preview-value">
+                      {{ Number.isInteger(stage.value) ? stage.value.toLocaleString('en-US') : stage.value }}
+                    </span>
+                  </div>
+                </div>
+                <p class="chain-hint">
+                  示例命中「{{ previewResult.sampleLabel }}」· 合成面板（攻击 3000 / 增伤 50% / 暴击 50%-100%），
+                  与线上真实面板无关。示例最终伤害
+                  {{ Math.round(previewResult.final).toLocaleString('en-US') }}。
+                </p>
+              </template>
             </div>
-            <p v-if="previewError" class="form-error">{{ previewError }}</p>
-            <template v-if="previewResult">
-              <div class="chain-preview-grid">
-                <div v-for="stage in previewResult.stages" :key="`preview-${stage.id}`" class="preview-cell">
-                  <span class="preview-kind">{{ STAGE_KIND_LABELS[stage.kind] ?? stage.kind }}</span>
-                  <span class="preview-label">{{ stage.label }}</span>
-                  <span class="preview-value">
-                    {{ Number.isInteger(stage.value) ? stage.value.toLocaleString('en-US') : stage.value }}
-                  </span>
+          </template>
+
+          <!-- 乘区方案：展示受影响招式的完整链路乘区，被本方案覆盖的格子高亮 -->
+          <template v-else>
+            <p class="chain-hint">
+              下面是受本方案影响的招式所用链路（按伤害类型各列一份），
+              完整乘区顺序取自链路自身；<span class="chain-hint-mark">橙色格子</span>为本方案覆盖 / 新增的乘区。
+            </p>
+            <div
+              v-for="view in selectedRow.schemeChainViews"
+              :key="view.chainId"
+              class="chain-scheme-view"
+            >
+              <p class="chain-scheme-view-head">
+                链路：<strong>{{ view.label }}</strong>
+                <span class="mono">{{ view.chainId }}</span>
+              </p>
+              <div class="chain-stage-grid">
+                <div
+                  v-for="stage in view.stages"
+                  :key="`scheme-${view.chainId}-${stage.id}`"
+                  class="chain-stage-cell"
+                  :class="[
+                    `chain-stage-cell--${stage.kind}`,
+                    { 'is-scheme-override': stage.overriddenByScheme },
+                  ]"
+                >
+                  <div class="cell-head">
+                    <span class="cell-kind">{{ STAGE_KIND_LABELS[stage.kind] ?? stage.kind }}</span>
+                    <span class="cell-order">{{ stage.order }}</span>
+                  </div>
+                  <span v-if="stage.overriddenByScheme" class="cell-scheme-badge">方案覆盖</span>
+                  <span class="cell-label">{{ stage.label }}</span>
+                  <span class="cell-module mono">{{ stage.module || '—' }}</span>
+                  <span v-if="stage.params" class="cell-detail mono">{{ describeParams(stage.params) }}</span>
+                  <span v-if="stage.when" class="cell-detail mono">条件 {{ describeCondition(stage.when) }}</span>
                 </div>
               </div>
-              <p class="chain-hint">
-                示例命中「{{ previewResult.sampleLabel }}」· 合成面板（攻击 3000 / 增伤 50% / 暴击 50%-100%），
-                与线上真实面板无关。示例最终伤害
-                {{ Math.round(previewResult.final).toLocaleString('en-US') }}。
-              </p>
-            </template>
-          </div>
-          <p v-else class="chain-hint">
-            乘区方案只替换链路里的对应乘区（按作用域与条件生效），不单独预览；
-            条目、条件与参数见上方乘区格。
-          </p>
+            </div>
+            <p v-if="!selectedRow.schemeChainViews?.length" class="chain-hint">
+              目标下没有可套用的招式链路，只能看到方案条目本身。
+            </p>
+            <p class="chain-hint">
+              乘区方案只替换对应乘区（按作用域与条件生效），不单独预览结算结果。
+            </p>
+          </template>
         </template>
         <p v-else class="chain-hint">选择左侧链路查看乘区顺序。</p>
       </div>
@@ -984,6 +1136,50 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* 内置链路 / 内置乘区方案：用背景色与数据库行区分 */
+.chain-list .list-item.is-builtin:not(.active) {
+  background: color-mix(in srgb, #6f9fd0 12%, var(--color-background-soft));
+  border-color: color-mix(in srgb, #6f9fd0 34%, var(--color-border));
+}
+
+.chain-scheme-view {
+  margin-bottom: 0.8rem;
+}
+
+.chain-scheme-view-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0.2rem 0 0.35rem;
+  font-size: 0.8rem;
+  color: var(--color-heading);
+}
+
+.chain-scheme-view-head .mono {
+  opacity: 0.7;
+}
+
+.chain-hint-mark {
+  color: #b98a2e;
+  font-weight: 700;
+}
+
+/* 被乘区方案覆盖 / 新增的格子：橙色底 + 描边，与链路自身乘区区分 */
+.chain-stage-cell.is-scheme-override {
+  background: color-mix(in srgb, #c9a55c 16%, var(--color-background-soft));
+  border-color: color-mix(in srgb, #c9a55c 55%, var(--color-border));
+}
+
+.cell-scheme-badge {
+  align-self: flex-start;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: rgba(201, 165, 92, 0.24);
+  color: #b98a2e;
+  font-size: 0.64rem;
+  font-weight: 700;
+}
+
 .chain-display-layout {
   display: grid;
   grid-template-columns: minmax(15rem, 20rem) minmax(0, 1fr);
