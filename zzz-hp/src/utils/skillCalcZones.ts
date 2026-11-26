@@ -2,6 +2,7 @@ import type { SkillDamageType } from '@/types/calculator'
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 import type { DamageCalcResult } from '@/utils/damageCalc'
 import { zoneLabel, type ZoneLabelSource } from '@/zones/display'
+import { BUFF_STAT_FIELDS } from '@/utils/calculatorUi'
 
 export interface SkillCalcZoneRow {
   label: string
@@ -248,8 +249,19 @@ export function buildSkillCalcZoneRows(
       push(rows, '紊乱倍率修正', result.disorderMultFactor)
     }
     push(rows, '紊乱倍率区', result.disorderZone)
-    if ((result.additionalDamageFlat ?? 0) > 0) {
-      push(rows, '附加伤害', result.additionalDamageFlat!, true)
+    const additionalFlat = result.additionalDamageFlat ?? 0
+    if (additionalFlat > 0) {
+      const breakdown = result.additionalDamageBreakdown ?? []
+      const detail = breakdown
+        .map((term) => {
+          const label = BUFF_STAT_FIELDS.find((field) => field.key === term.stat)?.label ?? term.stat
+          return `${label} ${formatZoneValue(term.statValue)} × ${term.ratioPercent}% = ${term.amount.toLocaleString('en-US')}`
+        })
+        .join(' + ')
+      rows.push({
+        label: '附加伤害（基础加法项）',
+        value: `${additionalFlat.toLocaleString('en-US')}${detail ? `（${detail}）` : ''}`,
+      })
     }
     push(rows, '紊乱增伤区', result.disorderDmgBonusZone)
     if (hasCritZone) {

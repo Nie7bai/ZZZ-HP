@@ -166,9 +166,15 @@ try {
   displayError = err instanceof Error ? err.message : String(err)
 }
 check('详情可渲染：计算过程格子不抛 Unmapped event zone', displayError === '', displayError)
+const additionalRow = displayRows.find((row) => row.label.startsWith('附加伤害'))
 check(
   '详情渲染：有附加伤害时出现「附加伤害」格',
-  displayRows.some((row) => row.label === '附加伤害'),
+  Boolean(additionalRow),
+)
+check(
+  '附加伤害格展示组成：来源属性 × 倍率% = 值',
+  Boolean(additionalRow?.value.includes('× 3200% = 12,800')),
+  additionalRow?.value,
 )
 
 console.log(`

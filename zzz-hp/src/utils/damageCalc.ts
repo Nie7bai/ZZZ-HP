@@ -303,6 +303,13 @@ export interface DamageCalcResult {
   anomalyBaseExpected: number
   /** 附加伤害合计（已逐项 round；仅紊乱/极性紊乱有值，其余为 0） */
   additionalDamageFlat?: number
+  /** 附加伤害明细（来源属性值 × 倍率% → 逐项 round 后的固定伤害） */
+  additionalDamageBreakdown?: Array<{
+    stat: CharacterAttrKey
+    statValue: number
+    ratioPercent: number
+    amount: number
+  }>
   /** 是否走蕾米埃尔本人耀变专用公式 */
   remielSelfRadianceActive?: boolean
   remielSelfAnomalyBase?: number
@@ -903,17 +910,23 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   )
 
   // 只有紊乱/乱流才真正采用这组倍率面板（同一份 multPanel 读数在其它子类里只是顺带算出）
-  const additionalDamageFlat = (input.combatAdditionalDamage ?? [])
-    .filter((term) => !term.onlyPolarDisorder || hasPolarDisorder)
-    .reduce(
-      (sum, term) =>
-        sum +
-        Math.round(
-          ((triggerAgentPanel[term.stat as keyof PanelStats] as number | undefined) ?? 0) *
-            (term.ratioPercent / 100),
-        ),
-      0,
-    )
+  const activeAdditionalTerms = (input.combatAdditionalDamage ?? []).filter(
+    (term) => !term.onlyPolarDisorder || hasPolarDisorder,
+  )
+  const additionalDamageBreakdown = activeAdditionalTerms.map((term) => {
+    const statValue =
+      (triggerAgentPanel[term.stat as keyof PanelStats] as number | undefined) ?? 0
+    return {
+      stat: term.stat,
+      statValue,
+      ratioPercent: term.ratioPercent,
+      amount: Math.round(statValue * (term.ratioPercent / 100)),
+    }
+  })
+  const additionalDamageFlat = additionalDamageBreakdown.reduce(
+    (sum, term) => sum + term.amount,
+    0,
+  )
   // 附加项补乘「除基础攻击外的全部基础乘区」（异常基础 / 基础攻击），再进子类增伤与暴击
   const additionZoneFactor =
     triggerParts.baseDamage > 0
@@ -1167,6 +1180,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     disorderCompMultRatio: round(disorder.compMultRatio, 4),
     disorderMultFactor: round(disorder.multFactor, 4),
     additionalDamageFlat,
+    ...(additionalDamageBreakdown.length ? { additionalDamageBreakdown } : {}),
     disorderZone: round(disorder.zone, 4),
     disorderDmgBonusZone: round(disorder.dmgBonusZone, 4),
     disorderCritZone: round(disorder.critZone, 4),

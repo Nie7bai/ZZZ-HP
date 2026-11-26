@@ -1444,6 +1444,7 @@ export function buildEventZoneDisplay(calculation: SkillFlowCalculationDetail): 
     // 帷幕易伤是失衡易伤区的替换口径：标签取结果里的乘区名（带上限），来源仍按 staggerMultiplier 取
     if(!key&&row.label===zoneLabel(d.result,'staggerMultiplier'))key='staggerMultiplier'
     if(!key&&row.label.startsWith('帷幕易伤区'))key='staggerMultiplier'
+    if(!key&&row.label.startsWith('附加伤害'))key='additionalDamageFlat'
     if(finalResult) key=d.kind==='direct'||d.kind==='sharpen'?'directDamageExpected'
       :d.anomalySubKind==='attributeAnomaly'?'attributeAnomalyExpected':d.anomalySubKind==='anomalyRelease'?'anomalyReleaseExpected'
         :d.anomalySubKind==='disorder'?'disorderExpected':d.anomalySubKind==='turbulence'?'turbulenceExpected':'radianceExpected'
