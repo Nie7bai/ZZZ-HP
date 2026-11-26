@@ -1,10 +1,15 @@
 import type { SkillDamageType } from '@/types/calculator'
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 import type { DamageCalcResult } from '@/utils/damageCalc'
+import { zoneLabel, type ZoneLabelSource } from '@/zones/display'
 
 export interface SkillCalcZoneRow {
   label: string
   value: string
+  /** 该行的原始数值（伤害行是伤害值，其余是乘区倍率）；供格子内按值画占比填充条 */
+  zoneValue?: number
+  /** true = 伤害行（期望伤害 / 暴击伤害等），填充条不适用 */
+  isDamage?: boolean
 }
 
 function formatZoneValue(value: number, asDamage = false) {
@@ -21,7 +26,7 @@ function push(
   value: number,
   asDamage = false,
 ) {
-  rows.push({ label, value: formatZoneValue(value, asDamage) })
+  rows.push({ label, value: formatZoneValue(value, asDamage), zoneValue: value, isDamage: asDamage })
 }
 
 /** 乘区是否实质参与（非恒等于 1） */
@@ -112,15 +117,17 @@ export function formatSkillMultZoneAsPercent(zone: number): string {
 }
 
 /**
- * 失衡易伤区标签：叶瞬光指定招式走「帷幕易伤」时带上限说明，
- * 其余（缺省）保持「失衡易伤区」。
+ * 失衡易伤区标签：优先取 `result.zones.staggerMultiplier.label`
+ * （帷幕易伤时结果构建已带上限说明），缺失时按 `staggerZoneKind` / `staggerZoneCap` 现算，
+ * 否则保持「失衡易伤区」。
  */
 export function staggerZoneLabel(
-  result: Pick<DamageCalcResult, 'staggerZoneKind' | 'staggerZoneCap'>,
+  result: Pick<DamageCalcResult, 'staggerZoneKind' | 'staggerZoneCap'> & ZoneLabelSource,
 ): string {
-  if (result.staggerZoneKind !== 'curtain') return '失衡易伤区'
+  if (result.staggerZoneKind !== 'curtain') return zoneLabel(result, 'staggerMultiplier', '失衡易伤区')
   const cap = result.staggerZoneCap
-  return cap != null ? `帷幕易伤区（上限 ${Math.round(cap * 100)}%）` : '帷幕易伤区'
+  const fallback = cap != null ? `帷幕易伤区（上限 ${Math.round(cap * 100)}%）` : '帷幕易伤区'
+  return zoneLabel(result, 'staggerMultiplier', fallback)
 }
 
 function pushCommon(rows: SkillCalcZoneRow[], result: DamageCalcResult) {
@@ -192,6 +199,9 @@ export function buildSkillCalcZoneRows(
     push(rows, '增伤', result.dmgMultiplier)
     if (!result.useSharpenFormula && result.baseDamageSource === 'pierce') {
       push(rows, '贯穿增伤区', result.pierceDmgMultiplier)
+    }
+    if (isActiveZone(result.imbueDmgMultiplier)) {
+      push(rows, '浸染增伤区', result.imbueDmgMultiplier)
     }
     push(rows, result.useSharpenFormula ? '技能倍率区' : '直伤倍率区', result.directDmgMultZone)
     if (!result.useSharpenFormula && result.settlementDmgMultZone > 0) {
@@ -393,6 +403,7 @@ const ZONE_HINTS: Record<string, string> = {
   暴击区: '1 + 暴击率 × 暴击伤害（期望暴击）。',
   锐爆区: '锐化路径的暴击区：1 + 锐爆率 × 锐爆伤害。',
   贯穿增伤区: '贯穿伤害路径的独立增伤乘区。',
+  浸染增伤区: '直伤体系的独立增伤乘区：1 + 浸染增伤% / 100，普通直伤 / 命破 / 锋御都生效，异常链不受影响。',
   技能倍率区: '招式倍率对应的乘区。',
   直伤倍率区: '直伤倍率对应的乘区。',
   决算倍率区: '决算倍率（结算额外倍率）。',

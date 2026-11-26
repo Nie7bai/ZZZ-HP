@@ -319,6 +319,13 @@ export interface DamageCalcHistoryEntry {
   origin?: 'preset' | 'user'
   /** 来源共用方案 id（仅展示 / 溯源；不参与计算） */
   sharedPresetId?: string
+  /**
+   * 保存时生效的运行时乘区方案版本（库里已启用方案的最高 `version`；没有运行时方案时不写）。
+   * 只用于溯源：加载与计算都不读这个字段。
+   */
+  zoneSchemeVersion?: number
+  /** 保存时生效的运行时计算链路版本（`chainId → version`；内置链路不在其中） */
+  damageChainVersions?: Record<string, number>
 }
 
 /** 目录节点元数据 */

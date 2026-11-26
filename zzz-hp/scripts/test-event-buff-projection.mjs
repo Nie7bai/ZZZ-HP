@@ -292,9 +292,15 @@ for (const mode of ['ordinary', 'extra-team']) {
   const numeric = evaluateSkillFlowHit(fixture.context, null, hit, false)
   const detailed = evaluateSkillFlowHit(fixture.context, null, hit, true)
   check(`${mode}｜totalMods 逐属性相等`,
-    Object.keys(numeric.breakdown.totalMods).every((key) =>
-      near(numeric.breakdown.totalMods[key] ?? 0, detailed.breakdown.totalMods[key] ?? 0)),
+    Object.keys(numeric.breakdown.totalMods)
+      .filter((key) => typeof numeric.breakdown.totalMods[key] === 'number')
+      .every((key) =>
+        near(numeric.breakdown.totalMods[key] ?? 0, detailed.breakdown.totalMods[key] ?? 0)),
     JSON.stringify({ numeric: numeric.breakdown.totalMods, detailed: detailed.breakdown.totalMods }))
+  check(`${mode}｜totalMods.custom 相等`,
+    JSON.stringify(numeric.breakdown.totalMods.custom ?? {}) ===
+      JSON.stringify(detailed.breakdown.totalMods.custom ?? {}),
+    '')
   check(`${mode}｜finalPanel 逐属性相等`,
     Object.keys(numeric.finalPanel).every((key) =>
       typeof numeric.finalPanel[key] !== 'number' || near(numeric.finalPanel[key], detailed.finalPanel[key])),

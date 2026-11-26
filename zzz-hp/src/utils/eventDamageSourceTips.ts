@@ -1,7 +1,9 @@
-import { buildSkillCalcZoneRows, staggerZoneLabel, type SkillCalcZoneRow } from '@/utils/skillCalcZones'
+import { buildSkillCalcZoneRows, type SkillCalcZoneRow } from '@/utils/skillCalcZones'
+import { zoneLabel } from '@/zones/display'
 import type { SkillFlowCalculationDetail } from '@/utils/skillFlowCalculation'
 import type { EventDamageInputUsage, BuffModSource } from '@/utils/panelBuffCalc'
 import { createEmptyBuffStatModifiers } from '@/utils/calculatorUi'
+import { addStat } from '@/utils/buffEffect'
 import { createEmptyExternalPanel, type PanelStats } from '@/types/calculatorPanel'
 import { buildSkillBaseMultNote } from '@/utils/skillTalentLevels'
 import { buildAtkPanelProcessItems, buildDefPanelProcessItems, buildEnemyCombatProcessItems, buildStatSourceGroups, type StatSourceGroup } from '@/utils/statSourceTips'
@@ -67,6 +69,7 @@ export type ValueTipsKey =
   | 'radianceCritZone'
   | 'mutationZone'
   | 'pierceDmgMultiplier'
+  | 'imbueDmgMultiplier'
   | 'sharpenDmgMultiplier'
   | 'remielSelfInCombatAtk'
   | 'remielSelfInCombatMasteryZone'
@@ -127,8 +130,7 @@ export function buildEventValueTips(calculation: SkillFlowCalculationDetail): Re
       }
     }
     const sources: BuffModSource[] = records.filter(record => record.usedInputs.some(u => selectedKeys.has(identity(u)))).map(record => {
-      const mods = createEmptyBuffStatModifiers()
-      mods[record.stat] = record.amount
+      const mods = addStat(createEmptyBuffStatModifiers(), record.stat, record.amount)
       const original = views[record.viewKey]?.sources.find(source => source.effects?.some(effect => effect.id === record.effectId))
       return { key: record.viewKey+'|'+record.effectId, label: original?.label ?? record.providerName,
         mods, note: original?.note, effects: original?.effects?.filter(effect => effect.id === record.effectId) }
@@ -164,7 +166,7 @@ export function buildEventValueTips(calculation: SkillFlowCalculationDetail): Re
     remielIsMb: d.remielIsMb, skillMultLevelNote: buildSkillBaseMultNote(d.hit.skill,d.hit.skillTalentLevel),
   }
   const p = d.result
-  const staggerZoneName = staggerZoneLabel(p)
+  const staggerZoneName = zoneLabel(p, 'staggerMultiplier')
   const sub = d.anomalySubKind
   const ownerPanel = owner.panel, ownerExternal = owner.external, ownerSources = owner.sources
   const panel = base.panel, external = base.external, sources = base.sources
@@ -203,6 +205,7 @@ const directFormulaParts = (() => {
     formatFormulaNumber(p.directVulnerableMultiplier),
     formatFormulaNumber(p.critMultiplier),
     formatFormulaNumber(p.specialMultiplier),
+    formatFormulaNumber(p.imbueDmgMultiplier),
   ]
   if (p.baseDamageSource === 'pierce') {
     parts.push(formatFormulaNumber(p.pierceDmgMultiplier))
@@ -670,6 +673,21 @@ const disorderFormulaParts = (() => {
         zone: p.pierceDmgMultiplier,
       }),
     ),
+    imbueDmgMultiplier: withTotal(
+      [
+        {
+          label: '乘区说明',
+          items: ['直伤体系的独立增伤乘区：普通直伤 / 命破 / 锋御都生效，异常链不受影响'],
+        },
+        ...buildStatSourceGroups({
+          keys: ['imbueDmgBonus'],
+          externalPanel: external,
+          sources,
+          externalKeyMap: { imbueDmgBonus: null },
+        }),
+      ],
+      `浸染增伤区 ${formatFormulaNumber(p.imbueDmgMultiplier)}`,
+    ),
     sharpenDmgMultiplier: withTotal(
       [
         {
@@ -789,6 +807,7 @@ const disorderFormulaParts = (() => {
           `通用乘区 ${directFormulaParts[0]}`,
           `${p.useSharpenFormula ? '锐爆区' : '暴击区'} ${directFormulaParts[1]}`,
           `特殊乘区 ${directFormulaParts[2]}`,
+          `浸染增伤区 ${formatFormulaNumber(p.imbueDmgMultiplier)}`,
           ...(p.useSharpenFormula
             ? [`锐化伤害提升区 ${formatFormulaNumber(p.sharpenDmgMultiplier)}`]
             : p.baseDamageSource === 'pierce'
@@ -1388,6 +1407,7 @@ const zoneTipKeys: Record<string, ValueTipsKey> = {
   易伤区:'vulnerableMultiplier',
   失衡易伤区:'staggerMultiplier',特殊乘区:'specialMultiplier',特殊倍率乘区:'specialMultZone',
   暴击区:'critMultiplier',锐爆区:'critMultiplier',贯穿增伤区:'pierceDmgMultiplier',
+  浸染增伤区:'imbueDmgMultiplier',
   技能倍率区:'directDmgMultZone',直伤倍率区:'directDmgMultZone',决算倍率区:'settlementDmgMultZone',
   精通区:'masteryZone',等级区:'levelZone',异化系数:'mutationZone',异化系数区:'mutationZone',
   属性异常增伤区:'attributeAnomalyDmgBonusZone',属性异常倍率区:'attributeAnomalyMultZone',属性异常暴击区:'attributeAnomalyCritZone',
@@ -1407,7 +1427,8 @@ export function buildEventZoneDisplay(calculation: SkillFlowCalculationDetail): 
   return buildSkillCalcZoneRows(d.result,d.hit.skill.damageType).filter(row=>row.label!=='通用乘区').map(row=>{
     const finalResult=['期望伤害','暴击伤害','不暴击伤害'].includes(row.label)
     let key=zoneTipKeys[row.label]
-    // 帷幕易伤是失衡易伤区的替换口径：标签带上限，来源仍按 staggerMultiplier 取
+    // 帷幕易伤是失衡易伤区的替换口径：标签取结果里的乘区名（带上限），来源仍按 staggerMultiplier 取
+    if(!key&&row.label===zoneLabel(d.result,'staggerMultiplier'))key='staggerMultiplier'
     if(!key&&row.label.startsWith('帷幕易伤区'))key='staggerMultiplier'
     if(finalResult) key=d.kind==='direct'||d.kind==='sharpen'?'directDamageExpected'
       :d.anomalySubKind==='attributeAnomaly'?'attributeAnomalyExpected':d.anomalySubKind==='anomalyRelease'?'anomalyReleaseExpected'

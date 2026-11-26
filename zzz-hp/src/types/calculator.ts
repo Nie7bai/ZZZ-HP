@@ -37,6 +37,7 @@ export type AdminCalculatorPanel =
   | 'skill-library'
   | 'affix-preset'
   | 'shared-schemes'
+  | 'zones'
   | 'import-export'
   | 'nanoka'
   | 'nanoka-buffs'
@@ -288,6 +289,8 @@ export interface BuffStatModifiers {
   pierce: number
   /** 贯穿增伤% */
   pierceDmgBonus: number
+  /** 浸染增伤%（独立乘区，仅直伤体系：普通直伤 / 命破 / 锋御） */
+  imbueDmgBonus: number
   /** 锐化伤害提升%（独立乘区，仅锐化路径；锋御专属，对标命破贯穿增伤） */
   sharpenDmgBonus: number
   /**
@@ -391,9 +394,23 @@ export interface BuffStatModifiers {
   specialMultFactor: number
   /** 异化系数乘算修正（默认 1） */
   mutationCoeffFactor: number
+  /**
+   * 自定义乘区增益（Phase 3b）：键由乘区定义登记，例如 `eliteDmgBonus`。
+   * 与强类型字段分离，避免污染 `BuffStatKey`；聚合后随 `combatMods` 传入计算。
+   */
+  custom?: Record<string, number>
 }
 
-export type BuffStatKey = keyof BuffStatModifiers
+/** 内置（强类型）增益键；`custom` 走乘区定义，不属于此联合 */
+export type BuffStatKey = Exclude<keyof BuffStatModifiers, 'custom'>
+
+/**
+ * 乘区定义登记的增益键（Phase 3b 命名空间）。
+ *
+ * 效果里写 `custom:<key>`，应用时落到 `BuffStatModifiers.custom[<key>]`（百分点加总），
+ * 与内置键隔离，避免自定义乘区与强类型字段撞名。
+ */
+export type CustomBuffStatKey = `custom:${string}`
 
 export interface BuffEffectConvert {
   from: ConvertFromKey
@@ -470,7 +487,8 @@ export interface BuffEffect {
   /** 属性限定（属性增伤/属性异常增伤/抗性穿透等）；可多选 */
   elementFilter?: 'all' | string[]
   kind: BuffEffectKind
-  stat: BuffStatKey
+  /** 内置键，或乘区定义登记的自定义键 `custom:<key>` */
+  stat: BuffStatKey | CustomBuffStatKey
   value?: number
   stackable?: boolean
   maxStacks?: number

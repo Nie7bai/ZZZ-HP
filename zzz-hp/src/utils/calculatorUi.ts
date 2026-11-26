@@ -345,6 +345,12 @@ export const BUFF_STAT_FIELDS: {
     hint: '独立乘区，仅当直伤基础来源为贯穿力时生效，不进增伤区',
   },
   {
+    key: 'imbueDmgBonus',
+    label: '浸染增伤',
+    unit: 'percent',
+    hint: '独立乘区，直伤 / 命破 / 锋御都生效，只作用于直伤体系，不进增伤区',
+  },
+  {
     key: 'sharpenDmgBonus',
     label: '锐化伤害提升',
     unit: 'percent',
@@ -563,6 +569,7 @@ export function createEmptyBuffStatModifiers(): BuffStatModifiers {
     energyRegenFlat: 0,
     pierce: 0,
     pierceDmgBonus: 0,
+    imbueDmgBonus: 0,
     sharpenDmgBonus: 0,
     sharpenCritDmgBonus: 0,
     dmgPenalty: 0,
@@ -614,6 +621,7 @@ export function createEmptyBuffStatModifiers(): BuffStatModifiers {
     radianceMultFactor: 0,
     specialMultFactor: 0,
     mutationCoeffFactor: 0,
+    custom: {},
   }
 }
 
@@ -758,6 +766,14 @@ export function mergeBuffStatModifiers(
       result[field.key] += Number.isFinite(src) ? src : 0
     }
   }
+  // 自定义乘区增益键（Phase 3b）：按 key 加算，非法值忽略
+  const custom = { ...(target.custom ?? {}) }
+  for (const [key, value] of Object.entries(source.custom ?? {})) {
+    const amount = Number(value)
+    if (!Number.isFinite(amount)) continue
+    custom[key] = (custom[key] ?? 0) + amount
+  }
+  result.custom = custom
   return result
 }
 

@@ -11,6 +11,7 @@ import AdminSkillSubcategoryPanel from '@/components/admin/calculator/AdminSkill
 import AdminSkillLibraryPanel from '@/components/admin/calculator/AdminSkillLibraryPanel.vue'
 import AdminAffixPresetPanel from '@/components/admin/calculator/AdminAffixPresetPanel.vue'
 import AdminSharedSchemePanel from '@/components/admin/calculator/AdminSharedSchemePanel.vue'
+import AdminZoneSchemePanel from '@/components/admin/calculator/AdminZoneSchemePanel.vue'
 import AdminBuffImportExportPanel from '@/components/admin/calculator/AdminBuffImportExportPanel.vue'
 import AdminNanokaCollectPanel from '@/components/admin/calculator/AdminNanokaCollectPanel.vue'
 import AdminNanokaBuffPanel from '@/components/admin/calculator/AdminNanokaBuffPanel.vue'
@@ -198,6 +199,7 @@ async function handleSkillLibraryAction(actionId: 'save' | 'delete') {
         <AdminSkillLibraryPanel v-show="activePanel === 'skill-library'" ref="skillLibraryPanelRef" />
         <AdminAffixPresetPanel v-show="activePanel === 'affix-preset'" />
         <AdminSharedSchemePanel v-if="activePanel === 'shared-schemes'" />
+        <AdminZoneSchemePanel v-if="activePanel === 'zones'" />
         <AdminBuffImportExportPanel v-show="activePanel === 'import-export'" />
         <AdminNanokaCollectPanel v-show="activePanel === 'nanoka'" />
         <AdminNanokaBuffPanel v-show="activePanel === 'nanoka-buffs'" />

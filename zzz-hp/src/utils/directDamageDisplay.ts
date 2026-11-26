@@ -3,6 +3,7 @@ import type { PanelStats } from '@/types/calculatorPanel'
 import type { DamageCalcResult } from '@/utils/damageCalc'
 import { multFactorPercentToRatio } from '@/utils/multFactorPercent'
 import { pickEventCritMultiplier, pickEventDamage } from '@/utils/damageEvent'
+import { zoneLabel } from '@/zones/display'
 import {
   normalizeSkillSubcategoryMultFields,
   unsetSkillMult,
@@ -64,6 +65,7 @@ export function computeDirectBaseChain(p: DamageCalcResult, critMode: DamageEven
       Math.max(0, p.directVulnerableMultiplier) *
       critMultiplier *
       Math.max(0, p.specialMultiplier) *
+      Math.max(0, p.imbueDmgMultiplier) *
       Math.max(0, p.sharpenDmgMultiplier)
     )
   }
@@ -72,6 +74,7 @@ export function computeDirectBaseChain(p: DamageCalcResult, critMode: DamageEven
     Math.max(0, p.directVulnerableMultiplier) *
     critMultiplier *
     Math.max(0, p.specialMultiplier) *
+    Math.max(0, p.imbueDmgMultiplier) *
     Math.max(0, p.pierceDmgMultiplier)
   )
 }
@@ -82,6 +85,7 @@ export function buildDirectBaseChainFactorLabels(p: DamageCalcResult): string[] 
     String(p.directVulnerableMultiplier),
     String(p.critMultiplier),
     String(p.specialMultiplier),
+    String(p.imbueDmgMultiplier),
   ]
   if (p.useSharpenFormula) {
     parts.push(String(p.sharpenDmgMultiplier))
@@ -100,49 +104,56 @@ export function buildAlignedDirectFormulaGroup(
 ): AlignedDirectFormulaGroup {
   const baseTerms: DirectFormulaTerm[] = [
     {
-      label: '通用乘区',
+      label: zoneLabel(p, 'generalMultiplier', '通用乘区'),
       value: formatFormulaNumber(p.generalMultiplier, 2),
       tipsKey: 'generalMultiplier',
     },
     {
-      label: '易伤区',
+      label: zoneLabel(p, 'vulnerableMultiplier', '易伤区'),
       value: formatFormulaNumber(p.directVulnerableMultiplier),
       tipsKey: 'directVulnerableMultiplier',
     },
     {
-      label: p.useSharpenFormula ? '锐爆区' : '暴击区',
+      label: p.useSharpenFormula
+        ? zoneLabel(p, 'sharpenCritZone', '锐爆区')
+        : zoneLabel(p, 'critMultiplier', '暴击区'),
       value: formatFormulaNumber(pickEventCritMultiplier(p, 'direct', critMode)),
       tipsKey: 'critMultiplier',
     },
     {
-      label: '特殊乘区',
+      label: zoneLabel(p, 'specialMultiplier', '特殊乘区'),
       value: formatFormulaNumber(p.specialMultiplier),
       tipsKey: 'specialMultiplier',
+    },
+    {
+      label: zoneLabel(p, 'imbueDmgMultiplier', '浸染增伤区'),
+      value: formatFormulaNumber(p.imbueDmgMultiplier),
+      tipsKey: 'imbueDmgMultiplier',
     },
   ]
   if (p.useSharpenFormula) {
     baseTerms.push({
-      label: '锐化伤害提升区',
+      label: zoneLabel(p, 'sharpenDmgMultiplier', '锐化伤害提升区'),
       value: formatFormulaNumber(p.sharpenDmgMultiplier),
       tipsKey: 'sharpenDmgMultiplier',
     })
   } else if (p.baseDamageSource === 'pierce') {
     baseTerms.push({
-      label: '贯穿增伤区',
+      label: zoneLabel(p, 'pierceDmgMultiplier', '贯穿增伤区'),
       value: formatFormulaNumber(p.pierceDmgMultiplier),
       tipsKey: 'pierceDmgMultiplier',
     })
   }
 
   const directZone: DirectFormulaTerm = {
-    label: '直伤倍率区',
+    label: zoneLabel(p, 'directDmgMultZone', '直伤倍率区'),
     value: formatFormulaNumber(p.directDmgMultZone),
     tipsKey: 'directDmgMultZone',
   }
   const settlementZone: DirectFormulaTerm | null =
     p.settlementDmgMultZone > 0
       ? {
-          label: '决算倍率区',
+          label: zoneLabel(p, 'settlementDmgMultZone', '决算倍率区'),
           value: formatFormulaNumber(p.settlementDmgMultZone),
           tipsKey: 'settlementDmgMultZone',
         }

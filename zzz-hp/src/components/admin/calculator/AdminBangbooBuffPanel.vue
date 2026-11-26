@@ -13,6 +13,7 @@ import type {
   BuffEffectBlock,
 } from '@/types/calculator'
 import {
+  addStat,
   flatModsToEffects,
   flattenEffectBlocks,
   normalizeBuffEffectBlocks,
@@ -151,10 +152,11 @@ function createNew() {
 }
 
 function effectsToMods(list: BuffEffect[]) {
-  const mods = createEmptyBuffStatModifiers()
+  let mods = createEmptyBuffStatModifiers()
   for (const effect of list) {
     const amount = Number(effect.value ?? effect.valuePerStack) || 0
-    if (amount) mods[effect.stat] += amount
+    // addStat 同时处理内置键与 `custom:<key>` 自定义乘区键
+    if (amount) mods = addStat(mods, effect.stat, amount)
   }
   return mods
 }

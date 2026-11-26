@@ -26,6 +26,7 @@ import {
   type CollectedEffect,
 } from '@/utils/panelBuffCalc'
 import { BUFF_STAT_FIELDS, buffStatFieldLabel } from '@/utils/calculatorUi'
+import { buffStatLabelOf } from '@/utils/buffStatZones'
 import type { ConvertResolveInputs, EffectParameterInputs, ResolvedEffectParameters, EventEffectSummary } from '@/utils/panelBuffCalc'
 import { formatCalcSigned } from '@/utils/calcNumberFormat'
 
@@ -167,7 +168,8 @@ export interface FlowBuffEffectTextOptions {
 /** 属性名（与单元格其它位置同一套标签，避免两处叫法不同） */
 function summaryStatLabelFn(stat: Parameters<typeof buffStatFieldLabel>[0]['key'] | string): string {
   const field = BUFF_STAT_FIELDS.find((entry) => entry.key === stat)
-  return field ? buffStatFieldLabel(field) : String(stat)
+  // 自定义乘区键回落到乘区定义登记的 label（不暴露 `custom:` 内部键）
+  return field ? buffStatFieldLabel(field) : buffStatLabelOf(stat)
 }
 
 function summaryStatLabel(summary: EventEffectSummary): string {
@@ -257,7 +259,7 @@ export function buildFlowBuffEffectText(
   return formatBuffEffectResultText(effect, amountText, {
     statLabelFn: (stat) => {
       const field = BUFF_STAT_FIELDS.find((entry) => entry.key === stat)
-      return field ? buffStatFieldLabel(field) : String(stat)
+      return field ? buffStatFieldLabel(field) : buffStatLabelOf(stat)
     },
     skillSubcategories: options.skillSubcategories,
     // 与弹窗一致：非全局作用期加 [失衡期] / [非失衡期] 前缀（全局不加，避免噪音）

@@ -71,6 +71,7 @@ import {
   SUPPORT_STAT_OPTIONS,
 } from '@/utils/calculatorUi'
 import {
+  addStat,
   flatModsToEffects,
   flattenEffectBlocks,
   normalizeBuffEffectBlocks,
@@ -294,10 +295,10 @@ function normalizeBangboo(item: Record<string, unknown>): BangbooBuffDoc {
     refinementEffects.push([])
   }
 
-  const mergedFixed = normalizeBuffStatModifiers({})
+  let mergedFixed = normalizeBuffStatModifiers({})
   for (const effect of effects) {
     const amount = Number(effect.value ?? effect.valuePerStack) || 0
-    if (amount) mergedFixed[effect.stat] += amount
+    if (amount) mergedFixed = addStat(mergedFixed, effect.stat, amount)
   }
 
   return {
@@ -313,10 +314,10 @@ function normalizeBangboo(item: Record<string, unknown>): BangbooBuffDoc {
     refinementEffects: refinementEffects.slice(0, REFINEMENT_RANKS.length),
     fixedMods: Object.values(mergedFixed).some((v) => v) ? mergedFixed : fixedMods,
     refinementMods: refinementEffects.slice(0, REFINEMENT_RANKS.length).map((list) => {
-      const mods = normalizeBuffStatModifiers({})
+      let mods = normalizeBuffStatModifiers({})
       for (const effect of list) {
         const amount = Number(effect.value ?? effect.valuePerStack) || 0
-        if (amount) mods[effect.stat] += amount
+        if (amount) mods = addStat(mods, effect.stat, amount)
       }
       return mods
     }),
@@ -342,10 +343,10 @@ function normalizeDriveDisc(item: Record<string, unknown>): DriveDiscBuffDoc {
       `${discId || 'disc'}-2pc`,
     )
   } else if (twoPieceEffects.length) {
-    const mods = normalizeBuffStatModifiers({})
+    let mods = normalizeBuffStatModifiers({})
     for (const effect of twoPieceEffects) {
       const amount = Number(effect.value ?? effect.valuePerStack) || 0
-      if (amount) mods[effect.stat] += amount
+      if (amount) mods = addStat(mods, effect.stat, amount)
     }
     twoPieceMods = normalizeTwoPieceMods(mods)
   }

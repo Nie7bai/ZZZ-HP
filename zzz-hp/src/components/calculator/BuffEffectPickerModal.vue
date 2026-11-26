@@ -17,6 +17,7 @@ import { formatBuffEffectResultText, formatApplySituationLabel } from '@/utils/b
 import { formatCalcSigned } from '@/utils/calcNumberFormat'
 import type { SkillTalentLevels } from '@/utils/skillTalentLevels'
 import { buffStatFieldLabel, BUFF_STAT_FIELDS } from '@/utils/calculatorUi'
+import { buffStatLabelOf } from '@/utils/buffStatZones'
 import { CONVERT_FROM_OPTIONS } from '@/types/calculator'
 
 const props = defineProps<{
@@ -73,7 +74,8 @@ watch(availableGroups, (groups) => {
 
 function statLabel(stat: string) {
   const field = BUFF_STAT_FIELDS.find((item) => item.key === stat)
-  return field ? buffStatFieldLabel(field) : stat
+  // 自定义乘区键回落到乘区定义登记的 label
+  return field ? buffStatFieldLabel(field) : buffStatLabelOf(stat)
 }
 
 function attrLabel(from: string) {
