@@ -405,7 +405,10 @@ check('挽昼二影两条增益按自身与仅队友分别结算，换位后仍�
   assert.equal(entries[0].skillTargets, undefined)
   assert.deepEqual(entries[1].skillTargets, [{ category: 'destruction', subcategoryId: null }])
   const old = { ...entries[1], id: entries[0].id, applyTarget: 'team', skillTargetsOnlyForTeammates: true }
-  assert.deepEqual(normalizeBuffEffects([old]).map(shape), entries.map(shape))
+  assert.deepEqual(normalizeBuffEffects([old]).map(shape), [
+    shape(entries[0]),
+    shape({ ...entries[1], id: `${old.id}:teammates` }),
+  ])
   assert.deepEqual(normalizeBuffEffects([old], false).map(shape), [shape(old)])
 
   const configuration = adaptZoneSchemes({ version: 1, definitions, schemes })
