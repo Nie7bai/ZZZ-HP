@@ -118,7 +118,7 @@ test('ADV_MAP / ELEMENT_CONSTANTS 键位与工具一致', () => {
 
 // ---------------------------------------------------------------- 索引比对（不依赖夹具）
 
-test('diffNanokaIndexAgainstLocal：角色按 code 小写 / 中文名归一化匹配本地 id 与 name', () => {
+test('diffNanokaIndexAgainstLocal：匹配本地条目，排除「未选择」音擎并保留实际多出项', () => {
   const charIndex = {
     1041: { code: 'Soldier 11', zh: '「11号」', element: 201, type: 1, rank: 4 },
     1611: { code: 'Claret', zh: '克拉蕾', element: 203, type: 7, rank: 4 },
@@ -126,6 +126,7 @@ test('diffNanokaIndexAgainstLocal：角色按 code 小写 / 中文名归一化�
   }
   const weaponIndex = {
     13022: { zh: '烛光诡计', en: 'Candlelit Scheme', rank: 3, atk: 24, sub: '防御力' },
+    14143: { zh: '云霓孤光', en: 'Cloudcleave Radiance', rank: 4, atk: 743, sub: 'CRIT DMG' },
     99999: { zh: '假想音擎', en: 'Fake Wengine', rank: 4, atk: 48, sub: '暴击率' },
   }
   const diff = diffNanokaIndexAgainstLocal({
@@ -140,6 +141,8 @@ test('diffNanokaIndexAgainstLocal：角色按 code 小写 / 中文名归一化�
     ],
     wengines: [
       { id: 'Candlelit_Scheme', name: '烛光诡计' },
+      { id: 'cloudcleave-radiance', name: '云霓孤光' },
+      { id: 'none', name: '未选择' },
       { id: 'Old_One', name: '过气音擎' },
     ],
   })

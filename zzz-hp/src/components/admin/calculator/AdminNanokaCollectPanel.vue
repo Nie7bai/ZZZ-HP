@@ -356,14 +356,7 @@ const collectDoneCount = computed(
 const collectFailedCount = computed(
   () => checkedScanRows.value.filter((row) => row.status === 'failed').length,
 )
-const scanLocalExtra = computed(() => {
-  const result = scanResult.value
-  if (!result) return []
-  return [
-    ...result.extraLocalAgents.map((item) => ({ ...item, kindLabel: '角色' })),
-    ...result.extraLocalWengines.map((item) => ({ ...item, kindLabel: '音擎' })),
-  ]
-})
+const scanLocalExtraAgents = computed(() => scanResult.value?.extraLocalAgents ?? [])
 
 function canCheck(field: NanokaPreviewField) {
   return CHECKABLE_STATUSES.includes(field.status)
@@ -1458,11 +1451,20 @@ async function retrySkillRow(row: SkillGapRow) {
                 : '点击「扫描」查找待采集的对象。'
           }}
         </p>
-        <details v-if="scanLocalExtra.length || unsupportedNotes.length" class="collection-details">
-          <summary>采集提示（{{ scanLocalExtra.length + unsupportedNotes.length }}）</summary>
+        <div v-if="scanResult?.extraLocalWengines.length" class="collect-extra">
+          <p class="io-hint">本地多出音擎（{{ scanResult.extraLocalWengines.length }}）</p>
           <ul class="legend">
-            <li v-for="item in scanLocalExtra" :key="item.kindLabel + item.id">
-              {{ item.name }}（{{ item.kindLabel }}）：nanoka 索引未收录，保留本地数据。
+            <li v-for="item in scanResult.extraLocalWengines" :key="item.id">{{ item.name }}</li>
+          </ul>
+        </div>
+        <details
+          v-if="scanLocalExtraAgents.length || unsupportedNotes.length"
+          class="collection-details"
+        >
+          <summary>采集提示（{{ scanLocalExtraAgents.length + unsupportedNotes.length }}）</summary>
+          <ul class="legend">
+            <li v-for="item in scanLocalExtraAgents" :key="item.id">
+              {{ item.name }}（角色）：nanoka 索引未收录，保留本地数据。
             </li>
             <li v-for="note in unsupportedNotes" :key="note">{{ note }}</li>
           </ul>
