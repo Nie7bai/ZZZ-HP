@@ -423,6 +423,15 @@ export interface BuffEffectConvert {
   defaultBase?: number | null
   /** 转模初始值：仅超出该值的部分参与折算，默认 0（旧数据缺省同 0） */
   initialBase?: number | null
+  /**
+   * 比例随技能等级：来源大类（缺省 = 固定比例）。
+   * 有效比例 = ratioPercent + ratioPercentPerLevel × (等级 − 1)。
+   */
+  ratioLevelSource?: SkillConvertFromKey
+  /** 每级比例增量（百分点）；仅 ratioLevelSource 有值时生效 */
+  ratioPercentPerLevel?: number
+  /** 上限每级增量；仅 ratioLevelSource 有值且 cap 非空时生效 */
+  capPerLevel?: number
 }
 
 /** 招式作用目标（可多选） */

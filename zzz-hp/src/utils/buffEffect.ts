@@ -515,9 +515,17 @@ export function resolveConvertValueDetail(
     final?: Partial<Record<CharacterAttrKey, number>>
   },
   skillTalentLevels?: Partial<SkillTalentLevels> | null,
-): { amount: number; base: number; source: 'manual' | 'external' | 'final' | 'skillLevel' | 'default'; stage: 'manual' | 'external' | 'preConvert' | 'skillLevel' } {
+): {
+    amount: number
+    base: number
+    source: 'manual' | 'external' | 'final' | 'skillLevel' | 'default'
+    stage: 'manual' | 'external' | 'preConvert' | 'skillLevel'
+    /** 实际采用的比例 / 上限（随技能等级换算后） */
+    ratioPercent: number
+    cap: number | null
+  } {
   if (effect.kind !== 'convert' || !effect.convert) {
-    return { amount: 0, base: 0, source: 'default', stage: 'manual' }
+    return { amount: 0, base: 0, source: 'default', stage: 'manual', ratioPercent: 0, cap: null }
   }
   const source = effect.convert.panelSource ?? 'external'
   let from: number
@@ -568,14 +576,35 @@ export function resolveConvertValueDetail(
     effect.convert.initialBase != null && Number.isFinite(effect.convert.initialBase)
       ? effect.convert.initialBase
       : 0
+  // 比例 / 上限随技能等级：L1 取配置值，每级按增量线性增长（缺省级来源 = 固定比例）
+  const ratioLevelSource = effect.convert.ratioLevelSource
+  const ratioLevel = (() => {
+    if (!ratioLevelSource) return 1
+    const talentKey = SKILL_CONVERT_FROM_TO_TALENT_KEY[ratioLevelSource]
+    const raw = Number(skillTalentLevels?.[talentKey])
+    return Number.isFinite(raw) && raw > 0 ? raw : 1
+  })()
+  const ratioPercent =
+    effect.convert.ratioPercent + (effect.convert.ratioPercentPerLevel ?? 0) * (ratioLevel - 1)
+  const cap =
+    effect.convert.cap != null && Number.isFinite(effect.convert.cap)
+      ? effect.convert.cap + (effect.convert.capPerLevel ?? 0) * (ratioLevel - 1)
+      : null
   const convertible = Math.max(0, from - initialBase)
-  let amount = (convertible * effect.convert.ratioPercent) / 100
-  if (effect.convert.cap != null && Number.isFinite(effect.convert.cap)) {
-    const magnitudeCap = Math.abs(effect.convert.cap)
+  let amount = (convertible * ratioPercent) / 100
+  if (cap != null) {
+    const magnitudeCap = Math.abs(cap)
     amount = Math.max(-magnitudeCap, Math.min(amount, magnitudeCap))
   }
   // 转模结果统一到 4 位小数，与界面展示一致
-  return { amount: roundCalc(amount), base: from, source: baseSource, stage }
+  return {
+    amount: roundCalc(amount),
+    base: from,
+    source: baseSource,
+    stage,
+    ratioPercent: roundCalc(ratioPercent),
+    cap: cap == null ? null : roundCalc(cap),
+  }
 }
 
 /**
@@ -1112,10 +1141,36 @@ function normalizeConvert(value: unknown): BuffEffect['convert'] {
   const capRaw = entry.cap
   const defaultBaseRaw = entry.defaultBase
   const initialBaseRaw = entry.initialBase
+  const ratioLevelRaw = entry.ratioLevelSource
+  const ratioPercentPerLevelRaw = entry.ratioPercentPerLevel
+  const capPerLevelRaw = entry.capPerLevel
   return {
     from,
     panelSource,
     ratioPercent: readNumber(entry.ratioPercent),
+    ratioLevelSource:
+      typeof ratioLevelRaw === 'string' && isSkillConvertFromKey(ratioLevelRaw)
+        ? ratioLevelRaw
+        : undefined,
+    // 0 / 缺省不落字段：保持旧数据的序列化形状不变
+    ...(((ratioPercentPerLevelRaw == null || ratioPercentPerLevelRaw === ''
+      ? 0
+      : readNumber(ratioPercentPerLevelRaw)) || 0) !== 0
+      ? {
+          ratioPercentPerLevel:
+            ratioPercentPerLevelRaw == null || ratioPercentPerLevelRaw === ''
+              ? 0
+              : readNumber(ratioPercentPerLevelRaw),
+        }
+      : {}),
+    ...(((capPerLevelRaw == null || capPerLevelRaw === ''
+      ? 0
+      : readNumber(capPerLevelRaw)) || 0) !== 0
+      ? {
+          capPerLevel:
+            capPerLevelRaw == null || capPerLevelRaw === '' ? 0 : readNumber(capPerLevelRaw),
+        }
+      : {}),
     cap: capRaw == null || capRaw === '' ? null : readNumber(capRaw),
     defaultBase:
       defaultBaseRaw == null || defaultBaseRaw === '' ? null : readNumber(defaultBaseRaw),

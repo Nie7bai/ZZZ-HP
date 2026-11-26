@@ -251,6 +251,19 @@ export function sanitizeEffect(input, index = 0) {
       from,
       panelSource: CONVERT_PANEL_SOURCES.has(convert.panelSource) ? convert.panelSource : 'external',
       ratioPercent: toNumber(convert.ratioPercent),
+      ratioLevelSource: CONVERT_FROM_VALUES.has(String(convert.ratioLevelSource ?? ''))
+        ? String(convert.ratioLevelSource)
+        : undefined,
+      ...(convert.ratioPercentPerLevel != null &&
+      convert.ratioPercentPerLevel !== '' &&
+      toNumber(convert.ratioPercentPerLevel) !== 0
+        ? { ratioPercentPerLevel: toNumber(convert.ratioPercentPerLevel) }
+        : {}),
+      ...(convert.capPerLevel != null &&
+      convert.capPerLevel !== '' &&
+      toNumber(convert.capPerLevel) !== 0
+        ? { capPerLevel: toNumber(convert.capPerLevel) }
+        : {}),
       cap: convert.cap == null || convert.cap === '' ? null : toNumber(convert.cap),
       defaultBase:
         convert.defaultBase == null || convert.defaultBase === ''

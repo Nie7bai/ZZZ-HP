@@ -17,6 +17,7 @@ import {
   CONVERT_FROM_OPTIONS,
   CONVERT_PANEL_SOURCE_OPTIONS,
   SKILL_CATEGORY_OPTIONS,
+  SKILL_LEVEL_CONVERT_OPTIONS,
 } from '@/types/calculator'
 import { AGENT_ELEMENTS, AGENT_ROLES } from '@/utils/calculatorUi'
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
@@ -415,7 +416,11 @@ function convertPreviewText() {
     return `${attrLabel} ${baseExpr} × ${formatCalcDecimal(cv.ratioPercent ?? 0)}% = ${statLabelText} ${amount < 0 ? '' : '+'}${formatCalcDecimal(amount)}${amount !== uncapped ? '（已达上限）' : ''}${initialHint}`
   }
   const sourceLabel = cv.panelSource === 'final' ? '局内' : '局外'
-  return `${sourceLabel}${attrLabel} × ${formatCalcDecimal(cv.ratioPercent ?? 0)}% → ${statLabelText}，超出初始值部分实时折算${initialHint}`
+  const levelHint =
+    cv.ratioLevelSource != null
+      ? `（L1 ${formatCalcDecimal(cv.ratioPercent ?? 0)}%，每级 +${formatCalcDecimal(cv.ratioPercentPerLevel ?? 0)}%/上限 +${formatCalcDecimal(cv.capPerLevel ?? 0)}）`
+      : ''
+  return `${sourceLabel}${attrLabel} × ${formatCalcDecimal(cv.ratioPercent ?? 0)}%${levelHint} → ${statLabelText}，超出初始值部分实时折算${initialHint}`
 }
 
 function onZoneChange(event: Event) {
@@ -1132,6 +1137,45 @@ onBeforeUnmount(() => {
               :max="9999"
               :step="0.0001"
               @update:model-value="patchConvert('ratioPercent', $event)"
+            />
+          </label>
+          <label class="inline-field">
+            <span>比例等级</span>
+            <select
+              :value="convert.ratioLevelSource ?? ''"
+              @change="
+                patchConvert(
+                  'ratioLevelSource',
+                  (($event.target as HTMLSelectElement).value || undefined) as
+                    | typeof convert.ratioLevelSource
+                    | undefined,
+                )
+              "
+            >
+              <option value="">固定比例</option>
+              <option v-for="opt in SKILL_LEVEL_CONVERT_OPTIONS" :key="opt.id" :value="opt.id">
+                {{ opt.label }}
+              </option>
+            </select>
+          </label>
+          <label v-if="convert.ratioLevelSource" class="inline-field convert-number-field">
+            <span>每级比例+%</span>
+            <NumberStepper
+              :model-value="convert.ratioPercentPerLevel ?? 0"
+              :min="-9999"
+              :max="9999"
+              :step="0.0001"
+              @update:model-value="patchConvert('ratioPercentPerLevel', $event)"
+            />
+          </label>
+          <label v-if="convert.ratioLevelSource" class="inline-field convert-number-field">
+            <span>每级上限+</span>
+            <NumberStepper
+              :model-value="convert.capPerLevel ?? 0"
+              :min="-999999"
+              :max="999999"
+              :step="0.0001"
+              @update:model-value="patchConvert('capPerLevel', $event)"
             />
           </label>
           <label class="inline-field convert-number-field">

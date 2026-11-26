@@ -194,10 +194,30 @@ function normalizeConvert(value) {
   } else if (!ATTRS.includes(rawFrom)) {
     return undefined
   }
+  const ratioLevelRaw = value.ratioLevelSource
+  const readRatioLevelField = (raw) => {
+    if (raw == null || raw === '') return null
+    const num = readNumber(raw)
+    return num === 0 ? null : num
+  }
+  const RATIO_LEVEL_SOURCES = [
+    'skillLevelBasic',
+    'skillLevelDodge',
+    'skillLevelAssist',
+    'skillLevelSpecial',
+    'skillLevelChainUltimate',
+  ]
   return {
     from,
     panelSource,
     ratioPercent: readNumber(value.ratioPercent),
+    ratioLevelSource: RATIO_LEVEL_SOURCES.includes(ratioLevelRaw) ? ratioLevelRaw : undefined,
+    ...(readRatioLevelField(value.ratioPercentPerLevel) != null
+      ? { ratioPercentPerLevel: readRatioLevelField(value.ratioPercentPerLevel) }
+      : {}),
+    ...(readRatioLevelField(value.capPerLevel) != null
+      ? { capPerLevel: readRatioLevelField(value.capPerLevel) }
+      : {}),
     cap: value.cap == null || value.cap === '' ? null : readNumber(value.cap),
     defaultBase:
       value.defaultBase == null || value.defaultBase === ''
