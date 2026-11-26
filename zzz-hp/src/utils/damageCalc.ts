@@ -1178,9 +1178,10 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     damageKind: input.eventDamageType ?? (useTriggerBase ? subKind : 'direct'),
     isSelfRadiance: remielSelfRadianceActive,
   })
+  const usesDirectDamageStages = chainId === 'direct' || chainId === 'sharpen' || chainId === 'pierce'
   const stageValues: Record<string, number | undefined> = {}
   // 锐化 / 命破也属直伤体系：阶段值按直伤口径取（各自链路只展示自己有的阶段）
-  if (chainId === 'direct' || chainId === 'sharpen' || chainId === 'pierce') {
+  if (usesDirectDamageStages) {
     Object.assign(stageValues, {
       base: result.baseDamage,
       dmg: directDmgMultiplier,
@@ -1269,7 +1270,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     for (const key of damageKeys) {
       result[key] = round(result[key] * stageAdjustment, 0)
     }
-    if (chainId === 'direct') stageValues.final = result.directDamageExpected
+    if (usesDirectDamageStages) stageValues.final = result.directDamageExpected
     else if (chainId === 'radiance-self') stageValues.final = result.radianceExpected
     else if (subKind === 'attributeAnomaly') stageValues.final = result.attributeAnomalyExpected
     else if (subKind === 'anomalyRelease') stageValues.final = result.anomalyReleaseExpected
