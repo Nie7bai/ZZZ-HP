@@ -296,6 +296,9 @@ export function createEmptyBuffEffect(
   }
   const conditions = normalizeEffectConditionsForStat(overrides.conditions, overrides.scope, stat)
   if (conditions) effect.conditions = conditions
+  if (effect.applyTarget === 'team' && skillTargets.length && overrides.skillTargetsOnlyForTeammates === true) {
+    effect.skillTargetsOnlyForTeammates = true
+  }
   const groupId = normalizeGroupId(overrides.groupId)
   if (groupId) effect.groupId = groupId
   return effect
@@ -316,6 +319,7 @@ export function setEffectSkillTargets(effect: BuffEffect, targets: BuffSkillTarg
   effect.skillTargets = normalized.length ? normalized : undefined
   effect.skillCategory = normalized[0]?.category
   effect.skillSubcategoryId = normalized[0]?.subcategoryId ?? null
+  if (!normalized.length) delete effect.skillTargetsOnlyForTeammates
 }
 
 function normalizeSkillTargets(
@@ -642,9 +646,11 @@ function hasSkillCondition(effect: BuffEffect): boolean {
 export function effectMatchesContext(
   effect: BuffEffect,
   ctx: SkillCalcContext | null | undefined,
+  beneficiaryIsProvider = false,
 ): boolean {
   const types = damageTypesOf(effect)
-  const skillCondition = hasSkillCondition(effect)
+  const providerExempt = beneficiaryIsProvider && effect.applyTarget === 'team' && effect.skillTargetsOnlyForTeammates
+  const skillCondition = !providerExempt && hasSkillCondition(effect)
   if (!ctx) return types.length === 0 && !skillCondition
 
   const situation = effect.applySituation ?? 'global'
@@ -894,6 +900,8 @@ export function resolveEffectsToMods(
     resolveTeammateProfessionCount?: (profession: string) => number
     /** 当前结算主槽角色职业（防线 Buff 等 applyProfession 条件） */
     beneficiaryProfession?: string | null
+    /** 当前受益槽位就是这包效果的提供者。 */
+    beneficiaryIsProvider?: boolean
     /**
      * 逐效果状态回调（计算链路收敛 Spec §2.2 第 1 项）：**每次判定结束调用一次**，
      * 不论生效、零值还是被排除。不传时为零开销（不分配记录对象）。
@@ -944,7 +952,7 @@ export function resolveEffectsToMods(
       emit('not-enabled')
       continue
     }
-    if (!effectMatchesContext(effect, options.ctx)) {
+    if (!effectMatchesContext(effect, options.ctx, options.beneficiaryIsProvider)) {
       emit('context-mismatch')
       continue
     }
@@ -1172,6 +1180,7 @@ export function normalizeBuffEffect(value: unknown): BuffEffect | null {
     skillTargets: Array.isArray(entry.skillTargets)
       ? (entry.skillTargets as BuffSkillTarget[])
       : undefined,
+    skillTargetsOnlyForTeammates: entry.skillTargetsOnlyForTeammates === true,
     skillCategory: normalizeSkillCategory(entry.skillCategory),
     skillSubcategoryId:
       entry.skillSubcategoryId == null || entry.skillSubcategoryId === ''
@@ -1420,9 +1429,12 @@ export function formatSkillTargetsPrefix(
   effect: BuffEffect,
   skillSubcategories?: SkillSubcategory[] | null,
 ): string {
-  return getEffectSkillTargets(effect)
+  const prefix = getEffectSkillTargets(effect)
     .map((target) => formatSkillTargetBracket(target, skillSubcategories))
     .join('')
+  return prefix && effect.applyTarget === 'team' && effect.skillTargetsOnlyForTeammates
+    ? `自身不限招式 · 队友${prefix}`
+    : prefix
 }
 
 export function effectSummaryLabel(
@@ -1451,7 +1463,7 @@ export function effectSummaryLabel(
         ? convertSummaryLabel(effect.convert)
         : `${effect.value ?? 0}`
   const parts = [target]
-  if (skillPrefix) parts.push(`招式·${skillPrefix}`)
+  if (skillPrefix) parts.push(effect.skillTargetsOnlyForTeammates ? skillPrefix : `招式·${skillPrefix}`)
   if (typeText) parts.push(typeText)
   parts.push(situation)
   if (applyProf) parts.splice(0, 0, applyProf)

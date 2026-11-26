@@ -27,6 +27,7 @@ export type ZoneSchemeScope = (typeof ZONE_SCHEME_SCOPES)[number]
  */
 export const ZONE_PRIMITIVE_OPTIONS = [
   { id: 'percentSum', label: 'percentSum（自定义百分比加总）' },
+  { id: 'scaledPercentSum', label: 'scaledPercentSum（基础比例 × 比例提升）' },
   { id: 'panel.percent', label: 'panel.percent（面板字段百分比）' },
   { id: 'stagger', label: 'stagger（失衡 / 帷幕易伤）' },
   { id: 'vulnerable', label: 'vulnerable（易伤 + 增减伤合成）' },

@@ -1158,6 +1158,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       order: factor.order,
       group: 'custom',
       value: factor.value,
+      ...(factor.scaledPercentInputs ? { scaledPercentInputs: factor.scaledPercentInputs } : {}),
     }
   }
   const chainId = input.chainId ?? resolveDamageChainId({

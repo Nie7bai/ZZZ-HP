@@ -24,6 +24,7 @@
  */
 import { BUFF_STAT_KEYS, isCustomBuffStatKey } from '../utils/calculatorBuffFields.js'
 import {
+  hasTeammateOnlySkillTargets,
   normalizeEffectConditionsForStat,
   normalizeGroupId,
   normalizeTeammateProfessions,
@@ -269,6 +270,9 @@ export function sanitizeEffect(input, index = 0) {
   // `scope` 只作旧输入兼容；写库统一迁移为 conditions.damageTypes。
   const groupId = normalizeGroupId(raw.groupId)
   if (groupId) effect.groupId = groupId
+  if (hasTeammateOnlySkillTargets(raw.skillTargetsOnlyForTeammates, effect)) {
+    effect.skillTargetsOnlyForTeammates = true
+  }
   const conditions = normalizeEffectConditionsForStat(raw.conditions, raw.scope, stat)
   if (conditions) effect.conditions = conditions
   return effect
@@ -295,6 +299,7 @@ function effectSignature(input) {
     maxStacks: effect.maxStacks, defaultStacks: effect.defaultStacks, stackable: effect.stackable,
     elementFilter: Array.isArray(effect.elementFilter) ? sorted(effect.elementFilter) : effect.elementFilter,
     skillTargets: sorted(skillTargets.map((target) => JSON.stringify([target.category, target.subcategoryId ?? null]))),
+    skillTargetsOnlyForTeammates: effect.skillTargetsOnlyForTeammates,
     damageTypes: effect.conditions?.damageTypes ?? [],
     convert: effect.convert ?? null,
     enabledDefault: effect.enabledDefault,
@@ -572,6 +577,7 @@ export const MERGE_FIELD_LIST = [
   { id: 'elementFilter', label: '元素过滤' },
   { id: 'conditions', label: '伤害类型条件' },
   { id: 'skillTargets', label: '招式目标' },
+  { id: 'skillTargetsOnlyForTeammates', label: '自身不限招式' },
   { id: 'skillCategory', label: '招式大类' },
   { id: 'skillSubcategoryId', label: '招式小类' },
   { id: 'convert', label: '转模' },
@@ -1037,6 +1043,7 @@ export function planBuffApply({ kind, local, rows = [], skills = [], subcategori
       applyTarget: effect.applyTarget,
       applySituation: effect.applySituation,
       skillTargets: effect.skillTargets ?? null,
+      ...(effect.skillTargetsOnlyForTeammates ? { skillTargetsOnlyForTeammates: true } : {}),
       convert: effect.convert ?? null,
       note: effect.note,
       writeLabel: `写入：${target.label} · 块「${merged.blockName}」${merged.blockIsNew ? '（新建）' : '（复用）'} · 新增`,

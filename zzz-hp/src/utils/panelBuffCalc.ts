@@ -1390,7 +1390,9 @@ function sourceOptionsForCollectedEffect(
       }
     : undefined
   const sourceSlotIndex = resolveCollectedEffectSourceSlot(item)
-  const teammateProviderSlot = effects.some((effect) => effect.teammateProfessions?.length)
+  const teammateProviderSlot = effects.some((effect) =>
+    effect.teammateProfessions?.length || effect.skillTargetsOnlyForTeammates,
+  )
     ? sourceSlotIndex : undefined
   if (!item.effect.extraGain) {
     return traceSource || teammateProviderSlot !== undefined ? { traceSource, teammateProviderSlot } : undefined
@@ -1538,6 +1540,7 @@ function resolvePackMods(
     element: isMain ? skillCtx.element : slotElement,
     beneficiaryElement: resolveBeneficiaryElement(ctx),
     beneficiaryProfession,
+    beneficiaryIsProvider: teammateProviderSlot === ctx.mainSlotIndex,
     stacksByEffectId: parameters.stacksByEffectId,
     convertInputs: parameters.convertInputs,
     attrValues: parameters.attrValues,

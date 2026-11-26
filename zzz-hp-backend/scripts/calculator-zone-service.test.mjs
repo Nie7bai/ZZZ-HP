@@ -81,8 +81,8 @@ test('zone_key 格式：内置键或 custom:<slug>，其余拒绝', () => {
   assert.equal(isCustomZoneKey('dmgMultiplier'), false)
 })
 
-test('primitive 白名单：占位四项，其余拒绝', () => {
-  assert.deepEqual([...ZONE_PRIMITIVES], ['percentSum', 'panel.percent', 'stagger', 'vulnerable'])
+test('primitive 白名单包含两种自定义百分比算法，拒绝未知算法', () => {
+  assert.deepEqual([...ZONE_PRIMITIVES], ['percentSum', 'scaledPercentSum', 'panel.percent', 'stagger', 'vulnerable'])
   for (const primitive of ZONE_PRIMITIVES) {
     assert.equal(validateZonePrimitive(primitive), primitive)
   }
@@ -100,6 +100,8 @@ test('params：必须是对象；cap 必须 > 0；已知字段类型被校验', 
   const input = { allowNegative: 1, buffKeys: ['a', 'a', 'b'] }
   assert.deepEqual(normalizeZoneParams(input), { allowNegative: true, buffKeys: ['a', 'b'] })
   assert.equal(input.allowNegative, 1)
+  assert.deepEqual(normalizeZoneParams({ scalingStatKeys: ['emberMarkAccumulationBonus', 'emberMarkAccumulationBonus'] }),
+    { scalingStatKeys: ['emberMarkAccumulationBonus'] })
 
   assert.throws(() => normalizeZoneParams([]), /params 必须是对象/)
   assert.throws(() => normalizeZoneParams('cap=1'), /params 必须是对象/)
@@ -109,6 +111,7 @@ test('params：必须是对象；cap 必须 > 0；已知字段类型被校验', 
   assert.throws(() => normalizeZoneParams({ cap: Number.NaN }), /params.cap 含非法数字/)
   assert.throws(() => normalizeZoneParams({ allowNegative: 'yes' }), /params.allowNegative 必须是布尔值/)
   assert.throws(() => normalizeZoneParams({ buffKeys: 'a' }), /params.buffKeys 必须是数组/)
+  assert.throws(() => normalizeZoneParams({ scalingStatKeys: 'a' }), /params.scalingStatKeys 必须是数组/)
   assert.throws(() => normalizeZoneParams({ mode: 3 }), /params.mode 必须是字符串/)
   assert.throws(() => normalizeZoneParams({ fn: () => 1 }), /含不支持的值类型/)
 })

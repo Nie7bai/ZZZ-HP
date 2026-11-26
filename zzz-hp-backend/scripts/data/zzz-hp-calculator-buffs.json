@@ -103083,7 +103083,7 @@
             {
               "id": "nanoka-1601-talent-2",
               "name": "继承者的叛旗",
-              "note": "原文：挽昼发动其他招式命中敌人造成锐化伤害时，也可使目标积攒，积攒量等同于该次实际伤害的30%；全队触发和挽昼使敌人积攒[烬痕]时，最终结算的[烬痕]量提升35%；挽昼发动[普通攻击：执旌·聚锋]后，额外回复200点喧响值；挽昼的喧响值上限提升1000点。\n[关键字] 属性=烬痕比例 元素=无 动作=提升 数值=30 单位=% 目标=自身 条件=无 作用域=锐化 层数=无 时长=无 对象=无",
+              "note": "原文：挽昼发动其他招式命中敌人造成锐化伤害时，也可使目标积攒，积攒量等同于该次实际伤害的30%；全队触发和挽昼使敌人积攒[烬痕]时，最终结算的[烬痕]量提升35%；挽昼发动[普通攻击：执旌·聚锋]后，额外回复200点喧响值；挽昼的喧响值上限提升1000点。\n[关键字] 属性=烬痕比例 元素=无 动作=提升 数值=30 单位=% 目标=自身 条件=无 作用域=锐化 层数=无 时长=无 对象=无\n[关键字] 属性=烬痕积攒量提升 元素=无 动作=提升 数值=35 单位=% 目标=全队 条件=无 队友职业（满足任一）=无 作用域=无 层数=无 默认启用=无 时长=无 对象=无",
               "effects": [
                 {
                   "id": "nanoka:1601:talent:2#0",
@@ -103200,6 +103200,35 @@
                       "sharpen"
                     ]
                   }
+                },
+                {
+                  "id": "nanoka:1601:talent:2#emberMarkAccumulation",
+                  "origin": "nanoka:1601:talent:2",
+                  "applyTarget": "team",
+                  "applySituation": "global",
+                  "applyProfession": null,
+                  "teamProfession": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null,
+                  "skillCategory": "destruction",
+                  "skillSubcategoryId": null,
+                  "skillTargets": [
+                    {
+                      "category": "destruction",
+                      "subcategoryId": null
+                    }
+                  ],
+                  "elementFilter": "all",
+                  "kind": "fixed",
+                  "stat": "custom:emberMarkAccumulationBonus",
+                  "value": 35,
+                  "stackable": false,
+                  "maxStacks": 1,
+                  "valuePerStack": 0,
+                  "defaultStacks": 1,
+                  "enabledDefault": true,
+                  "note": "",
+                  "skillTargetsOnlyForTeammates": true
                 }
               ],
               "enabledDefault": true
@@ -103321,6 +103350,35 @@
                   "sharpen"
                 ]
               }
+            },
+            {
+              "id": "nanoka:1601:talent:2#emberMarkAccumulation",
+              "origin": "nanoka:1601:talent:2",
+              "applyTarget": "team",
+              "applySituation": "global",
+              "applyProfession": null,
+              "teamProfession": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null,
+              "skillCategory": "destruction",
+              "skillSubcategoryId": null,
+              "skillTargets": [
+                {
+                  "category": "destruction",
+                  "subcategoryId": null
+                }
+              ],
+              "elementFilter": "all",
+              "kind": "fixed",
+              "stat": "custom:emberMarkAccumulationBonus",
+              "value": 35,
+              "stackable": false,
+              "maxStacks": 1,
+              "valuePerStack": 0,
+              "defaultStacks": 1,
+              "enabledDefault": true,
+              "note": "",
+              "skillTargetsOnlyForTeammates": true
             }
           ],
           "selfMods": {
@@ -287434,17 +287492,23 @@
       "label": "烬痕",
       "sortOrder": 200,
       "providers": "all",
-      "primitive": "percentSum",
+      "primitive": "scaledPercentSum",
       "stats": [
         {
           "key": "emberMarkRatio",
           "label": "烬痕比例",
           "valueType": "percent",
           "sign": "both"
+        },
+        {
+          "key": "emberMarkAccumulationBonus",
+          "label": "烬痕积攒量提升",
+          "valueType": "percent",
+          "sign": "both"
         }
       ],
       "enabled": true,
-      "version": 1
+      "version": 2
     },
     {
       "zoneKey": "custom:finalDamage",
@@ -287488,18 +287552,21 @@
       "name": "普通独立乘区",
       "priority": 10,
       "enabled": true,
-      "version": 1,
+      "version": 2,
       "rules": [
         {
           "key": "custom:emberMark",
           "action": "replace",
-          "module": "percentSum",
+          "module": "scaledPercentSum",
           "label": "烬痕区",
           "params": {
             "statKeys": [
               "emberMarkRatio"
             ],
-            "order": 200
+            "order": 200,
+            "scalingStatKeys": [
+              "emberMarkAccumulationBonus"
+            ]
           }
         },
         {

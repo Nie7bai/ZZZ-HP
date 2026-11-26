@@ -145,6 +145,11 @@ export function normalizeTeammateProfessions(value) {
   return selected.length ? selected : undefined
 }
 
+export function hasTeammateOnlySkillTargets(value, effect) {
+  return value === true && effect.applyTarget === 'team' &&
+    Boolean(effect.skillTargets?.length || effect.skillCategory)
+}
+
 /**
  * 是否是「通用效果」：可脱离招式与队伍上下文安全地派生旧扁平数值。
  * 用于派生 selfMods / teamMods（兼容旧扁平结构），与旧 `scope=['general']` 等价。

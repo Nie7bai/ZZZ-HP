@@ -133,8 +133,10 @@ export function detectScope(text) {
 export const KEYWORD_PREFIX = '[关键字]'
 
 /** 采集词表中的独立乘区属性与正式增益字段。 */
+const EMBER_MARK_SCALING_LABEL = '烬痕积攒量提升'
 const INDEPENDENT_ZONE_PERCENT_STATS = {
   烬痕比例: 'custom:emberMarkRatio',
+  [EMBER_MARK_SCALING_LABEL]: 'custom:emberMarkAccumulationBonus',
   最终伤害比例: 'custom:finalDamageRatio',
   一布之力比例: 'custom:bangbooMightRatio',
 }
@@ -451,6 +453,7 @@ function isPlainObject(value) {
 // 保留已核对的通用属性术语，供离线重跑旧详情或词表暂不可用时使用。
 const NANOKA_TERM_FALLBACKS = {
   3000015: '锐暴伤害',
+  3000039: '[毁伤]',
 }
 
 /** 展开空术语标签，再去富文本、运行时模板和图标占位。 */
@@ -1085,6 +1088,10 @@ export const GAME_LITERAL_REWRITES = [
 
 /** 属性词典（**顺序即优先级**；取值与 `STAT_OPTIONS` 一一对应，写**工具语义**） */
 const STAT_RULES_INTERNAL = [
+  {
+    keyword: EMBER_MARK_SCALING_LABEL,
+    re: /(?:\[烬痕\]|烬痕)积攒量(?:额外)?(?:提升|增加|提高)(?=\s*\d+(?:\.\d+)?\s*[%％])/,
+  },
   ...Object.keys(INDEPENDENT_ZONE_PERCENT_STATS).map((keyword) => ({
     keyword,
     re: new RegExp(`${keyword}[」】\\]]?\\s*(?:额外)?(?:提升|增加|提高|降低|减少|下降|[+＋])`),
@@ -1201,7 +1208,7 @@ function detectAction(text) {
   return { value: UNABLE, source: 'unable' }
 }
 
-/** 只把按实际伤害折算的积攒量翻成烬痕比例。 */
+/** 烬痕的基础比例与积攒量提升是同一乘区的两个属性。 */
 const EMBER_MARK_ACCUMULATION_RULES = [
   {
     type: 'named',
@@ -1217,6 +1224,12 @@ const EMBER_MARK_ACCUMULATION_RULES = [
     type: 'otherSharpen',
     pattern: /^(?<actor>[^，。；\s]+?)发动(?:其他|其余)招式命中敌人造成锐化伤害时，(?:也)?可使目标积攒(?<term>\[烬痕\])?，积攒量等同于(?:该次)?实际伤害的(?<percent>\d+(?:\.\d+)?)%$/,
     description: '自身，排除核心被动已列招式和毁伤段，其余锐化招式按锚点匹配',
+  },
+  {
+    type: 'amountIncrease',
+    stat: EMBER_MARK_SCALING_LABEL,
+    pattern: /^全队(?:代理人)?触发(?:\[毁伤\]|毁伤)(?:和|或|、)(?<actor>[^，。；\s]+?)(?:使|令)敌人积攒(?:\[烬痕\]|烬痕)时，(?:最终结算的)?(?:\[烬痕\]|烬痕)(?:积攒量|量)(?:额外)?(?:提升|增加|提高)(?<percent>\d+(?:\.\d+)?)\s*[%％]$/,
+    description: '自身不限招式，队友限定毁伤。同一次伤害只命中一条效果。',
   },
 ]
 
@@ -1288,7 +1301,8 @@ function extractEmberMarkKeyword({ text, unitIndex, index, origin, selfNames, an
     const accumulation = readEmberMarkAccumulation(text, rule, selfNames)
     if (!accumulation) continue
     const { type, value } = accumulation
-    const team = type === 'destruction'
+    const amountIncrease = type === 'amountIncrease'
+    const team = type === 'destruction' || amountIncrease
     const otherSharpen = type === 'otherSharpen'
     const names = otherSharpen
       ? splitUnits(emberMarkContext.corePassiveText).flatMap(({ text: unit }) =>
@@ -1303,6 +1317,7 @@ function extractEmberMarkKeyword({ text, unitIndex, index, origin, selfNames, an
           labels: ['毁伤'],
           resolved: [],
           skillTargets: [{ category: 'destruction', subcategoryId: null }],
+          ...(amountIncrease ? { skillTargetsOnlyForTeammates: true } : {}),
           reason: '',
         }
       : resolveEmberMarkTargets({
@@ -1311,7 +1326,7 @@ function extractEmberMarkKeyword({ text, unitIndex, index, origin, selfNames, an
           skills: emberMarkContext.skills ?? [],
         })
     const slots = createSlots({
-      stat: { value: '烬痕比例' }, action: { value: '提升' }, value: { value }, unit: { value: '%' },
+      stat: { value: rule.stat ?? '烬痕比例' }, action: { value: '提升' }, value: { value }, unit: { value: '%' },
       target: { value: team ? '全队' : '自身' }, scope: { value: otherSharpen ? '锐化' : NONE },
     })
     const sources = createSources({
@@ -1682,8 +1697,8 @@ export function buildRulesTable() {
     {
       id: 'ember-mark-accumulation',
       title: '烬痕积攒量',
-      items: EMBER_MARK_ACCUMULATION_RULES.map(({ pattern, description }) =>
-        items(reText(pattern), '烬痕比例', INDEPENDENT_ZONE_PERCENT_STATS.烬痕比例, description),
+      items: EMBER_MARK_ACCUMULATION_RULES.map(({ pattern, stat = '烬痕比例', description }) =>
+        items(reText(pattern), stat, INDEPENDENT_ZONE_PERCENT_STATS[stat], description),
       ),
     },
     {
@@ -3195,6 +3210,8 @@ export function mapKeywordsToEffect(keyword = {}) {
   const scopeId = SCOPE_SLOT_TO_ID[scopeSlot] ?? ''
   const sharpenOnly = scopeId === 'sharpen'
   let scope = skillTargets.length ? 'skill' : 'general'
+  const skillTargetsOnlyForTeammates = applyTarget === 'team' && skillTargets.length > 0 &&
+    anchors?.skillTargetsOnlyForTeammates === true
   if (sharpenOnly) {
     steps.push('伤害类型=锐化 → conditions.damageTypes=[sharpen]')
   } else if (scopeId) {
@@ -3203,7 +3220,8 @@ export function mapKeywordsToEffect(keyword = {}) {
   }
 
   if (skillTargets.length) {
-    steps.push(`限定招式=${(anchors.labels ?? []).join(' + ')} → skillTargets=${JSON.stringify(skillTargets)}`)
+    const restriction = skillTargetsOnlyForTeammates ? '自身不限招式，队友限定招式' : '限定招式'
+    steps.push(`${restriction}=${(anchors.labels ?? []).join(' + ')} → skillTargets=${JSON.stringify(skillTargets)}`)
   }
 
   // —— 转模专用槽位
@@ -3327,6 +3345,7 @@ export function mapKeywordsToEffect(keyword = {}) {
         skillCategory: anchors?.skillCategory || undefined,
         skillSubcategoryId: anchors?.skillSubcategoryId ?? (skillTargets.length === 1 ? null : undefined),
         skillTargets: skillTargets.length ? skillTargets.map((item) => ({ ...item })) : undefined,
+        ...(skillTargetsOnlyForTeammates ? { skillTargetsOnlyForTeammates: true } : {}),
         // 转模（动作=转化）：字段对齐 `normalizeConvert`
         convert: isConvert
           ? {

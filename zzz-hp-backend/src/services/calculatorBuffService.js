@@ -16,6 +16,7 @@ import {
 } from '../utils/calculatorBuffFields.js'
 import {
   effectHasGenericConditions,
+  hasTeammateOnlySkillTargets,
   normalizeEffectConditionsForStat,
   normalizeGroupId,
   normalizeTeammateProfessions,
@@ -311,6 +312,9 @@ export function normalizeEffectList(rawValue) {
       // 同源行分组键：只在管理侧用于聚合，引擎不读；空值不落库。
       const groupId = normalizeGroupId(item.groupId)
       if (groupId) effect.groupId = groupId
+      if (hasTeammateOnlySkillTargets(item.skillTargetsOnlyForTeammates, effect)) {
+        effect.skillTargetsOnlyForTeammates = true
+      }
       // 伤害类型条件：新字段优先，旧 scope 兼容读入；15 个子类 stat 不写冗余条件。
       const conditions = normalizeEffectConditionsForStat(item.conditions, item.scope, stat)
       if (conditions) effect.conditions = conditions

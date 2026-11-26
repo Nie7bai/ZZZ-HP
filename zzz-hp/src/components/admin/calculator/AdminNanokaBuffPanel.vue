@@ -1140,6 +1140,11 @@ function setKeywordSkillTargets(row: KeywordRow, targets: BuffSkillTarget[], sel
   markKeywordDirty(row)
 }
 
+function setSkillTargetsOnlyForTeammates(row: KeywordRow, checked: boolean) {
+  row.anchors = { ...row.anchors, skillTargetsOnlyForTeammates: checked || undefined }
+  markKeywordDirty(row)
+}
+
 function addKeywordSkillTarget(row: KeywordRow, target: BuffSkillTarget) {
   const current = row.anchors.skillTargets
   const alreadySelected = current.some(
@@ -1826,6 +1831,15 @@ const wasteCount = computed(() =>
                     @add="addKeywordSkillTarget(row, $event)"
                     @remove="setKeywordSkillTargets(row, row.anchors.skillTargets.filter((_, index) => index !== $event))"
                   />
+                  <label v-if="row.slots.target === '全队' && row.anchors.skillTargets.length" class="nbf-chip">
+                    <input
+                      type="checkbox"
+                      :checked="row.anchors.skillTargetsOnlyForTeammates"
+                      :disabled="busy"
+                      @change="setSkillTargetsOnlyForTeammates(row, ($event.target as HTMLInputElement).checked)"
+                    />
+                    自身不限招式
+                  </label>
                   <button
                     v-if="row.anchors.skillTargets.length"
                     type="button"

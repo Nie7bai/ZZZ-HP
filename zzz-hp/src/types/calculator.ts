@@ -481,6 +481,8 @@ export interface BuffEffect {
    * 匹配时任一目标命中即生效。
    */
   skillTargets?: BuffSkillTarget[]
+  /** 全队增益的招式限制只检查队友，提供者自身继续检查其他条件。 */
+  skillTargetsOnlyForTeammates?: boolean
   /**
    * @deprecated 兼容旧数据；优先用 skillTargets。
    * 招式：小类空 = 整大类生效；follow_up = 追加攻击伪大类

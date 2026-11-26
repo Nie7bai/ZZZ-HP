@@ -79,6 +79,8 @@ export interface ZoneSchemeParams {
   cap?: ZoneCurtainCapRule | number
   /** 自定义乘区：参与加总的增益键（`custom` 修饰表） */
   statKeys?: readonly string[]
+  /** scaledPercentSum：加总后乘在基础比例上的百分比属性。 */
+  scalingStatKeys?: readonly string[]
   /** 自定义乘区下限（倍率） */
   floor?: number
   /** 是否允许负值；缺省 true */

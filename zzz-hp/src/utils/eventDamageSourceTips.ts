@@ -1,5 +1,5 @@
 import { buildSkillCalcZoneRows, type SkillCalcZoneRow } from '@/utils/skillCalcZones'
-import { customZoneResults, zoneLabel } from '@/zones/display'
+import { customZoneResults, formatCustomZoneFormula, zoneLabel } from '@/zones/display'
 import type { SkillFlowCalculationDetail } from '@/utils/skillFlowCalculation'
 import type { EventDamageInputUsage, BuffModSource } from '@/utils/panelBuffCalc'
 import { createEmptyBuffStatModifiers } from '@/utils/calculatorUi'
@@ -1414,7 +1414,13 @@ export function buildEventZoneDisplay(calculation: SkillFlowCalculationDetail): 
   const d=calculation.evaluation, tips=buildEventValueTips(calculation)
   const usages=d.damageInputUsages!.filter(usage=>usage.usedView!=='convertSourcePanel')
   return buildSkillCalcZoneRows(d.result,d.hit.skill.damageType).filter(row=>row.zoneKey || row.label!=='通用乘区').map(row=>{
-    if (row.zoneKey) return { ...row, sourceSlots: [], sourceLabel: '独立乘区', groups: [] }
+    if (row.zoneKey) {
+      const formula = formatCustomZoneFormula(d.result.zones?.[row.zoneKey])
+      return {
+        ...row, sourceSlots: [], sourceLabel: '独立乘区',
+        groups: formula ? [{ label: '计算公式', items: [formula] }] : [],
+      }
+    }
     const finalResult=['期望伤害','暴击伤害','不暴击伤害'].includes(row.label)
     let key=zoneTipKeys[row.label]
     // 帷幕易伤是失衡易伤区的替换口径：标签取结果里的乘区名（带上限），来源仍按 staggerMultiplier 取

@@ -7,20 +7,20 @@
 
 在每条 Buff 中设置适用伤害和受益对象。普通独立乘区可以参与所有伤害公式。没有伤害类型限制的有效 Buff 对直伤、异常、耀变等都能生效。固定限制或专用算法在提需求时单独说明。
 
-例如，乘区「烬痕」接收百分比属性「烬痕比例」，伤害详情显示「烬痕区」。同区两条有效 Buff 分别为 20% 和 10% 时，乘区倍率为 1.30。没有有效 Buff 时为 1。
+例如，乘区「最终伤害」接收百分比属性「最终伤害比例」，伤害详情显示「最终伤害区」。同区两条有效 Buff 分别为 20% 和 10% 时，乘区倍率为 1.30。没有有效 Buff 时为 1。
 
 ## 2. 新增普通的独立乘区
 
-1. 在管理端「角色计算器 → 乘区方案 → 乘区定义」新增定义。填写 `custom:<内部键>` 和乘区中文名，原语选 `percentSum`。没有来源限制时，`providers` 选值为 `all` 的选项。填写 `stats` 数组，保存并启用定义。烬痕的 `stats` 如下。
+1. 在管理端「角色计算器 → 乘区方案 → 乘区定义」新增定义。填写 `custom:<内部键>` 和乘区中文名，原语选 `percentSum`。没有来源限制时，`providers` 选值为 `all` 的选项。填写 `stats` 数组，保存并启用定义。以下是最终伤害的 `stats`。
 
    ```json
-   [{"key":"emberMarkRatio","label":"烬痕比例","valueType":"percent","sign":"both"}]
+   [{"key":"finalDamageRatio","label":"最终伤害比例","valueType":"percent","sign":"both"}]
    ```
 
-2. 在乘区方案的 `rules` 数组中追加规则并保留原有规则。通用方案用「全局」作用域，目标留空。`key` 引用乘区定义，`params.statKeys` 填定义里的属性键，`label` 是详情名。保存并启用方案。烬痕的规则对象如下。
+2. 在乘区方案的 `rules` 数组中追加规则并保留原有规则。通用方案用「全局」作用域，目标留空。`key` 引用乘区定义，`params.statKeys` 填定义里的属性键，`label` 是详情名。保存并启用方案。以下是最终伤害的规则对象。
 
    ```json
-   {"key":"custom:emberMark","action":"replace","module":"percentSum","label":"烬痕区","params":{"statKeys":["emberMarkRatio"]}}
+   {"key":"custom:finalDamage","action":"replace","module":"percentSum","label":"最终伤害区","params":{"statKeys":["finalDamageRatio"]}}
    ```
 
 3. 刷新计算器让它加载新方案，在 Buff 条目中选择属性，填写百分比和适用条件。每个独立乘区各参与一次连乘，在详情各占一项。各因子地位相同，配置顺序用于展示。
@@ -32,6 +32,8 @@
 ## 3. 接入专用规则或扩展内置乘区
 
 需要专用算法或组合展示时，按该乘区的专用规则处理。给已有乘区加字段时，先确认属性属于哪个区，再接入该区的算法。
+
+「烬痕」使用 `scaledPercentSum`。两组属性都登记在定义的 `stats` 中，方案用 `params.statKeys` 指定烬痕比例，用 `params.scalingStatKeys` 指定烬痕积攒量提升。结算分别加总两组百分比，按 `1 + 比例合计 × (1 + 积攒量提升合计)` 求值。比例 60%、积攒量提升 35% 时，伤害详情的「烬痕区」显示 `1 + 60% × (1 + 35%) = 1.81`。
 
 1. 在 [calculator.ts](../../zzz-hp/src/types/calculator.ts) 和 [calculatorUi.ts](../../zzz-hp/src/utils/calculatorUi.ts) 登记新增的内置属性及默认值。同步前端 [buffEffect.ts](../../zzz-hp/src/utils/buffEffect.ts) 和后端 [calculatorBuffFields.js](../../zzz-hp-backend/src/utils/calculatorBuffFields.js) 的字段清单。Buff 条件匹配见[增益功能链路](../specs/buff-pipeline.md)。
 2. 涉及面板字段时，在 [calculatorPanel.ts](../../zzz-hp/src/types/calculatorPanel.ts) 和 [panelBuffCalc.ts](../../zzz-hp/src/utils/panelBuffCalc.ts) 接入默认值及聚合。对应的专用公式和取值见[计算器公式核查表](../../CALCULATOR_FORMULAS.md)。

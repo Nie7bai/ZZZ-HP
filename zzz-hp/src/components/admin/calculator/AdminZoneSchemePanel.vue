@@ -914,7 +914,7 @@ onMounted(() => {
               </option>
             </select>
             <span class="field-hint">
-              percentSum 自定义乘区按此范围取加成来源；「仅乘区所有者」只算命中所有者自己的来源。
+              自定义百分比乘区按此范围取加成来源。「仅乘区所有者」只算命中所有者自己的来源。
             </span>
           </label>
 

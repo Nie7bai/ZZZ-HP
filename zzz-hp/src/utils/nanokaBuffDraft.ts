@@ -51,6 +51,7 @@ export function replaceNanokaKeywordSkillTargets(
     labels: resolved.map(({ name }) => name),
     resolved,
     skillTargets: targets.map((target) => ({ ...target })),
+    ...(targets.length && row.anchors.skillTargetsOnlyForTeammates ? { skillTargetsOnlyForTeammates: true } : {}),
     skillCategory: singleTarget?.category ?? '',
     skillSubcategoryId: singleTarget?.subcategoryId ?? null,
     pendingCreates,

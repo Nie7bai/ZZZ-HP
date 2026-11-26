@@ -124,7 +124,10 @@ const applySituation = computed({
 })
 const applyTarget = computed({
   get: () => first.value?.applyTarget ?? 'self',
-  set: (value: BuffEffect['applyTarget']) => patchField('applyTarget', value),
+  set: (value: BuffEffect['applyTarget']) => patchAll((effect) => {
+    effect.applyTarget = value
+    if (value !== 'team') delete effect.skillTargetsOnlyForTeammates
+  }),
 })
 const applyProfession = computed({
   get: () => first.value?.applyProfession ?? '',
@@ -851,6 +854,14 @@ onBeforeUnmount(() => {
               @remove="removeSkillTarget"
               @create="openCreateSubcat"
             />
+            <label v-if="applyTarget === 'team' && skillLimited" class="chip">
+              <input
+                type="checkbox"
+                :checked="first.skillTargetsOnlyForTeammates"
+                @change="patchField('skillTargetsOnlyForTeammates', ($event.target as HTMLInputElement).checked || undefined)"
+              />
+              <span>自身不限招式</span>
+            </label>
             <button
               type="button"
               class="reset-x"

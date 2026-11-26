@@ -40,6 +40,14 @@ export function customZoneResults(result: ZoneLabelSource | null | undefined): Z
   return sortZonesByCatalog(Object.values(result?.zones ?? {}).filter((zone) => zone.group === 'custom'))
 }
 
+export function formatCustomZoneFormula(zone: ZoneResult | undefined): string | undefined {
+  const inputs = zone?.scaledPercentInputs
+  if (!zone || !inputs) return undefined
+  const { basePercent, scalingPercent, unboundedFactor } = inputs
+  const formula = `1 + ${formatCalcDecimal(basePercent)}% × (1 + ${formatCalcDecimal(scalingPercent)}%) = ${formatCalcDecimal(unboundedFactor)}`
+  return zone.value === unboundedFactor ? formula : `${formula}，限幅后 ${formatCalcDecimal(zone.value)}`
+}
+
 /** 阶段展示行（用户端只读「完整计算链路」） */
 export interface PipelineStageDisplayRow {
   id: string
@@ -75,7 +83,7 @@ export function buildPipelineStageRows(
     id: zone.key,
     kind: 'multiplier' as const,
     label: zone.label,
-    valueText: formatStageValue(zone.value, false),
+    valueText: formatCustomZoneFormula(zone) ?? formatStageValue(zone.value, false),
   }))
   const resultIndex = rows.findIndex((row) => row.kind === 'final')
   rows.splice(resultIndex === -1 ? rows.length : resultIndex, 0, ...customRows)

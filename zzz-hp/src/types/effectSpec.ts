@@ -37,6 +37,7 @@ export interface EffectConditions {
   /** @deprecated 词条库仍用 general/skill；BuffEffect 不再写 scope */
   scope?: BuffScope[]
   skillTargets?: BuffSkillTarget[]
+  skillTargetsOnlyForTeammates?: boolean
   elementFilter?: 'all' | string[]
   applyProfession?: string | null
   teammateProfessions?: string[]

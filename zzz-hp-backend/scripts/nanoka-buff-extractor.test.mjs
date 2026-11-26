@@ -598,7 +598,7 @@ test('明写状态的未括起名称也能按原文关联', () => {
   assert.deepEqual(effect.anchors.skillTargets, [{ category: 'basic', subcategoryId: null }])
 })
 
-test('烬痕积攒描述可翻译成有限定的增益，结算增幅保留待补', () => {
+test('烬痕条目保留各自范围，二影积攒量提升合为一条全队增益', () => {
   const agent = { id: 'test-ember', name: '测试者', profession: '锋御' }
   const names = ['普通攻击：先声', '终结技：「微光，共鸣」', '特殊技：追响']
   const categories = ['basic', 'ultimate', 'special']
@@ -606,7 +606,7 @@ test('烬痕积攒描述可翻译成有限定的增益，结算增幅保留待�
   const skills = names.map((name, index) => ({ name, agentId: agent.id, damageType: 'direct', buffAnchorId: anchors[index].id }))
   skills.push({ name: '毁伤段', agentId: agent.id, damageType: 'direct', skillTypes: ['destruction'], buffAnchorId: null })
   const core = '测试者发动[普通攻击：先声]、[终结技：「微光，共鸣」]命中敌人造成伤害时，均可使目标积攒<Term:1000061></Term>，[烬痕]量等同于招式造成的实际伤害的60%；全队代理人造成的[毁伤]也可使目标积攒等同于该次实际伤害40%的[烬痕]。'
-  const secondMindscape = '测试者发动其他招式命中敌人造成锐化伤害时，也可使目标积攒<Term:1000061></Term>，积攒量等同于该次实际伤害的30%；最终结算的[烬痕]量提升35%。'
+  const secondMindscape = '测试者发动其他招式命中敌人造成锐化伤害时，也可使目标积攒<Term:1000061></Term>，积攒量等同于该次实际伤害的30%；全队触发<Term:3000039></Term>和测试者使敌人积攒[烬痕]时，最终结算的[烬痕]量提升35%。'
   const fourthMindscape = '[烬痕]积攒量提升效果额外提升65%，每180秒内最多触发一次；测试者造成的伤害提升10%。'
   const detail = {
     name: agent.name,
@@ -626,7 +626,14 @@ test('烬痕积攒描述可翻译成有限定的增益，结算增幅保留待�
   assert.deepEqual(destruction.anchors.skillTargets, [{ category: 'destruction', subcategoryId: null }])
   assert.deepEqual(other.anchors.skillTargets, [{ category: 'special', subcategoryId: 'anchor-2' }])
   assert.deepEqual(other.layerC.conditions.damageTypes, ['sharpen'])
-  assert.equal(settlement.layerC, null)
+  const destructionTargets = [{ category: 'destruction', subcategoryId: null }]
+  assert.equal(settlement.layerC.stat, 'custom:emberMarkAccumulationBonus')
+  assert.equal(settlement.layerC.value, 35)
+  assert.equal(settlement.layerC.applyTarget, 'team')
+  assert.equal(settlement.layerC.enabledDefault, true)
+  assert.equal(settlement.layerC.skillTargetsOnlyForTeammates, true)
+  assert.deepEqual(settlement.layerC.skillTargets, destructionTargets)
+  assert.equal(settlement.layerC.conditions, undefined)
   assert.ok(secondItem.rawText.includes('35%'))
   assert.deepEqual(fourthItem.effects.filter((effect) => effect.layerC).map((effect) => effect.layerC.value), [10])
 
@@ -635,8 +642,18 @@ test('烬痕积攒描述可翻译成有限定的增益，结算增幅保留待�
     emberMarkContext: { corePassiveText: coreItem.rawText, profession: agent.profession, skills },
   })
   assert.deepEqual(resimplified.effects[0].layerC.skillTargets, other.layerC.skillTargets)
+  const { effects: [alternate] } = simplifyText({
+    text: '全队触发[毁伤]和测试者使敌人积攒[烬痕]时，[烬痕]积攒量额外提升35%。',
+    agentId: agent.id, selfNames: [agent.name], anchors,
+  })
+  assert.equal(alternate.layerC.stat, settlement.layerC.stat)
+  assert.equal(alternate.layerC.skillTargetsOnlyForTeammates, true)
+  assert.deepEqual(alternate.layerC.skillTargets, destructionTargets)
 
-  const rows = [[coreItem, named], [coreItem, destruction], [secondItem, other]].map(([item, keyword]) => ({
+  const { rows: [translated] } = smartMergeParse({ keywords: [settlement], agentId: agent.id })
+  assert.equal(translated.effect.skillTargetsOnlyForTeammates, true)
+
+  const rows = [[coreItem, named], [coreItem, destruction], [secondItem, other], [secondItem, settlement]].map(([item, keyword]) => ({
     key: keyword.id,
     source: item.source,
     containerIndex: item.containerIndex,
@@ -646,14 +663,19 @@ test('烬痕积攒描述可翻译成有限定的增益，结算增幅保留待�
     anchors: keyword.anchors,
   }))
   const plan = planBuffApply({ kind: 'agent', local: agent, rows })
-  assert.equal(plan.updated, 3)
+  assert.equal(plan.updated, 4)
   const effects = plan.groups.flatMap((group) => group.blocks.flatMap((block) => block.effects))
   assert.deepEqual(effects.map(({ stat, value, applyTarget }) => [stat, value, applyTarget]), [
     ['custom:emberMarkRatio', 60, 'self'],
     ['custom:emberMarkRatio', 40, 'team'],
     ['custom:emberMarkRatio', 30, 'self'],
+    ['custom:emberMarkAccumulationBonus', 35, 'team'],
   ])
   assert.deepEqual(effects[2].conditions.damageTypes, ['sharpen'])
+  assert.deepEqual(effects[3].skillTargets, destructionTargets)
+  assert.equal(effects[3].skillTargetsOnlyForTeammates, true)
+  assert.equal(normalizeEffectList([effects[3]])[0].skillTargetsOnlyForTeammates, true)
+  assert.equal(plan.groups[1].effects[1].skillTargetsOnlyForTeammates, true)
   assert.ok(plan.groups[1].sourceTexts.some((text) => /35%/.test(text)))
 
   const sharedAnchorSkills = skills.map((skill) => skill.name === '毁伤段' ? { ...skill, buffAnchorId: 'anchor-2' } : skill)

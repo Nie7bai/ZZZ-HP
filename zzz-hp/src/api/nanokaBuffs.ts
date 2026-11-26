@@ -83,6 +83,7 @@ export interface NanokaKeywordAnchors {
   labels: string[]
   resolved: { name: string; category: string; subcategoryId: string | null; level: string }[]
   skillTargets: BuffSkillTarget[]
+  skillTargetsOnlyForTeammates?: boolean
   skillCategory: string
   skillSubcategoryId: string | null
   /** 技能库里没有同名小类时，按技能名**建立**锚点的计划（`{ name, categoryId, agentId }`） */
@@ -321,6 +322,7 @@ export interface NanokaApplyEffectDetail {
   value: number
   valuePerStack?: number
   maxStacks?: number
+  skillTargetsOnlyForTeammates?: boolean
   writeLabel: string
 }
 
