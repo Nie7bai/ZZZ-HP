@@ -1798,14 +1798,16 @@ onBeforeUnmount(() => {
   row-gap: 0.25rem;
 }
 
-.additional-block :deep(.num-stepper) {
+.value-col .additional-block :deep(.num-stepper) {
+  flex: 0 0 14rem;
   width: 14rem;
+  min-width: 14rem;
   max-width: 14rem;
 }
 
 .additional-block .line-sub {
-  flex: 1 1 9rem;
-  min-width: 9rem;
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
 .value-col :deep(.num-stepper) {
