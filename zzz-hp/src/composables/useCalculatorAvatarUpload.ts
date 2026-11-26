@@ -5,6 +5,7 @@ import {
   type CalculatorPublicAvatarKind,
 } from '@/api/admin'
 import AdminImagePicker from '@/components/admin/AdminImagePicker.vue'
+import { calculatorEntityIdError } from '@/utils/calculatorEntityId'
 import { resolveAssetUrl } from '@/utils/gameData'
 
 const FIXED_AVATAR_PREFIX: Record<CalculatorPublicAvatarKind, string> = {
@@ -79,6 +80,9 @@ export function useCalculatorAvatarUpload(kind: CalculatorPublicAvatarKind) {
       if (!id) {
         throw new Error('请先填写 ID 再上传头像')
       }
+      // 先按后端同一份规则拦下来，避免上传后才蹦「无效的实体 ID」
+      const idError = calculatorEntityIdError(id)
+      if (idError) throw new Error(idError)
       const uploaded = await uploadCalculatorPublicImage(imageFile.value, kind, id)
       avatarImage.value = uploaded.url
       imageFile.value = null
@@ -91,7 +95,8 @@ export function useCalculatorAvatarUpload(kind: CalculatorPublicAvatarKind) {
     const current = avatarImage.value?.trim() || fallbackUrl?.trim() || null
     if (!current || !id) return current
 
-    if (!isFixedAvatarUrl(kind, current, id)) {
+    // 旧头像迁移同样走后端同规则；ID 不合法时保持原样，不做无意义的请求
+    if (!isFixedAvatarUrl(kind, current, id) && !calculatorEntityIdError(id)) {
       try {
         const ensured = await ensureCalculatorPublicAvatar(kind, id, current)
         avatarImage.value = ensured.url
