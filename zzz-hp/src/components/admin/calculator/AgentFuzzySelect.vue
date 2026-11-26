@@ -1,17 +1,26 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, useId, watch } from 'vue'
+
+interface SelectOption {
+  id: string
+  name: string
+  meta?: string
+}
 
 const props = withDefaults(
   defineProps<{
-    agents: Array<{ id: string; name: string }>
+    agents: SelectOption[]
     allowEmpty?: boolean
     emptyLabel?: string
+    noMatchLabel?: string
     disabled?: boolean
     placeholder?: string
+    inputId?: string
   }>(),
   {
     allowEmpty: true,
     emptyLabel: '全部角色',
+    noMatchLabel: '无匹配角色',
     disabled: false,
     placeholder: '输入角色名搜索…',
   },
@@ -21,25 +30,18 @@ const model = defineModel<string>({ default: '' })
 
 const query = ref('')
 const open = ref(false)
+const activeIndex = ref(-1)
+const listId = useId()
 
 const selectedLabel = computed(() => {
   if (!model.value) return props.emptyLabel
-  return props.agents.find((item) => item.id === model.value)?.name ?? model.value
+  const option = props.agents.find((item) => item.id === model.value)
+  return option ? optionLabel(option) : model.value
 })
-
-watch(
-  model,
-  () => {
-    query.value = model.value ? selectedLabel.value : ''
-  },
-  { immediate: true },
-)
 
 const filteredAgents = computed(() => {
   const keyword = query.value.trim().toLowerCase()
-  if (!keyword || keyword === selectedLabel.value.toLowerCase()) {
-    return props.agents
-  }
+  if (!keyword) return props.agents
   return props.agents.filter((agent) => {
     const name = agent.name.toLowerCase()
     const id = agent.id.toLowerCase()
@@ -47,61 +49,112 @@ const filteredAgents = computed(() => {
   })
 })
 
-function pick(id: string) {
-  model.value = id
+const options = computed(() =>
+  props.allowEmpty
+    ? [{ id: '', name: props.emptyLabel }, ...filteredAgents.value]
+    : filteredAgents.value,
+)
+
+function optionLabel(option: SelectOption): string {
+  return option.meta ? `${option.name}（${option.meta}）` : option.name
+}
+
+function optionId(index: number): string {
+  return `${listId}-${index}`
+}
+
+function closeMenu() {
   open.value = false
-  query.value = id ? props.agents.find((item) => item.id === id)?.name ?? id : ''
+  activeIndex.value = -1
+}
+
+watch(model, closeMenu)
+watch(() => props.disabled, (disabled) => {
+  if (disabled) closeMenu()
+})
+
+function pick(id: string) {
+  if (props.disabled) return
+  model.value = id
+  closeMenu()
 }
 
 function onInput(event: Event) {
   query.value = (event.target as HTMLInputElement).value
+  activeIndex.value = -1
   open.value = true
 }
 
-function onFocus() {
-  if (props.disabled) return
-  open.value = true
+function openMenu() {
+  if (props.disabled || open.value) return
   query.value = ''
+  open.value = true
 }
 
-function onBlur() {
-  window.setTimeout(() => {
-    open.value = false
-    query.value = model.value ? selectedLabel.value : ''
-  }, 150)
+function onKeydown(event: KeyboardEvent) {
+  if (props.disabled || event.isComposing) return
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault()
+    openMenu()
+    const count = options.value.length
+    if (!count) return
+    const index = activeIndex.value < count ? activeIndex.value : -1
+    activeIndex.value = event.key === 'ArrowDown'
+      ? (index + 1) % count
+      : (index > 0 ? index - 1 : count - 1)
+    void nextTick(() => {
+      document.getElementById(optionId(activeIndex.value))?.scrollIntoView?.({ block: 'nearest' })
+    })
+  } else if (event.key === 'Enter' && open.value) {
+    event.preventDefault()
+    const option = options.value[activeIndex.value]
+      ?? (query.value.trim() ? filteredAgents.value[0] : undefined)
+    if (option) pick(option.id)
+  } else if (event.key === 'Escape' && open.value) {
+    event.preventDefault()
+    closeMenu()
+  }
 }
 </script>
 
 <template>
-  <div class="agent-fuzzy-select" :class="{ disabled }">
+  <div class="agent-fuzzy-select" :class="{ disabled, open }">
     <input
+      :id="inputId"
       class="search-input"
       type="search"
+      role="combobox"
+      aria-autocomplete="list"
+      :aria-controls="open ? listId : undefined"
+      :aria-expanded="open && !disabled"
+      :aria-activedescendant="open && options[activeIndex] ? optionId(activeIndex) : undefined"
       :value="open ? query : selectedLabel"
       :placeholder="placeholder"
       :disabled="disabled"
       autocomplete="off"
-      @focus="onFocus"
-      @blur="onBlur"
+      @focus="openMenu"
+      @click="openMenu"
+      @blur="closeMenu"
       @input="onInput"
+      @keydown="onKeydown"
     />
-    <ul v-if="open && !disabled" class="suggest-list" role="listbox">
-      <li v-if="allowEmpty">
-        <button type="button" class="suggest-item" @mousedown.prevent="pick('')">
-          {{ emptyLabel }}
-        </button>
-      </li>
-      <li v-for="agent in filteredAgents" :key="agent.id">
+    <ul v-if="open && !disabled" :id="listId" class="suggest-list" role="listbox">
+      <li v-for="(option, index) in options" :key="option.id" role="presentation">
         <button
+          :id="optionId(index)"
           type="button"
+          role="option"
+          tabindex="-1"
+          :aria-selected="model === option.id"
           class="suggest-item"
-          :class="{ active: model === agent.id }"
-          @mousedown.prevent="pick(agent.id)"
+          :class="{ active: model === option.id, 'keyboard-active': activeIndex === index }"
+          @mousedown.prevent
+          @click="pick(option.id)"
         >
-          {{ agent.name }}
+          {{ optionLabel(option) }}
         </button>
       </li>
-      <li v-if="!filteredAgents.length" class="suggest-empty">无匹配角色</li>
+      <li v-if="!filteredAgents.length" class="suggest-empty" role="presentation">{{ noMatchLabel }}</li>
     </ul>
   </div>
 </template>
@@ -112,11 +165,29 @@ function onBlur() {
   width: 100%;
 }
 
+.agent-fuzzy-select::after {
+  position: absolute;
+  top: 50%;
+  right: 0.75rem;
+  width: 0.38rem;
+  height: 0.38rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-75%) rotate(45deg);
+  color: var(--color-text);
+  pointer-events: none;
+  content: '';
+}
+
+.agent-fuzzy-select.open::after {
+  transform: translateY(-25%) rotate(225deg);
+}
+
 /* 与 adminCalculatorPanel.css 的 .field-input 对齐（子组件拿不到父级 scoped 样式） */
 .search-input {
   width: 100%;
   box-sizing: border-box;
-  padding: 0.5rem 0.65rem;
+  padding: 0.5rem 1.75rem 0.5rem 0.65rem;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   background: var(--color-background);
@@ -169,8 +240,13 @@ function onBlur() {
 }
 
 .suggest-item:hover,
-.suggest-item.active {
+.suggest-item.active,
+.suggest-item.keyboard-active {
   background: var(--color-background-mute);
+}
+
+.suggest-item.keyboard-active {
+  box-shadow: inset 0 0 0 1px var(--color-border-hover);
 }
 
 .suggest-empty {

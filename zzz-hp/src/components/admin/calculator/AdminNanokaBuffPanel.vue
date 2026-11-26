@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, useId, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import {
@@ -34,6 +34,7 @@ import { useMaskClose } from '@/composables/useMaskClose'
 import { clearAdminAuthenticated } from '@/utils/adminAuth'
 import AdminBuffEffectEditor from '@/components/admin/calculator/AdminBuffEffectEditor.vue'
 import AdminBuffSkillTargets from '@/components/admin/calculator/AdminBuffSkillTargets.vue'
+import AgentFuzzySelect from '@/components/admin/calculator/AgentFuzzySelect.vue'
 import type { BuffEffect, BuffEffectBlock, BuffSkillTarget } from '@/types/calculator'
 import { BUFF_APPLY_TARGET_LABELS } from '@/types/calculator'
 import { loadRuntimeZoneSchemes } from '@/zones/schemeSource'
@@ -118,7 +119,7 @@ interface KeywordRow {
 
 const kind = ref<NanokaBuffKind>('agent')
 const selectedId = ref('')
-const localQuery = ref('')
+const localSelectorId = useId()
 
 const page = ref<Page>('stage1')
 const meta = ref<NanokaExtractorMeta | null>(null)
@@ -166,21 +167,6 @@ const localOptions = computed<LocalOption[]>(() => {
     name: wengine.name,
     meta: [wengine.rarity, wengine.profession].filter(Boolean).join(' · '),
   }))
-})
-
-const filteredOptions = computed(() => {
-  const query = localQuery.value.trim().toLowerCase()
-  if (!query) return localOptions.value
-  return localOptions.value.filter(
-    (option) => option.name.toLowerCase().includes(query) || option.id.toLowerCase().includes(query),
-  )
-})
-
-const selectOptions = computed(() => {
-  const list = filteredOptions.value
-  if (!selectedId.value || list.some((option) => option.id === selectedId.value)) return list
-  const current = localOptions.value.find((option) => option.id === selectedId.value)
-  return current ? [current, ...list] : list
 })
 
 const selectedLocal = computed(
@@ -315,6 +301,14 @@ function displaySlotValue(slotId: string, value: unknown): string {
     return meta.value?.convertPanelSourceLabels?.[text] ?? CONVERT_PANEL_SOURCE_LABELS[text] ?? text
   }
   return text
+}
+
+function formatKeywordSummary(row: KeywordRow): string {
+  const { stat, action, value, unit } = row.slots
+  const valueSummary = action === '转化'
+    ? '转模'
+    : `数值=${value ?? ''}${unit === NONE ? '' : unit ?? ''}`
+  return `属性=${displaySlotValue('stat', stat)} · 动作=${action ?? ''} · ${valueSummary}`
 }
 
 /** 该槽位是不是「无值」（`无` / 空）——`无` 默认隐藏（v3.1） */
@@ -471,10 +465,56 @@ function rowsForSentence(itemKey: string, sentenceIndex: number): KeywordRow[] {
 /** 左侧要显示哪些来源块（整块抽不出关键字 → 不显示，只在废原文区出现） */
 const visibleItems = computed(() => items.value.filter((item) => keywordSentences(item).length > 0))
 
-// —— 「整块原文」弹窗（用户 2026-10-16）：弹窗里同样剔除完全解析不出来的句子，并高亮当前句
-const originalVisible = ref(false)
-const originalItem = ref<NanokaBuffItem | null>(null)
-const originalHighlight = ref(0)
+type SourceDialog =
+  | { view: 'keywords' | 'original'; item: NanokaBuffItem }
+  | { view: 'comparison'; item: NanokaBuffItem; sentence: NanokaBuffSentence }
+
+const sourceDialog = ref<SourceDialog | null>(null)
+const sourceDialogTitles = {
+  keywords: '关键字一览',
+  original: '展示原文',
+  comparison: '对比原文',
+}
+
+const keywordOverview = computed(() => {
+  const dialog = sourceDialog.value
+  if (dialog?.view !== 'keywords') return []
+  return dialog.item.sentences.map(({ sentenceIndex, rawSentence }) => ({
+    sentenceIndex,
+    rawSentence,
+    keywordCount: rowsForSentence(dialog.item.slot, sentenceIndex).length,
+  }))
+})
+
+const firstKeywordSentenceIndex = computed(() =>
+  keywordOverview.value.find((sentence) => sentence.keywordCount > 0)?.sentenceIndex,
+)
+
+const comparisonKeywordRows = computed(() => {
+  const dialog = sourceDialog.value
+  return dialog?.view === 'comparison'
+    ? rowsForSentence(dialog.item.slot, dialog.sentence.sentenceIndex)
+    : []
+})
+
+/** 按已返回的句序对齐整段原文，取回切句时省略的标点和换行。 */
+const originalComparisonSentence = computed(() => {
+  const dialog = sourceDialog.value
+  if (dialog?.view !== 'comparison') return null
+  const { rawText, sentences } = dialog.item
+  const characters = [...rawText.matchAll(/[^\s。；]/g)]
+  const sourceText = characters.map(([character]) => character).join('')
+  let offset = 0
+  for (const sentence of sentences) {
+    const text = sentence.rawSentence.replace(/[\s。；]/g, '')
+    if (!sourceText.startsWith(text, offset)) return null
+    const start = characters[offset]?.index
+    offset += text.length
+    if (sentence.sentenceIndex !== dialog.sentence.sentenceIndex) continue
+    return start === undefined ? null : rawText.slice(start, characters[offset]?.index).trimEnd()
+  }
+  return null
+})
 
 /** 「解析规则」弹窗（只读；数据来自后端 `/rules`，界面不手写规则） */
 const rulesVisible = ref(false)
@@ -591,30 +631,18 @@ async function openEmptyTargets() {
 /** 点一项 = 等价于在「本地角色 / 本地音擎」下拉里选中它（停在可点 [抓取增益] 的状态） */
 function pickEmptyTarget(row: NanokaEmptyTarget) {
   selectedId.value = row.id
-  localQuery.value = ''
   emptyVisible.value = false
   messageKind.value = 'ok'
   message.value = `已选中${kindLabel.value}「${row.name}」（ID ${row.id}）—— 现在可以直接点 [抓取增益]`
 }
 
-function openOriginal(item: NanokaBuffItem, sentenceIndex = -1) {
-  originalItem.value = item
-  const keywordSentencesOfItem = keywordSentences(item)
-  originalHighlight.value =
-    sentenceIndex >= 0
-      ? sentenceIndex
-      : (keywordSentencesOfItem[0]?.sentenceIndex ?? 0)
-  originalVisible.value = true
-}
-
-function closeOriginal() {
-  originalVisible.value = false
-  originalItem.value = null
+function closeSourceDialog() {
+  sourceDialog.value = null
 }
 
 // 遮罩点击关闭：只有「按下 + 松开都在遮罩上」才关，拖选文字出界松手不误关。
 // 本组件有三个遮罩弹窗，各用一个独立实例，按下态不会互相串。
-const { onMaskPointerDown, onMaskClick } = useMaskClose(closeOriginal)
+const { onMaskPointerDown, onMaskClick } = useMaskClose(closeSourceDialog)
 const { onMaskPointerDown: onRulesMaskPointerDown, onMaskClick: onRulesMaskClick } = useMaskClose(
   () => {
     rulesVisible.value = false
@@ -624,15 +652,6 @@ const { onMaskPointerDown: onEmptyMaskPointerDown, onMaskClick: onEmptyMaskClick
   () => {
     emptyVisible.value = false
   },
-)
-
-/**
- * 弹窗里显示的句子：**这一段（整块）的完整原文**，一句都不删（用户 2026-10-17：
- * 之前只列「产出过关键字」的句子，块里只有一句时弹窗与左侧那句一模一样 → 没意义）。
- * 没抽出关键字的句子照样列出，标淡色 + 「无关键字」（它们同时也在底部废原文区）。
- */
-const originalSentences = computed<NanokaBuffSentence[]>(() =>
-  originalItem.value ? originalItem.value.sentences : [],
 )
 
 // ---------------------------------------------------------------- 废原文（按来源块 · 整段原文）
@@ -692,6 +711,13 @@ const wasteBlocks = computed<WasteBlockRow[]>(() => {
     if (a[1] !== b[1]) return a[1] - b[1]
     return a[2].localeCompare(b[2])
   })
+})
+
+const originalSourceSegments = computed(() => {
+  const dialog = sourceDialog.value
+  if (dialog?.view !== 'original') return []
+  const block = wasteBlocks.value.find((entry) => entry.itemKey === dialog.item.slot)
+  return block?.segments ?? [{ text: dialog.item.rawText, waste: false }]
 })
 
 // ---------------------------------------------------------------- Row 组装
@@ -991,7 +1017,6 @@ async function fetchAndExtract() {
 
 function onKindChange() {
   selectedId.value = ''
-  localQuery.value = ''
   indexMap = {}
   indexKind = ''
   buildTag.value = ''
@@ -1551,19 +1576,19 @@ const wasteCount = computed(() =>
           音擎
         </button>
       </div>
-      <label class="field nbf-field">
-        <span class="field-label">搜索本地{{ kindLabel }}</span>
-        <input v-model="localQuery" type="text" class="field-input" placeholder="名称 / ID" />
-      </label>
-      <label class="field nbf-field nbf-field-wide">
-        <span class="field-label">本地{{ kindLabel }}</span>
-        <select v-model="selectedId" class="field-input" :disabled="busy">
-          <option value="">请选择…</option>
-          <option v-for="option in selectOptions" :key="option.id" :value="option.id">
-            {{ option.name }}{{ option.meta ? `（${option.meta}）` : '' }}
-          </option>
-        </select>
-      </label>
+      <div class="field nbf-field nbf-field-wide">
+        <label class="field-label" :for="localSelectorId">本地{{ kindLabel }}</label>
+        <AgentFuzzySelect
+          :key="kind"
+          v-model="selectedId"
+          :agents="localOptions"
+          :input-id="localSelectorId"
+          empty-label="请选择…"
+          placeholder="输入名称或 ID…"
+          :no-match-label="`无匹配${kindLabel}`"
+          :disabled="busy"
+        />
+      </div>
       <button type="button" class="primary-btn" :disabled="busy || !selectedId" @click="fetchAndExtract">
         {{ fetching ? '抓取中…' : extracting ? '抽取中…' : '抓取增益' }}
       </button>
@@ -1632,7 +1657,12 @@ const wasteCount = computed(() =>
           <span class="nbf-item-title">{{ item.title }}</span>
           <span class="nbf-badge nbf-badge-ok">有增益 {{ keywordSentences(item).length }} 句</span>
           <span v-if="item.landing" class="nbf-sub">写入槽位：{{ item.landing.label }}</span>
-          <button type="button" class="nbf-mini-btn" @click="openOriginal(item)">整块原文</button>
+          <button type="button" class="nbf-mini-btn" @click="sourceDialog = { view: 'keywords', item }">
+            {{ sourceDialogTitles.keywords }}
+          </button>
+          <button type="button" class="nbf-mini-btn" @click="sourceDialog = { view: 'original', item }">
+            {{ sourceDialogTitles.original }}
+          </button>
           <button type="button" class="nbf-mini-btn" :disabled="busy" @click="simplifyOne(item.slot)">
             化简
           </button>
@@ -1641,7 +1671,7 @@ const wasteCount = computed(() =>
           技能「描述」落点：{{ item.skillDesc.skillName }}
         </p>
 
-        <!-- 一句一对：左 = 该句原文（约 1/3），右 = 该句的关键字（摘要行 + 展开区）；每对独立成块 -->
+        <!-- 左侧展示切句后的文本，右侧编辑这一句的关键字。 -->
         <div
           v-for="sentence in keywordSentences(item)"
           :key="`${item.slot}-${sentence.sentenceIndex}`"
@@ -1653,9 +1683,9 @@ const wasteCount = computed(() =>
               <button
                 type="button"
                 class="nbf-mini-btn"
-                @click="openOriginal(item, sentence.sentenceIndex)"
+                @click="sourceDialog = { view: 'comparison', item, sentence }"
               >
-                整块原文
+                {{ sourceDialogTitles.comparison }}
               </button>
             </div>
             <p class="nbf-raw-text">{{ sentence.rawSentence }}</p>
@@ -1669,13 +1699,7 @@ const wasteCount = computed(() =>
             >
                 <header class="nbf-kw-head">
                   <span class="nbf-kw-index">B{{ rowIndex + 1 }}</span>
-                  <span class="nbf-kw-summary">
-                    属性={{ displaySlotValue('stat', row.slots.stat) }} · 动作={{ row.slots.action }}
-                    <template v-if="row.slots.action !== '转化'">
-                      · 数值={{ row.slots.value }}{{ row.slots.unit === '无' ? '' : row.slots.unit }}
-                    </template>
-                    <template v-else>· 转模</template>
-                  </span>
+                  <span class="nbf-kw-summary">{{ formatKeywordSummary(row) }}</span>
                   <span v-if="row.tautologyDropped.length" class="nbf-badge nbf-badge-muted">
                     同义反复已忽略
                   </span>
@@ -1907,41 +1931,70 @@ const wasteCount = computed(() =>
         <p v-if="wasteOpen && !wasteBlocks.length" class="empty-hint">没有废原文。</p>
       </section>
 
-      <!-- 「整块原文」弹窗：这一段（整块）的完整原文，一句不删，并高亮当前句。
-           没抽出关键字的句子标淡色（用户 2026-10-17）。
-           **Teleport 到 body**：面板外层容器可能有 transform / overflow，会裁掉 position:fixed 的弹窗 -->
+      <!-- Teleport 到 body，避免面板外层的 transform / overflow 裁掉弹窗。 -->
       <Teleport to="body">
         <div
-          v-if="originalVisible && originalItem"
+          v-if="sourceDialog"
           class="nbf-modal-mask"
           @pointerdown="onMaskPointerDown"
           @click="onMaskClick"
         >
-          <div class="nbf-modal">
+          <div class="nbf-modal" role="dialog" aria-modal="true" aria-labelledby="nbf-source-dialog-title">
             <header class="nbf-modal-head">
-              <h4>{{ originalItem.slotLabel }} · {{ originalItem.title || '（无标题）' }} · 整块原文</h4>
-              <button type="button" class="nbf-mini-btn" @click="closeOriginal">关闭</button>
+              <h4 id="nbf-source-dialog-title">
+                {{ sourceDialog.item.slotLabel }} · {{ sourceDialog.item.title || '（无标题）' }} ·
+                {{ sourceDialogTitles[sourceDialog.view] }}
+                <template v-if="sourceDialog.view === 'comparison'">
+                  · 第 {{ sourceDialog.sentence.sentenceIndex + 1 }} 句
+                </template>
+              </h4>
+              <button type="button" class="nbf-mini-btn" @click="closeSourceDialog">关闭</button>
             </header>
-            <p class="nbf-sub">
-              写入槽位：{{ originalItem.landing?.label ?? '—' }} ·
-              这一段共 {{ originalSentences.length }} 句，原文一句不删；淡色句 = 没抽出关键字（同属废原文）
+            <template v-if="sourceDialog.view === 'keywords'">
+              <p class="nbf-sub">
+                写入槽位 {{ sourceDialog.item.landing?.label ?? '—' }} ·
+                共 {{ keywordOverview.length }} 句，淡色为无关键字的句子
+              </p>
+              <ol class="nbf-original-list">
+                <li
+                  v-for="sentence in keywordOverview"
+                  :key="sentence.sentenceIndex"
+                  :class="{
+                    'nbf-original-current': sentence.sentenceIndex === firstKeywordSentenceIndex,
+                    'nbf-original-nokw': sentence.keywordCount === 0,
+                  }"
+                >
+                  <span class="nbf-chip">第 {{ sentence.sentenceIndex + 1 }} 句</span>
+                  <span class="nbf-original-text">{{ sentence.rawSentence }}</span>
+                  <span class="nbf-sub">
+                    {{ sentence.keywordCount > 0 ? `${sentence.keywordCount} 条关键字` : '无关键字' }}
+                  </span>
+                </li>
+              </ol>
+            </template>
+            <div v-else-if="sourceDialog.view === 'comparison'" class="nbf-source-comparison">
+              <section>
+                <h5>{{ originalComparisonSentence === null ? '整段原文' : '原文' }}</h5>
+                <p class="nbf-source-text">{{ originalComparisonSentence ?? sourceDialog.item.rawText }}</p>
+              </section>
+              <section>
+                <h5>提取出的关键字</h5>
+                <ul v-if="comparisonKeywordRows.length" class="nbf-source-text nbf-source-keywords">
+                  <li v-for="(row, rowIndex) in comparisonKeywordRows" :key="row.key">
+                    <span class="nbf-kw-index">B{{ rowIndex + 1 }}</span>
+                    <span>{{ formatKeywordSummary(row) }}</span>
+                  </li>
+                </ul>
+                <p v-else class="nbf-source-text">这句话目前没有关键字。</p>
+              </section>
+            </div>
+            <p v-else class="nbf-source-text">
+              <span
+                v-for="(segment, index) in originalSourceSegments"
+                :key="index"
+                :class="{ 'nbf-waste-mark': segment.waste }"
+              >{{ segment.text }}</span>
             </p>
-            <ol class="nbf-original-list">
-              <li
-                v-for="sentence in originalSentences"
-                :key="`o-${sentence.sentenceIndex}`"
-                :class="{
-                  'nbf-original-current': sentence.sentenceIndex === originalHighlight,
-                  'nbf-original-nokw': !sentence.hasKeywords,
-                }"
-              >
-                <span class="nbf-chip">第 {{ sentence.sentenceIndex + 1 }} 句</span>
-                <span class="nbf-original-text">{{ sentence.rawSentence }}</span>
-                <span class="nbf-sub">
-                  {{ sentence.hasKeywords ? `${sentence.keywords.length} 条关键字` : '无关键字' }}
-                </span>
-              </li>
-            </ol>
           </div>
         </div>
 
@@ -2282,7 +2335,7 @@ const wasteCount = computed(() =>
   min-width: 0;
 }
 
-/* 「整块原文」弹窗 */
+/* 原文与关键字弹窗 */
 .nbf-modal-mask {
   position: fixed;
   inset: 0;
@@ -2346,6 +2399,47 @@ const wasteCount = computed(() =>
 /* 没抽出关键字的句子：淡色（仍要显示 —— 用户 2026-10-17：整块原文一句不删） */
 .nbf-original-nokw > .nbf-original-text {
   color: var(--color-text-muted, rgba(90, 88, 78, 0.62));
+}
+
+.nbf-source-comparison {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.65rem;
+}
+
+.nbf-source-comparison > section {
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-background-soft);
+}
+
+.nbf-source-comparison h5 {
+  margin: 0 0 0.3rem;
+  color: var(--color-heading);
+  font-size: 0.8rem;
+}
+
+.nbf-source-text {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.nbf-source-keywords {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0;
+  list-style: none;
+}
+
+.nbf-source-keywords > li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
 }
 
 /* 阶段二：左选右看（左侧窄 = 选择器 + 详情，右侧宽 = 当前这条的实际增益） */
