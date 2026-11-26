@@ -214,6 +214,33 @@ check(
   staggerTipItems.join(' | '),
 )
 
+// 全队语义：增益挂在队友身上（不是伤害持有者）也要作用到该次紊乱
+function teamFloorZone({ sourceSlot, applyTarget, staggerPhase = 'normal' }) {
+  const effect = createEmptyBuffEffect({
+    id: 'team-floor', kind: 'fixed', stat: 'disorderStaggerFloor', value: 140,
+    applyTarget, enabledDefault: true, conditions: { damageTypes: ['disorder'] },
+  })
+  const fixture = eventFixture({
+    mode: 'ordinary', damageType: 'disorder', effects: [effect], sourceSlot,
+    agents: [testAgent('owner', { element: '电' }), testAgent('power', { element: '风' })],
+    prepared: [{ id: 'prepared', skillId: 'event-skill', skillSource: 'custom', anomalyPowerAgentId: 'power', triggerAgentId: 'owner' }],
+    flow: [{ id: 'flow-1', ownerAgentId: 'owner', preparedId: 'prepared', count: 1, staggerPhase, critMode: 'expected' }],
+    panels: { owner: makePanel({ atk: 2200, mastery: 400 }), power: makePanel({ atk: 2600, mastery: 300 }) },
+  })
+  const rt = createBuffCalculationRuntime(eventRuntimeInput(fixture, { contextInput: { teamSlots: fixture.teamSlots } }))
+  return rt.getHitDetail(fixture.hits[0]).evaluation.result.staggerMultiplier
+}
+check(
+  '全队：增益挂在队友（1 号位）身上，0 号位的紊乱仍抬到 1.4',
+  teamFloorZone({ sourceSlot: 1, applyTarget: 'team' }) === 1.4,
+  `${teamFloorZone({ sourceSlot: 1, applyTarget: 'team' })}`,
+)
+check(
+  '目标选「自身」时不外溢：队友的紊乱保持 1',
+  teamFloorZone({ sourceSlot: 1, applyTarget: 'self' }) === 1,
+  `${teamFloorZone({ sourceSlot: 1, applyTarget: 'self' })}`,
+)
+
 // 计算链路：失衡易伤区那一行要标出「原值 → 抬后」和取 max 的下限
 const chainRows = buildPipelineStageRows(detail.evaluation.result)
 const staggerRow = chainRows.find((row) => row.id === 'stagger')
