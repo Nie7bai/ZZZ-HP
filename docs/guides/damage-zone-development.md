@@ -11,21 +11,35 @@
 
 ## 2. 新增普通的独立乘区
 
-1. 在管理端「角色计算器 → 乘区方案 → 乘区定义」新增定义。填写 `custom:<内部键>` 和乘区中文名，原语选 `percentSum`。没有来源限制时，`providers` 选值为 `all` 的选项。填写 `stats` 数组，保存并启用定义。以下是最终伤害的 `stats`。
+管理端「角色计算器 → 乘区方案」用于查看定义和方案。配置通过管理 API 维护。调用时携带 `X-Admin-Token`，使用目标环境的 `POST /api/admin/login` 返回的 `data.token`。写请求使用 `Content-Type: application/json`。[管理 API 路由](../../zzz-hp-backend/src/routes/calculatorZoneRoutes.js)
+
+1. 用 `GET /api/admin/calculator/zone-definitions` 核对现有乘区键和定义中的属性键，用 `GET /api/admin/calculator/zone-schemes?scope=global` 读取现有全局方案。以下用已有的最终伤害作示例。新增时使用本次确认的名字和未占用的键。
+
+2. 用 `POST /api/admin/calculator/zone-definitions` 保存启用的定义。普通独立乘区使用 `percentSum`，没有来源限制时使用 `providers: all`。以下请求体包含定义名和 Buff 下拉名。
 
    ```json
-   [{"key":"finalDamageRatio","label":"最终伤害比例","valueType":"percent","sign":"both"}]
+   {
+     "zoneKey": "custom:finalDamage",
+     "label": "最终伤害",
+     "primitive": "percentSum",
+     "providers": "all",
+     "enabled": true,
+     "stats": [{"key":"finalDamageRatio","label":"最终伤害比例","valueType":"percent","sign":"both"}]
+   }
    ```
 
-2. 在乘区方案的 `rules` 数组中追加规则并保留原有规则。通用方案用「全局」作用域，目标留空。`key` 引用乘区定义，`params.statKeys` 填定义里的属性键，`label` 是详情名。保存并启用方案。以下是最终伤害的规则对象。
+3. 把规则加入启用的全局方案。规则的 `label` 是详情显示名，`params.statKeys` 使用定义里的属性键。
 
    ```json
    {"key":"custom:finalDamage","action":"replace","module":"percentSum","label":"最终伤害区","params":{"statKeys":["finalDamageRatio"]}}
    ```
 
-3. 刷新计算器让它加载新方案，在 Buff 条目中选择属性，填写百分比和适用条件。每个独立乘区各参与一次连乘，在详情各占一项。各因子地位相同，配置顺序用于展示。
+   - 已有全局方案时，调用 `PUT /api/admin/calculator/zone-schemes/:id`，将 `:id` 换成读回的方案 ID。保存会整体替换规则，提交时保留 `scope`、`targetId`、`name`、`priority`、`enabled` 和原有规则，再追加新规则。已有同键规则时在原位置更新。
+   - 库里没有全局方案时，调用 `POST /api/admin/calculator/zone-schemes`。请求体使用 `scope` 为 `global`、`targetId` 为空字符串、`name` 为方案名称、`enabled` 为 `true`、`rules` 为规则数组。
 
-给已有的普通独立乘区新增百分比属性时，先确认属性归属，在该定义的 `stats` 和规则的 `params.statKeys` 各追加一项，沿用原乘区键和详情名。
+4. 用管理 API 读回定义和方案，核对两者均启用且规则完整。刷新计算器，在 Buff 条目中选择属性，填写百分比和适用条件。生效的独立乘区各参与一次连乘，在详情各占一项。
+
+给已有的普通独立乘区新增百分比属性时，先确认属性归属，再读回原定义和方案。在定义的 `stats` 和规则的 `params.statKeys` 各追加一项，保留其余配置。更新定义或方案时省略 `version`，由服务端递增。
 
 需要随版本发布时，将定义和方案规则登记在[计算器发布配置](../../zzz-hp-backend/scripts/data/zzz-hp-calculator-buffs.json)的 `zoneDefinitions` 和 `zoneSchemes` 中。烬痕、最终伤害和一布之力的正式配置可在这里对照。[加载与验收示例](../../zzz-hp/scripts/test-zone-custom-e2e.mjs)使用同一份数据。
 
