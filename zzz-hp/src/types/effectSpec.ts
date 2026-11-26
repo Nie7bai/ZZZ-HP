@@ -28,7 +28,7 @@ export type EffectStatKey = BuffStatKey | CustomBuffStatKey
 
 export type EffectSourceFamily = 'buff' | 'affix-stat' | 'affix-panel' | 'affix-gain'
 
-export type EffectBeneficiary = 'self' | 'team' | { slot: number }
+export type EffectBeneficiary = BuffApplyTarget | { slot: number }
 
 export interface EffectConditions {
   applySituation?: BuffApplySituation
@@ -37,7 +37,6 @@ export interface EffectConditions {
   /** @deprecated 词条库仍用 general/skill；BuffEffect 不再写 scope */
   scope?: BuffScope[]
   skillTargets?: BuffSkillTarget[]
-  skillTargetsOnlyForTeammates?: boolean
   elementFilter?: 'all' | string[]
   applyProfession?: string | null
   teammateProfessions?: string[]
@@ -89,7 +88,7 @@ export interface EffectInstance extends EffectSpec {
 export function beneficiaryToApplyTarget(
   beneficiary: EffectBeneficiary,
 ): BuffApplyTarget {
-  return beneficiary === 'team' ? 'team' : 'self'
+  return typeof beneficiary === 'string' ? beneficiary : 'self'
 }
 
 export interface EffectExecutionPlan {
@@ -107,5 +106,5 @@ export function emptyStageBuckets(): Record<EffectStage, EffectInstance[]> {
 }
 
 export function applyTargetToBeneficiary(applyTarget: BuffApplyTarget | undefined): EffectBeneficiary {
-  return applyTarget === 'team' ? 'team' : 'self'
+  return applyTarget ?? 'self'
 }

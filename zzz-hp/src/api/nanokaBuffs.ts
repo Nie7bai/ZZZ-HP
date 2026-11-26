@@ -1,5 +1,5 @@
 import { handleAdminSessionExpired, withAdminAuthHeaders } from '@/utils/adminAuth'
-import type { BuffEffect, BuffScope, BuffSkillTarget } from '@/types/calculator'
+import type { BuffApplyTarget, BuffEffect, BuffScope, BuffSkillTarget } from '@/types/calculator'
 
 /**
  * nanoka 增益（关键字 → 增益块）管理端接口。
@@ -83,7 +83,6 @@ export interface NanokaKeywordAnchors {
   labels: string[]
   resolved: { name: string; category: string; subcategoryId: string | null; level: string }[]
   skillTargets: BuffSkillTarget[]
-  skillTargetsOnlyForTeammates?: boolean
   skillCategory: string
   skillSubcategoryId: string | null
   /** 技能库里没有同名小类时，按技能名**建立**锚点的计划（`{ name, categoryId, agentId }`） */
@@ -322,7 +321,8 @@ export interface NanokaApplyEffectDetail {
   value: number
   valuePerStack?: number
   maxStacks?: number
-  skillTargetsOnlyForTeammates?: boolean
+  applyTarget?: BuffApplyTarget
+  skillTargets?: BuffSkillTarget[] | null
   writeLabel: string
 }
 

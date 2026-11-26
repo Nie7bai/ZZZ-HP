@@ -137,7 +137,8 @@ export interface BuffEffectConditions {
   damageTypes?: BuffDamageType[]
 }
 
-export type BuffApplyTarget = 'self' | 'team'
+export const BUFF_APPLY_TARGET_LABELS = { self: '自身', team: '全队', teammates: '仅队友' } as const
+export type BuffApplyTarget = keyof typeof BUFF_APPLY_TARGET_LABELS
 /** 增益作用情况：全局 / 仅失衡期 / 仅非失衡期 */
 export type BuffApplySituation = 'global' | 'stagger' | 'non_stagger'
 export type BuffEffectKind = 'fixed' | 'stacked' | 'convert'
@@ -481,8 +482,6 @@ export interface BuffEffect {
    * 匹配时任一目标命中即生效。
    */
   skillTargets?: BuffSkillTarget[]
-  /** 全队增益的招式限制只检查队友，提供者自身继续检查其他条件。 */
-  skillTargetsOnlyForTeammates?: boolean
   /**
    * @deprecated 兼容旧数据；优先用 skillTargets。
    * 招式：小类空 = 整大类生效；follow_up = 追加攻击伪大类

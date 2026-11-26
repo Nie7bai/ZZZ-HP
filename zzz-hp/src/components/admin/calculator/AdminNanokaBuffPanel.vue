@@ -35,6 +35,8 @@ import { clearAdminAuthenticated } from '@/utils/adminAuth'
 import AdminBuffEffectEditor from '@/components/admin/calculator/AdminBuffEffectEditor.vue'
 import AdminBuffSkillTargets from '@/components/admin/calculator/AdminBuffSkillTargets.vue'
 import type { BuffEffect, BuffEffectBlock, BuffSkillTarget } from '@/types/calculator'
+import { BUFF_APPLY_TARGET_LABELS } from '@/types/calculator'
+import { loadRuntimeZoneSchemes } from '@/zones/schemeSource'
 import { normalizeBuffEffect } from '@/utils/buffEffect'
 import { validateEffectGroups } from '@/utils/buffEffectRows'
 import { createNanokaBuffDraft, nanokaDraftApplyRows, refreshNanokaBuffDraft, rememberNanokaDraftEdits, replaceNanokaKeywordSkillTargets, type NanokaDraftSlots } from '@/utils/nanokaBuffDraft'
@@ -192,7 +194,7 @@ const FALLBACK_SLOT_OPTIONS: Record<string, string[]> = {
   elements: ['物理', '火', '冰', '电', '以太', '风', NONE],
   action: ['提升', '降低', '无视', '转化', UNABLE],
   unit: ['%', '点', NONE],
-  target: ['自身', '全队', '指定职业', '指定阵营', NONE, UNABLE],
+  target: [...Object.values(BUFF_APPLY_TARGET_LABELS), NONE, UNABLE],
   conditions: [NONE, '攻击失衡敌人时', '攻击非失衡敌人时', '队伍中存在与自身属性或阵营相同的角色时', '队伍中存在其他异常角色或同阵营角色时', UNABLE],
   scope: [NONE, '锐化', '属性异常', '紊乱', '乱流', '异放', '耀变', '异化系数'],
   stacks: [NONE, UNABLE],
@@ -1140,11 +1142,6 @@ function setKeywordSkillTargets(row: KeywordRow, targets: BuffSkillTarget[], sel
   markKeywordDirty(row)
 }
 
-function setSkillTargetsOnlyForTeammates(row: KeywordRow, checked: boolean) {
-  row.anchors = { ...row.anchors, skillTargetsOnlyForTeammates: checked || undefined }
-  markKeywordDirty(row)
-}
-
 function addKeywordSkillTarget(row: KeywordRow, target: BuffSkillTarget) {
   const current = row.anchors.skillTargets
   const alreadySelected = current.some(
@@ -1351,8 +1348,9 @@ async function runParse() {
 async function switchPage(next: Page) {
   page.value = next
   if (next !== 'stage2') return
-  if (!rows.value.some((row) => row.keywordDirty)) return
-  await runParse()
+  const refreshStatCatalog = loadRuntimeZoneSchemes()
+  if (rows.value.some((row) => row.keywordDirty)) await runParse()
+  await refreshStatCatalog
 }
 
 function resolveConflict(row: KeywordRow, conflict: NanokaParseConflict, choice: 'mine' | 'theirs') {
@@ -1831,15 +1829,6 @@ const wasteCount = computed(() =>
                     @add="addKeywordSkillTarget(row, $event)"
                     @remove="setKeywordSkillTargets(row, row.anchors.skillTargets.filter((_, index) => index !== $event))"
                   />
-                  <label v-if="row.slots.target === '全队' && row.anchors.skillTargets.length" class="nbf-chip">
-                    <input
-                      type="checkbox"
-                      :checked="row.anchors.skillTargetsOnlyForTeammates"
-                      :disabled="busy"
-                      @change="setSkillTargetsOnlyForTeammates(row, ($event.target as HTMLInputElement).checked)"
-                    />
-                    自身不限招式
-                  </label>
                   <button
                     v-if="row.anchors.skillTargets.length"
                     type="button"

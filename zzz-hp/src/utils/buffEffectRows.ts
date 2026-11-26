@@ -60,7 +60,6 @@ const ISSUE_LABELS: Record<string, string> = {
   teamProfessionMinCount: '人数门槛',
   elementFilter: '属性限定',
   skillTargets: '招式目标',
-  skillTargetsOnlyForTeammates: '自身不限招式',
   kind: '数值类型',
   value: '数值',
   valuePerStack: '每层数值',
@@ -135,7 +134,6 @@ function targetSignature(effect: BuffEffect): string {
     teamProfessionMinCount: effect.teamProfessionMinCount ?? null,
     elementFilter: effect.elementFilter ?? 'all',
     skillTargets: effect.skillTargets ?? [],
-    skillTargetsOnlyForTeammates: effect.skillTargetsOnlyForTeammates === true,
     skillCategory: effect.skillCategory ?? null,
     skillSubcategoryId: effect.skillSubcategoryId ?? null,
     enabledDefault: effect.enabledDefault !== false,
@@ -187,9 +185,6 @@ export function rowIssues(row: EffectRow): EffectRowIssue[] {
     }
     if (stable(effect.skillTargets ?? []) !== stable(base.skillTargets ?? [])) {
       keys.add('skillTargets')
-    }
-    if (Boolean(effect.skillTargetsOnlyForTeammates) !== Boolean(base.skillTargetsOnlyForTeammates)) {
-      keys.add('skillTargetsOnlyForTeammates')
     }
     if ((effect.kind ?? 'fixed') !== (base.kind ?? 'fixed')) keys.add('kind')
     if ((effect.value ?? 0) !== (base.value ?? 0)) keys.add('value')
@@ -547,7 +542,6 @@ export function alignRow(row: EffectRow): BuffEffect[] {
       ? [...base.elementFilter]
       : base.elementFilter
     next.skillTargets = base.skillTargets?.map((item) => ({ ...item }))
-    next.skillTargetsOnlyForTeammates = base.skillTargetsOnlyForTeammates
     next.kind = base.kind
     next.value = base.value
     next.valuePerStack = base.valuePerStack

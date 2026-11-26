@@ -24,7 +24,7 @@
  */
 import { BUFF_STAT_KEYS, isCustomBuffStatKey } from '../utils/calculatorBuffFields.js'
 import {
-  hasTeammateOnlySkillTargets,
+  normalizeEffectApplyTarget,
   normalizeEffectConditionsForStat,
   normalizeGroupId,
   normalizeTeammateProfessions,
@@ -59,7 +59,6 @@ const AGENT_SLOT_COUNT = 7
 const REFINEMENT_COUNT = 5
 const MINDSCAPE_NOTES_LENGTH = 7
 
-const APPLY_TARGET_VALUES = new Set(['self', 'team'])
 const APPLY_SITUATION_VALUES = new Set(['global', 'stagger', 'non_stagger'])
 const EFFECT_KINDS = new Set(['fixed', 'stacked', 'convert'])
 /** 与 `calculatorBuffService.normalizeConvert` 的 ATTRS 同源 */
@@ -188,7 +187,7 @@ export function sanitizeEffect(input, index = 0) {
   const effect = {
     id: String(raw.id ?? `eff-${index}`).trim() || `eff-${index}`,
     origin: typeof raw.origin === 'string' ? raw.origin : '',
-    applyTarget: APPLY_TARGET_VALUES.has(raw.applyTarget) ? raw.applyTarget : 'self',
+    applyTarget: normalizeEffectApplyTarget(raw.applyTarget),
     applySituation: APPLY_SITUATION_VALUES.has(raw.applySituation) ? raw.applySituation : 'global',
     applyProfession:
       raw.applyProfession == null || String(raw.applyProfession).trim() === ''
@@ -270,9 +269,6 @@ export function sanitizeEffect(input, index = 0) {
   // `scope` 只作旧输入兼容；写库统一迁移为 conditions.damageTypes。
   const groupId = normalizeGroupId(raw.groupId)
   if (groupId) effect.groupId = groupId
-  if (hasTeammateOnlySkillTargets(raw.skillTargetsOnlyForTeammates, effect)) {
-    effect.skillTargetsOnlyForTeammates = true
-  }
   const conditions = normalizeEffectConditionsForStat(raw.conditions, raw.scope, stat)
   if (conditions) effect.conditions = conditions
   return effect
@@ -299,7 +295,6 @@ function effectSignature(input) {
     maxStacks: effect.maxStacks, defaultStacks: effect.defaultStacks, stackable: effect.stackable,
     elementFilter: Array.isArray(effect.elementFilter) ? sorted(effect.elementFilter) : effect.elementFilter,
     skillTargets: sorted(skillTargets.map((target) => JSON.stringify([target.category, target.subcategoryId ?? null]))),
-    skillTargetsOnlyForTeammates: effect.skillTargetsOnlyForTeammates,
     damageTypes: effect.conditions?.damageTypes ?? [],
     convert: effect.convert ?? null,
     enabledDefault: effect.enabledDefault,
@@ -454,6 +449,17 @@ export function mergeEditorBlocksIntoSlot({ blocks, entries }) {
   const blockNames = new Set()
   for (const { row, effect } of entries) {
     const metadata = row.block
+    // 同一次采集可能遇到早期按角色命名的块，按同一原文来源和正式效果判重。
+    if (metadata.id === `nanoka-${row.slot}` && effect.origin.startsWith('nanoka:')) {
+      const recorded = list.find((item) => item.id !== metadata.id && item.effects.some((existing) =>
+        existing.origin === effect.origin && sameEffect(existing, effect),
+      ))
+      if (recorded) {
+        blockNames.add(recorded.name)
+        duplicates += 1
+        continue
+      }
+    }
     let block = list.find((item) => item.id === metadata.id)
     if (!block) {
       block = { id: metadata.id, name: metadata.name, note: metadata.note, enabledDefault: metadata.enabledDefault !== false, effects: [] }
@@ -577,7 +583,6 @@ export const MERGE_FIELD_LIST = [
   { id: 'elementFilter', label: '元素过滤' },
   { id: 'conditions', label: '伤害类型条件' },
   { id: 'skillTargets', label: '招式目标' },
-  { id: 'skillTargetsOnlyForTeammates', label: '自身不限招式' },
   { id: 'skillCategory', label: '招式大类' },
   { id: 'skillSubcategoryId', label: '招式小类' },
   { id: 'convert', label: '转模' },
@@ -1043,7 +1048,6 @@ export function planBuffApply({ kind, local, rows = [], skills = [], subcategori
       applyTarget: effect.applyTarget,
       applySituation: effect.applySituation,
       skillTargets: effect.skillTargets ?? null,
-      ...(effect.skillTargetsOnlyForTeammates ? { skillTargetsOnlyForTeammates: true } : {}),
       convert: effect.convert ?? null,
       note: effect.note,
       writeLabel: `写入：${target.label} · 块「${merged.blockName}」${merged.blockIsNew ? '（新建）' : '（复用）'} · 新增`,
@@ -1054,7 +1058,7 @@ export function planBuffApply({ kind, local, rows = [], skills = [], subcategori
       .map((item) => ({
         id: item.effect.id,
         stat: item.effect.stat,
-        statLabel: SLOT_LABELS[item.effect.stat] ?? item.effect.stat,
+        statLabel: STAT_LABELS[item.effect.stat] ?? item.effect.stat,
         kind: item.effect.kind,
         value: item.effect.value,
         writeLabel: `写入：${target.label} · 块「${merged.blockName}」 · 已存在（重复，跳过）`,

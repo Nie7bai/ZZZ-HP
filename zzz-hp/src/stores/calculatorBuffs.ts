@@ -250,12 +250,12 @@ function migrateWengineRefinementEnergyRegen(
 function normalizeBangboo(item: Record<string, unknown>): BangbooBuffDoc {
   const bangbooId = String(item.id ?? '')
   const effectBlocks = Array.isArray(item.effectBlocks)
-    ? normalizeBuffEffectBlocks(item.effectBlocks)
+    ? normalizeBuffEffectBlocks(item.effectBlocks, false)
     : []
 
   let effects = effectBlocks.length
     ? flattenEffectBlocks(effectBlocks)
-    : normalizeBuffEffects(item.effects ?? item.fixedEffects)
+    : normalizeBuffEffects(item.effects ?? item.fixedEffects, false)
   const fixedMods = normalizeBuffStatModifiers(item.fixedMods ?? item.fixedBuffs)
   if (!effects.length && Object.values(fixedMods).some((v) => v !== 0)) {
     effects = flatModsToEffects(fixedMods, 'team', 'general', `${bangbooId || 'bangboo'}-fixed`)
@@ -265,7 +265,7 @@ function normalizeBangboo(item: Record<string, unknown>): BangbooBuffDoc {
   if (Array.isArray(item.refinementEffectBlocks)) {
     const rawRanks = item.refinementEffectBlocks as unknown[]
     refinementEffectBlocks = REFINEMENT_RANKS.map((_, index) =>
-      normalizeBuffEffectBlocks(rawRanks[index] ?? []),
+      normalizeBuffEffectBlocks(rawRanks[index] ?? [], false),
     )
   }
 
@@ -273,7 +273,7 @@ function normalizeBangboo(item: Record<string, unknown>): BangbooBuffDoc {
   if (refinementEffectBlocks?.some((blocks) => blocks.length)) {
     refinementEffects = refinementEffectBlocks.map((blocks) => flattenEffectBlocks(blocks))
   } else if (Array.isArray(item.refinementEffects)) {
-    refinementEffects = item.refinementEffects.map((list) => normalizeBuffEffects(list))
+    refinementEffects = item.refinementEffects.map((list) => normalizeBuffEffects(list, false))
   } else {
     const refinementMods = Array.isArray(item.refinementMods)
       ? item.refinementMods

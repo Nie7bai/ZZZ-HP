@@ -12,6 +12,7 @@ import type {
   SkillCategoryId,
 } from '@/types/calculator'
 import {
+  BUFF_APPLY_TARGET_LABELS,
   CONVERT_FROM_OPTIONS,
   CONVERT_PANEL_SOURCE_OPTIONS,
   SKILL_CATEGORY_OPTIONS,
@@ -48,6 +49,7 @@ const props = defineProps<{
   row: EffectRow
   agentId?: string
   lockApplyTarget?: 'self' | 'team' | null
+  allowTeammatesTarget?: boolean
   mergeMode?: boolean
   selected?: boolean
   /**
@@ -124,11 +126,11 @@ const applySituation = computed({
 })
 const applyTarget = computed({
   get: () => first.value?.applyTarget ?? 'self',
-  set: (value: BuffEffect['applyTarget']) => patchAll((effect) => {
-    effect.applyTarget = value
-    if (value !== 'team') delete effect.skillTargetsOnlyForTeammates
-  }),
+  set: (value: BuffEffect['applyTarget']) => patchField('applyTarget', value),
 })
+const applyTargetOptions = computed(() => Object.entries(BUFF_APPLY_TARGET_LABELS).filter(([target]) =>
+  target !== 'teammates' || props.allowTeammatesTarget || applyTarget.value === 'teammates',
+))
 const applyProfession = computed({
   get: () => first.value?.applyProfession ?? '',
   set: (value: string) => patchField('applyProfession', value || null),
@@ -519,7 +521,7 @@ const elementNames = computed(() => {
   return Array.isArray(filter) ? filter.map((item) => String(item)) : []
 })
 
-const targetText = computed(() => (applyTarget.value === 'team' ? '全队' : '自身'))
+const targetText = computed(() => BUFF_APPLY_TARGET_LABELS[applyTarget.value])
 const situationText = computed(() => formatApplySituationLabel(first.value))
 const skillText = computed(() => {
   const prefix = formatSkillTargetsPrefix(first.value, skillSubcategories.value)
@@ -728,8 +730,7 @@ onBeforeUnmount(() => {
           <label v-else-if="!lockApplyTarget" class="inline-field">
             <span>目标</span>
             <select v-model="applyTarget">
-              <option value="self">自身</option>
-              <option value="team">全队</option>
+              <option v-for="[target, text] in applyTargetOptions" :key="target" :value="target">{{ text }}</option>
             </select>
           </label>
 
@@ -854,14 +855,6 @@ onBeforeUnmount(() => {
               @remove="removeSkillTarget"
               @create="openCreateSubcat"
             />
-            <label v-if="applyTarget === 'team' && skillLimited" class="chip">
-              <input
-                type="checkbox"
-                :checked="first.skillTargetsOnlyForTeammates"
-                @change="patchField('skillTargetsOnlyForTeammates', ($event.target as HTMLInputElement).checked || undefined)"
-              />
-              <span>自身不限招式</span>
-            </label>
             <button
               type="button"
               class="reset-x"
@@ -940,6 +933,7 @@ onBeforeUnmount(() => {
           <label class="inline-field grow">
             <span>属性</span>
             <select :value="zone?.id ?? ''" @change="onZoneChange">
+              <option v-if="!zone" value="" disabled>未找到当前属性</option>
               <option v-for="item in BUFF_STAT_ZONES" :key="item.id" :value="item.id">
                 {{ item.label }}
               </option>

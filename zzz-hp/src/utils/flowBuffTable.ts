@@ -342,13 +342,15 @@ export function buildFlowBuffTableColumns(input: {
     // 受益槽位（2026-09-24，施工规格 §2.1）：优先用收集器填好的「适用槽位集合」——
     // 恰好一个槽位 = 有明确受益者；多个槽位 = 全队性质；缺字段（老调用）退回按来源标记解析。
     const beneficiarySlot = pickSingleSlot(item.applicableSlots, slotIndex, slotCount)
-    // `team` = 全队都吃（null）；否则受益者 = 这条增益所属槽位的角色
-    const beneficiarySlots =
-      item.effect.applyTarget === 'team' ? null : beneficiarySlot != null ? [beneficiarySlot] : null
-    const beneficiaryLabel =
-      beneficiarySlots == null
+    const teammatesOnly = item.effect.applyTarget === 'teammates'
+    const beneficiarySlots = teammatesOnly
+      ? item.applicableSlots ?? []
+      : item.effect.applyTarget === 'team' || beneficiarySlot == null ? null : [beneficiarySlot]
+    const beneficiaryLabel = teammatesOnly
+      ? '仅队友'
+      : beneficiarySlot == null || beneficiarySlots == null
         ? '全队'
-        : (input.slotLabels[beneficiarySlots[0] ?? 0] ?? `角色${(beneficiarySlots[0] ?? 0) + 1}`)
+        : (input.slotLabels[beneficiarySlot] ?? `角色${beneficiarySlot + 1}`)
     const effectLine = input.textById?.[item.effect.id] || effectSummary(item)
     const providerLine = `提供者：${rawField(item, 'providerName') || sourceLabel || '未知'}`
     // 卡片正文（2026-09-23 用户口径）：数值 / 生效者 / 提供者，都加粗；归属分两行

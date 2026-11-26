@@ -77,6 +77,7 @@ import { mergeSkillSubcategoryMultOverrides } from '@/utils/skillSubcategoryMult
 import { isEffectEnabled } from '@/utils/buffEffect'
 import {
   collectAllBuffEffects,
+  isTeamBuffApplyTarget,
   computeFinalPanel,
   hasExternalPanelForSlot,
   resolveCollectedEffectSourceSlot,
@@ -1300,7 +1301,7 @@ function resolveExternalForAgent(
   return createDefaultExternalPanel()
 }
 
-/** A 是否有「按自己面板折算再给全队」且已勾选的转模。有则队友招式会跟着 A 词条变。 */
+/** A 是否有已勾选、从自身面板折算给队友的转模。 */
 let mainAgentTeamConvertReadsPanelCached: boolean | null = null
 
 function mainAgentTeamConvertReadsPanel(ctx: OptimalEvalContext): boolean {
@@ -1309,18 +1310,16 @@ function mainAgentTeamConvertReadsPanel(ctx: OptimalEvalContext): boolean {
   const selection = ctx.slotBuffSelections
     ? resolveBuffSelectionForSlot(ctx.slotBuffSelections, mainIndex)
     : ctx.panelContext.buffSelection
-  for (const item of collectAllBuffEffects(ctx.panelContext)) {
-    // 额外 Buff 的来源槽位在 extraGainSourceSlot 上（providerSlot 恒 null），与其它转模判定统一解析
-    if (resolveCollectedEffectSourceSlot(item) !== mainIndex) continue
-    if (item.effect.applyTarget !== 'team') continue
-    if (item.effect.kind !== 'convert' || !item.effect.convert) continue
-    if ((item.effect.convert.panelSource ?? 'external') === 'manual') continue
-    if (!isEffectEnabled(item.effect, selection)) continue
-    mainAgentTeamConvertReadsPanelCached = true
-    return true
-  }
-  mainAgentTeamConvertReadsPanelCached = false
-  return false
+  mainAgentTeamConvertReadsPanelCached = ctx.panelContext.teamSlots.some((slot, index) =>
+    index !== mainIndex && slot.agentId &&
+    collectAllBuffEffects({ ...ctx.panelContext, mainSlotIndex: index }).some((item) => {
+      const { effect } = item
+      return resolveCollectedEffectSourceSlot(item) === mainIndex &&
+        isTeamBuffApplyTarget(effect.applyTarget) && effect.kind === 'convert' &&
+        effect.convert != null && effect.convert.panelSource !== 'manual' && isEffectEnabled(effect, selection)
+    }),
+  )
+  return mainAgentTeamConvertReadsPanelCached
 }
 
 /**

@@ -18,12 +18,13 @@ import { buildEventZoneDisplay } from '../src/utils/eventDamageSourceTips.ts'
 import { clearHitEvalCache } from '../src/utils/hitEvalCache.ts'
 import { clearAffixEvalCache, evaluateAffixCounts, evaluateAffixCountsForSweep } from '../src/utils/optimalAffixAlloc.ts'
 import { createEmptyAffixCounts } from '../src/types/calculatorPanel.ts'
-import { createEmptyBuffEffect } from '../src/utils/buffEffect.ts'
-import { BUFF_STAT_ZONES } from '../src/utils/buffStatZones.ts'
+import { createEmptyBuffEffect, normalizeBuffEffects } from '../src/utils/buffEffect.ts'
+import { BUFF_STAT_ZONES, buffStatZoneOf } from '../src/utils/buffStatZones.ts'
 import { resolveFlow } from '../src/utils/resolvedHit.ts'
 import { eventFixture, eventRuntimeInput } from './_eventElementHarness.mjs'
 import { testAgent, testSlot, makePanel, mindscapeWithEffects } from './_effectPipelineHarness.mjs'
 import { buildPipelineStageRows } from '../src/zones/display.ts'
+import { mapKeywordsToEffect, STAT_OPTIONS } from '../../zzz-hp-backend/src/services/nanoka/nanokaBuffExtractor.js'
 import { adaptZoneSchemes } from '../src/zones/schemeAdapter.ts'
 import {
   setRuntimeZoneDefinitions,
@@ -330,6 +331,21 @@ check('三组名称分别属于定义、Buff 下拉和乘区结果', () => {
   }
 })
 
+check('采集能映射的属性都有正式编辑入口，自定义属性同名且唯一', () => {
+  const mappings = STAT_OPTIONS.flatMap((label) => ['%', '点'].flatMap((unit) => {
+    const { effect } = mapKeywordsToEffect({ slots: { stat: label, action: '提升', value: 35, unit } })
+    return effect ? [[label, effect.stat]] : []
+  }))
+  assert.ok(mappings.some(([label]) => label === '烬痕积攒量提升'))
+  for (const [label, stat] of mappings) {
+    assert.ok(buffStatZoneOf(stat), `${label} → ${stat}`)
+    if (!stat.startsWith('custom:')) continue
+    const options = BUFF_STAT_ZONES.filter((item) => item.stat === stat)
+    assert.equal(options.length, 1, stat)
+    assert.equal(options[0].label, label)
+  }
+})
+
 for (const { damageType, emberFactor, fixture, hit, baseline } of paths) {
   check(damageType + '：Buff 范围独立生效，三个区各有一个格子', () => {
     const current = runtimeFor(fixture).getHitNumbers(hit)
@@ -366,43 +382,58 @@ check('无流程的面板结果与词条计算同样采用普通独立乘区', (
   assert.equal(evaluateAffixCountsForSweep(context, counts).grandTotal, current.result.directDamageExpected)
 })
 
-check('挽昼二影的烬痕积攒量提升按来源和毁伤招式判定一次，详情使用实际算式', () => {
+check('挽昼二影两条增益按自身与仅队友分别结算，换位后仍按来源槽位匹配', () => {
   const emberZone = 'custom:emberMark'
   const stat = 'custom:emberMarkAccumulationBonus'
   const sunbringer = agents.find(({ id }) => id === 'sunbringer')
   const teammate = testAgent('power')
+  const secondTeammate = testAgent('second-ally')
   const named = skills.find(({ id }) => id === 'sk-sunbringer-nk-1601007-main')
   const other = skills.find(({ id }) => id === 'sk-sunbringer-nk-1601014-main')
   const destruction = skills.find(({ id }) => id === 'sk-sunbringer-nk-1601114-毁伤')
   assert.ok(sunbringer && named && other && destruction)
   const teammateDestruction = { ...destruction, id: 'teammate-destruction', agentId: teammate.id }
   const teammateOrdinary = { ...teammateDestruction, id: 'teammate-ordinary', skillTypes: ['basic'] }
+  const secondTeammateDestruction = { ...destruction, id: 'second-teammate-destruction', agentId: secondTeammate.id }
   const withoutRatio = { ...other, id: 'without-ratio', buffAnchorId: null }
-  const eventSkills = [named, other, destruction, teammateDestruction, teammateOrdinary, withoutRatio]
+  const eventSkills = [named, other, destruction, teammateDestruction, teammateOrdinary, withoutRatio, secondTeammateDestruction]
   const skillById = new Map(eventSkills.map((skill) => [skill.id, skill]))
   assert.equal(BUFF_STAT_ZONES.find((item) => item.stat === stat)?.label, '烬痕积攒量提升')
-  assert.equal(sunbringer.mindscapeBuffs[2].effects.filter((effect) => effect.stat === stat).length, 1)
+  const entries = sunbringer.mindscapeBuffs[2].effects.filter((effect) => effect.stat === stat)
+  const shape = ({ id, applyTarget, skillTargets, value }) => [id, applyTarget, skillTargets ?? [], value]
+  assert.deepEqual(entries.map(({ applyTarget }) => applyTarget), ['self', 'teammates'])
+  assert.equal(entries[0].skillTargets, undefined)
+  assert.deepEqual(entries[1].skillTargets, [{ category: 'destruction', subcategoryId: null }])
+  const old = { ...entries[1], id: entries[0].id, applyTarget: 'team', skillTargetsOnlyForTeammates: true }
+  assert.deepEqual(normalizeBuffEffects([old]).map(shape), entries.map(shape))
+  assert.deepEqual(normalizeBuffEffects([old], false).map(shape), [shape(old)])
 
   const configuration = adaptZoneSchemes({ version: 1, definitions, schemes })
-  function run(rank, extraEffects = []) {
-    const testAgents = [sunbringer, teammate]
+  function run(rank, extraEffects = [], moveProvider = false) {
+    const testAgents = moveProvider ? [teammate, sunbringer, secondTeammate] : [sunbringer, teammate, secondTeammate]
     const fixture = eventFixture({ mode: 'extra-team', damageType: 'direct', effects: extraEffects,
-      agents: testAgents, panels: { sunbringer: makePanel(), power: makePanel() } })
-    const teamSlots = [testSlot(sunbringer.id, rank), testSlot(teammate.id)]
+      agents: testAgents, panels: Object.fromEntries(testAgents.map(({ id }) => [id, makePanel()])) })
+    const teamSlots = testAgents.map(({ id }) => testSlot(id, id === sunbringer.id ? rank : 0))
     const { hits } = resolveFlow({
       teamSlots,
-      slots: [{
-        prepared: eventSkills.map((skill) => ({ id: skill.id, skillId: skill.id, skillSource: skill.source })),
-        flow: eventSkills.map((skill) => ({ id: skill.id, ownerAgentId: skill.agentId,
-          preparedId: skill.id, count: 1, staggerPhase: 'stagger' })),
-      }],
+      slots: teamSlots.map(({ agentId }) => {
+        const ownedSkills = eventSkills.filter((skill) => skill.agentId === agentId)
+        return {
+          prepared: ownedSkills.map((skill) => ({ id: skill.id, skillId: skill.id, skillSource: skill.source })),
+          flow: ownedSkills.map((skill) => ({ id: skill.id, ownerAgentId: agentId,
+            preparedId: skill.id, count: 1, staggerPhase: 'stagger' })),
+        }
+      }),
       findSkill: (id) => skillById.get(id) ?? null,
       resolveAgentProfession: (id) => testAgents.find((agent) => agent.id === id)?.profession,
       skillSubcategories,
     })
     assert.equal(hits.length, eventSkills.length)
     const runtime = createBuffCalculationRuntime(eventRuntimeInput(fixture, { contextInput: { teamSlots, hits } }))
-    return hits.map((hit) => {
+    const hitsById = new Map(hits.map((hit) => [hit.id, hit]))
+    return eventSkills.map((skill) => {
+      const hit = hitsById.get(skill.id)
+      assert.equal(hit?.ownerAgentId, skill.agentId)
       const detail = runtime.getHitDetail(hit)
       assert.ok(detail?.evaluation.perHit > 0, hit.id)
       return detail
@@ -410,9 +441,10 @@ check('挽昼二影的烬痕积攒量提升按来源和毁伤招式判定一次�
   }
 
   const factors = (details) => details.map(({ evaluation }) => evaluation.result.zones[emberZone].value)
-  assert.deepEqual(factors(run(1)), [1.6, 1, 1.4, 1.4, 1, 1])
+  assert.deepEqual(factors(run(1)), [1.6, 1, 1.4, 1.4, 1, 1, 1.4])
   const secondRank = run(2)
-  assert.deepEqual(factors(secondRank), [1.81, 1.405, 1.54, 1.54, 1, 1])
+  assert.deepEqual(factors(secondRank), [1.81, 1.405, 1.54, 1.54, 1, 1, 1.54])
+  assert.deepEqual(factors(run(2, [], true)), factors(secondRank))
   const [namedDetail, , , , , noRatioDetail] = secondRank
   const formula = '1 + 60% × (1 + 35%) = 1.81'
   const rows = buildPipelineStageRows(namedDetail.evaluation.result).filter(({ id }) => id === emberZone)

@@ -16,7 +16,7 @@ import {
 } from '../utils/calculatorBuffFields.js'
 import {
   effectHasGenericConditions,
-  hasTeammateOnlySkillTargets,
+  normalizeEffectApplyTarget,
   normalizeEffectConditionsForStat,
   normalizeGroupId,
   normalizeTeammateProfessions,
@@ -212,13 +212,13 @@ function normalizeConvert(value) {
   }
 }
 
-export function normalizeEffectList(rawValue) {
+export function normalizeEffectList(rawValue, hasProvider = true) {
   // 旧个人/旧备份效果（属性异常字段旧名、旧子类类型值）在白名单校验前转换（Spec §4.4.3，幂等）。
   const value = Array.isArray(rawValue) ? migrateAttributeAnomalyNamingDeep(rawValue) : rawValue
   if (!Array.isArray(value)) return []
   return value
     .filter((item) => item && typeof item === 'object')
-    .map((item, index) => {
+    .flatMap((item, index) => {
       const teamProfession =
         item.teamProfession == null || String(item.teamProfession).trim() === ''
           ? null
@@ -262,7 +262,7 @@ export function normalizeEffectList(rawValue) {
       // 乘区定义登记的自定义键原样保留；`custom:` 前缀但格式非法 → 整条丢弃（不静默回落 dmgBonus）
       let stat
       if (typeof item.stat === 'string' && item.stat.startsWith('custom:')) {
-        if (!isCustomBuffStatKey(item.stat)) return null
+        if (!isCustomBuffStatKey(item.stat)) return []
         stat = item.stat
       } else {
         stat = BUFF_STAT_KEYS.includes(item.stat) ? item.stat : 'dmgBonus'
@@ -270,7 +270,7 @@ export function normalizeEffectList(rawValue) {
       const effect = {
         id: typeof item.id === 'string' && item.id ? item.id : `eff-${index}`,
         origin: typeof item.origin === 'string' ? item.origin : '',
-        applyTarget: item.applyTarget === 'team' ? 'team' : 'self',
+        applyTarget: normalizeEffectApplyTarget(item.applyTarget),
         applySituation:
           item.applySituation === 'stagger' || item.applySituation === 'non_stagger'
             ? item.applySituation
@@ -312,9 +312,6 @@ export function normalizeEffectList(rawValue) {
       // 同源行分组键：只在管理侧用于聚合，引擎不读；空值不落库。
       const groupId = normalizeGroupId(item.groupId)
       if (groupId) effect.groupId = groupId
-      if (hasTeammateOnlySkillTargets(item.skillTargetsOnlyForTeammates, effect)) {
-        effect.skillTargetsOnlyForTeammates = true
-      }
       // 伤害类型条件：新字段优先，旧 scope 兼容读入；15 个子类 stat 不写冗余条件。
       const conditions = normalizeEffectConditionsForStat(item.conditions, item.scope, stat)
       if (conditions) effect.conditions = conditions
@@ -328,12 +325,21 @@ export function normalizeEffectList(rawValue) {
           Math.abs(effect.value) < 1e-12 &&
           (effect.kind !== 'stacked' || Math.abs(effect.valuePerStack) < 1e-12)
         ) {
-          return null
+          return []
         }
       }
-      return effect
+      if (!hasProvider || item.skillTargetsOnlyForTeammates !== true || effect.applyTarget !== 'team' ||
+          !(effect.skillTargets?.length || effect.skillCategory)) {
+        return [effect]
+      }
+      return [
+        { ...effect, applyTarget: 'self', skillTargets: undefined, skillCategory: undefined, skillSubcategoryId: null },
+        {
+          ...effect, id: `${effect.id}:teammates`, applyTarget: 'teammates',
+          ...(effect.groupId ? { groupId: `${effect.groupId}:teammates` } : {}),
+        },
+      ]
     })
-    .filter(Boolean)
 }
 
 export function normalizeSelfTeamBuffs(value) {
@@ -588,14 +594,14 @@ function rowToBangboo(row) {
               ? item.name
               : `效果块 ${index + 1}`,
           note: typeof item.note === 'string' ? item.note : '',
-          effects: normalizeEffectList(item.effects),
+          effects: normalizeEffectList(item.effects, false),
           enabledDefault: item.enabledDefault === false ? false : true,
         }))
     : []
 
   let effects = effectBlocks.length
     ? effectBlocks.flatMap((block) => block.effects)
-    : normalizeEffectList(raw.effects ?? raw.fixedEffects ?? null)
+    : normalizeEffectList(raw.effects ?? raw.fixedEffects ?? null, false)
 
   const refinementEffectBlocks = Array.isArray(raw.refinementEffectBlocks)
     ? raw.refinementEffectBlocks.map((blocks, rankIndex) =>
@@ -611,7 +617,7 @@ function rowToBangboo(row) {
                       ? `精${rankIndex + 1}`
                       : `效果块 ${index + 1}`,
                 note: typeof item.note === 'string' ? item.note : '',
-                effects: normalizeEffectList(item.effects),
+                effects: normalizeEffectList(item.effects, false),
                 enabledDefault: item.enabledDefault === false ? false : true,
               }))
           : [],
@@ -621,7 +627,7 @@ function rowToBangboo(row) {
   const refinementEffects = refinementEffectBlocks
     ? refinementEffectBlocks.map((blocks) => blocks.flatMap((block) => block.effects))
     : Array.isArray(raw.refinementEffects)
-      ? raw.refinementEffects.map((list) => normalizeEffectList(list))
+      ? raw.refinementEffects.map((list) => normalizeEffectList(list, false))
       : null
 
   let fixedMods = normalizeBuffStatModifiers(
@@ -666,7 +672,7 @@ function rowToBangboo(row) {
   }
 }
 
-function normalizeEffectBlocks(value) {
+function normalizeEffectBlocks(value, hasProvider = true) {
   if (!Array.isArray(value)) return []
   return value
     .filter((item) => item && typeof item === 'object')
@@ -677,7 +683,7 @@ function normalizeEffectBlocks(value) {
           ? item.name
           : `效果块 ${index + 1}`,
       note: typeof item.note === 'string' ? item.note : '',
-      effects: normalizeEffectList(item.effects),
+      effects: normalizeEffectList(item.effects, hasProvider),
       enabledDefault: item.enabledDefault === false ? false : true,
     }))
 }
@@ -869,15 +875,15 @@ export async function upsertBangboo(doc) {
     id,
     name,
     avatar_image,
-    effectBlocks: normalizeEffectBlocks(doc.effectBlocks),
-    effects: normalizeEffectList(doc.effects),
+    effectBlocks: normalizeEffectBlocks(doc.effectBlocks, false),
+    effects: normalizeEffectList(doc.effects, false),
     refinementEffectBlocks: Array.isArray(doc.refinementEffectBlocks)
       ? [0, 1, 2, 3, 4].map((index) =>
-          normalizeEffectBlocks(doc.refinementEffectBlocks[index] ?? []),
+          normalizeEffectBlocks(doc.refinementEffectBlocks[index] ?? [], false),
         )
       : [],
     refinementEffects: Array.isArray(doc.refinementEffects)
-      ? doc.refinementEffects.map((list) => normalizeEffectList(list))
+      ? doc.refinementEffects.map((list) => normalizeEffectList(list, false))
       : [],
     fixedMods: normalizeBuffStatModifiers(doc.fixedMods ?? {}),
     refinementMods: Array.isArray(doc.refinementMods) ? doc.refinementMods : [],

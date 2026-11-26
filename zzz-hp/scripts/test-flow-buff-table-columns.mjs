@@ -5,7 +5,7 @@
  * 1. **列名用短名**：去掉「核心被动：/额外能力：」这类内容分类前缀，全名进悬停卡片
  * 2. **分组 = 提供者**：角色1/2/3（按队伍顺序）→ 其它 → 额外 Buff
  * 3. **同名只在同组内编号**（角色A 的「X」与角色B 的「X」不算重名）
- * 4. **生效者**：`team` → 全队；否则 = 这条增益所属槽位的角色
+ * 4. **生效者**：全队、自身或仅队友，按适用槽位匹配
  * 5. **搜索只比增益名**（列头名 + 全名），大小写 / 首尾空格不敏感
  * 6. **整列三态**：全开 `on` / 全关 `off` / 各半 `mixed` / 没得调 `na`（灰格不算）
  *
@@ -89,6 +89,13 @@ console.log('\n=== 4. 生效者 ===')
 check('team → 全队', first?.beneficiaryLabel === '全队', first?.beneficiaryLabel)
 const selfCol = columns.find((c) => c.key === 'e3')
 check('self → 该增益所属槽位的角色', selfCol?.beneficiaryLabel === '蕾米埃尔', selfCol?.beneficiaryLabel)
+const [teammateColumn] = buildFlowBuffTableColumns({
+  items: [item({ id: 'others', applyTarget: 'teammates', sourceKey: 'agent-1-2',
+    blockName: '继承者的叛旗', applicableSlots: [0, 2], providerSlot: 1 })],
+  slotLabels: ['队友一', '挽昼', '队友二'],
+})
+check('仅队友列标出受益范围，保留两个适用槽位',
+  teammateColumn?.beneficiaryLabel === '仅队友' && teammateColumn.beneficiarySlots.join(',') === '0,2')
 
 console.log('\n=== 5. 搜索命中判据（只搜增益名）===')
 const fh = columns.find((c) => c.key === 'e1') // 风华盈袖；tipTitle = 核心被动：风华盈袖

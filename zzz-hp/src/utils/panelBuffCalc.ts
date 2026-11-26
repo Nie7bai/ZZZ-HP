@@ -7,6 +7,7 @@ import {
 import type {
   AgentBuffDoc,
   BangbooBuffDoc,
+  BuffApplyTarget,
   BuffEffect,
   BuffStatKey,
   BuffStatModifiers,
@@ -250,7 +251,14 @@ export function ensureSlotSelfBuffSelection(
 }
 
 export function isTeamBuffApplyTarget(applyTarget: string | undefined): boolean {
-  return applyTarget === 'team'
+  return applyTarget === 'team' || applyTarget === 'teammates'
+}
+
+const PROVIDER_BUFF_TARGETS: readonly BuffApplyTarget[] = ['self', 'team']
+const TEAMMATE_BUFF_TARGETS: readonly BuffApplyTarget[] = ['team', 'teammates']
+
+function applyTargetsForRecipient(isProvider: boolean): readonly BuffApplyTarget[] {
+  return isProvider ? PROVIDER_BUFF_TARGETS : TEAMMATE_BUFF_TARGETS
 }
 
 function buffStoreForEffect(
@@ -1390,9 +1398,7 @@ function sourceOptionsForCollectedEffect(
       }
     : undefined
   const sourceSlotIndex = resolveCollectedEffectSourceSlot(item)
-  const teammateProviderSlot = effects.some((effect) =>
-    effect.teammateProfessions?.length || effect.skillTargetsOnlyForTeammates,
-  )
+  const teammateProviderSlot = effects.some((effect) => effect.teammateProfessions?.length)
     ? sourceSlotIndex : undefined
   if (!item.effect.extraGain) {
     return traceSource || teammateProviderSlot !== undefined ? { traceSource, teammateProviderSlot } : undefined
@@ -1535,12 +1541,11 @@ function resolvePackMods(
   const excludedEffects = trace ? (sourceOptions?.traceExcludedEffects ?? []) : []
   const loopEffects = excludedEffects.length ? [...effects, ...excludedEffects] : effects
   return resolveEffectsToMods(loopEffects, {
-    applyTargets: isMain ? ['self', 'team'] : ['team'],
+    applyTargets: applyTargetsForRecipient(isMain),
     ctx: skillCtx,
     element: isMain ? skillCtx.element : slotElement,
     beneficiaryElement: resolveBeneficiaryElement(ctx),
     beneficiaryProfession,
-    beneficiaryIsProvider: teammateProviderSlot === ctx.mainSlotIndex,
     stacksByEffectId: parameters.stacksByEffectId,
     convertInputs: parameters.convertInputs,
     attrValues: parameters.attrValues,
@@ -1673,7 +1678,7 @@ export function collectSlotDriveDiscEffects(
 
   if (fourDisc) {
     effects.push(
-      ...collectEffectsFromPack(fourDisc.fourPieceBuffs).filter((e) => e.applyTarget === 'team'),
+      ...collectEffectsFromPack(fourDisc.fourPieceBuffs).filter((effect) => isTeamBuffApplyTarget(effect.applyTarget)),
     )
   }
   return effects
@@ -1689,7 +1694,7 @@ export function collectSlotDriveDiscMods(
   const effects = collectSlotDriveDiscEffects(driveDiscs, selection, isMain, options)
   if (!ctx) {
     return resolveEffectsToMods(effects, {
-      applyTargets: isMain ? ['self', 'team'] : ['team'],
+      applyTargets: applyTargetsForRecipient(isMain),
       ctx: defaultSkillContext('direct'),
     })
   }
@@ -1752,14 +1757,13 @@ function collectForMainSlot(ctx: CollectPassContext): CollectedEffect[] {
   const collected: CollectedEffect[] = []
   const mainIndex = ctx.mainSlotIndex
 
-  /** 当前全部槽位（`applicableSlots` 的「全队 / 无主」取值） */
   const allSlots = ctx.teamSlots.map((_, index) => index)
-  /**
-   * 作用对象（2026-09-24，施工规格 §2.1）：`team` 或无主来源 → 全部槽位；否则 → `[提供者槽位]`。
-   * 提供者槽位从来源标记解析（`agent-<i>-…` / `wengine-<i>-…` / `drive-disc-<i>-…`；邦布 / 场地解析不出 = 无主）。
-   */
+  const occupiedSlots = allSlots.filter((index) => ctx.teamSlots[index]?.agentId)
   function describeSlots(effect: BuffEffect, sourceKey: string) {
     const providerSlot = parseSourceKeySlotIndex(sourceKey)
+    if (effect.applyTarget === 'teammates') {
+      return { applicableSlots: providerSlot == null ? [] : occupiedSlots.filter((slot) => slot !== providerSlot), providerSlot }
+    }
     const applicableSlots =
       effect.applyTarget === 'team' || providerSlot == null ? allSlots : [providerSlot]
     return { applicableSlots, providerSlot }
@@ -1803,8 +1807,8 @@ function collectForMainSlot(ctx: CollectPassContext): CollectedEffect[] {
 
     const isMain = index === mainIndex
     const roleLabel = isMain ? '自身' : '队友'
-    const matchesTarget = (e: BuffEffect) =>
-      isMain ? e.applyTarget === 'self' || e.applyTarget === 'team' : e.applyTarget === 'team'
+    const applyTargets = applyTargetsForRecipient(isMain)
+    const matchesTarget = (effect: BuffEffect) => applyTargets.includes(effect.applyTarget)
     const clampedRank = Math.min(6, Math.max(0, Math.round(slot.rank)))
 
     for (let rank = 0; rank <= clampedRank; rank++) {

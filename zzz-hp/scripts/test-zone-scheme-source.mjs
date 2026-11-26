@@ -4,11 +4,14 @@
  * 运行：npx vite-node scripts/test-zone-scheme-source.mjs
  */
 import assert from 'node:assert/strict'
+import { computed } from 'vue'
 
+import { BUFF_STAT_ZONES, buffStatLabelOf, buffStatZoneOf } from '../src/utils/buffStatZones.ts'
 import { adaptZoneSchemes, adaptZoneScheme } from '../src/zones/schemeAdapter.ts'
 import { resolveCurtainCap, resolveZoneScheme } from '../src/zones/scheme.ts'
 import {
   getMergedZoneSchemes,
+  loadRuntimeZoneSchemes,
   setRuntimeZoneSchemes,
 } from '../src/zones/schemeSource.ts'
 
@@ -157,6 +160,48 @@ check('disable 条目移除内置乘区', () => {
   const resolved = resolveZoneScheme({ hit: makeHit(), panelContext: panelContext(0), schemes: getMergedZoneSchemes() })
   assert.equal(resolveCurtainCap(resolved), null)
 })
+
+const originalFetch = globalThis.fetch
+const definition = {
+  zoneKey: 'custom:emberMark', label: '烬痕', sortOrder: 200, primitive: 'scaledPercentSum', version: 2,
+}
+const addedStat = { key: 'emberMarkAccumulationBonus', label: '烬痕积攒量提升' }
+let currentDefinition = { ...definition, stats: [{ key: 'emberMarkRatio', label: '烬痕比例' }] }
+let requests = 0
+let serverAvailable = true
+try {
+  globalThis.fetch = async () => {
+    requests++
+    return new Response(JSON.stringify({
+      data: { version: 1, definitions: [currentDefinition], schemes: [] },
+    }), { status: serverAvailable ? 200 : 503 })
+  }
+  const statKey = `custom:${addedStat.key}`
+  const rowZone = computed(() => buffStatZoneOf(statKey))
+  const rowLabel = computed(() => buffStatLabelOf(statKey))
+  await loadRuntimeZoneSchemes()
+  check('启动时的旧目录没有新增属性', () => {
+    assert.equal(rowZone.value, null)
+    assert.equal(rowLabel.value, addedStat.key)
+  })
+  currentDefinition = { ...currentDefinition, stats: [...currentDefinition.stats, addedStat] }
+  await Promise.all([loadRuntimeZoneSchemes(), loadRuntimeZoneSchemes()])
+  check('编辑器重读后，已挂载行的选中值、名称及下拉同步更新', () => {
+    assert.equal(requests, 2)
+    assert.equal(rowLabel.value, addedStat.label)
+    const options = BUFF_STAT_ZONES.filter(({ stat }) => stat === statKey)
+    assert.equal(options.length, 1)
+    assert.equal(rowZone.value, options[0])
+  })
+  serverAvailable = false
+  await loadRuntimeZoneSchemes()
+  check('目录请求失败时保留上次成功加载的属性', () => {
+    assert.equal(rowLabel.value, addedStat.label)
+    assert.equal(rowZone.value?.stat, statKey)
+  })
+} finally {
+  globalThis.fetch = originalFetch
+}
 
 setRuntimeZoneSchemes([])
 console.log(`\n${failed === 0 ? '✅ all passed' : '❌ failed'}（${passed} passed / ${failed} failed）`)

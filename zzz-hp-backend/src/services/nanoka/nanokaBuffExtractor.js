@@ -356,7 +356,8 @@ export const CONVERT_PANEL_SOURCE_LABELS = {
 }
 
 /** 目标槽位：`无` = 默认自身（规格 §二） */
-export const TARGET_OPTIONS = ['自身', '全队']
+const APPLY_TARGET_BY_LABEL = { 自身: 'self', 全队: 'team', 仅队友: 'teammates' }
+export const TARGET_OPTIONS = Object.keys(APPLY_TARGET_BY_LABEL)
 
 /** 对象槽位（增益作用在谁 / 什么上） */
 export const OBJECT_OPTIONS = ['当前招式', '装备者', '敌人', '能量']
@@ -1229,7 +1230,7 @@ const EMBER_MARK_ACCUMULATION_RULES = [
     type: 'amountIncrease',
     stat: EMBER_MARK_SCALING_LABEL,
     pattern: /^全队(?:代理人)?触发(?:\[毁伤\]|毁伤)(?:和|或|、)(?<actor>[^，。；\s]+?)(?:使|令)敌人积攒(?:\[烬痕\]|烬痕)时，(?:最终结算的)?(?:\[烬痕\]|烬痕)(?:积攒量|量)(?:额外)?(?:提升|增加|提高)(?<percent>\d+(?:\.\d+)?)\s*[%％]$/,
-    description: '自身不限招式，队友限定毁伤。同一次伤害只命中一条效果。',
+    description: '拆成两条：自身不限招式，另一个目标仅队友且招式类型限定毁伤。',
   },
 ]
 
@@ -1295,7 +1296,7 @@ function resolveEmberMarkTargets({ names, otherSharpen, agentId, profession, ski
   }
 }
 
-function extractEmberMarkKeyword({ text, unitIndex, index, origin, selfNames, anchors, agentId, emberMarkContext }) {
+function extractEmberMarkKeywords({ text, unitIndex, index, origin, selfNames, anchors, agentId, emberMarkContext }) {
   const [namedRule] = EMBER_MARK_ACCUMULATION_RULES
   for (const rule of EMBER_MARK_ACCUMULATION_RULES) {
     const accumulation = readEmberMarkAccumulation(text, rule, selfNames)
@@ -1317,7 +1318,6 @@ function extractEmberMarkKeyword({ text, unitIndex, index, origin, selfNames, an
           labels: ['毁伤'],
           resolved: [],
           skillTargets: [{ category: 'destruction', subcategoryId: null }],
-          ...(amountIncrease ? { skillTargetsOnlyForTeammates: true } : {}),
           reason: '',
         }
       : resolveEmberMarkTargets({
@@ -1325,38 +1325,40 @@ function extractEmberMarkKeyword({ text, unitIndex, index, origin, selfNames, an
           profession: emberMarkContext.profession,
           skills: emberMarkContext.skills ?? [],
         })
-    const slots = createSlots({
-      stat: { value: rule.stat ?? '烬痕比例' }, action: { value: '提升' }, value: { value }, unit: { value: '%' },
-      target: { value: team ? '全队' : '自身' }, scope: { value: otherSharpen ? '锐化' : NONE },
+    const rows = amountIncrease
+      ? [
+          { target: '自身', limits: { ok: true, labels: [], resolved: [], skillTargets: [], reason: '' } },
+          { target: '仅队友', limits: anchorInfo },
+        ]
+      : [{ target: team ? '全队' : '自身', limits: anchorInfo }]
+    return rows.map(({ target, limits }, offset) => {
+      const single = limits.skillTargets.length === 1 ? limits.skillTargets[0] : null
+      return {
+        id: `${origin}#${index + offset}`,
+        origin,
+        index: index + offset,
+        unitIndex,
+        unitText: text,
+        sentence: text,
+        slots: createSlots({
+          stat: { value: rule.stat ?? '烬痕比例' }, action: { value: '提升' }, value: { value },
+          unit: { value: '%' }, target: { value: target }, scope: { value: otherSharpen ? '锐化' : NONE },
+        }),
+        sources: createSources({
+          stat: { source: 'literal' }, action: { source: 'implicit' }, value: { source: 'literal' },
+          unit: { source: 'literal' }, target: { source: team ? 'literal' : 'implicit' },
+          scope: { source: otherSharpen ? 'literal' : 'default' },
+        }),
+        convert: null,
+        stackMax: null,
+        durationSeconds: null,
+        anchors: { ...limits, skillCategory: single?.category ?? '', skillSubcategoryId: single?.subcategoryId ?? null },
+        recorded: limits.ok,
+        dropReason: limits.reason,
+      }
     })
-    const sources = createSources({
-      stat: { source: 'literal' }, action: { source: 'implicit' }, value: { source: 'literal' },
-      unit: { source: 'literal' }, target: { source: team ? 'literal' : 'implicit' },
-      scope: { source: otherSharpen ? 'literal' : 'default' },
-    })
-    const first = anchorInfo.skillTargets[0]
-    return {
-      id: `${origin}#${index}`,
-      origin,
-      index,
-      unitIndex,
-      unitText: text,
-      sentence: text,
-      slots,
-      sources,
-      convert: null,
-      stackMax: null,
-      durationSeconds: null,
-      anchors: {
-        ...anchorInfo,
-        skillCategory: anchorInfo.skillTargets.length === 1 ? first.category : '',
-        skillSubcategoryId: anchorInfo.skillTargets.length === 1 ? first.subcategoryId : null,
-      },
-      recorded: anchorInfo.ok,
-      dropReason: anchorInfo.reason,
-    }
   }
-  return null
+  return []
 }
 
 /** 阈值短语（永远当条件，数值不进「数值」槽位） */
@@ -2136,7 +2138,7 @@ const SLOT_WHITELIST_DESCRIPTIONS = {
   action: '动作词表（提升 / 降低 / 无视 / 转化）/ `无法提取`',
   value: '纯数字 / `无` / `无法提取`',
   unit: '单位词表（% / 点）/ `无`',
-  target: '目标词表（自身 / 全队）/ `无`',
+  target: '目标词表（自身 / 全队 / 仅队友）/ `无`',
   conditions: '作用情况、受益职业，其余为 `无法提取`',
   teammateProfessions: '可选择多个队友职业，符合任一项即可',
   scope: '伤害类型词表（锐化 / 属性异常 / 紊乱 / 乱流 / 异放 / 耀变 / 异化系数）/ `无`',
@@ -2295,11 +2297,11 @@ export function extractKeywordEffects({
     // （抬头句已与下一句合并，见 `splitUnits`），**不跨句泄漏**。
     prefix = ''
     pending = []
-    const emberMark = extractEmberMarkKeyword({
+    const emberMark = extractEmberMarkKeywords({
       text: unit.text, unitIndex, index: effects.length, origin, selfNames, anchors, agentId, emberMarkContext,
     })
-    if (emberMark) {
-      effects.push(emberMark)
+    if (emberMark.length) {
+      effects.push(...emberMark)
       lastEffect = null
       return
     }
@@ -3188,9 +3190,8 @@ export function mapKeywordsToEffect(keyword = {}) {
   if (!enabledDefault || slots.enabledDefault === '开启') steps.push(`默认启用 → ${enabledDefault}`)
 
   // —— 目标 → applyTarget
-  let applyTarget = 'self'
-  if (target === '全队') {
-    applyTarget = 'team'
+  const applyTarget = APPLY_TARGET_BY_LABEL[target] ?? 'self'
+  if (applyTarget === 'team') {
     const targetSource = keyword.sources?.target
     steps.push(
       '目标=全队 → applyTarget=team' +
@@ -3198,7 +3199,7 @@ export function mapKeywordsToEffect(keyword = {}) {
         (targetSource === 'default-team-enemy-status' ? '（敌人状态条件 + 暴击族、未限定施放者 → 默认全队）' : ''),
     )
   } else {
-    steps.push(`目标=${target || NONE} → applyTarget=self`)
+    steps.push(`目标=${target || NONE} → applyTarget=${applyTarget}`)
   }
 
   /** 目标默认兜底时写进 note 的**固定短语**（不粘原文；结构化短语白名单） */
@@ -3210,8 +3211,6 @@ export function mapKeywordsToEffect(keyword = {}) {
   const scopeId = SCOPE_SLOT_TO_ID[scopeSlot] ?? ''
   const sharpenOnly = scopeId === 'sharpen'
   let scope = skillTargets.length ? 'skill' : 'general'
-  const skillTargetsOnlyForTeammates = applyTarget === 'team' && skillTargets.length > 0 &&
-    anchors?.skillTargetsOnlyForTeammates === true
   if (sharpenOnly) {
     steps.push('伤害类型=锐化 → conditions.damageTypes=[sharpen]')
   } else if (scopeId) {
@@ -3220,8 +3219,7 @@ export function mapKeywordsToEffect(keyword = {}) {
   }
 
   if (skillTargets.length) {
-    const restriction = skillTargetsOnlyForTeammates ? '自身不限招式，队友限定招式' : '限定招式'
-    steps.push(`${restriction}=${(anchors.labels ?? []).join(' + ')} → skillTargets=${JSON.stringify(skillTargets)}`)
+    steps.push(`限定招式=${(anchors.labels ?? []).join(' + ')} → skillTargets=${JSON.stringify(skillTargets)}`)
   }
 
   // —— 转模专用槽位
@@ -3345,7 +3343,6 @@ export function mapKeywordsToEffect(keyword = {}) {
         skillCategory: anchors?.skillCategory || undefined,
         skillSubcategoryId: anchors?.skillSubcategoryId ?? (skillTargets.length === 1 ? null : undefined),
         skillTargets: skillTargets.length ? skillTargets.map((item) => ({ ...item })) : undefined,
-        ...(skillTargetsOnlyForTeammates ? { skillTargetsOnlyForTeammates: true } : {}),
         // 转模（动作=转化）：字段对齐 `normalizeConvert`
         convert: isConvert
           ? {

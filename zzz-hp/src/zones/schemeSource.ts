@@ -97,12 +97,13 @@ export async function loadRuntimeZoneSchemes(): Promise<void> {
   if (loading) return loading
   loading = (async () => {
     const config = await fetchRuntimeZoneConfig()
+    if (!config) return
     runtimeSchemes = adaptZoneSchemes(config) as ZoneScheme[]
-    setRuntimeZoneDefinitions(config?.definitions ?? [])
+    setRuntimeZoneDefinitions(config.definitions ?? [])
   })().catch(() => {
-    // 失败只回退运行时数据；内置方案与内置属性目录不受影响
-    runtimeSchemes = []
-    runtimeDefinitions = []
+    // 保留最近一次成功加载的配置。
+  }).finally(() => {
+    loading = null
   })
   return loading
 }

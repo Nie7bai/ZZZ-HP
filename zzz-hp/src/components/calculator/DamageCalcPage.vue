@@ -97,7 +97,7 @@ import {
   buildFlowBuffEffectTexts,
   type FlowBuffEffectTextOptions,
 } from '@/utils/flowBuffTable'
-import { buildDefaultBuffSelection, collectAllBuffEffects, excludeExtraGainEntries, createEmptyMultiSlotBuffSelection, getBuffEffectEnabled, isEnvironmentBuffSourceKey, mergeDefaultBuffSelectionIntoMulti, resolveBuffSelectionForSlot, setBuffEffectEnabled, slotHasPanelConvertEffect, syncTeamProfessionAutoEnabled, toTeammateView, type MultiSlotBuffSelection, type ConvertSlotPanels, type ConvertResolveInputs, type ResolvedEffectParameters, type BuffSelectionState } from '@/utils/panelBuffCalc'
+import { buildDefaultBuffSelection, collectAllBuffEffects, excludeExtraGainEntries, createEmptyMultiSlotBuffSelection, getBuffEffectEnabled, isEnvironmentBuffSourceKey, isTeamBuffApplyTarget, mergeDefaultBuffSelectionIntoMulti, resolveBuffSelectionForSlot, setBuffEffectEnabled, slotHasPanelConvertEffect, syncTeamProfessionAutoEnabled, toTeammateView, type MultiSlotBuffSelection, type ConvertSlotPanels, type ConvertResolveInputs, type ResolvedEffectParameters, type BuffSelectionState } from '@/utils/panelBuffCalc'
 import { computeExternalPanelFromTeamSlot } from '@/utils/affixPanelCalc'
 import { MULTI_SLOT_BUFF_SELECTION_KEY } from '@/utils/presetBuffScope'
 import {
@@ -1259,7 +1259,7 @@ function syncManualConvertDefaults() {
       const source = item.effect.convert.panelSource ?? 'external'
       if (source !== 'manual') continue
       const store =
-        item.effect.applyTarget === 'team'
+        isTeamBuffApplyTarget(item.effect.applyTarget)
           ? multiSlotBuffSelection.team
           : multiSlotBuffSelection.bySlot[opt.index]
       if (!store) continue

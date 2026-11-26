@@ -145,9 +145,8 @@ export function normalizeTeammateProfessions(value) {
   return selected.length ? selected : undefined
 }
 
-export function hasTeammateOnlySkillTargets(value, effect) {
-  return value === true && effect.applyTarget === 'team' &&
-    Boolean(effect.skillTargets?.length || effect.skillCategory)
+export function normalizeEffectApplyTarget(value) {
+  return value === 'team' || value === 'teammates' ? value : 'self'
 }
 
 /**
