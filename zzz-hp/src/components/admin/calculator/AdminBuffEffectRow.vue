@@ -1136,7 +1136,7 @@ onBeforeUnmount(() => {
             </label>
           </div>
           <div class="value-row">
-            <span class="line-sub">倍率%（3200 = ×32）</span>
+            <span class="line-sub">1级倍率</span>
             <NumberStepper
               v-model="value"
               :min="-999999"
