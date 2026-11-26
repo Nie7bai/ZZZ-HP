@@ -58,7 +58,7 @@ const MINDSCAPE_NOTES_LENGTH = 7
 
 const APPLY_TARGET_VALUES = new Set(['self', 'team'])
 const APPLY_SITUATION_VALUES = new Set(['global', 'stagger', 'non_stagger'])
-const EFFECT_KINDS = new Set(['fixed', 'stacked', 'convert'])
+const EFFECT_KINDS = new Set(['fixed', 'stacked', 'convert', 'additionalDamage'])
 /** 与 `calculatorBuffService.normalizeConvert` 的 ATTRS 同源 */
 const CONVERT_FROM_VALUES = new Set([
   'hp',
@@ -229,7 +229,7 @@ export function sanitizeEffect(input, index = 0) {
           : [String(raw.elementFilter)],
     kind,
     stat,
-    value: kind === 'fixed' && !raw.stackable ? value : 0,
+    value: (kind === 'fixed' || kind === 'additionalDamage') && !raw.stackable ? value : 0,
     stackable: Boolean(raw.stackable),
     maxStacks,
     valuePerStack: kind === 'stacked' ? valuePerStack || value : valuePerStack,
@@ -241,6 +241,20 @@ export function sanitizeEffect(input, index = 0) {
     enabledDefault: raw.enabledDefault === false ? false : true,
     note: typeof raw.note === 'string' ? raw.note : '',
   }
+  if (kind === 'additionalDamage') {
+    effect.additionalDamage = isPlainObject(raw.additionalDamage)
+      ? {
+          onlyPolarDisorder: raw.additionalDamage.onlyPolarDisorder === true,
+          ...(['skillLevelBasic','skillLevelDodge','skillLevelAssist','skillLevelSpecial','skillLevelChainUltimate'].includes(String(raw.additionalDamage.ratioLevelSource ?? ''))
+            ? { ratioLevelSource: String(raw.additionalDamage.ratioLevelSource) }
+            : {}),
+          ...(Number.isFinite(Number(raw.additionalDamage.ratioPercentPerLevel)) &&
+          Number(raw.additionalDamage.ratioPercentPerLevel) !== 0
+            ? { ratioPercentPerLevel: Number(raw.additionalDamage.ratioPercentPerLevel) }
+            : {}),
+        }
+      : {}
+  }
   if (kind === 'convert') {
     const convert = isPlainObject(raw.convert) ? raw.convert : {}
     const from = String(convert.from ?? '')
@@ -251,6 +265,19 @@ export function sanitizeEffect(input, index = 0) {
       from,
       panelSource: CONVERT_PANEL_SOURCES.has(convert.panelSource) ? convert.panelSource : 'external',
       ratioPercent: toNumber(convert.ratioPercent),
+      ratioLevelSource: CONVERT_FROM_VALUES.has(String(convert.ratioLevelSource ?? ''))
+        ? String(convert.ratioLevelSource)
+        : undefined,
+      ...(convert.ratioPercentPerLevel != null &&
+      convert.ratioPercentPerLevel !== '' &&
+      toNumber(convert.ratioPercentPerLevel) !== 0
+        ? { ratioPercentPerLevel: toNumber(convert.ratioPercentPerLevel) }
+        : {}),
+      ...(convert.capPerLevel != null &&
+      convert.capPerLevel !== '' &&
+      toNumber(convert.capPerLevel) !== 0
+        ? { capPerLevel: toNumber(convert.capPerLevel) }
+        : {}),
       cap: convert.cap == null || convert.cap === '' ? null : toNumber(convert.cap),
       defaultBase:
         convert.defaultBase == null || convert.defaultBase === ''

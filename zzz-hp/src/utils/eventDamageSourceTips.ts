@@ -2,7 +2,7 @@ import { buildSkillCalcZoneRows, type SkillCalcZoneRow } from '@/utils/skillCalc
 import { zoneLabel } from '@/zones/display'
 import type { SkillFlowCalculationDetail } from '@/utils/skillFlowCalculation'
 import type { EventDamageInputUsage, BuffModSource } from '@/utils/panelBuffCalc'
-import { createEmptyBuffStatModifiers } from '@/utils/calculatorUi'
+import { createEmptyBuffStatModifiers, BUFF_STAT_FIELDS } from '@/utils/calculatorUi'
 import { addStat } from '@/utils/buffEffect'
 import { createEmptyExternalPanel, type PanelStats } from '@/types/calculatorPanel'
 import { buildSkillBaseMultNote } from '@/utils/skillTalentLevels'
@@ -70,6 +70,8 @@ export type ValueTipsKey =
   | 'mutationZone'
   | 'pierceDmgMultiplier'
   | 'imbueDmgMultiplier'
+  | 'finalDmgMultiplier'
+  | 'additionalDamageFlat'
   | 'sharpenDmgMultiplier'
   | 'remielSelfInCombatAtk'
   | 'remielSelfInCombatMasteryZone'
@@ -167,6 +169,9 @@ export function buildEventValueTips(calculation: SkillFlowCalculationDetail): Re
   }
   const p = d.result
   const staggerZoneName = zoneLabel(p, 'staggerMultiplier')
+  /** 最终伤害区：全局最后一道乘区，只有非 1 时才占位（避免默认噪声） */
+  const finalDmgActive = Math.abs(p.finalDmgMultiplier - 1) > 1e-9
+  const finalDmgZoneLine = `最终伤害区 ${formatFormulaNumber(p.finalDmgMultiplier)}（所有伤害最后乘一次）`
   const sub = d.anomalySubKind
   const ownerPanel = owner.panel, ownerExternal = owner.external, ownerSources = owner.sources
   const panel = base.panel, external = base.external, sources = base.sources
@@ -210,6 +215,7 @@ const directFormulaParts = (() => {
   if (p.baseDamageSource === 'pierce') {
     parts.push(formatFormulaNumber(p.pierceDmgMultiplier))
   }
+  parts.push(formatFormulaNumber(p.finalDmgMultiplier))
   parts.push(formatFormulaNumber(p.directDmgMultZone))
   return parts
 })()
@@ -338,7 +344,28 @@ const disorderFormulaParts = (() => {
       resultLabel: staggerZoneName,
     })
     const cap = p.staggerZoneKind === 'curtain' ? p.staggerZoneCap : undefined
-    if (cap == null) return built
+    /**
+     * 紊乱失衡易伤下限（卡芙卡）：下限不是加算项，单独一行说明「取最大」，
+     * 不混进失衡类加成的明细里，避免被读成 +140%。
+     */
+    const withFloor = (items: string[]): string[] => {
+      const floorPercent =
+        sub === 'disorder' ? Number(d.breakdown.combatMods.disorderStaggerFloor ?? 0) : 0
+      if (!(floorPercent > 0)) return items
+      const floorRatio = floorPercent / 100
+      // 谁提供的下限（如「队友 · 卡芙卡 · 0影」）：来源列表里只保留真正带这个字段的效果
+      const providers = ownerSources
+        .filter((source) => (source.mods.disorderStaggerFloor ?? 0) > 0)
+        .map((source) => source.label)
+        .filter(Boolean)
+      const providerText = providers.length ? `（${[...new Set(providers)].join('、')}）` : ''
+      return [
+        ...items,
+        `下限 ${formatFormulaNumber(floorRatio)}${providerText} · 紊乱失衡易伤下限：非失衡期按 140% 计，失衡期不足视为 140%`,
+        `max(失衡易伤, ${formatFormulaNumber(floorRatio)}) = ${staggerZoneName} ${formatFormulaNumber(p.staggerMultiplier)}`,
+      ]
+    }
+    if (cap == null) return withFloor(built)
     // 合计取结算里的汇总（combatMods），避免某个增益不在展示来源里时少算
     const combatMods = d.breakdown.combatMods
     const buffPercent = combatMods.globalStaggerVulnerable
@@ -543,7 +570,16 @@ const disorderFormulaParts = (() => {
       [
         {
           label: '敌方与环境',
-          items: [`失衡易伤基础 ${formatFormulaNumber(enemy.staggerMultiplier)}`],
+          /**
+           * 非失衡期不吃敌方失衡易伤（区间基础就是 100%）：把它和合计并排写出来，
+           * 会出现「失衡易伤基础 1.5 / 合计 1」这种看起来自相矛盾的展示。
+           */
+          items:
+            p.staggerZoneKind === 'curtain' || d.hit.staggerPhase === 'stagger'
+              ? [`失衡易伤基础 ${formatFormulaNumber(enemy.staggerMultiplier)}`]
+              : [
+                  `非失衡期区间基础 100%（敌方失衡易伤 ${formatFormulaNumber(enemy.staggerMultiplier)} 仅失衡期生效）`,
+                ],
         },
         ...buildStatSourceGroups({
           keys: ['globalStaggerVulnerable', 'staggerVulnerable', 'staggerVulnerableOnly'],
@@ -688,6 +724,48 @@ const disorderFormulaParts = (() => {
       ],
       `浸染增伤区 ${formatFormulaNumber(p.imbueDmgMultiplier)}`,
     ),
+    finalDmgMultiplier: withTotal(
+      [
+        {
+          label: '乘区说明',
+          items: [
+            '直伤链最后一道独立乘区：普通直伤 / 命破 / 锋御都生效，异常链不受影响',
+          ],
+        },
+        ...buildStatSourceGroups({
+          keys: ['finalDmgBonus'],
+          externalPanel: external,
+          sources,
+          externalKeyMap: { finalDmgBonus: null },
+        }),
+      ],
+      `最终伤害区 ${formatFormulaNumber(p.finalDmgMultiplier)}`,
+    ),
+    additionalDamageFlat: withTotal(
+      [
+        {
+          label: '口径',
+          items: [
+            '附加伤害 = round(异常类触发者面板[来源属性] × 倍率% / 100)，逐项 round 后求和',
+            '加在「异常基础 × 紊乱倍率区」之后，补乘其余全部乘区（含精通/等级/防御/抗性），不乘紊乱倍率区',
+            ...((p.additionalDamageBreakdown ?? []).map((term) => {
+              const label =
+                BUFF_STAT_FIELDS.find((field) => field.key === term.stat)?.label ?? term.stat
+              return `${label} ${formatFormulaNumber(term.statValue)} × ${term.ratioPercent}% = ${formatFormulaNumber(term.amount)}`
+            })),
+            `口径：( 基础攻击力 × 紊乱倍率 + 附加伤害 ) × 通用乘区 × 紊乱增伤区 × 紊乱暴击区`,
+            `展开：( ${formatFormulaNumber(p.baseDamage)} × ${formatFormulaNumber(p.disorderZone)} + ${formatFormulaNumber(p.additionalDamageFlat ?? 0)} ) × ${formatFormulaNumber(p.baseDamage > 0 ? p.anomalyBaseExpected / p.baseDamage : 0)} × ${formatFormulaNumber(p.disorderDmgBonusZone)} × ${formatFormulaNumber(p.disorderCritZone)}`,
+            `附加部分期望贡献 = ${formatFormulaNumber(
+              (p.additionalDamageFlat ?? 0) *
+                (p.baseDamage > 0 ? p.anomalyBaseExpected / p.baseDamage : 0) *
+                p.disorderDmgBonusZone *
+                p.disorderCritZone,
+            )}`,
+          ],
+        },
+      ],
+      `附加伤害 ${formatFormulaNumber(p.additionalDamageFlat ?? 0)}`,
+    ),
     sharpenDmgMultiplier: withTotal(
       [
         {
@@ -813,6 +891,7 @@ const disorderFormulaParts = (() => {
             : p.baseDamageSource === 'pierce'
               ? [`贯穿增伤区 ${formatFormulaNumber(p.pierceDmgMultiplier)}`]
               : []),
+          `最终伤害区 ${formatFormulaNumber(p.finalDmgMultiplier)}`,
           `直伤倍率区 ${formatFormulaNumber(p.directDmgMultZone)} → 直伤分量 ${formatNumber(p.directDamageFromDirectMult)}`,
           ...(p.settlementDmgMultZone > 0
             ? [
@@ -1017,6 +1096,7 @@ const disorderFormulaParts = (() => {
           `属性异常倍率区 ${anomalyExpectedFormulaParts[2]}`,
           `属性异常暴击区（暴击率=0）1 → ${formatNumber(p.attributeAnomalyExpectedNoCrit)}`,
           `属性异常暴击区（暴击率=1）${formatFormulaNumber(p.attributeAnomalyFullCritZone)} → ${formatNumber(p.attributeAnomalyExpectedFullCrit)}`,
+          ...(finalDmgActive ? [finalDmgZoneLine] : []),
         ],
       },
     ],
@@ -1120,6 +1200,7 @@ const disorderFormulaParts = (() => {
           // 紊乱只吃自己的暴击字段（紊乱暴击率/爆伤），与乱流同构
           `紊乱暴击区（暴击率=0）1 → ${formatNumber(p.disorderExpectedNoCrit)}`,
           `紊乱暴击区（暴击率=1）${formatFormulaNumber(p.disorderFullCritZone)} → ${formatNumber(p.disorderExpectedFullCrit)}`,
+          ...(finalDmgActive ? [finalDmgZoneLine] : []),
           `合计 ${formatNumber(p.disorderExpected)}`,
         ],
       },
@@ -1127,7 +1208,10 @@ const disorderFormulaParts = (() => {
         label: '加减过程',
         fullWidth: true,
         items: [
-          `${disorderFormulaParts.join(' × ')}`,
+          `${[
+            ...disorderFormulaParts,
+            ...(finalDmgActive ? [formatFormulaNumber(p.finalDmgMultiplier)] : []),
+          ].join(' × ')}`,
           `= ${formatNumber(p.disorderExpected)}`,
         ],
       },
@@ -1213,6 +1297,7 @@ const disorderFormulaParts = (() => {
           `乱流增伤区 ${formatFormulaNumber(p.turbulenceDmgBonusZone)}`,
           `乱流暴击区（暴击率=0）1 → ${formatNumber(p.turbulenceExpectedNoCrit)}`,
           `乱流暴击区（暴击率=1）${formatFormulaNumber(p.turbulenceFullCritZone)} → ${formatNumber(p.turbulenceExpectedFullCrit)}`,
+          ...(finalDmgActive ? [finalDmgZoneLine] : []),
         ],
       },
     ],
@@ -1227,6 +1312,7 @@ const disorderFormulaParts = (() => {
           `异放暴击区 = 1 + (${formatFormulaNumber(p.anomalyReleaseCritRateRatio ?? 0)} × ${formatFormulaNumber(p.anomalyReleaseCritDmgRatio ?? 0)})`,
           `暴击率=0 → ${formatNumber(p.anomalyReleaseExpectedNoCrit)}`,
           `暴击率=1（区 ${formatFormulaNumber(p.anomalyReleaseFullCritZone)}）→ ${formatNumber(p.anomalyReleaseExpectedFullCrit)}`,
+          ...(finalDmgActive ? [finalDmgZoneLine] : []),
         ],
       },
     ],
@@ -1408,6 +1494,8 @@ const zoneTipKeys: Record<string, ValueTipsKey> = {
   失衡易伤区:'staggerMultiplier',特殊乘区:'specialMultiplier',特殊倍率乘区:'specialMultZone',
   暴击区:'critMultiplier',锐爆区:'critMultiplier',贯穿增伤区:'pierceDmgMultiplier',
   浸染增伤区:'imbueDmgMultiplier',
+  最终伤害区:'finalDmgMultiplier',
+  附加伤害:'additionalDamageFlat',
   技能倍率区:'directDmgMultZone',直伤倍率区:'directDmgMultZone',决算倍率区:'settlementDmgMultZone',
   精通区:'masteryZone',等级区:'levelZone',异化系数:'mutationZone',异化系数区:'mutationZone',
   属性异常增伤区:'attributeAnomalyDmgBonusZone',属性异常倍率区:'attributeAnomalyMultZone',属性异常暴击区:'attributeAnomalyCritZone',
@@ -1430,6 +1518,7 @@ export function buildEventZoneDisplay(calculation: SkillFlowCalculationDetail): 
     // 帷幕易伤是失衡易伤区的替换口径：标签取结果里的乘区名（带上限），来源仍按 staggerMultiplier 取
     if(!key&&row.label===zoneLabel(d.result,'staggerMultiplier'))key='staggerMultiplier'
     if(!key&&row.label.startsWith('帷幕易伤区'))key='staggerMultiplier'
+    if(!key&&row.label.startsWith('附加伤害'))key='additionalDamageFlat'
     if(finalResult) key=d.kind==='direct'||d.kind==='sharpen'?'directDamageExpected'
       :d.anomalySubKind==='attributeAnomaly'?'attributeAnomalyExpected':d.anomalySubKind==='anomalyRelease'?'anomalyReleaseExpected'
         :d.anomalySubKind==='disorder'?'disorderExpected':d.anomalySubKind==='turbulence'?'turbulenceExpected':'radianceExpected'

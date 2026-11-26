@@ -29,6 +29,51 @@ function readFactor(value: number | undefined | null, fallback = 1): number {
   return multFactorPercentToRatio(value) || fallback
 }
 
+/**
+ * 招式小类的倍率修正：**一律按百分比**（1 = ×1%，3 = ×3%，100 = ×1）。
+ * 不走面板的「≤10 视为旧倍率 ×100」兼容，否则 1% / 3% 会被放大成 ×1 / ×3。
+ */
+function readSkillSubcategoryFactorPercent(value: number | undefined | null, fallback = 1): number {
+  const num = Number(value)
+  return Number.isFinite(num) && num > 0 ? num / 100 : fallback
+}
+
+/**
+ * 运行时读法：`SkillSubcategory` 对象来自 store，倍率修正**已经是比率**（1 = ×1）。
+ *
+ * DB 里存百分点（100 = ×1），「百分点 → 比率」只在 `normalizeSkillSubcategoryMultFields`
+ * 导入 store 时做一次。计算 / 展示若再除一次 100，15% 会变成 0.0015（柳的极性紊乱就是这样被算小的）。
+ */
+export function readRuntimeSkillSubcategoryMults(
+  value: Partial<SkillSubcategory> | null | undefined,
+): Pick<
+  SkillSubcategory,
+  | 'directDmgMult'
+  | 'settlementDmgMult'
+  | 'anomalyReleaseMult'
+  | 'disorderMult'
+  | 'directDmgMultFactor'
+  | 'anomalyReleaseMultFactor'
+  | 'disorderMultFactor'
+> {
+  const defaults = createDefaultSkillSubcategoryMults()
+  const num = (raw: unknown, fallback: number) =>
+    Number.isFinite(Number(raw)) ? Number(raw) : fallback
+  const factor = (raw: unknown, fallback: number) => {
+    const parsed = num(raw, fallback)
+    return parsed > 0 ? parsed : fallback
+  }
+  return {
+    directDmgMult: num(value?.directDmgMult, defaults.directDmgMult),
+    settlementDmgMult: num(value?.settlementDmgMult, defaults.settlementDmgMult),
+    anomalyReleaseMult: num(value?.anomalyReleaseMult, defaults.anomalyReleaseMult),
+    disorderMult: num(value?.disorderMult, defaults.disorderMult),
+    directDmgMultFactor: factor(value?.directDmgMultFactor, 1),
+    anomalyReleaseMultFactor: factor(value?.anomalyReleaseMultFactor, 1),
+    disorderMultFactor: factor(value?.disorderMultFactor, 1),
+  }
+}
+
 export function unsetSkillMult(value: number | undefined | null): boolean {
   return !Number.isFinite(Number(value)) || Number(value) === 0
 }
@@ -216,9 +261,12 @@ export function normalizeSkillSubcategoryMultFields(
     disorderMult: Number.isFinite(Number(value.disorderMult))
       ? Number(value.disorderMult)
       : defaults.disorderMult,
-    directDmgMultFactor: readFactor(value.directDmgMultFactor, 1),
-    anomalyReleaseMultFactor: readFactor(value.anomalyReleaseMultFactor, 1),
-    disorderMultFactor: readFactor(value.disorderMultFactor, 1),
+    directDmgMultFactor: readSkillSubcategoryFactorPercent(value.directDmgMultFactor, 1),
+    anomalyReleaseMultFactor: readSkillSubcategoryFactorPercent(
+      value.anomalyReleaseMultFactor,
+      1,
+    ),
+    disorderMultFactor: readSkillSubcategoryFactorPercent(value.disorderMultFactor, 1),
   }
 }
 
@@ -257,7 +305,8 @@ export function resolveSkillMults(
   panel: PanelStats,
   subcategory?: SkillSubcategory | null,
 ): ResolvedSkillMults {
-  const sub = normalizeSkillSubcategoryMultFields(subcategory ?? undefined)
+  // 小类对象已是运行时形态（修正 = 比率），不能再走「百分点 → 比率」的归一化
+  const sub = readRuntimeSkillSubcategoryMults(subcategory)
 
   const panelDirectFactor = readFactor(panel.directDmgMultFactor)
   const directMult = unsetSkillMult(sub.directDmgMult)
@@ -285,8 +334,7 @@ export function resolveSkillMults(
   const disorderMultFactor = sub.disorderMultFactor * panelDisorderFactor
 
   const hasPolarDisorder =
-    !unsetSkillMult(sub.disorderMult) ||
-    Math.abs(readFactor(sub.disorderMultFactor) - 1) > 1e-9
+    !unsetSkillMult(sub.disorderMult) || Math.abs(sub.disorderMultFactor - 1) > 1e-9
 
   return {
     directDmgMultZone,

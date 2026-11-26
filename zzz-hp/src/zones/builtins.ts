@@ -28,6 +28,13 @@ export interface CoreZoneContext {
   combatGlobalStaggerVulnerable: number
   combatStaggerVulnerable: number
   combatStaggerVulnerableOnly: number
+  /**
+   * 失衡易伤下限（倍率，缺省 null = 不设下限）。
+   *
+   * 与帷幕上限对称：上限是 `min`，下限是 `max`。只有紊乱/极性紊乱会传值
+   * （卡芙卡：非失衡期 +40%、失衡期不足 140% 视为 140%）。
+   */
+  staggerFloor?: number | null
   /** 自定义乘区因子连乘（缺省 1；方案未启用自定义乘区时恒为 1） */
   extraZoneFactor?: number
 }
@@ -38,6 +45,8 @@ export interface CoreZoneResult {
   /** 抗性区所参照属性的敌方抗性（供结果展示） */
   enemyRes: number
   staggerMultiplier: number
+  /** 抬下限之前的失衡易伤区（展示用：链路里标出「原值 → 抬后」） */
+  staggerMultiplierRaw: number
   generalMultiplier: number
 }
 
@@ -61,12 +70,18 @@ export function evaluateCoreZones(context: CoreZoneContext): CoreZoneResult {
   const phaseStagger =
     (context.combatStaggerVulnerable + context.combatStaggerVulnerableOnly) / 100
   const curtainCap = context.curtainVulnerabilityCap
-  const staggerMultiplier =
+  const rawStagger =
     curtainCap != null
       ? Math.min(context.enemyInput.staggerMultiplier + globalStagger + phaseStagger, curtainCap)
       : context.staggerPhase === 'stagger'
         ? context.enemyInput.staggerMultiplier + globalStagger + phaseStagger
         : 1 + globalStagger
+  // 下限（紊乱专属）：与帷幕上限对称，先算上限再抬下限，缺省 null 时逐位不变
+  const staggerFloor = context.staggerFloor
+  const staggerMultiplier =
+    staggerFloor != null && Number.isFinite(staggerFloor)
+      ? Math.max(rawStagger, staggerFloor)
+      : rawStagger
 
   const generalMultiplier =
     context.baseDamage *
@@ -76,5 +91,12 @@ export function evaluateCoreZones(context: CoreZoneContext): CoreZoneResult {
     Math.max(0, staggerMultiplier) *
     (context.extraZoneFactor ?? 1)
 
-  return { dmgMultiplier, resistanceMultiplier, enemyRes, staggerMultiplier, generalMultiplier }
+  return {
+    dmgMultiplier,
+    resistanceMultiplier,
+    enemyRes,
+    staggerMultiplier,
+    staggerMultiplierRaw: rawStagger,
+    generalMultiplier,
+  }
 }

@@ -7,6 +7,8 @@ import type {
   BangbooBuffDoc,
   BaseDamageSource,
   BuffStatModifiers,
+  BuffEffect,
+  CharacterAttrKey,
   DamageEventKind,
   DamageEventMultOverrides,
   DriveDiscBuffDoc,
@@ -74,7 +76,8 @@ import {
   resolvePanelViewPolicyForRadiance,
 } from '@/utils/panelViewPolicy'
 import { mergeSkillSubcategoryMultOverrides } from '@/utils/skillSubcategoryMult'
-import { isEffectEnabled } from '@/utils/buffEffect'
+import { isEffectEnabled, resolveAdditionalDamageRatio } from '@/utils/buffEffect'
+import { damageTypesOf } from '@/utils/buffDamageTypes'
 import {
   collectAllBuffEffects,
   computeFinalPanel,
@@ -91,6 +94,7 @@ import {
   buildPanelSourceValuesBySlotMap,
   collectEventCandidateEffects,
   resolveCollectedEffectParameters,
+  parseSourceKeySlotIndex,
   type BuffEffectContribution,
   type ComputeFinalPanelOptions,
   type CustomProviderMods,
@@ -138,6 +142,20 @@ function buildCustomModsByProvider(
     }
   }
   return { owner, team, all: { ...(aggregate ?? {}) } }
+}
+
+/**
+ * 紊乱失衡易伤下限的提供者（展示用，不参与计算）：
+ * 只挑真正带 `disorderStaggerFloor` 的来源，标签形如「队友 · 卡芙卡 · 0影」。
+ */
+function disorderStaggerFloorProviderLabels(
+  breakdown: { sources?: ReadonlyArray<{ label?: string; mods?: BuffStatModifiers }> } | null | undefined,
+): string[] {
+  const labels = (breakdown?.sources ?? [])
+    .filter((source) => (source.mods?.disorderStaggerFloor ?? 0) > 0)
+    .map((source) => String(source.label ?? '').trim())
+    .filter(Boolean)
+  return [...new Set(labels)]
 }
 
 export type OptimalDamageKind = 'direct' | 'anomaly'
@@ -1470,7 +1488,7 @@ export function evaluateOptimalEventDetail(
   const evtBreakdown = computeFinalPanel(
     ownerExternal,
     evtPanelCtx,
-    zoneSchemeNeedsProviderTracking(zoneScheme, zoneProviders)
+    zoneSchemeNeedsProviderTracking(zoneScheme, zoneProviders) || damageType === 'disorder'
       ? { ...evtPanelOptionsBase, customProviderTrack: true }
       : evtPanelOptionsBase,
   )
@@ -1767,6 +1785,41 @@ export function evaluateOptimalEventDetail(
       matchesCondition: (when) => evaluateZoneCondition(when, hit, ctx.panelContext, zoneContext),
     },
   })
+  const schemeAdditionalTerms =
+    damageType === 'disorder'
+      ? Object.values(zoneScheme.entries)
+          .filter((entry) => entry.module === 'additionalDamage')
+          .map((entry) => {
+            const params = (entry.params ?? {}) as Record<string, unknown>
+            return {
+              stat: String(params.stat ?? 'mastery') as CharacterAttrKey,
+              ratioPercent: Number(params.ratioPercent ?? 0),
+              onlyPolarDisorder: params.onlyPolarDisorder === true,
+            }
+          })
+      : []
+  const providerSkillLevels = (sourceKey: string) => {
+    const slot = parseSourceKeySlotIndex(sourceKey)
+    const agentId = slot != null ? ctx.panelContext.teamSlots[slot]?.agentId : ''
+    return agentId
+      ? (ctx.panelContext.skillTalentLevelsByAgent?.[agentId] ?? null)
+      : null
+  }
+  const additionalDamageTerms = damageType === 'disorder'
+    ? [...schemeAdditionalTerms, ...(evtBreakdown.sources ?? []).flatMap((source) =>
+        (source.effects ?? [])
+          .filter((effect: BuffEffect) => effect.kind === 'additionalDamage')
+          .filter((effect: BuffEffect) => {
+            const types = damageTypesOf(effect)
+            return !types.length || types.includes('disorder')
+          })
+          .map((effect: BuffEffect) => ({
+            stat: effect.stat as CharacterAttrKey,
+            ratioPercent: resolveAdditionalDamageRatio(effect, providerSkillLevels(source.key)),
+            onlyPolarDisorder: effect.additionalDamage?.onlyPolarDisorder === true,
+          })),
+      )]
+    : []
   const result = computeDamageResult({
     eventDamageType: damageType,
     eventCritMode: hit.critMode,
@@ -1787,10 +1840,14 @@ export function evaluateOptimalEventDetail(
     combatGlobalStaggerVulnerable: evtBreakdown.combatMods.globalStaggerVulnerable,
     combatStaggerVulnerable: evtBreakdown.combatMods.staggerVulnerable,
     combatStaggerVulnerableOnly: evtBreakdown.combatMods.staggerVulnerableOnly,
+    combatDisorderStaggerFloor: evtBreakdown.combatMods.disorderStaggerFloor,
+    combatDisorderStaggerFloorProviders: disorderStaggerFloorProviderLabels(evtBreakdown),
     combatSpecial: evtBreakdown.combatMods.special,
     combatPierceDmgBonus: evtBreakdown.combatMods.pierceDmgBonus,
 
     combatImbueDmgBonus: evtBreakdown.combatMods.imbueDmgBonus,
+    combatFinalDmgBonus: evtBreakdown.combatMods.finalDmgBonus,
+    combatAdditionalDamage: additionalDamageTerms,
     combatSharpenDmgBonus: evtBreakdown.combatMods.sharpenDmgBonus,
     combatSharpenCritDmgBonus: evtBreakdown.combatMods.sharpenCritDmgBonus,
     combatDmgPenalty: evtBreakdown.combatMods.dmgPenalty,
@@ -2067,10 +2124,13 @@ function computeEventDamageLines(
         combatGlobalStaggerVulnerable: firstBreakdown.combatMods.globalStaggerVulnerable,
         combatStaggerVulnerable: firstBreakdown.combatMods.staggerVulnerable,
         combatStaggerVulnerableOnly: firstBreakdown.combatMods.staggerVulnerableOnly,
+        combatDisorderStaggerFloor: firstBreakdown.combatMods.disorderStaggerFloor,
+        combatDisorderStaggerFloorProviders: disorderStaggerFloorProviderLabels(firstBreakdown),
         combatSpecial: firstBreakdown.combatMods.special,
         combatPierceDmgBonus: firstBreakdown.combatMods.pierceDmgBonus,
 
         combatImbueDmgBonus: firstBreakdown.combatMods.imbueDmgBonus,
+        combatFinalDmgBonus: firstBreakdown.combatMods.finalDmgBonus,
         combatSharpenDmgBonus: firstBreakdown.combatMods.sharpenDmgBonus,
         combatSharpenCritDmgBonus: firstBreakdown.combatMods.sharpenCritDmgBonus,
         combatDmgPenalty: firstBreakdown.combatMods.dmgPenalty,
@@ -2160,10 +2220,13 @@ export function evaluateAffixCountsForSweep(
       combatGlobalStaggerVulnerable: breakdown.combatMods.globalStaggerVulnerable,
       combatStaggerVulnerable: breakdown.combatMods.staggerVulnerable,
       combatStaggerVulnerableOnly: breakdown.combatMods.staggerVulnerableOnly,
+      combatDisorderStaggerFloor: breakdown.combatMods.disorderStaggerFloor,
+      combatDisorderStaggerFloorProviders: disorderStaggerFloorProviderLabels(breakdown),
       combatSpecial: breakdown.combatMods.special,
       combatPierceDmgBonus: breakdown.combatMods.pierceDmgBonus,
 
       combatImbueDmgBonus: breakdown.combatMods.imbueDmgBonus,
+      combatFinalDmgBonus: breakdown.combatMods.finalDmgBonus,
       combatSharpenDmgBonus: breakdown.combatMods.sharpenDmgBonus,
       combatSharpenCritDmgBonus: breakdown.combatMods.sharpenCritDmgBonus,
       combatDmgPenalty: breakdown.combatMods.dmgPenalty,
@@ -2748,10 +2811,13 @@ function evaluateAffixCountsUncached(
         combatGlobalStaggerVulnerable: breakdown.combatMods.globalStaggerVulnerable,
         combatStaggerVulnerable: breakdown.combatMods.staggerVulnerable,
         combatStaggerVulnerableOnly: breakdown.combatMods.staggerVulnerableOnly,
+        combatDisorderStaggerFloor: breakdown.combatMods.disorderStaggerFloor,
+        combatDisorderStaggerFloorProviders: disorderStaggerFloorProviderLabels(breakdown),
         combatSpecial: breakdown.combatMods.special,
         combatPierceDmgBonus: breakdown.combatMods.pierceDmgBonus,
 
         combatImbueDmgBonus: breakdown.combatMods.imbueDmgBonus,
+        combatFinalDmgBonus: breakdown.combatMods.finalDmgBonus,
       combatSharpenDmgBonus: breakdown.combatMods.sharpenDmgBonus,
       combatSharpenCritDmgBonus: breakdown.combatMods.sharpenCritDmgBonus,
       combatDmgPenalty: breakdown.combatMods.dmgPenalty,
@@ -2801,10 +2867,13 @@ function evaluateAffixCountsUncached(
     combatGlobalStaggerVulnerable: breakdown.combatMods.globalStaggerVulnerable,
     combatStaggerVulnerable: breakdown.combatMods.staggerVulnerable,
     combatStaggerVulnerableOnly: breakdown.combatMods.staggerVulnerableOnly,
+    combatDisorderStaggerFloor: breakdown.combatMods.disorderStaggerFloor,
+    combatDisorderStaggerFloorProviders: disorderStaggerFloorProviderLabels(breakdown),
     combatSpecial: breakdown.combatMods.special,
     combatPierceDmgBonus: breakdown.combatMods.pierceDmgBonus,
 
     combatImbueDmgBonus: breakdown.combatMods.imbueDmgBonus,
+    combatFinalDmgBonus: breakdown.combatMods.finalDmgBonus,
       combatSharpenDmgBonus: breakdown.combatMods.sharpenDmgBonus,
     combatSharpenCritDmgBonus: breakdown.combatMods.sharpenCritDmgBonus,
     combatDmgPenalty: breakdown.combatMods.dmgPenalty,

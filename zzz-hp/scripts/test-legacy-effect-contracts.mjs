@@ -38,8 +38,8 @@ function check(name, ok, detail = '') {
 console.log('\n[1] 招式标签词表')
 const cats = SKILL_CATEGORY_OPTIONS.map((x) => x.id)
 check(
-  '六大类齐全',
-  cats.join(',') === 'basic,dodge,assist,special,chain,ultimate',
+  '招式大类齐全（六大类 + other 锚点）',
+  cats.join(',') === 'basic,dodge,assist,special,chain,ultimate,other',
   cats.join(','),
 )
 

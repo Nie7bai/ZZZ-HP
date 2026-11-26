@@ -82,7 +82,7 @@ test('zone_key 格式：内置键或 custom:<slug>，其余拒绝', () => {
 })
 
 test('primitive 白名单：占位四项，其余拒绝', () => {
-  assert.deepEqual([...ZONE_PRIMITIVES], ['percentSum', 'panel.percent', 'stagger', 'vulnerable'])
+  assert.deepEqual([...ZONE_PRIMITIVES], ['percentSum', 'panel.percent', 'stagger', 'vulnerable', 'additionalDamage'])
   for (const primitive of ZONE_PRIMITIVES) {
     assert.equal(validateZonePrimitive(primitive), primitive)
   }

@@ -27,6 +27,7 @@ export const ZONE_DEFINITIONS: readonly ZoneDefinition[] = Object.freeze([
   { key: 'levelZone', label: '等级区', order: 102, group: 'anomaly', field: 'levelZone' },
   { key: 'specialMultiplier', label: '特殊乘区', order: 104, group: 'core', field: 'specialMultiplier' },
   { key: 'specialMultZone', label: '特殊倍率乘区', order: 106, group: 'core', field: 'specialMultZone' },
+  { key: 'finalDmgMultiplier', label: '最终伤害区', order: 108, group: 'direct', field: 'finalDmgMultiplier' },
 
   { key: 'attributeAnomalyDmgBonusZone', label: '属性异常增伤区', order: 120, group: 'anomaly', field: 'attributeAnomalyDmgBonusZone' },
   { key: 'attributeAnomalyMultZone', label: '属性异常倍率区', order: 122, group: 'anomaly', field: 'attributeAnomalyMultZone' },

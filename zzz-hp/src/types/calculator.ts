@@ -140,7 +140,12 @@ export interface BuffEffectConditions {
 export type BuffApplyTarget = 'self' | 'team'
 /** 增益作用情况：全局 / 仅失衡期 / 仅非失衡期 */
 export type BuffApplySituation = 'global' | 'stagger' | 'non_stagger'
-export type BuffEffectKind = 'fixed' | 'stacked' | 'convert'
+/**
+ * 效果类型。
+ * `additionalDamage`：附加伤害项——来源属性 × 比例% 的固定伤害，
+ * 逐项 round 后求和，只在适用伤害类型（目前为紊乱/极性紊乱）里作为基础加法项参与。
+ */
+export type BuffEffectKind = 'fixed' | 'stacked' | 'convert' | 'additionalDamage'
 export type DamageCalcKind = 'direct' | 'anomaly'
 /** 异常伤害子类：属性异常 / 紊乱 / 乱流 / 异放 / 耀变 */
 export type AnomalyDamageSubKind =
@@ -160,6 +165,8 @@ export type SkillCategoryId =
   | 'special'
   | 'chain'
   | 'ultimate'
+  /** 其他 / 无对应招式类型：仅用于挂增益锚点（招式小类），不参与招式类型勾选 */
+  | 'other'
 
 /** 增益招式目标：真实大类，或伪大类「追加攻击」 */
 export type BuffSkillTargetId = SkillCategoryId | 'follow_up'
@@ -188,6 +195,7 @@ export const SKILL_CATEGORY_OPTIONS: { id: SkillCategoryId; label: string }[] = 
   { id: 'special', label: '特殊技' },
   { id: 'chain', label: '连携技' },
   { id: 'ultimate', label: '终结技' },
+  { id: 'other', label: '其他（无对应招式类型）' },
 ]
 
 /** 增益编辑器用（含追加攻击伪大类） */
@@ -291,6 +299,8 @@ export interface BuffStatModifiers {
   pierceDmgBonus: number
   /** 浸染增伤%（独立乘区，仅直伤体系：普通直伤 / 命破 / 锋御） */
   imbueDmgBonus: number
+  /** 最终伤害%（独立乘区，直伤链最后一道：普通直伤 / 命破 / 锋御；异常链不受影响） */
+  finalDmgBonus: number
   /** 锐化伤害提升%（独立乘区，仅锐化路径；锋御专属，对标命破贯穿增伤） */
   sharpenDmgBonus: number
   /**
@@ -321,6 +331,14 @@ export interface BuffStatModifiers {
   staggerVulnerable: number
   /** 失衡易伤（仅失衡）%（仅失衡期存在并生效） */
   staggerVulnerableOnly: number
+  /**
+   * 紊乱失衡易伤下限%（倍率口径：140 = 至少 ×1.4）。
+   *
+   * 只作用于紊乱 / 极性紊乱：失衡易伤区取 `max(区, 本值/100)`。
+   * 非失衡期此时区 = 1，所以 140 等价于「非失衡期紊乱 ×1.4」；
+   * 失衡期则是「不高于 140% 时视为 140%」。
+   */
+  disorderStaggerFloor: number
   special: number
   /** 属性异常暴击% */
   attributeAnomalyCritRate: number
@@ -412,6 +430,16 @@ export type BuffStatKey = Exclude<keyof BuffStatModifiers, 'custom'>
  */
 export type CustomBuffStatKey = `custom:${string}`
 
+/** 附加伤害：来源属性 × 比例% 的固定伤害，逐项 round 后求和 */
+export interface BuffEffectAdditionalDamage {
+  /** 仅极性紊乱（招式存在极性紊乱配置时才计入） */
+  onlyPolarDisorder?: boolean
+  /** 倍率随技能等级：来源大类（缺省 = 固定倍率） */
+  ratioLevelSource?: SkillConvertFromKey
+  /** 每级倍率增量（百分点）；L1 用效果的 value */
+  ratioPercentPerLevel?: number
+}
+
 export interface BuffEffectConvert {
   from: ConvertFromKey
   /** external/final 读面板；manual 自行设置基础值（不看面板） */
@@ -423,6 +451,15 @@ export interface BuffEffectConvert {
   defaultBase?: number | null
   /** 转模初始值：仅超出该值的部分参与折算，默认 0（旧数据缺省同 0） */
   initialBase?: number | null
+  /**
+   * 比例随技能等级：来源大类（缺省 = 固定比例）。
+   * 有效比例 = ratioPercent + ratioPercentPerLevel × (等级 − 1)。
+   */
+  ratioLevelSource?: SkillConvertFromKey
+  /** 每级比例增量（百分点）；仅 ratioLevelSource 有值时生效 */
+  ratioPercentPerLevel?: number
+  /** 上限每级增量；仅 ratioLevelSource 有值且 cap 非空时生效 */
+  capPerLevel?: number
 }
 
 /** 招式作用目标（可多选） */
@@ -495,6 +532,8 @@ export interface BuffEffect {
   valuePerStack?: number
   defaultStacks?: number
   convert?: BuffEffectConvert
+  /** 附加伤害配置；kind='additionalDamage' 时有效（stat=来源属性，value=比例%） */
+  additionalDamage?: BuffEffectAdditionalDamage
   /**
    * 用户侧「额外增益」的效果（2026-09-24 阶段 3 起并入统一收集）。
    * 它没有勾选状态 —— **加入即已勾选**：`isEffectEnabled` 见到这个标志直接返回 true。

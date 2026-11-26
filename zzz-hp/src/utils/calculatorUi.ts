@@ -190,6 +190,12 @@ export const BUFF_STAT_FIELDS: {
     hint: '仅在失衡期存在并计入乘区',
   },
   {
+    key: 'disorderStaggerFloor',
+    label: '紊乱失衡易伤下限',
+    unit: 'percent',
+    hint: '倍率口径：140 = 至少 ×1.4；仅紊乱/极性紊乱，失衡易伤区取 max(区, 本值)',
+  },
+  {
     key: 'special',
     label: '特殊补充',
     unit: 'percent',
@@ -343,6 +349,12 @@ export const BUFF_STAT_FIELDS: {
     label: '贯穿增伤',
     unit: 'percent',
     hint: '独立乘区，仅当直伤基础来源为贯穿力时生效，不进增伤区',
+  },
+  {
+    key: 'finalDmgBonus',
+    label: '最终伤害',
+    unit: 'percent',
+    hint: '独立乘区，直伤链最后一道（普通直伤 / 命破 / 锋御）；异常链不受影响',
   },
   {
     key: 'imbueDmgBonus',
@@ -570,6 +582,7 @@ export function createEmptyBuffStatModifiers(): BuffStatModifiers {
     pierce: 0,
     pierceDmgBonus: 0,
     imbueDmgBonus: 0,
+    finalDmgBonus: 0,
     sharpenDmgBonus: 0,
     sharpenCritDmgBonus: 0,
     dmgPenalty: 0,
@@ -582,6 +595,7 @@ export function createEmptyBuffStatModifiers(): BuffStatModifiers {
     globalStaggerVulnerable: 0,
     staggerVulnerable: 0,
     staggerVulnerableOnly: 0,
+    disorderStaggerFloor: 0,
     special: 0,
     attributeAnomalyCritRate: 0,
     attributeAnomalyCritDmg: 0,

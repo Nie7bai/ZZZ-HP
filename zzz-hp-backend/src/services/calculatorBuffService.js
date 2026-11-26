@@ -194,10 +194,30 @@ function normalizeConvert(value) {
   } else if (!ATTRS.includes(rawFrom)) {
     return undefined
   }
+  const ratioLevelRaw = value.ratioLevelSource
+  const readRatioLevelField = (raw) => {
+    if (raw == null || raw === '') return null
+    const num = readNumber(raw)
+    return num === 0 ? null : num
+  }
+  const RATIO_LEVEL_SOURCES = [
+    'skillLevelBasic',
+    'skillLevelDodge',
+    'skillLevelAssist',
+    'skillLevelSpecial',
+    'skillLevelChainUltimate',
+  ]
   return {
     from,
     panelSource,
     ratioPercent: readNumber(value.ratioPercent),
+    ratioLevelSource: RATIO_LEVEL_SOURCES.includes(ratioLevelRaw) ? ratioLevelRaw : undefined,
+    ...(readRatioLevelField(value.ratioPercentPerLevel) != null
+      ? { ratioPercentPerLevel: readRatioLevelField(value.ratioPercentPerLevel) }
+      : {}),
+    ...(readRatioLevelField(value.capPerLevel) != null
+      ? { capPerLevel: readRatioLevelField(value.capPerLevel) }
+      : {}),
     cap: value.cap == null || value.cap === '' ? null : readNumber(value.cap),
     defaultBase:
       value.defaultBase == null || value.defaultBase === ''
@@ -289,7 +309,9 @@ export function normalizeEffectList(rawValue) {
           : undefined,
         elementFilter: item.elementFilter ?? 'all',
         kind:
-          item.kind === 'stacked' || item.kind === 'convert' ? item.kind : 'fixed',
+          item.kind === 'stacked' || item.kind === 'convert' || item.kind === 'additionalDamage'
+            ? item.kind
+            : 'fixed',
         stat,
         value: readNumber(item.value),
         stackable: Boolean(item.stackable),
@@ -303,6 +325,19 @@ export function normalizeEffectList(rawValue) {
         })(),
 
         convert: normalizeConvert(item.convert),
+        additionalDamage: (() => {
+          const raw = item.additionalDamage
+          if (!raw || typeof raw !== 'object') return undefined
+          const levelRaw = String(raw.ratioLevelSource ?? '')
+          const perLevel = Number(raw.ratioPercentPerLevel)
+          return {
+            onlyPolarDisorder: raw.onlyPolarDisorder === true,
+            ...(['skillLevelBasic', 'skillLevelDodge', 'skillLevelAssist', 'skillLevelSpecial', 'skillLevelChainUltimate'].includes(levelRaw) ? { ratioLevelSource: levelRaw } : {}),
+            ...(Number.isFinite(perLevel) && perLevel !== 0
+              ? { ratioPercentPerLevel: perLevel }
+              : {}),
+          }
+        })(),
         enabledDefault: item.enabledDefault === false ? false : true,
         note: typeof item.note === 'string' ? item.note : '',
       }

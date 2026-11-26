@@ -103,9 +103,10 @@ function selectItem(item: SkillSubcategory) {
     settlementDmgMult: item.settlementDmgMult,
     anomalyReleaseMult: item.anomalyReleaseMult,
     disorderMult: item.disorderMult,
-    directDmgMultFactor: item.directDmgMultFactor,
-    anomalyReleaseMultFactor: item.anomalyReleaseMultFactor,
-    disorderMultFactor: item.disorderMultFactor,
+    // store 里是倍率（1 = ×1）；管理端按百分比展示与录入（100 = ×1）
+    directDmgMultFactor: item.directDmgMultFactor * 100,
+    anomalyReleaseMultFactor: item.anomalyReleaseMultFactor * 100,
+    disorderMultFactor: item.disorderMultFactor * 100,
   }
 }
 
@@ -296,11 +297,11 @@ defineExpose({ selectedId, saving, saveItem, removeItem })
           </div>
           <div class="field-row mult-row">
             <label class="field">
-              <span class="field-label">直伤倍率修正</span>
+              <span class="field-label">直伤倍率修正%</span>
               <input v-model.number="form.directDmgMultFactor" class="field-input" type="number" step="any" min="0" />
             </label>
             <label class="field">
-              <span class="field-label">异放倍率修正</span>
+              <span class="field-label">异放倍率修正%</span>
               <input
                 v-model.number="form.anomalyReleaseMultFactor"
                 class="field-input"
@@ -310,7 +311,7 @@ defineExpose({ selectedId, saving, saveItem, removeItem })
               />
             </label>
             <label class="field">
-              <span class="field-label">紊乱倍率修正</span>
+              <span class="field-label">紊乱倍率修正%</span>
               <input v-model.number="form.disorderMultFactor" class="field-input" type="number" step="any" min="0" />
             </label>
           </div>

@@ -2,7 +2,7 @@
  * 管理侧行聚合 / 联动重建（纯函数）。
  * 运行：npx vite-node scripts/test-buff-effect-rows.mjs
  */
-import { createEmptyBuffEffect } from '../src/utils/buffEffect.ts'
+import { createEmptyBuffEffect, normalizeBuffEffect, SKILL_CATEGORY_LABELS } from '../src/utils/buffEffect.ts'
 import {
   alignRow,
   buildEffectRows,
@@ -16,6 +16,8 @@ import {
   validateEffectGroups,
 } from '../src/utils/buffEffectRows.ts'
 import { findBuffStatZoneById } from '../src/utils/buffStatZones.ts'
+import { normalizeSkillSubcategoryMultFields } from '../src/utils/skillSubcategoryMult.ts'
+import { SKILL_CATEGORY_OPTIONS } from '../src/types/calculator.ts'
 
 let passed = 0
 let failed = 0
@@ -346,5 +348,35 @@ console.log('\n[12] 异常子类展开的身份保留（Spec §7.2 第 13 项）
   }
 }
 
-console.log(`\n结果：${passed} passed, ${failed} failed`)
+check(
+  '「其他（无对应招式类型）」大类已登记',
+  SKILL_CATEGORY_OPTIONS.some((item) => item.id === 'other') &&
+    SKILL_CATEGORY_LABELS.other === '其他',
+)
+const otherAnchorEffect = normalizeBuffEffect({
+  ...createEmptyBuffEffect({ id: 'other-anchor' }),
+  skillTargets: [{ category: 'other', subcategoryId: 'anchor-x' }],
+})
+check(
+  '限定招式条件允许 other 大类（保存不掉）',
+  otherAnchorEffect?.skillTargets?.[0]?.category === 'other' &&
+    otherAnchorEffect?.skillTargets?.[0]?.subcategoryId === 'anchor-x',
+  JSON.stringify(otherAnchorEffect?.skillTargets ?? null),
+)
+
+const subFactors = normalizeSkillSubcategoryMultFields({
+  directDmgMultFactor: 1,
+  anomalyReleaseMultFactor: 3,
+  disorderMultFactor: 100,
+})
+check(
+  '招式小类倍率修正按百分比：1 → ×0.01、3 → ×0.03、100 → ×1',
+  subFactors.directDmgMultFactor === 0.01 &&
+    subFactors.anomalyReleaseMultFactor === 0.03 &&
+    subFactors.disorderMultFactor === 1,
+  `${subFactors.directDmgMultFactor}/${subFactors.anomalyReleaseMultFactor}/${subFactors.disorderMultFactor}`,
+)
+
+console.log(`
+结果：${passed} passed, ${failed} failed`)
 process.exit(failed === 0 ? 0 : 1)

@@ -48,8 +48,13 @@ function pushAnomalyFinalDamages(
     critDamage: number
     expectedDamage: number
     noCritDamage?: number
+    /** 最终伤害区（全局最后一道）；缺省或 1 时不占位 */
+    finalDmgMultiplier?: number
   },
 ) {
+  if (isActiveZone(options.finalDmgMultiplier ?? 1)) {
+    push(rows, '最终伤害区', options.finalDmgMultiplier ?? 1)
+  }
   if (options.hasCritZone) {
     push(rows, '暴击伤害', options.critDamage, true)
     push(rows, '期望伤害', options.expectedDamage, true)
@@ -169,6 +174,7 @@ function pushRemielSelfRadianceRows(rows: SkillCalcZoneRow[], result: DamageCalc
   }
   pushAnomalyFinalDamages(rows, {
     hasCritZone,
+    finalDmgMultiplier: result.finalDmgMultiplier,
     critDamage: result.radianceExpectedFullCrit,
     expectedDamage: result.radianceExpected,
     noCritDamage: result.radianceExpectedNoCrit,
@@ -207,6 +213,9 @@ export function buildSkillCalcZoneRows(
     if (!result.useSharpenFormula && result.settlementDmgMultZone > 0) {
       push(rows, '决算倍率区', result.settlementDmgMultZone)
     }
+    if (isActiveZone(result.finalDmgMultiplier)) {
+      push(rows, '最终伤害区', result.finalDmgMultiplier)
+    }
     push(rows, '期望伤害', result.directDamageExpected, true)
     return rows
   }
@@ -229,6 +238,7 @@ export function buildSkillCalcZoneRows(
     }
     pushAnomalyFinalDamages(rows, {
       hasCritZone,
+      finalDmgMultiplier: result.finalDmgMultiplier,
       critDamage: result.attributeAnomalyExpectedFullCrit,
       expectedDamage: result.attributeAnomalyExpected,
       noCritDamage: result.attributeAnomalyExpectedNoCrit,
@@ -248,12 +258,20 @@ export function buildSkillCalcZoneRows(
       push(rows, '紊乱倍率修正', result.disorderMultFactor)
     }
     push(rows, '紊乱倍率区', result.disorderZone)
+    const additionalFlat = result.additionalDamageFlat ?? 0
+    if (additionalFlat > 0) {
+      rows.push({
+        label: '附加伤害（基础加法项）',
+        value: additionalFlat.toLocaleString('en-US'),
+      })
+    }
     push(rows, '紊乱增伤区', result.disorderDmgBonusZone)
     if (hasCritZone) {
       push(rows, '紊乱暴击区', result.disorderFullCritZone)
     }
     pushAnomalyFinalDamages(rows, {
       hasCritZone,
+      finalDmgMultiplier: result.finalDmgMultiplier,
       critDamage: result.disorderExpectedFullCrit,
       expectedDamage: result.disorderExpected,
       noCritDamage: result.disorderExpectedNoCrit,
@@ -279,6 +297,7 @@ export function buildSkillCalcZoneRows(
     }
     pushAnomalyFinalDamages(rows, {
       hasCritZone,
+      finalDmgMultiplier: result.finalDmgMultiplier,
       critDamage: result.turbulenceExpectedFullCrit,
       expectedDamage: result.turbulenceExpected,
       noCritDamage: result.turbulenceExpectedNoCrit,
@@ -298,6 +317,7 @@ export function buildSkillCalcZoneRows(
     }
     pushAnomalyFinalDamages(rows, {
       hasCritZone,
+      finalDmgMultiplier: result.finalDmgMultiplier,
       critDamage: result.anomalyReleaseExpectedFullCrit,
       expectedDamage: result.anomalyReleaseExpected,
       noCritDamage: result.anomalyReleaseExpectedNoCrit,
@@ -318,6 +338,7 @@ export function buildSkillCalcZoneRows(
     }
     pushAnomalyFinalDamages(rows, {
       hasCritZone,
+      finalDmgMultiplier: result.finalDmgMultiplier,
       critDamage: result.radianceExpectedFullCrit,
       expectedDamage: result.radianceExpected,
       noCritDamage: result.radianceExpectedNoCrit,
@@ -369,6 +390,93 @@ const RESULT_ZONE_LABELS = new Set(['暴击伤害', '期望伤害', '不暴击�
  */
 const VULNERABLE_ZONE_LABELS = new Set(['易伤区'])
 
+/* ===================== 紊乱公式顺序分块（每块单一归属） ===================== */
+
+export type DisorderSectionKey =
+  | 'termProvider'
+  | 'termTrigger'
+  | 'generalProvider'
+  | 'generalMixed'
+  | 'generalTrigger'
+  | 'tail'
+
+export const DISORDER_SECTION_META: ReadonlyArray<{
+  key: DisorderSectionKey
+  label: string
+  className: string
+}> = [
+  {
+    key: 'termProvider',
+    label: '( 基础攻击力 × 紊乱倍率 )',
+    className: 'zone-box--producer',
+  },
+  { key: 'termTrigger', label: '+ 附加伤害', className: 'zone-box--trigger' },
+  {
+    key: 'generalProvider',
+    label: '× 通用乘区（异常强度提供者）',
+    className: 'zone-box--producer',
+  },
+  { key: 'generalMixed', label: '× 防御区（共用）', className: 'zone-box--mixed' },
+  {
+    key: 'generalTrigger',
+    label: '× 通用乘区（异常类触发者）',
+    className: 'zone-box--trigger',
+  },
+  {
+    key: 'tail',
+    label: '× 紊乱增伤区 × 紊乱暴击区',
+    className: 'zone-box--trigger',
+  },
+]
+
+const DISORDER_SECTION_LABELS: Record<DisorderSectionKey, Set<string>> = {
+  termProvider: new Set([
+    '面板攻击力',
+    '面板防御力',
+    '面板贯穿力',
+    '基础伤害',
+    '紊乱基础倍率',
+    '紊乱补偿倍率',
+    '异常持续时间',
+    '紊乱倍率修正',
+    '紊乱倍率区',
+  ]),
+  termTrigger: new Set(),
+  generalProvider: new Set(['增伤区', '精通区', '等级区']),
+  generalMixed: new Set(['防御区']),
+  generalTrigger: new Set(['抗性区', '失衡易伤区', '易伤区', '特殊乘区', '通用乘区']),
+  tail: new Set(['紊乱增伤区', '紊乱暴击区']),
+}
+
+const DISORDER_TERM_ORDER = [
+  '面板攻击力',
+  '面板防御力',
+  '面板贯穿力',
+  '基础伤害',
+  '紊乱基础倍率',
+  '紊乱补偿倍率',
+  '异常持续时间',
+  '紊乱倍率修正',
+  '紊乱倍率区',
+]
+
+/** 提供者块内部的展示顺序：补偿倍率在持续时间之前 */
+export function disorderTermOrder(label: string): number {
+  if (label.startsWith('附加伤害')) return 100
+  const index = DISORDER_TERM_ORDER.indexOf(label)
+  return index >= 0 ? index : 50
+}
+
+export function disorderSectionOf(label: string): DisorderSectionKey | null {
+  if (label.startsWith('附加伤害')) return 'termTrigger'
+  for (const [key, labels] of Object.entries(DISORDER_SECTION_LABELS) as Array<
+    [DisorderSectionKey, Set<string>]
+  >) {
+    if (labels.has(label)) return key
+  }
+  return null
+}
+
 export function skillCalcZoneGroup(label: string): SkillCalcZoneGroup {
   if (MIXED_ZONE_LABELS.has(label)) return 'mixed'
   if (PRODUCER_ZONE_LABELS.has(label)) return 'producer'
@@ -404,6 +512,7 @@ const ZONE_HINTS: Record<string, string> = {
   锐爆区: '锐化路径的暴击区：1 + 锐爆率 × 锐爆伤害。',
   贯穿增伤区: '贯穿伤害路径的独立增伤乘区。',
   浸染增伤区: '直伤体系的独立增伤乘区：1 + 浸染增伤% / 100，普通直伤 / 命破 / 锋御都生效，异常链不受影响。',
+  最终伤害区: '直伤链最后一道独立乘区：1 + 最终伤害% / 100，普通直伤 / 命破 / 锋御都生效，异常链不受影响。',
   技能倍率区: '招式倍率对应的乘区。',
   直伤倍率区: '直伤倍率对应的乘区。',
   决算倍率区: '决算倍率（结算额外倍率）。',

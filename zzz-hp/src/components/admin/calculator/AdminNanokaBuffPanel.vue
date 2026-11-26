@@ -1298,7 +1298,7 @@ function resolveConflict(row: KeywordRow, conflict: NanokaParseConflict, choice:
  * 音擎 = `基础(fixed) → 精炼 1..5`。**影画固定最后**，不许混在中间。下拉选项顺序与清单一致。
  */
 const SLOT_SORT_GROUPS: Record<string, number> = { core: 0, extra: 1, fixed: 0 }
-const SKILL_CATEGORY_ORDER = ['basic', 'dodge', 'assist', 'special', 'chain', 'ultimate']
+const SKILL_CATEGORY_ORDER = ['basic', 'dodge', 'assist', 'special', 'chain', 'ultimate', 'other']
 
 function slotSortKey(slot: string): [number, number, string] {
   if (slot in SLOT_SORT_GROUPS) return [SLOT_SORT_GROUPS[slot] ?? 0, 0, slot]
