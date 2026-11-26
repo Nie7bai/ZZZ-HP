@@ -22,12 +22,12 @@ export const ZONE_DEFINITIONS: readonly ZoneDefinition[] = Object.freeze([
   { key: 'pierceDmgMultiplier', label: '贯穿增伤区', order: 94, group: 'direct', field: 'pierceDmgMultiplier' },
   { key: 'sharpenDmgMultiplier', label: '锐化伤害提升区', order: 96, group: 'direct', field: 'sharpenDmgMultiplier' },
   { key: 'imbueDmgMultiplier', label: '浸染增伤区', order: 98, group: 'direct', field: 'imbueDmgMultiplier' },
-  { key: 'finalDmgMultiplier', label: '最终伤害区', order: 108, group: 'direct', field: 'finalDmgMultiplier' },
 
   { key: 'masteryZone', label: '精通区', order: 100, group: 'anomaly', field: 'masteryZone' },
   { key: 'levelZone', label: '等级区', order: 102, group: 'anomaly', field: 'levelZone' },
   { key: 'specialMultiplier', label: '特殊乘区', order: 104, group: 'core', field: 'specialMultiplier' },
   { key: 'specialMultZone', label: '特殊倍率乘区', order: 106, group: 'core', field: 'specialMultZone' },
+  { key: 'finalDmgMultiplier', label: '最终伤害区', order: 108, group: 'direct', field: 'finalDmgMultiplier' },
 
   { key: 'attributeAnomalyDmgBonusZone', label: '属性异常增伤区', order: 120, group: 'anomaly', field: 'attributeAnomalyDmgBonusZone' },
   { key: 'attributeAnomalyMultZone', label: '属性异常倍率区', order: 122, group: 'anomaly', field: 'attributeAnomalyMultZone' },
