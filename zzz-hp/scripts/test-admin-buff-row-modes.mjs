@@ -69,7 +69,7 @@ console.log('\n[1] 缺省模式（增益库）不受影响')
     ['class="member-line"', '!isExtraMode'],
     ['badge badge-group', '!isExtraMode'],
     ['v-if="!isExtraMode && showEnabledDefault"', '!isExtraMode'],
-    ['@click="onCreateSubcatFromMenu"', '!isExtraMode'],
+    ['@create="openCreateSubcat"', ':allow-create="!isExtraMode"'],
   ]
   for (const [needle, gate] of catalogOnly) {
     const block = linesAround(needle)

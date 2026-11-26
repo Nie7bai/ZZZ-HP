@@ -998,6 +998,47 @@ const ANCHORS = [
   { id: 'a-enh', agentId: '1041', categoryId: 'special', name: '强化特殊技' },
 ]
 
+test('阶段一手选整类和小类可与伤害类型独立写入，清除招式后保留伤害类型', () => {
+  assert.ok(!SLOT_OPTIONS.scope.includes('招式'))
+  const skillTargets = [
+    { category: 'destruction', subcategoryId: null },
+    { category: 'special', subcategoryId: 'a-enh' },
+  ]
+  const slots = { stat: '增伤', action: '提升', value: 10, unit: '%', scope: '锐化' }
+  const anchors = { ok: true, labels: ['毁伤', '强化特殊技'], skillTargets }
+  const { rows: [parsed] } = smartMergeParse({ keywords: [{ key: 'manual-skill-targets', slots, anchors }] })
+  const saved = planBuffApply({
+    kind: 'agent', local: {},
+    rows: [{ key: parsed.key, source: 'passive.core', containerIndex: 0, effect: parsed.effect }],
+  }).groups[0].blocks[0].effects[0]
+  assert.deepEqual(saved.skillTargets, skillTargets)
+  assert.deepEqual(saved.conditions.damageTypes, ['sharpen'])
+
+  const unrelatedDamageType = mapKeywordsToEffect({
+    slots: { ...slots, stat: '防御力', scope: '乱流' }, anchors,
+  }).effect
+  assert.deepEqual(unrelatedDamageType.skillTargets, skillTargets)
+  assert.deepEqual(normalizeEffectList([unrelatedDamageType])[0].conditions.damageTypes, ['turbulence'])
+
+  const cleared = mapKeywordsToEffect({ slots, anchors: { ok: true, labels: [], skillTargets: [] } }).effect
+  assert.equal(cleared.skillTargets, undefined)
+  assert.deepEqual(cleared.conditions.damageTypes, ['sharpen'])
+
+  const legacy = mapKeywordsToEffect({ slots: { ...slots, scope: '招式' }, anchors }).effect
+  assert.deepEqual(legacy.skillTargets, skillTargets)
+  assert.deepEqual(legacy.scope, ['skill'])
+})
+
+test('自动识别可同时保留招式和伤害类型，招式标题里的词不产生伤害类型', () => {
+  const context = { anchors: ANCHORS, agentId: '1041' }
+  const { effects: [both] } = simplifyText({ ...context, text: '[普通攻击]造成的异放伤害提升10%' })
+  assert.equal(both.layerC.stat, 'anomalyReleaseDmgBonus')
+  assert.deepEqual(both.layerC.skillTargets, [{ category: 'basic', subcategoryId: 'a-basic' }])
+  const { effects: [named] } = simplifyText({ ...context, text: '[普通攻击：乱流前奏]的暴击率提升3%' })
+  assert.equal(named.slots.scope, NONE)
+  assert.deepEqual(named.layerC.skillTargets, [{ category: 'basic', subcategoryId: 'a-basic' }])
+})
+
 test('招式限定：锚点关联上 → 条件 + skillTargets；关联不上 → 这条不录', () => {
   assert.deepEqual(
     detectSkillLimits('[普通攻击]、[冲刺攻击]造成的伤害提升3%').map((item) => item.name),
@@ -1009,8 +1050,7 @@ test('招式限定：锚点关联上 → 条件 + skillTargets；关联不上 �
   const text = '[普通攻击]、[冲刺攻击]造成的伤害提升3%'
   const { effect } = firstEffect(text, { anchors: ANCHORS, agentId: '1041' })
   assert.equal(effect.recorded, true)
-  // 「限定招式」**并进「作用域」槽位**（用户 2026-10-16：工具里就是 scope 字段），不再塞条件
-  assert.equal(effect.slots.scope, '招式')
+  assert.equal(effect.slots.scope, NONE)
   assert.ok(
     !effect.slots.conditions.some((item) => /限定招式/.test(item)),
     '限定招式不再写进条件槽',
@@ -1075,7 +1115,8 @@ test('招式文本的效果进角色增益块（槽位 0），并带技能「描
   })
   const effect = item.effects.find((entry) => entry.recorded)
   assert.ok(effect)
-  assert.equal(effect.slots.scope, '招式', '限定招式 → 作用域=招式')
+  assert.equal(effect.slots.scope, NONE)
+  assert.deepEqual(effect.layerC.skillTargets.map(({ category }) => category), ['special'])
   assert.ok(effect.slots.conditions.every((entry) => !/限定招式/.test(entry)))
 })
 
@@ -1213,19 +1254,19 @@ test('1041「11号」：关键字 → 增益（招式限定 / 叠层 / 无视抗
   const result = extractAgentBuffItems({ detail, nanokaId: '1041', anchors: [] })
   const items = itemsOf(result)
 
-  // 核心被动：限定 [普通攻击] / [冲刺攻击] → **作用域=招式** + 锚点（只回落大类）；
+  // 核心被动：限定 [普通攻击] / [冲刺攻击] 由招式锚点承接。
   // 「触发[火力镇压]时」落不到工具字段 → 条件=无法提取（**软槽位：不阻断**，按「无」处理 → 可写）
   const core = keywordEffects(items.get('core'))[0]
   assert.equal(core.slots.stat, '招式增伤')
   assert.equal(core.slots.value, 70)
-  assert.equal(core.slots.scope, '招式')
+  assert.equal(core.slots.scope, NONE)
   assert.deepEqual(core.slots.conditions, [UNABLE])
   assert.equal(core.blocked, false, '条件标了无法提取 → 按「无」处理，不阻断')
   assert.equal(core.layerC.stat, 'skillDmgBonus')
   assert.equal(core.layerC.value, 70)
   assert.equal(core.layerC.applySituation, 'global', '条件按无处理 → 常驻生效')
   assert.ok(!/触发|火力镇压/.test(core.layerC.note), '不许把条件原文写进 note 冒充条件')
-  assert.deepEqual(core.layerC.scope, ['skill'], '作用域=招式 → scope=[skill]（数组口径）')
+  assert.deepEqual(core.layerC.scope, ['skill'])
   assert.deepEqual(core.layerC.skillTargets, [
     { category: 'basic', subcategoryId: null },
     { category: 'dodge', subcategoryId: null },

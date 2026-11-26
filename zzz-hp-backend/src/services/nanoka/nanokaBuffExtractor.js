@@ -80,7 +80,6 @@ export const SLOT_LABELS = {
   target: '目标',
   conditions: '条件',
   teammateProfessions: '队友职业（满足任一）',
-  /** **作用域** = 编辑器里的 `scope`（用户口径：字段名就叫「作用域」）；「限定招式」也并进这一格 */
   scope: '作用域',
   stacks: '层数',
   enabledDefault: '默认启用',
@@ -89,15 +88,13 @@ export const SLOT_LABELS = {
 }
 
 /**
- * **生效范围**的取值（以源码为准）：`zzz-hp/src/types/calculator.ts:63` 的 `BUFF_SCOPE_OPTIONS`
- * `无` 表示通用。锐化写入 `conditions.damageTypes`，其余取值沿用原有 `scope`。
+ * 伤害类型槽位沿用 `scope` 字段，`无` 表示不限类型。招式限定由锚点单独传递。
  */
-export const SCOPE_OPTIONS = [NONE, '招式', '锐化', '属性异常', '紊乱', '乱流', '异放', '耀变', '异化系数']
+export const SCOPE_OPTIONS = [NONE, '锐化', '属性异常', '紊乱', '乱流', '异放', '耀变', '异化系数']
 
 /** 作用域槽位中文名对应的内部取值。 */
 export const SCOPE_SLOT_TO_ID = {
   [NONE]: '',
-  招式: 'skill',
   锐化: 'sharpen',
   属性异常: 'attributeAnomaly',
   紊乱: 'disorder',
@@ -109,7 +106,7 @@ export const SCOPE_SLOT_TO_ID = {
 
 /**
  * 阶段1：从子句里认「生效范围」。先认**明确点名子类**的措辞（异放 / 耀变 / 乱流 / 紊乱 / 异化系数），
- * 再认**显式限定异常**的措辞（`仅对属性异常生效` 这类）；`招式` 由招式锚点那条路填（见 `detectSkillLimits`）。
+ * 再认显式限定属性异常的措辞。
  */
 const SCOPE_RULES = [
   { id: '异放', re: /\[?异放\]?/ },
@@ -822,6 +819,7 @@ export function detectSkillLimits(text) {
 }
 
 const SKILL_NAMES_PATTERN = SKILL_LIMIT_RULES.map(({ name }) => name).join('|')
+const BRACKETED_SKILL_TITLE_RE = new RegExp(String.raw`\[(?:${SKILL_NAMES_PATTERN})[:：][^\]]+\]`, 'g')
 const SKILL_NAME_PATTERN = String.raw`(?:\[(?:${SKILL_NAMES_PATTERN})(?:[:：][^\]]+)?\]|(?:${SKILL_NAMES_PATTERN}))`
 const SKILL_LIST_PATTERN = String.raw`${SKILL_NAME_PATTERN}(?:\s*(?:以及|[、和与及或])\s*${SKILL_NAME_PATTERN})*`
 const SKILLS_HITTING_PATTERN = String.raw`${SKILL_LIST_PATTERN}命中[^，。；]*?时`
@@ -1314,11 +1312,12 @@ function extractEmberMarkKeyword({ text, unitIndex, index, origin, selfNames, an
         })
     const slots = createSlots({
       stat: { value: '烬痕比例' }, action: { value: '提升' }, value: { value }, unit: { value: '%' },
-      target: { value: team ? '全队' : '自身' }, scope: { value: otherSharpen ? '锐化' : '招式' },
+      target: { value: team ? '全队' : '自身' }, scope: { value: otherSharpen ? '锐化' : NONE },
     })
     const sources = createSources({
       stat: { source: 'literal' }, action: { source: 'implicit' }, value: { source: 'literal' },
-      unit: { source: 'literal' }, target: { source: team ? 'literal' : 'implicit' }, scope: { source: 'literal' },
+      unit: { source: 'literal' }, target: { source: team ? 'literal' : 'implicit' },
+      scope: { source: otherSharpen ? 'literal' : 'default' },
     })
     const first = anchorInfo.skillTargets[0]
     return {
@@ -1723,12 +1722,12 @@ export function buildRulesTable() {
     },
     {
       id: 'scope',
-      title: '作用域（= 编辑器 `scope`；「限定招式」并进这一格）',
+      title: '伤害类型与限定招式',
       items: [
         ...SCOPE_RULES.map((rule) =>
           items(reText(rule.re), rule.id, SCOPE_SLOT_TO_ID[rule.id] ?? '', ''),
         ),
-        items('该句明确限定某招式（锚点匹配 / 建锚点）', '招式', 'skill + skillTargets', '锚点建不出 → 这条不录'),
+        items('该句明确限定某招式（锚点匹配 / 建锚点）', '限定招式', 'skillTargets', '可手选整类或已有小类，可与伤害类型同时限制。'),
         items('（没认出来）', NONE, 'general（不写 scope）', ''),
       ],
     },
@@ -2125,7 +2124,7 @@ const SLOT_WHITELIST_DESCRIPTIONS = {
   target: '目标词表（自身 / 全队）/ `无`',
   conditions: '作用情况、受益职业，其余为 `无法提取`',
   teammateProfessions: '可选择多个队友职业，符合任一项即可',
-  scope: '作用域词表（招式 / 异常 / 紊乱 / 乱流 / 异放 / 耀变 / 异化系数）/ `无`',
+  scope: '伤害类型词表（锐化 / 属性异常 / 紊乱 / 乱流 / 异放 / 耀变 / 异化系数）/ `无`',
   stacks: '`最多 N 层` / `N 层` / `无` / `无法提取`',
   enabledDefault: '开启 / 关闭，缺省沿用默认启用',
   duration: '`N 秒` 作为备注',
@@ -2502,12 +2501,10 @@ export function extractKeywordEffects({
                 } · ${stat.value}`,
               }
             : null
-        // 作用域（编辑器 `scope`）：句中点名子类（异放 / 耀变 / 乱流 / 紊乱 / 异化系数）或
-        // 显式限定异常（`仅对属性异常生效`）→ 填这一格；有招式限定 → `招式`（「限定招式」并进这一格）。
-        // 判定范围含**本句的前置子句**（`[异放]效果触发暴击时，其暴击伤害额外提升40%` 这类）。
-        let scopeValue = detectScope(contextText)
-        if (stat.value === SHARPEN_CRIT_DMG_LABEL) scopeValue = '锐化'
-        else if (skillLimits.length) scopeValue = '招式'
+        // 招式标题里的词不参与伤害类型判断。
+        const scopeValue = stat.value === SHARPEN_CRIT_DMG_LABEL
+          ? '锐化'
+          : detectScope(contextText.replace(BRACKETED_SKILL_TITLE_RE, ''))
         let scope = {
           value: scopeValue,
           source: scopeValue === NONE ? 'default' : 'literal',
@@ -2636,7 +2633,6 @@ export function extractKeywordEffects({
           stackMax: null,
           durationSeconds: null,
           perStack: false,
-          // —— v3 招式限定（并进「生效范围」这一格；具体招式仍走锚点 `skillTargets`）
           skillLimits,
           /** 指代来源提示（界面用，不入库）：`{ from, fields, label }`，如「依赖上一句 · 增伤」 */
           inherited: inheritedInfo,
@@ -3006,7 +3002,7 @@ export function mapKeywordsToEffect(keyword = {}) {
   const slots = { ...sourceSlots, conditions }
   if (legacyManualState && slots.enabledDefault == null) slots.enabledDefault = '关闭'
   if (slots.target && slots.target !== NONE && !TARGET_OPTIONS.includes(slots.target)) slots.target = UNABLE
-  if (slots.scope === '招式' && !skillTargets.length) slots.scope = UNABLE
+  if (slots.scope === '招式') slots.scope = skillTargets.length ? NONE : UNABLE
   if (Array.isArray(slots.teammateProfessions) && slots.teammateProfessions.some(
     (value) => value && value !== NONE && !PROFESSIONS.includes(value),
   )) slots.teammateProfessions = [UNABLE]
@@ -3194,32 +3190,20 @@ export function mapKeywordsToEffect(keyword = {}) {
   const targetDefaultNote =
     keyword.sources?.target === 'default-team-enemy-status' ? ENEMY_STATUS_TARGET_NOTE : ''
 
-  // —— 作用域（`scope`，编辑器同名字段）→ `scope`；`无` = 通用（不写 scope 之外的值）
+  // 伤害类型与招式目标分别映射，旧 scope 仍供归一化读取。
   const scopeSlot = subkindDedicated ? NONE : String(slotValue('scope') ?? NONE).trim()
   const scopeId = SCOPE_SLOT_TO_ID[scopeSlot] ?? ''
   const sharpenOnly = scopeId === 'sharpen'
-  let scope = 'general'
+  let scope = skillTargets.length ? 'skill' : 'general'
   if (sharpenOnly) {
-    steps.push('作用域=锐化 → conditions.damageTypes=[sharpen]')
+    steps.push('伤害类型=锐化 → conditions.damageTypes=[sharpen]')
   } else if (scopeId) {
     scope = scopeId
-    steps.push(`作用域=${scopeSlot} → scope=${scopeId}`)
-  } else {
-    steps.push('作用域=无 → scope=general（通用）')
+    steps.push(`伤害类型=${scopeSlot} → scope=${scopeId}`)
   }
 
-  // —— 招式锚点（v3：并进「作用域=招式」；关联不上前面已 return）
   if (skillTargets.length) {
-    if (sharpenOnly) {
-      scope = 'skill'
-    } else if (!scopeId) {
-      scope = 'skill'
-      steps.push('有招式锚点但作用域槽位是「无」→ scope=skill（兜底）')
-    }
-    steps.push(
-      `作用域=招式 + 限定招式=${anchors.labels.join(' + ')} → skillTargets=` +
-        JSON.stringify(skillTargets),
-    )
+    steps.push(`限定招式=${(anchors.labels ?? []).join(' + ')} → skillTargets=${JSON.stringify(skillTargets)}`)
   }
 
   // —— 转模专用槽位

@@ -1,5 +1,5 @@
 import { handleAdminSessionExpired, withAdminAuthHeaders } from '@/utils/adminAuth'
-import type { BuffEffect, BuffScope } from '@/types/calculator'
+import type { BuffEffect, BuffScope, BuffSkillTarget } from '@/types/calculator'
 
 /**
  * nanoka 增益（关键字 → 增益块）管理端接口。
@@ -33,6 +33,7 @@ export type NanokaSlotId =
   | 'target'
   | 'conditions'
   | 'teammateProfessions'
+  | 'scope'
   | 'stacks'
   | 'enabledDefault'
   | 'duration'
@@ -59,7 +60,7 @@ export interface NanokaKeywordSlots {
   conditions: string[]
   /** 所选队友职业为或关系。 */
   teammateProfessions?: string[]
-  /** **作用域**（= 编辑器 `scope`）：`招式 / 属性异常 / 紊乱 / 乱流 / 异放 / 耀变 / 异化系数` 或 `无` */
+  /** 伤害类型。旧关键字的「招式」由独立的 anchors 字段承接。 */
   scope: string
   stacks: string
   enabledDefault?: string
@@ -81,7 +82,7 @@ export interface NanokaKeywordAnchors {
   ok: boolean
   labels: string[]
   resolved: { name: string; category: string; subcategoryId: string | null; level: string }[]
-  skillTargets: { category: string; subcategoryId: string | null }[]
+  skillTargets: BuffSkillTarget[]
   skillCategory: string
   skillSubcategoryId: string | null
   /** 技能库里没有同名小类时，按技能名**建立**锚点的计划（`{ name, categoryId, agentId }`） */
