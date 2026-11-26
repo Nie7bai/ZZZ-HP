@@ -5,7 +5,7 @@ import { multFactorPercentToRatio } from '@/utils/multFactorPercent'
 import { pickEventCritMultiplier, pickEventDamage } from '@/utils/damageEvent'
 import { zoneLabel } from '@/zones/display'
 import {
-  normalizeSkillSubcategoryMultFields,
+  readRuntimeSkillSubcategoryMults,
   unsetSkillMult,
 } from '@/utils/skillSubcategoryMult'
 
@@ -189,7 +189,7 @@ export function formatDirectDmgMultZoneFormula(
 ): string {
   const panelFactor = readPanelFactor(panel.directDmgMultFactor)
   if (skillSubcategory) {
-    const sub = normalizeSkillSubcategoryMultFields(skillSubcategory)
+    const sub = readRuntimeSkillSubcategoryMults(skillSubcategory)
     const subFactor = readPanelFactor(sub.directDmgMultFactor)
     const directMult = unsetSkillMult(sub.directDmgMult)
       ? panel.directDmgMult
@@ -206,7 +206,7 @@ export function formatSettlementDmgMultZoneFormula(
 ): string {
   const panelFactor = readPanelFactor(panel.directDmgMultFactor)
   if (skillSubcategory) {
-    const sub = normalizeSkillSubcategoryMultFields(skillSubcategory)
+    const sub = readRuntimeSkillSubcategoryMults(skillSubcategory)
     const subFactor = readPanelFactor(sub.directDmgMultFactor)
     return `决算倍率区 max(0, ${sub.settlementDmgMult}%) × 小类修正 ${subFactor} × 直伤倍率修正 ${panelFactor} = ${zone}`
   }

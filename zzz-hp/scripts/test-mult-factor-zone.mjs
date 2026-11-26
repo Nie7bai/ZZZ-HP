@@ -3,7 +3,7 @@
  * 运行：npx vite-node scripts/test-mult-factor-zone.mjs
  */
 import { computeDamageResult } from '../src/utils/damageCalc.ts'
-import { resolveSkillMults } from '../src/utils/skillSubcategoryMult.ts'
+import { normalizeSkillSubcategoryMultFields, resolveSkillMults } from '../src/utils/skillSubcategoryMult.ts'
 import { makePanel } from './_effectPipelineHarness.mjs'
 
 let passed = 0
@@ -107,14 +107,15 @@ section('2. 面板紊乱倍率修正 150%：乘在倍率区上（含时间补偿
 section('3. 招式小类倍率 + 修正：基础分量与修正分离')
 {
   const panel = basePanel(base)
+  // 运行时对象：倍率修正已是比率（1 = ×1）；DB 的百分点在 store 导入时已除过 100
   const sub = {
     directDmgMult: 0,
     settlementDmgMult: 0,
     anomalyReleaseMult: 0,
     disorderMult: 600,
-    directDmgMultFactor: 100,
-    anomalyReleaseMultFactor: 100,
-    disorderMultFactor: 200,
+    directDmgMultFactor: 1,
+    anomalyReleaseMultFactor: 1,
+    disorderMultFactor: 2,
   }
   const merged = resolveSkillMults(panel, sub)
   check('基础分量取小类 6', merged.disorderBaseMultRatio, 6)
@@ -122,6 +123,24 @@ section('3. 招式小类倍率 + 修正：基础分量与修正分离')
   const r = runDisorder(panel, { skillSubcategory: sub })
   check('倍率区 = (6 + 9 × 0.075) × 2', r.disorderZone, (6 + 9 * 0.075) * 2)
   check('极性紊乱', r.hasPolarDisorder, true)
+}
+
+section('3b. 小类修正单位：DB 百分点 → store 比率只除一次 100')
+{
+  // DB（百分点，15 = 15%）→ store 归一化（0.15）→ 计算必须仍是 0.15，不能变成 0.0015
+  const dbRow = {
+    directDmgMult: 0,
+    settlementDmgMult: 0,
+    anomalyReleaseMult: 0,
+    disorderMult: 700,
+    directDmgMultFactor: 100,
+    anomalyReleaseMultFactor: 100,
+    disorderMultFactor: 15,
+  }
+  const storeDoc = normalizeSkillSubcategoryMultFields(dbRow)
+  check('store 里是比率 0.15', storeDoc.disorderMultFactor, 0.15)
+  check('管理端 ×100 展示 15%', storeDoc.disorderMultFactor * 100, 15)
+  check('计算用到的修正也是 0.15（不再二次除 100）', resolveSkillMults(basePanel(base), storeDoc).disorderMultFactor, 0.15)
 }
 
 section('4. 招式手填最终倍率区：修正同样乘在倍率区上')
