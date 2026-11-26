@@ -144,6 +144,20 @@ function buildCustomModsByProvider(
   return { owner, team, all: { ...(aggregate ?? {}) } }
 }
 
+/**
+ * 紊乱失衡易伤下限的提供者（展示用，不参与计算）：
+ * 只挑真正带 `disorderStaggerFloor` 的来源，标签形如「队友 · 卡芙卡 · 0影」。
+ */
+function disorderStaggerFloorProviderLabels(
+  breakdown: { sources?: ReadonlyArray<{ label?: string; mods?: BuffStatModifiers }> } | null | undefined,
+): string[] {
+  const labels = (breakdown?.sources ?? [])
+    .filter((source) => (source.mods?.disorderStaggerFloor ?? 0) > 0)
+    .map((source) => String(source.label ?? '').trim())
+    .filter(Boolean)
+  return [...new Set(labels)]
+}
+
 export type OptimalDamageKind = 'direct' | 'anomaly'
 
 export type OptimalAnomalyMetric = 'attributeAnomaly' | 'disorder' | 'turbulence' | 'anomalyRelease' | 'radiance'
@@ -1827,6 +1841,7 @@ export function evaluateOptimalEventDetail(
     combatStaggerVulnerable: evtBreakdown.combatMods.staggerVulnerable,
     combatStaggerVulnerableOnly: evtBreakdown.combatMods.staggerVulnerableOnly,
     combatDisorderStaggerFloor: evtBreakdown.combatMods.disorderStaggerFloor,
+    combatDisorderStaggerFloorProviders: disorderStaggerFloorProviderLabels(evtBreakdown),
     combatSpecial: evtBreakdown.combatMods.special,
     combatPierceDmgBonus: evtBreakdown.combatMods.pierceDmgBonus,
 
@@ -2109,6 +2124,7 @@ function computeEventDamageLines(
         combatStaggerVulnerable: firstBreakdown.combatMods.staggerVulnerable,
         combatStaggerVulnerableOnly: firstBreakdown.combatMods.staggerVulnerableOnly,
         combatDisorderStaggerFloor: firstBreakdown.combatMods.disorderStaggerFloor,
+        combatDisorderStaggerFloorProviders: disorderStaggerFloorProviderLabels(firstBreakdown),
         combatSpecial: firstBreakdown.combatMods.special,
         combatPierceDmgBonus: firstBreakdown.combatMods.pierceDmgBonus,
 
@@ -2203,6 +2219,7 @@ export function evaluateAffixCountsForSweep(
       combatStaggerVulnerable: breakdown.combatMods.staggerVulnerable,
       combatStaggerVulnerableOnly: breakdown.combatMods.staggerVulnerableOnly,
       combatDisorderStaggerFloor: breakdown.combatMods.disorderStaggerFloor,
+      combatDisorderStaggerFloorProviders: disorderStaggerFloorProviderLabels(breakdown),
       combatSpecial: breakdown.combatMods.special,
       combatPierceDmgBonus: breakdown.combatMods.pierceDmgBonus,
 
@@ -2792,6 +2809,7 @@ function evaluateAffixCountsUncached(
         combatStaggerVulnerable: breakdown.combatMods.staggerVulnerable,
         combatStaggerVulnerableOnly: breakdown.combatMods.staggerVulnerableOnly,
         combatDisorderStaggerFloor: breakdown.combatMods.disorderStaggerFloor,
+        combatDisorderStaggerFloorProviders: disorderStaggerFloorProviderLabels(breakdown),
         combatSpecial: breakdown.combatMods.special,
         combatPierceDmgBonus: breakdown.combatMods.pierceDmgBonus,
 
@@ -2846,6 +2864,7 @@ function evaluateAffixCountsUncached(
     combatStaggerVulnerable: breakdown.combatMods.staggerVulnerable,
     combatStaggerVulnerableOnly: breakdown.combatMods.staggerVulnerableOnly,
     combatDisorderStaggerFloor: breakdown.combatMods.disorderStaggerFloor,
+    combatDisorderStaggerFloorProviders: disorderStaggerFloorProviderLabels(breakdown),
     combatSpecial: breakdown.combatMods.special,
     combatPierceDmgBonus: breakdown.combatMods.pierceDmgBonus,
 

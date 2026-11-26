@@ -181,6 +181,8 @@ check(
 const fixture = eventFixture({
   mode: 'ordinary',
   damageType: 'disorder',
+  // 增益挂在 1 号位（队友），伤害由 0 号位打出：顺带覆盖「来源里要写提供者」
+  sourceSlot: 1,
   effects: [
     createEmptyBuffEffect({
       id: 'kafka-floor',
@@ -262,9 +264,18 @@ check(
   staggerRow?.valueText,
 )
 check(
-  '计算链路：失衡易伤区标注紊乱失衡易伤下限 1.4',
-  Boolean(staggerRow?.note?.includes('紊乱失衡易伤下限 1.4')),
+  '计算链路：失衡易伤区标注紊乱失衡易伤下限 1.4 与提供者',
+  Boolean(staggerRow?.note?.includes('紊乱失衡易伤下限 1.4')) &&
+    Boolean(staggerRow?.note?.includes('队友 · power')),
   staggerRow?.note,
+)
+const floorTipItems = staggerTipGroups
+  .flatMap((group) => group.items)
+  .filter((item) => item.startsWith('下限 1.4'))
+check(
+  '悬停「下限」行写出提供者（队友 · power）',
+  floorTipItems.some((item) => item.includes('队友 · power')),
+  floorTipItems.join(' | '),
 )
 check(
   '计算链路：无下限的事件不标注（与既有展示一致）',

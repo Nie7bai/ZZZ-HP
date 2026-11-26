@@ -64,6 +64,7 @@ export function buildPipelineStageRows(
   const stages = result?.pipeline?.stages ?? []
   const staggerFloor = result?.pipeline?.staggerFloor
   const staggerBase = result?.pipeline?.staggerBase
+  const staggerFloorProviders = result?.pipeline?.staggerFloorProviders ?? []
   return stages.map((stage) => {
     const isDamage = DAMAGE_VALUE_STAGES.has(stage.id)
     // 紊乱失衡易伤下限：链路里直接把「原值 → 抬后」和取 max 的依据写出来
@@ -74,7 +75,10 @@ export function buildPipelineStageRows(
         kind: stage.kind,
         label: stage.label,
         valueText: `${formatStageValue(base, isDamage)} → ${formatStageValue(stage.value, isDamage)}`,
-        note: `紊乱失衡易伤下限 ${formatStageValue(staggerFloor, false)}（取 max）`,
+        note: `紊乱失衡易伤下限 ${formatStageValue(staggerFloor, false)}（${[
+          ...staggerFloorProviders,
+          '取 max',
+        ].join('，')}）`,
       }
     }
     return {

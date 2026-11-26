@@ -348,9 +348,15 @@ const disorderFormulaParts = (() => {
         sub === 'disorder' ? Number(d.breakdown.combatMods.disorderStaggerFloor ?? 0) : 0
       if (!(floorPercent > 0)) return items
       const floorRatio = floorPercent / 100
+      // 谁提供的下限（如「队友 · 卡芙卡 · 0影」）：来源列表里只保留真正带这个字段的效果
+      const providers = ownerSources
+        .filter((source) => (source.mods.disorderStaggerFloor ?? 0) > 0)
+        .map((source) => source.label)
+        .filter(Boolean)
+      const providerText = providers.length ? `（${[...new Set(providers)].join('、')}）` : ''
       return [
         ...items,
-        `下限 ${formatFormulaNumber(floorRatio)}（紊乱失衡易伤下限：非失衡期按 140% 计，失衡期不足视为 140%）`,
+        `下限 ${formatFormulaNumber(floorRatio)}${providerText} · 紊乱失衡易伤下限：非失衡期按 140% 计，失衡期不足视为 140%`,
         `max(失衡易伤, ${formatFormulaNumber(floorRatio)}) = ${staggerZoneName} ${formatFormulaNumber(p.staggerMultiplier)}`,
       ]
     }

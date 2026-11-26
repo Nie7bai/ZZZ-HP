@@ -90,6 +90,8 @@ export interface DamageCalcInput {
    * 只在紊乱 / 极性紊乱事件里生效，其余伤害类型忽略。
    */
   combatDisorderStaggerFloor?: number
+  /** 提供该下限的来源（展示用：如「队友 · 卡芙卡 · 0影」） */
+  combatDisorderStaggerFloorProviders?: readonly string[]
   combatSpecial: number
   /** 贯穿增伤%（独立乘区，仅贯穿力基础直伤生效） */
   combatPierceDmgBonus?: number
@@ -264,6 +266,8 @@ export interface DamageCalcResult {
     staggerFloor?: number
     /** 抬下限之前的失衡易伤区 */
     staggerBase?: number
+    /** 提供下限的来源（展示用） */
+    staggerFloorProviders?: readonly string[]
   }
   specialMultiplier: number
   /** 贯穿增伤乘区（非贯穿基础时为 1） */
@@ -1379,6 +1383,9 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
           ...stageTrace,
           staggerFloor: disorderStaggerFloor,
           staggerBase: round((useTriggerBase ? triggerParts : mainParts).staggerMultiplierRaw, 4),
+          ...(input.combatDisorderStaggerFloorProviders?.length
+            ? { staggerFloorProviders: input.combatDisorderStaggerFloorProviders }
+            : {}),
         }
   return { ...result, zones, zoneSchemeVersion: 1, pipeline }
 }
