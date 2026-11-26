@@ -339,7 +339,22 @@ const disorderFormulaParts = (() => {
       resultLabel: staggerZoneName,
     })
     const cap = p.staggerZoneKind === 'curtain' ? p.staggerZoneCap : undefined
-    if (cap == null) return built
+    /**
+     * 紊乱失衡易伤下限（卡芙卡）：下限不是加算项，单独一行说明「取最大」，
+     * 不混进失衡类加成的明细里，避免被读成 +140%。
+     */
+    const withFloor = (items: string[]): string[] => {
+      const floorPercent =
+        sub === 'disorder' ? Number(d.breakdown.combatMods.disorderStaggerFloor ?? 0) : 0
+      if (!(floorPercent > 0)) return items
+      const floorRatio = floorPercent / 100
+      return [
+        ...items,
+        `下限 ${formatFormulaNumber(floorRatio)}（紊乱失衡易伤下限：非失衡期按 140% 计，失衡期不足视为 140%）`,
+        `max(失衡易伤, ${formatFormulaNumber(floorRatio)}) = ${staggerZoneName} ${formatFormulaNumber(p.staggerMultiplier)}`,
+      ]
+    }
+    if (cap == null) return withFloor(built)
     // 合计取结算里的汇总（combatMods），避免某个增益不在展示来源里时少算
     const combatMods = d.breakdown.combatMods
     const buffPercent = combatMods.globalStaggerVulnerable

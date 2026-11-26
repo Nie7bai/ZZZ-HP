@@ -85,6 +85,11 @@ export interface DamageCalcInput {
   combatStaggerVulnerable: number
   /** 失衡易伤（仅失衡）% */
   combatStaggerVulnerableOnly?: number
+  /**
+   * 紊乱失衡易伤下限%（倍率口径：140 = 至少 ×1.4）。
+   * 只在紊乱 / 极性紊乱事件里生效，其余伤害类型忽略。
+   */
+  combatDisorderStaggerFloor?: number
   combatSpecial: number
   /** 贯穿增伤%（独立乘区，仅贯穿力基础直伤生效） */
   combatPierceDmgBonus?: number
@@ -471,6 +476,8 @@ function computeGeneralAndAnomalyBase(options: {
   combatGlobalStaggerVulnerable: number
   combatStaggerVulnerable: number
   combatStaggerVulnerableOnly: number
+  /** 失衡易伤下限（倍率）；仅紊乱事件传入，缺省 null = 不设下限 */
+  staggerFloor?: number | null
   combatSpecial: number
   combatPierceDmgBonus: number
   combatImbueDmgBonus?: number
@@ -545,6 +552,7 @@ function computeGeneralAndAnomalyBase(options: {
     combatGlobalStaggerVulnerable: options.combatGlobalStaggerVulnerable,
     combatStaggerVulnerable: options.combatStaggerVulnerable,
     combatStaggerVulnerableOnly: options.combatStaggerVulnerableOnly,
+    staggerFloor: options.staggerFloor ?? null,
     extraZoneFactor: options.extraZoneFactor,
   })
 
@@ -699,6 +707,15 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     1,
   )
 
+  /**
+   * 紊乱失衡易伤下限（倍率）：只抬紊乱 / 极性紊乱，其他伤害类型一律不传
+   * （卡芙卡：非失衡期 +40%、失衡期不足 140% 视为 140%）。
+   */
+  const disorderStaggerFloorRatio =
+    subKind === 'disorder' ? Math.max(0, (input.combatDisorderStaggerFloor ?? 0) / 100) : 0
+  const disorderStaggerFloor =
+    disorderStaggerFloorRatio > 0 ? disorderStaggerFloorRatio : null
+
   const mainParts = computeGeneralAndAnomalyBase({
     panel,
     piercePower: input.piercePower,
@@ -757,6 +774,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     staggerPhase,
     curtainVulnerabilityCap: input.curtainVulnerabilityCap ?? null,
     extraZoneFactor,
+    staggerFloor: disorderStaggerFloor,
     agentLevel: anomalyBaseLevel,
     resistanceElement: anomalyBaseResistanceElement,
     // 异常基础防御区：穿透取强度提供者（或持有者），减防/无视取异常类触发者
@@ -1030,6 +1048,10 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       markCombat('combatStaggerVulnerable', 'staggerVulnerable', 'staggerMultiplier')
       markCombat('combatStaggerVulnerableOnly', 'staggerVulnerableOnly', 'staggerMultiplier')
     }
+    // 紊乱失衡易伤下限：只有紊乱事件真正把它抬进失衡易伤区
+    if (disorderStaggerFloor != null) {
+      markCombat('combatDisorderStaggerFloor', 'disorderStaggerFloor', 'staggerMultiplier')
+    }
     markCombat('combatSpecial', 'special', 'specialMultiplier')
     if (!anomalyEvent) {
       markCombat('combatDmgPenalty', 'dmgPenalty', 'dmgMultiplier')
@@ -1105,7 +1127,10 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     vulnerableMultiplier: round(pathVulnerableMultiplier, 4),
     directVulnerableMultiplier: round(mainParts.directVulnerableMultiplier, 4),
     anomalyVulnerableMultiplier: round(triggerParts.anomalyVulnerableMultiplier, 4),
-    staggerMultiplier: round(mainParts.staggerMultiplier, 4),
+    staggerMultiplier: round(
+      (useTriggerBase ? triggerParts : mainParts).staggerMultiplier,
+      4,
+    ),
     staggerZoneKind: input.curtainVulnerabilityCap != null ? 'curtain' : undefined,
     staggerZoneCap: input.curtainVulnerabilityCap ?? undefined,
     specialMultiplier: round(mainParts.specialMultiplier, 4),

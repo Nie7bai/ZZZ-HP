@@ -86,6 +86,7 @@ const BUFF_STAT_KEYS: BuffStatKey[] = [
   'globalStaggerVulnerable',
   'staggerVulnerable',
   'staggerVulnerableOnly',
+  'disorderStaggerFloor',
   'special',
   'attributeAnomalyCritRate',
   'attributeAnomalyCritDmg',

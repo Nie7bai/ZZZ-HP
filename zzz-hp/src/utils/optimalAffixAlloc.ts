@@ -1826,6 +1826,7 @@ export function evaluateOptimalEventDetail(
     combatGlobalStaggerVulnerable: evtBreakdown.combatMods.globalStaggerVulnerable,
     combatStaggerVulnerable: evtBreakdown.combatMods.staggerVulnerable,
     combatStaggerVulnerableOnly: evtBreakdown.combatMods.staggerVulnerableOnly,
+    combatDisorderStaggerFloor: evtBreakdown.combatMods.disorderStaggerFloor,
     combatSpecial: evtBreakdown.combatMods.special,
     combatPierceDmgBonus: evtBreakdown.combatMods.pierceDmgBonus,
 
@@ -2107,6 +2108,7 @@ function computeEventDamageLines(
         combatGlobalStaggerVulnerable: firstBreakdown.combatMods.globalStaggerVulnerable,
         combatStaggerVulnerable: firstBreakdown.combatMods.staggerVulnerable,
         combatStaggerVulnerableOnly: firstBreakdown.combatMods.staggerVulnerableOnly,
+        combatDisorderStaggerFloor: firstBreakdown.combatMods.disorderStaggerFloor,
         combatSpecial: firstBreakdown.combatMods.special,
         combatPierceDmgBonus: firstBreakdown.combatMods.pierceDmgBonus,
 
@@ -2200,6 +2202,7 @@ export function evaluateAffixCountsForSweep(
       combatGlobalStaggerVulnerable: breakdown.combatMods.globalStaggerVulnerable,
       combatStaggerVulnerable: breakdown.combatMods.staggerVulnerable,
       combatStaggerVulnerableOnly: breakdown.combatMods.staggerVulnerableOnly,
+      combatDisorderStaggerFloor: breakdown.combatMods.disorderStaggerFloor,
       combatSpecial: breakdown.combatMods.special,
       combatPierceDmgBonus: breakdown.combatMods.pierceDmgBonus,
 
@@ -2788,6 +2791,7 @@ function evaluateAffixCountsUncached(
         combatGlobalStaggerVulnerable: breakdown.combatMods.globalStaggerVulnerable,
         combatStaggerVulnerable: breakdown.combatMods.staggerVulnerable,
         combatStaggerVulnerableOnly: breakdown.combatMods.staggerVulnerableOnly,
+        combatDisorderStaggerFloor: breakdown.combatMods.disorderStaggerFloor,
         combatSpecial: breakdown.combatMods.special,
         combatPierceDmgBonus: breakdown.combatMods.pierceDmgBonus,
 
@@ -2841,6 +2845,7 @@ function evaluateAffixCountsUncached(
     combatGlobalStaggerVulnerable: breakdown.combatMods.globalStaggerVulnerable,
     combatStaggerVulnerable: breakdown.combatMods.staggerVulnerable,
     combatStaggerVulnerableOnly: breakdown.combatMods.staggerVulnerableOnly,
+    combatDisorderStaggerFloor: breakdown.combatMods.disorderStaggerFloor,
     combatSpecial: breakdown.combatMods.special,
     combatPierceDmgBonus: breakdown.combatMods.pierceDmgBonus,
 

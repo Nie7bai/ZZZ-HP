@@ -190,6 +190,12 @@ export const BUFF_STAT_FIELDS: {
     hint: '仅在失衡期存在并计入乘区',
   },
   {
+    key: 'disorderStaggerFloor',
+    label: '紊乱失衡易伤下限',
+    unit: 'percent',
+    hint: '倍率口径：140 = 至少 ×1.4；仅紊乱/极性紊乱，失衡易伤区取 max(区, 本值)',
+  },
+  {
     key: 'special',
     label: '特殊补充',
     unit: 'percent',
@@ -582,6 +588,7 @@ export function createEmptyBuffStatModifiers(): BuffStatModifiers {
     globalStaggerVulnerable: 0,
     staggerVulnerable: 0,
     staggerVulnerableOnly: 0,
+    disorderStaggerFloor: 0,
     special: 0,
     attributeAnomalyCritRate: 0,
     attributeAnomalyCritDmg: 0,

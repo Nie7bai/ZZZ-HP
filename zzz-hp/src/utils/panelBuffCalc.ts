@@ -1065,6 +1065,8 @@ export interface CombatBuffMods {
   globalStaggerVulnerable: number
   staggerVulnerable: number
   staggerVulnerableOnly: number
+  /** 紊乱失衡易伤下限%（倍率口径：140 = 至少 ×1.4；仅紊乱/极性紊乱） */
+  disorderStaggerFloor: number
   special: number
   pierceDmgBonus: number
   /** 浸染增伤%（独立乘区，仅直伤体系） */
@@ -3082,6 +3084,7 @@ export function extractCombatMods(mods: BuffStatModifiers): CombatBuffMods {
     globalStaggerVulnerable: mods.globalStaggerVulnerable,
     staggerVulnerable: mods.staggerVulnerable,
     staggerVulnerableOnly: mods.staggerVulnerableOnly,
+    disorderStaggerFloor: mods.disorderStaggerFloor,
     special: mods.special,
     pierceDmgBonus: mods.pierceDmgBonus,
     imbueDmgBonus: mods.imbueDmgBonus,

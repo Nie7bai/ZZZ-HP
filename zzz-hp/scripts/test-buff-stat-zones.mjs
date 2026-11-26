@@ -1,5 +1,5 @@
 /**
- * 管理侧乘区目录：62 项 / 3 类 / 类型约束。
+ * 管理侧乘区目录：63 项 / 3 类 / 类型约束。
  * 运行：npx vite-node scripts/test-buff-stat-zones.mjs
  */
 import {
@@ -8,6 +8,7 @@ import {
   anomalyStatsOfZone,
   anomalyTypeOfStat,
   buffStatZoneOf,
+  isPanelStatKey,
   findBuffStatZoneById,
   statRowsForZone,
   zoneTypesOfStats,
@@ -27,8 +28,8 @@ function check(name, ok, detail = '') {
   }
 }
 
-console.log('\n[1] 61 项，覆盖全部 73 个字段')
-check('共 62 个乘区选项', BUFF_STAT_ZONES.length === 62, `${BUFF_STAT_ZONES.length}`)
+console.log('\n[1] 63 项，覆盖全部 74 个字段')
+check('共 63 个乘区选项', BUFF_STAT_ZONES.length === 63, `${BUFF_STAT_ZONES.length}`)
 const covered = new Set()
 for (const zone of BUFF_STAT_ZONES) {
   if (zone.stat) covered.add(zone.stat)
@@ -93,7 +94,7 @@ check(
 
 console.log('\n[4] 类3 都可选；不改字段')
 const class3 = BUFF_STAT_ZONES.filter((zone) => zone.tier === 3)
-check('类3 共 55 项', class3.length === 55, `${class3.length}`)
+check('类3 共 56 项', class3.length === 56, `${class3.length}`)
 check(
   '异常掌控（固定）带「（数值）」',
   findBuffStatZoneById('zone:anomalyControl')?.label === '异常掌控（数值）',
@@ -118,6 +119,13 @@ check('attributeAnomalyDmgBonus → 属性异常', anomalyTypeOfStat('attributeA
 check('anomalyReleaseCritDmg → 异放', anomalyTypeOfStat('anomalyReleaseCritDmg') === 'anomalyRelease')
 check('普通 stat 无子类类型', anomalyTypeOfStat('atk') === null)
 check('异放增伤已折叠（不是独立乘区 id）', !findBuffStatZoneById('zone:anomalyReleaseDmgBonus'))
+
+console.log('\n[6] 附加伤害来源属性只认面板字段')
+check('isPanelStatKey：hp / mastery 是面板字段', isPanelStatKey('hp') && isPanelStatKey('mastery'))
+check(
+  'isPanelStatKey：局外生命值 / 紊乱失衡易伤下限不是面板字段',
+  !isPanelStatKey('externalHpPercent') && !isPanelStatKey('disorderStaggerFloor'),
+)
 
 console.log(`\n结果：${passed} passed, ${failed} failed`)
 process.exit(failed === 0 ? 0 : 1)

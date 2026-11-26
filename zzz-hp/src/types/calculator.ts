@@ -329,6 +329,14 @@ export interface BuffStatModifiers {
   staggerVulnerable: number
   /** 失衡易伤（仅失衡）%（仅失衡期存在并生效） */
   staggerVulnerableOnly: number
+  /**
+   * 紊乱失衡易伤下限%（倍率口径：140 = 至少 ×1.4）。
+   *
+   * 只作用于紊乱 / 极性紊乱：失衡易伤区取 `max(区, 本值/100)`。
+   * 非失衡期此时区 = 1，所以 140 等价于「非失衡期紊乱 ×1.4」；
+   * 失衡期则是「不高于 140% 时视为 140%」。
+   */
+  disorderStaggerFloor: number
   special: number
   /** 属性异常暴击% */
   attributeAnomalyCritRate: number

@@ -40,6 +40,7 @@ export const BUFF_STAT_KEYS = [
   'globalStaggerVulnerable',
   'staggerVulnerable',
   'staggerVulnerableOnly',
+  'disorderStaggerFloor',
   'special',
   'attributeAnomalyCritRate',
   'attributeAnomalyCritDmg',
