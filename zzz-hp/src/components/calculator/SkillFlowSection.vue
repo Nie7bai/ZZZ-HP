@@ -49,6 +49,8 @@ import { isLuminousAgent } from '@/utils/remielUtils'
 import {
   formatSkillMultZoneAsPercent,
   pickSkillMultPercentRatio,
+  DISORDER_SECTION_META,
+  disorderSectionOf,
   type SkillCalcZoneRow,
 } from '@/utils/skillCalcZones'
 import type { StatSourceGroup } from '@/utils/statSourceTips'
@@ -1523,6 +1525,15 @@ const detailActorSections = computed(() => {
   const evaluation = detailZoneCalc.value?.evaluation
   const kind = evaluation?.kind
   if (!evaluation || !kind || kind === 'direct' || kind === 'sharpen') return []
+  // 紊乱：严格按公式顺序分块
+  if (evaluation.anomalySubKind === 'disorder') {
+    return DISORDER_SECTION_META.map((meta) => ({
+      key: meta.key as string,
+      label: meta.label,
+      className: meta.className,
+      rows: detailZoneRows.value.filter((row) => disorderSectionOf(row.label) === meta.key),
+    })).filter((section) => section.rows.length)
+  }
   const pick = (group: 'producer' | 'trigger' | 'mixed') =>
     detailZoneRows.value.filter((row) => skillCalcZoneGroup(row.label) === group)
   return [

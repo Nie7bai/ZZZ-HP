@@ -9,6 +9,7 @@
  */
 import { computeDamageResult } from '../src/utils/damageCalc.ts'
 import { createDefaultExternalPanel } from '../src/types/calculatorPanel.ts'
+import { DISORDER_SECTION_META, disorderSectionOf } from '../src/utils/skillCalcZones.ts'
 import { buildEventZoneDisplay, buildEventValueTips } from '../src/utils/eventDamageSourceTips.ts'
 import { createBuffCalculationRuntime } from '../src/utils/skillFlowCalculation.ts'
 import { createEmptyBuffEffect } from '../src/utils/buffEffect.ts'
@@ -131,7 +132,6 @@ check(
   noShift.disorderExpected === base.disorderExpected,
 )
 
-console.log(`\n=== 结果：passed = ${passed}, failed = ${failed} ===`)
 
 // 渲染层回归：计算过程格子必须有「附加伤害」的提示映射（缺了会抛 Unmapped event zone 并卡住详情）
 const fixture = eventFixture({
@@ -200,6 +200,18 @@ check(
   tipItems.some((item) => item.startsWith('口径：( 基础攻击力 × 紊乱倍率 + 附加伤害 )')) &&
     tipItems.some((item) => item.startsWith('展开：( ')),
   tipItems.join(' | '),
+)
+
+check(
+  '紊乱格子按公式顺序分块：(攻击×倍率+附加) → 通用乘区 → 紊乱增伤/暴击',
+  DISORDER_SECTION_META.map((item) => item.key).join(',') === 'term,general,tail' &&
+    disorderSectionOf('面板攻击力') === 'term' &&
+    disorderSectionOf('紊乱倍率区') === 'term' &&
+    disorderSectionOf('附加伤害（基础加法项）') === 'term' &&
+    disorderSectionOf('增伤区') === 'general' &&
+    disorderSectionOf('防御区') === 'general' &&
+    disorderSectionOf('紊乱增伤区') === 'tail' &&
+    disorderSectionOf('紊乱暴击区') === 'tail',
 )
 
 console.log(`

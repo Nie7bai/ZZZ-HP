@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { buildEventZoneDisplay, type EventZoneDisplayRow } from '@/utils/eventDamageSourceTips'
-import { skillCalcZoneGroup } from '@/utils/skillCalcZones'
+import { DISORDER_SECTION_META, disorderSectionOf, skillCalcZoneGroup } from '@/utils/skillCalcZones'
 import type { SkillFlowCalculationDetail } from '@/utils/skillFlowCalculation'
 import type { StatSourceGroup } from '@/utils/statSourceTips'
 
@@ -26,7 +26,7 @@ const props = defineProps<{
 const rows = computed(() => (props.calculation ? buildEventZoneDisplay(props.calculation) : []))
 
 interface ActorSection {
-  key: 'producer' | 'trigger' | 'mixed'
+  key: string
   label: string
   className: string
   rows: EventZoneDisplayRow[]
@@ -35,6 +35,15 @@ interface ActorSection {
 /** 异常类：按 skillCalcZoneGroup 的格子归属把乘区行分开列，避免混在一个网格里 */
 const actorSections = computed<ActorSection[]>(() => {
   if (!props.groupByActor) return []
+  // 紊乱：严格按公式顺序分块（(攻击×倍率+附加) → 通用乘区 → 紊乱增伤/暴击）
+  if (props.calculation?.evaluation.anomalySubKind === 'disorder') {
+    return DISORDER_SECTION_META.map((meta) => ({
+      key: meta.key,
+      label: meta.label,
+      className: meta.className,
+      rows: rows.value.filter((row) => disorderSectionOf(row.label) === meta.key),
+    })).filter((section) => section.rows.length)
+  }
   const pick = (group: 'producer' | 'trigger' | 'mixed') =>
     rows.value.filter((row) => skillCalcZoneGroup(row.label) === group)
   const sections: ActorSection[] = [

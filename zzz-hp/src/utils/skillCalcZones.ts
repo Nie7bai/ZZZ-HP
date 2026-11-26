@@ -390,6 +390,54 @@ const RESULT_ZONE_LABELS = new Set(['暴击伤害', '期望伤害', '不暴击�
  */
 const VULNERABLE_ZONE_LABELS = new Set(['易伤区'])
 
+/* ===================== 紊乱公式顺序分块 ===================== */
+
+export type DisorderSectionKey = 'term' | 'general' | 'tail'
+
+export const DISORDER_SECTION_META: ReadonlyArray<{
+  key: DisorderSectionKey
+  label: string
+  className: string
+}> = [
+  { key: 'term', label: '( 基础攻击力 × 紊乱倍率 + 附加伤害 )', className: 'zone-box--producer' },
+  { key: 'general', label: '× 通用乘区（增伤 / 防御 / 抗性 / 失衡 / 易伤 / 精通 / 等级 / 特殊）', className: 'zone-box--mixed' },
+  { key: 'tail', label: '× 紊乱增伤区 × 紊乱暴击区', className: 'zone-box--trigger' },
+]
+
+const DISORDER_TERM_LABELS = new Set([
+  '面板攻击力',
+  '面板防御力',
+  '面板贯穿力',
+  '基础伤害',
+  '紊乱基础倍率',
+  '异常持续时间',
+  '紊乱补偿倍率',
+  '紊乱倍率修正',
+  '紊乱倍率区',
+])
+
+const DISORDER_GENERAL_LABELS = new Set([
+  '增伤区',
+  '防御区',
+  '抗性区',
+  '失衡易伤区',
+  '易伤区',
+  '精通区',
+  '等级区',
+  '特殊乘区',
+  '通用乘区',
+])
+
+const DISORDER_TAIL_LABELS = new Set(['紊乱增伤区', '紊乱暴击区'])
+
+/** 紊乱类按「(攻击×倍率+附加) → 通用乘区 → 紊乱增伤/暴击」顺序分块；其它返回 null */
+export function disorderSectionOf(label: string): DisorderSectionKey | null {
+  if (DISORDER_TERM_LABELS.has(label) || label.startsWith('附加伤害')) return 'term'
+  if (DISORDER_GENERAL_LABELS.has(label)) return 'general'
+  if (DISORDER_TAIL_LABELS.has(label)) return 'tail'
+  return null
+}
+
 export function skillCalcZoneGroup(label: string): SkillCalcZoneGroup {
   if (MIXED_ZONE_LABELS.has(label)) return 'mixed'
   if (PRODUCER_ZONE_LABELS.has(label)) return 'producer'
