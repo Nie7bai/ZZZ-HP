@@ -412,6 +412,7 @@ export async function extractNanokaBuffs(payload: {
   nanokaId: string
   meta: unknown
   detail: unknown
+  termNames?: Record<string, string>
 }): Promise<{ result: NanokaExtractResult; message: string }> {
   const { data, message } = await requestApi<NanokaExtractResult>('/api/admin/nanoka-buffs/extract', {
     method: 'POST',

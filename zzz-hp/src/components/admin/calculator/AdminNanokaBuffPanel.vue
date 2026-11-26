@@ -818,6 +818,7 @@ interface IndexEntry {
 
 let indexMap: Record<string, IndexEntry> = {}
 let indexKind: NanokaBuffKind | '' = ''
+let nounIndex: { tag: string; entries: Record<string, { name?: unknown }> } | null = null
 
 function nanokaUrl(path: string) {
   return `${NANOKA_STATIC}${path}`
@@ -846,6 +847,28 @@ async function fetchNanokaJson(url: string, timeoutMs: number): Promise<unknown>
   } finally {
     window.clearTimeout(timer)
   }
+}
+
+async function loadNanokaTermNames(tag: string, detail: unknown): Promise<Record<string, string>> {
+  const detailText = JSON.stringify(detail) ?? ''
+  const termIds = new Set<string>()
+  for (const [, id] of detailText.matchAll(/<Term:(\d+)>/g)) {
+    if (id) termIds.add(id)
+  }
+  if (!termIds.size) return {}
+
+  if (nounIndex?.tag !== tag) {
+    const raw = await fetchNanokaJson(nanokaUrl(`/zzz/${tag}/zh/noun.json`), DETAIL_TIMEOUT_MS)
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Nanoka 术语表格式错误')
+    nounIndex = { tag, entries: raw as Record<string, { name?: unknown }> }
+  }
+
+  const names: Record<string, string> = {}
+  for (const id of termIds) {
+    const name = nounIndex.entries[id]?.name
+    if (typeof name === 'string' && name.trim()) names[id] = name
+  }
+  return names
 }
 
 function readBuildTag(manifest: unknown): string {
@@ -919,6 +942,13 @@ async function fetchAndExtract() {
       nanokaUrl(`/zzz/${tag}/zh/${kind.value === 'agent' ? 'character' : 'weapon'}/${resolved.nanokaId}.json`),
       DETAIL_TIMEOUT_MS,
     )
+    let termNames: Record<string, string> | undefined
+    let termWarning = ''
+    try {
+      termNames = await loadNanokaTermNames(tag, detail)
+    } catch {
+      termWarning = '。Nanoka 术语表暂不可用，缺失的术语可手动补填'
+    }
     fetching.value = false
     extracting.value = true
     statusLine.value = `build ${tag} · nanoka #${resolved.nanokaId} · 已抓到详情，正在抽取关键字…`
@@ -927,10 +957,11 @@ async function fetchAndExtract() {
       nanokaId: resolved.nanokaId,
       meta: resolved.meta,
       detail,
+      termNames,
     })
     applyExtractResult(result)
     messageKind.value = 'ok'
-    message.value = serverMessage
+    message.value = serverMessage + termWarning
     statusLine.value = `build ${tag} · nanoka #${resolved.nanokaId}（${result.name}）→ 本地 ${result.localId}`
   } catch (err) {
     if (isNanokaBuffsAuthError(err)) {

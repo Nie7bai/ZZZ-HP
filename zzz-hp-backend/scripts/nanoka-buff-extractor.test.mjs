@@ -162,6 +162,13 @@ test('文本工具：去标签 / 抽数值 / 切句 / 层数 / 时长', () => {
   assert.equal(readDurationInfo('持续时间提升2秒').seconds, null)
 })
 
+test('只展开有词表或通用属性兜底的空术语标签，保留已有的标签内文字', () => {
+  assert.equal(cleanNanokaText('<Term:20></Term>提升25%', { 20: '锐暴伤害' }), '锐暴伤害提升25%')
+  assert.equal(cleanNanokaText('<Term:3000015></Term>提升25%'), '锐暴伤害提升25%')
+  assert.equal(cleanNanokaText('<Term:20>暴击率</Term>', { 20: '锐暴伤害' }), '暴击率')
+  assert.equal(cleanNanokaText('<Term:20></Term>提升25%'), '提升25%')
+})
+
 // ================================================================== 2. 9 槽位模型
 
 test('槽位不许缺格（9 常规 + 元素 + 作用域）：每条关键字都能渲染出全部槽位（属性写工具语义）', () => {
@@ -363,6 +370,79 @@ test('独立乘区按百分比翻译，普通增伤继续映射到原字段', ()
   assert.equal(simplifyText({ text: '烬痕比例提升20点' }).effects.length, 0)
   assert.equal(resolveStatField({ stat: '最终伤害比例', action: '无视', unit: '%' }), '')
   assert.throws(() => sanitizeEffect({ stat: 'custom:非法键', value: 20 }), /不是合法增益字段/)
+})
+
+test('挽昼领袖之证抽取、重解析和写入计划保留锋御锐爆加成与时长', () => {
+  const extraText = [
+    '队伍中存在[击破]角色、[防护]角色或其他[锋御]角色时触发：',
+    '进入战斗时，或挽昼发动任意[强化特殊技]、[普通攻击：执旌·聚锋]、[连携技]、[冲刺攻击：巡征·影域穿袭]时，' +
+      '全队[锋御]代理人进入<Term:1000064></Term>状态，[众愿一心]状态下，<Term:3000015></Term>提升25%，持续45秒；' +
+      '重复进入[众愿一心]状态时刷新持续时间。',
+  ].join('\n')
+  const agent = { id: 'sunbringer', name: '挽昼', profession: '锋御' }
+  const detail = {
+    name: agent.name,
+    passive: { level: { 1: { level: 1, name: ['', '额外能力：领袖之证'], desc: ['', extraText] } } },
+  }
+  const { items: [extra] } = extractAgentBuffItems({
+    detail,
+    nanokaId: 1601,
+    termNames: { 1000064: '[众愿一心]', 3000015: '锐暴伤害' },
+    agent,
+    anchors: [],
+  })
+  assert.equal(extra.source, 'passive.extra')
+  assert.match(extra.rawText, /进入\[众愿一心\]状态/)
+  assert.match(extra.rawText, /锐暴伤害提升25%/)
+  assert.equal(extra.effects.length, 1)
+  const [keyword] = extra.effects
+  assert.equal(keyword.slots.stat, '锐爆伤害加成')
+  assert.ok(SLOT_OPTIONS.stat.includes(keyword.slots.stat))
+  assert.deepEqual(keyword.slots.conditions, ['仅锋御代理人', '状态需手动启用'])
+  assert.equal(keyword.slots.duration, '45 秒')
+  assert.deepEqual(keyword.anchors.skillTargets, [])
+  assert.equal(keyword.mapping.ok, true)
+
+  const [fromCleanedText] = simplifyText({ text: extra.rawText }).effects
+  const [withoutStateName] = simplifyText({ text: extraText.replaceAll('[众愿一心]', '') }).effects
+  assert.deepEqual(fromCleanedText.slots, keyword.slots)
+  assert.deepEqual(withoutStateName.slots, keyword.slots)
+
+  const { rows: [parsed] } = smartMergeParse({ keywords: [{ ...keyword, key: keyword.id }] })
+  const plan = planBuffApply({
+    kind: 'agent',
+    local: agent,
+    rows: [{
+      key: keyword.id,
+      source: extra.source,
+      containerIndex: extra.containerIndex,
+      rawText: extra.rawText,
+      keywordSlots: keyword.slots,
+      effect: parsed.effect,
+    }],
+  })
+  assert.equal(plan.updated, 1)
+  const [planned] = plan.groups[0].blocks[0].effects
+  assert.equal(planned.stat, 'sharpenCritDmgBonus')
+  assert.equal(planned.value, 25)
+  assert.equal(planned.applyTarget, 'team')
+  assert.equal(planned.applyProfession, '锋御')
+  assert.deepEqual(planned.conditions.damageTypes, ['sharpen'])
+  assert.ok(!planned.skillTargets?.length)
+  assert.equal(planned.enabledDefault, false)
+  assert.match(planned.note, /45 秒/)
+})
+
+test('锐爆伤害是通用属性，效果子句真正限定的招式仍然保留', () => {
+  const { effects: [keyword] } = simplifyText({
+    text: '强化特殊技的锐爆伤害提升25%',
+    anchors: [],
+  })
+  assert.equal(keyword.layerC.stat, 'sharpenCritDmgBonus')
+  assert.equal(keyword.layerC.applyProfession, null)
+  assert.equal(keyword.layerC.enabledDefault, true)
+  assert.deepEqual(keyword.layerC.conditions.damageTypes, ['sharpen'])
+  assert.deepEqual(keyword.layerC.skillTargets, [{ category: 'special', subcategoryId: null }])
 })
 
 test('烬痕积攒描述可翻译成有限定的增益，结算增幅保留待补', () => {

@@ -59,8 +59,8 @@ export async function rulesNanokaBuffsHandler(_req, res) {
 /** POST /api/admin/nanoka-buffs/extract —— 抽取（不写库） */
 export async function extractNanokaBuffsHandler(req, res) {
   try {
-    const { kind, nanokaId, meta, detail } = req.body ?? {}
-    const data = await extractBuffItems({ kind, nanokaId, meta, detail })
+    const { kind, nanokaId, meta, detail, termNames } = req.body ?? {}
+    const data = await extractBuffItems({ kind, nanokaId, meta, detail, termNames })
     const { counts } = data
     const message =
       `${data.localName || data.localId}：抓到 ${counts.items} 段原文（有增益 ${counts.buffItems} / 废原文 ${counts.wasteItems}）；` +

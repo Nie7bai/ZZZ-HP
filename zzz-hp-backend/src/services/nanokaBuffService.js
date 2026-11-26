@@ -1163,7 +1163,7 @@ export function buildLocalDoc({ kind, local, groups = [] } = {}) {
  * 抽取（**不写库**）：浏览器抓来的 nanoka 详情 → 原文项 + 关键字效果（层B/C）。
  * 读取角色和已有招式锚点，供按实际招式核对烬痕范围。
  */
-export async function extractBuffItems({ kind, nanokaId, meta, detail } = {}) {
+export async function extractBuffItems({ kind, nanokaId, meta, detail, termNames } = {}) {
   const normalizedKind = kind === 'wengine' ? 'wengine' : kind === 'agent' ? 'agent' : ''
   if (!normalizedKind) throw new Error(`未知的增益来源类型：${kind ?? '(空)'}`)
   if (!isPlainObject(detail)) throw new Error('缺少 nanoka 详情 JSON（抓取在浏览器里做，服务端不联网）')
@@ -1178,11 +1178,12 @@ export async function extractBuffItems({ kind, nanokaId, meta, detail } = {}) {
       ? extractAgentBuffItems({
           detail,
           nanokaId,
+          termNames,
           anchors: buffs.skillSubcategories ?? [],
           agent: local,
           skills: await listAgentSkills(local.id),
         })
-      : extractWengineBuffItems({ detail, nanokaId, anchors: [] })
+      : extractWengineBuffItems({ detail, nanokaId, termNames, anchors: [] })
 
   const items = extracted.items.map((item) => ({
     ...item,
