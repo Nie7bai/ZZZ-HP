@@ -16,6 +16,7 @@ import {
   CONVERT_FROM_OPTIONS,
   CONVERT_PANEL_SOURCE_OPTIONS,
   SKILL_CATEGORY_OPTIONS,
+  SKILL_LEVEL_CONVERT_OPTIONS,
 } from '@/types/calculator'
 import { AGENT_ELEMENTS, AGENT_ROLES } from '@/utils/calculatorUi'
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
@@ -38,7 +39,9 @@ import {
   allowedDamageTypesOf,
   buffStatLabelOf,
   buffStatUnitOf,
+  isPanelStatKey,
   isZoneTypeLocked,
+  statForZoneType,
   statRowsForZone,
 } from '@/utils/buffStatZones'
 import { damageTypeLabel, damageTypesLabel, BUFF_DAMAGE_TYPE_IDS } from '@/utils/buffDamageTypes'
@@ -346,6 +349,55 @@ function patchConvert<K extends keyof NonNullable<BuffEffect['convert']>>(
   })
 }
 
+type AdditionalScope = 'global' | 'polar' | 'skill' | 'skill-polar'
+
+/**
+ * 「属性」下拉的候选：附加伤害只列**面板字段**（读触发者局内面板），
+ * 其余增益乘区键选了也恒为 0，直接不列；已配成非面板属性的旧数据仍保留当前项，避免显示空。
+ */
+const statZoneOptions = computed(() => {
+  if (kind.value !== 'additionalDamage') return BUFF_STAT_ZONES
+  const pickedType = props.row.damageTypes[0]
+  const usable = BUFF_STAT_ZONES.filter((item) => {
+    const stat = item.statsByType ? statForZoneType(item, pickedType) : item.stat
+    return isPanelStatKey(stat)
+  })
+  const currentId = zone.value?.id
+  if (currentId && !usable.some((item) => item.id === currentId)) {
+    const current = BUFF_STAT_ZONES.find((item) => item.id === currentId)
+    if (current) return [current, ...usable]
+  }
+  return usable
+})
+
+/** 作用范围 = 招式范围（全局/当前招式）× 是否仅极性紊乱，合并成一个下拉避免重复勾选 */
+const additionalDamageScope = computed<AdditionalScope>(() => {
+  const skill = getEffectSkillTargets(first.value).length > 0
+  const polar = first.value?.additionalDamage?.onlyPolarDisorder === true
+  if (skill) return polar ? 'skill-polar' : 'skill'
+  return polar ? 'polar' : 'global'
+})
+
+function onAdditionalDamageScopeChange(next: string) {
+  const scope = (next as AdditionalScope) ?? 'global'
+  const polar = scope === 'polar' || scope === 'skill-polar'
+  const limitSkill = scope === 'skill' || scope === 'skill-polar'
+  patchAll((effect) => {
+    effect.additionalDamage = {
+      ...(effect.additionalDamage ?? {}),
+      onlyPolarDisorder: polar,
+    }
+    if (!limitSkill) {
+      setEffectSkillTargets(effect, [])
+      return
+    }
+    const category = effect.skillCategory ?? 'basic'
+    setEffectSkillTargets(effect, [
+      { category, subcategoryId: effect.skillSubcategoryId ?? null },
+    ])
+  })
+}
+
 function convertPreviewText() {
   const cv = convert.value
   const attrLabel =
@@ -371,7 +423,11 @@ function convertPreviewText() {
     return `${attrLabel} ${baseExpr} × ${formatCalcDecimal(cv.ratioPercent ?? 0)}% = ${statLabelText} ${amount < 0 ? '' : '+'}${formatCalcDecimal(amount)}${amount !== uncapped ? '（已达上限）' : ''}${initialHint}`
   }
   const sourceLabel = cv.panelSource === 'final' ? '局内' : '局外'
-  return `${sourceLabel}${attrLabel} × ${formatCalcDecimal(cv.ratioPercent ?? 0)}% → ${statLabelText}，超出初始值部分实时折算${initialHint}`
+  const levelHint =
+    cv.ratioLevelSource != null
+      ? `（L1 ${formatCalcDecimal(cv.ratioPercent ?? 0)}%，每级 +${formatCalcDecimal(cv.ratioPercentPerLevel ?? 0)}%/上限 +${formatCalcDecimal(cv.capPerLevel ?? 0)}）`
+      : ''
+  return `${sourceLabel}${attrLabel} × ${formatCalcDecimal(cv.ratioPercent ?? 0)}%${levelHint} → ${statLabelText}，超出初始值部分实时折算${initialHint}`
 }
 
 function onZoneChange(event: Event) {
@@ -570,6 +626,14 @@ const amountText = computed(() => {
     return `${formatCalcDecimal(valuePerStack.value)}${unitSuffix.value}×${maxStacks.value}层`
   }
   if (kind.value === 'convert') return convertSummaryLabel(first.value?.convert)
+  if (kind.value === 'additionalDamage') {
+    const perLevel = first.value?.additionalDamage?.ratioPercentPerLevel
+    const levelHint =
+      first.value?.additionalDamage?.ratioLevelSource && perLevel
+        ? ` + ${formatCalcDecimal(perLevel)}%/级`
+        : ''
+    return `${formatCalcDecimal(value.value)}%${levelHint}（×${formatCalcDecimal((value.value ?? 0) / 100)}） × ${statLabel(first.value.stat)}`
+  }
   return `${formatCalcDecimal(value.value)}${unitSuffix.value}`
 })
 
@@ -934,7 +998,7 @@ onBeforeUnmount(() => {
             <span>属性</span>
             <select :value="zone?.id ?? ''" @change="onZoneChange">
               <option v-if="!zone" value="" disabled>未找到当前属性</option>
-              <option v-for="item in BUFF_STAT_ZONES" :key="item.id" :value="item.id">
+              <option v-for="item in statZoneOptions" :key="item.id" :value="item.id">
                 {{ item.label }}
               </option>
             </select>
@@ -945,11 +1009,76 @@ onBeforeUnmount(() => {
               <option value="fixed">固定</option>
               <option value="stacked">叠层</option>
               <option value="convert">转模</option>
+              <option value="additionalDamage">附加伤害</option>
             </select>
           </label>
         </div>
 
-        <div class="value-row">
+        <div v-if="kind === 'additionalDamage'" class="additional-block">
+          <div class="value-row">
+            <label class="inline-field">
+              <span>作用范围</span>
+              <select
+                :value="additionalDamageScope"
+                @change="onAdditionalDamageScopeChange(($event.target as HTMLSelectElement).value)"
+              >
+                <option value="global">全局</option>
+                <option value="skill">仅当前招式</option>
+              </select>
+            </label>
+            <label class="inline-field">
+              <span>倍率等级</span>
+              <select
+                :value="first?.additionalDamage?.ratioLevelSource ?? ''"
+                @change="
+                  patchAll((effect) => {
+                    const value = ($event.target as HTMLSelectElement).value
+                    effect.additionalDamage = {
+                      ...(effect.additionalDamage ?? {}),
+                      ratioLevelSource: (value || undefined) as never,
+                    }
+                  })
+                "
+              >
+                <option value="">固定倍率</option>
+                <option v-for="opt in SKILL_LEVEL_CONVERT_OPTIONS" :key="opt.id" :value="opt.id">
+                  {{ opt.label }}
+                </option>
+              </select>
+            </label>
+            <label
+              v-if="first?.additionalDamage?.ratioLevelSource"
+              class="inline-field convert-number-field"
+            >
+              <span>每级倍率+</span>
+              <NumberStepper
+                :model-value="first?.additionalDamage?.ratioPercentPerLevel ?? 0"
+                :min="-9999"
+                :max="9999"
+                :step="0.0001"
+                @update:model-value="
+                  patchAll((effect) => {
+                    effect.additionalDamage = {
+                      ...(effect.additionalDamage ?? {}),
+                      ratioPercentPerLevel: $event,
+                    }
+                  })
+                "
+              />
+            </label>
+          </div>
+          <div class="value-row">
+            <span class="line-sub">1级倍率</span>
+            <NumberStepper
+              v-model="value"
+              :min="-999999"
+              :max="999999"
+              :step="0.0001"
+            />
+            <span class="unit">%</span>
+          </div>
+        </div>
+        <div v-if="kind !== 'additionalDamage'" class="value-row">
           <span class="line-sub">{{ kind === 'stacked' ? '每层' : '数值' }}</span>
           <NumberStepper
             v-if="kind === 'stacked'"
@@ -968,6 +1097,12 @@ onBeforeUnmount(() => {
           <span v-else class="value-fallback">{{ convertSummaryLabel(first.convert) }}</span>
           <span v-if="kind !== 'convert'" class="unit">{{ unitLabel }}</span>
         </div>
+
+        <!-- 紊乱失衡易伤下限是倍率口径：填 1.4 会变成 1.4%，等于没有，直接在控件旁提示 -->
+        <p v-if="first?.stat === 'disorderStaggerFloor'" class="unit-hint">
+          <strong>140</strong> = 至少 ×1.4；填 <strong>1.4</strong> 只会变成 1.4%（约等于不生效）。
+          只对紊乱 / 极性紊乱生效，目标选「全队」才对队友生效。
+        </p>
 
         <div v-if="kind === 'stacked'" class="value-row">
           <span class="line-sub">最大</span>
@@ -1043,6 +1178,45 @@ onBeforeUnmount(() => {
               :max="9999"
               :step="0.0001"
               @update:model-value="patchConvert('ratioPercent', $event)"
+            />
+          </label>
+          <label class="inline-field">
+            <span>比例等级</span>
+            <select
+              :value="convert.ratioLevelSource ?? ''"
+              @change="
+                patchConvert(
+                  'ratioLevelSource',
+                  (($event.target as HTMLSelectElement).value || undefined) as
+                    | typeof convert.ratioLevelSource
+                    | undefined,
+                )
+              "
+            >
+              <option value="">固定比例</option>
+              <option v-for="opt in SKILL_LEVEL_CONVERT_OPTIONS" :key="opt.id" :value="opt.id">
+                {{ opt.label }}
+              </option>
+            </select>
+          </label>
+          <label v-if="convert.ratioLevelSource" class="inline-field convert-number-field">
+            <span>每级比例+%</span>
+            <NumberStepper
+              :model-value="convert.ratioPercentPerLevel ?? 0"
+              :min="-9999"
+              :max="9999"
+              :step="0.0001"
+              @update:model-value="patchConvert('ratioPercentPerLevel', $event)"
+            />
+          </label>
+          <label v-if="convert.ratioLevelSource" class="inline-field convert-number-field">
+            <span>每级上限+</span>
+            <NumberStepper
+              :model-value="convert.capPerLevel ?? 0"
+              :min="-999999"
+              :max="999999"
+              :step="0.0001"
+              @update:model-value="patchConvert('capPerLevel', $event)"
             />
           </label>
           <label class="inline-field convert-number-field">
@@ -1491,6 +1665,29 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
+.additional-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.additional-block .value-row {
+  flex-wrap: wrap;
+  row-gap: 0.25rem;
+}
+
+.value-col .additional-block :deep(.num-stepper) {
+  flex: 0 0 14rem;
+  width: 14rem;
+  min-width: 14rem;
+  max-width: 14rem;
+}
+
+.additional-block .line-sub {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
 .value-col :deep(.num-stepper) {
   height: var(--buff-editor-control-height);
   min-width: 0;
@@ -1676,5 +1873,11 @@ onBeforeUnmount(() => {
     border-top: 1px dashed var(--color-border);
     padding: 0.75rem 0 0;
   }
+}
+.unit-hint {
+  margin: 0.25rem 0 0;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: var(--color-text-muted, #9aa3b0);
 }
 </style>

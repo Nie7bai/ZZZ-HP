@@ -75,6 +75,7 @@ const BUFF_STAT_KEYS: BuffStatKey[] = [
   'pierce',
   'pierceDmgBonus',
   'imbueDmgBonus',
+  'finalDmgBonus',
   'sharpenDmgBonus',
   'sharpenCritDmgBonus',
   'dmgPenalty',
@@ -87,6 +88,7 @@ const BUFF_STAT_KEYS: BuffStatKey[] = [
   'globalStaggerVulnerable',
   'staggerVulnerable',
   'staggerVulnerableOnly',
+  'disorderStaggerFloor',
   'special',
   'attributeAnomalyCritRate',
   'attributeAnomalyCritDmg',
@@ -471,10 +473,27 @@ export function resolveEffectBaseValue(effect: BuffEffect, stacks: number): numb
     const used = Math.min(max, Math.max(0, stacks))
     return per * used
   }
-  if (effect.kind === 'convert') {
+  if (effect.kind === 'convert' || effect.kind === 'additionalDamage') {
     return 0
   }
   return effect.value ?? 0
+}
+
+/**
+ * 附加伤害倍率（已按技能等级换算）：
+ * `value + ratioPercentPerLevel × (等级 − 1)`；缺省等级来源 = 固定。
+ */
+export function resolveAdditionalDamageRatio(
+  effect: BuffEffect,
+  skillTalentLevels?: Partial<SkillTalentLevels> | null,
+): number {
+  const base = Number(effect.value) || 0
+  const source = effect.additionalDamage?.ratioLevelSource
+  if (!source) return base
+  const talentKey = SKILL_CONVERT_FROM_TO_TALENT_KEY[source]
+  const raw = Number(skillTalentLevels?.[talentKey])
+  const level = Number.isFinite(raw) && raw > 0 ? raw : 1
+  return base + (effect.additionalDamage?.ratioPercentPerLevel ?? 0) * (level - 1)
 }
 
 export function resolveConvertValue(
@@ -507,9 +526,17 @@ export function resolveConvertValueDetail(
     final?: Partial<Record<CharacterAttrKey, number>>
   },
   skillTalentLevels?: Partial<SkillTalentLevels> | null,
-): { amount: number; base: number; source: 'manual' | 'external' | 'final' | 'skillLevel' | 'default'; stage: 'manual' | 'external' | 'preConvert' | 'skillLevel' } {
+): {
+    amount: number
+    base: number
+    source: 'manual' | 'external' | 'final' | 'skillLevel' | 'default'
+    stage: 'manual' | 'external' | 'preConvert' | 'skillLevel'
+    /** 实际采用的比例 / 上限（随技能等级换算后） */
+    ratioPercent: number
+    cap: number | null
+  } {
   if (effect.kind !== 'convert' || !effect.convert) {
-    return { amount: 0, base: 0, source: 'default', stage: 'manual' }
+    return { amount: 0, base: 0, source: 'default', stage: 'manual', ratioPercent: 0, cap: null }
   }
   const source = effect.convert.panelSource ?? 'external'
   let from: number
@@ -560,14 +587,35 @@ export function resolveConvertValueDetail(
     effect.convert.initialBase != null && Number.isFinite(effect.convert.initialBase)
       ? effect.convert.initialBase
       : 0
+  // 比例 / 上限随技能等级：L1 取配置值，每级按增量线性增长（缺省级来源 = 固定比例）
+  const ratioLevelSource = effect.convert.ratioLevelSource
+  const ratioLevel = (() => {
+    if (!ratioLevelSource) return 1
+    const talentKey = SKILL_CONVERT_FROM_TO_TALENT_KEY[ratioLevelSource]
+    const raw = Number(skillTalentLevels?.[talentKey])
+    return Number.isFinite(raw) && raw > 0 ? raw : 1
+  })()
+  const ratioPercent =
+    effect.convert.ratioPercent + (effect.convert.ratioPercentPerLevel ?? 0) * (ratioLevel - 1)
+  const cap =
+    effect.convert.cap != null && Number.isFinite(effect.convert.cap)
+      ? effect.convert.cap + (effect.convert.capPerLevel ?? 0) * (ratioLevel - 1)
+      : null
   const convertible = Math.max(0, from - initialBase)
-  let amount = (convertible * effect.convert.ratioPercent) / 100
-  if (effect.convert.cap != null && Number.isFinite(effect.convert.cap)) {
-    const magnitudeCap = Math.abs(effect.convert.cap)
+  let amount = (convertible * ratioPercent) / 100
+  if (cap != null) {
+    const magnitudeCap = Math.abs(cap)
     amount = Math.max(-magnitudeCap, Math.min(amount, magnitudeCap))
   }
   // 转模结果统一到 4 位小数，与界面展示一致
-  return { amount: roundCalc(amount), base: from, source: baseSource, stage }
+  return {
+    amount: roundCalc(amount),
+    base: from,
+    source: baseSource,
+    stage,
+    ratioPercent: roundCalc(ratioPercent),
+    cap: cap == null ? null : roundCalc(cap),
+  }
 }
 
 /**
@@ -1054,7 +1102,7 @@ function normalizeApplySituation(value: unknown): BuffApplySituation {
 }
 
 function normalizeKind(value: unknown): BuffEffectKind {
-  if (value === 'stacked' || value === 'convert') return value
+  if (value === 'stacked' || value === 'convert' || value === 'additionalDamage') return value
   return 'fixed'
 }
 
@@ -1110,10 +1158,36 @@ function normalizeConvert(value: unknown): BuffEffect['convert'] {
   const capRaw = entry.cap
   const defaultBaseRaw = entry.defaultBase
   const initialBaseRaw = entry.initialBase
+  const ratioLevelRaw = entry.ratioLevelSource
+  const ratioPercentPerLevelRaw = entry.ratioPercentPerLevel
+  const capPerLevelRaw = entry.capPerLevel
   return {
     from,
     panelSource,
     ratioPercent: readNumber(entry.ratioPercent),
+    ratioLevelSource:
+      typeof ratioLevelRaw === 'string' && isSkillConvertFromKey(ratioLevelRaw)
+        ? ratioLevelRaw
+        : undefined,
+    // 0 / 缺省不落字段：保持旧数据的序列化形状不变
+    ...(((ratioPercentPerLevelRaw == null || ratioPercentPerLevelRaw === ''
+      ? 0
+      : readNumber(ratioPercentPerLevelRaw)) || 0) !== 0
+      ? {
+          ratioPercentPerLevel:
+            ratioPercentPerLevelRaw == null || ratioPercentPerLevelRaw === ''
+              ? 0
+              : readNumber(ratioPercentPerLevelRaw),
+        }
+      : {}),
+    ...(((capPerLevelRaw == null || capPerLevelRaw === ''
+      ? 0
+      : readNumber(capPerLevelRaw)) || 0) !== 0
+      ? {
+          capPerLevel:
+            capPerLevelRaw == null || capPerLevelRaw === '' ? 0 : readNumber(capPerLevelRaw),
+        }
+      : {}),
     cap: capRaw == null || capRaw === '' ? null : readNumber(capRaw),
     defaultBase:
       defaultBaseRaw == null || defaultBaseRaw === '' ? null : readNumber(defaultBaseRaw),
@@ -1192,6 +1266,23 @@ export function normalizeBuffEffect(value: unknown): BuffEffect | null {
       return Math.max(0, n)
     })(),
     convert: normalizeConvert(entry.convert),
+    additionalDamage:
+      entry.additionalDamage && typeof entry.additionalDamage === 'object'
+        ? (() => {
+            const raw = entry.additionalDamage as Record<string, unknown>
+            const levelRaw = raw.ratioLevelSource
+            const perLevel = Number(raw.ratioPercentPerLevel)
+            return {
+              onlyPolarDisorder: raw.onlyPolarDisorder === true,
+              ...(typeof levelRaw === 'string' && isSkillConvertFromKey(levelRaw)
+                ? { ratioLevelSource: levelRaw }
+                : {}),
+              ...(Number.isFinite(perLevel) && perLevel !== 0
+                ? { ratioPercentPerLevel: perLevel }
+                : {}),
+            }
+          })()
+        : undefined,
     enabledDefault: entry.enabledDefault === false ? false : true,
     note: typeof entry.note === 'string' ? entry.note : '',
   })
@@ -1205,6 +1296,12 @@ export function normalizeBuffEffect(value: unknown): BuffEffect | null {
   // 叠层结算只用 valuePerStack×层数；转模只用 convert.*。value 为历史冗余，统一清零以免脏数据回写。
   if (effect.kind === 'stacked' || effect.stackable || effect.kind === 'convert') {
     effect.value = 0
+  }
+  // 附加伤害不产生面板修饰；value 是比例%，必须保留
+  if (effect.kind === 'additionalDamage') {
+    effect.valuePerStack = 0
+    effect.maxStacks = 1
+    effect.stackable = false
   }
   if (hasSkillCondition(effect)) {
     const targets = getEffectSkillTargets(effect)
@@ -1384,9 +1481,16 @@ export function collectBlockEntriesFromPack(
   return [{ blockId: 'legacy', blockName: '增益', blockNote: '', effects }]
 }
 
-export const SKILL_CATEGORY_LABELS = Object.fromEntries(
-  BUFF_SKILL_TARGET_OPTIONS.map(({ id, label }) => [id, label]),
-) as Record<BuffSkillTargetId, string>
+/**
+ * 招式大类短标签：以 `BUFF_SKILL_TARGET_OPTIONS` 为唯一来源，只覆盖「其他」——
+ * 下拉里要完整写「其他（无对应招式类型）」，卡片行里只用短标签「其他」。
+ */
+export const SKILL_CATEGORY_LABELS = {
+  ...(Object.fromEntries(
+    BUFF_SKILL_TARGET_OPTIONS.map(({ id, label }) => [id, label]),
+  ) as Record<BuffSkillTargetId, string>),
+  other: '其他',
+}
 
 const APPLY_SITUATION_LABELS: Record<string, string> = {
   global: '全局',
@@ -1458,13 +1562,17 @@ export function effectSummaryLabel(
   const applyProf = formatApplyProfessionLabel(effect)
   const elementLabel = formatElementFilterLabel(effect)
   const gate = formatTeamProfessionGateLabel(effect)
-  const statText = statLabelFn?.(effect.stat) ?? effect.stat
+  const rawStatText = statLabelFn?.(effect.stat) ?? effect.stat
+  const statText =
+    effect.kind === 'additionalDamage' ? statLabelWithoutUnit(rawStatText) : rawStatText
   const amount =
     effect.kind === 'stacked'
       ? `${effect.valuePerStack ?? 0}×叠层`
       : effect.kind === 'convert'
         ? convertSummaryLabel(effect.convert)
-        : `${effect.value ?? 0}`
+        : effect.kind === 'additionalDamage'
+          ? formatAdditionalDamageRatioText(effect)
+          : `${effect.value ?? 0}`
   const parts: string[] = [target]
   if (skillPrefix) parts.push(`招式·${skillPrefix}`)
   if (typeText) parts.push(typeText)
@@ -1491,6 +1599,33 @@ export function formatApplySituationLabel(
  * `applySituation` 打开后标出作用情况（`[强攻][失衡期] [电] +40 增伤`）——
  * 局内 Buff 选择器与本行增益例外弹窗共用这一份实现，两处文案不会各写一遍。
  */
+/**
+ * 附加伤害行的倍率文本：`×3200%`，倍率随技能等级时补 `（每级 +10%）`。
+ *
+ * 附加伤害不是加算数值（`resolveEffectBaseValue` 对它恒为 0），所以卡片行不能沿用
+ * 「属性 + 数值」的模板，否则会显示 `精通（数值） 0`。
+ */
+export function formatAdditionalDamageRatioText(effect: BuffEffect): string {
+  const base = Number(effect.value) || 0
+  const perLevel = effect.additionalDamage?.ratioPercentPerLevel ?? 0
+  const scale =
+    effect.additionalDamage?.ratioLevelSource && perLevel
+      ? `（每级 ${perLevel > 0 ? '+' : ''}${trimNumber(perLevel)}%）`
+      : ''
+  const polar = effect.additionalDamage?.onlyPolarDisorder === true ? '（仅极性紊乱）' : ''
+  return `×${trimNumber(base)}%${scale}${polar}`
+}
+
+/** 属性名去掉单位后缀：`精通（数值）` → `精通`、`攻击力%` → `攻击力` */
+function statLabelWithoutUnit(label: string): string {
+  return label.replace(/（数值）$/, '').replace(/%$/, '')
+}
+
+function trimNumber(value: number): string {
+  const rounded = Math.round(value * 10000) / 10000
+  return String(Object.is(rounded, -0) ? 0 : rounded)
+}
+
 export function formatBuffEffectResultText(
   effect: BuffEffect,
   amountText: string,
@@ -1502,7 +1637,12 @@ export function formatBuffEffectResultText(
   },
 ): string {
   const skillPrefix = formatSkillTargetsPrefix(effect, options?.skillSubcategories)
-  const label = options?.statLabelFn?.(effect.stat) ?? effect.stat
+  const rawLabel = options?.statLabelFn?.(effect.stat) ?? effect.stat
+  const isAdditionalDamage = effect.kind === 'additionalDamage'
+  const label = isAdditionalDamage ? statLabelWithoutUnit(rawLabel) : rawLabel
+  const valueText = isAdditionalDamage
+    ? formatAdditionalDamageRatioText(effect)
+    : amountText
   const applyProf = formatApplyProfessionLabel(effect)
   const elementLabel = formatElementFilterLabel(effect)
   const gate = formatTeamProfessionGateLabel(effect)
@@ -1510,7 +1650,7 @@ export function formatBuffEffectResultText(
   const mid = gate ? `${gate} ` : ''
   const el = elementLabel ? `${elementLabel} ` : ''
   // 数值顺序（2026-09-23 用户口径）：`增伤% +20.16` —— 属性名在前、数值在后
-  const line = `${head}${head ? ' ' : ''}${mid}${el}${label} ${amountText}`
+  const line = `${head}${head ? ' ' : ''}${mid}${el}${label} ${valueText}`
   if (!options?.applySituation) return line
   const situation = formatApplySituationLabel(effect)
   if (situation === '全局') return line

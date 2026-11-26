@@ -1073,10 +1073,14 @@ export interface CombatBuffMods {
   globalStaggerVulnerable: number
   staggerVulnerable: number
   staggerVulnerableOnly: number
+  /** 紊乱失衡易伤下限%（倍率口径：140 = 至少 ×1.4；仅紊乱/极性紊乱） */
+  disorderStaggerFloor: number
   special: number
   pierceDmgBonus: number
   /** 浸染增伤%（独立乘区，仅直伤体系） */
   imbueDmgBonus: number
+  /** 最终伤害%（独立乘区，直伤链最后一道） */
+  finalDmgBonus: number
   /** 锐化伤害提升%（独立乘区，仅锐化路径；锋御专属） */
   sharpenDmgBonus: number
   sharpenCritDmgBonus: number
@@ -3105,9 +3109,11 @@ export function extractCombatMods(mods: BuffStatModifiers): CombatBuffMods {
     globalStaggerVulnerable: mods.globalStaggerVulnerable,
     staggerVulnerable: mods.staggerVulnerable,
     staggerVulnerableOnly: mods.staggerVulnerableOnly,
+    disorderStaggerFloor: mods.disorderStaggerFloor,
     special: mods.special,
     pierceDmgBonus: mods.pierceDmgBonus,
     imbueDmgBonus: mods.imbueDmgBonus,
+    finalDmgBonus: mods.finalDmgBonus,
     sharpenDmgBonus: mods.sharpenDmgBonus,
     sharpenCritDmgBonus: mods.sharpenCritDmgBonus,
     dmgPenalty: mods.dmgPenalty,

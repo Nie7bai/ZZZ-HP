@@ -82,10 +82,14 @@ function readNumber(value, fallback) {
 }
 
 /** 招式小类倍率修正存百分点；旧乘数 1 / 1.2 迁为 100 / 120 */
+/**
+ * 倍率修正统一按百分比存储（100 = ×1，1 = ×1%，3 = ×3%）。
+ * 历史数据与快照已全部是百分比（最小 15），不再做「≤10 视为倍率 ×100」的兼容；
+ * 若将来导入更早的倍率制数据，请在导入脚本里先迁移成百分比。
+ */
 function readSkillMultFactorPercent(value, fallback = 100) {
   const num = readNumber(value, fallback)
   if (!Number.isFinite(num) || num <= 0) return fallback
-  if (num <= 10) return num * 100
   return num
 }
 

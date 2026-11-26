@@ -81,8 +81,15 @@ test('zone_key 格式：内置键或 custom:<slug>，其余拒绝', () => {
   assert.equal(isCustomZoneKey('dmgMultiplier'), false)
 })
 
-test('primitive 白名单包含两种自定义百分比算法，拒绝未知算法', () => {
-  assert.deepEqual([...ZONE_PRIMITIVES], ['percentSum', 'scaledPercentSum', 'panel.percent', 'stagger', 'vulnerable'])
+test('primitive 白名单包含两种自定义百分比算法与附加伤害，拒绝未知算法', () => {
+  assert.deepEqual([...ZONE_PRIMITIVES], [
+    'percentSum',
+    'scaledPercentSum',
+    'panel.percent',
+    'stagger',
+    'vulnerable',
+    'additionalDamage',
+  ])
   for (const primitive of ZONE_PRIMITIVES) {
     assert.equal(validateZonePrimitive(primitive), primitive)
   }

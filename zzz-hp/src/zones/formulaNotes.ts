@@ -133,6 +133,13 @@ export const ZONE_FORMULA_NOTES: Readonly<Record<string, ZoneFormulaNote>> = Obj
     appliesWhen: '普通直伤 / 命破 / 锋御',
   },
 
+  finalDmgMultiplier: {
+    formula: '最终伤害区 = 1 + 最终伤害% / 100',
+    note: '全局最后一道独立乘区：直伤 / 命破 / 锋御 / 属性异常 / 异放 / 紊乱 / 乱流 / 耀变都乘；缺省 0 时恒为 1。',
+    docSection: '§6',
+    appliesWhen: '所有伤害类型（受伤害类型条件限制时按条件）',
+  },
+
   // ---- 异常通用 ----
   masteryZone: {
     formula: '精通区 = 异常精通 / 100',

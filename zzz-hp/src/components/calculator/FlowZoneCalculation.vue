@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { buildEventZoneDisplay, type EventZoneDisplayRow } from '@/utils/eventDamageSourceTips'
-import { skillCalcZoneGroup } from '@/utils/skillCalcZones'
+import { DISORDER_SECTION_META, disorderSectionOf, disorderTermOrder, skillCalcZoneGroup } from '@/utils/skillCalcZones'
 import type { SkillFlowCalculationDetail } from '@/utils/skillFlowCalculation'
 import type { StatSourceGroup } from '@/utils/statSourceTips'
 
@@ -26,7 +26,7 @@ const props = defineProps<{
 const rows = computed(() => (props.calculation ? buildEventZoneDisplay(props.calculation) : []))
 
 interface ActorSection {
-  key: 'producer' | 'trigger' | 'mixed'
+  key: string
   label: string
   className: string
   rows: EventZoneDisplayRow[]
@@ -35,6 +35,17 @@ interface ActorSection {
 /** 异常类：按 skillCalcZoneGroup 的格子归属把乘区行分开列，避免混在一个网格里 */
 const actorSections = computed<ActorSection[]>(() => {
   if (!props.groupByActor) return []
+  // 紊乱：严格按公式顺序分块（(攻击×倍率+附加) → 通用乘区 → 紊乱增伤/暴击）
+  if (props.calculation?.evaluation.anomalySubKind === 'disorder') {
+    return DISORDER_SECTION_META.map((meta) => ({
+      key: meta.key,
+      label: meta.label,
+      className: meta.className,
+      rows: rows.value
+        .filter((row) => disorderSectionOf(row.label) === meta.key)
+        .sort((a, b) => disorderTermOrder(a.label) - disorderTermOrder(b.label)),
+    })).filter((section) => section.rows.length)
+  }
   const pick = (group: 'producer' | 'trigger' | 'mixed') =>
     rows.value.filter((row) => skillCalcZoneGroup(row.label, row.zoneKey) === group)
   const sections: ActorSection[] = [
@@ -104,6 +115,7 @@ function clearZoneTipHideTimer() {
   zoneTipHideTimer = null
 }
 
+
 function zoneTipGroups(row: EventZoneDisplayRow): StatSourceGroup[] {
   const projected = rows.value.find((item) => item.label === row.label && item.zoneKey === row.zoneKey)
   if (!projected) return []
@@ -152,21 +164,8 @@ function formatDamageNumber(value: number) {
  * 倍率 ≥ 1 的部分按「超出 1 的幅度」填充（上限 1，即 100% 增益封顶），< 1 用减益色。
  * 伤害行与无值行不画条。widthPercent 是字符串百分比，直接进 :style。
  */
-function zoneFillRatio(row: EventZoneDisplayRow): number {
-  if (row.isDamage || !Number.isFinite(row.zoneValue)) return 0
-  const value = row.zoneValue as number
-  if (value >= 1) return Math.min((value - 1) / 1, 1)
-  return Math.min(Math.max(value, 0), 1)
-}
 
-function zoneFillKind(row: EventZoneDisplayRow): 'gain' | 'reduce' | 'none' {
-  if (row.isDamage || !Number.isFinite(row.zoneValue)) return 'none'
-  return (row.zoneValue as number) >= 1 ? 'gain' : 'reduce'
-}
 
-function zoneFillWidth(row: EventZoneDisplayRow): string {
-  return `${(zoneFillRatio(row) * 100).toFixed(2)}%`
-}
 </script>
 
 <template>
@@ -194,15 +193,8 @@ function zoneFillWidth(row: EventZoneDisplayRow): string {
             @blur="scheduleZoneTipHide"
           >
             <span class="zone-display-label">{{ row.label }}</span>
-            <span class="zone-display-val-zone">
-              <i
-                class="zone-fill"
-                :class="`zone-fill--${zoneFillKind(row)}`"
-                :style="{ width: zoneFillWidth(row) }"
-                aria-hidden="true"
-              ></i>
-              <span class="zone-display-val">{{ row.value }}</span>
-            </span>
+            <span class="zone-display-val">{{ row.value }}</span>
+
           </div>
         </div>
       </section>
@@ -220,15 +212,7 @@ function zoneFillWidth(row: EventZoneDisplayRow): string {
           @blur="scheduleZoneTipHide"
         >
           <span class="zone-display-label">{{ row.label }}</span>
-          <span class="zone-display-val-zone">
-            <i
-              class="zone-fill"
-              :class="`zone-fill--${zoneFillKind(row)}`"
-              :style="{ width: zoneFillWidth(row) }"
-              aria-hidden="true"
-            ></i>
-            <span class="zone-display-val">{{ row.value }}</span>
-          </span>
+          <span class="zone-display-val">{{ row.value }}</span>
         </div>
       </div>
     </template>
@@ -252,15 +236,7 @@ function zoneFillWidth(row: EventZoneDisplayRow): string {
               @blur="scheduleZoneTipHide"
             >
               <span class="zone-display-label">{{ row.label }}</span>
-              <span class="zone-display-val-zone">
-                <i
-                  class="zone-fill"
-                  :class="`zone-fill--${zoneFillKind(row)}`"
-                  :style="{ width: zoneFillWidth(row) }"
-                  aria-hidden="true"
-                ></i>
-                <span class="zone-display-val">{{ row.value }}</span>
-              </span>
+              <span class="zone-display-val">{{ row.value }}</span>
             </div>
           </div>
         </section>
@@ -283,15 +259,7 @@ function zoneFillWidth(row: EventZoneDisplayRow): string {
               @blur="scheduleZoneTipHide"
             >
               <span class="zone-display-label">{{ row.label }}</span>
-              <span class="zone-display-val-zone">
-                <i
-                  class="zone-fill"
-                  :class="`zone-fill--${zoneFillKind(row)}`"
-                  :style="{ width: zoneFillWidth(row) }"
-                  aria-hidden="true"
-                ></i>
-                <span class="zone-display-val">{{ row.value }}</span>
-              </span>
+              <span class="zone-display-val">{{ row.value }}</span>
             </div>
           </div>
         </section>
@@ -314,15 +282,8 @@ function zoneFillWidth(row: EventZoneDisplayRow): string {
             @blur="scheduleZoneTipHide"
           >
             <span class="zone-display-label">{{ row.label }}</span>
-            <span class="zone-display-val-zone">
-              <i
-                class="zone-fill"
-                :class="`zone-fill--${zoneFillKind(row)}`"
-                :style="{ width: zoneFillWidth(row) }"
-                aria-hidden="true"
-              ></i>
-              <span class="zone-display-val">{{ row.value }}</span>
-            </span>
+            <span class="zone-display-val">{{ row.value }}</span>
+
           </div>
         </div>
       </section>
@@ -340,15 +301,7 @@ function zoneFillWidth(row: EventZoneDisplayRow): string {
           @blur="scheduleZoneTipHide"
         >
           <span class="zone-display-label">{{ row.label }}</span>
-          <span class="zone-display-val-zone">
-            <i
-              class="zone-fill"
-              :class="`zone-fill--${zoneFillKind(row)}`"
-              :style="{ width: zoneFillWidth(row) }"
-              aria-hidden="true"
-            ></i>
-            <span class="zone-display-val">{{ row.value }}</span>
-          </span>
+          <span class="zone-display-val">{{ row.value }}</span>
         </div>
       </div>
     </template>
@@ -366,15 +319,7 @@ function zoneFillWidth(row: EventZoneDisplayRow): string {
         @blur="scheduleZoneTipHide"
       >
         <span class="zone-display-label">{{ row.label }}</span>
-        <span class="zone-display-val-zone">
-          <i
-            class="zone-fill"
-            :class="`zone-fill--${zoneFillKind(row)}`"
-            :style="{ width: zoneFillWidth(row) }"
-            aria-hidden="true"
-          ></i>
-          <span class="zone-display-val">{{ row.value }}</span>
-        </span>
+        <span class="zone-display-val">{{ row.value }}</span>
       </div>
     </div>
 
@@ -452,6 +397,7 @@ function zoneFillWidth(row: EventZoneDisplayRow): string {
   color: #9aa3b0;
 }
 
+
 .zone-display-val {
   font-size: 0.86rem;
   font-weight: 700;
@@ -459,34 +405,6 @@ function zoneFillWidth(row: EventZoneDisplayRow): string {
   font-variant-numeric: tabular-nums;
 }
 
-/* 格子内占比填充条：像「全队角色构成」一样按数值大小填充，铺满整格宽 */
-.zone-display-val-zone {
-  position: relative;
-  display: block;
-  overflow: hidden;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.zone-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  display: block;
-  border-radius: inherit;
-  transition: width 0.18s ease-out;
-}
-
-.zone-fill--gain {
-  background: color-mix(in srgb, #c9a55c 34%, transparent);
-}
-
-.zone-fill--reduce {
-  background: color-mix(in srgb, #5b8def 30%, transparent);
-}
-
-.zone-display-val-zone .zone-display-val {
-  position: relative;
-}
 
 /* 提供者 / 触发者两框（两者不同角色时） */
 .zone-split {
@@ -536,6 +454,7 @@ function zoneFillWidth(row: EventZoneDisplayRow): string {
 .zone-result-grid {
   margin-top: 0.5rem;
 }
+
 
 .zone-display-item--clickable {
   cursor: pointer;

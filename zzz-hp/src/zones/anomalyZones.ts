@@ -179,6 +179,11 @@ export function computeDisorderZones(options: {
   zoneMultOverride?: number | null
   zoneMultFactorOverride?: number | null
   anomalyBaseExpected: number
+  /**
+   * 附加伤害（已含「异常基础 / 基础攻击」补乘后的固定值）：
+   * 加在 `异常基础 × 紊乱倍率区` 之后、子类增伤与暴击之前。
+   */
+  additionalAfterZone?: number
 }): DisorderZones {
   const panel = options.panel
   const multPanel = options.multPanel
@@ -206,7 +211,8 @@ export function computeDisorderZones(options: {
   }
 
   const crit = computeAnomalyCritZones(panel.disorderCritRate, panel.disorderCritDmg)
-  const preCrit = options.anomalyBaseExpected * zone * dmgBonusZone
+  const preCrit =
+    (options.anomalyBaseExpected * zone + (options.additionalAfterZone ?? 0)) * dmgBonusZone
   return {
     dmgBonusZone,
     baseMultRatio,

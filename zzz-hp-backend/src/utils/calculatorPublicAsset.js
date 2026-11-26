@@ -18,7 +18,12 @@ export const CALCULATOR_PUBLIC_AVATAR_KINDS = {
   bangboo: { folder: 'bangboo', urlPrefix: '/bangboo' },
 }
 
-const SAFE_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9._&'-]*$/
+/**
+ * 计算器实体 ID 规则：会被当作头像文件名与 URL 路径，因此只收半角字母数字与 `._&'-`，
+ * 且必须以字母或数字开头（中文、空格、`+`、`#` 等一律拒绝）。
+ * 前端 `src/utils/calculatorEntityId.ts` 与之逐字对齐，改动请同步。
+ */
+export const CALCULATOR_ENTITY_ID_SAFE_RE = /^[a-zA-Z0-9][a-zA-Z0-9._&'-]*$/
 const ALLOWED_EXT = new Set(['.webp', '.jpg', '.jpeg', '.png', '.gif'])
 
 /**
@@ -68,8 +73,11 @@ export function normalizeCalculatorPublicKind(raw) {
 
 export function normalizeCalculatorEntityId(raw) {
   const id = typeof raw === 'string' ? raw.trim() : ''
-  if (!id || !SAFE_ID_RE.test(id)) {
-    throw new Error('无效的实体 ID')
+  if (!id || !CALCULATOR_ENTITY_ID_SAFE_RE.test(id)) {
+    throw new Error(
+      `无效的实体 ID：「${id || ''}」不能作为头像文件名。` +
+        `只能包含字母 / 数字 / - _ & ' .，且以字母或数字开头（中文、空格、+、# 都不行）。`,
+    )
   }
   return id
 }

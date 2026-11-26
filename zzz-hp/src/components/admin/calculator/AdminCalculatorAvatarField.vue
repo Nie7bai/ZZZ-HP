@@ -43,6 +43,9 @@ defineExpose({
       ）。ID 含 <code>&amp;</code> 时文件名会写成下划线形式（如
       <code>orphie_magus.webp</code>
       ）。勿在未选新图时误点「清除」。
+      <br />
+      ID 就是文件名：只能含字母 / 数字 / <code>- _ &amp; ' .</code>，以字母或数字开头；
+      中文、空格、<code>+</code>、<code>#</code> 会被拒绝（提示「无效的实体 ID」）。
     </p>
   </div>
 </template>

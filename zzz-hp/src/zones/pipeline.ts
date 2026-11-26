@@ -64,9 +64,9 @@ export interface StageTraceEntry extends StageDefinition {
   value: number
 }
 
-const DIRECT_STAGE_IDS = ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'crit', 'directMult', 'settlement', 'pierce', 'imbue', 'sharpen', 'special'] as const
-const ANOMALY_STAGE_IDS = ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'mastery', 'level', 'mutation', 'dmgBonus', 'mult', 'crit', 'special'] as const
-const RADIANCE_SELF_STAGE_IDS = ['selfAtk', 'selfMastery', 'specialLevel', 'mutation', 'defense', 'resistance', 'vulnerable', 'stagger', 'radianceBonus', 'radianceMult', 'crit', 'special'] as const
+const DIRECT_STAGE_IDS = ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'crit', 'directMult', 'settlement', 'pierce', 'imbue', 'sharpen', 'special', 'finalDmg'] as const
+const ANOMALY_STAGE_IDS = ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'mastery', 'level', 'mutation', 'dmgBonus', 'mult', 'crit', 'special', 'finalDmg'] as const
+const RADIANCE_SELF_STAGE_IDS = ['selfAtk', 'selfMastery', 'specialLevel', 'mutation', 'defense', 'resistance', 'vulnerable', 'stagger', 'radianceBonus', 'radianceMult', 'crit', 'special', 'finalDmg'] as const
 
 /** 异常类子链路：阶段集合与取值逻辑相同，只有子类阶段的语义标签随子类变化。 */
 interface AnomalySubChainSpec {
@@ -118,6 +118,7 @@ function buildAnomalyChain(spec: AnomalySubChainSpec): DamageChainDefinition {
       { id: 'mult', kind: 'multiplier', label: spec.multLabel, group, order: 90, module: 'subtypeMult' },
       { id: 'crit', kind: 'multiplier', label: spec.critLabel, group, order: 100, module: 'crit' },
       { id: 'special', kind: 'multiplier', label: '特殊乘区', group, order: 110, module: 'specialMult' },
+      { id: 'finalDmg', kind: 'multiplier', label: '最终伤害区', group, order: 115, module: 'finalDmgBonus' },
       { id: 'final', kind: 'final', label: '期望伤害', group, order: 120, module: 'product', inputs: ANOMALY_STAGE_IDS },
     ],
   }
@@ -146,6 +147,7 @@ export const BUILT_IN_DAMAGE_CHAINS: readonly DamageChainDefinition[] = Object.f
       { id: 'sharpen', kind: 'multiplier', label: '锐化伤害提升区', group: 'direct', order: 100, module: 'sharpenBonus' },
       { id: 'imbue', kind: 'multiplier', label: '浸染增伤区', group: 'direct', order: 105, module: 'imbueBonus' },
       { id: 'special', kind: 'multiplier', label: '特殊乘区', group: 'direct', order: 110, module: 'specialMult' },
+      { id: 'finalDmg', kind: 'multiplier', label: '最终伤害区', group: 'direct', order: 115, module: 'finalDmgBonus' },
       { id: 'final', kind: 'final', label: '期望伤害', group: 'direct', order: 120, module: 'product', inputs: DIRECT_STAGE_IDS },
     ],
   },
@@ -168,7 +170,8 @@ export const BUILT_IN_DAMAGE_CHAINS: readonly DamageChainDefinition[] = Object.f
       { id: 'sharpen', kind: 'multiplier', label: '锐化伤害提升区', group: 'sharpen', order: 100, module: 'sharpenBonus' },
       { id: 'imbue', kind: 'multiplier', label: '浸染增伤区', group: 'sharpen', order: 105, module: 'imbueBonus' },
       { id: 'special', kind: 'multiplier', label: '特殊乘区', group: 'sharpen', order: 110, module: 'specialMult' },
-      { id: 'final', kind: 'final', label: '期望伤害', group: 'sharpen', order: 120, module: 'product', inputs: ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'crit', 'directMult', 'sharpen', 'imbue', 'special'] },
+      { id: 'finalDmg', kind: 'multiplier', label: '最终伤害区', group: 'sharpen', order: 115, module: 'finalDmgBonus' },
+      { id: 'final', kind: 'final', label: '期望伤害', group: 'sharpen', order: 120, module: 'product', inputs: ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'crit', 'directMult', 'sharpen', 'imbue', 'special', 'finalDmg'] },
     ],
   },
   {
@@ -191,7 +194,8 @@ export const BUILT_IN_DAMAGE_CHAINS: readonly DamageChainDefinition[] = Object.f
       { id: 'pierce', kind: 'multiplier', label: '贯穿增伤区', group: 'direct', order: 90, module: 'pierceBonus' },
       { id: 'imbue', kind: 'multiplier', label: '浸染增伤区', group: 'direct', order: 105, module: 'imbueBonus' },
       { id: 'special', kind: 'multiplier', label: '特殊乘区', group: 'direct', order: 110, module: 'specialMult' },
-      { id: 'final', kind: 'final', label: '期望伤害', group: 'direct', order: 120, module: 'product', inputs: ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'crit', 'directMult', 'settlement', 'pierce', 'imbue', 'special'] },
+      { id: 'finalDmg', kind: 'multiplier', label: '最终伤害区', group: 'direct', order: 115, module: 'finalDmgBonus' },
+      { id: 'final', kind: 'final', label: '期望伤害', group: 'direct', order: 120, module: 'product', inputs: ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'crit', 'directMult', 'settlement', 'pierce', 'imbue', 'special', 'finalDmg'] },
     ],
   },
   {
@@ -215,6 +219,7 @@ export const BUILT_IN_DAMAGE_CHAINS: readonly DamageChainDefinition[] = Object.f
       { id: 'mult', kind: 'multiplier', label: '子类倍率区', group: 'anomaly', order: 90, module: 'subtypeMult' },
       { id: 'crit', kind: 'multiplier', label: '子类暴击区', group: 'anomaly', order: 100, module: 'crit' },
       { id: 'special', kind: 'multiplier', label: '特殊乘区', group: 'anomaly', order: 110, module: 'specialMult' },
+      { id: 'finalDmg', kind: 'multiplier', label: '最终伤害区', group: 'anomaly', order: 115, module: 'finalDmgBonus' },
       { id: 'final', kind: 'final', label: '期望伤害', group: 'anomaly', order: 120, module: 'product', inputs: ANOMALY_STAGE_IDS },
     ],
   },
@@ -239,6 +244,7 @@ export const BUILT_IN_DAMAGE_CHAINS: readonly DamageChainDefinition[] = Object.f
       { id: 'radianceMult', kind: 'multiplier', label: '耀变倍率区', group: 'radianceSelf', order: 100, module: 'subtypeMult' },
       { id: 'crit', kind: 'multiplier', label: '耀变暴击区', group: 'radianceSelf', order: 110, module: 'crit' },
       { id: 'special', kind: 'multiplier', label: '特殊乘区', group: 'radianceSelf', order: 120, module: 'specialMult' },
+      { id: 'finalDmg', kind: 'multiplier', label: '最终伤害区', group: 'radianceSelf', order: 125, module: 'finalDmgBonus' },
       { id: 'final', kind: 'final', label: '期望伤害', group: 'radianceSelf', order: 130, module: 'product', inputs: RADIANCE_SELF_STAGE_IDS },
     ],
   },
