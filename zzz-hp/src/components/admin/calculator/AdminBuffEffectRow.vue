@@ -391,6 +391,24 @@ function patchConvert<K extends keyof NonNullable<BuffEffect['convert']>>(
   })
 }
 
+const additionalDamageScope = computed<'global' | 'skill'>(() =>
+  getEffectSkillTargets(first.value).length ? 'skill' : 'global',
+)
+
+/** 附加伤害作用范围：全局 = 清掉招式限定；仅当前招式 = 用行上的招式小类写 skillTargets */
+function onAdditionalDamageScopeChange(next: string) {
+  patchAll((effect) => {
+    if (next !== 'skill') {
+      setEffectSkillTargets(effect, [])
+      return
+    }
+    const category = effect.skillCategory ?? 'basic'
+    setEffectSkillTargets(effect, [
+      { category, subcategoryId: effect.skillSubcategoryId ?? null },
+    ])
+  })
+}
+
 function convertPreviewText() {
   const cv = convert.value
   const attrLabel =
@@ -1049,6 +1067,16 @@ onBeforeUnmount(() => {
 
         <div v-if="kind === 'additionalDamage'" class="value-row">
           <label class="inline-field">
+            <span>作用范围</span>
+            <select
+              :value="additionalDamageScope"
+              @change="onAdditionalDamageScopeChange(($event.target as HTMLSelectElement).value)"
+            >
+              <option value="global">全局</option>
+              <option value="skill">仅当前招式</option>
+            </select>
+          </label>
+          <label class="inline-field">
             <span>仅极性紊乱</span>
             <input
               type="checkbox"
@@ -1074,7 +1102,7 @@ onBeforeUnmount(() => {
             :step="0.0001"
           />
           <NumberStepper
-            v-else-if="kind === 'fixed'"
+            v-else-if="kind === 'fixed' || kind === 'additionalDamage'"
             v-model="value"
             :min="-999999"
             :max="999999"
