@@ -26,6 +26,7 @@ import { BUFF_STAT_KEYS, isCustomBuffStatKey } from '../utils/calculatorBuffFiel
 import {
   normalizeEffectConditionsForStat,
   normalizeGroupId,
+  normalizeTeammateProfessions,
 } from '../utils/buffEffectConditions.js'
 import {
   buildRulesTable,
@@ -192,6 +193,7 @@ export function sanitizeEffect(input, index = 0) {
       raw.applyProfession == null || String(raw.applyProfession).trim() === ''
         ? null
         : String(raw.applyProfession).trim(),
+    teammateProfessions: normalizeTeammateProfessions(raw.teammateProfessions),
     teamProfession:
       raw.teamProfession == null || String(raw.teamProfession).trim() === ''
         ? null
@@ -286,7 +288,8 @@ function effectSignature(input) {
   return JSON.stringify({
     stat: effect.stat, kind: effect.kind,
     applyTarget: effect.applyTarget, applySituation: effect.applySituation,
-    applyProfession: effect.applyProfession, teamProfession: effect.teamProfession,
+    applyProfession: effect.applyProfession, teammateProfessions: effect.teammateProfessions,
+    teamProfession: effect.teamProfession,
     teamProfessionValues: effect.teamProfessionValues, teamProfessionMinCount: effect.teamProfessionMinCount,
     value: effect.value, valuePerStack: effect.valuePerStack,
     maxStacks: effect.maxStacks, defaultStacks: effect.defaultStacks, stackable: effect.stackable,
@@ -563,6 +566,7 @@ export const MERGE_FIELD_LIST = [
   { id: 'applyTarget', label: '生效目标' },
   { id: 'applySituation', label: '生效情形' },
   { id: 'applyProfession', label: '受益职业' },
+  { id: 'teammateProfessions', label: '队友职业（满足任一）' },
   { id: 'teamProfession', label: '队伍职业条件' },
   { id: 'teamProfessionValues', label: '启用人数档' },
   { id: 'elementFilter', label: '元素过滤' },

@@ -1103,6 +1103,7 @@ export type BuffEffectApplyStatus =
   | 'element-mismatch'
   | 'profession-mismatch'
   | 'team-count-mismatch'
+  | 'teammate-profession-mismatch'
   | 'convert-skipped'
 
 /** 共享参数解析的输入（正式求值与配置预览共用，Spec §3.2）。 */
@@ -1340,14 +1341,16 @@ function resolveBeneficiaryElement(ctx: PanelCalcContext): string | undefined {
   return ctx.agents.find((item) => item.id === agentId)?.element
 }
 
-function resolveTeamProfessionCountOption(ctx: PanelCalcContext) {
-  return (profession: string) => countTeamProfession(ctx.teamSlots, ctx.agents, profession)
+function resolveTeamProfessionCountOption(ctx: PanelCalcContext, excludedSlot?: number | null) {
+  return (profession: string) => countTeamProfession(ctx.teamSlots, ctx.agents, profession, excludedSlot)
 }
 
 /** 运算包的来源侧覆盖：额外 Buff 的来源槽位与"来源不可用"的显式零值（Spec §5.1 第 4 项、§5.2 第 6 项） */
 interface PackSourceOptions {
   /** 读面板/技能等级用的来源槽位（与"受益槽位"无关） */
   sourceSlotIndex?: number | null
+  /** 来源归属槽位，场地、邦布等无所属角色的来源显式传 null。 */
+  teammateProviderSlot?: number | null
   /** 显式给出的来源面板值（例如来源不可用时全 0），优先于按槽位取 */
   panelSourceValuesOverride?: PanelSourceValues
   /** 额外 Buff 运算包：不读选择器里的层数/转模输入 */
@@ -1386,11 +1389,16 @@ function sourceOptionsForCollectedEffect(
         providerSlot: item.providerSlot ?? null,
       }
     : undefined
-  if (!item.effect.extraGain) return traceSource ? { traceSource } : undefined
   const sourceSlotIndex = resolveCollectedEffectSourceSlot(item)
+  const teammateProviderSlot = effects.some((effect) => effect.teammateProfessions?.length)
+    ? sourceSlotIndex : undefined
+  if (!item.effect.extraGain) {
+    return traceSource || teammateProviderSlot !== undefined ? { traceSource, teammateProviderSlot } : undefined
+  }
   const available = sourceSlotIndex != null && Boolean(ctx.teamSlots[sourceSlotIndex]?.agentId)
   return {
     sourceSlotIndex,
+    teammateProviderSlot,
     panelSourceValuesOverride: available ? undefined : zeroSourceValuesFor(effects),
     extraGainPack: true,
     traceSource,
@@ -1502,6 +1510,9 @@ function resolvePackMods(
 ): BuffStatModifiers {
   const skillCtx = ctx.skillContext ?? defaultSkillContext('direct')
   const sourceSlotIndex = sourceOptions?.sourceSlotIndex ?? slotIndex
+  const teammateProviderSlot = sourceOptions?.teammateProviderSlot !== undefined
+    ? sourceOptions.teammateProviderSlot
+    : sourceSlotIndex
   const parameters = resolveEffectParameterInputs(ctx, sourceSlotIndex,
     sourceOptions?.extraGainPack === true, sourceOptions?.panelSourceValuesOverride,
     !ctx.skipConvert && effects.some(effect => effect.kind === 'convert'))
@@ -1535,6 +1546,9 @@ function resolvePackMods(
     skipConvert: ctx.skipConvert,
     selection: ctx.buffSelection,
     resolveTeamProfessionCount: resolveTeamProfessionCountOption(ctx),
+    resolveTeammateProfessionCount: effects.some((effect) => effect.teammateProfessions?.length)
+      ? resolveTeamProfessionCountOption(ctx, teammateProviderSlot)
+      : undefined,
     excludedByEffectId: excludedEffects.length ? ctx.traceExcluded : undefined,
     // 只有带追踪时才分配记录对象；数值路径完全不受影响
     onEffectResolved: trace
@@ -1666,7 +1680,7 @@ export function collectSlotDriveDiscMods(
   driveDiscs: DriveDiscBuffDoc[],
   selection: DriveDiscSelection,
   isMain: boolean,
-  options?: { includeTwoPiece?: boolean },
+  options?: { includeTwoPiece?: boolean; providerSlot?: number },
   ctx?: PanelCalcContext,
 ): BuffStatModifiers {
   const effects = collectSlotDriveDiscEffects(driveDiscs, selection, isMain, options)
@@ -1676,7 +1690,9 @@ export function collectSlotDriveDiscMods(
       ctx: defaultSkillContext('direct'),
     })
   }
-  return resolvePackModsViaEffectSpec(effects, isMain, ctx)
+  return resolvePackModsViaEffectSpec(effects, isMain, ctx, undefined, {
+    teammateProviderSlot: options?.providerSlot ?? (isMain ? ctx.mainSlotIndex : undefined),
+  })
 }
 
 export function collectTeamDriveDiscMods(
@@ -1698,7 +1714,7 @@ export function collectTeamDriveDiscMods(
           fourPieceId: slot.fourPieceDriveDiscId,
         },
         index === mainIndex,
-        undefined,
+        { providerSlot: index },
         ctx,
       ),
     )
@@ -2632,7 +2648,7 @@ function resolvePackEffectMods(
       ...ctx,
       skillContext: skillCtx,
       skipConvert,
-    }, ctx.mainSlotIndex)
+    }, ctx.mainSlotIndex, { teammateProviderSlot: null })
   }
   if (!effects.length) return createEmptyBuffStatModifiers()
   const isMain = pack.kind !== 'slot' || pack.slotIndex === ctx.mainSlotIndex

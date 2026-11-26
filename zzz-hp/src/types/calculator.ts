@@ -460,6 +460,8 @@ export interface BuffEffect {
   applySituation?: BuffApplySituation
   /** 受益职业限制；空/缺省 = 不限 */
   applyProfession?: string | null
+  /** 增益提供者的队友满足任一职业即通过，空/缺省 = 不限。 */
+  teammateProfessions?: string[]
   /**
    * 队内职业人数条件：空/缺省 = 不限。
    * 仅决定该人数下效果是否生效，不改变固定/叠层/转模的数值算法。

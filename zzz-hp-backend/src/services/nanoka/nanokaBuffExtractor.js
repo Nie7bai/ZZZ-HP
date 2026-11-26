@@ -25,6 +25,7 @@
  * 四类来源（都扫）：核心被动 / 额外能力 / 影画 1–6 / 招式文本 / 音擎精炼 1–5。
  */
 import { isCustomBuffStatKey } from '../../utils/calculatorBuffFields.js'
+import { normalizeTeammateProfessions } from '../../utils/buffEffectConditions.js'
 import { PROFESSION_ID_LABELS } from './nanokaBasicsMapper.js'
 import { normalizeSkillName, stripSkillTitlePrefix } from './nanokaSkillMapper.js'
 
@@ -58,14 +59,16 @@ export const SLOT_IDS = [
   'unit',
   'target',
   'conditions',
+  'teammateProfessions',
   'scope',
   'stacks',
+  'enabledDefault',
   'duration',
   'object',
 ]
 
 /** 允许复数的槽位（白名单） */
-export const MULTI_SLOT_IDS = ['conditions', 'elements']
+export const MULTI_SLOT_IDS = ['conditions', 'elements', 'teammateProfessions']
 
 /** 槽位中文名（`关键字：属性=… 动作=…` 的标签） */
 export const SLOT_LABELS = {
@@ -76,9 +79,11 @@ export const SLOT_LABELS = {
   unit: '单位',
   target: '目标',
   conditions: '条件',
+  teammateProfessions: '队友职业（满足任一）',
   /** **作用域** = 编辑器里的 `scope`（用户口径：字段名就叫「作用域」）；「限定招式」也并进这一格 */
   scope: '作用域',
   stacks: '层数',
+  enabledDefault: '默认启用',
   duration: '时长',
   object: '对象',
 }
@@ -352,7 +357,7 @@ export const CONVERT_PANEL_SOURCE_LABELS = {
 }
 
 /** 目标槽位：`无` = 默认自身（规格 §二） */
-export const TARGET_OPTIONS = ['自身', '全队', '指定职业', '指定阵营']
+export const TARGET_OPTIONS = ['自身', '全队']
 
 /** 对象槽位（增益作用在谁 / 什么上） */
 export const OBJECT_OPTIONS = ['当前招式', '装备者', '敌人', '能量']
@@ -369,47 +374,27 @@ export const DURATION_OPTIONS = [NONE, UNABLE]
 const PROFESSIONS = Object.values(PROFESSION_ID_LABELS)
 const beneficiaryProfessionCondition = (profession) => `仅${profession}代理人`
 const PROFESSION_CONDITION_RE = new RegExp(`^仅(${PROFESSIONS.join('|')})代理人$`)
-const MANUAL_STATE_CONDITION = '状态需手动启用'
-const MANUAL_STATE_CONDITION_RE = new RegExp(`^${MANUAL_STATE_CONDITION}$`)
+const LEGACY_MANUAL_STATE_CONDITION = '状态需手动启用'
+const SITUATION_CONDITION_RE =
+  /^(?:当|若|在)?(?:攻击(?:处于)?|(?:敌人|目标)处于)?(非失衡|失衡)(?:期|状态下?|状态期间)?(?:的?(?:敌人|目标))?(?:时|期间)?$/
 
-/**
- * **条件能被阶段2落地判据**（唯一真源）：句子（或条件文本）命中这些正则，才允许落到
- * `applySituation`、职业条件或默认启用状态；其余记为 `无法提取`。
- * 放在这里是因为 `CONDITION_OPTIONS` 要用它**反向过滤**候选池（见下）。
- */
-const MODELABLE_CONDITION_RES = [
-  /(?:攻击)?(?:处于)?非失衡/,
-  /(?:攻击)?(?:处于)?失衡/,
-  /队伍中存在|队伍中有|队内|同阵营|同属性|其他\[?异常\]?角色/,
-  PROFESSION_CONDITION_RE,
-  MANUAL_STATE_CONDITION_RE,
-]
+function readApplySituationCondition(value) {
+  if (/^失衡期与非失衡期(?:均生效|都生效)$/.test(value)) return 'global'
+  const phase = SITUATION_CONDITION_RE.exec(value)?.[1]
+  if (phase === '失衡') return 'stagger'
+  return phase === '非失衡' ? 'non_stagger' : null
+}
 
-/**
- * 条件下拉的**候选池**：只是"想提供的句式"，能不能进出下拉由 `MODELABLE_CONDITION_RES` 决定。
- * 阶段2 落不到的（触发时机 / 状态类）在这里被**自动过滤** —— 结构上保证「下拉里的每个选项
- * 阶段2 都能解析」，而不是靠人记得同步两张表（用户 2026-10-17：「解析不出来的根本不该出现」）。
- * 想让某个句式出现，先扩 `MODELABLE_CONDITION_RES` 和阶段2 的字段，它自己就会出现在下拉里。
- */
-const CONDITION_OPTION_CANDIDATES = [
-  '攻击失衡敌人时',
-  '攻击非失衡敌人时',
-  '发动强化特殊技时',
-  '发动连携技或终结技时',
-  '敌人处于属性异常状态时',
-  '队伍中存在与自身属性或阵营相同的角色时',
-  '队伍中存在其他异常角色或同阵营角色时',
-  ...PROFESSIONS.map(beneficiaryProfessionCondition),
-  MANUAL_STATE_CONDITION,
-]
+function isSupportedCondition(value) {
+  return PROFESSION_CONDITION_RE.test(value) || readApplySituationCondition(value) !== null
+}
 
-/**
- * 条件槽位下拉候选（**唯一允许复数**的槽位）。`无` = 无条件（全局），`无法提取` = 人工兜底。
- * 由候选池经白名单过滤而来；目前能出现的只有 失衡 / 非失衡 / 队伍职业条件 三类。
- */
+/** 条件列表按正式增益字段提供可编辑选项。 */
 export const CONDITION_OPTIONS = [
   NONE,
-  ...CONDITION_OPTION_CANDIDATES.filter((text) => MODELABLE_CONDITION_RES.some((re) => re.test(text))),
+  '攻击失衡敌人时',
+  '攻击非失衡敌人时',
+  ...PROFESSIONS.map(beneficiaryProfessionCondition),
   UNABLE,
 ]
 
@@ -425,8 +410,10 @@ export const SLOT_OPTIONS = {
   unit: [...UNIT_OPTIONS, NONE],
   target: [...TARGET_OPTIONS, NONE, UNABLE],
   conditions: CONDITION_OPTIONS,
+  teammateProfessions: [...PROFESSIONS, NONE, UNABLE],
   scope: SCOPE_OPTIONS,
   stacks: STACK_OPTIONS,
+  enabledDefault: [NONE, '开启', '关闭'],
   duration: DURATION_OPTIONS,
   object: [...OBJECT_OPTIONS, NONE, UNABLE],
   // —— 转模（动作=转化）专用槽位
@@ -508,12 +495,13 @@ const PREMISE_HEAD_RE =
 
 /** 把 `前提：效果` 拆成两个子句（`：` 不在括号里、且前半句像前提时才拆） */
 function splitClauseAtColon(clause) {
-  const index = clause.search(/[：:]/)
+  const colon = [...clause.matchAll(/\[[^\]]*\]|【[^】]*】|「[^」]*」|[：:]/g)]
+    .find(([token]) => token === '：' || token === ':')
+  const index = colon?.index ?? -1
   if (index <= 0) return [clause]
   const head = clause.slice(0, index)
   const tail = clause.slice(index + 1).trim()
   if (!tail) return [clause]
-  if (/[「」[\]【】]/.test(head)) return [clause] // `[强化特殊技：眩焰]` 这类名字不许拆
   if (!PREMISE_HEAD_RE.test(head)) return [clause]
   return [`${head}：`, tail]
 }
@@ -1369,7 +1357,7 @@ function extractThresholds(text) {
 /** 条件句判定：阈值句恒为条件；`…时/后/期间` 且（去掉自身名后）无数字时也是条件 */
 function isConditionOnly(text, selfNames = []) {
   if (extractThresholds(text).length) return true
-  if (!CONDITION_TAIL_RE.test(text)) return false
+  if (!CONDITION_TAIL_RE.test(text) && !TEAMMATE_REQUIREMENT_RE.test(text)) return false
   return gainNumbers(numberSafeText(text, selfNames)).length === 0
 }
 
@@ -1386,6 +1374,36 @@ function conditionList(parts) {
     if (!list.includes(text)) list.push(text)
   }
   return list.length ? list : noCondition()
+}
+
+const TEAMMATE_REQUIREMENT_RE =
+  /^(?:当|若)?(?:队伍中|队伍内|队内|队友中?|队伍)(?:存在|包含|拥有|有)(.+?)(?:时(?:触发|生效|发动)?)?$/
+const TEAMMATE_PROFESSION_RE = new RegExp(
+  String.raw`^(?:其他|另一名|至少一名)?(?:\[(${PROFESSIONS.join('|')})\]|(${PROFESSIONS.join('|')}))(?:角色|代理人|职业)?$`,
+)
+
+/** 只读纯职业条件。分隔项含阵营、属性或并且关系时，整项留作待补。 */
+function readTeammateRequirement(conditionText) {
+  const list = TEAMMATE_REQUIREMENT_RE.exec(conditionText)?.[1]
+  if (!list) return null
+  const options = list.split(/或者|或|、/).map((item) => item.trim())
+  if (options.length > 1 && !list.includes('或')) return null
+  const professions = options.map((item) => {
+    const match = TEAMMATE_PROFESSION_RE.exec(item)
+    return match?.[1] ?? match?.[2]
+  })
+  return professions.every(Boolean) ? normalizeTeammateProfessions(professions) : null
+}
+
+function splitTeammateRequirements(conditions, inherited = []) {
+  const requirements = new Map(inherited.map((roles) => [roles.join('/'), roles]))
+  const remaining = []
+  for (const condition of conditions) {
+    const roles = readTeammateRequirement(condition)
+    if (roles) requirements.set(roles.join('/'), roles)
+    else remaining.push(condition)
+  }
+  return { requirements: [...requirements.values()], remaining }
 }
 
 /**
@@ -1405,9 +1423,11 @@ const SLOT_VALUE_PREDICATES = {
   value: (value) => /^\d+(?:\.\d+)?%?$/.test(String(value).trim()),
   unit: (value) => UNIT_OPTIONS.includes(value),
   target: (value) => TARGET_OPTIONS.includes(value),
-  conditions: (value) => MODELABLE_CONDITION_RES.some((re) => re.test(value)),
+  conditions: isSupportedCondition,
+  teammateProfessions: (value) => PROFESSIONS.includes(value),
   scope: (value) => SCOPE_OPTIONS.includes(value),
   stacks: (value) => /^(?:最多\s*)?\d+\s*层$/.test(String(value).trim()),
+  enabledDefault: (value) => value === '开启' || value === '关闭',
   duration: (value) => /^\d+(?:\.\d+)?\s*秒$/.test(String(value).trim()),
   object: (value) => OBJECT_OPTIONS.includes(value),
 }
@@ -1773,7 +1793,7 @@ export function buildRulesTable() {
         ),
         items(
           '获得状态，随后描述增益或引用该状态',
-          '状态需手动启用 / 触发条件无法提取',
+          '默认启用=关闭，触发条件=无法提取',
           'enabledDefault=false',
           '状态名保留原文。可以唯一关联时继承明确的受益职业，有歧义时由人工确认。',
         ),
@@ -1783,8 +1803,14 @@ export function buildRulesTable() {
           'skillTargets',
           '触发招式留在获得状态的原文中。效果明确限定失衡时才写入对应生效情形。',
         ),
-        ...MODELABLE_CONDITION_RES.map((re) =>
-          items(reText(re), '保留条件文本', 'applySituation / 职业条件 / 默认启用', ''),
+        items(
+          '队友中有某职业或另一职业',
+          '队友职业（满足任一）',
+          'teammateProfessions',
+          '从增益提供者以外的队伍位置检查。只接受可以完整识别的职业列表。',
+        ),
+        ...CONDITION_OPTIONS.filter((option) => isSupportedCondition(option)).map((option) =>
+          items(option, option, PROFESSION_CONDITION_RE.test(option) ? 'applyProfession' : 'applySituation'),
         ),
         items('其余条件（未建模的触发器、周期等）', UNABLE, '', '标记待补，按软槽位规则映射'),
       ],
@@ -1844,7 +1870,7 @@ const STRUCTURAL_CONDITION_RE = /刷新|单独结算|独立结算|重复触发|�
  * 工具**能表达**的条件（其余一律 `无法提取`）：
  *   - 失衡 / 非失衡 → `applySituation`
  *   - 队伍 / 职业条件 → `applyProfession` / `teamProfession*`
- *   - 手动启用状态 → `enabledDefault=false`
+ *   - 默认启用和队友职业分别由各自槽位映射
  * （元素限定走 `元素` 槽位、招式限定走 `作用域` + 锚点、层数走 `层数` 槽位，都不算「条件」）
  *
  * 判据本体在文件上方（`CONDITION_OPTIONS` 反向过滤要用它，所以定义提前了）。
@@ -1882,7 +1908,7 @@ export function classifyConditions({ conditions = [], statValue = '', isConvert 
       absorbed.push(text)
       continue
     }
-    if (MODELABLE_CONDITION_RES.some((re) => re.test(text))) {
+    if (isSupportedCondition(text)) {
       if (!kept.includes(text)) kept.push(text)
       continue
     }
@@ -2096,12 +2122,14 @@ const SLOT_WHITELIST_DESCRIPTIONS = {
   action: '动作词表（提升 / 降低 / 无视 / 转化）/ `无法提取`',
   value: '纯数字 / `无` / `无法提取`',
   unit: '单位词表（% / 点）/ `无`',
-  target: '目标词表（自身 / 全队 / 指定职业 / 指定阵营）/ `无`',
-  conditions: '失衡、非失衡、职业条件、状态手动启用，其余为 `无法提取`',
+  target: '目标词表（自身 / 全队）/ `无`',
+  conditions: '作用情况、受益职业，其余为 `无法提取`',
+  teammateProfessions: '可选择多个队友职业，符合任一项即可',
   scope: '作用域词表（招式 / 异常 / 紊乱 / 乱流 / 异放 / 耀变 / 异化系数）/ `无`',
   stacks: '`最多 N 层` / `N 层` / `无` / `无法提取`',
-  duration: '`N 秒` / `无` / `无法提取`',
-  object: '对象词表（当前招式 / 装备者 / 敌人 / 能量）/ `无`',
+  enabledDefault: '开启 / 关闭，缺省沿用默认启用',
+  duration: '`N 秒` 作为备注',
+  object: '原文对象信息，当前招式仅用于备注',
 }
 
 /** 敌人削弱族的目标兜底已并入 `detectTarget`（`default-team` = 原文没写明给谁） */
@@ -2121,7 +2149,10 @@ function detectObject(clauseText, action, inherited) {
 }
 
 /** 一条关键字的槽位（**不许缺格**） */
-function createSlots({ stat, elements, action, value, unit, target, conditions, scope, stacks, duration, object }) {
+function createSlots({
+  stat, elements, action, value, unit, target, conditions, teammateProfessions,
+  scope, stacks, enabledDefault, duration, object,
+}) {
   return {
     stat: stat?.value ?? NONE,
     elements: Array.isArray(elements) && elements.length ? [...elements] : [NONE],
@@ -2130,8 +2161,10 @@ function createSlots({ stat, elements, action, value, unit, target, conditions, 
     unit: unit?.value ?? NONE,
     target: target?.value ?? NONE,
     conditions: conditions?.value ?? noCondition(),
+    teammateProfessions: teammateProfessions ?? [NONE],
     scope: scope?.value ?? NONE,
     stacks: stacks ?? NONE,
+    enabledDefault: enabledDefault ?? NONE,
     duration: duration ?? NONE,
     object: object?.value ?? NONE,
   }
@@ -2269,9 +2302,11 @@ export function extractKeywordEffects({
 
       const stateGrant = readStateGrant(clause, referencedStateNames)
       if (stateGrant) {
-        const trigger = [prefix, ...pending, stateGrant.trigger].filter(Boolean).join('，')
+        const triggerConditions = [prefix, ...pending, stateGrant.trigger].filter(Boolean)
+        const trigger = triggerConditions.join('，')
         const { names, teamTarget, profession } = stateGrant
-        stateGrants.push({ names, sentenceIndex: unitIndex, clauseIndex, teamTarget, profession })
+        const { requirements } = splitTeammateRequirements(triggerConditions)
+        stateGrants.push({ names, sentenceIndex: unitIndex, clauseIndex, teamTarget, profession, requirements })
         stateReferences[unitIndex].push({ kind: 'grant', names, text: rawClause, clauseIndex, trigger })
         prefix = ''
         pending = []
@@ -2395,10 +2430,11 @@ export function extractKeywordEffects({
         : null)
       // **条件只取本句**（用户 2026-10-16 修 1）：抬头条件（`…：`）已被合并进本句，
       // 招式限定并进「作用域」槽位，不再塞进条件。
-      const clauseConditions = conditionList([
+      const { requirements, remaining } = splitTeammateRequirements(conditionList([
         prefix, ...pending, ...thresholds,
-        ...(stateContext ? [MANUAL_STATE_CONDITION, UNABLE] : []),
-      ])
+        ...(stateContext ? [UNABLE] : []),
+      ]), stateContext?.grant?.requirements)
+      const teammateProfessions = requirements.length > 1 ? [UNABLE] : requirements[0]
       let emittedInClause = false
 
       for (const group of groups) {
@@ -2538,7 +2574,7 @@ export function extractKeywordEffects({
             inheritsStateTarget && inheritedGrant.profession
               ? beneficiaryProfessionCondition(inheritedGrant.profession)
               : '',
-            ...clauseConditions,
+            ...remaining,
             readExplicitStaggerCondition(group),
           ]),
           statValue: stat.value,
@@ -2566,8 +2602,10 @@ export function extractKeywordEffects({
             unit,
             target,
             conditions: { value: conditionInfo.value, source: 'literal' },
+            teammateProfessions,
             scope,
             stacks: NONE,
+            enabledDefault: stateContext ? '关闭' : NONE,
             duration: NONE,
             object,
           }),
@@ -2956,7 +2994,23 @@ export const SOFT_UNABLE_SLOTS = SLOT_IDS.filter((id) => !HARD_UNABLE_SLOTS.incl
  * 关键词槽位 → 增益块字段；`无` = 该维度没出现（按默认值落），`无法提取` 按上面分硬 / 软两类处理。
  */
 export function mapKeywordsToEffect(keyword = {}) {
-  const slots = isPlainObject(keyword.slots) ? keyword.slots : {}
+  const sourceSlots = isPlainObject(keyword.slots) ? keyword.slots : {}
+  const anchors = isPlainObject(keyword.anchors) ? keyword.anchors : null
+  const skillTargets = Array.isArray(anchors?.skillTargets) ? anchors.skillTargets : []
+  const sourceConditions = Array.isArray(sourceSlots.conditions) ? sourceSlots.conditions : []
+  const legacyManualState = sourceConditions.includes(LEGACY_MANUAL_STATE_CONDITION)
+  const { value: conditions } = classifyConditions({
+    conditions: sourceConditions.filter((condition) => condition !== LEGACY_MANUAL_STATE_CONDITION),
+    statValue: sourceSlots.stat,
+    isConvert: sourceSlots.action === '转化',
+  })
+  const slots = { ...sourceSlots, conditions }
+  if (legacyManualState && slots.enabledDefault == null) slots.enabledDefault = '关闭'
+  if (slots.target && slots.target !== NONE && !TARGET_OPTIONS.includes(slots.target)) slots.target = UNABLE
+  if (slots.scope === '招式' && !skillTargets.length) slots.scope = UNABLE
+  if (Array.isArray(slots.teammateProfessions) && slots.teammateProfessions.some(
+    (value) => value && value !== NONE && !PROFESSIONS.includes(value),
+  )) slots.teammateProfessions = [UNABLE]
   const steps = []
   const unmapped = []
   const notices = []
@@ -3023,12 +3077,14 @@ export function mapKeywordsToEffect(keyword = {}) {
   const objectRaw = slotValue('object')
   const stacksRaw = slotValue('stacks')
   const durationRaw = slotValue('duration')
-  const conditionsRaw = slotValue('conditions')
+  const teammateProfessions = normalizeTeammateProfessions(
+    (Array.isArray(slots.teammateProfessions) ? slots.teammateProfessions : [])
+      .filter((profession) => PROFESSIONS.includes(profession)),
+  )
   const target = String(targetRaw ?? '').trim()
   const object = String(objectRaw ?? '').trim()
   const stacks = String(stacksRaw ?? '').trim()
   const duration = String(durationRaw ?? '').trim()
-  const conditions = Array.isArray(conditionsRaw) && conditionsRaw.length ? conditionsRaw : [NONE]
   const value = Number(slots.value)
   const isConvert = action === '转化'
 
@@ -3107,27 +3163,19 @@ export function mapKeywordsToEffect(keyword = {}) {
   // —— 条件 → applySituation（失衡 / 非失衡是工具字段；其余能表达的保留文本，落不到字段的
   //    在阶段1 就已经写成 `无法提取` —— 见 `classifyConditions`）
   const conditionTexts = conditions.filter((item) => item && item !== NONE && item !== UNABLE)
-  const unableConditions = conditions.filter((item) => item === UNABLE)
   const beneficiaryProfessions = new Set(
     conditionTexts.map((text) => PROFESSION_CONDITION_RE.exec(text)?.[1]).filter(Boolean),
   )
   const [applyProfession = null] = beneficiaryProfessions
   if (beneficiaryProfessions.size > 1) unmapped.push('单条增益只能选择一个受益职业')
-  const manualState = conditionTexts.includes(MANUAL_STATE_CONDITION)
   if (applyProfession) steps.push(`受益职业=${applyProfession} → applyProfession=${applyProfession}`)
-  if (manualState) steps.push('状态需手动启用 → 默认关闭')
-  let applySituation = 'global'
-  if (!conditionTexts.length && !unableConditions.length) {
-    steps.push(`条件=${NONE} → applySituation=global`)
-  } else {
-    const joined = conditionTexts.join('，')
-    if (/非失衡/.test(joined)) applySituation = 'non_stagger'
-    else if (/失衡/.test(joined)) applySituation = 'stagger'
-    steps.push(
-      `条件=${conditions.join(' + ')} → applySituation=${applySituation}` +
-        (applySituation === 'global' ? '（工具是期望值计算，没建模的条件不许塞进 note）' : ''),
-    )
-  }
+  if (teammateProfessions?.length) steps.push(`队友职业满足任一项 → ${teammateProfessions.join('或')}`)
+  const situations = new Set(conditionTexts.map(readApplySituationCondition).filter(Boolean))
+  const [applySituation = 'global'] = situations
+  if (situations.size > 1) unmapped.push('单条增益只能选择一个作用情况')
+  steps.push(`作用情况 → applySituation=${applySituation}`)
+  const enabledDefault = slots.enabledDefault !== '关闭'
+  if (!enabledDefault || slots.enabledDefault === '开启') steps.push(`默认启用 → ${enabledDefault}`)
 
   // —— 目标 → applyTarget
   let applyTarget = 'self'
@@ -3162,8 +3210,6 @@ export function mapKeywordsToEffect(keyword = {}) {
   }
 
   // —— 招式锚点（v3：并进「作用域=招式」；关联不上前面已 return）
-  const anchors = keyword.anchors && isPlainObject(keyword.anchors) ? keyword.anchors : null
-  const skillTargets = Array.isArray(anchors?.skillTargets) ? anchors.skillTargets : []
   if (skillTargets.length) {
     if (sharpenOnly) {
       scope = 'skill'
@@ -3230,16 +3276,13 @@ export function mapKeywordsToEffect(keyword = {}) {
     steps.push(`层数=${stacks} → 转模条只进 note（kind 恒为 convert）`)
   }
 
-  // —— 时长：**不转化**，只进 note（规格 §三）
+  // 原文时长作为备注保留。
   if (duration && duration !== NONE) {
-    steps.push(`时长=${duration} → 不转化，只进 note（后续再议）`)
+    steps.push(`时长=${duration} → 增益备注`)
   }
 
-  // —— 对象：阶段2 不做转模自动判定（留空，界面可手改）
   if (object === '当前招式') {
-    steps.push('对象=当前招式 → 阶段2 不做按招式锚点生效（skillTargets 留空），只进 note')
-  } else if (object === '能量') {
-    steps.push('对象=能量 → 按能量回复口径（energyRegenFlat）')
+    steps.push('对象=当前招式 → 增益备注')
   }
 
   const convertNote = isConvert
@@ -3248,7 +3291,6 @@ export function mapKeywordsToEffect(keyword = {}) {
   // **note 只允许**（用户 2026-10-16）：用户手填的内容，或**枚举性 / 结构化**的固定短语
   // （时长、对象、转模说明、作用域、同义反复已忽略…）。**绝不自动粘原句 / 半句** ——
   // 原文照旧整块入库（`formatSourceBlock` 的 `原文：…`），不由 note 承担。
-  void conditionTexts
   const scopeSlotLabel = String(keyword?.slots?.scope ?? NONE).trim()
   const tautologyDropped = Array.isArray(keyword?.tautologyDropped) ? keyword.tautologyDropped : []
   const noteParts = [
@@ -3283,6 +3325,7 @@ export function mapKeywordsToEffect(keyword = {}) {
         applyTarget,
         applySituation,
         applyProfession,
+        teammateProfessions,
         teamProfession: null,
         teamProfessionValues: null,
         teamProfessionMinCount: null,
@@ -3295,7 +3338,7 @@ export function mapKeywordsToEffect(keyword = {}) {
         maxStacks,
         valuePerStack,
         defaultStacks: 1,
-        enabledDefault: !manualState,
+        enabledDefault,
         note,
         // 招式限定 = 条件（锚点关联到既有招式小类 / 大类）
         skillCategory: anchors?.skillCategory || undefined,

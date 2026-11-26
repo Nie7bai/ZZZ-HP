@@ -33,6 +33,7 @@ import {
   effectHasGenericConditions,
   normalizeEffectConditionsForStat,
   normalizeGroupId,
+  normalizeTeammateProfessions,
 } from '@/utils/buffDamageTypes'
 import { isLuminousElement } from '@/utils/remielUtils'
 import {
@@ -257,6 +258,7 @@ export function createEmptyBuffEffect(
       overrides.applyProfession == null || String(overrides.applyProfession).trim() === ''
         ? null
         : String(overrides.applyProfession).trim(),
+    teammateProfessions: normalizeTeammateProfessions(overrides.teammateProfessions),
     teamProfession:
       overrides.teamProfession == null || String(overrides.teamProfession).trim() === ''
         ? null
@@ -410,6 +412,7 @@ export function cloneEffectInstance(
   return {
     ...effect,
     id: effectInstanceId(sourceKey, blockId, effect.id),
+    teammateProfessions: effect.teammateProfessions?.slice(),
     skillTargets: effect.skillTargets?.map((item) => ({ ...item })),
     elementFilter: Array.isArray(effect.elementFilter)
       ? [...effect.elementFilter]
@@ -754,11 +757,13 @@ export function countTeamProfession(
   teamSlots: Array<{ agentId?: string | null }>,
   agents: Array<{ id: string; profession?: string | null }>,
   profession: string,
+  excludedSlot?: number | null,
 ): number {
   const required = profession.trim()
   if (!required) return 0
   let count = 0
-  for (const slot of teamSlots) {
+  for (const [slotIndex, slot] of teamSlots.entries()) {
+    if (slotIndex === excludedSlot) continue
     const agentId = String(slot.agentId ?? '').trim()
     if (!agentId || agentId === 'none') continue
     const agent = agents.find((item) => item.id === agentId)
@@ -798,24 +803,23 @@ export function effectMatchesTeamProfessionGate(
 export function formatTeamProfessionGateLabel(
   effect: Pick<
     BuffEffect,
-    'teamProfession' | 'teamProfessionValues' | 'teamProfessionMinCount' | 'value'
+    'teammateProfessions' | 'teamProfession' | 'teamProfessionValues' | 'teamProfessionMinCount' | 'value'
   >,
 ): string {
+  const teammate = effect.teammateProfessions?.length
+    ? `队友职业·${effect.teammateProfessions.join('或')}`
+    : ''
   const required = effect.teamProfession?.trim()
-  if (!required) return ''
+  if (!required) return teammate
   const values = normalizeTeamProfessionValues(
     effect.teamProfessionValues,
     effect.teamProfession,
     effect.teamProfessionMinCount,
     effect.value,
   )
-  if (values?.some((v) => v != null)) {
-    const parts = values
-      .map((v, i) => (v == null ? null : `${i + 1}人`))
-      .filter(Boolean)
-    return parts.length ? `队内·${required}·${parts.join('/')}` : `队内·${required}`
-  }
-  return `队内·${required}`
+  const people = values?.flatMap((value, i) => value == null ? [] : [`${i + 1}人`]).join('/')
+  const countGate = people ? `队内·${required}·${people}` : `队内·${required}`
+  return teammate ? `${teammate} · ${countGate}` : countGate
 }
 
 /** 受益代理人职业限制（谁能吃到这条效果） */
@@ -886,6 +890,8 @@ export function resolveEffectsToMods(
     selection?: { enabledIds?: Record<string, boolean> } | null
     /** 队内某职业人数；有人数条件的效果必须传入，否则带条件效果一律不结算 */
     resolveTeamProfessionCount?: (profession: string) => number
+    /** 提供者以外的队伍槽位中该职业的人数。缺少队伍上下文时，带条件的效果不生效。 */
+    resolveTeammateProfessionCount?: (profession: string) => number
     /** 当前结算主槽角色职业（防线 Buff 等 applyProfession 条件） */
     beneficiaryProfession?: string | null
     /**
@@ -961,6 +967,12 @@ export function resolveEffectsToMods(
         emit('team-count-mismatch', undefined, matchElement)
         continue
       }
+    }
+    if (effect.teammateProfessions?.length && !effect.teammateProfessions.some(
+      (profession) => (options.resolveTeammateProfessionCount?.(profession) ?? 0) > 0,
+    )) {
+      emit('teammate-profession-mismatch', undefined, matchElement)
+      continue
     }
     if (effect.applyProfession?.trim()) {
       const required = effect.applyProfession.trim()
@@ -1140,6 +1152,7 @@ export function normalizeBuffEffect(value: unknown): BuffEffect | null {
       entry.applyProfession == null || String(entry.applyProfession).trim() === ''
         ? null
         : String(entry.applyProfession).trim(),
+    teammateProfessions: normalizeTeammateProfessions(entry.teammateProfessions),
     teamProfession:
       entry.teamProfession == null || String(entry.teamProfession).trim() === ''
         ? null

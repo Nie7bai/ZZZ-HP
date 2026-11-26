@@ -133,6 +133,15 @@ const applyProfession = computed({
   get: () => first.value?.applyProfession ?? '',
   set: (value: string) => patchField('applyProfession', value || null),
 })
+const teammateProfessions = computed(() => first.value?.teammateProfessions ?? [])
+
+function setTeammateProfession(role: string, checked: boolean) {
+  const next = AGENT_ROLES.filter((item) =>
+    item === role ? checked : teammateProfessions.value.includes(item),
+  )
+  patchField('teammateProfessions', next.length ? next : undefined)
+}
+
 const teamProfession = computed({
   get: () => first.value?.teamProfession ?? '',
   set: (value: string) => patchField('teamProfession', value || null),
@@ -504,6 +513,7 @@ interface RevealState {
   skill: boolean
   damageType: boolean
   teamProfession: boolean
+  teammateProfessions: boolean
   anomaly: boolean
   enabledDefault: boolean
 }
@@ -517,6 +527,7 @@ const revealed = ref<RevealState>({
   skill: false,
   damageType: false,
   teamProfession: false,
+  teammateProfessions: false,
   anomaly: false,
   enabledDefault: false,
 })
@@ -551,6 +562,9 @@ const showDamageTypes = computed(
 )
 const showTeamProfession = computed(
   () => Boolean(first.value?.teamProfession) || revealed.value.teamProfession,
+)
+const showTeammateProfessions = computed(
+  () => teammateProfessions.value.length > 0 || revealed.value.teammateProfessions,
 )
 const showEnabledDefault = computed(
   () => first.value?.enabledDefault === false || revealed.value.enabledDefault,
@@ -625,10 +639,11 @@ const condMenuItems = computed<CondMenuItem[]>(() => {
   const items: CondMenuItem[] = [
     { key: 'situation', label: '作用情况', shown: showSituation.value },
     { key: 'damageType', label: '伤害类型', shown: showDamageTypes.value, only: tier.value === 3 },
-    { key: 'profession', label: '职业限制', shown: showProfession.value },
+    { key: 'profession', label: '受益职业', shown: showProfession.value },
     { key: 'element', label: '属性限定', shown: showElement.value },
     { key: 'skill', label: '限定招式', shown: showSkill.value },
     { key: 'teamProfession', label: '队内职业人数', shown: showTeamProfession.value },
+    { key: 'teammateProfessions', label: '队友职业（满足任一）', shown: showTeammateProfessions.value },
     { key: 'enabledDefault', label: '默认启用', shown: showEnabledDefault.value },
   ]
   return items.filter((item) => item.only !== false)
@@ -651,6 +666,7 @@ function resetCondition(key: RevealKey) {
   else if (key === 'skill') setSkillLimited(false)
   else if (key === 'damageType') clearDamageTypes()
   else if (key === 'teamProfession') setTeamProfession('')
+  else if (key === 'teammateProfessions') patchField('teammateProfessions', undefined)
   else if (key === 'enabledDefault') enabledDefault.value = true
   revealed.value = { ...revealed.value, [key]: false }
 }
@@ -805,7 +821,7 @@ onBeforeUnmount(() => {
           </span>
 
           <span v-if="showProfession" class="inline-field">
-            <span>职业</span>
+            <span>受益职业</span>
             <select v-model="applyProfession">
               <option value="">不限</option>
               <option v-for="role in AGENT_ROLES" :key="role" :value="role">{{ role }}</option>
@@ -815,6 +831,26 @@ onBeforeUnmount(() => {
               class="reset-x"
               title="恢复默认（不限）"
               @click="resetCondition('profession')"
+            >
+              ✕
+            </button>
+          </span>
+
+          <span v-if="showTeammateProfessions" class="dmg-line">
+            <span class="line-sub">队友职业（满足任一）</span>
+            <label v-for="role in AGENT_ROLES" :key="role" class="chip">
+              <input
+                type="checkbox"
+                :checked="teammateProfessions.includes(role)"
+                @change="setTeammateProfession(role, ($event.target as HTMLInputElement).checked)"
+              />
+              {{ role }}
+            </label>
+            <button
+              type="button"
+              class="reset-x"
+              title="清除队友职业条件"
+              @click="resetCondition('teammateProfessions')"
             >
               ✕
             </button>

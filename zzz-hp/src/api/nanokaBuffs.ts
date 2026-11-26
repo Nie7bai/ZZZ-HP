@@ -32,7 +32,9 @@ export type NanokaSlotId =
   | 'unit'
   | 'target'
   | 'conditions'
+  | 'teammateProfessions'
   | 'stacks'
+  | 'enabledDefault'
   | 'duration'
   | 'object'
 
@@ -55,9 +57,12 @@ export interface NanokaKeywordSlots {
   target: string
   /** **允许复数**的槽位之一（与 `elements` 一起构成复数白名单） */
   conditions: string[]
+  /** 所选队友职业为或关系。 */
+  teammateProfessions?: string[]
   /** **作用域**（= 编辑器 `scope`）：`招式 / 属性异常 / 紊乱 / 乱流 / 异放 / 耀变 / 异化系数` 或 `无` */
   scope: string
   stacks: string
+  enabledDefault?: string
   duration: string
   object: string
 }

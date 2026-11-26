@@ -210,10 +210,10 @@ const SLOT_ORDER = [
   'unit',
   'target',
   'conditions',
+  'teammateProfessions',
   'scope',
   'stacks',
-  'duration',
-  'object',
+  'enabledDefault',
 ] as const
 
 /** 允许复数的槽位（用户 2026-10-16：复数白名单 = 条件 / 元素） */
@@ -227,9 +227,11 @@ const SLOT_LABELS: Record<string, string> = {
   unit: '单位',
   target: '目标',
   conditions: '条件',
+  teammateProfessions: '队友职业（满足任一）',
   /** 作用域 = 编辑器里的 `scope`（用户 2026-10-16：字段名就叫「作用域」）；「限定招式」并进这一格 */
   scope: '作用域',
   stacks: '层数',
+  enabledDefault: '默认启用',
   duration: '时长',
   object: '对象',
   // 转模文案定稿（用户 2026-10-16；括号里是它对应的 normalizeConvert 字段）
@@ -326,7 +328,7 @@ function isEmptySlotValue(value: unknown): boolean {
 const NUMBER_SLOT_IDS = ['value', 'convertRatio', 'convertBase', 'convertCap']
 
 /** 单值文本槽位（下拉 / 输入框直接写回 `row.slots[id]`） */
-const SINGLE_TEXT_SLOT_IDS = ['stat', 'action', 'unit', 'target', 'scope', 'stacks', 'duration', 'object']
+const SINGLE_TEXT_SLOT_IDS = ['stat', 'action', 'unit', 'target', 'scope', 'stacks', 'enabledDefault']
 
 function isNumberSlot(slotId: string): boolean {
   return NUMBER_SLOT_IDS.includes(slotId)
@@ -695,6 +697,9 @@ function defaultGain(effect: NanokaLayerCEffect): BuffEffect | null {
 
 function toRow(effect: NanokaKeywordEffect, item: NanokaBuffItem, index: number): KeywordRow {
   const key = `${item.slot}#${index}`
+  const conditionValues = Array.isArray(effect.slots.conditions) ? effect.slots.conditions : []
+  const legacyManualState = conditionValues.includes('状态需手动启用')
+  const conditions = conditionValues.filter((condition) => condition !== '状态需手动启用')
   return {
     key,
     itemKey: item.slot,
@@ -715,9 +720,11 @@ function toRow(effect: NanokaKeywordEffect, item: NanokaBuffItem, index: number)
       value: effect.slots.value,
       unit: String(effect.slots.unit ?? NONE),
       target: String(effect.slots.target ?? NONE),
-      conditions: Array.isArray(effect.slots.conditions) ? [...effect.slots.conditions] : [NONE],
+      conditions: conditions.length ? conditions : [NONE],
+      teammateProfessions: [...(effect.slots.teammateProfessions ?? [NONE])],
       scope: String(effect.slots.scope ?? NONE),
       stacks: String(effect.slots.stacks ?? NONE),
+      enabledDefault: effect.slots.enabledDefault ?? (legacyManualState ? '关闭' : NONE),
       duration: String(effect.slots.duration ?? NONE),
       object: String(effect.slots.object ?? NONE),
     },
@@ -1136,6 +1143,8 @@ function setSlot(row: KeywordRow, slotId: string, value: unknown) {
     row.slots.conditions = Array.isArray(value) ? value.map((item) => String(item)) : [String(value)]
   } else if (slotId === 'elements') {
     row.slots.elements = Array.isArray(value) ? value.map((item) => String(item)) : [String(value)]
+  } else if (slotId === 'teammateProfessions') {
+    row.slots.teammateProfessions = Array.isArray(value) ? value.map(String) : [String(value)]
   } else if (SINGLE_TEXT_SLOT_IDS.includes(slotId)) {
     ;(row.slots as unknown as Record<string, string>)[slotId] = String(value)
   } else {
@@ -1161,6 +1170,14 @@ function multiValues(row: KeywordRow, slotId: string): string[] {
   if (slotId === 'conditions') return row.slots.conditions
   if (slotId === 'elements') return row.slots.elements
   return []
+}
+
+function setKeywordTeammateProfession(row: KeywordRow, profession: string, checked: boolean) {
+  const choices = optionsOf('teammateProfessions').filter((option) => option !== NONE && option !== UNABLE)
+  const next = choices.filter((option) =>
+    option === profession ? checked : row.slots.teammateProfessions?.includes(option),
+  )
+  setSlot(row, 'teammateProfessions', next.length ? next : [NONE])
 }
 
 function addMulti(row: KeywordRow, slotId: string) {
@@ -1206,7 +1223,11 @@ function removeRow(row: KeywordRow) {
 function keywordPayload() {
   return rows.value.map((row) => ({
     key: row.key,
-    slots: { ...row.slots, conditions: [...row.slots.conditions] },
+    slots: {
+      ...row.slots,
+      conditions: [...row.slots.conditions],
+      teammateProfessions: [...(row.slots.teammateProfessions ?? [])],
+    },
     convert: row.convert ? { ...row.convert } : null,
     stackMax: row.stackMax,
     durationSeconds: row.durationSeconds,
@@ -1698,7 +1719,22 @@ const wasteCount = computed(() =>
                       <option :value="slotEditValue(entry)">{{ displaySlotValue(entry.id, slotEditValue(entry)) }}</option>
                     </select>
 
-                    <!-- 多值槽位（条件 / 元素）：逐条列下拉，选项里含该条当前值 -->
+                    <div v-else-if="entry.id === 'teammateProfessions'" class="nbf-teammate-options">
+                      <label
+                        v-for="profession in optionsOf(entry.id).filter((option) => option !== NONE && option !== UNABLE)"
+                        :key="profession"
+                        class="nbf-chip"
+                      >
+                        <input
+                          type="checkbox"
+                          :checked="row.slots.teammateProfessions?.includes(profession)"
+                          @change="setKeywordTeammateProfession(row, profession, ($event.target as HTMLInputElement).checked)"
+                        />
+                        {{ profession }}
+                      </label>
+                    </div>
+
+                    <!-- 条件与元素按各自的合法选项编辑。 -->
                     <template v-else-if="MULTI_SLOT_IDS.includes(entry.id)">
                       <div class="nbf-conditions">
                         <div
@@ -1745,12 +1781,21 @@ const wasteCount = computed(() =>
                       :value="slotEditValue(entry)"
                       @change="setSlot(row, entry.id, ($event.target as HTMLSelectElement).value)"
                     >
-                      <option v-for="option in slotOptionsFor(entry.id, entry.value)" :key="option" :value="option">
+                      <option
+                        v-for="option in slotOptionsFor(entry.id, entry.value).filter(
+                          (value) => entry.id !== 'scope' || value !== '招式' || row.anchors.skillTargets.length,
+                        )"
+                        :key="option"
+                        :value="option"
+                      >
                         {{ displaySlotValue(entry.id, option) }}
                       </option>
                     </select>
                   </div>
                 </div>
+                <p v-if="!isEmptySlotValue(row.slots.duration) && row.slots.duration !== UNABLE" class="nbf-sub">
+                  增益备注记录时长 {{ row.slots.duration }}
+                </p>
               </div>
           </div>
         </div>
@@ -2868,6 +2913,12 @@ const wasteCount = computed(() =>
 
 .nbf-slot-locked .nbf-slot-input {
   cursor: not-allowed;
+}
+
+.nbf-teammate-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .nbf-conditions {

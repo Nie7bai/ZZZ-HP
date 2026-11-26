@@ -39,6 +39,7 @@ export interface EffectConditions {
   skillTargets?: BuffSkillTarget[]
   elementFilter?: 'all' | string[]
   applyProfession?: string | null
+  teammateProfessions?: string[]
   teamProfession?: string | null
   teamProfessionValues?: Array<number | null> | null
   teamProfessionMinCount?: number | null

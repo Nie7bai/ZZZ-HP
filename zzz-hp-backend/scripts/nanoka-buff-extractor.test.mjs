@@ -74,7 +74,7 @@ import {
   smartMergeParse,
   summarizeItems,
 } from '../src/services/nanokaBuffService.js'
-import { normalizeBuffScopes } from '../src/services/calculatorBuffService.js'
+import { normalizeBuffScopes, normalizeEffectList } from '../src/services/calculatorBuffService.js'
 import { buildAffixEffectTemplate } from '../src/utils/affixEffectTemplate.js'
 import nanokaBuffRoutes from '../src/routes/nanokaBuffRoutes.js'
 import { requireAdmin } from '../src/middleware/requireAdmin.js'
@@ -171,18 +171,18 @@ test('只展开有词表或通用属性兜底的空术语标签，保留已有�
 
 // ================================================================== 2. 9 槽位模型
 
-test('槽位不许缺格（9 常规 + 元素 + 作用域）：每条关键字都能渲染出全部槽位（属性写工具语义）', () => {
+test('每条关键字都能渲染出完整槽位，属性沿用工具语义', () => {
   const { effect } = firstEffect('造成的伤害提升10%')
   assert.deepEqual(Object.keys(effect.slots), SLOT_IDS)
   for (const id of SLOT_IDS) assert.ok(id in effect.slots, `缺少槽位 ${id}`)
   assert.match(
     formatKeywordSlots(effect.slots),
-    /^属性=增伤 元素=无 动作=提升 数值=10 单位=% 目标=无 条件=无 作用域=无 层数=无 时长=无 对象=无$/,
+    /^属性=增伤 元素=无 动作=提升 数值=10 单位=% 目标=无 条件=无 队友职业（满足任一）=无 作用域=无 层数=无 默认启用=无 时长=无 对象=无$/,
   )
 })
 
-test('元素**不拆条**：一条关键字带多个元素 → elementFilter 数组（复数白名单：条件 / 元素）', () => {
-  assert.deepEqual(MULTI_SLOT_IDS, ['conditions', 'elements'])
+test('元素不拆条，一条关键字带多个元素', () => {
+  assert.deepEqual(MULTI_SLOT_IDS, ['conditions', 'elements', 'teammateProfessions'])
   const { effects } = extractKeywordEffects({
     text: '造成的火属性伤害和冰属性伤害提升10%',
     origin: 'test',
@@ -259,7 +259,7 @@ test('1 段原文 → N 条关键字（除「条件」外，任何槽位出现�
   assert.equal(effects[1].slots.target, '全队')
 })
 
-test('条件槽位是**允许复数**的槽位（白名单 = 条件 / 元素）；落不到字段的写「无法提取」', () => {
+test('条件可并存，落不到字段的标为无法提取', () => {
   const { effect } = firstEffect('若能量不足40点，攻击失衡敌人时，造成的伤害提升10%')
   assert.ok(Array.isArray(effect.slots.conditions))
   // 「攻击失衡敌人时」是工具能表达的（applySituation）；「能量不足40点」是触发器 → 无法提取
@@ -269,7 +269,44 @@ test('条件槽位是**允许复数**的槽位（白名单 = 条件 / 元素）�
     !effect.slots.conditions.some((item) => /能量不足/.test(item)),
     '不许把原句片段塞进条件槽（那是伪造「可转换」）',
   )
-  assert.deepEqual(MULTI_SLOT_IDS, ['conditions', 'elements'])
+  assert.deepEqual(MULTI_SLOT_IDS, ['conditions', 'elements', 'teammateProfessions'])
+})
+
+test('条件下拉的生效项能落到正式字段，旧的手动状态值兼容为关闭默认启用', () => {
+  const base = { stat: '增伤', action: '提升', value: 25, unit: '%' }
+  for (const condition of CONDITION_OPTIONS.filter((value) => value !== NONE && value !== UNABLE)) {
+    const { effect } = mapKeywordsToEffect({ slots: { ...base, conditions: [condition] } })
+    assert.ok(effect.applyProfession || effect.applySituation !== 'global', condition)
+  }
+  assert.ok(!CONDITION_OPTIONS.includes('状态需手动启用'))
+  assert.ok(!SLOT_OPTIONS.target.includes('指定阵营'))
+  assert.equal(mapKeywordsToEffect({
+    slots: { ...base, conditions: ['状态需手动启用'] },
+  }).effect.enabledDefault, false)
+  assert.equal(mapKeywordsToEffect({
+    slots: { ...base, enabledDefault: '开启' },
+  }).effect.enabledDefault, true)
+  assert.ok(mapKeywordsToEffect({ slots: { ...base, scope: '招式' } }).unableSlots.includes('scope'))
+})
+
+test('队友职业解析为或关系，混合阵营和并列必选条件交给人工', () => {
+  const valid = simplifyText({
+    text: '队友中包含击破职业或防护职业时，攻击失衡敌人时，造成的伤害提升25%',
+  }).effects[0]
+  assert.deepEqual(valid.slots.teammateProfessions, ['击破', '防护'])
+  assert.deepEqual(valid.layerC.teammateProfessions, ['击破', '防护'])
+  assert.equal(valid.layerC.applySituation, 'stagger')
+  assert.equal(valid.layerC.teamProfession, null)
+
+  for (const requirement of [
+    '队伍中存在其他异常角色或同阵营角色时',
+    '队伍中存在[击破]角色和[防护]角色时',
+    '队伍中存在与自身属性或阵营相同的角色时',
+  ]) {
+    const [effect] = simplifyText({ text: requirement + '，造成的伤害提升25%' }).effects
+    assert.deepEqual(effect.slots.conditions, [UNABLE], requirement)
+    assert.equal(effect.layerC.teammateProfessions, undefined, requirement)
+  }
 })
 
 // ================================================================== 3. 槽位语义（v3 新口径）
@@ -398,7 +435,9 @@ test('挽昼领袖之证抽取、重解析和写入计划保留锋御锐爆加�
   const [keyword] = extra.effects
   assert.equal(keyword.slots.stat, '锐爆伤害加成')
   assert.ok(SLOT_OPTIONS.stat.includes(keyword.slots.stat))
-  assert.deepEqual(keyword.slots.conditions, ['仅锋御代理人', '状态需手动启用', UNABLE])
+  assert.deepEqual(keyword.slots.conditions, ['仅锋御代理人', UNABLE])
+  assert.equal(keyword.slots.enabledDefault, '关闭')
+  assert.deepEqual(keyword.slots.teammateProfessions, ['击破', '锋御', '防护'])
   assert.deepEqual(extra.sentences[0].stateReferences.map(({ kind, names }) => ({ kind, names })), [
     { kind: 'grant', names: ['众愿一心'] },
     { kind: 'reference', names: ['众愿一心'] },
@@ -431,6 +470,8 @@ test('挽昼领袖之证抽取、重解析和写入计划保留锋御锐爆加�
   assert.equal(planned.value, 25)
   assert.equal(planned.applyTarget, 'team')
   assert.equal(planned.applyProfession, '锋御')
+  assert.deepEqual(planned.teammateProfessions, ['击破', '锋御', '防护'])
+  assert.deepEqual(normalizeEffectList([planned])[0].teammateProfessions, planned.teammateProfessions)
   assert.deepEqual(planned.conditions.damageTypes, ['sharpen'])
   assert.ok(!planned.skillTargets?.length)
   assert.equal(planned.enabledDefault, false)
@@ -456,7 +497,8 @@ test('获得状态的触发招式和失衡条件留在原文，效果里的限�
   })
   const [keyword] = triggered.effects
   assert.deepEqual(keyword.anchors.skillTargets, [])
-  assert.deepEqual(keyword.slots.conditions, ['状态需手动启用', UNABLE])
+  assert.deepEqual(keyword.slots.conditions, [UNABLE])
+  assert.equal(keyword.slots.enabledDefault, '关闭')
   assert.equal(keyword.layerC.enabledDefault, false)
   assert.equal(keyword.layerC.value, 25)
   assert.deepEqual(triggered.sentences[0].stateReferences[0], {
@@ -662,7 +704,7 @@ test('时长抓下来但不转化（只进 note）', () => {
   const mapped = mapKeywordsToEffect(keyword({ slots: effect.slots, durationSeconds: 15 }))
   assert.equal(mapped.effect.kind, 'fixed')
   assert.ok(!('duration' in mapped.effect), '层C 里不该出现时长字段')
-  assert.match(mapped.steps.join(' '), /时长=15 秒 → 不转化/)
+  assert.match(mapped.steps.join(' '), /时长=15 秒 → 增益备注/)
   assert.match(mapped.effect.note, /15 秒/)
 })
 
@@ -1128,8 +1170,10 @@ test('显示规则：只显示有值的槽位；`无` 默认隐藏；`无法提�
     'elements',
     'target',
     'conditions',
+    'teammateProfessions',
     'scope',
     'stacks',
+    'enabledDefault',
     'object',
   ])
   assert.deepEqual(view.unable.map((item) => item.id), ['duration'])

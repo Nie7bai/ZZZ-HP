@@ -18,6 +18,7 @@ import {
   effectHasGenericConditions,
   normalizeEffectConditionsForStat,
   normalizeGroupId,
+  normalizeTeammateProfessions,
 } from '../utils/buffEffectConditions.js'
 import { listFollowUpSkillRules, listSkillSubcategories } from './skillSubcategoryService.js'
 
@@ -274,6 +275,7 @@ export function normalizeEffectList(rawValue) {
             ? item.applySituation
             : 'global',
         applyProfession,
+        teammateProfessions: normalizeTeammateProfessions(item.teammateProfessions),
         teamProfession,
         teamProfessionValues,
         teamProfessionMinCount,
