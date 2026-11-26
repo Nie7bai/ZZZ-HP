@@ -634,7 +634,7 @@ const amountText = computed(() => {
   }
   if (kind.value === 'convert') return convertSummaryLabel(first.value?.convert)
   if (kind.value === 'additionalDamage') {
-    return `${formatCalcDecimal(value.value)}% × ${statLabel(first.value.stat)}`
+    return `${formatCalcDecimal(value.value)}%（×${formatCalcDecimal((value.value ?? 0) / 100)}） × ${statLabel(first.value.stat)}`
   }
   return `${formatCalcDecimal(value.value)}${unitSuffix.value}`
 })
@@ -1093,7 +1093,9 @@ onBeforeUnmount(() => {
           </label>
         </div>
         <div class="value-row">
-          <span class="line-sub">{{ kind === 'additionalDamage' ? '比例%' : kind === 'stacked' ? '每层' : '数值' }}</span>
+          <span class="line-sub">
+            {{ kind === 'additionalDamage' ? '倍率%（3200 = ×32）' : kind === 'stacked' ? '每层' : '数值' }}
+          </span>
           <NumberStepper
             v-if="kind === 'stacked'"
             v-model="valuePerStack"
