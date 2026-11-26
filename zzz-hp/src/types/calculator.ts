@@ -165,6 +165,8 @@ export type SkillCategoryId =
   | 'special'
   | 'chain'
   | 'ultimate'
+  /** 其他 / 无对应招式类型：仅用于挂增益锚点（招式小类），不参与招式类型勾选 */
+  | 'other'
 
 /** 增益招式目标：真实大类，或伪大类「追加攻击」 */
 export type BuffSkillTargetId = SkillCategoryId | 'follow_up'
@@ -193,6 +195,7 @@ export const SKILL_CATEGORY_OPTIONS: { id: SkillCategoryId; label: string }[] = 
   { id: 'special', label: '特殊技' },
   { id: 'chain', label: '连携技' },
   { id: 'ultimate', label: '终结技' },
+  { id: 'other', label: '其他（无对应招式类型）' },
 ]
 
 /** 增益编辑器用（含追加攻击伪大类） */

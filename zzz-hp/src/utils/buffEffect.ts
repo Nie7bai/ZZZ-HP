@@ -135,6 +135,7 @@ const SKILL_CATEGORIES: SkillCategoryId[] = [
   'special',
   'chain',
   'ultimate',
+  'other',
 ]
 
 const BUFF_SKILL_TARGETS: BuffSkillTargetId[] = [...SKILL_CATEGORIES, 'follow_up']
@@ -1446,6 +1447,7 @@ export const SKILL_CATEGORY_LABELS: Record<BuffSkillTargetId, string> = {
   special: '特殊技',
   chain: '连携技',
   ultimate: '终结技',
+  other: '其他',
   follow_up: '追加攻击',
 }
 
