@@ -257,7 +257,14 @@ export interface DamageCalcResult {
   /** 乘区方案版本（Phase 1 固定为 1；后续与可编辑方案对齐） */
   zoneSchemeVersion?: number
   /** 完整计算链路的阶段轨迹（Phase 4c）：用户端逐阶段展示的数据源 */
-  pipeline?: { chainId: string; stages: StageTraceEntry[] }
+  pipeline?: {
+    chainId: string
+    stages: StageTraceEntry[]
+    /** 紊乱失衡易伤下限（倍率）：非空时链路里标出「原值 → 抬后」 */
+    staggerFloor?: number
+    /** 抬下限之前的失衡易伤区 */
+    staggerBase?: number
+  }
   specialMultiplier: number
   /** 贯穿增伤乘区（非贯穿基础时为 1） */
   pierceDmgMultiplier: number
@@ -538,6 +545,7 @@ function computeGeneralAndAnomalyBase(options: {
     resistanceMultiplier,
     enemyRes,
     staggerMultiplier,
+    staggerMultiplierRaw,
     generalMultiplier,
   } = evaluateCoreZones({
     baseDamage,
@@ -614,6 +622,7 @@ function computeGeneralAndAnomalyBase(options: {
     directVulnerableMultiplier,
     anomalyVulnerableMultiplier,
     staggerMultiplier,
+    staggerMultiplierRaw,
     specialMultiplier,
     pierceDmgMultiplier,
     imbueDmgMultiplier,
@@ -1362,5 +1371,14 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     else if (subKind === 'turbulence') stageValues.final = result.turbulenceExpected
     else stageValues.final = result.radianceExpected
   }
-  return { ...result, zones, zoneSchemeVersion: 1, pipeline: buildStageTrace(chainId, stageValues, input.chainStages) }
+  const stageTrace = buildStageTrace(chainId, stageValues, input.chainStages)
+  const pipeline =
+    disorderStaggerFloor == null
+      ? stageTrace
+      : {
+          ...stageTrace,
+          staggerFloor: disorderStaggerFloor,
+          staggerBase: round((useTriggerBase ? triggerParts : mainParts).staggerMultiplierRaw, 4),
+        }
+  return { ...result, zones, zoneSchemeVersion: 1, pipeline }
 }

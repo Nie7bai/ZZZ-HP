@@ -11,6 +11,7 @@ import { createDefaultExternalPanel } from '../src/types/calculatorPanel.ts'
 import { extractCombatMods } from '../src/utils/panelBuffCalc.ts'
 import { createBuffCalculationRuntime } from '../src/utils/skillFlowCalculation.ts'
 import { buildEventValueTips } from '../src/utils/eventDamageSourceTips.ts'
+import { buildPipelineStageRows } from '../src/zones/display.ts'
 import { createEmptyBuffEffect } from '../src/utils/buffEffect.ts'
 import { eventFixture, eventRuntimeInput } from './_eventElementHarness.mjs'
 import { makePanel, testAgent } from './_effectPipelineHarness.mjs'
@@ -211,6 +212,25 @@ check(
   staggerTipItems.some((item) => item.startsWith('下限 1.4')) &&
     staggerTipItems.some((item) => item.includes('max(') && item.includes('失衡易伤区')),
   staggerTipItems.join(' | '),
+)
+
+// 计算链路：失衡易伤区那一行要标出「原值 → 抬后」和取 max 的下限
+const chainRows = buildPipelineStageRows(detail.evaluation.result)
+const staggerRow = chainRows.find((row) => row.id === 'stagger')
+check(
+  '计算链路：失衡易伤区显示 1 → 1.4',
+  staggerRow?.valueText === '1 → 1.4',
+  staggerRow?.valueText,
+)
+check(
+  '计算链路：失衡易伤区标注紊乱失衡易伤下限 1.4',
+  Boolean(staggerRow?.note?.includes('紊乱失衡易伤下限 1.4')),
+  staggerRow?.note,
+)
+check(
+  '计算链路：无下限的事件不标注（与既有展示一致）',
+  buildPipelineStageRows(normalBaseline.pipeline ? { pipeline: normalBaseline.pipeline } : null)
+    .find((row) => row.id === 'stagger')?.note === undefined,
 )
 
 console.log(`

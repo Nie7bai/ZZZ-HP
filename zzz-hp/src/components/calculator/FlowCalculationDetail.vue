@@ -62,7 +62,10 @@ const pipelineChainLabel = computed(
         >
           <span class="pipeline-stage-kind">{{ STAGE_KIND_LABELS[stage.kind] ?? stage.kind }}</span>
           <span class="pipeline-stage-label">{{ stage.label }}</span>
-          <span class="pipeline-stage-value">{{ stage.valueText }}</span>
+          <span class="pipeline-stage-value">
+            {{ stage.valueText }}
+            <span v-if="stage.note" class="pipeline-stage-note">{{ stage.note }}</span>
+          </span>
         </li>
       </ol>
     </details>
@@ -198,6 +201,11 @@ const pipelineChainLabel = computed(
   font-variant-numeric: tabular-nums;
 }
 .pipeline-stage-kind {
+  color: var(--color-text-muted, #9aa3b0);
+  font-size: 0.64rem;
+}
+.pipeline-stage-note {
+  margin-left: 0.35rem;
   color: var(--color-text-muted, #9aa3b0);
   font-size: 0.64rem;
 }

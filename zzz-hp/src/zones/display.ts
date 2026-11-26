@@ -42,6 +42,8 @@ export interface PipelineStageDisplayRow {
   label: string
   /** 已格式化的值：伤害类取整，乘数保留小数 */
   valueText: string
+  /** 追加说明（如紊乱失衡易伤下限）：有值时在值后面单独显示 */
+  note?: string
 }
 
 const DAMAGE_VALUE_STAGES = new Set(['base', 'selfAtk', 'final'])
@@ -60,10 +62,26 @@ export function buildPipelineStageRows(
   result: Pick<import('@/utils/damageCalc').DamageCalcResult, 'pipeline'> | null | undefined,
 ): PipelineStageDisplayRow[] {
   const stages = result?.pipeline?.stages ?? []
-  return stages.map((stage) => ({
-    id: stage.id,
-    kind: stage.kind,
-    label: stage.label,
-    valueText: formatStageValue(stage.value, DAMAGE_VALUE_STAGES.has(stage.id)),
-  }))
+  const staggerFloor = result?.pipeline?.staggerFloor
+  const staggerBase = result?.pipeline?.staggerBase
+  return stages.map((stage) => {
+    const isDamage = DAMAGE_VALUE_STAGES.has(stage.id)
+    // 紊乱失衡易伤下限：链路里直接把「原值 → 抬后」和取 max 的依据写出来
+    if (stage.id === 'stagger' && staggerFloor != null && Number.isFinite(staggerFloor)) {
+      const base = Number.isFinite(staggerBase) ? Number(staggerBase) : stage.value
+      return {
+        id: stage.id,
+        kind: stage.kind,
+        label: stage.label,
+        valueText: `${formatStageValue(base, isDamage)} → ${formatStageValue(stage.value, isDamage)}`,
+        note: `紊乱失衡易伤下限 ${formatStageValue(staggerFloor, false)}（取 max）`,
+      }
+    }
+    return {
+      id: stage.id,
+      kind: stage.kind,
+      label: stage.label,
+      valueText: formatStageValue(stage.value, isDamage),
+    }
+  })
 }

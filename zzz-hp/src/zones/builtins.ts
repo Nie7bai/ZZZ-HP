@@ -45,6 +45,8 @@ export interface CoreZoneResult {
   /** 抗性区所参照属性的敌方抗性（供结果展示） */
   enemyRes: number
   staggerMultiplier: number
+  /** 抬下限之前的失衡易伤区（展示用：链路里标出「原值 → 抬后」） */
+  staggerMultiplierRaw: number
   generalMultiplier: number
 }
 
@@ -89,5 +91,12 @@ export function evaluateCoreZones(context: CoreZoneContext): CoreZoneResult {
     Math.max(0, staggerMultiplier) *
     (context.extraZoneFactor ?? 1)
 
-  return { dmgMultiplier, resistanceMultiplier, enemyRes, staggerMultiplier, generalMultiplier }
+  return {
+    dmgMultiplier,
+    resistanceMultiplier,
+    enemyRes,
+    staggerMultiplier,
+    staggerMultiplierRaw: rawStagger,
+    generalMultiplier,
+  }
 }
