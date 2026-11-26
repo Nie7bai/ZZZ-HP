@@ -33,13 +33,14 @@ function makeInput(overrides = {}) {
   panel.mastery = 300
   panel.dmgBonus = 40
   const producer = { ...panel, atk: 2600, mastery: 300 }
+  const trigger = { ...panel, atk: 2400, mastery: 400 }
   return {
     chainId: 'disorder',
     eventDamageType: 'disorder',
     anomalySubKind: 'disorder',
     finalPanel: panel,
     triggerFinalPanel: producer,
-    anomalyTriggerPanel: panel,
+    anomalyTriggerPanel: trigger,
     piercePower: 0,
     baseDamageSource: 'atk',
     isMbMainAgent: false,
@@ -79,14 +80,14 @@ const withTerm = computeDamageResult(
   }),
 )
 check(
-  '逐项 round：300 × 3200% = 9600',
-  withTerm.additionalDamageFlat === 9600,
+  '逐项 round：触发者精通 400 × 3200% = 12800',
+  withTerm.additionalDamageFlat === 12800,
   `${withTerm.additionalDamageFlat}`,
 )
 
 const factor = base.anomalyBaseExpected / base.baseDamage
 const expectedDelta =
-  9600 * factor * base.disorderDmgBonusZone * base.disorderCritZone
+  12800 * factor * base.disorderDmgBonusZone * base.disorderCritZone
 const actualDelta = withTerm.disorderExpected - base.disorderExpected
 check(
   '附加项补乘全部基础乘区 + 子类增伤 + 紊乱暴击',
@@ -103,8 +104,8 @@ const twoTerms = computeDamageResult(
   }),
 )
 check(
-  '多项逐项 round 后求和：9600 + round(2600×0.5)=10900',
-  twoTerms.additionalDamageFlat === 10900,
+  '多项逐项 round 后求和：12800 + round(2400×0.5)=14000',
+  twoTerms.additionalDamageFlat === 14000,
   `${twoTerms.additionalDamageFlat}`,
 )
 

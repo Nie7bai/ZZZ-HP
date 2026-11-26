@@ -93,7 +93,7 @@ export interface DamageCalcInput {
   /**
    * 附加伤害项（目前只用于紊乱/极性紊乱）：
    * 每项 = round(来源属性 × 比例% / 100)，逐项 round 后求和；
-   * 来源属性取**异常强度提供者**最终面板；参与后续全部乘区，但不乘紊乱倍率区。
+   * 来源属性取**异常类触发者**最终面板；参与后续全部乘区，但不乘紊乱倍率区。
    */
   combatAdditionalDamage?: ReadonlyArray<{
     stat: CharacterAttrKey
@@ -909,7 +909,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       (sum, term) =>
         sum +
         Math.round(
-          ((triggerPanel[term.stat as keyof PanelStats] as number | undefined) ?? 0) *
+          ((triggerAgentPanel[term.stat as keyof PanelStats] as number | undefined) ?? 0) *
             (term.ratioPercent / 100),
         ),
       0,
