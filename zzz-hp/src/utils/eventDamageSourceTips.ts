@@ -559,7 +559,16 @@ const disorderFormulaParts = (() => {
       [
         {
           label: '敌方与环境',
-          items: [`失衡易伤基础 ${formatFormulaNumber(enemy.staggerMultiplier)}`],
+          /**
+           * 非失衡期不吃敌方失衡易伤（区间基础就是 100%）：把它和合计并排写出来，
+           * 会出现「失衡易伤基础 1.5 / 合计 1」这种看起来自相矛盾的展示。
+           */
+          items:
+            p.staggerZoneKind === 'curtain' || d.hit.staggerPhase === 'stagger'
+              ? [`失衡易伤基础 ${formatFormulaNumber(enemy.staggerMultiplier)}`]
+              : [
+                  `非失衡期区间基础 100%（敌方失衡易伤 ${formatFormulaNumber(enemy.staggerMultiplier)} 仅失衡期生效）`,
+                ],
         },
         ...buildStatSourceGroups({
           keys: ['globalStaggerVulnerable', 'staggerVulnerable', 'staggerVulnerableOnly'],

@@ -241,6 +241,18 @@ check(
   `${teamFloorZone({ sourceSlot: 1, applyTarget: 'self' })}`,
 )
 
+// 非失衡期悬停不能把敌方失衡易伤当成已生效项（与合计并排看起来自相矛盾）
+const staggerTipGroups = buildEventValueTips(detail).staggerMultiplier ?? []
+const enemyGroupItems = staggerTipGroups
+  .filter((group) => group.label === '敌方与环境')
+  .flatMap((group) => group.items)
+check(
+  '非失衡期悬停：敌方失衡易伤标注为仅失衡期生效，而不是直接写成已生效的基础',
+  enemyGroupItems.some((item) => item.includes('非失衡期区间基础 100%')) &&
+    enemyGroupItems.some((item) => item.includes('仅失衡期生效')),
+  enemyGroupItems.join(' | '),
+)
+
 // 计算链路：失衡易伤区那一行要标出「原值 → 抬后」和取 max 的下限
 const chainRows = buildPipelineStageRows(detail.evaluation.result)
 const staggerRow = chainRows.find((row) => row.id === 'stagger')
