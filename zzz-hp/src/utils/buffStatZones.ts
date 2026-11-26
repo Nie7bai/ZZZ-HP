@@ -14,6 +14,7 @@
  */
 import { reactive } from 'vue'
 import type { BuffDamageType, BuffStatKey, CustomBuffStatKey } from '@/types/calculator'
+import { createDefaultExternalPanel } from '@/types/calculatorPanel'
 import {
   ANOMALY_DAMAGE_TYPES,
   BUFF_DAMAGE_TYPE_IDS,
@@ -131,6 +132,18 @@ const CLASS3_ZONES: BuffStatZone[] = BUFF_STAT_FIELDS.filter(
   tier: 3,
   stat: field.key,
 }))
+
+/**
+ * 面板字段（`PanelStats` 的键）。
+ *
+ * 附加伤害的来源属性直接读触发者的**局内面板** `panel[stat]`，只有这些键能取到值；
+ * `局外生命值` / `局内攻击力` / `易伤` 这类纯增益乘区键不在面板上，配成来源会恒为 0。
+ */
+const PANEL_STAT_KEYS = new Set<string>(Object.keys(createDefaultExternalPanel()))
+
+export function isPanelStatKey(stat: string | null | undefined): boolean {
+  return Boolean(stat && PANEL_STAT_KEYS.has(stat))
+}
 
 /**
  * 管理侧「属性」下拉的乘区目录（可被运行时乘区定义追加）。

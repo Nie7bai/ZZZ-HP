@@ -9,7 +9,7 @@
  */
 import { computeDamageResult } from '../src/utils/damageCalc.ts'
 import { createDefaultExternalPanel } from '../src/types/calculatorPanel.ts'
-import { resolveAdditionalDamageRatio } from '../src/utils/buffEffect.ts'
+import { formatBuffEffectResultText, resolveAdditionalDamageRatio } from '../src/utils/buffEffect.ts'
 import { DISORDER_SECTION_META, disorderSectionOf, disorderTermOrder } from '../src/utils/skillCalcZones.ts'
 import { buildEventZoneDisplay, buildEventValueTips } from '../src/utils/eventDamageSourceTips.ts'
 import { createBuffCalculationRuntime } from '../src/utils/skillFlowCalculation.ts'
@@ -239,6 +239,36 @@ check(
     { kind: 'additionalDamage', stat: 'mastery', value: 3200 },
     { special: 12 },
   ) === 3200,
+)
+
+// 卡片行不能沿用「属性 + 数值」模板：附加伤害的 amount 恒为 0，直接渲染会变成「精通（数值） 0」
+const additionalCardRow = formatBuffEffectResultText(
+  {
+    kind: 'additionalDamage',
+    stat: 'mastery',
+    value: 3200,
+    additionalDamage: { onlyPolarDisorder: true },
+  },
+  '0',
+  { statLabelFn: () => '精通（数值）' },
+)
+check(
+  '附加伤害卡片行显示倍率而不是 0：精通 ×3200%（仅极性紊乱）',
+  additionalCardRow === '精通 ×3200%（仅极性紊乱）',
+  additionalCardRow,
+)
+check(
+  '附加伤害倍率随等级时卡片行标出每级增量',
+  formatBuffEffectResultText(
+    {
+      kind: 'additionalDamage',
+      stat: 'hp',
+      value: 100,
+      additionalDamage: { ratioLevelSource: 'skillLevelSpecial', ratioPercentPerLevel: 10 },
+    },
+    '0',
+    { statLabelFn: () => '固定生命（数值）' },
+  ) === '固定生命 ×100%（每级 +10%）',
 )
 
 console.log(`

@@ -1548,14 +1548,16 @@ export function effectSummaryLabel(
   const applyProf = formatApplyProfessionLabel(effect)
   const elementLabel = formatElementFilterLabel(effect)
   const gate = formatTeamProfessionGateLabel(effect)
-  const statText = statLabelFn?.(effect.stat) ?? effect.stat
+  const rawStatText = statLabelFn?.(effect.stat) ?? effect.stat
+  const statText =
+    effect.kind === 'additionalDamage' ? statLabelWithoutUnit(rawStatText) : rawStatText
   const amount =
     effect.kind === 'stacked'
       ? `${effect.valuePerStack ?? 0}×叠层`
       : effect.kind === 'convert'
         ? convertSummaryLabel(effect.convert)
         : effect.kind === 'additionalDamage'
-          ? `${effect.value ?? 0}% × ${statLabelFn?.(effect.stat) ?? effect.stat}`
+          ? formatAdditionalDamageRatioText(effect)
           : `${effect.value ?? 0}`
   const parts = [target]
   if (skillPrefix) parts.push(`招式·${skillPrefix}`)
@@ -1583,6 +1585,33 @@ export function formatApplySituationLabel(
  * `applySituation` 打开后标出作用情况（`[强攻][失衡期] [电] +40 增伤`）——
  * 局内 Buff 选择器与本行增益例外弹窗共用这一份实现，两处文案不会各写一遍。
  */
+/**
+ * 附加伤害行的倍率文本：`×3200%`，倍率随技能等级时补 `（每级 +10%）`。
+ *
+ * 附加伤害不是加算数值（`resolveEffectBaseValue` 对它恒为 0），所以卡片行不能沿用
+ * 「属性 + 数值」的模板，否则会显示 `精通（数值） 0`。
+ */
+export function formatAdditionalDamageRatioText(effect: BuffEffect): string {
+  const base = Number(effect.value) || 0
+  const perLevel = effect.additionalDamage?.ratioPercentPerLevel ?? 0
+  const scale =
+    effect.additionalDamage?.ratioLevelSource && perLevel
+      ? `（每级 ${perLevel > 0 ? '+' : ''}${trimNumber(perLevel)}%）`
+      : ''
+  const polar = effect.additionalDamage?.onlyPolarDisorder === true ? '（仅极性紊乱）' : ''
+  return `×${trimNumber(base)}%${scale}${polar}`
+}
+
+/** 属性名去掉单位后缀：`精通（数值）` → `精通`、`攻击力%` → `攻击力` */
+function statLabelWithoutUnit(label: string): string {
+  return label.replace(/（数值）$/, '').replace(/%$/, '')
+}
+
+function trimNumber(value: number): string {
+  const rounded = Math.round(value * 10000) / 10000
+  return String(Object.is(rounded, -0) ? 0 : rounded)
+}
+
 export function formatBuffEffectResultText(
   effect: BuffEffect,
   amountText: string,
@@ -1594,7 +1623,12 @@ export function formatBuffEffectResultText(
   },
 ): string {
   const skillPrefix = formatSkillTargetsPrefix(effect, options?.skillSubcategories)
-  const label = options?.statLabelFn?.(effect.stat) ?? effect.stat
+  const rawLabel = options?.statLabelFn?.(effect.stat) ?? effect.stat
+  const isAdditionalDamage = effect.kind === 'additionalDamage'
+  const label = isAdditionalDamage ? statLabelWithoutUnit(rawLabel) : rawLabel
+  const valueText = isAdditionalDamage
+    ? formatAdditionalDamageRatioText(effect)
+    : amountText
   const applyProf = formatApplyProfessionLabel(effect)
   const elementLabel = formatElementFilterLabel(effect)
   const gate = formatTeamProfessionGateLabel(effect)
@@ -1602,7 +1636,7 @@ export function formatBuffEffectResultText(
   const mid = gate ? `${gate} ` : ''
   const el = elementLabel ? `${elementLabel} ` : ''
   // 数值顺序（2026-09-23 用户口径）：`增伤% +20.16` —— 属性名在前、数值在后
-  const line = `${head}${head ? ' ' : ''}${mid}${el}${label} ${amountText}`
+  const line = `${head}${head ? ' ' : ''}${mid}${el}${label} ${valueText}`
   if (!options?.applySituation) return line
   const situation = formatApplySituationLabel(effect)
   if (situation === '全局') return line

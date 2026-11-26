@@ -41,7 +41,9 @@ import {
   allowedDamageTypesOf,
   buffStatLabelOf,
   buffStatUnitOf,
+  isPanelStatKey,
   isZoneTypeLocked,
+  statForZoneType,
   statRowsForZone,
 } from '@/utils/buffStatZones'
 import { damageTypeLabel, damageTypesLabel, BUFF_DAMAGE_TYPE_IDS } from '@/utils/buffDamageTypes'
@@ -392,6 +394,25 @@ function patchConvert<K extends keyof NonNullable<BuffEffect['convert']>>(
 }
 
 type AdditionalScope = 'global' | 'polar' | 'skill' | 'skill-polar'
+
+/**
+ * 「属性」下拉的候选：附加伤害只列**面板字段**（读触发者局内面板），
+ * 其余增益乘区键选了也恒为 0，直接不列；已配成非面板属性的旧数据仍保留当前项，避免显示空。
+ */
+const statZoneOptions = computed(() => {
+  if (kind.value !== 'additionalDamage') return BUFF_STAT_ZONES
+  const pickedType = props.row.damageTypes[0]
+  const usable = BUFF_STAT_ZONES.filter((item) => {
+    const stat = item.statsByType ? statForZoneType(item, pickedType) : item.stat
+    return isPanelStatKey(stat)
+  })
+  const currentId = zone.value?.id
+  if (currentId && !usable.some((item) => item.id === currentId)) {
+    const current = BUFF_STAT_ZONES.find((item) => item.id === currentId)
+    if (current) return [current, ...usable]
+  }
+  return usable
+})
 
 /** 作用范围 = 招式范围（全局/当前招式）× 是否仅极性紊乱，合并成一个下拉避免重复勾选 */
 const additionalDamageScope = computed<AdditionalScope>(() => {
@@ -1066,7 +1087,7 @@ onBeforeUnmount(() => {
           <label class="inline-field grow">
             <span>属性</span>
             <select :value="zone?.id ?? ''" @change="onZoneChange">
-              <option v-for="item in BUFF_STAT_ZONES" :key="item.id" :value="item.id">
+              <option v-for="item in statZoneOptions" :key="item.id" :value="item.id">
                 {{ item.label }}
               </option>
             </select>
