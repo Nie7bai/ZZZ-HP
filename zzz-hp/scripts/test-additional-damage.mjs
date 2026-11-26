@@ -9,6 +9,7 @@
  */
 import { computeDamageResult } from '../src/utils/damageCalc.ts'
 import { createDefaultExternalPanel } from '../src/types/calculatorPanel.ts'
+import { resolveAdditionalDamageRatio } from '../src/utils/buffEffect.ts'
 import { DISORDER_SECTION_META, disorderSectionOf, disorderTermOrder } from '../src/utils/skillCalcZones.ts'
 import { buildEventZoneDisplay, buildEventValueTips } from '../src/utils/eventDamageSourceTips.ts'
 import { createBuffCalculationRuntime } from '../src/utils/skillFlowCalculation.ts'
@@ -218,6 +219,26 @@ check(
     DISORDER_SECTION_META[3].className === 'zone-box--mixed' &&
     DISORDER_SECTION_META[4].className === 'zone-box--trigger' &&
     DISORDER_SECTION_META[5].className === 'zone-box--trigger',
+)
+
+check(
+  '附加伤害倍率可随技能等级：L12 时 3200 + 30×11 = 3530',
+  resolveAdditionalDamageRatio(
+    {
+      kind: 'additionalDamage',
+      stat: 'mastery',
+      value: 3200,
+      additionalDamage: { ratioLevelSource: 'skillLevelSpecial', ratioPercentPerLevel: 30 },
+    },
+    { special: 12 },
+  ) === 3530,
+)
+check(
+  '缺省等级来源时倍率固定',
+  resolveAdditionalDamageRatio(
+    { kind: 'additionalDamage', stat: 'mastery', value: 3200 },
+    { special: 12 },
+  ) === 3200,
 )
 
 console.log(`

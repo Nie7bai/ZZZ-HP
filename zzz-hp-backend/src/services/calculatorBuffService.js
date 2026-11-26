@@ -325,10 +325,19 @@ export function normalizeEffectList(rawValue) {
         })(),
 
         convert: normalizeConvert(item.convert),
-        additionalDamage:
-          item.additionalDamage && typeof item.additionalDamage === 'object'
-            ? { onlyPolarDisorder: item.additionalDamage.onlyPolarDisorder === true }
-            : undefined,
+        additionalDamage: (() => {
+          const raw = item.additionalDamage
+          if (!raw || typeof raw !== 'object') return undefined
+          const levelRaw = String(raw.ratioLevelSource ?? '')
+          const perLevel = Number(raw.ratioPercentPerLevel)
+          return {
+            onlyPolarDisorder: raw.onlyPolarDisorder === true,
+            ...(['skillLevelBasic', 'skillLevelDodge', 'skillLevelAssist', 'skillLevelSpecial', 'skillLevelChainUltimate'].includes(levelRaw) ? { ratioLevelSource: levelRaw } : {}),
+            ...(Number.isFinite(perLevel) && perLevel !== 0
+              ? { ratioPercentPerLevel: perLevel }
+              : {}),
+          }
+        })(),
         enabledDefault: item.enabledDefault === false ? false : true,
         note: typeof item.note === 'string' ? item.note : '',
       }

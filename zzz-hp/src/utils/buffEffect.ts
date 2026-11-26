@@ -486,6 +486,23 @@ export function resolveEffectBaseValue(effect: BuffEffect, stacks: number): numb
   return effect.value ?? 0
 }
 
+/**
+ * 附加伤害倍率（已按技能等级换算）：
+ * `value + ratioPercentPerLevel × (等级 − 1)`；缺省等级来源 = 固定。
+ */
+export function resolveAdditionalDamageRatio(
+  effect: BuffEffect,
+  skillTalentLevels?: Partial<SkillTalentLevels> | null,
+): number {
+  const base = Number(effect.value) || 0
+  const source = effect.additionalDamage?.ratioLevelSource
+  if (!source) return base
+  const talentKey = SKILL_CONVERT_FROM_TO_TALENT_KEY[source]
+  const raw = Number(skillTalentLevels?.[talentKey])
+  const level = Number.isFinite(raw) && raw > 0 ? raw : 1
+  return base + (effect.additionalDamage?.ratioPercentPerLevel ?? 0) * (level - 1)
+}
+
 export function resolveConvertValue(
   effect: BuffEffect,
   attrValues: Partial<Record<CharacterAttrKey, number>>,
@@ -1251,10 +1268,20 @@ export function normalizeBuffEffect(value: unknown): BuffEffect | null {
     convert: normalizeConvert(entry.convert),
     additionalDamage:
       entry.additionalDamage && typeof entry.additionalDamage === 'object'
-        ? {
-            onlyPolarDisorder:
-              (entry.additionalDamage as Record<string, unknown>).onlyPolarDisorder === true,
-          }
+        ? (() => {
+            const raw = entry.additionalDamage as Record<string, unknown>
+            const levelRaw = raw.ratioLevelSource
+            const perLevel = Number(raw.ratioPercentPerLevel)
+            return {
+              onlyPolarDisorder: raw.onlyPolarDisorder === true,
+              ...(typeof levelRaw === 'string' && isSkillConvertFromKey(levelRaw)
+                ? { ratioLevelSource: levelRaw }
+                : {}),
+              ...(Number.isFinite(perLevel) && perLevel !== 0
+                ? { ratioPercentPerLevel: perLevel }
+                : {}),
+            }
+          })()
         : undefined,
     enabledDefault: entry.enabledDefault === false ? false : true,
     note: typeof entry.note === 'string' ? entry.note : '',

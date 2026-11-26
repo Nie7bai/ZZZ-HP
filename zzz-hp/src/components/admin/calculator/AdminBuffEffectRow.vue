@@ -634,7 +634,11 @@ const amountText = computed(() => {
   }
   if (kind.value === 'convert') return convertSummaryLabel(first.value?.convert)
   if (kind.value === 'additionalDamage') {
-    return `${formatCalcDecimal(value.value)}%（×${formatCalcDecimal((value.value ?? 0) / 100)}） × ${statLabel(first.value.stat)}`
+    const perLevel = first.value?.additionalDamage?.ratioPercentPerLevel
+    const levelHint = first.value?.additionalDamage?.ratioLevelSource
+      ? ` + ${formatCalcDecimal(perLevel ?? 0)}%/级`
+      : ''
+    return `${formatCalcDecimal(value.value)}%${levelHint}（×${formatCalcDecimal((value.value ?? 0) / 100)}） × ${statLabel(first.value.stat)}`
   }
   return `${formatCalcDecimal(value.value)}${unitSuffix.value}`
 })
@@ -1075,6 +1079,49 @@ onBeforeUnmount(() => {
               <option value="global">全局</option>
               <option value="skill">仅当前招式</option>
             </select>
+          </label>
+          <label class="inline-field">
+            <span>倍率等级</span>
+            <select
+              :value="first?.additionalDamage?.ratioLevelSource ?? ''"
+              @change="
+                patchAll((effect) => {
+                  const value = ($event.target as HTMLSelectElement).value
+                  effect.additionalDamage = {
+                    ...(effect.additionalDamage ?? {}),
+                    ratioLevelSource: (value || undefined) as
+                      | typeof effect.additionalDamage extends undefined
+                      ? never
+                      : NonNullable<typeof effect.additionalDamage>['ratioLevelSource'],
+                  }
+                })
+              "
+            >
+              <option value="">固定倍率</option>
+              <option v-for="opt in SKILL_LEVEL_CONVERT_OPTIONS" :key="opt.id" :value="opt.id">
+                {{ opt.label }}
+              </option>
+            </select>
+          </label>
+          <label
+            v-if="first?.additionalDamage?.ratioLevelSource"
+            class="inline-field convert-number-field"
+          >
+            <span>每级倍率+</span>
+            <NumberStepper
+              :model-value="first?.additionalDamage?.ratioPercentPerLevel ?? 0"
+              :min="-9999"
+              :max="9999"
+              :step="0.0001"
+              @update:model-value="
+                patchAll((effect) => {
+                  effect.additionalDamage = {
+                    ...(effect.additionalDamage ?? {}),
+                    ratioPercentPerLevel: $event,
+                  }
+                })
+              "
+            />
           </label>
           <label class="inline-field">
             <span>仅极性紊乱</span>

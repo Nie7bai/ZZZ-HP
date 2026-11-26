@@ -243,7 +243,16 @@ export function sanitizeEffect(input, index = 0) {
   }
   if (kind === 'additionalDamage') {
     effect.additionalDamage = isPlainObject(raw.additionalDamage)
-      ? { onlyPolarDisorder: raw.additionalDamage.onlyPolarDisorder === true }
+      ? {
+          onlyPolarDisorder: raw.additionalDamage.onlyPolarDisorder === true,
+          ...(['skillLevelBasic','skillLevelDodge','skillLevelAssist','skillLevelSpecial','skillLevelChainUltimate'].includes(String(raw.additionalDamage.ratioLevelSource ?? ''))
+            ? { ratioLevelSource: String(raw.additionalDamage.ratioLevelSource) }
+            : {}),
+          ...(Number.isFinite(Number(raw.additionalDamage.ratioPercentPerLevel)) &&
+          Number(raw.additionalDamage.ratioPercentPerLevel) !== 0
+            ? { ratioPercentPerLevel: Number(raw.additionalDamage.ratioPercentPerLevel) }
+            : {}),
+        }
       : {}
   }
   if (kind === 'convert') {

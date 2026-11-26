@@ -76,7 +76,7 @@ import {
   resolvePanelViewPolicyForRadiance,
 } from '@/utils/panelViewPolicy'
 import { mergeSkillSubcategoryMultOverrides } from '@/utils/skillSubcategoryMult'
-import { isEffectEnabled } from '@/utils/buffEffect'
+import { isEffectEnabled, resolveAdditionalDamageRatio } from '@/utils/buffEffect'
 import { damageTypesOf } from '@/utils/buffDamageTypes'
 import {
   collectAllBuffEffects,
@@ -94,6 +94,7 @@ import {
   buildPanelSourceValuesBySlotMap,
   collectEventCandidateEffects,
   resolveCollectedEffectParameters,
+  parseSourceKeySlotIndex,
   type BuffEffectContribution,
   type ComputeFinalPanelOptions,
   type CustomProviderMods,
@@ -1783,6 +1784,13 @@ export function evaluateOptimalEventDetail(
             }
           })
       : []
+  const providerSkillLevels = (sourceKey: string) => {
+    const slot = parseSourceKeySlotIndex(sourceKey)
+    const agentId = slot != null ? ctx.panelContext.teamSlots[slot]?.agentId : ''
+    return agentId
+      ? (ctx.panelContext.skillTalentLevelsByAgent?.[agentId] ?? null)
+      : null
+  }
   const additionalDamageTerms = damageType === 'disorder'
     ? [...schemeAdditionalTerms, ...(evtBreakdown.sources ?? []).flatMap((source) =>
         (source.effects ?? [])
@@ -1793,7 +1801,7 @@ export function evaluateOptimalEventDetail(
           })
           .map((effect: BuffEffect) => ({
             stat: effect.stat as CharacterAttrKey,
-            ratioPercent: effect.value ?? 0,
+            ratioPercent: resolveAdditionalDamageRatio(effect, providerSkillLevels(source.key)),
             onlyPolarDisorder: effect.additionalDamage?.onlyPolarDisorder === true,
           })),
       )]

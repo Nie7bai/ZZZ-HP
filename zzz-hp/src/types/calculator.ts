@@ -424,6 +424,10 @@ export type CustomBuffStatKey = `custom:${string}`
 export interface BuffEffectAdditionalDamage {
   /** 仅极性紊乱（招式存在极性紊乱配置时才计入） */
   onlyPolarDisorder?: boolean
+  /** 倍率随技能等级：来源大类（缺省 = 固定倍率） */
+  ratioLevelSource?: SkillConvertFromKey
+  /** 每级倍率增量（百分点）；L1 用效果的 value */
+  ratioPercentPerLevel?: number
 }
 
 export interface BuffEffectConvert {
