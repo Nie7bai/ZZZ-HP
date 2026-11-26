@@ -10,12 +10,6 @@ export interface SkillCalcZoneRow {
   zoneValue?: number
   /** true = 伤害行（期望伤害 / 暴击伤害等），填充条不适用 */
   isDamage?: boolean
-  /** 自定义填充比例（0–100）；用于附加伤害这类非乘区行 */
-  fillPercent?: number
-  /** 自定义填充色：gain 金 / reduce 蓝 */
-  fillKind?: 'gain' | 'reduce'
-  /** 格子下方的小字明细（追加展示） */
-  detail?: string
 }
 
 function formatZoneValue(value: number, asDamage = false) {
@@ -256,17 +250,9 @@ export function buildSkillCalcZoneRows(
     push(rows, '紊乱倍率区', result.disorderZone)
     const additionalFlat = result.additionalDamageFlat ?? 0
     if (additionalFlat > 0) {
-      // 填充比例 = 附加项在「异常基础 × 紊乱倍率 + 附加」里的占比
-      const preSubtype = result.anomalyBaseExpected * result.disorderZone + additionalFlat
-      const baseAtk = result.baseDamage
-      const general =
-        baseAtk > 0 ? result.anomalyBaseExpected / baseAtk : 0
       rows.push({
         label: '附加伤害（基础加法项）',
         value: additionalFlat.toLocaleString('en-US'),
-        fillPercent: preSubtype > 0 ? (additionalFlat / preSubtype) * 100 : 0,
-        fillKind: 'gain',
-        detail: `× 通用 ${formatZoneValue(general)} × 紊乱增伤 ${formatZoneValue(result.disorderDmgBonusZone)} × 紊乱暴击 ${formatZoneValue(result.disorderCritZone)}`,
       })
     }
     push(rows, '紊乱增伤区', result.disorderDmgBonusZone)
@@ -431,6 +417,25 @@ const DISORDER_GENERAL_LABELS = new Set([
 const DISORDER_TAIL_LABELS = new Set(['紊乱增伤区', '紊乱暴击区'])
 
 /** 紊乱类按「(攻击×倍率+附加) → 通用乘区 → 紊乱增伤/暴击」顺序分块；其它返回 null */
+const DISORDER_TERM_ORDER = [
+  '面板攻击力',
+  '面板防御力',
+  '面板贯穿力',
+  '基础伤害',
+  '紊乱基础倍率',
+  '紊乱补偿倍率',
+  '异常持续时间',
+  '紊乱倍率修正',
+  '紊乱倍率区',
+]
+
+/** 第一块内部的展示顺序：补偿倍率在持续时间之前，附加伤害最后 */
+export function disorderTermOrder(label: string): number {
+  if (label.startsWith('附加伤害')) return 100
+  const index = DISORDER_TERM_ORDER.indexOf(label)
+  return index >= 0 ? index : 50
+}
+
 export function disorderSectionOf(label: string): DisorderSectionKey | null {
   if (DISORDER_TERM_LABELS.has(label) || label.startsWith('附加伤害')) return 'term'
   if (DISORDER_GENERAL_LABELS.has(label)) return 'general'

@@ -9,7 +9,7 @@
  */
 import { computeDamageResult } from '../src/utils/damageCalc.ts'
 import { createDefaultExternalPanel } from '../src/types/calculatorPanel.ts'
-import { DISORDER_SECTION_META, disorderSectionOf } from '../src/utils/skillCalcZones.ts'
+import { DISORDER_SECTION_META, disorderSectionOf, disorderTermOrder } from '../src/utils/skillCalcZones.ts'
 import { buildEventZoneDisplay, buildEventValueTips } from '../src/utils/eventDamageSourceTips.ts'
 import { createBuffCalculationRuntime } from '../src/utils/skillFlowCalculation.ts'
 import { createEmptyBuffEffect } from '../src/utils/buffEffect.ts'
@@ -176,18 +176,6 @@ check(
   additionalRow?.value === '12,800',
   additionalRow?.value,
 )
-check(
-  '附加伤害格下方有小字明细：× 通用 × 紊乱增伤 × 紊乱暴击',
-  Boolean(additionalRow?.detail?.includes('× 通用')) &&
-    Boolean(additionalRow?.detail?.includes('× 紊乱增伤')) &&
-    Boolean(additionalRow?.detail?.includes('× 紊乱暴击')),
-  additionalRow?.detail,
-)
-check(
-  '附加伤害格有自定义柱状填充比例',
-  typeof additionalRow?.fillPercent === 'number' && additionalRow.fillPercent > 0,
-  String(additionalRow?.fillPercent),
-)
 const tips = buildEventValueTips(detail)
 const tipItems = (tips.additionalDamageFlat ?? []).flatMap((group) => group.items)
 check(
@@ -202,6 +190,11 @@ check(
   tipItems.join(' | '),
 )
 
+check(
+  '第一块顺序：紊乱补偿倍率在异常持续时间之前，附加伤害最后',
+  disorderTermOrder('紊乱补偿倍率') < disorderTermOrder('异常持续时间') &&
+    disorderTermOrder('紊乱倍率区') < disorderTermOrder('附加伤害（基础加法项）'),
+)
 check(
   '紊乱格子按公式顺序分块：(攻击×倍率+附加) → 通用乘区 → 紊乱增伤/暴击',
   DISORDER_SECTION_META.map((item) => item.key).join(',') === 'term,general,tail' &&

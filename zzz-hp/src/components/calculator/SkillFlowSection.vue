@@ -51,6 +51,7 @@ import {
   pickSkillMultPercentRatio,
   DISORDER_SECTION_META,
   disorderSectionOf,
+  disorderTermOrder,
   type SkillCalcZoneRow,
 } from '@/utils/skillCalcZones'
 import type { StatSourceGroup } from '@/utils/statSourceTips'
@@ -1531,7 +1532,11 @@ const detailActorSections = computed(() => {
       key: meta.key as string,
       label: meta.label,
       className: meta.className,
-      rows: detailZoneRows.value.filter((row) => disorderSectionOf(row.label) === meta.key),
+      rows: detailZoneRows.value
+        .filter((row) => disorderSectionOf(row.label) === meta.key)
+        .sort((a, b) =>
+          meta.key === 'term' ? disorderTermOrder(a.label) - disorderTermOrder(b.label) : 0,
+        ),
     })).filter((section) => section.rows.length)
   }
   const pick = (group: 'producer' | 'trigger' | 'mixed') =>
@@ -1621,18 +1626,10 @@ function formatDamageNumber(value: number) {
  * 格子内占比填充条（与 FlowZoneCalculation 同一口径）：
  * 倍率 ≥ 1 按「超出 1 的幅度」填充（封顶 100%），< 1 用减益色；伤害行不画条。
  */
-function zoneFillKind(row: SkillCalcZoneRow): 'gain' | 'reduce' | 'none' {
-  if (row.fillPercent != null) return row.fillKind ?? 'gain'
-  if (row.isDamage || !Number.isFinite(row.zoneValue)) return 'none'
-  return (row.zoneValue as number) >= 1 ? 'gain' : 'reduce'
-}
 
-function zoneFillWidth(row: SkillCalcZoneRow): string {
-  if (row.fillPercent != null) return `${Math.min(Math.max(row.fillPercent, 0), 100).toFixed(2)}%`
-  if (zoneFillKind(row) === 'none') return '0%'
-  const value = row.zoneValue as number
-  const ratio = value >= 1 ? Math.min((value - 1) / 1, 1) : Math.min(Math.max(value, 0), 1)
-  return `${(ratio * 100).toFixed(2)}%`
+
+function zoneActorClass(label: string) {
+  return `zone-display-item--${skillCalcZoneGroup(label)}`
 }
 
 function zoneTipGroups(row: SkillCalcZoneRow): StatSourceGroup[] {
@@ -4223,7 +4220,7 @@ const showcaseTitle = computed(() => {
                     <div
                       v-for="row in section.rows"
                       :key="`${section.key}-${row.label}`"
-                      class="zone-display-item zone-display-item--clickable"
+                      class="zone-display-item zone-display-item--clickable" :class="zoneActorClass(row.label)"
                       role="button"
                       tabindex="0"
                       @pointerenter="showZoneTip(row, $event)"
@@ -4232,16 +4229,7 @@ const showcaseTitle = computed(() => {
                       @blur="scheduleZoneTipHide"
                     >
                       <span class="zone-display-label">{{ row.label }}</span>
-                      <span class="zone-display-val-zone">
-                        <i
-                          class="zone-fill"
-                          :class="`zone-fill--${zoneFillKind(row)}`"
-                          :style="{ width: zoneFillWidth(row) }"
-                          aria-hidden="true"
-                        ></i>
-                        <span class="zone-display-val">{{ row.value }}</span>
-                      </span>
-                      <span v-if="row.detail" class="zone-display-detail">{{ row.detail }}</span>
+                      <span class="zone-display-val">{{ row.value }}</span>
                     </div>
                   </div>
                 </section>
@@ -4253,7 +4241,7 @@ const showcaseTitle = computed(() => {
                   <div
                     v-for="row in detailGroupedResultRows"
                     :key="`grouped-result-${row.label}`"
-                    class="zone-display-item zone-display-item--clickable zone-display-item--result"
+                    class="zone-display-item zone-display-item--clickable zone-display-item--result" :class="zoneActorClass(row.label)"
                     role="button"
                     tabindex="0"
                     @pointerenter="showZoneTip(row, $event)"
@@ -4262,16 +4250,7 @@ const showcaseTitle = computed(() => {
                     @blur="scheduleZoneTipHide"
                   >
                     <span class="zone-display-label">{{ row.label }}</span>
-                    <span class="zone-display-val-zone">
-                      <i
-                        class="zone-fill"
-                        :class="`zone-fill--${zoneFillKind(row)}`"
-                        :style="{ width: zoneFillWidth(row) }"
-                        aria-hidden="true"
-                      ></i>
-                      <span class="zone-display-val">{{ row.value }}</span>
-                    </span>
-                    <span v-if="row.detail" class="zone-display-detail">{{ row.detail }}</span>
+                    <span class="zone-display-val">{{ row.value }}</span>
                   </div>
                 </div>
               </template>
@@ -4286,7 +4265,7 @@ const showcaseTitle = computed(() => {
                       <div
                         v-for="row in detailZoneSplit.producerRows"
                         :key="`producer-${row.label}`"
-                        class="zone-display-item zone-display-item--clickable"
+                        class="zone-display-item zone-display-item--clickable" :class="zoneActorClass(row.label)"
                         role="button"
                         tabindex="0"
                         @pointerenter="showZoneTip(row, $event)"
@@ -4295,16 +4274,7 @@ const showcaseTitle = computed(() => {
                         @blur="scheduleZoneTipHide"
                       >
                         <span class="zone-display-label">{{ row.label }}</span>
-                        <span class="zone-display-val-zone">
-                          <i
-                            class="zone-fill"
-                            :class="`zone-fill--${zoneFillKind(row)}`"
-                            :style="{ width: zoneFillWidth(row) }"
-                            aria-hidden="true"
-                          ></i>
-                          <span class="zone-display-val">{{ row.value }}</span>
-                        </span>
-                        <span v-if="row.detail" class="zone-display-detail">{{ row.detail }}</span>
+                        <span class="zone-display-val">{{ row.value }}</span>
                       </div>
                     </div>
                   </section>
@@ -4318,7 +4288,7 @@ const showcaseTitle = computed(() => {
                       <div
                         v-for="row in detailZoneSplit.triggerRows"
                         :key="`trigger-${row.label}`"
-                        class="zone-display-item zone-display-item--clickable"
+                        class="zone-display-item zone-display-item--clickable" :class="zoneActorClass(row.label)"
                         role="button"
                         tabindex="0"
                         @pointerenter="showZoneTip(row, $event)"
@@ -4327,16 +4297,7 @@ const showcaseTitle = computed(() => {
                         @blur="scheduleZoneTipHide"
                       >
                         <span class="zone-display-label">{{ row.label }}</span>
-                        <span class="zone-display-val-zone">
-                          <i
-                            class="zone-fill"
-                            :class="`zone-fill--${zoneFillKind(row)}`"
-                            :style="{ width: zoneFillWidth(row) }"
-                            aria-hidden="true"
-                          ></i>
-                          <span class="zone-display-val">{{ row.value }}</span>
-                        </span>
-                        <span v-if="row.detail" class="zone-display-detail">{{ row.detail }}</span>
+                        <span class="zone-display-val">{{ row.value }}</span>
                       </div>
                     </div>
                   </section>
@@ -4350,7 +4311,7 @@ const showcaseTitle = computed(() => {
                     <div
                       v-for="row in detailZoneSplit.mixedRows"
                       :key="`mixed-${row.label}`"
-                      class="zone-display-item zone-display-item--clickable"
+                      class="zone-display-item zone-display-item--clickable" :class="zoneActorClass(row.label)"
                       role="button"
                       tabindex="0"
                       @pointerenter="showZoneTip(row, $event)"
@@ -4359,16 +4320,7 @@ const showcaseTitle = computed(() => {
                       @blur="scheduleZoneTipHide"
                     >
                       <span class="zone-display-label">{{ row.label }}</span>
-                      <span class="zone-display-val-zone">
-                        <i
-                          class="zone-fill"
-                          :class="`zone-fill--${zoneFillKind(row)}`"
-                          :style="{ width: zoneFillWidth(row) }"
-                          aria-hidden="true"
-                        ></i>
-                        <span class="zone-display-val">{{ row.value }}</span>
-                      </span>
-                      <span v-if="row.detail" class="zone-display-detail">{{ row.detail }}</span>
+                      <span class="zone-display-val">{{ row.value }}</span>
                     </div>
                   </div>
                 </section>
@@ -4377,7 +4329,7 @@ const showcaseTitle = computed(() => {
                   <div
                     v-for="row in detailZoneSplit.resultRows"
                     :key="`result-${row.label}`"
-                    class="zone-display-item zone-display-item--clickable zone-display-item--result"
+                    class="zone-display-item zone-display-item--clickable zone-display-item--result" :class="zoneActorClass(row.label)"
                     role="button"
                     tabindex="0"
                     @pointerenter="showZoneTip(row, $event)"
@@ -4386,16 +4338,7 @@ const showcaseTitle = computed(() => {
                     @blur="scheduleZoneTipHide"
                   >
                     <span class="zone-display-label">{{ row.label }}</span>
-                    <span class="zone-display-val-zone">
-                      <i
-                        class="zone-fill"
-                        :class="`zone-fill--${zoneFillKind(row)}`"
-                        :style="{ width: zoneFillWidth(row) }"
-                        aria-hidden="true"
-                      ></i>
-                      <span class="zone-display-val">{{ row.value }}</span>
-                    </span>
-                    <span v-if="row.detail" class="zone-display-detail">{{ row.detail }}</span>
+                    <span class="zone-display-val">{{ row.value }}</span>
                   </div>
                 </div>
               </template>
@@ -4403,7 +4346,7 @@ const showcaseTitle = computed(() => {
                 <div
                   v-for="row in detailZoneRows"
                   :key="row.label"
-                  class="zone-display-item zone-display-item--clickable"
+                  class="zone-display-item zone-display-item--clickable" :class="zoneActorClass(row.label)"
                   role="button"
                   tabindex="0"
                   @pointerenter="showZoneTip(row, $event)"
@@ -4412,16 +4355,7 @@ const showcaseTitle = computed(() => {
                   @blur="scheduleZoneTipHide"
                 >
                   <span class="zone-display-label">{{ row.label }}</span>
-                  <span class="zone-display-val-zone">
-                    <i
-                      class="zone-fill"
-                      :class="`zone-fill--${zoneFillKind(row)}`"
-                      :style="{ width: zoneFillWidth(row) }"
-                      aria-hidden="true"
-                    ></i>
-                    <span class="zone-display-val">{{ row.value }}</span>
-                  </span>
-                  <span v-if="row.detail" class="zone-display-detail">{{ row.detail }}</span>
+                  <span class="zone-display-val">{{ row.value }}</span>
 
                 </div>
               </div>
@@ -5480,12 +5414,6 @@ const showcaseTitle = computed(() => {
   font-size: 0.7rem;
   color: #9aa3b0;
 }
-.zone-display-detail {
-  font-size: 0.66rem;
-  line-height: 1.35;
-  opacity: 0.72;
-  word-break: break-all;
-}
 
 .zone-display-val {
   font-size: 0.86rem;
@@ -5494,34 +5422,6 @@ const showcaseTitle = computed(() => {
   font-variant-numeric: tabular-nums;
 }
 
-/* 格子内占比填充条：与 FlowZoneCalculation 同一套（像「全队角色构成」的构成条） */
-.zone-display-val-zone {
-  position: relative;
-  display: block;
-  overflow: hidden;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.zone-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  display: block;
-  border-radius: inherit;
-  transition: width 0.18s ease-out;
-}
-
-.zone-fill--gain {
-  background: color-mix(in srgb, #c9a55c 34%, transparent);
-}
-
-.zone-fill--reduce {
-  background: color-mix(in srgb, #5b8def 30%, transparent);
-}
-
-.zone-display-val-zone .zone-display-val {
-  position: relative;
-}
 
 /* 提供者 / 触发者两框（两者不同角色时） */
 .zone-split {
@@ -5570,6 +5470,18 @@ const showcaseTitle = computed(() => {
 
 .zone-result-grid {
   margin-top: 0.5rem;
+}
+
+.zone-display-item--producer {
+  border-color: color-mix(in srgb, #6f9fd0 72%, #2a3038);
+}
+
+.zone-display-item--trigger {
+  border-color: color-mix(in srgb, #c9a55c 72%, #2a3038);
+}
+
+.zone-display-item--mixed {
+  border-color: color-mix(in srgb, #8b93a3 68%, #2a3038);
 }
 
 .zone-display-item--clickable {
