@@ -1132,6 +1132,8 @@ onBeforeUnmount(() => {
               :step="0.0001"
             />
             <span class="unit">%</span>
+          </div>
+          <div class="value-row">
             <label class="inline-field">
               <span>仅极性紊乱</span>
               <input
@@ -1798,6 +1800,17 @@ onBeforeUnmount(() => {
 
 .additional-block .value-row {
   flex-wrap: wrap;
+  row-gap: 0.25rem;
+}
+
+.additional-block :deep(.num-stepper) {
+  width: 10rem;
+  max-width: 10rem;
+}
+
+.additional-block .line-sub {
+  flex: 1 1 9rem;
+  min-width: 9rem;
 }
 
 .value-col :deep(.num-stepper) {
