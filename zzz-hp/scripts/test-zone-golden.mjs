@@ -25,8 +25,9 @@ const ADDITIVE_RESULT_KEYS = new Set([
   'zones',
   'zoneSchemeVersion',
   'pipeline',
-  // 新增乘区：基线里没有该字段；数值回归由 test-imbue-dmg-zone 覆盖
+  // 新增乘区 / 附加伤害：基线里没有这些字段；数值回归由专项单测覆盖
   'imbueDmgMultiplier',
+  'additionalDamageFlat',
 ])
 
 function stripAdditive(result) {

@@ -309,7 +309,9 @@ export function normalizeEffectList(rawValue) {
           : undefined,
         elementFilter: item.elementFilter ?? 'all',
         kind:
-          item.kind === 'stacked' || item.kind === 'convert' ? item.kind : 'fixed',
+          item.kind === 'stacked' || item.kind === 'convert' || item.kind === 'additionalDamage'
+            ? item.kind
+            : 'fixed',
         stat,
         value: readNumber(item.value),
         stackable: Boolean(item.stackable),
@@ -323,6 +325,10 @@ export function normalizeEffectList(rawValue) {
         })(),
 
         convert: normalizeConvert(item.convert),
+        additionalDamage:
+          item.additionalDamage && typeof item.additionalDamage === 'object'
+            ? { onlyPolarDisorder: item.additionalDamage.onlyPolarDisorder === true }
+            : undefined,
         enabledDefault: item.enabledDefault === false ? false : true,
         note: typeof item.note === 'string' ? item.note : '',
       }

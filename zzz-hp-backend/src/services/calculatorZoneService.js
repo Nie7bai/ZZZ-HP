@@ -34,6 +34,8 @@ export const ZONE_PRIMITIVES = Object.freeze([
   'panel.percent',
   'stagger',
   'vulnerable',
+  // 附加伤害：params = { stat, ratioPercent, onlyPolarDisorder }，逐项 round 后作为紊乱基础加法项
+  'additionalDamage',
 ])
 
 /** 方案条目动作：inherit=继承定义（默认）、replace=整条替换、disable=禁用 */

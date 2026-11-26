@@ -140,7 +140,12 @@ export interface BuffEffectConditions {
 export type BuffApplyTarget = 'self' | 'team'
 /** 增益作用情况：全局 / 仅失衡期 / 仅非失衡期 */
 export type BuffApplySituation = 'global' | 'stagger' | 'non_stagger'
-export type BuffEffectKind = 'fixed' | 'stacked' | 'convert'
+/**
+ * 效果类型。
+ * `additionalDamage`：附加伤害项——来源属性 × 比例% 的固定伤害，
+ * 逐项 round 后求和，只在适用伤害类型（目前为紊乱/极性紊乱）里作为基础加法项参与。
+ */
+export type BuffEffectKind = 'fixed' | 'stacked' | 'convert' | 'additionalDamage'
 export type DamageCalcKind = 'direct' | 'anomaly'
 /** 异常伤害子类：属性异常 / 紊乱 / 乱流 / 异放 / 耀变 */
 export type AnomalyDamageSubKind =
@@ -412,6 +417,12 @@ export type BuffStatKey = Exclude<keyof BuffStatModifiers, 'custom'>
  */
 export type CustomBuffStatKey = `custom:${string}`
 
+/** 附加伤害：来源属性 × 比例% 的固定伤害，逐项 round 后求和 */
+export interface BuffEffectAdditionalDamage {
+  /** 仅极性紊乱（招式存在极性紊乱配置时才计入） */
+  onlyPolarDisorder?: boolean
+}
+
 export interface BuffEffectConvert {
   from: ConvertFromKey
   /** external/final 读面板；manual 自行设置基础值（不看面板） */
@@ -504,6 +515,8 @@ export interface BuffEffect {
   valuePerStack?: number
   defaultStacks?: number
   convert?: BuffEffectConvert
+  /** 附加伤害配置；kind='additionalDamage' 时有效（stat=来源属性，value=比例%） */
+  additionalDamage?: BuffEffectAdditionalDamage
   /**
    * 用户侧「额外增益」的效果（2026-09-24 阶段 3 起并入统一收集）。
    * 它没有勾选状态 —— **加入即已勾选**：`isEffectEnabled` 见到这个标志直接返回 true。

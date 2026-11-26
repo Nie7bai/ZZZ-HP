@@ -479,7 +479,7 @@ export function resolveEffectBaseValue(effect: BuffEffect, stacks: number): numb
     const used = Math.min(max, Math.max(0, stacks))
     return per * used
   }
-  if (effect.kind === 'convert') {
+  if (effect.kind === 'convert' || effect.kind === 'additionalDamage') {
     return 0
   }
   return effect.value ?? 0
@@ -1082,7 +1082,7 @@ function normalizeApplySituation(value: unknown): BuffApplySituation {
 }
 
 function normalizeKind(value: unknown): BuffEffectKind {
-  if (value === 'stacked' || value === 'convert') return value
+  if (value === 'stacked' || value === 'convert' || value === 'additionalDamage') return value
   return 'fixed'
 }
 
@@ -1248,6 +1248,13 @@ export function normalizeBuffEffect(value: unknown): BuffEffect | null {
       return Math.max(0, n)
     })(),
     convert: normalizeConvert(entry.convert),
+    additionalDamage:
+      entry.additionalDamage && typeof entry.additionalDamage === 'object'
+        ? {
+            onlyPolarDisorder:
+              (entry.additionalDamage as Record<string, unknown>).onlyPolarDisorder === true,
+          }
+        : undefined,
     enabledDefault: entry.enabledDefault === false ? false : true,
     note: typeof entry.note === 'string' ? entry.note : '',
   })
@@ -1261,6 +1268,12 @@ export function normalizeBuffEffect(value: unknown): BuffEffect | null {
   // 叠层结算只用 valuePerStack×层数；转模只用 convert.*。value 为历史冗余，统一清零以免脏数据回写。
   if (effect.kind === 'stacked' || effect.stackable || effect.kind === 'convert') {
     effect.value = 0
+  }
+  // 附加伤害不产生面板修饰；value 是比例%，必须保留
+  if (effect.kind === 'additionalDamage') {
+    effect.valuePerStack = 0
+    effect.maxStacks = 1
+    effect.stackable = false
   }
   if (hasSkillCondition(effect)) {
     const targets = getEffectSkillTargets(effect)
@@ -1512,7 +1525,9 @@ export function effectSummaryLabel(
       ? `${effect.valuePerStack ?? 0}×叠层`
       : effect.kind === 'convert'
         ? convertSummaryLabel(effect.convert)
-        : `${effect.value ?? 0}`
+        : effect.kind === 'additionalDamage'
+          ? `${effect.value ?? 0}% × ${statLabelFn?.(effect.stat) ?? effect.stat}`
+          : `${effect.value ?? 0}`
   const parts = [target]
   if (skillPrefix) parts.push(`招式·${skillPrefix}`)
   if (typeText) parts.push(typeText)

@@ -1,6 +1,7 @@
 import type {
   AnomalyDamageSubKind,
   BaseDamageSource,
+  CharacterAttrKey,
   DamageEventCritMode,
   SkillDamageType,
   SkillSubcategory,
@@ -89,6 +90,16 @@ export interface DamageCalcInput {
   combatPierceDmgBonus?: number
   /** 浸染增伤%（独立乘区，所有直伤体系生效：普通直伤 / 命破 / 锋御） */
   combatImbueDmgBonus?: number
+  /**
+   * 附加伤害项（目前只用于紊乱/极性紊乱）：
+   * 每项 = round(来源属性 × 比例% / 100)，逐项 round 后求和；
+   * 来源属性取**异常强度提供者**最终面板；参与后续全部乘区，但不乘紊乱倍率区。
+   */
+  combatAdditionalDamage?: ReadonlyArray<{
+    stat: CharacterAttrKey
+    ratioPercent: number
+    onlyPolarDisorder?: boolean
+  }>
   /** 锐化伤害提升%（独立乘区，仅锐化路径生效；锋御专属） */
   combatSharpenDmgBonus?: number
   /** 锐爆伤害加成%（仅锐化路径） */
@@ -290,6 +301,8 @@ export interface DamageCalcResult {
   turbulenceFullCritZone: number
   /** 异常基础期望（不含子类增伤/倍率/暴击区；本人耀变时为蕾米埃尔异常基础） */
   anomalyBaseExpected: number
+  /** 附加伤害合计（已逐项 round；仅紊乱/极性紊乱有值，其余为 0） */
+  additionalDamageFlat?: number
   /** 是否走蕾米埃尔本人耀变专用公式 */
   remielSelfRadianceActive?: boolean
   remielSelfAnomalyBase?: number
@@ -890,6 +903,22 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
   )
 
   // 只有紊乱/乱流才真正采用这组倍率面板（同一份 multPanel 读数在其它子类里只是顺带算出）
+  const additionalDamageFlat = (input.combatAdditionalDamage ?? [])
+    .filter((term) => !term.onlyPolarDisorder || hasPolarDisorder)
+    .reduce(
+      (sum, term) =>
+        sum +
+        Math.round(
+          ((triggerPanel[term.stat as keyof PanelStats] as number | undefined) ?? 0) *
+            (term.ratioPercent / 100),
+        ),
+      0,
+    )
+  // 附加项补乘「除基础攻击外的全部基础乘区」（异常基础 / 基础攻击），再进子类增伤与暴击
+  const additionZoneFactor =
+    triggerParts.baseDamage > 0
+      ? triggerParts.anomalyBaseExpected / triggerParts.baseDamage
+      : 0
   const disorder = computeDisorderZones({
     panel: bonusPanel,
     multPanel,
@@ -898,6 +927,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     zoneMultOverride: input.disorderZoneMultOverride,
     zoneMultFactorOverride: input.disorderZoneMultFactorOverride,
     anomalyBaseExpected: triggerParts.anomalyBaseExpected,
+    additionalAfterZone: additionalDamageFlat * additionZoneFactor,
   })
 
   // 乱流增伤只吃乱流增伤自身字段（不再叠加属性异常增伤）；**只吃自己的**暴击（不再蹭异常暴击）
@@ -1136,6 +1166,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     disorderBaseMultRatio: round(disorder.baseMultRatio, 4),
     disorderCompMultRatio: round(disorder.compMultRatio, 4),
     disorderMultFactor: round(disorder.multFactor, 4),
+    additionalDamageFlat,
     disorderZone: round(disorder.zone, 4),
     disorderDmgBonusZone: round(disorder.dmgBonusZone, 4),
     disorderCritZone: round(disorder.critZone, 4),

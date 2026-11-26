@@ -615,6 +615,9 @@ const amountText = computed(() => {
     return `${formatCalcDecimal(valuePerStack.value)}${unitSuffix.value}×${maxStacks.value}层`
   }
   if (kind.value === 'convert') return convertSummaryLabel(first.value?.convert)
+  if (kind.value === 'additionalDamage') {
+    return `${formatCalcDecimal(value.value)}% × ${statLabel(first.value.stat)}`
+  }
   return `${formatCalcDecimal(value.value)}${unitSuffix.value}`
 })
 
@@ -1039,12 +1042,30 @@ onBeforeUnmount(() => {
               <option value="fixed">固定</option>
               <option value="stacked">叠层</option>
               <option value="convert">转模</option>
+              <option value="additionalDamage">附加伤害</option>
             </select>
           </label>
         </div>
 
+        <div v-if="kind === 'additionalDamage'" class="value-row">
+          <label class="inline-field">
+            <span>仅极性紊乱</span>
+            <input
+              type="checkbox"
+              :checked="first?.additionalDamage?.onlyPolarDisorder === true"
+              @change="
+                patchAll((effect) => {
+                  effect.additionalDamage = {
+                    ...(effect.additionalDamage ?? {}),
+                    onlyPolarDisorder: ($event.target as HTMLInputElement).checked,
+                  }
+                })
+              "
+            />
+          </label>
+        </div>
         <div class="value-row">
-          <span class="line-sub">{{ kind === 'stacked' ? '每层' : '数值' }}</span>
+          <span class="line-sub">{{ kind === 'additionalDamage' ? '比例%' : kind === 'stacked' ? '每层' : '数值' }}</span>
           <NumberStepper
             v-if="kind === 'stacked'"
             v-model="valuePerStack"

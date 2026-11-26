@@ -248,6 +248,9 @@ export function buildSkillCalcZoneRows(
       push(rows, '紊乱倍率修正', result.disorderMultFactor)
     }
     push(rows, '紊乱倍率区', result.disorderZone)
+    if ((result.additionalDamageFlat ?? 0) > 0) {
+      push(rows, '附加伤害', result.additionalDamageFlat!, true)
+    }
     push(rows, '紊乱增伤区', result.disorderDmgBonusZone)
     if (hasCritZone) {
       push(rows, '紊乱暴击区', result.disorderFullCritZone)

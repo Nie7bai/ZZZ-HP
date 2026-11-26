@@ -58,7 +58,7 @@ const MINDSCAPE_NOTES_LENGTH = 7
 
 const APPLY_TARGET_VALUES = new Set(['self', 'team'])
 const APPLY_SITUATION_VALUES = new Set(['global', 'stagger', 'non_stagger'])
-const EFFECT_KINDS = new Set(['fixed', 'stacked', 'convert'])
+const EFFECT_KINDS = new Set(['fixed', 'stacked', 'convert', 'additionalDamage'])
 /** 与 `calculatorBuffService.normalizeConvert` 的 ATTRS 同源 */
 const CONVERT_FROM_VALUES = new Set([
   'hp',
@@ -229,7 +229,7 @@ export function sanitizeEffect(input, index = 0) {
           : [String(raw.elementFilter)],
     kind,
     stat,
-    value: kind === 'fixed' && !raw.stackable ? value : 0,
+    value: (kind === 'fixed' || kind === 'additionalDamage') && !raw.stackable ? value : 0,
     stackable: Boolean(raw.stackable),
     maxStacks,
     valuePerStack: kind === 'stacked' ? valuePerStack || value : valuePerStack,
@@ -240,6 +240,11 @@ export function sanitizeEffect(input, index = 0) {
     })(),
     enabledDefault: raw.enabledDefault === false ? false : true,
     note: typeof raw.note === 'string' ? raw.note : '',
+  }
+  if (kind === 'additionalDamage') {
+    effect.additionalDamage = isPlainObject(raw.additionalDamage)
+      ? { onlyPolarDisorder: raw.additionalDamage.onlyPolarDisorder === true }
+      : {}
   }
   if (kind === 'convert') {
     const convert = isPlainObject(raw.convert) ? raw.convert : {}

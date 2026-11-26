@@ -7,6 +7,8 @@ import type {
   BangbooBuffDoc,
   BaseDamageSource,
   BuffStatModifiers,
+  BuffEffect,
+  CharacterAttrKey,
   DamageEventKind,
   DamageEventMultOverrides,
   DriveDiscBuffDoc,
@@ -75,6 +77,7 @@ import {
 } from '@/utils/panelViewPolicy'
 import { mergeSkillSubcategoryMultOverrides } from '@/utils/skillSubcategoryMult'
 import { isEffectEnabled } from '@/utils/buffEffect'
+import { damageTypesOf } from '@/utils/buffDamageTypes'
 import {
   collectAllBuffEffects,
   computeFinalPanel,
@@ -1470,7 +1473,7 @@ export function evaluateOptimalEventDetail(
   const evtBreakdown = computeFinalPanel(
     ownerExternal,
     evtPanelCtx,
-    zoneSchemeNeedsProviderTracking(zoneScheme, zoneProviders)
+    zoneSchemeNeedsProviderTracking(zoneScheme, zoneProviders) || damageType === 'disorder'
       ? { ...evtPanelOptionsBase, customProviderTrack: true }
       : evtPanelOptionsBase,
   )
@@ -1767,6 +1770,34 @@ export function evaluateOptimalEventDetail(
       matchesCondition: (when) => evaluateZoneCondition(when, hit, ctx.panelContext, zoneContext),
     },
   })
+  const schemeAdditionalTerms =
+    damageType === 'disorder'
+      ? Object.values(zoneScheme.entries)
+          .filter((entry) => entry.module === 'additionalDamage')
+          .map((entry) => {
+            const params = (entry.params ?? {}) as Record<string, unknown>
+            return {
+              stat: String(params.stat ?? 'mastery') as CharacterAttrKey,
+              ratioPercent: Number(params.ratioPercent ?? 0),
+              onlyPolarDisorder: params.onlyPolarDisorder === true,
+            }
+          })
+      : []
+  const additionalDamageTerms = damageType === 'disorder'
+    ? [...schemeAdditionalTerms, ...(evtBreakdown.sources ?? []).flatMap((source) =>
+        (source.effects ?? [])
+          .filter((effect: BuffEffect) => effect.kind === 'additionalDamage')
+          .filter((effect: BuffEffect) => {
+            const types = damageTypesOf(effect)
+            return !types.length || types.includes('disorder')
+          })
+          .map((effect: BuffEffect) => ({
+            stat: effect.stat as CharacterAttrKey,
+            ratioPercent: effect.value ?? 0,
+            onlyPolarDisorder: effect.additionalDamage?.onlyPolarDisorder === true,
+          })),
+      )]
+    : []
   const result = computeDamageResult({
     eventDamageType: damageType,
     eventCritMode: hit.critMode,
@@ -1791,6 +1822,7 @@ export function evaluateOptimalEventDetail(
     combatPierceDmgBonus: evtBreakdown.combatMods.pierceDmgBonus,
 
     combatImbueDmgBonus: evtBreakdown.combatMods.imbueDmgBonus,
+    combatAdditionalDamage: additionalDamageTerms,
     combatSharpenDmgBonus: evtBreakdown.combatMods.sharpenDmgBonus,
     combatSharpenCritDmgBonus: evtBreakdown.combatMods.sharpenCritDmgBonus,
     combatDmgPenalty: evtBreakdown.combatMods.dmgPenalty,
