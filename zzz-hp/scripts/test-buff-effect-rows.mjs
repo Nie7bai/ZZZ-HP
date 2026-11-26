@@ -16,6 +16,7 @@ import {
   validateEffectGroups,
 } from '../src/utils/buffEffectRows.ts'
 import { findBuffStatZoneById } from '../src/utils/buffStatZones.ts'
+import { normalizeSkillSubcategoryMultFields } from '../src/utils/skillSubcategoryMult.ts'
 import { SKILL_CATEGORY_OPTIONS } from '../src/types/calculator.ts'
 
 let passed = 0
@@ -361,6 +362,19 @@ check(
   otherAnchorEffect?.skillTargets?.[0]?.category === 'other' &&
     otherAnchorEffect?.skillTargets?.[0]?.subcategoryId === 'anchor-x',
   JSON.stringify(otherAnchorEffect?.skillTargets ?? null),
+)
+
+const subFactors = normalizeSkillSubcategoryMultFields({
+  directDmgMultFactor: 1,
+  anomalyReleaseMultFactor: 3,
+  disorderMultFactor: 100,
+})
+check(
+  '招式小类倍率修正按百分比：1 → ×0.01、3 → ×0.03、100 → ×1',
+  subFactors.directDmgMultFactor === 0.01 &&
+    subFactors.anomalyReleaseMultFactor === 0.03 &&
+    subFactors.disorderMultFactor === 1,
+  `${subFactors.directDmgMultFactor}/${subFactors.anomalyReleaseMultFactor}/${subFactors.disorderMultFactor}`,
 )
 
 console.log(`

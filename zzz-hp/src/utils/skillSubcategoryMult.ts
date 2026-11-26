@@ -29,6 +29,15 @@ function readFactor(value: number | undefined | null, fallback = 1): number {
   return multFactorPercentToRatio(value) || fallback
 }
 
+/**
+ * 招式小类的倍率修正：**一律按百分比**（1 = ×1%，3 = ×3%，100 = ×1）。
+ * 不走面板的「≤10 视为旧倍率 ×100」兼容，否则 1% / 3% 会被放大成 ×1 / ×3。
+ */
+function readSkillSubcategoryFactorPercent(value: number | undefined | null, fallback = 1): number {
+  const num = Number(value)
+  return Number.isFinite(num) && num > 0 ? num / 100 : fallback
+}
+
 export function unsetSkillMult(value: number | undefined | null): boolean {
   return !Number.isFinite(Number(value)) || Number(value) === 0
 }
@@ -216,9 +225,12 @@ export function normalizeSkillSubcategoryMultFields(
     disorderMult: Number.isFinite(Number(value.disorderMult))
       ? Number(value.disorderMult)
       : defaults.disorderMult,
-    directDmgMultFactor: readFactor(value.directDmgMultFactor, 1),
-    anomalyReleaseMultFactor: readFactor(value.anomalyReleaseMultFactor, 1),
-    disorderMultFactor: readFactor(value.disorderMultFactor, 1),
+    directDmgMultFactor: readSkillSubcategoryFactorPercent(value.directDmgMultFactor, 1),
+    anomalyReleaseMultFactor: readSkillSubcategoryFactorPercent(
+      value.anomalyReleaseMultFactor,
+      1,
+    ),
+    disorderMultFactor: readSkillSubcategoryFactorPercent(value.disorderMultFactor, 1),
   }
 }
 
