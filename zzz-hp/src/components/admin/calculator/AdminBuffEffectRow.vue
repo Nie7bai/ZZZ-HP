@@ -391,14 +391,26 @@ function patchConvert<K extends keyof NonNullable<BuffEffect['convert']>>(
   })
 }
 
-const additionalDamageScope = computed<'global' | 'skill'>(() =>
-  getEffectSkillTargets(first.value).length ? 'skill' : 'global',
-)
+type AdditionalScope = 'global' | 'polar' | 'skill' | 'skill-polar'
 
-/** 附加伤害作用范围：全局 = 清掉招式限定；仅当前招式 = 用行上的招式小类写 skillTargets */
+/** 作用范围 = 招式范围（全局/当前招式）× 是否仅极性紊乱，合并成一个下拉避免重复勾选 */
+const additionalDamageScope = computed<AdditionalScope>(() => {
+  const skill = getEffectSkillTargets(first.value).length > 0
+  const polar = first.value?.additionalDamage?.onlyPolarDisorder === true
+  if (skill) return polar ? 'skill-polar' : 'skill'
+  return polar ? 'polar' : 'global'
+})
+
 function onAdditionalDamageScopeChange(next: string) {
+  const scope = (next as AdditionalScope) ?? 'global'
+  const polar = scope === 'polar' || scope === 'skill-polar'
+  const limitSkill = scope === 'skill' || scope === 'skill-polar'
   patchAll((effect) => {
-    if (next !== 'skill') {
+    effect.additionalDamage = {
+      ...(effect.additionalDamage ?? {}),
+      onlyPolarDisorder: polar,
+    }
+    if (!limitSkill) {
       setEffectSkillTargets(effect, [])
       return
     }
@@ -1133,23 +1145,6 @@ onBeforeUnmount(() => {
             />
             <span class="unit">%</span>
           </div>
-          <div class="value-row">
-            <label class="inline-field">
-              <span>仅极性紊乱</span>
-              <input
-                type="checkbox"
-                :checked="first?.additionalDamage?.onlyPolarDisorder === true"
-                @change="
-                  patchAll((effect) => {
-                    effect.additionalDamage = {
-                      ...(effect.additionalDamage ?? {}),
-                      onlyPolarDisorder: ($event.target as HTMLInputElement).checked,
-                    }
-                  })
-                "
-              />
-            </label>
-          </div>
         </div>
         <div v-if="kind !== 'additionalDamage'" class="value-row">
           <span class="line-sub">{{ kind === 'stacked' ? '每层' : '数值' }}</span>
@@ -1804,8 +1799,8 @@ onBeforeUnmount(() => {
 }
 
 .additional-block :deep(.num-stepper) {
-  width: 10rem;
-  max-width: 10rem;
+  width: 14rem;
+  max-width: 14rem;
 }
 
 .additional-block .line-sub {
