@@ -1187,6 +1187,12 @@ onBeforeUnmount(() => {
           <span v-if="kind !== 'convert'" class="unit">{{ unitLabel }}</span>
         </div>
 
+        <!-- 紊乱失衡易伤下限是倍率口径：填 1.4 会变成 1.4%，等于没有，直接在控件旁提示 -->
+        <p v-if="first?.stat === 'disorderStaggerFloor'" class="unit-hint">
+          <strong>140</strong> = 至少 ×1.4；填 <strong>1.4</strong> 只会变成 1.4%（约等于不生效）。
+          只对紊乱 / 极性紊乱生效，目标选「全队」才对队友生效。
+        </p>
+
         <div v-if="kind === 'stacked'" class="value-row">
           <span class="line-sub">最大</span>
           <!-- 层数允许 2 位小数（2026-10-22 用户口径：填了就是真值）；± 按钮仍按 1 层 -->
@@ -2016,5 +2022,11 @@ onBeforeUnmount(() => {
     border-top: 1px dashed var(--color-border);
     padding: 0.75rem 0 0;
   }
+}
+.unit-hint {
+  margin: 0.25rem 0 0;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: var(--color-text-muted, #9aa3b0);
 }
 </style>
