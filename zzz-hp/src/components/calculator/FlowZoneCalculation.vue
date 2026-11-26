@@ -43,9 +43,7 @@ const actorSections = computed<ActorSection[]>(() => {
       className: meta.className,
       rows: rows.value
         .filter((row) => disorderSectionOf(row.label) === meta.key)
-        .sort((a, b) =>
-          meta.key === 'term' ? disorderTermOrder(a.label) - disorderTermOrder(b.label) : 0,
-        ),
+        .sort((a, b) => disorderTermOrder(a.label) - disorderTermOrder(b.label)),
     })).filter((section) => section.rows.length)
   }
   const pick = (group: 'producer' | 'trigger' | 'mixed') =>
@@ -117,9 +115,6 @@ function clearZoneTipHideTimer() {
   zoneTipHideTimer = null
 }
 
-function zoneActorClass(label: string) {
-  return `zone-display-item--${skillCalcZoneGroup(label)}`
-}
 
 function zoneTipGroups(row: EventZoneDisplayRow): StatSourceGroup[] {
   const projected = rows.value.find((item) => item.label === row.label)
@@ -189,7 +184,7 @@ function formatDamageNumber(value: number) {
           <div
             v-for="row in section.rows"
             :key="`${section.key}-${row.label}`"
-            class="zone-display-item zone-display-item--clickable" :class="zoneActorClass(row.label)"
+            class="zone-display-item zone-display-item--clickable"
             role="button"
             tabindex="0"
             @pointerenter="showZoneTip(row, $event)"
@@ -208,7 +203,7 @@ function formatDamageNumber(value: number) {
         <div
           v-for="row in groupedResultRows"
           :key="`grouped-result-${row.label}`"
-          class="zone-display-item zone-display-item--clickable zone-display-item--result" :class="zoneActorClass(row.label)"
+          class="zone-display-item zone-display-item--clickable zone-display-item--result"
           role="button"
           tabindex="0"
           @pointerenter="showZoneTip(row, $event)"
@@ -232,7 +227,7 @@ function formatDamageNumber(value: number) {
             <div
               v-for="row in zoneSplit.producerRows"
               :key="`producer-${row.label}`"
-              class="zone-display-item zone-display-item--clickable" :class="zoneActorClass(row.label)"
+              class="zone-display-item zone-display-item--clickable"
               role="button"
               tabindex="0"
               @pointerenter="showZoneTip(row, $event)"
@@ -255,7 +250,7 @@ function formatDamageNumber(value: number) {
             <div
               v-for="row in zoneSplit.triggerRows"
               :key="`trigger-${row.label}`"
-              class="zone-display-item zone-display-item--clickable" :class="zoneActorClass(row.label)"
+              class="zone-display-item zone-display-item--clickable"
               role="button"
               tabindex="0"
               @pointerenter="showZoneTip(row, $event)"
@@ -278,7 +273,7 @@ function formatDamageNumber(value: number) {
           <div
             v-for="row in zoneSplit.mixedRows"
             :key="`mixed-${row.label}`"
-            class="zone-display-item zone-display-item--clickable" :class="zoneActorClass(row.label)"
+            class="zone-display-item zone-display-item--clickable"
             role="button"
             tabindex="0"
             @pointerenter="showZoneTip(row, $event)"
@@ -297,7 +292,7 @@ function formatDamageNumber(value: number) {
         <div
           v-for="row in zoneSplit.resultRows"
           :key="`result-${row.label}`"
-          class="zone-display-item zone-display-item--clickable zone-display-item--result" :class="zoneActorClass(row.label)"
+          class="zone-display-item zone-display-item--clickable zone-display-item--result"
           role="button"
           tabindex="0"
           @pointerenter="showZoneTip(row, $event)"
@@ -315,7 +310,7 @@ function formatDamageNumber(value: number) {
       <div
         v-for="row in rows"
         :key="row.label"
-        class="zone-display-item zone-display-item--clickable" :class="zoneActorClass(row.label)"
+        class="zone-display-item zone-display-item--clickable"
         role="button"
         tabindex="0"
         @pointerenter="showZoneTip(row, $event)"
@@ -460,17 +455,6 @@ function formatDamageNumber(value: number) {
   margin-top: 0.5rem;
 }
 
-.zone-display-item--producer {
-  border-color: color-mix(in srgb, #6f9fd0 72%, #2a3038);
-}
-
-.zone-display-item--trigger {
-  border-color: color-mix(in srgb, #c9a55c 72%, #2a3038);
-}
-
-.zone-display-item--mixed {
-  border-color: color-mix(in srgb, #8b93a3 68%, #2a3038);
-}
 
 .zone-display-item--clickable {
   cursor: pointer;

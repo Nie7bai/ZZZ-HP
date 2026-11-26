@@ -376,47 +376,64 @@ const RESULT_ZONE_LABELS = new Set(['暴击伤害', '期望伤害', '不暴击�
  */
 const VULNERABLE_ZONE_LABELS = new Set(['易伤区'])
 
-/* ===================== 紊乱公式顺序分块 ===================== */
+/* ===================== 紊乱公式顺序分块（每块单一归属） ===================== */
 
-export type DisorderSectionKey = 'term' | 'general' | 'tail'
+export type DisorderSectionKey =
+  | 'termProvider'
+  | 'termTrigger'
+  | 'generalProvider'
+  | 'generalMixed'
+  | 'generalTrigger'
+  | 'tail'
 
 export const DISORDER_SECTION_META: ReadonlyArray<{
   key: DisorderSectionKey
   label: string
   className: string
 }> = [
-  { key: 'term', label: '( 基础攻击力 × 紊乱倍率 + 附加伤害 )', className: 'zone-box--producer' },
-  { key: 'general', label: '× 通用乘区（增伤 / 防御 / 抗性 / 失衡 / 易伤 / 精通 / 等级 / 特殊）', className: 'zone-box--mixed' },
-  { key: 'tail', label: '× 紊乱增伤区 × 紊乱暴击区', className: 'zone-box--trigger' },
+  {
+    key: 'termProvider',
+    label: '( 基础攻击力 × 紊乱倍率 )',
+    className: 'zone-box--producer',
+  },
+  { key: 'termTrigger', label: '+ 附加伤害', className: 'zone-box--trigger' },
+  {
+    key: 'generalProvider',
+    label: '× 通用乘区（异常强度提供者）',
+    className: 'zone-box--producer',
+  },
+  { key: 'generalMixed', label: '× 防御区（共用）', className: 'zone-box--mixed' },
+  {
+    key: 'generalTrigger',
+    label: '× 通用乘区（异常类触发者）',
+    className: 'zone-box--trigger',
+  },
+  {
+    key: 'tail',
+    label: '× 紊乱增伤区 × 紊乱暴击区',
+    className: 'zone-box--trigger',
+  },
 ]
 
-const DISORDER_TERM_LABELS = new Set([
-  '面板攻击力',
-  '面板防御力',
-  '面板贯穿力',
-  '基础伤害',
-  '紊乱基础倍率',
-  '异常持续时间',
-  '紊乱补偿倍率',
-  '紊乱倍率修正',
-  '紊乱倍率区',
-])
+const DISORDER_SECTION_LABELS: Record<DisorderSectionKey, Set<string>> = {
+  termProvider: new Set([
+    '面板攻击力',
+    '面板防御力',
+    '面板贯穿力',
+    '基础伤害',
+    '紊乱基础倍率',
+    '紊乱补偿倍率',
+    '异常持续时间',
+    '紊乱倍率修正',
+    '紊乱倍率区',
+  ]),
+  termTrigger: new Set(),
+  generalProvider: new Set(['增伤区', '精通区', '等级区']),
+  generalMixed: new Set(['防御区']),
+  generalTrigger: new Set(['抗性区', '失衡易伤区', '易伤区', '特殊乘区', '通用乘区']),
+  tail: new Set(['紊乱增伤区', '紊乱暴击区']),
+}
 
-const DISORDER_GENERAL_LABELS = new Set([
-  '增伤区',
-  '防御区',
-  '抗性区',
-  '失衡易伤区',
-  '易伤区',
-  '精通区',
-  '等级区',
-  '特殊乘区',
-  '通用乘区',
-])
-
-const DISORDER_TAIL_LABELS = new Set(['紊乱增伤区', '紊乱暴击区'])
-
-/** 紊乱类按「(攻击×倍率+附加) → 通用乘区 → 紊乱增伤/暴击」顺序分块；其它返回 null */
 const DISORDER_TERM_ORDER = [
   '面板攻击力',
   '面板防御力',
@@ -429,7 +446,7 @@ const DISORDER_TERM_ORDER = [
   '紊乱倍率区',
 ]
 
-/** 第一块内部的展示顺序：补偿倍率在持续时间之前，附加伤害最后 */
+/** 提供者块内部的展示顺序：补偿倍率在持续时间之前 */
 export function disorderTermOrder(label: string): number {
   if (label.startsWith('附加伤害')) return 100
   const index = DISORDER_TERM_ORDER.indexOf(label)
@@ -437,9 +454,12 @@ export function disorderTermOrder(label: string): number {
 }
 
 export function disorderSectionOf(label: string): DisorderSectionKey | null {
-  if (DISORDER_TERM_LABELS.has(label) || label.startsWith('附加伤害')) return 'term'
-  if (DISORDER_GENERAL_LABELS.has(label)) return 'general'
-  if (DISORDER_TAIL_LABELS.has(label)) return 'tail'
+  if (label.startsWith('附加伤害')) return 'termTrigger'
+  for (const [key, labels] of Object.entries(DISORDER_SECTION_LABELS) as Array<
+    [DisorderSectionKey, Set<string>]
+  >) {
+    if (labels.has(label)) return key
+  }
   return null
 }
 

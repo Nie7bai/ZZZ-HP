@@ -196,15 +196,28 @@ check(
     disorderTermOrder('紊乱倍率区') < disorderTermOrder('附加伤害（基础加法项）'),
 )
 check(
-  '紊乱格子按公式顺序分块：(攻击×倍率+附加) → 通用乘区 → 紊乱增伤/暴击',
-  DISORDER_SECTION_META.map((item) => item.key).join(',') === 'term,general,tail' &&
-    disorderSectionOf('面板攻击力') === 'term' &&
-    disorderSectionOf('紊乱倍率区') === 'term' &&
-    disorderSectionOf('附加伤害（基础加法项）') === 'term' &&
-    disorderSectionOf('增伤区') === 'general' &&
-    disorderSectionOf('防御区') === 'general' &&
+  '紊乱按公式顺序分块，每块单一归属',
+  DISORDER_SECTION_META.map((item) => item.key).join(',') ===
+    'termProvider,termTrigger,generalProvider,generalMixed,generalTrigger,tail' &&
+    disorderSectionOf('面板攻击力') === 'termProvider' &&
+    disorderSectionOf('紊乱倍率区') === 'termProvider' &&
+    disorderSectionOf('附加伤害（基础加法项）') === 'termTrigger' &&
+    disorderSectionOf('增伤区') === 'generalProvider' &&
+    disorderSectionOf('精通区') === 'generalProvider' &&
+    disorderSectionOf('防御区') === 'generalMixed' &&
+    disorderSectionOf('抗性区') === 'generalTrigger' &&
+    disorderSectionOf('易伤区') === 'generalTrigger' &&
     disorderSectionOf('紊乱增伤区') === 'tail' &&
     disorderSectionOf('紊乱暴击区') === 'tail',
+)
+check(
+  '每块边框归属：提供者蓝 / 触发者金 / 共用灰',
+  DISORDER_SECTION_META[0].className === 'zone-box--producer' &&
+    DISORDER_SECTION_META[1].className === 'zone-box--trigger' &&
+    DISORDER_SECTION_META[2].className === 'zone-box--producer' &&
+    DISORDER_SECTION_META[3].className === 'zone-box--mixed' &&
+    DISORDER_SECTION_META[4].className === 'zone-box--trigger' &&
+    DISORDER_SECTION_META[5].className === 'zone-box--trigger',
 )
 
 console.log(`
