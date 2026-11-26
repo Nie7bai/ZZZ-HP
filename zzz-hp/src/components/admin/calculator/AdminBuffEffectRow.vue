@@ -635,9 +635,10 @@ const amountText = computed(() => {
   if (kind.value === 'convert') return convertSummaryLabel(first.value?.convert)
   if (kind.value === 'additionalDamage') {
     const perLevel = first.value?.additionalDamage?.ratioPercentPerLevel
-    const levelHint = first.value?.additionalDamage?.ratioLevelSource
-      ? ` + ${formatCalcDecimal(perLevel ?? 0)}%/级`
-      : ''
+    const levelHint =
+      first.value?.additionalDamage?.ratioLevelSource && perLevel
+        ? ` + ${formatCalcDecimal(perLevel)}%/级`
+        : ''
     return `${formatCalcDecimal(value.value)}%${levelHint}（×${formatCalcDecimal((value.value ?? 0) / 100)}） × ${statLabel(first.value.stat)}`
   }
   return `${formatCalcDecimal(value.value)}${unitSuffix.value}`
@@ -1069,80 +1070,87 @@ onBeforeUnmount(() => {
           </label>
         </div>
 
-        <div v-if="kind === 'additionalDamage'" class="value-row">
-          <label class="inline-field">
-            <span>作用范围</span>
-            <select
-              :value="additionalDamageScope"
-              @change="onAdditionalDamageScopeChange(($event.target as HTMLSelectElement).value)"
+        <div v-if="kind === 'additionalDamage'" class="additional-block">
+          <div class="value-row">
+            <label class="inline-field">
+              <span>作用范围</span>
+              <select
+                :value="additionalDamageScope"
+                @change="onAdditionalDamageScopeChange(($event.target as HTMLSelectElement).value)"
+              >
+                <option value="global">全局</option>
+                <option value="skill">仅当前招式</option>
+              </select>
+            </label>
+            <label class="inline-field">
+              <span>倍率等级</span>
+              <select
+                :value="first?.additionalDamage?.ratioLevelSource ?? ''"
+                @change="
+                  patchAll((effect) => {
+                    const value = ($event.target as HTMLSelectElement).value
+                    effect.additionalDamage = {
+                      ...(effect.additionalDamage ?? {}),
+                      ratioLevelSource: (value || undefined) as never,
+                    }
+                  })
+                "
+              >
+                <option value="">固定倍率</option>
+                <option v-for="opt in SKILL_LEVEL_CONVERT_OPTIONS" :key="opt.id" :value="opt.id">
+                  {{ opt.label }}
+                </option>
+              </select>
+            </label>
+            <label
+              v-if="first?.additionalDamage?.ratioLevelSource"
+              class="inline-field convert-number-field"
             >
-              <option value="global">全局</option>
-              <option value="skill">仅当前招式</option>
-            </select>
-          </label>
-          <label class="inline-field">
-            <span>倍率等级</span>
-            <select
-              :value="first?.additionalDamage?.ratioLevelSource ?? ''"
-              @change="
-                patchAll((effect) => {
-                  const value = ($event.target as HTMLSelectElement).value
-                  effect.additionalDamage = {
-                    ...(effect.additionalDamage ?? {}),
-                    ratioLevelSource: (value || undefined) as
-                      | typeof effect.additionalDamage extends undefined
-                      ? never
-                      : NonNullable<typeof effect.additionalDamage>['ratioLevelSource'],
-                  }
-                })
-              "
-            >
-              <option value="">固定倍率</option>
-              <option v-for="opt in SKILL_LEVEL_CONVERT_OPTIONS" :key="opt.id" :value="opt.id">
-                {{ opt.label }}
-              </option>
-            </select>
-          </label>
-          <label
-            v-if="first?.additionalDamage?.ratioLevelSource"
-            class="inline-field convert-number-field"
-          >
-            <span>每级倍率+</span>
+              <span>每级倍率+</span>
+              <NumberStepper
+                :model-value="first?.additionalDamage?.ratioPercentPerLevel ?? 0"
+                :min="-9999"
+                :max="9999"
+                :step="0.0001"
+                @update:model-value="
+                  patchAll((effect) => {
+                    effect.additionalDamage = {
+                      ...(effect.additionalDamage ?? {}),
+                      ratioPercentPerLevel: $event,
+                    }
+                  })
+                "
+              />
+            </label>
+          </div>
+          <div class="value-row">
+            <span class="line-sub">倍率%（3200 = ×32）</span>
             <NumberStepper
-              :model-value="first?.additionalDamage?.ratioPercentPerLevel ?? 0"
-              :min="-9999"
-              :max="9999"
+              v-model="value"
+              :min="-999999"
+              :max="999999"
               :step="0.0001"
-              @update:model-value="
-                patchAll((effect) => {
-                  effect.additionalDamage = {
-                    ...(effect.additionalDamage ?? {}),
-                    ratioPercentPerLevel: $event,
-                  }
-                })
-              "
             />
-          </label>
-          <label class="inline-field">
-            <span>仅极性紊乱</span>
-            <input
-              type="checkbox"
-              :checked="first?.additionalDamage?.onlyPolarDisorder === true"
-              @change="
-                patchAll((effect) => {
-                  effect.additionalDamage = {
-                    ...(effect.additionalDamage ?? {}),
-                    onlyPolarDisorder: ($event.target as HTMLInputElement).checked,
-                  }
-                })
-              "
-            />
-          </label>
+            <span class="unit">%</span>
+            <label class="inline-field">
+              <span>仅极性紊乱</span>
+              <input
+                type="checkbox"
+                :checked="first?.additionalDamage?.onlyPolarDisorder === true"
+                @change="
+                  patchAll((effect) => {
+                    effect.additionalDamage = {
+                      ...(effect.additionalDamage ?? {}),
+                      onlyPolarDisorder: ($event.target as HTMLInputElement).checked,
+                    }
+                  })
+                "
+              />
+            </label>
+          </div>
         </div>
-        <div class="value-row">
-          <span class="line-sub">
-            {{ kind === 'additionalDamage' ? '倍率%（3200 = ×32）' : kind === 'stacked' ? '每层' : '数值' }}
-          </span>
+        <div v-if="kind !== 'additionalDamage'" class="value-row">
+          <span class="line-sub">{{ kind === 'stacked' ? '每层' : '数值' }}</span>
           <NumberStepper
             v-if="kind === 'stacked'"
             v-model="valuePerStack"
@@ -1151,7 +1159,7 @@ onBeforeUnmount(() => {
             :step="0.0001"
           />
           <NumberStepper
-            v-else-if="kind === 'fixed' || kind === 'additionalDamage'"
+            v-else-if="kind === 'fixed'"
             v-model="value"
             :min="-999999"
             :max="999999"
@@ -1780,6 +1788,16 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 0.4rem;
   min-width: 0;
+}
+
+.additional-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.additional-block .value-row {
+  flex-wrap: wrap;
 }
 
 .value-col :deep(.num-stepper) {
