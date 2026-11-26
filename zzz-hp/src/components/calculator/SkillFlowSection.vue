@@ -4230,6 +4230,7 @@ const showcaseTitle = computed(() => {
                         ></i>
                         <span class="zone-display-val">{{ row.value }}</span>
                       </span>
+                      <span v-if="row.detail" class="zone-display-detail">{{ row.detail }}</span>
                     </div>
                   </div>
                 </section>
@@ -4259,6 +4260,7 @@ const showcaseTitle = computed(() => {
                       ></i>
                       <span class="zone-display-val">{{ row.value }}</span>
                     </span>
+                    <span v-if="row.detail" class="zone-display-detail">{{ row.detail }}</span>
                   </div>
                 </div>
               </template>
@@ -4291,6 +4293,7 @@ const showcaseTitle = computed(() => {
                           ></i>
                           <span class="zone-display-val">{{ row.value }}</span>
                         </span>
+                        <span v-if="row.detail" class="zone-display-detail">{{ row.detail }}</span>
                       </div>
                     </div>
                   </section>
@@ -4322,6 +4325,7 @@ const showcaseTitle = computed(() => {
                           ></i>
                           <span class="zone-display-val">{{ row.value }}</span>
                         </span>
+                        <span v-if="row.detail" class="zone-display-detail">{{ row.detail }}</span>
                       </div>
                     </div>
                   </section>
@@ -4353,6 +4357,7 @@ const showcaseTitle = computed(() => {
                         ></i>
                         <span class="zone-display-val">{{ row.value }}</span>
                       </span>
+                      <span v-if="row.detail" class="zone-display-detail">{{ row.detail }}</span>
                     </div>
                   </div>
                 </section>
@@ -4379,6 +4384,7 @@ const showcaseTitle = computed(() => {
                       ></i>
                       <span class="zone-display-val">{{ row.value }}</span>
                     </span>
+                    <span v-if="row.detail" class="zone-display-detail">{{ row.detail }}</span>
                   </div>
                 </div>
               </template>
@@ -4404,6 +4410,8 @@ const showcaseTitle = computed(() => {
                     ></i>
                     <span class="zone-display-val">{{ row.value }}</span>
                   </span>
+                  <span v-if="row.detail" class="zone-display-detail">{{ row.detail }}</span>
+
                 </div>
               </div>
               <p v-else class="empty-hint">
@@ -5461,6 +5469,13 @@ const showcaseTitle = computed(() => {
   font-size: 0.7rem;
   color: #9aa3b0;
 }
+.zone-display-detail {
+  font-size: 0.66rem;
+  line-height: 1.35;
+  opacity: 0.72;
+  word-break: break-all;
+}
+
 .zone-display-val {
   font-size: 0.86rem;
   font-weight: 700;

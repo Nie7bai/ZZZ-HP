@@ -14,6 +14,8 @@ export interface SkillCalcZoneRow {
   fillPercent?: number
   /** 自定义填充色：gain 金 / reduce 蓝 */
   fillKind?: 'gain' | 'reduce'
+  /** 格子下方的小字明细（追加展示） */
+  detail?: string
 }
 
 function formatZoneValue(value: number, asDamage = false) {
@@ -256,11 +258,15 @@ export function buildSkillCalcZoneRows(
     if (additionalFlat > 0) {
       // 填充比例 = 附加项在「异常基础 × 紊乱倍率 + 附加」里的占比
       const preSubtype = result.anomalyBaseExpected * result.disorderZone + additionalFlat
+      const baseAtk = result.baseDamage
+      const general =
+        baseAtk > 0 ? result.anomalyBaseExpected / baseAtk : 0
       rows.push({
         label: '附加伤害（基础加法项）',
         value: additionalFlat.toLocaleString('en-US'),
         fillPercent: preSubtype > 0 ? (additionalFlat / preSubtype) * 100 : 0,
         fillKind: 'gain',
+        detail: `× 通用 ${formatZoneValue(general)} × 紊乱增伤 ${formatZoneValue(result.disorderDmgBonusZone)} × 紊乱暴击 ${formatZoneValue(result.disorderCritZone)}`,
       })
     }
     push(rows, '紊乱增伤区', result.disorderDmgBonusZone)

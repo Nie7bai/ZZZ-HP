@@ -205,6 +205,8 @@ function zoneFillWidth(row: EventZoneDisplayRow): string {
               ></i>
               <span class="zone-display-val">{{ row.value }}</span>
             </span>
+            <span v-if="row.detail" class="zone-display-detail">{{ row.detail }}</span>
+
           </div>
         </div>
       </section>
@@ -231,6 +233,7 @@ function zoneFillWidth(row: EventZoneDisplayRow): string {
             ></i>
             <span class="zone-display-val">{{ row.value }}</span>
           </span>
+          <span v-if="row.detail" class="zone-display-detail">{{ row.detail }}</span>
         </div>
       </div>
     </template>
@@ -263,6 +266,7 @@ function zoneFillWidth(row: EventZoneDisplayRow): string {
                 ></i>
                 <span class="zone-display-val">{{ row.value }}</span>
               </span>
+              <span v-if="row.detail" class="zone-display-detail">{{ row.detail }}</span>
             </div>
           </div>
         </section>
@@ -294,6 +298,7 @@ function zoneFillWidth(row: EventZoneDisplayRow): string {
                 ></i>
                 <span class="zone-display-val">{{ row.value }}</span>
               </span>
+              <span v-if="row.detail" class="zone-display-detail">{{ row.detail }}</span>
             </div>
           </div>
         </section>
@@ -325,6 +330,8 @@ function zoneFillWidth(row: EventZoneDisplayRow): string {
               ></i>
               <span class="zone-display-val">{{ row.value }}</span>
             </span>
+            <span v-if="row.detail" class="zone-display-detail">{{ row.detail }}</span>
+
           </div>
         </div>
       </section>
@@ -351,6 +358,7 @@ function zoneFillWidth(row: EventZoneDisplayRow): string {
             ></i>
             <span class="zone-display-val">{{ row.value }}</span>
           </span>
+          <span v-if="row.detail" class="zone-display-detail">{{ row.detail }}</span>
         </div>
       </div>
     </template>
@@ -377,6 +385,7 @@ function zoneFillWidth(row: EventZoneDisplayRow): string {
           ></i>
           <span class="zone-display-val">{{ row.value }}</span>
         </span>
+        <span v-if="row.detail" class="zone-display-detail">{{ row.detail }}</span>
       </div>
     </div>
 
@@ -452,6 +461,13 @@ function zoneFillWidth(row: EventZoneDisplayRow): string {
 .zone-display-label {
   font-size: 0.7rem;
   color: #9aa3b0;
+}
+
+.zone-display-detail {
+  font-size: 0.66rem;
+  line-height: 1.35;
+  opacity: 0.72;
+  word-break: break-all;
 }
 
 .zone-display-val {

@@ -177,6 +177,13 @@ check(
   additionalRow?.value,
 )
 check(
+  '附加伤害格下方有小字明细：× 通用 × 紊乱增伤 × 紊乱暴击',
+  Boolean(additionalRow?.detail?.includes('× 通用')) &&
+    Boolean(additionalRow?.detail?.includes('× 紊乱增伤')) &&
+    Boolean(additionalRow?.detail?.includes('× 紊乱暴击')),
+  additionalRow?.detail,
+)
+check(
   '附加伤害格有自定义柱状填充比例',
   typeof additionalRow?.fillPercent === 'number' && additionalRow.fillPercent > 0,
   String(additionalRow?.fillPercent),
