@@ -1611,11 +1611,13 @@ function formatDamageNumber(value: number) {
  * 倍率 ≥ 1 按「超出 1 的幅度」填充（封顶 100%），< 1 用减益色；伤害行不画条。
  */
 function zoneFillKind(row: SkillCalcZoneRow): 'gain' | 'reduce' | 'none' {
+  if (row.fillPercent != null) return row.fillKind ?? 'gain'
   if (row.isDamage || !Number.isFinite(row.zoneValue)) return 'none'
   return (row.zoneValue as number) >= 1 ? 'gain' : 'reduce'
 }
 
 function zoneFillWidth(row: SkillCalcZoneRow): string {
+  if (row.fillPercent != null) return `${Math.min(Math.max(row.fillPercent, 0), 100).toFixed(2)}%`
   if (zoneFillKind(row) === 'none') return '0%'
   const value = row.zoneValue as number
   const ratio = value >= 1 ? Math.min((value - 1) / 1, 1) : Math.min(Math.max(value, 0), 1)

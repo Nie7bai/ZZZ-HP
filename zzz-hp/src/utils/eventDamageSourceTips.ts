@@ -2,7 +2,7 @@ import { buildSkillCalcZoneRows, type SkillCalcZoneRow } from '@/utils/skillCalc
 import { zoneLabel } from '@/zones/display'
 import type { SkillFlowCalculationDetail } from '@/utils/skillFlowCalculation'
 import type { EventDamageInputUsage, BuffModSource } from '@/utils/panelBuffCalc'
-import { createEmptyBuffStatModifiers } from '@/utils/calculatorUi'
+import { createEmptyBuffStatModifiers, BUFF_STAT_FIELDS } from '@/utils/calculatorUi'
 import { addStat } from '@/utils/buffEffect'
 import { createEmptyExternalPanel, type PanelStats } from '@/types/calculatorPanel'
 import { buildSkillBaseMultNote } from '@/utils/skillTalentLevels'
@@ -696,6 +696,11 @@ const disorderFormulaParts = (() => {
           items: [
             '附加伤害 = round(异常类触发者面板[来源属性] × 倍率% / 100)，逐项 round 后求和',
             '加在「异常基础 × 紊乱倍率区」之后，补乘其余全部乘区（含精通/等级/防御/抗性），不乘紊乱倍率区',
+            ...((p.additionalDamageBreakdown ?? []).map((term) => {
+              const label =
+                BUFF_STAT_FIELDS.find((field) => field.key === term.stat)?.label ?? term.stat
+              return `${label} ${formatFormulaNumber(term.statValue)} × ${term.ratioPercent}% = ${formatFormulaNumber(term.amount)}`
+            })),
           ],
         },
       ],

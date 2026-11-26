@@ -2,7 +2,6 @@ import type { SkillDamageType } from '@/types/calculator'
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 import type { DamageCalcResult } from '@/utils/damageCalc'
 import { zoneLabel, type ZoneLabelSource } from '@/zones/display'
-import { BUFF_STAT_FIELDS } from '@/utils/calculatorUi'
 
 export interface SkillCalcZoneRow {
   label: string
@@ -11,6 +10,10 @@ export interface SkillCalcZoneRow {
   zoneValue?: number
   /** true = 伤害行（期望伤害 / 暴击伤害等），填充条不适用 */
   isDamage?: boolean
+  /** 自定义填充比例（0–100）；用于附加伤害这类非乘区行 */
+  fillPercent?: number
+  /** 自定义填充色：gain 金 / reduce 蓝 */
+  fillKind?: 'gain' | 'reduce'
 }
 
 function formatZoneValue(value: number, asDamage = false) {
@@ -251,16 +254,13 @@ export function buildSkillCalcZoneRows(
     push(rows, '紊乱倍率区', result.disorderZone)
     const additionalFlat = result.additionalDamageFlat ?? 0
     if (additionalFlat > 0) {
-      const breakdown = result.additionalDamageBreakdown ?? []
-      const detail = breakdown
-        .map((term) => {
-          const label = BUFF_STAT_FIELDS.find((field) => field.key === term.stat)?.label ?? term.stat
-          return `${label} ${formatZoneValue(term.statValue)} × ${term.ratioPercent}% = ${term.amount.toLocaleString('en-US')}`
-        })
-        .join(' + ')
+      // 填充比例 = 附加项在「异常基础 × 紊乱倍率 + 附加」里的占比
+      const preSubtype = result.anomalyBaseExpected * result.disorderZone + additionalFlat
       rows.push({
         label: '附加伤害（基础加法项）',
-        value: `${additionalFlat.toLocaleString('en-US')}${detail ? `（${detail}）` : ''}`,
+        value: additionalFlat.toLocaleString('en-US'),
+        fillPercent: preSubtype > 0 ? (additionalFlat / preSubtype) * 100 : 0,
+        fillKind: 'gain',
       })
     }
     push(rows, '紊乱增伤区', result.disorderDmgBonusZone)

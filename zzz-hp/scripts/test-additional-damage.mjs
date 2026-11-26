@@ -9,7 +9,7 @@
  */
 import { computeDamageResult } from '../src/utils/damageCalc.ts'
 import { createDefaultExternalPanel } from '../src/types/calculatorPanel.ts'
-import { buildEventZoneDisplay } from '../src/utils/eventDamageSourceTips.ts'
+import { buildEventZoneDisplay, buildEventValueTips } from '../src/utils/eventDamageSourceTips.ts'
 import { createBuffCalculationRuntime } from '../src/utils/skillFlowCalculation.ts'
 import { createEmptyBuffEffect } from '../src/utils/buffEffect.ts'
 import { eventFixture, eventRuntimeInput } from './_eventElementHarness.mjs'
@@ -172,9 +172,21 @@ check(
   Boolean(additionalRow),
 )
 check(
-  '附加伤害格展示组成：来源属性 × 倍率% = 值',
-  Boolean(additionalRow?.value.includes('× 3200% = 12,800')),
+  '附加伤害格数值只显示合计（柱状填充不再被长文本挤坏）',
+  additionalRow?.value === '12,800',
   additionalRow?.value,
+)
+check(
+  '附加伤害格有自定义柱状填充比例',
+  typeof additionalRow?.fillPercent === 'number' && additionalRow.fillPercent > 0,
+  String(additionalRow?.fillPercent),
+)
+const tips = buildEventValueTips(detail)
+const tipItems = (tips.additionalDamageFlat ?? []).flatMap((group) => group.items)
+check(
+  '悬停提示展示组成：来源属性 × 倍率% = 值',
+  tipItems.some((item) => item.includes('× 3200% = 12,800')),
+  tipItems.join(' | '),
 )
 
 console.log(`

@@ -153,6 +153,7 @@ function formatDamageNumber(value: number) {
  * 伤害行与无值行不画条。widthPercent 是字符串百分比，直接进 :style。
  */
 function zoneFillRatio(row: EventZoneDisplayRow): number {
+  if (row.fillPercent != null) return Math.min(Math.max(row.fillPercent / 100, 0), 1)
   if (row.isDamage || !Number.isFinite(row.zoneValue)) return 0
   const value = row.zoneValue as number
   if (value >= 1) return Math.min((value - 1) / 1, 1)
@@ -160,6 +161,7 @@ function zoneFillRatio(row: EventZoneDisplayRow): number {
 }
 
 function zoneFillKind(row: EventZoneDisplayRow): 'gain' | 'reduce' | 'none' {
+  if (row.fillPercent != null) return row.fillKind ?? 'gain'
   if (row.isDamage || !Number.isFinite(row.zoneValue)) return 'none'
   return (row.zoneValue as number) >= 1 ? 'gain' : 'reduce'
 }
