@@ -64,8 +64,8 @@ export interface StageTraceEntry extends StageDefinition {
   value: number
 }
 
-const DIRECT_STAGE_IDS = ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'crit', 'directMult', 'settlement', 'pierce', 'sharpen', 'special'] as const
-const ANOMALY_STAGE_IDS = ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'mastery', 'level', 'dmgBonus', 'mult', 'crit', 'special'] as const
+const DIRECT_STAGE_IDS = ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'crit', 'directMult', 'settlement', 'pierce', 'imbue', 'sharpen', 'special'] as const
+const ANOMALY_STAGE_IDS = ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'mastery', 'level', 'mutation', 'dmgBonus', 'mult', 'crit', 'special'] as const
 const RADIANCE_SELF_STAGE_IDS = ['selfAtk', 'selfMastery', 'specialLevel', 'mutation', 'defense', 'resistance', 'vulnerable', 'stagger', 'radianceBonus', 'radianceMult', 'crit', 'special'] as const
 
 /** 异常类子链路：阶段集合与取值逻辑相同，只有子类阶段的语义标签随子类变化。 */
@@ -86,6 +86,8 @@ const ANOMALY_SUB_CHAIN_SPECS: readonly AnomalySubChainSpec[] = Object.freeze([
   { id: 'anomalyRelease', label: '异放链路', bonusLabel: '异放增伤区', multLabel: '异放倍率区', critLabel: '异放暴击区' },
   { id: 'disorder', label: '紊乱链路', bonusLabel: '紊乱增伤区', multLabel: '紊乱倍率区', critLabel: '紊乱暴击区' },
   { id: 'turbulence', label: '乱流链路', bonusLabel: '乱流增伤区', multLabel: '乱流倍率区', critLabel: '乱流暴击区' },
+  // 基础耀变（非蕾米本人）：与其它异常子类同构，只是子类阶段换成耀变口径
+  { id: 'radiance', label: '耀变链路', bonusLabel: '耀变增伤区', multLabel: '耀变倍率区', critLabel: '耀变暴击区' },
 ])
 
 /** 异常通用链路 id：未命中任何子链路时的兜底（子类取值仍按 `anomalySubKind`） */
@@ -111,6 +113,7 @@ function buildAnomalyChain(spec: AnomalySubChainSpec): DamageChainDefinition {
       { id: 'vulnerable', kind: 'multiplier', label: '易伤区', group, order: 50, module: 'vulnerable' },
       { id: 'mastery', kind: 'multiplier', label: '精通区', group, order: 60, module: 'masteryZone' },
       { id: 'level', kind: 'multiplier', label: '等级区', group, order: 70, module: 'levelZone' },
+      { id: 'mutation', kind: 'multiplier', label: '异化系数区', group, order: 75, module: 'mutationZone' },
       { id: 'dmgBonus', kind: 'multiplier', label: spec.bonusLabel, group, order: 80, module: 'subtypeBonus' },
       { id: 'mult', kind: 'multiplier', label: spec.multLabel, group, order: 90, module: 'subtypeMult' },
       { id: 'crit', kind: 'multiplier', label: spec.critLabel, group, order: 100, module: 'crit' },
@@ -141,6 +144,7 @@ export const BUILT_IN_DAMAGE_CHAINS: readonly DamageChainDefinition[] = Object.f
       { id: 'settlement', kind: 'multiplier', label: '决算倍率区', group: 'direct', order: 80, module: 'settlementMult' },
       { id: 'pierce', kind: 'multiplier', label: '贯穿增伤区', group: 'direct', order: 90, module: 'pierceBonus' },
       { id: 'sharpen', kind: 'multiplier', label: '锐化伤害提升区', group: 'direct', order: 100, module: 'sharpenBonus' },
+      { id: 'imbue', kind: 'multiplier', label: '浸染增伤区', group: 'direct', order: 105, module: 'imbueBonus' },
       { id: 'special', kind: 'multiplier', label: '特殊乘区', group: 'direct', order: 110, module: 'specialMult' },
       { id: 'final', kind: 'final', label: '期望伤害', group: 'direct', order: 120, module: 'product', inputs: DIRECT_STAGE_IDS },
     ],
@@ -162,8 +166,9 @@ export const BUILT_IN_DAMAGE_CHAINS: readonly DamageChainDefinition[] = Object.f
       { id: 'crit', kind: 'multiplier', label: '锐爆区', group: 'sharpen', order: 60, module: 'sharpenCrit' },
       { id: 'directMult', kind: 'multiplier', label: '直伤倍率区', group: 'sharpen', order: 70, module: 'directMult' },
       { id: 'sharpen', kind: 'multiplier', label: '锐化伤害提升区', group: 'sharpen', order: 100, module: 'sharpenBonus' },
+      { id: 'imbue', kind: 'multiplier', label: '浸染增伤区', group: 'sharpen', order: 105, module: 'imbueBonus' },
       { id: 'special', kind: 'multiplier', label: '特殊乘区', group: 'sharpen', order: 110, module: 'specialMult' },
-      { id: 'final', kind: 'final', label: '期望伤害', group: 'sharpen', order: 120, module: 'product', inputs: ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'crit', 'directMult', 'sharpen', 'special'] },
+      { id: 'final', kind: 'final', label: '期望伤害', group: 'sharpen', order: 120, module: 'product', inputs: ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'crit', 'directMult', 'sharpen', 'imbue', 'special'] },
     ],
   },
   {
@@ -184,8 +189,9 @@ export const BUILT_IN_DAMAGE_CHAINS: readonly DamageChainDefinition[] = Object.f
       { id: 'directMult', kind: 'multiplier', label: '直伤倍率区', group: 'direct', order: 70, module: 'directMult' },
       { id: 'settlement', kind: 'multiplier', label: '决算倍率区', group: 'direct', order: 80, module: 'settlementMult' },
       { id: 'pierce', kind: 'multiplier', label: '贯穿增伤区', group: 'direct', order: 90, module: 'pierceBonus' },
+      { id: 'imbue', kind: 'multiplier', label: '浸染增伤区', group: 'direct', order: 105, module: 'imbueBonus' },
       { id: 'special', kind: 'multiplier', label: '特殊乘区', group: 'direct', order: 110, module: 'specialMult' },
-      { id: 'final', kind: 'final', label: '期望伤害', group: 'direct', order: 120, module: 'product', inputs: ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'crit', 'directMult', 'settlement', 'pierce', 'special'] },
+      { id: 'final', kind: 'final', label: '期望伤害', group: 'direct', order: 120, module: 'product', inputs: ['base', 'dmg', 'defense', 'resistance', 'stagger', 'vulnerable', 'crit', 'directMult', 'settlement', 'pierce', 'imbue', 'special'] },
     ],
   },
   {
@@ -204,6 +210,7 @@ export const BUILT_IN_DAMAGE_CHAINS: readonly DamageChainDefinition[] = Object.f
       { id: 'vulnerable', kind: 'multiplier', label: '易伤区', group: 'anomaly', order: 50, module: 'vulnerable' },
       { id: 'mastery', kind: 'multiplier', label: '精通区', group: 'anomaly', order: 60, module: 'masteryZone' },
       { id: 'level', kind: 'multiplier', label: '等级区', group: 'anomaly', order: 70, module: 'levelZone' },
+      { id: 'mutation', kind: 'multiplier', label: '异化系数区', group: 'anomaly', order: 75, module: 'mutationZone' },
       { id: 'dmgBonus', kind: 'multiplier', label: '子类增伤区', group: 'anomaly', order: 80, module: 'subtypeBonus' },
       { id: 'mult', kind: 'multiplier', label: '子类倍率区', group: 'anomaly', order: 90, module: 'subtypeMult' },
       { id: 'crit', kind: 'multiplier', label: '子类暴击区', group: 'anomaly', order: 100, module: 'crit' },
@@ -281,6 +288,7 @@ export const DAMAGE_CHAIN_MODULE_OPTIONS: readonly ChainModuleOption[] = Object.
   { id: 'settlementMult', label: 'settlementMult（决算倍率区）', kind: 'multiplier' },
   { id: 'pierceBonus', label: 'pierceBonus（贯穿增伤区）', kind: 'multiplier' },
   { id: 'sharpenBonus', label: 'sharpenBonus（锐化伤害提升区）', kind: 'multiplier' },
+  { id: 'imbueBonus', label: 'imbueBonus（浸染增伤区）', kind: 'multiplier' },
   { id: 'specialMult', label: 'specialMult（特殊乘区）', kind: 'multiplier' },
   { id: 'masteryZone', label: 'masteryZone（精通区）', kind: 'multiplier' },
   { id: 'levelZone', label: 'levelZone（等级区）', kind: 'multiplier' },

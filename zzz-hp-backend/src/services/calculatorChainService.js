@@ -45,6 +45,7 @@ export const BUILTIN_DAMAGE_CHAIN_KEYS = Object.freeze([
   'anomalyRelease',
   'disorder',
   'turbulence',
+  'radiance',
   'radiance-self',
 ])
 

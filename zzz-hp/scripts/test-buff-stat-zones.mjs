@@ -1,5 +1,5 @@
 /**
- * 管理侧乘区目录：61 项 / 3 类 / 类型约束。
+ * 管理侧乘区目录：62 项 / 3 类 / 类型约束。
  * 运行：npx vite-node scripts/test-buff-stat-zones.mjs
  */
 import {
@@ -28,7 +28,7 @@ function check(name, ok, detail = '') {
 }
 
 console.log('\n[1] 61 项，覆盖全部 73 个字段')
-check('共 61 个乘区选项', BUFF_STAT_ZONES.length === 61, `${BUFF_STAT_ZONES.length}`)
+check('共 62 个乘区选项', BUFF_STAT_ZONES.length === 62, `${BUFF_STAT_ZONES.length}`)
 const covered = new Set()
 for (const zone of BUFF_STAT_ZONES) {
   if (zone.stat) covered.add(zone.stat)
@@ -44,7 +44,7 @@ check(
 
 console.log('\n[2] 类1 死限制')
 const class1 = BUFF_STAT_ZONES.filter((zone) => zone.tier === 1)
-check('类1 共 3 项', class1.length === 3)
+check('类1 共 4 项', class1.length === 4)
 const pierce = findBuffStatZoneById('zone:pierceDmgBonus')
 const sharpen = findBuffStatZoneById('zone:sharpenDmgBonus')
 const mutation = findBuffStatZoneById('zone:mutationCoeff')
@@ -54,6 +54,12 @@ check(
   '异化系数锁异常 5 项',
   mutation?.lockedTypes?.length === 5 &&
     ANOMALY_DAMAGE_TYPES.every((type) => mutation?.lockedTypes?.includes(type)),
+)
+const imbue = findBuffStatZoneById('zone:imbueDmgBonus')
+check(
+  '浸染增伤锁直伤三项',
+  imbue?.label === '浸染增伤' &&
+    imbue?.lockedTypes?.join(',') === 'normal,pierce,sharpen',
 )
 check('类1 不允许改类型（allowed 与 locked 一致）', allowedDamageTypesOf(pierce).join(',') === 'pierce')
 

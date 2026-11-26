@@ -66,6 +66,7 @@ export function computeDirectBaseChain(p: DamageCalcResult, critMode: DamageEven
     Math.max(0, p.directVulnerableMultiplier) *
     critMultiplier *
     Math.max(0, p.specialMultiplier) *
+    Math.max(0, p.imbueDmgMultiplier) *
     Math.max(0, pathMultiplier) *
     customMultiplier
   )
@@ -77,6 +78,7 @@ export function buildDirectBaseChainFactorLabels(p: DamageCalcResult): string[] 
     String(p.directVulnerableMultiplier),
     String(p.critMultiplier),
     String(p.specialMultiplier),
+    String(p.imbueDmgMultiplier),
   ]
   if (p.useSharpenFormula) {
     parts.push(String(p.sharpenDmgMultiplier))
@@ -116,6 +118,11 @@ export function buildAlignedDirectFormulaGroup(
       label: zoneLabel(p, 'specialMultiplier', '特殊乘区'),
       value: formatFormulaNumber(p.specialMultiplier),
       tipsKey: 'specialMultiplier',
+    },
+    {
+      label: zoneLabel(p, 'imbueDmgMultiplier', '浸染增伤区'),
+      value: formatFormulaNumber(p.imbueDmgMultiplier),
+      tipsKey: 'imbueDmgMultiplier',
     },
   ]
   if (p.useSharpenFormula) {

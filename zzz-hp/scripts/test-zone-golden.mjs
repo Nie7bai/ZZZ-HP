@@ -21,7 +21,13 @@ const baselinePath = path.join(here, '..', 'fixtures', 'zone-golden.json')
 const writeMode = process.argv.includes('--write')
 
 /** 模块化之后新增、不属于“原有硬编码结果”的字段 */
-const ADDITIVE_RESULT_KEYS = new Set(['zones', 'zoneSchemeVersion', 'pipeline'])
+const ADDITIVE_RESULT_KEYS = new Set([
+  'zones',
+  'zoneSchemeVersion',
+  'pipeline',
+  // 新增乘区：基线里没有该字段；数值回归由 test-imbue-dmg-zone 覆盖
+  'imbueDmgMultiplier',
+])
 
 function stripAdditive(result) {
   const next = { ...result }
@@ -133,7 +139,7 @@ for (const name of names) {
     failed += 1
     continue
   }
-  // 链路选择：直伤/锐化/帷幕走 direct、锋御走 sharpen、异常子类各自成链
+  // 链路选择：直伤/锐化/帷幕走 direct、锋御走 sharpen、异常子类（含基础耀变）各自成链
   const expectedChain = name.startsWith('sharpen')
     ? 'sharpen'
     : name.startsWith('direct') || name.startsWith('curtain')
@@ -146,7 +152,9 @@ for (const name of names) {
             ? 'disorder'
             : name.startsWith('turbulence')
               ? 'turbulence'
-              : 'anomaly'
+              : name.startsWith('radiance')
+                ? 'radiance'
+                : 'anomaly'
   if (pipeline.chainId !== expectedChain) {
     console.error(`FAIL  ${name}.pipeline.chainId — ${pipeline.chainId} ≠ ${expectedChain}`)
     failed += 1

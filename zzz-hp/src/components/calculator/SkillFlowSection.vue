@@ -1606,6 +1606,22 @@ function zoneTipGroupLabel(label: string, zoneKey?: string): string {
   return detailZoneDisplay.value.find((row) => row.label === label && row.zoneKey === zoneKey)?.sourceLabel ?? '事件参数'
 }
 
+/**
+ * 格子内占比填充条（与 FlowZoneCalculation 同一口径）：
+ * 倍率 ≥ 1 按「超出 1 的幅度」填充（封顶 100%），< 1 用减益色；伤害行不画条。
+ */
+function zoneFillKind(row: SkillCalcZoneRow): 'gain' | 'reduce' | 'none' {
+  if (row.isDamage || !Number.isFinite(row.zoneValue)) return 'none'
+  return (row.zoneValue as number) >= 1 ? 'gain' : 'reduce'
+}
+
+function zoneFillWidth(row: SkillCalcZoneRow): string {
+  if (zoneFillKind(row) === 'none') return '0%'
+  const value = row.zoneValue as number
+  const ratio = value >= 1 ? Math.min((value - 1) / 1, 1) : Math.min(Math.max(value, 0), 1)
+  return `${(ratio * 100).toFixed(2)}%`
+}
+
 function zoneTipGroups(row: SkillCalcZoneRow): StatSourceGroup[] {
   const projected=detailZoneDisplay.value.find(item=>item.label===row.label&&item.zoneKey===row.zoneKey)
   return projected ? [{label:zoneTipGroupLabel(row.label, row.zoneKey),items:[row.label+' '+row.value]},...projected.groups] : []
@@ -4203,7 +4219,15 @@ const showcaseTitle = computed(() => {
                       @blur="scheduleZoneTipHide"
                     >
                       <span class="zone-display-label">{{ row.label }}</span>
-                      <span class="zone-display-val">{{ row.value }}</span>
+                      <span class="zone-display-val-zone">
+                        <i
+                          class="zone-fill"
+                          :class="`zone-fill--${zoneFillKind(row)}`"
+                          :style="{ width: zoneFillWidth(row) }"
+                          aria-hidden="true"
+                        ></i>
+                        <span class="zone-display-val">{{ row.value }}</span>
+                      </span>
                     </div>
                   </div>
                 </section>
@@ -4224,7 +4248,15 @@ const showcaseTitle = computed(() => {
                     @blur="scheduleZoneTipHide"
                   >
                     <span class="zone-display-label">{{ row.label }}</span>
-                    <span class="zone-display-val">{{ row.value }}</span>
+                    <span class="zone-display-val-zone">
+                      <i
+                        class="zone-fill"
+                        :class="`zone-fill--${zoneFillKind(row)}`"
+                        :style="{ width: zoneFillWidth(row) }"
+                        aria-hidden="true"
+                      ></i>
+                      <span class="zone-display-val">{{ row.value }}</span>
+                    </span>
                   </div>
                 </div>
               </template>
@@ -4248,7 +4280,15 @@ const showcaseTitle = computed(() => {
                         @blur="scheduleZoneTipHide"
                       >
                         <span class="zone-display-label">{{ row.label }}</span>
-                        <span class="zone-display-val">{{ row.value }}</span>
+                        <span class="zone-display-val-zone">
+                          <i
+                            class="zone-fill"
+                            :class="`zone-fill--${zoneFillKind(row)}`"
+                            :style="{ width: zoneFillWidth(row) }"
+                            aria-hidden="true"
+                          ></i>
+                          <span class="zone-display-val">{{ row.value }}</span>
+                        </span>
                       </div>
                     </div>
                   </section>
@@ -4271,7 +4311,15 @@ const showcaseTitle = computed(() => {
                         @blur="scheduleZoneTipHide"
                       >
                         <span class="zone-display-label">{{ row.label }}</span>
-                        <span class="zone-display-val">{{ row.value }}</span>
+                        <span class="zone-display-val-zone">
+                          <i
+                            class="zone-fill"
+                            :class="`zone-fill--${zoneFillKind(row)}`"
+                            :style="{ width: zoneFillWidth(row) }"
+                            aria-hidden="true"
+                          ></i>
+                          <span class="zone-display-val">{{ row.value }}</span>
+                        </span>
                       </div>
                     </div>
                   </section>
@@ -4294,7 +4342,15 @@ const showcaseTitle = computed(() => {
                       @blur="scheduleZoneTipHide"
                     >
                       <span class="zone-display-label">{{ row.label }}</span>
-                      <span class="zone-display-val">{{ row.value }}</span>
+                      <span class="zone-display-val-zone">
+                        <i
+                          class="zone-fill"
+                          :class="`zone-fill--${zoneFillKind(row)}`"
+                          :style="{ width: zoneFillWidth(row) }"
+                          aria-hidden="true"
+                        ></i>
+                        <span class="zone-display-val">{{ row.value }}</span>
+                      </span>
                     </div>
                   </div>
                 </section>
@@ -4312,7 +4368,15 @@ const showcaseTitle = computed(() => {
                     @blur="scheduleZoneTipHide"
                   >
                     <span class="zone-display-label">{{ row.label }}</span>
-                    <span class="zone-display-val">{{ row.value }}</span>
+                    <span class="zone-display-val-zone">
+                      <i
+                        class="zone-fill"
+                        :class="`zone-fill--${zoneFillKind(row)}`"
+                        :style="{ width: zoneFillWidth(row) }"
+                        aria-hidden="true"
+                      ></i>
+                      <span class="zone-display-val">{{ row.value }}</span>
+                    </span>
                   </div>
                 </div>
               </template>
@@ -4329,7 +4393,15 @@ const showcaseTitle = computed(() => {
                   @blur="scheduleZoneTipHide"
                 >
                   <span class="zone-display-label">{{ row.label }}</span>
-                  <span class="zone-display-val">{{ row.value }}</span>
+                  <span class="zone-display-val-zone">
+                    <i
+                      class="zone-fill"
+                      :class="`zone-fill--${zoneFillKind(row)}`"
+                      :style="{ width: zoneFillWidth(row) }"
+                      aria-hidden="true"
+                    ></i>
+                    <span class="zone-display-val">{{ row.value }}</span>
+                  </span>
                 </div>
               </div>
               <p v-else class="empty-hint">
@@ -5392,6 +5464,35 @@ const showcaseTitle = computed(() => {
   font-weight: 700;
   color: #e8edf5;
   font-variant-numeric: tabular-nums;
+}
+
+/* 格子内占比填充条：与 FlowZoneCalculation 同一套（像「全队角色构成」的构成条） */
+.zone-display-val-zone {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.zone-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: block;
+  border-radius: inherit;
+  transition: width 0.18s ease-out;
+}
+
+.zone-fill--gain {
+  background: color-mix(in srgb, #c9a55c 34%, transparent);
+}
+
+.zone-fill--reduce {
+  background: color-mix(in srgb, #5b8def 30%, transparent);
+}
+
+.zone-display-val-zone .zone-display-val {
+  position: relative;
 }
 
 /* 提供者 / 触发者两框（两者不同角色时） */

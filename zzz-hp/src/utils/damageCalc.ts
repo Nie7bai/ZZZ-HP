@@ -87,6 +87,8 @@ export interface DamageCalcInput {
   combatSpecial: number
   /** 贯穿增伤%（独立乘区，仅贯穿力基础直伤生效） */
   combatPierceDmgBonus?: number
+  /** 浸染增伤%（独立乘区，所有直伤体系生效：普通直伤 / 命破 / 锋御） */
+  combatImbueDmgBonus?: number
   /** 锐化伤害提升%（独立乘区，仅锐化路径生效；锋御专属） */
   combatSharpenDmgBonus?: number
   /** 锐爆伤害加成%（仅锐化路径） */
@@ -243,6 +245,8 @@ export interface DamageCalcResult {
   specialMultiplier: number
   /** 贯穿增伤乘区（非贯穿基础时为 1） */
   pierceDmgMultiplier: number
+  /** 浸染增伤乘区（独立乘区，所有直伤体系生效；异常类恒为 1） */
+  imbueDmgMultiplier: number
   /** 锐化伤害提升乘区（非锐化路径时为 1） */
   sharpenDmgMultiplier: number
   /** 是否走锐化公式 */
@@ -449,6 +453,7 @@ function computeGeneralAndAnomalyBase(options: {
   combatStaggerVulnerableOnly: number
   combatSpecial: number
   combatPierceDmgBonus: number
+  combatImbueDmgBonus?: number
   combatSharpenDmgBonus?: number
   staggerPhase: 'normal' | 'stagger'
   /** 帷幕易伤上限（倍率）；非空时失衡易伤区改为 min(最终失衡易伤, 上限)，不分阶段 */
@@ -544,6 +549,8 @@ function computeGeneralAndAnomalyBase(options: {
 
   const pierceDmgMultiplier =
     usedBaseSource === 'pierce' ? 1 + pierceDmgBonusRatio : 1
+  /** 浸染增伤：独立乘区，只作用于直伤体系（普通直伤 / 命破 / 锋御） */
+  const imbueDmgMultiplier = Math.max(0, 1 + (options.combatImbueDmgBonus ?? 0) / 100)
   /** 锐化伤害提升：独立乘区，仅锐化路径生效（锋御专属，对标命破贯穿增伤） */
   const sharpenDmgMultiplier = options.useSharpenFormula
     ? Math.max(0, 1 + (options.combatSharpenDmgBonus ?? 0) / 100)
@@ -578,6 +585,7 @@ function computeGeneralAndAnomalyBase(options: {
     staggerMultiplier,
     specialMultiplier,
     pierceDmgMultiplier,
+    imbueDmgMultiplier,
     sharpenDmgMultiplier,
     generalMultiplier,
     masteryZone,
@@ -681,6 +689,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     combatStaggerVulnerableOnly: input.combatStaggerVulnerableOnly ?? 0,
     combatSpecial: input.combatSpecial,
     combatPierceDmgBonus: input.combatPierceDmgBonus ?? 0,
+    combatImbueDmgBonus: input.combatImbueDmgBonus ?? 0,
     combatSharpenDmgBonus: input.combatSharpenDmgBonus ?? 0,
     staggerPhase,
     curtainVulnerabilityCap: input.curtainVulnerabilityCap ?? null,
@@ -774,6 +783,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       Math.max(0, mainParts.directVulnerableMultiplier) *
       sharpenCritZone *
       Math.max(0, mainParts.specialMultiplier) *
+      Math.max(0, mainParts.imbueDmgMultiplier) *
       Math.max(0, mainParts.sharpenDmgMultiplier)
     directDamageFromDirectMult = sharpenBaseChain * directDmgMultZone
     settlementDamageExpected = 0
@@ -785,6 +795,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       Math.max(0, mainParts.directVulnerableMultiplier) *
       mainParts.critMultiplier *
       Math.max(0, mainParts.specialMultiplier) *
+      Math.max(0, mainParts.imbueDmgMultiplier) *
       Math.max(0, mainParts.pierceDmgMultiplier)
     directDamageFromDirectMult = directBaseChain * directDmgMultZone
     settlementDamageExpected = directBaseChain * settlementDmgMultZone
@@ -979,6 +990,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
         if (critMode === 'expected') markUse(panel, 'critRate', 'critMultiplier', ['dmgBonus'])
         if (critMode !== 'noCrit') markUse(panel, 'critDmg', 'critMultiplier', ['dmgBonus'])
       }
+      markCombat('combatImbueDmgBonus', 'imbueDmgBonus', 'imbueDmgMultiplier')
       if (!input.skillSubcategory?.directDmgMult) markUse(panel, 'directDmgMult', 'directDmgMultZone', ['anomalyTypeBonus'])
       if (!input.skillSubcategory && !useSharpenFormula) markUse(panel, 'settlementDmgMult', 'settlementDmgMultZone', ['anomalyTypeBonus'])
       markUse(panel, 'directDmgMultFactor', 'directDmgMultZone', ['anomalyTypeBonus'])
@@ -1073,6 +1085,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     staggerZoneCap: input.curtainVulnerabilityCap ?? undefined,
     specialMultiplier: round(mainParts.specialMultiplier, 4),
     pierceDmgMultiplier: round(reportedPierceDmg, 4),
+    imbueDmgMultiplier: round(mainParts.imbueDmgMultiplier, 4),
     sharpenDmgMultiplier: round(mainParts.sharpenDmgMultiplier, 4),
     useSharpenFormula,
     sharpenCritDmgRatio: round(sharpenCritDmgRatio, 4),
@@ -1166,7 +1179,8 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     isSelfRadiance: remielSelfRadianceActive,
   })
   const stageValues: Record<string, number | undefined> = {}
-  if (chainId === 'direct') {
+  // 锐化 / 命破也属直伤体系：阶段值按直伤口径取（各自链路只展示自己有的阶段）
+  if (chainId === 'direct' || chainId === 'sharpen' || chainId === 'pierce') {
     Object.assign(stageValues, {
       base: result.baseDamage,
       dmg: directDmgMultiplier,
@@ -1178,6 +1192,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       directMult: result.directDmgMultZone,
       settlement: result.settlementDmgMultZone,
       pierce: result.pierceDmgMultiplier,
+      imbue: result.imbueDmgMultiplier,
       sharpen: result.sharpenDmgMultiplier,
       special: result.specialMultiplier,
       final: result.directDamageExpected,
@@ -1217,6 +1232,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       vulnerable: triggerParts.anomalyVulnerableMultiplier,
       mastery: triggerParts.masteryZone,
       level: triggerParts.levelZone,
+      mutation: result.mutationZone,
       dmgBonus: subtypeZones.bonus,
       mult: subtypeZones.mult,
       crit: subtypeZones.crit,

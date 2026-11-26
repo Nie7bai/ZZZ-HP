@@ -146,6 +146,27 @@ function cancelZoneTipHide() {
 function formatDamageNumber(value: number) {
   return Math.round(value).toLocaleString('en-US')
 }
+
+/**
+ * 格子内占比填充条（像「全队角色构成」的构成条）：
+ * 倍率 ≥ 1 的部分按「超出 1 的幅度」填充（上限 1，即 100% 增益封顶），< 1 用减益色。
+ * 伤害行与无值行不画条。widthPercent 是字符串百分比，直接进 :style。
+ */
+function zoneFillRatio(row: EventZoneDisplayRow): number {
+  if (row.isDamage || !Number.isFinite(row.zoneValue)) return 0
+  const value = row.zoneValue as number
+  if (value >= 1) return Math.min((value - 1) / 1, 1)
+  return Math.min(Math.max(value, 0), 1)
+}
+
+function zoneFillKind(row: EventZoneDisplayRow): 'gain' | 'reduce' | 'none' {
+  if (row.isDamage || !Number.isFinite(row.zoneValue)) return 'none'
+  return (row.zoneValue as number) >= 1 ? 'gain' : 'reduce'
+}
+
+function zoneFillWidth(row: EventZoneDisplayRow): string {
+  return `${(zoneFillRatio(row) * 100).toFixed(2)}%`
+}
 </script>
 
 <template>
@@ -173,7 +194,15 @@ function formatDamageNumber(value: number) {
             @blur="scheduleZoneTipHide"
           >
             <span class="zone-display-label">{{ row.label }}</span>
-            <span class="zone-display-val">{{ row.value }}</span>
+            <span class="zone-display-val-zone">
+              <i
+                class="zone-fill"
+                :class="`zone-fill--${zoneFillKind(row)}`"
+                :style="{ width: zoneFillWidth(row) }"
+                aria-hidden="true"
+              ></i>
+              <span class="zone-display-val">{{ row.value }}</span>
+            </span>
           </div>
         </div>
       </section>
@@ -191,7 +220,15 @@ function formatDamageNumber(value: number) {
           @blur="scheduleZoneTipHide"
         >
           <span class="zone-display-label">{{ row.label }}</span>
-          <span class="zone-display-val">{{ row.value }}</span>
+          <span class="zone-display-val-zone">
+            <i
+              class="zone-fill"
+              :class="`zone-fill--${zoneFillKind(row)}`"
+              :style="{ width: zoneFillWidth(row) }"
+              aria-hidden="true"
+            ></i>
+            <span class="zone-display-val">{{ row.value }}</span>
+          </span>
         </div>
       </div>
     </template>
@@ -215,7 +252,15 @@ function formatDamageNumber(value: number) {
               @blur="scheduleZoneTipHide"
             >
               <span class="zone-display-label">{{ row.label }}</span>
-              <span class="zone-display-val">{{ row.value }}</span>
+              <span class="zone-display-val-zone">
+                <i
+                  class="zone-fill"
+                  :class="`zone-fill--${zoneFillKind(row)}`"
+                  :style="{ width: zoneFillWidth(row) }"
+                  aria-hidden="true"
+                ></i>
+                <span class="zone-display-val">{{ row.value }}</span>
+              </span>
             </div>
           </div>
         </section>
@@ -238,7 +283,15 @@ function formatDamageNumber(value: number) {
               @blur="scheduleZoneTipHide"
             >
               <span class="zone-display-label">{{ row.label }}</span>
-              <span class="zone-display-val">{{ row.value }}</span>
+              <span class="zone-display-val-zone">
+                <i
+                  class="zone-fill"
+                  :class="`zone-fill--${zoneFillKind(row)}`"
+                  :style="{ width: zoneFillWidth(row) }"
+                  aria-hidden="true"
+                ></i>
+                <span class="zone-display-val">{{ row.value }}</span>
+              </span>
             </div>
           </div>
         </section>
@@ -261,7 +314,15 @@ function formatDamageNumber(value: number) {
             @blur="scheduleZoneTipHide"
           >
             <span class="zone-display-label">{{ row.label }}</span>
-            <span class="zone-display-val">{{ row.value }}</span>
+            <span class="zone-display-val-zone">
+              <i
+                class="zone-fill"
+                :class="`zone-fill--${zoneFillKind(row)}`"
+                :style="{ width: zoneFillWidth(row) }"
+                aria-hidden="true"
+              ></i>
+              <span class="zone-display-val">{{ row.value }}</span>
+            </span>
           </div>
         </div>
       </section>
@@ -279,7 +340,15 @@ function formatDamageNumber(value: number) {
           @blur="scheduleZoneTipHide"
         >
           <span class="zone-display-label">{{ row.label }}</span>
-          <span class="zone-display-val">{{ row.value }}</span>
+          <span class="zone-display-val-zone">
+            <i
+              class="zone-fill"
+              :class="`zone-fill--${zoneFillKind(row)}`"
+              :style="{ width: zoneFillWidth(row) }"
+              aria-hidden="true"
+            ></i>
+            <span class="zone-display-val">{{ row.value }}</span>
+          </span>
         </div>
       </div>
     </template>
@@ -297,7 +366,15 @@ function formatDamageNumber(value: number) {
         @blur="scheduleZoneTipHide"
       >
         <span class="zone-display-label">{{ row.label }}</span>
-        <span class="zone-display-val">{{ row.value }}</span>
+        <span class="zone-display-val-zone">
+          <i
+            class="zone-fill"
+            :class="`zone-fill--${zoneFillKind(row)}`"
+            :style="{ width: zoneFillWidth(row) }"
+            aria-hidden="true"
+          ></i>
+          <span class="zone-display-val">{{ row.value }}</span>
+        </span>
       </div>
     </div>
 
@@ -380,6 +457,35 @@ function formatDamageNumber(value: number) {
   font-weight: 700;
   color: #e8edf5;
   font-variant-numeric: tabular-nums;
+}
+
+/* 格子内占比填充条：像「全队角色构成」一样按数值大小填充，铺满整格宽 */
+.zone-display-val-zone {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.zone-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: block;
+  border-radius: inherit;
+  transition: width 0.18s ease-out;
+}
+
+.zone-fill--gain {
+  background: color-mix(in srgb, #c9a55c 34%, transparent);
+}
+
+.zone-fill--reduce {
+  background: color-mix(in srgb, #5b8def 30%, transparent);
+}
+
+.zone-display-val-zone .zone-display-val {
+  position: relative;
 }
 
 /* 提供者 / 触发者两框（两者不同角色时） */
