@@ -323,6 +323,10 @@ function isEmptySlotValue(value: unknown): boolean {
   return !text || text === NONE
 }
 
+function isEmptyKeywordSkillSlot(row: KeywordRow): boolean {
+  return row.anchors.ok && row.anchors.skillTargets.length === 0
+}
+
 /** 数字槽位（渲染成 `type=number`，不走下拉） */
 const NUMBER_SLOT_IDS = ['value', 'convertRatio', 'convertBase', 'convertCap']
 
@@ -396,7 +400,7 @@ function slotBuckets(row: KeywordRow) {
     const value = row.slots[id]
     const entry = { id, label: slotLabel(id), value, unable: isUnableValue(value) }
     if (entry.unable) unable.push(entry)
-    else if (id !== 'scope' && isEmptySlotValue(value)) hidden.push(entry)
+    else if (isEmptySlotValue(value)) hidden.push(entry)
     else visible.push(entry)
   }
   if (row.slots.action === '转化') {
@@ -1807,9 +1811,13 @@ const wasteCount = computed(() =>
                     </select>
                   </div>
                 </div>
-                <div class="nbf-slot nbf-skill-slot">
+                <div
+                  v-if="row.detailOpen || !isEmptyKeywordSkillSlot(row)"
+                  class="nbf-slot nbf-skill-slot"
+                  :class="{ 'nbf-slot-empty': isEmptyKeywordSkillSlot(row) }"
+                >
                   <span class="nbf-slot-label">限定招式</span>
-                  <span v-if="row.anchors.ok && !row.anchors.skillTargets.length" class="nbf-sub">不限</span>
+                  <span v-if="isEmptyKeywordSkillSlot(row)" class="nbf-sub">不限</span>
                   <AdminBuffSkillTargets
                     :targets="row.anchors.skillTargets"
                     :target-labels="keywordSkillTargetLabels(row)"
