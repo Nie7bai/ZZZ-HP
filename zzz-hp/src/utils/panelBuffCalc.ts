@@ -1071,6 +1071,8 @@ export interface CombatBuffMods {
   pierceDmgBonus: number
   /** 浸染增伤%（独立乘区，仅直伤体系） */
   imbueDmgBonus: number
+  /** 最终伤害%（独立乘区，直伤链最后一道） */
+  finalDmgBonus: number
   /** 锐化伤害提升%（独立乘区，仅锐化路径；锋御专属） */
   sharpenDmgBonus: number
   sharpenCritDmgBonus: number
@@ -3088,6 +3090,7 @@ export function extractCombatMods(mods: BuffStatModifiers): CombatBuffMods {
     special: mods.special,
     pierceDmgBonus: mods.pierceDmgBonus,
     imbueDmgBonus: mods.imbueDmgBonus,
+    finalDmgBonus: mods.finalDmgBonus,
     sharpenDmgBonus: mods.sharpenDmgBonus,
     sharpenCritDmgBonus: mods.sharpenCritDmgBonus,
     dmgPenalty: mods.dmgPenalty,

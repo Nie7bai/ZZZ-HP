@@ -66,7 +66,8 @@ export function computeDirectBaseChain(p: DamageCalcResult, critMode: DamageEven
       critMultiplier *
       Math.max(0, p.specialMultiplier) *
       Math.max(0, p.imbueDmgMultiplier) *
-      Math.max(0, p.sharpenDmgMultiplier)
+      Math.max(0, p.sharpenDmgMultiplier) *
+      Math.max(0, p.finalDmgMultiplier)
     )
   }
   return (
@@ -75,7 +76,8 @@ export function computeDirectBaseChain(p: DamageCalcResult, critMode: DamageEven
     critMultiplier *
     Math.max(0, p.specialMultiplier) *
     Math.max(0, p.imbueDmgMultiplier) *
-    Math.max(0, p.pierceDmgMultiplier)
+    Math.max(0, p.pierceDmgMultiplier) *
+    Math.max(0, p.finalDmgMultiplier)
   )
 }
 
@@ -92,6 +94,7 @@ export function buildDirectBaseChainFactorLabels(p: DamageCalcResult): string[] 
   } else if (p.baseDamageSource === 'pierce') {
     parts.push(String(p.pierceDmgMultiplier))
   }
+  parts.push(String(p.finalDmgMultiplier))
   return parts
 }
 
@@ -144,6 +147,11 @@ export function buildAlignedDirectFormulaGroup(
       tipsKey: 'pierceDmgMultiplier',
     })
   }
+  baseTerms.push({
+    label: zoneLabel(p, 'finalDmgMultiplier', '最终伤害区'),
+    value: formatFormulaNumber(p.finalDmgMultiplier),
+    tipsKey: 'finalDmgMultiplier',
+  })
 
   const directZone: DirectFormulaTerm = {
     label: zoneLabel(p, 'directDmgMultZone', '直伤倍率区'),

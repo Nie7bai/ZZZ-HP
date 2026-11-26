@@ -95,7 +95,7 @@ check('蕾米本人耀变链路阶段完整', () => {
   assert.ok(chain)
   assert.deepEqual(
     chain.stages.map((stage) => stage.id),
-    ['selfAtk', 'selfMastery', 'specialLevel', 'mutation', 'defense', 'resistance', 'vulnerable', 'stagger', 'radianceBonus', 'radianceMult', 'crit', 'special', 'final'],
+    ['selfAtk', 'selfMastery', 'specialLevel', 'mutation', 'defense', 'resistance', 'vulnerable', 'stagger', 'radianceBonus', 'radianceMult', 'crit', 'special', 'finalDmg', 'final'],
   )
 })
 

@@ -299,6 +299,8 @@ export interface BuffStatModifiers {
   pierceDmgBonus: number
   /** 浸染增伤%（独立乘区，仅直伤体系：普通直伤 / 命破 / 锋御） */
   imbueDmgBonus: number
+  /** 最终伤害%（独立乘区，直伤链最后一道：普通直伤 / 命破 / 锋御；异常链不受影响） */
+  finalDmgBonus: number
   /** 锐化伤害提升%（独立乘区，仅锐化路径；锋御专属，对标命破贯穿增伤） */
   sharpenDmgBonus: number
   /**

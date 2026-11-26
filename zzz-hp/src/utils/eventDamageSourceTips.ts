@@ -70,6 +70,7 @@ export type ValueTipsKey =
   | 'mutationZone'
   | 'pierceDmgMultiplier'
   | 'imbueDmgMultiplier'
+  | 'finalDmgMultiplier'
   | 'additionalDamageFlat'
   | 'sharpenDmgMultiplier'
   | 'remielSelfInCombatAtk'
@@ -168,6 +169,9 @@ export function buildEventValueTips(calculation: SkillFlowCalculationDetail): Re
   }
   const p = d.result
   const staggerZoneName = zoneLabel(p, 'staggerMultiplier')
+  /** 最终伤害区：全局最后一道乘区，只有非 1 时才占位（避免默认噪声） */
+  const finalDmgActive = Math.abs(p.finalDmgMultiplier - 1) > 1e-9
+  const finalDmgZoneLine = `最终伤害区 ${formatFormulaNumber(p.finalDmgMultiplier)}（所有伤害最后乘一次）`
   const sub = d.anomalySubKind
   const ownerPanel = owner.panel, ownerExternal = owner.external, ownerSources = owner.sources
   const panel = base.panel, external = base.external, sources = base.sources
@@ -211,6 +215,7 @@ const directFormulaParts = (() => {
   if (p.baseDamageSource === 'pierce') {
     parts.push(formatFormulaNumber(p.pierceDmgMultiplier))
   }
+  parts.push(formatFormulaNumber(p.finalDmgMultiplier))
   parts.push(formatFormulaNumber(p.directDmgMultZone))
   return parts
 })()
@@ -719,6 +724,23 @@ const disorderFormulaParts = (() => {
       ],
       `浸染增伤区 ${formatFormulaNumber(p.imbueDmgMultiplier)}`,
     ),
+    finalDmgMultiplier: withTotal(
+      [
+        {
+          label: '乘区说明',
+          items: [
+            '直伤链最后一道独立乘区：普通直伤 / 命破 / 锋御都生效，异常链不受影响',
+          ],
+        },
+        ...buildStatSourceGroups({
+          keys: ['finalDmgBonus'],
+          externalPanel: external,
+          sources,
+          externalKeyMap: { finalDmgBonus: null },
+        }),
+      ],
+      `最终伤害区 ${formatFormulaNumber(p.finalDmgMultiplier)}`,
+    ),
     additionalDamageFlat: withTotal(
       [
         {
@@ -869,6 +891,7 @@ const disorderFormulaParts = (() => {
             : p.baseDamageSource === 'pierce'
               ? [`贯穿增伤区 ${formatFormulaNumber(p.pierceDmgMultiplier)}`]
               : []),
+          `最终伤害区 ${formatFormulaNumber(p.finalDmgMultiplier)}`,
           `直伤倍率区 ${formatFormulaNumber(p.directDmgMultZone)} → 直伤分量 ${formatNumber(p.directDamageFromDirectMult)}`,
           ...(p.settlementDmgMultZone > 0
             ? [
@@ -1073,6 +1096,7 @@ const disorderFormulaParts = (() => {
           `属性异常倍率区 ${anomalyExpectedFormulaParts[2]}`,
           `属性异常暴击区（暴击率=0）1 → ${formatNumber(p.attributeAnomalyExpectedNoCrit)}`,
           `属性异常暴击区（暴击率=1）${formatFormulaNumber(p.attributeAnomalyFullCritZone)} → ${formatNumber(p.attributeAnomalyExpectedFullCrit)}`,
+          ...(finalDmgActive ? [finalDmgZoneLine] : []),
         ],
       },
     ],
@@ -1176,6 +1200,7 @@ const disorderFormulaParts = (() => {
           // 紊乱只吃自己的暴击字段（紊乱暴击率/爆伤），与乱流同构
           `紊乱暴击区（暴击率=0）1 → ${formatNumber(p.disorderExpectedNoCrit)}`,
           `紊乱暴击区（暴击率=1）${formatFormulaNumber(p.disorderFullCritZone)} → ${formatNumber(p.disorderExpectedFullCrit)}`,
+          ...(finalDmgActive ? [finalDmgZoneLine] : []),
           `合计 ${formatNumber(p.disorderExpected)}`,
         ],
       },
@@ -1183,7 +1208,10 @@ const disorderFormulaParts = (() => {
         label: '加减过程',
         fullWidth: true,
         items: [
-          `${disorderFormulaParts.join(' × ')}`,
+          `${[
+            ...disorderFormulaParts,
+            ...(finalDmgActive ? [formatFormulaNumber(p.finalDmgMultiplier)] : []),
+          ].join(' × ')}`,
           `= ${formatNumber(p.disorderExpected)}`,
         ],
       },
@@ -1269,6 +1297,7 @@ const disorderFormulaParts = (() => {
           `乱流增伤区 ${formatFormulaNumber(p.turbulenceDmgBonusZone)}`,
           `乱流暴击区（暴击率=0）1 → ${formatNumber(p.turbulenceExpectedNoCrit)}`,
           `乱流暴击区（暴击率=1）${formatFormulaNumber(p.turbulenceFullCritZone)} → ${formatNumber(p.turbulenceExpectedFullCrit)}`,
+          ...(finalDmgActive ? [finalDmgZoneLine] : []),
         ],
       },
     ],
@@ -1283,6 +1312,7 @@ const disorderFormulaParts = (() => {
           `异放暴击区 = 1 + (${formatFormulaNumber(p.anomalyReleaseCritRateRatio ?? 0)} × ${formatFormulaNumber(p.anomalyReleaseCritDmgRatio ?? 0)})`,
           `暴击率=0 → ${formatNumber(p.anomalyReleaseExpectedNoCrit)}`,
           `暴击率=1（区 ${formatFormulaNumber(p.anomalyReleaseFullCritZone)}）→ ${formatNumber(p.anomalyReleaseExpectedFullCrit)}`,
+          ...(finalDmgActive ? [finalDmgZoneLine] : []),
         ],
       },
     ],
@@ -1464,6 +1494,7 @@ const zoneTipKeys: Record<string, ValueTipsKey> = {
   失衡易伤区:'staggerMultiplier',特殊乘区:'specialMultiplier',特殊倍率乘区:'specialMultZone',
   暴击区:'critMultiplier',锐爆区:'critMultiplier',贯穿增伤区:'pierceDmgMultiplier',
   浸染增伤区:'imbueDmgMultiplier',
+  最终伤害区:'finalDmgMultiplier',
   附加伤害:'additionalDamageFlat',
   技能倍率区:'directDmgMultZone',直伤倍率区:'directDmgMultZone',决算倍率区:'settlementDmgMultZone',
   精通区:'masteryZone',等级区:'levelZone',异化系数:'mutationZone',异化系数区:'mutationZone',

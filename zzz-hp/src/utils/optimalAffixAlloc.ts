@@ -1846,6 +1846,7 @@ export function evaluateOptimalEventDetail(
     combatPierceDmgBonus: evtBreakdown.combatMods.pierceDmgBonus,
 
     combatImbueDmgBonus: evtBreakdown.combatMods.imbueDmgBonus,
+    combatFinalDmgBonus: evtBreakdown.combatMods.finalDmgBonus,
     combatAdditionalDamage: additionalDamageTerms,
     combatSharpenDmgBonus: evtBreakdown.combatMods.sharpenDmgBonus,
     combatSharpenCritDmgBonus: evtBreakdown.combatMods.sharpenCritDmgBonus,
@@ -2129,6 +2130,7 @@ function computeEventDamageLines(
         combatPierceDmgBonus: firstBreakdown.combatMods.pierceDmgBonus,
 
         combatImbueDmgBonus: firstBreakdown.combatMods.imbueDmgBonus,
+        combatFinalDmgBonus: firstBreakdown.combatMods.finalDmgBonus,
         combatSharpenDmgBonus: firstBreakdown.combatMods.sharpenDmgBonus,
         combatSharpenCritDmgBonus: firstBreakdown.combatMods.sharpenCritDmgBonus,
         combatDmgPenalty: firstBreakdown.combatMods.dmgPenalty,
@@ -2224,6 +2226,7 @@ export function evaluateAffixCountsForSweep(
       combatPierceDmgBonus: breakdown.combatMods.pierceDmgBonus,
 
       combatImbueDmgBonus: breakdown.combatMods.imbueDmgBonus,
+      combatFinalDmgBonus: breakdown.combatMods.finalDmgBonus,
       combatSharpenDmgBonus: breakdown.combatMods.sharpenDmgBonus,
       combatSharpenCritDmgBonus: breakdown.combatMods.sharpenCritDmgBonus,
       combatDmgPenalty: breakdown.combatMods.dmgPenalty,
@@ -2814,6 +2817,7 @@ function evaluateAffixCountsUncached(
         combatPierceDmgBonus: breakdown.combatMods.pierceDmgBonus,
 
         combatImbueDmgBonus: breakdown.combatMods.imbueDmgBonus,
+        combatFinalDmgBonus: breakdown.combatMods.finalDmgBonus,
       combatSharpenDmgBonus: breakdown.combatMods.sharpenDmgBonus,
       combatSharpenCritDmgBonus: breakdown.combatMods.sharpenCritDmgBonus,
       combatDmgPenalty: breakdown.combatMods.dmgPenalty,
@@ -2869,6 +2873,7 @@ function evaluateAffixCountsUncached(
     combatPierceDmgBonus: breakdown.combatMods.pierceDmgBonus,
 
     combatImbueDmgBonus: breakdown.combatMods.imbueDmgBonus,
+    combatFinalDmgBonus: breakdown.combatMods.finalDmgBonus,
       combatSharpenDmgBonus: breakdown.combatMods.sharpenDmgBonus,
     combatSharpenCritDmgBonus: breakdown.combatMods.sharpenCritDmgBonus,
     combatDmgPenalty: breakdown.combatMods.dmgPenalty,

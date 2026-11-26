@@ -28,6 +28,7 @@ export const BUFF_STAT_KEYS = [
   'pierce',
   'pierceDmgBonus',
   'imbueDmgBonus',
+  'finalDmgBonus',
   'sharpenDmgBonus',
   'sharpenCritDmgBonus',
   'dmgPenalty',

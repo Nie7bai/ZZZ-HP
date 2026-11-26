@@ -1,5 +1,5 @@
 /**
- * 管理侧乘区目录：63 项 / 3 类 / 类型约束。
+ * 管理侧乘区目录：64 项 / 3 类 / 类型约束。
  * 运行：npx vite-node scripts/test-buff-stat-zones.mjs
  */
 import {
@@ -29,7 +29,7 @@ function check(name, ok, detail = '') {
 }
 
 console.log('\n[1] 63 项，覆盖全部 74 个字段')
-check('共 63 个乘区选项', BUFF_STAT_ZONES.length === 63, `${BUFF_STAT_ZONES.length}`)
+check('共 64 个乘区选项', BUFF_STAT_ZONES.length === 64, `${BUFF_STAT_ZONES.length}`)
 const covered = new Set()
 for (const zone of BUFF_STAT_ZONES) {
   if (zone.stat) covered.add(zone.stat)
@@ -94,7 +94,7 @@ check(
 
 console.log('\n[4] 类3 都可选；不改字段')
 const class3 = BUFF_STAT_ZONES.filter((zone) => zone.tier === 3)
-check('类3 共 56 项', class3.length === 56, `${class3.length}`)
+check('类3 共 57 项', class3.length === 57, `${class3.length}`)
 check(
   '异常掌控（固定）带「（数值）」',
   findBuffStatZoneById('zone:anomalyControl')?.label === '异常掌控（数值）',

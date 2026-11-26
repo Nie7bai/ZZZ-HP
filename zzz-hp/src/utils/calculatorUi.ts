@@ -351,6 +351,12 @@ export const BUFF_STAT_FIELDS: {
     hint: '独立乘区，仅当直伤基础来源为贯穿力时生效，不进增伤区',
   },
   {
+    key: 'finalDmgBonus',
+    label: '最终伤害',
+    unit: 'percent',
+    hint: '独立乘区，直伤链最后一道（普通直伤 / 命破 / 锋御）；异常链不受影响',
+  },
+  {
     key: 'imbueDmgBonus',
     label: '浸染增伤',
     unit: 'percent',
@@ -576,6 +582,7 @@ export function createEmptyBuffStatModifiers(): BuffStatModifiers {
     pierce: 0,
     pierceDmgBonus: 0,
     imbueDmgBonus: 0,
+    finalDmgBonus: 0,
     sharpenDmgBonus: 0,
     sharpenCritDmgBonus: 0,
     dmgPenalty: 0,

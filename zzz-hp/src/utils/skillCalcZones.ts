@@ -48,8 +48,13 @@ function pushAnomalyFinalDamages(
     critDamage: number
     expectedDamage: number
     noCritDamage?: number
+    /** 最终伤害区（全局最后一道）；缺省或 1 时不占位 */
+    finalDmgMultiplier?: number
   },
 ) {
+  if (isActiveZone(options.finalDmgMultiplier ?? 1)) {
+    push(rows, '最终伤害区', options.finalDmgMultiplier ?? 1)
+  }
   if (options.hasCritZone) {
     push(rows, '暴击伤害', options.critDamage, true)
     push(rows, '期望伤害', options.expectedDamage, true)
@@ -169,6 +174,7 @@ function pushRemielSelfRadianceRows(rows: SkillCalcZoneRow[], result: DamageCalc
   }
   pushAnomalyFinalDamages(rows, {
     hasCritZone,
+    finalDmgMultiplier: result.finalDmgMultiplier,
     critDamage: result.radianceExpectedFullCrit,
     expectedDamage: result.radianceExpected,
     noCritDamage: result.radianceExpectedNoCrit,
@@ -207,6 +213,9 @@ export function buildSkillCalcZoneRows(
     if (!result.useSharpenFormula && result.settlementDmgMultZone > 0) {
       push(rows, '决算倍率区', result.settlementDmgMultZone)
     }
+    if (isActiveZone(result.finalDmgMultiplier)) {
+      push(rows, '最终伤害区', result.finalDmgMultiplier)
+    }
     push(rows, '期望伤害', result.directDamageExpected, true)
     return rows
   }
@@ -229,6 +238,7 @@ export function buildSkillCalcZoneRows(
     }
     pushAnomalyFinalDamages(rows, {
       hasCritZone,
+      finalDmgMultiplier: result.finalDmgMultiplier,
       critDamage: result.attributeAnomalyExpectedFullCrit,
       expectedDamage: result.attributeAnomalyExpected,
       noCritDamage: result.attributeAnomalyExpectedNoCrit,
@@ -261,6 +271,7 @@ export function buildSkillCalcZoneRows(
     }
     pushAnomalyFinalDamages(rows, {
       hasCritZone,
+      finalDmgMultiplier: result.finalDmgMultiplier,
       critDamage: result.disorderExpectedFullCrit,
       expectedDamage: result.disorderExpected,
       noCritDamage: result.disorderExpectedNoCrit,
@@ -286,6 +297,7 @@ export function buildSkillCalcZoneRows(
     }
     pushAnomalyFinalDamages(rows, {
       hasCritZone,
+      finalDmgMultiplier: result.finalDmgMultiplier,
       critDamage: result.turbulenceExpectedFullCrit,
       expectedDamage: result.turbulenceExpected,
       noCritDamage: result.turbulenceExpectedNoCrit,
@@ -305,6 +317,7 @@ export function buildSkillCalcZoneRows(
     }
     pushAnomalyFinalDamages(rows, {
       hasCritZone,
+      finalDmgMultiplier: result.finalDmgMultiplier,
       critDamage: result.anomalyReleaseExpectedFullCrit,
       expectedDamage: result.anomalyReleaseExpected,
       noCritDamage: result.anomalyReleaseExpectedNoCrit,
@@ -325,6 +338,7 @@ export function buildSkillCalcZoneRows(
     }
     pushAnomalyFinalDamages(rows, {
       hasCritZone,
+      finalDmgMultiplier: result.finalDmgMultiplier,
       critDamage: result.radianceExpectedFullCrit,
       expectedDamage: result.radianceExpected,
       noCritDamage: result.radianceExpectedNoCrit,
@@ -498,6 +512,7 @@ const ZONE_HINTS: Record<string, string> = {
   锐爆区: '锐化路径的暴击区：1 + 锐爆率 × 锐爆伤害。',
   贯穿增伤区: '贯穿伤害路径的独立增伤乘区。',
   浸染增伤区: '直伤体系的独立增伤乘区：1 + 浸染增伤% / 100，普通直伤 / 命破 / 锋御都生效，异常链不受影响。',
+  最终伤害区: '直伤链最后一道独立乘区：1 + 最终伤害% / 100，普通直伤 / 命破 / 锋御都生效，异常链不受影响。',
   技能倍率区: '招式倍率对应的乘区。',
   直伤倍率区: '直伤倍率对应的乘区。',
   决算倍率区: '决算倍率（结算额外倍率）。',

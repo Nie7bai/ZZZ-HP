@@ -22,6 +22,7 @@ export const ZONE_DEFINITIONS: readonly ZoneDefinition[] = Object.freeze([
   { key: 'pierceDmgMultiplier', label: '贯穿增伤区', order: 94, group: 'direct', field: 'pierceDmgMultiplier' },
   { key: 'sharpenDmgMultiplier', label: '锐化伤害提升区', order: 96, group: 'direct', field: 'sharpenDmgMultiplier' },
   { key: 'imbueDmgMultiplier', label: '浸染增伤区', order: 98, group: 'direct', field: 'imbueDmgMultiplier' },
+  { key: 'finalDmgMultiplier', label: '最终伤害区', order: 99, group: 'direct', field: 'finalDmgMultiplier' },
 
   { key: 'masteryZone', label: '精通区', order: 100, group: 'anomaly', field: 'masteryZone' },
   { key: 'levelZone', label: '等级区', order: 102, group: 'anomaly', field: 'levelZone' },

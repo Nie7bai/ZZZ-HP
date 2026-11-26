@@ -74,6 +74,7 @@ const BUFF_STAT_KEYS: BuffStatKey[] = [
   'pierce',
   'pierceDmgBonus',
   'imbueDmgBonus',
+  'finalDmgBonus',
   'sharpenDmgBonus',
   'sharpenCritDmgBonus',
   'dmgPenalty',

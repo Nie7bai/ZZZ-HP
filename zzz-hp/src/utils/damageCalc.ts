@@ -97,6 +97,8 @@ export interface DamageCalcInput {
   combatPierceDmgBonus?: number
   /** 浸染增伤%（独立乘区，所有直伤体系生效：普通直伤 / 命破 / 锋御） */
   combatImbueDmgBonus?: number
+  /** 最终伤害%（独立乘区，直伤链最后一道：普通直伤 / 命破 / 锋御） */
+  combatFinalDmgBonus?: number
   /**
    * 附加伤害项（目前只用于紊乱/极性紊乱）：
    * 每项 = round(来源属性 × 比例% / 100)，逐项 round 后求和；
@@ -274,6 +276,8 @@ export interface DamageCalcResult {
   pierceDmgMultiplier: number
   /** 浸染增伤乘区（独立乘区，所有直伤体系生效；异常类恒为 1） */
   imbueDmgMultiplier: number
+  /** 最终伤害乘区（独立乘区，直伤链最后一道；异常类恒为 1） */
+  finalDmgMultiplier: number
   /** 锐化伤害提升乘区（非锐化路径时为 1） */
   sharpenDmgMultiplier: number
   /** 是否走锐化公式 */
@@ -492,6 +496,7 @@ function computeGeneralAndAnomalyBase(options: {
   combatSpecial: number
   combatPierceDmgBonus: number
   combatImbueDmgBonus?: number
+  combatFinalDmgBonus?: number
   combatSharpenDmgBonus?: number
   staggerPhase: 'normal' | 'stagger'
   /** 帷幕易伤上限（倍率）；非空时失衡易伤区改为 min(最终失衡易伤, 上限)，不分阶段 */
@@ -594,6 +599,8 @@ function computeGeneralAndAnomalyBase(options: {
     usedBaseSource === 'pierce' ? 1 + pierceDmgBonusRatio : 1
   /** 浸染增伤：独立乘区，只作用于直伤体系（普通直伤 / 命破 / 锋御） */
   const imbueDmgMultiplier = Math.max(0, 1 + (options.combatImbueDmgBonus ?? 0) / 100)
+  /** 最终伤害：独立乘区，直伤链最后一道 */
+  const finalDmgMultiplier = Math.max(0, 1 + (options.combatFinalDmgBonus ?? 0) / 100)
   /** 锐化伤害提升：独立乘区，仅锐化路径生效（锋御专属，对标命破贯穿增伤） */
   const sharpenDmgMultiplier = options.useSharpenFormula
     ? Math.max(0, 1 + (options.combatSharpenDmgBonus ?? 0) / 100)
@@ -630,6 +637,7 @@ function computeGeneralAndAnomalyBase(options: {
     specialMultiplier,
     pierceDmgMultiplier,
     imbueDmgMultiplier,
+    finalDmgMultiplier,
     sharpenDmgMultiplier,
     generalMultiplier,
     masteryZone,
@@ -748,6 +756,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     combatSpecial: input.combatSpecial,
     combatPierceDmgBonus: input.combatPierceDmgBonus ?? 0,
     combatImbueDmgBonus: input.combatImbueDmgBonus ?? 0,
+    combatFinalDmgBonus: input.combatFinalDmgBonus ?? 0,
     combatSharpenDmgBonus: input.combatSharpenDmgBonus ?? 0,
     staggerPhase,
     curtainVulnerabilityCap: input.curtainVulnerabilityCap ?? null,
@@ -862,6 +871,16 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     settlementDamageExpected = directBaseChain * settlementDmgMultZone
     directDamageExpected = directDamageFromDirectMult + settlementDamageExpected
   }
+
+  /**
+   * 最终伤害区：**全局最后一道乘区**（直伤 / 属性异常 / 异放 / 紊乱 / 乱流 / 耀变都乘）。
+   * 在各子类结果之外统一收口，避免与子类自己的乘区重复相乘。
+   */
+  const finalDmgMultiplier = Math.max(0, mainParts.finalDmgMultiplier)
+  const withFinalDmg = (value: number) => value * finalDmgMultiplier
+  directDamageFromDirectMult = withFinalDmg(directDamageFromDirectMult)
+  settlementDamageExpected = withFinalDmg(settlementDamageExpected)
+  directDamageExpected = withFinalDmg(directDamageExpected)
 
   // 异常乘区：全部异常子类（属性异常/异放/耀变/紊乱/乱流）的类型增伤、倍率与异常暴击均取异常类触发者（bonusPanel）；基础期望取异常强度提供者
   // 各子类**只吃自己的**暴击字段（不再蹭 anomalyCrit*），公式见 `src/zones/anomalyZones.ts`
@@ -1079,6 +1098,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
         if (critMode !== 'noCrit') markUse(panel, 'critDmg', 'critMultiplier', ['dmgBonus'])
       }
       markCombat('combatImbueDmgBonus', 'imbueDmgBonus', 'imbueDmgMultiplier')
+      markCombat('combatFinalDmgBonus', 'finalDmgBonus', 'finalDmgMultiplier')
       if (!input.skillSubcategory?.directDmgMult) markUse(panel, 'directDmgMult', 'directDmgMultZone', ['anomalyTypeBonus'])
       if (!input.skillSubcategory && !useSharpenFormula) markUse(panel, 'settlementDmgMult', 'settlementDmgMultZone', ['anomalyTypeBonus'])
       markUse(panel, 'directDmgMultFactor', 'directDmgMultZone', ['anomalyTypeBonus'])
@@ -1149,6 +1169,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     specialMultiplier: round(mainParts.specialMultiplier, 4),
     pierceDmgMultiplier: round(reportedPierceDmg, 4),
     imbueDmgMultiplier: round(mainParts.imbueDmgMultiplier, 4),
+    finalDmgMultiplier: round(mainParts.finalDmgMultiplier, 4),
     sharpenDmgMultiplier: round(mainParts.sharpenDmgMultiplier, 4),
     useSharpenFormula,
     sharpenCritDmgRatio: round(sharpenCritDmgRatio, 4),
@@ -1201,18 +1222,18 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     remielSelfResistanceMultiplier: remielSelfRadianceActive
       ? round(remielSelfResistanceMultiplier, 4)
       : undefined,
-    attributeAnomalyExpected: round(applyMutation(attributeAnomaly.expected), 0),
-    attributeAnomalyExpectedNoCrit: round(applyMutation(attributeAnomaly.expectedNoCrit), 0),
-    attributeAnomalyExpectedFullCrit: round(applyMutation(attributeAnomaly.expectedFullCrit), 0),
+    attributeAnomalyExpected: round(withFinalDmg(applyMutation(attributeAnomaly.expected)), 0),
+    attributeAnomalyExpectedNoCrit: round(withFinalDmg(applyMutation(attributeAnomaly.expectedNoCrit)), 0),
+    attributeAnomalyExpectedFullCrit: round(withFinalDmg(applyMutation(attributeAnomaly.expectedFullCrit)), 0),
     anomalyReleaseDmgBonusZone: round(anomalyRelease.dmgBonusZone, 4),
     anomalyReleaseMultZone: round(anomalyRelease.multZone, 4),
     anomalyReleaseCritZone: round(anomalyRelease.critZone, 4),
     anomalyReleaseCritRateRatio: round(anomalyRelease.critRateRatio, 4),
     anomalyReleaseCritDmgRatio: round(anomalyRelease.critDmgRatio, 4),
     anomalyReleaseFullCritZone: round(anomalyRelease.fullCritZone, 4),
-    anomalyReleaseExpected: round(applyMutation(anomalyRelease.expected), 0),
-    anomalyReleaseExpectedNoCrit: round(applyMutation(anomalyRelease.expectedNoCrit), 0),
-    anomalyReleaseExpectedFullCrit: round(applyMutation(anomalyRelease.expectedFullCrit), 0),
+    anomalyReleaseExpected: round(withFinalDmg(applyMutation(anomalyRelease.expected)), 0),
+    anomalyReleaseExpectedNoCrit: round(withFinalDmg(applyMutation(anomalyRelease.expectedNoCrit)), 0),
+    anomalyReleaseExpectedFullCrit: round(withFinalDmg(applyMutation(anomalyRelease.expectedFullCrit)), 0),
     effectiveAnomalyDuration: round(effectiveDuration, 4),
     disorderBaseMultRatio: round(disorder.baseMultRatio, 4),
     disorderCompMultRatio: round(disorder.compMultRatio, 4),
@@ -1223,18 +1244,18 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     disorderDmgBonusZone: round(disorder.dmgBonusZone, 4),
     disorderCritZone: round(disorder.critZone, 4),
     disorderFullCritZone: round(disorder.fullCritZone, 4),
-    disorderExpected: round(applyMutation(disorder.expected), 0),
-    disorderExpectedNoCrit: round(applyMutation(disorder.expectedNoCrit), 0),
-    disorderExpectedFullCrit: round(applyMutation(disorder.expectedFullCrit), 0),
+    disorderExpected: round(withFinalDmg(applyMutation(disorder.expected)), 0),
+    disorderExpectedNoCrit: round(withFinalDmg(applyMutation(disorder.expectedNoCrit)), 0),
+    disorderExpectedFullCrit: round(withFinalDmg(applyMutation(disorder.expectedFullCrit)), 0),
     turbulenceBaseMultRatio: round(turbulence.baseMultRatio, 4),
     turbulenceCompMultRatio: round(turbulence.compMultRatio, 4),
     turbulenceMultFactor: round(turbulence.multFactor, 4),
     turbulenceZone: round(turbulence.zone, 4),
     turbulenceDmgBonusZone: round(turbulence.dmgBonusZone, 4),
     turbulenceUsesAnomalyCrit: false,
-    turbulenceExpected: round(applyMutation(turbulence.expected), 0),
-    turbulenceExpectedNoCrit: round(applyMutation(turbulence.expectedNoCrit), 0),
-    turbulenceExpectedFullCrit: round(applyMutation(turbulence.expectedFullCrit), 0),
+    turbulenceExpected: round(withFinalDmg(applyMutation(turbulence.expected)), 0),
+    turbulenceExpectedNoCrit: round(withFinalDmg(applyMutation(turbulence.expectedNoCrit)), 0),
+    turbulenceExpectedFullCrit: round(withFinalDmg(applyMutation(turbulence.expectedFullCrit)), 0),
     hasPolarDisorder,
     radianceDmgBonusZone: round(radiance.dmgBonusZone, 4),
     radianceMultZone: round(radiance.multZone, 4),
@@ -1242,9 +1263,9 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     mutationZone: round(mutationMult, 4),
     radianceCritZone: round(radiance.critZone, 4),
     radianceFullCritZone: round(radiance.fullCritZone, 4),
-    radianceExpected: round(applyMutation(radiance.expected), 0),
-    radianceExpectedNoCrit: round(applyMutation(radiance.expectedNoCrit), 0),
-    radianceExpectedFullCrit: round(applyMutation(radiance.expectedFullCrit), 0),
+    radianceExpected: round(withFinalDmg(applyMutation(radiance.expected)), 0),
+    radianceExpectedNoCrit: round(withFinalDmg(applyMutation(radiance.expectedNoCrit)), 0),
+    radianceExpectedFullCrit: round(withFinalDmg(applyMutation(radiance.expectedFullCrit)), 0),
   }
   const zones = buildZoneResults(result)
   for (const factor of input.customZoneFactors ?? []) {
@@ -1276,6 +1297,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       pierce: result.pierceDmgMultiplier,
       imbue: result.imbueDmgMultiplier,
       sharpen: result.sharpenDmgMultiplier,
+      finalDmg: result.finalDmgMultiplier,
       special: result.specialMultiplier,
       final: result.directDamageExpected,
     })
@@ -1293,6 +1315,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       radianceMult: result.radianceMultZone,
       crit: result.radianceCritZone,
       special: result.specialMultiplier,
+      finalDmg: result.finalDmgMultiplier,
       final: result.radianceExpected,
     })
   } else {
@@ -1319,6 +1342,7 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       mult: subtypeZones.mult,
       crit: subtypeZones.crit,
       special: triggerParts.specialMultiplier,
+      finalDmg: result.finalDmgMultiplier,
       final: subtypeZones.final,
     })
   }

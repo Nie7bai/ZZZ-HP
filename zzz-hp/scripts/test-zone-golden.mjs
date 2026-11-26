@@ -27,6 +27,7 @@ const ADDITIVE_RESULT_KEYS = new Set([
   'pipeline',
   // 新增乘区 / 附加伤害：基线里没有这些字段；数值回归由专项单测覆盖
   'imbueDmgMultiplier',
+  'finalDmgMultiplier',
   'additionalDamageFlat',
 ])
 
