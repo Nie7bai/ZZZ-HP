@@ -70,6 +70,7 @@ export type ValueTipsKey =
   | 'mutationZone'
   | 'pierceDmgMultiplier'
   | 'imbueDmgMultiplier'
+  | 'additionalDamageFlat'
   | 'sharpenDmgMultiplier'
   | 'remielSelfInCombatAtk'
   | 'remielSelfInCombatMasteryZone'
@@ -687,6 +688,18 @@ const disorderFormulaParts = (() => {
         }),
       ],
       `浸染增伤区 ${formatFormulaNumber(p.imbueDmgMultiplier)}`,
+    ),
+    additionalDamageFlat: withTotal(
+      [
+        {
+          label: '口径',
+          items: [
+            '附加伤害 = round(异常类触发者面板[来源属性] × 倍率% / 100)，逐项 round 后求和',
+            '加在「异常基础 × 紊乱倍率区」之后，补乘其余全部乘区（含精通/等级/防御/抗性），不乘紊乱倍率区',
+          ],
+        },
+      ],
+      `附加伤害 ${formatFormulaNumber(p.additionalDamageFlat ?? 0)}`,
     ),
     sharpenDmgMultiplier: withTotal(
       [
@@ -1408,6 +1421,7 @@ const zoneTipKeys: Record<string, ValueTipsKey> = {
   失衡易伤区:'staggerMultiplier',特殊乘区:'specialMultiplier',特殊倍率乘区:'specialMultZone',
   暴击区:'critMultiplier',锐爆区:'critMultiplier',贯穿增伤区:'pierceDmgMultiplier',
   浸染增伤区:'imbueDmgMultiplier',
+  附加伤害:'additionalDamageFlat',
   技能倍率区:'directDmgMultZone',直伤倍率区:'directDmgMultZone',决算倍率区:'settlementDmgMultZone',
   精通区:'masteryZone',等级区:'levelZone',异化系数:'mutationZone',异化系数区:'mutationZone',
   属性异常增伤区:'attributeAnomalyDmgBonusZone',属性异常倍率区:'attributeAnomalyMultZone',属性异常暴击区:'attributeAnomalyCritZone',

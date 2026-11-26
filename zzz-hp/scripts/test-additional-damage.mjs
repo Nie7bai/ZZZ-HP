@@ -9,6 +9,11 @@
  */
 import { computeDamageResult } from '../src/utils/damageCalc.ts'
 import { createDefaultExternalPanel } from '../src/types/calculatorPanel.ts'
+import { buildEventZoneDisplay } from '../src/utils/eventDamageSourceTips.ts'
+import { createBuffCalculationRuntime } from '../src/utils/skillFlowCalculation.ts'
+import { createEmptyBuffEffect } from '../src/utils/buffEffect.ts'
+import { eventFixture, eventRuntimeInput } from './_eventElementHarness.mjs'
+import { testAgent, makePanel } from './_effectPipelineHarness.mjs'
 
 let passed = 0
 let failed = 0
@@ -127,4 +132,45 @@ check(
 )
 
 console.log(`\n=== 结果：passed = ${passed}, failed = ${failed} ===`)
+
+// 渲染层回归：计算过程格子必须有「附加伤害」的提示映射（缺了会抛 Unmapped event zone 并卡住详情）
+const fixture = eventFixture({
+  mode: 'ordinary',
+  damageType: 'disorder',
+  effects: [
+    createEmptyBuffEffect({
+      id: 'add-mastery',
+      kind: 'additionalDamage',
+      stat: 'mastery',
+      value: 3200,
+      applyTarget: 'team',
+      enabledDefault: true,
+      conditions: { damageTypes: ['disorder'] },
+    }),
+  ],
+  agents: [testAgent('owner', { element: '电' }), testAgent('power', { element: '风' })],
+  prepared: [{ id: 'prepared', skillId: 'event-skill', skillSource: 'custom', anomalyPowerAgentId: 'power', triggerAgentId: 'owner' }],
+  flow: [
+    { id: 'flow-1', ownerAgentId: 'owner', preparedId: 'prepared', count: 1, staggerPhase: 'normal', critMode: 'expected' },
+  ],
+  panels: { owner: makePanel({ atk: 2200, mastery: 400 }), power: makePanel({ atk: 2600, mastery: 300 }) },
+})
+const runtime = createBuffCalculationRuntime(eventRuntimeInput(fixture, { contextInput: { teamSlots: fixture.teamSlots } }))
+const hit = fixture.hits[0]
+const detail = runtime.getHitDetail(hit)
+let displayRows = []
+let displayError = ''
+try {
+  displayRows = buildEventZoneDisplay(detail)
+} catch (err) {
+  displayError = err instanceof Error ? err.message : String(err)
+}
+check('详情可渲染：计算过程格子不抛 Unmapped event zone', displayError === '', displayError)
+check(
+  '详情渲染：有附加伤害时出现「附加伤害」格',
+  displayRows.some((row) => row.label === '附加伤害'),
+)
+
+console.log(`
+=== 结果：passed = ${passed}, failed = ${failed} ===`)
 if (failed > 0) process.exit(1)
