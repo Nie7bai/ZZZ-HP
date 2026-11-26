@@ -1793,8 +1793,8 @@ export function buildRulesTable() {
         ),
         items(
           '获得状态，随后描述增益或引用该状态',
-          '默认启用=关闭，触发条件=无法提取',
-          'enabledDefault=false',
+          '触发条件=无法提取',
+          'enabledDefault=true（默认）',
           '状态名保留原文。可以唯一关联时继承明确的受益职业，有歧义时由人工确认。',
         ),
         items(
@@ -2151,7 +2151,7 @@ function detectObject(clauseText, action, inherited) {
 /** 一条关键字的槽位（**不许缺格**） */
 function createSlots({
   stat, elements, action, value, unit, target, conditions, teammateProfessions,
-  scope, stacks, enabledDefault, duration, object,
+  scope, stacks, duration, object,
 }) {
   return {
     stat: stat?.value ?? NONE,
@@ -2164,7 +2164,7 @@ function createSlots({
     teammateProfessions: teammateProfessions ?? [NONE],
     scope: scope?.value ?? NONE,
     stacks: stacks ?? NONE,
-    enabledDefault: enabledDefault ?? NONE,
+    enabledDefault: NONE,
     duration: duration ?? NONE,
     object: object?.value ?? NONE,
   }
@@ -2605,7 +2605,6 @@ export function extractKeywordEffects({
             teammateProfessions,
             scope,
             stacks: NONE,
-            enabledDefault: stateContext ? '关闭' : NONE,
             duration: NONE,
             object,
           }),

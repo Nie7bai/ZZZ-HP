@@ -436,7 +436,7 @@ test('挽昼领袖之证抽取、重解析和写入计划保留锋御锐爆加�
   assert.equal(keyword.slots.stat, '锐爆伤害加成')
   assert.ok(SLOT_OPTIONS.stat.includes(keyword.slots.stat))
   assert.deepEqual(keyword.slots.conditions, ['仅锋御代理人', UNABLE])
-  assert.equal(keyword.slots.enabledDefault, '关闭')
+  assert.equal(keyword.slots.enabledDefault, NONE)
   assert.deepEqual(keyword.slots.teammateProfessions, ['击破', '锋御', '防护'])
   assert.deepEqual(extra.sentences[0].stateReferences.map(({ kind, names }) => ({ kind, names })), [
     { kind: 'grant', names: ['众愿一心'] },
@@ -474,8 +474,16 @@ test('挽昼领袖之证抽取、重解析和写入计划保留锋御锐爆加�
   assert.deepEqual(normalizeEffectList([planned])[0].teammateProfessions, planned.teammateProfessions)
   assert.deepEqual(planned.conditions.damageTypes, ['sharpen'])
   assert.ok(!planned.skillTargets?.length)
-  assert.equal(planned.enabledDefault, false)
+  assert.equal(planned.enabledDefault, true)
+  assert.equal(normalizeEffectList([planned])[0].enabledDefault, true)
   assert.match(planned.note, /45 秒/)
+
+  const manuallyDisabled = mapKeywordsToEffect({
+    ...keyword,
+    slots: { ...keyword.slots, enabledDefault: '关闭' },
+  }).effect
+  assert.equal(manuallyDisabled.enabledDefault, false)
+  assert.deepEqual(manuallyDisabled.teammateProfessions, planned.teammateProfessions)
 })
 
 test('锐爆伤害是通用属性，效果子句真正限定的招式仍然保留', () => {
@@ -498,8 +506,8 @@ test('获得状态的触发招式和失衡条件留在原文，效果里的限�
   const [keyword] = triggered.effects
   assert.deepEqual(keyword.anchors.skillTargets, [])
   assert.deepEqual(keyword.slots.conditions, [UNABLE])
-  assert.equal(keyword.slots.enabledDefault, '关闭')
-  assert.equal(keyword.layerC.enabledDefault, false)
+  assert.equal(keyword.slots.enabledDefault, NONE)
+  assert.equal(keyword.layerC.enabledDefault, true)
   assert.equal(keyword.layerC.value, 25)
   assert.deepEqual(triggered.sentences[0].stateReferences[0], {
     kind: 'grant', names: ['示例状态'], text: '当发动强化特殊技时获得[示例状态]',
@@ -546,7 +554,7 @@ test('状态按原文关联唯一前项，歧义和名称不一致的引用由�
     assert.equal(pending.slots.target, UNABLE)
     assert.ok(pending.slots.conditions.includes(UNABLE))
     assert.equal(pending.layerC.applyProfession, null)
-    assert.equal(pending.layerC.enabledDefault, false)
+    assert.equal(pending.layerC.enabledDefault, true)
   }
 })
 
