@@ -188,6 +188,12 @@ check(
   tipItems.some((item) => item.includes('× 3200% = 12,800')),
   tipItems.join(' | '),
 )
+check(
+  '悬停提示按展开式展示：(基础攻击力 × 紊乱倍率 + 附加) × 后续乘区',
+  tipItems.some((item) => item.startsWith('口径：( 基础攻击力 × 紊乱倍率 + 附加伤害 )')) &&
+    tipItems.some((item) => item.startsWith('展开：( ')),
+  tipItems.join(' | '),
+)
 
 console.log(`
 === 结果：passed = ${passed}, failed = ${failed} ===`)

@@ -701,8 +701,9 @@ const disorderFormulaParts = (() => {
                 BUFF_STAT_FIELDS.find((field) => field.key === term.stat)?.label ?? term.stat
               return `${label} ${formatFormulaNumber(term.statValue)} × ${term.ratioPercent}% = ${formatFormulaNumber(term.amount)}`
             })),
-            `附加合计 ${formatFormulaNumber(p.additionalDamageFlat ?? 0)} 已计入紊乱倍率之后的全部乘区（增伤/防御/抗性/易伤/精通/等级/特殊/紊乱暴击）`,
-            `乘上后续乘区后的期望贡献 = ${formatFormulaNumber(
+            `口径：( 基础攻击力 × 紊乱倍率 + 附加伤害 ) × 通用乘区 × 紊乱增伤区 × 紊乱暴击区`,
+            `展开：( ${formatFormulaNumber(p.baseDamage)} × ${formatFormulaNumber(p.disorderZone)} + ${formatFormulaNumber(p.additionalDamageFlat ?? 0)} ) × ${formatFormulaNumber(p.baseDamage > 0 ? p.anomalyBaseExpected / p.baseDamage : 0)} × ${formatFormulaNumber(p.disorderDmgBonusZone)} × ${formatFormulaNumber(p.disorderCritZone)}`,
+            `附加部分期望贡献 = ${formatFormulaNumber(
               (p.additionalDamageFlat ?? 0) *
                 (p.baseDamage > 0 ? p.anomalyBaseExpected / p.baseDamage : 0) *
                 p.disorderDmgBonusZone *
