@@ -1241,12 +1241,10 @@ export async function simplifyBuffTexts({ kind, nanokaId, items = [], corePassiv
         sentences: simplified.sentences.map((sentence) => {
           const keywords = sentence.keywords.map((effect) => byId.get(effect.id)).filter(Boolean)
           return {
+            ...sentence,
             sourceKey: String(item?.slot ?? ''),
             sourceLabel: String(item?.slotLabel ?? ''),
-            sentenceIndex: sentence.sentenceIndex,
-            rawSentence: sentence.rawSentence,
             keywords,
-            waste: sentence.waste,
             hasKeywords: keywords.length > 0,
           }
         }),

@@ -371,7 +371,6 @@ const beneficiaryProfessionCondition = (profession) => `仅${profession}代理�
 const PROFESSION_CONDITION_RE = new RegExp(`^仅(${PROFESSIONS.join('|')})代理人$`)
 const MANUAL_STATE_CONDITION = '状态需手动启用'
 const MANUAL_STATE_CONDITION_RE = new RegExp(`^${MANUAL_STATE_CONDITION}$`)
-const TEAM_STATE_GRANT_RE = /^全队\[(?<profession>[^\]]+)\]代理人进入.*状态$/
 
 /**
  * **条件能被阶段2落地判据**（唯一真源）：句子（或条件文本）命中这些正则，才允许落到
@@ -832,6 +831,38 @@ export function detectSkillLimits(text) {
     }
   }
   return out
+}
+
+const SKILL_NAMES_PATTERN = SKILL_LIMIT_RULES.map(({ name }) => name).join('|')
+const SKILL_NAME_PATTERN = String.raw`(?:\[(?:${SKILL_NAMES_PATTERN})(?:[:：][^\]]+)?\]|(?:${SKILL_NAMES_PATTERN}))`
+const SKILL_LIST_PATTERN = String.raw`${SKILL_NAME_PATTERN}(?:\s*(?:以及|[、和与及或])\s*${SKILL_NAME_PATTERN})*`
+const SKILLS_HITTING_PATTERN = String.raw`${SKILL_LIST_PATTERN}命中[^，。；]*?时`
+const BENEFITING_SKILL_RE = new RegExp(
+  [
+    String.raw`${SKILL_LIST_PATTERN}(?=\s*(?:的|(?:对(?:其|目标|敌人))?所?造成|(?:锐[化爆暴])?伤害|暴击(?:率|伤害)|(?:也|还|将|可)*无视|受益|生效|累积蓄力时长的额外伤害))`,
+    String.raw`${SKILLS_HITTING_PATTERN}(?=所?造成的?伤害)`,
+    String.raw`(?:仅对|仅限|限定)\s*${SKILL_LIST_PATTERN}`,
+  ].join('|'),
+  'g',
+)
+const CURRENT_SKILL_PREMISE_RE = new RegExp(
+  String.raw`在${SKILL_LIST_PATTERN}中|${SKILLS_HITTING_PATTERN}|下(?:一)?次发动${SKILL_LIST_PATTERN}时`,
+)
+const SKILL_HIT_RE = new RegExp(SKILLS_HITTING_PATTERN)
+
+/** 按效果限定招式。「在某招式中」可以明确「招式造成的伤害」的指代范围。 */
+function detectBenefitingSkills(effectText, effectPremises) {
+  const text = effectText.replace(/\[[^\]]+\]\s*状态/g, '状态')
+  const explicit = [...text.matchAll(BENEFITING_SKILL_RE)].map(([name]) => name)
+  if (explicit.length) return detectSkillLimits(explicit.join('、'))
+  const premises = effectPremises.map((premise) => premise.replace(/\[[^\]]+\]\s*状态/g, '状态'))
+  if (/^招式(?:所)?造成的?伤害/.test(text)) {
+    const currentSkillMentions = premises.map((premise) => CURRENT_SKILL_PREMISE_RE.exec(premise)?.[0]).filter(Boolean)
+    return currentSkillMentions.length === 1 ? detectSkillLimits(currentSkillMentions[0]) : []
+  }
+  if (!/(?:该|此|本|当前)招式/.test(text)) return []
+  const referenced = premises.map(detectSkillLimits).filter((limits) => limits.length)
+  return referenced.length === 1 ? referenced[0] : []
 }
 
 /** 锚点候选名（小类名 / 去标题前缀 / 去「技」尾） */
@@ -1741,10 +1772,16 @@ export function buildRulesTable() {
           items(reText(rule.re), '条件=无（同义反复，丢弃）', '', `属性自带的定义性前提：${rule.stats.join(' / ')}`),
         ),
         items(
-          '全队指定职业进入状态，紧接着描述状态下的增益',
-          '目标=全队 / 仅指定职业代理人 / 状态需手动启用',
-          'applyProfession / enabledDefault=false',
-          '进入状态的招式属于触发方式。增益应用到状态受益者，时长留作备注。',
+          '获得状态，随后描述增益或引用该状态',
+          '状态需手动启用 / 触发条件无法提取',
+          'enabledDefault=false',
+          '状态名保留原文。可以唯一关联时继承明确的受益职业，有歧义时由人工确认。',
+        ),
+        items(
+          '效果子句直接限定招式，或明确指向前文唯一的招式',
+          '限定受益招式',
+          'skillTargets',
+          '触发招式留在获得状态的原文中。效果明确限定失衡时才写入对应生效情形。',
         ),
         ...MODELABLE_CONDITION_RES.map((re) =>
           items(reText(re), '保留条件文本', 'applySituation / 职业条件 / 默认启用', ''),
@@ -1861,11 +1898,75 @@ export function classifyConditions({ conditions = [], statValue = '', isConvert 
   }
 }
 
-/** 根据相邻子句的结构继承受益职业。状态名称按原文展示。 */
-function readTeamStateProfession(grantClause, stateClause) {
-  if (!/^(?:\[[^\]]+\]|该)?状态下$/.test(stateClause ?? '')) return ''
-  const profession = TEAM_STATE_GRANT_RE.exec(grantClause ?? '')?.groups.profession
-  return PROFESSIONS.includes(profession) ? profession : ''
+const STATE_LABEL_LIST = String.raw`\[[^\]]+\](?:\s*(?:以及|[、和与及或])\s*\[[^\]]+\])*`
+const STATE_GRANT_RE = new RegExp(
+  String.raw`^(?<before>.*)(?<verb>获得|获取|进入)(?:了)?\s*(?:(?<labels>${STATE_LABEL_LIST})\s*(?<stateWord>状态)?|(?<plain>[^\s\[\]，。；]{0,24})状态)(?:后)?$`,
+)
+const STATE_USE_RE = new RegExp(
+  String.raw`^(?:在|(?:当|若)?[^，。；[\]]*?(?:处于|持有))?\s*(?:(?<labels>${STATE_LABEL_LIST})\s*状态|(?:该|此)?状态|(?<plain>[^\s\[\]，。；]{1,24}?)状态)(?:下|期间|时|中)(?<effectText>.*)$`,
+)
+
+function stateLabelNames(labels) {
+  return [...(labels ?? '').matchAll(/\[([^\]]+)\]/g)].map(([, name]) => name.trim())
+}
+
+function readStateUse(clause, knownNames) {
+  const match = STATE_USE_RE.exec(clause)
+  if (!match || (match.groups.plain && !knownNames.has(match.groups.plain))) return null
+  const { labels, plain, effectText: remainder } = match.groups
+  const effectText = remainder.replace(/^[：:]/, '').trim()
+  if (effectText && (/^的/.test(effectText) || !BUFF_VERB_RE.test(effectText))) return null
+  return { names: plain ? [plain] : stateLabelNames(labels), effectText }
+}
+
+function readStateGrant(clause, referencedNames) {
+  const match = STATE_GRANT_RE.exec(clause)
+  if (!match) return null
+  const { before, verb, labels, plain, stateWord } = match.groups
+  if (/(?:尚未|未|没有|无法|不能|不再|不会)$/.test(before)) return null
+  const names = labels ? stateLabelNames(labels) : plain ? [plain] : []
+  if (labels && !stateWord && verb !== '进入' && !names.every((name) =>
+    name.endsWith('状态') || referencedNames?.has(name))) return null
+
+  const team = /全队(?:\[(?<profession>[^\]]+)\])?(?:代理人|角色)?$/.exec(before)
+  const profession = team?.groups.profession ?? ''
+  const teamTarget = Boolean(team && (!profession || PROFESSIONS.includes(profession)))
+  const beforeTarget = team ? before.slice(0, team.index).trim() : before.trim()
+  const trigger = /^.*(?:时|后|期间)(?=(?:可|会|将|便|则|立即|同时)*$)/.exec(beforeTarget)?.[0] ?? ''
+  if (!trigger && gainNumbers(beforeTarget).length && detectStatKeyword(beforeTarget) &&
+    detectAction(beforeTarget).value !== UNABLE) return null
+  return { names, trigger, teamTarget, profession: teamTarget ? profession : '' }
+}
+
+/** 同名仅用于对照原文。匿名引用只查当前句与紧邻前一句。 */
+function resolveStateGrant(grants, names, sentenceIndex) {
+  if (names.length > 1) return { resolution: 'ambiguous', grant: null }
+  const nearby = grants.filter((item) => item.sentenceIndex >= sentenceIndex - 1)
+  const named = names[0] ? grants.filter((item) => item.names.includes(names[0])) : []
+  const candidates = names.length
+    ? named.length ? named : nearby.filter((item) => item.sentenceIndex === sentenceIndex && !item.names.length)
+    : nearby
+  const [grant] = candidates
+  if (!grant) return { resolution: 'unresolved', grant: null }
+  if (candidates.length > 1 || (!names.length && grant.names.length > 1)) {
+    return { resolution: 'ambiguous', grant: null }
+  }
+  return { resolution: 'linked', grant }
+}
+
+function readInlineSkillTrigger(clause) {
+  const match = /^(?<trigger>.*?(?:发动|施放|释放|使用|命中|触发)[^，。；]*?(?:时|后|期间))(?<effect>.+)$/.exec(clause)
+  if (!match) return null
+  const { trigger, effect } = match.groups
+  if (/^所?造成的?伤害/.test(effect) && SKILL_HIT_RE.test(trigger)) return null
+  return detectSkillLimits(trigger).length && BUFF_VERB_RE.test(effect) && gainNumbers(effect).length
+    ? { trigger, effect: effect.trim() }
+    : null
+}
+
+function readExplicitStaggerCondition(effectText) {
+  const phase = /对(?:处于)?(非失衡|失衡)(?:状态下?|期)?的?敌人造成[^，。；]*?伤害/.exec(effectText)?.[1]
+  return phase ? `攻击${phase}敌人时` : ''
 }
 
 /**
@@ -2118,6 +2219,13 @@ export function extractKeywordEffects({
   emberMarkContext = {},
 } = {}) {
   const units = splitUnits(text)
+  const knownStateNames = new Set(units.flatMap((unit) => unit.clauses.flatMap((clause) =>
+    readStateGrant(clause)?.names ?? [],
+  )))
+  const stateUses = units.map((unit) => unit.clauses.map((clause) => readStateUse(clause, knownStateNames)))
+  const referencedStateNames = new Set(stateUses.flat().flatMap((use) => use?.names ?? []))
+  const stateReferences = units.map(() => [])
+  const stateGrants = []
   const effects = []
   const waste = []
   let prefix = '' // 段落级前缀条件（`…：` 抬头，作用于整段）
@@ -2152,10 +2260,47 @@ export function extractKeywordEffects({
     const stack = readStackInfo(unitText)
     const duration = readDurationInfo(unitText)
     const unitEffects = []
+    const firstGrantIndex = stateGrants.length
+    let stateUseContext = null
 
     for (const [clauseIndex, rawClause] of unit.clauses.entries()) {
-      const clause = rawClause.trim()
+      let clause = rawClause.trim()
       if (!clause) continue
+
+      const stateGrant = readStateGrant(clause, referencedStateNames)
+      if (stateGrant) {
+        const trigger = [prefix, ...pending, stateGrant.trigger].filter(Boolean).join('，')
+        const { names, teamTarget, profession } = stateGrant
+        stateGrants.push({ names, sentenceIndex: unitIndex, clauseIndex, teamTarget, profession })
+        stateReferences[unitIndex].push({ kind: 'grant', names, text: rawClause, clauseIndex, trigger })
+        prefix = ''
+        pending = []
+        anomalyContext = false
+        stateUseContext = null
+        continue
+      }
+
+      const stateUse = stateUses[unitIndex][clauseIndex]
+      if (stateUse) {
+        stateUseContext = resolveStateGrant(stateGrants, stateUse.names, unitIndex)
+        const { grant, resolution } = stateUseContext
+        stateReferences[unitIndex].push({
+          kind: 'reference',
+          names: stateUse.names,
+          text: rawClause,
+          clauseIndex,
+          resolution,
+          grant: grant ? { sentenceIndex: grant.sentenceIndex, clauseIndex: grant.clauseIndex } : null,
+        })
+        clause = stateUse.effectText
+        if (!clause) continue
+      }
+
+      const inlineTrigger = readInlineSkillTrigger(clause)
+      if (inlineTrigger) {
+        pending.push(inlineTrigger.trigger)
+        clause = inlineTrigger.effect
+      }
 
       // 异常语境：**先**在本句任何 continue 之前打开（后面的「该效果」指代要继承它）
       if (ANOMALY_MARK_RE.test(clause)) anomalyContext = true
@@ -2244,25 +2389,22 @@ export function extractKeywordEffects({
       //    转模句（动作=转化）**不拆**：`每1点攻击力转化为1.5点暴击率` 是一个效果。
       const groups = isConvert ? [clause] : splitClauseIntoGroups(clause)
       const thresholds = extractThresholds(clause)
-      const stateProfession = readTeamStateProfession(
-        unit.clauses[clauseIndex - 2],
-        unit.clauses[clauseIndex - 1],
-      )
-      // 进入状态所需的招式属于触发方式。已授予的增益只读取效果子句里的招式限定。
-      const effectPremises = stateProfession ? [] : pending
-      const skillLimits = detectSkillLimits([...effectPremises, clause].join('，'))
-      const anchorInfo = skillLimits.length
-        ? resolveSkillAnchors({ limits: skillLimits, anchors, agentId })
-        : resolveSkillAnchors({ limits: [], anchors, agentId })
+      const sameSentenceGrants = stateGrants.slice(firstGrantIndex)
+      const stateContext = stateUseContext ?? (sameSentenceGrants.length
+        ? resolveStateGrant(sameSentenceGrants, [], unitIndex)
+        : null)
       // **条件只取本句**（用户 2026-10-16 修 1）：抬头条件（`…：`）已被合并进本句，
       // 招式限定并进「作用域」槽位，不再塞进条件。
-      const clauseConditions = stateProfession
-        ? conditionList([beneficiaryProfessionCondition(stateProfession), MANUAL_STATE_CONDITION, ...thresholds])
-        : conditionList([prefix, ...pending, ...thresholds])
+      const clauseConditions = conditionList([
+        prefix, ...pending, ...thresholds,
+        ...(stateContext ? [MANUAL_STATE_CONDITION, UNABLE] : []),
+      ])
       let emittedInClause = false
 
       for (const group of groups) {
-        const contextText = stateProfession ? group : [prefix, ...pending, group].join('，')
+        const skillLimits = detectBenefitingSkills(group, pending)
+        const anchorInfo = resolveSkillAnchors({ limits: skillLimits, anchors, agentId })
+        const contextText = [prefix, ...pending, group].join('，')
         const groupIsConvert = isConvertClause(group) || isConvert
         const convertParts = groupIsConvert ? readConvertParts(contextText) : null
         const rawStatKeyword = groupIsConvert
@@ -2271,7 +2413,7 @@ export function extractKeywordEffects({
         // 「（失衡状态下）受到的伤害提升」：属失衡易伤家族 → 只有在**失衡**在作用域里时才这么判；
         // 否则按「游戏描述坑」当**增伤**（`增伤`）处理（用户 2026-10-16 纠正）。
         const damageTakenPhrase = /(?:受到的伤害|受到伤害)(?:提升|增加|提高|降低|减少|下降)/.test(group)
-        const scopeText = stateProfession ? group : `${prefix}，${pending.join('，')}，${unitText}`
+        const scopeText = stateContext ? contextText : `${prefix}，${pending.join('，')}，${unitText}`
         const imbalanceInScope = /失衡/.test(scopeText)
         const globalImbalance = /(?:均|全局|常驻|非失衡期)[^，。；]{0,10}(?:生效|存在|计入)|均受到|都受到/.test(
           scopeText,
@@ -2379,14 +2521,26 @@ export function extractKeywordEffects({
         // → 目标判定要看「本句全文」（抬头 + 已并入的句子），用户 2026-10-16。
         // `prevTarget`：同段**前一条**的目标（给「该增益效果…」这类指回前句的句子回落用）。
         const prevTarget = unitEffects.length ? String(unitEffects[unitEffects.length - 1].slots.target ?? '') : ''
-        const target = stateProfession
-          ? { value: '全队', source: 'inherited' }
-          : detectTarget(group, selfNames, inheritedSlots?.target, stat.value, unitText, prevTarget)
+        let target = detectTarget(
+          group, selfNames, inheritedSlots?.target, stat.value, stateContext ? contextText : unitText, prevTarget,
+        )
+        const inheritedGrant = stateContext?.grant
+        const inheritsStateTarget = target.source !== 'literal' && inheritedGrant?.teamTarget
+        if (inheritsStateTarget) target = { value: '全队', source: 'inherited' }
+        if (stateContext && stateContext.resolution !== 'linked' && target.value === NONE) {
+          target = { value: UNABLE, source: 'unable' }
+        }
         const object = detectObject(group, action.value, inheritedSlots?.object)
 
         // 条件分类（按句 + 按属性）：同义反复丢弃 / 能表达的保留 / 落不到字段写「无法提取」
         const conditionInfo = classifyConditions({
-          conditions: clauseConditions,
+          conditions: conditionList([
+            inheritsStateTarget && inheritedGrant.profession
+              ? beneficiaryProfessionCondition(inheritedGrant.profession)
+              : '',
+            ...clauseConditions,
+            readExplicitStaggerCondition(group),
+          ]),
           statValue: stat.value,
           isConvert: groupIsConvert,
         })
@@ -2560,6 +2714,7 @@ export function extractKeywordEffects({
     return {
       sentenceIndex: index,
       rawSentence: unit.text,
+      ...(stateReferences[index].length ? { stateReferences: stateReferences[index] } : {}),
       keywords,
       waste: waste.filter((item) => item.sentenceIndex === index),
       hasKeywords: keywords.length > 0,
@@ -3269,15 +3424,12 @@ function buildItem({
   const recordable = decorated.filter((effect) => effect.recorded)
   const keywordsById = new Map(decorated.map((effect) => [effect.id, effect]))
   const sentences = simplified.sentences.map((sentence) => ({
+    ...sentence,
     sourceKey: slot,
     sourceLabel: slotLabel,
-    sentenceIndex: sentence.sentenceIndex,
-    rawSentence: sentence.rawSentence,
     keywords: sentence.keywords
       .map((effect) => keywordsById.get(effect.id))
       .filter(Boolean),
-    waste: sentence.waste,
-    hasKeywords: sentence.keywords.length > 0,
   }))
   return {
     slot,

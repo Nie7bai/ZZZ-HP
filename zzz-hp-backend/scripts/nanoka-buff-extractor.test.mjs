@@ -398,7 +398,11 @@ test('挽昼领袖之证抽取、重解析和写入计划保留锋御锐爆加�
   const [keyword] = extra.effects
   assert.equal(keyword.slots.stat, '锐爆伤害加成')
   assert.ok(SLOT_OPTIONS.stat.includes(keyword.slots.stat))
-  assert.deepEqual(keyword.slots.conditions, ['仅锋御代理人', '状态需手动启用'])
+  assert.deepEqual(keyword.slots.conditions, ['仅锋御代理人', '状态需手动启用', UNABLE])
+  assert.deepEqual(extra.sentences[0].stateReferences.map(({ kind, names }) => ({ kind, names })), [
+    { kind: 'grant', names: ['众愿一心'] },
+    { kind: 'reference', names: ['众愿一心'] },
+  ])
   assert.equal(keyword.slots.duration, '45 秒')
   assert.deepEqual(keyword.anchors.skillTargets, [])
   assert.equal(keyword.mapping.ok, true)
@@ -443,6 +447,105 @@ test('锐爆伤害是通用属性，效果子句真正限定的招式仍然保�
   assert.equal(keyword.layerC.enabledDefault, true)
   assert.deepEqual(keyword.layerC.conditions.damageTypes, ['sharpen'])
   assert.deepEqual(keyword.layerC.skillTargets, [{ category: 'special', subcategoryId: null }])
+})
+
+test('获得状态的触发招式和失衡条件留在原文，效果里的限定单独解析', () => {
+  const triggered = simplifyText({
+    text: '当发动强化特殊技时获得[示例状态]，锐爆伤害提升25%',
+    anchors: [],
+  })
+  const [keyword] = triggered.effects
+  assert.deepEqual(keyword.anchors.skillTargets, [])
+  assert.deepEqual(keyword.slots.conditions, ['状态需手动启用', UNABLE])
+  assert.equal(keyword.layerC.enabledDefault, false)
+  assert.equal(keyword.layerC.value, 25)
+  assert.deepEqual(triggered.sentences[0].stateReferences[0], {
+    kind: 'grant', names: ['示例状态'], text: '当发动强化特殊技时获得[示例状态]',
+    clauseIndex: 0, trigger: '当发动强化特殊技时',
+  })
+
+  const prefix = '发动连携技命中失衡敌人时，获得[终结技之光]状态，[终结技之光]状态下，'
+  const [conditionOnly] = simplifyText({
+    text: prefix + '强化特殊技的锐爆伤害提升25%',
+    anchors: [],
+  }).effects
+  assert.deepEqual(conditionOnly.anchors.skillTargets, [{ category: 'special', subcategoryId: null }])
+  assert.equal(conditionOnly.layerC.applySituation, 'global')
+
+  const [explicit] = simplifyText({
+    text: prefix + '对失衡敌人造成的锐爆伤害提升25%',
+    anchors: [],
+  }).effects
+  assert.deepEqual(explicit.anchors.skillTargets, [])
+  assert.equal(explicit.layerC.applySituation, 'stagger')
+  assert.ok(explicit.slots.conditions.includes(UNABLE))
+})
+
+test('状态按原文关联唯一前项，歧义和名称不一致的引用由人工处理', () => {
+  const grant = '全队[锋御]代理人进入[赤光]状态，全队[支援]代理人进入[蓝光]状态'
+  const result = simplifyText({
+    text: `${grant}。处于[赤光]状态时，普通攻击造成的伤害提升10%。自身暴击率提升5%`,
+    anchors: [],
+  })
+  const [linked, independent] = result.effects
+  assert.equal(linked.layerC.applyProfession, '锋御')
+  assert.deepEqual(linked.anchors.skillTargets, [{ category: 'basic', subcategoryId: null }])
+  assert.deepEqual(result.sentences[1].stateReferences[0].grant, { sentenceIndex: 0, clauseIndex: 0 })
+  assert.deepEqual(independent.slots.conditions, [NONE])
+  assert.equal(independent.layerC.enabledDefault, true)
+
+  for (const [reference, resolution] of [['该状态下', 'ambiguous'], ['[白光]状态下', 'unresolved']]) {
+    const { effects: [pending], sentences: [sentence] } = simplifyText({
+      text: `${grant}，${reference}，锐爆伤害提升25%`,
+      anchors: [],
+    })
+    assert.equal(sentence.stateReferences.at(-1).resolution, resolution)
+    assert.equal(sentence.stateReferences.at(-1).grant, null)
+    assert.equal(pending.slots.target, UNABLE)
+    assert.ok(pending.slots.conditions.includes(UNABLE))
+    assert.equal(pending.layerC.applyProfession, null)
+    assert.equal(pending.layerC.enabledDefault, false)
+  }
+})
+
+test('普通触发条件只在效果明确指向该招式时生成受益锚点', () => {
+  for (const text of [
+    '发动强化特殊技时，全队的攻击力提升25%',
+    '发动强化特殊技时全队的攻击力提升25%',
+  ]) {
+    const [effect] = simplifyText({ text, anchors: [] }).effects
+    assert.deepEqual(effect.anchors.skillTargets, [])
+    assert.deepEqual(effect.slots.conditions, [UNABLE])
+    assert.equal(effect.layerC.applyTarget, 'team')
+  }
+  const [current] = simplifyText({
+    text: '发动强化特殊技时，该招式的锐爆伤害提升25%',
+    anchors: [],
+  }).effects
+  assert.deepEqual(current.anchors.skillTargets, [{ category: 'special', subcategoryId: null }])
+
+  const explicitSkillCases = [
+    ['[普通攻击]、[强化特殊技]将无视目标20%冰属性伤害抗性', ['special', 'basic']],
+    ['发动[连携技]后，下次发动[终结技]时，招式造成的伤害提升50%', ['ultimate']],
+    ['[普通攻击]或[冲刺攻击]命中敌人时，使当前招式造成的伤害提升45%', ['basic', 'dodge']],
+    ['[强化特殊技]或[闪避反击]命中时造成的伤害提升35%', ['special', 'dodge']],
+  ]
+  for (const [text, expected] of explicitSkillCases) {
+    const [effect] = simplifyText({ text, anchors: [] }).effects
+    assert.deepEqual(effect.anchors.skillTargets.map(({ category }) => category), expected, text)
+  }
+})
+
+test('明写状态的未括起名称也能按原文关联', () => {
+  const { effects: [effect], sentences: [sentence] } = simplifyText({
+    text: '进入战斗时获得赤焰状态，赤焰状态下普通攻击的伤害提升25%',
+    anchors: [],
+  })
+  const [grant, reference] = sentence.stateReferences
+  assert.deepEqual(grant.names, ['赤焰'])
+  assert.equal(grant.trigger, '进入战斗时')
+  assert.equal(reference.resolution, 'linked')
+  assert.deepEqual(effect.anchors.skillTargets, [{ category: 'basic', subcategoryId: null }])
 })
 
 test('烬痕积攒描述可翻译成有限定的增益，结算增幅保留待补', () => {

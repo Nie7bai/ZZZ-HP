@@ -139,6 +139,21 @@ export interface NanokaWasteClause {
   reason: string
 }
 
+interface NanokaStateMention {
+  names: string[]
+  text: string
+  clauseIndex: number
+}
+
+export type NanokaStateReference = NanokaStateMention & (
+  | { kind: 'grant'; trigger: string }
+  | {
+      kind: 'reference'
+      resolution: 'linked' | 'ambiguous' | 'unresolved'
+      grant: { sentenceIndex: number; clauseIndex: number } | null
+    }
+)
+
 /** **按句配对**的显示单位（一句 → 该句抽出的关键字 + 该句的废原文） */
 export interface NanokaBuffSentence {
   sourceKey: string
@@ -146,6 +161,8 @@ export interface NanokaBuffSentence {
   /** 句序号（0 基；切句口径 = 阶段1 的 `。；\n`） */
   sentenceIndex: number
   rawSentence: string
+  /** 原文状态名及指代来源，供复核和后续上下文关联。 */
+  stateReferences?: NanokaStateReference[]
   keywords: NanokaKeywordEffect[]
   waste: NanokaWasteClause[]
   /** 左侧主视图**只显示** `hasKeywords === true` 的句子；其余只进底部废原文区 */
