@@ -477,6 +477,10 @@ function applySlotContext(ctx: AdminMonsterSlotContext) {
   imagePreview.value = ''
   fieldBuffSetId.value = ctx.fieldBuffSetId ?? ''
   scoringNoteSetId.value = ctx.scoringNoteSetId ?? ''
+  // 编辑弹窗打开时就带上怪物库的套列表，否则下拉为空、改不了
+  if (Array.isArray(ctx.scoringNoteSets) && ctx.scoringNoteSets.length) {
+    scoringNoteSetOptions.value = ctx.scoringNoteSets
+  }
   weaknessSetId.value = ctx.weaknessSetId ?? ''
   if (ctx.bossImage) {
     const preview = resolveAssetUrl(ctx.bossImage) ?? ctx.bossImage

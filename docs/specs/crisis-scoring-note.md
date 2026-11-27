@@ -28,8 +28,9 @@
 | 展示（详情窗口） | `zzz-hp/src/components/history/MonsterDetailModal.vue` | `.monster-detail-scoring` 块，位于属性表之后、弱点/抗性转变之前 |
 | 管理端（怪物库） | `zzz-hp/src/components/admin/AdminBossInfoCatalogPanel.vue` | 「得分机制（多套）」：标记 + 名称 + 正文，可增删；第一套为默认 |
 | 管理端（期数） | `zzz-hp/src/components/admin/AdminMonsterPanel.vue` | 「得分机制套（本期绑定）」下拉：自动（第一套）/ 指定某一套 |
-| 详情变化对比 | `zzz-hp/src/components/history/MonsterDetailModal.vue` + `historyMonsterDetail.findPreviousScoringNote` | 同 Boss + 房间取上一期，与本期不同则显示「得分机制变化（原/现）」 |
-| 详情场地 Buff | 同上 | 场地 Buff **有变化**时显示「原 / 现」转变；**没变化**时也平铺展示当期正文/效果块注释（与卡片同口径） |
+| 详情变化对比 | `zzz-hp/src/components/history/MonsterDetailModal.vue` + `historyMonsterDetail.findPreviousScoringNote` | 同 Boss + 房间取上一期，与本期不同则显示「得分机制变化」——**左右两栏**（原 / 现），与场地 Buff 转变同款版式 |
+| 详情场地 Buff | 同上 | 场地 Buff **有变化**时显示「原 / 现」转变；**没变化**时用同一个橙色框平铺展示当期正文/效果块注释（与卡片同口径） |
+| 期数编辑器加载 | `zzz-hp/src/components/admin/AdminMonsterPanel.vue` | 打开编辑弹窗时即从上下文带上怪物库套列表（`ctx.scoringNoteSets`），否则下拉为空、选不了套 |
 
 ## 行为边界
 
