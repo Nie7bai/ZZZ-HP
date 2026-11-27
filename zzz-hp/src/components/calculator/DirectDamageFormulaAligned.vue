@@ -24,7 +24,7 @@ const formulaSegments = computed((): DirectFormulaTerm[][] => {
     <div class="formula-aligned-body formula-aligned-body--compact">
       <template v-for="(segment, segmentIndex) in formulaSegments" :key="`${group.key}-segment-${segmentIndex}`">
         <span v-if="segmentIndex > 0" class="formula-aligned-op" aria-hidden="true">+</span>
-        <template v-for="(term, termIndex) in segment" :key="`${group.key}-segment-${segmentIndex}-${term.label}`">
+        <template v-for="(term, termIndex) in segment" :key="`${group.key}-segment-${segmentIndex}-${term.tipsKey}`">
           <span
             v-if="termIndex > 0"
             class="formula-aligned-op"

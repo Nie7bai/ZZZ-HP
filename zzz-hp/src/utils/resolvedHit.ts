@@ -42,7 +42,7 @@ import {
   skillGroupMemberKey,
   sortSkillGroupMembers,
 } from '@/utils/skillGroup'
-import { buildSkillMatchCoords, skillTypesIncludeFollowUp } from '@/utils/skillTypes'
+import { buildSkillMatchCoords, firstSkillCategoryCoord, skillTypesIncludeFollowUp } from '@/utils/skillTypes'
 import { mergeFlowBuffOverride } from '@/utils/flowBuffTable'
 import { AGENT_ELEMENTS, type AgentElement } from '@/utils/calculatorUi'
 import {
@@ -578,11 +578,12 @@ export function buildSkillContextFromHit(
   hit: ResolvedHit,
   element: string | undefined,
 ): SkillCalcContext {
+  const categoryCoord = firstSkillCategoryCoord(hit.coords)
   return {
     damageKind: hit.damageKind,
     // categoryId / subcategoryId 仅为兼容旧签名，实际匹配一律走 coords
-    categoryId: hit.coords[0]?.category ?? 'basic',
-    subcategoryId: hit.coords[0]?.subcategoryId ?? null,
+    categoryId: categoryCoord?.category ?? 'basic',
+    subcategoryId: categoryCoord?.subcategoryId ?? null,
     coords: hit.coords,
     element,
     staggerPhase: hit.staggerPhase,

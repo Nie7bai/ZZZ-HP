@@ -7,6 +7,7 @@ import {
 import type {
   AgentBuffDoc,
   BangbooBuffDoc,
+  BuffApplyTarget,
   BuffEffect,
   BuffStatKey,
   BuffStatModifiers,
@@ -250,7 +251,14 @@ export function ensureSlotSelfBuffSelection(
 }
 
 export function isTeamBuffApplyTarget(applyTarget: string | undefined): boolean {
-  return applyTarget === 'team'
+  return applyTarget === 'team' || applyTarget === 'teammates'
+}
+
+const PROVIDER_BUFF_TARGETS: readonly BuffApplyTarget[] = ['self', 'team']
+const TEAMMATE_BUFF_TARGETS: readonly BuffApplyTarget[] = ['team', 'teammates']
+
+function applyTargetsForRecipient(isProvider: boolean): readonly BuffApplyTarget[] {
+  return isProvider ? PROVIDER_BUFF_TARGETS : TEAMMATE_BUFF_TARGETS
 }
 
 function buffStoreForEffect(
@@ -1109,6 +1117,7 @@ export type BuffEffectApplyStatus =
   | 'element-mismatch'
   | 'profession-mismatch'
   | 'team-count-mismatch'
+  | 'teammate-profession-mismatch'
   | 'convert-skipped'
 
 /** 共享参数解析的输入（正式求值与配置预览共用，Spec §3.2）。 */
@@ -1346,14 +1355,16 @@ function resolveBeneficiaryElement(ctx: PanelCalcContext): string | undefined {
   return ctx.agents.find((item) => item.id === agentId)?.element
 }
 
-function resolveTeamProfessionCountOption(ctx: PanelCalcContext) {
-  return (profession: string) => countTeamProfession(ctx.teamSlots, ctx.agents, profession)
+function resolveTeamProfessionCountOption(ctx: PanelCalcContext, excludedSlot?: number | null) {
+  return (profession: string) => countTeamProfession(ctx.teamSlots, ctx.agents, profession, excludedSlot)
 }
 
 /** 运算包的来源侧覆盖：额外 Buff 的来源槽位与"来源不可用"的显式零值（Spec §5.1 第 4 项、§5.2 第 6 项） */
 interface PackSourceOptions {
   /** 读面板/技能等级用的来源槽位（与"受益槽位"无关） */
   sourceSlotIndex?: number | null
+  /** 来源归属槽位，场地、邦布等无所属角色的来源显式传 null。 */
+  teammateProviderSlot?: number | null
   /** 显式给出的来源面板值（例如来源不可用时全 0），优先于按槽位取 */
   panelSourceValuesOverride?: PanelSourceValues
   /** 额外 Buff 运算包：不读选择器里的层数/转模输入 */
@@ -1392,11 +1403,16 @@ function sourceOptionsForCollectedEffect(
         providerSlot: item.providerSlot ?? null,
       }
     : undefined
-  if (!item.effect.extraGain) return traceSource ? { traceSource } : undefined
   const sourceSlotIndex = resolveCollectedEffectSourceSlot(item)
+  const teammateProviderSlot = effects.some((effect) => effect.teammateProfessions?.length)
+    ? sourceSlotIndex : undefined
+  if (!item.effect.extraGain) {
+    return traceSource || teammateProviderSlot !== undefined ? { traceSource, teammateProviderSlot } : undefined
+  }
   const available = sourceSlotIndex != null && Boolean(ctx.teamSlots[sourceSlotIndex]?.agentId)
   return {
     sourceSlotIndex,
+    teammateProviderSlot,
     panelSourceValuesOverride: available ? undefined : zeroSourceValuesFor(effects),
     extraGainPack: true,
     traceSource,
@@ -1508,6 +1524,9 @@ function resolvePackMods(
 ): BuffStatModifiers {
   const skillCtx = ctx.skillContext ?? defaultSkillContext('direct')
   const sourceSlotIndex = sourceOptions?.sourceSlotIndex ?? slotIndex
+  const teammateProviderSlot = sourceOptions?.teammateProviderSlot !== undefined
+    ? sourceOptions.teammateProviderSlot
+    : sourceSlotIndex
   const parameters = resolveEffectParameterInputs(ctx, sourceSlotIndex,
     sourceOptions?.extraGainPack === true, sourceOptions?.panelSourceValuesOverride,
     !ctx.skipConvert && effects.some(effect => effect.kind === 'convert'))
@@ -1528,7 +1547,7 @@ function resolvePackMods(
   const excludedEffects = trace ? (sourceOptions?.traceExcludedEffects ?? []) : []
   const loopEffects = excludedEffects.length ? [...effects, ...excludedEffects] : effects
   return resolveEffectsToMods(loopEffects, {
-    applyTargets: isMain ? ['self', 'team'] : ['team'],
+    applyTargets: applyTargetsForRecipient(isMain),
     ctx: skillCtx,
     element: isMain ? skillCtx.element : slotElement,
     beneficiaryElement: resolveBeneficiaryElement(ctx),
@@ -1541,6 +1560,9 @@ function resolvePackMods(
     skipConvert: ctx.skipConvert,
     selection: ctx.buffSelection,
     resolveTeamProfessionCount: resolveTeamProfessionCountOption(ctx),
+    resolveTeammateProfessionCount: effects.some((effect) => effect.teammateProfessions?.length)
+      ? resolveTeamProfessionCountOption(ctx, teammateProviderSlot)
+      : undefined,
     excludedByEffectId: excludedEffects.length ? ctx.traceExcluded : undefined,
     // 只有带追踪时才分配记录对象；数值路径完全不受影响
     onEffectResolved: trace
@@ -1662,7 +1684,7 @@ export function collectSlotDriveDiscEffects(
 
   if (fourDisc) {
     effects.push(
-      ...collectEffectsFromPack(fourDisc.fourPieceBuffs).filter((e) => e.applyTarget === 'team'),
+      ...collectEffectsFromPack(fourDisc.fourPieceBuffs).filter((effect) => isTeamBuffApplyTarget(effect.applyTarget)),
     )
   }
   return effects
@@ -1672,17 +1694,19 @@ export function collectSlotDriveDiscMods(
   driveDiscs: DriveDiscBuffDoc[],
   selection: DriveDiscSelection,
   isMain: boolean,
-  options?: { includeTwoPiece?: boolean },
+  options?: { includeTwoPiece?: boolean; providerSlot?: number },
   ctx?: PanelCalcContext,
 ): BuffStatModifiers {
   const effects = collectSlotDriveDiscEffects(driveDiscs, selection, isMain, options)
   if (!ctx) {
     return resolveEffectsToMods(effects, {
-      applyTargets: isMain ? ['self', 'team'] : ['team'],
+      applyTargets: applyTargetsForRecipient(isMain),
       ctx: defaultSkillContext('direct'),
     })
   }
-  return resolvePackModsViaEffectSpec(effects, isMain, ctx)
+  return resolvePackModsViaEffectSpec(effects, isMain, ctx, undefined, {
+    teammateProviderSlot: options?.providerSlot ?? (isMain ? ctx.mainSlotIndex : undefined),
+  })
 }
 
 export function collectTeamDriveDiscMods(
@@ -1704,7 +1728,7 @@ export function collectTeamDriveDiscMods(
           fourPieceId: slot.fourPieceDriveDiscId,
         },
         index === mainIndex,
-        undefined,
+        { providerSlot: index },
         ctx,
       ),
     )
@@ -1739,14 +1763,13 @@ function collectForMainSlot(ctx: CollectPassContext): CollectedEffect[] {
   const collected: CollectedEffect[] = []
   const mainIndex = ctx.mainSlotIndex
 
-  /** 当前全部槽位（`applicableSlots` 的「全队 / 无主」取值） */
   const allSlots = ctx.teamSlots.map((_, index) => index)
-  /**
-   * 作用对象（2026-09-24，施工规格 §2.1）：`team` 或无主来源 → 全部槽位；否则 → `[提供者槽位]`。
-   * 提供者槽位从来源标记解析（`agent-<i>-…` / `wengine-<i>-…` / `drive-disc-<i>-…`；邦布 / 场地解析不出 = 无主）。
-   */
+  const occupiedSlots = allSlots.filter((index) => ctx.teamSlots[index]?.agentId)
   function describeSlots(effect: BuffEffect, sourceKey: string) {
     const providerSlot = parseSourceKeySlotIndex(sourceKey)
+    if (effect.applyTarget === 'teammates') {
+      return { applicableSlots: providerSlot == null ? [] : occupiedSlots.filter((slot) => slot !== providerSlot), providerSlot }
+    }
     const applicableSlots =
       effect.applyTarget === 'team' || providerSlot == null ? allSlots : [providerSlot]
     return { applicableSlots, providerSlot }
@@ -1790,8 +1813,8 @@ function collectForMainSlot(ctx: CollectPassContext): CollectedEffect[] {
 
     const isMain = index === mainIndex
     const roleLabel = isMain ? '自身' : '队友'
-    const matchesTarget = (e: BuffEffect) =>
-      isMain ? e.applyTarget === 'self' || e.applyTarget === 'team' : e.applyTarget === 'team'
+    const applyTargets = applyTargetsForRecipient(isMain)
+    const matchesTarget = (effect: BuffEffect) => applyTargets.includes(effect.applyTarget)
     const clampedRank = Math.min(6, Math.max(0, Math.round(slot.rank)))
 
     for (let rank = 0; rank <= clampedRank; rank++) {
@@ -2638,7 +2661,7 @@ function resolvePackEffectMods(
       ...ctx,
       skillContext: skillCtx,
       skipConvert,
-    }, ctx.mainSlotIndex)
+    }, ctx.mainSlotIndex, { teammateProviderSlot: null })
   }
   if (!effects.length) return createEmptyBuffStatModifiers()
   const isMain = pack.kind !== 'slot' || pack.slotIndex === ctx.mainSlotIndex

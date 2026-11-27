@@ -35,6 +35,7 @@ function normalizeGainName(value: unknown): string {
 function cloneEffect(effect: BuffEffect): BuffEffect {
   const clone: BuffEffect = {
     ...effect,
+    teammateProfessions: effect.teammateProfessions?.slice(),
     skillTargets: effect.skillTargets?.map((item) => ({ ...item })),
     elementFilter: Array.isArray(effect.elementFilter) ? [...effect.elementFilter] : effect.elementFilter,
     convert: effect.convert ? { ...effect.convert } : undefined,

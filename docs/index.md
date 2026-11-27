@@ -75,6 +75,10 @@
 
 - [词条最优分配 · 使用说明](./guides/词条分析使用说明.md)：怎么用、怎么读结果、名词讲人话、什么情况下会错。
 
+## 开发指南
+
+- [新建乘区与增益属性的开发规范](./guides/damage-zone-development.md)：新增前的确认项、配置、专用规则和验收。
+
 ## 规格文档
 
 - [规格文档索引](./specs/index.md)：当前功能与技术规格、历史实现记录及编写约定。
@@ -82,6 +86,7 @@
 
 ## 规划与维护
 
+- [文档落点决策表](../../../ZZZ-HP/dev-docs/document-placement.md)（本机双仓库主检出入口，DEV 仓库内路径为 `dev-docs/document-placement.md`）。
 - [未来规划](../future-roadmap.md)：尚未落地的功能方向和后续设计。
 - [维护清单](../TODO-FOR-OWNER.md)：需要所有者确认的事项、遗留验证和长期结构债。
 

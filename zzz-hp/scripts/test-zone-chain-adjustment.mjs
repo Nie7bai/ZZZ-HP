@@ -109,5 +109,26 @@ check('无禁用/无 adjustment 时与基线完全一致', () => {
   assert.equal(plain.attributeAnomalyExpected, baseline.attributeAnomalyExpected)
 })
 
+console.log('[3] 阶段调整后的链路详情')
+
+for (const [label, chainInput] of [
+  ['命破', { chainId: 'pierce', baseDamageSource: 'pierce', piercePower: 1200, isMbMainAgent: true }],
+  ['锋御', { chainId: 'sharpen', baseDamageSource: 'def', finalPanel: { ...panel, def: 1800 }, useSharpenFormula: true }],
+]) {
+  check(`${label}阶段调整后详情末行保持直伤期望`, () => {
+    const adjusted = computeDamageResult({
+      ...baseInput,
+      ...chainInput,
+      combatImbueDmgBonus: 50,
+      chainDisabledStageIds: ['imbue'],
+      chainStageAdjustments: { crit: 0.8 },
+    })
+    assert.ok(adjusted.directDamageExpected > 0)
+    assert.notEqual(adjusted.directDamageExpected, adjusted.attributeAnomalyExpected)
+    const finalStage = adjusted.pipeline?.stages.find((stage) => stage.id === 'final')
+    assert.equal(finalStage?.value, adjusted.directDamageExpected)
+  })
+}
+
 console.log(`\n${failed === 0 ? '✅ all passed' : '❌ failed'}（${passed} passed / ${failed} failed）`)
 if (failed) process.exit(1)

@@ -21,7 +21,7 @@ import type {
   SkillCategoryId,
   SkillSubcategory,
 } from '@/types/calculator'
-import { CONVERT_FROM_OPTIONS } from '@/types/calculator'
+import { BUFF_APPLY_TARGET_LABELS, BUFF_SKILL_TARGET_OPTIONS, CONVERT_FROM_OPTIONS } from '@/types/calculator'
 import {
   ATTRIBUTE_ANOMALY_FIELD_RENAMES,
   migrateAttributeAnomalyNamingDeep,
@@ -33,6 +33,7 @@ import {
   effectHasGenericConditions,
   normalizeEffectConditionsForStat,
   normalizeGroupId,
+  normalizeTeammateProfessions,
 } from '@/utils/buffDamageTypes'
 import { isLuminousElement } from '@/utils/remielUtils'
 import {
@@ -129,18 +130,6 @@ const BUFF_STAT_KEYS: BuffStatKey[] = [
   'specialMultFactor',
   'mutationCoeffFactor',
 ]
-
-const SKILL_CATEGORIES: SkillCategoryId[] = [
-  'basic',
-  'dodge',
-  'assist',
-  'special',
-  'chain',
-  'ultimate',
-  'other',
-]
-
-const BUFF_SKILL_TARGETS: BuffSkillTargetId[] = [...SKILL_CATEGORIES, 'follow_up']
 
 const CHARACTER_ATTRS: CharacterAttrKey[] = [
   'hp',
@@ -272,6 +261,7 @@ export function createEmptyBuffEffect(
       overrides.applyProfession == null || String(overrides.applyProfession).trim() === ''
         ? null
         : String(overrides.applyProfession).trim(),
+    teammateProfessions: normalizeTeammateProfessions(overrides.teammateProfessions),
     teamProfession:
       overrides.teamProfession == null || String(overrides.teamProfession).trim() === ''
         ? null
@@ -425,6 +415,7 @@ export function cloneEffectInstance(
   return {
     ...effect,
     id: effectInstanceId(sourceKey, blockId, effect.id),
+    teammateProfessions: effect.teammateProfessions?.slice(),
     skillTargets: effect.skillTargets?.map((item) => ({ ...item })),
     elementFilter: Array.isArray(effect.elementFilter)
       ? [...effect.elementFilter]
@@ -815,11 +806,13 @@ export function countTeamProfession(
   teamSlots: Array<{ agentId?: string | null }>,
   agents: Array<{ id: string; profession?: string | null }>,
   profession: string,
+  excludedSlot?: number | null,
 ): number {
   const required = profession.trim()
   if (!required) return 0
   let count = 0
-  for (const slot of teamSlots) {
+  for (const [slotIndex, slot] of teamSlots.entries()) {
+    if (slotIndex === excludedSlot) continue
     const agentId = String(slot.agentId ?? '').trim()
     if (!agentId || agentId === 'none') continue
     const agent = agents.find((item) => item.id === agentId)
@@ -859,24 +852,23 @@ export function effectMatchesTeamProfessionGate(
 export function formatTeamProfessionGateLabel(
   effect: Pick<
     BuffEffect,
-    'teamProfession' | 'teamProfessionValues' | 'teamProfessionMinCount' | 'value'
+    'teammateProfessions' | 'teamProfession' | 'teamProfessionValues' | 'teamProfessionMinCount' | 'value'
   >,
 ): string {
+  const teammate = effect.teammateProfessions?.length
+    ? `队友职业·${effect.teammateProfessions.join('或')}`
+    : ''
   const required = effect.teamProfession?.trim()
-  if (!required) return ''
+  if (!required) return teammate
   const values = normalizeTeamProfessionValues(
     effect.teamProfessionValues,
     effect.teamProfession,
     effect.teamProfessionMinCount,
     effect.value,
   )
-  if (values?.some((v) => v != null)) {
-    const parts = values
-      .map((v, i) => (v == null ? null : `${i + 1}人`))
-      .filter(Boolean)
-    return parts.length ? `队内·${required}·${parts.join('/')}` : `队内·${required}`
-  }
-  return `队内·${required}`
+  const people = values?.flatMap((value, i) => value == null ? [] : [`${i + 1}人`]).join('/')
+  const countGate = people ? `队内·${required}·${people}` : `队内·${required}`
+  return teammate ? `${teammate} · ${countGate}` : countGate
 }
 
 /** 受益代理人职业限制（谁能吃到这条效果） */
@@ -928,7 +920,7 @@ export function resolveEffectsToMods(
   options: {
     applyTarget?: BuffApplyTarget
     /** 当前结算角色同时吃 self + team */
-    applyTargets?: BuffApplyTarget[]
+    applyTargets?: readonly BuffApplyTarget[]
     ctx?: SkillCalcContext | null
     element?: string
     /** 队伍 Buff 的受益角色属性（通常为当前结算主 C；流明不作等价替换） */
@@ -947,6 +939,8 @@ export function resolveEffectsToMods(
     selection?: { enabledIds?: Record<string, boolean> } | null
     /** 队内某职业人数；有人数条件的效果必须传入，否则带条件效果一律不结算 */
     resolveTeamProfessionCount?: (profession: string) => number
+    /** 提供者以外的队伍槽位中该职业的人数。缺少队伍上下文时，带条件的效果不生效。 */
+    resolveTeammateProfessionCount?: (profession: string) => number
     /** 当前结算主槽角色职业（防线 Buff 等 applyProfession 条件） */
     beneficiaryProfession?: string | null
     /**
@@ -1005,7 +999,7 @@ export function resolveEffectsToMods(
     }
     const matchElement = options.ctx && !options.ctx.generic
       ? options.ctx.element
-      : effect.applyTarget === 'team'
+      : effect.applyTarget !== 'self'
         ? (options.beneficiaryElement ?? options.element ?? options.ctx?.element)
         : (options.element ?? options.ctx?.element)
     if (!effectMatchesElement(effect, matchElement)) {
@@ -1022,6 +1016,12 @@ export function resolveEffectsToMods(
         emit('team-count-mismatch', undefined, matchElement)
         continue
       }
+    }
+    if (effect.teammateProfessions?.length && !effect.teammateProfessions.some(
+      (profession) => (options.resolveTeammateProfessionCount?.(profession) ?? 0) > 0,
+    )) {
+      emit('teammate-profession-mismatch', undefined, matchElement)
+      continue
     }
     if (effect.applyProfession?.trim()) {
       const required = effect.applyProfession.trim()
@@ -1093,7 +1093,7 @@ export function expandBuffOverrideToEffectIds(
 }
 
 function normalizeApplyTarget(value: unknown): BuffApplyTarget {
-  return value === 'team' ? 'team' : 'self'
+  return value === 'team' || value === 'teammates' ? value : 'self'
 }
 
 function normalizeApplySituation(value: unknown): BuffApplySituation {
@@ -1119,10 +1119,7 @@ function normalizeStat(value: unknown): BuffStatKey | CustomBuffStatKey {
 }
 
 function normalizeSkillCategory(value: unknown): BuffSkillTargetId | undefined {
-  if (typeof value === 'string' && (BUFF_SKILL_TARGETS as string[]).includes(value)) {
-    return value as BuffSkillTargetId
-  }
-  return undefined
+  return BUFF_SKILL_TARGET_OPTIONS.find(({ id }) => id === value)?.id
 }
 
 function normalizeConvert(value: unknown): BuffEffect['convert'] {
@@ -1230,6 +1227,7 @@ export function normalizeBuffEffect(value: unknown): BuffEffect | null {
       entry.applyProfession == null || String(entry.applyProfession).trim() === ''
         ? null
         : String(entry.applyProfession).trim(),
+    teammateProfessions: normalizeTeammateProfessions(entry.teammateProfessions),
     teamProfession:
       entry.teamProfession == null || String(entry.teamProfession).trim() === ''
         ? null
@@ -1330,11 +1328,25 @@ export function normalizeBuffEffect(value: unknown): BuffEffect | null {
   return effect
 }
 
-export function normalizeBuffEffects(value: unknown): BuffEffect[] {
+export function normalizeBuffEffects(value: unknown, hasProvider = true): BuffEffect[] {
   if (!Array.isArray(value)) return []
-  return value
-    .map((item) => normalizeBuffEffect(item))
-    .filter((item): item is BuffEffect => item != null)
+  return value.flatMap((item: unknown): BuffEffect[] => {
+    const effect = normalizeBuffEffect(item)
+    if (!effect) return []
+    const legacy = item as Record<string, unknown>
+    if (!hasProvider || legacy.skillTargetsOnlyForTeammates !== true ||
+        effect.applyTarget !== 'team' || !hasSkillCondition(effect)) {
+      return [effect]
+    }
+    const self: BuffEffect = { ...effect, applyTarget: 'self' }
+    setEffectSkillTargets(self, [])
+    return [self, {
+      ...effect,
+      id: `${effect.id}:teammates`,
+      applyTarget: 'teammates',
+      ...(effect.groupId ? { groupId: `${effect.groupId}:teammates` } : {}),
+    }]
+  })
 }
 
 function newBlockId() {
@@ -1369,10 +1381,10 @@ export function wrapEffectsAsBlocks(effects: BuffEffect[]): BuffEffectBlock[] {
   ]
 }
 
-export function normalizeBuffEffectBlocks(value: unknown): BuffEffectBlock[] {
+export function normalizeBuffEffectBlocks(value: unknown, hasProvider = true): BuffEffectBlock[] {
   if (value == null) return []
   if (!Array.isArray(value)) {
-    if (typeof value === 'object') return normalizeBuffEffectBlocks([value])
+    if (typeof value === 'object') return normalizeBuffEffectBlocks([value], hasProvider)
     return []
   }
   return value
@@ -1383,7 +1395,7 @@ export function normalizeBuffEffectBlocks(value: unknown): BuffEffectBlock[] {
         id: typeof entry.id === 'string' && entry.id ? entry.id : `blk-${index}`,
         name: typeof entry.name === 'string' && entry.name ? entry.name : `效果块 ${index + 1}`,
         note: typeof entry.note === 'string' ? entry.note : '',
-        effects: normalizeBuffEffects(entry.effects),
+        effects: normalizeBuffEffects(entry.effects, hasProvider),
         enabledDefault: entry.enabledDefault === false ? false : true,
       })
     })
@@ -1469,15 +1481,15 @@ export function collectBlockEntriesFromPack(
   return [{ blockId: 'legacy', blockName: '增益', blockNote: '', effects }]
 }
 
-export const SKILL_CATEGORY_LABELS: Record<BuffSkillTargetId, string> = {
-  basic: '普通攻击',
-  dodge: '闪避',
-  assist: '支援技',
-  special: '特殊技',
-  chain: '连携技',
-  ultimate: '终结技',
+/**
+ * 招式大类短标签：以 `BUFF_SKILL_TARGET_OPTIONS` 为唯一来源，只覆盖「其他」——
+ * 下拉里要完整写「其他（无对应招式类型）」，卡片行里只用短标签「其他」。
+ */
+export const SKILL_CATEGORY_LABELS = {
+  ...(Object.fromEntries(
+    BUFF_SKILL_TARGET_OPTIONS.map(({ id, label }) => [id, label]),
+  ) as Record<BuffSkillTargetId, string>),
   other: '其他',
-  follow_up: '追加攻击',
 }
 
 const APPLY_SITUATION_LABELS: Record<string, string> = {
@@ -1537,7 +1549,7 @@ export function effectSummaryLabel(
   statLabelFn?: (stat: BuffStatKey | CustomBuffStatKey) => string,
   skillSubcategories?: SkillSubcategory[] | null,
 ): string {
-  const target = effect.applyTarget === 'team' ? '全队' : '自身'
+  const target = BUFF_APPLY_TARGET_LABELS[effect.applyTarget ?? 'self']
   const skillPrefix = formatSkillTargetsPrefix(effect, skillSubcategories)
   // 显示只显示第二级类型，不带「直伤类 / 异常类」前缀；类2 的类型由 stat 反推。
   const explicitTypes = damageTypesOf(effect)
@@ -1561,7 +1573,7 @@ export function effectSummaryLabel(
         : effect.kind === 'additionalDamage'
           ? formatAdditionalDamageRatioText(effect)
           : `${effect.value ?? 0}`
-  const parts = [target]
+  const parts: string[] = [target]
   if (skillPrefix) parts.push(`招式·${skillPrefix}`)
   if (typeText) parts.push(typeText)
   parts.push(situation)

@@ -137,7 +137,8 @@ export interface BuffEffectConditions {
   damageTypes?: BuffDamageType[]
 }
 
-export type BuffApplyTarget = 'self' | 'team'
+export const BUFF_APPLY_TARGET_LABELS = { self: '自身', team: '全队', teammates: '仅队友' } as const
+export type BuffApplyTarget = keyof typeof BUFF_APPLY_TARGET_LABELS
 /** 增益作用情况：全局 / 仅失衡期 / 仅非失衡期 */
 export type BuffApplySituation = 'global' | 'stagger' | 'non_stagger'
 /**
@@ -168,8 +169,10 @@ export type SkillCategoryId =
   /** 其他 / 无对应招式类型：仅用于挂增益锚点（招式小类），不参与招式类型勾选 */
   | 'other'
 
-/** 增益招式目标：真实大类，或伪大类「追加攻击」 */
-export type BuffSkillTargetId = SkillCategoryId | 'follow_up'
+export const DESTRUCTION_SKILL_TYPE_OPTION = { id: 'destruction', label: '毁伤' } as const
+
+/** 增益招式目标：常规大类和可单独限定的招式类型。 */
+export type BuffSkillTargetId = SkillCategoryId | 'follow_up' | typeof DESTRUCTION_SKILL_TYPE_OPTION.id
 
 /**
  * 招式类型（多选）。取代旧「招式大类」，并把旧的 3 条公共招式小类提升为类型。
@@ -187,6 +190,7 @@ export type SkillTypeId =
   | 'chain'
   | 'ultimate'
   | 'followUp'
+  | typeof DESTRUCTION_SKILL_TYPE_OPTION.id
 
 export const SKILL_CATEGORY_OPTIONS: { id: SkillCategoryId; label: string }[] = [
   { id: 'basic', label: '普通攻击' },
@@ -198,10 +202,11 @@ export const SKILL_CATEGORY_OPTIONS: { id: SkillCategoryId; label: string }[] = 
   { id: 'other', label: '其他（无对应招式类型）' },
 ]
 
-/** 增益编辑器用（含追加攻击伪大类） */
+/** 增益编辑器用 */
 export const BUFF_SKILL_TARGET_OPTIONS: { id: BuffSkillTargetId; label: string }[] = [
   ...SKILL_CATEGORY_OPTIONS,
   { id: 'follow_up', label: '追加攻击' },
+  DESTRUCTION_SKILL_TYPE_OPTION,
 ]
 
 /** 转模来源属性（配合 panelSource；自行设置时仅作展示标签） */
@@ -495,6 +500,8 @@ export interface BuffEffect {
   applySituation?: BuffApplySituation
   /** 受益职业限制；空/缺省 = 不限 */
   applyProfession?: string | null
+  /** 增益提供者的队友满足任一职业即通过，空/缺省 = 不限。 */
+  teammateProfessions?: string[]
   /**
    * 队内职业人数条件：空/缺省 = 不限。
    * 仅决定该人数下效果是否生效，不改变固定/叠层/转模的数值算法。
@@ -761,10 +768,9 @@ export interface DamageEventMode {
  * 招式在 Buff 限定体系里的一个坐标。
  * 新架构一条招式可有多个招式类型 + 一个增益锚点，故需要多坐标。
  */
-export interface SkillMatchCoord {
-  category: SkillCategoryId
-  subcategoryId: string | null
-}
+export type SkillMatchCoord =
+  | { category: SkillCategoryId; subcategoryId: string | null }
+  | { category: typeof DESTRUCTION_SKILL_TYPE_OPTION.id; subcategoryId: null }
 
 export interface SkillCalcContext {
   damageKind: DamageCalcKind

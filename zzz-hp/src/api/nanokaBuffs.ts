@@ -1,5 +1,5 @@
 import { handleAdminSessionExpired, withAdminAuthHeaders } from '@/utils/adminAuth'
-import type { BuffEffect, BuffScope } from '@/types/calculator'
+import type { BuffApplyTarget, BuffEffect, BuffScope, BuffSkillTarget } from '@/types/calculator'
 
 /**
  * nanoka 增益（关键字 → 增益块）管理端接口。
@@ -32,7 +32,10 @@ export type NanokaSlotId =
   | 'unit'
   | 'target'
   | 'conditions'
+  | 'teammateProfessions'
+  | 'scope'
   | 'stacks'
+  | 'enabledDefault'
   | 'duration'
   | 'object'
 
@@ -55,9 +58,12 @@ export interface NanokaKeywordSlots {
   target: string
   /** **允许复数**的槽位之一（与 `elements` 一起构成复数白名单） */
   conditions: string[]
-  /** **作用域**（= 编辑器 `scope`）：`招式 / 属性异常 / 紊乱 / 乱流 / 异放 / 耀变 / 异化系数` 或 `无` */
+  /** 所选队友职业为或关系。 */
+  teammateProfessions?: string[]
+  /** 伤害类型。旧关键字的「招式」由独立的 anchors 字段承接。 */
   scope: string
   stacks: string
+  enabledDefault?: string
   duration: string
   object: string
 }
@@ -76,7 +82,7 @@ export interface NanokaKeywordAnchors {
   ok: boolean
   labels: string[]
   resolved: { name: string; category: string; subcategoryId: string | null; level: string }[]
-  skillTargets: { category: string; subcategoryId: string | null }[]
+  skillTargets: BuffSkillTarget[]
   skillCategory: string
   skillSubcategoryId: string | null
   /** 技能库里没有同名小类时，按技能名**建立**锚点的计划（`{ name, categoryId, agentId }`） */
@@ -139,6 +145,21 @@ export interface NanokaWasteClause {
   reason: string
 }
 
+interface NanokaStateMention {
+  names: string[]
+  text: string
+  clauseIndex: number
+}
+
+export type NanokaStateReference = NanokaStateMention & (
+  | { kind: 'grant'; trigger: string }
+  | {
+      kind: 'reference'
+      resolution: 'linked' | 'ambiguous' | 'unresolved'
+      grant: { sentenceIndex: number; clauseIndex: number } | null
+    }
+)
+
 /** **按句配对**的显示单位（一句 → 该句抽出的关键字 + 该句的废原文） */
 export interface NanokaBuffSentence {
   sourceKey: string
@@ -146,6 +167,8 @@ export interface NanokaBuffSentence {
   /** 句序号（0 基；切句口径 = 阶段1 的 `。；\n`） */
   sentenceIndex: number
   rawSentence: string
+  /** 原文状态名及指代来源，供复核和后续上下文关联。 */
+  stateReferences?: NanokaStateReference[]
   keywords: NanokaKeywordEffect[]
   waste: NanokaWasteClause[]
   /** 左侧主视图**只显示** `hasKeywords === true` 的句子；其余只进底部废原文区 */
@@ -298,6 +321,8 @@ export interface NanokaApplyEffectDetail {
   value: number
   valuePerStack?: number
   maxStacks?: number
+  applyTarget?: BuffApplyTarget
+  skillTargets?: BuffSkillTarget[] | null
   writeLabel: string
 }
 
@@ -412,6 +437,7 @@ export async function extractNanokaBuffs(payload: {
   nanokaId: string
   meta: unknown
   detail: unknown
+  termNames?: Record<string, string>
 }): Promise<{ result: NanokaExtractResult; message: string }> {
   const { data, message } = await requestApi<NanokaExtractResult>('/api/admin/nanoka-buffs/extract', {
     method: 'POST',
@@ -425,6 +451,7 @@ export async function extractNanokaBuffs(payload: {
 export async function simplifyNanokaBuffs(payload: {
   kind: NanokaBuffKind
   nanokaId: string
+  corePassiveText?: string
   items: {
     slot: string
     slotLabel?: string

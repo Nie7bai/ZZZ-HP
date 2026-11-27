@@ -2,18 +2,17 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import NumberStepper from '@/components/common/NumberStepper.vue'
+import AdminBuffSkillTargets from '@/components/admin/calculator/AdminBuffSkillTargets.vue'
 import type {
   BuffDamageType,
   BuffEffect,
   BuffSkillTarget,
-  BuffSkillTargetId,
   BuffStatKey,
   CustomBuffStatKey,
   SkillCategoryId,
-  SkillSubcategory,
 } from '@/types/calculator'
 import {
-  BUFF_SKILL_TARGET_OPTIONS,
+  BUFF_APPLY_TARGET_LABELS,
   CONVERT_FROM_OPTIONS,
   CONVERT_PANEL_SOURCE_OPTIONS,
   SKILL_CATEGORY_OPTIONS,
@@ -27,7 +26,6 @@ import {
 import {
   convertSummaryLabel,
   formatApplySituationLabel,
-  formatSkillTargetBracket,
   formatSkillTargetsPrefix,
   formatTeamProfessionGateLabel,
   getEffectSkillTargets,
@@ -54,6 +52,7 @@ const props = defineProps<{
   row: EffectRow
   agentId?: string
   lockApplyTarget?: 'self' | 'team' | null
+  allowTeammatesTarget?: boolean
   mergeMode?: boolean
   selected?: boolean
   /**
@@ -132,10 +131,22 @@ const applyTarget = computed({
   get: () => first.value?.applyTarget ?? 'self',
   set: (value: BuffEffect['applyTarget']) => patchField('applyTarget', value),
 })
+const applyTargetOptions = computed(() => Object.entries(BUFF_APPLY_TARGET_LABELS).filter(([target]) =>
+  target !== 'teammates' || props.allowTeammatesTarget || applyTarget.value === 'teammates',
+))
 const applyProfession = computed({
   get: () => first.value?.applyProfession ?? '',
   set: (value: string) => patchField('applyProfession', value || null),
 })
+const teammateProfessions = computed(() => first.value?.teammateProfessions ?? [])
+
+function setTeammateProfession(role: string, checked: boolean) {
+  const next = AGENT_ROLES.filter((item) =>
+    item === role ? checked : teammateProfessions.value.includes(item),
+  )
+  patchField('teammateProfessions', next.length ? next : undefined)
+}
+
 const teamProfession = computed({
   get: () => first.value?.teamProfession ?? '',
   set: (value: string) => patchField('teamProfession', value || null),
@@ -245,65 +256,10 @@ function setSkillLimited(checked: boolean) {
   patchAll((effect) => setEffectSkillTargets(effect, []))
 }
 
-const draftSkillByEffectId = ref<Record<string, BuffSkillTarget>>({})
-function ensureDraftSkill(effect: BuffEffect): BuffSkillTarget {
-  const existing = draftSkillByEffectId.value[effect.id]
-  if (existing) return existing
-  const draft: BuffSkillTarget = {
-    category: (effect.skillCategory as BuffSkillTargetId) ?? 'basic',
-    subcategoryId: null,
-  }
-  draftSkillByEffectId.value[effect.id] = draft
-  return draft
-}
-const draftSkill = computed(() => ensureDraftSkill(first.value))
 const skillTargetsOf = computed(() => getEffectSkillTargets(first.value))
-function skillTargetLabel(target: BuffSkillTarget) {
-  return formatSkillTargetBracket(target, skillSubcategories.value)
-}
-
-/**
- * 招式 chip 文案：额外 Buff 会同时列出三名队员的小类，同名时补上所属角色名；
- * 管理端传了 `agentId`（只列本角色），保持原来的纯名字。
- */
-function skillTargetName(target: BuffSkillTarget) {
-  const base = skillTargetLabel(target).replace(/^\[|\]$/g, '')
-  if (props.agentId || !target.subcategoryId) return base
-  const sub = skillSubcategories.value.find((item) => item.id === target.subcategoryId)
-  if (!sub?.agentId) return base
-  const agent = agents.value.find((item) => item.id === sub.agentId)
-  return agent ? `${base}（${agent.name}）` : base
-}
-function onDraftCategoryChange(category: BuffSkillTargetId) {
-  const draft = ensureDraftSkill(first.value)
-  draft.category = category
-  draft.subcategoryId = null
-}
-/**
- * 招式小类选项文案：**额外 Buff 不按编辑角色过滤**，所以会同时列出三名队员的小类，
- * 同名（如「特殊技」）必须带上所属角色名才能区分（Spec §4.2 第 4 项）。
- * 管理端传了 `agentId`，只列本角色的，保持原来的纯名字。
- */
-function subcategoryLabel(sub: SkillSubcategory): string {
-  if (props.agentId || !sub.agentId) return sub.name
-  const agent = agents.value.find((item) => item.id === sub.agentId)
-  return agent ? `${sub.name}（${agent.name}）` : sub.name
-}
-
-function subcategoriesForCategory(category: BuffSkillTargetId): SkillSubcategory[] {
-  const agentFilter = props.agentId
-  return skillSubcategories.value.filter((item) => {
-    if (agentFilter && item.agentId && item.agentId !== agentFilter) return false
-    return item.categoryId === category || (category === 'follow_up' && item.countsAsFollowUp)
-  })
-}
-function addSkillTarget() {
-  const draft = ensureDraftSkill(first.value)
+function addSkillTarget(target: BuffSkillTarget) {
   patchAll((effect) => {
-    setEffectSkillTargets(effect, [
-      ...getEffectSkillTargets(effect),
-      { category: draft.category, subcategoryId: draft.subcategoryId ?? null },
-    ])
+    setEffectSkillTargets(effect, [...getEffectSkillTargets(effect), target])
   })
 }
 function removeSkillTarget(index: number) {
@@ -326,11 +282,11 @@ function openCreateSubcat() {
   creatingSubcat.value = true
   subcatError.value = ''
   subcatMessage.value = ''
+  const category = SKILL_CATEGORY_OPTIONS.find(({ id }) => id === first.value.skillCategory)
   newSubcat.value = {
     agentId: props.agentId || '',
     name: '',
-    categoryId:
-      (first.value.skillCategory as SkillCategoryId) ?? 'basic',
+    categoryId: category?.id ?? 'basic',
     countsAsFollowUp: false,
   }
 }
@@ -494,7 +450,6 @@ function onSplit() {
 
 /** 下拉菜单开关（行本身不再有折叠态：行、条件、高级、块备注都常显） */
 const condMenuOpen = ref(false)
-const skillMenuOpen = ref(false)
 /**
  * 「＋ 条件」菜单向上弹：按钮固定在条件行最左后，卡片贴近底部时菜单仍可能越过滚动容器底边，
  * 所以打开后按实际位置决定朝上还是朝下（不写死，两种情况都要能完整看到）。
@@ -560,6 +515,7 @@ interface RevealState {
   skill: boolean
   damageType: boolean
   teamProfession: boolean
+  teammateProfessions: boolean
   anomaly: boolean
   enabledDefault: boolean
 }
@@ -573,6 +529,7 @@ const revealed = ref<RevealState>({
   skill: false,
   damageType: false,
   teamProfession: false,
+  teammateProfessions: false,
   anomaly: false,
   enabledDefault: false,
 })
@@ -608,6 +565,9 @@ const showDamageTypes = computed(
 const showTeamProfession = computed(
   () => Boolean(first.value?.teamProfession) || revealed.value.teamProfession,
 )
+const showTeammateProfessions = computed(
+  () => teammateProfessions.value.length > 0 || revealed.value.teammateProfessions,
+)
 const showEnabledDefault = computed(
   () => first.value?.enabledDefault === false || revealed.value.enabledDefault,
 )
@@ -617,7 +577,7 @@ const elementNames = computed(() => {
   return Array.isArray(filter) ? filter.map((item) => String(item)) : []
 })
 
-const targetText = computed(() => (applyTarget.value === 'team' ? '全队' : '自身'))
+const targetText = computed(() => BUFF_APPLY_TARGET_LABELS[applyTarget.value])
 const situationText = computed(() => formatApplySituationLabel(first.value))
 const skillText = computed(() => {
   const prefix = formatSkillTargetsPrefix(first.value, skillSubcategories.value)
@@ -689,10 +649,11 @@ const condMenuItems = computed<CondMenuItem[]>(() => {
   const items: CondMenuItem[] = [
     { key: 'situation', label: '作用情况', shown: showSituation.value },
     { key: 'damageType', label: '伤害类型', shown: showDamageTypes.value, only: tier.value === 3 },
-    { key: 'profession', label: '职业限制', shown: showProfession.value },
+    { key: 'profession', label: '受益职业', shown: showProfession.value },
     { key: 'element', label: '属性限定', shown: showElement.value },
     { key: 'skill', label: '限定招式', shown: showSkill.value },
     { key: 'teamProfession', label: '队内职业人数', shown: showTeamProfession.value },
+    { key: 'teammateProfessions', label: '队友职业（满足任一）', shown: showTeammateProfessions.value },
     { key: 'enabledDefault', label: '默认启用', shown: showEnabledDefault.value },
   ]
   return items.filter((item) => item.only !== false)
@@ -715,27 +676,14 @@ function resetCondition(key: RevealKey) {
   else if (key === 'skill') setSkillLimited(false)
   else if (key === 'damageType') clearDamageTypes()
   else if (key === 'teamProfession') setTeamProfession('')
+  else if (key === 'teammateProfessions') patchField('teammateProfessions', undefined)
   else if (key === 'enabledDefault') enabledDefault.value = true
   revealed.value = { ...revealed.value, [key]: false }
-}
-
-/** 招式 chip 文字：去掉 [ ] 便于压一行 */
-
-
-function onCreateSubcatFromMenu() {
-  skillMenuOpen.value = false
-  openCreateSubcat()
-}
-
-function onAddSkillTarget() {
-  addSkillTarget()
-  skillMenuOpen.value = false
 }
 
 /** 点空白处收起下拉（纯界面状态） */
 function onDocumentClick() {
   condMenuOpen.value = false
-  skillMenuOpen.value = false
   detachCondMenuListeners()
 }
 onMounted(() => document.addEventListener('click', onDocumentClick))
@@ -846,8 +794,7 @@ onBeforeUnmount(() => {
           <label v-else-if="!lockApplyTarget" class="inline-field">
             <span>目标</span>
             <select v-model="applyTarget">
-              <option value="self">自身</option>
-              <option value="team">全队</option>
+              <option v-for="[target, text] in applyTargetOptions" :key="target" :value="target">{{ text }}</option>
             </select>
           </label>
 
@@ -869,7 +816,7 @@ onBeforeUnmount(() => {
           </span>
 
           <span v-if="showProfession" class="inline-field">
-            <span>职业</span>
+            <span>受益职业</span>
             <select v-model="applyProfession">
               <option value="">不限</option>
               <option v-for="role in AGENT_ROLES" :key="role" :value="role">{{ role }}</option>
@@ -879,6 +826,26 @@ onBeforeUnmount(() => {
               class="reset-x"
               title="恢复默认（不限）"
               @click="resetCondition('profession')"
+            >
+              ✕
+            </button>
+          </span>
+
+          <span v-if="showTeammateProfessions" class="dmg-line">
+            <span class="line-sub">队友职业（满足任一）</span>
+            <label v-for="role in AGENT_ROLES" :key="role" class="chip">
+              <input
+                type="checkbox"
+                :checked="teammateProfessions.includes(role)"
+                @change="setTeammateProfession(role, ($event.target as HTMLInputElement).checked)"
+              />
+              {{ role }}
+            </label>
+            <button
+              type="button"
+              class="reset-x"
+              title="清除队友职业条件"
+              @click="resetCondition('teammateProfessions')"
             >
               ✕
             </button>
@@ -944,71 +911,14 @@ onBeforeUnmount(() => {
 
           <span v-if="showSkill" class="inline-field skill-line">
             <span>招式</span>
-            <span
-              v-for="(target, index) in skillTargetsOf"
-              :key="`${target.category}-${target.subcategoryId ?? 'all'}-${index}`"
-              class="skill-chip"
-            >
-              {{ skillTargetName(target) }}
-              <button
-                type="button"
-                class="chip-remove"
-                aria-label="移除招式"
-                @click="removeSkillTarget(index)"
-              >
-                ✕
-              </button>
-            </span>
-            <span class="skill-add">
-              <button type="button" class="ghost-btn" @click.stop="skillMenuOpen = !skillMenuOpen">
-                ＋ 添加
-              </button>
-              <div v-if="skillMenuOpen" class="skill-menu" @click.stop>
-                <label class="menu-field">
-                  <span>招式大类</span>
-                  <select
-                    :value="draftSkill.category"
-                    @change="
-                      onDraftCategoryChange(
-                        ($event.target as HTMLSelectElement).value as BuffSkillTargetId,
-                      )
-                    "
-                  >
-                    <option v-for="opt in BUFF_SKILL_TARGET_OPTIONS" :key="opt.id" :value="opt.id">
-                      {{ opt.label }}
-                    </option>
-                  </select>
-                </label>
-                <label class="menu-field">
-                  <span>招式小类</span>
-                  <select v-model="draftSkill.subcategoryId">
-                    <option :value="null">
-                      {{ draftSkill.category === 'follow_up' ? '全部追加' : '整大类' }}
-                    </option>
-                    <option
-                      v-for="sub in subcategoriesForCategory(draftSkill.category)"
-                      :key="sub.id"
-                      :value="sub.id"
-                    >
-                      {{ subcategoryLabel(sub) }}
-                    </option>
-                  </select>
-                </label>
-                <div class="menu-actions">
-                  <button type="button" class="ghost-btn" @click="onAddSkillTarget">
-                    ＋ 添加动作
-                  </button>
-                  <button
-                    v-if="!isExtraMode"
-                    type="button"
-                    class="ghost-btn"
-                    @click="onCreateSubcatFromMenu"
-                  >
-                    ＋ 新建小类
-                  </button>
-                </div>
-              </div>
-            </span>
+            <AdminBuffSkillTargets
+              :targets="skillTargetsOf"
+              :agent-id="agentId"
+              :allow-create="!isExtraMode"
+              @add="addSkillTarget"
+              @remove="removeSkillTarget"
+              @create="openCreateSubcat"
+            />
             <button
               type="button"
               class="reset-x"
@@ -1087,6 +997,7 @@ onBeforeUnmount(() => {
           <label class="inline-field grow">
             <span>属性</span>
             <select :value="zone?.id ?? ''" @change="onZoneChange">
+              <option v-if="!zone" value="" disabled>未找到当前属性</option>
               <option v-for="item in statZoneOptions" :key="item.id" :value="item.id">
                 {{ item.label }}
               </option>
@@ -1734,66 +1645,6 @@ onBeforeUnmount(() => {
 
 .skill-line {
   flex-wrap: wrap;
-}
-
-.skill-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.15rem;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  padding: 0 0.25rem;
-  font-size: var(--buff-editor-text-size);
-  line-height: 1.4;
-}
-
-.chip-remove {
-  border: none;
-  background: transparent;
-  color: var(--color-text);
-  cursor: pointer;
-  font-size: var(--buff-editor-meta-size);
-  line-height: 1;
-  opacity: 0.6;
-  padding: 0;
-}
-
-.skill-add {
-  position: relative;
-  display: inline-flex;
-}
-
-.skill-menu {
-  position: absolute;
-  left: 0;
-  top: calc(100% + 4px);
-  z-index: 30;
-  width: 15rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  padding: 0.45rem;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  background: var(--color-background);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.32);
-}
-
-.menu-field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  font-size: var(--buff-editor-text-size);
-}
-
-.menu-field select {
-  max-width: none;
-}
-
-.menu-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
 }
 
 /* 右侧数值列（常显，横排压高） */

@@ -59,8 +59,8 @@ export async function rulesNanokaBuffsHandler(_req, res) {
 /** POST /api/admin/nanoka-buffs/extract —— 抽取（不写库） */
 export async function extractNanokaBuffsHandler(req, res) {
   try {
-    const { kind, nanokaId, meta, detail } = req.body ?? {}
-    const data = await extractBuffItems({ kind, nanokaId, meta, detail })
+    const { kind, nanokaId, meta, detail, termNames } = req.body ?? {}
+    const data = await extractBuffItems({ kind, nanokaId, meta, detail, termNames })
     const { counts } = data
     const message =
       `${data.localName || data.localId}：抓到 ${counts.items} 段原文（有增益 ${counts.buffItems} / 废原文 ${counts.wasteItems}）；` +
@@ -74,8 +74,8 @@ export async function extractNanokaBuffsHandler(req, res) {
 /** POST /api/admin/nanoka-buffs/simplify —— [化简]（阶段一，不写库） */
 export async function simplifyNanokaBuffsHandler(req, res) {
   try {
-    const { kind, nanokaId, items } = req.body ?? {}
-    const data = await simplifyBuffTexts({ kind, nanokaId, items })
+    const { kind, nanokaId, items, corePassiveText } = req.body ?? {}
+    const data = await simplifyBuffTexts({ kind, nanokaId, items, corePassiveText })
     const message = `已化简 ${data.items.length} 段原文（未写入）`
     return success(res, data, message)
   } catch (err) {

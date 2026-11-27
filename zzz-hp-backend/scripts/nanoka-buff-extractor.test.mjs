@@ -74,7 +74,7 @@ import {
   smartMergeParse,
   summarizeItems,
 } from '../src/services/nanokaBuffService.js'
-import { normalizeBuffScopes } from '../src/services/calculatorBuffService.js'
+import { normalizeBuffScopes, normalizeEffectList } from '../src/services/calculatorBuffService.js'
 import { buildAffixEffectTemplate } from '../src/utils/affixEffectTemplate.js'
 import nanokaBuffRoutes from '../src/routes/nanokaBuffRoutes.js'
 import { requireAdmin } from '../src/middleware/requireAdmin.js'
@@ -162,20 +162,27 @@ test('文本工具：去标签 / 抽数值 / 切句 / 层数 / 时长', () => {
   assert.equal(readDurationInfo('持续时间提升2秒').seconds, null)
 })
 
+test('只展开有词表或通用属性兜底的空术语标签，保留已有的标签内文字', () => {
+  assert.equal(cleanNanokaText('<Term:20></Term>提升25%', { 20: '锐暴伤害' }), '锐暴伤害提升25%')
+  assert.equal(cleanNanokaText('<Term:3000015></Term>提升25%'), '锐暴伤害提升25%')
+  assert.equal(cleanNanokaText('<Term:20>暴击率</Term>', { 20: '锐暴伤害' }), '暴击率')
+  assert.equal(cleanNanokaText('<Term:20></Term>提升25%'), '提升25%')
+})
+
 // ================================================================== 2. 9 槽位模型
 
-test('槽位不许缺格（9 常规 + 元素 + 作用域）：每条关键字都能渲染出全部槽位（属性写工具语义）', () => {
+test('每条关键字都能渲染出完整槽位，属性沿用工具语义', () => {
   const { effect } = firstEffect('造成的伤害提升10%')
   assert.deepEqual(Object.keys(effect.slots), SLOT_IDS)
   for (const id of SLOT_IDS) assert.ok(id in effect.slots, `缺少槽位 ${id}`)
   assert.match(
     formatKeywordSlots(effect.slots),
-    /^属性=增伤 元素=无 动作=提升 数值=10 单位=% 目标=无 条件=无 作用域=无 层数=无 时长=无 对象=无$/,
+    /^属性=增伤 元素=无 动作=提升 数值=10 单位=% 目标=无 条件=无 队友职业（满足任一）=无 作用域=无 层数=无 默认启用=无 时长=无 对象=无$/,
   )
 })
 
-test('元素**不拆条**：一条关键字带多个元素 → elementFilter 数组（复数白名单：条件 / 元素）', () => {
-  assert.deepEqual(MULTI_SLOT_IDS, ['conditions', 'elements'])
+test('元素不拆条，一条关键字带多个元素', () => {
+  assert.deepEqual(MULTI_SLOT_IDS, ['conditions', 'elements', 'teammateProfessions'])
   const { effects } = extractKeywordEffects({
     text: '造成的火属性伤害和冰属性伤害提升10%',
     origin: 'test',
@@ -252,7 +259,7 @@ test('1 段原文 → N 条关键字（除「条件」外，任何槽位出现�
   assert.equal(effects[1].slots.target, '全队')
 })
 
-test('条件槽位是**允许复数**的槽位（白名单 = 条件 / 元素）；落不到字段的写「无法提取」', () => {
+test('条件可并存，落不到字段的标为无法提取', () => {
   const { effect } = firstEffect('若能量不足40点，攻击失衡敌人时，造成的伤害提升10%')
   assert.ok(Array.isArray(effect.slots.conditions))
   // 「攻击失衡敌人时」是工具能表达的（applySituation）；「能量不足40点」是触发器 → 无法提取
@@ -262,7 +269,44 @@ test('条件槽位是**允许复数**的槽位（白名单 = 条件 / 元素）�
     !effect.slots.conditions.some((item) => /能量不足/.test(item)),
     '不许把原句片段塞进条件槽（那是伪造「可转换」）',
   )
-  assert.deepEqual(MULTI_SLOT_IDS, ['conditions', 'elements'])
+  assert.deepEqual(MULTI_SLOT_IDS, ['conditions', 'elements', 'teammateProfessions'])
+})
+
+test('条件下拉的生效项能落到正式字段，旧的手动状态值兼容为关闭默认启用', () => {
+  const base = { stat: '增伤', action: '提升', value: 25, unit: '%' }
+  for (const condition of CONDITION_OPTIONS.filter((value) => value !== NONE && value !== UNABLE)) {
+    const { effect } = mapKeywordsToEffect({ slots: { ...base, conditions: [condition] } })
+    assert.ok(effect.applyProfession || effect.applySituation !== 'global', condition)
+  }
+  assert.ok(!CONDITION_OPTIONS.includes('状态需手动启用'))
+  assert.ok(!SLOT_OPTIONS.target.includes('指定阵营'))
+  assert.equal(mapKeywordsToEffect({
+    slots: { ...base, conditions: ['状态需手动启用'] },
+  }).effect.enabledDefault, false)
+  assert.equal(mapKeywordsToEffect({
+    slots: { ...base, enabledDefault: '开启' },
+  }).effect.enabledDefault, true)
+  assert.ok(mapKeywordsToEffect({ slots: { ...base, scope: '招式' } }).unableSlots.includes('scope'))
+})
+
+test('队友职业解析为或关系，混合阵营和并列必选条件交给人工', () => {
+  const valid = simplifyText({
+    text: '队友中包含击破职业或防护职业时，攻击失衡敌人时，造成的伤害提升25%',
+  }).effects[0]
+  assert.deepEqual(valid.slots.teammateProfessions, ['击破', '防护'])
+  assert.deepEqual(valid.layerC.teammateProfessions, ['击破', '防护'])
+  assert.equal(valid.layerC.applySituation, 'stagger')
+  assert.equal(valid.layerC.teamProfession, null)
+
+  for (const requirement of [
+    '队伍中存在其他异常角色或同阵营角色时',
+    '队伍中存在[击破]角色和[防护]角色时',
+    '队伍中存在与自身属性或阵营相同的角色时',
+  ]) {
+    const [effect] = simplifyText({ text: requirement + '，造成的伤害提升25%' }).effects
+    assert.deepEqual(effect.slots.conditions, [UNABLE], requirement)
+    assert.equal(effect.layerC.teammateProfessions, undefined, requirement)
+  }
 })
 
 // ================================================================== 3. 槽位语义（v3 新口径）
@@ -299,6 +343,367 @@ test('可映射性预检：动作 + 属性 去阶段2 词表反查（阶段1 结
   assert.equal(checkKeywordMappable({ slots: { stat: '减防', action: '无视', unit: '%' } }).field, 'reduceDefense')
   assert.equal(resolveStatField({ stat: '抗性穿透', action: '无视' }), 'resPen')
   assert.equal(resolveStatField({ stat: '减防', action: '降低' }), 'reduceDefense')
+})
+
+test('独立乘区百分比从关键字进入入库计划并保留原有伤害类型条件', () => {
+  const cases = [
+    {
+      text: '自身的「烬痕比例」提升20%',
+      label: '烬痕比例',
+      stat: 'custom:emberMarkRatio',
+      value: 20,
+      applyTarget: 'self',
+    },
+    {
+      text: '全队的耀变最终伤害比例提高17.5%',
+      label: '最终伤害比例',
+      stat: 'custom:finalDamageRatio',
+      value: 17.5,
+      applyTarget: 'team',
+      damageTypes: ['radiance'],
+    },
+    {
+      text: '一布之力比例降低6%',
+      label: '一布之力比例',
+      stat: 'custom:bangbooMightRatio',
+      value: -6,
+      applyTarget: 'self',
+    },
+  ]
+  const rules = buildRulesTable().groups.find((group) => group.id === 'stat').items
+  for (const { text, label, stat, value, applyTarget, damageTypes } of cases) {
+    const { effects } = simplifyText({ text, origin: 'test' })
+    assert.equal(effects.length, 1, text)
+    const [keyword] = effects
+    assert.equal(keyword.slots.stat, label, text)
+    assert.ok(SLOT_OPTIONS.stat.includes(label))
+    assert.ok(rules.some((rule) => rule.slot === label && rule.field === stat))
+    assert.equal(keyword.layerC?.statLabel, label)
+
+    const plan = planBuffApply({
+      kind: 'agent',
+      local: {},
+      rows: [{
+        key: keyword.id,
+        source: 'passive.core',
+        slot: 'core',
+        containerIndex: 0,
+        rawText: text,
+        effect: keyword.layerC,
+      }],
+    })
+    assert.equal(plan.updated, 1, text)
+    const [saved] = plan.groups[0].blocks[0].effects
+    assert.equal(saved.stat, stat)
+    assert.equal(saved.value, value)
+    assert.equal(saved.applyTarget, applyTarget)
+    assert.deepEqual(saved.conditions?.damageTypes, damageTypes)
+  }
+})
+
+test('独立乘区按百分比翻译，普通增伤继续映射到原字段', () => {
+  assert.equal(firstEffect('说明中提到烬痕比例，造成的伤害提升20%').effect.slots.stat, '增伤')
+  assert.equal(simplifyText({ text: '造成的伤害提升20%' }).effects[0].layerC.stat, 'dmgBonus')
+  assert.equal(simplifyText({ text: '烬痕比例提升20点' }).effects.length, 0)
+  assert.equal(resolveStatField({ stat: '最终伤害比例', action: '无视', unit: '%' }), '')
+  assert.throws(() => sanitizeEffect({ stat: 'custom:非法键', value: 20 }), /不是合法增益字段/)
+})
+
+test('挽昼领袖之证抽取、重解析和写入计划保留锋御锐爆加成与时长', () => {
+  const extraText = [
+    '队伍中存在[击破]角色、[防护]角色或其他[锋御]角色时触发：',
+    '进入战斗时，或挽昼发动任意[强化特殊技]、[普通攻击：执旌·聚锋]、[连携技]、[冲刺攻击：巡征·影域穿袭]时，' +
+      '全队[锋御]代理人进入<Term:1000064></Term>状态，[众愿一心]状态下，<Term:3000015></Term>提升25%，持续45秒；' +
+      '重复进入[众愿一心]状态时刷新持续时间。',
+  ].join('\n')
+  const agent = { id: 'sunbringer', name: '挽昼', profession: '锋御' }
+  const detail = {
+    name: agent.name,
+    passive: { level: { 1: { level: 1, name: ['', '额外能力：领袖之证'], desc: ['', extraText] } } },
+  }
+  const { items: [extra] } = extractAgentBuffItems({
+    detail,
+    nanokaId: 1601,
+    termNames: { 1000064: '[众愿一心]', 3000015: '锐暴伤害' },
+    agent,
+    anchors: [],
+  })
+  assert.equal(extra.source, 'passive.extra')
+  assert.match(extra.rawText, /进入\[众愿一心\]状态/)
+  assert.match(extra.rawText, /锐暴伤害提升25%/)
+  assert.equal(extra.effects.length, 1)
+  const [keyword] = extra.effects
+  assert.equal(keyword.slots.stat, '锐爆伤害加成')
+  assert.ok(SLOT_OPTIONS.stat.includes(keyword.slots.stat))
+  assert.deepEqual(keyword.slots.conditions, ['仅锋御代理人', UNABLE])
+  assert.equal(keyword.slots.enabledDefault, NONE)
+  assert.deepEqual(keyword.slots.teammateProfessions, ['击破', '锋御', '防护'])
+  assert.deepEqual(extra.sentences[0].stateReferences.map(({ kind, names }) => ({ kind, names })), [
+    { kind: 'grant', names: ['众愿一心'] },
+    { kind: 'reference', names: ['众愿一心'] },
+  ])
+  assert.equal(keyword.slots.duration, '45 秒')
+  assert.deepEqual(keyword.anchors.skillTargets, [])
+  assert.equal(keyword.mapping.ok, true)
+
+  const [fromCleanedText] = simplifyText({ text: extra.rawText }).effects
+  const [withoutStateName] = simplifyText({ text: extraText.replaceAll('[众愿一心]', '') }).effects
+  assert.deepEqual(fromCleanedText.slots, keyword.slots)
+  assert.deepEqual(withoutStateName.slots, keyword.slots)
+
+  const { rows: [parsed] } = smartMergeParse({ keywords: [{ ...keyword, key: keyword.id }] })
+  const plan = planBuffApply({
+    kind: 'agent',
+    local: agent,
+    rows: [{
+      key: keyword.id,
+      source: extra.source,
+      containerIndex: extra.containerIndex,
+      rawText: extra.rawText,
+      keywordSlots: keyword.slots,
+      effect: parsed.effect,
+    }],
+  })
+  assert.equal(plan.updated, 1)
+  const [planned] = plan.groups[0].blocks[0].effects
+  assert.equal(planned.stat, 'sharpenCritDmgBonus')
+  assert.equal(planned.value, 25)
+  assert.equal(planned.applyTarget, 'team')
+  assert.equal(planned.applyProfession, '锋御')
+  assert.deepEqual(planned.teammateProfessions, ['击破', '锋御', '防护'])
+  assert.deepEqual(normalizeEffectList([planned])[0].teammateProfessions, planned.teammateProfessions)
+  assert.deepEqual(planned.conditions.damageTypes, ['sharpen'])
+  assert.ok(!planned.skillTargets?.length)
+  assert.equal(planned.enabledDefault, true)
+  assert.equal(normalizeEffectList([planned])[0].enabledDefault, true)
+  assert.match(planned.note, /45 秒/)
+
+  const manuallyDisabled = mapKeywordsToEffect({
+    ...keyword,
+    slots: { ...keyword.slots, enabledDefault: '关闭' },
+  }).effect
+  assert.equal(manuallyDisabled.enabledDefault, false)
+  assert.deepEqual(manuallyDisabled.teammateProfessions, planned.teammateProfessions)
+})
+
+test('锐爆伤害是通用属性，效果子句真正限定的招式仍然保留', () => {
+  const { effects: [keyword] } = simplifyText({
+    text: '强化特殊技的锐爆伤害提升25%',
+    anchors: [],
+  })
+  assert.equal(keyword.layerC.stat, 'sharpenCritDmgBonus')
+  assert.equal(keyword.layerC.applyProfession, null)
+  assert.equal(keyword.layerC.enabledDefault, true)
+  assert.deepEqual(keyword.layerC.conditions.damageTypes, ['sharpen'])
+  assert.deepEqual(keyword.layerC.skillTargets, [{ category: 'special', subcategoryId: null }])
+})
+
+test('获得状态的触发招式和失衡条件留在原文，效果里的限定单独解析', () => {
+  const triggered = simplifyText({
+    text: '当发动强化特殊技时获得[示例状态]，锐爆伤害提升25%',
+    anchors: [],
+  })
+  const [keyword] = triggered.effects
+  assert.deepEqual(keyword.anchors.skillTargets, [])
+  assert.deepEqual(keyword.slots.conditions, [UNABLE])
+  assert.equal(keyword.slots.enabledDefault, NONE)
+  assert.equal(keyword.layerC.enabledDefault, true)
+  assert.equal(keyword.layerC.value, 25)
+  assert.deepEqual(triggered.sentences[0].stateReferences[0], {
+    kind: 'grant', names: ['示例状态'], text: '当发动强化特殊技时获得[示例状态]',
+    clauseIndex: 0, trigger: '当发动强化特殊技时',
+  })
+
+  const prefix = '发动连携技命中失衡敌人时，获得[终结技之光]状态，[终结技之光]状态下，'
+  const [conditionOnly] = simplifyText({
+    text: prefix + '强化特殊技的锐爆伤害提升25%',
+    anchors: [],
+  }).effects
+  assert.deepEqual(conditionOnly.anchors.skillTargets, [{ category: 'special', subcategoryId: null }])
+  assert.equal(conditionOnly.layerC.applySituation, 'global')
+
+  const [explicit] = simplifyText({
+    text: prefix + '对失衡敌人造成的锐爆伤害提升25%',
+    anchors: [],
+  }).effects
+  assert.deepEqual(explicit.anchors.skillTargets, [])
+  assert.equal(explicit.layerC.applySituation, 'stagger')
+  assert.ok(explicit.slots.conditions.includes(UNABLE))
+})
+
+test('状态按原文关联唯一前项，歧义和名称不一致的引用由人工处理', () => {
+  const grant = '全队[锋御]代理人进入[赤光]状态，全队[支援]代理人进入[蓝光]状态'
+  const result = simplifyText({
+    text: `${grant}。处于[赤光]状态时，普通攻击造成的伤害提升10%。自身暴击率提升5%`,
+    anchors: [],
+  })
+  const [linked, independent] = result.effects
+  assert.equal(linked.layerC.applyProfession, '锋御')
+  assert.deepEqual(linked.anchors.skillTargets, [{ category: 'basic', subcategoryId: null }])
+  assert.deepEqual(result.sentences[1].stateReferences[0].grant, { sentenceIndex: 0, clauseIndex: 0 })
+  assert.deepEqual(independent.slots.conditions, [NONE])
+  assert.equal(independent.layerC.enabledDefault, true)
+
+  for (const [reference, resolution] of [['该状态下', 'ambiguous'], ['[白光]状态下', 'unresolved']]) {
+    const { effects: [pending], sentences: [sentence] } = simplifyText({
+      text: `${grant}，${reference}，锐爆伤害提升25%`,
+      anchors: [],
+    })
+    assert.equal(sentence.stateReferences.at(-1).resolution, resolution)
+    assert.equal(sentence.stateReferences.at(-1).grant, null)
+    assert.equal(pending.slots.target, UNABLE)
+    assert.ok(pending.slots.conditions.includes(UNABLE))
+    assert.equal(pending.layerC.applyProfession, null)
+    assert.equal(pending.layerC.enabledDefault, true)
+  }
+})
+
+test('普通触发条件只在效果明确指向该招式时生成受益锚点', () => {
+  for (const text of [
+    '发动强化特殊技时，全队的攻击力提升25%',
+    '发动强化特殊技时全队的攻击力提升25%',
+  ]) {
+    const [effect] = simplifyText({ text, anchors: [] }).effects
+    assert.deepEqual(effect.anchors.skillTargets, [])
+    assert.deepEqual(effect.slots.conditions, [UNABLE])
+    assert.equal(effect.layerC.applyTarget, 'team')
+  }
+  const [current] = simplifyText({
+    text: '发动强化特殊技时，该招式的锐爆伤害提升25%',
+    anchors: [],
+  }).effects
+  assert.deepEqual(current.anchors.skillTargets, [{ category: 'special', subcategoryId: null }])
+
+  const explicitSkillCases = [
+    ['[普通攻击]、[强化特殊技]将无视目标20%冰属性伤害抗性', ['special', 'basic']],
+    ['发动[连携技]后，下次发动[终结技]时，招式造成的伤害提升50%', ['ultimate']],
+    ['[普通攻击]或[冲刺攻击]命中敌人时，使当前招式造成的伤害提升45%', ['basic', 'dodge']],
+    ['[强化特殊技]或[闪避反击]命中时造成的伤害提升35%', ['special', 'dodge']],
+  ]
+  for (const [text, expected] of explicitSkillCases) {
+    const [effect] = simplifyText({ text, anchors: [] }).effects
+    assert.deepEqual(effect.anchors.skillTargets.map(({ category }) => category), expected, text)
+  }
+})
+
+test('明写状态的未括起名称也能按原文关联', () => {
+  const { effects: [effect], sentences: [sentence] } = simplifyText({
+    text: '进入战斗时获得赤焰状态，赤焰状态下普通攻击的伤害提升25%',
+    anchors: [],
+  })
+  const [grant, reference] = sentence.stateReferences
+  assert.deepEqual(grant.names, ['赤焰'])
+  assert.equal(grant.trigger, '进入战斗时')
+  assert.equal(reference.resolution, 'linked')
+  assert.deepEqual(effect.anchors.skillTargets, [{ category: 'basic', subcategoryId: null }])
+})
+
+test('二影烬痕积攒量提升拆为自身与仅队友两条，解析、保存和回读一致', () => {
+  const agent = { id: 'test-ember', name: '测试者', profession: '锋御' }
+  const names = ['普通攻击：先声', '终结技：「微光，共鸣」', '特殊技：追响']
+  const categories = ['basic', 'ultimate', 'special']
+  const anchors = names.map((name, index) => ({ id: `anchor-${index}`, name, categoryId: categories[index], agentId: agent.id }))
+  const skills = names.map((name, index) => ({ name, agentId: agent.id, damageType: 'direct', buffAnchorId: anchors[index].id }))
+  skills.push({ name: '毁伤段', agentId: agent.id, damageType: 'direct', skillTypes: ['destruction'], buffAnchorId: null })
+  const core = '测试者发动[普通攻击：先声]、[终结技：「微光，共鸣」]命中敌人造成伤害时，均可使目标积攒<Term:1000061></Term>，[烬痕]量等同于招式造成的实际伤害的60%；全队代理人造成的[毁伤]也可使目标积攒等同于该次实际伤害40%的[烬痕]。'
+  const secondMindscape = '测试者发动其他招式命中敌人造成锐化伤害时，也可使目标积攒<Term:1000061></Term>，积攒量等同于该次实际伤害的30%；全队触发<Term:3000039></Term>和测试者使敌人积攒[烬痕]时，最终结算的[烬痕]量提升35%。'
+  const fourthMindscape = '[烬痕]积攒量提升效果额外提升65%，每180秒内最多触发一次；测试者造成的伤害提升10%。'
+  const detail = {
+    name: agent.name,
+    passive: { level: { 1: { level: 1, desc: [core] } } },
+    talent: [{}, { desc: secondMindscape }, {}, { desc: fourthMindscape }],
+  }
+  const { items } = extractAgentBuffItems({ detail, nanokaId: 'test', agent, anchors, skills })
+  const coreItem = items.find((item) => item.slot === 'core')
+  const secondItem = items.find((item) => item.slot === 'talent-2')
+  const fourthItem = items.find((item) => item.slot === 'talent-4')
+  const [named, destruction] = coreItem.effects
+  const [other, selfIncrease, teammateIncrease] = secondItem.effects
+  const accumulationEffects = [selfIncrease, teammateIncrease]
+  assert.deepEqual(named.anchors.skillTargets, [
+    { category: 'basic', subcategoryId: 'anchor-0' },
+    { category: 'ultimate', subcategoryId: 'anchor-1' },
+  ])
+  assert.deepEqual(destruction.anchors.skillTargets, [{ category: 'destruction', subcategoryId: null }])
+  assert.deepEqual(other.anchors.skillTargets, [{ category: 'special', subcategoryId: 'anchor-2' }])
+  assert.deepEqual(other.layerC.conditions.damageTypes, ['sharpen'])
+  const destructionTargets = [{ category: 'destruction', subcategoryId: null }]
+  assert.deepEqual(accumulationEffects.map(({ slots }) => slots.target), ['自身', '仅队友'])
+  assert.notEqual(selfIncrease.id, teammateIncrease.id)
+  assert.deepEqual(accumulationEffects.map(({ layerC }) => layerC.applyTarget), ['self', 'teammates'])
+  for (const { layerC } of accumulationEffects) {
+    assert.equal(layerC.stat, 'custom:emberMarkAccumulationBonus')
+    assert.equal(layerC.value, 35)
+    assert.equal(layerC.enabledDefault, true)
+    assert.equal(layerC.conditions, undefined)
+  }
+  assert.equal(selfIncrease.layerC.skillTargets, undefined)
+  assert.deepEqual(teammateIncrease.layerC.skillTargets, destructionTargets)
+  assert.ok(secondItem.rawText.includes('35%'))
+  assert.deepEqual(fourthItem.effects.filter((effect) => effect.layerC).map((effect) => effect.layerC.value), [10])
+
+  const resimplified = simplifyText({
+    text: secondItem.rawText, agentId: agent.id, selfNames: [agent.name], anchors,
+    emberMarkContext: { corePassiveText: coreItem.rawText, profession: agent.profession, skills },
+  })
+  assert.deepEqual(resimplified.effects[0].layerC.skillTargets, other.layerC.skillTargets)
+  const { effects: alternate } = simplifyText({
+    text: '全队触发[毁伤]和测试者使敌人积攒[烬痕]时，[烬痕]积攒量额外提升35%。',
+    agentId: agent.id, selfNames: [agent.name], anchors,
+  })
+  const shape = ({ stat, applyTarget, value, skillTargets }) => ({ stat, applyTarget, value, skillTargets })
+  assert.deepEqual(alternate.map(({ layerC }) => shape(layerC)), accumulationEffects.map(({ layerC }) => shape(layerC)))
+  const { rows: translated } = smartMergeParse({ keywords: accumulationEffects, agentId: agent.id })
+  assert.deepEqual(translated.map(({ effect }) => shape(effect)), accumulationEffects.map(({ layerC }) => shape(layerC)))
+
+  const rows = [[coreItem, named], [coreItem, destruction], [secondItem, other],
+    [secondItem, selfIncrease], [secondItem, teammateIncrease]].map(([item, keyword]) => ({
+    key: keyword.id,
+    source: item.source,
+    containerIndex: item.containerIndex,
+    rawText: item.rawText,
+    keywordSlots: keyword.slots,
+    effect: keyword.layerC,
+    anchors: keyword.anchors,
+  }))
+  const plan = planBuffApply({ kind: 'agent', local: agent, rows })
+  assert.equal(plan.updated, 5)
+  const effects = plan.groups.flatMap((group) => group.blocks.flatMap((block) => block.effects))
+  assert.deepEqual(effects.map(({ stat, value, applyTarget }) => [stat, value, applyTarget]), [
+    ['custom:emberMarkRatio', 60, 'self'],
+    ['custom:emberMarkRatio', 40, 'team'],
+    ['custom:emberMarkRatio', 30, 'self'],
+    ['custom:emberMarkAccumulationBonus', 35, 'self'],
+    ['custom:emberMarkAccumulationBonus', 35, 'teammates'],
+  ])
+  assert.deepEqual(effects[2].conditions.damageTypes, ['sharpen'])
+  assert.equal(effects[3].skillTargets, undefined)
+  assert.deepEqual(effects[4].skillTargets, destructionTargets)
+  assert.deepEqual(plan.groups[1].effects.slice(1).map(({ applyTarget }) => applyTarget), ['self', 'teammates'])
+  const legacy = { ...effects[4], applyTarget: 'team', skillTargetsOnlyForTeammates: true }
+  assert.deepEqual(normalizeEffectList([legacy]).map(shape), effects.slice(3).map(shape))
+  assert.deepEqual(normalizeEffectList([legacy], false).map(shape), [shape(legacy)])
+  const repeated = planBuffApply({ kind: 'agent', rows: rows.slice(3), local: {
+    ...agent, mindscapeBuffs: [{}, {}, { effectBlocks: plan.groups[1].blocks }],
+  } })
+  assert.equal(repeated.updated, 0)
+  assert.equal(repeated.skipped, 2)
+  const autoBlock = { id: 'nanoka-talent-2', name: '继承者的叛旗', note: secondItem.rawText }
+  const replay = planBuffApply({ kind: 'agent', rows: rows.slice(3).map((row) =>
+    ({ ...row, slot: 'talent-2', block: autoBlock })), local: {
+    ...agent, mindscapeBuffs: [{}, {}, { effectBlocks: plan.groups[1].blocks }],
+  } })
+  assert.equal(replay.updated, 0)
+  assert.equal(replay.skipped, 2)
+  assert.equal(replay.groups[0].blocks.length, 1)
+  assert.deepEqual(replay.groups[0].effects.map(({ statLabel }) => statLabel), ['烬痕积攒量提升', '烬痕积攒量提升'])
+  assert.ok(plan.groups[1].sourceTexts.some((text) => /35%/.test(text)))
+
+  const sharedAnchorSkills = skills.map((skill) => skill.name === '毁伤段' ? { ...skill, buffAnchorId: 'anchor-2' } : skill)
+  const sharedAnchor = extractAgentBuffItems({ detail, nanokaId: 'test', agent, anchors, skills: sharedAnchorSkills })
+  const blocked = sharedAnchor.items.find((item) => item.slot === 'talent-2').effects[0]
+  assert.equal(blocked.layerC, null)
+  assert.match(blocked.mapping.reason, /共用锚点/)
 })
 
 test('预检**不丢** `无法提取`：动作 / 属性读不出的条目留在阶段2（标 blocked 待补）', () => {
@@ -350,7 +755,7 @@ test('时长抓下来但不转化（只进 note）', () => {
   const mapped = mapKeywordsToEffect(keyword({ slots: effect.slots, durationSeconds: 15 }))
   assert.equal(mapped.effect.kind, 'fixed')
   assert.ok(!('duration' in mapped.effect), '层C 里不该出现时长字段')
-  assert.match(mapped.steps.join(' '), /时长=15 秒 → 不转化/)
+  assert.match(mapped.steps.join(' '), /时长=15 秒 → 增益备注/)
   assert.match(mapped.effect.note, /15 秒/)
 })
 
@@ -636,6 +1041,47 @@ const ANCHORS = [
   { id: 'a-enh', agentId: '1041', categoryId: 'special', name: '强化特殊技' },
 ]
 
+test('阶段一手选整类和小类可与伤害类型独立写入，清除招式后保留伤害类型', () => {
+  assert.ok(!SLOT_OPTIONS.scope.includes('招式'))
+  const skillTargets = [
+    { category: 'destruction', subcategoryId: null },
+    { category: 'special', subcategoryId: 'a-enh' },
+  ]
+  const slots = { stat: '增伤', action: '提升', value: 10, unit: '%', scope: '锐化' }
+  const anchors = { ok: true, labels: ['毁伤', '强化特殊技'], skillTargets }
+  const { rows: [parsed] } = smartMergeParse({ keywords: [{ key: 'manual-skill-targets', slots, anchors }] })
+  const saved = planBuffApply({
+    kind: 'agent', local: {},
+    rows: [{ key: parsed.key, source: 'passive.core', containerIndex: 0, effect: parsed.effect }],
+  }).groups[0].blocks[0].effects[0]
+  assert.deepEqual(saved.skillTargets, skillTargets)
+  assert.deepEqual(saved.conditions.damageTypes, ['sharpen'])
+
+  const unrelatedDamageType = mapKeywordsToEffect({
+    slots: { ...slots, stat: '防御力', scope: '乱流' }, anchors,
+  }).effect
+  assert.deepEqual(unrelatedDamageType.skillTargets, skillTargets)
+  assert.deepEqual(normalizeEffectList([unrelatedDamageType])[0].conditions.damageTypes, ['turbulence'])
+
+  const cleared = mapKeywordsToEffect({ slots, anchors: { ok: true, labels: [], skillTargets: [] } }).effect
+  assert.equal(cleared.skillTargets, undefined)
+  assert.deepEqual(cleared.conditions.damageTypes, ['sharpen'])
+
+  const legacy = mapKeywordsToEffect({ slots: { ...slots, scope: '招式' }, anchors }).effect
+  assert.deepEqual(legacy.skillTargets, skillTargets)
+  assert.deepEqual(legacy.scope, ['skill'])
+})
+
+test('自动识别可同时保留招式和伤害类型，招式标题里的词不产生伤害类型', () => {
+  const context = { anchors: ANCHORS, agentId: '1041' }
+  const { effects: [both] } = simplifyText({ ...context, text: '[普通攻击]造成的异放伤害提升10%' })
+  assert.equal(both.layerC.stat, 'anomalyReleaseDmgBonus')
+  assert.deepEqual(both.layerC.skillTargets, [{ category: 'basic', subcategoryId: 'a-basic' }])
+  const { effects: [named] } = simplifyText({ ...context, text: '[普通攻击：乱流前奏]的暴击率提升3%' })
+  assert.equal(named.slots.scope, NONE)
+  assert.deepEqual(named.layerC.skillTargets, [{ category: 'basic', subcategoryId: 'a-basic' }])
+})
+
 test('招式限定：锚点关联上 → 条件 + skillTargets；关联不上 → 这条不录', () => {
   assert.deepEqual(
     detectSkillLimits('[普通攻击]、[冲刺攻击]造成的伤害提升3%').map((item) => item.name),
@@ -647,8 +1093,7 @@ test('招式限定：锚点关联上 → 条件 + skillTargets；关联不上 �
   const text = '[普通攻击]、[冲刺攻击]造成的伤害提升3%'
   const { effect } = firstEffect(text, { anchors: ANCHORS, agentId: '1041' })
   assert.equal(effect.recorded, true)
-  // 「限定招式」**并进「作用域」槽位**（用户 2026-10-16：工具里就是 scope 字段），不再塞条件
-  assert.equal(effect.slots.scope, '招式')
+  assert.equal(effect.slots.scope, NONE)
   assert.ok(
     !effect.slots.conditions.some((item) => /限定招式/.test(item)),
     '限定招式不再写进条件槽',
@@ -713,7 +1158,8 @@ test('招式文本的效果进角色增益块（槽位 0），并带技能「描
   })
   const effect = item.effects.find((entry) => entry.recorded)
   assert.ok(effect)
-  assert.equal(effect.slots.scope, '招式', '限定招式 → 作用域=招式')
+  assert.equal(effect.slots.scope, NONE)
+  assert.deepEqual(effect.layerC.skillTargets.map(({ category }) => category), ['special'])
   assert.ok(effect.slots.conditions.every((entry) => !/限定招式/.test(entry)))
 })
 
@@ -816,8 +1262,10 @@ test('显示规则：只显示有值的槽位；`无` 默认隐藏；`无法提�
     'elements',
     'target',
     'conditions',
+    'teammateProfessions',
     'scope',
     'stacks',
+    'enabledDefault',
     'object',
   ])
   assert.deepEqual(view.unable.map((item) => item.id), ['duration'])
@@ -849,19 +1297,19 @@ test('1041「11号」：关键字 → 增益（招式限定 / 叠层 / 无视抗
   const result = extractAgentBuffItems({ detail, nanokaId: '1041', anchors: [] })
   const items = itemsOf(result)
 
-  // 核心被动：限定 [普通攻击] / [冲刺攻击] → **作用域=招式** + 锚点（只回落大类）；
+  // 核心被动：限定 [普通攻击] / [冲刺攻击] 由招式锚点承接。
   // 「触发[火力镇压]时」落不到工具字段 → 条件=无法提取（**软槽位：不阻断**，按「无」处理 → 可写）
   const core = keywordEffects(items.get('core'))[0]
   assert.equal(core.slots.stat, '招式增伤')
   assert.equal(core.slots.value, 70)
-  assert.equal(core.slots.scope, '招式')
+  assert.equal(core.slots.scope, NONE)
   assert.deepEqual(core.slots.conditions, [UNABLE])
   assert.equal(core.blocked, false, '条件标了无法提取 → 按「无」处理，不阻断')
   assert.equal(core.layerC.stat, 'skillDmgBonus')
   assert.equal(core.layerC.value, 70)
   assert.equal(core.layerC.applySituation, 'global', '条件按无处理 → 常驻生效')
   assert.ok(!/触发|火力镇压/.test(core.layerC.note), '不许把条件原文写进 note 冒充条件')
-  assert.deepEqual(core.layerC.scope, ['skill'], '作用域=招式 → scope=[skill]（数组口径）')
+  assert.deepEqual(core.layerC.scope, ['skill'])
   assert.deepEqual(core.layerC.skillTargets, [
     { category: 'basic', subcategoryId: null },
     { category: 'dodge', subcategoryId: null },

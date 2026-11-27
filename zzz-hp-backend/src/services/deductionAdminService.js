@@ -589,21 +589,18 @@ export async function renameDeductionPeriod(version, periodName) {
 export async function deleteDeductionPeriod(version) {
   const versionValue = String(version ?? '').trim()
   if (!versionValue) throw new Error('期数编号（version）必填')
-  await pool.query('START TRANSACTION')
+  const conn = await pool.getConnection()
   try {
-    await pool.execute('DELETE FROM deduction_node WHERE version = ?', [versionValue])
-    await pool.execute(
-      "DELETE FROM boss WHERE mode = 'deduction' AND version = ?",
-      [versionValue],
-    )
-    await pool.execute(
-      "DELETE FROM buff WHERE mode = 'deduction' AND version = ?",
-      [versionValue],
-    )
-    await pool.query('COMMIT')
+    await conn.beginTransaction()
+    await conn.execute('DELETE FROM deduction_node WHERE version = ?', [versionValue])
+    await conn.execute("DELETE FROM boss WHERE mode = 'deduction' AND version = ?", [versionValue])
+    await conn.execute("DELETE FROM buff WHERE mode = 'deduction' AND version = ?", [versionValue])
+    await conn.commit()
   } catch (err) {
-    await pool.query('ROLLBACK')
+    await conn.rollback()
     throw err
+  } finally {
+    conn.release()
   }
   return { version: versionValue }
 }
@@ -770,19 +767,22 @@ export async function reorderDeductionNodes(version, orderedIds) {
   const ids = orderedIds.map((v) => Number(v))
   if (ids.some((v) => !Number.isInteger(v) || v <= 0)) throw new Error('无效的节点 ID')
 
-  await pool.query('START TRANSACTION')
+  const conn = await pool.getConnection()
   try {
+    await conn.beginTransaction()
     for (let i = 0; i < ids.length; i++) {
-      const [res] = await pool.execute(
+      const [res] = await conn.execute(
         'UPDATE deduction_node SET sort_order = ? WHERE id = ? AND version = ?',
         [i, ids[i], versionValue],
       )
       if (!res.affectedRows) throw new Error(`节点 ${ids[i]} 不存在或不属于该期数`)
     }
-    await pool.query('COMMIT')
+    await conn.commit()
   } catch (err) {
-    await pool.query('ROLLBACK')
+    await conn.rollback()
     throw err
+  } finally {
+    conn.release()
   }
   return { version: versionValue, count: ids.length }
 }

@@ -137,11 +137,24 @@ export function normalizeGroupId(value) {
   return text || undefined
 }
 
+export function normalizeTeammateProfessions(value) {
+  if (!Array.isArray(value)) return undefined
+  const selected = [...new Set(value.flatMap((item) =>
+    typeof item === 'string' && item.trim() ? [item.trim()] : [],
+  ))].sort()
+  return selected.length ? selected : undefined
+}
+
+export function normalizeEffectApplyTarget(value) {
+  return value === 'team' || value === 'teammates' ? value : 'self'
+}
+
 /**
- * 是否是「通用效果」：无伤害类型条件、无招式条件。
+ * 是否是「通用效果」：可脱离招式与队伍上下文安全地派生旧扁平数值。
  * 用于派生 selfMods / teamMods（兼容旧扁平结构），与旧 `scope=['general']` 等价。
  */
 export function effectHasGenericConditions(effect) {
+  if (effect?.teammateProfessions?.length) return false
   const types = normalizeDamageTypes(effect?.conditions?.damageTypes)
   if (types.length) return false
   if (Array.isArray(effect?.skillTargets) && effect.skillTargets.length) return false

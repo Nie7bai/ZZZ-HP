@@ -108,6 +108,7 @@ const TYPE_TO_TALENT_KEY: Record<SkillTypeId, SkillTalentLevelKey | null> = {
   chain: 'chainUltimate',
   ultimate: 'chainUltimate',
   followUp: null,
+  destruction: null,
 }
 
 /** 按 skillTypes 顺序取第一个可映射大类；仅 followUp 等 → null（不按等级缩放） */

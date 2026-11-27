@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { reactive } from 'vue'
 import { normalizeBuffEffect } from '../src/utils/buffEffect.ts'
 import { buildEffectRows, splitRow, toggleRowDamageType } from '../src/utils/buffEffectRows.ts'
-import { createNanokaBuffDraft, nanokaDraftApplyRows, refreshNanokaBuffDraft, rememberNanokaDraftEdits } from '../src/utils/nanokaBuffDraft.ts'
+import { createNanokaBuffDraft, nanokaDraftApplyRows, refreshNanokaBuffDraft, rememberNanokaDraftEdits, replaceNanokaKeywordSkillTargets } from '../src/utils/nanokaBuffDraft.ts'
 
 const keyword = (patch = {}) => ({
   key: 'core#0', itemSlot: 'core', itemSlotLabel: '核心被动', source: 'passive.core', containerIndex: 0,
@@ -59,4 +59,36 @@ const zones = createNanokaBuffDraft('agent', zoneRows)
 const zoneBlock = zones['0'][0]
 zoneBlock.effects = toggleRowDamageType(zoneBlock.effects, buildEffectRows(zoneBlock.effects)[0], 'disorder', true)
 assert.equal(nanokaDraftApplyRows('agent', zones, zoneRows).length, zoneBlock.effects.length)
+
+const basic = { category: 'basic', subcategoryId: null }
+const special = { category: 'special', subcategoryId: null }
+const named = { category: 'special', subcategoryId: 'named' }
+const subcategories = [{ id: 'named', categoryId: 'special', name: '具体强化特殊技' }]
+const unresolved = keyword({
+  recorded: false,
+  gain: null,
+  anchors: {
+    ok: false, skillTargets: [basic, special], reason: '未找到锚点',
+    pendingCreates: [
+      { name: '普通攻击', categoryId: 'basic', agentId: 'test' },
+      { name: '强化特殊技', categoryId: 'special', agentId: 'test' },
+    ],
+  },
+  slots: { scope: '锐化' },
+})
+replaceNanokaKeywordSkillTargets(unresolved, [basic, special], subcategories, basic)
+assert.equal(unresolved.recorded, true)
+assert.equal(unresolved.anchors.reason, '')
+assert.deepEqual(unresolved.anchors.pendingCreates.map((item) => item.categoryId), ['special'])
+replaceNanokaKeywordSkillTargets(unresolved, [basic, named], subcategories, named)
+assert.deepEqual(unresolved.anchors.skillTargets, [basic, named])
+assert.deepEqual(unresolved.anchors.labels, ['普通攻击', '具体强化特殊技'])
+assert.deepEqual(unresolved.anchors.pendingCreates, [], '被替换的自动计划不能覆盖手选目标')
+assert.equal(unresolved.slots.scope, '锐化')
+replaceNanokaKeywordSkillTargets(unresolved, [], subcategories)
+assert.deepEqual(unresolved.anchors.skillTargets, [])
+assert.equal(unresolved.anchors.skillCategory, '')
+assert.equal(unresolved.anchors.skillSubcategoryId, null)
+assert.equal(unresolved.slots.scope, '锐化')
+
 console.log('nanoka 采集编辑草稿回归通过')

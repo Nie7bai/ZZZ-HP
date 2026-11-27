@@ -3,7 +3,7 @@ import type { PanelStats } from '@/types/calculatorPanel'
 import type { DamageCalcResult } from '@/utils/damageCalc'
 import { multFactorPercentToRatio } from '@/utils/multFactorPercent'
 import { pickEventCritMultiplier, pickEventDamage } from '@/utils/damageEvent'
-import { zoneLabel } from '@/zones/display'
+import { customZoneResults, zoneLabel } from '@/zones/display'
 import {
   readRuntimeSkillSubcategoryMults,
   unsetSkillMult,
@@ -59,25 +59,17 @@ export function buildSharpenCritZoneLines(
 
 export function computeDirectBaseChain(p: DamageCalcResult, critMode: DamageEventCritMode = 'expected'): number {
   const critMultiplier = pickEventCritMultiplier(p, 'direct', critMode)
-  if (p.useSharpenFormula) {
-    return (
-      p.generalMultiplier *
-      Math.max(0, p.directVulnerableMultiplier) *
-      critMultiplier *
-      Math.max(0, p.specialMultiplier) *
-      Math.max(0, p.imbueDmgMultiplier) *
-      Math.max(0, p.sharpenDmgMultiplier) *
-      Math.max(0, p.finalDmgMultiplier)
-    )
-  }
+  const pathMultiplier = p.useSharpenFormula ? p.sharpenDmgMultiplier : p.pierceDmgMultiplier
+  const customMultiplier = customZoneResults(p).reduce((product, zone) => product * zone.value, 1)
   return (
     p.generalMultiplier *
     Math.max(0, p.directVulnerableMultiplier) *
     critMultiplier *
     Math.max(0, p.specialMultiplier) *
     Math.max(0, p.imbueDmgMultiplier) *
-    Math.max(0, p.pierceDmgMultiplier) *
-    Math.max(0, p.finalDmgMultiplier)
+    Math.max(0, pathMultiplier) *
+    Math.max(0, p.finalDmgMultiplier) *
+    customMultiplier
   )
 }
 
@@ -95,6 +87,7 @@ export function buildDirectBaseChainFactorLabels(p: DamageCalcResult): string[] 
     parts.push(String(p.pierceDmgMultiplier))
   }
   parts.push(String(p.finalDmgMultiplier))
+  parts.push(...customZoneResults(p).map((zone) => String(zone.value)))
   return parts
 }
 
@@ -152,6 +145,12 @@ export function buildAlignedDirectFormulaGroup(
     value: formatFormulaNumber(p.finalDmgMultiplier),
     tipsKey: 'finalDmgMultiplier',
   })
+
+  baseTerms.push(...customZoneResults(p).map((zone) => ({
+    label: zone.label,
+    value: formatFormulaNumber(zone.value),
+    tipsKey: zone.key,
+  })))
 
   const directZone: DirectFormulaTerm = {
     label: zoneLabel(p, 'directDmgMultZone', '直伤倍率区'),

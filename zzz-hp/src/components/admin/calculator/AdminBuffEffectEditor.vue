@@ -6,6 +6,7 @@ import type {
   BuffEffect,
   BuffEffectBlock,
 } from '@/types/calculator'
+import { BUFF_APPLY_TARGET_LABELS } from '@/types/calculator'
 import { createEmptyBuffEffect, createEmptyBuffEffectBlock, convertSummaryLabel, packFromBlocks } from '@/utils/buffEffect'
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 import { buffStatLabelOf, buffStatUnitOf, findBuffStatZoneById } from '@/utils/buffStatZones'
@@ -29,6 +30,7 @@ import {
   toSelectionRowRefs,
   type EffectRowAnchor,
 } from '@/utils/buffEffectSelection'
+import { loadRuntimeZoneSchemes } from '@/zones/schemeSource'
 
 /** 工具条「当前编辑」下拉里的可切换对象（代理人 / 音擎 / 邦布…） */
 interface BuffEditorOwnerOption {
@@ -40,6 +42,8 @@ interface BuffEditorOwnerOption {
 
 const props = defineProps<{
   lockApplyTarget?: 'self' | 'team' | null
+  /** 受益对象可按穿戴者所在槽位排除自身。 */
+  allowTeammatesTarget?: boolean
   hint?: string
   /** 当前编辑的角色（招式小类创建/筛选） */
   agentId?: string
@@ -282,7 +286,7 @@ function rowNavLabel(row: EffectRow) {
   if (!first) return '（空行）'
   // 自定义乘区键回落到注册表 label；unit 对 custom 键默认 `%`
   const stat = row.zone?.label ?? buffStatLabelOf(first.stat)
-  const target = (first.applyTarget ?? 'self') === 'team' ? '全队' : '自身'
+  const target = BUFF_APPLY_TARGET_LABELS[first.applyTarget ?? 'self']
   const suffix = buffStatUnitOf(first.stat) === 'percent' ? '%' : ''
   const amount =
     first.kind === 'stacked'
@@ -345,7 +349,10 @@ function pickOwner(id: string) {
 function onDocumentClick() {
   ownerMenuOpen.value = false
 }
-onMounted(() => document.addEventListener('click', onDocumentClick))
+onMounted(() => {
+  document.addEventListener('click', onDocumentClick)
+  void loadRuntimeZoneSchemes()
+})
 onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
 
 const saveStateResolved = computed<'clean' | 'dirty' | 'saving' | 'saved'>(
@@ -747,6 +754,7 @@ defineExpose({
             :row="activeRow.row"
             :agent-id="agentId"
             :lock-apply-target="lockApplyTarget"
+            :allow-teammates-target="allowTeammatesTarget || Boolean(ownerKind || agentId)"
             :merge-mode="mergeMode"
             :selected="selectedRowKeys.includes(activeRow.row.key)"
             @change-zone="(zoneId, types) => onChangeZone(activeRow!.block, activeRow!.row, zoneId, types)"

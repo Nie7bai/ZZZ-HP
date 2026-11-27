@@ -8,7 +8,7 @@
  *   2. **不写库的函数都是纯函数**：`planBuffApply` / `smartMergeParse` / `sanitizeEffect`…
  *      只吃普通对象、只吐计划；验证这些**不需要数据库**（`dryRun` 也只算不写）。
  *   3. 写库**只走既有唯一路径**：`upsertAgent` / `upsertWengine` / `upsertSkill`；
- *      读库只用 `listCalculatorBuffs()` / `listSkills()`（不改 nanokaBasics* 那条线）。
+ *      读库沿用角色增益与招式库服务。
  *
  * v3 写入槽规则（**按来源判断 + 只按下标定位，绝不按块名匹配**）：
  *
@@ -22,10 +22,12 @@
  * 槽位内多条**按解析顺序追加**；每条增益在界面上标 `写入：<块位> · 新增/替换`
  * （计划里就是 `details[].effects[].writeLabel`）。
  */
-import { BUFF_STAT_KEYS } from '../utils/calculatorBuffFields.js'
+import { BUFF_STAT_KEYS, isCustomBuffStatKey } from '../utils/calculatorBuffFields.js'
 import {
+  normalizeEffectApplyTarget,
   normalizeEffectConditionsForStat,
   normalizeGroupId,
+  normalizeTeammateProfessions,
 } from '../utils/buffEffectConditions.js'
 import {
   buildRulesTable,
@@ -40,12 +42,13 @@ import {
   simplifyText,
   SLOT_LABELS,
   SLOT_OPTIONS,
+  STAT_LABELS,
   UNABLE,
   unableSlotsOf,
 } from './nanoka/nanokaBuffExtractor.js'
 import { normalizeSkillName } from './nanoka/nanokaSkillMapper.js'
 import { listCalculatorBuffs, normalizeEffectList, upsertAgent, upsertWengine } from './calculatorBuffService.js'
-import { listSkills, upsertSkill } from './skillLibraryService.js'
+import { listAgentSkills, listSkills, upsertSkill } from './skillLibraryService.js'
 import { upsertSkillSubcategory } from './skillSubcategoryService.js'
 
 const KIND_LABELS = { agent: '角色', wengine: '音擎' }
@@ -56,7 +59,6 @@ const AGENT_SLOT_COUNT = 7
 const REFINEMENT_COUNT = 5
 const MINDSCAPE_NOTES_LENGTH = 7
 
-const APPLY_TARGET_VALUES = new Set(['self', 'team'])
 const APPLY_SITUATION_VALUES = new Set(['global', 'stagger', 'non_stagger'])
 const EFFECT_KINDS = new Set(['fixed', 'stacked', 'convert', 'additionalDamage'])
 /** 与 `calculatorBuffService.normalizeConvert` 的 ATTRS 同源 */
@@ -174,8 +176,10 @@ export function resolveLocalWengine({ wengines, meta, detail, nanokaId } = {}) {
 /** 一条效果 → 写库用的完整字段（**只保留 schema 内的键**，界面上的展示字段丢掉） */
 export function sanitizeEffect(input, index = 0) {
   const raw = isPlainObject(input) ? input : {}
-  const stat = STAT_KEY_SET.has(raw.stat) ? String(raw.stat) : ''
-  if (!stat) throw new Error(`第 ${index + 1} 条效果的「属性」不是合法增益字段：${raw.stat ?? ''}`)
+  const stat = raw.stat
+  if (!STAT_KEY_SET.has(stat) && !isCustomBuffStatKey(stat)) {
+    throw new Error(`第 ${index + 1} 条效果的「属性」不是合法增益字段：${stat ?? ''}`)
+  }
   const kind = EFFECT_KINDS.has(raw.kind) ? raw.kind : 'fixed'
   const value = toNumber(raw.value)
   const maxStacks = Math.max(1, Math.round(toNumber(raw.maxStacks, 1) || 1))
@@ -183,12 +187,13 @@ export function sanitizeEffect(input, index = 0) {
   const effect = {
     id: String(raw.id ?? `eff-${index}`).trim() || `eff-${index}`,
     origin: typeof raw.origin === 'string' ? raw.origin : '',
-    applyTarget: APPLY_TARGET_VALUES.has(raw.applyTarget) ? raw.applyTarget : 'self',
+    applyTarget: normalizeEffectApplyTarget(raw.applyTarget),
     applySituation: APPLY_SITUATION_VALUES.has(raw.applySituation) ? raw.applySituation : 'global',
     applyProfession:
       raw.applyProfession == null || String(raw.applyProfession).trim() === ''
         ? null
         : String(raw.applyProfession).trim(),
+    teammateProfessions: normalizeTeammateProfessions(raw.teammateProfessions),
     teamProfession:
       raw.teamProfession == null || String(raw.teamProfession).trim() === ''
         ? null
@@ -310,7 +315,8 @@ function effectSignature(input) {
   return JSON.stringify({
     stat: effect.stat, kind: effect.kind,
     applyTarget: effect.applyTarget, applySituation: effect.applySituation,
-    applyProfession: effect.applyProfession, teamProfession: effect.teamProfession,
+    applyProfession: effect.applyProfession, teammateProfessions: effect.teammateProfessions,
+    teamProfession: effect.teamProfession,
     teamProfessionValues: effect.teamProfessionValues, teamProfessionMinCount: effect.teamProfessionMinCount,
     value: effect.value, valuePerStack: effect.valuePerStack,
     maxStacks: effect.maxStacks, defaultStacks: effect.defaultStacks, stackable: effect.stackable,
@@ -470,6 +476,17 @@ export function mergeEditorBlocksIntoSlot({ blocks, entries }) {
   const blockNames = new Set()
   for (const { row, effect } of entries) {
     const metadata = row.block
+    // 同一次采集可能遇到早期按角色命名的块，按同一原文来源和正式效果判重。
+    if (metadata.id === `nanoka-${row.slot}` && effect.origin.startsWith('nanoka:')) {
+      const recorded = list.find((item) => item.id !== metadata.id && item.effects.some((existing) =>
+        existing.origin === effect.origin && sameEffect(existing, effect),
+      ))
+      if (recorded) {
+        blockNames.add(recorded.name)
+        duplicates += 1
+        continue
+      }
+    }
     let block = list.find((item) => item.id === metadata.id)
     if (!block) {
       block = { id: metadata.id, name: metadata.name, note: metadata.note, enabledDefault: metadata.enabledDefault !== false, effects: [] }
@@ -587,6 +604,7 @@ export const MERGE_FIELD_LIST = [
   { id: 'applyTarget', label: '生效目标' },
   { id: 'applySituation', label: '生效情形' },
   { id: 'applyProfession', label: '受益职业' },
+  { id: 'teammateProfessions', label: '队友职业（满足任一）' },
   { id: 'teamProfession', label: '队伍职业条件' },
   { id: 'teamProfessionValues', label: '启用人数档' },
   { id: 'elementFilter', label: '元素过滤' },
@@ -1049,7 +1067,7 @@ export function planBuffApply({ kind, local, rows = [], skills = [], subcategori
     const effectsDetail = merged.appendedEffects.map((effect, index) => ({
       id: effect.id,
       stat: effect.stat,
-      statLabel: SLOT_LABELS[effect.stat] ?? effect.stat,
+      statLabel: STAT_LABELS[effect.stat] ?? effect.stat,
       kind: effect.kind,
       value: effect.value,
       valuePerStack: effect.valuePerStack,
@@ -1067,7 +1085,7 @@ export function planBuffApply({ kind, local, rows = [], skills = [], subcategori
       .map((item) => ({
         id: item.effect.id,
         stat: item.effect.stat,
-        statLabel: SLOT_LABELS[item.effect.stat] ?? item.effect.stat,
+        statLabel: STAT_LABELS[item.effect.stat] ?? item.effect.stat,
         kind: item.effect.kind,
         value: item.effect.value,
         writeLabel: `写入：${target.label} · 块「${merged.blockName}」 · 已存在（重复，跳过）`,
@@ -1185,27 +1203,29 @@ export function buildLocalDoc({ kind, local, groups = [] } = {}) {
 
 /**
  * 抽取（**不写库**）：浏览器抓来的 nanoka 详情 → 原文项 + 关键字效果（层B/C）。
- * 读库只用 `listCalculatorBuffs()`（本地记录 + 招式小类锚点）。
+ * 读取角色和已有招式锚点，供按实际招式核对烬痕范围。
  */
-export async function extractBuffItems({ kind, nanokaId, meta, detail } = {}) {
+export async function extractBuffItems({ kind, nanokaId, meta, detail, termNames } = {}) {
   const normalizedKind = kind === 'wengine' ? 'wengine' : kind === 'agent' ? 'agent' : ''
   if (!normalizedKind) throw new Error(`未知的增益来源类型：${kind ?? '(空)'}`)
   if (!isPlainObject(detail)) throw new Error('缺少 nanoka 详情 JSON（抓取在浏览器里做，服务端不联网）')
 
   const buffs = await listCalculatorBuffs()
+  const local =
+    normalizedKind === 'agent'
+      ? resolveLocalAgent({ agents: buffs.agents, meta, detail, nanokaId })
+      : resolveLocalWengine({ wengines: buffs.wengines, meta, detail, nanokaId })
   const extracted =
     normalizedKind === 'agent'
       ? extractAgentBuffItems({
           detail,
           nanokaId,
+          termNames,
           anchors: buffs.skillSubcategories ?? [],
+          agent: local,
+          skills: await listAgentSkills(local.id),
         })
-      : extractWengineBuffItems({ detail, nanokaId, anchors: [] })
-
-  const local =
-    normalizedKind === 'agent'
-      ? resolveLocalAgent({ agents: buffs.agents, meta, detail, nanokaId })
-      : resolveLocalWengine({ wengines: buffs.wengines, meta, detail, nanokaId })
+      : extractWengineBuffItems({ detail, nanokaId, termNames, anchors: [] })
 
   const items = extracted.items.map((item) => ({
     ...item,
@@ -1228,24 +1248,28 @@ export async function extractBuffItems({ kind, nanokaId, meta, detail } = {}) {
  * 「化简」（阶段一）：把（可能被编辑过的）原文重跑阶段1 → 关键字。
  * 纯计算 + 只读锚点；**不写库、不联网**。
  */
-export async function simplifyBuffTexts({ kind, nanokaId, items = [] } = {}) {
+export async function simplifyBuffTexts({ kind, nanokaId, items = [], corePassiveText = '' } = {}) {
   const normalizedKind = kind === 'wengine' ? 'wengine' : 'agent'
-  const buffs = await listCalculatorBuffs()
+  const list = Array.isArray(items) ? items : []
+  const agentId = normalizedKind === 'agent' ? String(list[0]?.agentId ?? nanokaId ?? '') : ''
+  const [buffs, skills] = await Promise.all([listCalculatorBuffs(), listAgentSkills(agentId)])
   const anchors = normalizedKind === 'agent' ? buffs.skillSubcategories ?? [] : []
-  let agentId = ''
-  if (normalizedKind === 'agent') {
-    const list = Array.isArray(items) ? items : []
-    agentId = String(list[0]?.agentId ?? nanokaId ?? '')
+  const agent = (buffs.agents ?? []).find((candidate) => String(candidate.id) === agentId)
+  const emberMarkContext = {
+    corePassiveText: list.find((item) => item?.slot === 'core')?.rawText ?? corePassiveText,
+    profession: agent?.profession,
+    skills,
   }
   return {
     kind: normalizedKind,
-    items: (Array.isArray(items) ? items : []).map((item) => {
+    items: list.map((item) => {
       const simplified = simplifyText({
         text: item?.rawText ?? '',
         origin: String(item?.origin ?? ''),
-        selfNames: Array.isArray(item?.selfNames) ? item.selfNames : [],
+        selfNames: Array.isArray(item?.selfNames) ? item.selfNames : agent?.name ? [agent.name] : [],
         anchors,
         agentId: String(item?.agentId ?? agentId ?? ''),
+        emberMarkContext,
       })
       const byId = new Map(simplified.effects.map((effect) => [effect.id, effect]))
       return {
@@ -1259,12 +1283,10 @@ export async function simplifyBuffTexts({ kind, nanokaId, items = [] } = {}) {
         sentences: simplified.sentences.map((sentence) => {
           const keywords = sentence.keywords.map((effect) => byId.get(effect.id)).filter(Boolean)
           return {
+            ...sentence,
             sourceKey: String(item?.slot ?? ''),
             sourceLabel: String(item?.slotLabel ?? ''),
-            sentenceIndex: sentence.sentenceIndex,
-            rawSentence: sentence.rawSentence,
             keywords,
-            waste: sentence.waste,
             hasKeywords: keywords.length > 0,
           }
         }),

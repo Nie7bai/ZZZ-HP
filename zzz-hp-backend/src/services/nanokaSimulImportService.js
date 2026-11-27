@@ -31,14 +31,14 @@ function normalizeSimulIds(simulIds, simulIndex) {
   return list
 }
 
-async function importParsedPeriod(item) {
-  const [existingPeriods] = await pool.execute(
+async function importParsedPeriod(item, conn) {
+  const [existingPeriods] = await conn.execute(
     'SELECT period_name FROM deduction_node WHERE version = ? AND phase = ? LIMIT 1',
     [item.version, item.phase],
   )
   const preservedPeriodName = String(existingPeriods[0]?.period_name ?? '').trim()
 
-  const [imgRows] = await pool.execute(
+  const [imgRows] = await conn.execute(
     `SELECT boss_name, boss_image FROM boss
      WHERE mode = 'deduction' AND version = ? AND phase = ?
        AND boss_image IS NOT NULL AND boss_image <> ''`,
@@ -47,7 +47,7 @@ async function importParsedPeriod(item) {
   const preservedBossImages = new Map(
     imgRows.map((row) => [String(row.boss_name).trim(), row.boss_image]),
   )
-  const [buffPreserveRows] = await pool.execute(
+  const [buffPreserveRows] = await conn.execute(
     `SELECT buff_name, buff_image, effect_blocks FROM buff
      WHERE mode = 'deduction' AND version = ? AND phase = ?`,
     [item.version, item.phase],
@@ -65,7 +65,7 @@ async function importParsedPeriod(item) {
   }
 
   // 节点 buffs_json 里已模块化的结构也保留（按名）
-  const [nodeBuffRows] = await pool.execute(
+  const [nodeBuffRows] = await conn.execute(
     `SELECT buffs_json FROM deduction_node
      WHERE version = ? AND phase = ? AND buffs_json IS NOT NULL`,
     [item.version, item.phase],
@@ -91,15 +91,15 @@ async function importParsedPeriod(item) {
     }
   }
 
-  const [delBoss] = await pool.execute(
+  const [delBoss] = await conn.execute(
     "DELETE FROM boss WHERE mode = 'deduction' AND version = ? AND phase = ?",
     [item.version, item.phase],
   )
-  const [delBuff] = await pool.execute(
+  const [delBuff] = await conn.execute(
     "DELETE FROM buff WHERE mode = 'deduction' AND version = ? AND phase = ?",
     [item.version, item.phase],
   )
-  const [delNode] = await pool.execute(
+  const [delNode] = await conn.execute(
     'DELETE FROM deduction_node WHERE version = ? AND phase = ?',
     [item.version, item.phase],
   )
@@ -107,7 +107,7 @@ async function importParsedPeriod(item) {
   let bossInserted = 0
   for (const boss of item.bosses) {
     const preservedImage = preservedBossImages.get(String(boss.boss_name).trim()) ?? null
-    await pool.execute(
+    await conn.execute(
       `INSERT INTO boss (version, phase, boss_name, hp, defense, level, room, weakness, resistance, boss_image, mode)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'deduction')`,
       [
@@ -132,7 +132,7 @@ async function importParsedPeriod(item) {
     const preservedImage = preservedBuffImages.get(name) ?? null
     const preservedBlocks = preservedBuffBlocks.get(name) ?? null
     const effectBlocksJson = serializeEffectBlocks(preservedBlocks)
-    await pool.execute(
+    await conn.execute(
       `INSERT INTO buff (version, phase, buff_name, buff, buff_image, effect_blocks, mode)
        VALUES (?, ?, ?, ?, ?, ?, 'deduction')`,
       [buff.version, buff.phase, buff.buff_name, buff.buff, preservedImage, effectBlocksJson],
@@ -152,7 +152,7 @@ async function importParsedPeriod(item) {
         effect_blocks: blocks?.length ? blocks : null,
       }
     })
-    await pool.execute(
+    await conn.execute(
       `INSERT INTO deduction_node
          (version, phase, node_id, node_name, node_type, prev_node, story_text, story_options_json, layers_json, buffs_json, sort_order, period_name)
        VALUES (?, ?, ?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?, ?)`,
@@ -241,13 +241,16 @@ export async function importNanokaSimulPeriods(options = {}) {
 
   const summary = []
   for (const item of parsedPeriods) {
-    await pool.query('START TRANSACTION')
+    const conn = await pool.getConnection()
     try {
-      summary.push(await importParsedPeriod(item))
-      await pool.query('COMMIT')
+      await conn.beginTransaction()
+      summary.push(await importParsedPeriod(item, conn))
+      await conn.commit()
     } catch (err) {
-      await pool.query('ROLLBACK')
+      await conn.rollback()
       throw err
+    } finally {
+      conn.release()
     }
   }
 

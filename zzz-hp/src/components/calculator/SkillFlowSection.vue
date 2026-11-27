@@ -1538,7 +1538,7 @@ const detailActorSections = computed(() => {
     })).filter((section) => section.rows.length)
   }
   const pick = (group: 'producer' | 'trigger' | 'mixed') =>
-    detailZoneRows.value.filter((row) => skillCalcZoneGroup(row.label) === group)
+    detailZoneRows.value.filter((row) => skillCalcZoneGroup(row.label, row.zoneKey) === group)
   return [
     {
       key: 'producer' as const,
@@ -1562,7 +1562,7 @@ const detailActorSections = computed(() => {
 })
 const detailGroupedResultRows = computed(() =>
   detailActorSections.value.length
-    ? detailZoneRows.value.filter((row) => skillCalcZoneGroup(row.label) === 'result')
+    ? detailZoneRows.value.filter((row) => skillCalcZoneGroup(row.label, row.zoneKey) === 'result')
     : [],
 )
 
@@ -1582,10 +1582,6 @@ function clearZoneTipHideTimer() {
   if (zoneTipHideTimer == null) return
   clearTimeout(zoneTipHideTimer)
   zoneTipHideTimer = null
-}
-
-function zoneTipGroupLabel(label: string): string {
-  return detailZoneDisplay.value.find(row=>row.label===label)?.sourceLabel ?? '事件参数'
 }
 
 const detailZoneCalc = computed(() => {
@@ -1620,6 +1616,10 @@ function formatDamageNumber(value: number) {
   return Math.round(value).toLocaleString('en-US')
 }
 
+function zoneTipGroupLabel(label: string, zoneKey?: string): string {
+  return detailZoneDisplay.value.find((row) => row.label === label && row.zoneKey === zoneKey)?.sourceLabel ?? '事件参数'
+}
+
 /**
  * 格子内占比填充条（与 FlowZoneCalculation 同一口径）：
  * 倍率 ≥ 1 按「超出 1 的幅度」填充（封顶 100%），< 1 用减益色；伤害行不画条。
@@ -1628,8 +1628,8 @@ function formatDamageNumber(value: number) {
 
 
 function zoneTipGroups(row: SkillCalcZoneRow): StatSourceGroup[] {
-  const projected=detailZoneDisplay.value.find(item=>item.label===row.label)
-  return projected ? [{label:zoneTipGroupLabel(row.label),items:[row.label+' '+row.value]},...projected.groups] : []
+  const projected=detailZoneDisplay.value.find(item=>item.label===row.label&&item.zoneKey===row.zoneKey)
+  return projected ? [{label:zoneTipGroupLabel(row.label, row.zoneKey),items:[row.label+' '+row.value]},...projected.groups] : []
 }
 
 /** 悬停即显示；定位贴着对应格子，并按上下空间自动翻转 */
@@ -4214,7 +4214,7 @@ const showcaseTitle = computed(() => {
                   <div class="zone-display-grid">
                     <div
                       v-for="row in section.rows"
-                      :key="`${section.key}-${row.label}`"
+                      :key="`${section.key}-${row.zoneKey ?? row.label}`"
                       class="zone-display-item zone-display-item--clickable"
                       role="button"
                       tabindex="0"
@@ -4235,7 +4235,7 @@ const showcaseTitle = computed(() => {
                 >
                   <div
                     v-for="row in detailGroupedResultRows"
-                    :key="`grouped-result-${row.label}`"
+                    :key="`grouped-result-${row.zoneKey ?? row.label}`"
                     class="zone-display-item zone-display-item--clickable zone-display-item--result"
                     role="button"
                     tabindex="0"
@@ -4259,7 +4259,7 @@ const showcaseTitle = computed(() => {
                     <div class="zone-display-grid">
                       <div
                         v-for="row in detailZoneSplit.producerRows"
-                        :key="`producer-${row.label}`"
+                        :key="`producer-${row.zoneKey ?? row.label}`"
                         class="zone-display-item zone-display-item--clickable"
                         role="button"
                         tabindex="0"
@@ -4282,7 +4282,7 @@ const showcaseTitle = computed(() => {
                     <div class="zone-display-grid">
                       <div
                         v-for="row in detailZoneSplit.triggerRows"
-                        :key="`trigger-${row.label}`"
+                        :key="`trigger-${row.zoneKey ?? row.label}`"
                         class="zone-display-item zone-display-item--clickable"
                         role="button"
                         tabindex="0"
@@ -4305,7 +4305,7 @@ const showcaseTitle = computed(() => {
                   <div class="zone-display-grid">
                     <div
                       v-for="row in detailZoneSplit.mixedRows"
-                      :key="`mixed-${row.label}`"
+                      :key="`mixed-${row.zoneKey ?? row.label}`"
                       class="zone-display-item zone-display-item--clickable"
                       role="button"
                       tabindex="0"
@@ -4323,7 +4323,7 @@ const showcaseTitle = computed(() => {
                 <div v-if="detailZoneSplit.resultRows.length" class="zone-display-grid zone-result-grid">
                   <div
                     v-for="row in detailZoneSplit.resultRows"
-                    :key="`result-${row.label}`"
+                    :key="`result-${row.zoneKey ?? row.label}`"
                     class="zone-display-item zone-display-item--clickable zone-display-item--result"
                     role="button"
                     tabindex="0"
@@ -4340,7 +4340,7 @@ const showcaseTitle = computed(() => {
               <div v-else-if="detailZoneRows.length" class="zone-display-grid">
                 <div
                   v-for="row in detailZoneRows"
-                  :key="row.label"
+                  :key="row.zoneKey ?? row.label"
                   class="zone-display-item zone-display-item--clickable"
                   role="button"
                   tabindex="0"

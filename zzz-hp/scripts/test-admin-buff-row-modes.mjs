@@ -11,6 +11,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { BUFF_APPLY_TARGET_LABELS } from '../src/types/calculator.ts'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const srcRoot = path.join(here, '..', 'src')
@@ -69,7 +70,7 @@ console.log('\n[1] 缺省模式（增益库）不受影响')
     ['class="member-line"', '!isExtraMode'],
     ['badge badge-group', '!isExtraMode'],
     ['v-if="!isExtraMode && showEnabledDefault"', '!isExtraMode'],
-    ['@click="onCreateSubcatFromMenu"', '!isExtraMode'],
+    ['@create="openCreateSubcat"', ':allow-create="!isExtraMode"'],
   ]
   for (const [needle, gate] of catalogOnly) {
     const block = linesAround(needle)
@@ -80,12 +81,13 @@ console.log('\n[1] 缺省模式（增益库）不受影响')
     )
   }
 
-  // 增益库的目标控件：自身 / 全队，且受 lockApplyTarget 控制（角色专属行锁死）
+  // 正式目标来自共享目录，有角色提供者时可选择仅队友。
   const targetBlock = linesAround('v-model="applyTarget"', 10, 12)
   check('增益库「目标」下拉仍在（v-model=applyTarget）', !!targetBlock)
   check(
-    '「目标」选项仍是 自身 / 全队',
-    !!targetBlock && targetBlock.includes('value="self"') && targetBlock.includes('value="team"'),
+    '「目标」使用共享目录，包含自身 / 全队 / 仅队友',
+    !!targetBlock && targetBlock.includes('in applyTargetOptions') &&
+      Object.values(BUFF_APPLY_TARGET_LABELS).join('/') === '自身/全队/仅队友',
     targetBlock ? '' : '未取到片段',
   )
   check(

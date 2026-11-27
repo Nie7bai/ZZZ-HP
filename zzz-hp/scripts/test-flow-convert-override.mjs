@@ -19,6 +19,7 @@ import {
   collectPanelBuffMods,
   resolveCollectedEffectParameters,
   invalidateBuffCatalogCache,
+  isTeamBuffApplyTarget,
 } from '../src/utils/panelBuffCalc.ts'
 import { buildFlowBuffEffectText, buildFlowBuffEffectTexts, mergeFlowBuffOverride } from '../src/utils/flowBuffTable.ts'
 import { resolveConvertValue } from '../src/utils/buffEffect.ts'
@@ -397,14 +398,19 @@ console.log('\n[七类修复 R2/R5] 页面默认同步与事件来源面板的�
   const state = { team: blankSelection(), bySlot: [blankSelection()] }
   const normal = convertEffect('sync-normal', 'atk', { from: 'atk', panelSource: 'manual', ratioPercent: 10, defaultBase: 1000 })
   const extra = { ...normal, convert: { ...normal.convert }, id: 'sync-extra', extraGain: true }
+  const teammatesOnly = { ...normal, id: 'sync-teammates', applyTarget: 'teammates' }
   const sync = bindVueFunctions(pageUrl, ['syncManualConvertDefaults'], {
     restoringWorkingState: false, buffPickerSlotOptions: ref([{ index: 0 }]),
-    buildBuffCollectContext: () => ({}), collectAllBuffEffects: () => [{ effect: normal }, { effect: extra }], multiSlotBuffSelection: state,
+    buildBuffCollectContext: () => ({}),
+    collectAllBuffEffects: () => [normal, extra, teammatesOnly].map((effect) => ({ effect })),
+    multiSlotBuffSelection: state,
+    isTeamBuffApplyTarget,
   })
   sync.syncManualConvertDefaults()
   extra.convert.defaultBase = 2000
   sync.syncManualConvertDefaults()
   check('R2 真实默认同步保留普通默认值', state.bySlot[0].convertInputs[normal.id] === 1000)
+  check('仅队友转模的默认基数写入共享设置', state.team.convertInputs[teammatesOnly.id] === 1000)
   check('R2 真实默认同步不写额外 Buff，改默认后也不写', !Object.hasOwn(state.bySlot[0].convertInputs, extra.id))
 
   const { r5Fixture, eventRuntimeInput } = await import('./_eventElementHarness.mjs')

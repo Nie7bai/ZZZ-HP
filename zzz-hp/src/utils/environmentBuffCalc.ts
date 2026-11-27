@@ -67,12 +67,12 @@ export function parseBossFieldBossName(sourceKey: string): string | null {
 }
 
 function hasStructuredBlocks(blocks: BuffEffectBlock[] | null | undefined): boolean {
-  return normalizeBuffEffectBlocks(blocks ?? []).some((block) => block.effects?.length)
+  return normalizeBuffEffectBlocks(blocks ?? [], false).some((block) => block.effects?.length)
 }
 
 function fromCrisisBuff(buff: BuffInfo, version: string, phase: string): EnvironmentBuffEntry | null {
   if (buff.isEmpty || buff.recordId == null) return null
-  const effectBlocks = normalizeBuffEffectBlocks(buff.effectBlocks ?? [])
+  const effectBlocks = normalizeBuffEffectBlocks(buff.effectBlocks ?? [], false)
   if (!hasStructuredBlocks(effectBlocks)) return null
   const id = String(buff.recordId)
   return {
@@ -90,7 +90,7 @@ function fromCrisisBuff(buff: BuffInfo, version: string, phase: string): Environ
 
 function fromBossField(enemy: EnemySlot, version: string, phase: string): EnvironmentBuffEntry | null {
   if (enemy.isEmpty || !enemy.bossName) return null
-  const effectBlocks = normalizeBuffEffectBlocks(enemy.fieldBuff?.effectBlocks ?? [])
+  const effectBlocks = normalizeBuffEffectBlocks(enemy.fieldBuff?.effectBlocks ?? [], false)
   if (!hasStructuredBlocks(effectBlocks)) return null
   const id = enemy.bossName
   const name = enemy.fieldBuff?.name?.trim() || '场地 Buff'
@@ -180,7 +180,7 @@ export function listDefenseEnvironmentBuffs(
 
       for (const buff of candidates) {
         if (buff.recordId == null) continue
-        const effectBlocks = normalizeBuffEffectBlocks(buff.effectBlocks ?? [])
+        const effectBlocks = normalizeBuffEffectBlocks(buff.effectBlocks ?? [], false)
         if (!hasStructuredBlocks(effectBlocks)) continue
         const id = String(buff.recordId)
         entries.push({
@@ -212,7 +212,7 @@ function fromDeductionNodeBuff(
   nodeLabel: string,
   index: number,
 ): EnvironmentBuffEntry | null {
-  const effectBlocks = normalizeBuffEffectBlocks(buff.effect_blocks ?? [])
+  const effectBlocks = normalizeBuffEffectBlocks(buff.effect_blocks ?? [], false)
   if (!hasStructuredBlocks(effectBlocks)) return null
   const id = `${version}-${nodeId}-${index}`
   const imageUrl = buff.buff_image ? resolveAssetUrl(buff.buff_image) : null
@@ -238,7 +238,7 @@ function fromDeductionFieldBuff(
 ): EnvironmentBuffEntry | null {
   const fieldBuff = layer.fieldBuff
   if (!fieldBuff) return null
-  const effectBlocks = normalizeBuffEffectBlocks(fieldBuff.effectBlocks ?? [])
+  const effectBlocks = normalizeBuffEffectBlocks(fieldBuff.effectBlocks ?? [], false)
   if (!hasStructuredBlocks(effectBlocks)) return null
   const bossName = layer.monsters?.[0]?.name || layer.name
   const id = `${version}::${nodeId}::${layer.name}::${bossName}`

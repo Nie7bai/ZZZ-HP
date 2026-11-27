@@ -526,7 +526,7 @@ export function diffNanokaIndexAgainstLocal({ charIndex, weaponIndex, agents, we
       .map((m) => normalizeName(m.zh)),
   )
   const extraLocalWengines = localWengines
-    .filter((w) => !nanokaWeaponZh.has(normalizeName(w.name)))
+    .filter((w) => w.id !== 'none' && !nanokaWeaponZh.has(normalizeName(w.name)))
     .map((w) => ({ id: w.id, name: w.name }))
 
   return {

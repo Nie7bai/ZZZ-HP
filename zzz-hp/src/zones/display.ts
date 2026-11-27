@@ -35,6 +35,19 @@ export function sortZonesByCatalog<T extends { order: number }>(zones: readonly 
   return [...zones].sort((a, b) => a.order - b.order)
 }
 
+/** 已进入本次结算的自定义乘区，按配置顺序展示各自的倍率。 */
+export function customZoneResults(result: ZoneLabelSource | null | undefined): ZoneResult[] {
+  return sortZonesByCatalog(Object.values(result?.zones ?? {}).filter((zone) => zone.group === 'custom'))
+}
+
+export function formatCustomZoneFormula(zone: ZoneResult | undefined): string | undefined {
+  const inputs = zone?.scaledPercentInputs
+  if (!zone || !inputs) return undefined
+  const { basePercent, scalingPercent, unboundedFactor } = inputs
+  const formula = `1 + ${formatCalcDecimal(basePercent)}% × (1 + ${formatCalcDecimal(scalingPercent)}%) = ${formatCalcDecimal(unboundedFactor)}`
+  return zone.value === unboundedFactor ? formula : `${formula}，限幅后 ${formatCalcDecimal(zone.value)}`
+}
+
 /** 阶段展示行（用户端只读「完整计算链路」） */
 export interface PipelineStageDisplayRow {
   id: string
@@ -56,16 +69,16 @@ function formatStageValue(value: number, isDamage: boolean): string {
 
 /**
  * 把 `result.pipeline.stages` 转成用户端展示行（只读）。
- * 不重新排序、不增删；顺序完全由链路阶段定义决定。
+ * 保留原来的阶段顺序，并为本次结算使用的独立乘区各显示一项。
  */
 export function buildPipelineStageRows(
-  result: Pick<import('@/utils/damageCalc').DamageCalcResult, 'pipeline'> | null | undefined,
+  result: Pick<import('@/utils/damageCalc').DamageCalcResult, 'pipeline' | 'zones'> | null | undefined,
 ): PipelineStageDisplayRow[] {
   const stages = result?.pipeline?.stages ?? []
   const staggerFloor = result?.pipeline?.staggerFloor
   const staggerBase = result?.pipeline?.staggerBase
   const staggerFloorProviders = result?.pipeline?.staggerFloorProviders ?? []
-  return stages.map((stage) => {
+  const rows: PipelineStageDisplayRow[] = stages.map((stage) => {
     const isDamage = DAMAGE_VALUE_STAGES.has(stage.id)
     // 紊乱失衡易伤下限：链路里直接把「原值 → 抬后」和取 max 的依据写出来
     if (stage.id === 'stagger' && staggerFloor != null && Number.isFinite(staggerFloor)) {
@@ -88,4 +101,13 @@ export function buildPipelineStageRows(
       valueText: formatStageValue(stage.value, isDamage),
     }
   })
+  const customRows = customZoneResults(result).map((zone) => ({
+    id: zone.key,
+    kind: 'multiplier' as const,
+    label: zone.label,
+    valueText: formatCustomZoneFormula(zone) ?? formatStageValue(zone.value, false),
+  }))
+  const resultIndex = rows.findIndex((row) => row.kind === 'final')
+  rows.splice(resultIndex === -1 ? rows.length : resultIndex, 0, ...customRows)
+  return rows
 }

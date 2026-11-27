@@ -76,7 +76,7 @@ export const ZONE_FORMULA_NOTES: Readonly<Record<string, ZoneFormulaNote>> = Obj
       '通用乘区（不含易伤）= 基础伤害 × 增伤区 × 防御区 × 抗性区 × max(0, 失衡区)',
       '直伤链再乘直伤易伤区；异常基础再乘非直伤易伤区。',
     ].join('\n'),
-    note: '自定义乘区（percentSum）在末尾连乘，未启用方案时因子恒为 1。',
+    note: '每个启用的自定义独立乘区参与伤害连乘。未启用的乘区对伤害无影响。',
     docSection: '§5.4',
   },
 
@@ -387,6 +387,7 @@ export const ZONE_GROUP_FORMULAS: Readonly<Record<ZoneGroup, ZoneFormulaNote>> =
   custom: {
     formula: [
       '自定义乘区（percentSum）= 1 + Σ(custom[statKey]) / 100',
+      '自定义乘区（scaledPercentSum）= 1 + 基础比例合计 × (1 + 提升比例合计)',
       '可配置 cap / floor / allowNegative；providers 决定取哪些来源的加成',
     ].join('\n'),
     note: 'providers：owner = 仅乘区所有者来源，team = 队伍内全部来源，all = 含邦布 / 场地 / 环境。',

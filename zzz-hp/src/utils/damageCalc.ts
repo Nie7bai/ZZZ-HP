@@ -124,7 +124,7 @@ export interface DamageCalcInput {
   combatCustom?: Record<string, number>
   /**
    * 自定义乘区因子（Phase 3c）：由方案解析 + `evaluateCustomZoneFactors` 得到。
-   * 按顺序连乘进通用乘区，并写入 `zones` 展示；默认空 = 不影响结果。
+   * 与该次伤害的其他乘区连乘，并写入 `zones` 展示；默认空 = 不影响结果。
    */
   customZoneFactors?: readonly CustomZoneFactor[]
   /**
@@ -501,8 +501,6 @@ function computeGeneralAndAnomalyBase(options: {
   staggerPhase: 'normal' | 'stagger'
   /** 帷幕易伤上限（倍率）；非空时失衡易伤区改为 min(最终失衡易伤, 上限)，不分阶段 */
   curtainVulnerabilityCap?: number | null
-  /** 自定义乘区因子连乘（缺省 1） */
-  extraZoneFactor?: number
   /** 防御区穿透/减防分项；缺省与 panel 一致 */
   defensePanel?: Pick<PanelStats, 'penRate' | 'pen' | 'ignoreDefense' | 'reduceDefense'>
   /** 等级区所用角色等级 */
@@ -570,7 +568,6 @@ function computeGeneralAndAnomalyBase(options: {
     combatStaggerVulnerable: options.combatStaggerVulnerable,
     combatStaggerVulnerableOnly: options.combatStaggerVulnerableOnly,
     staggerFloor: options.staggerFloor ?? null,
-    extraZoneFactor: options.extraZoneFactor,
   })
 
   const enemyVulnerableBase = options.enemyInput.vulnerableMultiplier
@@ -722,11 +719,6 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
       )
     : null
   const hasPolarDisorder = skillMults?.hasPolarDisorder ?? false
-  // 自定义乘区（Phase 3c）：方案解析后的因子按顺序连乘进通用乘区
-  const extraZoneFactor = (input.customZoneFactors ?? []).reduce(
-    (product, factor) => product * factor.value,
-    1,
-  )
 
   /**
    * 紊乱失衡易伤下限（倍率）：只抬紊乱 / 极性紊乱，其他伤害类型一律不传
@@ -760,7 +752,6 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     combatSharpenDmgBonus: input.combatSharpenDmgBonus ?? 0,
     staggerPhase,
     curtainVulnerabilityCap: input.curtainVulnerabilityCap ?? null,
-    extraZoneFactor,
     agentLevel: ownerAgentLevel,
     resistanceElement: ownerResistanceElement,
     defensePanel: composeDefensePanel(zonePanels, 'direct'),
@@ -795,7 +786,6 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     combatPierceDmgBonus: input.combatPierceDmgBonus ?? 0,
     staggerPhase,
     curtainVulnerabilityCap: input.curtainVulnerabilityCap ?? null,
-    extraZoneFactor,
     staggerFloor: disorderStaggerFloor,
     agentLevel: anomalyBaseLevel,
     resistanceElement: anomalyBaseResistanceElement,
@@ -1139,7 +1129,35 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     }
   }
 
+  const customZoneFactors = input.customZoneFactors ?? []
+  const customZoneProduct = customZoneFactors.reduce((product, factor) => product * factor.value, 1)
+  const damageValues = {
+    directDamageFromDirectMult,
+    settlementDamageExpected,
+    directDamageExpected,
+    attributeAnomalyExpected: withFinalDmg(applyMutation(attributeAnomaly.expected)),
+    attributeAnomalyExpectedNoCrit: withFinalDmg(applyMutation(attributeAnomaly.expectedNoCrit)),
+    attributeAnomalyExpectedFullCrit: withFinalDmg(applyMutation(attributeAnomaly.expectedFullCrit)),
+    anomalyReleaseExpected: withFinalDmg(applyMutation(anomalyRelease.expected)),
+    anomalyReleaseExpectedNoCrit: withFinalDmg(applyMutation(anomalyRelease.expectedNoCrit)),
+    anomalyReleaseExpectedFullCrit: withFinalDmg(applyMutation(anomalyRelease.expectedFullCrit)),
+    disorderExpected: withFinalDmg(applyMutation(disorder.expected)),
+    disorderExpectedNoCrit: withFinalDmg(applyMutation(disorder.expectedNoCrit)),
+    disorderExpectedFullCrit: withFinalDmg(applyMutation(disorder.expectedFullCrit)),
+    turbulenceExpected: withFinalDmg(applyMutation(turbulence.expected)),
+    turbulenceExpectedNoCrit: withFinalDmg(applyMutation(turbulence.expectedNoCrit)),
+    turbulenceExpectedFullCrit: withFinalDmg(applyMutation(turbulence.expectedFullCrit)),
+    radianceExpected: withFinalDmg(applyMutation(radiance.expected)),
+    radianceExpectedNoCrit: withFinalDmg(applyMutation(radiance.expectedNoCrit)),
+    radianceExpectedFullCrit: withFinalDmg(applyMutation(radiance.expectedFullCrit)),
+  }
+  const damageKeys = Object.keys(damageValues) as Array<keyof typeof damageValues>
+  for (const key of damageKeys) {
+    damageValues[key] = round(damageValues[key] * customZoneProduct, 0)
+  }
+
   const result: DamageCalcResult = {
+    ...damageValues,
     baseDamage: round(baseParts.baseDamage, 2),
     baseDamageSource: baseParts.usedBaseSource,
     dmgMultiplier: round(reportedDmgMultiplier, 4),
@@ -1182,9 +1200,6 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     ),
     directDmgMultZone: round(directDmgMultZone, 4),
     settlementDmgMultZone: round(useSharpenFormula ? 0 : settlementDmgMultZone, 4),
-    directDamageFromDirectMult: round(directDamageFromDirectMult, 0),
-    settlementDamageExpected: round(settlementDamageExpected, 0),
-    directDamageExpected: round(directDamageExpected, 0),
     masteryZone: round(triggerParts.masteryZone, 4),
     levelZone: round(triggerParts.levelZone, 4),
     levelZoneAgentLevel: anomalyBaseLevel,
@@ -1222,18 +1237,12 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     remielSelfResistanceMultiplier: remielSelfRadianceActive
       ? round(remielSelfResistanceMultiplier, 4)
       : undefined,
-    attributeAnomalyExpected: round(withFinalDmg(applyMutation(attributeAnomaly.expected)), 0),
-    attributeAnomalyExpectedNoCrit: round(withFinalDmg(applyMutation(attributeAnomaly.expectedNoCrit)), 0),
-    attributeAnomalyExpectedFullCrit: round(withFinalDmg(applyMutation(attributeAnomaly.expectedFullCrit)), 0),
     anomalyReleaseDmgBonusZone: round(anomalyRelease.dmgBonusZone, 4),
     anomalyReleaseMultZone: round(anomalyRelease.multZone, 4),
     anomalyReleaseCritZone: round(anomalyRelease.critZone, 4),
     anomalyReleaseCritRateRatio: round(anomalyRelease.critRateRatio, 4),
     anomalyReleaseCritDmgRatio: round(anomalyRelease.critDmgRatio, 4),
     anomalyReleaseFullCritZone: round(anomalyRelease.fullCritZone, 4),
-    anomalyReleaseExpected: round(withFinalDmg(applyMutation(anomalyRelease.expected)), 0),
-    anomalyReleaseExpectedNoCrit: round(withFinalDmg(applyMutation(anomalyRelease.expectedNoCrit)), 0),
-    anomalyReleaseExpectedFullCrit: round(withFinalDmg(applyMutation(anomalyRelease.expectedFullCrit)), 0),
     effectiveAnomalyDuration: round(effectiveDuration, 4),
     disorderBaseMultRatio: round(disorder.baseMultRatio, 4),
     disorderCompMultRatio: round(disorder.compMultRatio, 4),
@@ -1244,18 +1253,12 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     disorderDmgBonusZone: round(disorder.dmgBonusZone, 4),
     disorderCritZone: round(disorder.critZone, 4),
     disorderFullCritZone: round(disorder.fullCritZone, 4),
-    disorderExpected: round(withFinalDmg(applyMutation(disorder.expected)), 0),
-    disorderExpectedNoCrit: round(withFinalDmg(applyMutation(disorder.expectedNoCrit)), 0),
-    disorderExpectedFullCrit: round(withFinalDmg(applyMutation(disorder.expectedFullCrit)), 0),
     turbulenceBaseMultRatio: round(turbulence.baseMultRatio, 4),
     turbulenceCompMultRatio: round(turbulence.compMultRatio, 4),
     turbulenceMultFactor: round(turbulence.multFactor, 4),
     turbulenceZone: round(turbulence.zone, 4),
     turbulenceDmgBonusZone: round(turbulence.dmgBonusZone, 4),
     turbulenceUsesAnomalyCrit: false,
-    turbulenceExpected: round(withFinalDmg(applyMutation(turbulence.expected)), 0),
-    turbulenceExpectedNoCrit: round(withFinalDmg(applyMutation(turbulence.expectedNoCrit)), 0),
-    turbulenceExpectedFullCrit: round(withFinalDmg(applyMutation(turbulence.expectedFullCrit)), 0),
     hasPolarDisorder,
     radianceDmgBonusZone: round(radiance.dmgBonusZone, 4),
     radianceMultZone: round(radiance.multZone, 4),
@@ -1263,27 +1266,26 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     mutationZone: round(mutationMult, 4),
     radianceCritZone: round(radiance.critZone, 4),
     radianceFullCritZone: round(radiance.fullCritZone, 4),
-    radianceExpected: round(withFinalDmg(applyMutation(radiance.expected)), 0),
-    radianceExpectedNoCrit: round(withFinalDmg(applyMutation(radiance.expectedNoCrit)), 0),
-    radianceExpectedFullCrit: round(withFinalDmg(applyMutation(radiance.expectedFullCrit)), 0),
   }
   const zones = buildZoneResults(result)
-  for (const factor of input.customZoneFactors ?? []) {
+  for (const factor of customZoneFactors) {
     zones[factor.key] = {
       key: factor.key,
       label: factor.label,
       order: factor.order,
       group: 'custom',
       value: factor.value,
+      ...(factor.scaledPercentInputs ? { scaledPercentInputs: factor.scaledPercentInputs } : {}),
     }
   }
   const chainId = input.chainId ?? resolveDamageChainId({
     damageKind: input.eventDamageType ?? (useTriggerBase ? subKind : 'direct'),
     isSelfRadiance: remielSelfRadianceActive,
   })
+  const usesDirectDamageStages = chainId === 'direct' || chainId === 'sharpen' || chainId === 'pierce'
   const stageValues: Record<string, number | undefined> = {}
   // 锐化 / 命破也属直伤体系：阶段值按直伤口径取（各自链路只展示自己有的阶段）
-  if (chainId === 'direct' || chainId === 'sharpen' || chainId === 'pierce') {
+  if (usesDirectDamageStages) {
     Object.assign(stageValues, {
       base: result.baseDamage,
       dmg: directDmgMultiplier,
@@ -1372,26 +1374,10 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     if (Number.isFinite(ratio) && ratio >= 0) stageAdjustment *= ratio
   }
   if (stageAdjustment !== 1) {
-    const scale = (value: number) => round(value * stageAdjustment, 0)
-    result.directDamageFromDirectMult = scale(result.directDamageFromDirectMult)
-    result.settlementDamageExpected = scale(result.settlementDamageExpected)
-    result.directDamageExpected = scale(result.directDamageExpected)
-    result.attributeAnomalyExpected = scale(result.attributeAnomalyExpected)
-    result.attributeAnomalyExpectedNoCrit = scale(result.attributeAnomalyExpectedNoCrit)
-    result.attributeAnomalyExpectedFullCrit = scale(result.attributeAnomalyExpectedFullCrit)
-    result.anomalyReleaseExpected = scale(result.anomalyReleaseExpected)
-    result.anomalyReleaseExpectedNoCrit = scale(result.anomalyReleaseExpectedNoCrit)
-    result.anomalyReleaseExpectedFullCrit = scale(result.anomalyReleaseExpectedFullCrit)
-    result.disorderExpected = scale(result.disorderExpected)
-    result.disorderExpectedNoCrit = scale(result.disorderExpectedNoCrit)
-    result.disorderExpectedFullCrit = scale(result.disorderExpectedFullCrit)
-    result.turbulenceExpected = scale(result.turbulenceExpected)
-    result.turbulenceExpectedNoCrit = scale(result.turbulenceExpectedNoCrit)
-    result.turbulenceExpectedFullCrit = scale(result.turbulenceExpectedFullCrit)
-    result.radianceExpected = scale(result.radianceExpected)
-    result.radianceExpectedNoCrit = scale(result.radianceExpectedNoCrit)
-    result.radianceExpectedFullCrit = scale(result.radianceExpectedFullCrit)
-    if (chainId === 'direct') stageValues.final = result.directDamageExpected
+    for (const key of damageKeys) {
+      result[key] = round(result[key] * stageAdjustment, 0)
+    }
+    if (usesDirectDamageStages) stageValues.final = result.directDamageExpected
     else if (chainId === 'radiance-self') stageValues.final = result.radianceExpected
     else if (subKind === 'attributeAnomaly') stageValues.final = result.attributeAnomalyExpected
     else if (subKind === 'anomalyRelease') stageValues.final = result.anomalyReleaseExpected

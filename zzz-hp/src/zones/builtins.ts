@@ -35,8 +35,6 @@ export interface CoreZoneContext {
    * （卡芙卡：非失衡期 +40%、失衡期不足 140% 视为 140%）。
    */
   staggerFloor?: number | null
-  /** 自定义乘区因子连乘（缺省 1；方案未启用自定义乘区时恒为 1） */
-  extraZoneFactor?: number
 }
 
 export interface CoreZoneResult {
@@ -88,8 +86,7 @@ export function evaluateCoreZones(context: CoreZoneContext): CoreZoneResult {
     dmgMultiplier *
     context.defenseMultiplier *
     resistanceMultiplier *
-    Math.max(0, staggerMultiplier) *
-    (context.extraZoneFactor ?? 1)
+    Math.max(0, staggerMultiplier)
 
   return {
     dmgMultiplier,

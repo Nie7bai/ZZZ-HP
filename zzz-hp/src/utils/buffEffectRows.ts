@@ -54,6 +54,7 @@ const ISSUE_LABELS: Record<string, string> = {
   applyTarget: '目标',
   applySituation: '作用情况',
   applyProfession: '受益职业',
+  teammateProfessions: '队友职业',
   teamProfession: '队内职业',
   teamProfessionValues: '人数档',
   teamProfessionMinCount: '人数门槛',
@@ -87,6 +88,7 @@ export function makeGroupId(): string {
 function cloneEffect(effect: BuffEffect): BuffEffect {
   return {
     ...effect,
+    teammateProfessions: effect.teammateProfessions?.slice(),
     skillTargets: effect.skillTargets?.map((item) => ({ ...item })),
     elementFilter: Array.isArray(effect.elementFilter)
       ? [...effect.elementFilter]
@@ -126,6 +128,7 @@ function targetSignature(effect: BuffEffect): string {
     applyTarget: effect.applyTarget ?? 'self',
     applySituation: effect.applySituation ?? 'global',
     applyProfession: effect.applyProfession ?? null,
+    teammateProfessions: effect.teammateProfessions ?? [],
     teamProfession: effect.teamProfession ?? null,
     teamProfessionValues: effect.teamProfessionValues ?? null,
     teamProfessionMinCount: effect.teamProfessionMinCount ?? null,
@@ -164,6 +167,9 @@ export function rowIssues(row: EffectRow): EffectRowIssue[] {
     }
     if ((effect.applyProfession ?? null) !== (base.applyProfession ?? null)) {
       keys.add('applyProfession')
+    }
+    if (stable(effect.teammateProfessions ?? []) !== stable(base.teammateProfessions ?? [])) {
+      keys.add('teammateProfessions')
     }
     if ((effect.teamProfession ?? null) !== (base.teamProfession ?? null)) {
       keys.add('teamProfession')
@@ -526,6 +532,7 @@ export function alignRow(row: EffectRow): BuffEffect[] {
     next.applyTarget = base.applyTarget
     next.applySituation = base.applySituation
     next.applyProfession = base.applyProfession
+    next.teammateProfessions = base.teammateProfessions?.slice()
     next.teamProfession = base.teamProfession
     next.teamProfessionValues = base.teamProfessionValues
       ? [...base.teamProfessionValues]

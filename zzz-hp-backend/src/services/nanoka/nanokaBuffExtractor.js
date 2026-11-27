@@ -24,6 +24,9 @@
  *
  * 四类来源（都扫）：核心被动 / 额外能力 / 影画 1–6 / 招式文本 / 音擎精炼 1–5。
  */
+import { isCustomBuffStatKey } from '../../utils/calculatorBuffFields.js'
+import { normalizeTeammateProfessions } from '../../utils/buffEffectConditions.js'
+import { PROFESSION_ID_LABELS } from './nanokaBasicsMapper.js'
 import { normalizeSkillName, stripSkillTitlePrefix } from './nanokaSkillMapper.js'
 
 // ================================================================== 槽位定义
@@ -56,14 +59,16 @@ export const SLOT_IDS = [
   'unit',
   'target',
   'conditions',
+  'teammateProfessions',
   'scope',
   'stacks',
+  'enabledDefault',
   'duration',
   'object',
 ]
 
 /** 允许复数的槽位（白名单） */
-export const MULTI_SLOT_IDS = ['conditions', 'elements']
+export const MULTI_SLOT_IDS = ['conditions', 'elements', 'teammateProfessions']
 
 /** 槽位中文名（`关键字：属性=… 动作=…` 的标签） */
 export const SLOT_LABELS = {
@@ -74,24 +79,23 @@ export const SLOT_LABELS = {
   unit: '单位',
   target: '目标',
   conditions: '条件',
-  /** **作用域** = 编辑器里的 `scope`（用户口径：字段名就叫「作用域」）；「限定招式」也并进这一格 */
+  teammateProfessions: '队友职业（满足任一）',
   scope: '作用域',
   stacks: '层数',
+  enabledDefault: '默认启用',
   duration: '时长',
   object: '对象',
 }
 
 /**
- * **生效范围**的取值（以源码为准）：`zzz-hp/src/types/calculator.ts:63` 的 `BUFF_SCOPE_OPTIONS`
- * = 通用 / 招式 / 属性异常 / 紊乱 / 乱流 / 异放 / 耀变 / 异化系数；编辑器下拉在
- * `AdminBuffEffectEditor.vue:550`。`无` = 通用（阶段2 **不写** scope）。
+ * 伤害类型槽位沿用 `scope` 字段，`无` 表示不限类型。招式限定由锚点单独传递。
  */
-export const SCOPE_OPTIONS = [NONE, '招式', '属性异常', '紊乱', '乱流', '异放', '耀变', '异化系数']
+export const SCOPE_OPTIONS = [NONE, '锐化', '属性异常', '紊乱', '乱流', '异放', '耀变', '异化系数']
 
-/** 槽位取值（中文）→ `scope` 字段值；`无` → 空串（= 不写 scope） */
+/** 作用域槽位中文名对应的内部取值。 */
 export const SCOPE_SLOT_TO_ID = {
   [NONE]: '',
-  招式: 'skill',
+  锐化: 'sharpen',
   属性异常: 'attributeAnomaly',
   紊乱: 'disorder',
   乱流: 'turbulence',
@@ -102,7 +106,7 @@ export const SCOPE_SLOT_TO_ID = {
 
 /**
  * 阶段1：从子句里认「生效范围」。先认**明确点名子类**的措辞（异放 / 耀变 / 乱流 / 紊乱 / 异化系数），
- * 再认**显式限定异常**的措辞（`仅对属性异常生效` 这类）；`招式` 由招式锚点那条路填（见 `detectSkillLimits`）。
+ * 再认显式限定属性异常的措辞。
  */
 const SCOPE_RULES = [
   { id: '异放', re: /\[?异放\]?/ },
@@ -128,8 +132,22 @@ export function detectScope(text) {
 /** 关键字入库前缀（v3 变更 2：关键字入库，带前缀/索引便于检索） */
 export const KEYWORD_PREFIX = '[关键字]'
 
-/** 阶段2 词表里的 stat 键（与仓库 `BUFF_STAT_KEYS` 同源）对应的中文标签 */
+/** 采集词表中的独立乘区属性与正式增益字段。 */
+const EMBER_MARK_SCALING_LABEL = '烬痕积攒量提升'
+const INDEPENDENT_ZONE_PERCENT_STATS = {
+  烬痕比例: 'custom:emberMarkRatio',
+  [EMBER_MARK_SCALING_LABEL]: 'custom:emberMarkAccumulationBonus',
+  最终伤害比例: 'custom:finalDamageRatio',
+  一布之力比例: 'custom:bangbooMightRatio',
+}
+
+const SHARPEN_CRIT_DMG_LABEL = '锐爆伤害加成'
+
+/** 阶段2 词表里的 stat 键对应的中文标签 */
 export const STAT_LABELS = {
+  ...Object.fromEntries(
+    Object.entries(INDEPENDENT_ZONE_PERCENT_STATS).map(([label, stat]) => [stat, label]),
+  ),
   hp: '生命值',
   inCombatHpPercent: '局内生命值',
   inCombatAtkPercent: '局内攻击力',
@@ -144,6 +162,7 @@ export const STAT_LABELS = {
   skillMultiplierBonus: '招式倍率加成',
   critRate: '暴击率',
   critDmg: '暴击伤害',
+  sharpenCritDmgBonus: SHARPEN_CRIT_DMG_LABEL,
   penRate: '穿透率',
   reduceDefense: '无视防御',
   resPen: '抗性穿透',
@@ -197,6 +216,7 @@ export const STAT_OPTIONS = [
   '乱流增伤',
   '耀变增伤',
   '紊乱增伤',
+  ...Object.keys(INDEPENDENT_ZONE_PERCENT_STATS),
   '异放暴击率',
   '异放暴击伤害',
   '乱流暴击率',
@@ -211,6 +231,7 @@ export const STAT_OPTIONS = [
   '异常掌控',
   '暴击率',
   '暴击伤害',
+  SHARPEN_CRIT_DMG_LABEL,
   '攻击力（局外）',
   '攻击力（局内）',
   '攻击力（固定）',
@@ -335,7 +356,8 @@ export const CONVERT_PANEL_SOURCE_LABELS = {
 }
 
 /** 目标槽位：`无` = 默认自身（规格 §二） */
-export const TARGET_OPTIONS = ['自身', '全队', '指定职业', '指定阵营']
+const APPLY_TARGET_BY_LABEL = { 自身: 'self', 全队: 'team', 仅队友: 'teammates' }
+export const TARGET_OPTIONS = Object.keys(APPLY_TARGET_BY_LABEL)
 
 /** 对象槽位（增益作用在谁 / 什么上） */
 export const OBJECT_OPTIONS = ['当前招式', '装备者', '敌人', '能量']
@@ -349,40 +371,30 @@ export const STACK_OPTIONS = [NONE, UNABLE]
 /** 时长槽位下拉（数值部分用 `durationSeconds` 数字输入，界面拼成 `15 秒`） */
 export const DURATION_OPTIONS = [NONE, UNABLE]
 
-/**
- * **条件能被阶段2落地判据**（唯一真源）：句子（或条件文本）命中这些正则，才允许落到
- * `applySituation` / 队伍职业条件；否则一律 `无法提取`。
- * 放在这里是因为 `CONDITION_OPTIONS` 要用它**反向过滤**候选池（见下）。
- */
-const MODELABLE_CONDITION_RES = [
-  /(?:攻击)?(?:处于)?非失衡/,
-  /(?:攻击)?(?:处于)?失衡/,
-  /队伍中存在|队伍中有|队内|同阵营|同属性|其他\[?异常\]?角色/,
-]
+const PROFESSIONS = Object.values(PROFESSION_ID_LABELS)
+const beneficiaryProfessionCondition = (profession) => `仅${profession}代理人`
+const PROFESSION_CONDITION_RE = new RegExp(`^仅(${PROFESSIONS.join('|')})代理人$`)
+const LEGACY_MANUAL_STATE_CONDITION = '状态需手动启用'
+const SITUATION_CONDITION_RE =
+  /^(?:当|若|在)?(?:攻击(?:处于)?|(?:敌人|目标)处于)?(非失衡|失衡)(?:期|状态下?|状态期间)?(?:的?(?:敌人|目标))?(?:时|期间)?$/
 
-/**
- * 条件下拉的**候选池**：只是"想提供的句式"，能不能进出下拉由 `MODELABLE_CONDITION_RES` 决定。
- * 阶段2 落不到的（触发时机 / 状态类）在这里被**自动过滤** —— 结构上保证「下拉里的每个选项
- * 阶段2 都能解析」，而不是靠人记得同步两张表（用户 2026-10-17：「解析不出来的根本不该出现」）。
- * 想让某个句式出现，先扩 `MODELABLE_CONDITION_RES` 和阶段2 的字段，它自己就会出现在下拉里。
- */
-const CONDITION_OPTION_CANDIDATES = [
-  '攻击失衡敌人时',
-  '攻击非失衡敌人时',
-  '发动强化特殊技时',
-  '发动连携技或终结技时',
-  '敌人处于属性异常状态时',
-  '队伍中存在与自身属性或阵营相同的角色时',
-  '队伍中存在其他异常角色或同阵营角色时',
-]
+function readApplySituationCondition(value) {
+  if (/^失衡期与非失衡期(?:均生效|都生效)$/.test(value)) return 'global'
+  const phase = SITUATION_CONDITION_RE.exec(value)?.[1]
+  if (phase === '失衡') return 'stagger'
+  return phase === '非失衡' ? 'non_stagger' : null
+}
 
-/**
- * 条件槽位下拉候选（**唯一允许复数**的槽位）。`无` = 无条件（全局），`无法提取` = 人工兜底。
- * 由候选池经白名单过滤而来；目前能出现的只有 失衡 / 非失衡 / 队伍职业条件 三类。
- */
+function isSupportedCondition(value) {
+  return PROFESSION_CONDITION_RE.test(value) || readApplySituationCondition(value) !== null
+}
+
+/** 条件列表按正式增益字段提供可编辑选项。 */
 export const CONDITION_OPTIONS = [
   NONE,
-  ...CONDITION_OPTION_CANDIDATES.filter((text) => MODELABLE_CONDITION_RES.some((re) => re.test(text))),
+  '攻击失衡敌人时',
+  '攻击非失衡敌人时',
+  ...PROFESSIONS.map(beneficiaryProfessionCondition),
   UNABLE,
 ]
 
@@ -398,8 +410,10 @@ export const SLOT_OPTIONS = {
   unit: [...UNIT_OPTIONS, NONE],
   target: [...TARGET_OPTIONS, NONE, UNABLE],
   conditions: CONDITION_OPTIONS,
+  teammateProfessions: [...PROFESSIONS, NONE, UNABLE],
   scope: SCOPE_OPTIONS,
   stacks: STACK_OPTIONS,
+  enabledDefault: [NONE, '开启', '关闭'],
   duration: DURATION_OPTIONS,
   object: [...OBJECT_OPTIONS, NONE, UNABLE],
   // —— 转模（动作=转化）专用槽位
@@ -437,9 +451,19 @@ function isPlainObject(value) {
 
 // ================================================================== 文本工具
 
-/** 去富文本标签 + 去运行时模板（`{CAL:...}`）、去图标占位；`rawText` / `note` 都用它 */
-export function cleanNanokaText(raw) {
+// 保留已核对的通用属性术语，供离线重跑旧详情或词表暂不可用时使用。
+const NANOKA_TERM_FALLBACKS = {
+  3000015: '锐暴伤害',
+  3000039: '[毁伤]',
+}
+
+/** 展开空术语标签，再去富文本、运行时模板和图标占位。 */
+export function cleanNanokaText(raw, termNames) {
   return String(raw ?? '')
+    .replace(/<Term:(\d+)>\s*<\/Term>/g, (_, id) => {
+      const name = termNames?.[id]
+      return typeof name === 'string' && name.trim() ? name.trim() : NANOKA_TERM_FALLBACKS[id] ?? ''
+    })
     .replace(/<IconMap:[^>]*>/g, '')
     .replace(/\{[^{}]*\}/g, '')
     .replace(/<[^>]*>/g, '')
@@ -472,12 +496,13 @@ const PREMISE_HEAD_RE =
 
 /** 把 `前提：效果` 拆成两个子句（`：` 不在括号里、且前半句像前提时才拆） */
 function splitClauseAtColon(clause) {
-  const index = clause.search(/[：:]/)
+  const colon = [...clause.matchAll(/\[[^\]]*\]|【[^】]*】|「[^」]*」|[：:]/g)]
+    .find(([token]) => token === '：' || token === ':')
+  const index = colon?.index ?? -1
   if (index <= 0) return [clause]
   const head = clause.slice(0, index)
   const tail = clause.slice(index + 1).trim()
   if (!tail) return [clause]
-  if (/[「」[\]【】]/.test(head)) return [clause] // `[强化特殊技：眩焰]` 这类名字不许拆
   if (!PREMISE_HEAD_RE.test(head)) return [clause]
   return [`${head}：`, tail]
 }
@@ -797,6 +822,39 @@ export function detectSkillLimits(text) {
   return out
 }
 
+const SKILL_NAMES_PATTERN = SKILL_LIMIT_RULES.map(({ name }) => name).join('|')
+const BRACKETED_SKILL_TITLE_RE = new RegExp(String.raw`\[(?:${SKILL_NAMES_PATTERN})[:：][^\]]+\]`, 'g')
+const SKILL_NAME_PATTERN = String.raw`(?:\[(?:${SKILL_NAMES_PATTERN})(?:[:：][^\]]+)?\]|(?:${SKILL_NAMES_PATTERN}))`
+const SKILL_LIST_PATTERN = String.raw`${SKILL_NAME_PATTERN}(?:\s*(?:以及|[、和与及或])\s*${SKILL_NAME_PATTERN})*`
+const SKILLS_HITTING_PATTERN = String.raw`${SKILL_LIST_PATTERN}命中[^，。；]*?时`
+const BENEFITING_SKILL_RE = new RegExp(
+  [
+    String.raw`${SKILL_LIST_PATTERN}(?=\s*(?:的|(?:对(?:其|目标|敌人))?所?造成|(?:锐[化爆暴])?伤害|暴击(?:率|伤害)|(?:也|还|将|可)*无视|受益|生效|累积蓄力时长的额外伤害))`,
+    String.raw`${SKILLS_HITTING_PATTERN}(?=所?造成的?伤害)`,
+    String.raw`(?:仅对|仅限|限定)\s*${SKILL_LIST_PATTERN}`,
+  ].join('|'),
+  'g',
+)
+const CURRENT_SKILL_PREMISE_RE = new RegExp(
+  String.raw`在${SKILL_LIST_PATTERN}中|${SKILLS_HITTING_PATTERN}|下(?:一)?次发动${SKILL_LIST_PATTERN}时`,
+)
+const SKILL_HIT_RE = new RegExp(SKILLS_HITTING_PATTERN)
+
+/** 按效果限定招式。「在某招式中」可以明确「招式造成的伤害」的指代范围。 */
+function detectBenefitingSkills(effectText, effectPremises) {
+  const text = effectText.replace(/\[[^\]]+\]\s*状态/g, '状态')
+  const explicit = [...text.matchAll(BENEFITING_SKILL_RE)].map(([name]) => name)
+  if (explicit.length) return detectSkillLimits(explicit.join('、'))
+  const premises = effectPremises.map((premise) => premise.replace(/\[[^\]]+\]\s*状态/g, '状态'))
+  if (/^招式(?:所)?造成的?伤害/.test(text)) {
+    const currentSkillMentions = premises.map((premise) => CURRENT_SKILL_PREMISE_RE.exec(premise)?.[0]).filter(Boolean)
+    return currentSkillMentions.length === 1 ? detectSkillLimits(currentSkillMentions[0]) : []
+  }
+  if (!/(?:该|此|本|当前)招式/.test(text)) return []
+  const referenced = premises.map(detectSkillLimits).filter((limits) => limits.length)
+  return referenced.length === 1 ? referenced[0] : []
+}
+
 /** 锚点候选名（小类名 / 去标题前缀 / 去「技」尾） */
 function anchorNameCandidates(name) {
   const raw = String(name ?? '').replace(/[[\]]/g, '').trim()
@@ -1031,6 +1089,14 @@ export const GAME_LITERAL_REWRITES = [
 
 /** 属性词典（**顺序即优先级**；取值与 `STAT_OPTIONS` 一一对应，写**工具语义**） */
 const STAT_RULES_INTERNAL = [
+  {
+    keyword: EMBER_MARK_SCALING_LABEL,
+    re: /(?:\[烬痕\]|烬痕)积攒量(?:额外)?(?:提升|增加|提高)(?=\s*\d+(?:\.\d+)?\s*[%％])/,
+  },
+  ...Object.keys(INDEPENDENT_ZONE_PERCENT_STATS).map((keyword) => ({
+    keyword,
+    re: new RegExp(`${keyword}[」】\\]]?\\s*(?:额外)?(?:提升|增加|提高|降低|减少|下降|[+＋])`),
+  })),
   // ① 失衡易伤家族（「失衡状态下受到的伤害提升」）：全局/均生效的版本在阶段1 由作用域文本判定
   {
     keyword: '失衡易伤',
@@ -1059,6 +1125,7 @@ const STAT_RULES_INTERNAL = [
   { keyword: '异常精通', re: /异常精通/ },
   { keyword: '异常掌控', re: /异常掌控/ },
   { keyword: '属性异常增伤', re: /属性异常伤害|异常伤害/ },
+  { keyword: SHARPEN_CRIT_DMG_LABEL, re: /锐[爆暴]伤害/ },
   { keyword: '暴击率', re: /暴击率/ },
   { keyword: '暴击伤害', re: /暴击伤害/ },
   {
@@ -1142,6 +1209,158 @@ function detectAction(text) {
   return { value: UNABLE, source: 'unable' }
 }
 
+/** 烬痕的基础比例与积攒量提升是同一乘区的两个属性。 */
+const EMBER_MARK_ACCUMULATION_RULES = [
+  {
+    type: 'named',
+    pattern: /^(?<actor>[^，。；\s]+?)发动(?<names>\[[^\]]+\](?:、\[[^\]]+\])*)命中敌人造成伤害时，(?:均)?可使目标积攒(?:\[烬痕\])?，\[烬痕\]量等同于招式造成的实际伤害的(?<percent>\d+(?:\.\d+)?)%$/,
+    description: '自身，按原文明列的招式锚点匹配',
+  },
+  {
+    type: 'destruction',
+    pattern: /^全队(?:代理人)?造成的\[毁伤\](?:也)?可使目标积攒等同于(?:该次)?实际伤害的?(?<percent>\d+(?:\.\d+)?)%的\[烬痕\]$/,
+    description: '全队，招式类型限定毁伤',
+  },
+  {
+    type: 'otherSharpen',
+    pattern: /^(?<actor>[^，。；\s]+?)发动(?:其他|其余)招式命中敌人造成锐化伤害时，(?:也)?可使目标积攒(?<term>\[烬痕\])?，积攒量等同于(?:该次)?实际伤害的(?<percent>\d+(?:\.\d+)?)%$/,
+    description: '自身，排除核心被动已列招式和毁伤段，其余锐化招式按锚点匹配',
+  },
+  {
+    type: 'amountIncrease',
+    stat: EMBER_MARK_SCALING_LABEL,
+    pattern: /^全队(?:代理人)?触发(?:\[毁伤\]|毁伤)(?:和|或|、)(?<actor>[^，。；\s]+?)(?:使|令)敌人积攒(?:\[烬痕\]|烬痕)时，(?:最终结算的)?(?:\[烬痕\]|烬痕)(?:积攒量|量)(?:额外)?(?:提升|增加|提高)(?<percent>\d+(?:\.\d+)?)\s*[%％]$/,
+    description: '拆成两条：自身不限招式，另一个目标仅队友且招式类型限定毁伤。',
+  },
+]
+
+function readEmberMarkAccumulation(text, rule, selfNames) {
+  const groups = rule.pattern.exec(text)?.groups
+  if (!groups) return null
+  if (groups.actor && selfNames.length && ![...selfNames, '自身', '自己'].includes(groups.actor)) return null
+  const names = Array.from((groups.names ?? '').matchAll(/\[([^\]]+)\]/g), ([, name]) => name)
+  return { type: rule.type, names, value: Number(groups.percent), explicit: Boolean(groups.term) }
+}
+
+function resolveEmberMarkTargets({ names, otherSharpen, agentId, profession, skills, anchors }) {
+  const pending = (reason) => ({ ok: false, labels: names, resolved: [], skillTargets: [], reason })
+  if (!names.length) return pending('缺少核心被动的烬痕招式名单，需手工确认其余锐化招式')
+
+  const localSkills = skills.filter((skill) => String(skill.agentId) === agentId)
+  const ordinaryDirectSkills = localSkills.filter((skill) =>
+    ['direct', 'sharpen'].includes(skill.damageType) && !skill.skillTypes?.includes('destruction'),
+  )
+  const namedSkills = new Set()
+  for (const name of names) {
+    const normalized = normalizeSkillName(name)
+    const matches = ordinaryDirectSkills.filter((skill) => {
+      const skillName = normalizeSkillName(skill.name)
+      return skillName === normalized || skillName.startsWith(`${normalized}·`)
+    })
+    if (!matches.length) return pending(`缺少招式「${name}」，请先采集招式或手工补范围`)
+    for (const skill of matches) namedSkills.add(skill)
+  }
+  const selected = otherSharpen
+    ? ordinaryDirectSkills.filter((skill) =>
+        !namedSkills.has(skill) && profession !== '命破' &&
+        (skill.damageType === 'sharpen' || profession === '锋御'),
+      )
+    : [...namedSkills]
+  if (!selected.length) return pending('没有可绑定的其余锐化招式，需手工确认范围')
+
+  const anchorsById = new Map((anchors ?? [])
+    .filter((anchor) => String(anchor.agentId) === agentId)
+    .map((anchor) => [String(anchor.id), anchor]))
+  const selectedAnchors = new Map()
+  for (const skill of selected) {
+    const anchor = anchorsById.get(String(skill.buffAnchorId ?? ''))
+    if (!anchor?.categoryId) return pending(`「${skill.name}」缺少本角色的增益锚点，请绑定后重试`)
+    selectedAnchors.set(String(anchor.id), anchor)
+  }
+  const selectedSkills = new Set(selected)
+  const shared = localSkills.find((skill) => !selectedSkills.has(skill) && selectedAnchors.has(String(skill.buffAnchorId ?? '')))
+  if (shared) return pending(`「${shared.name}」与适用招式共用锚点，需先拆分锚点`)
+
+  const resolved = [...selectedAnchors.values()].map((anchor) => ({
+    name: anchor.name,
+    category: anchor.categoryId,
+    subcategoryId: String(anchor.id),
+    level: 'subcategory',
+  }))
+  return {
+    ok: true,
+    labels: resolved.map((anchor) => anchor.name),
+    resolved,
+    skillTargets: resolved.map(({ category, subcategoryId }) => ({ category, subcategoryId })),
+    reason: '',
+  }
+}
+
+function extractEmberMarkKeywords({ text, unitIndex, index, origin, selfNames, anchors, agentId, emberMarkContext }) {
+  const [namedRule] = EMBER_MARK_ACCUMULATION_RULES
+  for (const rule of EMBER_MARK_ACCUMULATION_RULES) {
+    const accumulation = readEmberMarkAccumulation(text, rule, selfNames)
+    if (!accumulation) continue
+    const { type, value } = accumulation
+    const amountIncrease = type === 'amountIncrease'
+    const team = type === 'destruction' || amountIncrease
+    const otherSharpen = type === 'otherSharpen'
+    const names = otherSharpen
+      ? splitUnits(emberMarkContext.corePassiveText).flatMap(({ text: unit }) =>
+          readEmberMarkAccumulation(unit, namedRule, selfNames)?.names ?? [],
+        )
+      : accumulation.names
+    // 未展开的术语只有在同一角色核心被动明确记载烬痕时才可视为烬痕。
+    if (otherSharpen && !accumulation.explicit && !names.length) continue
+    const anchorInfo = team
+      ? {
+          ok: true,
+          labels: ['毁伤'],
+          resolved: [],
+          skillTargets: [{ category: 'destruction', subcategoryId: null }],
+          reason: '',
+        }
+      : resolveEmberMarkTargets({
+          names, otherSharpen, agentId, anchors,
+          profession: emberMarkContext.profession,
+          skills: emberMarkContext.skills ?? [],
+        })
+    const rows = amountIncrease
+      ? [
+          { target: '自身', limits: { ok: true, labels: [], resolved: [], skillTargets: [], reason: '' } },
+          { target: '仅队友', limits: anchorInfo },
+        ]
+      : [{ target: team ? '全队' : '自身', limits: anchorInfo }]
+    return rows.map(({ target, limits }, offset) => {
+      const single = limits.skillTargets.length === 1 ? limits.skillTargets[0] : null
+      return {
+        id: `${origin}#${index + offset}`,
+        origin,
+        index: index + offset,
+        unitIndex,
+        unitText: text,
+        sentence: text,
+        slots: createSlots({
+          stat: { value: rule.stat ?? '烬痕比例' }, action: { value: '提升' }, value: { value },
+          unit: { value: '%' }, target: { value: target }, scope: { value: otherSharpen ? '锐化' : NONE },
+        }),
+        sources: createSources({
+          stat: { source: 'literal' }, action: { source: 'implicit' }, value: { source: 'literal' },
+          unit: { source: 'literal' }, target: { source: team ? 'literal' : 'implicit' },
+          scope: { source: otherSharpen ? 'literal' : 'default' },
+        }),
+        convert: null,
+        stackMax: null,
+        durationSeconds: null,
+        anchors: { ...limits, skillCategory: single?.category ?? '', skillSubcategoryId: single?.subcategoryId ?? null },
+        recorded: limits.ok,
+        dropReason: limits.reason,
+      }
+    })
+  }
+  return []
+}
+
 /** 阈值短语（永远当条件，数值不进「数值」槽位） */
 function extractThresholds(text) {
   const found = []
@@ -1154,7 +1373,7 @@ function extractThresholds(text) {
 /** 条件句判定：阈值句恒为条件；`…时/后/期间` 且（去掉自身名后）无数字时也是条件 */
 function isConditionOnly(text, selfNames = []) {
   if (extractThresholds(text).length) return true
-  if (!CONDITION_TAIL_RE.test(text)) return false
+  if (!CONDITION_TAIL_RE.test(text) && !TEAMMATE_REQUIREMENT_RE.test(text)) return false
   return gainNumbers(numberSafeText(text, selfNames)).length === 0
 }
 
@@ -1171,6 +1390,36 @@ function conditionList(parts) {
     if (!list.includes(text)) list.push(text)
   }
   return list.length ? list : noCondition()
+}
+
+const TEAMMATE_REQUIREMENT_RE =
+  /^(?:当|若)?(?:队伍中|队伍内|队内|队友中?|队伍)(?:存在|包含|拥有|有)(.+?)(?:时(?:触发|生效|发动)?)?$/
+const TEAMMATE_PROFESSION_RE = new RegExp(
+  String.raw`^(?:其他|另一名|至少一名)?(?:\[(${PROFESSIONS.join('|')})\]|(${PROFESSIONS.join('|')}))(?:角色|代理人|职业)?$`,
+)
+
+/** 只读纯职业条件。分隔项含阵营、属性或并且关系时，整项留作待补。 */
+function readTeammateRequirement(conditionText) {
+  const list = TEAMMATE_REQUIREMENT_RE.exec(conditionText)?.[1]
+  if (!list) return null
+  const options = list.split(/或者|或|、/).map((item) => item.trim())
+  if (options.length > 1 && !list.includes('或')) return null
+  const professions = options.map((item) => {
+    const match = TEAMMATE_PROFESSION_RE.exec(item)
+    return match?.[1] ?? match?.[2]
+  })
+  return professions.every(Boolean) ? normalizeTeammateProfessions(professions) : null
+}
+
+function splitTeammateRequirements(conditions, inherited = []) {
+  const requirements = new Map(inherited.map((roles) => [roles.join('/'), roles]))
+  const remaining = []
+  for (const condition of conditions) {
+    const roles = readTeammateRequirement(condition)
+    if (roles) requirements.set(roles.join('/'), roles)
+    else remaining.push(condition)
+  }
+  return { requirements: [...requirements.values()], remaining }
 }
 
 /**
@@ -1190,9 +1439,11 @@ const SLOT_VALUE_PREDICATES = {
   value: (value) => /^\d+(?:\.\d+)?%?$/.test(String(value).trim()),
   unit: (value) => UNIT_OPTIONS.includes(value),
   target: (value) => TARGET_OPTIONS.includes(value),
-  conditions: (value) => MODELABLE_CONDITION_RES.some((re) => re.test(value)),
+  conditions: isSupportedCondition,
+  teammateProfessions: (value) => PROFESSIONS.includes(value),
   scope: (value) => SCOPE_OPTIONS.includes(value),
   stacks: (value) => /^(?:最多\s*)?\d+\s*层$/.test(String(value).trim()),
+  enabledDefault: (value) => value === '开启' || value === '关闭',
   duration: (value) => /^\d+(?:\.\d+)?\s*秒$/.test(String(value).trim()),
   object: (value) => OBJECT_OPTIONS.includes(value),
 }
@@ -1446,6 +1697,13 @@ export function buildRulesTable() {
       ),
     },
     {
+      id: 'ember-mark-accumulation',
+      title: '烬痕积攒量',
+      items: EMBER_MARK_ACCUMULATION_RULES.map(({ pattern, stat = '烬痕比例', description }) =>
+        items(reText(pattern), stat, INDEPENDENT_ZONE_PERCENT_STATS[stat], description),
+      ),
+    },
+    {
       id: 'action',
       title: '动作词表（→ 关键字「动作」槽位；无「回复」）',
       items: ACTION_RULES_INTERNAL.map((rule) => items(reText(rule.re), rule.keyword, '', '')),
@@ -1481,12 +1739,12 @@ export function buildRulesTable() {
     },
     {
       id: 'scope',
-      title: '作用域（= 编辑器 `scope`；「限定招式」并进这一格）',
+      title: '伤害类型与限定招式',
       items: [
         ...SCOPE_RULES.map((rule) =>
           items(reText(rule.re), rule.id, SCOPE_SLOT_TO_ID[rule.id] ?? '', ''),
         ),
-        items('该句明确限定某招式（锚点匹配 / 建锚点）', '招式', 'skill + skillTargets', '锚点建不出 → 这条不录'),
+        items('该句明确限定某招式（锚点匹配 / 建锚点）', '限定招式', 'skillTargets', '可手选整类或已有小类，可与伤害类型同时限制。'),
         items('（没认出来）', NONE, 'general（不写 scope）', ''),
       ],
     },
@@ -1549,7 +1807,28 @@ export function buildRulesTable() {
         ...INTRINSIC_PREMISE_RULES.map((rule) =>
           items(reText(rule.re), '条件=无（同义反复，丢弃）', '', `属性自带的定义性前提：${rule.stats.join(' / ')}`),
         ),
-        ...MODELABLE_CONDITION_RES.map((re) => items(reText(re), '保留条件文本', 'applySituation / 职业队伍条件', '')),        items('其余任何条件（触发器 / 状态 / 周期…）', UNABLE, '', '阻断自动映射、阶段2 标红待补；不许写进 note'),
+        items(
+          '获得状态，随后描述增益或引用该状态',
+          '触发条件=无法提取',
+          'enabledDefault=true（默认）',
+          '状态名保留原文。可以唯一关联时继承明确的受益职业，有歧义时由人工确认。',
+        ),
+        items(
+          '效果子句直接限定招式，或明确指向前文唯一的招式',
+          '限定受益招式',
+          'skillTargets',
+          '触发招式留在获得状态的原文中。效果明确限定失衡时才写入对应生效情形。',
+        ),
+        items(
+          '队友中有某职业或另一职业',
+          '队友职业（满足任一）',
+          'teammateProfessions',
+          '从增益提供者以外的队伍位置检查。只接受可以完整识别的职业列表。',
+        ),
+        ...CONDITION_OPTIONS.filter((option) => isSupportedCondition(option)).map((option) =>
+          items(option, option, PROFESSION_CONDITION_RE.test(option) ? 'applyProfession' : 'applySituation'),
+        ),
+        items('其余条件（未建模的触发器、周期等）', UNABLE, '', '标记待补，按软槽位规则映射'),
       ],
     },
     {
@@ -1607,6 +1886,7 @@ const STRUCTURAL_CONDITION_RE = /刷新|单独结算|独立结算|重复触发|�
  * 工具**能表达**的条件（其余一律 `无法提取`）：
  *   - 失衡 / 非失衡 → `applySituation`
  *   - 队伍 / 职业条件 → `applyProfession` / `teamProfession*`
+ *   - 默认启用和队友职业分别由各自槽位映射
  * （元素限定走 `元素` 槽位、招式限定走 `作用域` + 锚点、层数走 `层数` 槽位，都不算「条件」）
  *
  * 判据本体在文件上方（`CONDITION_OPTIONS` 反向过滤要用它，所以定义提前了）。
@@ -1644,7 +1924,7 @@ export function classifyConditions({ conditions = [], statValue = '', isConvert 
       absorbed.push(text)
       continue
     }
-    if (MODELABLE_CONDITION_RES.some((re) => re.test(text))) {
+    if (isSupportedCondition(text)) {
       if (!kept.includes(text)) kept.push(text)
       continue
     }
@@ -1658,6 +1938,77 @@ export function classifyConditions({ conditions = [], statValue = '', isConvert 
     absorbed,
     unable,
   }
+}
+
+const STATE_LABEL_LIST = String.raw`\[[^\]]+\](?:\s*(?:以及|[、和与及或])\s*\[[^\]]+\])*`
+const STATE_GRANT_RE = new RegExp(
+  String.raw`^(?<before>.*)(?<verb>获得|获取|进入)(?:了)?\s*(?:(?<labels>${STATE_LABEL_LIST})\s*(?<stateWord>状态)?|(?<plain>[^\s\[\]，。；]{0,24})状态)(?:后)?$`,
+)
+const STATE_USE_RE = new RegExp(
+  String.raw`^(?:在|(?:当|若)?[^，。；[\]]*?(?:处于|持有))?\s*(?:(?<labels>${STATE_LABEL_LIST})\s*状态|(?:该|此)?状态|(?<plain>[^\s\[\]，。；]{1,24}?)状态)(?:下|期间|时|中)(?<effectText>.*)$`,
+)
+
+function stateLabelNames(labels) {
+  return [...(labels ?? '').matchAll(/\[([^\]]+)\]/g)].map(([, name]) => name.trim())
+}
+
+function readStateUse(clause, knownNames) {
+  const match = STATE_USE_RE.exec(clause)
+  if (!match || (match.groups.plain && !knownNames.has(match.groups.plain))) return null
+  const { labels, plain, effectText: remainder } = match.groups
+  const effectText = remainder.replace(/^[：:]/, '').trim()
+  if (effectText && (/^的/.test(effectText) || !BUFF_VERB_RE.test(effectText))) return null
+  return { names: plain ? [plain] : stateLabelNames(labels), effectText }
+}
+
+function readStateGrant(clause, referencedNames) {
+  const match = STATE_GRANT_RE.exec(clause)
+  if (!match) return null
+  const { before, verb, labels, plain, stateWord } = match.groups
+  if (/(?:尚未|未|没有|无法|不能|不再|不会)$/.test(before)) return null
+  const names = labels ? stateLabelNames(labels) : plain ? [plain] : []
+  if (labels && !stateWord && verb !== '进入' && !names.every((name) =>
+    name.endsWith('状态') || referencedNames?.has(name))) return null
+
+  const team = /全队(?:\[(?<profession>[^\]]+)\])?(?:代理人|角色)?$/.exec(before)
+  const profession = team?.groups.profession ?? ''
+  const teamTarget = Boolean(team && (!profession || PROFESSIONS.includes(profession)))
+  const beforeTarget = team ? before.slice(0, team.index).trim() : before.trim()
+  const trigger = /^.*(?:时|后|期间)(?=(?:可|会|将|便|则|立即|同时)*$)/.exec(beforeTarget)?.[0] ?? ''
+  if (!trigger && gainNumbers(beforeTarget).length && detectStatKeyword(beforeTarget) &&
+    detectAction(beforeTarget).value !== UNABLE) return null
+  return { names, trigger, teamTarget, profession: teamTarget ? profession : '' }
+}
+
+/** 同名仅用于对照原文。匿名引用只查当前句与紧邻前一句。 */
+function resolveStateGrant(grants, names, sentenceIndex) {
+  if (names.length > 1) return { resolution: 'ambiguous', grant: null }
+  const nearby = grants.filter((item) => item.sentenceIndex >= sentenceIndex - 1)
+  const named = names[0] ? grants.filter((item) => item.names.includes(names[0])) : []
+  const candidates = names.length
+    ? named.length ? named : nearby.filter((item) => item.sentenceIndex === sentenceIndex && !item.names.length)
+    : nearby
+  const [grant] = candidates
+  if (!grant) return { resolution: 'unresolved', grant: null }
+  if (candidates.length > 1 || (!names.length && grant.names.length > 1)) {
+    return { resolution: 'ambiguous', grant: null }
+  }
+  return { resolution: 'linked', grant }
+}
+
+function readInlineSkillTrigger(clause) {
+  const match = /^(?<trigger>.*?(?:发动|施放|释放|使用|命中|触发)[^，。；]*?(?:时|后|期间))(?<effect>.+)$/.exec(clause)
+  if (!match) return null
+  const { trigger, effect } = match.groups
+  if (/^所?造成的?伤害/.test(effect) && SKILL_HIT_RE.test(trigger)) return null
+  return detectSkillLimits(trigger).length && BUFF_VERB_RE.test(effect) && gainNumbers(effect).length
+    ? { trigger, effect: effect.trim() }
+    : null
+}
+
+function readExplicitStaggerCondition(effectText) {
+  const phase = /对(?:处于)?(非失衡|失衡)(?:状态下?|期)?的?敌人造成[^，。；]*?伤害/.exec(effectText)?.[1]
+  return phase ? `攻击${phase}敌人时` : ''
 }
 
 /**
@@ -1787,12 +2138,14 @@ const SLOT_WHITELIST_DESCRIPTIONS = {
   action: '动作词表（提升 / 降低 / 无视 / 转化）/ `无法提取`',
   value: '纯数字 / `无` / `无法提取`',
   unit: '单位词表（% / 点）/ `无`',
-  target: '目标词表（自身 / 全队 / 指定职业 / 指定阵营）/ `无`',
-  conditions: '工具能表达的条件（失衡 / 非失衡 / 队伍职业条件）；其余一律 `无法提取`',
-  scope: '作用域词表（招式 / 异常 / 紊乱 / 乱流 / 异放 / 耀变 / 异化系数）/ `无`',
+  target: '目标词表（自身 / 全队 / 仅队友）/ `无`',
+  conditions: '作用情况、受益职业，其余为 `无法提取`',
+  teammateProfessions: '可选择多个队友职业，符合任一项即可',
+  scope: '伤害类型词表（锐化 / 属性异常 / 紊乱 / 乱流 / 异放 / 耀变 / 异化系数）/ `无`',
   stacks: '`最多 N 层` / `N 层` / `无` / `无法提取`',
-  duration: '`N 秒` / `无` / `无法提取`',
-  object: '对象词表（当前招式 / 装备者 / 敌人 / 能量）/ `无`',
+  enabledDefault: '开启 / 关闭，缺省沿用默认启用',
+  duration: '`N 秒` 作为备注',
+  object: '原文对象信息，当前招式仅用于备注',
 }
 
 /** 敌人削弱族的目标兜底已并入 `detectTarget`（`default-team` = 原文没写明给谁） */
@@ -1812,7 +2165,10 @@ function detectObject(clauseText, action, inherited) {
 }
 
 /** 一条关键字的槽位（**不许缺格**） */
-function createSlots({ stat, elements, action, value, unit, target, conditions, scope, stacks, duration, object }) {
+function createSlots({
+  stat, elements, action, value, unit, target, conditions, teammateProfessions,
+  scope, stacks, duration, object,
+}) {
   return {
     stat: stat?.value ?? NONE,
     elements: Array.isArray(elements) && elements.length ? [...elements] : [NONE],
@@ -1821,8 +2177,10 @@ function createSlots({ stat, elements, action, value, unit, target, conditions, 
     unit: unit?.value ?? NONE,
     target: target?.value ?? NONE,
     conditions: conditions?.value ?? noCondition(),
+    teammateProfessions: teammateProfessions ?? [NONE],
     scope: scope?.value ?? NONE,
     stacks: stacks ?? NONE,
+    enabledDefault: NONE,
     duration: duration ?? NONE,
     object: object?.value ?? NONE,
   }
@@ -1907,8 +2265,16 @@ export function extractKeywordEffects({
   selfNames = [],
   anchors = null,
   agentId = '',
+  emberMarkContext = {},
 } = {}) {
   const units = splitUnits(text)
+  const knownStateNames = new Set(units.flatMap((unit) => unit.clauses.flatMap((clause) =>
+    readStateGrant(clause)?.names ?? [],
+  )))
+  const stateUses = units.map((unit) => unit.clauses.map((clause) => readStateUse(clause, knownStateNames)))
+  const referencedStateNames = new Set(stateUses.flat().flatMap((use) => use?.names ?? []))
+  const stateReferences = units.map(() => [])
+  const stateGrants = []
   const effects = []
   const waste = []
   let prefix = '' // 段落级前缀条件（`…：` 抬头，作用于整段）
@@ -1931,14 +2297,61 @@ export function extractKeywordEffects({
     // （抬头句已与下一句合并，见 `splitUnits`），**不跨句泄漏**。
     prefix = ''
     pending = []
+    const emberMark = extractEmberMarkKeywords({
+      text: unit.text, unitIndex, index: effects.length, origin, selfNames, anchors, agentId, emberMarkContext,
+    })
+    if (emberMark.length) {
+      effects.push(...emberMark)
+      lastEffect = null
+      return
+    }
     const unitText = unit.clauses.join('，')
     const stack = readStackInfo(unitText)
     const duration = readDurationInfo(unitText)
     const unitEffects = []
+    const firstGrantIndex = stateGrants.length
+    let stateUseContext = null
 
-    for (const rawClause of unit.clauses) {
-      const clause = rawClause.trim()
+    for (const [clauseIndex, rawClause] of unit.clauses.entries()) {
+      let clause = rawClause.trim()
       if (!clause) continue
+
+      const stateGrant = readStateGrant(clause, referencedStateNames)
+      if (stateGrant) {
+        const triggerConditions = [prefix, ...pending, stateGrant.trigger].filter(Boolean)
+        const trigger = triggerConditions.join('，')
+        const { names, teamTarget, profession } = stateGrant
+        const { requirements } = splitTeammateRequirements(triggerConditions)
+        stateGrants.push({ names, sentenceIndex: unitIndex, clauseIndex, teamTarget, profession, requirements })
+        stateReferences[unitIndex].push({ kind: 'grant', names, text: rawClause, clauseIndex, trigger })
+        prefix = ''
+        pending = []
+        anomalyContext = false
+        stateUseContext = null
+        continue
+      }
+
+      const stateUse = stateUses[unitIndex][clauseIndex]
+      if (stateUse) {
+        stateUseContext = resolveStateGrant(stateGrants, stateUse.names, unitIndex)
+        const { grant, resolution } = stateUseContext
+        stateReferences[unitIndex].push({
+          kind: 'reference',
+          names: stateUse.names,
+          text: rawClause,
+          clauseIndex,
+          resolution,
+          grant: grant ? { sentenceIndex: grant.sentenceIndex, clauseIndex: grant.clauseIndex } : null,
+        })
+        clause = stateUse.effectText
+        if (!clause) continue
+      }
+
+      const inlineTrigger = readInlineSkillTrigger(clause)
+      if (inlineTrigger) {
+        pending.push(inlineTrigger.trigger)
+        clause = inlineTrigger.effect
+      }
 
       // 异常语境：**先**在本句任何 continue 之前打开（后面的「该效果」指代要继承它）
       if (ANOMALY_MARK_RE.test(clause)) anomalyContext = true
@@ -2027,31 +2440,32 @@ export function extractKeywordEffects({
       //    转模句（动作=转化）**不拆**：`每1点攻击力转化为1.5点暴击率` 是一个效果。
       const groups = isConvert ? [clause] : splitClauseIntoGroups(clause)
       const thresholds = extractThresholds(clause)
-      // 招式限定只看**本句**（prefix 已按句重置 + 抬头句已合并）：不许把别的句子的招式名搬过来
-      const skillLimits = detectSkillLimits([...pending, clause].join('，'))
-      const anchorInfo = skillLimits.length
-        ? resolveSkillAnchors({ limits: skillLimits, anchors, agentId })
-        : resolveSkillAnchors({ limits: [], anchors, agentId })
+      const sameSentenceGrants = stateGrants.slice(firstGrantIndex)
+      const stateContext = stateUseContext ?? (sameSentenceGrants.length
+        ? resolveStateGrant(sameSentenceGrants, [], unitIndex)
+        : null)
       // **条件只取本句**（用户 2026-10-16 修 1）：抬头条件（`…：`）已被合并进本句，
       // 招式限定并进「作用域」槽位，不再塞进条件。
-      const clauseConditions = conditionList([
-        prefix,
-        ...pending,
-        // 阈值短语（`不足40点`）也是条件：它是触发门槛，不是增益数值
-        ...thresholds,
-      ])
+      const { requirements, remaining } = splitTeammateRequirements(conditionList([
+        prefix, ...pending, ...thresholds,
+        ...(stateContext ? [UNABLE] : []),
+      ]), stateContext?.grant?.requirements)
+      const teammateProfessions = requirements.length > 1 ? [UNABLE] : requirements[0]
       let emittedInClause = false
 
       for (const group of groups) {
+        const skillLimits = detectBenefitingSkills(group, pending)
+        const anchorInfo = resolveSkillAnchors({ limits: skillLimits, anchors, agentId })
+        const contextText = [prefix, ...pending, group].join('，')
         const groupIsConvert = isConvertClause(group) || isConvert
-        const convertParts = groupIsConvert ? readConvertParts([prefix, ...pending, group].join('，')) : null
+        const convertParts = groupIsConvert ? readConvertParts(contextText) : null
         const rawStatKeyword = groupIsConvert
           ? detectStatKeyword(convertParts?.targetText ?? group) || detectStatKeyword(group)
           : detectStatKeyword(group)
         // 「（失衡状态下）受到的伤害提升」：属失衡易伤家族 → 只有在**失衡**在作用域里时才这么判；
         // 否则按「游戏描述坑」当**增伤**（`增伤`）处理（用户 2026-10-16 纠正）。
         const damageTakenPhrase = /(?:受到的伤害|受到伤害)(?:提升|增加|提高|降低|减少|下降)/.test(group)
-        const scopeText = `${prefix}，${pending.join('，')}，${unitText}`
+        const scopeText = stateContext ? contextText : `${prefix}，${pending.join('，')}，${unitText}`
         const imbalanceInScope = /失衡/.test(scopeText)
         const globalImbalance = /(?:均|全局|常驻|非失衡期)[^，。；]{0,10}(?:生效|存在|计入)|均受到|都受到/.test(
           scopeText,
@@ -2071,7 +2485,6 @@ export function extractKeywordEffects({
         const isReference = REFERENCE_RE.test(group)
         const inherited = lastEffect ?? null
         const inheritedSlots = inherited?.slots ?? null
-        const contextText = [prefix, ...pending, group].join('，')
 
         // 属性：本句认不出时按「指代 / 省略」继承（继承值写成具体词）
         let stat = { value: statKeyword || '', source: statKeyword ? 'literal' : 'default' }
@@ -2105,12 +2518,10 @@ export function extractKeywordEffects({
                 } · ${stat.value}`,
               }
             : null
-        // 作用域（编辑器 `scope`）：句中点名子类（异放 / 耀变 / 乱流 / 紊乱 / 异化系数）或
-        // 显式限定异常（`仅对属性异常生效`）→ 填这一格；有招式限定 → `招式`（「限定招式」并进这一格）。
-        // 判定范围含**本句的前置子句**（`[异放]效果触发暴击时，其暴击伤害额外提升40%` 这类）。
-        const scopeValue = skillLimits.length
-          ? '招式'
-          : detectScope([prefix, ...pending, group].join('，'))
+        // 招式标题里的词不参与伤害类型判断。
+        const scopeValue = stat.value === SHARPEN_CRIT_DMG_LABEL
+          ? '锐化'
+          : detectScope(contextText.replace(BRACKETED_SKILL_TITLE_RE, ''))
         let scope = {
           value: scopeValue,
           source: scopeValue === NONE ? 'default' : 'literal',
@@ -2160,19 +2571,26 @@ export function extractKeywordEffects({
         // → 目标判定要看「本句全文」（抬头 + 已并入的句子），用户 2026-10-16。
         // `prevTarget`：同段**前一条**的目标（给「该增益效果…」这类指回前句的句子回落用）。
         const prevTarget = unitEffects.length ? String(unitEffects[unitEffects.length - 1].slots.target ?? '') : ''
-        const target = detectTarget(
-          group,
-          selfNames,
-          inheritedSlots?.target,
-          stat.value,
-          unitText,
-          prevTarget,
+        let target = detectTarget(
+          group, selfNames, inheritedSlots?.target, stat.value, stateContext ? contextText : unitText, prevTarget,
         )
+        const inheritedGrant = stateContext?.grant
+        const inheritsStateTarget = target.source !== 'literal' && inheritedGrant?.teamTarget
+        if (inheritsStateTarget) target = { value: '全队', source: 'inherited' }
+        if (stateContext && stateContext.resolution !== 'linked' && target.value === NONE) {
+          target = { value: UNABLE, source: 'unable' }
+        }
         const object = detectObject(group, action.value, inheritedSlots?.object)
 
         // 条件分类（按句 + 按属性）：同义反复丢弃 / 能表达的保留 / 落不到字段写「无法提取」
         const conditionInfo = classifyConditions({
-          conditions: clauseConditions,
+          conditions: conditionList([
+            inheritsStateTarget && inheritedGrant.profession
+              ? beneficiaryProfessionCondition(inheritedGrant.profession)
+              : '',
+            ...remaining,
+            readExplicitStaggerCondition(group),
+          ]),
           statValue: stat.value,
           isConvert: groupIsConvert,
         })
@@ -2198,6 +2616,7 @@ export function extractKeywordEffects({
             unit,
             target,
             conditions: { value: conditionInfo.value, source: 'literal' },
+            teammateProfessions,
             scope,
             stacks: NONE,
             duration: NONE,
@@ -2231,7 +2650,6 @@ export function extractKeywordEffects({
           stackMax: null,
           durationSeconds: null,
           perStack: false,
-          // —— v3 招式限定（并进「生效范围」这一格；具体招式仍走锚点 `skillTargets`）
           skillLimits,
           /** 指代来源提示（界面用，不入库）：`{ from, fields, label }`，如「依赖上一句 · 增伤」 */
           inherited: inheritedInfo,
@@ -2346,6 +2764,7 @@ export function extractKeywordEffects({
     return {
       sentenceIndex: index,
       rawSentence: unit.text,
+      ...(stateReferences[index].length ? { stateReferences: stateReferences[index] } : {}),
       keywords,
       waste: waste.filter((item) => item.sentenceIndex === index),
       hasKeywords: keywords.length > 0,
@@ -2373,6 +2792,9 @@ export function extractKeywordEffects({
  */
 const STAT_TABLE = {
   // —— 工具语义（阶段1 写进 `属性` 的值）
+  ...Object.fromEntries(
+    Object.entries(INDEPENDENT_ZONE_PERCENT_STATS).map(([label, stat]) => [label, { '%': stat }]),
+  ),
   增伤: { '%': 'dmgBonus', 点: 'dmgBonus' },
   全属性伤害: { '%': 'dmgBonus', 点: 'dmgBonus' },
   招式增伤: { '%': 'skillDmgBonus', 点: 'skillDmgBonus' },
@@ -2395,6 +2817,7 @@ const STAT_TABLE = {
   异常掌控: { '%': 'anomalyControlPercent', 点: 'anomalyControl' },
   暴击率: { '%': 'critRate', 点: 'critRate' },
   暴击伤害: { '%': 'critDmg', 点: 'critDmg' },
+  [SHARPEN_CRIT_DMG_LABEL]: { '%': 'sharpenCritDmgBonus' },
   '攻击力（局外）': { '%': 'externalAtkPercent', 点: 'atk' },
   '攻击力（局内）': { '%': 'inCombatAtkPercent', 点: 'atk' },
   '攻击力（固定）': { '%': 'externalAtkPercent', 点: 'atk' },
@@ -2470,6 +2893,10 @@ export function resolveStatField({ stat, action, unit = '%', conditions = [], te
     const table = STAT_TABLE[keyword]
     const key = String(unit ?? '').trim()
     if (table) {
+      const percentStat = table['%']
+      if (isCustomBuffStatKey(percentStat)) {
+        return key === '%' && (act === '提升' || act === '降低') ? percentStat : ''
+      }
       field =
         act === '转化'
           ? (table['%'] ?? Object.values(table)[0] ?? '')
@@ -2579,7 +3006,23 @@ export const SOFT_UNABLE_SLOTS = SLOT_IDS.filter((id) => !HARD_UNABLE_SLOTS.incl
  * 关键词槽位 → 增益块字段；`无` = 该维度没出现（按默认值落），`无法提取` 按上面分硬 / 软两类处理。
  */
 export function mapKeywordsToEffect(keyword = {}) {
-  const slots = isPlainObject(keyword.slots) ? keyword.slots : {}
+  const sourceSlots = isPlainObject(keyword.slots) ? keyword.slots : {}
+  const anchors = isPlainObject(keyword.anchors) ? keyword.anchors : null
+  const skillTargets = Array.isArray(anchors?.skillTargets) ? anchors.skillTargets : []
+  const sourceConditions = Array.isArray(sourceSlots.conditions) ? sourceSlots.conditions : []
+  const legacyManualState = sourceConditions.includes(LEGACY_MANUAL_STATE_CONDITION)
+  const { value: conditions } = classifyConditions({
+    conditions: sourceConditions.filter((condition) => condition !== LEGACY_MANUAL_STATE_CONDITION),
+    statValue: sourceSlots.stat,
+    isConvert: sourceSlots.action === '转化',
+  })
+  const slots = { ...sourceSlots, conditions }
+  if (legacyManualState && slots.enabledDefault == null) slots.enabledDefault = '关闭'
+  if (slots.target && slots.target !== NONE && !TARGET_OPTIONS.includes(slots.target)) slots.target = UNABLE
+  if (slots.scope === '招式') slots.scope = skillTargets.length ? NONE : UNABLE
+  if (Array.isArray(slots.teammateProfessions) && slots.teammateProfessions.some(
+    (value) => value && value !== NONE && !PROFESSIONS.includes(value),
+  )) slots.teammateProfessions = [UNABLE]
   const steps = []
   const unmapped = []
   const notices = []
@@ -2646,12 +3089,14 @@ export function mapKeywordsToEffect(keyword = {}) {
   const objectRaw = slotValue('object')
   const stacksRaw = slotValue('stacks')
   const durationRaw = slotValue('duration')
-  const conditionsRaw = slotValue('conditions')
+  const teammateProfessions = normalizeTeammateProfessions(
+    (Array.isArray(slots.teammateProfessions) ? slots.teammateProfessions : [])
+      .filter((profession) => PROFESSIONS.includes(profession)),
+  )
   const target = String(targetRaw ?? '').trim()
   const object = String(objectRaw ?? '').trim()
   const stacks = String(stacksRaw ?? '').trim()
   const duration = String(durationRaw ?? '').trim()
-  const conditions = Array.isArray(conditionsRaw) && conditionsRaw.length ? conditionsRaw : [NONE]
   const value = Number(slots.value)
   const isConvert = action === '转化'
 
@@ -2730,24 +3175,23 @@ export function mapKeywordsToEffect(keyword = {}) {
   // —— 条件 → applySituation（失衡 / 非失衡是工具字段；其余能表达的保留文本，落不到字段的
   //    在阶段1 就已经写成 `无法提取` —— 见 `classifyConditions`）
   const conditionTexts = conditions.filter((item) => item && item !== NONE && item !== UNABLE)
-  const unableConditions = conditions.filter((item) => item === UNABLE)
-  let applySituation = 'global'
-  if (!conditionTexts.length && !unableConditions.length) {
-    steps.push(`条件=${NONE} → applySituation=global`)
-  } else {
-    const joined = conditionTexts.join('，')
-    if (/非失衡/.test(joined)) applySituation = 'non_stagger'
-    else if (/失衡/.test(joined)) applySituation = 'stagger'
-    steps.push(
-      `条件=${conditions.join(' + ')} → applySituation=${applySituation}` +
-        (applySituation === 'global' ? '（工具是期望值计算，没建模的条件不许塞进 note）' : ''),
-    )
-  }
+  const beneficiaryProfessions = new Set(
+    conditionTexts.map((text) => PROFESSION_CONDITION_RE.exec(text)?.[1]).filter(Boolean),
+  )
+  const [applyProfession = null] = beneficiaryProfessions
+  if (beneficiaryProfessions.size > 1) unmapped.push('单条增益只能选择一个受益职业')
+  if (applyProfession) steps.push(`受益职业=${applyProfession} → applyProfession=${applyProfession}`)
+  if (teammateProfessions?.length) steps.push(`队友职业满足任一项 → ${teammateProfessions.join('或')}`)
+  const situations = new Set(conditionTexts.map(readApplySituationCondition).filter(Boolean))
+  const [applySituation = 'global'] = situations
+  if (situations.size > 1) unmapped.push('单条增益只能选择一个作用情况')
+  steps.push(`作用情况 → applySituation=${applySituation}`)
+  const enabledDefault = slots.enabledDefault !== '关闭'
+  if (!enabledDefault || slots.enabledDefault === '开启') steps.push(`默认启用 → ${enabledDefault}`)
 
   // —— 目标 → applyTarget
-  let applyTarget = 'self'
-  if (target === '全队') {
-    applyTarget = 'team'
+  const applyTarget = APPLY_TARGET_BY_LABEL[target] ?? 'self'
+  if (applyTarget === 'team') {
     const targetSource = keyword.sources?.target
     steps.push(
       '目标=全队 → applyTarget=team' +
@@ -2755,36 +3199,27 @@ export function mapKeywordsToEffect(keyword = {}) {
         (targetSource === 'default-team-enemy-status' ? '（敌人状态条件 + 暴击族、未限定施放者 → 默认全队）' : ''),
     )
   } else {
-    steps.push(`目标=${target || NONE} → applyTarget=self`)
+    steps.push(`目标=${target || NONE} → applyTarget=${applyTarget}`)
   }
 
   /** 目标默认兜底时写进 note 的**固定短语**（不粘原文；结构化短语白名单） */
   const targetDefaultNote =
     keyword.sources?.target === 'default-team-enemy-status' ? ENEMY_STATUS_TARGET_NOTE : ''
 
-  // —— 作用域（`scope`，编辑器同名字段）→ `scope`；`无` = 通用（不写 scope 之外的值）
+  // 伤害类型与招式目标分别映射，旧 scope 仍供归一化读取。
   const scopeSlot = subkindDedicated ? NONE : String(slotValue('scope') ?? NONE).trim()
   const scopeId = SCOPE_SLOT_TO_ID[scopeSlot] ?? ''
-  let scope = 'general'
-  if (scopeId) {
+  const sharpenOnly = scopeId === 'sharpen'
+  let scope = skillTargets.length ? 'skill' : 'general'
+  if (sharpenOnly) {
+    steps.push('伤害类型=锐化 → conditions.damageTypes=[sharpen]')
+  } else if (scopeId) {
     scope = scopeId
-    steps.push(`作用域=${scopeSlot} → scope=${scopeId}`)
-  } else {
-    steps.push('作用域=无 → scope=general（通用）')
+    steps.push(`伤害类型=${scopeSlot} → scope=${scopeId}`)
   }
 
-  // —— 招式锚点（v3：并进「作用域=招式」；关联不上前面已 return）
-  const anchors = keyword.anchors && isPlainObject(keyword.anchors) ? keyword.anchors : null
-  const skillTargets = Array.isArray(anchors?.skillTargets) ? anchors.skillTargets : []
   if (skillTargets.length) {
-    if (!scopeId) {
-      scope = 'skill'
-      steps.push('有招式锚点但作用域槽位是「无」→ scope=skill（兜底）')
-    }
-    steps.push(
-      `作用域=招式 + 限定招式=${anchors.labels.join(' + ')} → skillTargets=` +
-        JSON.stringify(skillTargets),
-    )
+    steps.push(`限定招式=${(anchors.labels ?? []).join(' + ')} → skillTargets=${JSON.stringify(skillTargets)}`)
   }
 
   // —— 转模专用槽位
@@ -2809,10 +3244,12 @@ export function mapKeywordsToEffect(keyword = {}) {
     }
   }
 
-  // —— 增伤 / 易伤家族 + 动作=降低 → 取负号（易伤区里是减项；增伤同理为负向）
-  const negativeVulnerable = action === '降低' && (VULNERABLE_STATS.has(stat) || stat === 'dmgBonus')
-  const effectValue = negativeVulnerable && Number.isFinite(value) ? -Math.abs(value) : value
-  if (negativeVulnerable) {
+  // —— 加算乘区的「降低」按负值记录。
+  const isNegativeZoneAdjustment =
+    action === '降低' &&
+    (VULNERABLE_STATS.has(stat) || stat === 'dmgBonus' || stat === 'sharpenCritDmgBonus' || isCustomBuffStatKey(stat))
+  const effectValue = isNegativeZoneAdjustment && Number.isFinite(value) ? -Math.abs(value) : value
+  if (isNegativeZoneAdjustment) {
     steps.push(`动作=降低 + ${STAT_LABELS[stat] ?? stat} → 取负号 ${effectValue}（加算区里的减项）`)
   }
 
@@ -2838,16 +3275,13 @@ export function mapKeywordsToEffect(keyword = {}) {
     steps.push(`层数=${stacks} → 转模条只进 note（kind 恒为 convert）`)
   }
 
-  // —— 时长：**不转化**，只进 note（规格 §三）
+  // 原文时长作为备注保留。
   if (duration && duration !== NONE) {
-    steps.push(`时长=${duration} → 不转化，只进 note（后续再议）`)
+    steps.push(`时长=${duration} → 增益备注`)
   }
 
-  // —— 对象：阶段2 不做转模自动判定（留空，界面可手改）
   if (object === '当前招式') {
-    steps.push('对象=当前招式 → 阶段2 不做按招式锚点生效（skillTargets 留空），只进 note')
-  } else if (object === '能量') {
-    steps.push('对象=能量 → 按能量回复口径（energyRegenFlat）')
+    steps.push('对象=当前招式 → 增益备注')
   }
 
   const convertNote = isConvert
@@ -2856,7 +3290,6 @@ export function mapKeywordsToEffect(keyword = {}) {
   // **note 只允许**（用户 2026-10-16）：用户手填的内容，或**枚举性 / 结构化**的固定短语
   // （时长、对象、转模说明、作用域、同义反复已忽略…）。**绝不自动粘原句 / 半句** ——
   // 原文照旧整块入库（`formatSourceBlock` 的 `原文：…`），不由 note 承担。
-  void conditionTexts
   const scopeSlotLabel = String(keyword?.slots?.scope ?? NONE).trim()
   const tautologyDropped = Array.isArray(keyword?.tautologyDropped) ? keyword.tautologyDropped : []
   const noteParts = [
@@ -2887,9 +3320,11 @@ export function mapKeywordsToEffect(keyword = {}) {
          * 阶段1 一次只认一个子类 → 写成单元素数组；以后可多选。
          */
         scope: [scope],
+        ...(sharpenOnly ? { conditions: { damageTypes: ['sharpen'] } } : {}),
         applyTarget,
         applySituation,
-        applyProfession: null,
+        applyProfession,
+        teammateProfessions,
         teamProfession: null,
         teamProfessionValues: null,
         teamProfessionMinCount: null,
@@ -2902,7 +3337,7 @@ export function mapKeywordsToEffect(keyword = {}) {
         maxStacks,
         valuePerStack,
         defaultStacks: 1,
-        enabledDefault: true,
+        enabledDefault,
         note,
         // 招式限定 = 条件（锚点关联到既有招式小类 / 大类）
         skillCategory: anchors?.skillCategory || undefined,
@@ -2978,8 +3413,8 @@ function decorateEffect(effect, rawText) {
  * 一段原文（阶段1 的公开入口）：原文 → 关键字效果（层B/C）+ 废原文。
  * `化简` 按钮、`buildItem`、单测都走这里，保证同源。
  */
-export function simplifyText({ text, origin = '', selfNames = [], anchors = null, agentId = '' } = {}) {
-  const rawText = cleanNanokaText(text)
+export function simplifyText({ text, termNames, origin = '', selfNames = [], anchors = null, agentId = '', emberMarkContext } = {}) {
+  const rawText = cleanNanokaText(text, termNames)
   if (!rawText) return { rawText: '', effects: [], waste: [], sentences: [] }
   const { effects, waste, sentences } = extractKeywordEffects({
     text: rawText,
@@ -2987,6 +3422,7 @@ export function simplifyText({ text, origin = '', selfNames = [], anchors = null
     selfNames,
     anchors,
     agentId,
+    emberMarkContext,
   })
   return {
     rawText,
@@ -3013,14 +3449,16 @@ function buildItem({
   source,
   title,
   text,
+  termNames,
   origin,
   selfNames,
   landing,
   anchors,
   agentId,
+  emberMarkContext,
   skillDesc,
 }) {
-  const simplified = simplifyText({ text, origin, selfNames, anchors, agentId })
+  const simplified = simplifyText({ text, termNames, origin, selfNames, anchors, agentId, emberMarkContext })
   const rawText = simplified.rawText
   if (!rawText) return null
   const decorated = simplified.effects
@@ -3028,22 +3466,19 @@ function buildItem({
   const recordable = decorated.filter((effect) => effect.recorded)
   const keywordsById = new Map(decorated.map((effect) => [effect.id, effect]))
   const sentences = simplified.sentences.map((sentence) => ({
+    ...sentence,
     sourceKey: slot,
     sourceLabel: slotLabel,
-    sentenceIndex: sentence.sentenceIndex,
-    rawSentence: sentence.rawSentence,
     keywords: sentence.keywords
       .map((effect) => keywordsById.get(effect.id))
       .filter(Boolean),
-    waste: sentence.waste,
-    hasKeywords: sentence.keywords.length > 0,
   }))
   return {
     slot,
     slotLabel,
     containerIndex,
     source,
-    title: title ? cleanNanokaText(title) : '',
+    title: title ? cleanNanokaText(title, termNames) : '',
     rawText,
     numbers: extractNumbers(rawText).map((item) => item.value),
     effects: decorated,
@@ -3095,10 +3530,13 @@ const SKILL_SLOT_LABELS = {
  * @param {object} options.detail nanoka 角色详情 JSON
  * @param {string|number} [options.nanokaId]
  * @param {Array<object>|null} [options.anchors] 技能库小类（锚点）
+ * @param {object|null} [options.agent] 本地角色，提供锚点归属和职业
+ * @param {Array<object>} [options.skills] 本地招式库，用于核对烬痕适用招式
  */
-export function extractAgentBuffItems({ detail, nanokaId, anchors = null } = {}) {
+export function extractAgentBuffItems({ detail, nanokaId, termNames, anchors = null, agent = null, skills = [] } = {}) {
   if (!isPlainObject(detail)) throw new Error('缺少角色详情 JSON')
   const id = nanokaId === null || nanokaId === undefined ? '' : String(nanokaId)
+  const agentId = String(agent?.id || id)
   const name = cleanNanokaText(detail.name)
   const selfNames = [name, cleanNanokaText(detail.code_name)].filter(Boolean)
   const items = []
@@ -3110,6 +3548,11 @@ export function extractAgentBuffItems({ detail, nanokaId, anchors = null } = {})
 
   // 来源 2：核心被动 + 额外能力（取满级）→ mindscapeBuffs[0]（复用该槽位已有的块）
   const passive = pickMaxPassiveLevel(detail.passive)
+  const emberMarkContext = {
+    corePassiveText: cleanNanokaText(passive?.desc?.[0], termNames),
+    profession: agent?.profession,
+    skills,
+  }
   if (passive) {
     const names = Array.isArray(passive.name) ? passive.name : []
     const descs = Array.isArray(passive.desc) ? passive.desc : []
@@ -3120,10 +3563,12 @@ export function extractAgentBuffItems({ detail, nanokaId, anchors = null } = {})
       source: 'passive.core',
       title: names[0] ?? '核心被动',
       text: descs[0] ?? '',
+      termNames,
       origin: `nanoka:${id}:passive:core`,
       selfNames,
       anchors,
-      agentId: id,
+      agentId,
+      emberMarkContext,
       landing: { ...slot0Landing, blockHint: '核心被动' },
     })
     if (core) items.push(core)
@@ -3134,10 +3579,12 @@ export function extractAgentBuffItems({ detail, nanokaId, anchors = null } = {})
       source: 'passive.extra',
       title: names[1] ?? '额外能力',
       text: descs[1] ?? '',
+      termNames,
       origin: `nanoka:${id}:passive:extra`,
       selfNames,
       anchors,
-      agentId: id,
+      agentId,
+      emberMarkContext,
       landing: { ...slot0Landing, blockHint: '额外能力' },
     })
     if (extra) items.push(extra)
@@ -3159,10 +3606,12 @@ export function extractAgentBuffItems({ detail, nanokaId, anchors = null } = {})
       source: `talent.${rank}`,
       title: talent.name ?? '',
       text: talent.desc ?? '',
+      termNames,
       origin: `nanoka:${id}:talent:${rank}`,
       selfNames,
       anchors,
-      agentId: id,
+      agentId,
+      emberMarkContext,
       landing: {
         container: 'mindscapeBuffs',
         index: rank,
@@ -3189,12 +3638,14 @@ export function extractAgentBuffItems({ detail, nanokaId, anchors = null } = {})
         source: `skill.${key}.${index}`,
         title: skillName,
         text,
+        termNames,
         origin: `nanoka:${id}:skill:${key}.${index}`,
         selfNames,
         anchors,
-        agentId: id,
+        agentId,
+        emberMarkContext,
         landing: { ...slot0Landing, blockHint: '核心被动' },
-        skillDesc: { agentId: id, skillName, category: key },
+        skillDesc: { agentId, skillName, category: key },
       })
       if (item) items.push(item)
     })
@@ -3208,7 +3659,7 @@ export function extractAgentBuffItems({ detail, nanokaId, anchors = null } = {})
  *
  * 落点：基础效果（`talents[0]`）→ `fixedBuffs`；精炼 j（`j>=1`）→ `refinementBuffs[j-1]`。
  */
-export function extractWengineBuffItems({ detail, nanokaId, anchors = null } = {}) {
+export function extractWengineBuffItems({ detail, nanokaId, termNames, anchors = null } = {}) {
   if (!isPlainObject(detail)) throw new Error('缺少音擎详情 JSON')
   const id = nanokaId === null || nanokaId === undefined ? '' : String(nanokaId)
   const name = cleanNanokaText(detail.name)
@@ -3225,6 +3676,7 @@ export function extractWengineBuffItems({ detail, nanokaId, anchors = null } = {
     source: 'fixed',
     title: talents['0']?.name ?? '基础效果',
     text: baseText,
+    termNames,
     origin: `nanoka:${id}:fixed`,
     selfNames,
     anchors,
@@ -3244,6 +3696,7 @@ export function extractWengineBuffItems({ detail, nanokaId, anchors = null } = {
       source: `weapons.talents.${level}`,
       title: talent.name ?? '',
       text: talent.desc ?? '',
+      termNames,
       origin: `nanoka:${id}:refinement:${level}`,
       selfNames,
       anchors,

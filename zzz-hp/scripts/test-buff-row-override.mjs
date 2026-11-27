@@ -23,6 +23,7 @@ import {
 } from '../src/utils/flowBuffTable.ts'
 import { buildHitEvalFingerprint } from '../src/utils/hitEvalCache.ts'
 import { formatCalcSigned } from '../src/utils/calcNumberFormat.ts'
+import { resolveFlow } from '../src/utils/resolvedHit.ts'
 
 let passed = 0
 let failed = 0
@@ -81,34 +82,31 @@ check(
 
 console.log('=== 2. 结算指纹必须随行级例外变化 ===')
 
-const baseHit = {
-  id: 'flow-1',
-  ownerAgentId: 'velina',
-  anomalyPowerAgentId: 'piper',
-  triggerAgentId: 'remiel',
-  count: 3,
-  staggerPhase: 'stagger',
-  critMode: 'expected',
-  anomalySubKind: 'attributeAnomaly',
-  coords: [],
-  isFollowUp: false,
-  multOverrides: null,
-  panelMods: null,
-  effectiveBaseMult: 100,
-  skillTalentLevel: 12,
-  skill: {
-    id: 'dev-1',
-    name: '测试招式',
-    damageType: 'attributeAnomaly',
-    baseMult: 100,
-    skillTypes: [],
-    buffAnchorId: null,
-    baseMultFactor: 100,
-    settlementMult: 0,
-  },
+const testSkill = {
+  id: 'dev-1',
+  name: '测试招式',
+  agentId: 'velina',
+  source: 'preset',
+  damageType: 'attributeAnomaly',
+  baseMult: 100,
+  skillTypes: [],
+  buffAnchorId: null,
 }
+const { hits: [baseHit] } = resolveFlow({
+  slots: [{
+    prepared: [{
+      id: 'prepared-1',
+      skillId: testSkill.id,
+      anomalyPowerAgentId: 'piper',
+      triggerAgentId: 'remiel',
+    }],
+    flow: [{ id: 'flow-1', preparedId: 'prepared-1', count: 3, staggerPhase: 'stagger' }],
+  }],
+  teamSlots: [{ agentId: testSkill.agentId }],
+  findSkill: (id) => id === testSkill.id ? testSkill : null,
+})
 
-const fNone = buildHitEvalFingerprint({ ...baseHit })
+const fNone = buildHitEvalFingerprint(baseHit)
 const fNull = buildHitEvalFingerprint({ ...baseHit, buffOverride: null })
 const fE1 = buildHitEvalFingerprint({ ...baseHit, buffOverride: { disabledEffectIds: ['e1'] } })
 const fE1Again = buildHitEvalFingerprint({ ...baseHit, buffOverride: { disabledEffectIds: ['e1'] } })

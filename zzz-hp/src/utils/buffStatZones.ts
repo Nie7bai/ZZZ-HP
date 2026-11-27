@@ -158,10 +158,10 @@ export const BUFF_STAT_ZONES: BuffStatZone[] = reactive<BuffStatZone[]>([
   ...CLASS3_ZONES,
 ])
 
-const ZONE_BY_ID = new Map<string, BuffStatZone>()
+const ZONE_BY_ID = reactive(new Map<string, BuffStatZone>())
 
 /** stat → { zone, type }（类2 的 5 个子类字段都能反查） */
-const ZONE_BY_STAT = new Map<string, { zone: BuffStatZone; type?: BuffDamageType }>()
+const ZONE_BY_STAT = reactive(new Map<string, { zone: BuffStatZone; type?: BuffDamageType }>())
 
 function indexZone(zone: BuffStatZone): void {
   ZONE_BY_ID.set(zone.id, zone)

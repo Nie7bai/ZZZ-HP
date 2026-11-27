@@ -35,6 +35,10 @@ import { listSkills, upsertSkill } from '../src/services/skillLibraryService.js'
 import { listSkillSubcategories } from '../src/services/skillSubcategoryService.js'
 import {
   extractDamageSegments as extractDamageSegmentsFromMapper,
+  normalizeSkillName,
+  reserveNanokaSkillId,
+  resolveBuffAnchorId,
+  stableSkillId,
 } from '../src/services/nanoka/nanokaSkillMapper.js'
 
 dotenv.config()
@@ -54,43 +58,6 @@ function readArg(name) {
   const index = process.argv.indexOf(name)
   if (index === -1) return null
   return process.argv[index + 1] ?? null
-}
-
-function normalizeSkillName(name) {
-  return String(name ?? '')
-    .normalize('NFKC')
-    .replace(/[\s\u3000]+/g, '')
-    .replace(/[（]/g, '(')
-    .replace(/[）]/g, ')')
-    .replace(/[：:]/g, '：')
-    .trim()
-}
-
-function stripSkillTitlePrefix(skillName) {
-  return String(skillName ?? '').replace(
-    /^(普通攻击|闪避|冲刺攻击|支援技|特殊技|强化特殊技|连携技|终结技)[:：]/,
-    '',
-  )
-}
-
-/**
- * 「一段伤害倍率」→「一段」；纯「伤害倍率」→ ''。
- */
-function shortParamLabel(paramName) {
-  const raw = String(paramName ?? '').trim()
-  if (raw === '伤害倍率') return ''
-  return raw.replace(/伤害倍率$/, '').trim()
-}
-
-/** 稳定 id，便于反复导入：sk-{agent}-nk-{nanokaSkillId}-{slug} */
-function stableSkillId(agentId, nanokaSkillId, paramName) {
-  const slug = shortParamLabel(paramName) || 'main'
-  const safeSlug = slug
-    .replace(/[^\w\u4e00-\u9fff]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 24)
-  const id = `sk-${agentId}-nk-${nanokaSkillId}-${safeSlug || 'main'}`
-  return id.slice(0, 64)
 }
 
 /**
@@ -120,25 +87,6 @@ function stripAgentNameNoise(name) {
   return String(name ?? '')
     .replace(/[（(][^）)]*[）)]/g, '')
     .trim()
-}
-
-function resolveBuffAnchorId(subcategories, agentId, segment) {
-  const forAgent = subcategories.filter((s) => String(s.agentId ?? '') === agentId)
-  // 优先短参名（如「毁伤伤害倍率」→「毁伤」），再回落到技能标题核心
-  const candidates = [
-    shortParamLabel(segment.paramName),
-    segment.titleCore,
-    stripSkillTitlePrefix(segment.displayName),
-    segment.skillName,
-    segment.displayName,
-  ]
-    .map(normalizeSkillName)
-    .filter(Boolean)
-  for (const sub of forAgent) {
-    const n = normalizeSkillName(sub.name)
-    if (candidates.includes(n)) return sub.id
-  }
-  return null
 }
 
 function sameSkillTypes(a, b) {
@@ -200,6 +148,7 @@ function planAgentImport({
   subcategories,
 }) {
   const agentSkills = existingSkills.filter((s) => String(s.agentId ?? '') === agentId)
+  const usedIds = new Set(existingSkills.map((skill) => String(skill.id)))
 
   const report = {
     create: [],
@@ -233,7 +182,7 @@ function planAgentImport({
       existing = byTypeAndAnchor.get(`${type}|${resolvedAnchor}`)
     }
     const buffAnchorId = resolvedAnchor ?? existing?.buffAnchorId ?? null
-    const id = existing?.id ?? stableSkillId(agentId, seg.nanokaSkillId, seg.paramName)
+    const id = existing?.id ?? reserveNanokaSkillId(stableSkillId(agentId, seg.nanokaSkillId, seg.paramName), usedIds)
     if (existing) matchedIds.add(existing.id)
     const skillTypes = seg.skillTypes
     const element = agentElement

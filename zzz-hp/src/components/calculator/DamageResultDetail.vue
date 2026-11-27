@@ -16,7 +16,7 @@ import {
   type AnomalyFormulaAgentLabels,
 } from '@/utils/anomalyFormulaDisplay'
 import { buildAlignedDirectFormulaGroup } from '@/utils/directDamageDisplay'
-import { zoneLabel } from '@/zones/display'
+import { customZoneResults, formatCustomZoneFormula, zoneLabel } from '@/zones/display'
 
 import type { DamageEventCritMode } from '@/types/calculator'
 import { DAMAGE_EVENT_CRIT_MODE_OPTIONS } from '@/utils/damageEvent'
@@ -183,7 +183,11 @@ const alignedAnomalyFormulas = computed((): AlignedFormulaGroup[] =>
 const valueTips = computed(() => props.sourceTips)
 /** 公式的结果与暴击乘区按本条结算口径解释；其余来源沿用完整面板明细。 */
 const formulaValueTips = computed(() => {
-  const tips = { ...valueTips.value }
+  const tips: Partial<Record<string, StatSourceGroup[]>> = { ...valueTips.value }
+  for (const zone of customZoneResults(props.calcParts)) {
+    const formula = formatCustomZoneFormula(zone)
+    if (formula) tips[zone.key] = [{ label: '计算公式', items: [formula] }]
+  }
   const direct = alignedDirectFormula.value
   const groups = props.show === 'direct' ? [direct] : alignedAnomalyFormulas.value
   for (const group of groups) {
@@ -294,19 +298,19 @@ const formulaValueTips = computed(() => {
             <span v-if="group.hint" class="formula-aligned-hint">{{ group.hint }}</span>
           </span>
           <div class="formula-aligned-body">
-            <template v-for="(term, index) in group.terms" :key="`${group.key}-${term.label}`">
+            <template v-for="(term, index) in group.terms" :key="`${group.key}-${term.tipsKey}`">
               <span v-if="index > 0" class="formula-aligned-op" aria-hidden="true">×</span>
               <div class="formula-aligned-term">
                 <span class="formula-aligned-term-label">{{ term.label }}</span>
                 <span class="formula-aligned-term-value">
-                  <StatValueWithSources :value="term.value" :groups="formulaValueTips[term.tipsKey]" />
+                  <StatValueWithSources :value="term.value" :groups="formulaValueTips[term.tipsKey] ?? []" />
                 </span>
                 <span v-if="term.ownerLabel" class="formula-term-owner">{{ term.ownerLabel }}</span>
               </div>
             </template>
             <span class="formula-aligned-op" aria-hidden="true">→</span>
             <div class="formula-aligned-result">
-              <StatValueWithSources :value="group.result" :groups="formulaValueTips[group.key]" />
+              <StatValueWithSources :value="group.result" :groups="formulaValueTips[group.key] ?? []" />
             </div>
           </div>
         </div>

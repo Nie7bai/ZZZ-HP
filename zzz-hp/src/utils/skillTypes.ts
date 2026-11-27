@@ -1,4 +1,5 @@
 import type { SkillCategoryId, SkillMatchCoord, SkillTypeId } from '@/types/calculator'
+import { DESTRUCTION_SKILL_TYPE_OPTION } from '@/types/calculator'
 
 /**
  * 招式类型相关的清单与映射。
@@ -18,6 +19,7 @@ export const SKILL_TYPE_OPTIONS: { id: SkillTypeId; label: string }[] = [
   { id: 'chain', label: '连携技' },
   { id: 'ultimate', label: '终结技' },
   { id: 'followUp', label: '追加攻击' },
+  DESTRUCTION_SKILL_TYPE_OPTION,
 ]
 
 /** 旧公共招式小类 id，现作为对应类型的匹配坐标（这些记录仍留在库里，不删） */
@@ -70,6 +72,7 @@ const SKILL_TYPE_COORD: Partial<Record<SkillTypeId, SkillMatchCoord>> = {
   },
   chain: { category: 'chain', subcategoryId: null },
   ultimate: { category: 'ultimate', subcategoryId: null },
+  destruction: { category: 'destruction', subcategoryId: null },
 }
 
 /** 旧公共小类 id → 对应招式类型（迁移时把「选了公共小类」还原成「勾了类型」） */
@@ -102,11 +105,16 @@ export function skillTypesIncludeFollowUp(types: SkillTypeId[] | null | undefine
   return (types ?? []).includes('followUp')
 }
 
+/** 取用于旧单值接口的第一个招式大类。 */
+export function firstSkillCategoryCoord(coords: readonly SkillMatchCoord[] | undefined) {
+  return coords?.find((coord) => coord.category !== 'destruction')
+}
+
 /**
  * 把一条招式翻译成 Buff 匹配坐标集合。
  *
  * - 每个类型出一个坐标（小类为空 = 该类型全部招式）
- * - 有增益锚点时，为每个类型再出一个带锚点的坐标，
+ * - 有增益锚点时，为所属大类再出一个带锚点的坐标，
  *   使「限定到具体某招」的 Buff 能命中
  */
 export function buildSkillMatchCoords(options: {
@@ -131,7 +139,7 @@ export function buildSkillMatchCoords(options: {
   for (const type of expanded) {
     const coord = SKILL_TYPE_COORD[type]
     if (!coord) continue
-    categories.add(coord.category)
+    if (coord.category !== 'destruction') categories.add(coord.category)
     push(coord)
   }
 

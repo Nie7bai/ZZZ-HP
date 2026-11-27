@@ -1,6 +1,6 @@
 import type { NanokaApplyRow, NanokaBuffKind, NanokaKeywordAnchors, NanokaKeywordConvert, NanokaKeywordSlots } from '@/api/nanokaBuffs'
-import type { BuffEffect, BuffEffectBlock } from '@/types/calculator'
-import { normalizeBuffEffect } from '@/utils/buffEffect'
+import type { BuffEffect, BuffEffectBlock, BuffSkillTarget, SkillSubcategory } from '@/types/calculator'
+import { formatSkillTargetBracket, normalizeBuffEffect } from '@/utils/buffEffect'
 
 /** 关键字负责来源与解析，效果草稿沿用正式库的 BuffEffect / BuffEffectBlock。 */
 export interface NanokaDraftKeyword {
@@ -24,6 +24,40 @@ export interface NanokaDraftKeyword {
 }
 
 export type NanokaDraftSlots = Record<string, BuffEffectBlock[]>
+
+export function replaceNanokaKeywordSkillTargets(
+  row: NanokaDraftKeyword,
+  targets: BuffSkillTarget[],
+  subcategories: SkillSubcategory[],
+  selectedTarget?: BuffSkillTarget,
+) {
+  const pendingCreates = (row.anchors.pendingCreates ?? []).filter(({ categoryId }) => {
+    // 原先的空小类可能是自动建锚点的占位，手选整类才明确取消该类别的建锚点计划。
+    if (selectedTarget?.category === categoryId && !selectedTarget.subcategoryId) return false
+    return targets.some((target) => target.category === categoryId && !target.subcategoryId)
+  })
+  const resolved = targets.map((target) => {
+    const pending = !target.subcategoryId && pendingCreates.find((item) => item.categoryId === target.category)
+    return {
+      ...target,
+      subcategoryId: target.subcategoryId ?? null,
+      name: pending ? pending.name : formatSkillTargetBracket(target, subcategories).slice(1, -1),
+      level: target.subcategoryId ? 'subcategory' : 'category',
+    }
+  })
+  const singleTarget = targets.length === 1 ? targets[0] : undefined
+  row.anchors = {
+    ok: true,
+    labels: resolved.map(({ name }) => name),
+    resolved,
+    skillTargets: targets.map((target) => ({ ...target })),
+    skillCategory: singleTarget?.category ?? '',
+    skillSubcategoryId: singleTarget?.subcategoryId ?? null,
+    pendingCreates,
+    reason: '',
+  }
+  row.recorded = true
+}
 
 export function nanokaDraftSlot(kind: NanokaBuffKind, row: Pick<NanokaDraftKeyword, 'source' | 'containerIndex'>): string {
   return kind === 'wengine' && row.source === 'fixed' ? 'fixed' : String(row.containerIndex ?? 0)

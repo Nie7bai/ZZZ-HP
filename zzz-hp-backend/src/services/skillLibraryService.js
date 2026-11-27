@@ -187,6 +187,21 @@ export async function listSkills() {
   return rows.map(rowToDoc)
 }
 
+/** 增益采集预览只读对应角色的招式，避免触发公共招式初始化。 */
+export async function listAgentSkills(agentId) {
+  if (!agentId) return []
+  try {
+    const [rows] = await pool.query(
+      `SELECT * FROM ${TABLE} WHERE agent_id = ? ORDER BY damage_type, sort_order, name, id`,
+      [agentId],
+    )
+    return rows.map(rowToDoc)
+  } catch (err) {
+    if (err?.code === 'ER_NO_SUCH_TABLE') return []
+    throw err
+  }
+}
+
 export async function upsertSkill(doc) {
   await ensureTable()
   let id = String(doc.id ?? '').trim()

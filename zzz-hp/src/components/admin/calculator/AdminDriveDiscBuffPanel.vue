@@ -303,7 +303,7 @@ defineExpose({ scrollToSection, saveItem, removeItem, selectedId, saving })
               placeholder="佩戴该套装 4 件套时显示"
             />
           </label>
-          <AdminBuffEffectEditor v-model="form.fourPieceBuffs.effectBlocks" />
+          <AdminBuffEffectEditor v-model="form.fourPieceBuffs.effectBlocks" allow-teammates-target />
         </section>
 
         <p v-if="error" class="form-error">{{ error }}</p>

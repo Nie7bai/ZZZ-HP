@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, useId, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import {
@@ -33,10 +33,14 @@ import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import { useMaskClose } from '@/composables/useMaskClose'
 import { clearAdminAuthenticated } from '@/utils/adminAuth'
 import AdminBuffEffectEditor from '@/components/admin/calculator/AdminBuffEffectEditor.vue'
-import type { BuffEffect, BuffEffectBlock } from '@/types/calculator'
+import AdminBuffSkillTargets from '@/components/admin/calculator/AdminBuffSkillTargets.vue'
+import AgentFuzzySelect from '@/components/admin/calculator/AgentFuzzySelect.vue'
+import type { BuffEffect, BuffEffectBlock, BuffSkillTarget } from '@/types/calculator'
+import { BUFF_APPLY_TARGET_LABELS } from '@/types/calculator'
+import { loadRuntimeZoneSchemes } from '@/zones/schemeSource'
 import { normalizeBuffEffect } from '@/utils/buffEffect'
 import { validateEffectGroups } from '@/utils/buffEffectRows'
-import { createNanokaBuffDraft, nanokaDraftApplyRows, refreshNanokaBuffDraft, rememberNanokaDraftEdits, type NanokaDraftSlots } from '@/utils/nanokaBuffDraft'
+import { createNanokaBuffDraft, nanokaDraftApplyRows, refreshNanokaBuffDraft, rememberNanokaDraftEdits, replaceNanokaKeywordSkillTargets, type NanokaDraftSlots } from '@/utils/nanokaBuffDraft'
 
 /**
  * nanoka 增益：阶段一校对原文/关键字，阶段二复用正式库的效果块编辑器。
@@ -46,7 +50,7 @@ import { createNanokaBuffDraft, nanokaDraftApplyRows, refreshNanokaBuffDraft, re
 
 const router = useRouter()
 const store = useCalculatorBuffStore()
-const { agents, wengines } = storeToRefs(store)
+const { agents, wengines, skillSubcategories } = storeToRefs(store)
 /** nanoka 静态站：响应带 `Access-Control-Allow-Origin: *`，浏览器可直接 fetch */
 const NANOKA_STATIC = 'https://static.nanoka.cc'
 const INDEX_TIMEOUT_MS = 25000
@@ -79,8 +83,6 @@ interface KeywordRow {
   stackMax: number | null
   durationSeconds: number | null
   anchors: NanokaKeywordAnchors
-  /** 招式限定（`[普通攻击]` 这类）：条件，不是来源 / 落点 */
-  skillLimits: { name: string; category: string }[]
   /** 指代来源提示（界面用）：`依赖上一句 · 增伤`，没有则 null */
   inherited: { from: string; fields: string[]; label: string } | null
   /** 同义反复被忽略的条件原文（界面标淡色提示，不入库） */
@@ -98,6 +100,7 @@ interface KeywordRow {
   /** 阶段二：是否加入（默认加入；取消勾选 → 标灰、不参与写入准备） */
   included: boolean
   keywordDirty: boolean
+  keywordRevision: number
   /** 阶段二：实际增益（增益块全字段） */
   gain: BuffEffect | null
   dirty: Record<string, boolean>
@@ -116,7 +119,7 @@ interface KeywordRow {
 
 const kind = ref<NanokaBuffKind>('agent')
 const selectedId = ref('')
-const localQuery = ref('')
+const localSelectorId = useId()
 
 const page = ref<Page>('stage1')
 const meta = ref<NanokaExtractorMeta | null>(null)
@@ -166,21 +169,6 @@ const localOptions = computed<LocalOption[]>(() => {
   }))
 })
 
-const filteredOptions = computed(() => {
-  const query = localQuery.value.trim().toLowerCase()
-  if (!query) return localOptions.value
-  return localOptions.value.filter(
-    (option) => option.name.toLowerCase().includes(query) || option.id.toLowerCase().includes(query),
-  )
-})
-
-const selectOptions = computed(() => {
-  const list = filteredOptions.value
-  if (!selectedId.value || list.some((option) => option.id === selectedId.value)) return list
-  const current = localOptions.value.find((option) => option.id === selectedId.value)
-  return current ? [current, ...list] : list
-})
-
 const selectedLocal = computed(
   () => localOptions.value.find((option) => option.id === selectedId.value) ?? null,
 )
@@ -192,9 +180,9 @@ const FALLBACK_SLOT_OPTIONS: Record<string, string[]> = {
   elements: ['物理', '火', '冰', '电', '以太', '风', NONE],
   action: ['提升', '降低', '无视', '转化', UNABLE],
   unit: ['%', '点', NONE],
-  target: ['自身', '全队', '指定职业', '指定阵营', NONE, UNABLE],
+  target: [...Object.values(BUFF_APPLY_TARGET_LABELS), NONE, UNABLE],
   conditions: [NONE, '攻击失衡敌人时', '攻击非失衡敌人时', '队伍中存在与自身属性或阵营相同的角色时', '队伍中存在其他异常角色或同阵营角色时', UNABLE],
-  scope: [NONE, '招式', '异常', '紊乱', '乱流', '异放', '耀变', '异化系数'],
+  scope: [NONE, '锐化', '属性异常', '紊乱', '乱流', '异放', '耀变', '异化系数'],
   stacks: [NONE, UNABLE],
   duration: [NONE, UNABLE],
   object: ['当前招式', '装备者', '敌人', NONE, UNABLE],
@@ -210,10 +198,10 @@ const SLOT_ORDER = [
   'unit',
   'target',
   'conditions',
+  'teammateProfessions',
   'scope',
   'stacks',
-  'duration',
-  'object',
+  'enabledDefault',
 ] as const
 
 /** 允许复数的槽位（用户 2026-10-16：复数白名单 = 条件 / 元素） */
@@ -227,9 +215,9 @@ const SLOT_LABELS: Record<string, string> = {
   unit: '单位',
   target: '目标',
   conditions: '条件',
-  /** 作用域 = 编辑器里的 `scope`（用户 2026-10-16：字段名就叫「作用域」）；「限定招式」并进这一格 */
-  scope: '作用域',
+  teammateProfessions: '队友职业（满足任一）',
   stacks: '层数',
+  enabledDefault: '默认启用',
   duration: '时长',
   object: '对象',
   // 转模文案定稿（用户 2026-10-16；括号里是它对应的 normalizeConvert 字段）
@@ -285,11 +273,12 @@ const CONVERT_PANEL_SOURCE_LABELS: Record<string, string> = {
 
 function optionsOf(slotId: string): string[] {
   const fromMeta = meta.value?.slotOptions?.[slotId]
-  if (Array.isArray(fromMeta) && fromMeta.length) return fromMeta
-  return FALLBACK_SLOT_OPTIONS[slotId] ?? []
+  const options = Array.isArray(fromMeta) && fromMeta.length ? fromMeta : FALLBACK_SLOT_OPTIONS[slotId] ?? []
+  return slotId === 'scope' ? options.filter((option) => option !== '招式') : options
 }
 
 function slotLabel(slotId: string): string {
+  if (slotId === 'scope') return '伤害类型'
   return (
     meta.value?.convertSlotLabels?.[slotId] ??
     meta.value?.slotLabels?.[slotId] ??
@@ -314,6 +303,14 @@ function displaySlotValue(slotId: string, value: unknown): string {
   return text
 }
 
+function formatKeywordSummary(row: KeywordRow): string {
+  const { stat, action, value, unit } = row.slots
+  const valueSummary = action === '转化'
+    ? '转模'
+    : `数值=${value ?? ''}${unit === NONE ? '' : unit ?? ''}`
+  return `属性=${displaySlotValue('stat', stat)} · 动作=${action ?? ''} · ${valueSummary}`
+}
+
 /** 该槽位是不是「无值」（`无` / 空）——`无` 默认隐藏（v3.1） */
 function isEmptySlotValue(value: unknown): boolean {
   if (value === null || value === undefined) return true
@@ -322,11 +319,15 @@ function isEmptySlotValue(value: unknown): boolean {
   return !text || text === NONE
 }
 
+function isEmptyKeywordSkillSlot(row: KeywordRow): boolean {
+  return row.anchors.ok && row.anchors.skillTargets.length === 0
+}
+
 /** 数字槽位（渲染成 `type=number`，不走下拉） */
 const NUMBER_SLOT_IDS = ['value', 'convertRatio', 'convertBase', 'convertCap']
 
 /** 单值文本槽位（下拉 / 输入框直接写回 `row.slots[id]`） */
-const SINGLE_TEXT_SLOT_IDS = ['stat', 'action', 'unit', 'target', 'scope', 'stacks', 'duration', 'object']
+const SINGLE_TEXT_SLOT_IDS = ['stat', 'action', 'unit', 'target', 'scope', 'stacks', 'enabledDefault']
 
 function isNumberSlot(slotId: string): boolean {
   return NUMBER_SLOT_IDS.includes(slotId)
@@ -464,10 +465,56 @@ function rowsForSentence(itemKey: string, sentenceIndex: number): KeywordRow[] {
 /** 左侧要显示哪些来源块（整块抽不出关键字 → 不显示，只在废原文区出现） */
 const visibleItems = computed(() => items.value.filter((item) => keywordSentences(item).length > 0))
 
-// —— 「整块原文」弹窗（用户 2026-10-16）：弹窗里同样剔除完全解析不出来的句子，并高亮当前句
-const originalVisible = ref(false)
-const originalItem = ref<NanokaBuffItem | null>(null)
-const originalHighlight = ref(0)
+type SourceDialog =
+  | { view: 'keywords' | 'original'; item: NanokaBuffItem }
+  | { view: 'comparison'; item: NanokaBuffItem; sentence: NanokaBuffSentence }
+
+const sourceDialog = ref<SourceDialog | null>(null)
+const sourceDialogTitles = {
+  keywords: '关键字一览',
+  original: '展示原文',
+  comparison: '对比原文',
+}
+
+const keywordOverview = computed(() => {
+  const dialog = sourceDialog.value
+  if (dialog?.view !== 'keywords') return []
+  return dialog.item.sentences.map(({ sentenceIndex, rawSentence }) => ({
+    sentenceIndex,
+    rawSentence,
+    keywordCount: rowsForSentence(dialog.item.slot, sentenceIndex).length,
+  }))
+})
+
+const firstKeywordSentenceIndex = computed(() =>
+  keywordOverview.value.find((sentence) => sentence.keywordCount > 0)?.sentenceIndex,
+)
+
+const comparisonKeywordRows = computed(() => {
+  const dialog = sourceDialog.value
+  return dialog?.view === 'comparison'
+    ? rowsForSentence(dialog.item.slot, dialog.sentence.sentenceIndex)
+    : []
+})
+
+/** 按已返回的句序对齐整段原文，取回切句时省略的标点和换行。 */
+const originalComparisonSentence = computed(() => {
+  const dialog = sourceDialog.value
+  if (dialog?.view !== 'comparison') return null
+  const { rawText, sentences } = dialog.item
+  const characters = [...rawText.matchAll(/[^\s。；]/g)]
+  const sourceText = characters.map(([character]) => character).join('')
+  let offset = 0
+  for (const sentence of sentences) {
+    const text = sentence.rawSentence.replace(/[\s。；]/g, '')
+    if (!sourceText.startsWith(text, offset)) return null
+    const start = characters[offset]?.index
+    offset += text.length
+    if (sentence.sentenceIndex !== dialog.sentence.sentenceIndex) continue
+    return start === undefined ? null : rawText.slice(start, characters[offset]?.index).trimEnd()
+  }
+  return null
+})
 
 /** 「解析规则」弹窗（只读；数据来自后端 `/rules`，界面不手写规则） */
 const rulesVisible = ref(false)
@@ -584,30 +631,18 @@ async function openEmptyTargets() {
 /** 点一项 = 等价于在「本地角色 / 本地音擎」下拉里选中它（停在可点 [抓取增益] 的状态） */
 function pickEmptyTarget(row: NanokaEmptyTarget) {
   selectedId.value = row.id
-  localQuery.value = ''
   emptyVisible.value = false
   messageKind.value = 'ok'
   message.value = `已选中${kindLabel.value}「${row.name}」（ID ${row.id}）—— 现在可以直接点 [抓取增益]`
 }
 
-function openOriginal(item: NanokaBuffItem, sentenceIndex = -1) {
-  originalItem.value = item
-  const keywordSentencesOfItem = keywordSentences(item)
-  originalHighlight.value =
-    sentenceIndex >= 0
-      ? sentenceIndex
-      : (keywordSentencesOfItem[0]?.sentenceIndex ?? 0)
-  originalVisible.value = true
-}
-
-function closeOriginal() {
-  originalVisible.value = false
-  originalItem.value = null
+function closeSourceDialog() {
+  sourceDialog.value = null
 }
 
 // 遮罩点击关闭：只有「按下 + 松开都在遮罩上」才关，拖选文字出界松手不误关。
 // 本组件有三个遮罩弹窗，各用一个独立实例，按下态不会互相串。
-const { onMaskPointerDown, onMaskClick } = useMaskClose(closeOriginal)
+const { onMaskPointerDown, onMaskClick } = useMaskClose(closeSourceDialog)
 const { onMaskPointerDown: onRulesMaskPointerDown, onMaskClick: onRulesMaskClick } = useMaskClose(
   () => {
     rulesVisible.value = false
@@ -617,15 +652,6 @@ const { onMaskPointerDown: onEmptyMaskPointerDown, onMaskClick: onEmptyMaskClick
   () => {
     emptyVisible.value = false
   },
-)
-
-/**
- * 弹窗里显示的句子：**这一段（整块）的完整原文**，一句都不删（用户 2026-10-17：
- * 之前只列「产出过关键字」的句子，块里只有一句时弹窗与左侧那句一模一样 → 没意义）。
- * 没抽出关键字的句子照样列出，标淡色 + 「无关键字」（它们同时也在底部废原文区）。
- */
-const originalSentences = computed<NanokaBuffSentence[]>(() =>
-  originalItem.value ? originalItem.value.sentences : [],
 )
 
 // ---------------------------------------------------------------- 废原文（按来源块 · 整段原文）
@@ -687,6 +713,13 @@ const wasteBlocks = computed<WasteBlockRow[]>(() => {
   })
 })
 
+const originalSourceSegments = computed(() => {
+  const dialog = sourceDialog.value
+  if (dialog?.view !== 'original') return []
+  const block = wasteBlocks.value.find((entry) => entry.itemKey === dialog.item.slot)
+  return block?.segments ?? [{ text: dialog.item.rawText, waste: false }]
+})
+
 // ---------------------------------------------------------------- Row 组装
 
 function defaultGain(effect: NanokaLayerCEffect): BuffEffect | null {
@@ -695,6 +728,9 @@ function defaultGain(effect: NanokaLayerCEffect): BuffEffect | null {
 
 function toRow(effect: NanokaKeywordEffect, item: NanokaBuffItem, index: number): KeywordRow {
   const key = `${item.slot}#${index}`
+  const conditionValues = Array.isArray(effect.slots.conditions) ? effect.slots.conditions : []
+  const legacyManualState = conditionValues.includes('状态需手动启用')
+  const conditions = conditionValues.filter((condition) => condition !== '状态需手动启用')
   return {
     key,
     itemKey: item.slot,
@@ -715,9 +751,11 @@ function toRow(effect: NanokaKeywordEffect, item: NanokaBuffItem, index: number)
       value: effect.slots.value,
       unit: String(effect.slots.unit ?? NONE),
       target: String(effect.slots.target ?? NONE),
-      conditions: Array.isArray(effect.slots.conditions) ? [...effect.slots.conditions] : [NONE],
-      scope: String(effect.slots.scope ?? NONE),
+      conditions: conditions.length ? conditions : [NONE],
+      teammateProfessions: [...(effect.slots.teammateProfessions ?? [NONE])],
+      scope: effect.slots.scope === '招式' ? NONE : String(effect.slots.scope ?? NONE),
       stacks: String(effect.slots.stacks ?? NONE),
+      enabledDefault: effect.slots.enabledDefault ?? (legacyManualState ? '关闭' : NONE),
       duration: String(effect.slots.duration ?? NONE),
       object: String(effect.slots.object ?? NONE),
     },
@@ -725,7 +763,6 @@ function toRow(effect: NanokaKeywordEffect, item: NanokaBuffItem, index: number)
     stackMax: effect.stackMax,
     durationSeconds: effect.durationSeconds,
     anchors: effect.anchors,
-    skillLimits: Array.isArray(effect.skillLimits) ? effect.skillLimits.map((item) => ({ ...item })) : [],
     inherited: effect.inherited ?? null,
     tautologyDropped: Array.isArray(effect.tautologyDropped) ? [...effect.tautologyDropped] : [],
     collection: effect.collection ? { ...effect.collection } : undefined,
@@ -738,6 +775,7 @@ function toRow(effect: NanokaKeywordEffect, item: NanokaBuffItem, index: number)
     // 默认全部加入（可写条目全勾选）；用户可在阶段二把不想加入的去掉
     included: true,
     keywordDirty: false,
+    keywordRevision: 0,
     gain: effect.layerC ? defaultGain(effect.layerC) : null,
     dirty: {},
     conflicts: [],
@@ -818,6 +856,7 @@ interface IndexEntry {
 
 let indexMap: Record<string, IndexEntry> = {}
 let indexKind: NanokaBuffKind | '' = ''
+let nounIndex: { tag: string; entries: Record<string, { name?: unknown }> } | null = null
 
 function nanokaUrl(path: string) {
   return `${NANOKA_STATIC}${path}`
@@ -846,6 +885,28 @@ async function fetchNanokaJson(url: string, timeoutMs: number): Promise<unknown>
   } finally {
     window.clearTimeout(timer)
   }
+}
+
+async function loadNanokaTermNames(tag: string, detail: unknown): Promise<Record<string, string>> {
+  const detailText = JSON.stringify(detail) ?? ''
+  const termIds = new Set<string>()
+  for (const [, id] of detailText.matchAll(/<Term:(\d+)>/g)) {
+    if (id) termIds.add(id)
+  }
+  if (!termIds.size) return {}
+
+  if (nounIndex?.tag !== tag) {
+    const raw = await fetchNanokaJson(nanokaUrl(`/zzz/${tag}/zh/noun.json`), DETAIL_TIMEOUT_MS)
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Nanoka 术语表格式错误')
+    nounIndex = { tag, entries: raw as Record<string, { name?: unknown }> }
+  }
+
+  const names: Record<string, string> = {}
+  for (const id of termIds) {
+    const name = nounIndex.entries[id]?.name
+    if (typeof name === 'string' && name.trim()) names[id] = name
+  }
+  return names
 }
 
 function readBuildTag(manifest: unknown): string {
@@ -919,6 +980,13 @@ async function fetchAndExtract() {
       nanokaUrl(`/zzz/${tag}/zh/${kind.value === 'agent' ? 'character' : 'weapon'}/${resolved.nanokaId}.json`),
       DETAIL_TIMEOUT_MS,
     )
+    let termNames: Record<string, string> | undefined
+    let termWarning = ''
+    try {
+      termNames = await loadNanokaTermNames(tag, detail)
+    } catch {
+      termWarning = '。Nanoka 术语表暂不可用，缺失的术语可手动补填'
+    }
     fetching.value = false
     extracting.value = true
     statusLine.value = `build ${tag} · nanoka #${resolved.nanokaId} · 已抓到详情，正在抽取关键字…`
@@ -927,10 +995,11 @@ async function fetchAndExtract() {
       nanokaId: resolved.nanokaId,
       meta: resolved.meta,
       detail,
+      termNames,
     })
     applyExtractResult(result)
     messageKind.value = 'ok'
-    message.value = serverMessage
+    message.value = serverMessage + termWarning
     statusLine.value = `build ${tag} · nanoka #${resolved.nanokaId}（${result.name}）→ 本地 ${result.localId}`
   } catch (err) {
     if (isNanokaBuffsAuthError(err)) {
@@ -948,7 +1017,6 @@ async function fetchAndExtract() {
 
 function onKindChange() {
   selectedId.value = ''
-  localQuery.value = ''
   indexMap = {}
   indexKind = ''
   buildTag.value = ''
@@ -995,6 +1063,7 @@ async function simplifyOne(slot: string) {
     const { result, message: serverMessage } = await simplifyNanokaBuffs({
       kind: kind.value,
       nanokaId: nanokaId.value,
+      corePassiveText: items.value.find((entry) => entry.slot === 'core')?.rawText,
       items: [
         {
           slot: item.slot,
@@ -1065,24 +1134,45 @@ async function simplifyAll() {
 // ---------------------------------------------------------------- 关键字编辑
 
 /**
- * 关键字一改就**自动重算这一行的阶段二**（用户 2026-10-17：不该再有「点 [解析]」这一步）。
- * 控件都是离散的（下拉 / 按钮 / change），一次改动触发一次；250ms 合并连点。
+ * 阶段一改动批量重算，250ms 内的连续操作共用一份请求。
  */
 let autoParseTimer: ReturnType<typeof setTimeout> | undefined
-function scheduleAutoParse(row: KeywordRow) {
-  const key = row.key
+function scheduleAutoParse() {
   if (autoParseTimer) clearTimeout(autoParseTimer)
   autoParseTimer = setTimeout(() => {
     autoParseTimer = undefined
-    if (!rows.value.some((item) => item.key === key)) return
-    void runParse([key])
+    void runParse()
   }, 250)
 }
 
 function markKeywordDirty(row: KeywordRow) {
   row.keywordDirty = true
+  row.keywordRevision += 1
   row.writeLabel = ''
-  scheduleAutoParse(row)
+  writePlan.value = null
+  writeMessage.value = ''
+  confirmVisible.value = false
+  scheduleAutoParse()
+}
+
+function keywordSkillTargetLabels(row: KeywordRow) {
+  return row.anchors.skillTargets.map(({ category, subcategoryId }) =>
+    subcategoryId ? undefined : row.anchors.pendingCreates?.find((item) => item.categoryId === category)?.name,
+  )
+}
+
+function setKeywordSkillTargets(row: KeywordRow, targets: BuffSkillTarget[], selectedTarget?: BuffSkillTarget) {
+  replaceNanokaKeywordSkillTargets(row, targets, skillSubcategories.value, selectedTarget)
+  row.dropReason = ''
+  markKeywordDirty(row)
+}
+
+function addKeywordSkillTarget(row: KeywordRow, target: BuffSkillTarget) {
+  const current = row.anchors.skillTargets
+  const alreadySelected = current.some(
+    (item) => item.category === target.category && item.subcategoryId === target.subcategoryId,
+  )
+  setKeywordSkillTargets(row, alreadySelected ? current : [...current, target], target)
 }
 
 function setSlot(row: KeywordRow, slotId: string, value: unknown) {
@@ -1104,6 +1194,8 @@ function setSlot(row: KeywordRow, slotId: string, value: unknown) {
     row.slots.conditions = Array.isArray(value) ? value.map((item) => String(item)) : [String(value)]
   } else if (slotId === 'elements') {
     row.slots.elements = Array.isArray(value) ? value.map((item) => String(item)) : [String(value)]
+  } else if (slotId === 'teammateProfessions') {
+    row.slots.teammateProfessions = Array.isArray(value) ? value.map(String) : [String(value)]
   } else if (SINGLE_TEXT_SLOT_IDS.includes(slotId)) {
     ;(row.slots as unknown as Record<string, string>)[slotId] = String(value)
   } else {
@@ -1129,6 +1221,14 @@ function multiValues(row: KeywordRow, slotId: string): string[] {
   if (slotId === 'conditions') return row.slots.conditions
   if (slotId === 'elements') return row.slots.elements
   return []
+}
+
+function setKeywordTeammateProfession(row: KeywordRow, profession: string, checked: boolean) {
+  const choices = optionsOf('teammateProfessions').filter((option) => option !== NONE && option !== UNABLE)
+  const next = choices.filter((option) =>
+    option === profession ? checked : row.slots.teammateProfessions?.includes(option),
+  )
+  setSlot(row, 'teammateProfessions', next.length ? next : [NONE])
 }
 
 function addMulti(row: KeywordRow, slotId: string) {
@@ -1174,7 +1274,11 @@ function removeRow(row: KeywordRow) {
 function keywordPayload() {
   return rows.value.map((row) => ({
     key: row.key,
-    slots: { ...row.slots, conditions: [...row.slots.conditions] },
+    slots: {
+      ...row.slots,
+      conditions: [...row.slots.conditions],
+      teammateProfessions: [...(row.slots.teammateProfessions ?? [])],
+    },
     convert: row.convert ? { ...row.convert } : null,
     stackMax: row.stackMax,
     durationSeconds: row.durationSeconds,
@@ -1226,12 +1330,11 @@ function mergeParseRows(parsed: NanokaParseResultRow[]) {
   rows.value = next
 }
 
-async function runParse(targetKeys?: string[]) {
-  if (busy.value || !rows.value.length) return
-  const selectedRows = targetKeys?.length
-    ? rows.value.filter((row) => targetKeys.includes(row.key))
-    : rows.value
+async function runParse() {
+  if (busy.value) return
+  const selectedRows = rows.value.filter((row) => row.keywordDirty)
   if (!selectedRows.length) return
+  const revisions = new Map(selectedRows.map((row) => [row.key, row.keywordRevision]))
   rememberNanokaDraftEdits(draftSlots.value, rows.value)
   parsing.value = true
   message.value = ''
@@ -1242,10 +1345,11 @@ async function runParse(targetKeys?: string[]) {
         effect: row.gain ? ({ ...row.gain } as Partial<NanokaLayerCEffect>) : null,
         dirty: { ...row.dirty },
       })),
-      keywords: keywordPayload().filter((keyword) => selectedRows.some((row) => row.key === keyword.key)),
+      keywords: keywordPayload().filter((keyword) => revisions.has(keyword.key)),
       agentId: kind.value === 'agent' ? selectedId.value : '',
     })
-    mergeParseRows(result.rows)
+    const currentKeys = new Set(rows.value.filter((row) => revisions.get(row.key) === row.keywordRevision).map((row) => row.key))
+    mergeParseRows(result.rows.filter((row) => currentKeys.has(row.key)))
     refreshNanokaBuffDraft(kind.value, draftSlots.value, rows.value)
     messageKind.value = 'ok'
     message.value = serverMessage
@@ -1256,6 +1360,9 @@ async function runParse(targetKeys?: string[]) {
     handleError(err, '解析失败')
   } finally {
     parsing.value = false
+    if (rows.value.some((row) => row.keywordDirty && revisions.get(row.key) !== row.keywordRevision)) {
+      scheduleAutoParse()
+    }
   }
 }
 
@@ -1266,8 +1373,9 @@ async function runParse(targetKeys?: string[]) {
 async function switchPage(next: Page) {
   page.value = next
   if (next !== 'stage2') return
-  if (!rows.value.some((row) => row.keywordDirty)) return
-  await runParse()
+  const refreshStatCatalog = loadRuntimeZoneSchemes()
+  if (rows.value.some((row) => row.keywordDirty)) await runParse()
+  await refreshStatCatalog
 }
 
 function resolveConflict(row: KeywordRow, conflict: NanokaParseConflict, choice: 'mine' | 'theirs') {
@@ -1351,7 +1459,7 @@ function buildApplyRows(): NanokaApplyRow[] {
 }
 
 async function runApply(dryRun: boolean) {
-  if (busy.value) return
+  if (busy.value || rows.value.some((row) => row.keywordDirty)) return
   if (!selectedId.value) {
     messageKind.value = 'err'
     message.value = `请先选一个本地${kindLabel.value}`
@@ -1429,7 +1537,7 @@ const confirmMessage = computed(() => {
     .join('\n')
 })
 
-const canWrite = computed(() => buildApplyRows().length > 0 && !busy.value)
+const canWrite = computed(() => !busy.value && !rows.value.some((row) => row.keywordDirty) && buildApplyRows().length > 0)
 
 const wasteOpen = ref(true)
 const wasteCount = computed(() =>
@@ -1468,19 +1576,19 @@ const wasteCount = computed(() =>
           音擎
         </button>
       </div>
-      <label class="field nbf-field">
-        <span class="field-label">搜索本地{{ kindLabel }}</span>
-        <input v-model="localQuery" type="text" class="field-input" placeholder="名称 / ID" />
-      </label>
-      <label class="field nbf-field nbf-field-wide">
-        <span class="field-label">本地{{ kindLabel }}</span>
-        <select v-model="selectedId" class="field-input" :disabled="busy">
-          <option value="">请选择…</option>
-          <option v-for="option in selectOptions" :key="option.id" :value="option.id">
-            {{ option.name }}{{ option.meta ? `（${option.meta}）` : '' }}
-          </option>
-        </select>
-      </label>
+      <div class="field nbf-field nbf-field-wide">
+        <label class="field-label" :for="localSelectorId">本地{{ kindLabel }}</label>
+        <AgentFuzzySelect
+          :key="kind"
+          v-model="selectedId"
+          :agents="localOptions"
+          :input-id="localSelectorId"
+          empty-label="请选择…"
+          placeholder="输入名称或 ID…"
+          :no-match-label="`无匹配${kindLabel}`"
+          :disabled="busy"
+        />
+      </div>
       <button type="button" class="primary-btn" :disabled="busy || !selectedId" @click="fetchAndExtract">
         {{ fetching ? '抓取中…' : extracting ? '抽取中…' : '抓取增益' }}
       </button>
@@ -1549,7 +1657,12 @@ const wasteCount = computed(() =>
           <span class="nbf-item-title">{{ item.title }}</span>
           <span class="nbf-badge nbf-badge-ok">有增益 {{ keywordSentences(item).length }} 句</span>
           <span v-if="item.landing" class="nbf-sub">写入槽位：{{ item.landing.label }}</span>
-          <button type="button" class="nbf-mini-btn" @click="openOriginal(item)">整块原文</button>
+          <button type="button" class="nbf-mini-btn" @click="sourceDialog = { view: 'keywords', item }">
+            {{ sourceDialogTitles.keywords }}
+          </button>
+          <button type="button" class="nbf-mini-btn" @click="sourceDialog = { view: 'original', item }">
+            {{ sourceDialogTitles.original }}
+          </button>
           <button type="button" class="nbf-mini-btn" :disabled="busy" @click="simplifyOne(item.slot)">
             化简
           </button>
@@ -1558,7 +1671,7 @@ const wasteCount = computed(() =>
           技能「描述」落点：{{ item.skillDesc.skillName }}
         </p>
 
-        <!-- 一句一对：左 = 该句原文（约 1/3），右 = 该句的关键字（摘要行 + 展开区）；每对独立成块 -->
+        <!-- 左侧展示切句后的文本，右侧编辑这一句的关键字。 -->
         <div
           v-for="sentence in keywordSentences(item)"
           :key="`${item.slot}-${sentence.sentenceIndex}`"
@@ -1570,9 +1683,9 @@ const wasteCount = computed(() =>
               <button
                 type="button"
                 class="nbf-mini-btn"
-                @click="openOriginal(item, sentence.sentenceIndex)"
+                @click="sourceDialog = { view: 'comparison', item, sentence }"
               >
-                整块原文
+                {{ sourceDialogTitles.comparison }}
               </button>
             </div>
             <p class="nbf-raw-text">{{ sentence.rawSentence }}</p>
@@ -1586,16 +1699,7 @@ const wasteCount = computed(() =>
             >
                 <header class="nbf-kw-head">
                   <span class="nbf-kw-index">B{{ rowIndex + 1 }}</span>
-                  <span class="nbf-kw-summary">
-                    属性={{ displaySlotValue('stat', row.slots.stat) }} · 动作={{ row.slots.action }}
-                    <template v-if="row.slots.action !== '转化'">
-                      · 数值={{ row.slots.value }}{{ row.slots.unit === '无' ? '' : row.slots.unit }}
-                    </template>
-                    <template v-else>· 转模</template>
-                  </span>
-                  <span v-if="row.skillLimits.length" class="nbf-badge nbf-badge-anchor">
-                    限定招式（锚点）：{{ row.skillLimits.map((item) => item.name).join(' + ') }}
-                  </span>
+                  <span class="nbf-kw-summary">{{ formatKeywordSummary(row) }}</span>
                   <span v-if="row.tautologyDropped.length" class="nbf-badge nbf-badge-muted">
                     同义反复已忽略
                   </span>
@@ -1619,10 +1723,6 @@ const wasteCount = computed(() =>
                   </button>
                   <button type="button" class="nbf-mini-btn nbf-danger" @click="removeRow(row)">删</button>
                 </header>
-
-                <p v-if="row.anchors.labels.length" class="nbf-sub">
-                  招式锚点：{{ row.anchors.ok ? `已关联（${row.anchors.skillTargets.length} 个目标）` : '关联不上 → 不录' }}
-                </p>
 
                 <div class="nbf-slots">
                   <!--
@@ -1666,7 +1766,22 @@ const wasteCount = computed(() =>
                       <option :value="slotEditValue(entry)">{{ displaySlotValue(entry.id, slotEditValue(entry)) }}</option>
                     </select>
 
-                    <!-- 多值槽位（条件 / 元素）：逐条列下拉，选项里含该条当前值 -->
+                    <div v-else-if="entry.id === 'teammateProfessions'" class="nbf-teammate-options">
+                      <label
+                        v-for="profession in optionsOf(entry.id).filter((option) => option !== NONE && option !== UNABLE)"
+                        :key="profession"
+                        class="nbf-chip"
+                      >
+                        <input
+                          type="checkbox"
+                          :checked="row.slots.teammateProfessions?.includes(profession)"
+                          @change="setKeywordTeammateProfession(row, profession, ($event.target as HTMLInputElement).checked)"
+                        />
+                        {{ profession }}
+                      </label>
+                    </div>
+
+                    <!-- 条件与元素按各自的合法选项编辑。 -->
                     <template v-else-if="MULTI_SLOT_IDS.includes(entry.id)">
                       <div class="nbf-conditions">
                         <div
@@ -1713,12 +1828,42 @@ const wasteCount = computed(() =>
                       :value="slotEditValue(entry)"
                       @change="setSlot(row, entry.id, ($event.target as HTMLSelectElement).value)"
                     >
-                      <option v-for="option in slotOptionsFor(entry.id, entry.value)" :key="option" :value="option">
+                      <option
+                        v-for="option in slotOptionsFor(entry.id, entry.value)"
+                        :key="option"
+                        :value="option"
+                      >
                         {{ displaySlotValue(entry.id, option) }}
                       </option>
                     </select>
                   </div>
                 </div>
+                <div
+                  v-if="row.detailOpen || !isEmptyKeywordSkillSlot(row)"
+                  class="nbf-slot nbf-skill-slot"
+                  :class="{ 'nbf-slot-empty': isEmptyKeywordSkillSlot(row) }"
+                >
+                  <span class="nbf-slot-label">限定招式</span>
+                  <span v-if="isEmptyKeywordSkillSlot(row)" class="nbf-sub">不限</span>
+                  <AdminBuffSkillTargets
+                    :targets="row.anchors.skillTargets"
+                    :target-labels="keywordSkillTargetLabels(row)"
+                    :agent-id="kind === 'agent' ? selectedId : undefined"
+                    :disabled="busy"
+                    @add="addKeywordSkillTarget(row, $event)"
+                    @remove="setKeywordSkillTargets(row, row.anchors.skillTargets.filter((_, index) => index !== $event))"
+                  />
+                  <button
+                    v-if="row.anchors.skillTargets.length"
+                    type="button"
+                    class="nbf-mini-btn"
+                    :disabled="busy"
+                    @click="setKeywordSkillTargets(row, [])"
+                  >清除招式限定</button>
+                </div>
+                <p v-if="!isEmptySlotValue(row.slots.duration) && row.slots.duration !== UNABLE" class="nbf-sub">
+                  增益备注记录时长 {{ row.slots.duration }}
+                </p>
               </div>
           </div>
         </div>
@@ -1786,41 +1931,70 @@ const wasteCount = computed(() =>
         <p v-if="wasteOpen && !wasteBlocks.length" class="empty-hint">没有废原文。</p>
       </section>
 
-      <!-- 「整块原文」弹窗：这一段（整块）的完整原文，一句不删，并高亮当前句。
-           没抽出关键字的句子标淡色（用户 2026-10-17）。
-           **Teleport 到 body**：面板外层容器可能有 transform / overflow，会裁掉 position:fixed 的弹窗 -->
+      <!-- Teleport 到 body，避免面板外层的 transform / overflow 裁掉弹窗。 -->
       <Teleport to="body">
         <div
-          v-if="originalVisible && originalItem"
+          v-if="sourceDialog"
           class="nbf-modal-mask"
           @pointerdown="onMaskPointerDown"
           @click="onMaskClick"
         >
-          <div class="nbf-modal">
+          <div class="nbf-modal" role="dialog" aria-modal="true" aria-labelledby="nbf-source-dialog-title">
             <header class="nbf-modal-head">
-              <h4>{{ originalItem.slotLabel }} · {{ originalItem.title || '（无标题）' }} · 整块原文</h4>
-              <button type="button" class="nbf-mini-btn" @click="closeOriginal">关闭</button>
+              <h4 id="nbf-source-dialog-title">
+                {{ sourceDialog.item.slotLabel }} · {{ sourceDialog.item.title || '（无标题）' }} ·
+                {{ sourceDialogTitles[sourceDialog.view] }}
+                <template v-if="sourceDialog.view === 'comparison'">
+                  · 第 {{ sourceDialog.sentence.sentenceIndex + 1 }} 句
+                </template>
+              </h4>
+              <button type="button" class="nbf-mini-btn" @click="closeSourceDialog">关闭</button>
             </header>
-            <p class="nbf-sub">
-              写入槽位：{{ originalItem.landing?.label ?? '—' }} ·
-              这一段共 {{ originalSentences.length }} 句，原文一句不删；淡色句 = 没抽出关键字（同属废原文）
+            <template v-if="sourceDialog.view === 'keywords'">
+              <p class="nbf-sub">
+                写入槽位 {{ sourceDialog.item.landing?.label ?? '—' }} ·
+                共 {{ keywordOverview.length }} 句，淡色为无关键字的句子
+              </p>
+              <ol class="nbf-original-list">
+                <li
+                  v-for="sentence in keywordOverview"
+                  :key="sentence.sentenceIndex"
+                  :class="{
+                    'nbf-original-current': sentence.sentenceIndex === firstKeywordSentenceIndex,
+                    'nbf-original-nokw': sentence.keywordCount === 0,
+                  }"
+                >
+                  <span class="nbf-chip">第 {{ sentence.sentenceIndex + 1 }} 句</span>
+                  <span class="nbf-original-text">{{ sentence.rawSentence }}</span>
+                  <span class="nbf-sub">
+                    {{ sentence.keywordCount > 0 ? `${sentence.keywordCount} 条关键字` : '无关键字' }}
+                  </span>
+                </li>
+              </ol>
+            </template>
+            <div v-else-if="sourceDialog.view === 'comparison'" class="nbf-source-comparison">
+              <section>
+                <h5>{{ originalComparisonSentence === null ? '整段原文' : '原文' }}</h5>
+                <p class="nbf-source-text">{{ originalComparisonSentence ?? sourceDialog.item.rawText }}</p>
+              </section>
+              <section>
+                <h5>提取出的关键字</h5>
+                <ul v-if="comparisonKeywordRows.length" class="nbf-source-text nbf-source-keywords">
+                  <li v-for="(row, rowIndex) in comparisonKeywordRows" :key="row.key">
+                    <span class="nbf-kw-index">B{{ rowIndex + 1 }}</span>
+                    <span>{{ formatKeywordSummary(row) }}</span>
+                  </li>
+                </ul>
+                <p v-else class="nbf-source-text">这句话目前没有关键字。</p>
+              </section>
+            </div>
+            <p v-else class="nbf-source-text">
+              <span
+                v-for="(segment, index) in originalSourceSegments"
+                :key="index"
+                :class="{ 'nbf-waste-mark': segment.waste }"
+              >{{ segment.text }}</span>
             </p>
-            <ol class="nbf-original-list">
-              <li
-                v-for="sentence in originalSentences"
-                :key="`o-${sentence.sentenceIndex}`"
-                :class="{
-                  'nbf-original-current': sentence.sentenceIndex === originalHighlight,
-                  'nbf-original-nokw': !sentence.hasKeywords,
-                }"
-              >
-                <span class="nbf-chip">第 {{ sentence.sentenceIndex + 1 }} 句</span>
-                <span class="nbf-original-text">{{ sentence.rawSentence }}</span>
-                <span class="nbf-sub">
-                  {{ sentence.hasKeywords ? `${sentence.keywords.length} 条关键字` : '无关键字' }}
-                </span>
-              </li>
-            </ol>
           </div>
         </div>
 
@@ -2161,7 +2335,7 @@ const wasteCount = computed(() =>
   min-width: 0;
 }
 
-/* 「整块原文」弹窗 */
+/* 原文与关键字弹窗 */
 .nbf-modal-mask {
   position: fixed;
   inset: 0;
@@ -2225,6 +2399,47 @@ const wasteCount = computed(() =>
 /* 没抽出关键字的句子：淡色（仍要显示 —— 用户 2026-10-17：整块原文一句不删） */
 .nbf-original-nokw > .nbf-original-text {
   color: var(--color-text-muted, rgba(90, 88, 78, 0.62));
+}
+
+.nbf-source-comparison {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.65rem;
+}
+
+.nbf-source-comparison > section {
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-background-soft);
+}
+
+.nbf-source-comparison h5 {
+  margin: 0 0 0.3rem;
+  color: var(--color-heading);
+  font-size: 0.8rem;
+}
+
+.nbf-source-text {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.nbf-source-keywords {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0;
+  list-style: none;
+}
+
+.nbf-source-keywords > li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
 }
 
 /* 阶段二：左选右看（左侧窄 = 选择器 + 详情，右侧宽 = 当前这条的实际增益） */
@@ -2751,10 +2966,6 @@ const wasteCount = computed(() =>
   background: hsla(0, 70%, 50%, 0.2);
 }
 
-.nbf-badge-anchor {
-  background: hsla(210, 80%, 55%, 0.18);
-}
-
 .nbf-sub {
   font-size: 0.75rem;
   opacity: 0.7;
@@ -2808,6 +3019,10 @@ const wasteCount = computed(() =>
   background: var(--color-background);
 }
 
+.nbf-skill-slot {
+  flex-wrap: wrap;
+}
+
 .nbf-slot-label {
   font-size: 0.72rem;
   opacity: 0.8;
@@ -2836,6 +3051,12 @@ const wasteCount = computed(() =>
 
 .nbf-slot-locked .nbf-slot-input {
   cursor: not-allowed;
+}
+
+.nbf-teammate-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .nbf-conditions {

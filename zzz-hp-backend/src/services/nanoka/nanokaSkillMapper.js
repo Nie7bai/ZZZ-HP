@@ -70,6 +70,17 @@ export function stableSkillId(agentId, nanokaSkillId, paramName) {
   return id.slice(0, 64)
 }
 
+/** 独立招式可能共用 Nanoka 倍率编号，保留首个可用 ID 并为其余招式加序号。 */
+export function reserveNanokaSkillId(baseId, usedIds) {
+  let id = baseId
+  for (let index = 2; usedIds.has(id); index += 1) {
+    const suffix = `-${index}`
+    id = `${baseId.slice(0, 64 - suffix.length)}${suffix}`
+  }
+  usedIds.add(id)
+  return id
+}
+
 /**
  * 大类 + 小类一并写入（管理端勾选要看得见）。
  * nanoka 把终结技挂在 chain 下，按名称纠正为 ultimate。
@@ -325,6 +336,10 @@ export function extractDamageSegments(detail, { level = 12 } = {}) {
         if (seenNorm.has(norm)) continue
         seenNorm.add(norm)
         const talentKey = CATEGORY_TO_TALENT_KEY[category] ?? null
+        const skillTypes = damageType === 'direct' ? mapSkillTypes(category, skillName) : []
+        if (damageType === 'direct' && shortParamLabel(paramName) === '毁伤') {
+          skillTypes.push('destruction')
+        }
         segments.push({
           category,
           skillName,
@@ -334,7 +349,7 @@ export function extractDamageSegments(detail, { level = 12 } = {}) {
           baseMult,
           damagePercentage,
           damagePercentageGrowth,
-          skillTypes: damageType === 'direct' ? mapSkillTypes(category, skillName) : [],
+          skillTypes,
           titleCore: stripSkillTitlePrefix(skillName),
           damageType,
           talentKey: damageType === 'direct' ? null : talentKey,
@@ -362,15 +377,11 @@ export function resolveBuffAnchorId(subcategories, agentId, segment) {
   const forAgent = (Array.isArray(subcategories) ? subcategories : []).filter(
     (s) => String(s.agentId ?? '') === String(agentId ?? ''),
   )
-  const candidates = [
-    shortParamLabel(segment?.paramName),
-    segment?.titleCore,
-    stripSkillTitlePrefix(segment?.displayName),
-    segment?.skillName,
-    segment?.displayName,
-  ]
-    .map(normalizeSkillName)
-    .filter(Boolean)
+  const shortParam = shortParamLabel(segment?.paramName)
+  const names = segment?.skillTypes?.includes('destruction')
+    ? [shortParam, segment.displayName]
+    : [shortParam, segment?.titleCore, stripSkillTitlePrefix(segment?.displayName), segment?.skillName, segment?.displayName]
+  const candidates = names.map(normalizeSkillName).filter(Boolean)
   for (const sub of forAgent) {
     const n = normalizeSkillName(sub.name)
     if (candidates.includes(n)) return sub.id
@@ -423,9 +434,9 @@ export function planAgentSkillImport({
   const agentElement = String(agent?.element ?? '').trim()
   const segments = extractDamageSegments(detail, { level })
 
-  const agentSkills = (Array.isArray(existingSkills) ? existingSkills : []).filter(
-    (s) => String(s.agentId ?? '') === agentId,
-  )
+  const librarySkills = Array.isArray(existingSkills) ? existingSkills : []
+  const agentSkills = librarySkills.filter((skill) => String(skill.agentId ?? '') === agentId)
+  const usedIds = new Set(librarySkills.map((skill) => String(skill.id)))
 
   const create = []
   const overwrite = []
@@ -457,7 +468,7 @@ export function planAgentSkillImport({
       existing = byTypeAndAnchor.get(`${type}|${resolvedAnchor}`)
     }
     const buffAnchorId = resolvedAnchor ?? existing?.buffAnchorId ?? null
-    const id = existing?.id ?? stableSkillId(agentId, seg.nanokaSkillId, seg.paramName)
+    const id = existing?.id ?? reserveNanokaSkillId(stableSkillId(agentId, seg.nanokaSkillId, seg.paramName), usedIds)
     if (existing) matchedIds.add(existing.id)
     const skillTypes = seg.skillTypes
     const multFields = {

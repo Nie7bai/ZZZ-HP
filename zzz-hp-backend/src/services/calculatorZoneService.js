@@ -31,6 +31,7 @@ export const ZONE_SCOPES = Object.freeze([
  */
 export const ZONE_PRIMITIVES = Object.freeze([
   'percentSum',
+  'scaledPercentSum',
   'panel.percent',
   'stagger',
   'vulnerable',
@@ -368,6 +369,9 @@ export function normalizeZoneParams(value) {
   }
   if (params.buffKeys != null) {
     params.buffKeys = readStringList(params.buffKeys, 'params.buffKeys')
+  }
+  if (params.scalingStatKeys != null) {
+    params.scalingStatKeys = readStringList(params.scalingStatKeys, 'params.scalingStatKeys')
   }
   if (params.phaseIndependent != null) {
     params.phaseIndependent = readBoolean(params.phaseIndependent, 'params.phaseIndependent')

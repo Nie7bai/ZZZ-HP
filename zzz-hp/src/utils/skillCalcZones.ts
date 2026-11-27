@@ -1,9 +1,10 @@
 import type { SkillDamageType } from '@/types/calculator'
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 import type { DamageCalcResult } from '@/utils/damageCalc'
-import { zoneLabel, type ZoneLabelSource } from '@/zones/display'
+import { customZoneResults, zoneLabel, type ZoneLabelSource } from '@/zones/display'
 
 export interface SkillCalcZoneRow {
+  zoneKey?: string
   label: string
   value: string
   /** 该行的原始数值（伤害行是伤害值，其余是乘区倍率）；供格子内按值画占比填充条 */
@@ -186,7 +187,11 @@ export function buildSkillCalcZoneRows(
   result: DamageCalcResult,
   damageType: SkillDamageType,
 ): SkillCalcZoneRow[] {
-  const rows: SkillCalcZoneRow[] = []
+  const rows: SkillCalcZoneRow[] = customZoneResults(result).map((zone) => ({
+    zoneKey: zone.key,
+    label: zone.label,
+    value: formatZoneValue(zone.value),
+  }))
 
   if (damageType === 'radiance' && result.remielSelfRadianceActive) {
     pushRemielSelfRadianceRows(rows, result)
@@ -477,7 +482,8 @@ export function disorderSectionOf(label: string): DisorderSectionKey | null {
   return null
 }
 
-export function skillCalcZoneGroup(label: string): SkillCalcZoneGroup {
+export function skillCalcZoneGroup(label: string, zoneKey?: string): SkillCalcZoneGroup {
+  if (zoneKey) return 'mixed'
   if (MIXED_ZONE_LABELS.has(label)) return 'mixed'
   if (PRODUCER_ZONE_LABELS.has(label)) return 'producer'
   if (VULNERABLE_ZONE_LABELS.has(label)) return 'trigger'

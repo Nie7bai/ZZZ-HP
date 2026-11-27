@@ -1,4 +1,5 @@
 import type { DamageCalcResult } from '@/utils/damageCalc'
+import type { ScaledPercentZoneInputs } from './customZones'
 
 /** 乘区分组：用于展示分区与后续作用域过滤 */
 export type ZoneGroup = 'core' | 'direct' | 'anomaly' | 'radianceSelf' | 'special' | 'custom'
@@ -30,4 +31,5 @@ export interface ZoneResult {
   group: ZoneGroup
   /** 该乘区的数值（伤害类为数值，其余一般为倍率） */
   value: number
+  scaledPercentInputs?: ScaledPercentZoneInputs
 }
