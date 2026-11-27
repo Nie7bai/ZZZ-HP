@@ -5,6 +5,7 @@ import DualLineChartView from '@/components/history/DualLineChartView.vue'
 import RoomBuffTransitionPanel from '@/components/history/RoomBuffTransitionPanel.vue'
 import TraitTransitionPanel from '@/components/history/TraitTransitionPanel.vue'
 import BuffEffectBlocksDisplay from '@/components/calculator/BuffEffectBlocksDisplay.vue'
+import BuffRichText from '@/components/calculator/BuffRichText.vue'
 import MonsterDetailStats, {
   type MonsterDetailRecord,
 } from '@/components/history/MonsterDetailStats.vue'
@@ -124,12 +125,7 @@ const currentFieldBuffLines = computed(() => {
 })
 
 /** 得分机制（纯文本，与怪物绑定）：按行拆分；空值时不渲染 */
-const scoringNoteLines = computed(() =>
-  (props.enemy?.scoringNote ?? '')
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean),
-)
+const scoringNoteLines = computed(() => splitLines(props.enemy?.scoringNote ?? ''))
 
 /** 详情数据块按共享数据行形状组装（与怪物数据库、后续防卫战详情同构） */
 const detailRecord = computed<MonsterDetailRecord | null>(() => {
@@ -218,7 +214,9 @@ watch(
       <section v-if="scoringNoteLines.length" class="monster-detail-scoring">
         <p class="monster-detail-scoring-title">得分机制</p>
         <ul class="monster-detail-scoring-lines">
-          <li v-for="(line, lineIndex) in scoringNoteLines" :key="lineIndex">{{ line }}</li>
+          <li v-for="(line, lineIndex) in scoringNoteLines" :key="lineIndex">
+            <BuffRichText :text="line" />
+          </li>
         </ul>
       </section>
 
@@ -238,7 +236,7 @@ watch(
             </p>
             <ul class="note-transition-lines">
               <li v-for="(line, lineIndex) in scoringNoteChange.previousLines" :key="`prev-${lineIndex}`">
-                {{ line }}
+                <BuffRichText :text="line" />
               </li>
             </ul>
           </div>
@@ -248,7 +246,7 @@ watch(
             </p>
             <ul class="note-transition-lines">
               <li v-for="(line, lineIndex) in scoringNoteChange.currentLines" :key="`cur-${lineIndex}`">
-                {{ line }}
+                <BuffRichText :text="line" />
               </li>
             </ul>
           </div>
@@ -268,7 +266,9 @@ watch(
       >
         <p class="monster-detail-field-buff-title">场地 Buff{{ currentFieldBuff?.fieldBuff?.name && currentFieldBuff.fieldBuff.name !== '场地 Buff' ? `——${currentFieldBuff.fieldBuff.name}` : '' }}</p>
         <ul v-if="currentFieldBuffLines.length" class="monster-detail-field-buff-lines">
-          <li v-for="(line, lineIndex) in currentFieldBuffLines" :key="lineIndex">{{ line }}</li>
+          <li v-for="(line, lineIndex) in currentFieldBuffLines" :key="lineIndex">
+            <BuffRichText :text="line" />
+          </li>
         </ul>
         <BuffEffectBlocksDisplay
           v-if="currentFieldBuffBlocks?.length"
