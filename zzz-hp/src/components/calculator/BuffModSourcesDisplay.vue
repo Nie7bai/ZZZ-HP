@@ -3,9 +3,10 @@ import type { BuffModSource } from '@/utils/panelBuffCalc'
 import BuffModsDisplay from '@/components/calculator/BuffModsDisplay.vue'
 import BuffRichText from '@/components/calculator/BuffRichText.vue'
 import { effectSummaryLabel } from '@/utils/buffEffect'
-import { buffStatFieldLabel, BUFF_STAT_FIELDS, hasNonZeroBuffMods } from '@/utils/calculatorUi'
+import { hasNonZeroBuffMods } from '@/utils/calculatorUi'
 import type { SkillSubcategory } from '@/types/calculator'
 import { computed } from 'vue'
+import { buffStatDisplayLabel } from '@/utils/buffStatZones'
 
 const props = defineProps<{
   sources: BuffModSource[]
@@ -22,8 +23,8 @@ const visibleSources = computed(() =>
 )
 
 function statLabel(stat: string) {
-  const field = BUFF_STAT_FIELDS.find((item) => item.key === stat)
-  return field ? buffStatFieldLabel(field) : stat
+  // 自定义乘区（如 custom:emberMarkRatio）走乘区目录的登记名，不再露出内部键
+  return buffStatDisplayLabel(stat)
 }
 </script>
 

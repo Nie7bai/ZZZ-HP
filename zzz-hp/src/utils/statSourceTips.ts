@@ -2,6 +2,7 @@ import type { BuffStatKey, BuffStatModifiers } from '@/types/calculator'
 import type { PanelStats } from '@/types/calculatorPanel'
 import type { BuffModSource } from '@/utils/panelBuffCalc'
 import { BUFF_STAT_FIELDS, buffStatFieldLabel } from '@/utils/calculatorUi'
+import { buffStatLabelOf } from '@/utils/buffStatZones'
 
 export interface StatSourceGroup {
   label: string
@@ -24,7 +25,7 @@ function formatProcessNumber(value: number, precision = 4) {
 
 function fieldLabel(key: BuffStatKey) {
   const field = BUFF_STAT_FIELDS.find((item) => item.key === key)
-  return field ? buffStatFieldLabel(field) : key
+  return field ? buffStatFieldLabel(field) : buffStatLabelOf(key)
 }
 
 function valueUnitSuffix(key: BuffStatKey) {

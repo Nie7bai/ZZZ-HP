@@ -29,6 +29,7 @@ import { BUFF_STAT_FIELDS, buffStatFieldLabel } from '@/utils/calculatorUi'
 import { buffStatLabelOf } from '@/utils/buffStatZones'
 import type { ConvertResolveInputs, EffectParameterInputs, ResolvedEffectParameters, EventEffectSummary } from '@/utils/panelBuffCalc'
 import { formatCalcSigned } from '@/utils/calcNumberFormat'
+import { buffStatDisplayLabel } from '@/utils/buffStatZones'
 
 export interface FlowBuffTableRow {
   /** 唯一键：普通行 = 流程行 id；组成员 = `${行id}#${序号}:${skillId}` */
@@ -119,8 +120,7 @@ function rawField(
  *  —— 顺序与 `formatBuffEffectResultText` 一致：属性名在前、数值在后 */
 function effectSummary(item: CollectedEffect): string {
   const effect = item.effect
-  const field = BUFF_STAT_FIELDS.find((entry) => entry.key === effect.stat)
-  const label = field ? buffStatFieldLabel(field) : String(effect.stat ?? '')
+  const label = effect.stat ? buffStatDisplayLabel(effect.stat) : ''
   const value = typeof effect.value === 'number' && effect.value !== 0 ? formatCalcSigned(effect.value) : ''
   return `${label}${value ? ` ${value}` : ''}`.trim()
 }

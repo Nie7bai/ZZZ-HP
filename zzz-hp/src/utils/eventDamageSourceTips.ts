@@ -12,6 +12,7 @@ import { formatCalcDecimal } from '@/utils/calcNumberFormat'
 import { resolveAnomalyBaseWithMutation } from '@/utils/anomalyFormulaDisplay'
 import { buildDirectDamageExpectedProcessItems, buildSharpenCritZoneLines, formatDirectDmgMultZoneFormula, formatSettlementDmgMultZoneFormula } from '@/utils/directDamageDisplay'
 import { normalizeDamageEnemyInput, resolveEnemyResistanceForElement } from '@/utils/enemyResistance'
+import { buffStatLabelOf } from '@/utils/buffStatZones'
 
 export type ValueTipsKey =
   | 'baseDamage'
@@ -752,7 +753,8 @@ const disorderFormulaParts = (() => {
             '加在「异常基础 × 紊乱倍率区」之后，补乘其余全部乘区（含精通/等级/防御/抗性），不乘紊乱倍率区',
             ...((p.additionalDamageBreakdown ?? []).map((term) => {
               const label =
-                BUFF_STAT_FIELDS.find((field) => field.key === term.stat)?.label ?? term.stat
+                BUFF_STAT_FIELDS.find((field) => field.key === term.stat)?.label ??
+                buffStatLabelOf(term.stat)
               return `${label} ${formatFormulaNumber(term.statValue)} × ${term.ratioPercent}% = ${formatFormulaNumber(term.amount)}`
             })),
             `口径：( 基础攻击力 × 紊乱倍率 + 附加伤害 ) × 通用乘区 × 紊乱增伤区 × 紊乱暴击区`,

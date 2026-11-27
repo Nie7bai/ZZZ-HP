@@ -7,9 +7,12 @@ import {
   allowedDamageTypesOf,
   anomalyStatsOfZone,
   anomalyTypeOfStat,
+  buffStatDisplayLabel,
+  buffStatLabelOf,
   buffStatZoneOf,
   isPanelStatKey,
   findBuffStatZoneById,
+  registerCustomBuffStatZones,
   statRowsForZone,
   zoneTypesOfStats,
 } from '../src/utils/buffStatZones.ts'
@@ -125,6 +128,29 @@ check('isPanelStatKey：hp / mastery 是面板字段', isPanelStatKey('hp') && i
 check(
   'isPanelStatKey：局外生命值 / 紊乱失衡易伤下限不是面板字段',
   !isPanelStatKey('externalHpPercent') && !isPanelStatKey('disorderStaggerFloor'),
+)
+
+console.log('\n[7] 自定义乘区键的展示名（烬痕比例）')
+registerCustomBuffStatZones([{ key: 'emberMarkRatio', label: '烬痕比例' }])
+check(
+  '展示名带单位：烬痕比例%',
+  buffStatDisplayLabel('custom:emberMarkRatio') === '烬痕比例%',
+  buffStatDisplayLabel('custom:emberMarkRatio'),
+)
+check(
+  '无单位标签仍取登记名',
+  buffStatLabelOf('custom:emberMarkRatio') === '烬痕比例',
+  buffStatLabelOf('custom:emberMarkRatio'),
+)
+check(
+  '内置字段保持原标签',
+  buffStatDisplayLabel('mastery') === '精通（数值）',
+  buffStatDisplayLabel('mastery'),
+)
+check(
+  '未登记的键回落原始键名',
+  buffStatDisplayLabel('custom:notRegistered') === 'notRegistered%',
+  buffStatDisplayLabel('custom:notRegistered'),
 )
 
 console.log(`\n结果：${passed} passed, ${failed} failed`)
