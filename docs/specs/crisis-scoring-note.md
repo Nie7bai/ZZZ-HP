@@ -20,15 +20,17 @@
 | 建表/补列 | `zzz-hp-backend/src/utils/bossSchema.js` → `ensureBossScoringNoteSchema()` | 自动补 `boss_info.scoring_note_sets`、`boss_info.scoring_note`、`boss.scoring_note_set_id`（以及兼容列 `boss.scoring_note`） |
 | 多套工具 | `zzz-hp-backend/src/utils/bossScoringNoteSets.js` | 解析 / 归一化 / 序列化、旧单列 ↔ 第一套镜像、按绑定 id 取套（空回落第一套） |
 | 怪物库读写 | `zzz-hp-backend/src/services/bossInfoService.js` | 列清单 / 新建 / 按 id 更新 / 按名称 upsert 全覆盖；未传值时保留库中原值（与 `resistance_high` 同策略） |
-| 危局下发 | `zzz-hp-backend/src/services/crisisAssaultService.js` | `enrichBoss` 输出三个字段：`scoring_note`（生效值 = 期数覆盖 ?? 怪物库）、`scoring_note_override`（本期覆盖）、`scoring_note_default`（怪物库默认） |
-| 期数行写入 | `zzz-hp-backend/src/services/dataService.js` | `createBoss` 接受 `scoring_note_set_id`；未传（同步/导入）时保留库中原值，传 `null` 表示用第一套 |
+| 生效优先级 | `zzz-hp-backend/src/services/crisisAssaultService.js` | **绑定套优先**；只有怪物库完全没有套时才用旧一次性文本 `boss.scoring_note` 兜底（避免旧覆盖盖住绑定结果） |
+| 危局下发 | 同上 | `enrichBoss` 输出：`scoring_note`（生效文本）、`scoring_note_set_id`（本期绑定）、`scoring_note_sets`（怪物库全部套） |
+| 期数行写入 | `zzz-hp-backend/src/services/dataService.js` | `createBoss` 接受 `scoring_note_set_id`；未传（同步/导入）时保留库中原值，传 `null` 表示用第一套；带绑定时同时清掉旧的 `boss.scoring_note` 覆盖 |
 | 前端接口 | `zzz-hp/src/api/crisisAssault.ts` | `ApiBoss.scoring_note` → `EnemySlot.scoringNote`（trim 后空串转 null） |
 | 类型 | `zzz-hp/src/types/history.ts` | `EnemySlot.scoringNote?: string \| null` |
 | 展示（往期详情） | `zzz-hp/src/components/history/HistoryDetailPanel.vue` | `scoringNoteLines()` 按行拆分；得分机制与场地 Buff 包在 `.enemy-side` 容器里、得分机制在前（桌面与紧凑两套模板各一处）。绝境双列布局下两者同处右列，避免得分机制被挤到图片旁边 |
 | 展示（详情窗口） | `zzz-hp/src/components/history/MonsterDetailModal.vue` | `.monster-detail-scoring` 块，位于属性表之后、弱点/抗性转变之前 |
 | 管理端（怪物库） | `zzz-hp/src/components/admin/AdminBossInfoCatalogPanel.vue` | 「得分机制（多套）」：标记 + 名称 + 正文，可增删；第一套为默认 |
 | 管理端（期数） | `zzz-hp/src/components/admin/AdminMonsterPanel.vue` | 「得分机制套（本期绑定）」下拉：自动（第一套）/ 指定某一套 |
-| 详情变化对比 | `zzz-hp/src/components/history/MonsterDetailModal.vue` + `historyMonsterDetail.findPreviousScoringNote` | 同 Boss + 房间取上一期，与本期不同则显示「得分机制变化」——**左右两栏**（原 / 现），与场地 Buff 转变同款版式 |
+| 详情变化对比 | `zzz-hp/src/components/history/MonsterDetailModal.vue` + `historyMonsterDetail.findPreviousScoringNote` | 同 Boss + 房间取上一期，与本期不同则显示「得分机制变化」——**左右两栏**（原 / 现），外框与标题用「得分机制」同款蓝色 |
+| 行首项目符号 | 同上 + `HistoryDetailPanel` | 展示时去掉行首的 `· • ● ▪ ◦`（录入文本常自带），列表也不再显示原生圆点 |
 | 详情场地 Buff | 同上 | 场地 Buff **有变化**时显示「原 / 现」转变；**没变化**时用同一个橙色框平铺展示当期正文/效果块注释（与卡片同口径） |
 | 期数编辑器加载 | `zzz-hp/src/components/admin/AdminMonsterPanel.vue` | 打开编辑弹窗时即从上下文带上怪物库套列表（`ctx.scoringNoteSets`），否则下拉为空、选不了套 |
 

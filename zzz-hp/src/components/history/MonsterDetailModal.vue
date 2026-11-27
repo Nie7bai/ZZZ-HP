@@ -76,11 +76,28 @@ const hpMode = ref<CrisisHpChartMode>('normal')
 
 const chartRoomType = computed<CrisisBossRoomType>(() => (props.enemy?.isHardRoom ? 'hard' : 'normal'))
 
+/** 行首的项目符号（用户录入时常自带「· 」），展示时去掉，避免与列表样式重复 */
+const NOTE_BULLETS = ['·', '•', '●', '▪', '◦']
+function stripLeadingBullet(text: string): string {
+  let out = text.trim()
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const bullet of NOTE_BULLETS) {
+      if (out.startsWith(bullet)) {
+        out = out.slice(bullet.length).trimStart()
+        changed = true
+      }
+    }
+  }
+  return out
+}
+
 /** 得分机制变化：上期与本期都有内容且不同 */
 const splitLines = (text: string) =>
   text
     .split(String.fromCharCode(10))
-    .map((line) => line.replace(String.fromCharCode(13), '').trim())
+    .map((line) => stripLeadingBullet(line.replace(String.fromCharCode(13), '')))
     .filter(Boolean)
 
 const scoringNoteChange = computed(() => {
@@ -341,18 +358,20 @@ watch(
 
 /* `page-scroll` 形态下图表高度以窗口为基准、容器高度交给内容，不能被 flex 压缩 */
 .note-transition {
-  padding: 0.55rem 0.65rem;
+  margin: 0.35rem 0 0;
+  padding: 0.5rem 0.6rem 0.55rem 0.7rem;
   border-radius: 8px;
   border: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent);
-  border-left: 3px solid color-mix(in srgb, #e8a838 75%, transparent);
-  background: color-mix(in srgb, var(--color-background-soft) 75%, transparent);
+  /* 与「得分机制」块同款（蓝色左边框），不再是场地 Buff 的橙色 */
+  border-left: 3px solid color-mix(in srgb, #5f8fd8 75%, transparent);
+  background: color-mix(in srgb, var(--color-background) 45%, transparent);
 }
 
 .note-transition-title {
   margin: 0 0 0.4rem;
   font-size: 0.78rem;
   font-weight: 700;
-  color: var(--color-heading);
+  color: color-mix(in srgb, #5f8fd8 80%, var(--color-text));
 }
 
 .note-transition-columns {
@@ -397,7 +416,8 @@ watch(
 
 .note-transition-lines {
   margin: 0;
-  padding-left: 1rem;
+  padding-left: 0;
+  list-style: none;
   font-size: 0.72rem;
   line-height: 1.45;
   opacity: 0.88;

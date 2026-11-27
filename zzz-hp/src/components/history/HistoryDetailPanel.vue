@@ -272,10 +272,27 @@ function fieldBuffTitle(enemy: PhaseData['enemies'][number]) {
   return '场地 Buff'
 }
 
+/** 行首项目符号（录入时常自带「· 」）：展示时去掉，避免与列表样式重复 */
+const SCORING_NOTE_BULLETS = ['·', '•', '●', '▪', '◦']
+function stripScoringBullet(line: string): string {
+  let out = line.trim()
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const bullet of SCORING_NOTE_BULLETS) {
+      if (out.startsWith(bullet)) {
+        out = out.slice(bullet.length).trimStart()
+        changed = true
+      }
+    }
+  }
+  return out
+}
+
 /** 得分机制（纯文本，与怪物绑定）：按行拆分，显示在场地 Buff 上方 */
 function scoringNoteLines(enemy: PhaseData['enemies'][number]) {
   const text = enemy.scoringNote?.trim()
-  return text ? splitBuffLines(text) : []
+  return text ? splitBuffLines(text).map((line) => stripScoringBullet(line)) : []
 }
 
 /** 失衡易伤展示：150%（1.5）；缺省按 1.5，与怪物详情弹窗同口径 */

@@ -187,13 +187,12 @@ function enrichBoss(boss, context = {}) {
      * 危局详情显示在场地 Buff 上方。
      */
     scoring_note: (() => {
-      const override = String(boss.scoring_note ?? '').trim()
-      if (override) return override
-      const set = resolveScoringNoteSet(
-        scoringNoteByName.get(boss.boss_name) ?? [],
-        boss.scoring_note_set_id,
-      )
-      return set?.text?.trim() || null
+      // 绑定套优先；只有怪物库完全没有套时，才用旧的一次性文本兜底
+      const sets = scoringNoteByName.get(boss.boss_name) ?? []
+      const set = resolveScoringNoteSet(sets, boss.scoring_note_set_id)
+      const fromSet = set?.text?.trim()
+      if (fromSet) return fromSet
+      return String(boss.scoring_note ?? '').trim() || null
     })(),
     /** 本期绑定套 id（空 = 第一套） */
     scoring_note_set_id: String(boss.scoring_note_set_id ?? '').trim() || null,
