@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import BuffEffectBlocksDisplay from '@/components/calculator/BuffEffectBlocksDisplay.vue'
+import BuffRichText from '@/components/calculator/BuffRichText.vue'
 import DualLineChartView from '@/components/history/DualLineChartView.vue'
 import PhaseDetailModal from '@/components/history/PhaseDetailModal.vue'
 import {
@@ -147,9 +149,70 @@ const markedPhaseLabels = computed(() => {
     .map((point) => point.label)
 })
 
+/** 怪物库的得分机制多套 / 场地 Buff 多套：与弱点套同款，可切换查看 */
+const scoringNoteSetOptions = computed(() => selectedBossDetail.value?.scoring_note_sets ?? [])
+const selectedScoringNoteSetId = ref('')
+const selectedScoringNoteSet = computed(() => {
+  const sets = scoringNoteSetOptions.value
+  if (!sets.length) return null
+  return sets.find((set) => set.id === selectedScoringNoteSetId.value) ?? sets[0] ?? null
+})
+/** 行首项目符号（录入文本常自带「· 」）：展示时去掉 */
+const NOTE_BULLETS = ['·', '•', '●', '▪', '◦']
+function stripLeadingBullet(text: string): string {
+  let out = text.trim()
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const bullet of NOTE_BULLETS) {
+      if (out.startsWith(bullet)) {
+        out = out.slice(bullet.length).trimStart()
+        changed = true
+      }
+    }
+  }
+  return out
+}
+
+const scoringNoteLines = computed(() =>
+  (selectedScoringNoteSet.value?.text ?? '')
+    .split(String.fromCharCode(10))
+    .map((line) => stripLeadingBullet(line.replace(String.fromCharCode(13), '')))
+    .filter(Boolean),
+)
+
+const fieldBuffSetOptions = computed(() => selectedBossDetail.value?.field_buff_sets ?? [])
+const selectedFieldBuffSetId = ref('')
+const selectedFieldBuffSet = computed(() => {
+  const sets = fieldBuffSetOptions.value
+  if (!sets.length) return null
+  return sets.find((set) => set.id === selectedFieldBuffSetId.value) ?? sets[0] ?? null
+})
+const fieldBuffNoteBlocks = computed(() => {
+  const set = selectedFieldBuffSet.value
+  const blocks = set?.effectBlocks ?? []
+  if (!blocks.length) return []
+  const text = (set?.text ?? '').trim()
+  return blocks
+    .map((block) => ({
+      ...block,
+      note: block.note?.trim() && block.note.trim() !== text ? block.note : '',
+    }))
+    .filter((block) => block.note)
+})
+
+const fieldBuffLines = computed(() =>
+  (selectedFieldBuffSet.value?.text ?? '')
+    .split(String.fromCharCode(10))
+    .map((line) => stripLeadingBullet(line.replace(String.fromCharCode(13), '')))
+    .filter(Boolean),
+)
+
 /** 切换怪物后默认看第一套 */
 watch(selectedBossDetail, (detail) => {
   selectedWeaknessSetId.value = detail?.weakness_sets?.[0]?.id ?? ''
+  selectedScoringNoteSetId.value = detail?.scoring_note_sets?.[0]?.id ?? ''
+  selectedFieldBuffSetId.value = detail?.field_buff_sets?.[0]?.id ?? ''
 })
 
 /**
@@ -392,6 +455,66 @@ watch(selectedBoss, () => {
         @image-click="pickerModalOpen = true"
       />
 
+      <!-- 得分机制（多套，可切换；与「弱点 / 抗性套」同款交互） -->
+      <section v-if="scoringNoteSetOptions.length" class="monster-db-note">
+        <header class="monster-db-note-head">
+          <h3 class="monster-db-note-title">得分机制</h3>
+          <select
+            v-if="scoringNoteSetOptions.length > 1"
+            v-model="selectedScoringNoteSetId"
+            class="boss-select"
+          >
+            <option v-for="(set, setIndex) in scoringNoteSetOptions" :key="set.id" :value="set.id">
+              {{ set.label || `第 ${setIndex + 1} 套` }}
+            </option>
+          </select>
+          <span v-else-if="selectedScoringNoteSet?.label" class="monster-db-note-label">
+            {{ selectedScoringNoteSet.label }}
+          </span>
+        </header>
+        <ul v-if="scoringNoteLines.length" class="monster-db-note-lines">
+          <li v-for="(line, lineIndex) in scoringNoteLines" :key="lineIndex">
+            <BuffRichText :text="line" />
+          </li>
+        </ul>
+        <p v-else class="status-text">该套暂无内容</p>
+      </section>
+
+      <!-- 场地 Buff（多套，可切换） -->
+      <section v-if="fieldBuffSetOptions.length" class="monster-db-note monster-db-note--buff">
+        <header class="monster-db-note-head">
+          <h3 class="monster-db-note-title">场地 Buff{{ selectedFieldBuffSet?.name && selectedFieldBuffSet.name !== '场地 Buff' ? `——${selectedFieldBuffSet.name}` : '' }}</h3>
+          <select
+            v-if="fieldBuffSetOptions.length > 1"
+            v-model="selectedFieldBuffSetId"
+            class="boss-select"
+          >
+            <option v-for="(set, setIndex) in fieldBuffSetOptions" :key="set.id" :value="set.id">
+              {{ set.label || set.name || `第 ${setIndex + 1} 套` }}
+            </option>
+          </select>
+          <span v-else-if="selectedFieldBuffSet?.label" class="monster-db-note-label">
+            {{ selectedFieldBuffSet.label }}
+          </span>
+        </header>
+        <ul v-if="fieldBuffLines.length" class="monster-db-note-lines">
+          <li v-for="(line, lineIndex) in fieldBuffLines" :key="lineIndex">
+            <BuffRichText :text="line" />
+          </li>
+        </ul>
+        <BuffEffectBlocksDisplay
+          v-if="fieldBuffNoteBlocks.length"
+          compact
+          notes-only
+          :blocks="fieldBuffNoteBlocks"
+          :title="selectedFieldBuffSet?.name || '场地 Buff'"
+          empty-text=""
+        />
+        <p v-if="!fieldBuffLines.length && !fieldBuffNoteBlocks.length" class="status-text">
+          该套暂无内容
+        </p>
+      </section>
+
       <p v-if="chartLoading" class="status-text">图表加载中...</p>
       <p v-else-if="chartError" class="status-text error">{{ chartError }}</p>
       <p v-else-if="selectedBoss && !points.length" class="status-text">该怪物暂无历史数据</p>
@@ -557,6 +680,50 @@ watch(selectedBoss, () => {
   color: var(--color-text);
   opacity: 0.7;
   text-align: center;
+}
+
+.monster-db-note {
+  margin: 0.6rem 0 0;
+  padding: 0.55rem 0.65rem 0.6rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent);
+  border-left: 3px solid color-mix(in srgb, #5f8fd8 75%, transparent);
+  background: color-mix(in srgb, var(--color-background) 45%, transparent);
+}
+
+.monster-db-note--buff {
+  border-left-color: color-mix(in srgb, #e8a838 75%, transparent);
+}
+
+.monster-db-note-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.35rem;
+}
+
+.monster-db-note-title {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--color-heading);
+}
+
+.monster-db-note-label {
+  font-size: 0.72rem;
+  color: var(--color-text-muted, #9aa3b0);
+}
+
+.monster-db-note-lines {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.76rem;
+  line-height: 1.5;
 }
 
 .monster-compare-stats {
