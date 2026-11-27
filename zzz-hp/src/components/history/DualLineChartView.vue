@@ -568,34 +568,54 @@ const hoveredHpPoint = computed(() =>
   hoverIndex.value === null ? null : hpChartPoints.value[hoverIndex.value] ?? null,
 )
 
+/** 描边框的层序：同一期命中多组时向内缩进（弱点仍是整块底纹，inset 0 并填充） */
+const MARK_TONE_INSET: Record<string, number> = { scoring: 0, 'field-buff': 2 }
+
 /**
  * 需要标记的期数：按标签匹配当前点序。
- * 每期收集命中的全部组（去重、保持传入顺序），渲染时按序向内嵌套描边框，
- * 这样同一期既有弱点套又有得分机制/场地 Buff 套时不会互相遮挡。
+ * 每组内**连续的期数合并成一个框**（不是一期一个），弱点套仍按原来的整块底纹渲染；
+ * 得分机制 / 场地 Buff 用描边框，两组重叠时按 `MARK_TONE_INSET` 向内缩进，互不遮挡。
  */
 const markedColumnZones = computed(() => {
   const groups = props.markedGroups?.length
     ? props.markedGroups
     : [{ labels: props.markedLabels, tone: undefined }]
-  const tonesByLabel = new Map<string, string[]>()
+  const zones: Array<{
+    key: string
+    x1: number
+    x2: number
+    width: number
+    inset: number
+    tone: string
+  }> = []
   for (const group of groups) {
     const tone = group.tone ?? ''
-    for (const label of group.labels) {
-      const tones = tonesByLabel.get(label)
-      if (!tones) {
-        tonesByLabel.set(label, [tone])
-      } else if (!tones.includes(tone)) {
-        tones.push(tone)
+    if (!group.labels.length) continue
+    const labels = new Set(group.labels)
+    let run: Array<{ index: number; x1: number; x2: number }> = []
+    const flushRun = () => {
+      if (!run.length) return
+      const first = run[0]!
+      const last = run[run.length - 1]!
+      zones.push({
+        key: `${tone || 'weakness'}-${first.index}-${last.index}`,
+        x1: first.x1,
+        x2: last.x2,
+        width: last.x2 - first.x1,
+        inset: tone ? (MARK_TONE_INSET[tone] ?? 0) : 0,
+        tone,
+      })
+      run = []
+    }
+    for (const zone of columnZones.value) {
+      const point = points.value[zone.index]
+      if (point && labels.has(point.label)) {
+        run.push({ index: zone.index, x1: zone.x1, x2: zone.x2 })
+      } else {
+        flushRun()
       }
     }
-  }
-  const zones: Array<{ index: number; x1: number; x2: number; width: number; tones: string[] }> = []
-  if (!tonesByLabel.size) return zones
-  for (const zone of columnZones.value) {
-    const point = points.value[zone.index]
-    const tones = point ? tonesByLabel.get(point.label) : undefined
-    if (!tones?.length) continue
-    zones.push({ ...zone, tones })
+    flushRun()
   }
   return zones
 })
@@ -1716,18 +1736,16 @@ watch(phaseSearchQuery, () => {
                 </text>
               </g>
 
-              <g v-for="zone in markedColumnZones" :key="`hp-mark-${zone.index}`">
-                <rect
-                  v-for="(tone, toneIndex) in zone.tones"
-                  :key="tone || 'default'"
-                  :x="zone.x1 + toneIndex * 2"
-                  y="0"
-                  :width="Math.max(zone.width - toneIndex * 4, 2)"
-                  :height="chartHeight"
-                  class="column-mark"
-                  :class="tone ? `column-mark--${tone}` : null"
-                />
-              </g>
+              <rect
+                v-for="zone in markedColumnZones"
+                :key="`hp-mark-${zone.key}`"
+                :x="zone.x1 + zone.inset"
+                y="0"
+                :width="Math.max(zone.width - zone.inset * 2, 2)"
+                :height="chartHeight"
+                class="column-mark"
+                :class="zone.tone ? `column-mark--${zone.tone}` : null"
+              />
 
               <rect
                 v-for="zone in columnZones"
@@ -1955,18 +1973,16 @@ watch(phaseSearchQuery, () => {
                 </text>
               </g>
 
-              <g v-for="zone in markedColumnZones" :key="`exp-mark-${zone.index}`">
-                <rect
-                  v-for="(tone, toneIndex) in zone.tones"
-                  :key="tone || 'default'"
-                  :x="zone.x1 + toneIndex * 2"
-                  y="0"
-                  :width="Math.max(zone.width - toneIndex * 4, 2)"
-                  :height="chartHeight"
-                  class="column-mark"
-                  :class="tone ? `column-mark--${tone}` : null"
-                />
-              </g>
+              <rect
+                v-for="zone in markedColumnZones"
+                :key="`exp-mark-${zone.key}`"
+                :x="zone.x1 + zone.inset"
+                y="0"
+                :width="Math.max(zone.width - zone.inset * 2, 2)"
+                :height="chartHeight"
+                class="column-mark"
+                :class="zone.tone ? `column-mark--${zone.tone}` : null"
+              />
 
               <rect
                 v-for="zone in columnZones"
@@ -2160,18 +2176,16 @@ watch(phaseSearchQuery, () => {
                 />
               </g>
 
-              <g v-for="zone in markedColumnZones" :key="`${series.marker.id}-mark-${zone.index}`">
-                <rect
-                  v-for="(tone, toneIndex) in zone.tones"
-                  :key="tone || 'default'"
-                  :x="zone.x1 + toneIndex * 2"
-                  y="0"
-                  :width="Math.max(zone.width - toneIndex * 4, 2)"
-                  :height="chartHeight"
-                  class="column-mark"
-                  :class="tone ? `column-mark--${tone}` : null"
-                />
-              </g>
+              <rect
+                v-for="zone in markedColumnZones"
+                :key="`${series.marker.id}-mark-${zone.key}`"
+                :x="zone.x1 + zone.inset"
+                y="0"
+                :width="Math.max(zone.width - zone.inset * 2, 2)"
+                :height="chartHeight"
+                class="column-mark"
+                :class="zone.tone ? `column-mark--${zone.tone}` : null"
+              />
 
               <rect
                 v-for="zone in columnZones"
@@ -2312,18 +2326,16 @@ watch(phaseSearchQuery, () => {
                 </text>
               </g>
 
-              <g v-for="zone in markedColumnZones" :key="`coeff-mark-${zone.index}`">
-                <rect
-                  v-for="(tone, toneIndex) in zone.tones"
-                  :key="tone || 'default'"
-                  :x="zone.x1 + toneIndex * 2"
-                  y="0"
-                  :width="Math.max(zone.width - toneIndex * 4, 2)"
-                  :height="chartHeight"
-                  class="column-mark"
-                  :class="tone ? `column-mark--${tone}` : null"
-                />
-              </g>
+              <rect
+                v-for="zone in markedColumnZones"
+                :key="`coeff-mark-${zone.key}`"
+                :x="zone.x1 + zone.inset"
+                y="0"
+                :width="Math.max(zone.width - zone.inset * 2, 2)"
+                :height="chartHeight"
+                class="column-mark"
+                :class="zone.tone ? `column-mark--${zone.tone}` : null"
+              />
 
               <rect
                 v-for="zone in columnZones"
@@ -3056,16 +3068,19 @@ html[data-theme='dark'] .y-axis-title-hp {
   cursor: inherit;
 }
 
-/* 按期数套标记的框线（不拦截指针） */
-/* 期数标记：描边框（不填充），同一期多组时按序向内嵌套，避免互相遮挡 */
+/* 弱点 / 抗性套的期数标记：沿用原来的整块底纹 */
 .column-mark {
-  fill: none;
-  stroke: color-mix(in srgb, #4a90d9 70%, transparent);
-  stroke-width: 1.5;
+  fill: color-mix(in srgb, #4a90d9 12%, transparent);
   pointer-events: none;
 }
 
-/* 多组框线：得分机制紫、场地 Buff 橙（弱点沿用默认蓝） */
+/* 得分机制 / 场地 Buff：只描边不填充，连续期数合并成一个大框 */
+.column-mark--scoring,
+.column-mark--field-buff {
+  fill: none;
+  stroke-width: 1.5;
+}
+
 .column-mark--scoring {
   stroke: color-mix(in srgb, #9a6fd6 80%, transparent);
 }
