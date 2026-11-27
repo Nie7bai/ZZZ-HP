@@ -27,8 +27,9 @@ import {
 } from '@/utils/buffEffectRows'
 import { findBuffStatZoneById } from '@/utils/buffStatZones'
 import { teamSlotDisplayLabel } from '@/utils/teamSlotLabel'
-import { BUFF_STAT_FIELDS, buffStatFieldLabel } from '@/utils/calculatorUi'
+
 import { formatCalcDecimal } from '@/utils/calcNumberFormat'
+import { buffStatDisplayLabel } from '@/utils/buffStatZones'
 
 const props = defineProps<{
   teamSlots?: Array<{ agentId?: string | null }>
@@ -164,8 +165,8 @@ const listNameOf = (card: ExtraBuffGain): string => card.name.trim() || '自定�
 function summaryOf(card: ExtraBuffGain): string {
   const effect = card.effects[0]
   if (!effect) return ''
-  const field = BUFF_STAT_FIELDS.find((item) => item.key === effect.stat)
-  const label = field ? buffStatFieldLabel(field) : effect.stat
+  // 自定义乘区（如 custom:emberMarkRatio）要有登记名，别露出内部键
+  const label = buffStatDisplayLabel(effect.stat)
   const num = (value: number) => formatCalcDecimal(value)
   if (effect.kind === 'stacked') {
     return `${label} ${num(effect.valuePerStack ?? 0)}/层 × ${num(effect.defaultStacks ?? 0)} 层`

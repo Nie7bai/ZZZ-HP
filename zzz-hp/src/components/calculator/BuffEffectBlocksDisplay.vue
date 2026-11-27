@@ -2,10 +2,10 @@
 import type { BuffEffect, BuffEffectBlock, SkillSubcategory } from '@/types/calculator'
 import BuffRichText from '@/components/calculator/BuffRichText.vue'
 import { effectSummaryLabel } from '@/utils/buffEffect'
-import { buffStatFieldLabel, BUFF_STAT_FIELDS } from '@/utils/calculatorUi'
 import { useCalculatorBuffStore } from '@/stores/calculatorBuffs'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted } from 'vue'
+import { buffStatDisplayLabel } from '@/utils/buffStatZones'
 
 const props = defineProps<{
   blocks?: BuffEffectBlock[] | null
@@ -57,8 +57,8 @@ const displayBlocks = computed(() => {
 })
 
 function statLabel(stat: string) {
-  const field = BUFF_STAT_FIELDS.find((item) => item.key === stat)
-  return field ? buffStatFieldLabel(field) : stat
+  // 自定义乘区（如 custom:emberMarkRatio）走乘区目录的登记名，不再露出内部键
+  return buffStatDisplayLabel(stat)
 }
 
 function situationLabel(effect: BuffEffect) {

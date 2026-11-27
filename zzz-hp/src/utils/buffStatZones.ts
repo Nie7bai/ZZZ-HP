@@ -21,7 +21,7 @@ import {
   anomalyTypeOfStat as anomalyTypeOfStatBase,
   isAnomalyDamageType,
 } from '@/utils/buffDamageTypes'
-import { BUFF_STAT_FIELDS } from '@/utils/calculatorUi'
+import { BUFF_STAT_FIELDS, buffStatFieldLabel } from '@/utils/calculatorUi'
 import { isCustomBuffStatKey } from '@/utils/buffEffect'
 
 export type BuffStatZoneTier = 1 | 2 | 3
@@ -226,6 +226,20 @@ export function buffStatLabelOf(stat: string | null | undefined): string {
   const zone = buffStatZoneOf(stat)
   if (zone) return zone.label
   return stat.startsWith('custom:') ? stat.slice('custom:'.length) : String(stat)
+}
+
+/**
+ * 展示用属性名（含单位）：内置字段 → `字段 label + 单位`；自定义乘区 → 登记名 + `%` / `（数值）`。
+ *
+ * 计算器侧「角色增益详细 / 增益来源明细 / 额外 Buff 摘要」以前只查 `BUFF_STAT_FIELDS`，
+ * 自定义乘区键（如 `custom:emberMarkRatio`）会原样露出内部键名；统一走这里。
+ */
+export function buffStatDisplayLabel(stat: string | null | undefined): string {
+  if (!stat) return ''
+  const field = BUFF_STAT_FIELDS.find((item) => item.key === stat)
+  if (field) return buffStatFieldLabel(field)
+  const label = buffStatLabelOf(stat)
+  return buffStatUnitOf(stat) === 'flat' ? `${label}（数值）` : `${label}%`
 }
 
 /** 「属性」单位：内置字段取其 unit；自定义键回落 `percent`（界面显示 `%`） */
