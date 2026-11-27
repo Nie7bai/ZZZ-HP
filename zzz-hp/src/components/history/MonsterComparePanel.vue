@@ -187,7 +187,7 @@ const fieldBuffTitle = computed(() => {
 })
 
 /**
- * 选中套对应的期数（图表底纹）：与弱点套同口径——只有多套时才标记，
+ * 选中套对应的期数（图表框线标记）：与弱点套同口径——只有多套时才标记，
  * 每期实际生效的套 id 由 boss-chart 按时绑定解析后下发。
  */
 function labelsOfSet(
@@ -211,7 +211,7 @@ const markedFieldBuffPhaseLabels = computed(() =>
     point.fieldBuffSetId,
   ),
 )
-/** 图表底纹分组：弱点默认蓝、得分机制紫、场地 Buff 橙；同一期命中多组时按此顺序取第一组 */
+/** 图表框线分组：弱点默认蓝、得分机制紫、场地 Buff 橙；同一期命中多组时按此顺序向内嵌套 */
 const markedGroups = computed(() => [
   { labels: markedPhaseLabels.value },
   { labels: markedScoringPhaseLabels.value, tone: 'scoring' as const },
@@ -451,7 +451,7 @@ watch(selectedBoss, () => {
         </select>
       </div>
       <p v-if="weaknessSetOptions.length > 1" class="weakness-set-hint">
-        蓝色底纹 = 该套对应期数<span v-if="markedPhaseLabels.length">：{{ markedPhaseLabels.join('、') }}</span>
+        蓝色框线 = 该套对应期数<span v-if="markedPhaseLabels.length">：{{ markedPhaseLabels.join('、') }}</span>
       </p>
 
       <MonsterDetailStats
@@ -483,7 +483,7 @@ watch(selectedBoss, () => {
           </span>
         </header>
         <p v-if="scoringNoteSetOptions.length > 1" class="monster-db-note-hint">
-          紫色底纹 = 该套对应期数<span v-if="markedScoringPhaseLabels.length"
+          紫色框线 = 该套对应期数<span v-if="markedScoringPhaseLabels.length"
             >：{{ markedScoringPhaseLabels.join('、') }}</span
           >
         </p>
@@ -513,7 +513,7 @@ watch(selectedBoss, () => {
           </span>
         </header>
         <p v-if="fieldBuffSetOptions.length > 1" class="monster-db-note-hint">
-          橙色底纹 = 该套对应期数<span v-if="markedFieldBuffPhaseLabels.length"
+          橙色框线 = 该套对应期数<span v-if="markedFieldBuffPhaseLabels.length"
             >：{{ markedFieldBuffPhaseLabels.join('、') }}</span
           >
         </p>
