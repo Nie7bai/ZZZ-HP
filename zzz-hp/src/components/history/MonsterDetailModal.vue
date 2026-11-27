@@ -211,7 +211,8 @@ watch(
         :show-resistance-table="true"
       />
 
-      <section v-if="scoringNoteLines.length" class="monster-detail-scoring">
+      <!-- 有「变化」时只展示变化面板（原/现两栏），当期那份不再重复显示 —— 与场地 Buff 同规则 -->
+      <section v-if="scoringNoteLines.length && !scoringNoteChange" class="monster-detail-scoring">
         <p class="monster-detail-scoring-title">得分机制</p>
         <ul class="monster-detail-scoring-lines">
           <li v-for="(line, lineIndex) in scoringNoteLines" :key="lineIndex">

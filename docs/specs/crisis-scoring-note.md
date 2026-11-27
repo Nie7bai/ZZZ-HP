@@ -30,7 +30,8 @@
 | 管理端（怪物库） | `zzz-hp/src/components/admin/AdminBossInfoCatalogPanel.vue` | 「得分机制（多套）」：标记 + 名称 + 正文，可增删；第一套为默认 |
 | 管理端（期数） | `zzz-hp/src/components/admin/AdminMonsterPanel.vue` | 「得分机制套（本期绑定）」下拉：自动（第一套）/ 指定某一套 |
 | 详情变化对比 | `zzz-hp/src/components/history/MonsterDetailModal.vue` + `historyMonsterDetail.findPreviousScoringNote` | 同 Boss + 房间取上一期，与本期不同则显示「得分机制变化」——**左右两栏**（原 / 现），外框与标题用「得分机制」同款蓝色 |
-| 行首项目符号 | 同上 + `HistoryDetailPanel` | 展示时去掉行首的 `· • ● ▪ ◦`（录入文本常自带），列表也不再显示原生圆点 |
+| 行首项目符号 | 同上 + `HistoryDetailPanel` | 展示时去掉行首的 `· • ● ▪ ◦`（录入文本常自带），列表也不再显示原生圆点；正文用 `BuffRichText` 渲染，操作分数字按既有规则高亮（绿色） |
+| 互斥展示 | 同上 | 有「得分机制变化」时**不再重复显示当期得分机制**，与场地 Buff 的规则一致（变化 → 只显示原/现；未变化 → 平铺当期） |
 | 详情场地 Buff | 同上 | 场地 Buff **有变化**时显示「原 / 现」转变；**没变化**时用同一个橙色框平铺展示当期正文/效果块注释（与卡片同口径） |
 | 期数编辑器加载 | `zzz-hp/src/components/admin/AdminMonsterPanel.vue` | 打开编辑弹窗时即从上下文带上怪物库套列表（`ctx.scoringNoteSets`），否则下拉为空、选不了套 |
 
