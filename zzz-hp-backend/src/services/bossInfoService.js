@@ -5,6 +5,7 @@ import {
   DEFAULT_BOSS_STAGGER_MULTIPLIER,
   ensureBossAnomalySchema,
   ensureBossResistanceSchema,
+  ensureBossScoringNoteSchema,
   ensureBossStaggerSchema,
   normalizeAnomalyBarCoefficient,
   normalizeStaggerMultiplier,
@@ -29,7 +30,7 @@ import {
 
 const BOSS_INFO_CATALOGS = new Set(['crisis', 'defense', 'deduction'])
 
-const BOSS_INFO_COLUMNS = `id, boss_name, defense, level, boss_image, weakness, resistance, resistance_high, crisis_base_hp, stagger_multiplier, stagger_time, anomaly_bar_coefficient,
+const BOSS_INFO_COLUMNS = `id, boss_name, defense, level, boss_image, weakness, resistance, resistance_high, scoring_note, crisis_base_hp, stagger_multiplier, stagger_time, anomaly_bar_coefficient,
   field_buff_name, field_buff_text, field_buff_image, field_buff_effect_blocks, field_buff_sets, weakness_sets`
 
 function resolveIncomingFieldBuffSets(payload) {
@@ -92,6 +93,8 @@ function normalizeBossInfo(payload) {
     resistance_high: weaknessSets.length
       ? mirroredWeakness.resistance_high
       : asText(payload.resistance_high),
+    // 得分机制：纯文本、与怪物绑定；未传时写路径会保留库中原值
+    scoring_note: asText(payload.scoring_note),
     boss_image: asText(payload.boss_image),
     crisis_base_hp,
     stagger_multiplier: normalizeStaggerMultiplier(
@@ -122,6 +125,7 @@ function bossInfoDiffers(existing, incoming) {
     (existing.weakness ?? '') !== (incoming.weakness ?? '') ||
     (existing.resistance ?? '') !== (incoming.resistance ?? '') ||
     (existing.resistance_high ?? '') !== (incoming.resistance_high ?? '') ||
+    (existing.scoring_note ?? '') !== (incoming.scoring_note ?? '') ||
     (existing.boss_image ?? '') !== (incoming.boss_image ?? '') ||
     existingBase !== incomingBase ||
     normalizeStaggerMultiplier(existing.stagger_multiplier) !==
@@ -211,6 +215,7 @@ function mapBossInfoWriteResult(info) {
 export async function findBossInfoByName(bossName, { resolveAnomalyBarDefault = true } = {}) {
   await ensureBossStaggerSchema()
   await ensureBossAnomalySchema()
+  await ensureBossScoringNoteSchema()
   await ensureBossResistanceSchema()
   await ensureEnvironmentBuffSchema()
   const name = String(bossName ?? '').trim()
@@ -230,6 +235,7 @@ export async function findBossInfoByName(bossName, { resolveAnomalyBarDefault = 
 export async function listBossInfoByNames(names) {
   await ensureBossStaggerSchema()
   await ensureBossAnomalySchema()
+  await ensureBossScoringNoteSchema()
   await ensureBossResistanceSchema()
   await ensureEnvironmentBuffSchema()
   const unique = [...new Set((names || []).map((name) => String(name ?? '').trim()).filter(Boolean))]
@@ -253,6 +259,7 @@ export async function listBossInfoByNames(names) {
 export async function searchBossInfoNames(keyword, limit = 20) {
   await ensureBossStaggerSchema()
   await ensureBossAnomalySchema()
+  await ensureBossScoringNoteSchema()
   await ensureBossResistanceSchema()
   const query = String(keyword ?? '').trim()
   if (!query) return []
@@ -279,6 +286,7 @@ export async function listBossInfoRecords({
 } = {}) {
   await ensureBossStaggerSchema()
   await ensureBossAnomalySchema()
+  await ensureBossScoringNoteSchema()
   await ensureBossResistanceSchema()
   await ensureEnvironmentBuffSchema()
   await ensureContentModeColumns(pool)
@@ -332,6 +340,7 @@ export async function listBossInfoRecords({
 export async function updateBossInfoById(id, payload) {
   await ensureBossStaggerSchema()
   await ensureBossAnomalySchema()
+  await ensureBossScoringNoteSchema()
   await ensureBossResistanceSchema()
   await ensureEnvironmentBuffSchema()
   const bossId = Number(id)
@@ -396,13 +405,14 @@ export async function updateBossInfoById(id, payload) {
     if (info.weakness == null) info.weakness = existing.weakness
     if (info.resistance == null) info.resistance = existing.resistance
     if (info.resistance_high == null) info.resistance_high = existing.resistance_high
+    if (info.scoring_note == null) info.scoring_note = existing.scoring_note
   }
 
   info.boss_image = preferExistingImage(info.boss_image, existing.boss_image)
 
   await pool.execute(
     `UPDATE boss_info
-     SET boss_name = ?, defense = ?, level = ?, boss_image = ?, weakness = ?, resistance = ?, resistance_high = ?,
+     SET boss_name = ?, defense = ?, level = ?, boss_image = ?, weakness = ?, resistance = ?, resistance_high = ?, scoring_note = ?,
          crisis_base_hp = ?, stagger_multiplier = ?, stagger_time = ?, anomaly_bar_coefficient = ?,
          field_buff_name = ?, field_buff_text = ?, field_buff_image = ?, field_buff_effect_blocks = ?,
          field_buff_sets = ?, weakness_sets = ?
@@ -415,6 +425,7 @@ export async function updateBossInfoById(id, payload) {
       info.weakness,
       info.resistance,
       info.resistance_high,
+      info.scoring_note,
       info.crisis_base_hp,
       info.stagger_multiplier,
       info.stagger_time,
@@ -439,6 +450,7 @@ export async function updateBossInfoById(id, payload) {
 export async function upsertBossInfo(payload) {
   await ensureBossStaggerSchema()
   await ensureBossAnomalySchema()
+  await ensureBossScoringNoteSchema()
   await ensureBossResistanceSchema()
   await ensureEnvironmentBuffSchema()
   const info = normalizeBossInfo(payload)
@@ -452,10 +464,10 @@ export async function upsertBossInfo(payload) {
   if (!existing) {
     const [result] = await pool.execute(
       `INSERT INTO boss_info (
-         boss_name, defense, level, boss_image, weakness, resistance, resistance_high, crisis_base_hp, stagger_multiplier, stagger_time, anomaly_bar_coefficient,
+         boss_name, defense, level, boss_image, weakness, resistance, resistance_high, scoring_note, crisis_base_hp, stagger_multiplier, stagger_time, anomaly_bar_coefficient,
          field_buff_name, field_buff_text, field_buff_image, field_buff_effect_blocks, field_buff_sets, weakness_sets
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         info.boss_name,
         info.defense,
@@ -464,6 +476,7 @@ export async function upsertBossInfo(payload) {
         info.weakness,
         info.resistance,
         info.resistance_high,
+        info.scoring_note,
         info.crisis_base_hp,
         info.stagger_multiplier,
         info.stagger_time,
@@ -520,6 +533,7 @@ export async function upsertBossInfo(payload) {
     if (info.weakness == null) info.weakness = existing.weakness
     if (info.resistance == null) info.resistance = existing.resistance
     if (info.resistance_high == null) info.resistance_high = existing.resistance_high
+    if (info.scoring_note == null) info.scoring_note = existing.scoring_note
   }
 
   // JSON 导入只带路径不带文件：缺文件时保留已有图，避免再次裂图
@@ -540,7 +554,7 @@ export async function upsertBossInfo(payload) {
 
   await pool.execute(
     `UPDATE boss_info
-     SET defense = ?, level = ?, boss_image = ?, weakness = ?, resistance = ?, resistance_high = ?, crisis_base_hp = ?, stagger_multiplier = ?, stagger_time = ?, anomaly_bar_coefficient = ?,
+     SET defense = ?, level = ?, boss_image = ?, weakness = ?, resistance = ?, resistance_high = ?, scoring_note = ?, crisis_base_hp = ?, stagger_multiplier = ?, stagger_time = ?, anomaly_bar_coefficient = ?,
          field_buff_name = ?, field_buff_text = ?, field_buff_image = ?, field_buff_effect_blocks = ?,
          field_buff_sets = ?, weakness_sets = ?
      WHERE id = ?`,
@@ -551,6 +565,7 @@ export async function upsertBossInfo(payload) {
       info.weakness,
       info.resistance,
       info.resistance_high,
+      info.scoring_note,
       info.crisis_base_hp,
       info.stagger_multiplier,
       info.stagger_time,
@@ -575,6 +590,7 @@ export async function upsertBossInfo(payload) {
 export async function deleteBossInfoById(id) {
   await ensureBossStaggerSchema()
   await ensureBossAnomalySchema()
+  await ensureBossScoringNoteSchema()
   await ensureBossResistanceSchema()
   await ensureEnvironmentBuffSchema()
   const bossId = Number(id)
@@ -618,6 +634,7 @@ export async function deleteBossInfoById(id) {
 export async function syncBossInfoFromBoss({ mode = null } = {}) {
   await ensureBossStaggerSchema()
   await ensureBossAnomalySchema()
+  await ensureBossScoringNoteSchema()
   await ensureBossResistanceSchema()
   await ensureEnvironmentBuffSchema()
   await ensureContentModeColumns(pool)

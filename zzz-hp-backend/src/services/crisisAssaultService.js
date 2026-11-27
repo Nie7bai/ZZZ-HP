@@ -29,6 +29,7 @@ import { ensureContentModeColumns } from './contentModeService.js'
 import {
   ensureBossAnomalySchema,
   ensureBossResistanceSchema,
+  ensureBossScoringNoteSchema,
   ensureBossStaggerSchema,
   normalizeAnomalyBarCoefficient,
   normalizeStaggerMultiplier,
@@ -109,6 +110,7 @@ function enrichBoss(boss, context = {}) {
     staggerTimeByName = new Map(),
     staggerMultiplierByName = new Map(),
     resistanceHighByName = new Map(),
+    scoringNoteByName = new Map(),
     anomalyBarCoefficientByName = new Map(),
     weaknessSetsByName = new Map(),
   } = context
@@ -178,6 +180,8 @@ function enrichBoss(boss, context = {}) {
     is_hard_room: isCrisisHardRoom(boss.room),
     field_buff_set_id: String(boss.field_buff_set_id ?? '').trim() || null,
     field_buff: fieldBuff,
+    /** 得分机制（纯文本，与怪物绑定；危局详情显示在场地 Buff 上方） */
+    scoring_note: scoringNoteByName.get(boss.boss_name) ?? null,
   }
 }
 
@@ -197,6 +201,22 @@ async function loadBossResistanceHighMap() {
     }
   } catch (err) {
     console.warn('[crisis] loadBossResistanceHighMap fallback:', err.message)
+  }
+  return map
+}
+
+async function loadBossScoringNoteMap() {
+  await ensureBossScoringNoteSchema()
+  const map = new Map()
+  try {
+    const [rows] = await pool.execute(
+      "SELECT boss_name, scoring_note FROM boss_info WHERE scoring_note IS NOT NULL AND scoring_note <> ''",
+    )
+    for (const row of rows) {
+      map.set(row.boss_name, row.scoring_note)
+    }
+  } catch (err) {
+    console.warn('[crisis] loadBossScoringNoteMap fallback:', err.message)
   }
   return map
 }
@@ -364,6 +384,7 @@ export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
   const staggerTimeByName = await loadBossStaggerTimeMap()
   const staggerMultiplierByName = await loadBossStaggerMultiplierMap()
   const resistanceHighByName = await loadBossResistanceHighMap()
+  const scoringNoteByName = await loadBossScoringNoteMap()
   const weaknessSetsByName = await loadBossWeaknessSetsMap()
   const anomalyBarCoefficientByName = await loadBossAnomalyCoefficientMap()
   const globalBuffEffectMap = await loadGlobalBuffEffectMap()
@@ -421,6 +442,7 @@ export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
           staggerTimeByName,
           staggerMultiplierByName,
           resistanceHighByName,
+          scoringNoteByName,
           anomalyBarCoefficientByName,
           weaknessSetsByName,
         }),
@@ -521,6 +543,7 @@ export async function getBossChartHistory(
   const trashMap = await getSeasonContentTrashMap('crisis')
   const baseHpByName = await loadCrisisBaseHpMap()
   const resistanceHighByName = await loadBossResistanceHighMap()
+  const scoringNoteByName = await loadBossScoringNoteMap()
   const weaknessSetsByName = await loadBossWeaknessSetsMap()
 
   return bossRows
@@ -542,6 +565,7 @@ export async function getBossChartHistory(
       const enriched = enrichBoss(boss, {
         baseHpByName,
         resistanceHighByName,
+        scoringNoteByName,
         weaknessSetsByName,
       })
       const startDate = formatDateValue(dateInfo?.start_date)

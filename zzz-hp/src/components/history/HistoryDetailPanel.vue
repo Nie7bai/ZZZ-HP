@@ -271,6 +271,12 @@ function fieldBuffTitle(enemy: PhaseData['enemies'][number]) {
   return '场地 Buff'
 }
 
+/** 得分机制（纯文本，与怪物绑定）：按行拆分，显示在场地 Buff 上方 */
+function scoringNoteLines(enemy: PhaseData['enemies'][number]) {
+  const text = enemy.scoringNote?.trim()
+  return text ? splitBuffLines(text) : []
+}
+
 /** 失衡易伤展示：150%（1.5）；缺省按 1.5，与怪物详情弹窗同口径 */
 function formatStaggerMultiplier(value: number | null | undefined) {
   const multiplier = value ?? DEFAULT_ENEMY_STAGGER_MULTIPLIER
@@ -962,6 +968,14 @@ function closePhasePicker() {
                   </div>
                 </div>
               </div>
+              <div v-if="scoringNoteLines(enemy).length" class="enemy-scoring-note">
+                <p class="enemy-scoring-note-title">得分机制</p>
+                <ul class="enemy-scoring-note-lines">
+                  <li v-for="(line, lineIndex) in scoringNoteLines(enemy)" :key="lineIndex">
+                    <BuffRichText :text="line" />
+                  </li>
+                </ul>
+              </div>
               <div
                 v-if="enemy.fieldBuff?.name || enemy.fieldBuff?.text || enemy.fieldBuff?.effectBlocks?.length"
                 class="enemy-field-buff"
@@ -1139,6 +1153,14 @@ function closePhasePicker() {
                     </p>
                   </div>
                 </div>
+              </div>
+              <div v-if="scoringNoteLines(enemy).length" class="enemy-scoring-note">
+                <p class="enemy-scoring-note-title">得分机制</p>
+                <ul class="enemy-scoring-note-lines">
+                  <li v-for="(line, lineIndex) in scoringNoteLines(enemy)" :key="lineIndex">
+                    <BuffRichText :text="line" />
+                  </li>
+                </ul>
               </div>
               <div
                 v-if="enemy.fieldBuff?.name || enemy.fieldBuff?.text || enemy.fieldBuff?.effectBlocks?.length"
@@ -2004,6 +2026,38 @@ function closePhasePicker() {
   border: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent);
   border-left: 3px solid color-mix(in srgb, #e8a838 75%, transparent);
   background: color-mix(in srgb, var(--color-background) 55%, transparent);
+}
+
+.enemy-scoring-note {
+  margin-top: 0.55rem;
+  padding: 0.45rem 0.55rem 0.5rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent);
+  border-left: 3px solid color-mix(in srgb, #5f8fd8 75%, transparent);
+  background: color-mix(in srgb, var(--color-background) 45%, transparent);
+}
+
+.enemy-scoring-note-title {
+  margin: 0 0 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: color-mix(in srgb, #5f8fd8 80%, var(--color-text));
+}
+
+.enemy-scoring-note-lines {
+  margin: 0;
+  padding-left: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--color-text-muted, #9aa3b0);
+}
+
+.content-grid--embedded .enemy-scoring-note-title,
+.content-grid--embedded .enemy-scoring-note-lines {
+  font-size: clamp(0.68rem, 1.15vh, 0.78rem);
 }
 
 .enemy-field-buff-title {

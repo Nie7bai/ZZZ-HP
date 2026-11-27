@@ -34,6 +34,8 @@ export interface EnemySlot {
   resistance?: string
   /** 高抗性（40%）属性，为 resistance 的子集。见 dev-docs/boss-resistance-level.md */
   resistanceHigh?: string
+  /** 得分机制（纯文本，与怪物绑定，无增益；危局详情显示在场地 Buff 上方） */
+  scoringNote?: string | null
   /** 危局多套弱点/抗性的当期绑定 id（怪物库配置）；null 表示沿用单套字段 */
   weaknessSetId?: string | null
   /** 绑定套的展示标签（如「第一阶段」），用于卡片/详情标注 */

@@ -89,6 +89,27 @@ export async function ensureBossAnomalySchema() {
   anomalySchemaEnsured = true
 }
 
+let scoringNoteSchemaEnsured = false
+
+/**
+ * `boss_info.scoring_note`：得分机制（纯文本，无增益）。
+ *
+ * 得分机制与怪物绑定、一般不会随期数更换，所以存在怪物库而不是赛季表；
+ * 危局详情页把它显示在「场地 Buff」上方。
+ */
+export async function ensureBossScoringNoteSchema() {
+  if (scoringNoteSchemaEnsured) return
+
+  if (!(await columnExists('boss_info', 'scoring_note'))) {
+    await pool.query(
+      `ALTER TABLE boss_info
+       ADD COLUMN scoring_note TEXT NULL COMMENT '得分机制（纯文本，无增益；危局详情显示在场地 Buff 上方）'`,
+    )
+  }
+
+  scoringNoteSchemaEnsured = true
+}
+
 export const DEFAULT_BOSS_STAGGER_MULTIPLIER = 1.5
 
 export function normalizeStaggerMultiplier(value, fallback = DEFAULT_BOSS_STAGGER_MULTIPLIER) {

@@ -32,6 +32,8 @@ interface BossInfoDraft {
   /** 高抗性（40%）属性，为 resistance 的子集 */
   resistance_high: string
   crisis_base_hp: number | ''
+  /** 得分机制（纯文本，与怪物绑定，无增益；危局详情显示在场地 Buff 上方） */
+  scoring_note: string
   boss_image: string
 }
 
@@ -146,6 +148,7 @@ function createEmptyDraft(): BossInfoDraft {
     resistance: '',
     resistance_high: '',
     crisis_base_hp: '',
+    scoring_note: '',
     boss_image: '',
   }
 }
@@ -228,6 +231,7 @@ function toDraft(row: BossInfoRecord): BossInfoDraft {
       row.crisis_base_hp != null && Number.isFinite(Number(row.crisis_base_hp))
         ? Number(row.crisis_base_hp)
         : '',
+    scoring_note: row.scoring_note ?? '',
     boss_image: row.boss_image ?? '',
   }
 }
@@ -343,6 +347,7 @@ async function saveEdit() {
         draft.value.stagger_time === '' || draft.value.stagger_time == null
           ? null
           : Number(draft.value.stagger_time),
+      scoring_note: draft.value.scoring_note.trim() || null,
       anomaly_bar_coefficient:
         draft.value.anomaly_bar_coefficient === '' || draft.value.anomaly_bar_coefficient == null
           ? null
@@ -590,6 +595,14 @@ onMounted(() => {
         <label class="field">
           <span>图片路径</span>
           <input v-model="draft.boss_image" type="text" placeholder="/boss_image/..." />
+        </label>
+        <label class="field field--wide">
+          <span>得分机制（纯文本，无增益）</span>
+          <textarea
+            v-model="draft.scoring_note"
+            rows="4"
+            placeholder="每行一条；危局详情会显示在「场地 Buff」上方，例如：击败敌人 +N 分 / 剩余时间系数 …"
+          />
         </label>
       </div>
 
@@ -1027,6 +1040,11 @@ onMounted(() => {
   flex-direction: column;
   gap: 0.3rem;
   font-size: 0.82rem;
+}
+
+/* 得分机制是长文本，跨满整行 */
+.field--wide {
+  grid-column: 1 / -1;
 }
 
 .field span {

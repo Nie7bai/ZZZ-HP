@@ -27,6 +27,8 @@ export interface BossInfoRecord {
   weakness: string | null
   resistance: string | null
   resistance_high?: string | null
+  /** 得分机制（纯文本，与怪物绑定，无增益；危局详情显示在场地 Buff 上方） */
+  scoring_note?: string | null
   crisis_base_hp?: number | null
   stagger_multiplier?: number | null
   stagger_time?: number | null
