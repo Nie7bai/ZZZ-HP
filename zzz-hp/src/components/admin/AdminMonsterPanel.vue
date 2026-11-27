@@ -82,6 +82,9 @@ const staggerTime = ref('')
 /** 异常条系数（初始异常积蓄 = 基础异常条 × 系数），空按 1 处理 */
 const anomalyBarCoefficient = ref('')
 const fieldBuffSetId = ref('')
+/** 得分机制：本期绑定哪一套（空 = 第一套「自动」） */
+const scoringNoteSetId = ref('')
+const scoringNoteSetOptions = ref<Array<{ id: string; label?: string | null; name: string; text: string }>>([])
 const fieldBuffSetOptions = ref<Array<{ id: string; label: string }>>([])
 const weaknessSetId = ref('')
 const weaknessSetOptions = ref<Array<{ id: string; label: string }>>([])
@@ -196,6 +199,7 @@ function applyBossInfo(info: {
     name: string
   }> | null
   field_buff_name?: string | null
+  scoring_note_sets?: Array<{ id: string; label?: string | null; name: string; text: string }> | null
   weakness_sets?: Array<{
     id: string
     label?: string | null
@@ -234,6 +238,9 @@ function applyBossInfo(info: {
   imagePickerRef.value?.reset()
   syncAutoCoeff()
   applyFieldBuffSetOptions(info.field_buff_sets, fieldBuffSetId.value)
+  scoringNoteSetOptions.value = Array.isArray(info.scoring_note_sets)
+    ? info.scoring_note_sets
+    : []
   applyWeaknessSetOptions(info.weakness_sets, weaknessSetId.value)
 }
 
@@ -469,6 +476,11 @@ function applySlotContext(ctx: AdminMonsterSlotContext) {
   imageUrl.value = ''
   imagePreview.value = ''
   fieldBuffSetId.value = ctx.fieldBuffSetId ?? ''
+  scoringNoteSetId.value = ctx.scoringNoteSetId ?? ''
+  // 编辑弹窗打开时就带上怪物库的套列表，否则下拉为空、改不了
+  if (Array.isArray(ctx.scoringNoteSets) && ctx.scoringNoteSets.length) {
+    scoringNoteSetOptions.value = ctx.scoringNoteSets
+  }
   weaknessSetId.value = ctx.weaknessSetId ?? ''
   if (ctx.bossImage) {
     const preview = resolveAssetUrl(ctx.bossImage) ?? ctx.bossImage
@@ -679,6 +691,8 @@ async function submitForm() {
       staggerTime.value = ''
       anomalyBarCoefficient.value = ''
       fieldBuffSetId.value = ''
+      scoringNoteSetId.value = ''
+      scoringNoteSetOptions.value = []
       fieldBuffSetOptions.value = []
       weaknessSetId.value = ''
       weaknessSetOptions.value = []
@@ -717,6 +731,8 @@ async function submitForm() {
       anomaly_bar_coefficient: fieldText(anomalyBarCoefficient.value)
         ? Number(anomalyBarCoefficient.value)
         : null,
+      // 得分机制：写本期绑定的套 id（空 = 第一套）
+      scoring_note_set_id: fieldText(scoringNoteSetId.value) || null,
       boss_image: bossImage,
       crisis_base_hp:
         !isDefense.value && !isDeduction.value && fieldText(crisisBaseHp.value)
@@ -770,6 +786,8 @@ async function submitForm() {
     staggerTime.value = ''
     anomalyBarCoefficient.value = ''
     fieldBuffSetId.value = ''
+    scoringNoteSetId.value = ''
+    scoringNoteSetOptions.value = []
     fieldBuffSetOptions.value = []
     weaknessSetId.value = ''
     weaknessSetOptions.value = []
@@ -1080,6 +1098,23 @@ watch(
       </label>
 
       <label v-if="!isDefense && !isDeduction" class="field">
+        <span class="field-label">得分机制套（本期绑定）</span>
+        <select
+          v-model="scoringNoteSetId"
+          class="field-input"
+          :disabled="!scoringNoteSetOptions.length"
+        >
+          <option value="">
+            {{ scoringNoteSetOptions.length ? '自动（第一套）' : '请先在怪物数据库里添加得分机制' }}
+          </option>
+          <option v-for="opt in scoringNoteSetOptions" :key="opt.id" :value="opt.id">
+            {{ opt.label || opt.name }}
+          </option>
+        </select>
+        <p class="field-hint">选项来自该 Boss 怪物库的多套得分机制；某期改了规则就新增一套并在这里绑定。</p>
+      </label>
+
+      <label v-if="!isDefense && !isDeduction" class="field">
         <span class="field-label">弱点 / 抗性套（本期绑定）</span>
         <select
           v-model="weaknessSetId"
@@ -1219,6 +1254,23 @@ watch(
   margin: 0;
   font-size: 0.82rem;
   color: #e8a838;
+}
+
+.radio-row {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.radio-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+}
+
+.radio-item input {
+  accent-color: #7cc4ff;
 }
 
 .submit-hint {

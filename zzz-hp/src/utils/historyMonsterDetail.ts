@@ -133,6 +133,27 @@ export function findPreviousFieldBuff(
 }
 
 /**
+ * 上一期的得分机制（同一 Boss + 房间，取最近一次有内容的那期）。
+ * 与 `findPreviousFieldBuff` 同口径；返回 null 表示没有可比对的历史。
+ */
+export function findPreviousScoringNote(
+  phases: PhaseData[],
+  currentPhaseIndex: number,
+  key: MonsterLookupKey,
+): { note: string; phaseLabel: string } | null {
+  if (!key.bossName) return null
+  for (let index = currentPhaseIndex - 1; index >= 0; index--) {
+    const phase = phases[index]
+    if (!phase) continue
+    const enemy = phase.enemies.find((item) => matchesLookupKey(item, key))
+    const note = enemy?.scoringNote?.trim()
+    if (!note) continue
+    return { note, phaseLabel: buildPhaseLabel(phase) }
+  }
+  return null
+}
+
+/**
  * 是否构成一次真正的场地 Buff 转变：
  * 两侧都有内容且名称或正文不同。任一侧为空不算转变。
  */

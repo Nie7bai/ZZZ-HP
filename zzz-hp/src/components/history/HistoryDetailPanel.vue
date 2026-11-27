@@ -18,6 +18,7 @@ import {
 } from '@/utils/gameData'
 import { CAPTURE_HIDE_CLASS } from '@/utils/panelImageExport'
 import { createRequestEpoch } from '@/utils/requestEpoch'
+import { noteBlocksForDisplay, splitNoteLines } from '@/utils/historyNoteText'
 import { DEFAULT_ENEMY_STAGGER_MULTIPLIER } from '@/utils/enemyResistance'
 import {
   buildQueryWithValues,
@@ -35,6 +36,7 @@ import PhasePickerModal from '@/components/history/PhasePickerModal.vue'
 import {
   buildPhaseLabel,
   findPreviousFieldBuff,
+  findPreviousScoringNote,
   findPreviousMonsterTraits,
   getBossHpCoeffComparison,
   getBossHpComparison,
@@ -271,6 +273,11 @@ function fieldBuffTitle(enemy: PhaseData['enemies'][number]) {
   return '场地 Buff'
 }
 
+/** 得分机制（纯文本，与怪物绑定）：按行拆分，显示在场地 Buff 上方 */
+function scoringNoteLines(enemy: PhaseData['enemies'][number]) {
+  return splitNoteLines(enemy.scoringNote)
+}
+
 /** 失衡易伤展示：150%（1.5）；缺省按 1.5，与怪物详情弹窗同口径 */
 function formatStaggerMultiplier(value: number | null | undefined) {
   const multiplier = value ?? DEFAULT_ENEMY_STAGGER_MULTIPLIER
@@ -278,20 +285,7 @@ function formatStaggerMultiplier(value: number | null | undefined) {
 }
 
 /** 往期详情场地 Buff：只保留效果块注释；与原文重复的注释去掉 */
-function blocksForHistoryDisplay(
-  blocks: NonNullable<PhaseData['buffs'][number]['effectBlocks']> | null | undefined,
-  content: string,
-) {
-  if (!blocks?.length) return null
-  const text = content.trim()
-  const noteBlocks = blocks
-    .map((block) => ({
-      ...block,
-      note: block.note?.trim() && block.note.trim() !== text ? block.note : '',
-    }))
-    .filter((block) => block.note)
-  return noteBlocks.length ? noteBlocks : null
-}
+const blocksForHistoryDisplay = noteBlocksForDisplay
 
 /** 场地 Buff 是否有可导出的注释（导出截图只带注释，原文仍隐藏） */
 function hasFieldBuffNotes(enemy: PhaseData['enemies'][number]) {
@@ -328,6 +322,8 @@ function buildCrisisMonsterContext(
     hpCoeffManual: enemy.hpCoeffPercent != null,
     fieldBuffSetId: enemy.fieldBuffSetId ?? null,
     weaknessSetId: enemy.weaknessSetId ?? null,
+    scoringNoteSetId: enemy.scoringNoteSetId ?? null,
+    scoringNoteSets: enemy.scoringNoteSets ?? [],
   }
 }
 
@@ -441,10 +437,33 @@ const monsterDetailCurrentFieldBuff = computed<MonsterFieldBuffSnapshot | null>(
   }
 })
 
+/** 弹窗里的场地 Buff 文本：与卡片完全同一口径（fieldBuffLines 拆行） */
+const monsterDetailCurrentFieldBuffLines = computed(() => {
+  const enemy = monsterDetailEnemy.value
+  return enemy ? fieldBuffLines(enemy) : []
+})
+
+/** 弹窗里的场地 Buff 效果块注释：与卡片同一套过滤（只留与原文不重复的 note） */
+const monsterDetailCurrentFieldBuffBlocks = computed(() => {
+  const enemy = monsterDetailEnemy.value
+  if (!enemy) return null
+  return blocksForHistoryDisplay(enemy.fieldBuff?.effectBlocks, enemy.fieldBuff?.text ?? '')
+})
+
 const monsterDetailPreviousFieldBuff = computed(() => {
   const enemy = monsterDetailEnemy.value
   if (!enemy?.bossName) return null
   return findPreviousFieldBuff(phases.value, currentIndex.value, {
+    bossName: enemy.bossName,
+    room: enemy.room ?? '',
+  })
+})
+
+/** 上一期得分机制：同 Boss + 房间，取最近一次有内容的期数；与本期不同才算「变化」 */
+const monsterDetailPreviousScoringNote = computed(() => {
+  const enemy = monsterDetailEnemy.value
+  if (!enemy?.bossName) return null
+  return findPreviousScoringNote(phases.value, currentIndex.value, {
     bossName: enemy.bossName,
     room: enemy.room ?? '',
   })
@@ -962,42 +981,52 @@ function closePhasePicker() {
                   </div>
                 </div>
               </div>
-              <div
-                v-if="enemy.fieldBuff?.name || enemy.fieldBuff?.text || enemy.fieldBuff?.effectBlocks?.length"
-                class="enemy-field-buff"
-                :class="hasFieldBuffNotes(enemy) ? '' : CAPTURE_HIDE_CLASS"
-              >
-                <p class="enemy-field-buff-title">{{ fieldBuffTitle(enemy) }}</p>
-                <ul
-                  v-if="fieldBuffLines(enemy).length"
-                  class="enemy-field-buff-lines"
-                  :class="CAPTURE_HIDE_CLASS"
-                >
-                  <li v-for="(line, lineIndex) in fieldBuffLines(enemy)" :key="lineIndex">
-                    <BuffRichText :text="line" />
-                  </li>
-                </ul>
+              <div class="enemy-side">
+                <div v-if="scoringNoteLines(enemy).length" class="enemy-scoring-note">
+                  <p class="enemy-scoring-note-title">得分机制</p>
+                  <ul class="enemy-scoring-note-lines">
+                    <li v-for="(line, lineIndex) in scoringNoteLines(enemy)" :key="lineIndex">
+                      <BuffRichText :text="line" />
+                    </li>
+                  </ul>
+                </div>
                 <div
-                  v-if="fieldBuffLines(enemy).length && blocksForHistoryDisplay(enemy.fieldBuff?.effectBlocks, enemy.fieldBuff?.text ?? '')?.length"
-                  class="enemy-field-buff-divider"
-                  :class="CAPTURE_HIDE_CLASS"
-                  aria-hidden="true"
-                />
-                <BuffEffectBlocksDisplay
-                  v-if="blocksForHistoryDisplay(enemy.fieldBuff?.effectBlocks, enemy.fieldBuff?.text ?? '')?.length"
-                  compact
-                  notes-only
-                  :blocks="blocksForHistoryDisplay(enemy.fieldBuff?.effectBlocks, enemy.fieldBuff?.text ?? '')"
-                  :title="enemy.fieldBuff?.name || '场地 Buff'"
-                  empty-text="暂无场地 Buff 效果块"
-                />
-                <p
-                  v-else-if="!fieldBuffLines(enemy).length && enemy.fieldBuff?.text"
-                  class="enemy-field-buff-meta"
-                  :class="CAPTURE_HIDE_CLASS"
+                  v-if="enemy.fieldBuff?.name || enemy.fieldBuff?.text || enemy.fieldBuff?.effectBlocks?.length"
+                  class="enemy-field-buff"
+                  :class="hasFieldBuffNotes(enemy) ? '' : CAPTURE_HIDE_CLASS"
                 >
-                  <BuffRichText :text="enemy.fieldBuff.text" />
-                </p>
+                  <p class="enemy-field-buff-title">{{ fieldBuffTitle(enemy) }}</p>
+                  <ul
+                    v-if="fieldBuffLines(enemy).length"
+                    class="enemy-field-buff-lines"
+                    :class="CAPTURE_HIDE_CLASS"
+                  >
+                    <li v-for="(line, lineIndex) in fieldBuffLines(enemy)" :key="lineIndex">
+                      <BuffRichText :text="line" />
+                    </li>
+                  </ul>
+                  <div
+                    v-if="fieldBuffLines(enemy).length && blocksForHistoryDisplay(enemy.fieldBuff?.effectBlocks, enemy.fieldBuff?.text ?? '')?.length"
+                    class="enemy-field-buff-divider"
+                    :class="CAPTURE_HIDE_CLASS"
+                    aria-hidden="true"
+                  />
+                  <BuffEffectBlocksDisplay
+                    v-if="blocksForHistoryDisplay(enemy.fieldBuff?.effectBlocks, enemy.fieldBuff?.text ?? '')?.length"
+                    compact
+                    notes-only
+                    :blocks="blocksForHistoryDisplay(enemy.fieldBuff?.effectBlocks, enemy.fieldBuff?.text ?? '')"
+                    :title="enemy.fieldBuff?.name || '场地 Buff'"
+                    empty-text="暂无场地 Buff 效果块"
+                  />
+                  <p
+                    v-else-if="!fieldBuffLines(enemy).length && enemy.fieldBuff?.text"
+                    class="enemy-field-buff-meta"
+                    :class="CAPTURE_HIDE_CLASS"
+                  >
+                    <BuffRichText :text="enemy.fieldBuff.text" />
+                  </p>
+                </div>
               </div>
             </div>
           </article>
@@ -1140,42 +1169,52 @@ function closePhasePicker() {
                   </div>
                 </div>
               </div>
-              <div
-                v-if="enemy.fieldBuff?.name || enemy.fieldBuff?.text || enemy.fieldBuff?.effectBlocks?.length"
-                class="enemy-field-buff"
-                :class="hasFieldBuffNotes(enemy) ? '' : CAPTURE_HIDE_CLASS"
-              >
-                <p class="enemy-field-buff-title">{{ fieldBuffTitle(enemy) }}</p>
-                <ul
-                  v-if="fieldBuffLines(enemy).length"
-                  class="enemy-field-buff-lines"
-                  :class="CAPTURE_HIDE_CLASS"
-                >
-                  <li v-for="(line, lineIndex) in fieldBuffLines(enemy)" :key="lineIndex">
-                    <BuffRichText :text="line" />
-                  </li>
-                </ul>
+              <div class="enemy-side">
+                <div v-if="scoringNoteLines(enemy).length" class="enemy-scoring-note">
+                  <p class="enemy-scoring-note-title">得分机制</p>
+                  <ul class="enemy-scoring-note-lines">
+                    <li v-for="(line, lineIndex) in scoringNoteLines(enemy)" :key="lineIndex">
+                      <BuffRichText :text="line" />
+                    </li>
+                  </ul>
+                </div>
                 <div
-                  v-if="fieldBuffLines(enemy).length && blocksForHistoryDisplay(enemy.fieldBuff?.effectBlocks, enemy.fieldBuff?.text ?? '')?.length"
-                  class="enemy-field-buff-divider"
-                  :class="CAPTURE_HIDE_CLASS"
-                  aria-hidden="true"
-                />
-                <BuffEffectBlocksDisplay
-                  v-if="blocksForHistoryDisplay(enemy.fieldBuff?.effectBlocks, enemy.fieldBuff?.text ?? '')?.length"
-                  compact
-                  notes-only
-                  :blocks="blocksForHistoryDisplay(enemy.fieldBuff?.effectBlocks, enemy.fieldBuff?.text ?? '')"
-                  :title="enemy.fieldBuff?.name || '场地 Buff'"
-                  empty-text="暂无场地 Buff 效果块"
-                />
-                <p
-                  v-else-if="!fieldBuffLines(enemy).length && enemy.fieldBuff?.text"
-                  class="enemy-field-buff-meta"
-                  :class="CAPTURE_HIDE_CLASS"
+                  v-if="enemy.fieldBuff?.name || enemy.fieldBuff?.text || enemy.fieldBuff?.effectBlocks?.length"
+                  class="enemy-field-buff"
+                  :class="hasFieldBuffNotes(enemy) ? '' : CAPTURE_HIDE_CLASS"
                 >
-                  <BuffRichText :text="enemy.fieldBuff.text" />
-                </p>
+                  <p class="enemy-field-buff-title">{{ fieldBuffTitle(enemy) }}</p>
+                  <ul
+                    v-if="fieldBuffLines(enemy).length"
+                    class="enemy-field-buff-lines"
+                    :class="CAPTURE_HIDE_CLASS"
+                  >
+                    <li v-for="(line, lineIndex) in fieldBuffLines(enemy)" :key="lineIndex">
+                      <BuffRichText :text="line" />
+                    </li>
+                  </ul>
+                  <div
+                    v-if="fieldBuffLines(enemy).length && blocksForHistoryDisplay(enemy.fieldBuff?.effectBlocks, enemy.fieldBuff?.text ?? '')?.length"
+                    class="enemy-field-buff-divider"
+                    :class="CAPTURE_HIDE_CLASS"
+                    aria-hidden="true"
+                  />
+                  <BuffEffectBlocksDisplay
+                    v-if="blocksForHistoryDisplay(enemy.fieldBuff?.effectBlocks, enemy.fieldBuff?.text ?? '')?.length"
+                    compact
+                    notes-only
+                    :blocks="blocksForHistoryDisplay(enemy.fieldBuff?.effectBlocks, enemy.fieldBuff?.text ?? '')"
+                    :title="enemy.fieldBuff?.name || '场地 Buff'"
+                    empty-text="暂无场地 Buff 效果块"
+                  />
+                  <p
+                    v-else-if="!fieldBuffLines(enemy).length && enemy.fieldBuff?.text"
+                    class="enemy-field-buff-meta"
+                    :class="CAPTURE_HIDE_CLASS"
+                  >
+                    <BuffRichText :text="enemy.fieldBuff.text" />
+                  </p>
+                </div>
               </div>
             </div>
           </article>
@@ -1205,6 +1244,9 @@ function closePhasePicker() {
       :boss-existed-by-multiplier-version="monsterDetailBossExistedByMultiplierVersion"
       :previous-field-buff="monsterDetailPreviousFieldBuff"
       :current-field-buff="monsterDetailCurrentFieldBuff"
+      :current-field-buff-lines="monsterDetailCurrentFieldBuffLines"
+      :current-field-buff-blocks="monsterDetailCurrentFieldBuffBlocks"
+      :previous-scoring-note="monsterDetailPreviousScoringNote"
       :trait-transition="monsterDetailTraitTransition"
       :hp-comparison="monsterDetailHpComparison"
       :hp-coeff-comparison="monsterDetailHpCoeffComparison"
@@ -1702,7 +1744,20 @@ function closePhasePicker() {
   width: clamp(150px, 32%, 210px);
 }
 
-/* 绝境：图片 22% / 数据 28% / 场地 Buff 50% 同一行 */
+/* 得分机制 + 场地 Buff 放到同一侧（绝境双列布局里都在右列） */
+.enemy-side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.enemy-side .enemy-scoring-note,
+.enemy-side .enemy-field-buff {
+  margin-top: 0;
+}
+
+/* 绝境：图片 22% / 数据 28% / （得分机制 + 场地 Buff）50% 同一行 */
 .enemy-card--hard .enemy-main--with-field-buff {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -1721,6 +1776,11 @@ function closePhasePicker() {
 .enemy-card--hard .enemy-main--with-field-buff .enemy-image {
   width: 100%;
   max-width: none;
+}
+
+.enemy-card--hard .enemy-main--with-field-buff .enemy-side {
+  margin-top: 0;
+  align-self: start;
 }
 
 .enemy-card--hard .enemy-main--with-field-buff .enemy-field-buff {
@@ -2004,6 +2064,39 @@ function closePhasePicker() {
   border: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent);
   border-left: 3px solid color-mix(in srgb, #e8a838 75%, transparent);
   background: color-mix(in srgb, var(--color-background) 55%, transparent);
+}
+
+.enemy-scoring-note {
+  margin-top: 0.55rem;
+  padding: 0.45rem 0.55rem 0.5rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent);
+  border-left: 3px solid color-mix(in srgb, #5f8fd8 75%, transparent);
+  background: color-mix(in srgb, var(--color-background) 45%, transparent);
+}
+
+.enemy-scoring-note-title {
+  margin: 0 0 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: color-mix(in srgb, #5f8fd8 80%, var(--color-text));
+}
+
+.enemy-scoring-note-lines {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--color-text-muted, #9aa3b0);
+}
+
+.content-grid--embedded .enemy-scoring-note-title,
+.content-grid--embedded .enemy-scoring-note-lines {
+  font-size: clamp(0.68rem, 1.15vh, 0.78rem);
 }
 
 .enemy-field-buff-title {

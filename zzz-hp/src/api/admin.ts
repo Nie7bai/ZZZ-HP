@@ -23,6 +23,8 @@ export interface CreateBossPayload {
   resistance?: string | null
   /** 高抗性（40%）属性，为 resistance 的子集 */
   resistance_high?: string | null
+  /** 本期绑定的得分机制套 id（空 = 第一套） */
+  scoring_note_set_id?: string | null
   boss_image?: string | null
   stage?: number
   roomInStage?: number
@@ -87,6 +89,8 @@ export interface BossInfoRecord {
   weakness: string | null
   resistance: string | null
   resistance_high?: string | null
+  /** 得分机制（纯文本，与怪物绑定，无增益） */
+  scoring_note?: string | null
   crisis_base_hp?: number | null
   stagger_multiplier?: number | null
   stagger_time?: number | null
@@ -113,6 +117,7 @@ export interface BossInfoSyncResult {
   weakness: string | null
   resistance: string | null
   resistance_high?: string | null
+  scoring_note?: string | null
 }
 
 export interface CreateBossResult {
@@ -133,6 +138,10 @@ export interface BossRecord {
   weakness: string | null
   resistance: string | null
   resistance_high?: string | null
+  /** 得分机制生效文本（绑定套正文；来自怪物库） */
+  scoring_note?: string | null
+  /** 本期绑定的得分机制套 id（空 = 第一套） */
+  scoring_note_set_id?: string | null
   boss_image: string | null
   stagger_multiplier?: number | null
   /** 失衡易伤的有效值（怪物库优先，期数快照兜底） */

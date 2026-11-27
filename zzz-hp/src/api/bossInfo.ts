@@ -27,6 +27,10 @@ export interface BossInfoRecord {
   weakness: string | null
   resistance: string | null
   resistance_high?: string | null
+  /** 得分机制多套（与场地 Buff 同构）；第一套镜像回 scoring_note */
+  scoring_note_sets?: Array<{ id: string; label?: string | null; name: string; text: string }> | null
+  /** 旧单列文本（兼容） */
+  scoring_note?: string | null
   crisis_base_hp?: number | null
   stagger_multiplier?: number | null
   stagger_time?: number | null

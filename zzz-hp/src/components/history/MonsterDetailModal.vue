@@ -4,6 +4,8 @@ import IkModalShell from '@/components/common/IkModalShell.vue'
 import DualLineChartView from '@/components/history/DualLineChartView.vue'
 import RoomBuffTransitionPanel from '@/components/history/RoomBuffTransitionPanel.vue'
 import TraitTransitionPanel from '@/components/history/TraitTransitionPanel.vue'
+import BuffEffectBlocksDisplay from '@/components/calculator/BuffEffectBlocksDisplay.vue'
+import BuffRichText from '@/components/calculator/BuffRichText.vue'
 import MonsterDetailStats, {
   type MonsterDetailRecord,
 } from '@/components/history/MonsterDetailStats.vue'
@@ -17,6 +19,7 @@ import {
   type MonsterFieldBuffSnapshot,
 } from '@/utils/historyMonsterDetail'
 import { createRequestEpoch } from '@/utils/requestEpoch'
+import { splitNoteLines } from '@/utils/historyNoteText'
 
 const props = defineProps<{
   open: boolean
@@ -36,6 +39,12 @@ const props = defineProps<{
   previousFieldBuff?: MonsterFieldBuffSnapshot | null
   /** 现场地 Buff（当期），由父组件从 phases 解析 */
   currentFieldBuff?: MonsterFieldBuffSnapshot | null
+  /** 现场地 Buff 的逐行文本（由父组件按卡片同一口径拆好传入，避免对象引用差异） */
+  currentFieldBuffLines?: string[] | null
+  /** 现场地 Buff 的效果块注释（正文常放在 block note 里；与卡片同口径过滤） */
+  currentFieldBuffBlocks?: import('@/types/calculator').BuffEffectBlock[] | null
+  /** 上一期的得分机制（同 Boss + 房间）；无历史或内容相同由父组件判空 */
+  previousScoringNote?: { note: string; phaseLabel: string } | null
   /** 弱点/抗性转变（原 / 现两侧），无变化时为 null */
   traitTransition?: {
     previous: {
@@ -68,6 +77,35 @@ const chartError = ref('')
 const hpMode = ref<CrisisHpChartMode>('normal')
 
 const chartRoomType = computed<CrisisBossRoomType>(() => (props.enemy?.isHardRoom ? 'hard' : 'normal'))
+
+/** 得分机制变化：上期与本期都有内容且不同 */
+const splitLines = (text: string) => splitNoteLines(text)
+
+const scoringNoteChange = computed(() => {
+  const previous = props.previousScoringNote?.note?.trim() ?? ''
+  const current = (props.enemy?.scoringNote ?? '').trim()
+  if (!previous || !current || previous === current) return null
+  return {
+    previous,
+    current,
+    previousLines: splitLines(previous),
+    currentLines: splitLines(current),
+    previousLabel: props.previousScoringNote?.phaseLabel ?? '',
+  }
+})
+
+/** 场地 Buff（当期）按行拆分：没构成转变时也在详情里平铺展示 */
+const currentFieldBuffLines = computed(() => {
+  // 父组件按卡片同一口径拆好行；缺省时再回落 enemy / currentFieldBuff 的正文
+  const provided = (props.currentFieldBuffLines ?? []).filter((line) => String(line).trim())
+  if (provided.length) return provided
+  const text =
+    props.enemy?.fieldBuff?.text?.trim() ?? props.currentFieldBuff?.fieldBuff?.text?.trim()
+  return text ? splitLines(text) : []
+})
+
+/** 得分机制（纯文本，与怪物绑定）：按行拆分；空值时不渲染 */
+const scoringNoteLines = computed(() => splitLines(props.enemy?.scoringNote ?? ''))
 
 /** 详情数据块按共享数据行形状组装（与怪物数据库、后续防卫战详情同构） */
 const detailRecord = computed<MonsterDetailRecord | null>(() => {
@@ -153,6 +191,16 @@ watch(
         :show-resistance-table="true"
       />
 
+      <!-- 有「变化」时只展示变化面板（原/现两栏），当期那份不再重复显示 —— 与场地 Buff 同规则 -->
+      <section v-if="scoringNoteLines.length && !scoringNoteChange" class="monster-detail-scoring">
+        <p class="monster-detail-scoring-title">得分机制</p>
+        <ul class="monster-detail-scoring-lines">
+          <li v-for="(line, lineIndex) in scoringNoteLines" :key="lineIndex">
+            <BuffRichText :text="line" />
+          </li>
+        </ul>
+      </section>
+
       <TraitTransitionPanel
         v-if="traitTransition"
         class="monster-detail-buff-transition"
@@ -160,12 +208,58 @@ watch(
         :current="traitTransition.current"
       />
 
+      <div v-if="scoringNoteChange" class="note-transition">
+        <p class="note-transition-title">得分机制变化</p>
+        <div class="note-transition-columns">
+          <div class="note-transition-column">
+            <p class="note-transition-label">
+              原<span v-if="scoringNoteChange.previousLabel" class="note-transition-phase">{{ scoringNoteChange.previousLabel }}</span>
+            </p>
+            <ul class="note-transition-lines">
+              <li v-for="(line, lineIndex) in scoringNoteChange.previousLines" :key="`prev-${lineIndex}`">
+                <BuffRichText :text="line" />
+              </li>
+            </ul>
+          </div>
+          <div class="note-transition-column">
+            <p class="note-transition-label">
+              现<span v-if="phaseLabel" class="note-transition-phase">{{ phaseLabel }}</span>
+            </p>
+            <ul class="note-transition-lines">
+              <li v-for="(line, lineIndex) in scoringNoteChange.currentLines" :key="`cur-${lineIndex}`">
+                <BuffRichText :text="line" />
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
       <RoomBuffTransitionPanel
         v-if="showRoomBuffTransition"
         class="monster-detail-buff-transition"
         :previous-field-buff="previousFieldBuff ?? null"
         :current-field-buff="currentFieldBuff ?? null"
       />
+
+      <section
+        v-if="!showRoomBuffTransition && (currentFieldBuffLines.length || currentFieldBuffBlocks?.length)"
+        class="monster-detail-field-buff"
+      >
+        <p class="monster-detail-field-buff-title">场地 Buff{{ currentFieldBuff?.fieldBuff?.name && currentFieldBuff.fieldBuff.name !== '场地 Buff' ? `——${currentFieldBuff.fieldBuff.name}` : '' }}</p>
+        <ul v-if="currentFieldBuffLines.length" class="monster-detail-field-buff-lines">
+          <li v-for="(line, lineIndex) in currentFieldBuffLines" :key="lineIndex">
+            <BuffRichText :text="line" />
+          </li>
+        </ul>
+        <BuffEffectBlocksDisplay
+          v-if="currentFieldBuffBlocks?.length"
+          compact
+          notes-only
+          :blocks="currentFieldBuffBlocks"
+          :title="currentFieldBuff?.fieldBuff?.name || '场地 Buff'"
+          empty-text=""
+        />
+      </section>
 
       <section v-if="enemy.bossName" class="monster-detail-chart">
         <p v-if="chartLoading" class="status-text">图表加载中...</p>
@@ -244,6 +338,135 @@ watch(
 }
 
 /* `page-scroll` 形态下图表高度以窗口为基准、容器高度交给内容，不能被 flex 压缩 */
+.note-transition {
+  margin: 0.35rem 0 0;
+  padding: 0.5rem 0.6rem 0.55rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent);
+  /* 与「得分机制」块同款（蓝色左边框），不再是场地 Buff 的橙色 */
+  border-left: 3px solid color-mix(in srgb, #5f8fd8 75%, transparent);
+  background: color-mix(in srgb, var(--color-background) 45%, transparent);
+}
+
+.note-transition-title {
+  margin: 0 0 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: color-mix(in srgb, #5f8fd8 80%, var(--color-text));
+}
+
+.note-transition-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+}
+
+.note-transition-column {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0 0.75rem;
+}
+
+.note-transition-column + .note-transition-column {
+  border-left: 1px solid var(--color-border);
+}
+
+.note-transition-column:first-child {
+  padding-left: 0;
+}
+
+.note-transition-column:last-child {
+  padding-right: 0;
+}
+
+.note-transition-label {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #e85d4c;
+}
+
+.note-transition-phase {
+  margin-left: 0.3rem;
+  font-weight: 600;
+  opacity: 0.72;
+  color: var(--color-heading);
+}
+
+.note-transition-lines {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  opacity: 0.88;
+}
+
+/* 未变化的场地 Buff：沿用「场地 Buff 转变」那个框的样式 */
+.monster-detail-field-buff {
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent);
+  border-left: 3px solid color-mix(in srgb, #e8a838 75%, transparent);
+  background: color-mix(in srgb, var(--color-background-soft) 75%, transparent);
+}
+
+.monster-detail-field-buff-title {
+  margin: 0 0 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--color-heading);
+}
+
+.monster-detail-field-buff-lines {
+  margin: 0;
+  padding-left: 1rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  opacity: 0.88;
+}
+
+.monster-detail-scoring {
+  margin: 0.35rem 0 0;
+  padding: 0.5rem 0.6rem 0.55rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent);
+  border-left: 3px solid color-mix(in srgb, #5f8fd8 75%, transparent);
+  background: color-mix(in srgb, var(--color-background) 45%, transparent);
+}
+
+.monster-detail-scoring-title {
+  margin: 0 0 0.2rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: color-mix(in srgb, #5f8fd8 80%, var(--color-text));
+}
+
+.monster-detail-scoring-phase {
+  margin: 0.25rem 0 0.1rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--color-text-muted, #9aa3b0);
+}
+
+.monster-detail-scoring-phase-label {
+  margin-left: 0.3rem;
+  font-weight: 400;
+}
+
+.monster-detail-scoring-lines {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
 .monster-detail-chart-view {
   flex: none;
   min-height: auto;

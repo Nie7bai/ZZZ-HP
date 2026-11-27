@@ -17,10 +17,12 @@ import {
   ensureEnvironmentBuffSchema,
   parseFieldBuffSetsJson,
   resolveFieldBuffFromSets,
+  resolveFieldBuffSetIdFromSets,
   normalizeFieldBuffSet,
   parseEffectBlocksJson,
 } from '../utils/environmentBuffSchema.js'
 import { parseWeaknessSetsJson, weaknessSetsFromLegacy } from '../utils/bossWeaknessSets.js'
+import { parseScoringNoteSetsJson, resolveScoringNoteSet } from '../utils/bossScoringNoteSets.js'
 import {
   loadGlobalBuffEffectMap,
   resolveEffectBlocksForName,
@@ -29,6 +31,7 @@ import { ensureContentModeColumns } from './contentModeService.js'
 import {
   ensureBossAnomalySchema,
   ensureBossResistanceSchema,
+  ensureBossScoringNoteSchema,
   ensureBossStaggerSchema,
   normalizeAnomalyBarCoefficient,
   normalizeStaggerMultiplier,
@@ -109,6 +112,7 @@ function enrichBoss(boss, context = {}) {
     staggerTimeByName = new Map(),
     staggerMultiplierByName = new Map(),
     resistanceHighByName = new Map(),
+    scoringNoteByName = new Map(),
     anomalyBarCoefficientByName = new Map(),
     weaknessSetsByName = new Map(),
   } = context
@@ -177,7 +181,31 @@ function enrichBoss(boss, context = {}) {
     hp_coeff_label: formatCrisisHpCoeffPercent(resolved.percent),
     is_hard_room: isCrisisHardRoom(boss.room),
     field_buff_set_id: String(boss.field_buff_set_id ?? '').trim() || null,
+    /** 当期实际生效的场地 Buff 套 id（空绑定按「legacy > 第一套」解析），供图表按套标记期数 */
+    field_buff_set_effective_id: resolveFieldBuffSetIdFromSets(sets, boss.field_buff_set_id),
     field_buff: fieldBuff,
+    /**
+     * 得分机制（纯文本，多套）：怪物库存套，期数行绑定其中一套（空 = 第一套）；
+     * `boss.scoring_note` 是兼容保留的一次性文本覆盖，只在怪物库没有套时兜底。
+     * 危局详情显示在场地 Buff 上方。
+     */
+    scoring_note: (() => {
+      const fromSet = resolveScoringNoteSet(
+        scoringNoteByName.get(boss.boss_name) ?? [],
+        boss.scoring_note_set_id,
+      )?.text?.trim()
+      if (fromSet) return fromSet
+      return String(boss.scoring_note ?? '').trim() || null
+    })(),
+    /** 本期绑定套 id（空 = 第一套） */
+    scoring_note_set_id: String(boss.scoring_note_set_id ?? '').trim() || null,
+    /** 当期实际生效的得分机制套 id（空绑定 → 第一套），供图表按套标记期数 */
+    scoring_note_set_effective_id: resolveScoringNoteSet(
+      scoringNoteByName.get(boss.boss_name) ?? [],
+      boss.scoring_note_set_id,
+    )?.id ?? null,
+    /** 怪物库里的全部套（供编辑弹窗下拉） */
+    scoring_note_sets: scoringNoteByName.get(boss.boss_name) ?? [],
   }
 }
 
@@ -197,6 +225,33 @@ async function loadBossResistanceHighMap() {
     }
   } catch (err) {
     console.warn('[crisis] loadBossResistanceHighMap fallback:', err.message)
+  }
+  return map
+}
+
+/**
+ * 怪物库的「得分机制多套」按 boss_name 建索引；旧单列文本会合成一套。
+ * 期数行只保存绑定套 id（`boss.scoring_note_set_id`）。
+ */
+async function loadBossScoringNoteMap() {
+  await ensureBossScoringNoteSchema()
+  const map = new Map()
+  try {
+    const [rows] = await pool.execute(
+      'SELECT boss_name, scoring_note, scoring_note_sets FROM boss_info',
+    )
+    for (const row of rows) {
+      const sets = parseScoringNoteSetsJson(row.scoring_note_sets)
+      if (sets.length) {
+        map.set(row.boss_name, sets)
+      } else if (String(row.scoring_note ?? '').trim()) {
+        map.set(row.boss_name, [
+          { id: 'legacy', label: null, name: '得分机制', text: String(row.scoring_note).trim() },
+        ])
+      }
+    }
+  } catch (err) {
+    console.warn('[crisis] loadBossScoringNoteMap fallback:', err.message)
   }
   return map
 }
@@ -364,6 +419,7 @@ export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
   const staggerTimeByName = await loadBossStaggerTimeMap()
   const staggerMultiplierByName = await loadBossStaggerMultiplierMap()
   const resistanceHighByName = await loadBossResistanceHighMap()
+  const scoringNoteByName = await loadBossScoringNoteMap()
   const weaknessSetsByName = await loadBossWeaknessSetsMap()
   const anomalyBarCoefficientByName = await loadBossAnomalyCoefficientMap()
   const globalBuffEffectMap = await loadGlobalBuffEffectMap()
@@ -421,6 +477,7 @@ export async function getCrisisAssaultPhases({ includeHidden = false } = {}) {
           staggerTimeByName,
           staggerMultiplierByName,
           resistanceHighByName,
+          scoringNoteByName,
           anomalyBarCoefficientByName,
           weaknessSetsByName,
         }),
@@ -521,7 +578,9 @@ export async function getBossChartHistory(
   const trashMap = await getSeasonContentTrashMap('crisis')
   const baseHpByName = await loadCrisisBaseHpMap()
   const resistanceHighByName = await loadBossResistanceHighMap()
+  const scoringNoteByName = await loadBossScoringNoteMap()
   const weaknessSetsByName = await loadBossWeaknessSetsMap()
+  const fieldBuffSetsByName = await loadBossFieldBuffMap()
 
   return bossRows
     .filter((boss) => isCrisisBossId(boss.id))
@@ -542,7 +601,9 @@ export async function getBossChartHistory(
       const enriched = enrichBoss(boss, {
         baseHpByName,
         resistanceHighByName,
+        scoringNoteByName,
         weaknessSetsByName,
+        fieldBuffSetsByName,
       })
       const startDate = formatDateValue(dateInfo?.start_date)
       const listed = isSeasonPubliclyVisible(startDate)
@@ -561,6 +622,9 @@ export async function getBossChartHistory(
         resistance_high: enriched.resistance_high,
         weakness_set_id: enriched.weakness_set_id,
         weakness_set_label: enriched.weakness_set_label,
+        /** 该期实际使用的得分机制 / 场地 Buff 套 id（空绑定已解析成第一套），供数据库图表按套标记期数 */
+        scoring_note_set_id: enriched.scoring_note_set_effective_id,
+        field_buff_set_id: enriched.field_buff_set_effective_id,
         version: boss.version,
         phase: String(boss.phase),
         boss_image: boss.boss_image,

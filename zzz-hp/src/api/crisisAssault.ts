@@ -38,6 +38,12 @@ interface ApiBoss {
   anomaly_bar_coefficient?: number | null
   field_buff?: ApiFieldBuff | null
   field_buff_set_id?: string | null
+  /** 得分机制生效文本（绑定套的正文；无增益） */
+  scoring_note?: string | null
+  /** 本期绑定套 id（空 = 第一套） */
+  scoring_note_set_id?: string | null
+  /** 怪物库里的全部套（供编辑弹窗下拉与详情「变化」比对） */
+  scoring_note_sets?: Array<{ id: string; label?: string | null; name: string; text: string }> | null
 }
 
 interface ApiFieldBuff {
@@ -172,6 +178,9 @@ function mapBossToEnemy(boss: ApiBoss): EnemySlot {
     isHardRoom: hard,
     recordId: boss.id,
     room: normalizeCrisisRoomCode(boss.room),
+    scoringNote: boss.scoring_note?.trim() ? boss.scoring_note.trim() : null,
+    scoringNoteSetId: boss.scoring_note_set_id ?? null,
+    scoringNoteSets: Array.isArray(boss.scoring_note_sets) ? boss.scoring_note_sets : [],
     fieldBuffSetId: boss.field_buff_set_id ?? boss.field_buff?.set_id ?? null,
     fieldBuff: boss.field_buff
       ? {
@@ -275,6 +284,9 @@ export interface HpChartPoint {
   resistanceHigh?: string | null
   weaknessSetId?: string | null
   weaknessSetLabel?: string | null
+  /** 该期实际使用的得分机制 / 场地 Buff 套 id（空绑定已解析成第一套） */
+  scoringNoteSetId?: string | null
+  fieldBuffSetId?: string | null
 }
 
 export function getChartPointPhaseKey(point: HpChartPoint): string {
@@ -499,6 +511,8 @@ export async function fetchBossChart(
         resistance_high?: string | null
         weakness_set_id?: string | null
         weakness_set_label?: string | null
+        scoring_note_set_id?: string | null
+        field_buff_set_id?: string | null
       }
     >
   }
@@ -521,6 +535,8 @@ export async function fetchBossChart(
     resistanceHigh: row.resistance_high ?? null,
     weaknessSetId: row.weakness_set_id ?? null,
     weaknessSetLabel: row.weakness_set_label ?? null,
+    scoringNoteSetId: row.scoring_note_set_id ?? null,
+    fieldBuffSetId: row.field_buff_set_id ?? null,
   }))
 }
 

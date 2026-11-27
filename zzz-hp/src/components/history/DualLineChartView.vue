@@ -53,8 +53,13 @@ const props = withDefaults(
     enableHpCoeffCharts?: boolean
     /** 去掉外框边线 */
     borderless?: boolean
-    /** 需要加底纹标记的期数标签（怪物数据库按弱点/抗性套标注） */
+    /** 需要加框线标记的期数标签（怪物数据库按弱点/抗性套标注） */
     markedLabels?: string[]
+    /**
+     * 多组框线标记：不同类别用不同描边色（弱点默认蓝、得分机制紫、场地 Buff 橙），
+     * 同一期命中多组时按传入顺序向内嵌套，不会互相遮挡。传入非空时优先于 `markedLabels`。
+     */
+    markedGroups?: Array<{ labels: string[]; tone?: 'weakness' | 'scoring' | 'field-buff' }>
     /**
      * 整页滚动形态：纵向滚轮交给页面，面板内只保留横向拖拽视口，图表高度改以窗口高度为基准。
      * 默认 false 保持「面板内小视口滚动」的既有形态。
@@ -81,6 +86,7 @@ const props = withDefaults(
     enableHpCoeffCharts: false,
     borderless: false,
     markedLabels: () => [],
+    markedGroups: () => [],
     pageScroll: false,
   },
 )
@@ -562,14 +568,57 @@ const hoveredHpPoint = computed(() =>
   hoverIndex.value === null ? null : hpChartPoints.value[hoverIndex.value] ?? null,
 )
 
-/** 需要标记的期数（底纹）：按标签匹配当前点序 */
-const markedLabelSet = computed(() => new Set(props.markedLabels))
-const markedColumnZones = computed(() =>
-  columnZones.value.filter((zone) => {
-    const point = points.value[zone.index]
-    return point ? markedLabelSet.value.has(point.label) : false
-  }),
-)
+/** 描边框的层序：同一期命中多组时向内缩进（弱点仍是整块底纹，inset 0 并填充） */
+const MARK_TONE_INSET: Record<string, number> = { scoring: 0, 'field-buff': 2 }
+
+/**
+ * 需要标记的期数：按标签匹配当前点序。
+ * 每组内**连续的期数合并成一个框**（不是一期一个），弱点套仍按原来的整块底纹渲染；
+ * 得分机制 / 场地 Buff 用描边框，两组重叠时按 `MARK_TONE_INSET` 向内缩进，互不遮挡。
+ */
+const markedColumnZones = computed(() => {
+  const groups = props.markedGroups?.length
+    ? props.markedGroups
+    : [{ labels: props.markedLabels, tone: undefined }]
+  const zones: Array<{
+    key: string
+    x1: number
+    x2: number
+    width: number
+    inset: number
+    tone: string
+  }> = []
+  for (const group of groups) {
+    const tone = group.tone ?? ''
+    if (!group.labels.length) continue
+    const labels = new Set(group.labels)
+    let run: Array<{ index: number; x1: number; x2: number }> = []
+    const flushRun = () => {
+      if (!run.length) return
+      const first = run[0]!
+      const last = run[run.length - 1]!
+      zones.push({
+        key: `${tone || 'weakness'}-${first.index}-${last.index}`,
+        x1: first.x1,
+        x2: last.x2,
+        width: last.x2 - first.x1,
+        inset: tone ? (MARK_TONE_INSET[tone] ?? 0) : 0,
+        tone,
+      })
+      run = []
+    }
+    for (const zone of columnZones.value) {
+      const point = points.value[zone.index]
+      if (point && labels.has(point.label)) {
+        run.push({ index: zone.index, x1: zone.x1, x2: zone.x2 })
+      } else {
+        flushRun()
+      }
+    }
+    flushRun()
+  }
+  return zones
+})
 
 const hoveredChartPoint = computed(() =>
   hoverIndex.value === null ? null : points.value[hoverIndex.value] ?? null,
@@ -1689,12 +1738,13 @@ watch(phaseSearchQuery, () => {
 
               <rect
                 v-for="zone in markedColumnZones"
-                :key="`hp-mark-${zone.index}`"
-                :x="zone.x1"
+                :key="`hp-mark-${zone.key}`"
+                :x="zone.x1 + zone.inset"
                 y="0"
-                :width="zone.width"
+                :width="Math.max(zone.width - zone.inset * 2, 2)"
                 :height="chartHeight"
                 class="column-mark"
+                :class="zone.tone ? `column-mark--${zone.tone}` : null"
               />
 
               <rect
@@ -1925,12 +1975,13 @@ watch(phaseSearchQuery, () => {
 
               <rect
                 v-for="zone in markedColumnZones"
-                :key="`exp-mark-${zone.index}`"
-                :x="zone.x1"
+                :key="`exp-mark-${zone.key}`"
+                :x="zone.x1 + zone.inset"
                 y="0"
-                :width="zone.width"
+                :width="Math.max(zone.width - zone.inset * 2, 2)"
                 :height="chartHeight"
                 class="column-mark"
+                :class="zone.tone ? `column-mark--${zone.tone}` : null"
               />
 
               <rect
@@ -2127,12 +2178,13 @@ watch(phaseSearchQuery, () => {
 
               <rect
                 v-for="zone in markedColumnZones"
-                :key="`${series.marker.id}-mark-${zone.index}`"
-                :x="zone.x1"
+                :key="`${series.marker.id}-mark-${zone.key}`"
+                :x="zone.x1 + zone.inset"
                 y="0"
-                :width="zone.width"
+                :width="Math.max(zone.width - zone.inset * 2, 2)"
                 :height="chartHeight"
                 class="column-mark"
+                :class="zone.tone ? `column-mark--${zone.tone}` : null"
               />
 
               <rect
@@ -2276,12 +2328,13 @@ watch(phaseSearchQuery, () => {
 
               <rect
                 v-for="zone in markedColumnZones"
-                :key="`coeff-mark-${zone.index}`"
-                :x="zone.x1"
+                :key="`coeff-mark-${zone.key}`"
+                :x="zone.x1 + zone.inset"
                 y="0"
-                :width="zone.width"
+                :width="Math.max(zone.width - zone.inset * 2, 2)"
                 :height="chartHeight"
                 class="column-mark"
+                :class="zone.tone ? `column-mark--${zone.tone}` : null"
               />
 
               <rect
@@ -3015,10 +3068,25 @@ html[data-theme='dark'] .y-axis-title-hp {
   cursor: inherit;
 }
 
-/* 按弱点/抗性套标记的期数底纹（不拦截指针） */
+/* 弱点 / 抗性套的期数标记：沿用原来的整块底纹 */
 .column-mark {
   fill: color-mix(in srgb, #4a90d9 12%, transparent);
   pointer-events: none;
+}
+
+/* 得分机制 / 场地 Buff：只描边不填充，连续期数合并成一个大框 */
+.column-mark--scoring,
+.column-mark--field-buff {
+  fill: none;
+  stroke-width: 1.5;
+}
+
+.column-mark--scoring {
+  stroke: color-mix(in srgb, #9a6fd6 80%, transparent);
+}
+
+.column-mark--field-buff {
+  stroke: color-mix(in srgb, #e8a838 80%, transparent);
 }
 
 .column-hit--clickable {

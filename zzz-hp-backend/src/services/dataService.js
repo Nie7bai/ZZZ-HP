@@ -201,6 +201,17 @@ export async function createBoss(payload) {
     manualPercent: manualCoeff,
   })
 
+  // 本期绑定的得分机制套：未传（同步/导入）时保留库中原值，传 null/空 表示用第一套
+  const scoringNoteSetProvided = Object.prototype.hasOwnProperty.call(
+    payload,
+    'scoring_note_set_id',
+  )
+  const normalizeScoringNoteSetId = (value) => {
+    if (value == null) return null
+    const text = String(value).trim()
+    return text || null
+  }
+
   const bossValues = [
     versionValue,
     phaseValue,
@@ -221,15 +232,25 @@ export async function createBoss(payload) {
   ]
 
   if (bossId) {
-    const [existing] = await pool.execute('SELECT id FROM boss WHERE id = ? LIMIT 1', [bossId])
+    const [existing] = await pool.execute(
+      'SELECT id, scoring_note, scoring_note_set_id FROM boss WHERE id = ? LIMIT 1',
+      [bossId],
+    )
     if (existing.length) {
+      const scoringNoteSetIdValue = scoringNoteSetProvided
+        ? normalizeScoringNoteSetId(payload.scoring_note_set_id)
+        : (existing[0].scoring_note_set_id ?? null)
+      // 一旦用「绑定套」表达本期选择，就清掉旧的一次性文本，避免它盖住绑定结果
+      const scoringNoteLegacyValue = scoringNoteSetProvided
+        ? null
+        : (existing[0].scoring_note ?? null)
       await pool.execute(
         `UPDATE boss
          SET version = ?, phase = ?, boss_name = ?, hp = ?, hp_coeff_percent = ?, defense = ?, level = ?,
              room = ?, weakness = ?, resistance = ?, resistance_high = ?, boss_image = ?, stagger_multiplier = ?, stagger_time = ?,
-             field_buff_set_id = ?, weakness_set_id = ?, mode = ?
+             field_buff_set_id = ?, weakness_set_id = ?, scoring_note_set_id = ?, scoring_note = ?, mode = ?
          WHERE id = ?`,
-        [...bossValues, modeValue, bossId],
+        [...bossValues, scoringNoteSetIdValue, scoringNoteLegacyValue, modeValue, bossId],
       )
       return {
         id: bossId,
@@ -257,9 +278,9 @@ export async function createBoss(payload) {
     }
 
     await pool.execute(
-      `INSERT INTO boss (id, version, phase, boss_name, hp, hp_coeff_percent, defense, level, room, weakness, resistance, resistance_high, boss_image, stagger_multiplier, stagger_time, field_buff_set_id, weakness_set_id, mode)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [bossId, ...bossValues, modeValue],
+      `INSERT INTO boss (id, version, phase, boss_name, hp, hp_coeff_percent, defense, level, room, weakness, resistance, resistance_high, boss_image, stagger_multiplier, stagger_time, field_buff_set_id, weakness_set_id, scoring_note_set_id, mode)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [bossId, ...bossValues, normalizeScoringNoteSetId(payload.scoring_note_set_id), modeValue],
     )
     return {
       id: bossId,
@@ -287,9 +308,9 @@ export async function createBoss(payload) {
   }
 
   const [result] = await pool.execute(
-    `INSERT INTO boss (version, phase, boss_name, hp, hp_coeff_percent, defense, level, room, weakness, resistance, resistance_high, boss_image, stagger_multiplier, stagger_time, field_buff_set_id, weakness_set_id, mode)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [...bossValues, modeValue],
+    `INSERT INTO boss (version, phase, boss_name, hp, hp_coeff_percent, defense, level, room, weakness, resistance, resistance_high, boss_image, stagger_multiplier, stagger_time, field_buff_set_id, weakness_set_id, scoring_note_set_id, mode)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [...bossValues, normalizeScoringNoteSetId(payload.scoring_note_set_id), modeValue],
   )
 
   return {
