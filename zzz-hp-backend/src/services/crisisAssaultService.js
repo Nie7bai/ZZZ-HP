@@ -180,8 +180,19 @@ function enrichBoss(boss, context = {}) {
     is_hard_room: isCrisisHardRoom(boss.room),
     field_buff_set_id: String(boss.field_buff_set_id ?? '').trim() || null,
     field_buff: fieldBuff,
-    /** 得分机制（纯文本，与怪物绑定；危局详情显示在场地 Buff 上方） */
-    scoring_note: scoringNoteByName.get(boss.boss_name) ?? null,
+    /**
+     * 得分机制（纯文本）：本期覆盖（`boss.scoring_note`）优先，否则沿用怪物库那份
+     * （`boss_info.scoring_note`）；危局详情显示在场地 Buff 上方。
+     */
+    scoring_note: (boss.scoring_note ?? '').trim()
+      ? String(boss.scoring_note).trim()
+      : (scoringNoteByName.get(boss.boss_name) ?? null),
+    /** 本期覆盖值（空 = 沿用怪物库）；编辑弹窗用它判断「沿用 / 本期自定义」 */
+    scoring_note_override: (boss.scoring_note ?? '').trim()
+      ? String(boss.scoring_note).trim()
+      : null,
+    /** 怪物库默认值，编辑弹窗里作为「沿用」的参考文本 */
+    scoring_note_default: scoringNoteByName.get(boss.boss_name) ?? null,
   }
 }
 

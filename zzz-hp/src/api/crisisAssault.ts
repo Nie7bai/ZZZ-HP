@@ -38,8 +38,12 @@ interface ApiBoss {
   anomaly_bar_coefficient?: number | null
   field_buff?: ApiFieldBuff | null
   field_buff_set_id?: string | null
-  /** 得分机制（纯文本，与怪物绑定；无增益） */
+  /** 得分机制生效值（本期覆盖优先，否则怪物库默认；无增益） */
   scoring_note?: string | null
+  /** 本期覆盖值（空 = 沿用怪物库） */
+  scoring_note_override?: string | null
+  /** 怪物库默认值 */
+  scoring_note_default?: string | null
 }
 
 interface ApiFieldBuff {
@@ -175,6 +179,8 @@ function mapBossToEnemy(boss: ApiBoss): EnemySlot {
     recordId: boss.id,
     room: normalizeCrisisRoomCode(boss.room),
     scoringNote: boss.scoring_note?.trim() ? boss.scoring_note.trim() : null,
+    scoringNoteOverride: boss.scoring_note_override?.trim() ? boss.scoring_note_override.trim() : null,
+    scoringNoteDefault: boss.scoring_note_default?.trim() ? boss.scoring_note_default.trim() : null,
     fieldBuffSetId: boss.field_buff_set_id ?? boss.field_buff?.set_id ?? null,
     fieldBuff: boss.field_buff
       ? {

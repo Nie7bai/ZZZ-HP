@@ -6,22 +6,25 @@
 
 ## 关键决定
 
-- **绑定对象是怪物**，不是赛季/期数：得分机制随 Boss 固定、一般不随期更换；
-- 因此存在怪物库 `boss_info.scoring_note`（`TEXT`，纯文本），而不是 `date`（赛季日期表）或 `boss`（期数行）；
+- **默认绑定对象是怪物**：得分机制随 Boss 固定、一般不会更换 → 怪物库 `boss_info.scoring_note`（`TEXT`，纯文本）；
+- **允许按期覆盖**：个别期会改规则 → 期数行 `boss.scoring_note` 作为「本期覆盖」，空则回落怪物库；
+  管理端编辑怪物时用单选「沿用怪物库 / 本期自定义」决定写哪一边；
 - **展示位置：场地 Buff 之上**（同一张敌方卡片的属性区之后）。没有内容时不占位。
 
 ## 数据与链路
 
 | 层 | 位置 | 说明 |
 |---|---|---|
-| 建表/补列 | `zzz-hp-backend/src/utils/bossSchema.js` → `ensureBossScoringNoteSchema()` | 首次读写自动 `ALTER TABLE boss_info ADD COLUMN scoring_note TEXT` |
+| 建表/补列 | `zzz-hp-backend/src/utils/bossSchema.js` → `ensureBossScoringNoteSchema()` | 首次读写自动给 `boss_info` 与 `boss` 两张表补 `scoring_note TEXT` |
 | 怪物库读写 | `zzz-hp-backend/src/services/bossInfoService.js` | 列清单 / 新建 / 按 id 更新 / 按名称 upsert 全覆盖；未传值时保留库中原值（与 `resistance_high` 同策略） |
-| 危局下发 | `zzz-hp-backend/src/services/crisisAssaultService.js` | `loadBossScoringNoteMap()` 按 `boss_name` 取值，`enrichBoss` 输出 `scoring_note`（缺省 null） |
+| 危局下发 | `zzz-hp-backend/src/services/crisisAssaultService.js` | `enrichBoss` 输出三个字段：`scoring_note`（生效值 = 期数覆盖 ?? 怪物库）、`scoring_note_override`（本期覆盖）、`scoring_note_default`（怪物库默认） |
+| 期数行写入 | `zzz-hp-backend/src/services/dataService.js` | `createBoss` 接受 `scoring_note`；未传（同步/导入）时保留库中原值，传 `null` 表示清空回落怪物库 |
 | 前端接口 | `zzz-hp/src/api/crisisAssault.ts` | `ApiBoss.scoring_note` → `EnemySlot.scoringNote`（trim 后空串转 null） |
 | 类型 | `zzz-hp/src/types/history.ts` | `EnemySlot.scoringNote?: string \| null` |
 | 展示（往期详情） | `zzz-hp/src/components/history/HistoryDetailPanel.vue` | `scoringNoteLines()` 按行拆分；得分机制与场地 Buff 包在 `.enemy-side` 容器里、得分机制在前（桌面与紧凑两套模板各一处）。绝境双列布局下两者同处右列，避免得分机制被挤到图片旁边 |
 | 展示（详情窗口） | `zzz-hp/src/components/history/MonsterDetailModal.vue` | `.monster-detail-scoring` 块，位于属性表之后、弱点/抗性转变之前 |
-| 管理端 | `zzz-hp/src/components/admin/AdminBossInfoCatalogPanel.vue` | 怪物基础库编辑面板新增「得分机制（纯文本，无增益）」多行输入（跨整行），随基础信息一起保存 |
+| 管理端（怪物库） | `zzz-hp/src/components/admin/AdminBossInfoCatalogPanel.vue` | 「得分机制（纯文本，无增益）」多行输入（跨整行），作为**默认值** |
+| 管理端（期数） | `zzz-hp/src/components/admin/AdminMonsterPanel.vue` | 「得分机制」单选：沿用怪物库（显示默认文本）/ 本期自定义（多行输入）；保存时写 `boss.scoring_note` |
 
 ## 行为边界
 

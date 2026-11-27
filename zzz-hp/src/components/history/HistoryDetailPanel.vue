@@ -334,6 +334,8 @@ function buildCrisisMonsterContext(
     hpCoeffManual: enemy.hpCoeffPercent != null,
     fieldBuffSetId: enemy.fieldBuffSetId ?? null,
     weaknessSetId: enemy.weaknessSetId ?? null,
+    scoringNote: enemy.scoringNoteOverride ?? null,
+    scoringNoteDefault: enemy.scoringNoteDefault ?? null,
   }
 }
 

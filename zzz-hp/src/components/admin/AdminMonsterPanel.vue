@@ -82,6 +82,10 @@ const staggerTime = ref('')
 /** 异常条系数（初始异常积蓄 = 基础异常条 × 系数），空按 1 处理 */
 const anomalyBarCoefficient = ref('')
 const fieldBuffSetId = ref('')
+/** 得分机制：沿用怪物库（默认）或本期自定义覆盖 */
+const scoringNoteMode = ref<'default' | 'custom'>('default')
+const scoringNoteText = ref('')
+const scoringNoteDefaultText = ref('')
 const fieldBuffSetOptions = ref<Array<{ id: string; label: string }>>([])
 const weaknessSetId = ref('')
 const weaknessSetOptions = ref<Array<{ id: string; label: string }>>([])
@@ -469,6 +473,10 @@ function applySlotContext(ctx: AdminMonsterSlotContext) {
   imageUrl.value = ''
   imagePreview.value = ''
   fieldBuffSetId.value = ctx.fieldBuffSetId ?? ''
+  scoringNoteDefaultText.value = ctx.scoringNoteDefault ?? ''
+  const override = (ctx.scoringNote ?? '').trim()
+  scoringNoteMode.value = override ? 'custom' : 'default'
+  scoringNoteText.value = override
   weaknessSetId.value = ctx.weaknessSetId ?? ''
   if (ctx.bossImage) {
     const preview = resolveAssetUrl(ctx.bossImage) ?? ctx.bossImage
@@ -679,6 +687,8 @@ async function submitForm() {
       staggerTime.value = ''
       anomalyBarCoefficient.value = ''
       fieldBuffSetId.value = ''
+      scoringNoteMode.value = 'default'
+      scoringNoteText.value = ''
       fieldBuffSetOptions.value = []
       weaknessSetId.value = ''
       weaknessSetOptions.value = []
@@ -717,6 +727,9 @@ async function submitForm() {
       anomaly_bar_coefficient: fieldText(anomalyBarCoefficient.value)
         ? Number(anomalyBarCoefficient.value)
         : null,
+      // 得分机制：默认沿用怪物库（null），选自定义时写本期覆盖
+      scoring_note:
+        scoringNoteMode.value === 'custom' ? fieldText(scoringNoteText.value) || null : null,
       boss_image: bossImage,
       crisis_base_hp:
         !isDefense.value && !isDeduction.value && fieldText(crisisBaseHp.value)
@@ -770,6 +783,8 @@ async function submitForm() {
     staggerTime.value = ''
     anomalyBarCoefficient.value = ''
     fieldBuffSetId.value = ''
+    scoringNoteMode.value = 'default'
+    scoringNoteText.value = ''
     fieldBuffSetOptions.value = []
     weaknessSetId.value = ''
     weaknessSetOptions.value = []
@@ -1079,6 +1094,30 @@ watch(
         <p class="field-hint">选项来自该 Boss 怪物库多套配置；详情与计算器只读本期绑定结果。</p>
       </label>
 
+      <div v-if="!isDefense && !isDeduction" class="field">
+        <span class="field-label">得分机制</span>
+        <div class="radio-row">
+          <label class="radio-item">
+            <input v-model="scoringNoteMode" type="radio" value="default" />
+            <span>沿用怪物库</span>
+          </label>
+          <label class="radio-item">
+            <input v-model="scoringNoteMode" type="radio" value="custom" />
+            <span>本期自定义</span>
+          </label>
+        </div>
+        <p v-if="scoringNoteMode === 'default'" class="field-hint">
+          {{ scoringNoteDefaultText ? `使用怪物库：${scoringNoteDefaultText}` : '怪物库暂无得分机制（可在「怪物数据库」里补）' }}
+        </p>
+        <textarea
+          v-else
+          v-model="scoringNoteText"
+          class="field-input"
+          rows="4"
+          placeholder="每行一条；本期生效，留空则回落怪物库"
+        />
+      </div>
+
       <label v-if="!isDefense && !isDeduction" class="field">
         <span class="field-label">弱点 / 抗性套（本期绑定）</span>
         <select
@@ -1219,6 +1258,23 @@ watch(
   margin: 0;
   font-size: 0.82rem;
   color: #e8a838;
+}
+
+.radio-row {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.radio-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+}
+
+.radio-item input {
+  accent-color: #7cc4ff;
 }
 
 .submit-hint {

@@ -107,6 +107,14 @@ export async function ensureBossScoringNoteSchema() {
     )
   }
 
+  // 期数行覆盖：某些期会改得分机制；空 = 沿用怪物库那份
+  if (!(await columnExists('boss', 'scoring_note'))) {
+    await pool.query(
+      `ALTER TABLE boss
+       ADD COLUMN scoring_note TEXT NULL COMMENT '本期覆盖的得分机制；空则回退 boss_info.scoring_note'`,
+    )
+  }
+
   scoringNoteSchemaEnsured = true
 }
 
