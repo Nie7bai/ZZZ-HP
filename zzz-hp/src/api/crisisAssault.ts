@@ -284,6 +284,9 @@ export interface HpChartPoint {
   resistanceHigh?: string | null
   weaknessSetId?: string | null
   weaknessSetLabel?: string | null
+  /** 该期实际使用的得分机制 / 场地 Buff 套 id（空绑定已解析成第一套） */
+  scoringNoteSetId?: string | null
+  fieldBuffSetId?: string | null
 }
 
 export function getChartPointPhaseKey(point: HpChartPoint): string {
@@ -508,6 +511,8 @@ export async function fetchBossChart(
         resistance_high?: string | null
         weakness_set_id?: string | null
         weakness_set_label?: string | null
+        scoring_note_set_id?: string | null
+        field_buff_set_id?: string | null
       }
     >
   }
@@ -530,6 +535,8 @@ export async function fetchBossChart(
     resistanceHigh: row.resistance_high ?? null,
     weaknessSetId: row.weakness_set_id ?? null,
     weaknessSetLabel: row.weakness_set_label ?? null,
+    scoringNoteSetId: row.scoring_note_set_id ?? null,
+    fieldBuffSetId: row.field_buff_set_id ?? null,
   }))
 }
 

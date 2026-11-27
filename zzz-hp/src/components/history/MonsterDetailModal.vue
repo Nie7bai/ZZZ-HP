@@ -19,6 +19,7 @@ import {
   type MonsterFieldBuffSnapshot,
 } from '@/utils/historyMonsterDetail'
 import { createRequestEpoch } from '@/utils/requestEpoch'
+import { splitNoteLines } from '@/utils/historyNoteText'
 
 const props = defineProps<{
   open: boolean
@@ -77,29 +78,8 @@ const hpMode = ref<CrisisHpChartMode>('normal')
 
 const chartRoomType = computed<CrisisBossRoomType>(() => (props.enemy?.isHardRoom ? 'hard' : 'normal'))
 
-/** 行首的项目符号（用户录入时常自带「· 」），展示时去掉，避免与列表样式重复 */
-const NOTE_BULLETS = ['·', '•', '●', '▪', '◦']
-function stripLeadingBullet(text: string): string {
-  let out = text.trim()
-  let changed = true
-  while (changed) {
-    changed = false
-    for (const bullet of NOTE_BULLETS) {
-      if (out.startsWith(bullet)) {
-        out = out.slice(bullet.length).trimStart()
-        changed = true
-      }
-    }
-  }
-  return out
-}
-
 /** 得分机制变化：上期与本期都有内容且不同 */
-const splitLines = (text: string) =>
-  text
-    .split(String.fromCharCode(10))
-    .map((line) => stripLeadingBullet(line.replace(String.fromCharCode(13), '')))
-    .filter(Boolean)
+const splitLines = (text: string) => splitNoteLines(text)
 
 const scoringNoteChange = computed(() => {
   const previous = props.previousScoringNote?.note?.trim() ?? ''

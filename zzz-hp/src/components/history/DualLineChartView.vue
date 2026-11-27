@@ -56,6 +56,11 @@ const props = withDefaults(
     /** 需要加底纹标记的期数标签（怪物数据库按弱点/抗性套标注） */
     markedLabels?: string[]
     /**
+     * 多组底纹标记：不同类别用不同底色（弱点默认蓝、得分机制紫、场地 Buff 橙），
+     * 同一期命中多组时按传入顺序取第一组的底色。传入非空时优先于 `markedLabels`。
+     */
+    markedGroups?: Array<{ labels: string[]; tone?: 'weakness' | 'scoring' | 'field-buff' }>
+    /**
      * 整页滚动形态：纵向滚轮交给页面，面板内只保留横向拖拽视口，图表高度改以窗口高度为基准。
      * 默认 false 保持「面板内小视口滚动」的既有形态。
      */
@@ -81,6 +86,7 @@ const props = withDefaults(
     enableHpCoeffCharts: false,
     borderless: false,
     markedLabels: () => [],
+    markedGroups: () => [],
     pageScroll: false,
   },
 )
@@ -562,14 +568,27 @@ const hoveredHpPoint = computed(() =>
   hoverIndex.value === null ? null : hpChartPoints.value[hoverIndex.value] ?? null,
 )
 
-/** 需要标记的期数（底纹）：按标签匹配当前点序 */
-const markedLabelSet = computed(() => new Set(props.markedLabels))
-const markedColumnZones = computed(() =>
-  columnZones.value.filter((zone) => {
+/** 需要标记的期数（底纹）：按标签匹配当前点序；多组时同一期取先出现那组的底色 */
+const markedColumnZones = computed(() => {
+  const groups = props.markedGroups?.length
+    ? props.markedGroups
+    : [{ labels: props.markedLabels, tone: undefined }]
+  const toneByLabel = new Map<string, string>()
+  for (const group of groups) {
+    for (const label of group.labels) {
+      if (!toneByLabel.has(label)) toneByLabel.set(label, group.tone ?? '')
+    }
+  }
+  const zones: Array<{ index: number; x1: number; x2: number; width: number; tone: string }> = []
+  if (!toneByLabel.size) return zones
+  for (const zone of columnZones.value) {
     const point = points.value[zone.index]
-    return point ? markedLabelSet.value.has(point.label) : false
-  }),
-)
+    const tone = point ? toneByLabel.get(point.label) : undefined
+    if (tone === undefined) continue
+    zones.push({ ...zone, tone })
+  }
+  return zones
+})
 
 const hoveredChartPoint = computed(() =>
   hoverIndex.value === null ? null : points.value[hoverIndex.value] ?? null,
@@ -1695,6 +1714,7 @@ watch(phaseSearchQuery, () => {
                 :width="zone.width"
                 :height="chartHeight"
                 class="column-mark"
+                :class="zone.tone ? `column-mark--${zone.tone}` : null"
               />
 
               <rect
@@ -1931,6 +1951,7 @@ watch(phaseSearchQuery, () => {
                 :width="zone.width"
                 :height="chartHeight"
                 class="column-mark"
+                :class="zone.tone ? `column-mark--${zone.tone}` : null"
               />
 
               <rect
@@ -2133,6 +2154,7 @@ watch(phaseSearchQuery, () => {
                 :width="zone.width"
                 :height="chartHeight"
                 class="column-mark"
+                :class="zone.tone ? `column-mark--${zone.tone}` : null"
               />
 
               <rect
@@ -2282,6 +2304,7 @@ watch(phaseSearchQuery, () => {
                 :width="zone.width"
                 :height="chartHeight"
                 class="column-mark"
+                :class="zone.tone ? `column-mark--${zone.tone}` : null"
               />
 
               <rect
@@ -3019,6 +3042,15 @@ html[data-theme='dark'] .y-axis-title-hp {
 .column-mark {
   fill: color-mix(in srgb, #4a90d9 12%, transparent);
   pointer-events: none;
+}
+
+/* 多组底纹：得分机制紫、场地 Buff 橙（弱点沿用默认蓝） */
+.column-mark--scoring {
+  fill: color-mix(in srgb, #9a6fd6 14%, transparent);
+}
+
+.column-mark--field-buff {
+  fill: color-mix(in srgb, #e8a838 14%, transparent);
 }
 
 .column-hit--clickable {

@@ -18,6 +18,7 @@ import {
 } from '@/utils/gameData'
 import { CAPTURE_HIDE_CLASS } from '@/utils/panelImageExport'
 import { createRequestEpoch } from '@/utils/requestEpoch'
+import { noteBlocksForDisplay, splitNoteLines } from '@/utils/historyNoteText'
 import { DEFAULT_ENEMY_STAGGER_MULTIPLIER } from '@/utils/enemyResistance'
 import {
   buildQueryWithValues,
@@ -272,27 +273,9 @@ function fieldBuffTitle(enemy: PhaseData['enemies'][number]) {
   return '场地 Buff'
 }
 
-/** 行首项目符号（录入时常自带「· 」）：展示时去掉，避免与列表样式重复 */
-const SCORING_NOTE_BULLETS = ['·', '•', '●', '▪', '◦']
-function stripScoringBullet(line: string): string {
-  let out = line.trim()
-  let changed = true
-  while (changed) {
-    changed = false
-    for (const bullet of SCORING_NOTE_BULLETS) {
-      if (out.startsWith(bullet)) {
-        out = out.slice(bullet.length).trimStart()
-        changed = true
-      }
-    }
-  }
-  return out
-}
-
 /** 得分机制（纯文本，与怪物绑定）：按行拆分，显示在场地 Buff 上方 */
 function scoringNoteLines(enemy: PhaseData['enemies'][number]) {
-  const text = enemy.scoringNote?.trim()
-  return text ? splitBuffLines(text).map((line) => stripScoringBullet(line)) : []
+  return splitNoteLines(enemy.scoringNote)
 }
 
 /** 失衡易伤展示：150%（1.5）；缺省按 1.5，与怪物详情弹窗同口径 */
@@ -302,20 +285,7 @@ function formatStaggerMultiplier(value: number | null | undefined) {
 }
 
 /** 往期详情场地 Buff：只保留效果块注释；与原文重复的注释去掉 */
-function blocksForHistoryDisplay(
-  blocks: NonNullable<PhaseData['buffs'][number]['effectBlocks']> | null | undefined,
-  content: string,
-) {
-  if (!blocks?.length) return null
-  const text = content.trim()
-  const noteBlocks = blocks
-    .map((block) => ({
-      ...block,
-      note: block.note?.trim() && block.note.trim() !== text ? block.note : '',
-    }))
-    .filter((block) => block.note)
-  return noteBlocks.length ? noteBlocks : null
-}
+const blocksForHistoryDisplay = noteBlocksForDisplay
 
 /** 场地 Buff 是否有可导出的注释（导出截图只带注释，原文仍隐藏） */
 function hasFieldBuffNotes(enemy: PhaseData['enemies'][number]) {

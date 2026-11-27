@@ -35,6 +35,9 @@
 | 详情场地 Buff | 同上 | 场地 Buff **有变化**时显示「原 / 现」转变；**没变化**时用同一个橙色框平铺展示当期正文/效果块注释（与卡片同口径） |
 | 期数编辑器加载 | `zzz-hp/src/components/admin/AdminMonsterPanel.vue` | 打开编辑弹窗时即从上下文带上怪物库套列表（`ctx.scoringNoteSets`），否则下拉为空、选不了套 |
 | 展示（怪物数据库） | `zzz-hp/src/components/history/MonsterComparePanel.vue` | `monster-compare` 详情在属性表之后、折线图之前加「得分机制」「场地 Buff」两块，交互照抄「弱点 / 抗性套」：多套时出现下拉（默认第一套，切怪重置），单套只显示标记；正文用 `BuffRichText`（操作分数字绿色）、去行首项目符号；场地 Buff 额外渲染效果块注释 |
+| 图表底纹 | 同上 + `zzz-hp/src/components/history/DualLineChartView.vue` | 与弱点套同款：选中的套对应期数在折线图上加底纹（弱点蓝、得分机制紫、场地 Buff 橙），并在区块内给「紫色 / 橙色底纹 = 该套对应期数：…」提示。图表新增 `markedGroups`（多组、按传入顺序取首个命中的底色），旧的 `markedLabels` 仍等价于单组默认蓝 |
+| 期数命中判据 | `zzz-hp-backend/src/services/crisisAssaultService.js` | boss-chart 每期下发 `scoring_note_set_id` / `field_buff_set_id`（空绑定已解析成实际生效的第一套），前端据此标记；解析口径见 `resolveScoringNoteSet` 与 `resolveFieldBuffSetIdFromSets` |
+| 行首符号 / 注释去重 | `zzz-hp/src/utils/historyNoteText.ts` | `stripNoteBullet` / `splitNoteLines` / `noteBlocksForDisplay` 单一来源：往期详情、怪物详情弹窗、怪物数据库三处共用（含字面量 `\n` 兼容） |
 
 ## 行为边界
 
@@ -48,6 +51,7 @@
 
 - 端到端手测：把 `boss_info.scoring_note` 写两条测试文本 → 危局强袭战往期详情中该怪物卡片出现「得分机制」标题 + 两行内容，且位于「场地 Buff」标题之前；清空后该块消失（本次已按此验证，测试值已还原）；
 - 怪物数据库（`/crisis-assault/monster-compare`）手测：亵渎者（单套）显示「得分机制」「场地 Buff」两块；提丰（4 套）得分机制块出现下拉，切到「3.3第二期」正文由 1 行变 4 行，切回「第 1 套」复原；
+- 图表底纹手测：恶名·死路屠夫（得分机制 3 套）选「第 1 套」提示 `1.4第3期、1.5第1期、1.7第2期、2.0第3期`、图上这几列紫色，选「2.1第二期」提示 `2.1第2期…2.6第1期`、紫底纹随之右移；魇缚者·叶释渊（场地 Buff 2 套）选「减防」提示 `2.4第1期…3.2第2期`、橙色底纹覆盖这几列，选「失衡易伤」提示 `2.8第2期、2.8第3期、3.0第1期、3.0第2期`；
 - 后端 `npm test` 155 pass / 0 fail；
 - 前端 `vue-tsc --noEmit`、`eslint src` 通过。
 

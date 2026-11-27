@@ -17,6 +17,7 @@ import {
   ensureEnvironmentBuffSchema,
   parseFieldBuffSetsJson,
   resolveFieldBuffFromSets,
+  resolveFieldBuffSetIdFromSets,
   normalizeFieldBuffSet,
   parseEffectBlocksJson,
 } from '../utils/environmentBuffSchema.js'
@@ -180,22 +181,29 @@ function enrichBoss(boss, context = {}) {
     hp_coeff_label: formatCrisisHpCoeffPercent(resolved.percent),
     is_hard_room: isCrisisHardRoom(boss.room),
     field_buff_set_id: String(boss.field_buff_set_id ?? '').trim() || null,
+    /** 当期实际生效的场地 Buff 套 id（空绑定按「legacy > 第一套」解析），供图表按套标记期数 */
+    field_buff_set_effective_id: resolveFieldBuffSetIdFromSets(sets, boss.field_buff_set_id),
     field_buff: fieldBuff,
     /**
      * 得分机制（纯文本，多套）：怪物库存套，期数行绑定其中一套（空 = 第一套）；
-     * `boss.scoring_note` 是兼容保留的一次性文本覆盖，优先于绑定套。
+     * `boss.scoring_note` 是兼容保留的一次性文本覆盖，只在怪物库没有套时兜底。
      * 危局详情显示在场地 Buff 上方。
      */
     scoring_note: (() => {
-      // 绑定套优先；只有怪物库完全没有套时，才用旧的一次性文本兜底
-      const sets = scoringNoteByName.get(boss.boss_name) ?? []
-      const set = resolveScoringNoteSet(sets, boss.scoring_note_set_id)
-      const fromSet = set?.text?.trim()
+      const fromSet = resolveScoringNoteSet(
+        scoringNoteByName.get(boss.boss_name) ?? [],
+        boss.scoring_note_set_id,
+      )?.text?.trim()
       if (fromSet) return fromSet
       return String(boss.scoring_note ?? '').trim() || null
     })(),
     /** 本期绑定套 id（空 = 第一套） */
     scoring_note_set_id: String(boss.scoring_note_set_id ?? '').trim() || null,
+    /** 当期实际生效的得分机制套 id（空绑定 → 第一套），供图表按套标记期数 */
+    scoring_note_set_effective_id: resolveScoringNoteSet(
+      scoringNoteByName.get(boss.boss_name) ?? [],
+      boss.scoring_note_set_id,
+    )?.id ?? null,
     /** 怪物库里的全部套（供编辑弹窗下拉） */
     scoring_note_sets: scoringNoteByName.get(boss.boss_name) ?? [],
   }
@@ -572,6 +580,7 @@ export async function getBossChartHistory(
   const resistanceHighByName = await loadBossResistanceHighMap()
   const scoringNoteByName = await loadBossScoringNoteMap()
   const weaknessSetsByName = await loadBossWeaknessSetsMap()
+  const fieldBuffSetsByName = await loadBossFieldBuffMap()
 
   return bossRows
     .filter((boss) => isCrisisBossId(boss.id))
@@ -594,6 +603,7 @@ export async function getBossChartHistory(
         resistanceHighByName,
         scoringNoteByName,
         weaknessSetsByName,
+        fieldBuffSetsByName,
       })
       const startDate = formatDateValue(dateInfo?.start_date)
       const listed = isSeasonPubliclyVisible(startDate)
@@ -612,6 +622,9 @@ export async function getBossChartHistory(
         resistance_high: enriched.resistance_high,
         weakness_set_id: enriched.weakness_set_id,
         weakness_set_label: enriched.weakness_set_label,
+        /** 该期实际使用的得分机制 / 场地 Buff 套 id（空绑定已解析成第一套），供数据库图表按套标记期数 */
+        scoring_note_set_id: enriched.scoring_note_set_effective_id,
+        field_buff_set_id: enriched.field_buff_set_effective_id,
         version: boss.version,
         phase: String(boss.phase),
         boss_image: boss.boss_image,

@@ -33,6 +33,7 @@ import {
   isVersionAtMost,
 } from '@/utils/monsterResistanceTable'
 import { createRequestEpoch } from '@/utils/requestEpoch'
+import { noteBlocksForDisplay, splitNoteLines } from '@/utils/historyNoteText'
 
 const props = defineProps<{
   mode: ModeKey
@@ -157,29 +158,8 @@ const selectedScoringNoteSet = computed(() => {
   if (!sets.length) return null
   return sets.find((set) => set.id === selectedScoringNoteSetId.value) ?? sets[0] ?? null
 })
-/** 行首项目符号（录入文本常自带「· 」）：展示时去掉 */
-const NOTE_BULLETS = ['·', '•', '●', '▪', '◦']
-function stripLeadingBullet(text: string): string {
-  let out = text.trim()
-  let changed = true
-  while (changed) {
-    changed = false
-    for (const bullet of NOTE_BULLETS) {
-      if (out.startsWith(bullet)) {
-        out = out.slice(bullet.length).trimStart()
-        changed = true
-      }
-    }
-  }
-  return out
-}
 
-const scoringNoteLines = computed(() =>
-  (selectedScoringNoteSet.value?.text ?? '')
-    .split(String.fromCharCode(10))
-    .map((line) => stripLeadingBullet(line.replace(String.fromCharCode(13), '')))
-    .filter(Boolean),
-)
+const scoringNoteLines = computed(() => splitNoteLines(selectedScoringNoteSet.value?.text))
 
 const fieldBuffSetOptions = computed(() => selectedBossDetail.value?.field_buff_sets ?? [])
 const selectedFieldBuffSetId = ref('')
@@ -188,25 +168,55 @@ const selectedFieldBuffSet = computed(() => {
   if (!sets.length) return null
   return sets.find((set) => set.id === selectedFieldBuffSetId.value) ?? sets[0] ?? null
 })
-const fieldBuffNoteBlocks = computed(() => {
-  const set = selectedFieldBuffSet.value
-  const blocks = set?.effectBlocks ?? []
-  if (!blocks.length) return []
-  const text = (set?.text ?? '').trim()
-  return blocks
-    .map((block) => ({
-      ...block,
-      note: block.note?.trim() && block.note.trim() !== text ? block.note : '',
-    }))
-    .filter((block) => block.note)
+const fieldBuffNoteBlocks = computed(
+  () =>
+    noteBlocksForDisplay(selectedFieldBuffSet.value?.effectBlocks, selectedFieldBuffSet.value?.text ?? '') ??
+    [],
+)
+
+const fieldBuffLines = computed(() => splitNoteLines(selectedFieldBuffSet.value?.text))
+
+/**
+ * 场地 Buff 区块标题：套名本身可能已带「场地 Buff——xxx」前缀，
+ * 只在名称不含该前缀时补上类别名，避免出现「场地 Buff——场地 Buff——减防」。
+ */
+const fieldBuffTitle = computed(() => {
+  const name = selectedFieldBuffSet.value?.name?.trim() ?? ''
+  if (!name) return '场地 Buff'
+  return name.startsWith('场地 Buff') ? name : `场地 Buff——${name}`
 })
 
-const fieldBuffLines = computed(() =>
-  (selectedFieldBuffSet.value?.text ?? '')
-    .split(String.fromCharCode(10))
-    .map((line) => stripLeadingBullet(line.replace(String.fromCharCode(13), '')))
-    .filter(Boolean),
+/**
+ * 选中套对应的期数（图表底纹）：与弱点套同口径——只有多套时才标记，
+ * 每期实际生效的套 id 由 boss-chart 按时绑定解析后下发。
+ */
+function labelsOfSet(
+  setId: string | null | undefined,
+  setCount: number,
+  pickSetId: (point: HpChartPoint) => string | null | undefined,
+): string[] {
+  if (!setId || setCount < 2) return []
+  return points.value
+    .filter((point) => (pickSetId(point) ?? '') === setId)
+    .map((point) => point.label)
+}
+
+const markedScoringPhaseLabels = computed(() =>
+  labelsOfSet(selectedScoringNoteSet.value?.id, scoringNoteSetOptions.value.length, (point) =>
+    point.scoringNoteSetId,
+  ),
 )
+const markedFieldBuffPhaseLabels = computed(() =>
+  labelsOfSet(selectedFieldBuffSet.value?.id, fieldBuffSetOptions.value.length, (point) =>
+    point.fieldBuffSetId,
+  ),
+)
+/** 图表底纹分组：弱点默认蓝、得分机制紫、场地 Buff 橙；同一期命中多组时按此顺序取第一组 */
+const markedGroups = computed(() => [
+  { labels: markedPhaseLabels.value },
+  { labels: markedScoringPhaseLabels.value, tone: 'scoring' as const },
+  { labels: markedFieldBuffPhaseLabels.value, tone: 'field-buff' as const },
+])
 
 /** 切换怪物后默认看第一套 */
 watch(selectedBossDetail, (detail) => {
@@ -472,6 +482,11 @@ watch(selectedBoss, () => {
             {{ selectedScoringNoteSet.label }}
           </span>
         </header>
+        <p v-if="scoringNoteSetOptions.length > 1" class="monster-db-note-hint">
+          紫色底纹 = 该套对应期数<span v-if="markedScoringPhaseLabels.length"
+            >：{{ markedScoringPhaseLabels.join('、') }}</span
+          >
+        </p>
         <ul v-if="scoringNoteLines.length" class="monster-db-note-lines">
           <li v-for="(line, lineIndex) in scoringNoteLines" :key="lineIndex">
             <BuffRichText :text="line" />
@@ -483,7 +498,7 @@ watch(selectedBoss, () => {
       <!-- 场地 Buff（多套，可切换） -->
       <section v-if="fieldBuffSetOptions.length" class="monster-db-note monster-db-note--buff">
         <header class="monster-db-note-head">
-          <h3 class="monster-db-note-title">场地 Buff{{ selectedFieldBuffSet?.name && selectedFieldBuffSet.name !== '场地 Buff' ? `——${selectedFieldBuffSet.name}` : '' }}</h3>
+          <h3 class="monster-db-note-title">{{ fieldBuffTitle }}</h3>
           <select
             v-if="fieldBuffSetOptions.length > 1"
             v-model="selectedFieldBuffSetId"
@@ -497,6 +512,11 @@ watch(selectedBoss, () => {
             {{ selectedFieldBuffSet.label }}
           </span>
         </header>
+        <p v-if="fieldBuffSetOptions.length > 1" class="monster-db-note-hint">
+          橙色底纹 = 该套对应期数<span v-if="markedFieldBuffPhaseLabels.length"
+            >：{{ markedFieldBuffPhaseLabels.join('、') }}</span
+          >
+        </p>
         <ul v-if="fieldBuffLines.length" class="monster-db-note-lines">
           <li v-for="(line, lineIndex) in fieldBuffLines" :key="lineIndex">
             <BuffRichText :text="line" />
@@ -507,7 +527,7 @@ watch(selectedBoss, () => {
           compact
           notes-only
           :blocks="fieldBuffNoteBlocks"
-          :title="selectedFieldBuffSet?.name || '场地 Buff'"
+          :title="fieldBuffTitle"
           empty-text=""
         />
         <p v-if="!fieldBuffLines.length && !fieldBuffNoteBlocks.length" class="status-text">
@@ -534,7 +554,7 @@ watch(selectedBoss, () => {
         :enable-boss-preview="false"
         :enable-room-buff-preview="isDefenseMode"
         :enable-hp-converted953-toggle="!isDefenseMode"
-        :marked-labels="markedPhaseLabels"
+        :marked-groups="markedGroups"
         :page-scroll="true"
         @point-click="openPhaseDetail"
       />
@@ -711,6 +731,12 @@ watch(selectedBoss, () => {
 }
 
 .monster-db-note-label {
+  font-size: 0.72rem;
+  color: var(--color-text-muted, #9aa3b0);
+}
+
+.monster-db-note-hint {
+  margin: 0 0 0.3rem;
   font-size: 0.72rem;
   color: var(--color-text-muted, #9aa3b0);
 }

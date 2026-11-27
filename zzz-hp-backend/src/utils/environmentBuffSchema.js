@@ -91,6 +91,19 @@ export function resolveFieldBuffFromSets(sets, setId) {
   }
 }
 
+/**
+ * 当期实际生效的场地 Buff 套 id（与 `resolveFieldBuffFromSets` 同口径：绑定命中 > legacy > 第一套）。
+ * 供图表/详情按套标记期数用，`boss.field_buff_set_id` 为空时不代表「没有套」。
+ */
+export function resolveFieldBuffSetIdFromSets(sets, setId) {
+  const list = Array.isArray(sets) ? sets : parseFieldBuffSetsJson(sets)
+  if (!list.length) return null
+  const wanted = String(setId ?? '').trim()
+  const hit = wanted ? list.find((item) => item.id === wanted) : null
+  const picked = hit || list.find((item) => item.id === 'legacy') || list[0]
+  return picked?.id ?? null
+}
+
 /** 用第一套回写旧四列镜像 */
 export function mirrorFieldBuffLegacyColumns(sets) {
   const list = Array.isArray(sets) ? sets : parseFieldBuffSetsJson(sets)
