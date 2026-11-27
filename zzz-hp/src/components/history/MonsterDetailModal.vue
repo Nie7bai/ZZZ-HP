@@ -69,6 +69,14 @@ const hpMode = ref<CrisisHpChartMode>('normal')
 
 const chartRoomType = computed<CrisisBossRoomType>(() => (props.enemy?.isHardRoom ? 'hard' : 'normal'))
 
+/** 得分机制（纯文本，与怪物绑定）：按行拆分；空值时不渲染 */
+const scoringNoteLines = computed(() =>
+  (props.enemy?.scoringNote ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean),
+)
+
 /** 详情数据块按共享数据行形状组装（与怪物数据库、后续防卫战详情同构） */
 const detailRecord = computed<MonsterDetailRecord | null>(() => {
   const enemy = props.enemy
@@ -152,6 +160,13 @@ watch(
         :image-alt="enemy.bossName || enemy.label"
         :show-resistance-table="true"
       />
+
+      <section v-if="scoringNoteLines.length" class="monster-detail-scoring">
+        <p class="monster-detail-scoring-title">得分机制</p>
+        <ul class="monster-detail-scoring-lines">
+          <li v-for="(line, lineIndex) in scoringNoteLines" :key="lineIndex">{{ line }}</li>
+        </ul>
+      </section>
 
       <TraitTransitionPanel
         v-if="traitTransition"
@@ -244,6 +259,33 @@ watch(
 }
 
 /* `page-scroll` 形态下图表高度以窗口为基准、容器高度交给内容，不能被 flex 压缩 */
+.monster-detail-scoring {
+  margin: 0.35rem 0 0;
+  padding: 0.5rem 0.6rem 0.55rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent);
+  border-left: 3px solid color-mix(in srgb, #5f8fd8 75%, transparent);
+  background: color-mix(in srgb, var(--color-background) 45%, transparent);
+}
+
+.monster-detail-scoring-title {
+  margin: 0 0 0.2rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: color-mix(in srgb, #5f8fd8 80%, var(--color-text));
+}
+
+.monster-detail-scoring-lines {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
 .monster-detail-chart-view {
   flex: none;
   min-height: auto;

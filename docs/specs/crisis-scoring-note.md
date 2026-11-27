@@ -19,7 +19,8 @@
 | 危局下发 | `zzz-hp-backend/src/services/crisisAssaultService.js` | `loadBossScoringNoteMap()` 按 `boss_name` 取值，`enrichBoss` 输出 `scoring_note`（缺省 null） |
 | 前端接口 | `zzz-hp/src/api/crisisAssault.ts` | `ApiBoss.scoring_note` → `EnemySlot.scoringNote`（trim 后空串转 null） |
 | 类型 | `zzz-hp/src/types/history.ts` | `EnemySlot.scoringNote?: string \| null` |
-| 展示 | `zzz-hp/src/components/history/HistoryDetailPanel.vue` | `scoringNoteLines()` 按行拆分；`.enemy-scoring-note` 块渲染在 `.enemy-field-buff` **之前**（桌面与紧凑两套模板各一处） |
+| 展示（往期详情） | `zzz-hp/src/components/history/HistoryDetailPanel.vue` | `scoringNoteLines()` 按行拆分；得分机制与场地 Buff 包在 `.enemy-side` 容器里、得分机制在前（桌面与紧凑两套模板各一处）。绝境双列布局下两者同处右列，避免得分机制被挤到图片旁边 |
+| 展示（详情窗口） | `zzz-hp/src/components/history/MonsterDetailModal.vue` | `.monster-detail-scoring` 块，位于属性表之后、弱点/抗性转变之前 |
 | 管理端 | `zzz-hp/src/components/admin/AdminBossInfoCatalogPanel.vue` | 怪物基础库编辑面板新增「得分机制（纯文本，无增益）」多行输入（跨整行），随基础信息一起保存 |
 
 ## 行为边界
@@ -27,7 +28,8 @@
 - 纯展示：不进入任何增益 / 乘区 / 面板计算；
 - 与场地 Buff 无耦合：场地 Buff 是「套」结构（可多套、按 `field_buff_set_id` 绑定），得分机制是单段文本；
 - 导出截图：得分机制**不隐藏**（场地 Buff 的原文会按 `CAPTURE_HIDE_CLASS` 隐藏，两者策略不同）；
-- 空值（null / 空白）→ 不渲染该块，老数据无变化。
+- 空值（null / 空白）→ 不渲染该块，老数据无变化；
+- 得分机制条目**不带列表圆点**（`list-style: none`）；如果文本自身以「· 」开头，也会原样显示，需要时在管理端删掉那个字符。
 
 ## 验收
 
