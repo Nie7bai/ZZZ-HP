@@ -4,6 +4,7 @@ import IkModalShell from '@/components/common/IkModalShell.vue'
 import DualLineChartView from '@/components/history/DualLineChartView.vue'
 import RoomBuffTransitionPanel from '@/components/history/RoomBuffTransitionPanel.vue'
 import TraitTransitionPanel from '@/components/history/TraitTransitionPanel.vue'
+import BuffEffectBlocksDisplay from '@/components/calculator/BuffEffectBlocksDisplay.vue'
 import MonsterDetailStats, {
   type MonsterDetailRecord,
 } from '@/components/history/MonsterDetailStats.vue'
@@ -36,6 +37,12 @@ const props = defineProps<{
   previousFieldBuff?: MonsterFieldBuffSnapshot | null
   /** 现场地 Buff（当期），由父组件从 phases 解析 */
   currentFieldBuff?: MonsterFieldBuffSnapshot | null
+  /** 现场地 Buff 的逐行文本（由父组件按卡片同一口径拆好传入，避免对象引用差异） */
+  currentFieldBuffLines?: string[] | null
+  /** 现场地 Buff 的效果块注释（正文常放在 block note 里；与卡片同口径过滤） */
+  currentFieldBuffBlocks?: import('@/types/calculator').BuffEffectBlock[] | null
+  /** 上一期的得分机制（同 Boss + 房间）；无历史或内容相同由父组件判空 */
+  previousScoringNote?: { note: string; phaseLabel: string } | null
   /** 弱点/抗性转变（原 / 现两侧），无变化时为 null */
   traitTransition?: {
     previous: {
@@ -68,6 +75,36 @@ const chartError = ref('')
 const hpMode = ref<CrisisHpChartMode>('normal')
 
 const chartRoomType = computed<CrisisBossRoomType>(() => (props.enemy?.isHardRoom ? 'hard' : 'normal'))
+
+/** 得分机制变化：上期与本期都有内容且不同 */
+const splitLines = (text: string) =>
+  text
+    .split(String.fromCharCode(10))
+    .map((line) => line.replace(String.fromCharCode(13), '').trim())
+    .filter(Boolean)
+
+const scoringNoteChange = computed(() => {
+  const previous = props.previousScoringNote?.note?.trim() ?? ''
+  const current = (props.enemy?.scoringNote ?? '').trim()
+  if (!previous || !current || previous === current) return null
+  return {
+    previous,
+    current,
+    previousLines: splitLines(previous),
+    currentLines: splitLines(current),
+    previousLabel: props.previousScoringNote?.phaseLabel ?? '',
+  }
+})
+
+/** 场地 Buff（当期）按行拆分：没构成转变时也在详情里平铺展示 */
+const currentFieldBuffLines = computed(() => {
+  // 父组件按卡片同一口径拆好行；缺省时再回落 enemy / currentFieldBuff 的正文
+  const provided = (props.currentFieldBuffLines ?? []).filter((line) => String(line).trim())
+  if (provided.length) return provided
+  const text =
+    props.enemy?.fieldBuff?.text?.trim() ?? props.currentFieldBuff?.fieldBuff?.text?.trim()
+  return text ? splitLines(text) : []
+})
 
 /** 得分机制（纯文本，与怪物绑定）：按行拆分；空值时不渲染 */
 const scoringNoteLines = computed(() =>
@@ -175,12 +212,44 @@ watch(
         :current="traitTransition.current"
       />
 
+      <section v-if="scoringNoteChange" class="monster-detail-scoring">
+        <p class="monster-detail-scoring-title">得分机制变化</p>
+        <p class="monster-detail-scoring-phase">
+          原<span v-if="scoringNoteChange.previousLabel" class="monster-detail-scoring-phase-label">{{ scoringNoteChange.previousLabel }}</span>
+        </p>
+        <ul class="monster-detail-scoring-lines">
+          <li v-for="(line, lineIndex) in scoringNoteChange.previousLines" :key="`prev-${lineIndex}`">{{ line }}</li>
+        </ul>
+        <p class="monster-detail-scoring-phase">现{{ phaseLabel ? ` ${phaseLabel}` : '' }}</p>
+        <ul class="monster-detail-scoring-lines">
+          <li v-for="(line, lineIndex) in scoringNoteChange.currentLines" :key="`cur-${lineIndex}`">{{ line }}</li>
+        </ul>
+      </section>
+
       <RoomBuffTransitionPanel
         v-if="showRoomBuffTransition"
         class="monster-detail-buff-transition"
         :previous-field-buff="previousFieldBuff ?? null"
         :current-field-buff="currentFieldBuff ?? null"
       />
+
+      <section
+        v-if="!showRoomBuffTransition && (currentFieldBuffLines.length || currentFieldBuffBlocks?.length)"
+        class="monster-detail-scoring"
+      >
+        <p class="monster-detail-scoring-title">场地 Buff{{ currentFieldBuff?.fieldBuff?.name && currentFieldBuff.fieldBuff.name !== '场地 Buff' ? `——${currentFieldBuff.fieldBuff.name}` : '' }}</p>
+        <ul v-if="currentFieldBuffLines.length" class="monster-detail-scoring-lines">
+          <li v-for="(line, lineIndex) in currentFieldBuffLines" :key="lineIndex">{{ line }}</li>
+        </ul>
+        <BuffEffectBlocksDisplay
+          v-if="currentFieldBuffBlocks?.length"
+          compact
+          notes-only
+          :blocks="currentFieldBuffBlocks"
+          :title="currentFieldBuff?.fieldBuff?.name || '场地 Buff'"
+          empty-text=""
+        />
+      </section>
 
       <section v-if="enemy.bossName" class="monster-detail-chart">
         <p v-if="chartLoading" class="status-text">图表加载中...</p>
@@ -273,6 +342,18 @@ watch(
   font-size: 0.78rem;
   font-weight: 700;
   color: color-mix(in srgb, #5f8fd8 80%, var(--color-text));
+}
+
+.monster-detail-scoring-phase {
+  margin: 0.25rem 0 0.1rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--color-text-muted, #9aa3b0);
+}
+
+.monster-detail-scoring-phase-label {
+  margin-left: 0.3rem;
+  font-weight: 400;
 }
 
 .monster-detail-scoring-lines {

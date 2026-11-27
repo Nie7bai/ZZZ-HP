@@ -22,6 +22,12 @@ import {
   normalizeFieldBuffSet,
 } from '../utils/environmentBuffSchema.js'
 import {
+  mirrorScoringNoteLegacy,
+  parseScoringNoteSetsJson,
+  scoringNoteSetsFromLegacy,
+  serializeScoringNoteSets,
+} from '../utils/bossScoringNoteSets.js'
+import {
   mirrorWeaknessLegacyColumns,
   parseWeaknessSetsJson,
   serializeWeaknessSets,
@@ -30,7 +36,7 @@ import {
 
 const BOSS_INFO_CATALOGS = new Set(['crisis', 'defense', 'deduction'])
 
-const BOSS_INFO_COLUMNS = `id, boss_name, defense, level, boss_image, weakness, resistance, resistance_high, scoring_note, crisis_base_hp, stagger_multiplier, stagger_time, anomaly_bar_coefficient,
+const BOSS_INFO_COLUMNS = `id, boss_name, defense, level, boss_image, weakness, resistance, resistance_high, scoring_note, scoring_note_sets, crisis_base_hp, stagger_multiplier, stagger_time, anomaly_bar_coefficient,
   field_buff_name, field_buff_text, field_buff_image, field_buff_effect_blocks, field_buff_sets, weakness_sets`
 
 function resolveIncomingFieldBuffSets(payload) {
@@ -93,8 +99,16 @@ function normalizeBossInfo(payload) {
     resistance_high: weaknessSets.length
       ? mirroredWeakness.resistance_high
       : asText(payload.resistance_high),
-    // 得分机制：纯文本、与怪物绑定；未传时写路径会保留库中原值
-    scoring_note: asText(payload.scoring_note),
+    // 得分机制：多套（与场地 Buff 同构）；只传旧单列时合成一套；都没传 → undefined（保留库中原值）
+    scoring_note_sets: (() => {
+      if (Object.prototype.hasOwnProperty.call(payload, 'scoring_note_sets')) {
+        return serializeScoringNoteSets(parseScoringNoteSetsJson(payload.scoring_note_sets))
+      }
+      if (Object.prototype.hasOwnProperty.call(payload, 'scoring_note')) {
+        return serializeScoringNoteSets(scoringNoteSetsFromLegacy(payload.scoring_note))
+      }
+      return undefined
+    })(),
     boss_image: asText(payload.boss_image),
     crisis_base_hp,
     stagger_multiplier: normalizeStaggerMultiplier(
@@ -125,7 +139,10 @@ function bossInfoDiffers(existing, incoming) {
     (existing.weakness ?? '') !== (incoming.weakness ?? '') ||
     (existing.resistance ?? '') !== (incoming.resistance ?? '') ||
     (existing.resistance_high ?? '') !== (incoming.resistance_high ?? '') ||
-    (existing.scoring_note ?? '') !== (incoming.scoring_note ?? '') ||
+    JSON.stringify(existing.scoring_note_sets ?? []) !==
+      JSON.stringify(
+        parseScoringNoteSetsJson(incoming.scoring_note_sets ?? existing.scoring_note_sets),
+      ) ||
     (existing.boss_image ?? '') !== (incoming.boss_image ?? '') ||
     existingBase !== incomingBase ||
     normalizeStaggerMultiplier(existing.stagger_multiplier) !==
@@ -179,6 +196,10 @@ function mapBossInfoRow(row, { resolveAnomalyBarDefault = true } = {}) {
     field_buff_text: mirrored.field_buff_text,
     field_buff_image: mirrored.field_buff_image,
     field_buff_effect_blocks: parseEffectBlocksJson(mirrored.field_buff_effect_blocks),
+    /** 得分机制多套：新列为准，缺省时把旧单列合成一套 */
+    scoring_note_sets: parseScoringNoteSetsJson(row.scoring_note_sets).length
+      ? parseScoringNoteSetsJson(row.scoring_note_sets)
+      : scoringNoteSetsFromLegacy(row.scoring_note),
     weakness_sets: parseWeaknessSetsJson(row.weakness_sets).length
       ? parseWeaknessSetsJson(row.weakness_sets)
       : weaknessSetsFromLegacy(row),
@@ -405,14 +426,21 @@ export async function updateBossInfoById(id, payload) {
     if (info.weakness == null) info.weakness = existing.weakness
     if (info.resistance == null) info.resistance = existing.resistance
     if (info.resistance_high == null) info.resistance_high = existing.resistance_high
-    if (info.scoring_note == null) info.scoring_note = existing.scoring_note
   }
+
+  // 得分机制多套：未传时沿用库中原值；旧单列镜像第一套文本
+  if (info.scoring_note_sets === undefined) {
+    info.scoring_note_sets = existing.scoring_note_sets ?? null
+  }
+  const scoringSets = parseScoringNoteSetsJson(info.scoring_note_sets)
+  info.scoring_note_sets = serializeScoringNoteSets(scoringSets)
+  info.scoring_note = mirrorScoringNoteLegacy(scoringSets)
 
   info.boss_image = preferExistingImage(info.boss_image, existing.boss_image)
 
   await pool.execute(
     `UPDATE boss_info
-     SET boss_name = ?, defense = ?, level = ?, boss_image = ?, weakness = ?, resistance = ?, resistance_high = ?, scoring_note = ?,
+     SET boss_name = ?, defense = ?, level = ?, boss_image = ?, weakness = ?, resistance = ?, resistance_high = ?, scoring_note = ?, scoring_note_sets = ?,
          crisis_base_hp = ?, stagger_multiplier = ?, stagger_time = ?, anomaly_bar_coefficient = ?,
          field_buff_name = ?, field_buff_text = ?, field_buff_image = ?, field_buff_effect_blocks = ?,
          field_buff_sets = ?, weakness_sets = ?
@@ -426,6 +454,7 @@ export async function updateBossInfoById(id, payload) {
       info.resistance,
       info.resistance_high,
       info.scoring_note,
+      info.scoring_note_sets,
       info.crisis_base_hp,
       info.stagger_multiplier,
       info.stagger_time,
@@ -464,10 +493,10 @@ export async function upsertBossInfo(payload) {
   if (!existing) {
     const [result] = await pool.execute(
       `INSERT INTO boss_info (
-         boss_name, defense, level, boss_image, weakness, resistance, resistance_high, scoring_note, crisis_base_hp, stagger_multiplier, stagger_time, anomaly_bar_coefficient,
+         boss_name, defense, level, boss_image, weakness, resistance, resistance_high, scoring_note, scoring_note_sets, crisis_base_hp, stagger_multiplier, stagger_time, anomaly_bar_coefficient,
          field_buff_name, field_buff_text, field_buff_image, field_buff_effect_blocks, field_buff_sets, weakness_sets
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         info.boss_name,
         info.defense,
@@ -477,6 +506,7 @@ export async function upsertBossInfo(payload) {
         info.resistance,
         info.resistance_high,
         info.scoring_note,
+        info.scoring_note_sets,
         info.crisis_base_hp,
         info.stagger_multiplier,
         info.stagger_time,
@@ -533,8 +563,15 @@ export async function upsertBossInfo(payload) {
     if (info.weakness == null) info.weakness = existing.weakness
     if (info.resistance == null) info.resistance = existing.resistance
     if (info.resistance_high == null) info.resistance_high = existing.resistance_high
-    if (info.scoring_note == null) info.scoring_note = existing.scoring_note
   }
+
+  // 得分机制多套：未传时沿用库中原值；旧单列镜像第一套文本
+  if (info.scoring_note_sets === undefined) {
+    info.scoring_note_sets = existing.scoring_note_sets ?? null
+  }
+  const scoringSets = parseScoringNoteSetsJson(info.scoring_note_sets)
+  info.scoring_note_sets = serializeScoringNoteSets(scoringSets)
+  info.scoring_note = mirrorScoringNoteLegacy(scoringSets)
 
   // JSON 导入只带路径不带文件：缺文件时保留已有图，避免再次裂图
   info.boss_image = preferExistingImage(info.boss_image, existing.boss_image)
@@ -554,7 +591,7 @@ export async function upsertBossInfo(payload) {
 
   await pool.execute(
     `UPDATE boss_info
-     SET defense = ?, level = ?, boss_image = ?, weakness = ?, resistance = ?, resistance_high = ?, scoring_note = ?, crisis_base_hp = ?, stagger_multiplier = ?, stagger_time = ?, anomaly_bar_coefficient = ?,
+     SET defense = ?, level = ?, boss_image = ?, weakness = ?, resistance = ?, resistance_high = ?, scoring_note = ?, scoring_note_sets = ?, crisis_base_hp = ?, stagger_multiplier = ?, stagger_time = ?, anomaly_bar_coefficient = ?,
          field_buff_name = ?, field_buff_text = ?, field_buff_image = ?, field_buff_effect_blocks = ?,
          field_buff_sets = ?, weakness_sets = ?
      WHERE id = ?`,

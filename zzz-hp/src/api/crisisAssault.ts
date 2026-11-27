@@ -38,12 +38,12 @@ interface ApiBoss {
   anomaly_bar_coefficient?: number | null
   field_buff?: ApiFieldBuff | null
   field_buff_set_id?: string | null
-  /** 得分机制生效值（本期覆盖优先，否则怪物库默认；无增益） */
+  /** 得分机制生效文本（绑定套的正文；无增益） */
   scoring_note?: string | null
-  /** 本期覆盖值（空 = 沿用怪物库） */
-  scoring_note_override?: string | null
-  /** 怪物库默认值 */
-  scoring_note_default?: string | null
+  /** 本期绑定套 id（空 = 第一套） */
+  scoring_note_set_id?: string | null
+  /** 怪物库里的全部套（供编辑弹窗下拉与详情「变化」比对） */
+  scoring_note_sets?: Array<{ id: string; label?: string | null; name: string; text: string }> | null
 }
 
 interface ApiFieldBuff {
@@ -179,8 +179,8 @@ function mapBossToEnemy(boss: ApiBoss): EnemySlot {
     recordId: boss.id,
     room: normalizeCrisisRoomCode(boss.room),
     scoringNote: boss.scoring_note?.trim() ? boss.scoring_note.trim() : null,
-    scoringNoteOverride: boss.scoring_note_override?.trim() ? boss.scoring_note_override.trim() : null,
-    scoringNoteDefault: boss.scoring_note_default?.trim() ? boss.scoring_note_default.trim() : null,
+    scoringNoteSetId: boss.scoring_note_set_id ?? null,
+    scoringNoteSets: Array.isArray(boss.scoring_note_sets) ? boss.scoring_note_sets : [],
     fieldBuffSetId: boss.field_buff_set_id ?? boss.field_buff?.set_id ?? null,
     fieldBuff: boss.field_buff
       ? {

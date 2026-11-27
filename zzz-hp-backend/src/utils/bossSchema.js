@@ -107,11 +107,25 @@ export async function ensureBossScoringNoteSchema() {
     )
   }
 
-  // 期数行覆盖：某些期会改得分机制；空 = 沿用怪物库那份
+  // 多套：与场地 Buff 同构，怪物库存套、期数行绑定其中一套
+  if (!(await columnExists('boss_info', 'scoring_note_sets'))) {
+    await pool.query(
+      `ALTER TABLE boss_info
+       ADD COLUMN scoring_note_sets JSON NULL COMMENT '得分机制多套（[{id,label,name,text}]）；第一套镜像回 scoring_note'`,
+    )
+  }
+  if (!(await columnExists('boss', 'scoring_note_set_id'))) {
+    await pool.query(
+      `ALTER TABLE boss
+       ADD COLUMN scoring_note_set_id VARCHAR(64) NULL COMMENT '本期绑定的得分机制套 id（boss_info.scoring_note_sets）；空 = 第一套'`,
+    )
+  }
+
+  // 期数行一次性文本覆盖（保留兼容旧数据；新流程用「绑套」表达「本期改了」）
   if (!(await columnExists('boss', 'scoring_note'))) {
     await pool.query(
       `ALTER TABLE boss
-       ADD COLUMN scoring_note TEXT NULL COMMENT '本期覆盖的得分机制；空则回退 boss_info.scoring_note'`,
+       ADD COLUMN scoring_note TEXT NULL COMMENT '本期一次性得分机制文本（兼容保留；空则用绑定套）'`,
     )
   }
 

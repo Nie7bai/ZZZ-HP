@@ -35,6 +35,7 @@ import PhasePickerModal from '@/components/history/PhasePickerModal.vue'
 import {
   buildPhaseLabel,
   findPreviousFieldBuff,
+  findPreviousScoringNote,
   findPreviousMonsterTraits,
   getBossHpCoeffComparison,
   getBossHpComparison,
@@ -334,8 +335,8 @@ function buildCrisisMonsterContext(
     hpCoeffManual: enemy.hpCoeffPercent != null,
     fieldBuffSetId: enemy.fieldBuffSetId ?? null,
     weaknessSetId: enemy.weaknessSetId ?? null,
-    scoringNote: enemy.scoringNoteOverride ?? null,
-    scoringNoteDefault: enemy.scoringNoteDefault ?? null,
+    scoringNoteSetId: enemy.scoringNoteSetId ?? null,
+    scoringNoteSets: enemy.scoringNoteSets ?? [],
   }
 }
 
@@ -449,10 +450,33 @@ const monsterDetailCurrentFieldBuff = computed<MonsterFieldBuffSnapshot | null>(
   }
 })
 
+/** 弹窗里的场地 Buff 文本：与卡片完全同一口径（fieldBuffLines 拆行） */
+const monsterDetailCurrentFieldBuffLines = computed(() => {
+  const enemy = monsterDetailEnemy.value
+  return enemy ? fieldBuffLines(enemy) : []
+})
+
+/** 弹窗里的场地 Buff 效果块注释：与卡片同一套过滤（只留与原文不重复的 note） */
+const monsterDetailCurrentFieldBuffBlocks = computed(() => {
+  const enemy = monsterDetailEnemy.value
+  if (!enemy) return null
+  return blocksForHistoryDisplay(enemy.fieldBuff?.effectBlocks, enemy.fieldBuff?.text ?? '')
+})
+
 const monsterDetailPreviousFieldBuff = computed(() => {
   const enemy = monsterDetailEnemy.value
   if (!enemy?.bossName) return null
   return findPreviousFieldBuff(phases.value, currentIndex.value, {
+    bossName: enemy.bossName,
+    room: enemy.room ?? '',
+  })
+})
+
+/** 上一期得分机制：同 Boss + 房间，取最近一次有内容的期数；与本期不同才算「变化」 */
+const monsterDetailPreviousScoringNote = computed(() => {
+  const enemy = monsterDetailEnemy.value
+  if (!enemy?.bossName) return null
+  return findPreviousScoringNote(phases.value, currentIndex.value, {
     bossName: enemy.bossName,
     room: enemy.room ?? '',
   })
@@ -1233,6 +1257,9 @@ function closePhasePicker() {
       :boss-existed-by-multiplier-version="monsterDetailBossExistedByMultiplierVersion"
       :previous-field-buff="monsterDetailPreviousFieldBuff"
       :current-field-buff="monsterDetailCurrentFieldBuff"
+      :current-field-buff-lines="monsterDetailCurrentFieldBuffLines"
+      :current-field-buff-blocks="monsterDetailCurrentFieldBuffBlocks"
+      :previous-scoring-note="monsterDetailPreviousScoringNote"
       :trait-transition="monsterDetailTraitTransition"
       :hp-comparison="monsterDetailHpComparison"
       :hp-coeff-comparison="monsterDetailHpCoeffComparison"

@@ -55,10 +55,10 @@ export interface AdminMonsterSlotContext {
   hpCoeffManual?: boolean
   /** 危局当期绑定的场地 Buff 套 id */
   fieldBuffSetId?: string | null
-  /** 本期覆盖的得分机制（空 = 沿用怪物库） */
-  scoringNote?: string | null
-  /** 怪物库默认得分机制（编辑弹窗里作为「沿用」的参考） */
-  scoringNoteDefault?: string | null
+  /** 本期绑定的得分机制套 id（空 = 第一套） */
+  scoringNoteSetId?: string | null
+  /** 怪物库里的得分机制套（编辑弹窗下拉） */
+  scoringNoteSets?: Array<{ id: string; label?: string | null; name: string; text: string }> | null
   /** 危局当期绑定的弱点/抗性套 id */
   weaknessSetId?: string | null
 }

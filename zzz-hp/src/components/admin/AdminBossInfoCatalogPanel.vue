@@ -32,8 +32,8 @@ interface BossInfoDraft {
   /** 高抗性（40%）属性，为 resistance 的子集 */
   resistance_high: string
   crisis_base_hp: number | ''
-  /** 得分机制（纯文本，与怪物绑定，无增益；危局详情显示在场地 Buff 上方） */
-  scoring_note: string
+  /** 得分机制多套（与场地 Buff 同构；第一套为默认） */
+  scoring_note_sets: ScoringNoteSetDraft[]
   boss_image: string
 }
 
@@ -44,6 +44,13 @@ interface FieldBuffSetDraft {
   text: string
   image: string
   blocks: BuffEffectBlock[]
+}
+
+interface ScoringNoteSetDraft {
+  id: string
+  label: string
+  name: string
+  text: string
 }
 
 interface WeaknessSetDraft {
@@ -103,6 +110,23 @@ function weaknessSetsFromRecord(row: BossInfoRecord): WeaknessSetDraft[] {
   return [createEmptyWeaknessSet({ id: 'legacy', ...legacy })]
 }
 
+function createEmptyScoringNoteSet(): ScoringNoteSetDraft {
+  return {
+    id: `sn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+    label: '',
+    name: '得分机制',
+    text: '',
+  }
+}
+
+function addScoringNoteSet() {
+  draft.value.scoring_note_sets.push(createEmptyScoringNoteSet())
+}
+
+function removeScoringNoteSet(index: number) {
+  draft.value.scoring_note_sets.splice(index, 1)
+}
+
 function addWeaknessSet() {
   weaknessSets.value.push(createEmptyWeaknessSet())
 }
@@ -148,7 +172,7 @@ function createEmptyDraft(): BossInfoDraft {
     resistance: '',
     resistance_high: '',
     crisis_base_hp: '',
-    scoring_note: '',
+    scoring_note_sets: [],
     boss_image: '',
   }
 }
@@ -231,7 +255,16 @@ function toDraft(row: BossInfoRecord): BossInfoDraft {
       row.crisis_base_hp != null && Number.isFinite(Number(row.crisis_base_hp))
         ? Number(row.crisis_base_hp)
         : '',
-    scoring_note: row.scoring_note ?? '',
+    scoring_note_sets: Array.isArray(row.scoring_note_sets)
+      ? row.scoring_note_sets.map((set) => ({
+          id: set.id,
+          label: set.label ?? '',
+          name: set.name ?? '',
+          text: set.text ?? '',
+        }))
+      : row.scoring_note
+        ? [{ id: 'legacy', label: '', name: '得分机制', text: row.scoring_note }]
+        : [],
     boss_image: row.boss_image ?? '',
   }
 }
@@ -347,7 +380,14 @@ async function saveEdit() {
         draft.value.stagger_time === '' || draft.value.stagger_time == null
           ? null
           : Number(draft.value.stagger_time),
-      scoring_note: draft.value.scoring_note.trim() || null,
+      scoring_note_sets: draft.value.scoring_note_sets
+        .map((set) => ({
+          id: set.id,
+          label: set.label.trim() || null,
+          name: set.name.trim() || '得分机制',
+          text: set.text.trim(),
+        }))
+        .filter((set) => set.text || set.name !== '得分机制'),
       anomaly_bar_coefficient:
         draft.value.anomaly_bar_coefficient === '' || draft.value.anomaly_bar_coefficient == null
           ? null
@@ -596,14 +636,36 @@ onMounted(() => {
           <span>图片路径</span>
           <input v-model="draft.boss_image" type="text" placeholder="/boss_image/..." />
         </label>
-        <label class="field field--wide">
-          <span>得分机制（纯文本，无增益）</span>
-          <textarea
-            v-model="draft.scoring_note"
-            rows="4"
-            placeholder="每行一条；危局详情会显示在「场地 Buff」上方，例如：击败敌人 +N 分 / 剩余时间系数 …"
-          />
-        </label>
+        <div class="field field--wide">
+          <header class="field-buff-header">
+            <div>
+              <span>得分机制（多套，纯文本无增益）</span>
+              <p class="field-hint">
+                第一套为默认；某期改了规则就新增一套，在「编辑怪物（期数）」里绑定。
+                详情页显示在「场地 Buff」上方。
+              </p>
+            </div>
+            <button type="button" class="ghost" @click="addScoringNoteSet">新增一套</button>
+          </header>
+          <p v-if="!draft.scoring_note_sets.length" class="field-hint">暂无得分机制，可点「新增一套」。</p>
+          <div
+            v-for="(set, setIndex) in draft.scoring_note_sets"
+            :key="set.id"
+            class="scoring-set"
+          >
+            <div class="scoring-set-head">
+              <input v-model="set.label" type="text" class="field-input" placeholder="标记（可选，如「3.4 调整」）" />
+              <input v-model="set.name" type="text" class="field-input" placeholder="名称（默认「得分机制」）" />
+              <button type="button" class="ghost danger" @click="removeScoringNoteSet(setIndex)">删除</button>
+            </div>
+            <textarea
+              v-model="set.text"
+              rows="4"
+              class="field-input"
+              placeholder="每行一条；留空则该套视为未填写"
+            />
+          </div>
+        </div>
       </div>
 
       <div class="field-buff-section">
@@ -1045,6 +1107,32 @@ onMounted(() => {
 /* 得分机制是长文本，跨满整行 */
 .field--wide {
   grid-column: 1 / -1;
+}
+
+.scoring-set {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.scoring-set-head {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.scoring-set-head .field-input {
+  flex: 1 1 140px;
+  min-width: 120px;
+}
+
+.ghost.danger {
+  color: #e07070;
 }
 
 .field span {

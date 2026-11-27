@@ -21,6 +21,7 @@ import {
   parseEffectBlocksJson,
 } from '../utils/environmentBuffSchema.js'
 import { parseWeaknessSetsJson, weaknessSetsFromLegacy } from '../utils/bossWeaknessSets.js'
+import { parseScoringNoteSetsJson, resolveScoringNoteSet } from '../utils/bossScoringNoteSets.js'
 import {
   loadGlobalBuffEffectMap,
   resolveEffectBlocksForName,
@@ -181,18 +182,23 @@ function enrichBoss(boss, context = {}) {
     field_buff_set_id: String(boss.field_buff_set_id ?? '').trim() || null,
     field_buff: fieldBuff,
     /**
-     * 得分机制（纯文本）：本期覆盖（`boss.scoring_note`）优先，否则沿用怪物库那份
-     * （`boss_info.scoring_note`）；危局详情显示在场地 Buff 上方。
+     * 得分机制（纯文本，多套）：怪物库存套，期数行绑定其中一套（空 = 第一套）；
+     * `boss.scoring_note` 是兼容保留的一次性文本覆盖，优先于绑定套。
+     * 危局详情显示在场地 Buff 上方。
      */
-    scoring_note: (boss.scoring_note ?? '').trim()
-      ? String(boss.scoring_note).trim()
-      : (scoringNoteByName.get(boss.boss_name) ?? null),
-    /** 本期覆盖值（空 = 沿用怪物库）；编辑弹窗用它判断「沿用 / 本期自定义」 */
-    scoring_note_override: (boss.scoring_note ?? '').trim()
-      ? String(boss.scoring_note).trim()
-      : null,
-    /** 怪物库默认值，编辑弹窗里作为「沿用」的参考文本 */
-    scoring_note_default: scoringNoteByName.get(boss.boss_name) ?? null,
+    scoring_note: (() => {
+      const override = String(boss.scoring_note ?? '').trim()
+      if (override) return override
+      const set = resolveScoringNoteSet(
+        scoringNoteByName.get(boss.boss_name) ?? [],
+        boss.scoring_note_set_id,
+      )
+      return set?.text?.trim() || null
+    })(),
+    /** 本期绑定套 id（空 = 第一套） */
+    scoring_note_set_id: String(boss.scoring_note_set_id ?? '').trim() || null,
+    /** 怪物库里的全部套（供编辑弹窗下拉） */
+    scoring_note_sets: scoringNoteByName.get(boss.boss_name) ?? [],
   }
 }
 
@@ -216,15 +222,26 @@ async function loadBossResistanceHighMap() {
   return map
 }
 
+/**
+ * 怪物库的「得分机制多套」按 boss_name 建索引；旧单列文本会合成一套。
+ * 期数行只保存绑定套 id（`boss.scoring_note_set_id`）。
+ */
 async function loadBossScoringNoteMap() {
   await ensureBossScoringNoteSchema()
   const map = new Map()
   try {
     const [rows] = await pool.execute(
-      "SELECT boss_name, scoring_note FROM boss_info WHERE scoring_note IS NOT NULL AND scoring_note <> ''",
+      'SELECT boss_name, scoring_note, scoring_note_sets FROM boss_info',
     )
     for (const row of rows) {
-      map.set(row.boss_name, row.scoring_note)
+      const sets = parseScoringNoteSetsJson(row.scoring_note_sets)
+      if (sets.length) {
+        map.set(row.boss_name, sets)
+      } else if (String(row.scoring_note ?? '').trim()) {
+        map.set(row.boss_name, [
+          { id: 'legacy', label: null, name: '得分机制', text: String(row.scoring_note).trim() },
+        ])
+      }
     }
   } catch (err) {
     console.warn('[crisis] loadBossScoringNoteMap fallback:', err.message)
