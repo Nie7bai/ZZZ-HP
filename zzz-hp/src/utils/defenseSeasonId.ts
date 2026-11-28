@@ -37,7 +37,7 @@ export const DEFENSE_SEASON_ORDER: DefenseSeasonOrderItem[] = [
   { version: '3.0', phase: 1 },
   { version: '3.0', phase: 2 },
   { version: '3.0', phase: 3 },
-  { version: '3.0', phase: 4 },
+  // 3.0 只有 3 期（date/boss 均无第 4 期）：多余条目会把 3.1 起的显示 ID 全部顶高 1
   { version: '3.1', phase: 1 },
   { version: '3.1', phase: 2 },
   { version: '3.1', phase: 3 },

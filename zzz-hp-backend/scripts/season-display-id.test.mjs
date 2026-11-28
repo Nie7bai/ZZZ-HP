@@ -15,12 +15,14 @@ import {
   isHardCrisisTidEra,
 } from '../src/services/crisisTidService.js'
 
-test('防卫：表内 3.1-3 仍为 62057', () => {
-  assert.equal(versionPhaseToDisplayId('3.1', 3), 62057)
+test('防卫：3.0 只有 3 期，3.1-1 起不再被顶高（62054）', () => {
+  assert.equal(versionPhaseToDisplayId('3.0', 3), 62053)
+  assert.equal(versionPhaseToDisplayId('3.1', 1), 62054)
+  assert.equal(versionPhaseToDisplayId('3.1', 3), 62056)
 })
 
-test('防卫：单期新开 3.1-4 → 62058', () => {
-  assert.equal(versionPhaseToDisplayId('3.1', 4), 62058)
+test('防卫：单期新开 3.1-4 → 62057', () => {
+  assert.equal(versionPhaseToDisplayId('3.1', 4), 62057)
 })
 
 test('防卫：多期一并排序时连续 +1', () => {
@@ -30,10 +32,10 @@ test('防卫：多期一并排序时连续 +1', () => {
     { version: '3.2', phase: 2 },
   ]
   const map = buildDefenseDisplayIdMap(extras)
-  assert.equal(map.get('3.1-4'), '62058')
-  assert.equal(map.get('3.2-1'), '62059')
-  assert.equal(map.get('3.2-2'), '62060')
-  assert.equal(map.get('3.1-3'), '62057')
+  assert.equal(map.get('3.1-4'), '62057')
+  assert.equal(map.get('3.2-1'), '62058')
+  assert.equal(map.get('3.2-2'), '62059')
+  assert.equal(map.get('3.1-3'), '62056')
 })
 
 test('防卫：resolve 顺序把新期接在表末', () => {
