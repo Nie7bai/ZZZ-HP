@@ -678,9 +678,8 @@ const selectedRow = computed<ChainRow | null>(
 /**
  * 全局乘区方案里的「独立乘区」条目（烬痕 / 最终伤害 / 一布之力 …）。
  *
- * 它们不参与链路阶段计算（由乘区方案在结算末尾单独相乘），但管理端看链路时
- * 也需要知道它们确实在这条链路上生效、排在第几位——所以只做展示拼接，
- * 不进入 `row.stages`（预览计算仍只跑链路自身阶段）。
+ * 事件结算时它们由 `customZoneStageEntries()` 编译成链路阶段、与阶段一起连乘；
+ * 管理端链路面板按同一口径把它们并列展示（普通格子，不再单独区分虚线）。
  */
 const globalSchemeStages = computed<StageDefinition[]>(() => {
   const entries: SchemeEntryLike[] = []
@@ -1078,11 +1077,13 @@ function runPreview() {
     previewError.value = '乘区方案只替换链路里的对应乘区，不单独预览'
     return
   }
-  if (!row.stages.length) {
+  const stages = displayStagesOf(row)
+  if (!stages.length) {
     previewError.value = '该链路没有可用阶段'
     return
   }
-  previewResult.value = previewDamageChain(row.chainKey, row.stages, {}, previewSampleId.value)
+  // 预览与展示同一份阶段顺序（含方案编译出的独立乘区；示例没有 custom 修饰时它们为 1.00）
+  previewResult.value = previewDamageChain(row.chainKey, stages, {}, previewSampleId.value)
 }
 
 onMounted(async () => {
@@ -1256,10 +1257,7 @@ onMounted(async () => {
                 v-for="stage in displayStagesOf(selectedRow)"
                 :key="`stage-${stage.id}`"
                 class="chain-stage-cell"
-                :class="[
-                  `chain-stage-cell--${stage.kind}`,
-                  stage.group === 'scheme' ? 'chain-stage-cell--scheme' : '',
-                ]"
+                :class="`chain-stage-cell--${stage.kind}`"
               >
                 <div class="cell-head">
                   <span class="cell-kind">{{ STAGE_KIND_LABELS[stage.kind] ?? stage.kind }}</span>
@@ -1278,11 +1276,6 @@ onMounted(async () => {
                 <span v-if="stage.when" class="cell-detail mono">条件 {{ formatWhen(stage) }}</span>
               </div>
             </div>
-
-            <p v-if="globalSchemeStages.length" class="chain-hint chain-scheme-hint">
-              虚线格 = 全局乘区方案里的独立乘区（{{ globalSchemeStages.map((stage) => stage.label).join('、') }}）：
-              按方案编译进链路、与阶段一起连乘；按来源（自身 / 全队）取模的乘区仍由方案单独相乘。
-            </p>
 
             <p v-if="hasAnomalyStages(selectedRow.stages)" class="chain-actor-legend">
               乘区归属：
@@ -1779,13 +1772,6 @@ onMounted(async () => {
 
 .chain-stage-cell--multiplier {
   border-left-color: #c9a55c;
-}
-
-/* 全局独立乘区（乘区方案条目）：虚线框，表示不在链路阶段里、结算末尾另行相乘 */
-.chain-stage-cell--scheme {
-  border-style: dashed;
-  border-left-style: solid;
-  opacity: 0.85;
 }
 
 .chain-stage-cell--combine {
