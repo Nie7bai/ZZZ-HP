@@ -536,6 +536,58 @@ export function appendMindscapeNote(notes, index, text) {
   return { notes: list, appended: result.appended, duplicate: result.duplicate, index: target }
 }
 
+/** 原文比较口径：去掉 `原文：` 前缀、压缩空白 */
+function normalizeSourceText(text) {
+  return String(text ?? '')
+    .replace(/^\s*原文[:：]\s*/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** 采集写入的原文块形如 `原文：<正文>\n[关键字] …`：判重只看正文那一行 */
+function sourceCoreText(source) {
+  const firstLine = String(source ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean)
+  return normalizeSourceText(firstLine)
+}
+
+/** 该影画阶所有效果块注释 */
+function collectContainerBlockNotes(container) {
+  const blocks = Array.isArray(container?.effectBlocks) ? container.effectBlocks : []
+  return blocks.map((block) => String(block?.note ?? '').trim()).filter(Boolean)
+}
+
+/**
+ * 影画注释追加计划：**原文优先留在效果块注释里**（采集时块注释已写入原文 + 关键字行）。
+ * 只有该阶没有任何块记录同一段原文（纯文字、无结构化增益）时，才补进 `mindscapeNotes[i]`，
+ * 避免同一段文字在「影画注释」与「效果块注释」里各出现一次（用户 2026-11-28）。
+ */
+export function planMindscapeNoteAppends(doc = {}, groups = []) {
+  let notes = [0, 1, 2, 3, 4, 5, 6].map((i) =>
+    typeof doc.mindscapeNotes?.[i] === 'string' ? doc.mindscapeNotes[i] : '',
+  )
+  const skipped = []
+  for (const group of groups) {
+    if (group?.ok === false || group.container !== 'mindscapeBuffs') continue
+    const index = Number(group.containerIndex)
+    if (!Number.isFinite(index)) continue
+    const blockNotes = collectContainerBlockNotes(doc.mindscapeBuffs?.[index])
+    for (const source of group.sourceTexts ?? []) {
+      const target = sourceCoreText(source)
+      if (!target) continue
+      if (blockNotes.some((note) => normalizeSourceText(note).includes(target))) {
+        skipped.push(target)
+        continue
+      }
+      const appended = appendMindscapeNote(notes, index, source)
+      notes = appended.notes
+    }
+  }
+  return { notes, skipped }
+}
+
 // ================================================================== 抽取结果统计
 
 /**
@@ -1390,6 +1442,8 @@ export async function applyBuffItems({ kind, id, rows = [], dryRun = false } = {
     anchors: createdAnchors,
     unresolvedAnchors: plan.unresolvedAnchors,
     invalid: plan.invalid,
+    /** 因效果块注释已含同一段原文而跳过的影画注释条数（0 = 全部按原样写入） */
+    mindscapeNotesSkipped: 0,
     wouldWrite: !dryRun,
     writeError: '',
   }
@@ -1399,20 +1453,10 @@ export async function applyBuffItems({ kind, id, rows = [], dryRun = false } = {
   try {
     if (normalizedKind === 'agent') {
       const doc = buildLocalDoc({ kind: 'agent', local, groups: plan.groups })
-      // 原文 + 关键字同步进 `mindscapeNotes[i]`（追加，不覆盖）
-      let notes = [0, 1, 2, 3, 4, 5, 6].map((index) =>
-        typeof doc.mindscapeNotes?.[index] === 'string' ? doc.mindscapeNotes[index] : '',
-      )
-      for (const group of plan.groups) {
-        if (group.ok === false || group.container !== 'mindscapeBuffs') continue
-        const index = Number(group.containerIndex)
-        if (!Number.isFinite(index)) continue
-        for (const source of group.sourceTexts ?? []) {
-          const appended = appendMindscapeNote(notes, index, source)
-          notes = appended.notes
-        }
-      }
-      doc.mindscapeNotes = notes
+      // 原文优先留在效果块注释里；块里已有同一段原文时不再写 `mindscapeNotes[i]`
+      const planned = planMindscapeNoteAppends(doc, plan.groups)
+      doc.mindscapeNotes = planned.notes
+      result.mindscapeNotesSkipped = planned.skipped.length
       await upsertAgent(doc)
     } else {
       const doc = buildLocalDoc({ kind: 'wengine', local, groups: plan.groups })

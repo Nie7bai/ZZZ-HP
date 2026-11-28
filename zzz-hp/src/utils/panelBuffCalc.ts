@@ -64,21 +64,7 @@ import {
   effectInstanceToBuffEffect,
   instantiateBuffEffect,
 } from '@/utils/effectAdapters'
-
-/** 局内 Buff 选择：模块注释与效果块注释相同（或空白）时只保留一条 */
-function mergeBuffDisplayNotes(...parts: Array<string | null | undefined>): string {
-  const seen = new Set<string>()
-  const unique: string[] = []
-  for (const part of parts) {
-    const trimmed = typeof part === 'string' ? part.trim() : ''
-    if (!trimmed) continue
-    const key = trimmed.replace(/\s+/g, '\n')
-    if (seen.has(key)) continue
-    seen.add(key)
-    unique.push(trimmed)
-  }
-  return unique.join('\n')
-}
+import { mergeBuffDisplayNotes } from '@/utils/buffDisplayNote'
 
 /** 危局 / Boss 场地 / 防线 / 临界 Buff 分组 */
 export const ENVIRONMENT_BUFF_GROUPS = new Set([

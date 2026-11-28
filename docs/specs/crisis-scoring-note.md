@@ -58,5 +58,16 @@
 ## 非目标
 
 - 不做富文本 / Markdown 渲染（`BuffRichText` 只处理既有强调语法）；
-- 不把得分机制纳入赛季导入导出快照（`boss_info` 走自己的迁移脚本）；
 - 不做按房间 / 期数的覆盖值（如以后需要，再在 `boss` 期数行加 `scoring_note` 覆盖列）。
+
+## 快照往返（2026-11-28 补齐）
+
+得分机制在 2026-11-27 那一轮只落了库，**导出快照没带上**，导入导出或换环境会静默丢文本。现已补齐：
+
+| 快照 | 字段 | 位置 |
+|---|---|---|
+| 怪物基础库 `zzz-hp-boss-info` | `scoringNoteSets`（多套数组）+ `scoringNote`（第一套镜像，旧版本可读） | `zzz-hp-backend/src/utils/bossInfoSnapshot.js` 的 SELECT / 导出行 / INSERT / UPDATE，导/入前都 `ensureBossScoringNoteSchema()` |
+| 赛季内容快照（危局） | 期数行 `scoring_note_set_id`（本期绑定哪一套） | `zzz-hp-backend/src/services/seasonSnapshotService.js` 的 `mapBossRow` 与导入 `base`；落库走 `dataService.createBoss` 的同名字段 |
+
+守卫测试：`zzz-hp-backend/scripts/boss-scoring-note-snapshot.test.mjs`（7 项：多套工具行为 + 两处快照的列/参数/ensure 断言）。
+仓库内快照文件：`zzz-hp-backend/scripts/data/snapshots/2026-11-28/zzz-hp-boss-info.json`（155 条，26 条带得分机制）。
