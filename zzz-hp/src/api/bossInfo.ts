@@ -111,14 +111,16 @@ export async function fetchBossInfoList(params: {
 
 export async function updateBossInfoRecord(
   id: number,
-  payload: Partial<Omit<BossInfoRecord, 'id'>>,
+  payload: Partial<Omit<BossInfoRecord, 'id'>> & { rename_periods?: boolean },
 ) {
   const response = await fetch(`/api/boss-info/${id}`, {
     method: 'PUT',
     headers: withAdminAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload),
   })
-  return parseResponse<BossInfoRecord>(response)
+  return parseResponse<BossInfoRecord & { renamedPeriods?: number; updatedPeriodImages?: number }>(
+    response,
+  )
 }
 
 /** 新增一只怪物（以 boss_name 为业务键；同名已存在时后端按 upsert 更新） */

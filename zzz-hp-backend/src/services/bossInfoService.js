@@ -469,9 +469,29 @@ export async function updateBossInfoById(id, payload) {
     ],
   )
 
+  // 改名同步：名称是跨表业务键，各期（boss 表）仍挂旧名时基础数据会「对不上」
+  let renamedPeriods = 0
+  let updatedPeriodImages = 0
+  if (payload.rename_periods === true && existing.boss_name !== info.boss_name) {
+    const [renamed] = await pool.execute(
+      `UPDATE boss SET boss_name = ? WHERE boss_name = ?`,
+      [info.boss_name, existing.boss_name],
+    )
+    renamedPeriods = Number(renamed.affectedRows) || 0
+    if (existing.boss_image && info.boss_image && existing.boss_image !== info.boss_image) {
+      const [images] = await pool.execute(
+        `UPDATE boss SET boss_image = ? WHERE boss_name = ? AND boss_image = ?`,
+        [info.boss_image, info.boss_name, existing.boss_image],
+      )
+      updatedPeriodImages = Number(images.affectedRows) || 0
+    }
+  }
+
   return {
     action: 'updated',
     id: bossId,
+    renamedPeriods,
+    updatedPeriodImages,
     ...mapBossInfoWriteResult(info),
   }
 }

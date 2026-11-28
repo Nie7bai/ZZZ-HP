@@ -77,6 +77,8 @@ const editingId = ref<number | null>(null)
 /** 新增模式：编辑面板开着一份空草稿，保存时走 POST */
 const creating = ref(false)
 const savingNew = ref(false)
+/** 编辑时的原名：改名要提示是否同步到各期 */
+const originalName = ref('')
 const editorOpen = computed(() => creating.value || editingId.value != null)
 const draft = ref<BossInfoDraft>(createEmptyDraft())
 const fieldBuffSets = ref<FieldBuffSetDraft[]>([])
@@ -155,6 +157,10 @@ const editPanelRef = ref<HTMLElement | null>(null)
 const confirmVisible = ref(false)
 const confirmMessage = ref('')
 const pendingDelete = ref<BossInfoRecord | null>(null)
+const renameVisible = ref(false)
+const renameMessage = ref('')
+const renameSaving = ref(false)
+let pendingRenamePayload: ReturnType<typeof buildSavePayload> | null = null
 
 const calculatorBuffStore = useCalculatorBuffStore()
 
@@ -313,6 +319,7 @@ async function startCreate() {
 async function startEdit(row: BossInfoRecord) {
   creating.value = false
   editingId.value = row.id
+  originalName.value = row.boss_name
   draft.value = toDraft(row)
   fieldBuffSets.value = setsFromRecord(row)
   weaknessSets.value = weaknessSetsFromRecord(row)
@@ -418,19 +425,51 @@ async function saveEdit() {
     error.value = '名称不能为空'
     return
   }
+  const payload = buildSavePayload()
+  if (!creating.value && originalName.value && originalName.value !== payload.boss_name) {
+    pendingRenamePayload = payload
+    renameMessage.value =
+      `名称已由「${originalName.value}」改为「${payload.boss_name}」。\n` +
+      '各期（危局 / 防卫战 / 临界）里的怪物行仍是旧名，不同步的话那些期会找不到这只怪的基础数据（弱点、场地 Buff、得分机制）。\n' +
+      '是否把各期的同名怪物行一起改名？'
+    renameVisible.value = true
+    return
+  }
+  await commitSave(payload, false)
+}
+
+async function confirmRename(syncPeriods: boolean) {
+  const payload = pendingRenamePayload
+  renameVisible.value = false
+  renameSaving.value = true
+  try {
+    if (payload) await commitSave(payload, syncPeriods)
+  } finally {
+    renameSaving.value = false
+    pendingRenamePayload = null
+    renameMessage.value = ''
+  }
+}
+
+async function commitSave(payload: ReturnType<typeof buildSavePayload>, syncPeriods: boolean) {
   const isCreate = creating.value
   if (isCreate) savingNew.value = true
   else savingId.value = editingId.value
   message.value = ''
   error.value = ''
   try {
-    const payload = buildSavePayload()
     if (isCreate) {
       const result = await createBossInfoRecord(payload)
       message.value = result.action === 'updated' ? '同名怪物已存在，已更新' : '已新增怪物'
     } else {
-      await updateBossInfoRecord(editingId.value as number, payload)
-      message.value = '已保存'
+      const result = await updateBossInfoRecord(editingId.value as number, {
+        ...payload,
+        ...(syncPeriods ? { rename_periods: true } : {}),
+      })
+      const renamed = Number(result.renamedPeriods ?? 0)
+      message.value = syncPeriods
+        ? `已保存${renamed ? `，并同步改名 ${renamed} 条期数怪物行` : '（各期没有同名怪物行可同步）'}`
+        : '已保存'
     }
     cancelEdit()
     await loadList()
@@ -880,6 +919,16 @@ onMounted(() => {
       <p v-if="!loading && !items.length" class="empty-list">当前分类下暂无记录</p>
     </div>
 
+    <AdminConfirmDialog
+      :visible="renameVisible"
+      title="名称已变更，是否同步各期？"
+      :message="renameMessage"
+      confirm-text="同步改名"
+      cancel-text="仅改基础库"
+      :loading="renameSaving"
+      @confirm="confirmRename(true)"
+      @cancel="confirmRename(false)"
+    />
     <AdminConfirmDialog
       :visible="confirmVisible"
       title="确认删除怪物基础信息"
