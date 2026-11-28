@@ -52,7 +52,7 @@ export function evaluateStageValue(
     return field ? readNumber(context.enemyInput?.[field]) : null
   }
 
-  if (module === 'percentSum') {
+  if (module === 'percentSum' || module === 'scaledPercentSum') {
     const statKeys = Array.isArray(params.statKeys)
       ? params.statKeys.filter((key): key is string => typeof key === 'string' && key.length > 0)
       : []
@@ -62,7 +62,20 @@ export function evaluateStageValue(
       const value = readNumber(context.customMods?.[key])
       if (value != null) percent += value
     }
-    let factor = 1 + percent / 100
+    // scaledPercentSum：第二组百分比放大第一组（烬痕「积攒量提升」口径）
+    let scalingPercent = 0
+    if (module === 'scaledPercentSum') {
+      const scalingKeys = Array.isArray(params.scalingStatKeys)
+        ? params.scalingStatKeys.filter(
+            (key): key is string => typeof key === 'string' && key.length > 0,
+          )
+        : []
+      for (const key of scalingKeys) {
+        const value = readNumber(context.customMods?.[key])
+        if (value != null) scalingPercent += value
+      }
+    }
+    let factor = 1 + (percent / 100) * (1 + scalingPercent / 100)
     const cap = readNumber(params.cap)
     if (cap != null && cap > 0) factor = Math.min(factor, cap)
     const floor = readNumber(params.floor)

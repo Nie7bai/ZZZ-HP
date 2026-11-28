@@ -1361,6 +1361,41 @@ export function computeDamageResult(input: DamageCalcInput): DamageCalcResult {
     stageValues[stage.id] = value
     if (stage.kind === 'multiplier') extraStageFactor *= value
   }
+  // 编译成链路阶段的自定义乘区（providers=all）：结果里补 zone 行，展示与末尾因子路径一致
+  const sumCustomMods = (keys: unknown): number => {
+    if (!Array.isArray(keys)) return 0
+    let sum = 0
+    for (const key of keys) {
+      const value = Number((input.combatCustom ?? {})[key as string])
+      if (Number.isFinite(value)) sum += value
+    }
+    return sum
+  }
+  for (const stage of input.chainStages ?? []) {
+    if (stage.group !== 'scheme') continue
+    const value = stageValues[stage.id]
+    if (typeof value !== 'number') continue
+    const params = (stage.params ?? {}) as Record<string, unknown>
+    const scaled = stage.module === 'scaledPercentSum'
+    const basePercent = scaled || stage.module === 'percentSum' ? sumCustomMods(params.statKeys) : 0
+    const scalingPercent = scaled ? sumCustomMods(params.scalingStatKeys) : 0
+    zones[stage.id] = {
+      key: stage.id,
+      label: stage.label,
+      order: stage.order,
+      group: 'custom',
+      value,
+      ...(scaled
+        ? {
+            scaledPercentInputs: {
+              basePercent,
+              scalingPercent,
+              unboundedFactor: 1 + (basePercent / 100) * (1 + scalingPercent / 100),
+            },
+          }
+        : {}),
+    }
+  }
 
   // Phase 4f-2：阶段的启用/禁用与 `params.adjustment` 反映到结算
   let stageAdjustment = extraStageFactor

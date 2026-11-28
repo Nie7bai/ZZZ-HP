@@ -1281,7 +1281,7 @@ onMounted(async () => {
 
             <p v-if="globalSchemeStages.length" class="chain-hint chain-scheme-hint">
               虚线格 = 全局乘区方案里的独立乘区（{{ globalSchemeStages.map((stage) => stage.label).join('、') }}）：
-              不进入链路阶段计算，由乘区方案在结算末尾另行相乘。
+              按方案编译进链路、与阶段一起连乘；按来源（自身 / 全队）取模的乘区仍由方案单独相乘。
             </p>
 
             <p v-if="hasAnomalyStages(selectedRow.stages)" class="chain-actor-legend">

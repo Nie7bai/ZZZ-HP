@@ -107,7 +107,10 @@ export function buildPipelineStageRows(
     label: zone.label,
     valueText: formatCustomZoneFormula(zone) ?? formatStageValue(zone.value, false),
   }))
-  const resultIndex = rows.findIndex((row) => row.kind === 'final')
-  rows.splice(resultIndex === -1 ? rows.length : resultIndex, 0, ...customRows)
-  return rows
+  // 自定义乘区已编译成链路阶段（providers=all）时，阶段行与乘区行同 id：保留乘区行（带公式）
+  const customIds = new Set(customRows.map((row) => row.id))
+  const rowsWithoutDup = rows.filter((row) => !customIds.has(row.id))
+  const resultIndex = rowsWithoutDup.findIndex((row) => row.kind === 'final')
+  rowsWithoutDup.splice(resultIndex === -1 ? rowsWithoutDup.length : resultIndex, 0, ...customRows)
+  return rowsWithoutDup
 }

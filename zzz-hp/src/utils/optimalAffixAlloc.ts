@@ -116,7 +116,7 @@ import { resolveSlotAttrValues } from '@/utils/panelSourceResolution'
 import { formatAnomalyFormulaAgentLabel } from '@/utils/anomalyFormulaDisplay'
 import { buildHitEvalFingerprintReused, resetHitEvalFingerprintReuseState } from '@/utils/hitEvalCache'
 import { buildZoneResolvedContext, evaluateZoneCondition, resolveCurtainCap, resolveZoneScheme } from '@/zones/scheme'
-import { evaluateCustomZoneFactors, zoneSchemeNeedsProviderTracking } from '@/zones/customZones'
+import { customZoneStageEntries, evaluateCustomZoneFactors, zoneSchemeNeedsProviderTracking } from '@/zones/customZones'
 import { getMergedZoneSchemes, getRuntimeZoneDefinitions } from '@/zones/schemeSource'
 import { resolveCurrentDamageChain } from '@/zones/chainSource'
 
@@ -1815,6 +1815,14 @@ export function evaluateOptimalEventDetail(
       matchesCondition: (when) => evaluateZoneCondition(when, hit, ctx.panelContext, zoneContext),
     },
   })
+  // 自定义乘区与链路统一：providers='all' 的百分比乘区编译成链路阶段（与阶段一起连乘），
+  // 仍按 owner/team 取模的留在 `customZoneFactors` 里，结算末尾相乘。
+  const customSchemeStages = customZoneStageEntries(zoneScheme, zoneProviders)
+  const convertedZoneKeys = new Set(customSchemeStages.map((stage) => stage.id))
+  const chainStages =
+    customSchemeStages.length
+      ? [...damageChain.stages, ...customSchemeStages]
+      : damageChain.stages
   const schemeAdditionalTerms =
     damageType === 'disorder'
       ? Object.values(zoneScheme.entries)
@@ -1911,9 +1919,9 @@ export function evaluateOptimalEventDetail(
     turbulenceZoneMultOverride: zoneMultResolved.turbulenceZoneMult,
     turbulenceZoneMultFactorOverride: zoneMultResolved.turbulenceZoneMultFactor,
     curtainVulnerabilityCap: resolveCurtainCap(zoneScheme),
-    customZoneFactors,
+    customZoneFactors: customZoneFactors.filter((factor) => !convertedZoneKeys.has(factor.key)),
     chainId: damageChain.chainId,
-    chainStages: damageChain.stages,
+    chainStages,
     chainDisabledStageIds: damageChain.disabledStageIds,
     chainStageAdjustments: damageChain.stageAdjustments,
   })

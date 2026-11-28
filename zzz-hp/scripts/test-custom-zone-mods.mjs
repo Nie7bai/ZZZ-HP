@@ -9,7 +9,8 @@ import {
   createEmptyBuffStatModifiers,
   mergeBuffStatModifiers,
 } from '../src/utils/calculatorUi.ts'
-import { evaluateCustomZoneFactors } from '../src/zones/customZones.ts'
+import { evaluateCustomZoneFactors, customZoneStageEntries } from '../src/zones/customZones.ts'
+import { evaluateStageValue } from '../src/zones/stageEval.ts'
 
 let passed = 0
 let failed = 0
@@ -141,6 +142,65 @@ check('缺少对应口径修饰表时回退到 aggregate', () => {
     customModsByProvider: { team: { a: 10 }, all: { a: 20 } },
   })
   closeTo(factor.value, 1.4, 'fallback aggregate')
+})
+
+console.log('[4] 与链路统一：providers=all 的自定义乘区编译成阶段')
+
+check('providers=all 的百分比乘区 → 阶段（按 order 排序，带 params）', () => {
+  const resolved = resolvedWith({
+    'custom:emberMark': {
+      key: 'custom:emberMark',
+      label: '烬痕区',
+      module: 'scaledPercentSum',
+      params: { statKeys: ['emberMarkRatio'], scalingStatKeys: ['emberMarkAccumulationBonus'], order: 200 },
+    },
+    'custom:bangbooMight': {
+      key: 'custom:bangbooMight',
+      label: '一布之力区',
+      module: 'percentSum',
+      params: { statKeys: ['bangbooMightRatio'], order: 202 },
+    },
+    'custom:owned': {
+      key: 'custom:owned',
+      module: 'percentSum',
+      params: { statKeys: ['ownedRatio'], order: 210 },
+    },
+  })
+  const stages = customZoneStageEntries(resolved, {
+    'custom:emberMark': 'all',
+    'custom:bangbooMight': 'all',
+    'custom:owned': 'owner',
+  })
+  assert.deepEqual(stages.map((stage) => stage.id), ['custom:emberMark', 'custom:bangbooMight'])
+  assert.equal(stages[0].order, 200)
+  assert.equal(stages[0].group, 'scheme')
+  assert.equal(stages[0].label, '烬痕区')
+})
+
+check('阶段求值与因子求值同口径（scaledPercentSum / 上限 / 下限）', () => {
+  const resolved = resolvedWith({
+    ember: {
+      key: 'ember',
+      module: 'scaledPercentSum',
+      params: {
+        statKeys: ['base'],
+        scalingStatKeys: ['scale'],
+        order: 200,
+        cap: 2,
+        floor: 1,
+      },
+    },
+  })
+  const mods = { base: 60, scale: 35 }
+  const [factor] = evaluateCustomZoneFactors(resolved, mods, { zoneProviders: { ember: 'all' } })
+  const stageValue = evaluateStageValue(
+    { id: 'ember', kind: 'multiplier', module: 'scaledPercentSum',
+      params: { statKeys: ['base'], scalingStatKeys: ['scale'], order: 200, cap: 2, floor: 1 } },
+    {},
+    { customMods: mods },
+  )
+  closeTo(factor.value, 1.81, 'factor')
+  closeTo(stageValue, 1.81, 'stage')
 })
 
 console.log(`\n${failed === 0 ? '✅ all passed' : '❌ failed'}（${passed} passed / ${failed} failed）`)
