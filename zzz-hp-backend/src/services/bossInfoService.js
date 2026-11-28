@@ -517,7 +517,7 @@ export async function upsertBossInfo(payload) {
         info.field_buff_effect_blocks,
         info.field_buff_sets,
         info.weakness_sets,
-      ],
+      ].map((value) => (value === undefined ? null : value)),
     )
 
     return {
@@ -603,6 +603,7 @@ export async function upsertBossInfo(payload) {
       info.resistance,
       info.resistance_high,
       info.scoring_note,
+      info.scoring_note_sets,
       info.crisis_base_hp,
       info.stagger_multiplier,
       info.stagger_time,
@@ -614,7 +615,7 @@ export async function upsertBossInfo(payload) {
       info.field_buff_sets,
       info.weakness_sets,
       existing.id,
-    ],
+    ].map((value) => (value === undefined ? null : value)),
   )
 
   return {

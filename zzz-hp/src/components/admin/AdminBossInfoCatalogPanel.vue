@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import {
+  createBossInfoRecord,
   deleteBossInfoRecord,
   fetchBossInfoList,
   syncBossInfoFromBoss,
@@ -73,6 +74,10 @@ const message = ref('')
 const items = ref<BossInfoRecord[]>([])
 const total = ref(0)
 const editingId = ref<number | null>(null)
+/** 新增模式：编辑面板开着一份空草稿，保存时走 POST */
+const creating = ref(false)
+const savingNew = ref(false)
+const editorOpen = computed(() => creating.value || editingId.value != null)
 const draft = ref<BossInfoDraft>(createEmptyDraft())
 const fieldBuffSets = ref<FieldBuffSetDraft[]>([])
 const weaknessSets = ref<WeaknessSetDraft[]>([])
@@ -288,7 +293,25 @@ async function loadList() {
   }
 }
 
+async function startCreate() {
+  creating.value = true
+  editingId.value = null
+  draft.value = createEmptyDraft()
+  fieldBuffSets.value = []
+  weaknessSets.value = []
+  message.value = ''
+  error.value = ''
+  try {
+    await calculatorBuffStore.ensureLoaded()
+  } catch {
+    // 效果编辑器招式小类可选；加载失败不阻断基础字段录入
+  }
+  await nextTick()
+  editPanelRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 async function startEdit(row: BossInfoRecord) {
+  creating.value = false
   editingId.value = row.id
   draft.value = toDraft(row)
   fieldBuffSets.value = setsFromRecord(row)
@@ -305,6 +328,7 @@ async function startEdit(row: BossInfoRecord) {
 }
 
 function cancelEdit() {
+  creating.value = false
   editingId.value = null
   draft.value = createEmptyDraft()
   fieldBuffSets.value = []
@@ -348,59 +372,72 @@ function packFieldBuffSetsPayload(): BossInfoFieldBuffSet[] {
   return out
 }
 
+function buildSavePayload() {
+  const bossName = draft.value.boss_name.trim()
+  const sets = packFieldBuffSetsPayload()
+  const weaknessSetsPayload = packWeaknessSetsPayload()
+  const firstWeakness = weaknessSetsPayload[0]
+  return {
+    boss_name: bossName,
+    defense: Number(draft.value.defense) || 0,
+    level: Number(draft.value.level) || 1,
+    // 多套是权威来源：基础三列由第一套镜像，隐藏字段不再直接保存
+    weakness: firstWeakness?.weakness ?? null,
+    resistance: firstWeakness?.resistance ?? null,
+    resistance_high: firstWeakness?.resistanceHigh ?? null,
+    boss_image: draft.value.boss_image.trim() || null,
+    crisis_base_hp:
+      draft.value.crisis_base_hp === '' || draft.value.crisis_base_hp == null
+        ? null
+        : Number(draft.value.crisis_base_hp),
+    stagger_multiplier: Number(draft.value.stagger_multiplier) || 1.5,
+    stagger_time:
+      draft.value.stagger_time === '' || draft.value.stagger_time == null
+        ? null
+        : Number(draft.value.stagger_time),
+    scoring_note_sets: draft.value.scoring_note_sets
+      .map((set) => ({
+        id: set.id,
+        label: set.label.trim() || null,
+        name: set.name.trim() || '得分机制',
+        text: set.text.trim(),
+      }))
+      .filter((set) => set.text || set.name !== '得分机制'),
+    anomaly_bar_coefficient:
+      draft.value.anomaly_bar_coefficient === '' || draft.value.anomaly_bar_coefficient == null
+        ? null
+        : Number(draft.value.anomaly_bar_coefficient),
+    field_buff_sets: sets,
+    weakness_sets: packWeaknessSetsPayload(),
+  }
+}
+
 async function saveEdit() {
-  if (editingId.value == null) return
+  if (!creating.value && editingId.value == null) return
   if (!draft.value.boss_name.trim()) {
     error.value = '名称不能为空'
     return
   }
-  savingId.value = editingId.value
+  const isCreate = creating.value
+  if (isCreate) savingNew.value = true
+  else savingId.value = editingId.value
   message.value = ''
   error.value = ''
   try {
-    const bossName = draft.value.boss_name.trim()
-    const sets = packFieldBuffSetsPayload()
-    const weaknessSetsPayload = packWeaknessSetsPayload()
-    const firstWeakness = weaknessSetsPayload[0]
-    await updateBossInfoRecord(editingId.value, {
-      boss_name: bossName,
-      defense: Number(draft.value.defense) || 0,
-      level: Number(draft.value.level) || 1,
-      // 多套是权威来源：基础三列由第一套镜像，隐藏字段不再直接保存
-      weakness: firstWeakness?.weakness ?? null,
-      resistance: firstWeakness?.resistance ?? null,
-      resistance_high: firstWeakness?.resistanceHigh ?? null,
-      boss_image: draft.value.boss_image.trim() || null,
-      crisis_base_hp:
-        draft.value.crisis_base_hp === '' || draft.value.crisis_base_hp == null
-          ? null
-          : Number(draft.value.crisis_base_hp),
-      stagger_multiplier: Number(draft.value.stagger_multiplier) || 1.5,
-      stagger_time:
-        draft.value.stagger_time === '' || draft.value.stagger_time == null
-          ? null
-          : Number(draft.value.stagger_time),
-      scoring_note_sets: draft.value.scoring_note_sets
-        .map((set) => ({
-          id: set.id,
-          label: set.label.trim() || null,
-          name: set.name.trim() || '得分机制',
-          text: set.text.trim(),
-        }))
-        .filter((set) => set.text || set.name !== '得分机制'),
-      anomaly_bar_coefficient:
-        draft.value.anomaly_bar_coefficient === '' || draft.value.anomaly_bar_coefficient == null
-          ? null
-          : Number(draft.value.anomaly_bar_coefficient),
-      field_buff_sets: sets,
-      weakness_sets: packWeaknessSetsPayload(),
-    })
-    message.value = '已保存'
+    const payload = buildSavePayload()
+    if (isCreate) {
+      const result = await createBossInfoRecord(payload)
+      message.value = result.action === 'updated' ? '同名怪物已存在，已更新' : '已新增怪物'
+    } else {
+      await updateBossInfoRecord(editingId.value as number, payload)
+      message.value = '已保存'
+    }
     cancelEdit()
     await loadList()
   } catch (err) {
     error.value = err instanceof Error ? err.message : '保存失败'
   } finally {
+    savingNew.value = false
     savingId.value = null
   }
 }
@@ -534,6 +571,15 @@ onMounted(() => {
         </button>
         <button
           type="button"
+          class="search-btn"
+          :disabled="loading"
+          title="直接在基础库新建一只怪物（以名称为业务键）"
+          @click="startCreate"
+        >
+          新增怪物
+        </button>
+        <button
+          type="button"
           class="search-btn sync-btn"
           :disabled="syncing || loading"
           :title="
@@ -575,18 +621,19 @@ onMounted(() => {
     <p class="catalog-meta">共 {{ total }} 条 · 失衡易伤默认 150%（1.5）· 失衡时间单位秒（可空）</p>
 
     <section
-      v-if="editingId != null"
+      v-if="editorOpen"
       ref="editPanelRef"
       class="edit-panel"
     >
       <header class="edit-header">
-        <h2>编辑 · {{ draft.boss_name || '怪物' }}</h2>
+        <h2>{{ creating ? '新增 · 怪物' : `编辑 · ${draft.boss_name || '怪物'}` }}</h2>
         <div class="actions">
-          <button type="button" :disabled="savingId === editingId" @click="saveEdit">
-            {{ savingId === editingId ? '保存中…' : '保存' }}
+          <button type="button" :disabled="savingNew || savingId === editingId" @click="saveEdit">
+            {{ savingNew || savingId === editingId ? '保存中…' : '保存' }}
           </button>
           <button type="button" class="ghost" @click="cancelEdit">取消</button>
           <button
+            v-if="!creating"
             type="button"
             class="danger-btn"
             :disabled="deletingId === editingId"

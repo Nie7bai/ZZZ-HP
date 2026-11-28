@@ -121,6 +121,16 @@ export async function updateBossInfoRecord(
   return parseResponse<BossInfoRecord>(response)
 }
 
+/** 新增一只怪物（以 boss_name 为业务键；同名已存在时后端按 upsert 更新） */
+export async function createBossInfoRecord(payload: Partial<Omit<BossInfoRecord, 'id'>>) {
+  const response = await fetch('/api/boss-info', {
+    method: 'POST',
+    headers: withAdminAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  })
+  return parseResponse<{ action: 'created' | 'updated'; id?: number; boss_name?: string }>(response)
+}
+
 export async function deleteBossInfoRecord(id: number) {
   const response = await fetch(`/api/boss-info/${id}`, {
     method: 'DELETE',

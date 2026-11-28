@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import {
+  createBossInfo,
   listBossInfo,
   lookupBossInfo,
   patchBossInfo,
@@ -22,6 +23,7 @@ router.get('/list', listBossInfo)
 router.get('/export', requireAdmin, exportBossInfoHandler)
 router.post('/import', requireAdmin, handleBossInfoUpload, importBossInfoHandler)
 router.post('/sync-from-boss', requireAdmin, syncBossInfoFromBossHandler)
+router.post('/', requireAdmin, createBossInfo)
 router.put('/:id', requireAdmin, patchBossInfo)
 router.delete('/:id', requireAdmin, removeBossInfo)
 
