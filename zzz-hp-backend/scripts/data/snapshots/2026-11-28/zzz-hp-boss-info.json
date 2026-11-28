@@ -1,8 +1,8 @@
 {
   "kind": "zzz-hp-boss-info",
   "version": 1,
-  "exportedAt": "2026-11-28T04:37:14.571Z",
-  "count": 155,
+  "exportedAt": "2026-11-28T07:02:25.323Z",
+  "count": 156,
   "rows": [
     {
       "id": 143,
@@ -533,8 +533,74 @@
       "scoringNoteSets": []
     },
     {
+      "id": 58,
+      "bossName": "伐木机",
+      "defense": 901,
+      "level": 58,
+      "bossImage": "/boss_image/Monster_Harvester.webp",
+      "weakness": "电属性",
+      "resistance": "冰",
+      "resistanceHigh": null,
+      "crisisBaseHp": null,
+      "staggerMultiplier": 1.5,
+      "staggerTime": null,
+      "anomalyBarCoefficient": null,
+      "fieldBuffSets": [],
+      "weaknessSets": [],
+      "fieldBuffName": null,
+      "fieldBuffText": null,
+      "fieldBuffImage": null,
+      "fieldBuffEffectBlocks": null,
+      "scoringNote": null,
+      "scoringNoteSets": []
+    },
+    {
+      "id": 24,
+      "bossName": "偷猎者",
+      "defense": 635,
+      "level": 60,
+      "bossImage": "/boss_image/Monster_ThugPoacher.webp",
+      "weakness": "物理、风属性",
+      "resistance": null,
+      "resistanceHigh": null,
+      "crisisBaseHp": null,
+      "staggerMultiplier": 1.5,
+      "staggerTime": null,
+      "anomalyBarCoefficient": null,
+      "fieldBuffSets": [],
+      "weaknessSets": [],
+      "fieldBuffName": null,
+      "fieldBuffText": null,
+      "fieldBuffImage": null,
+      "fieldBuffEffectBlocks": null,
+      "scoringNote": null,
+      "scoringNoteSets": []
+    },
+    {
+      "id": 37,
+      "bossName": "偷袭者",
+      "defense": 635,
+      "level": 60,
+      "bossImage": "/UI/Sprite/A1DynamicLoad/BossCard/UnPacker/BossCardLv01/Monster_ThugAssaulterPro.png",
+      "weakness": "物理、火属性、火",
+      "resistance": null,
+      "resistanceHigh": null,
+      "crisisBaseHp": null,
+      "staggerMultiplier": 1.5,
+      "staggerTime": null,
+      "anomalyBarCoefficient": null,
+      "fieldBuffSets": [],
+      "weaknessSets": [],
+      "fieldBuffName": null,
+      "fieldBuffText": null,
+      "fieldBuffImage": null,
+      "fieldBuffEffectBlocks": null,
+      "scoringNote": null,
+      "scoringNoteSets": []
+    },
+    {
       "id": 170,
-      "bossName": "以太异体·特里薇亚",
+      "bossName": "僭越者",
       "defense": 953,
       "level": 70,
       "bossImage": "/boss_image/以太异体·特里薇亚.webp",
@@ -653,72 +719,6 @@
           "text": "· 每次成功触发[连携招架]应对敌人攻击，可额外获得1000操作得分；\n· 敌人展开空间屏障后，每次成功踩踏金色的曜界并触发招架支援，可额外获得1500操作得分；最多获得5000操作得分。"
         }
       ]
-    },
-    {
-      "id": 58,
-      "bossName": "伐木机",
-      "defense": 901,
-      "level": 58,
-      "bossImage": "/boss_image/Monster_Harvester.webp",
-      "weakness": "电属性",
-      "resistance": "冰",
-      "resistanceHigh": null,
-      "crisisBaseHp": null,
-      "staggerMultiplier": 1.5,
-      "staggerTime": null,
-      "anomalyBarCoefficient": null,
-      "fieldBuffSets": [],
-      "weaknessSets": [],
-      "fieldBuffName": null,
-      "fieldBuffText": null,
-      "fieldBuffImage": null,
-      "fieldBuffEffectBlocks": null,
-      "scoringNote": null,
-      "scoringNoteSets": []
-    },
-    {
-      "id": 24,
-      "bossName": "偷猎者",
-      "defense": 635,
-      "level": 60,
-      "bossImage": "/boss_image/Monster_ThugPoacher.webp",
-      "weakness": "物理、风属性",
-      "resistance": null,
-      "resistanceHigh": null,
-      "crisisBaseHp": null,
-      "staggerMultiplier": 1.5,
-      "staggerTime": null,
-      "anomalyBarCoefficient": null,
-      "fieldBuffSets": [],
-      "weaknessSets": [],
-      "fieldBuffName": null,
-      "fieldBuffText": null,
-      "fieldBuffImage": null,
-      "fieldBuffEffectBlocks": null,
-      "scoringNote": null,
-      "scoringNoteSets": []
-    },
-    {
-      "id": 37,
-      "bossName": "偷袭者",
-      "defense": 635,
-      "level": 60,
-      "bossImage": "/UI/Sprite/A1DynamicLoad/BossCard/UnPacker/BossCardLv01/Monster_ThugAssaulterPro.png",
-      "weakness": "物理、火属性、火",
-      "resistance": null,
-      "resistanceHigh": null,
-      "crisisBaseHp": null,
-      "staggerMultiplier": 1.5,
-      "staggerTime": null,
-      "anomalyBarCoefficient": null,
-      "fieldBuffSets": [],
-      "weaknessSets": [],
-      "fieldBuffName": null,
-      "fieldBuffText": null,
-      "fieldBuffImage": null,
-      "fieldBuffEffectBlocks": null,
-      "scoringNote": null,
-      "scoringNoteSets": []
     },
     {
       "id": 52,
@@ -3800,6 +3800,7 @@
                     "damageTypes": [
                       "attributeAnomaly",
                       "turbulence",
+                      "disorder",
                       "radiance",
                       "anomalyRelease"
                     ]
@@ -3874,6 +3875,7 @@
                 "damageTypes": [
                   "attributeAnomaly",
                   "turbulence",
+                  "disorder",
                   "radiance",
                   "anomalyRelease"
                 ]
@@ -4461,6 +4463,214 @@
       "fieldBuffEffectBlocks": null,
       "scoringNote": null,
       "scoringNoteSets": []
+    },
+    {
+      "id": 173,
+      "bossName": "新生之结",
+      "defense": 953,
+      "level": 70,
+      "bossImage": null,
+      "weakness": "火",
+      "resistance": "冰",
+      "resistanceHigh": "冰",
+      "crisisBaseHp": 91788967.5,
+      "staggerMultiplier": 1.25,
+      "staggerTime": 12,
+      "anomalyBarCoefficient": 1.25,
+      "fieldBuffSets": [
+        {
+          "id": "set_mx021mzm_ixh5re",
+          "label": null,
+          "name": "场地 Buff",
+          "text": "",
+          "image": null,
+          "effectBlocks": [
+            {
+              "id": "blk-mx021s1p-4qwiem",
+              "name": "场地 Buff",
+              "note": "· 发动招架支援破除首领的强化部位或者击破其分裂体可以获得1层[裂核]，每层使首领的失衡易伤倍率提升10%，并使全队代理人获得锐化伤害提升15%，[裂核]最多叠加2层。\n· 首领受到的异常伤害降低40%。",
+              "effects": [
+                {
+                  "id": "eff-mx021s1p-rjk0a8",
+                  "kind": "stacked",
+                  "note": "",
+                  "stat": "staggerVulnerable",
+                  "value": 0,
+                  "origin": "",
+                  "maxStacks": 2,
+                  "stackable": false,
+                  "applyTarget": "team",
+                  "defaultStacks": 2,
+                  "elementFilter": "all",
+                  "valuePerStack": 10,
+                  "applySituation": "global",
+                  "enabledDefault": true,
+                  "teamProfession": null,
+                  "applyProfession": null,
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
+                },
+                {
+                  "id": "eff-mx022grs-urmeck",
+                  "kind": "stacked",
+                  "note": "",
+                  "stat": "sharpenDmgBonus",
+                  "value": 0,
+                  "origin": "",
+                  "maxStacks": 2,
+                  "stackable": false,
+                  "applyTarget": "team",
+                  "defaultStacks": 2,
+                  "elementFilter": "all",
+                  "valuePerStack": 15,
+                  "applySituation": "global",
+                  "enabledDefault": true,
+                  "teamProfession": null,
+                  "applyProfession": null,
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
+                },
+                {
+                  "id": "eff-mx024oys-kmyjxz",
+                  "kind": "fixed",
+                  "note": "",
+                  "stat": "anomalyDmgReduction",
+                  "value": -40,
+                  "origin": "",
+                  "maxStacks": 1,
+                  "stackable": false,
+                  "conditions": {
+                    "damageTypes": [
+                      "attributeAnomaly",
+                      "turbulence",
+                      "disorder",
+                      "radiance",
+                      "anomalyRelease"
+                    ]
+                  },
+                  "applyTarget": "team",
+                  "defaultStacks": 1,
+                  "elementFilter": "all",
+                  "valuePerStack": 0,
+                  "applySituation": "global",
+                  "enabledDefault": true,
+                  "teamProfession": null,
+                  "applyProfession": null,
+                  "skillSubcategoryId": null,
+                  "teamProfessionValues": null,
+                  "teamProfessionMinCount": null
+                }
+              ],
+              "enabledDefault": true
+            }
+          ]
+        }
+      ],
+      "weaknessSets": [
+        {
+          "id": "legacy",
+          "label": null,
+          "weakness": "火",
+          "resistance": "冰",
+          "resistanceHigh": "冰"
+        }
+      ],
+      "fieldBuffName": "场地 Buff",
+      "fieldBuffText": null,
+      "fieldBuffImage": null,
+      "fieldBuffEffectBlocks": [
+        {
+          "id": "blk-mx021s1p-4qwiem",
+          "name": "场地 Buff",
+          "note": "· 发动招架支援破除首领的强化部位或者击破其分裂体可以获得1层[裂核]，每层使首领的失衡易伤倍率提升10%，并使全队代理人获得锐化伤害提升15%，[裂核]最多叠加2层。\n· 首领受到的异常伤害降低40%。",
+          "effects": [
+            {
+              "id": "eff-mx021s1p-rjk0a8",
+              "kind": "stacked",
+              "note": "",
+              "stat": "staggerVulnerable",
+              "value": 0,
+              "origin": "",
+              "maxStacks": 2,
+              "stackable": false,
+              "applyTarget": "team",
+              "defaultStacks": 2,
+              "elementFilter": "all",
+              "valuePerStack": 10,
+              "applySituation": "global",
+              "enabledDefault": true,
+              "teamProfession": null,
+              "applyProfession": null,
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
+            },
+            {
+              "id": "eff-mx022grs-urmeck",
+              "kind": "stacked",
+              "note": "",
+              "stat": "sharpenDmgBonus",
+              "value": 0,
+              "origin": "",
+              "maxStacks": 2,
+              "stackable": false,
+              "applyTarget": "team",
+              "defaultStacks": 2,
+              "elementFilter": "all",
+              "valuePerStack": 15,
+              "applySituation": "global",
+              "enabledDefault": true,
+              "teamProfession": null,
+              "applyProfession": null,
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
+            },
+            {
+              "id": "eff-mx024oys-kmyjxz",
+              "kind": "fixed",
+              "note": "",
+              "stat": "anomalyDmgReduction",
+              "value": -40,
+              "origin": "",
+              "maxStacks": 1,
+              "stackable": false,
+              "conditions": {
+                "damageTypes": [
+                  "attributeAnomaly",
+                  "turbulence",
+                  "disorder",
+                  "radiance",
+                  "anomalyRelease"
+                ]
+              },
+              "applyTarget": "team",
+              "defaultStacks": 1,
+              "elementFilter": "all",
+              "valuePerStack": 0,
+              "applySituation": "global",
+              "enabledDefault": true,
+              "teamProfession": null,
+              "applyProfession": null,
+              "skillSubcategoryId": null,
+              "teamProfessionValues": null,
+              "teamProfessionMinCount": null
+            }
+          ],
+          "enabledDefault": true
+        }
+      ],
+      "scoringNote": "· 成功击破分裂体时，可获得2000操作得分。\n· [完美反制]首领的[控制技]时，可获得2000操作得分。\n· 成功破坏[始主祭剑]时，可获得1500操作得分，最多获得5000操作得分。",
+      "scoringNoteSets": [
+        {
+          "id": "sn_mx021gub_m0ym",
+          "label": null,
+          "name": "得分机制",
+          "text": "· 成功击破分裂体时，可获得2000操作得分。\n· [完美反制]首领的[控制技]时，可获得2000操作得分。\n· 成功破坏[始主祭剑]时，可获得1500操作得分，最多获得5000操作得分。"
+        }
+      ]
     },
     {
       "id": 154,
