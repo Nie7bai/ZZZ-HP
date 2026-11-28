@@ -86,6 +86,14 @@ const originalName = ref('')
  */
 let saveEpoch = 0
 const editorOpen = computed(() => creating.value || editingId.value != null)
+/**
+ * 当前表单是否正在保存。
+ * 不能写成 `savingId === editingId`：新增时两者都是 null，`null === null` 为真，
+ * 打开面板就会误显示「保存中…」且按钮禁用（2026-11-28 事故）。
+ */
+const savingThisForm = computed(() =>
+  creating.value ? savingNew.value : savingId.value != null && savingId.value === editingId.value,
+)
 const draft = ref<BossInfoDraft>(createEmptyDraft())
 const fieldBuffSets = ref<FieldBuffSetDraft[]>([])
 const weaknessSets = ref<WeaknessSetDraft[]>([])
@@ -685,15 +693,15 @@ onMounted(() => {
       <header class="edit-header">
         <h2>{{ creating ? '新增 · 怪物' : `编辑 · ${draft.boss_name || '怪物'}` }}</h2>
         <div class="actions">
-          <button type="button" :disabled="savingNew || savingId === editingId" @click="saveEdit">
-            {{ savingNew || savingId === editingId ? '保存中…' : '保存' }}
+          <button type="button" :disabled="savingThisForm" @click="saveEdit">
+            {{ savingThisForm ? '保存中…' : '保存' }}
           </button>
           <button type="button" class="ghost" @click="cancelEdit">取消</button>
           <button
             v-if="!creating"
             type="button"
             class="danger-btn"
-            :disabled="deletingId === editingId"
+            :disabled="editingId != null && deletingId === editingId"
             @click="askDeleteCurrent"
           >
             删除
