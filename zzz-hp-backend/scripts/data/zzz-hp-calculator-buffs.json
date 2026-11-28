@@ -16176,7 +16176,6 @@
         "specialMult": 100,
         "mutationCoeff": 0
       },
-      "updatedAt": "2026-11-27T04:47:42.000Z",
       "profession": "异常",
       "avatar_image": "/character/avatar_female_size03_kafka_en.webp",
       "supportNeeds": [],
@@ -16186,7 +16185,7 @@
             {
               "id": "nanoka-core",
               "name": "核心被动：终焉奏鸣",
-              "note": "卡芙卡的异常精通提升84点，发动[强化特殊技：暮夜猎曲·宣叙]或[强化特殊技：暮夜猎曲·咏叹]时，回复15点[即兴宣奏]，[即兴宣奏]上限为120点；\n处于属性异常状态下的敌人发动攻击时，将触发1次[掣电]，造成原本[紊乱]效果3%的伤害，并额外附加卡芙卡460%异常精通的伤害，每名敌人10秒内最多触发1次；\n卡芙卡[掣电]造成的伤害均视为[紊乱]伤害，[掣电]触发时，会记录本次伤害，并向周围敌人弹射最多3次，每次弹射时，造成较前一次伤害衰减50%的[紊乱]伤害；\n全队角色造成[紊乱]伤害时，若目标未处于失衡状态，此次[紊乱]伤害额外计算40%的特殊失衡易伤倍率加成；\n若目标已处于失衡状态且此时失衡易伤倍率不高于140%，此次[紊乱]伤害的失衡易伤倍率视为140%。",
+              "note": "卡芙卡的异常精通提升90点，发动[强化特殊技：暮夜猎曲·宣叙]或[强化特殊技：暮夜猎曲·咏叹]时，回复15点[即兴宣奏]，[即兴宣奏]上限为120点；\n处于属性异常状态下的敌人发动攻击时，将触发1次[掣电]，造成原本[紊乱]效果3%的伤害，并额外附加卡芙卡460%异常精通的伤害，每名敌人10秒内最多触发1次；\n卡芙卡[掣电]造成的伤害均视为[紊乱]伤害，[掣电]触发时，会记录本次伤害，并向周围敌人弹射最多3次，每次弹射时，造成较前一次伤害衰减50%的[紊乱]伤害；\n全队角色造成[紊乱]伤害时，若目标未处于失衡状态，此次[紊乱]伤害额外计算35%的特殊失衡易伤倍率加成；\n若目标已处于失衡状态且此时失衡易伤倍率不高于135.0%，此次[紊乱]伤害的失衡易伤倍率视为135.0%。",
               "effects": [
                 {
                   "id": "core#0",
@@ -16201,7 +16200,7 @@
                   "elementFilter": "all",
                   "kind": "fixed",
                   "stat": "mastery",
-                  "value": 84,
+                  "value": 90,
                   "stackable": false,
                   "maxStacks": 1,
                   "valuePerStack": 0,
@@ -16250,7 +16249,7 @@
                   "elementFilter": "all",
                   "kind": "fixed",
                   "stat": "disorderStaggerFloor",
-                  "value": 140,
+                  "value": 135,
                   "stackable": false,
                   "maxStacks": 1,
                   "valuePerStack": 0,
@@ -16485,7 +16484,7 @@
               "elementFilter": "all",
               "kind": "fixed",
               "stat": "mastery",
-              "value": 84,
+              "value": 90,
               "stackable": false,
               "maxStacks": 1,
               "valuePerStack": 0,
@@ -16534,7 +16533,7 @@
               "elementFilter": "all",
               "kind": "fixed",
               "stat": "disorderStaggerFloor",
-              "value": 140,
+              "value": 135,
               "stackable": false,
               "maxStacks": 1,
               "valuePerStack": 0,
@@ -16728,7 +16727,7 @@
             "penRate": 0,
             "reduceDefense": 0,
             "resPen": 0,
-            "mastery": 84,
+            "mastery": 90,
             "anomalyControl": 0,
             "anomalyControlPercent": 0,
             "energyRegen": 0,
@@ -18130,7 +18129,8 @@
         "",
         "",
         ""
-      ]
+      ],
+      "updatedAt": "2026-11-28T04:16:52.000Z"
     },
     {
       "id": "lucia",
@@ -97919,7 +97919,6 @@
         "specialMult": 100,
         "mutationCoeff": 0
       },
-      "updatedAt": "2026-11-27T04:47:42.000Z",
       "profession": "异常",
       "avatar_image": "/character/vivian.webp",
       "supportNeeds": [],
@@ -98195,7 +98194,7 @@
             {
               "id": "blk-mwxlsepv-63t9cl",
               "name": "潜能觉醒：星月诗篇v6",
-              "note": "[普通攻击：落羽生花]造成的异常积蓄效率提升35%，每次释放[普通攻击：落羽生花]时，全队造成的伤害提升8%，薇薇安自身的异常掌控提升6点，至多叠加3层，持续30秒，重复触发时刷新持续时间；\n薇薇安造成的[异放]伤害比例提升65%；全队造成的[紊乱]伤害提升25%；",
+              "note": "[普通攻击：落羽生花]造成的异常积蓄效率提升35%，每次释放[普通攻击：落羽生花]时，全队造成的伤害提升7%，薇薇安自身的异常掌控提升6点，至多叠加3层，持续30秒，重复触发时刷新持续时间；\n薇薇安造成的[异放]伤害比例提升65%；全队造成的[紊乱]伤害提升15%；",
               "effects": [
                 {
                   "id": "eff-mwxlsepu-54fknr",
@@ -98213,7 +98212,7 @@
                   "value": 0,
                   "stackable": false,
                   "maxStacks": 3,
-                  "valuePerStack": 8,
+                  "valuePerStack": 7,
                   "defaultStacks": 3,
                   "enabledDefault": true,
                   "note": ""
@@ -98252,7 +98251,7 @@
                   "elementFilter": "all",
                   "kind": "fixed",
                   "stat": "disorderDmgBonus",
-                  "value": 25,
+                  "value": 15,
                   "stackable": false,
                   "maxStacks": 1,
                   "valuePerStack": 0,
@@ -98560,7 +98559,7 @@
               "value": 0,
               "stackable": false,
               "maxStacks": 3,
-              "valuePerStack": 8,
+              "valuePerStack": 7,
               "defaultStacks": 3,
               "enabledDefault": true,
               "note": ""
@@ -98599,7 +98598,7 @@
               "elementFilter": "all",
               "kind": "fixed",
               "stat": "disorderDmgBonus",
-              "value": 25,
+              "value": 15,
               "stackable": false,
               "maxStacks": 1,
               "valuePerStack": 0,
@@ -98775,7 +98774,7 @@
             "disorderCompMult": 0,
             "turbulenceBaseMult": 0,
             "turbulenceCompMult": 0,
-            "disorderDmgBonus": 37,
+            "disorderDmgBonus": 27,
             "turbulenceDmgBonus": 12,
             "radianceMult": 0,
             "radianceDmgBonus": 0,
@@ -100295,7 +100294,8 @@
         "",
         "",
         ""
-      ]
+      ],
+      "updatedAt": "2026-11-28T04:13:21.000Z"
     },
     {
       "id": "norma",
@@ -259681,7 +259681,7 @@
                 "skillSubcategoryId": null,
                 "elementFilter": "all",
                 "kind": "fixed",
-                "stat": "finalDmgBonus",
+                "stat": "custom:bangbooMightRatio",
                 "value": 1,
                 "stackable": false,
                 "maxStacks": 1,
@@ -259712,7 +259712,7 @@
                 "skillSubcategoryId": null,
                 "elementFilter": "all",
                 "kind": "fixed",
-                "stat": "finalDmgBonus",
+                "stat": "custom:bangbooMightRatio",
                 "value": 1.2,
                 "stackable": false,
                 "maxStacks": 1,
@@ -259743,7 +259743,7 @@
                 "skillSubcategoryId": null,
                 "elementFilter": "all",
                 "kind": "fixed",
-                "stat": "finalDmgBonus",
+                "stat": "custom:bangbooMightRatio",
                 "value": 1.4,
                 "stackable": false,
                 "maxStacks": 1,
@@ -259774,7 +259774,7 @@
                 "skillSubcategoryId": null,
                 "elementFilter": "all",
                 "kind": "fixed",
-                "stat": "finalDmgBonus",
+                "stat": "custom:bangbooMightRatio",
                 "value": 1.6,
                 "stackable": false,
                 "maxStacks": 1,
@@ -259805,7 +259805,7 @@
                 "skillSubcategoryId": null,
                 "elementFilter": "all",
                 "kind": "fixed",
-                "stat": "finalDmgBonus",
+                "stat": "custom:bangbooMightRatio",
                 "value": 2,
                 "stackable": false,
                 "maxStacks": 1,
@@ -259833,7 +259833,7 @@
             "skillSubcategoryId": null,
             "elementFilter": "all",
             "kind": "fixed",
-            "stat": "finalDmgBonus",
+            "stat": "custom:bangbooMightRatio",
             "value": 1,
             "stackable": false,
             "maxStacks": 1,
@@ -259856,7 +259856,7 @@
             "skillSubcategoryId": null,
             "elementFilter": "all",
             "kind": "fixed",
-            "stat": "finalDmgBonus",
+            "stat": "custom:bangbooMightRatio",
             "value": 1.2,
             "stackable": false,
             "maxStacks": 1,
@@ -259879,7 +259879,7 @@
             "skillSubcategoryId": null,
             "elementFilter": "all",
             "kind": "fixed",
-            "stat": "finalDmgBonus",
+            "stat": "custom:bangbooMightRatio",
             "value": 1.4,
             "stackable": false,
             "maxStacks": 1,
@@ -259902,7 +259902,7 @@
             "skillSubcategoryId": null,
             "elementFilter": "all",
             "kind": "fixed",
-            "stat": "finalDmgBonus",
+            "stat": "custom:bangbooMightRatio",
             "value": 1.6,
             "stackable": false,
             "maxStacks": 1,
@@ -259925,7 +259925,7 @@
             "skillSubcategoryId": null,
             "elementFilter": "all",
             "kind": "fixed",
-            "stat": "finalDmgBonus",
+            "stat": "custom:bangbooMightRatio",
             "value": 2,
             "stackable": false,
             "maxStacks": 1,
@@ -260039,7 +260039,7 @@
           "pierce": 0,
           "pierceDmgBonus": 0,
           "imbueDmgBonus": 0,
-          "finalDmgBonus": 1,
+          "finalDmgBonus": 0,
           "sharpenDmgBonus": 0,
           "sharpenCritDmgBonus": 0,
           "dmgPenalty": 0,
@@ -260091,7 +260091,10 @@
           "turbulenceBaseMultFactor": 0,
           "radianceMultFactor": 0,
           "specialMultFactor": 0,
-          "mutationCoeffFactor": 0
+          "mutationCoeffFactor": 0,
+          "custom": {
+            "bangbooMightRatio": 1
+          }
         },
         {
           "hp": 0,
@@ -260117,7 +260120,7 @@
           "pierce": 0,
           "pierceDmgBonus": 0,
           "imbueDmgBonus": 0,
-          "finalDmgBonus": 1.2,
+          "finalDmgBonus": 0,
           "sharpenDmgBonus": 0,
           "sharpenCritDmgBonus": 0,
           "dmgPenalty": 0,
@@ -260169,7 +260172,10 @@
           "turbulenceBaseMultFactor": 0,
           "radianceMultFactor": 0,
           "specialMultFactor": 0,
-          "mutationCoeffFactor": 0
+          "mutationCoeffFactor": 0,
+          "custom": {
+            "bangbooMightRatio": 1.2
+          }
         },
         {
           "hp": 0,
@@ -260195,7 +260201,7 @@
           "pierce": 0,
           "pierceDmgBonus": 0,
           "imbueDmgBonus": 0,
-          "finalDmgBonus": 1.4,
+          "finalDmgBonus": 0,
           "sharpenDmgBonus": 0,
           "sharpenCritDmgBonus": 0,
           "dmgPenalty": 0,
@@ -260247,7 +260253,10 @@
           "turbulenceBaseMultFactor": 0,
           "radianceMultFactor": 0,
           "specialMultFactor": 0,
-          "mutationCoeffFactor": 0
+          "mutationCoeffFactor": 0,
+          "custom": {
+            "bangbooMightRatio": 1.4
+          }
         },
         {
           "hp": 0,
@@ -260273,7 +260282,7 @@
           "pierce": 0,
           "pierceDmgBonus": 0,
           "imbueDmgBonus": 0,
-          "finalDmgBonus": 1.6,
+          "finalDmgBonus": 0,
           "sharpenDmgBonus": 0,
           "sharpenCritDmgBonus": 0,
           "dmgPenalty": 0,
@@ -260325,7 +260334,10 @@
           "turbulenceBaseMultFactor": 0,
           "radianceMultFactor": 0,
           "specialMultFactor": 0,
-          "mutationCoeffFactor": 0
+          "mutationCoeffFactor": 0,
+          "custom": {
+            "bangbooMightRatio": 1.6
+          }
         },
         {
           "hp": 0,
@@ -260351,7 +260363,7 @@
           "pierce": 0,
           "pierceDmgBonus": 0,
           "imbueDmgBonus": 0,
-          "finalDmgBonus": 2,
+          "finalDmgBonus": 0,
           "sharpenDmgBonus": 0,
           "sharpenCritDmgBonus": 0,
           "dmgPenalty": 0,
@@ -260403,7 +260415,10 @@
           "turbulenceBaseMultFactor": 0,
           "radianceMultFactor": 0,
           "specialMultFactor": 0,
-          "mutationCoeffFactor": 0
+          "mutationCoeffFactor": 0,
+          "custom": {
+            "bangbooMightRatio": 2
+          }
         }
       ]
     },
@@ -261674,7 +261689,7 @@
                 "skillSubcategoryId": null,
                 "elementFilter": "all",
                 "kind": "fixed",
-                "stat": "finalDmgBonus",
+                "stat": "custom:bangbooMightRatio",
                 "value": 2.5,
                 "stackable": false,
                 "maxStacks": 1,
@@ -261705,7 +261720,7 @@
                 "skillSubcategoryId": null,
                 "elementFilter": "all",
                 "kind": "fixed",
-                "stat": "finalDmgBonus",
+                "stat": "custom:bangbooMightRatio",
                 "value": 3,
                 "stackable": false,
                 "maxStacks": 1,
@@ -261736,7 +261751,7 @@
                 "skillSubcategoryId": null,
                 "elementFilter": "all",
                 "kind": "fixed",
-                "stat": "finalDmgBonus",
+                "stat": "custom:bangbooMightRatio",
                 "value": 3.5,
                 "stackable": false,
                 "maxStacks": 1,
@@ -261767,7 +261782,7 @@
                 "skillSubcategoryId": null,
                 "elementFilter": "all",
                 "kind": "fixed",
-                "stat": "finalDmgBonus",
+                "stat": "custom:bangbooMightRatio",
                 "value": 4,
                 "stackable": false,
                 "maxStacks": 1,
@@ -261798,7 +261813,7 @@
                 "skillSubcategoryId": null,
                 "elementFilter": "all",
                 "kind": "fixed",
-                "stat": "finalDmgBonus",
+                "stat": "custom:bangbooMightRatio",
                 "value": 5,
                 "stackable": false,
                 "maxStacks": 1,
@@ -261826,7 +261841,7 @@
             "skillSubcategoryId": null,
             "elementFilter": "all",
             "kind": "fixed",
-            "stat": "finalDmgBonus",
+            "stat": "custom:bangbooMightRatio",
             "value": 2.5,
             "stackable": false,
             "maxStacks": 1,
@@ -261849,7 +261864,7 @@
             "skillSubcategoryId": null,
             "elementFilter": "all",
             "kind": "fixed",
-            "stat": "finalDmgBonus",
+            "stat": "custom:bangbooMightRatio",
             "value": 3,
             "stackable": false,
             "maxStacks": 1,
@@ -261872,7 +261887,7 @@
             "skillSubcategoryId": null,
             "elementFilter": "all",
             "kind": "fixed",
-            "stat": "finalDmgBonus",
+            "stat": "custom:bangbooMightRatio",
             "value": 3.5,
             "stackable": false,
             "maxStacks": 1,
@@ -261895,7 +261910,7 @@
             "skillSubcategoryId": null,
             "elementFilter": "all",
             "kind": "fixed",
-            "stat": "finalDmgBonus",
+            "stat": "custom:bangbooMightRatio",
             "value": 4,
             "stackable": false,
             "maxStacks": 1,
@@ -261918,7 +261933,7 @@
             "skillSubcategoryId": null,
             "elementFilter": "all",
             "kind": "fixed",
-            "stat": "finalDmgBonus",
+            "stat": "custom:bangbooMightRatio",
             "value": 5,
             "stackable": false,
             "maxStacks": 1,
@@ -262032,7 +262047,7 @@
           "pierce": 0,
           "pierceDmgBonus": 0,
           "imbueDmgBonus": 0,
-          "finalDmgBonus": 2.5,
+          "finalDmgBonus": 0,
           "sharpenDmgBonus": 0,
           "sharpenCritDmgBonus": 0,
           "dmgPenalty": 0,
@@ -262084,7 +262099,10 @@
           "turbulenceBaseMultFactor": 0,
           "radianceMultFactor": 0,
           "specialMultFactor": 0,
-          "mutationCoeffFactor": 0
+          "mutationCoeffFactor": 0,
+          "custom": {
+            "bangbooMightRatio": 2.5
+          }
         },
         {
           "hp": 0,
@@ -262110,7 +262128,7 @@
           "pierce": 0,
           "pierceDmgBonus": 0,
           "imbueDmgBonus": 0,
-          "finalDmgBonus": 3,
+          "finalDmgBonus": 0,
           "sharpenDmgBonus": 0,
           "sharpenCritDmgBonus": 0,
           "dmgPenalty": 0,
@@ -262162,7 +262180,10 @@
           "turbulenceBaseMultFactor": 0,
           "radianceMultFactor": 0,
           "specialMultFactor": 0,
-          "mutationCoeffFactor": 0
+          "mutationCoeffFactor": 0,
+          "custom": {
+            "bangbooMightRatio": 3
+          }
         },
         {
           "hp": 0,
@@ -262188,7 +262209,7 @@
           "pierce": 0,
           "pierceDmgBonus": 0,
           "imbueDmgBonus": 0,
-          "finalDmgBonus": 3.5,
+          "finalDmgBonus": 0,
           "sharpenDmgBonus": 0,
           "sharpenCritDmgBonus": 0,
           "dmgPenalty": 0,
@@ -262240,7 +262261,10 @@
           "turbulenceBaseMultFactor": 0,
           "radianceMultFactor": 0,
           "specialMultFactor": 0,
-          "mutationCoeffFactor": 0
+          "mutationCoeffFactor": 0,
+          "custom": {
+            "bangbooMightRatio": 3.5
+          }
         },
         {
           "hp": 0,
@@ -262266,7 +262290,7 @@
           "pierce": 0,
           "pierceDmgBonus": 0,
           "imbueDmgBonus": 0,
-          "finalDmgBonus": 4,
+          "finalDmgBonus": 0,
           "sharpenDmgBonus": 0,
           "sharpenCritDmgBonus": 0,
           "dmgPenalty": 0,
@@ -262318,7 +262342,10 @@
           "turbulenceBaseMultFactor": 0,
           "radianceMultFactor": 0,
           "specialMultFactor": 0,
-          "mutationCoeffFactor": 0
+          "mutationCoeffFactor": 0,
+          "custom": {
+            "bangbooMightRatio": 4
+          }
         },
         {
           "hp": 0,
@@ -262344,7 +262371,7 @@
           "pierce": 0,
           "pierceDmgBonus": 0,
           "imbueDmgBonus": 0,
-          "finalDmgBonus": 5,
+          "finalDmgBonus": 0,
           "sharpenDmgBonus": 0,
           "sharpenCritDmgBonus": 0,
           "dmgPenalty": 0,
@@ -262396,7 +262423,10 @@
           "turbulenceBaseMultFactor": 0,
           "radianceMultFactor": 0,
           "specialMultFactor": 0,
-          "mutationCoeffFactor": 0
+          "mutationCoeffFactor": 0,
+          "custom": {
+            "bangbooMightRatio": 5
+          }
         }
       ]
     },

@@ -3,6 +3,7 @@ import {
   listBossInfoRecords,
   searchBossInfoNames,
   updateBossInfoById,
+  upsertBossInfo,
   deleteBossInfoById,
   syncBossInfoFromBoss,
 } from '../services/bossInfoService.js'
@@ -41,6 +42,21 @@ export async function listBossInfo(req, res) {
     return success(res, data)
   } catch (err) {
     return failInternal(res, err, 'Boss 基础库列表查询失败')
+  }
+}
+
+/** 新增一只怪物：以 boss_name 为业务键，同名已存在时按 upsert 语义更新 */
+export async function createBossInfo(req, res) {
+  try {
+    const data = await upsertBossInfo(req.body ?? {})
+    return success(
+      res,
+      data,
+      data?.action === 'created' ? '已新增 Boss 基础信息' : '同名 Boss 已存在，已更新',
+    )
+  } catch (err) {
+    const status = String(err.message ?? '').includes('不能为空') ? 400 : 500
+    return fail(res, err.message || 'Boss 基础信息新增失败', status, { error: err.message })
   }
 }
 

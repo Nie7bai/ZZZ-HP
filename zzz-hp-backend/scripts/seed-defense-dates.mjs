@@ -22,7 +22,6 @@ const DEFENSE_SEASON_DATES = {
   '3.0-1': { startDate: '2026-06-26', endDate: '2026-07-10' },
   '3.0-2': { startDate: '2026-07-10', endDate: '2026-07-24' },
   '3.0-3': { startDate: '2026-07-24', endDate: '2026-08-07' },
-  '3.0-4': { startDate: '2026-07-29', endDate: '2026-08-12' },
 }
 
 const conn = await mysql.createConnection({

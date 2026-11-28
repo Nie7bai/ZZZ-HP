@@ -25,6 +25,7 @@ import {
   type StageDefinition,
 } from '@/zones/pipeline'
 import { adaptDamageChain } from '@/zones/chainAdapter'
+import { mergeSchemeStagesIntoChain, schemeEntriesToStages } from '@/zones/chainDisplay'
 import { getDamageChainLabel, resolveCurrentDamageChain } from '@/zones/chainSource'
 import { resolveBaseDamageSourceForProfession } from '@/utils/damageCalc'
 import { skillCalcZoneGroup } from '@/utils/skillCalcZones'
@@ -342,22 +343,7 @@ interface SchemeEntryLike {
 }
 
 /** 乘区方案条目 → 阶段格（只读展示：一个条目就是一个乘区） */
-function entriesToStages(entries: readonly SchemeEntryLike[]): StageDefinition[] {
-  return entries
-    .filter((entry) => entry.enabled !== false)
-    .map((entry, index) => ({
-      id: entry.key,
-      kind: 'multiplier' as const,
-      label: entry.label || entry.key,
-      group: 'scheme',
-      order: index + 1,
-      module: entry.module ?? '',
-      params: entry.params,
-      when: entry.when as StageDefinition['when'],
-      enabled: true,
-      action: entry.action === 'inherit' || entry.action === 'disable' ? entry.action : undefined,
-    }))
-}
+const entriesToStages = schemeEntriesToStages
 
 
 /** 方案作用域 → 受影响的招式（角色 / 职业 / 技能组 / 招式） */
@@ -688,6 +674,53 @@ const groupSkillIds = computed(() => {
 const selectedRow = computed<ChainRow | null>(
   () => chainRows.value.find((row) => row.key === selectedRowKey.value) ?? null,
 )
+
+/**
+ * 全局乘区方案里的「独立乘区」条目（烬痕 / 最终伤害 / 一布之力 …）。
+ *
+ * 事件结算时它们由 `customZoneStageEntries()` 编译成链路阶段、与阶段一起连乘；
+ * 管理端链路面板按同一口径把它们并列展示（普通格子，不再单独区分虚线）。
+ */
+const globalSchemeStages = computed<StageDefinition[]>(() => {
+  const entries: SchemeEntryLike[] = []
+  for (const doc of zoneSchemes.value) {
+    if (doc.scope !== 'global' || !doc.enabled) continue
+    for (const rule of doc.rules) {
+      if (rule.enabled === false || rule.action === 'disable') continue
+      entries.push({
+        key: rule.key,
+        label: rule.label,
+        module: rule.module,
+        params: rule.params,
+        when: rule.when,
+        enabled: true,
+        action: rule.action,
+      })
+    }
+  }
+  if (!entries.length) {
+    for (const scheme of BUILT_IN_ZONE_SCHEMES) {
+      if (scheme.scope !== 'global') continue
+      for (const entry of scheme.entries) {
+        entries.push({
+          key: entry.key,
+          label: entry.label,
+          module: entry.module,
+          params: entry.params as Record<string, unknown> | undefined,
+          when: entry.when,
+          enabled: true,
+        })
+      }
+    }
+  }
+  return entriesToStages(entries)
+})
+
+/** 链路展示用阶段 = 链路自身阶段 + 全局独立乘区（同 id 不重复） */
+function displayStagesOf(row: ChainRow): readonly StageDefinition[] {
+  if (row.kind !== 'chain') return row.stages
+  return mergeSchemeStagesIntoChain(row.stages, globalSchemeStages.value)
+}
 
 /**
  * 作用域筛选：一级选层级（多选），二级按层级挑具体目标（角色 / 招式，多选）。
@@ -1044,11 +1077,13 @@ function runPreview() {
     previewError.value = '乘区方案只替换链路里的对应乘区，不单独预览'
     return
   }
-  if (!row.stages.length) {
+  const stages = displayStagesOf(row)
+  if (!stages.length) {
     previewError.value = '该链路没有可用阶段'
     return
   }
-  previewResult.value = previewDamageChain(row.chainKey, row.stages, {}, previewSampleId.value)
+  // 预览与展示同一份阶段顺序（含方案编译出的独立乘区；示例没有 custom 修饰时它们为 1.00）
+  previewResult.value = previewDamageChain(row.chainKey, stages, {}, previewSampleId.value)
 }
 
 onMounted(async () => {
@@ -1185,7 +1220,7 @@ onMounted(async () => {
           <span class="list-meta">
             {{ originLabel(row) }} · {{ scopeLabel(row.scope) }}
             <template v-if="row.targetId"> · {{ targetLabelOf(row.targetId) }}</template>
-            · {{ row.stages.length }} 个乘区
+            · {{ displayStagesOf(row).length }} 个乘区
           </span>
           <span class="list-meta">
             <template v-if="row.kind === 'zoneScheme'">
@@ -1219,7 +1254,7 @@ onMounted(async () => {
           <template v-if="selectedRow.kind === 'chain'">
             <div class="chain-stage-grid">
               <div
-                v-for="stage in selectedRow.stages"
+                v-for="stage in displayStagesOf(selectedRow)"
                 :key="`stage-${stage.id}`"
                 class="chain-stage-cell"
                 :class="`chain-stage-cell--${stage.kind}`"

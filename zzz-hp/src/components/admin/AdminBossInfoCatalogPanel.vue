@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import {
+  createBossInfoRecord,
   deleteBossInfoRecord,
   fetchBossInfoList,
   syncBossInfoFromBoss,
@@ -73,6 +74,26 @@ const message = ref('')
 const items = ref<BossInfoRecord[]>([])
 const total = ref(0)
 const editingId = ref<number | null>(null)
+/** 新增模式：编辑面板开着一份空草稿，保存时走 POST */
+const creating = ref(false)
+const savingNew = ref(false)
+/** 编辑时的原名：改名要提示是否同步到各期 */
+const originalName = ref('')
+/**
+ * 保存请求代次：取消编辑 / 重新打开会 +1，
+ * 旧请求（含挂起 20 秒后才超时的那种）回来时不再改当前表单的状态，
+ * 否则会出现「没点保存却显示保存中」。
+ */
+let saveEpoch = 0
+const editorOpen = computed(() => creating.value || editingId.value != null)
+/**
+ * 当前表单是否正在保存。
+ * 不能写成 `savingId === editingId`：新增时两者都是 null，`null === null` 为真，
+ * 打开面板就会误显示「保存中…」且按钮禁用（2026-11-28 事故）。
+ */
+const savingThisForm = computed(() =>
+  creating.value ? savingNew.value : savingId.value != null && savingId.value === editingId.value,
+)
 const draft = ref<BossInfoDraft>(createEmptyDraft())
 const fieldBuffSets = ref<FieldBuffSetDraft[]>([])
 const weaknessSets = ref<WeaknessSetDraft[]>([])
@@ -150,6 +171,10 @@ const editPanelRef = ref<HTMLElement | null>(null)
 const confirmVisible = ref(false)
 const confirmMessage = ref('')
 const pendingDelete = ref<BossInfoRecord | null>(null)
+const renameVisible = ref(false)
+const renameMessage = ref('')
+const renameSaving = ref(false)
+let pendingRenamePayload: ReturnType<typeof buildSavePayload> | null = null
 
 const calculatorBuffStore = useCalculatorBuffStore()
 
@@ -288,8 +313,33 @@ async function loadList() {
   }
 }
 
+async function startCreate() {
+  saveEpoch += 1
+  savingNew.value = false
+  savingId.value = null
+  creating.value = true
+  editingId.value = null
+  draft.value = createEmptyDraft()
+  fieldBuffSets.value = []
+  weaknessSets.value = []
+  message.value = ''
+  error.value = ''
+  try {
+    await calculatorBuffStore.ensureLoaded()
+  } catch {
+    // 效果编辑器招式小类可选；加载失败不阻断基础字段录入
+  }
+  await nextTick()
+  editPanelRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 async function startEdit(row: BossInfoRecord) {
+  saveEpoch += 1
+  savingNew.value = false
+  savingId.value = null
+  creating.value = false
   editingId.value = row.id
+  originalName.value = row.boss_name
   draft.value = toDraft(row)
   fieldBuffSets.value = setsFromRecord(row)
   weaknessSets.value = weaknessSetsFromRecord(row)
@@ -305,7 +355,11 @@ async function startEdit(row: BossInfoRecord) {
 }
 
 function cancelEdit() {
+  saveEpoch += 1
+  creating.value = false
   editingId.value = null
+  savingNew.value = false
+  savingId.value = null
   draft.value = createEmptyDraft()
   fieldBuffSets.value = []
   weaknessSets.value = []
@@ -348,60 +402,113 @@ function packFieldBuffSetsPayload(): BossInfoFieldBuffSet[] {
   return out
 }
 
+function buildSavePayload() {
+  const bossName = draft.value.boss_name.trim()
+  const sets = packFieldBuffSetsPayload()
+  const weaknessSetsPayload = packWeaknessSetsPayload()
+  const firstWeakness = weaknessSetsPayload[0]
+  return {
+    boss_name: bossName,
+    defense: Number(draft.value.defense) || 0,
+    level: Number(draft.value.level) || 1,
+    // 多套是权威来源：基础三列由第一套镜像，隐藏字段不再直接保存
+    weakness: firstWeakness?.weakness ?? null,
+    resistance: firstWeakness?.resistance ?? null,
+    resistance_high: firstWeakness?.resistanceHigh ?? null,
+    boss_image: draft.value.boss_image.trim() || null,
+    crisis_base_hp:
+      draft.value.crisis_base_hp === '' || draft.value.crisis_base_hp == null
+        ? null
+        : Number(draft.value.crisis_base_hp),
+    stagger_multiplier: Number(draft.value.stagger_multiplier) || 1.5,
+    stagger_time:
+      draft.value.stagger_time === '' || draft.value.stagger_time == null
+        ? null
+        : Number(draft.value.stagger_time),
+    scoring_note_sets: draft.value.scoring_note_sets
+      .map((set) => ({
+        id: set.id,
+        label: set.label.trim() || null,
+        name: set.name.trim() || '得分机制',
+        text: set.text.trim(),
+      }))
+      .filter((set) => set.text || set.name !== '得分机制'),
+    anomaly_bar_coefficient:
+      draft.value.anomaly_bar_coefficient === '' || draft.value.anomaly_bar_coefficient == null
+        ? null
+        : Number(draft.value.anomaly_bar_coefficient),
+    field_buff_sets: sets,
+    weakness_sets: packWeaknessSetsPayload(),
+  }
+}
+
 async function saveEdit() {
-  if (editingId.value == null) return
+  if (!creating.value && editingId.value == null) return
   if (!draft.value.boss_name.trim()) {
     error.value = '名称不能为空'
     return
   }
-  savingId.value = editingId.value
+  const payload = buildSavePayload()
+  if (!creating.value && originalName.value && originalName.value !== payload.boss_name) {
+    pendingRenamePayload = payload
+    renameMessage.value =
+      `名称已由「${originalName.value}」改为「${payload.boss_name}」。\n` +
+      '各期（危局 / 防卫战 / 临界）里的怪物行仍是旧名，不同步的话那些期会找不到这只怪的基础数据（弱点、场地 Buff、得分机制）。\n' +
+      '是否把各期的同名怪物行一起改名？'
+    renameVisible.value = true
+    return
+  }
+  await commitSave(payload, false)
+}
+
+async function confirmRename(syncPeriods: boolean) {
+  const payload = pendingRenamePayload
+  renameVisible.value = false
+  renameSaving.value = true
+  try {
+    if (payload) await commitSave(payload, syncPeriods)
+  } finally {
+    renameSaving.value = false
+    pendingRenamePayload = null
+    renameMessage.value = ''
+  }
+}
+
+async function commitSave(payload: ReturnType<typeof buildSavePayload>, syncPeriods: boolean) {
+  const epoch = ++saveEpoch
+  const isCreate = creating.value
+  if (isCreate) savingNew.value = true
+  else savingId.value = editingId.value
   message.value = ''
   error.value = ''
   try {
-    const bossName = draft.value.boss_name.trim()
-    const sets = packFieldBuffSetsPayload()
-    const weaknessSetsPayload = packWeaknessSetsPayload()
-    const firstWeakness = weaknessSetsPayload[0]
-    await updateBossInfoRecord(editingId.value, {
-      boss_name: bossName,
-      defense: Number(draft.value.defense) || 0,
-      level: Number(draft.value.level) || 1,
-      // 多套是权威来源：基础三列由第一套镜像，隐藏字段不再直接保存
-      weakness: firstWeakness?.weakness ?? null,
-      resistance: firstWeakness?.resistance ?? null,
-      resistance_high: firstWeakness?.resistanceHigh ?? null,
-      boss_image: draft.value.boss_image.trim() || null,
-      crisis_base_hp:
-        draft.value.crisis_base_hp === '' || draft.value.crisis_base_hp == null
-          ? null
-          : Number(draft.value.crisis_base_hp),
-      stagger_multiplier: Number(draft.value.stagger_multiplier) || 1.5,
-      stagger_time:
-        draft.value.stagger_time === '' || draft.value.stagger_time == null
-          ? null
-          : Number(draft.value.stagger_time),
-      scoring_note_sets: draft.value.scoring_note_sets
-        .map((set) => ({
-          id: set.id,
-          label: set.label.trim() || null,
-          name: set.name.trim() || '得分机制',
-          text: set.text.trim(),
-        }))
-        .filter((set) => set.text || set.name !== '得分机制'),
-      anomaly_bar_coefficient:
-        draft.value.anomaly_bar_coefficient === '' || draft.value.anomaly_bar_coefficient == null
-          ? null
-          : Number(draft.value.anomaly_bar_coefficient),
-      field_buff_sets: sets,
-      weakness_sets: packWeaknessSetsPayload(),
-    })
-    message.value = '已保存'
+    if (isCreate) {
+      const result = await createBossInfoRecord(payload)
+      message.value =
+        result.action === 'updated'
+          ? '同名怪物已存在，已更新'
+          : `已新增怪物「${payload.boss_name}」（还没有期数记录，所以在「危局 / 防卫战 / 临界」分类里看不到，已切到「总基础库」）`
+      // 新建的怪物没有期数行 → 当前分类（危局等）列表里不会出现，切到总基础库才能看到
+      if (catalog.value !== 'all') catalog.value = 'all'
+    } else {
+      const result = await updateBossInfoRecord(editingId.value as number, {
+        ...payload,
+        ...(syncPeriods ? { rename_periods: true } : {}),
+      })
+      const renamed = Number(result.renamedPeriods ?? 0)
+      message.value = syncPeriods
+        ? `已保存${renamed ? `，并同步改名 ${renamed} 条期数怪物行` : '（各期没有同名怪物行可同步）'}`
+        : '已保存'
+    }
     cancelEdit()
     await loadList()
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '保存失败'
+    if (epoch === saveEpoch) error.value = err instanceof Error ? err.message : '保存失败'
   } finally {
-    savingId.value = null
+    if (epoch === saveEpoch) {
+      savingNew.value = false
+      savingId.value = null
+    }
   }
 }
 
@@ -534,6 +641,15 @@ onMounted(() => {
         </button>
         <button
           type="button"
+          class="search-btn"
+          :disabled="loading"
+          title="直接在基础库新建一只怪物（以名称为业务键）"
+          @click="startCreate"
+        >
+          新增怪物
+        </button>
+        <button
+          type="button"
           class="search-btn sync-btn"
           :disabled="syncing || loading"
           :title="
@@ -575,21 +691,22 @@ onMounted(() => {
     <p class="catalog-meta">共 {{ total }} 条 · 失衡易伤默认 150%（1.5）· 失衡时间单位秒（可空）</p>
 
     <section
-      v-if="editingId != null"
+      v-if="editorOpen"
       ref="editPanelRef"
       class="edit-panel"
     >
       <header class="edit-header">
-        <h2>编辑 · {{ draft.boss_name || '怪物' }}</h2>
+        <h2>{{ creating ? '新增 · 怪物' : `编辑 · ${draft.boss_name || '怪物'}` }}</h2>
         <div class="actions">
-          <button type="button" :disabled="savingId === editingId" @click="saveEdit">
-            {{ savingId === editingId ? '保存中…' : '保存' }}
+          <button type="button" :disabled="savingThisForm" @click="saveEdit">
+            {{ savingThisForm ? '保存中…' : '保存' }}
           </button>
           <button type="button" class="ghost" @click="cancelEdit">取消</button>
           <button
+            v-if="!creating"
             type="button"
             class="danger-btn"
-            :disabled="deletingId === editingId"
+            :disabled="editingId != null && deletingId === editingId"
             @click="askDeleteCurrent"
           >
             删除
@@ -833,6 +950,16 @@ onMounted(() => {
       <p v-if="!loading && !items.length" class="empty-list">当前分类下暂无记录</p>
     </div>
 
+    <AdminConfirmDialog
+      :visible="renameVisible"
+      title="名称已变更，是否同步各期？"
+      :message="renameMessage"
+      confirm-text="同步改名"
+      cancel-text="仅改基础库"
+      :loading="renameSaving"
+      @confirm="confirmRename(true)"
+      @cancel="confirmRename(false)"
+    />
     <AdminConfirmDialog
       :visible="confirmVisible"
       title="确认删除怪物基础信息"

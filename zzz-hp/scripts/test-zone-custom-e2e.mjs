@@ -455,6 +455,10 @@ check('挽昼二影两条增益按自身与仅队友分别结算，换位后仍�
   assert.deepEqual(buildEventZoneDisplay(namedDetail).find((item) => item.zoneKey === emberZone)?.groups,
     [{ label: '计算公式', items: [formula] }])
   assert.equal(noRatioDetail.evaluation.result.zones[emberZone].scaledPercentInputs.scalingPercent, 35)
+  // 期望伤害（链路最后一段）必须已经乘过自定义乘区
+  const finalStage = namedDetail.evaluation.result.pipeline.stages.find((stage) => stage.kind === 'final')
+  assert.ok(finalStage, '缺少期望伤害阶段')
+  assert.equal(Math.round(finalStage.value), Math.round(namedDetail.evaluation.perHit))
 
   const [stacked] = run(2, [
     createEmptyBuffEffect({ id: 'extra-ratio', stat: 'custom:emberMarkRatio', value: 10, applyTarget: 'team' }),

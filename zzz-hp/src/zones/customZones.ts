@@ -105,3 +105,47 @@ export function evaluateCustomZoneFactors(
 
   return factors.sort((a, b) => a.order - b.order)
 }
+
+/** 编译成链路阶段的自定义乘区（只读展示/求值用的阶段形状） */
+export interface CustomZoneStageDefinition {
+  id: string
+  kind: 'multiplier'
+  label: string
+  group: 'scheme'
+  order: number
+  module: string
+  params: Record<string, unknown>
+}
+
+/**
+ * `providers: 'all'` 的百分比自定义乘区 → 链路阶段。
+ *
+ * 这类乘区不看来源归属，直接用聚合的 `custom` 修饰表求值，所以可以像普通阶段一样
+ * 插进链路、与阶段一起连乘；按 owner/team 取模的乘区仍需走 `evaluateCustomZoneFactors`。
+ */
+export function customZoneStageEntries(
+  resolved: ResolvedZoneScheme | null | undefined,
+  zoneProviders?: Record<string, string> | null,
+): CustomZoneStageDefinition[] {
+  if (!resolved) return []
+  const stages: CustomZoneStageDefinition[] = []
+  for (const [key, entry] of Object.entries(resolved.entries)) {
+    if (!isCustomPercentModule(entry.module)) continue
+    if ((zoneProviders?.[key] ?? 'team') !== 'all') continue
+    const params = entry.params ?? {}
+    const statKeys = params.statKeys
+    if (!Array.isArray(statKeys) || !statKeys.some((item) => typeof item === 'string' && item.length)) {
+      continue
+    }
+    stages.push({
+      id: key,
+      kind: 'multiplier',
+      label: entry.label ?? key,
+      group: 'scheme',
+      order: readNumber(params.order) ?? 999,
+      module: entry.module ?? '',
+      params,
+    })
+  }
+  return stages.sort((a, b) => a.order - b.order)
+}

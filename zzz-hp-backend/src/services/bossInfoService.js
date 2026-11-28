@@ -85,6 +85,11 @@ function normalizeBossInfo(payload) {
   const setsOrNull = resolveIncomingFieldBuffSets(payload)
   const sets = setsOrNull ?? []
   const legacy = mirrorFieldBuffLegacyColumns(sets)
+  const scoringSetsForLegacy = parseScoringNoteSetsJson(
+    Object.prototype.hasOwnProperty.call(payload, 'scoring_note_sets')
+      ? payload.scoring_note_sets
+      : scoringNoteSetsFromLegacy(payload.scoring_note),
+  )
   const weaknessSetsProvided = Object.prototype.hasOwnProperty.call(payload, 'weakness_sets')
   const weaknessSets = weaknessSetsProvided ? parseWeaknessSetsJson(payload.weakness_sets) : []
   // 多套是权威来源：第一套同时镜像回基础三列，旧读路径继续可用
@@ -117,6 +122,8 @@ function normalizeBossInfo(payload) {
     ),
     stagger_time: normalizeStaggerTime(payload.stagger_time),
     anomaly_bar_coefficient: normalizeAnomalyBarCoefficient(payload.anomaly_bar_coefficient),
+    // 旧单列镜像第一套文本：新建时也要写，否则老读路径拿到 null
+    scoring_note: mirrorScoringNoteLegacy(scoringSetsForLegacy),
     field_buff_sets: serializeFieldBuffSets(sets),
     weakness_sets: serializeWeaknessSets(weaknessSets),
     _weaknessSetsProvided: weaknessSetsProvided,
@@ -469,9 +476,29 @@ export async function updateBossInfoById(id, payload) {
     ],
   )
 
+  // 改名同步：名称是跨表业务键，各期（boss 表）仍挂旧名时基础数据会「对不上」
+  let renamedPeriods = 0
+  let updatedPeriodImages = 0
+  if (payload.rename_periods === true && existing.boss_name !== info.boss_name) {
+    const [renamed] = await pool.execute(
+      `UPDATE boss SET boss_name = ? WHERE boss_name = ?`,
+      [info.boss_name, existing.boss_name],
+    )
+    renamedPeriods = Number(renamed.affectedRows) || 0
+    if (existing.boss_image && info.boss_image && existing.boss_image !== info.boss_image) {
+      const [images] = await pool.execute(
+        `UPDATE boss SET boss_image = ? WHERE boss_name = ? AND boss_image = ?`,
+        [info.boss_image, info.boss_name, existing.boss_image],
+      )
+      updatedPeriodImages = Number(images.affectedRows) || 0
+    }
+  }
+
   return {
     action: 'updated',
     id: bossId,
+    renamedPeriods,
+    updatedPeriodImages,
     ...mapBossInfoWriteResult(info),
   }
 }
@@ -517,7 +544,7 @@ export async function upsertBossInfo(payload) {
         info.field_buff_effect_blocks,
         info.field_buff_sets,
         info.weakness_sets,
-      ],
+      ].map((value) => (value === undefined ? null : value)),
     )
 
     return {
@@ -603,6 +630,7 @@ export async function upsertBossInfo(payload) {
       info.resistance,
       info.resistance_high,
       info.scoring_note,
+      info.scoring_note_sets,
       info.crisis_base_hp,
       info.stagger_multiplier,
       info.stagger_time,
@@ -614,7 +642,7 @@ export async function upsertBossInfo(payload) {
       info.field_buff_sets,
       info.weakness_sets,
       existing.id,
-    ],
+    ].map((value) => (value === undefined ? null : value)),
   )
 
   return {

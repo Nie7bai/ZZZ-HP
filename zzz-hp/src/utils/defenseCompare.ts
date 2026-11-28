@@ -197,10 +197,13 @@ function toChartRoomBuffPreview(room: DefenseRoom): ChartRoomBuffPreview | undef
   }
 }
 
+/** 折线图类别：精英 / Boss / 小怪都算（详情弹窗按 `resolveDefenseMonsterCategory` 传入） */
+export type DefenseChartMonsterCategory = DefenseMonsterCategory
+
 export function buildDefenseBossChart(
   seasons: DefenseSeason[],
   bossName: string,
-  category: DefenseCompareMonsterCategory,
+  category: DefenseChartMonsterCategory,
 ): HpChartPoint[] {
   const points: HpChartPoint[] = []
 
@@ -213,7 +216,7 @@ export function buildDefenseBossChart(
         for (const battleRoom of room.battleRooms) {
           for (const wave of battleRoom.waves) {
             for (const enemy of wave.enemies) {
-              if (getDefenseMonsterCategory(enemy) !== category || enemy.name !== bossName) continue
+              if (resolveDefenseMonsterCategory(enemy) !== category || enemy.name !== bossName) continue
 
               const hp = enemy.hpValue ?? parseHpString(enemy.hp)
               if (hp == null) continue

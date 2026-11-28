@@ -68,6 +68,7 @@ import {
   matchSkillDescTargets,
   planAnchorCreations,
   planBuffApply,
+  planMindscapeNoteAppends,
   resolveRowConflicts,
   resolveSlotTarget,
   sanitizeEffect,
@@ -2022,6 +2023,45 @@ test('planBuffApply：音擎写 refinementBuffs[j-1] / fixedBuffs；原文追加
   const again = appendSourceText(first.note, '原文：甲')
   assert.equal(again.appended, false)
   assert.equal(again.duplicate, true)
+})
+
+test('planMindscapeNoteAppends：效果块注释已含同一段原文时不再写影画注释', () => {
+  const doc = {
+    mindscapeNotes: ['', '', '', '', '', '', ''],
+    mindscapeBuffs: [
+      null,
+      null,
+      {
+        effectBlocks: [
+          { id: 'ms-2', name: '2影', note: '原文：每次闪避后攻击力提升 10%', effects: [] },
+        ],
+      },
+    ],
+  }
+  const groups = [
+    {
+      ok: true,
+      container: 'mindscapeBuffs',
+      containerIndex: 2,
+      sourceTexts: ['原文：每次闪避后攻击力提升 10%\n[攻击力%] +10'],
+    },
+  ]
+  const planned = planMindscapeNoteAppends(doc, groups)
+  assert.deepEqual(planned.notes, ['', '', '', '', '', '', ''])
+  assert.deepEqual(planned.skipped, ['每次闪避后攻击力提升 10%'])
+})
+
+test('planMindscapeNoteAppends：纯文字阶（没有效果块）仍写进影画注释', () => {
+  const doc = {
+    mindscapeNotes: ['', '', '', '', '', '', ''],
+    mindscapeBuffs: [null, null, null, null, null, null, { effectBlocks: [] }],
+  }
+  const groups = [
+    { ok: true, container: 'mindscapeBuffs', containerIndex: 6, sourceTexts: ['原文：6 影机制说明'] },
+  ]
+  const planned = planMindscapeNoteAppends(doc, groups)
+  assert.equal(planned.notes[6], '原文：6 影机制说明')
+  assert.equal(planned.skipped.length, 0)
 })
 
 test('planBuffApply：招式文本的「描述」只写既有招式行；没有这条招式 → 不改描述（不新建挂载点）', () => {

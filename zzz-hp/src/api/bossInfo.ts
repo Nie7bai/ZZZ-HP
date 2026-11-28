@@ -61,6 +61,24 @@ interface ApiResult<T> {
   error?: string
 }
 
+/** 管理端请求兜底超时：后端重启 / 代理卡住时不让按钮一直「保存中…」 */
+const REQUEST_TIMEOUT_MS = 20000
+
+async function fetchWithTimeout(input: string, init: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  try {
+    return await fetch(input, { ...init, signal: controller.signal })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error(`请求超时（${REQUEST_TIMEOUT_MS / 1000} 秒无响应）：后端可能正在重启或代理卡住，刷新页面后重试`)
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 function extractApiErrorDetail(data: unknown): string {
   if (!data || typeof data !== 'object') return ''
   if ('error' in data && typeof (data as { error?: unknown }).error === 'string') {
@@ -105,24 +123,36 @@ export async function fetchBossInfoList(params: {
   if (params.offset != null) query.set('offset', String(params.offset))
   if (params.catalog && params.catalog !== 'all') query.set('catalog', params.catalog)
   const suffix = query.toString()
-  const response = await fetch(`/api/boss-info/list${suffix ? `?${suffix}` : ''}`)
+  const response = await fetchWithTimeout(`/api/boss-info/list${suffix ? `?${suffix}` : ''}`)
   return parseResponse<BossInfoListResult>(response)
 }
 
 export async function updateBossInfoRecord(
   id: number,
-  payload: Partial<Omit<BossInfoRecord, 'id'>>,
+  payload: Partial<Omit<BossInfoRecord, 'id'>> & { rename_periods?: boolean },
 ) {
-  const response = await fetch(`/api/boss-info/${id}`, {
+  const response = await fetchWithTimeout(`/api/boss-info/${id}`, {
     method: 'PUT',
     headers: withAdminAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload),
   })
-  return parseResponse<BossInfoRecord>(response)
+  return parseResponse<BossInfoRecord & { renamedPeriods?: number; updatedPeriodImages?: number }>(
+    response,
+  )
+}
+
+/** 新增一只怪物（以 boss_name 为业务键；同名已存在时后端按 upsert 更新） */
+export async function createBossInfoRecord(payload: Partial<Omit<BossInfoRecord, 'id'>>) {
+  const response = await fetchWithTimeout('/api/boss-info', {
+    method: 'POST',
+    headers: withAdminAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  })
+  return parseResponse<{ action: 'created' | 'updated'; id?: number; boss_name?: string }>(response)
 }
 
 export async function deleteBossInfoRecord(id: number) {
-  const response = await fetch(`/api/boss-info/${id}`, {
+  const response = await fetchWithTimeout(`/api/boss-info/${id}`, {
     method: 'DELETE',
     headers: withAdminAuthHeaders(),
   })

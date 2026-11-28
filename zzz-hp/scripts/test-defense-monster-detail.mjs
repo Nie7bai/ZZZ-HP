@@ -269,10 +269,14 @@ check(
   getDefenseMonsterCategory(makeEnemy({ id: undefined, isBoss: true })) === 'boss',
 )
 check(
-  '小怪（ID 为 minion / 无 ID 且非 Boss）推不出类别 ⇒ 弹窗不渲染图表区块',
+  '对比列表口径：getDefenseMonsterCategory 仍只认精英/Boss（小怪不混进怪物列表）',
   getDefenseMonsterCategory(makeEnemy({ id: minionId, isBoss: false })) === null &&
     getDefenseMonsterCategory(makeEnemy({ id: undefined, isBoss: false })) === null &&
     getDefenseMonsterCategory({ name: '小怪布', hp: '1' }) === null,
+)
+check(
+  '折线口径：resolveDefenseMonsterCategory 对 minion 解出 minion（弹窗渲染图表）',
+  resolveDefenseMonsterCategory(makeEnemy({ id: minionId, isBoss: false })) === 'minion',
 )
 check(
   'isDefenseEliteOrBoss 与类别推导一致',
@@ -372,7 +376,13 @@ function makeDefenseSeason(version, phase, enemies) {
   }
 }
 
-const minionEnemy = { name: '特种抗暴布', hp: '1,423,183', hpValue: 1423183, count: 3 }
+const minionEnemy = {
+  id: minionId,
+  name: '特种抗暴布',
+  hp: '1,423,183',
+  hpValue: 1423183,
+  count: 3,
+}
 const chartSeasons = [
   makeDefenseSeason('3.0', '第 1 期', [makeEnemy({ id: bossId, hpValue: 1000000, hp: '1,000,000' }), minionEnemy]),
   makeDefenseSeason('3.1', '第 2 期', [makeEnemy({ id: bossId, hpValue: 1200000, hp: '1,200,000' })]),
@@ -392,6 +402,12 @@ check(
 check(
   '无出场记录时返回空数组 ⇒ 弹窗显示「暂无历史数据」',
   buildDefenseBossChart(chartSeasons, '不存在怪物', 'boss').length === 0,
+)
+check(
+  '小怪也能出折线：按 minion 类别取各期血量点',
+  buildDefenseBossChart(chartSeasons, '特种抗暴布', 'minion').length === 1 &&
+    buildDefenseBossChart(chartSeasons, '特种抗暴布', 'minion')[0].totalHp === 1423183,
+  JSON.stringify(buildDefenseBossChart(chartSeasons, '特种抗暴布', 'minion')),
 )
 
 console.log('[3b] hasDefenseMonsterExistedByMultiplierVersion：扫全量赛季判定出现历史')

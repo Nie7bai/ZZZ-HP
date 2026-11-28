@@ -107,6 +107,8 @@ function mapBossRow(row) {
       row.stagger_time == null || row.stagger_time === '' ? null : Number(row.stagger_time),
     field_buff_set_id: row.field_buff_set_id ? String(row.field_buff_set_id) : null,
     weakness_set_id: row.weakness_set_id ? String(row.weakness_set_id) : null,
+    /** 得分机制套（怪物库多套）：期数行绑定哪一套，随赛季快照往返 */
+    scoring_note_set_id: row.scoring_note_set_id ? String(row.scoring_note_set_id) : null,
     mode: row.mode === 'defense' || row.mode === 'deduction' || row.mode === 'crisis' ? row.mode : null,
   }
 }
@@ -403,6 +405,7 @@ function bossImportPayload(row) {
     hp_coeff_manual: row.hp_coeff_percent != null && row.hp_coeff_percent !== '',
     field_buff_set_id: row.field_buff_set_id ?? null,
     weakness_set_id: row.weakness_set_id ?? null,
+    scoring_note_set_id: row.scoring_note_set_id ?? null,
   }
 
   // 显式 mode / recordScheme 优先，避免临界 9 位 ID 被当成防卫战
