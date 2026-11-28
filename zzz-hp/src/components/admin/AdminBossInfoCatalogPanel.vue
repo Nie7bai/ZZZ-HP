@@ -79,6 +79,12 @@ const creating = ref(false)
 const savingNew = ref(false)
 /** 编辑时的原名：改名要提示是否同步到各期 */
 const originalName = ref('')
+/**
+ * 保存请求代次：取消编辑 / 重新打开会 +1，
+ * 旧请求（含挂起 20 秒后才超时的那种）回来时不再改当前表单的状态，
+ * 否则会出现「没点保存却显示保存中」。
+ */
+let saveEpoch = 0
 const editorOpen = computed(() => creating.value || editingId.value != null)
 const draft = ref<BossInfoDraft>(createEmptyDraft())
 const fieldBuffSets = ref<FieldBuffSetDraft[]>([])
@@ -300,6 +306,9 @@ async function loadList() {
 }
 
 async function startCreate() {
+  saveEpoch += 1
+  savingNew.value = false
+  savingId.value = null
   creating.value = true
   editingId.value = null
   draft.value = createEmptyDraft()
@@ -317,6 +326,9 @@ async function startCreate() {
 }
 
 async function startEdit(row: BossInfoRecord) {
+  saveEpoch += 1
+  savingNew.value = false
+  savingId.value = null
   creating.value = false
   editingId.value = row.id
   originalName.value = row.boss_name
@@ -335,8 +347,11 @@ async function startEdit(row: BossInfoRecord) {
 }
 
 function cancelEdit() {
+  saveEpoch += 1
   creating.value = false
   editingId.value = null
+  savingNew.value = false
+  savingId.value = null
   draft.value = createEmptyDraft()
   fieldBuffSets.value = []
   weaknessSets.value = []
@@ -452,6 +467,7 @@ async function confirmRename(syncPeriods: boolean) {
 }
 
 async function commitSave(payload: ReturnType<typeof buildSavePayload>, syncPeriods: boolean) {
+  const epoch = ++saveEpoch
   const isCreate = creating.value
   if (isCreate) savingNew.value = true
   else savingId.value = editingId.value
@@ -474,10 +490,12 @@ async function commitSave(payload: ReturnType<typeof buildSavePayload>, syncPeri
     cancelEdit()
     await loadList()
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '保存失败'
+    if (epoch === saveEpoch) error.value = err instanceof Error ? err.message : '保存失败'
   } finally {
-    savingNew.value = false
-    savingId.value = null
+    if (epoch === saveEpoch) {
+      savingNew.value = false
+      savingId.value = null
+    }
   }
 }
 
