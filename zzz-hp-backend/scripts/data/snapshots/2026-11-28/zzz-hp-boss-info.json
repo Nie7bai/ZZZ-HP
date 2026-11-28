@@ -1,7 +1,7 @@
 {
   "kind": "zzz-hp-boss-info",
   "version": 1,
-  "exportedAt": "2026-11-28T07:02:25.323Z",
+  "exportedAt": "2026-11-28T07:10:17.093Z",
   "count": 156,
   "rows": [
     {
@@ -603,7 +603,7 @@
       "bossName": "僭越者",
       "defense": 953,
       "level": 70,
-      "bossImage": "/boss_image/以太异体·特里薇亚.webp",
+      "bossImage": "/boss_image/僭越者.webp",
       "weakness": "火",
       "resistance": "冰",
       "resistanceHigh": "冰",
