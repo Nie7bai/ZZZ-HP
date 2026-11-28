@@ -3,9 +3,9 @@ import type { StageDefinition } from './pipeline'
 /**
  * 管理端「计算链路」展示用的纯函数。
  *
- * 链路的阶段只描述链路自身；全局乘区方案里的自定义乘区（烬痕 / 最终伤害 / 一布之力 等）
- * 由方案在结算末尾单独相乘，不属于任何链路阶段，但管理端看链路时也要能看到它们。
- * 这里只做**展示拼接**，不参与结算与预览。
+ * 全局乘区方案里的自定义乘区（烬痕 / 最终伤害 / 一布之力 等）在事件结算时由
+ * `customZoneStageEntries()` 编译成链路阶段、与阶段一起连乘。管理端链路面板按同一口径
+ * 把它们并列展示：位置在「期望伤害」之前，并把期望伤害固定排到最后（order 显示 999）。
  */
 export interface SchemeEntryStageInput {
   key: string
@@ -38,7 +38,12 @@ export function schemeEntriesToStages(
     }))
 }
 
-/** 链路阶段 + 全局独立乘区（同 id 或同标签不重复，追加在末尾） */
+/**
+ * 链路阶段 + 全局独立乘区（同 id 或同标签不重复）。
+ *
+ * 方案编译出的乘区排在「期望伤害」之前——它确实参与连乘，期望伤害是乘完之后的结果，
+ * 所以期望伤害固定最后展示，序号显示为 999（展示口径，不改内置链路定义的 order）。
+ */
 export function mergeSchemeStagesIntoChain(
   chainStages: readonly StageDefinition[],
   schemeStages: readonly StageDefinition[],
@@ -50,5 +55,10 @@ export function mergeSchemeStagesIntoChain(
   const extra = schemeStages.filter(
     (stage) => !ownIds.has(stage.id) && !ownLabels.has(stage.label.trim()),
   )
-  return extra.length ? [...chainStages, ...extra] : chainStages
+  if (!extra.length) return chainStages
+  const finals = chainStages
+    .filter((stage) => stage.kind === 'final')
+    .map((stage) => ({ ...stage, order: 999 }))
+  const body = chainStages.filter((stage) => stage.kind !== 'final')
+  return [...body, ...extra, ...finals]
 }

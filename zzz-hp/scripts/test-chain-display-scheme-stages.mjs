@@ -30,6 +30,7 @@ function check(name, run) {
 const chainStages = [
   { id: 'base', kind: 'source', label: '基础伤害', group: 'direct', order: 10, module: 'baseDamage' },
   { id: 'finalDmg', kind: 'multiplier', label: '最终伤害区', group: 'direct', order: 115, module: 'finalDmgBonus' },
+  { id: 'final', kind: 'final', label: '期望伤害', group: 'direct', order: 120, module: 'product' },
 ]
 
 console.log('[1] 方案条目 → 阶段格')
@@ -57,15 +58,17 @@ check('停用条目（enabled=false）不进展示；action=disable 保留给方
 
 console.log('[2] 拼进链路')
 
-check('一布之力追加到链路末尾，链路阶段原样保留', () => {
+check('一布之力插在期望伤害之前，期望伤害固定最后（序号 999）', () => {
   const scheme = schemeEntriesToStages([
     { key: 'custom:bangbooMight', label: '一布之力区', module: 'percentSum', params: { order: 202 } },
   ])
   const merged = mergeSchemeStagesIntoChain(chainStages, scheme)
-  assert.deepEqual(merged.map((stage) => stage.id), ['base', 'finalDmg', 'custom:bangbooMight'])
+  assert.deepEqual(merged.map((stage) => stage.id), ['base', 'finalDmg', 'custom:bangbooMight', 'final'])
   assert.equal(merged[2].label, '一布之力区')
+  assert.equal(merged[3].order, 999)
   // 不改写原数组
-  assert.equal(chainStages.length, 2)
+  assert.equal(chainStages.length, 3)
+  assert.equal(chainStages[2].order, 120)
 })
 
 check('同 id 不重复（链路已有同名阶段时不额外追加）', () => {
@@ -73,7 +76,7 @@ check('同 id 不重复（链路已有同名阶段时不额外追加）', () => 
     { key: 'finalDmg', label: '最终伤害区', module: 'percentSum', params: { order: 115 } },
   ])
   const merged = mergeSchemeStagesIntoChain(chainStages, scheme)
-  assert.deepEqual(merged.map((stage) => stage.id), ['base', 'finalDmg'])
+  assert.deepEqual(merged.map((stage) => stage.id), ['base', 'finalDmg', 'final'])
 })
 
 check('同标签也不重复：历史留存的 custom:finalDamage「最终伤害区」不重复成两格', () => {
@@ -82,7 +85,7 @@ check('同标签也不重复：历史留存的 custom:finalDamage「最终伤害
     { key: 'custom:bangbooMight', label: '一布之力区', module: 'percentSum', params: { order: 202 } },
   ])
   const merged = mergeSchemeStagesIntoChain(chainStages, scheme)
-  assert.deepEqual(merged.map((stage) => stage.id), ['base', 'finalDmg', 'custom:bangbooMight'])
+  assert.deepEqual(merged.map((stage) => stage.id), ['base', 'finalDmg', 'custom:bangbooMight', 'final'])
 })
 
 check('没有方案条目时原样返回链路阶段', () => {
