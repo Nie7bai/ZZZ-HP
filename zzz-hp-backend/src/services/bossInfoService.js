@@ -85,6 +85,11 @@ function normalizeBossInfo(payload) {
   const setsOrNull = resolveIncomingFieldBuffSets(payload)
   const sets = setsOrNull ?? []
   const legacy = mirrorFieldBuffLegacyColumns(sets)
+  const scoringSetsForLegacy = parseScoringNoteSetsJson(
+    Object.prototype.hasOwnProperty.call(payload, 'scoring_note_sets')
+      ? payload.scoring_note_sets
+      : scoringNoteSetsFromLegacy(payload.scoring_note),
+  )
   const weaknessSetsProvided = Object.prototype.hasOwnProperty.call(payload, 'weakness_sets')
   const weaknessSets = weaknessSetsProvided ? parseWeaknessSetsJson(payload.weakness_sets) : []
   // 多套是权威来源：第一套同时镜像回基础三列，旧读路径继续可用
@@ -117,6 +122,8 @@ function normalizeBossInfo(payload) {
     ),
     stagger_time: normalizeStaggerTime(payload.stagger_time),
     anomaly_bar_coefficient: normalizeAnomalyBarCoefficient(payload.anomaly_bar_coefficient),
+    // 旧单列镜像第一套文本：新建时也要写，否则老读路径拿到 null
+    scoring_note: mirrorScoringNoteLegacy(scoringSetsForLegacy),
     field_buff_sets: serializeFieldBuffSets(sets),
     weakness_sets: serializeWeaknessSets(weaknessSets),
     _weaknessSetsProvided: weaknessSetsProvided,

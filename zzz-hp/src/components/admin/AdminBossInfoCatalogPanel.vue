@@ -484,7 +484,12 @@ async function commitSave(payload: ReturnType<typeof buildSavePayload>, syncPeri
   try {
     if (isCreate) {
       const result = await createBossInfoRecord(payload)
-      message.value = result.action === 'updated' ? '同名怪物已存在，已更新' : '已新增怪物'
+      message.value =
+        result.action === 'updated'
+          ? '同名怪物已存在，已更新'
+          : `已新增怪物「${payload.boss_name}」（还没有期数记录，所以在「危局 / 防卫战 / 临界」分类里看不到，已切到「总基础库」）`
+      // 新建的怪物没有期数行 → 当前分类（危局等）列表里不会出现，切到总基础库才能看到
+      if (catalog.value !== 'all') catalog.value = 'all'
     } else {
       const result = await updateBossInfoRecord(editingId.value as number, {
         ...payload,
