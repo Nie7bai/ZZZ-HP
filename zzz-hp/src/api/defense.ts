@@ -8,6 +8,7 @@ import {
   buildDefenseLastFrontierBossPreviews,
   extractDefenseBossList,
   getDefaultDefenseHpOptionKey,
+  type DefenseChartMonsterCategory,
   type DefenseCompareMonsterCategory,
 } from '@/utils/defenseCompare'
 import { resolveAssetUrl } from '@/utils/gameData'
@@ -159,7 +160,7 @@ export async function fetchDefenseBossList(
 export async function fetchDefenseBossChart(
   variant: DefenseVariant,
   bossName: string,
-  category: DefenseCompareMonsterCategory,
+  category: DefenseChartMonsterCategory,
 ): Promise<HpChartPoint[]> {
   const seasons = await fetchDefenseSeasons(variant)
   return buildDefenseBossChart(seasons, bossName, category)

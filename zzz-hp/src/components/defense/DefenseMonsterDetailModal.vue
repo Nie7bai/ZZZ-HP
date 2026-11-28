@@ -11,7 +11,7 @@ import type { CrisisHpChartMode, HpChartPoint } from '@/api/crisisAssault'
 import type { DefenseEnemy, DefenseVariant } from '@/types/defense'
 import {
   buildDefenseMonsterDetailRecord,
-  getDefenseMonsterCategory,
+  resolveDefenseMonsterCategory,
   type DefenseMonsterDetailBossInfo,
 } from '@/utils/defenseCompare'
 import type { HpComparison } from '@/utils/defenseHp'
@@ -43,10 +43,10 @@ const emit = defineEmits<{
 
 /**
  * 折线图与「怪物数据库」同口径：按「怪物类别 + 名称」取点。
- * 类别由怪物 ID 解码，旧数据回退 `isBoss`；小怪推不出类别（图表 API 只支持精英/Boss），该区块整体不渲染。
+ * 类别由怪物 ID 解码（小怪 minion 也算），旧数据回退 `isBoss`。
  */
 const chartCategory = computed(() =>
-  props.enemy ? getDefenseMonsterCategory(props.enemy) : null,
+  props.enemy ? resolveDefenseMonsterCategory(props.enemy) : null,
 )
 
 const bossInfo = ref<DefenseMonsterDetailBossInfo | null>(null)
